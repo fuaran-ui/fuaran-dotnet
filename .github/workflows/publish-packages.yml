@@ -1,12 +1,11 @@
 name: Publish packages
 
-# Pushes the Fuaran.UI.* packs to nuget.org (the public, no-auth-restore
-# distribution channel) and to the fuaran-ui GitHub Packages NuGet feed.
-# Triggered by a tag push matching `v*` (the operator's "ship this release"
-# gesture) or by workflow_dispatch (the rerun-against-an-existing-tag escape
-# hatch). The version baked into each pack is the <Version> property in
-# Directory.Build.props at the tagged commit — see fuaran/STABILITY.md for
-# the per-release bump policy.
+# Pushes the Fuaran.UI.* packs to nuget.org — the public, no-auth-restore
+# distribution channel. Triggered by a tag push matching `v*` (the operator's
+# "ship this release" gesture) or by workflow_dispatch (the
+# rerun-against-an-existing-tag escape hatch). The version baked into each
+# pack is the <Version> property in Directory.Build.props at the tagged
+# commit — see STABILITY.md for the per-release bump policy.
 
 on:
   push:
@@ -16,9 +15,6 @@ on:
 
 permissions:
   contents: read
-  # `packages: write` lets the workflow's GITHUB_TOKEN push to the fuaran-ui
-  # org's GitHub Packages NuGet feed without a separate PAT.
-  packages: write
   # `id-token: write` lets the job request the GitHub OIDC token that
   # nuget.org's Trusted Publishing exchange turns into a short-lived API key.
   id-token: write
@@ -26,15 +22,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    env:
-      # nuget.config's github-fuaran source needs auth even for public
-      # packages (GitHub Packages NuGet quirk); Fuaran.Core.* restores from
-      # that feed on the runner (the local feed is empty there). The default
-      # GITHUB_TOKEN is repo-scoped and 403s on packages published from the
-      # sibling fuaran-core repo — WORKSPACE_PAT carries read:packages across
-      # the org.
-      GITHUB_PACKAGES_USER: ${{ github.actor }}
-      GITHUB_PACKAGES_TOKEN: ${{ secrets.WORKSPACE_PAT }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,11 +32,11 @@ jobs:
           global-json-file: global.json
 
       # The Build.fs Pack target (and nuget.config's `local` source) resolve
-      # the workspace-shared feed at ../../../local-nuget-feed relative to the
-      # repo root — three levels up, matching the repo's position inside the
-      # maintainers' workspace checkout. On the runner there's no workspace,
-      # so we mint an empty dir at that exact depth: NuGet hard-errors
-      # (NU1301) on a missing folder source rather than treating it as empty.
+      # the local folder feed at ../../../local-nuget-feed relative to the
+      # repo root. On the runner there's no such folder, so we mint an empty
+      # dir at that exact depth: NuGet hard-errors (NU1301) on a missing
+      # folder source rather than treating it as empty. Fuaran.Core.*
+      # restores from nuget.org.
       - name: Create empty local-nuget-feed on the runner
         run: mkdir -p ../../../local-nuget-feed
 
@@ -58,42 +45,16 @@ jobs:
 
       # `-t Pack` selects the FAKE Pack target. A bare `-- Pack` is NOT a target
       # selector — FAKE ignores it and runs the default `All` target (Format ->
-      # Build -> Test), packing nothing. This matches pack-all.ps1's invocation.
+      # Build -> Test), packing nothing.
       - name: Pack
         run: dotnet run --project Build.fsproj -- -t Pack
 
-      # `--skip-duplicate` keeps this idempotent: re-running the workflow
-      # against the same tag (workflow_dispatch) is a no-op rather than a
-      # hard failure. The versioning policy in STABILITY.md guarantees
-      # every tagged release produces a new id+version pair.
-      - name: Push to GitHub Packages
-        run: |
-          # nullglob so an empty feed yields an empty list (not the literal
-          # pattern), and push each package individually — `dotnet nuget push`
-          # takes a single root path, and a single-quoted wildcard is passed
-          # to it verbatim (it does not shell-expand), which fails as a
-          # literal filename. --skip-duplicate keeps re-runs idempotent.
-          shopt -s nullglob
-          pkgs=(../../../local-nuget-feed/*.nupkg)
-          if [ ${#pkgs[@]} -eq 0 ]; then
-            echo "No .nupkg files found in ../../../local-nuget-feed/ — Pack produced nothing." >&2
-            exit 1
-          fi
-          for pkg in "${pkgs[@]}"; do
-            dotnet nuget push "$pkg" \
-              --source https://nuget.pkg.github.com/fuaran-ui/index.json \
-              --api-key ${{ secrets.GITHUB_TOKEN }} \
-              --skip-duplicate
-          done
-
-      # nuget.org is the public distribution channel — consumers restore with
-      # no credentials (GitHub Packages requires auth even for public NuGet
-      # packages). Auth is Trusted Publishing (OIDC): a policy on nuget.org
-      # (repo owner / repo / this workflow's file name) exchanges the job's
-      # OIDC token for a 1-hour API key — no long-lived key secret to rotate.
-      # NUGET_USER is the nuget.org profile name the policy belongs to.
-      # The login step sits immediately before the push so the temp key
-      # cannot expire mid-run. --skip-duplicate keeps re-runs idempotent.
+      # Auth is Trusted Publishing (OIDC): a policy on nuget.org (repo owner /
+      # repo / this workflow's file name) exchanges the job's OIDC token for a
+      # 1-hour API key — no long-lived key secret to rotate. NUGET_USER is the
+      # nuget.org profile name the policy belongs to. The login step sits
+      # immediately before the push so the temp key cannot expire mid-run.
+      # --skip-duplicate keeps re-runs idempotent.
       - name: NuGet login (OIDC → temp API key)
         uses: NuGet/login@v1
         id: nuget-login
@@ -102,8 +63,18 @@ jobs:
 
       - name: Push to nuget.org
         run: |
+          # nullglob so an empty feed yields an empty list (not the literal
+          # pattern), and push each package individually — `dotnet nuget push`
+          # takes a single root path, and a single-quoted wildcard is passed
+          # to it verbatim (it does not shell-expand), which fails as a
+          # literal filename.
           shopt -s nullglob
-          for pkg in ../../../local-nuget-feed/*.nupkg; do
+          pkgs=(../../../local-nuget-feed/*.nupkg)
+          if [ ${#pkgs[@]} -eq 0 ]; then
+            echo "No .nupkg files found in ../../../local-nuget-feed/ — Pack produced nothing." >&2
+            exit 1
+          fi
+          for pkg in "${pkgs[@]}"; do
             dotnet nuget push "$pkg" \
               --source https://api.nuget.org/v3/index.json \
               --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} \
