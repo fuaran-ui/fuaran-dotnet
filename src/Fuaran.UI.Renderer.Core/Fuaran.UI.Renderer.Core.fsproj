@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Renderer.Core</PackageId>
+    <Description>Fuaran renderer core — the emission-agnostic render spine (class-name vocabulary, accessibility-attribute projection, sanitize, binding resolution, locale formatting, deterministic ids). FSharp.Core only; shared by the Feliz client renderer and the Feliz.ViewEngine server renderer. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Sanitize.fs guards string DOM seams with `isNull` on `string`-typed
+         parameters (defence-in-depth against hand-built / wire-decoded
+         records). Under F# 10's nullness checker those reads warn (FS3262),
+         and the repo treats warnings as errors. The sources moved here
+         verbatim from Fuaran.UI.Renderer (which disables nullness for the
+         same reason); keep the posture identical so the extraction stays
+         behaviour- and build-identical. The upstream typed-tree library
+         (Fuaran.UI) keeps nullness on. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/, matching Fuaran.UI +
+       Fuaran.UI.Renderer so PackageReference Fable consumers transpile the
+       core spine from source. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Sanitize.fs" />
+    <Compile Include="Markdown.fs" />
+    <Compile Include="Theme.fs" />
+    <Compile Include="Formatting.fs" />
+    <Compile Include="BindingResolver.fs" />
+    <Compile Include="DrawingSvg.fs" />
+    <Compile Include="MathMl.fs" />
+    <Compile Include="Accessibility.fs" />
+    <Compile Include="Ids.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <!-- No Feliz / Fable.React / React: this is the emission-agnostic spine,
+         not a renderer (FGP 2). Fable.Core is required only for Formatting.fs's
+         `#if FABLE_COMPILER` Intl interop (the browser locale-formatting path);
+         the .NET build excludes that branch, so under `dotnet build` the only
+         package dependency is FSharp.Core. Same posture as
+         Fuaran.UI.LayoutObserver (FSharp.Core + Fable.Core, Fable-portable,
+         no rendering-framework dep). -->
+    <PackageReference Include="Fable.Core" />
+  </ItemGroup>
+</Project>

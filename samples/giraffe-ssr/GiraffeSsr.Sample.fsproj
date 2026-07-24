@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="App.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <!-- Serve the reference CSS out of wwwroot (linked + copied; the stylesheet
+       link in each DocumentShell points at /fuaran-reference.css). -->
+  <ItemGroup>
+    <Content Include="..\..\src\Fuaran.UI.Renderer\content\fuaran-reference.css"
+             Link="wwwroot\fuaran-reference.css"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer.Server\Fuaran.UI.Renderer.Server.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Giraffe\Fuaran.UI.Giraffe.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Feliz.ViewEngine" />
+    <PackageReference Include="Giraffe" />
+  </ItemGroup>
+</Project>

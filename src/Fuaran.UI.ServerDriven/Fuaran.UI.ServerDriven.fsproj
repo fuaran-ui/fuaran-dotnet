@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.ServerDriven</PackageId>
+    <Description>Fuaran server-driven interactivity — the transport-agnostic core for the third client tier (HTMX / LiveView / Blazor-Server-shaped): the closure-free DomPatch + ClientEffect wire vocabularies the generic JS shim applies, the TreeOp→DomPatch lowering, the per-connection driver, and the IFuaranLiveChannel transport seam. Keep the Elmish update loop on the server; ship ~nothing to the browser. No platform-SDK dependency. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;server-driven;htmx;liveview;dom-patch</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <!-- The generic browser shim — app-agnostic, framework-free vanilla JS that
+         applies DomPatch frames + performs ClientEffects + delegates events.
+         Shipped as package content (the reference-CSS pattern); the host serves
+         it as a static asset. Browser-verified (no headless unit tests). -->
+    <None Include="content\fuaran-live-patch.js" Pack="true" PackagePath="content\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/ — the DomPatch / ClientEffect
+       wire types are Fable-clean (the client shim adapter consumes them). -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="DomPatch.fs" />
+    <Compile Include="ClientEffect.fs" />
+    <Compile Include="Lowering.fs" />
+    <Compile Include="Validation.fs" />
+    <Compile Include="Inbound.fs" />
+    <Compile Include="Driver.fs" />
+    <Compile Include="BoundedActions.fs" />
+    <Compile Include="BoundedDriver.fs" />
+    <Compile Include="FormValidation.fs" />
+    <Compile Include="FormBuffer.fs" />
+    <Compile Include="Navigation.fs" />
+    <Compile Include="InteractionTelemetry.fs" />
+    <Compile Include="SessionStore.fs" />
+    <Compile Include="Channel.fs" />
+    <Compile Include="FrameWire.fs" />
+  </ItemGroup>
+  <!-- TreeOp + Node + Introspect.findNode for the lowering; TreeOpDiff (the
+       Track-A diff) for the driver's re-render→diff step. All Fable-clean; the
+       HTML renderer is INJECTED (renderFragment) so no Renderer.Server dep leaks
+       into this core (the driver is server-only but the wire types stay
+       Fable-portable). In-repo deps are ProjectReferences. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <!-- Phase 153 (bounded-tree driver): the binding resolver + BindingSources
+         store value the bounded driver re-resolves a generated tree against.
+         Renderer.Core is the FSharp.Core-only render SPINE (not the Feliz/
+         Feliz.ViewEngine renderers) — Fable-clean, no React/Feliz/Server dep —
+         so referencing it keeps the "no renderer-emission dep leaks into this
+         core" posture above intact (HTML production stays injected). -->
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

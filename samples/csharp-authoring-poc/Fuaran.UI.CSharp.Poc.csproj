@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========================================================================
+       Phase 172 — C# fluent-builder authoring-shape PoC (§4e third authoring
+       surface over the wire contract).
+
+       PoC posture: bounded scope, kept honest. This is *evidence* for the §4e
+       design — it proves idiomatic C# can author Fuaran trees that are
+       wire-identical to F#-authored equivalents — NOT a supported package
+       commitment. Deletable without touching any shipped suite: it lives under
+       samples/, references the public type/encoder/decoder surface by
+       ProjectReference, and is excluded from the packable set and the Validate
+       glob (which only walks src/*.fsproj).
+
+       FGP 2 is preserved one-way: this C# project references Fuaran.UI; the
+       F# tier never references back. Nothing in the Fuaran.UI.* package set
+       changes.
+       ======================================================================== -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Fuaran.UI.CSharp.Poc</RootNamespace>
+    <AssemblyName>Fuaran.UI.CSharp.Poc</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <!-- The PoC consumes FSharp.Core types (FSharpOption / FSharpList /
+         FSharpFunc) under the hood. FSharp.Core ships null-oblivious metadata,
+         so nullable-reference analysis over the interop seam is noise rather
+         than signal; annotations context keeps the `?`-annotation surface
+         without raising oblivious-interop warnings. Documented in the findings
+         note as a PoC-to-package gap (a supported package would ship a
+         null-annotated facade). -->
+    <Nullable>annotations</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Public typed-tree contract (Node / spec records / DUs / smart-ctor
+         surface). -->
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <!-- Canonical structural decoder (decodeNode — the round-trip leg). -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <!-- Canonical-JSON encoder (CanonicalJson.encodeNode — the byte-compare
+         target). -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+
+</Project>

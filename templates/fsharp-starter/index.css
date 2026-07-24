@@ -1,0 +1,18 @@
+/* The Fuaran reference stylesheet drives the rendered tree's look; this file is
+   just the page frame around the mount root. Import the reference CSS from the
+   renderer package if you want the canonical tokens here too:
+     @import '@fuaran-ui/renderer/css';   (TS host)
+   The F# renderer emits the same class vocabulary; copy
+   fuaran/src/Fuaran.UI.Renderer/content/fuaran-reference.css alongside this file
+   and @import it, or rely on your host's stylesheet. */
+
+:root {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 2rem;
+  background: #f8fafc;
+  color: #0f172a;
+}

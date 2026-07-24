@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://fuaran.dev/schema/theme-manifest.schema.json",
+  "title": "Fuaran ThemeManifest",
+  "description": "A DTCG-compatible theme token contract extended with role bindings and soft-weighted invariants. The machine-readable contract an AI reasons against and the StyleObserver verifies against. The `tokens` block is a DTCG group tree; `roles` and `invariants` are the Fuaran extensions DTCG lacks. A vanilla DTCG file (the token tree at top level, no wrapper) is also accepted by the decoder.",
+  "type": "object",
+  "required": ["tokens"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "tokens": {
+      "$ref": "#/definitions/dtcgGroup",
+      "description": "DTCG group tree. A leaf is an object carrying `$value` (+ optional `$type` / `$description` / `$extensions`); any other object is a group whose non-`$`-prefixed children are nested tokens."
+    },
+    "roles": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/roleBinding" }
+    },
+    "invariants": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/invariant" }
+    }
+  },
+  "definitions": {
+    "dtcgGroup": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/definitions/dtcgLeaf" },
+          { "$ref": "#/definitions/dtcgGroup" }
+        ]
+      }
+    },
+    "dtcgLeaf": {
+      "type": "object",
+      "required": ["$value"],
+      "properties": {
+        "$value": { "type": "string" },
+        "$type": { "type": "string" },
+        "$description": { "type": "string" },
+        "$extensions": {
+          "type": "object",
+          "properties": {
+            "fuaran": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "description": "SPEC dual-field semantic tag — a free-form role name for the token."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      }
+    },
+    "roleBinding": {
+      "type": "object",
+      "required": ["role", "token"],
+      "properties": {
+        "role": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["tone"],
+              "properties": {
+                "tone": {
+                  "type": "string",
+                  "enum": ["Default", "Subdued", "Brand", "Success", "Warning", "Critical", "Info"],
+                  "description": "A Fuaran.UI ToneVariant case."
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": ["named"],
+              "properties": {
+                "named": {
+                  "type": "string",
+                  "description": "A named (non-tone) semantic role — page surface, body text, divider, etc."
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "token": {
+          "type": "string",
+          "description": "The dotted token name this role resolves to (must exist under `tokens`)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "invariant": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["ContrastFloor", "UsageBudget", "MotionVoice"]
+        },
+        "weight": {
+          "type": "number",
+          "description": "Soft weight (default 1.0); learning of weights is deferred to a later phase."
+        },
+        "role": { "type": "string" },
+        "minRatio": { "type": "number" },
+        "token": { "type": "string" },
+        "targetPct": { "type": "number" },
+        "tolerancePct": { "type": "number" },
+        "maxDurationMs": { "type": "integer" },
+        "easing": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "ContrastFloor" } } },
+          "then": { "required": ["role", "minRatio"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "UsageBudget" } } },
+          "then": { "required": ["token", "targetPct", "tolerancePct"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "MotionVoice" } } },
+          "then": { "required": ["maxDurationMs"] }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

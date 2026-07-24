@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.FastPath</PackageId>
+    <Description>Fuaran signature-searchable pattern bank — a public, Fable-clean façade over the Fuaran.Core artifact-function registry. Deterministic, LLM-free, server-free structural retrieval of UI patterns ("given the holes I can fill and/or the kind of node I want, which known patterns can I run?"), plus a curated domain-neutral seed catalogue that instantiates into real Fuaran trees. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="FastPath.fs" />
+    <Compile Include="SeedCatalogue.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/ (same shape as Fuaran.UI /
+       Fuaran.UI.AiTools) — a PackageReference Fable consumer retranspiles from source. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The typed tree + smart constructors (the patterns instantiate into Node<unit>). -->
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <!-- The artifact-function registry (Capability / Signature / FunctionRegistry /
+         findBySignature) — the signature-search engine this façade wraps. -->
+    <PackageReference Include="Fuaran.Core.Function" />
+    <!-- The compute layer (DataSource / Transform) — the ComputeLayer-bound seed
+         patterns build data-bound bindings the client-side evaluator runs. -->
+    <PackageReference Include="Fuaran.Core.Column" />
+    <PackageReference Include="Fuaran.Core.DataFrame" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

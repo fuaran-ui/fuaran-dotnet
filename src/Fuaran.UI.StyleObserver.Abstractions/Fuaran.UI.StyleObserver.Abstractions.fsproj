@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.StyleObserver.Abstractions</PackageId>
+    <Description>Fuaran resolved-style observability feedback channel — type contract, flag DU, observer interface, and shared flag-derivation logic (effective-background composite walk + WCAG contrast). Twin of Fuaran.UI.LayoutObserver.Abstractions: turns resolved colours (foreground, the composited effective background behind it, font role, emitted tone) into a small fixed set of AI-friendly legibility flags (ContrastBelowAA, InvisibleText, AccentIndistinct). Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;style;contrast;accessibility;observability;ai;runtime-introspection</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/ (same convention as
+       Fuaran.UI.LayoutObserver.Abstractions and the downstream
+       orchestration abstractions package). -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Color.fs" />
+    <Compile Include="StyleFlag.fs" />
+    <Compile Include="StyleObservation.fs" />
+    <Compile Include="IStyleObserver.fs" />
+    <Compile Include="StyleObserverOptions.fs" />
+    <Compile Include="Flags.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

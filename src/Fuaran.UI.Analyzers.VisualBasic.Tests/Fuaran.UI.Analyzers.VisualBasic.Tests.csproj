@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Phase 315 — VB analyzer tests. A C# console runner (driving VisualBasicCompilation
+       with the VB XML-literal analyzer) — robust vs the version-sensitive
+       Microsoft.CodeAnalysis.Testing helpers under net10 Roslyn + TreatWarningsAsErrors.
+       Also references the VB veneer to pin the analyzer's embedded vocabulary to the
+       translator's runtime KnownElements (single source of truth). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Fuaran.UI.Analyzers.VisualBasic.Tests</RootNamespace>
+    <AssemblyName>Fuaran.UI.Analyzers.VisualBasic.Tests</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The analyzer under test (internals visible for the vocabulary-parity test). -->
+    <ProjectReference Include="..\Fuaran.UI.Analyzers\Fuaran.UI.Analyzers.csproj" />
+    <!-- The VB veneer — the translator's runtime vocabulary (FuaranXml.KnownElements). -->
+    <ProjectReference Include="..\Fuaran.UI.VisualBasic\Fuaran.UI.VisualBasic.vbproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic" />
+  </ItemGroup>
+
+</Project>

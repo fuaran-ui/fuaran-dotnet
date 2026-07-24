@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========================================================================
+       Phase 306 — corpus conformance for the C# authoring veneer, wire-faithful
+       by construction. A console runner (Exe, like the F# Expecto suites) wired
+       into the Build.fs Test target and skipped when the workspace corpus is
+       absent (single-repo checkout). It proves:
+
+         * every C#-authored tree encodes byte-identically to the F# smart-ctor
+           host (mirror F# by construction — the ARIA-inclusive parity, Phase
+           307), and byte-identically to the bare corpus for the ARIA-free kinds;
+         * the bare static corpus round-trips + rejects through the C#-native
+           Decode facade (Phase 309);
+         * a negative control fails, so a green run is meaningful.
+
+       NO fourth CI leg: byte-canonicity rides the existing F#↔corpus gate; this
+       suite pins the C# AUTHORING surface onto that canonical form.
+       ======================================================================== -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Fuaran.UI.CSharp.Conformance.Tests</RootNamespace>
+    <AssemblyName>Fuaran.UI.CSharp.Conformance.Tests</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The veneer under test. -->
+    <ProjectReference Include="..\Fuaran.UI.CSharp\Fuaran.UI.CSharp.csproj" />
+    <!-- The F# smart-ctor host (the parity oracle) + the encoder/decoder. -->
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+
+</Project>

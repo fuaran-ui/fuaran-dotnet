@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="TestSupport.fs" />
+    <Compile Include="HashChainTests.fs" />
+    <Compile Include="ReplayTests.fs" />
+    <!-- Phase 274 (§4o): portable guest export — OpRecordWire codec, bundle
+         document round-trip, export-from-sink, remap + replay-on-import. -->
+    <Compile Include="GuestExportTests.fs" />
+    <Compile Include="ApplyPersistTests.fs" />
+    <Compile Include="ApplyWithSinksTests.fs" />
+    <Compile Include="TamperTests.fs" />
+    <Compile Include="ConcurrencyTests.fs" />
+    <Compile Include="SqliteTests.fs" />
+    <Compile Include="TreeDiffTests.fs" />
+    <Compile Include="TreeOpDiffTests.fs" />
+    <Compile Include="CheckpointTests.fs" />
+    <Compile Include="ChainMigrationTests.fs" />
+    <Compile Include="ChainCorpusTests.fs" />
+    <!-- Phase 437: teleport state-bundle codec. -->
+    <Compile Include="TeleportTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.InMemory\Fuaran.UI.OpStream.InMemory.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Sqlite\Fuaran.UI.OpStream.Sqlite.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <!-- Phase 124: ApplyWithSinksTests asserts the both-sinks fan-out emits an
+         IFuaranTelemetrySink record alongside the op-stream record. -->
+    <ProjectReference Include="..\Fuaran.UI.Telemetry.Abstractions\Fuaran.UI.Telemetry.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

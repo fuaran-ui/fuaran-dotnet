@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.LayoutObserver</PackageId>
+    <Description>Fuaran layout-observability concrete observers — BrowserLayoutObserver (Fable, ResizeObserver-backed, rAF-debounced) and InMemoryLayoutObserver (pure .NET, drives Expecto tests + the eval gate). Companion of Fuaran.UI.LayoutObserver.Abstractions; shares all flag-derivation logic. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;layout;observability;ai;resize-observer</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/. Browser-only
+       code is guarded inside BrowserLayoutObserver.fs with
+       #if FABLE_COMPILER. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="InMemoryLayoutObserver.fs" />
+    <Compile Include="BrowserLayoutObserver.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.LayoutObserver.Abstractions\Fuaran.UI.LayoutObserver.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Phase 322 — InMemoryLayoutObserver is a domain instance of the generic
+         Fuaran.Core.Observer runtime-verification seam. Source-packed for the Fable client. -->
+    <PackageReference Include="Fuaran.Core.Observer" />
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fable.Core" />
+  </ItemGroup>
+</Project>

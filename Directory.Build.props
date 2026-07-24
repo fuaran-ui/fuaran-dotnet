@@ -1,0 +1,27 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Andrew J. Willshire</Authors>
+    <Company>Diametrical Ltd</Company>
+    <Copyright>Copyright 2026 Diametrical Ltd</Copyright>
+    <Version>0.3.0</Version>
+  </PropertyGroup>
+
+  <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
+       + the fuaran-ui GitHub Packages feed). The repo is Apache-2.0;
+       PackageLicenseExpression is the single licence channel — do not set
+       PackageLicenseFile anywhere (the two are mutually exclusive:
+       NU5033). -->
+  <PropertyGroup>
+    <RepositoryUrl>https://github.com/fuaran-ui/fuaran-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/fuaran-ui/fuaran-dotnet</PackageProjectUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+  </PropertyGroup>
+</Project>

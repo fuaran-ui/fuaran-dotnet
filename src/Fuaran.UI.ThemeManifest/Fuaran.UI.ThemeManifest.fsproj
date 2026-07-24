@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.ThemeManifest</PackageId>
+    <Description>Fuaran declared token contract — a DTCG-compatible theme manifest extended with the two things DTCG lacks: a per-token role → ToneVariant mapping and a soft-weighted invariant block (contrast floors, colour-usage budgets, motion voice). The machine-readable contract an AI reasons against and the StyleObserver verifies against. FSharp.Core-only + Fable-portable (no Browser/renderer dep). Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;design-tokens;dtcg;theme;manifest;ai;invariants</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="theme-manifest.schema.json" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/ (same convention as
+       the other language-tier packages). -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Json.fs" />
+    <Compile Include="Invariant.fs" />
+    <Compile Include="Manifest.fs" />
+    <Compile Include="Encode.fs" />
+    <Compile Include="Decode.fs" />
+    <Compile Include="Project.fs" />
+    <Compile Include="ThemeBridge.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

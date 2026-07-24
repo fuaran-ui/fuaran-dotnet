@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <!-- Copy the reference CSS to the test bin so ThemeTests.fs
+       can read it at runtime and assert byte-for-byte parity against
+       Theme.toCss Defaults.theme. -->
+  <ItemGroup>
+    <Content Include="..\Fuaran.UI.Renderer\content\fuaran-reference.css">
+      <Link>fuaran-reference.css</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Tests.fs" />
+    <Compile Include="BoundedTests.fs" />
+    <!-- Phase 437: UTF-8 / base64url / raw-DEFLATE byte substrate. -->
+    <Compile Include="CompressionTests.fs" />
+    <Compile Include="PreEmitValidateTests.fs" />
+    <Compile Include="I18nTests.fs" />
+    <Compile Include="FormatBindingTests.fs" />
+    <Compile Include="AccessibilityTests.fs" />
+    <!-- IdsTests pins Phase 138's deterministic correlation-id swap
+         (Ids.deterministicCorrelationId) — same-seed-stable, the unit floor
+         for "identical trees render byte-identical output". -->
+    <Compile Include="IdsTests.fs" />
+    <Compile Include="ToneClassEmissionTests.fs" />
+    <Compile Include="MotionEmissionTests.fs" />
+    <Compile Include="CustomRendererTests.fs" />
+    <!-- CustomContractTests pins Phase 164's typed Custom-payload contract:
+         the Fable-safe SHA-256 vs the BCL oracle, body-shape-hash validator
+         parity, hash derivation stability/sensitivity, the typed constructor's
+         stamping, and the encode→decode round-trip + failure. -->
+    <Compile Include="CustomContractTests.fs" />
+    <Compile Include="CustomRegistryTests.fs" />
+    <Compile Include="LocalBindingTests.fs" />
+    <Compile Include="ClipboardActionTests.fs" />
+    <Compile Include="ReadFileBodyActionTests.fs" />
+    <!-- DispatchGateTests pins Phase 119's IFuaranRuntime.CanDispatch seam
+         via Render.applyDispatchGate (allow-by-default + deny path). -->
+    <Compile Include="DispatchGateTests.fs" />
+    <!-- DebugGlobalTests pins Phase 90's window.__fuaran introspection surface
+         (the pure, both-pipelines helpers: kindName / extractBindingSlots /
+         resolveSlot / childNodes + the applyGateDecision default-deny gate).
+         The live cross-host browser assertion is the env-gated tail. -->
+    <Compile Include="DebugGlobalTests.fs" />
+    <Compile Include="SanitizeTests.fs" />
+    <!-- MarkdownTests pins Phase 292's deterministic GFM renderer
+         (Fuaran.UI.Renderer.Markdown.toHtml) — the canonical-HTML contract
+         every host reproduces byte-exact; the same pairs seed the cross-host
+         markdown conformance corpus. -->
+    <Compile Include="MarkdownTests.fs" />
+    <!-- MarkdownCorpusTests is the F# leg of the cross-host markdown-render
+         conformance gate: it pins the workspace-root corpus
+         (wire-format-fixtures/markdown/corpus.json) to the F# reference
+         renderer, so TS/Python hosts running the same corpus prove byte-parity. -->
+    <Compile Include="MarkdownCorpusTests.fs" />
+    <Compile Include="ErrorBoundaryTests.fs" />
+    <!-- FragmentTests asserts against the renderer's
+         nodeKindName projection, the PreEmitValidate FragmentDecl body
+         walker, and the apply engine's UpdateProp "Name" support for
+         FragmentDecl + FragmentRef. -->
+    <Compile Include="FragmentTests.fs" />
+    <!-- ParamFragmentTests pins the Phase 180 artifact-function core
+         (Fuaran.UI.Fragment): hole declaration, signature, value-space
+         validation, currying, totality, effect-class join. -->
+    <Compile Include="ParamFragmentTests.fs" />
+    <Compile Include="FragmentApplyTests.fs" />
+    <!-- FragmentMemoTests pins Phase 183's incremental re-derivation engine
+         (Fuaran.UI.Memo): cache hit/miss, effecting-bypass, incremental
+         value-parameter recompute (only the changed hole-address), disjoint-
+         change independence, replay byte-identity, LRU eviction, observability. -->
+    <Compile Include="FragmentMemoTests.fs" />
+    <!-- PortableMemoTests pins Phase 360's adoption of fuaran-core#49 applyMemo:
+         Fuaran.UI.Memo re-expressed over a caller-supplied content-addressed
+         store (portable across session/machine via a MemoCache snapshot) rather
+         than the process-local BoundedLru — portable-store round-trip, the
+         effect-gate bypass, op-stream replay-through-the-store byte-parity vs
+         direct replay, and canonical-JSON key parity. -->
+    <Compile Include="PortableMemoTests.fs" />
+    <!-- Phase 202 — RenderTiming pure-surface tests: monotonic clock, probe
+         mark ordering/idempotence, node-count, aggregation (min/mean/p50/p95). -->
+    <Compile Include="RenderTimingTests.fs" />
+    <!-- StateReactiveTests pins Phase 106's collectStateKeys walk + the
+         StateStore.subscribeKeys re-render trigger (the .NET-testable half
+         of the state-channel live re-render; the React re-render itself is
+         browser-only). -->
+    <Compile Include="StateReactiveTests.fs" />
+    <!-- FilterReactiveTests pins Phase 423's collectFilterKeys / filterKeysOfBinding
+         walk + the FilterStore ($filters twin of StateStore) — the .NET-testable
+         half of the filter-channel live re-render. -->
+    <Compile Include="FilterReactiveTests.fs" />
+    <!-- TransformParamTests pins Phase 424's parameterised Binding.Transform:
+         param → env resolution, the unset-filter prune rule, and the derived
+         Transform.paramsOf edge. -->
+    <Compile Include="TransformParamTests.fs" />
+    <!-- TransformScalarTests pins Phase 632's Transform-in-scalar-slots rule
+         (1×1 cell, loud N×M didactic, count-of-nothing = 0) + Selection.field. -->
+    <Compile Include="TransformScalarTests.fs" />
+    <!-- QueryDependsOnTests pins Phase 421's Binding.Query dependsOn edge +
+         the decoded-accessor identity fix (host queryResults flow through). -->
+    <Compile Include="QueryDependsOnTests.fs" />
+    <!-- SelectionLoopTests pins Phase 427's SelectionStore + decoded Selection
+         identity accessor + the Selection reactivity channel. -->
+    <Compile Include="SelectionLoopTests.fs" />
+    <!-- CallResultTargetTests pins Phase 428's QueryStore + the Query reactivity channel. -->
+    <Compile Include="CallResultTargetTests.fs" />
+    <!-- FilterWiringValidateTests pins the consolidated 421/424/425 validator
+         follow-up (FUARAN074-078 over BindingWalk). -->
+    <Compile Include="FilterWiringValidateTests.fs" />
+    <!-- DeadOnDecodeTests pins Phase 430's slot capability table + lint. -->
+    <Compile Include="DeadOnDecodeTests.fs" />
+    <!-- GridDisplayTests pins Phase 425's row-field projection contract. -->
+    <Compile Include="GridDisplayTests.fs" />
+    <!-- StateStoreScopingTests pins Phase 128's reset () test-isolation seam
+         (clears the single-process store + subscriber list between cases). -->
+    <Compile Include="StateStoreScopingTests.fs" />
+    <!-- Sample themes (Fuaran.Samples.Themes.*) live under
+         samples/themes/ per the phase contract; compile-checking them via
+         the test project means they never bitrot, without adding a
+         separate .fsproj to the solution. -->
+    <Compile Include="..\..\samples\themes\Default.fs">
+      <Link>SampleThemes\Default.fs</Link>
+    </Compile>
+    <Compile Include="..\..\samples\themes\Dark.fs">
+      <Link>SampleThemes\Dark.fs</Link>
+    </Compile>
+    <Compile Include="..\..\samples\themes\HighContrast.fs">
+      <Link>SampleThemes\HighContrast.fs</Link>
+    </Compile>
+    <Compile Include="ThemeTests.fs" />
+    <!-- CoreAdoptionTests validates the Fuaran.UI tree witness + op-stream against
+         the Fuaran.Core conformance kit and re-expresses the op-stream over
+         Fuaran.Core.OpStream (with a canonical-encoding equality wrapper, since
+         Node carries handler closures and is not an F# equality type). -->
+    <Compile Include="CoreAdoptionTests.fs" />
+    <Compile Include="MathEnhanceTests.fs" />
+    <Compile Include="MathMlTests.fs" />
+    <!-- QueryBindingTests pins Phase 323's runtime query-result-schema →
+         Binding<'T> typed-thread check (Fuaran.UI.QueryBinding): the pure
+         default-deny compatibility relation + the schema↔binding walk that
+         rejects a string column bound into a numeric sink (FUARAN066) / an
+         absent column (FUARAN067), and types a schema-only zero-row dashboard. -->
+    <Compile Include="QueryBindingTests.fs" />
+    <!-- QuerySourceTests pins Phase 323 task 1 + the Phase 324 typed core: the
+         async IClientQuerySource seam + resolveAndCheck gate (a type-mismatched
+         dashboard never renders) + the schema-only privacy path (types a
+         dashboard with zero rows crossing the boundary). -->
+    <Compile Include="QuerySourceTests.fs" />
+    <!-- QueryRefineTests pins Phase 324 task 4: client-side refinement via the
+         Fuaran.Core.DataFrame evaluator over already-fetched rows (sort/filter/
+         project), re-typed against the dashboard, with zero re-query. -->
+    <Compile Include="QueryRefineTests.fs" />
+    <!-- RetrievalSourceTests pins Phase 325 core: the IClientRetrievalSource seam
+         + canonical hitSchema + hit→Table projection, and proves retrieval hits
+         type-check through the SAME QueryBinding thread as relational rows (one
+         UI contract for both data planes). -->
+    <Compile Include="RetrievalSourceTests.fs" />
+    <!-- Phase 268: Node.mapMsg — structural relabel of a tree's message type
+         (the erasure `embed` lowers through). Pins every remapped Action slot. -->
+    <Compile Include="NodeMapTests.fs" />
+    <Compile Include="WireSurvivabilityTests.fs" />
+    <Compile Include="ChartLoweringTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Charts\Fuaran.UI.Charts.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+    <!-- FragmentTests exercises Ops.Apply +
+         Ops.Introspect for FragmentDecl / FragmentRef UpdateProp paths. -->
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <!-- ErrorBoundaryTests asserts against
+         RenderFailureTelemetry records via an inline IFuaranTelemetrySink
+         implementation. -->
+    <ProjectReference Include="..\Fuaran.UI.Telemetry.Abstractions\Fuaran.UI.Telemetry.Abstractions.fsproj" />
+    <!-- Phase 183 — FragmentMemoTests exercises the incremental re-derivation
+         engine + the op-stream canonical-JSON encoder it keys over. -->
+    <ProjectReference Include="..\Fuaran.UI.Memo\Fuaran.UI.Memo.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+    <!-- Fuaran.Core conformance substrate (test-only — CoreAdoptionTests.fs). -->
+    <PackageReference Include="Fuaran.Core.Tree" />
+    <PackageReference Include="Fuaran.Core.Ops" />
+    <PackageReference Include="Fuaran.Core.OpStream" />
+    <PackageReference Include="Fuaran.Core.Conformance" />
+  </ItemGroup>
+</Project>

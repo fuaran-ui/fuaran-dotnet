@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Tree.fs is shared with gen (the same authoring code both pipelines build).
+         Boot.fs is the lazy chunk (dynamically imported, never statically linked
+         from Main). Main.fs is the resume entry; HydrateMain.fs the baseline. -->
+    <Compile Include="..\Tree.fs" />
+    <Compile Include="Boot.fs" />
+    <Compile Include="Main.fs" />
+    <Compile Include="HydrateMain.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fable.Core" />
+    <PackageReference Include="Feliz" />
+  </ItemGroup>
+</Project>

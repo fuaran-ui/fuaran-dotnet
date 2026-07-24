@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.LayoutObserver.Abstractions</PackageId>
+    <Description>Fuaran layout-observability feedback channel — type contract, flag DU, observer interface, and shared flag-derivation logic. Companion of Fuaran.UI.Renderer; host-side layout-observation abstractions: turns raw element geometry (width, height, viewport position) into a small fixed set of AI-friendly layout flags (OverflowHorizontal, OverflowVertical, ZeroDimension, SqueezedToMin, ChildClippedByAncestor, AspectRatioWildlyOff). Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;layout;observability;ai;runtime-introspection</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/ (same convention as
+       Fuaran.UI.OpStream.Abstractions and the downstream orchestration
+       abstractions package). -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="LayoutFlag.fs" />
+    <Compile Include="LayoutObservation.fs" />
+    <Compile Include="ILayoutObserver.fs" />
+    <Compile Include="LayoutObserverOptions.fs" />
+    <Compile Include="Flags.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

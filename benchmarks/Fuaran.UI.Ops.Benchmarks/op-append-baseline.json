@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "artifact": "op-append",
+  "status": "captured",
+  "captured_at_utc": "2026-06-26T22:02:13Z",
+  "runtime": {
+    "dotnet": "SDK 10.0.301; .NET 10.0.9 runtime, Arm64 RyuJIT AdvSIMD (BenchmarkDotNet v0.14.0)",
+    "os": "Windows 11 Pro (10.0.26200)",
+    "cpu": "Snapdragon X 12-core X1E80100 @ 3.40 GHz (ARM64)"
+  },
+  "metrics": [
+    {
+      "id": "opstream.encode.UpdateProp.mean_ns",
+      "value": 424.5,
+      "unit": "ns",
+      "note": "CanonicalJson.encodeOp — canonical JSON encode of the op (the hash pre-image source)."
+    },
+    {
+      "id": "opstream.hash.UpdateProp.mean_ns",
+      "value": 1377.4,
+      "unit": "ns",
+      "note": "HashChain.computeHash — encode + genesis-pre-image SHA-256 (the actor-in-hash write cost)."
+    },
+    {
+      "id": "opstream.build_record.UpdateProp.mean_ns",
+      "value": 1398.1,
+      "unit": "ns",
+      "note": "Compute the hash AND materialise the OpRecord the sink appends."
+    },
+    {
+      "id": "opstream.append.UpdateProp.mean_ns",
+      "value": 7993.5,
+      "unit": "ns",
+      "note": "InMemorySink.Append per op — Dictionary insert + per-stream lock + async-state-machine cost."
+    },
+    {
+      "id": "opstream.encode.UpdateProp.alloc_b",
+      "value": 1638,
+      "unit": "B",
+      "note": "Allocated bytes per encodeOp."
+    },
+    {
+      "id": "opstream.hash.UpdateProp.alloc_b",
+      "value": 3830,
+      "unit": "B",
+      "note": "Allocated bytes per computeHash."
+    },
+    {
+      "id": "opstream.build_record.UpdateProp.alloc_b",
+      "value": 3932,
+      "unit": "B",
+      "note": "Allocated bytes per record build."
+    },
+    {
+      "id": "opstream.append.UpdateProp.alloc_b",
+      "value": 544,
+      "unit": "B",
+      "note": "Allocated bytes per durable append."
+    },
+    {
+      "id": "opstream.encode.InsertChild.mean_ns",
+      "value": 1050.0,
+      "unit": "ns",
+      "note": "CanonicalJson.encodeOp — canonical JSON encode of the op (the hash pre-image source)."
+    },
+    {
+      "id": "opstream.hash.InsertChild.mean_ns",
+      "value": 2073.4,
+      "unit": "ns",
+      "note": "HashChain.computeHash — encode + genesis-pre-image SHA-256 (the actor-in-hash write cost)."
+    },
+    {
+      "id": "opstream.build_record.InsertChild.mean_ns",
+      "value": 2071.7,
+      "unit": "ns",
+      "note": "Compute the hash AND materialise the OpRecord the sink appends."
+    },
+    {
+      "id": "opstream.append.InsertChild.mean_ns",
+      "value": 8379.6,
+      "unit": "ns",
+      "note": "InMemorySink.Append per op — Dictionary insert + per-stream lock + async-state-machine cost."
+    },
+    {
+      "id": "opstream.encode.InsertChild.alloc_b",
+      "value": 4147,
+      "unit": "B",
+      "note": "Allocated bytes per encodeOp."
+    },
+    {
+      "id": "opstream.hash.InsertChild.alloc_b",
+      "value": 6636,
+      "unit": "B",
+      "note": "Allocated bytes per computeHash."
+    },
+    {
+      "id": "opstream.build_record.InsertChild.alloc_b",
+      "value": 6728,
+      "unit": "B",
+      "note": "Allocated bytes per record build."
+    },
+    {
+      "id": "opstream.append.InsertChild.alloc_b",
+      "value": 544,
+      "unit": "B",
+      "note": "Allocated bytes per durable append."
+    },
+    {
+      "id": "opstream.encode.Batch16.mean_ns",
+      "value": 7045.6,
+      "unit": "ns",
+      "note": "CanonicalJson.encodeOp — canonical JSON encode of the op (the hash pre-image source)."
+    },
+    {
+      "id": "opstream.hash.Batch16.mean_ns",
+      "value": 7989.9,
+      "unit": "ns",
+      "note": "HashChain.computeHash — encode + genesis-pre-image SHA-256 (the actor-in-hash write cost)."
+    },
+    {
+      "id": "opstream.build_record.Batch16.mean_ns",
+      "value": 9140.2,
+      "unit": "ns",
+      "note": "Compute the hash AND materialise the OpRecord the sink appends."
+    },
+    {
+      "id": "opstream.append.Batch16.mean_ns",
+      "value": 8922.8,
+      "unit": "ns",
+      "note": "InMemorySink.Append per op — Dictionary insert + per-stream lock + async-state-machine cost."
+    },
+    {
+      "id": "opstream.encode.Batch16.alloc_b",
+      "value": 23572,
+      "unit": "B",
+      "note": "Allocated bytes per encodeOp."
+    },
+    {
+      "id": "opstream.hash.Batch16.alloc_b",
+      "value": 29614,
+      "unit": "B",
+      "note": "Allocated bytes per computeHash."
+    },
+    {
+      "id": "opstream.build_record.Batch16.alloc_b",
+      "value": 29706,
+      "unit": "B",
+      "note": "Allocated bytes per record build."
+    },
+    {
+      "id": "opstream.append.Batch16.alloc_b",
+      "value": 544,
+      "unit": "B",
+      "note": "Allocated bytes per durable append."
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="InspectCorpus.fs" />
+    <Compile Include="GraphModelTests.fs" />
+    <!-- Phase 270 (§4o): the guest selector — per-guest branch scoping over the graph model. -->
+    <Compile Include="GuestSelectorTests.fs" />
+    <Compile Include="AuditionTests.fs" />
+    <Compile Include="OverlayTests.fs" />
+    <Compile Include="CoordinateDiffTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Abstractions\Fuaran.UI.OpStream.Dag.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.InMemory\Fuaran.UI.OpStream.Dag.InMemory.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Inspect\Fuaran.UI.OpStream.Dag.Inspect.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Fixtures.fs + RejectFixtures.fs + LenientFixtures.fs are the canonical
+         fixture VALUES that generate the workspace-root wire-format-fixtures/
+         corpus (Corpus.emit). The test suites below load the emitted corpus,
+         not the F# values, so the conformance assertions are language-neutral. -->
+    <Compile Include="Fixtures.fs" />
+    <Compile Include="RejectFixtures.fs" />
+    <Compile Include="LenientFixtures.fs" />
+    <!-- EnvelopeFixtures.fs — the WIRE_FORMAT §15 wire-versioning envelope +
+         tolerance family; bridges Fuaran.Core.Wire.Versioning to the UI codec.
+         Must precede Corpus.fs (the emitter proves its law at emit time). -->
+    <Compile Include="EnvelopeFixtures.fs" />
+    <!-- ElicitationFixtures.fs — the WIRE_FORMAT §18 elicitation envelope +
+         answer-conformance family (Phase 465); drives the codec in
+         Fuaran.UI.OpStream.Abstractions/Elicitation.fs. Must precede
+         Corpus.fs (the emitter proves its laws at emit time). -->
+    <Compile Include="ElicitationFixtures.fs" />
+    <Compile Include="Corpus.fs" />
+    <Compile Include="RoundTripTests.fs" />
+    <Compile Include="ElicitationTests.fs" />
+    <Compile Include="RejectFixtureTests.fs" />
+    <Compile Include="LenientIngestTests.fs" />
+    <Compile Include="StyleOmitDefaultTests.fs" />
+    <Compile Include="SchemaConformanceTests.fs" />
+    <!-- Phase 101 — generative / property-based wire-format fuzzer:
+         FsCheck generators (Generators.fs) + idempotence + DU-arm coverage
+         properties (IdempotenceProperties.fs). -->
+    <Compile Include="Generators.fs" />
+    <Compile Include="IdempotenceProperties.fs" />
+    <!-- Cross-host fuzz-sample exchange (F# half of the Phase 101 cross-host
+         parity harness; the emit/check CLI modes wired through Program.fs). -->
+    <Compile Include="FuzzSamples.fs" />
+    <!-- Phase 104 — streaming / progressive partial-tree replay invariant
+         (FGP 5): a streamed emission replays byte-identically to the same
+         emission applied as one batch, over the corpus + generated trees. -->
+    <Compile Include="StreamingProperties.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <!-- The round-trip suite needs the encoder
+         (CanonicalJson.encodeNode / encodeOp) to drive the
+         encode -> decode -> encode -> string-equal assertion. -->
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The WIRE_FORMAT §15 envelope/tolerance family (EnvelopeFixtures.fs) drives
+         the host-neutral versioning substrate directly. -->
+    <PackageReference Include="Fuaran.Core.Wire" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="FsCheck" />
+    <!-- Off-the-shelf Draft 2020-12 validator for the schema-conformance
+         suite (Phase 96). Test-only. -->
+    <PackageReference Include="JsonSchema.Net" />
+  </ItemGroup>
+</Project>

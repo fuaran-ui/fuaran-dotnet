@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Renderer.Server</PackageId>
+    <Description>Fuaran server-side renderer — turns a Node tree into an HTML string on plain .NET (no React, no Fable) via Feliz.ViewEngine, for SEO surfaces with no client-runtime requirement. Class + ARIA parity with the Feliz client renderer (shared Fuaran.UI.Renderer.Core spine). Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Render.fs downcasts and the shared spine guard string DOM seams with
+         isNull (defence in depth); under F# 10 nullness that warns and the repo
+         treats warnings as errors. Match the .Renderer / .Core posture — disable
+         nullness for this server renderer; the typed-tree library keeps it on. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Registry.fs" />
+    <Compile Include="Render.fs" />
+    <Compile Include="Hydration.fs" />
+    <Compile Include="Resume.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Charts\Fuaran.UI.Charts.fsproj" />
+    <!-- The canonical wire-format encoder, for the Phase 143 hydration-ready
+         emission (embed the tree as JSON for the client hydrate mount to
+         decode). FSharp.Core-only + Fuaran.UI; no new third-party dep. -->
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Feliz.ViewEngine" />
+  </ItemGroup>
+</Project>

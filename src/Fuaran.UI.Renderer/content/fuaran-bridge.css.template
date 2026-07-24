@@ -1,0 +1,107 @@
+/* ============================================================================
+   Fuaran bridge stylesheet — TEMPLATE.
+
+   Copy this file to `fuaran-bridge.css` in your host and replace each
+   right-hand-side expression with the matching token from your design system.
+   Load this AFTER `fuaran-reference.css` so the `:root` re-binding overrides
+   the reference values:
+
+     <link rel="stylesheet" href="/fuaran-reference.css" />
+     <link rel="stylesheet" href="/fuaran-bridge.css" />
+
+   See `Fuaran/docs/THEME-BRIDGE-GUIDE.md` for four worked examples
+   (Tailwind-with-CSS-vars, shadcn / Radix, raw CSS tokens, dark mode).
+   The full variable surface is enumerated in
+   `Fuaran/HOST-STYLING-CHECKLIST.md` §1.
+   ============================================================================ */
+
+:root {
+  /* ── tone palette (7 × 3 = 21 bridges) ────────────────────────── */
+  /* `Default` — usually maps to the host's body / surface text + bg. */
+  /* --fuaran-tone-default-bg:     var(--your-surface-bg); */
+  /* --fuaran-tone-default-fg:     var(--your-text-fg); */
+  /* --fuaran-tone-default-border: var(--your-border); */
+
+  /* `Subdued` — usually maps to the host's muted text / soft bg. */
+  /* --fuaran-tone-subdued-bg:     var(--your-muted-bg); */
+  /* --fuaran-tone-subdued-fg:     var(--your-muted-fg); */
+  /* --fuaran-tone-subdued-border: var(--your-border); */
+
+  /* `Brand` — usually maps to the host's primary brand colour. */
+  /* --fuaran-tone-brand-bg:       var(--your-brand-soft); */
+  /* --fuaran-tone-brand-fg:       var(--your-brand); */
+  /* --fuaran-tone-brand-border:   var(--your-brand-border); */
+
+  /* `Success` — usually maps to the host's positive / success colour. */
+  /* --fuaran-tone-success-bg:     var(--your-success-soft); */
+  /* --fuaran-tone-success-fg:     var(--your-success); */
+  /* --fuaran-tone-success-border: var(--your-success-border); */
+
+  /* `Warning` — usually maps to the host's warning / amber colour. */
+  /* --fuaran-tone-warning-bg:     var(--your-warning-soft); */
+  /* --fuaran-tone-warning-fg:     var(--your-warning); */
+  /* --fuaran-tone-warning-border: var(--your-warning-border); */
+
+  /* `Critical` — usually maps to the host's destructive / danger colour. */
+  /* --fuaran-tone-critical-bg:     var(--your-danger-soft); */
+  /* --fuaran-tone-critical-fg:     var(--your-danger); */
+  /* --fuaran-tone-critical-border: var(--your-danger-border); */
+
+  /* `Info` — usually maps to a secondary brand tint or a sky-blue. */
+  /* --fuaran-tone-info-bg:     var(--your-info-soft); */
+  /* --fuaran-tone-info-fg:     var(--your-info); */
+  /* --fuaran-tone-info-border: var(--your-info-border); */
+
+  /* ── spacing scale (5 bridges) — only override if your host wants a
+        different default density than the reference (4 / 8 / 12 / 16 / 24). */
+  /* --fuaran-space-xs: var(--your-space-1); */
+  /* --fuaran-space-sm: var(--your-space-2); */
+  /* --fuaran-space-md: var(--your-space-3); */
+  /* --fuaran-space-lg: var(--your-space-4); */
+  /* --fuaran-space-xl: var(--your-space-6); */
+
+  /* ── typography scale (7 size + 4 weight + 3 line-height = 14 bridges) — only
+        override if your host wants a different default scale than the reference. */
+  /* --fuaran-text-xs:               var(--your-text-xs); */
+  /* --fuaran-text-sm:               var(--your-text-sm); */
+  /* --fuaran-text-base:             var(--your-text-base); */
+  /* --fuaran-text-lg:               var(--your-text-lg); */
+  /* --fuaran-text-xl:               var(--your-text-xl); */
+  /* --fuaran-text-2xl:              var(--your-text-2xl); */
+  /* --fuaran-text-3xl:              var(--your-text-3xl); */
+  /* --fuaran-font-weight-regular:   var(--your-font-weight-regular); */
+  /* --fuaran-font-weight-medium:    var(--your-font-weight-medium); */
+  /* --fuaran-font-weight-semibold:  var(--your-font-weight-semibold); */
+  /* --fuaran-font-weight-bold:      var(--your-font-weight-bold); */
+  /* --fuaran-line-height-tight:     var(--your-leading-tight); */
+  /* --fuaran-line-height-normal:    var(--your-leading-normal); */
+  /* --fuaran-line-height-relaxed:   var(--your-leading-relaxed); */
+
+  /* ── component dimensions (7 bridges) — only override if your host needs
+        non-default button padding or border radii. */
+  /* --fuaran-button-pad-y: var(--your-button-pad-y); */
+  /* --fuaran-button-pad-x: var(--your-button-pad-x); */
+  /* --fuaran-radius-sm:    var(--your-radius-sm); */
+  /* --fuaran-radius-md:    var(--your-radius-md); */
+  /* --fuaran-radius-lg:    var(--your-radius-lg); */
+  /* --fuaran-radius-full:  var(--your-radius-full); */
+  /* --fuaran-border-width: var(--your-border-width); */
+}
+
+/* ── optional: dark mode (uncomment + customise as needed) ───────── */
+/* @media (prefers-color-scheme: dark) {
+     :root {
+       --fuaran-tone-default-bg:     var(--your-surface-bg-dark);
+       --fuaran-tone-default-fg:     var(--your-text-fg-dark);
+       --fuaran-tone-brand-bg:       var(--your-brand-soft-dark);
+       --fuaran-tone-brand-fg:       var(--your-brand-dark);
+       (...remaining tones...)
+     }
+   } */
+
+/* Or, if your host toggles dark mode with a class on <html>:
+     .dark {
+       --fuaran-tone-default-bg: ...;
+       ...
+     }
+*/

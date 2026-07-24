@@ -1,0 +1,6 @@
+bin/
+obj/
+output/
+node_modules/
+dist/
+*.fs.js

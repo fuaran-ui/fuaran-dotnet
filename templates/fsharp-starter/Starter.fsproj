@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Gate Fable-only code (Browser APIs, DOM) so it compiles under Fable but
+         `dotnet build` on .NET doesn't try to. -->
+    <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG</DefineConstants>
+    <DefineConstants Condition="'$(Configuration)' == 'Release'">FABLE_COMPILER</DefineConstants>
+    <!-- Fable.Elmish + Feliz pre-date F# 10 nullness; disable the checker here
+         (the Fuaran.UI typed-tree library keeps nullness on separately). -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="index.html" />
+    <None Include="index.css" />
+    <None Include="vite.config.mts" />
+    <None Include="package.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Main.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Fuaran.UI" Version="0.1.0" />
+    <PackageReference Include="Fuaran.UI.Renderer" Version="0.1.0" />
+    <PackageReference Include="Fable.Core" Version="5.0" />
+    <PackageReference Include="Fable.Elmish" Version="5.0.2" />
+    <PackageReference Include="Fable.Elmish.React" Version="5.6" />
+    <PackageReference Include="Feliz" Version="3.3.3" />
+  </ItemGroup>
+</Project>

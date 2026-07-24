@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.OpStream.Dag.Inspect</PackageId>
+    <Description>DAG-aware op-stream inspector substrate for the Fuaran op-stream DAG (opt-in, rung-4). A derived, read-only view over the branching DAG: a layered render model (branches, merge nodes, heads/leaves from the sink topology), audition-by-content-addressed-coordinate (replay a node to its snapshot, with a host preview hook), a precedence + retention/tombstone overlay, and arbitrary-coordinate snapshot-diff (the DAG generalisation of the linear Phase 57 adjacent-step diff). Consumes the DAG abstractions + merge engine + the linear Replay TreeDiff; emits no op-stream records or telemetry (FGP 5 — a consumer of the stream, not a writer). Requires the DAG packages, so it is structurally unreachable from the light path. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;op-stream;dag;inspector;diff;content-addressed</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="DagGraphModel.fs" />
+    <!-- Phase 270 (§4o): the guest selector — scope the inspector to one mounted
+         guest's `guest-<scopeId>` branch (stream-key-driven, FGP 5). Compiled
+         after the graph model it builds over. -->
+    <Compile Include="DagGuestSelector.fs" />
+    <Compile Include="DagAudition.fs" />
+    <Compile Include="DagOverlay.fs" />
+    <Compile Include="DagCoordinateDiff.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Abstractions\Fuaran.UI.OpStream.Dag.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

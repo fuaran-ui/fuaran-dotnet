@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Telemetry.Default</PackageId>
+    <Description>Default IFuaranTelemetrySink implementations for Fuaran op-apply + AuthorizingRuntime-deny telemetry. NoOpSink is the "I don't care" default at install; InMemorySink is a per-process ring buffer for tests + ad-hoc inspection; ConsoleSink writes to stdout for dev environments. Companion to Fuaran.UI.Telemetry.Abstractions. Also ships Apply.applyWithTelemetry — a thin wrapper around Fuaran.UI.Ops.Apply.apply that emits one OpApplyTelemetry record per op (the opt-in seam until the applyAndPersist integration lands and both sinks wire in at the apply-engine dispatch point). Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;telemetry;sink;in-memory;console</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="NoOpSink.fs" />
+    <Compile Include="InMemorySink.fs" />
+    <Compile Include="ConsoleSink.fs" />
+    <Compile Include="ConsoleDevToolsSink.fs" />
+    <Compile Include="Apply.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Telemetry.Abstractions\Fuaran.UI.Telemetry.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

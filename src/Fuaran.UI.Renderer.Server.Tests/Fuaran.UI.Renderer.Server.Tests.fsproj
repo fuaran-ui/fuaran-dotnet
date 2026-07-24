@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <Nullable>disable</Nullable>
+    <NoWarn>$(NoWarn);NU1608</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ServerRenderTests.fs" />
+    <Compile Include="DrawingSvgTests.fs" />
+    <Compile Include="SsrParityTests.fs" />
+    <!-- ScalarSsrParityTests certifies the Phase 629/632 scalar-resolution path
+         on SSR against the wire-format corpus fixtures that exercise it. -->
+    <Compile Include="ScalarSsrParityTests.fs" />
+    <Compile Include="HydrationTests.fs" />
+    <Compile Include="IslandsTests.fs" />
+    <!-- CustomContractServerTests pins Phase 164's server twin of the typed
+         Custom contract: the decode-failure placeholder (named failing key) and
+         the recorded contract-derived hash, asserted on the real HTML string. -->
+    <Compile Include="CustomContractServerTests.fs" />
+    <Compile Include="ResumeTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Server\Fuaran.UI.Renderer.Server.fsproj" />
+    <!-- JsonDecode — the hydration roundtrip test decodes the embedded wire
+         tree back to the same Node the server encoded. -->
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

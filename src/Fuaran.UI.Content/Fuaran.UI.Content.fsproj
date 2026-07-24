@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Content</PackageId>
+    <Description>Host-neutral validated-exemplar seam for Fuaran content pipelines. `decodeExemplar` admits a canonical wire-format JSON string into a Node tree through three gates — decode (Fuaran.UI.Ops.JsonDecode), pre-emit-validate (Fuaran.UI.PreEmitValidate), and a canonical decode/encode round-trip fixed point — returning the decoded Node plus its canonical bytes, or the decoder's typed AI-recovery hints. The integrity core a docs site, an eval seed corpus, or a fuaran-wire fence pipeline reuse to make a bad example a build failure rather than a published invalid tree. No Giraffe / ASP.NET / routing / markdown dependency — rendering and page assembly stay with the host. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;wire-format;content;markdown;ssr;validation</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Exemplar.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Fuaran.UI — Node types + PreEmitValidate (Gate 2). Fuaran.UI.Ops —
+         JsonDecode.decodeNodeObj (Gate 1 + Gate 3 re-decode).
+         Fuaran.UI.OpStream.Abstractions — CanonicalJson.encodeNode (Gate 3).
+         No Renderer / Giraffe / Markdig: the seam decodes + validates, it does
+         not render or locate fences. -->
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

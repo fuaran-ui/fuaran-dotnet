@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- FGP 2 — package-excluded. This benchmark project is NOT in Build.fs
+         `packableProjects`, so the shipped `Fuaran.UI` / `Fuaran.UI.Ops` /
+         `Fuaran.UI.Memo` surfaces gain no dependency. BenchmarkDotNet is a
+         harness-only (test-adjacent) dependency that never reaches a pack. -->
+    <IsPackable>false</IsPackable>
+    <!-- Release-only: BenchmarkDotNet refuses to run a non-optimised build, and
+         the captured baseline must reflect optimised codegen. -->
+    <Optimize Condition="'$(Configuration)' == 'Release'">true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Corpus.fs" />
+    <Compile Include="OpCorpus.fs" />
+    <Compile Include="Baseline.fs" />
+    <Compile Include="ApplyBenchmarks.fs" />
+    <Compile Include="HitRate.fs" />
+    <Compile Include="OpStreamBenchmarks.fs" />
+    <Compile Include="AppendRate.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The apply engine under measurement: FragmentApply.apply (Phase 180,
+         lives in Renderer) + the Phase 183 incremental re-derivation Engine
+         (Fuaran.UI.Memo) + the CacheStatTelemetry channel it emits on. -->
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Memo\Fuaran.UI.Memo.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Telemetry.Abstractions\Fuaran.UI.Telemetry.Abstractions.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Telemetry.Default\Fuaran.UI.Telemetry.Default.fsproj" />
+    <!-- The op-stream write path under measurement: CanonicalJson.encodeOp +
+         HashChain.computeHash (Abstractions) + InMemorySink.Append (InMemory). -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.InMemory\Fuaran.UI.OpStream.InMemory.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

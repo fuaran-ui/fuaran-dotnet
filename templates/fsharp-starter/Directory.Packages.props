@@ -1,0 +1,9 @@
+<Project>
+  <!-- Nearest-wins: this stops NuGet from walking up to the parent fuaran-repo
+       Directory.Packages.props (which enables central package management). With
+       CPM off, the explicit PackageReference versions in Starter.fsproj apply,
+       so a degit'd copy outside the workspace is a standalone project. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

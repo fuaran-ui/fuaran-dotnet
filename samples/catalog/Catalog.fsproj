@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Fable client convention: gate every Fable-only file via FABLE_COMPILER
+         + DEBUG so Fable transpiles them but `dotnet build` doesn't try to
+         compile Browser.Types-flavoured code on .NET-side. Mirrors samples/demo. -->
+    <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG</DefineConstants>
+    <DefineConstants Condition="'$(Configuration)' == 'Release'">FABLE_COMPILER</DefineConstants>
+    <!-- Same pre-F#-10-nullness escape the renderer and demo use: Feliz /
+         Fable.Elmish pre-date the F# 10 nullness checker; this project
+         consumes them, so the nullness check trips on their source. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="index.html" />
+    <None Include="index.css" />
+    <None Include="vite.config.mts" />
+    <None Include="package.json" />
+    <None Include="snapshot\**\*" />
+    <None Include="parity\**\*.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\themes\Default.fs">
+      <Link>themes\Default.fs</Link>
+    </Compile>
+    <Compile Include="..\themes\Dark.fs">
+      <Link>themes\Dark.fs</Link>
+    </Compile>
+    <Compile Include="..\themes\HighContrast.fs">
+      <Link>themes\HighContrast.fs</Link>
+    </Compile>
+    <Compile Include="TealBrandTheme.fs" />
+    <Compile Include="AmberBrandTheme.fs" />
+    <Compile Include="Matrix.fs" />
+    <Compile Include="JsonShape.fs" />
+    <Compile Include="Parity.fs" />
+    <Compile Include="InteractionStates.fs" />
+    <Compile Include="LocalBindings.fs" />
+    <Compile Include="Clipboard.fs" />
+    <Compile Include="Tabs69.fs" />
+    <Compile Include="BoundedEscape70.fs" />
+    <Compile Include="ErrorBoundary60.fs" />
+    <Compile Include="Inspector57.fs" />
+    <Compile Include="Fragments61.fs" />
+    <Compile Include="StateReactive106.fs" />
+    <Compile Include="Formatting102.fs" />
+    <Compile Include="InteractiveDisabled130.fs" />
+    <Compile Include="MobileViewport.fs" />
+    <Compile Include="Catalog.fs" />
+    <Compile Include="Main.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+    <!-- Decoder/encoder dedup (TIDY-UP "Dedup samples/catalog's inline decoder
+         onto the Fable-clean Ops"): the catalog now routes its AI-eval-input
+         decode through Ops.JsonDecode.decodeNode (yielding Node<obj>) and its
+         inspector JSON projection through CanonicalJson.encodeNode, retiring the
+         inline JsonDecode.fs + the hand-rolled JsonShape encoder fork that had
+         drifted from canonical kind coverage. Both packages are Fable-clean
+         end-to-end (Phase 191 made Fuaran.UI.Ops Fable-compilable; Phase 192
+         made CanonicalJson.encodeNode Fable-portable; first proven by
+         samples/apply-demo, browser-verified). -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" />
+    <PackageReference Include="Fable.Elmish" />
+    <PackageReference Include="Fable.Elmish.React" />
+    <PackageReference Include="Feliz" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+<Project>
+  <!-- Self-contained template: this empty Directory.Build.props stops the
+       parent fuaran-repo Directory.Build.props from being inherited, and turns
+       OFF central package management so the explicit PackageReference versions
+       in Starter.fsproj apply. A degit'd copy outside the workspace is therefore
+       a standalone project, not a fragment of the fuaran solution. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

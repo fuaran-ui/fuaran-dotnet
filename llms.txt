@@ -1,0 +1,33 @@
+# Fuaran — a UI-as-data language for AI-authored interfaces
+
+> Fuaran is a typed UI tree with a canonical JSON wire format. An AI agent constructs and edits
+> a user interface by emitting the tree (or small path-addressed edit ops) as JSON — no framework
+> code, no CSS. The wire format is deterministic (byte-stable, hash-chainable) and designed so a
+> model can emit valid UI in one turn and self-correct from structured errors. Apache-2.0.
+
+If you are an AI agent asked to build or edit a Fuaran UI, read the authoring guide and the wire
+format spec first — together they are the complete contract for emitting valid trees and edit ops.
+
+## Start here (author + edit)
+
+- [AI authoring guide](docs/AI_AUTHORING_GUIDE.md): how to emit a valid tree from a prompt — the
+  node kinds, the flat `"kind"`-tagged JSON shape, bindings, actions, the 10 edit ops (TreeOp), the
+  runtime-introspection tools, and a full closed-loop worked example. The single best entry point.
+- [Wire format specification](docs/WIRE_FORMAT.md): the canonical, language-neutral JSON contract —
+  the encoding rules, the `$type` discriminator map, structured payload positions, the `UpdateProp`
+  path grammar, and the versioning/forward-compatibility rules. The authority; hosts conform to it.
+- [Error codes + recovery](docs/ERROR_CODES.md): the structured decode/apply/binding error codes.
+  Every failure names the problem and enumerates the valid alternatives, so you can self-correct
+  without guessing.
+
+## Reference
+
+- [README](README.md): what ships (`Fuaran.UI.*` packages) and how the pieces fit.
+- [Stability policy](STABILITY.md): which surfaces are stable and what a breaking change is.
+- [Validator manifest](docs/VALIDATOR-MANIFEST.md): the FUARAN* validation codes.
+
+## Conformance
+
+- [Wire-format fixtures](../wire-format-fixtures): the executable conformance corpus (node / op
+  round-trips, reject cases, chain records, floats, unicode). Concrete examples of valid and invalid
+  wire JSON — pattern-match off these when in doubt.

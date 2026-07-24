@@ -1,0 +1,384 @@
+/* ============================================================================
+   Fuaran UI catalog stylesheet (Phase 12.S).
+
+   The catalog renders against the canonical reference stylesheet packaged
+   with Fuaran.UI.Renderer at
+     ../../src/Fuaran.UI.Renderer/content/fuaran-reference.css
+   so what the gallery shows is byte-for-byte what a consumer who drops
+   the packaged CSS gets. See ../../HOST-STYLING-CHECKLIST.md for the full
+   class-hook + variable contract.
+
+   The styles BELOW the @import are catalog chrome only — side-nav,
+   matrix-grid layout, code/JSON disclosure panels, theme-switcher
+   widget. They never re-bind --fuaran-* variables (that would defeat
+   the live theme switcher) and never override .fuaran-* classes (that
+   would defeat the catalog's "show me what the renderer produces"
+   purpose).
+   ============================================================================ */
+
+@import "../../src/Fuaran.UI.Renderer/content/fuaran-reference.css";
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: var(--fuaran-text-base, 14px);
+  background: var(--fuaran-tone-default-bg, #ffffff);
+  color: var(--fuaran-tone-default-fg, #1f2937);
+}
+
+#fuaran-catalog-root { min-height: 100vh; }
+
+/* ── App shell — top bar + side nav + main pane ───────────────────────── */
+
+.catalog-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "sidenav main";
+  min-height: 100vh;
+}
+
+.catalog-topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--fuaran-tone-default-border, #e5e7eb);
+  background: var(--fuaran-tone-subdued-bg, #f3f4f6);
+}
+
+.catalog-topbar h1 {
+  margin: 0;
+  font-size: var(--fuaran-text-lg, 16px);
+  font-weight: 600;
+}
+
+.catalog-topbar .catalog-topbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.catalog-topbar .catalog-theme-switcher,
+.catalog-topbar .catalog-locale-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.catalog-topbar select {
+  padding: 4px 8px;
+  font: inherit;
+  border: 1px solid var(--fuaran-tone-default-border, #e5e7eb);
+  border-radius: var(--fuaran-radius-sm, 4px);
+  background: var(--fuaran-tone-default-bg, #ffffff);
+  color: var(--fuaran-tone-default-fg, #1f2937);
+}
+
+.catalog-topbar .catalog-a11y-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.catalog-topbar .catalog-a11y-toggle input {
+  margin: 0;
+}
+
+.catalog-sidenav {
+  grid-area: sidenav;
+  border-right: 1px solid var(--fuaran-tone-default-border, #e5e7eb);
+  padding: 12px 0;
+  overflow-y: auto;
+  background: var(--fuaran-tone-default-bg, #ffffff);
+}
+
+.catalog-sidenav-group {
+  padding: 4px 16px 4px 16px;
+  font-size: var(--fuaran-text-xs, 12px);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fuaran-tone-subdued-fg, #6b7280);
+  margin-top: 8px;
+}
+
+.catalog-sidenav-item {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--fuaran-tone-default-fg, #1f2937);
+}
+
+.catalog-sidenav-item:hover {
+  background: var(--fuaran-tone-subdued-bg, #f3f4f6);
+}
+
+.catalog-sidenav-item.is-active {
+  background: var(--fuaran-tone-brand-bg, #eff6ff);
+  color: var(--fuaran-tone-brand-fg, #1d4ed8);
+  font-weight: 600;
+}
+
+.catalog-main {
+  grid-area: main;
+  padding: 16px 24px 48px 24px;
+  overflow-y: auto;
+}
+
+.catalog-main h2 {
+  margin: 0 0 4px 0;
+  font-size: var(--fuaran-text-xl, 20px);
+}
+
+.catalog-main .catalog-kind-hint {
+  margin: 0 0 16px 0;
+  color: var(--fuaran-tone-subdued-fg, #6b7280);
+}
+
+/* ── The matrix grid — one card per (Tone × Weight × Emphasis) cell ───── */
+
+.catalog-matrix {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+}
+
+.catalog-card {
+  border: 1px solid var(--fuaran-tone-default-border, #e5e7eb);
+  border-radius: var(--fuaran-radius-md, 6px);
+  padding: 12px;
+  background: var(--fuaran-tone-default-bg, #ffffff);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.catalog-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: var(--fuaran-text-xs, 12px);
+  color: var(--fuaran-tone-subdued-fg, #6b7280);
+}
+
+.catalog-card-header .catalog-card-tags {
+  display: flex;
+  gap: 6px;
+}
+
+.catalog-card-header .catalog-card-tag {
+  padding: 1px 6px;
+  border-radius: var(--fuaran-radius-full, 9999px);
+  background: var(--fuaran-tone-subdued-bg, #f3f4f6);
+  color: var(--fuaran-tone-subdued-fg, #6b7280);
+}
+
+.catalog-card-render {
+  padding: 8px;
+  border: 1px dashed var(--fuaran-tone-default-border, #e5e7eb);
+  border-radius: var(--fuaran-radius-sm, 4px);
+  min-height: 60px;
+}
+
+/* ── Collapsible JSON + author-code disclosures ─────────────────────── */
+
+.catalog-disclosure {
+  font-size: var(--fuaran-text-xs, 12px);
+}
+
+.catalog-disclosure summary {
+  cursor: pointer;
+  color: var(--fuaran-tone-brand-fg, #1d4ed8);
+  user-select: none;
+}
+
+/* Phase 169 — copy-the-wire-JSON affordance inside the JSON disclosure. */
+.catalog-copy-json {
+  margin: 6px 0 0 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--fuaran-tone-brand-fg, #1d4ed8);
+  background: var(--fuaran-tone-subdued-bg, #f3f4f6);
+  border: 1px solid var(--fuaran-tone-default-border, #e5e7eb);
+  border-radius: var(--fuaran-radius-sm, 4px);
+}
+
+.catalog-disclosure pre {
+  margin: 6px 0 0 0;
+  padding: 8px;
+  background: var(--fuaran-tone-subdued-bg, #f3f4f6);
+  border-radius: var(--fuaran-radius-sm, 4px);
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── AI-eval-input mode (?ai-eval=1) ─────────────────────────────────── */
+
+.catalog-ai-eval {
+  padding: 24px;
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.catalog-ai-eval h1 {
+  margin: 0;
+  font-size: var(--fuaran-text-xl, 20px);
+}
+
+.catalog-ai-eval p {
+  margin: 0;
+  color: var(--fuaran-tone-subdued-fg, #6b7280);
+}
+
+.catalog-ai-eval textarea {
+  min-height: 240px;
+  padding: 12px;
+  font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  border: 1px solid var(--fuaran-tone-default-border, #e5e7eb);
+  border-radius: var(--fuaran-radius-sm, 4px);
+}
+
+.catalog-ai-eval-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.catalog-ai-eval-actions button {
+  padding: 6px 14px;
+  font: inherit;
+  border: 1px solid var(--fuaran-tone-brand-border, #93c5fd);
+  background: var(--fuaran-tone-brand-bg, #eff6ff);
+  color: var(--fuaran-tone-brand-fg, #1d4ed8);
+  border-radius: var(--fuaran-radius-sm, 4px);
+  cursor: pointer;
+}
+
+.catalog-ai-eval-render {
+  padding: 16px;
+  border: 1px solid var(--fuaran-tone-default-border, #e5e7eb);
+  border-radius: var(--fuaran-radius-md, 6px);
+}
+
+.catalog-ai-eval-error {
+  padding: 12px;
+  background: var(--fuaran-tone-critical-bg, #fef2f2);
+  color: var(--fuaran-tone-critical-fg, #b91c1c);
+  border: 1px solid var(--fuaran-tone-critical-border, #fca5a5);
+  border-radius: var(--fuaran-radius-sm, 4px);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+/* ── A11y audit (Phase 12.I catalog-axis tail) ───────────────────────── */
+/*
+ * `.catalog-a11y-missing` outlines cards whose root Node renders with
+ * `Accessibility = None`; cards that DO carry metadata show their
+ * resolved aria-* attributes via `.catalog-a11y-inspector`. Both styles
+ * only apply when the operator has flipped the topbar audit toggle —
+ * the renderer's own DOM output is untouched.
+ */
+
+.catalog-card.catalog-a11y-missing {
+  outline: 2px solid var(--fuaran-tone-critical-border, #fca5a5);
+  outline-offset: 2px;
+}
+
+.catalog-a11y-inspector {
+  font-size: var(--fuaran-text-xs, 12px);
+  padding: 8px 10px;
+  border-radius: var(--fuaran-radius-sm, 4px);
+  background: var(--fuaran-tone-info-bg, #eff6ff);
+  color: var(--fuaran-tone-info-fg, #1d4ed8);
+  border: 1px solid var(--fuaran-tone-info-border, #93c5fd);
+}
+
+.catalog-a11y-inspector.catalog-a11y-inspector-missing {
+  background: var(--fuaran-tone-critical-bg, #fef2f2);
+  color: var(--fuaran-tone-critical-fg, #b91c1c);
+  border-color: var(--fuaran-tone-critical-border, #fca5a5);
+}
+
+.catalog-a11y-inspector-heading {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.catalog-a11y-inspector-hint {
+  margin-bottom: 4px;
+  opacity: 0.85;
+}
+
+.catalog-a11y-missing-fields {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.catalog-a11y-attrs {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 12px;
+  row-gap: 2px;
+  margin: 0;
+}
+
+.catalog-a11y-attrs dt {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 600;
+}
+
+.catalog-a11y-attrs dd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-word;
+}
+
+/* ── Phase 58 responsive-collapse harness (?viewport=mobile) ─────── */
+/* Catalog chrome only — the responsive behaviour under test lives in the
+   reference CSS. `box-sizing` + `overflow-x: hidden` guarantee the page
+   itself never introduces horizontal scroll, so the Playwright overflow
+   assertion measures the exhibit's rendered nodes, not the harness frame. */
+.viewport-mobile-page {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: hidden;
+  padding: var(--fuaran-space-lg, 16px);
+}
+
+.viewport-mobile-page * {
+  box-sizing: border-box;
+}
+
+.viewport-mobile-item {
+  margin: var(--fuaran-space-xl, 24px) 0;
+  padding-top: var(--fuaran-space-md, 12px);
+  border-top: 1px solid var(--fuaran-tone-default-border, #e5e7eb);
+}
+
+.viewport-mobile-label {
+  margin: 0 0 var(--fuaran-space-sm, 8px);
+  font-size: var(--fuaran-text-sm, 13px);
+  font-weight: var(--fuaran-font-weight-semibold, 600);
+  color: var(--fuaran-tone-subdued-fg, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

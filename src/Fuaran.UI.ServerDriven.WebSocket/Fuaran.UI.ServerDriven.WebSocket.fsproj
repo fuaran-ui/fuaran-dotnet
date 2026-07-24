@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.ServerDriven.WebSocket</PackageId>
+    <Description>Fuaran server-driven backend 2 — one bidirectional WebSocket channel over ASP.NET. The lower-latency transport for measured high-frequency interaction (per-keystroke, drag, live cursors). A first-class second backend whose structural identity to the SSE backend (differing only in channel + endpoint glue) is the architectural-integrity check that IFuaranLiveChannel is genuinely transport-neutral. No platform-SDK dependency. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;server-driven;websocket;liveview</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="WsChannel.fs" />
+    <Compile Include="Endpoints.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,5 @@
+# Playwright run output — baselines (the `-snapshots/` directories)
+# ARE committed; everything else is local-only.
+test-results/
+playwright-report/
+blob-report/

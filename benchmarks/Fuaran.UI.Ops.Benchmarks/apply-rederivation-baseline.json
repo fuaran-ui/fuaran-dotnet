@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "artifact": "apply-rederivation",
+  "status": "pending",
+  "captured_at_utc": "",
+  "runtime": {
+    "dotnet": "",
+    "os": "",
+    "cpu": ""
+  },
+  "metrics": [
+    {
+      "id": "apply.full.Small.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Bare FragmentApply.apply (no cache) — the cold-derivation cost."
+    },
+    {
+      "id": "apply.memoised_hit.Small.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Engine.Apply on a warm cache — structural HIT, tree reused."
+    },
+    {
+      "id": "apply.incremental.Small.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Engine.Reapply with one value edit — incremental recompute of one hole-address."
+    },
+    {
+      "id": "apply.full.Small.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per bare apply."
+    },
+    {
+      "id": "apply.incremental.Small.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per incremental reapply."
+    },
+    {
+      "id": "apply.full.Medium.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Bare FragmentApply.apply (no cache) — the cold-derivation cost."
+    },
+    {
+      "id": "apply.memoised_hit.Medium.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Engine.Apply on a warm cache — structural HIT, tree reused."
+    },
+    {
+      "id": "apply.incremental.Medium.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Engine.Reapply with one value edit — incremental recompute of one hole-address."
+    },
+    {
+      "id": "apply.full.Medium.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per bare apply."
+    },
+    {
+      "id": "apply.incremental.Medium.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per incremental reapply."
+    },
+    {
+      "id": "apply.full.Large.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Bare FragmentApply.apply (no cache) — the cold-derivation cost."
+    },
+    {
+      "id": "apply.memoised_hit.Large.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Engine.Apply on a warm cache — structural HIT, tree reused."
+    },
+    {
+      "id": "apply.incremental.Large.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Engine.Reapply with one value edit — incremental recompute of one hole-address."
+    },
+    {
+      "id": "apply.full.Large.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per bare apply."
+    },
+    {
+      "id": "apply.incremental.Large.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per incremental reapply."
+    },
+    {
+      "id": "memo.hit_rate.edit_session",
+      "value": null,
+      "unit": "ratio",
+      "note": "Memo reuse fraction over a representative value-edit session."
+    }
+  ]
+}

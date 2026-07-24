@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Fable client convention: gate every Fable-only path via FABLE_COMPILER
+         + DEBUG so Fable transpiles them and DebugGlobal registers (its
+         `compiledInDebug` is `#if DEBUG`). A Release Fable build drops DEBUG,
+         dead-code-eliminating the `window.__fuaran` registration. -->
+    <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG</DefineConstants>
+    <DefineConstants Condition="'$(Configuration)' == 'Release'">FABLE_COMPILER</DefineConstants>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="index.html" />
+    <None Include="index.css" />
+    <None Include="vite.config.mts" />
+    <None Include="package.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ApplyParity.fs" />
+    <Compile Include="Main.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+    <!-- The whole point of Phase 191: a Fable host can now reference the
+         decode + apply engine. This is the first such consumer. -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <!-- Phase 192: the canonical encoder (CanonicalJson.encodeNode), now
+         Fable-portable, is the apply-parity oracle's post-apply projection. -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" />
+    <PackageReference Include="Fable.Elmish" />
+    <PackageReference Include="Fable.Elmish.React" />
+    <PackageReference Include="Feliz" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.OpStream.Replay</PackageId>
+    <Description>Op-stream replay engine — folds OpRecord sequences through the Fuaran.UI.Ops apply engine to reconstruct any tree state. Companion to Fuaran.UI.OpStream.Abstractions. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;op-stream;replay</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Replay.fs" />
+    <!-- Phase 274 (§4o): portable guest export — the linear OpRecord wire codec
+         (JSONL), the GuestExportBundle document, and the import half (identity
+         remap + chain-verify + replay-on-arrival). -->
+    <Compile Include="GuestExport.fs" />
+    <Compile Include="ApplyPersist.fs" />
+    <Compile Include="TreeDiff.fs" />
+    <Compile Include="TreeOpDiff.fs" />
+    <Compile Include="Checkpoint.fs" />
+    <!-- Phase 406: pre-406 -> Core-canonical chain-format migrator (re-chain in place). -->
+    <Compile Include="ChainMigration.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <!-- Phase 124: applyWithSinks fans out one apply to BOTH the op-stream
+         sink and an IFuaranTelemetrySink. Telemetry.Abstractions is the
+         lightweight contract package (records + sink interface + the shared
+         OpOutcome.ofApplyResult builder), not the concrete Default sinks. -->
+    <ProjectReference Include="..\Fuaran.UI.Telemetry.Abstractions\Fuaran.UI.Telemetry.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

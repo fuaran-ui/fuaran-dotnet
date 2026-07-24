@@ -1,0 +1,74 @@
+{
+  "$comment": "Fuaran runtime-introspection tool definitions for the closed-loop authoring pattern. Anthropic tool-use shape (name / description / input_schema); for the OpenAI shape, wrap each as { \"type\": \"function\", \"function\": { name, description, parameters: input_schema } }. These four tools are the public Fuaran.UI.AiTools surface — they let an AI observe what the renderer did with an emitted tree and retry against authoritative runtime state.",
+  "wireFormatVersion": "v1",
+  "tools": [
+    {
+      "name": "fuaran_getNodeState",
+      "description": "Inspect a rendered node by id: its kind, current lifecycle state (Normal/Loading/Empty/Error), resolved props, binding resolutions, and geometry. Use after emitting a tree to confirm it rendered, or to branch a retry on CurrentState. An empty `include` returns every block.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The NodeId to inspect."
+          },
+          "include": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["Props", "Bindings", "CurrentState", "StateDetail", "Geometry"]
+            },
+            "description": "Which detail blocks to return. Omit or pass [] for all."
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "fuaran_getBindingValue",
+      "description": "Resolve one binding slot on a node to its current value (or a BindingError). Use when getNodeState reports CurrentState=Loading to confirm whether a query has arrived.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The NodeId owning the binding."
+          },
+          "slot": {
+            "type": "string",
+            "description": "The binding slot name on that node's kind, e.g. \"Source\" or \"Trend\" on a Metric."
+          }
+        },
+        "required": ["id", "slot"]
+      }
+    },
+    {
+      "name": "fuaran_getRenderedDom",
+      "description": "Return the rendered geometry tree rooted at a node — (x, y, width, height, overflowing) per descendant. Use to detect layout problems (children overflowing parents, zero-height grids). Returns ProbeUnwired if the host bound no geometry probe.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The NodeId to root the geometry tree at."
+          }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "fuaran_getRuntimeErrors",
+      "description": "Return the runtime-error stream (decoder failures, unwired actions, binding-resolution exceptions), optionally filtered to errors recorded after a given turn. Use to diagnose 'I emitted a tree but nothing rendered'.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "since_turn": {
+            "type": "integer",
+            "description": "Only return errors recorded after this turn number. Omit for all."
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}

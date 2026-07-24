@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========================================================================
+       Phase 304 — Fuaran.UI.CSharp, the supportable C# authoring veneer over
+       the F# Fuaran runtime (§4e.1).
+
+       This is the strategic promotion of the Phase 172 PoC into a shipped
+       package. Its public surface is idiomatic modern C# — NO FSharp.Core type
+       appears on any consumer-facing signature — and it is built (for now) by
+       calling the stable F# smart constructors behind a facade that does not
+       depend on that choice (the IDL bridge rule, Phase 317): the engine can
+       later swap from F#-veneer to IDL-generated without touching consumer code.
+
+       FGP 2 preserved one-way: this project references Fuaran.UI / .Ops /
+       .OpStream.Abstractions; the F# tier never references back. The produced
+       NuGet package carries those three as package dependencies (ProjectReference
+       → package dependency on pack), matching every other src/* project.
+       ======================================================================== -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- The facade is null-annotated end to end; Nullable=enable is inherited
+         from Directory.Build.props. FSharp.Core interop (FSharpOption / FSharpList
+         / FSharpFunc) is concentrated in Interop.cs + the Facade/ types, which
+         scope `#nullable disable` over the oblivious-metadata seam so the public
+         surface stays warning-clean under TreatWarningsAsErrors. -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.CSharp</PackageId>
+    <Description>Fuaran.UI.CSharp — idiomatic C# authoring veneer over the Fuaran UI language. A wire-faithful authoring surface (static factory + options records) over the F# runtime; no FSharp.Core types on the public boundary. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RootNamespace>Fuaran.UI.CSharp</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Public typed-tree contract (Node / spec records / DUs / smart-ctor
+         surface) + the canonical-JSON encoder + the structural decoder. -->
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+
+</Project>

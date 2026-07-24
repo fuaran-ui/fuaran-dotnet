@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Telemetry.Drift</PackageId>
+    <Description>Drift detector for Fuaran op-apply telemetry. Computes per-OpKind aggregate metrics (success rate, p50/p95 latency, top decoder-rejection reasons, top NodeNotFound NodeIds) and flags week-on-week success-rate regressions exceeding an operator-tunable threshold (default 10pp). Also ships a deterministic StyleFlag drift detector (Phase 151) — the resolved-style twin that diffs declared-invariant flag sets across two windows of StyleObservation to surface newly-introduced / cleared visual-legibility violations, severity-weighted by the ThemeManifest's invariant weights (semantic visual regression, no pixels, CI-gateable). Manual-run console tool for now (`dotnet run --project src/Fuaran.UI.Telemetry.Drift`); cron-friendly later when an operator-decided threshold is wired into a scheduled job. Companion to Fuaran.UI.Telemetry.Abstractions. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;telemetry;drift;observability;regression</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Defaults.fs" />
+    <Compile Include="Aggregates.fs" />
+    <Compile Include="Detect.fs" />
+    <Compile Include="ProviderDrift.fs" />
+    <Compile Include="StyleDrift.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.Telemetry.Abstractions\Fuaran.UI.Telemetry.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.StyleObserver.Abstractions\Fuaran.UI.StyleObserver.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.ThemeManifest\Fuaran.UI.ThemeManifest.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

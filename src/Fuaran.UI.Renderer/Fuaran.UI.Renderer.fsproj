@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Renderer</PackageId>
+    <Description>Fuaran renderer — Fable + React + Feliz. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Feliz 3.3.3 + Fable.React 5.x are pre-F#-10-nullness libraries; their
+         sources contain `null` / `not null` constraint mixes that F# 10's
+         nullness checker rejects (warning/error 43).  Known F# 10 gotcha: nullable-reference cascades
+         through pre-nullable Fable libraries.  Disable nullness for this project only;
+         the upstream typed-tree library (Fuaran.UI) keeps it on. -->
+    <Nullable>disable</Nullable>
+    <!-- Fable consumers see the renderer as a regular F# library; .NET consumers
+         see the Feliz types as their normal nuget-published shape.  Setting
+         FABLE_COMPILER unconditionally would break the .NET-side build of the
+         tests project, so we don't.  Renderer code that
+         genuinely needs to differ on the two pipelines uses `#if FABLE_COMPILER`. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <Content Include="content\fuaran-reference.css" Pack="true" PackagePath="content\" />
+    <Content Include="content\fuaran-bridge.css.template" Pack="true" PackagePath="content\" />
+    <Content Include="content\README.md" Pack="true" PackagePath="content\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/. The LayoutObserver
+       packages had this, but Fuaran.UI + Fuaran.UI.Renderer
+       (the foundations) shipped DLL-only, breaking PackageReference Fable
+       consumers. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="FragmentApply.fs" />
+    <Compile Include="Runtime.fs" />
+    <Compile Include="StateStore.fs" />
+    <Compile Include="FilterStore.fs" />
+    <Compile Include="SelectionStore.fs" />
+    <Compile Include="QueryStore.fs" />
+    <Compile Include="BrowserRuntime.fs" />
+    <!-- Phase 90 — in-page introspection REPL (window.__fuaran). Pure
+         wire-shape helpers (kindName / extractBindingSlots / resolveSlot /
+         childNodes) compile on both pipelines; geometry + POJO + window
+         registration are #if FABLE_COMPILER. Needs Runtime + BindingResolver
+         only — not Render. -->
+    <Compile Include="DebugGlobal.fs" />
+    <!-- Phase 202 — render-latency / TTFP probe. Pure timing model + node-count
+         + aggregation compile on both pipelines (.NET runner pins them); the
+         monotonic clock is the only #if FABLE_COMPILER surface (performance.now
+         vs Stopwatch). Reuses DebugGlobal.walkNodes, so it sits after it. -->
+    <Compile Include="RenderTiming.fs" />
+    <Compile Include="VisAdapter.fs" />
+    <Compile Include="LocalBindings.fs" />
+    <Compile Include="Render.fs" />
+    <Compile Include="Hydration.fs" />
+    <Compile Include="MathEnhance.fs" />
+    <Compile Include="Resume.fs" />
+    <Compile Include="AgGridAdapter.fs" />
+    <Compile Include="AgChartAdapter.fs" />
+    <Compile Include="AgAdapter.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <!-- The emission-agnostic render spine (class names, accessibility,
+         sanitize, binding resolution, locale formatting, deterministic ids).
+         Extracted in Phase 138 so the client (Feliz) + server
+         (Feliz.ViewEngine) renderers share one source of truth. The moved
+         modules keep their `Fuaran.UI.Renderer.*` namespaces, so this
+         reference is transparent to consumers. -->
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Charts\Fuaran.UI.Charts.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.LayoutObserver.Abstractions\Fuaran.UI.LayoutObserver.Abstractions.fsproj" />
+    <!-- Renderer emits RenderFailureTelemetry on
+         per-node guard + ErrorBoundary catches via the optional
+         IFuaranTelemetrySink threaded through RenderContext. -->
+    <ProjectReference Include="..\Fuaran.UI.Telemetry.Abstractions\Fuaran.UI.Telemetry.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fable.Core" />
+    <PackageReference Include="Feliz" />
+  </ItemGroup>
+</Project>

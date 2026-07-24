@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="TestSupport.fs" />
+    <Compile Include="DagCorpus.fs" />
+    <Compile Include="MergeCorpus.fs" />
+    <Compile Include="DegenerateTests.fs" />
+    <Compile Include="CasAndTopologyTests.fs" />
+    <Compile Include="MergeTests.fs" />
+    <Compile Include="M2Tests.fs" />
+    <Compile Include="BatchAndMultiAgentTests.fs" />
+    <Compile Include="RetentionTests.fs" />
+    <Compile Include="Rung4Tests.fs" />
+    <Compile Include="SqliteDagTests.fs" />
+    <Compile Include="WireTests.fs" />
+    <Compile Include="ConformanceTests.fs" />
+    <Compile Include="MergeConformanceTests.fs" />
+    <Compile Include="ValidatorGateTests.fs" />
+    <Compile Include="OpenCoreInvariantTests.fs" />
+    <!-- Phase 267: guest op-stream fork + host-convergence anchor (§4o). -->
+    <Compile Include="GuestForkTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <!-- Phase 178 rung-4 reference-graph check (Rung4Tests) loads the linear
+         sink assemblies to assert none reference the DAG packages. -->
+    <ProjectReference Include="..\Fuaran.UI.OpStream.InMemory\Fuaran.UI.OpStream.InMemory.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Sqlite\Fuaran.UI.OpStream.Sqlite.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Abstractions\Fuaran.UI.OpStream.Dag.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.InMemory\Fuaran.UI.OpStream.Dag.InMemory.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Sqlite\Fuaran.UI.OpStream.Dag.Sqlite.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Merge\Fuaran.UI.OpStream.Dag.Merge.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

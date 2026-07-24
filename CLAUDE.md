@@ -1,0 +1,95 @@
+# CLAUDE.md — fuaran (language tier)
+
+This repo is the **Fuaran language tier**: the typed UI tree, smart constructors, renderer, apply engine, validator, op-stream persistence, layout observer, and op-apply telemetry. Ships as the `Fuaran.UI.*` NuGet package set.
+
+> **The `Fern` → `Fuaran` rename has landed** (workspace roadmap Phase 51). Package ids, namespaces, module names, the CSS contract, wire attributes, and validator codes are all `Fuaran.*` / `fuaran-*` / `FUARAN*`. Historical `Fern@<hash>` commit references in docs are preserved as accurate records of what shipped under the old name.
+
+Cross-repo development conventions (port allocation, launcher patterns, formatting mandate, language-baseline pinning) live at the maintainers' workspace level and are not shipped here; everything a contributor needs for this repo is below.
+
+## Shipped packages
+
+| Package | Role |
+|---|---|
+| `Fuaran.UI` | Typed tree, smart constructors, Defaults |
+| `Fuaran.UI.Renderer` | Fable + React + Feliz renderer + reference CSS |
+| `Fuaran.UI.Ops` | Tree-op apply engine |
+| `Fuaran.UI.AiTools` | Runtime introspection (`fuaran.getNodeState` etc.) |
+| `Fuaran.UI.Validator` | Build-time F# AST walker |
+| `Fuaran.UI.OpStream.Abstractions` | Op-stream type contract + canonical-JSON + hash-chain |
+| `Fuaran.UI.OpStream.InMemory` | In-memory sink |
+| `Fuaran.UI.OpStream.Sqlite` | SQLite-backed sink |
+| `Fuaran.UI.OpStream.Replay` | Replay engine |
+| `Fuaran.UI.LayoutObserver.Abstractions` | Flag DU + observer interface |
+| `Fuaran.UI.LayoutObserver` | InMemory + Browser (ResizeObserver) observers |
+| `Fuaran.UI.Telemetry.Abstractions` | Telemetry record types + `IFuaranTelemetrySink` |
+| `Fuaran.UI.Telemetry.Default` | NoOp / InMemory / Console sinks + `applyWithTelemetry` |
+| `Fuaran.UI.Telemetry.Drift` | Aggregate metrics + window-over-window regression detector |
+
+All packs land in `../local-nuget-feed/` for local downstream consumption.
+
+## Layout
+
+```
+fuaran/
+├── src/                    # Language-tier projects
+│   ├── Fuaran.UI/
+│   ├── Fuaran.UI.Renderer/
+│   ├── Fuaran.UI.Ops/, Fuaran.UI.Ops.Tests/
+│   ├── Fuaran.UI.AiTools/, Fuaran.UI.AiTools.Tests/
+│   ├── Fuaran.UI.JsonDecode.Tests/
+│   ├── Fuaran.UI.Validator/, Fuaran.UI.Validator.Tests/
+│   ├── Fuaran.UI.LayoutObserver{,.Abstractions,.Tests}/
+│   ├── Fuaran.UI.OpStream.{Abstractions,InMemory,Sqlite,Replay,Tests}/
+│   ├── Fuaran.UI.Telemetry.{Abstractions,Default,Drift,Tests}/
+│   └── Fuaran.UI.Tests/      # Language-tier integration tests
+├── samples/
+│   ├── demo/               # Browser demo
+│   ├── catalog/            # Visual component catalog
+│   └── themes/             # Default/Dark/HighContrast sample themes
+├── docs/                   # Language-tier docs (authoring guide, error codes, theme bridge, etc.)
+├── Fuaran.sln                # Solution file
+├── Build.fs, Build.fsproj  # FAKE pipeline — Format / Build / Test / Validate / Pack
+└── run.ps1                 # Stage-0 entry point — verify-shape (Format/Build/Test/Pack)
+```
+
+## Build pipeline (FAKE)
+
+```powershell
+dotnet run --project Build.fsproj                  # default 'All' = Format -> Build -> Test
+dotnet run --project Build.fsproj -- Pack          # pack the shipping packages to ../local-nuget-feed/
+dotnet run --project Build.fsproj -- Validate      # run Fuaran.UI.Validator across src/
+dotnet run --project Build.fsproj -- Check         # Format -> Build -> Test -> Validate (the pre-commit gate)
+```
+
+The maintainers' workspace-level `pack-all.ps1` packs `fuaran` ahead of its downstream consumers, so callers don't have to chain themselves.
+
+## Formatting mandate
+
+Per the workspace mandate, every commit is preceded by a Fantomas pass over changed F# files. `dotnet fantomas` is available via [`.config/dotnet-tools.json`](.config/dotnet-tools.json) (`dotnet tool restore` first if it's missing).
+
+## Cross-repo dependencies
+
+This repo has **no upstream dependencies on any private repo**. It packs into `../local-nuget-feed/` for consumption by downstream apps and runtime tiers, which consume these packs as `PackageReference`s, not `ProjectReference`s.
+
+Downstream tiers' tests reference behaviour that lives partly in this repo (e.g. the canonical-JSON encoder validation against `ArgsJsonContract`). Those tests live with the consuming tier, not here.
+
+## Samples
+
+`samples/demo/` and `samples/catalog/` are browser-driven F#/Fable apps. Ports are allocated from the workspace's 14000-band server + 24000-band Vite range:
+
+- `samples/demo` — server `14000–14009`, Vite `24000–24009`
+- `samples/catalog` — server `14010–14019`, Vite `24010–24019`
+
+If `vite.config.mts` / `launchSettings.json` in either sample still references the pre-migration ports, update them to the band above.
+
+## Test partition note
+
+The pre-migration `Fuaran.UI.Tests` project mixed language-tier tests with tests belonging to a downstream runtime tier; those moved out with the split. If a test in this repo grows a dependency on a downstream tier, it belongs over there.
+
+## Render-time sanitization contract
+
+[`SANITIZATION.md`](SANITIZATION.md) declares the injection-safety posture at every string→DOM seam the renderer exposes (Phase 56). New renderer code that touches `prop.custom`, `prop.href`, `prop.src`, or `prop.dangerouslySetInnerHTML` must route through `Fuaran.UI.Renderer.Sanitize.*` or document why the seam is already safe. Custom renderers registered via `IFuaranRuntime.RegisterCustomRenderer` are a host trust boundary — see the "Custom-renderer trust boundary" section of SANITIZATION.md for the contract hosts must follow.
+
+## Public vocabulary discipline
+
+Anything under this repo is visible to OSS consumers. **Do not reference private, unpublished projects or package names in shipped artefacts** — code comments, READMEs, and sample files that ship to NuGet or get rendered into public docs name only the public `Fuaran.UI.*` package set and generic "downstream consumer" framing. Cross-references stay one-way: private consumers may reference this repo; this repo never references them.

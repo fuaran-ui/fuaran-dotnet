@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI</PackageId>
+    <Description>Fuaran — AI-emittable F# UI language. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/. The LayoutObserver
+       packages had this already, but Fuaran.UI + Fuaran.UI.Renderer
+       (the foundations) shipped DLL-only, breaking PackageReference Fable
+       consumers. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+    <!-- Phase 268: Node.mapMsg — exhaustive ('a -> 'b) -> Node<'a> -> Node<'b>
+         relabel of a tree's message type (the erasure `embed` lowers through).
+         Depends only on Types.fs. -->
+    <Compile Include="NodeMap.fs" />
+    <Compile Include="Hashing.fs" />
+    <!-- Phase 437: pure Fable-safe UTF-8 / base64url / raw-DEFLATE — the
+         teleport state-bundle codec's byte substrate (same cross-pipeline
+         byte-parity posture as Hashing.fs). Depends on FSharp.Core only. -->
+    <Compile Include="Compression.fs" />
+    <Compile Include="Bounded.fs" />
+    <Compile Include="Defaults.fs" />
+    <Compile Include="Fragment.fs" />
+    <Compile Include="FragmentMemo.fs" />
+    <Compile Include="Fuaran.fs" />
+    <Compile Include="CustomContract.fs" />
+    <Compile Include="CustomRegistry.fs" />
+    <!-- Phase 427: the cross-tree binding-collection walk PreEmitValidate's
+         tree-wide checks (dangling Selection; the 421/424/425 filter
+         consumption union) run on. Depends only on Types.fs. -->
+    <Compile Include="BindingWalk.fs" />
+    <Compile Include="PreEmitValidate.fs" />
+    <!-- Phase 430: the slot capability table + the dead-on-decode lint (the
+         declarative-floor un-regression pair). Depend only on Types.fs. -->
+    <Compile Include="SlotCapability.fs" />
+    <Compile Include="WireSurvivability.fs" />
+    <Compile Include="DeadOnDecode.fs" />
+    <Compile Include="QueryBinding.fs" />
+    <Compile Include="QuerySource.fs" />
+    <Compile Include="QueryRefine.fs" />
+    <Compile Include="RetrievalSource.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <!-- Canonical JSON AST (JVal): Custom props / action payloads / I18n args carry it
+         directly in the type contract. Fable-distributed (source-packed). -->
+    <PackageReference Include="Fuaran.Core.Wire" />
+    <!-- Compute layer (Phase 282): the Binding.Transform case carries Fuaran.Core's columnar +
+         dataframe types. Fable-distributed (source-packed), so the Fable client compiles them. -->
+    <PackageReference Include="Fuaran.Core.Column" />
+    <PackageReference Include="Fuaran.Core.DataFrame" />
+  </ItemGroup>
+</Project>

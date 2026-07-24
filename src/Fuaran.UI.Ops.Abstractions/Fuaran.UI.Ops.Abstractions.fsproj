@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Ops.Abstractions</PackageId>
+    <Description>Fuaran tree-op apply engine — the pure type contract (the TreeOp DU + ErrorPayload + ApplyHint, §4g). FSharp.Core-only and Fable-portable: the shared types every op-stream / telemetry / renderer consumer needs WITHOUT pulling the apply engine + JSON decoder (which use .NET-only reflection patterns and don't Fable-compile). Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/, matching Fuaran.UI so
+       PackageReference Fable consumers transpile the type contract from source. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <!-- Canonical JSON AST (JVal): PropValue.Wire carries it in the op contract. -->
+    <PackageReference Include="Fuaran.Core.Wire" />
+  </ItemGroup>
+</Project>

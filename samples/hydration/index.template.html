@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fuaran — isomorphic hydration</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <!-- Server-rendered HTML (Fuaran.UI.Renderer.Server) is injected here by
+         gen/Gen.fs; the client (output/Main.js) hydrates it in place. -->
+    <div id="hydration-root"><!--SSR--></div>
+    <script type="module" src="/output/Main.js"></script>
+  </body>
+</html>

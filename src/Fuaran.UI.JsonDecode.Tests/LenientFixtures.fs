@@ -1,0 +1,500 @@
+module Fuaran.UI.JsonDecode.Tests.LenientFixtures
+
+// ============================================================================
+//  Lenient-ingest fixture corpus (data form) — WIRE_FORMAT §16.
+//
+//  Each entry pairs a §16 SHORTHAND input with its VERBOSE canonical twin.
+//  `Corpus.emit` decodes BOTH, asserts they re-encode byte-identically (the
+//  §16 normalization law: `encode(decode(shorthand)) == encode(decode(verbose))`),
+//  and writes `lenient/<id>.json` (the shorthand input) + the canonical bytes
+//  as `lenient/<id>.expected.json`, with manifest kind `lenient-accept`.
+//
+//  This is what makes §16 a HOST-ENFORCEABLE contract rather than spec prose:
+//  a conformant host MUST decode the shorthand input and re-encode to exactly
+//  the expected bytes — a host that rejects the shorthand fails loudly, and a
+//  host that decodes it to something else fails the byte comparison. (Before
+//  this family existed, §16 lived only in per-host unit tests, so a host could
+//  silently diverge while passing full corpus certification.)
+//
+//  §16 shorthand 1 (bare-string TextSource) needs fixtures; the node-level
+//  shorthand 2 (omitted `state`/`style`/`accessibility`) is exercised by every
+//  canonical round-trip fixture. Phase 460 extends shorthand 2 to the per-field
+//  STYLISTIC slots (`format`/`tone`/`weight`/`emphasis`/`width`): the encoder now
+//  omits each at its identity default, and explicit-default / lenient-alias inputs
+//  decode-and-canonicalise to the minimal form — pinned by the `lenient-460-*`
+//  fixtures below (so a second host must match, not just the F# reference).
+//
+//  Phase 429 adds a second family — LEGACY-FORM read-compat: the pre-429
+//  encoder collapsed slot-typed `Binding.Static` payloads to `"<opaque>"`
+//  (and empty lists / `None` to `null`, the F# boxes-to-null asymmetry).
+//  Those wire forms stay decode-accepted indefinitely; these fixtures pin
+//  that a conformant host decodes them and normalises to the typed forms
+//  (the placeholder array / typed empty) — the same accept-and-canonicalise
+//  law as §16, applied to superseded wire dialects.
+// ============================================================================
+
+type LenientFixture =
+    {
+        /// Corpus filename stem (`lenient/<id>.json`) + manifest id.
+        Id: string
+        /// The §16 shorthand form — what a token-frugal AI author emits.
+        LenientJson: string
+        /// The verbose canonical twin — what the strict encoder would emit for
+        /// the same value. The emitter derives the expected bytes from this and
+        /// asserts the two decode identically.
+        VerboseJson: string
+        /// Human-readable corpus/manifest description.
+        Description: string
+    }
+
+let all: LenientFixture list =
+    [
+      // ─── 0.2.3 / fuaran-core#88 — Transform embedded-source shorthands ──
+      // Core's lenient columnar ingest surfaces at the Transform slot: an
+      // embedded source may omit `schema` (inferred from the cells) and a
+      // column may ride as a bare array (all-present validity).
+      { Id = "lenient-transform-schemaless"
+        LenientJson =
+          """{"id":"len-tf-s","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"amount":{"validity":[true,true],"values":[100,200]},"dept":{"validity":[true,true],"values":["ops","eng"]}}}}}}"""
+        VerboseJson =
+          """{"id":"len-tf-s","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"amount":{"validity":[true,true],"values":[100,200]},"dept":{"validity":[true,true],"values":["ops","eng"]}},"schema":[{"name":"amount","type":"int"},{"name":"dept","type":"string"}]}}}}"""
+        Description =
+          "fuaran-core#88 — an embedded Transform source may omit schema; column types infer from the cells (int/float/bool/string only)" }
+
+      { Id = "lenient-transform-bare-columns"
+        LenientJson =
+          """{"id":"len-tf-b","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"amount":[100,200],"dept":["ops","eng"]}}}}}"""
+        VerboseJson =
+          """{"id":"len-tf-b","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"amount":{"validity":[true,true],"values":[100,200]},"dept":{"validity":[true,true],"values":["ops","eng"]}},"schema":[{"name":"amount","type":"int"},{"name":"dept","type":"string"}]}}}}"""
+        Description =
+          "fuaran-core#88 — bare-array columns are the just-the-data shorthand (all-present validity); the wrapped form stays canonical" }
+
+      // ─── 0.2.4 / fuaran-core#89 — flat filter-step coercion ─────────────
+      { Id = "lenient-transform-flat-filter"
+        LenientJson =
+          """{"id":"len-tf-f","kind":{"$type":"DataGrid","columns":[{"field":"variety","kind":{"$type":"Text"},"label":"Variety"}],"rowKeyField":"variety","source":{"$type":"Transform","params":[{"from":{"$type":"Filter","name":"variety"},"name":"variety"}],"pipeline":[{"$type":"filter","column":"variety","op":"eq","param":"variety"}],"source":{"columns":{"variety":["Pinot","Chardonnay"]}}}}}"""
+        VerboseJson =
+          """{"id":"len-tf-f","kind":{"$type":"DataGrid","columns":[{"field":"variety","kind":{"$type":"Text"},"label":"Variety"}],"rowKeyField":"variety","source":{"$type":"Transform","params":[{"from":{"$type":"Filter","name":"variety"},"name":"variety"}],"pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"col","name":"variety"},"op":"eq","right":{"$type":"param","name":"variety"}}}],"source":{"columns":{"variety":{"validity":[true,true],"values":["Pinot","Chardonnay"]}},"schema":[{"name":"variety","type":"string"}]}}}}"""
+        Description =
+          "fuaran-core#89 — the flat filter step {column, op, param} coerces to the canonical nested predicate" }
+
+      // ─── 0.2.5 / fuaran-core#90 — the search-chip prior (flat `contains`) ─
+      { Id = "lenient-transform-flat-contains"
+        LenientJson =
+          """{"id":"len-tf-c","kind":{"$type":"DataGrid","columns":[{"field":"desk","kind":{"$type":"Text"},"label":"Desk"}],"rowKeyField":"desk","source":{"$type":"Transform","params":[{"from":{"$type":"Filter","name":"q"},"name":"q"}],"pipeline":[{"$type":"filter","column":"desk","op":"contains","param":"q"}],"source":{"columns":{"desk":["A1","B2"]}}}}}"""
+        VerboseJson =
+          """{"id":"len-tf-c","kind":{"$type":"DataGrid","columns":[{"field":"desk","kind":{"$type":"Text"},"label":"Desk"}],"rowKeyField":"desk","source":{"$type":"Transform","params":[{"from":{"$type":"Filter","name":"q"},"name":"q"}],"pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"col","name":"desk"},"op":"contains","right":{"$type":"param","name":"q"}}}],"source":{"columns":{"desk":{"validity":[true,true],"values":["A1","B2"]}},"schema":[{"name":"desk","type":"string"}]}}}}"""
+        Description =
+          "fuaran-core#90 — the text-search prior: a flat contains step coerces to the canonical nested predicate" }
+
+      // ─── 0.2.6 / fuaran-core#92 — pipeline-step field aliases (pilot-4 census) ─
+      { Id = "lenient-transform-step-aliases"
+        LenientJson =
+          """{"id":"len-tf-a","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[{"$type":"groupBy","by":["dept"],"aggregations":[{"column":"salary","op":"avg","as":"avgPay"}]},{"$type":"sort","keys":[{"column":"avgPay","descending":true}]},{"$type":"limit","count":3}],"source":{"columns":{"dept":["ops","eng"],"salary":[100,200]}}}}}"""
+        VerboseJson =
+          """{"id":"len-tf-a","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[{"$type":"groupBy","aggs":[{"fn":"mean","name":"avgPay","of":"salary"}],"keys":["dept"]},{"$type":"sort","by":[{"col":"avgPay","dir":"desc"}]},{"$type":"limit","n":3,"offset":0}],"source":{"columns":{"dept":{"validity":[true,true],"values":["ops","eng"]},"salary":{"validity":[true,true],"values":[100,200]}},"schema":[{"name":"dept","type":"string"},{"name":"salary","type":"int"}]}}}}"""
+        Description =
+          "fuaran-core#92 — the SQL/pandas step-field spellings (by/aggregations/op/as/avg, keys/column/descending, count) coerce to the canonical fields" }
+
+      // ─── 0.2.6 — CumulSum rename (legacy cumSum admitted) ────────────────
+      { Id = "lenient-window-cumsum-legacy"
+        LenientJson =
+          """{"id":"len-w-cs","kind":{"$type":"DataGrid","columns":[{"field":"running","kind":{"$type":"Text"},"label":"Running"}],"rowKeyField":"running","source":{"$type":"Transform","pipeline":[{"$type":"window","as":"running","fn":"cumSum","of":"salary","orderBy":[{"col":"salary","dir":"asc"}],"partitionBy":["dept"]}],"source":{"columns":{"dept":["ops","eng"],"salary":[100,200]}}}}}"""
+        VerboseJson =
+          """{"id":"len-w-cs","kind":{"$type":"DataGrid","columns":[{"field":"running","kind":{"$type":"Text"},"label":"Running"}],"rowKeyField":"running","source":{"$type":"Transform","pipeline":[{"$type":"window","as":"running","fn":"cumulSum","of":"salary","orderBy":[{"col":"salary","dir":"asc"}],"partitionBy":["dept"]}],"source":{"columns":{"dept":{"validity":[true,true],"values":["ops","eng"]},"salary":{"validity":[true,true],"values":[100,200]}},"schema":[{"name":"dept","type":"string"},{"name":"salary","type":"int"}]}}}}"""
+        Description = "2026-07-19 rename — the legacy cumSum window-fn tag coerces to the canonical cumulSum" }
+
+      // ─── 0.2.7 / fuaran-core#93 — expression-spelling aliases ────────────
+      // The verbatim tier-a-055 shakedown filter: predicate + expr-level
+      // contains over call/lower both sides -> canonical Binary(Contains, ...).
+      { Id = "lenient-transform-expr-spellings"
+        LenientJson =
+          """{"id":"len-tf-sp","kind":{"$type":"DataGrid","columns":[{"field":"name","kind":{"$type":"Text"},"label":"Name"}],"rowKeyField":"name","source":{"$type":"Transform","params":[{"from":{"$type":"Filter","name":"search"},"name":"search"}],"pipeline":[{"$type":"filter","predicate":{"$type":"contains","expr":{"$type":"call","fn":"lower","args":[{"$type":"col","name":"name"}]},"other":{"$type":"call","fn":"lower","args":[{"$type":"param","name":"search"}]}}}],"source":{"columns":{"name":["Mara","Kit"]}}}}}"""
+        VerboseJson =
+          """{"id":"len-tf-sp","kind":{"$type":"DataGrid","columns":[{"field":"name","kind":{"$type":"Text"},"label":"Name"}],"rowKeyField":"name","source":{"$type":"Transform","params":[{"from":{"$type":"Filter","name":"search"},"name":"search"}],"pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"apply","args":[{"$type":"col","name":"name"}],"fn":"lower"},"op":"contains","right":{"$type":"apply","args":[{"$type":"param","name":"search"}],"fn":"lower"}}}],"source":{"columns":{"name":{"validity":[true,true],"values":["Mara","Kit"]}},"schema":[{"name":"name","type":"string"}]}}}}"""
+        Description =
+          "fuaran-core#93 — predicate/contains-as-$type/call spellings (the tier-a-055 shape) coerce to the canonical nested binary" }
+
+      // ─── 0.2.2 — LVR emphasis style-enum coercion ──────────────────────
+      // Pilot-3 trap: the Emphasis style enum written into the LVR BOOL.
+      // "Loud" unambiguously means an emphasised row; "Normal"/"Quiet" not.
+      { Id = "lenient-022-lvr-emphasis-loud"
+        LenientJson =
+          """{"id":"len-lvr-e","kind":{"$type":"LabelValueRow","emphasis":"Loud","label":"Total","value":{"$type":"Static","value":412}}}"""
+        VerboseJson =
+          """{"id":"len-lvr-e","kind":{"$type":"LabelValueRow","emphasis":true,"label":"Total","value":{"$type":"Static","value":412}}}"""
+        Description =
+          "0.2.2 — the Emphasis style-enum string in LabelValueRow's bool slot coerces (Loud→true; Normal/Quiet→false)" }
+
+      { Id = "lenient-022-lvr-emphasis-normal"
+        LenientJson =
+          """{"id":"len-lvr-n","kind":{"$type":"LabelValueRow","emphasis":"Normal","label":"Adult fiction","value":{"$type":"Static","value":187}}}"""
+        VerboseJson =
+          """{"id":"len-lvr-n","kind":{"$type":"LabelValueRow","label":"Adult fiction","value":{"$type":"Static","value":187}}}"""
+        Description = "0.2.2 — 'Normal' coerces to false, which is the omitted-when-false canonical form" }
+
+      // ─── Phase 596 — symmetric form-field auto-bind ────────────────────
+      // The OMITTED-value field is the canonical form; input carrying the
+      // explicit auto-shape (`State(field id, typed placeholder)`) decodes to
+      // the same value and re-encodes to the omitted bytes.
+      { Id = "lenient-596-form-explicit-auto-state"
+        LenientJson =
+          """{"id":"len-fda","kind":{"$type":"Form","fields":[{"id":"guest-name","kind":{"$type":"Text","value":{"$type":"State","defaultValue":"","key":"guest-name"}},"label":"Name","required":true}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Book"}}"""
+        VerboseJson =
+          """{"id":"len-fda","kind":{"$type":"Form","fields":[{"id":"guest-name","kind":{"$type":"Text"},"label":"Name","required":true}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Book"}}"""
+        Description =
+          "Phase 596 — a form field's explicit auto-shape value (State(field id, placeholder)) normalises to the omitted-value canonical form" }
+
+      // ─── §16.1 bare-string TextSource ───────────────────────────────────
+      { Id = "lenient-bare-text-markdown"
+        LenientJson = """{"id":"len-md","kind":{"$type":"Markdown","text":"hello *world*"}}"""
+        VerboseJson =
+          """{"id":"len-md","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"hello *world*"}}}"""
+        Description = "Markdown.text as a bare JSON string (§16.1) — the highest-frequency saving" }
+
+      { Id = "lenient-bare-text-heading"
+        LenientJson =
+          """{"id":"len-h","kind":{"$type":"Heading","level":2,"text":"Quarterly revenue","variant":"Standard"}}"""
+        VerboseJson =
+          """{"id":"len-h","kind":{"$type":"Heading","level":2,"text":{"$type":"Literal","text":"Quarterly revenue"},"variant":"Standard"}}"""
+        Description = "Heading.text as a bare JSON string (§16.1)" }
+
+      { Id = "lenient-bare-text-button-label"
+        LenientJson =
+          """{"id":"len-btn","kind":{"$type":"Button","label":"Refresh","onClick":{"$type":"Chain","ops":[]},"variant":"Primary"}}"""
+        VerboseJson =
+          """{"id":"len-btn","kind":{"$type":"Button","label":{"$type":"Literal","text":"Refresh"},"onClick":{"$type":"Chain","ops":[]},"variant":"Primary"}}"""
+        Description = "Button.label as a bare JSON string (§16.1)" }
+
+      { Id = "lenient-bare-text-callout"
+        LenientJson =
+          """{"id":"len-call","kind":{"$type":"Callout","body":"Check the numbers","dismissable":false,"heading":"Heads up","tone":"Warning"}}"""
+        VerboseJson =
+          """{"id":"len-call","kind":{"$type":"Callout","body":{"$type":"Literal","text":"Check the numbers"},"dismissable":false,"heading":{"$type":"Literal","text":"Heads up"},"tone":"Warning"}}"""
+        Description = "Callout.body (required) + Callout.heading (optional position) as bare strings (§16.1)" }
+
+      // ─── Phase 429 legacy-form read-compat (pre-429 opaque / null Statics) ──
+      { Id = "lenient-opaque-static-options"
+        LenientJson =
+          """{"id":"len-opt","kind":{"$type":"Select","label":{"$type":"Literal","text":"Region"},"source":{"$type":"Static","value":"<opaque>"},"value":{"$type":"Static","value":"<opaque>"}}}"""
+        VerboseJson =
+          """{"id":"len-opt","kind":{"$type":"Select","label":{"$type":"Literal","text":"Region"},"source":{"$type":"Static","value":[{"label":{"$type":"Literal","text":"<opaque>"},"value":"<opaque>"}]},"value":{"$type":"Static","value":"<opaque>"}}}"""
+        Description = "Pre-429 opaque Static options + value decode to the tagged placeholder forms and re-encode typed" }
+
+      { Id = "lenient-null-static-options"
+        LenientJson =
+          """{"id":"len-nul","kind":{"$type":"Select","label":{"$type":"Literal","text":"Region"},"source":{"$type":"Static","value":null},"value":{"$type":"Static","value":null}}}"""
+        VerboseJson =
+          """{"id":"len-nul","kind":{"$type":"Select","label":{"$type":"Literal","text":"Region"},"source":{"$type":"Static","value":[]},"value":{"$type":"Static","value":null}}}"""
+        Description =
+          "Pre-429 boxes-to-null empty options list decodes to the typed empty array (value None stays null)" }
+
+      { Id = "lenient-opaque-static-values"
+        LenientJson =
+          """{"id":"len-val","kind":{"$type":"Select","label":{"$type":"Literal","text":"Regions"},"multiple":true,"source":{"$type":"Static","value":[{"label":{"$type":"Literal","text":"UK"},"value":"uk"}]},"value":{"$type":"Static","value":null},"values":{"$type":"Static","value":"<opaque>"}}}"""
+        VerboseJson =
+          """{"id":"len-val","kind":{"$type":"Select","label":{"$type":"Literal","text":"Regions"},"multiple":true,"source":{"$type":"Static","value":[{"label":{"$type":"Literal","text":"UK"},"value":"uk"}]},"value":{"$type":"Static","value":null},"values":{"$type":"Static","value":["<opaque>"]}}}"""
+        Description = "Pre-429 opaque multi-select values decode to the tagged placeholder list and re-encode typed" }
+
+      { Id = "lenient-opaque-static-series"
+        LenientJson = """{"id":"len-ser","kind":{"$type":"Sparkline","source":{"$type":"Static","value":"<opaque>"}}}"""
+        VerboseJson = """{"id":"len-ser","kind":{"$type":"Sparkline","source":{"$type":"Static","value":[]}}}"""
+        Description = "Pre-429 opaque Sparkline series decodes to the typed empty array" }
+
+      { Id = "lenient-opaque-static-markers"
+        LenientJson =
+          """{"id":"len-mrk","kind":{"$type":"Map","centreLatitude":51.5,"centreLongitude":-0.1,"source":{"$type":"Static","value":"<opaque>"},"zoom":6}}"""
+        VerboseJson =
+          """{"id":"len-mrk","kind":{"$type":"Map","centreLatitude":51.5,"centreLongitude":-0.1,"source":{"$type":"Static","value":[]},"zoom":6}}"""
+        Description = "Pre-429 opaque Map markers decode to the typed empty array" }
+
+      // ─── Phase 390 legacy container-kind read-compat ────────────────────
+      //  The four retired container tags (Stack / GridLayout / Dashboard /
+      //  Card) decode-upgrade to the equivalent `Box` on read (the same
+      //  accept-and-canonicalise law as §16, applied to the superseded
+      //  container vocabulary). A pre-merge op-stream / permalink therefore
+      //  replays: the legacy tag decodes to `Box` and re-encodes as `Box`
+      //  (never back to its old form). One fixture pins each upgrade.
+      { Id = "legacy-upgrade-stack"
+        LenientJson =
+          """{"id":"legacy-stack","kind":{"$type":"Stack","children":[],"orientation":"Horizontal","wrap":true}}"""
+        VerboseJson =
+          """{"id":"legacy-stack","kind":{"$type":"Box","children":[],"layout":{"$type":"Flex","direction":"Horizontal","wrap":true},"role":"Group"}}"""
+        Description = "Legacy `Stack` tag decode-upgrades to a Flex/Group Box (Phase 390)" }
+
+      { Id = "legacy-upgrade-gridlayout"
+        LenientJson = """{"id":"legacy-grid","kind":{"$type":"GridLayout","children":[],"cols":3}}"""
+        VerboseJson =
+          """{"id":"legacy-grid","kind":{"$type":"Box","children":[],"layout":{"$type":"Grid","cols":3},"role":"Group"}}"""
+        Description = "Legacy `GridLayout` tag decode-upgrades to a Grid/Group Box (Phase 390)" }
+
+      { Id = "legacy-upgrade-dashboard"
+        LenientJson = """{"id":"legacy-dash","kind":{"$type":"Dashboard","children":[]}}"""
+        VerboseJson =
+          """{"id":"legacy-dash","kind":{"$type":"Box","children":[],"layout":{"$type":"Auto"},"role":"Dashboard"}}"""
+        Description = "Legacy `Dashboard` tag decode-upgrades to an Auto/Dashboard Box (Phase 390)" }
+
+      { Id = "legacy-upgrade-card"
+        LenientJson =
+          """{"id":"legacy-card","kind":{"$type":"Card","children":[],"heading":{"$type":"Literal","text":"Legacy"}}}"""
+        VerboseJson =
+          """{"id":"legacy-card","kind":{"$type":"Box","children":[],"heading":{"$type":"Literal","text":"Legacy"},"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Card"}}"""
+        Description = "Legacy `Card` tag decode-upgrades to a Flex/Card Box preserving the heading (Phase 390)" }
+
+      // ─── Phase 393 legacy Table read-compat ─────────────────────────────
+      //  The retired `Table` visualisation tag decode-upgrades to the static
+      //  read-only mode of `DataGrid` (`staticRows`); it never re-encodes as
+      //  `Table`. A pre-merge op-stream / permalink therefore replays: the
+      //  legacy `Table` decodes to a static `DataGrid` and re-encodes as one.
+      { Id = "legacy-upgrade-table"
+        LenientJson =
+          """{"id":"legacy-table","kind":{"$type":"Table","headers":[{"$type":"Literal","text":"A"}],"rows":[[{"$type":"Literal","text":"1"}]]}}"""
+        VerboseJson =
+          """{"id":"legacy-table","kind":{"$type":"DataGrid","columns":[],"editable":false,"source":{"$type":"Static","value":"<opaque>"},"staticRows":{"headers":[{"$type":"Literal","text":"A"}],"rows":[[{"$type":"Literal","text":"1"}]]}}}"""
+        Description = "Legacy `Table` tag decode-upgrades to a static read-only DataGrid (Phase 393)" }
+
+      // ─── Phase 460 stylistic omit-when-default read-compat + lenient aliases ──
+      //  (a) Explicit-default reads: a pre-460 emission that wrote the stylistic
+      //  fields at their identity default decodes and re-encodes to the minimal
+      //  form (the encoder now omits them). (b) Lenient aliases: curated decode-only
+      //  synonyms canonicalise to the DU case names. Both are the accept-and-
+      //  canonicalise law (§16), applied to the stylistic slots.
+      { Id = "lenient-460-explicit-default-metric"
+        LenientJson =
+          """{"id":"len-460-m","kind":{"$type":"Metric","emphasis":"Normal","format":{"$type":"None"},"label":{"$type":"Literal","text":"Revenue"},"tone":"Default","weight":"Standard","value":{"$type":"Static","value":1.0}}}"""
+        VerboseJson =
+          """{"id":"len-460-m","kind":{"$type":"Metric","label":{"$type":"Literal","text":"Revenue"},"value":{"$type":"Static","value":1.0}}}"""
+        Description = "Phase 460 — explicit-default Metric style fields decode and re-encode minimal (read-compat)" }
+
+      { Id = "lenient-460-explicit-default-style"
+        LenientJson =
+          """{"id":"len-460-s","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        VerboseJson = """{"id":"len-460-s","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}}}"""
+        Description = "Phase 460 — explicit all-default SemanticStyle re-encodes as an omitted style (read-compat)" }
+
+      { Id = "lenient-460-explicit-default-column"
+        LenientJson =
+          """{"id":"len-460-g","kind":{"$type":"DataGrid","columns":[{"format":{"$type":"None"},"kind":{"$type":"Text"},"label":"Channel","width":{"$type":"Auto"}}],"editable":false,"source":{"$type":"Static","value":"<opaque>"}}}"""
+        VerboseJson =
+          """{"id":"len-460-g","kind":{"$type":"DataGrid","columns":[{"kind":{"$type":"Text"},"label":"Channel"}],"editable":false,"source":{"$type":"Static","value":"<opaque>"}}}"""
+        Description = "Phase 460 — explicit-default column format/width decode and re-encode minimal (read-compat)" }
+
+      { Id = "lenient-460-alias-tone-positive"
+        LenientJson =
+          """{"id":"len-460-tp","kind":{"$type":"Callout","body":{"$type":"Literal","text":"x"},"dismissable":false,"tone":"Positive"}}"""
+        VerboseJson =
+          """{"id":"len-460-tp","kind":{"$type":"Callout","body":{"$type":"Literal","text":"x"},"dismissable":false,"tone":"Success"}}"""
+        Description = "Phase 460 — lenient tone alias `Positive` canonicalises to `Success`" }
+
+      { Id = "lenient-460-alias-tone-danger"
+        LenientJson =
+          """{"id":"len-460-td","kind":{"$type":"Callout","body":{"$type":"Literal","text":"x"},"dismissable":false,"tone":"Danger"}}"""
+        VerboseJson =
+          """{"id":"len-460-td","kind":{"$type":"Callout","body":{"$type":"Literal","text":"x"},"dismissable":false,"tone":"Critical"}}"""
+        Description = "Phase 460 — lenient tone alias `Danger` canonicalises to `Critical`" }
+
+      { Id = "lenient-460-alias-emphasis-strong"
+        LenientJson =
+          """{"id":"len-460-es","kind":{"$type":"Metric","emphasis":"Strong","label":{"$type":"Literal","text":"R"},"value":{"$type":"Static","value":1.0}}}"""
+        VerboseJson =
+          """{"id":"len-460-es","kind":{"$type":"Metric","emphasis":"Loud","label":{"$type":"Literal","text":"R"},"value":{"$type":"Static","value":1.0}}}"""
+        Description = "Phase 460 — lenient emphasis alias `Strong` canonicalises to `Loud`" }
+
+      { Id = "lenient-460-alias-emphasis-muted"
+        LenientJson =
+          """{"id":"len-460-em","kind":{"$type":"Metric","emphasis":"Muted","label":{"$type":"Literal","text":"R"},"value":{"$type":"Static","value":1.0}}}"""
+        VerboseJson =
+          """{"id":"len-460-em","kind":{"$type":"Metric","emphasis":"Quiet","label":{"$type":"Literal","text":"R"},"value":{"$type":"Static","value":1.0}}}"""
+        Description = "Phase 460 — lenient emphasis alias `Muted` canonicalises to `Quiet`" }
+
+      // ─── 2026-07-17 web-prior aliases (field names + remaining enum values) ──
+      //  The 2026-07-16 Kimi smokes showed models emitting the dominant web-
+      //  ecosystem NAME for a Fuaran concept (`href` for Navigate's `route`,
+      //  2/2 identical). Field-name aliases join the 460 value aliases under
+      //  the same law: decode-only, canonical name wins when both present,
+      //  faithful same-concept mappings only. One fixture per alias family.
+      { Id = "lenient-alias-navigate-href"
+        LenientJson =
+          """{"id":"len-nav","kind":{"$type":"Button","label":{"$type":"Literal","text":"Browse jobs"},"onClick":{"$type":"Navigate","href":"/jobs"},"variant":"Danger"}}"""
+        VerboseJson =
+          """{"id":"len-nav","kind":{"$type":"Button","label":{"$type":"Literal","text":"Browse jobs"},"onClick":{"$type":"Navigate","route":"/jobs"},"variant":"Destructive"}}"""
+        Description =
+          "Web-prior aliases — Navigate `href`→`route` (the 2/2 observed Kimi guess) + ButtonVariant `Danger`→`Destructive`" }
+
+      { Id = "lenient-alias-call-url"
+        LenientJson =
+          """{"id":"len-url","kind":{"$type":"Button","label":{"$type":"Literal","text":"Refresh"},"onClick":{"$type":"Call","url":"/api/refresh"},"variant":"Primary"}}"""
+        VerboseJson =
+          """{"id":"len-url","kind":{"$type":"Button","label":{"$type":"Literal","text":"Refresh"},"onClick":{"$type":"Call","endpoint":"/api/refresh"},"variant":"Primary"}}"""
+        Description = "Web-prior alias — Call `url`→`endpoint` (the fetch prior)" }
+
+      { Id = "lenient-alias-grid-columns-row"
+        LenientJson =
+          """{"id":"len-grid","kind":{"$type":"Box","children":[{"id":"len-flexrow","kind":{"$type":"Box","children":[],"layout":{"$type":"Flex","direction":"row","wrap":false},"role":"Group"}}],"layout":{"$type":"Grid","columns":2},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-grid","kind":{"$type":"Box","children":[{"id":"len-flexrow","kind":{"$type":"Box","children":[],"layout":{"$type":"Flex","direction":"Horizontal","wrap":false},"role":"Group"}}],"layout":{"$type":"Grid","cols":2},"role":"Group"}}"""
+        Description =
+          "Web-prior aliases — Grid `columns`→`cols` (CSS/Tailwind prior) + Flex direction `row`→`Horizontal` (CSS flex-direction prior)" }
+
+      { Id = "lenient-alias-card-title-metric-value"
+        LenientJson =
+          """{"id":"len-card","kind":{"$type":"Box","children":[{"id":"len-kpi","kind":{"$type":"Metric","label":{"$type":"Literal","text":"Revenue"},"value":{"$type":"Static","value":1234.5}}},{"id":"len-hd","kind":{"$type":"Heading","level":3,"text":{"$type":"Literal","text":"Detail"},"variant":"Default"}},{"id":"len-bg","kind":{"$type":"Badge","label":{"$type":"Literal","text":"OK"},"variant":"Default"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Card","title":{"$type":"Literal","text":"KPIs"}}}"""
+        VerboseJson =
+          """{"id":"len-card","kind":{"$type":"Box","children":[{"id":"len-kpi","kind":{"$type":"Metric","label":{"$type":"Literal","text":"Revenue"},"value":{"$type":"Static","value":1234.5}}},{"id":"len-hd","kind":{"$type":"Heading","level":3,"text":{"$type":"Literal","text":"Detail"},"variant":"Standard"}},{"id":"len-bg","kind":{"$type":"Badge","label":{"$type":"Literal","text":"OK"},"variant":"Neutral"}}],"heading":{"$type":"Literal","text":"KPIs"},"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Card"}}"""
+        Description =
+          "Web-prior aliases — Box `title`→`heading` (the universal card/modal prior), Metric scalar `value` (0.2.0 canonical; the KPI-card prior IS canon now), HeadingVariant/BadgeVariant `Default`→identity case" }
+
+      { Id = "lenient-alias-select-options-query-deps"
+        LenientJson =
+          """{"id":"len-sel","kind":{"$type":"Select","label":{"$type":"Literal","text":"Region"},"options":{"$type":"Query","accessor":"<closure>","deps":["region"],"name":"regions"},"value":{"$type":"State","initialValue":"uk","key":"sel"}}}"""
+        VerboseJson =
+          """{"id":"len-sel","kind":{"$type":"Select","label":{"$type":"Literal","text":"Region"},"source":{"$type":"Query","accessor":"<closure>","dependsOn":["region"],"name":"regions"},"value":{"$type":"State","defaultValue":"uk","key":"sel"}}}"""
+        Description =
+          "Web-prior aliases — Select `options`→`source` (the HTML select prior), Query `deps`→`dependsOn` (React hooks prior), State `initialValue`→`defaultValue` (useState prior)" }
+
+      { Id = "lenient-alias-datagrid-data-column-type"
+        LenientJson =
+          """{"id":"len-dg","kind":{"$type":"DataGrid","columns":[{"field":"name","header":"Name","type":{"$type":"Text"}}],"data":{"$type":"Static","value":[{"name":"A"}]},"editable":false}}"""
+        VerboseJson =
+          """{"id":"len-dg","kind":{"$type":"DataGrid","columns":[{"field":"name","kind":{"$type":"Text"},"label":"Name"}],"editable":false,"source":{"$type":"Static","value":[{"name":"A"}]}}}"""
+        Description =
+          "Web-prior aliases — DataGrid `data`→`source` (Chart.js/react-table prior), column `type`→`kind` + `header`→`label` (react-table prior)" }
+
+      { Id = "lenient-alias-form-field-name"
+        LenientJson =
+          """{"id":"len-form","kind":{"$type":"Form","fields":[{"kind":{"$type":"Text","value":{"$type":"State","defaultValue":"","key":"email"}},"label":{"$type":"Literal","text":"Email"},"name":"email","required":true}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":{"$type":"Literal","text":"Save"}}}"""
+        VerboseJson =
+          """{"id":"len-form","kind":{"$type":"Form","fields":[{"id":"email","kind":{"$type":"Text","value":{"$type":"State","defaultValue":"","key":"email"}},"label":{"$type":"Literal","text":"Email"},"required":true}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":{"$type":"Literal","text":"Save"}}}"""
+        Description = "Web-prior alias — form field `name`→`id` (the HTML forms prior)" }
+
+      { Id = "lenient-shape-options-bare-strings"
+        LenientJson =
+          """{"id":"len-optshape","kind":{"$type":"Filters","items":[{"kind":{"$type":"Choice","options":["Pending","In Review","Approved"]},"label":"Status","name":"status"}]}}"""
+        VerboseJson =
+          """{"id":"len-optshape","kind":{"$type":"Filters","items":[{"kind":{"$type":"Choice","options":{"$type":"Static","value":[{"label":{"$type":"Literal","text":"Pending"},"value":"Pending"},{"label":{"$type":"Literal","text":"In Review"},"value":"In Review"},{"label":{"$type":"Literal","text":"Approved"},"value":"Approved"}]},"value":{"$type":"Filter","name":"status"}},"label":{"$type":"Literal","text":"Status"},"name":"status"}]}}"""
+        Description =
+          "Web-prior SHAPE coercions — a bare array where a Binding is expected coerces to `Static` (the omitted-envelope prior, 2/2 observed eval failures), and a bare string option element coerces to `{value: s, label: Literal s}` (the HTML `<select>` prior). The value→label map form (`{\"A\":\"A\"}`) is deliberately NOT coerced: JSON key order is not contractual, so it could silently reorder visible options." }
+
+      { Id = "lenient-shape-segmented-orientation-omitted"
+        LenientJson =
+          """{"id":"len-seg","kind":{"$type":"Filters","items":[{"kind":{"$type":"SegmentedChoice","options":["Last 7 days","Last 30 days"]},"label":"Range","name":"range"}]}}"""
+        VerboseJson =
+          """{"id":"len-seg","kind":{"$type":"Filters","items":[{"kind":{"$type":"SegmentedChoice","options":{"$type":"Static","value":[{"label":{"$type":"Literal","text":"Last 7 days"},"value":"Last 7 days"},{"label":{"$type":"Literal","text":"Last 30 days"},"value":"Last 30 days"}]},"orientation":"Horizontal","value":{"$type":"Filter","name":"range"}},"label":{"$type":"Literal","text":"Range"},"name":"range"}]}}"""
+        Description =
+          "Omitted-when-default (the Phase 460 posture applied to `orientation`) — an absent segmented `orientation` restores the language default `Horizontal` (observed omitted in eval emission data); decode-only, the encoder still always emits it. Combined here with the bare-options shape coercion." }
+
+      { Id = "lenient-shape-binding-scalar-fraction"
+        LenientJson =
+          """{"id":"len-prog","kind":{"$type":"Progress","fraction":0.65,"indeterminate":{"$type":"Static","value":false},"label":{"$type":"Literal","text":"Overall completion"}}}"""
+        VerboseJson =
+          """{"id":"len-prog","kind":{"$type":"Progress","fraction":{"$type":"Static","value":0.65},"indeterminate":false,"label":{"$type":"Literal","text":"Overall completion"}}}"""
+        Description =
+          "Envelope-confusion coercions, BOTH directions (2026-07-17 launch-eval evidence) — a bare scalar where a Binding is expected coerces to `Static` (`fraction: 0.65`), and a Static envelope where a PLAIN value is expected unwraps (`indeterminate: {\"$type\":\"Static\",\"value\":false}`). Unambiguous both ways; `null` and untyped objects stay strict." }
+
+      { Id = "lenient-shape-params-map"
+        LenientJson =
+          """{"id":"len-params","kind":{"$type":"DataGrid","columns":[],"editable":false,"rowKey":"<closure>","source":{"$type":"Transform","params":{"stockLevel":{"$type":"Filter","name":"stockLevel"},"warehouse":{"$type":"Filter","name":"warehouse"}},"pipeline":[],"source":{"columns":{"sku":{"validity":[true],"values":["A-1"]}},"schema":[{"name":"sku","type":"string"}]}}}}"""
+        VerboseJson =
+          """{"id":"len-params","kind":{"$type":"DataGrid","columns":[],"editable":false,"rowKey":"<closure>","source":{"$type":"Transform","params":[{"from":{"$type":"Filter","name":"stockLevel"},"name":"stockLevel"},{"from":{"$type":"Filter","name":"warehouse"},"name":"warehouse"}],"pipeline":[],"source":{"columns":{"sku":{"validity":[true],"values":["A-1"]}},"schema":[{"name":"sku","type":"string"}]}}}}"""
+        Description =
+          "Query-params shape coercion — the name→binding MAP form coerces to the canonical `[{name, from}]` array (params are a name-keyed set, so key order carries no meaning — unlike the options map, which is refused), and `value` aliases `from` at the element. Every provider's first guess in the launch eval; 21/31 failures were repair-proof." }
+
+      { Id = "lenient-shape-grid-no-cols"
+        LenientJson =
+          """{"id":"len-autogrid","kind":{"$type":"Box","children":[],"layout":{"$type":"Grid"},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-autogrid","kind":{"$type":"Box","children":[],"layout":{"$type":"Auto"},"role":"Group"}}"""
+        Description =
+          "Grid with NO column spec (no cols/columns/templateColumns) is the CSS auto-grid prior — accept-and-canonicalise to the language's existing `Auto` responsive auto-tile layout. 35 launch-eval cells across 8 tasks, every provider." }
+
+      { Id = "lenient-fact-explicit-defaults"
+        LenientJson =
+          """{"id":"len-fact","kind":{"$type":"Fact","emphasis":false,"label":{"$type":"Literal","text":"Patient"},"tone":"Default","value":{"$type":"Literal","text":"Alice Smith"}}}"""
+        VerboseJson = """{"id":"len-fact","kind":{"$type":"Fact","label":"Patient","value":"Alice Smith"}}"""
+        Description =
+          "Fact (the new labeled text-fact kind) — explicit-default `tone`/`emphasis` decode and canonicalise away (omitted-when-default on both boundaries from day one), and the bare-string TextSource shorthand applies to `label`/`value`. The canonical minimal Fact is exactly the two-field form models want to write." }
+
+      { Id = "lenient-shape-static-envelope-plain-scalars"
+        LenientJson =
+          """{"id":"len-env","kind":{"$type":"LabelValueRow","emphasis":{"$type":"Static","value":true},"label":"Total","value":{"$type":"Static","value":42.0}}}"""
+        VerboseJson =
+          """{"id":"len-env","kind":{"$type":"LabelValueRow","emphasis":true,"label":{"$type":"Literal","text":"Total"},"value":{"$type":"Static","value":42.0}}}"""
+        Description =
+          "Static-envelope unwrap GENERALISED to every plain-scalar position (2026-07-18 — the 0.1.6 pilot found `emphasis` wrapped after `indeterminate` was fixed site-locally; the confusion is generic). A well-formed envelope at a plain-scalar position has exactly one reading; the encoder still emits bare scalars." }
+
+      { Id = "lenient-shape-grid-template-no-cols"
+        LenientJson =
+          """{"id":"len-tmpl","kind":{"$type":"Box","children":[],"layout":{"$type":"Grid","templateColumns":"1fr 2fr"},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-tmpl","kind":{"$type":"Box","children":[],"layout":{"$type":"Grid","cols":1,"templateColumns":"1fr 2fr"},"role":"Group"}}"""
+        Description =
+          "Grid with `templateColumns` but no `cols` — `Cols` is documented-ignored when `templateColumns` is present, so absence defaults to 1 instead of MISSING_FIELD (the 0.1.6 pilot residual). Distinct from the no-column-spec-at-all form, which canonicalises to `Auto`." }
+
+      // ─── 2026-07-19 collision sweep — the `emphasis` cross-vocabulary slip ─
+      // Same field name, two meanings: the behavioural BOOL (Fact /
+      // LabelValueRow) vs the Emphasis STYLE ENUM (style / Metric). Models
+      // cross it in both directions (pilot-4: 'Strong' hard-failed on the
+      // bool; the sweep confirmed the class). Both directions coerce
+      // one-to-one: enum + Phase-460 aliases project onto the bool
+      // (Loud/Strong/Bold ⇒ true; Normal/Quiet/Subtle/Muted ⇒ false), and a
+      // bool in the enum slot projects back (true ⇒ Loud, false ⇒ Normal).
+      { Id = "lenient-emphasis-cross-vocab"
+        LenientJson =
+          """{"id":"len-emph","kind":{"$type":"Box","children":[{"id":"len-emph-row","kind":{"$type":"LabelValueRow","emphasis":"Strong","label":"Total","value":{"$type":"Static","value":42}},"style":{"emphasis":true}},{"id":"len-emph-fact","kind":{"$type":"Fact","emphasis":"Loud","label":"Status","value":"Open"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        VerboseJson =
+          """{"id":"len-emph","kind":{"$type":"Box","children":[{"id":"len-emph-row","kind":{"$type":"LabelValueRow","emphasis":true,"label":"Total","value":{"$type":"Static","value":42}},"style":{"emphasis":"Loud"}},{"id":"len-emph-fact","kind":{"$type":"Fact","emphasis":true,"label":"Status","value":"Open"}}],"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Group"}}"""
+        Description =
+          "2026-07-19 collision sweep — `emphasis` cross-vocabulary coercion, both directions: the style enum + Phase-460 aliases in the Fact/LabelValueRow BOOL slots (Loud/Strong/Bold ⇒ true, Normal/Quiet/Subtle/Muted ⇒ false) and a bool in the style-enum slot (true ⇒ Loud). One-to-one; the encoder still emits the canonical types." }
+
+      // ─── 0.2.11 / fuaran-core#94 — the pilot-5 lenient wave ──────────────
+      // The pilot-5 n=1 census (gemini continuity arm): three near-canonical
+      // shapes, each unambiguous. (1) a wrapped column object carrying
+      // `values` but no `validity` mask — the same all-present statement as
+      // the #88 bare array; (2) flat logical/comparison expression spellings
+      // ({"$type":"or","exprs":[…]} variadic, flat eq/gt with left/right)
+      // against the canonical nested `binary`; (3) epoch numbers in a
+      // declared-`timestamp` column (unit by magnitude, ≥1e11 ⇒ ms).
+      { Id = "lenient-transform-values-only-columns"
+        LenientJson =
+          """{"id":"len-tf-vo","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"amount":{"values":[100,200]},"dept":{"values":["ops","eng"]}},"schema":[{"name":"amount","type":"int"},{"name":"dept","type":"string"}]}}}}"""
+        VerboseJson =
+          """{"id":"len-tf-vo","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"amount":{"validity":[true,true],"values":[100,200]},"dept":{"validity":[true,true],"values":["ops","eng"]}},"schema":[{"name":"amount","type":"int"},{"name":"dept","type":"string"}]}}}}"""
+        Description =
+          "fuaran-core#94 — a values-only column object is the all-present shorthand (the canonical wrapped shape minus the mask); the masked form stays canonical" }
+
+      { Id = "lenient-transform-flat-or"
+        LenientJson =
+          """{"id":"len-tf-or","kind":{"$type":"DataGrid","columns":[{"field":"item","kind":{"$type":"Text"},"label":"Item"}],"rowKeyField":"item","source":{"$type":"Transform","pipeline":[{"$type":"filter","pred":{"$type":"or","exprs":[{"$type":"eq","left":{"$type":"col","name":"status"},"right":{"$type":"lit","cell":{"$type":"Str","value":"low"}}},{"$type":"eq","left":{"$type":"col","name":"status"},"right":{"$type":"lit","cell":{"$type":"Str","value":"critical"}}}]}}],"source":{"columns":{"item":["widget","gadget"],"status":["low","ok"]}}}}}"""
+        VerboseJson =
+          """{"id":"len-tf-or","kind":{"$type":"DataGrid","columns":[{"field":"item","kind":{"$type":"Text"},"label":"Item"}],"rowKeyField":"item","source":{"$type":"Transform","pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"binary","left":{"$type":"col","name":"status"},"op":"eq","right":{"$type":"lit","cell":{"$type":"Str","value":"low"}}},"op":"or","right":{"$type":"binary","left":{"$type":"col","name":"status"},"op":"eq","right":{"$type":"lit","cell":{"$type":"Str","value":"critical"}}}}}],"source":{"columns":{"item":{"validity":[true,true],"values":["widget","gadget"]},"status":{"validity":[true,true],"values":["low","ok"]}},"schema":[{"name":"item","type":"string"},{"name":"status","type":"string"}]}}}}"""
+        Description =
+          "fuaran-core#94 — flat variadic `or` (exprs array) + flat `eq` (left/right) left-fold into the canonical nested `binary` tree" }
+
+      { Id = "lenient-transform-flat-scalar-fn"
+        LenientJson =
+          """{"id":"len-tf-fn","kind":{"$type":"DataGrid","columns":[{"field":"desk","kind":{"$type":"Text"},"label":"Desk"}],"rowKeyField":"desk","source":{"$type":"Transform","params":[{"from":{"$type":"Filter","name":"q"},"name":"q"}],"pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"fn","fn":"lower","args":[{"$type":"col","name":"desk"}]},"op":"contains","right":{"$type":"lower","expr":{"$type":"param","name":"q"}}}}],"source":{"columns":{"desk":["A1","B2"]}}}}}"""
+        VerboseJson =
+          """{"id":"len-tf-fn","kind":{"$type":"DataGrid","columns":[{"field":"desk","kind":{"$type":"Text"},"label":"Desk"}],"rowKeyField":"desk","source":{"$type":"Transform","params":[{"from":{"$type":"Filter","name":"q"},"name":"q"}],"pipeline":[{"$type":"filter","pred":{"$type":"binary","left":{"$type":"apply","args":[{"$type":"col","name":"desk"}],"fn":"lower"},"op":"contains","right":{"$type":"apply","args":[{"$type":"param","name":"q"}],"fn":"lower"}}}],"source":{"columns":{"desk":{"validity":[true,true],"values":["A1","B2"]}},"schema":[{"name":"desk","type":"string"}]}}}}"""
+        Description =
+          "fuaran-core#94 — flat scalar-fn spellings: `fn` aliases `apply` (same fn/args), and a bare fn-name node ({\"$type\":\"lower\",\"expr\":…}) denotes ApplyFn directly; canonical stays `apply`" }
+
+      // ─── 0.2.12 / pilot-5 n=3 gate — the `Bound` wrapper in bare-Binding slots ─
+      // Models transfer the canonical `TextSource.Bound` envelope convention
+      // uniformly to slots typed as raw Binding (Metric.value / trend, etc.):
+      // {"$type":"Bound","binding":X}. Exactly one payload field ⇒ one-to-one
+      // unwrap; the canonical encoder never wraps bare-Binding slots.
+      { Id = "lenient-binding-bound-wrapper"
+        LenientJson =
+          """{"id":"len-bound","kind":{"$type":"Metric","format":{"$type":"Currency","code":"GBP"},"icon":"trending-up","label":"Revenue","subtext":"vs last month","tone":"Brand","trend":{"$type":"Bound","binding":{"$type":"Static","value":0.07}},"trendFormat":{"$type":"Percent","decimals":1},"value":{"$type":"Bound","binding":{"$type":"Static","value":1234.5}}}}"""
+        VerboseJson =
+          """{"id":"len-bound","kind":{"$type":"Metric","format":{"$type":"Currency","code":"GBP"},"icon":"trending-up","label":"Revenue","subtext":"vs last month","tone":"Brand","trend":{"$type":"Static","value":0.07},"trendFormat":{"$type":"Percent","decimals":1},"value":{"$type":"Static","value":1234.5}}}"""
+        Description =
+          "pilot-5 n=3 gate — the Bound wrapper unwraps in bare-Binding slots (the TextSource.Bound convention transferred; one payload field, one-to-one); canonical stays the bare binding" }
+
+      { Id = "lenient-transform-epoch-timestamps"
+        LenientJson =
+          """{"id":"len-tf-ts","kind":{"$type":"DataGrid","columns":[{"field":"runner","kind":{"$type":"Text"},"label":"Runner"}],"rowKeyField":"runner","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"finish_ts":{"values":[1752000000,1752000000000]},"runner":{"values":["Asha","Beatriz"]}},"schema":[{"name":"finish_ts","type":"timestamp"},{"name":"runner","type":"string"}]}}}}"""
+        VerboseJson =
+          """{"id":"len-tf-ts","kind":{"$type":"DataGrid","columns":[{"field":"runner","kind":{"$type":"Text"},"label":"Runner"}],"rowKeyField":"runner","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"finish_ts":{"validity":[true,true],"values":["2025-07-08T18:40:00Z","2025-07-08T18:40:00Z"]},"runner":{"validity":[true,true],"values":["Asha","Beatriz"]}},"schema":[{"name":"finish_ts","type":"timestamp"},{"name":"runner","type":"string"}]}}}}"""
+        Description =
+          "fuaran-core#94 — epoch numbers in a declared-timestamp column decode to the canonical ISO instant (seconds, and milliseconds via the whole-float path; unit by magnitude)" } ]

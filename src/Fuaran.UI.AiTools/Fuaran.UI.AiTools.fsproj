@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.AiTools</PackageId>
+    <Description>Fuaran runtime-introspection AI-tool surface — §4i `fuaran.getNodeState` / `getBindingValue` / `getRenderedDom` / `getRuntimeErrors`. Deterministic observable state from a rendered tree; the substrate a downstream AI consumer drives. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="Seams.fs" />
+    <Compile Include="BindingProbe.fs" />
+    <Compile Include="Tools.fs" />
+    <Compile Include="Capabilities.fs" />
+    <!-- Phase 358 — cross-domain Slot composition: adopts fuaran-core#47
+         (composeAcross) so a UI fragment's typed Slot binds a non-UI
+         artifact-function's output. Uses Fuaran.Core.Function's ArtifactWitness
+         + the Ops.Introspect container lens. -->
+    <Compile Include="FunctionTool.fs" />
+    <Compile Include="ResponseRender.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/. Same shape as the
+       fix in 015bbf0 for Fuaran.UI + Fuaran.UI.Renderer — a PackageReference
+       Fable consumer needs the source under fable/ to retranspile. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <!-- Compute layer (Phase 283): the invocable Capability + registry surface for the
+         capability discovery + dispatch glue (Capabilities.fs). -->
+    <PackageReference Include="Fuaran.Core.Function" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,42 @@
+# Build output
+bin/
+obj/
+output/
+*.fs.js
+*.fs.js.map
+
+# IDE / tooling
+.vs/
+.vscode/
+.idea/
+.ionide/
+.fake/
+
+# Per-user MSBuild and tool junk
+*.user
+*.orig
+*.fsproj.user
+*.DotSettings.user
+
+# Node / Vite (none in session 1; first used by samples/demo in session 3b)
+node_modules/
+fable_modules/
+dist/
+
+# Vite dotenv files
+**/.env.local
+**/.env.*.local
+
+# Claude Code per-machine settings + worktrees
+.claude/worktrees/
+.claude/settings.local.json
+
+# Local NuGet drop folder produced by `dotnet run -- Pack` (consumer-local).
+# Fuaran packs into the workspace-level ../local-nuget-feed/, not here, so this
+# is defensive only.
+local-nuget-feed/
+
+# BenchmarkDotNet run output (logs + reports), produced under the repo root by
+# a `dotnet run` against benchmarks/Fuaran.UI.Ops.Benchmarks. Machine-specific;
+# the committed baseline JSON is the durable artifact, not these reports.
+BenchmarkDotNet.Artifacts/

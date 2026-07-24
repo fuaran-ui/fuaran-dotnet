@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========================================================================
+       Phase 314 — Fuaran.UI.Analyzers, the Roslyn compile-time gate for the C#
+       (and, via Phase 315, VB) authoring veneer.
+
+       The one robustness gate the veneer LOSES vs the F# tier is compile-time
+       validation: the F# Fuaran.UI.Validator is an F#-AST walker that can't see
+       C# code. This rebuilds the high-value FUARAN* rules for the veneer's call
+       sites as a Roslyn DiagnosticAnalyzer, reusing the same code numbers +
+       messages for cross-host consistency.
+
+       TARGET FRAMEWORK — netstandard2.0 (NOT net10.0): a Roslyn analyzer is
+       loaded into the compiler / IDE host, which requires netstandard2.0 for
+       cross-host loadability. This is the standard analyzer-load constraint (the
+       same class of exception as a Companion vendoring a native lib), not a
+       workspace-baseline violation — the analyzed + shipped surface stays net10.
+
+       LANGUAGE-NEUTRAL BY DESIGN (Phase 315 readiness): the rules analyse the
+       language-agnostic `IOperation` tree (RegisterOperation*), not C#-specific
+       syntax, so the SAME analyzer serves VB with no restructuring — Phase 315
+       adds `LanguageNames.VisualBasic` to the [DiagnosticAnalyzer] attribute and
+       a VB test leg; the analysis logic is shared verbatim.
+       ======================================================================== -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Analyzers</PackageId>
+    <Description>Fuaran.UI.Analyzers — Roslyn compile-time diagnostics for Fuaran.UI.CSharp authoring (the FUARAN* rules ported to C#/VB call-site analysis). Ships as a NuGet analyzer.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Analyzer packaging: no runtime lib, ship the DLL under analyzers/dotnet. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <!-- netstandard2.0 lacks the nullable-attribute BCL; the analyzer is null-annotated
+         but must not require the polyfills. -->
+    <Nullable>enable</Nullable>
+    <!-- Required by the Roslyn analyzer-authoring analyzers (RS1036). -->
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+    <!-- Phase 315 — the VB XML-literal diagnostic leg. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Analyzer release tracking (RS2008). -->
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <!-- Ship the analyzer assembly in both language analyzer paths: the IOperation
+         rules serve C# + VB, and Phase 315's VB XML-literal analyzer targets VB. -->
+    <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/vb" Visible="false" />
+  </ItemGroup>
+
+</Project>

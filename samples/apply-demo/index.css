@@ -1,0 +1,13 @@
+/* ============================================================================
+   Fuaran apply-demo stylesheet — a thin pass-through to the canonical
+   reference stylesheet packaged with Fuaran.UI.Renderer (the single source of
+   truth for the Fuaran class-hook contract). Same shape as samples/demo and
+   samples/resume. Add demo-only overrides BELOW the @import (none currently).
+   ============================================================================ */
+
+@import "../../src/Fuaran.UI.Renderer/content/fuaran-reference.css";
+
+body {
+  font-family: "Inter", system-ui, sans-serif;
+  margin: 2rem;
+}

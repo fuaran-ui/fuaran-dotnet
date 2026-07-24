@@ -1,0 +1,18 @@
+/* ============================================================================
+   Fuaran UI demo stylesheet.
+
+   As of Phase 12.H this file is a thin pass-through to the canonical reference
+   stylesheet packaged with Fuaran.UI.Renderer at
+     ../../src/Fuaran.UI.Renderer/content/fuaran-reference.css
+
+   That file is the single source of truth for the Fuaran class-hook contract
+   (variables + per-NodeKind base + per-spec tone suffixes). Editing it lands
+   the change in the NuGet payload too — consumers that drop the packaged
+   CSS get the same vocabulary the demo renders against. See
+   ../../HOST-STYLING-CHECKLIST.md for the full enumeration and
+   ../../docs/THEME-BRIDGE-GUIDE.md for consumer-token bridging patterns.
+
+   Add demo-only overrides BELOW the @import (none currently).
+   ============================================================================ */
+
+@import "../../src/Fuaran.UI.Renderer/content/fuaran-reference.css";

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Validator</PackageId>
+    <Description>Fuaran build-time validator — F# AST walker that gates Fuaran Node trees at compile time. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <AssemblyName>Fuaran.UI.Validator</AssemblyName>
+    <!-- FSharp.Compiler.Service pins FSharp.Core to an exact patch (10.1.204
+         at FCS 43.12.204) while the rest of the workspace is on 10.1.300.
+         The newer FSharp.Core is API-compatible with FCS at the surfaces we
+         use (parser / SyntaxTree); the NU1608 warning is over-strict. -->
+    <NoWarn>$(NoWarn);NU1608</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Findings.fs" />
+    <Compile Include="Manifest.fs" />
+    <Compile Include="AstWalker.fs" />
+    <Compile Include="NodeIdCheck.fs" />
+    <Compile Include="BindingResolution.fs" />
+    <Compile Include="MsgPayloadCheck.fs" />
+    <Compile Include="RowTypeCheck.fs" />
+    <Compile Include="AccessibilityCheck.fs" />
+    <Compile Include="ButtonDisabledCheck.fs" />
+    <Compile Include="ScalarRangeCheck.fs" />
+    <Compile Include="LinkCheck.fs" />
+    <Compile Include="LocalBindingCheck.fs" />
+    <Compile Include="NumberFieldRangeCheck.fs" />
+    <Compile Include="SegmentedChoiceCheck.fs" />
+    <Compile Include="TabsCheck.fs" />
+    <Compile Include="ExtraAttributesCheck.fs" />
+    <Compile Include="CustomHealthCheck.fs" />
+    <Compile Include="CustomContentHashCheck.fs" />
+    <Compile Include="FragmentCheck.fs" />
+    <Compile Include="GridTemplateColumnsCheck.fs" />
+    <Compile Include="FormatCoherenceCheck.fs" />
+    <Compile Include="WireSurvivabilityCheck.fs" />
+    <Compile Include="ErrorRender.fs" />
+    <!-- Phase 359 — recipe / fragment certification: adopts
+         Fuaran.Core.Conformance's verifyFunction so a parameterised fragment is
+         certified valid-for-all-bindings (a correct-by-construction template),
+         bridging the runtime PreEmitValidate rule family as the validity oracle. -->
+    <Compile Include="RecipeCertification.fs" />
+    <Compile Include="Validator.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="FSharp.Compiler.Service" />
+    <!-- Phase 359 — the verifyFunction / verifyFunctionSymbolic operators the
+         recipe-certification harness drives (RecipeCertification.fs). -->
+    <PackageReference Include="Fuaran.Core.Conformance" />
+  </ItemGroup>
+</Project>

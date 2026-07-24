@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Memo</PackageId>
+    <Description>Fuaran incremental re-derivation engine — effect-aware memoisation over the Phase 180 artifact-function apply. Caches substituted fragment trees keyed by (function-identity, arg-set); a value-parameter change reuses the structural tree and recomputes only the affected hole-addressed bindings; effecting functions bypass the cache; op-stream replay resolves through the cache to a byte-identical tree. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;memoisation;incremental;re-derivation;artifact-function</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/ (same convention as
+       Fuaran.UI). The engine is Fable-clean — CanonicalJson is Fable-compatible,
+       Hashing is the Fable-safe SHA-256, FragmentApply is Fable-clean, and the
+       BoundedLru uses only Dictionary + ResizeArray. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="FragmentKey.fs" />
+    <!-- Phase 360 — the caller-supplied content-addressed store (portable across
+         session / machine), backed by Fuaran.Core.Function's MemoCache (applyMemo
+         cache model). The default InProcessStore preserves the pre-360 BoundedLru
+         behaviour; the MemoCacheStore is the portable one. -->
+    <Compile Include="PortableStore.fs" />
+    <Compile Include="IncrementalApply.fs" />
+    <!-- Phase 360 — op-stream replay generalised to memo-served re-application:
+         a recorded session replays through the store, byte-identical to direct
+         replay. -->
+    <Compile Include="MemoReplay.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Telemetry.Abstractions\Fuaran.UI.Telemetry.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <!-- Phase 360 — adopt fuaran-core#49's applyMemo cache model: the portable
+         MemoCacheStore is backed by Fuaran.Core.MemoCache<Node<'Msg>>. -->
+    <PackageReference Include="Fuaran.Core.Function" />
+  </ItemGroup>
+</Project>

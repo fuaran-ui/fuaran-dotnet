@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="OpsApplyTests.fs" />
+    <Compile Include="WireDecodeApplyTests.fs" />
+    <!-- Phase 192 — the shared, pipeline-neutral apply-parity core, linked from
+         samples/apply-demo so the .NET test and the Fable host run byte-identical
+         logic over the corpus. -->
+    <Compile Include="..\..\samples\apply-demo\ApplyParity.fs">
+      <Link>ApplyParity.fs</Link>
+    </Compile>
+    <Compile Include="ApplyParityTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <!-- Phase 192 — CanonicalJson.encodeNode is the apply-parity projection. -->
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

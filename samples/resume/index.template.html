@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fuaran — zero-hydration resumability</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <!-- Server-rendered inert HTML + the resume envelope <script> are injected
+         here by gen/Gen.fs. The client entry (output/Main.js) installs ONE
+         document-root listener and executes nothing else until first click. -->
+    <!--SSR-->
+    <script type="module" src="/output/Main.js"></script>
+  </body>
+</html>

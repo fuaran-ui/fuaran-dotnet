@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Ops</PackageId>
+    <Description>Fuaran tree-op apply engine — §4g op vocabulary + Result-returning apply against typed Node&lt;'Msg&gt; trees, with §4d AI-recovery-shaped error payloads. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Introspect.fs" />
+    <!-- Structural decoder mirroring
+         Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeNode / encodeOp.
+         Lives here (rather than in Fuaran.UI) because TreeOp lives in
+         Fuaran.UI.Ops — putting the
+         decoder in Fuaran.UI would require Fuaran.UI -> Fuaran.UI.Ops, closing
+         a project-reference cycle. Fuaran.UI.Ops already sits "above"
+         Fuaran.UI in the dep tree, mirroring where OpStream.Abstractions
+         sits relative to both packages for the encoder. See
+         `docs/migrations/12-E-0-json-decoder.md` "Module placement" for
+         the rationale and the discarded alternatives.
+
+         Compiled BEFORE Apply.fs so the apply engine's UpdateProp
+         dispatcher can call into JsonDecode.Coerce.* for structural
+         typed-coercion of the wire-decoded Map<string,obj> shape. -->
+    <Compile Include="JsonDecode.fs" />
+    <!-- Draft 2020-12 JSON Schema generator for the canonical wire format
+         (Phase 96). Standalone string-builder (no internal deps); the third
+         hand-written mirror of the wire contract alongside CanonicalJson
+         (encoder) + JsonDecode (decoder), co-updated per WIRE_FORMAT.md §11. -->
+    <Compile Include="SchemaGen.fs" />
+    <Compile Include="Apply.fs" />
+    <Compile Include="ErrorRender.fs" />
+    <!-- Streaming / progressive partial-tree decode + apply (Phase 104).
+         Purely additive: lowers a decoded tree to the canonical InsertChild
+         sequence both the batch and streaming paths share, so a streamed
+         emission replays byte-identically to the batch (FGP 5). Compiled after
+         Apply.fs (uses Apply.apply) + JsonDecode.fs (uses decodeNode) +
+         Introspect.fs (uses getChildren / withChildren). -->
+    <Compile Include="Streaming.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/. Same shape as the
+       fix in 015bbf0 for Fuaran.UI + Fuaran.UI.Renderer — a PackageReference
+       Fable consumer needs the source under fable/ to retranspile. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <!-- The TreeOp / ErrorPayload / ApplyHint type contract moved to
+         Fuaran.UI.Ops.Abstractions (Fable-portable) so Fable consumers can
+         reference the types without the non-Fable-portable apply engine +
+         JSON decoder here. The `Fuaran.UI.Ops.Types` module name is preserved,
+         so every consumer's `open Fuaran.UI.Ops.Types` is unchanged. -->
+    <ProjectReference Include="..\Fuaran.UI.Ops.Abstractions\Fuaran.UI.Ops.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <!-- Fable.Core: used only under `#if FABLE_COMPILER` for the `[<Emit>]`
+         constructor-reference map detection in JsonDecode.Coerce.objToJson
+         (Fable refuses generic type-tests). Harmless on .NET — the Emit code
+         is fenced out and never compiled. (Phase 191 — Fable-portable Ops.) -->
+    <PackageReference Include="Fable.Core" />
+    <!-- Runtime consumption of the Core skeleton engine (Phase 379): the
+         structural-five apply legs (InsertChild / RemoveNode / MoveNode /
+         ReorderChildren) delegate to Fuaran.Core.Ops over the UI NodeWitness,
+         retiring UI's duplicate structural walker. Both packages are
+         FSharp.Core-only + Fable-clean (source-packed under fable/), so FGP 2
+         (substrate-free Fuaran.UI.*) holds and the Fable pipeline stays green. -->
+    <PackageReference Include="Fuaran.Core.Tree" />
+    <PackageReference Include="Fuaran.Core.Ops" />
+  </ItemGroup>
+</Project>

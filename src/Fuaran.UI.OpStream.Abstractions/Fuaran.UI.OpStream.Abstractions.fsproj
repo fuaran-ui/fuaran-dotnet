@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.OpStream.Abstractions</PackageId>
+    <Description>Fuaran op-stream — type contract, canonical-JSON encoder, hash-chain primitive, and sink interface. The durable / replayable counterpart to the Fuaran.UI.Ops apply engine: every applied TreeOp surfaces as a hash-chained OpRecord against the configured IOpStreamSink. CanonicalJson.encodeNode doubles as the AI pre-emit self-check encoder (Fable-compatible). Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;op-stream;canonical-json;hash-chain;replay</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/ (same convention as
+       the downstream orchestration abstractions package). Server-only types
+       are guarded inside the .fs files with #if !FABLE_COMPILER. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="CanonicalJson.fs" />
+    <Compile Include="OpRecord.fs" />
+    <!-- Phase 406: the provenance envelope + the single Core-format chain authority.
+         Compiled before HashChain.fs (which delegates computeHash to it). -->
+    <Compile Include="StreamEntry.fs" />
+    <Compile Include="HashChain.fs" />
+    <Compile Include="IOpStreamSink.fs" />
+    <Compile Include="Checkpoint.fs" />
+    <!-- Phase 267: the guest-<scopeId> op-stream keying convention (§4o). -->
+    <Compile Include="GuestStream.fs" />
+    <!-- Phase 437: the teleport state-bundle codec — tree + Binding.State map
+         (+ bounded op-history + chain head) → canonical JSON → deflate →
+         base64url, with digest integrity + decode-validate-resume. -->
+    <Compile Include="Teleport.fs" />
+    <!-- Phase 465: the elicitation envelope — question-as-UI with a typed
+         answer contract (WIRE_FORMAT.md §18). Envelope + outcome codec +
+         decode-side answer-conformance validation; value spaces reuse
+         Fuaran.Core.Function's ValueSpace (see the Phase 465 design note). -->
+    <Compile Include="Elicitation.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <!-- Phase 406: the op-stream chain re-expresses over Fuaran.Core.OpStream's
+         canonical payload + certified HashFn seam (FSharp.Core-only, Fable-clean —
+         FGP 2 holds). StreamEntry.fs threads Core's canonicalConfig; no new Core surface. -->
+    <PackageReference Include="Fuaran.Core.OpStream" />
+    <!-- Phase 465: the elicitation answer contract reuses Fuaran.Core.Function's
+         ValueSpace type system + Space.validate semantics + the capability
+         codec's $type-tagged space wire form (FSharp.Core-only, Fable-clean). -->
+    <PackageReference Include="Fuaran.Core.Function" />
+    <!-- Fable.Core: used only under `#if FABLE_COMPILER` for the `[<Emit>]`
+         JS-`toString` shim in CanonicalJson.formatFiniteDouble (Fable does not
+         support the `Double.ToString("R")` round-trip specifier). Inert on
+         .NET — the Emit code is fenced out. (Phase 192 — cross-pipeline apply
+         parity / Fable-portable canonical encoder.) -->
+    <PackageReference Include="Fable.Core" />
+  </ItemGroup>
+</Project>

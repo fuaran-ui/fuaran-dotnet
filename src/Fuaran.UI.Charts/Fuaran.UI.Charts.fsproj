@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Charts</PackageId>
+    <Description>Fuaran chart lowering — the render-time Chart → Drawing layout engine (bar / line): a bounded, deterministic ChartSpec + data → canonical Drawing subtree (scales, ticks, axes, gridlines, legend, series geometry). Chart stays a semantic wire kind; this is the reference lowering the other hosts conform to. FSharp.Core + Renderer.Core only, Fable-portable. Apache-2.0 licensed.</Description>
+  </PropertyGroup>
+  <!-- Pack source for Fable consumers under fable/, matching the renderer tier
+       so PackageReference Fable consumers transpile the lowering from source. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Charts.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fable.Core" />
+  </ItemGroup>
+</Project>

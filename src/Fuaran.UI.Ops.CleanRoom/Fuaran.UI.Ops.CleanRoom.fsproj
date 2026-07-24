@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Ops.CleanRoom</PackageId>
+    <Description>Structure-only clean room for Fuaran.UI.Ops — a content-free skeleton projection (project : Node&lt;'Msg&gt; -&gt; Skeleton) plus a substitutable structural-op gate that withholds any inbound TreeOp referencing an unknown NodeId, authoring content, or off the move/reorder/reparent/delete allowlist. Lets an untrusted party reorganise a tree's structure by id without receiving its content. Additive + Fable-clean. Apache-2.0.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Content-free skeleton projection: the privacy contract (no content
+         field on the Skeleton type) + the bounded descriptor + count/length
+         coarsening. -->
+    <Compile Include="Skeleton.fs" />
+    <!-- The structural-op gate: IStructuralOpBroker + StructuralGateDecision
+         (the structure-only mirror of forge's ICleanRoomBroker / GateDecision
+         shape) + the pure, stateless StructuralOpBroker. -->
+    <Compile Include="Broker.fs" />
+    <!-- Content-free audit seam (FGP 5): ICleanRoomAuditSink + records + sinks
+         + issue/enforceAudited orchestration that keeps the broker pure. -->
+    <Compile Include="Audit.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/ (same shape as Fuaran.UI.Ops
+       and the rest of the Fable-distributed tier) — a PackageReference Fable
+       consumer needs the source under fable/ to retranspile. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Fuaran.UI.Ops carries the Introspect traversal helpers (getChildren /
+         kindName / nodeIds) the projection walks, and transitively the TreeOp
+         algebra (Fuaran.UI.Ops.Abstractions) + the typed tree (Fuaran.UI). -->
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

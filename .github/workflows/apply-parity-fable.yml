@@ -1,0 +1,57 @@
+name: Apply-parity Fable lane
+
+# Phase 192 cross-pipeline apply-parity gate — the Fable half, automated.
+#
+# The .NET half (src/Fuaran.UI.Ops.Tests/ApplyParityTests.fs) asserts every
+# corpus op's apply outcome against the committed oracle
+# (src/Fuaran.UI.Ops.Tests/apply-parity.golden.json) and runs via the workspace
+# conformance gate. This lane closes the loop on the Fable side: it builds the
+# `samples/apply-demo` Fable output (which references the now-Fable-clean
+# Fuaran.UI.Ops decode + apply engine and the canonical encoder), then replays
+# every golden op through the Fable-compiled `ApplyParity.evalOp` and asserts
+# byte-identical results. A Fable-vs-.NET divergence — e.g. a float-formatter or
+# coercion regression in the Fable mirror — fails the build, so the parity gate
+# is real CI, not just a manual browser session.
+#
+# Self-contained within this repo: the golden embeds each op's bytes (pinned to
+# the workspace corpus by the .NET drift guard), so no cross-repo workspace
+# checkout or token is needed. The parity runner imports only the Ops engine +
+# canonical encoder (no React / DOM / Elmish), so it runs in plain Node — no
+# JSDOM, no npm install.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  fable-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      # Transpile the apply-demo sample. The build does NOT need DEBUG: the
+      # parity runner imports ApplyParity.evalOp directly (the DOM/REPL host in
+      # Main.fs is dead code for this lane). --noCache forces a clean compile so
+      # a stale .fable cache can't mask a real divergence.
+      - name: Fable-build the apply-parity module
+        working-directory: samples/apply-demo
+        run: dotnet fable ApplyDemo.fsproj -o output --noCache
+
+      - name: Assert Fable apply parity against the golden
+        working-directory: samples/apply-demo
+        run: node parity-runner.mjs

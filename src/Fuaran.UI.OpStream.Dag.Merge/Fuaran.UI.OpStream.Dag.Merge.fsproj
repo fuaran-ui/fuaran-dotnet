@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.OpStream.Dag.Merge</PackageId>
+    <Description>M1 branch-merge engine for the Fuaran op-stream DAG (opt-in, rung-4). LCA over the DAG (unique-base), spine replay, fast-forward, and disjoint-(NodeId,facet) auto-merge with a deterministic NodeId-canonical-bytes tie-break (no wall-clock). Merge nodes commit to the canonical encoding of the resulting tree (outcome-hash), so two hosts agree iff they reach the same tree; overlapping changes refuse with the contended cells named. Requires IDagOpStreamSink, so DAG behaviour is structurally unreachable from the linear path. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;op-stream;dag;merge;three-way;content-addressed</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="DagReplay.fs" />
+    <Compile Include="MergeConflict.fs" />
+    <Compile Include="BatchAccept.fs" />
+    <Compile Include="ReassertPin.fs" />
+    <Compile Include="TreeMerge.fs" />
+    <Compile Include="DagPrimacy.fs" />
+    <Compile Include="ValidatorGate.fs" />
+    <!-- Phase 267: replay a mounted guest's interior from its own stream alone,
+         bounded at the Mount anchor (§4o). Needs only DagReplayError + Apply. -->
+    <Compile Include="GuestReplay.fs" />
+    <Compile Include="DagMerge.fs" />
+    <!-- Phase 267: converge a guest's forked stream into the host stream via the
+         shipped Phase-179 merge (LCA = the Mount creation op) (§4o). -->
+    <Compile Include="GuestConvergence.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Dag.Abstractions\Fuaran.UI.OpStream.Dag.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

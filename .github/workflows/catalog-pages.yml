@@ -1,0 +1,96 @@
+name: Catalog reference site
+
+# Phase 169 — build + publish the static component-reference catalog
+# (samples/catalog): the full NodeKind × Tone × Weight × Emphasis matrix, each
+# entry paired with the canonical wire JSON that produces it.
+#
+# Posture (behind the OSS flip): the BUILD runs on every push to main and
+# uploads the static dist/ as a workflow artifact — a NON-PUBLIC staging
+# target, visible only to repo members, with no GitHub Pages dependency, so
+# the lane stays green before the public flip. The public flip is a SINGLE
+# operator action (registered in the roadmap Phase 161 gated/deferred
+# registry): enable GitHub Pages for the repo, then run this workflow via
+# "Run workflow" (workflow_dispatch). The deploy job is gated on that manual
+# trigger, so a routine push never publishes publicly before the flip.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "samples/catalog/**"
+      - "src/Fuaran.UI/**"
+      - "src/Fuaran.UI.Renderer/**"
+      - "src/Fuaran.UI.Ops/**"
+      - "src/Fuaran.UI.OpStream.Abstractions/**"
+      - ".github/workflows/catalog-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: catalog-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Fable is a local dotnet tool; the static build transpiles F# -> JS
+      # before Vite bundles it.
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Install npm deps
+        working-directory: samples/catalog
+        run: npm ci --no-fund --no-audit
+
+      # `npm run build` = `dotnet fable -o output --noCache` then `vite build`.
+      # A "builds clean on .NET but breaks under Fable" regression fails here.
+      - name: Build static site (Fable -> Vite)
+        working-directory: samples/catalog
+        run: npm run build
+
+      # Staging target: a workflow artifact, visible to repo members only — not
+      # a public surface. Always runs; keeps the lane green before the OSS flip.
+      - name: Upload static site (staging artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-site
+          path: samples/catalog/dist
+
+      # Pages artifact — only needed by the gated public deploy job below.
+      - name: Upload Pages artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: samples/catalog/dist
+
+  # Public flip (operator toggle — Phase 161): enable GitHub Pages for the repo,
+  # then run this workflow manually. A routine push never reaches this job.
+  deploy:
+    needs: build
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

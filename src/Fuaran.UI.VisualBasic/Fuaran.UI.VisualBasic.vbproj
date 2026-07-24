@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========================================================================
+       Phase 310 — Fuaran.UI.VisualBasic, the VB.NET XML-literal authoring veneer
+       (§4e). VB authors compose a tree with first-class XML literals
+       (`<Dashboard id="…"><Metric …/></Dashboard>`); this package translates the
+       resulting `XElement` into `Node<obj>` AT RUNTIME and encodes through the
+       shared F# `CanonicalJson` — a veneer over the F# encoder, NOT a parallel
+       codec.
+
+       Reuses Wave 45: the translator drives the C# `Fuaran.*` factories
+       (Fuaran.UI.CSharp), inheriting the FSharp.Core-hiding facade + per-component
+       ARIA-by-construction + the shared encode path. VB references it as a plain
+       .NET library (verified: VB `With { }` sets the C# init-only options records).
+
+       FGP 2 preserved one-way: references Fuaran.UI.CSharp (→ Fuaran.UI / encoder /
+       decode); nothing in those references back.
+       ======================================================================== -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OptionStrict>On</OptionStrict>
+    <OptionExplicit>On</OptionExplicit>
+    <OptionInfer>On</OptionInfer>
+    <!-- VB has no nullable-reference annotations; the C# baseline's Nullable=enable
+         is a no-op noise source here. -->
+    <Nullable>disable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.VisualBasic</PackageId>
+    <Description>Fuaran.UI.VisualBasic — author Fuaran UI trees in VB.NET via first-class XML literals. A runtime XElement → Node&lt;obj&gt; translator over the shared F# encoder; no FSharp.Core types on the boundary. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RootNamespace>Fuaran.UI.VisualBasic</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The C# veneer (Wave 45): the factory surface + FuaranNode + Decode the
+         translator drives. Brings Fuaran.UI + the encoder + Fuaran.UI.Ops transitively. -->
+    <ProjectReference Include="..\Fuaran.UI.CSharp\Fuaran.UI.CSharp.csproj" />
+  </ItemGroup>
+
+</Project>

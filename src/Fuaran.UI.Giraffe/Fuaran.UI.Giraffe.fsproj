@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Giraffe</PackageId>
+    <Description>Fuaran SSR host-integration adapter for Giraffe / ASP.NET (Phase 162). Turns "render this Node tree as a crawlable page" into one HttpHandler call: a typed DocumentShell (title / meta / canonical / OG+Twitter / JSON-LD / stylesheet+script refs) composed around the body fragment Renderer.Server emits, plus a deterministic strong-ETag/304 + render-cache seam (IFuaranRenderCache) for high-fan-out SEO surfaces. Giraffe is isolated to this package — the language tier and Renderer.Server stay Giraffe-free. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;giraffe;ssr;aspnetcore;seo;htmx</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="DocumentShell.fs" />
+    <Compile Include="Caching.fs" />
+    <Compile Include="Handlers.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Server\Fuaran.UI.Renderer.Server.fsproj" />
+    <!-- CanonicalJson.encodeNode — the deterministic tree wire-form the strong
+         ETag hashes. -->
+    <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Feliz.ViewEngine" />
+    <PackageReference Include="Giraffe" />
+  </ItemGroup>
+</Project>

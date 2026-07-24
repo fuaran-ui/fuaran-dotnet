@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Fable client convention: gate every Fable-only file via FABLE_COMPILER
+         + DEBUG so Fable transpiles them but `dotnet build` doesn't try to
+         compile Browser.Types-flavoured code on .NET-side. -->
+    <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG</DefineConstants>
+    <DefineConstants Condition="'$(Configuration)' == 'Release'">FABLE_COMPILER</DefineConstants>
+    <!-- Same pre-F#-10-nullness escape the renderer uses: Feliz / Fable.Elmish
+         pre-date the F# 10 nullness checker; this project consumes them, so
+         the nullness check trips on their source. The typed-tree library
+         Fuaran.UI keeps nullness on. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="index.html" />
+    <None Include="index.css" />
+    <None Include="vite.config.mts" />
+    <None Include="package.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Main.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.LayoutObserver.Abstractions\Fuaran.UI.LayoutObserver.Abstractions.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.LayoutObserver\Fuaran.UI.LayoutObserver.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" />
+    <PackageReference Include="Fable.Elmish" />
+    <PackageReference Include="Fable.Elmish.React" />
+    <PackageReference Include="Feliz" />
+  </ItemGroup>
+</Project>

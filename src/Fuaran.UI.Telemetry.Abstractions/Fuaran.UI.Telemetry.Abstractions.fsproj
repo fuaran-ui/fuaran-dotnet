@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Telemetry.Abstractions</PackageId>
+    <Description>Fuaran op-apply + authorizing-runtime-deny telemetry — type contract and sync fire-and-forget sink interface. The observability counterpart to the Fuaran.UI.Ops apply engine and the downstream orchestration tier's authorizing runtime: every applied op surfaces as an OpApplyTelemetry record; every denied tool call surfaces as a DenyTelemetry record. Hosts implement IFuaranTelemetrySink against their own observability backend; the default sinks live in Fuaran.UI.Telemetry.Default. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;telemetry;observability;op-apply;authorizer</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/ (same convention as
+       Fuaran.UI.OpStream.Abstractions). Telemetry data shapes are
+       Fable-compatible — no closures, no System.Security.Cryptography. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="OpKind.fs" />
+    <Compile Include="OpApplyTelemetry.fs" />
+    <Compile Include="DenyTelemetry.fs" />
+    <Compile Include="RenderFailureTelemetry.fs" />
+    <Compile Include="ProviderCallTelemetry.fs" />
+    <Compile Include="CacheStatTelemetry.fs" />
+    <Compile Include="IFuaranTelemetrySink.fs" />
+    <!-- Phase 270 (§4o): per-guest-scope sink resolution + the scope-attributed
+         warn/trace channel. Compiled after the sink interface it resolves. -->
+    <Compile Include="GuestTelemetry.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <!-- References only the portable TreeOp type contract (Ops.Abstractions),
+         NOT the full Fuaran.UI.Ops package — the apply engine + JSON decoder
+         there use .NET-only reflection patterns and are not Fable-portable, and
+         the Fable client renderer references this telemetry contract, so pulling
+         full Ops broke the renderer's `dotnet fable` graph. -->
+    <ProjectReference Include="..\Fuaran.UI.Ops.Abstractions\Fuaran.UI.Ops.Abstractions.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

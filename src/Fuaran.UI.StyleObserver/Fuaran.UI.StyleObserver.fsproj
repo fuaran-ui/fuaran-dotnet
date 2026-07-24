@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.StyleObserver</PackageId>
+    <Description>Fuaran resolved-style observability concrete observers — BrowserStyleObserver (Fable, getComputedStyle-backed, effective-background composite walk, rAF-debounced) and InMemoryStyleObserver (pure .NET, drives Expecto tests + the eval gate). Companion of Fuaran.UI.StyleObserver.Abstractions; shares all flag-derivation logic. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;style;contrast;accessibility;observability;ai</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/. Browser-only code
+       is guarded inside BrowserStyleObserver.fs with #if FABLE_COMPILER. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ManifestFlags.fs" />
+    <Compile Include="InMemoryStyleObserver.fs" />
+    <Compile Include="BrowserStyleObserver.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.StyleObserver.Abstractions\Fuaran.UI.StyleObserver.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.ThemeManifest\Fuaran.UI.ThemeManifest.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fable.Core" />
+  </ItemGroup>
+</Project>

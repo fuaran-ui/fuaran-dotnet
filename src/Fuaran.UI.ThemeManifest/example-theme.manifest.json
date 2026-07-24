@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "name": "Harbour",
+    "version": "1.0.0",
+    "description": "A neutral demo theme exercising every token category, role binding, and invariant kind. OSS-publishable; no commercial brand names."
+  },
+  "tokens": {
+    "color": {
+      "brand": {
+        "base": {
+          "$type": "color",
+          "$value": "#3b5bdb",
+          "$description": "Primary accent — used sparingly per the usage budget.",
+          "$extensions": { "fuaran": { "role": "brand-accent" } }
+        }
+      },
+      "neutral": {
+        "0": {
+          "$type": "color",
+          "$value": "#ffffff",
+          "$description": "Page surface — the dominant 60% field.",
+          "$extensions": { "fuaran": { "role": "page-surface" } }
+        },
+        "900": {
+          "$type": "color",
+          "$value": "#1a1a1a",
+          "$description": "Body text.",
+          "$extensions": { "fuaran": { "role": "body-text" } }
+        }
+      },
+      "subdued": {
+        "base": { "$type": "color", "$value": "#f1f3f5", "$description": "Muted surface." }
+      },
+      "success": {
+        "base": { "$type": "color", "$value": "#2f9e44", "$description": "Success state." }
+      },
+      "warning": {
+        "base": { "$type": "color", "$value": "#e8590c", "$description": "Warning state." }
+      },
+      "critical": {
+        "base": { "$type": "color", "$value": "#e03131", "$description": "Critical state." }
+      },
+      "info": {
+        "base": { "$type": "color", "$value": "#1971c2", "$description": "Informational accent." }
+      }
+    },
+    "dimension": {
+      "space": {
+        "md": { "$type": "dimension", "$value": "16px", "$description": "Default gap/padding step." }
+      }
+    },
+    "duration": {
+      "motion": {
+        "base": { "$type": "duration", "$value": "240ms", "$description": "Default transition duration." }
+      }
+    }
+  },
+  "roles": [
+    { "role": { "tone": "Brand" }, "token": "color.brand.base" },
+    { "role": { "tone": "Default" }, "token": "color.neutral.0" },
+    { "role": { "tone": "Subdued" }, "token": "color.subdued.base" },
+    { "role": { "tone": "Success" }, "token": "color.success.base" },
+    { "role": { "tone": "Warning" }, "token": "color.warning.base" },
+    { "role": { "tone": "Critical" }, "token": "color.critical.base" },
+    { "role": { "tone": "Info" }, "token": "color.info.base" },
+    { "role": { "named": "page-surface" }, "token": "color.neutral.0" },
+    { "role": { "named": "body-text" }, "token": "color.neutral.900" }
+  ],
+  "invariants": [
+    { "kind": "ContrastFloor", "role": "body-text", "minRatio": 7.0, "weight": 1.0 },
+    { "kind": "UsageBudget", "token": "color.neutral.0", "targetPct": 60.0, "tolerancePct": 10.0, "weight": 1.0 },
+    { "kind": "UsageBudget", "token": "color.brand.base", "targetPct": 9.0, "tolerancePct": 3.0, "weight": 1.0 },
+    { "kind": "MotionVoice", "maxDurationMs": 240, "easing": "ease-out", "weight": 0.5 }
+  ]
+}

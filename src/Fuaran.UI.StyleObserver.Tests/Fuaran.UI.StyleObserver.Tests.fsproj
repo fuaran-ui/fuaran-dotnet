@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="FlagDerivationTests.fs" />
+    <Compile Include="InMemoryStyleObserverTests.fs" />
+    <Compile Include="ManifestFlagTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.StyleObserver.Abstractions\Fuaran.UI.StyleObserver.Abstractions.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.StyleObserver\Fuaran.UI.StyleObserver.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.ThemeManifest\Fuaran.UI.ThemeManifest.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

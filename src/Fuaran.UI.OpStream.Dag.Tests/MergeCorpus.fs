@@ -1,0 +1,192 @@
+module Fuaran.UI.OpStream.Dag.Tests.MergeCorpus
+
+open System.IO
+open Fuaran.UI
+open Fuaran.UI.Types
+open Fuaran.UI.Ops.Types
+open Fuaran.UI.OpStream.Abstractions
+open Fuaran.UI.OpStream.Dag.Merge
+open Fuaran.UI.OpStream.Dag.Tests.TestSupport
+
+// ============================================================================
+//  Merge-conformance corpus (Phase 179, additive).
+//
+//  Each fixture is a `(base, A, B) → expected merged tree + outcome hash` triad
+//  exercising the DETERMINISTIC tree-merge primitive `TreeMerge.merge3Way`
+//  (auto-merge cases only — disjoint edits, SemanticStyle sub-field blend, and
+//  the NodeId-byte structural-insert tie-break). The committed `expected` bytes
+//  + outcome hash ARE the F# merge output; both conformant hosts (F# + the TS
+//  `@fuaran-ui/ops` merge port) must reproduce them byte-for-byte. The
+//  recursive-base (criss-cross) reduction is a fold of this same primitive
+//  (covered F#-side by the order-independence test), so a host-identical
+//  tree-merge makes the recursive-base host-identical by construction.
+//
+//  Regenerate (from fuaran/):
+//      dotnet run --project src/Fuaran.UI.OpStream.Dag.Tests -- --emit-merge-corpus ..\wire-format-fixtures
+// ============================================================================
+
+let private style (f: SemanticStyle -> SemanticStyle) (id: NodeId) : TreeOp<TestMsg> =
+    TreeOp.UpdateStyle(id, f Defaults.style)
+
+/// `(id, description, base, a, b)` — closure-free trees so the corpus payloads
+/// round-trip through the canonical encoder.
+let fixtures: (string * string * Node<TestMsg> * Node<TestMsg> * Node<TestMsg>) list =
+    let baseTree = buildDashboard ()
+
+    // 1. Disjoint edits to different nodes.
+    let disjointA =
+        baseTree
+        |> applyOk (style (fun s -> { s with Tone = ToneVariant.Brand }) leftChildId)
+
+    let disjointB =
+        baseTree
+        |> applyOk (style (fun s -> { s with Tone = ToneVariant.Success }) rightChildId)
+
+    // 2. SemanticStyle sub-field blend on the SAME node.
+    let blendA =
+        baseTree
+        |> applyOk (style (fun s -> { s with Tone = ToneVariant.Brand }) leftChildId)
+
+    let blendB =
+        baseTree
+        |> applyOk (style (fun s -> { s with Voice = FontVoice.Display }) leftChildId)
+
+    // 3. Disjoint structural inserts (NodeId-byte tie-break).
+    let insA =
+        baseTree
+        |> applyOk (TreeOp.InsertChild(dashboardId, 2, Fuaran.markdown "zzz" "Z"))
+
+    let insB =
+        baseTree
+        |> applyOk (TreeOp.InsertChild(dashboardId, 2, Fuaran.markdown "aaa" "A"))
+
+    [ "merge-disjoint", "Disjoint edits to different nodes (left tone vs right tone)", baseTree, disjointA, disjointB
+      "merge-style-blend", "SemanticStyle sub-field blend (A tone + B voice on the same node)", baseTree, blendA, blendB
+      "merge-insert-tiebreak", "Disjoint structural inserts, NodeId-byte tie-break", baseTree, insA, insB ]
+
+/// The merged tree for a fixture (auto-merge — all corpus fixtures are
+/// conflict-free by construction).
+let mergedOf (baseT: Node<TestMsg>) (a: Node<TestMsg>) (b: Node<TestMsg>) : Node<TestMsg> =
+    match TreeMerge.merge3Way baseT a b with
+    | Ok merged -> merged
+    | Error conflicts -> failwithf "merge-corpus fixture is not conflict-free: %A" conflicts
+
+// ── validator-gated fixtures (Phase 184) ────────────────────────────────────
+//
+// A structurally-clean, NodeId-disjoint merge that nonetheless INTRODUCES a
+// domain-validity defect is a semantic conflict. The deterministic artifact is
+// the VERDICT — the introduced-defect set canonically encoded — not a merged
+// tree. A conformant host (the TS `@fuaran-ui/ops` merge port, Leg B) ports the
+// sample validator below + `encodeVerdict` and must reproduce the verdict bytes
+// + hash. The validator invariant is intentionally tiny + host-portable.
+
+/// The sample DOMAIN validator the gated fixtures certify against: "at most one
+/// `Brand`-toned pane per dashboard". Each offending child is a defect on its
+/// `style.tone` cell. A host MUST port this exact invariant to reproduce the
+/// verdict.
+let private rawId (NodeId s) : string = s
+
+let gatedValidator: MergeValidator<TestMsg> =
+    fun tree ->
+        match tree.Kind with
+        | NodeKind.Layout(LayoutKind.Box spec) ->
+            let brandKids =
+                spec.Children |> List.filter (fun c -> c.Style.Tone = ToneVariant.Brand)
+
+            if List.length brandKids > 1 then
+                brandKids
+                |> List.map (fun c ->
+                    { Code = "TESTBRAND001"
+                      NodeId = rawId c.Id
+                      Facet = "style.tone"
+                      Message =
+                        sprintf
+                            "Pane '%s' shares Brand tone with a sibling — at most one Brand pane per dashboard."
+                            (rawId c.Id) })
+            else
+                []
+        | _ -> []
+
+/// `(id, description, base, a, b)` triads whose disjoint structural merge
+/// INTRODUCES a defect under `gatedValidator` (present in the merged tree but in
+/// neither parent).
+let gatedFixtures: (string * string * Node<TestMsg> * Node<TestMsg> * Node<TestMsg>) list =
+    let baseTree = buildDashboard ()
+
+    // base: neither pane Brand. A makes LEFT Brand, B makes RIGHT Brand — each
+    // branch alone is legal (one Brand pane); the merge has two (the invariant
+    // violation the merge introduced).
+    let brandA =
+        baseTree
+        |> applyOk (style (fun s -> { s with Tone = ToneVariant.Brand }) leftChildId)
+
+    let brandB =
+        baseTree
+        |> applyOk (style (fun s -> { s with Tone = ToneVariant.Brand }) rightChildId)
+
+    [ "merge-validator-gated-brand",
+      "Disjoint Brand-tone edits to sibling panes — the merge introduces a duplicate-Brand sibling-invariant violation",
+      baseTree,
+      brandA,
+      brandB ]
+
+/// The introduced-defect VERDICT for a gated fixture: auto-merge structurally,
+/// then diff the merged tree's defects against both parents'.
+let verdictOf (baseT: Node<TestMsg>) (a: Node<TestMsg>) (b: Node<TestMsg>) : MergeDefect list =
+    match TreeMerge.merge3Way baseT a b with
+    | Ok merged -> ValidatorGate.introducedDefects gatedValidator a b merged
+    | Error conflicts -> failwithf "gated merge-corpus fixture is not structurally clean: %A" conflicts
+
+let emit (root: string) : unit =
+    let dir = Path.Combine(root, "merge-conformance")
+    Directory.CreateDirectory dir |> ignore
+    let entries = ResizeArray<string>()
+
+    for (id, description, baseT, a, b) in fixtures do
+        let merged = mergedOf baseT a b
+        let outcomeHash = CanonicalJson.encodeNode merged |> HashChain.sha256Hex
+        File.WriteAllText(Path.Combine(dir, id + ".base.json"), CanonicalJson.encodeNode baseT)
+        File.WriteAllText(Path.Combine(dir, id + ".a.json"), CanonicalJson.encodeNode a)
+        File.WriteAllText(Path.Combine(dir, id + ".b.json"), CanonicalJson.encodeNode b)
+        File.WriteAllText(Path.Combine(dir, id + ".expected.json"), CanonicalJson.encodeNode merged)
+
+        entries.Add(
+            sprintf
+                "    {\n      \"id\": \"%s\",\n      \"kind\": \"merge-3way\",\n      \"baseFile\": \"%s.base.json\",\n      \"aFile\": \"%s.a.json\",\n      \"bFile\": \"%s.b.json\",\n      \"expectedFile\": \"%s.expected.json\",\n      \"outcomeHash\": \"%s\",\n      \"description\": \"%s\"\n    }"
+                id
+                id
+                id
+                id
+                id
+                outcomeHash
+                description
+        )
+
+    // validator-gated (Phase 184): the deterministic artifact is the verdict
+    // (the introduced-defect set canonically encoded) + its hash.
+    for (id, description, baseT, a, b) in gatedFixtures do
+        let verdictJson = verdictOf baseT a b |> ValidatorGate.encodeVerdict
+        let verdictHash = verdictJson |> HashChain.sha256Hex
+        File.WriteAllText(Path.Combine(dir, id + ".base.json"), CanonicalJson.encodeNode baseT)
+        File.WriteAllText(Path.Combine(dir, id + ".a.json"), CanonicalJson.encodeNode a)
+        File.WriteAllText(Path.Combine(dir, id + ".b.json"), CanonicalJson.encodeNode b)
+        File.WriteAllText(Path.Combine(dir, id + ".verdict.json"), verdictJson)
+
+        entries.Add(
+            sprintf
+                "    {\n      \"id\": \"%s\",\n      \"kind\": \"merge-validator-gated\",\n      \"baseFile\": \"%s.base.json\",\n      \"aFile\": \"%s.a.json\",\n      \"bFile\": \"%s.b.json\",\n      \"verdictFile\": \"%s.verdict.json\",\n      \"verdictHash\": \"%s\",\n      \"description\": \"%s\"\n    }"
+                id
+                id
+                id
+                id
+                id
+                verdictHash
+                description
+        )
+
+    let manifest =
+        "{\n  \"version\": 1,\n  \"description\": \"Fuaran merge-conformance corpus (Phase 179 + 184, additive). merge-3way: decode base/a/b, run the deterministic 3-way tree merge, assert byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-validator-gated (Phase 184): run the documented sample validator over the auto-merge, diff introduced defects vs both parents, assert encodeVerdict(introduced) byte-equal to verdictFile and sha256(verdict) == verdictHash. See fuaran/docs/WIRE_FORMAT.md.\",\n  \"fixtures\": [\n"
+        + System.String.Join(",\n", entries)
+        + "\n  ]\n}\n"
+
+    File.WriteAllText(Path.Combine(dir, "manifest.json"), manifest)
