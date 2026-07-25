@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Fable client convention: gate every Fable-only file via FABLE_COMPILER
+         + DEBUG so Fable transpiles them but `dotnet build` doesn't try to
+         compile Browser.Types-flavoured code on the .NET side. -->
+    <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG</DefineConstants>
+    <DefineConstants Condition="'$(Configuration)' == 'Release'">FABLE_COMPILER</DefineConstants>
+    <!-- Feliz / Fable.Elmish pre-date the F# 10 nullness checker; this project
+         consumes them, so the nullness check trips on their source. The typed-tree
+         library Fuaran.UI keeps nullness on. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Turn.fs is PORTABLE (no Fable, no Elmish, no HTTP) and is compile-linked
+         into the test project so the turn-loop logic is unit-tested on .NET. -->
+    <Compile Include="Turn.fs" />
+    <Compile Include="App.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The browser half speaks the wire contract directly: the canonical
+         decoder + the reference renderer. Deliberately NOT Fuaran.UI.Client —
+         that tier is plain .NET and lives on the server side of the proxy. -->
+    <ProjectReference Include="..\..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\..\..\src\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+    <ProjectReference Include="..\..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" />
+    <PackageReference Include="Fable.Fetch" />
+    <PackageReference Include="Fable.Elmish" />
+    <PackageReference Include="Fable.Elmish.React" />
+    <PackageReference Include="Feliz" />
+  </ItemGroup>
+</Project>

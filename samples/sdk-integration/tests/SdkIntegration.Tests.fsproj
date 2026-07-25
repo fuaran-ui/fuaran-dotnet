@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The Elmish turn-loop is PORTABLE (no Fable, no Elmish, no HTTP), so it
+         is compile-linked here rather than dragging the Fable client project
+         (and its Feliz/Elmish graph) into the test build — the same pattern
+         Fuaran.UI.Tests uses for the sample themes. This is what keeps the
+         sample's logic from bitrotting. -->
+    <Compile Include="..\client\Turn.fs">
+      <Link>Turn.fs</Link>
+    </Compile>
+    <Compile Include="TurnTests.fs" />
+    <Compile Include="ProxyTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\server\SdkIntegration.Server.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

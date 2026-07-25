@@ -40,6 +40,12 @@
     <PackageVersion Include="Fable.Elmish" Version="5.0.2" />
     <PackageVersion Include="Fable.Elmish.React" Version="5.6" />
     <PackageVersion Include="Fable.SimpleJson" Version="3.24" />
+    <!-- Fable's typed `fetch` binding — consumed ONLY by
+         samples/sdk-integration/client, the browser half of the server-proxied
+         BYOK sample (the browser speaks the wire contract directly; the .NET
+         Fuaran.UI.Client sits on the server side of the proxy). No shipping
+         Fuaran.UI.* package takes this dependency. -->
+    <PackageVersion Include="Fable.Fetch" Version="2.7.0" />
     <PackageVersion Include="Feliz" Version="3.3.3" />
     <!-- Server-side rendering (Phase 140). Feliz.ViewEngine emits HTML strings
          on plain .NET (no React / Fable) with the same Feliz-shaped API as the
