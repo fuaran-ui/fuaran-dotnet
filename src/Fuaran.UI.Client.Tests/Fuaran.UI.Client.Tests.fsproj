@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="MockTransport.fs" />
     <Compile Include="ClientTests.fs" />
+    <Compile Include="RepairTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

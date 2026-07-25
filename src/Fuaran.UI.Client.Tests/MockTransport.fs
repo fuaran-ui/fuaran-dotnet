@@ -34,6 +34,37 @@ type MockTransport(reply: HttpResult, ?throwWith: exn) =
                 | None -> return reply
             }
 
+/// A transport that replays a scripted sequence of replies (one per call), so a
+/// repair loop can be driven fail → fail → produced. Records every request.
+type ScriptedTransport(replies: HttpResult list) =
+    let mutable remaining = replies
+    let mutable requests: CapturedRequest list = []
+
+    /// Every request seen, in call order.
+    member _.Requests = List.rev requests
+
+    /// How many turns the transport served.
+    member _.CallCount = List.length requests
+
+    interface IFuaranTransport with
+        member _.Send(endpoint, headers, body) =
+            async {
+                requests <-
+                    { Endpoint = endpoint
+                      Headers = headers
+                      Body = body }
+                    :: requests
+
+                match remaining with
+                | reply :: rest ->
+                    remaining <- rest
+                    return reply
+                | [] ->
+                    return
+                        { Status = 200
+                          Body = """{"TreeJson":"t","Ops":[],"Version":"1.2.0"}""" }
+            }
+
 [<RequireQualifiedAccess>]
 module MockTransport =
 

@@ -11,6 +11,7 @@
     <Compile Include="Contract.fs" />
     <Compile Include="Wire.fs" />
     <Compile Include="Client.fs" />
+    <Compile Include="Repair.fs" />
     <Compile Include="Session.fs" />
   </ItemGroup>
   <ItemGroup>
