@@ -222,6 +222,176 @@ type PreEmitDefect =
     /// grid node's id.
     | InertEditableGrid of nodeId: string
 
+/// Render a defect as its stable (code, severity, message) triple — the ONE
+/// projection every consumer shares (the .NET validator oracle, certification
+/// counterexamples, and Fable-side hosts surfacing advisories to a model).
+/// Exhaustive by construction: a new defect case cannot ship without its code.
+/// Severity of a described defect. Local to this module (not `Fuaran.Core.Severity`)
+/// so `Fuaran.UI` keeps its lean dependency set; the .NET validator maps it to the
+/// Core type at its own boundary.
+[<RequireQualifiedAccess>]
+type DefectSeverity =
+    | Error
+    | Warning
+
+let describe (d: PreEmitDefect) : string * DefectSeverity * string =
+    match d with
+    | PreEmitDefect.DuplicateNodeId(id, count) ->
+        "FUARAN-DUP-ID", DefectSeverity.Error, sprintf "node id '%s' appears %d times" id count
+    | PreEmitDefect.EmptyNodeId -> "FUARAN-EMPTY-ID", DefectSeverity.Error, "a node carries an empty id"
+    | PreEmitDefect.EmptyCustomKindIdentifier(m, c) ->
+        "FUARAN-EMPTY-CUSTOM",
+        DefectSeverity.Error,
+        sprintf "Custom node has empty moduleId='%s' / componentId='%s'" m c
+    | PreEmitDefect.CustomPropSchemaViolation(nodeId, moduleId, componentId, propDefects) ->
+        "FUARAN068",
+        DefectSeverity.Error,
+        sprintf
+            "custom node '%s' (%s/%s) violates its declared prop schema — %d prop defect(s)"
+            nodeId
+            moduleId
+            componentId
+            (List.length propDefects)
+    | PreEmitDefect.TabHeaderCountMismatch(nodeId, headerCount, childrenCount) ->
+        "FUARAN047",
+        DefectSeverity.Error,
+        sprintf
+            "tabs '%s' declares %d headers but %d children — the renderer aligns headers 1:1 with children by index"
+            nodeId
+            headerCount
+            childrenCount
+    | PreEmitDefect.TabTagCountMismatch(nodeId, tagCount, childrenCount) ->
+        "FUARAN048",
+        DefectSeverity.Error,
+        sprintf
+            "tabs '%s' declares %d tags but %d children — the tag → index round-trip needs parity"
+            nodeId
+            tagCount
+            childrenCount
+    | PreEmitDefect.TabActiveTagWithoutTags nodeId ->
+        "FUARAN049",
+        DefectSeverity.Warning,
+        sprintf "tabs '%s' sets ActiveTag but TabTags = None — the tag binding has nothing to resolve against" nodeId
+    | PreEmitDefect.DecorativeFilter(declaringNodeId, name) ->
+        "FUARAN074",
+        DefectSeverity.Warning,
+        sprintf
+            "filter '%s' (declared on '%s') is consumed by nothing — no Binding.Filter read, Query.dependsOn, or Transform param references it"
+            name
+            declaringNodeId
+    | PreEmitDefect.DanglingFilterReference(readerNodeId, name) ->
+        "FUARAN075",
+        DefectSeverity.Error,
+        sprintf
+            "'%s' declares a filter edge on '%s' (dependsOn / Transform param source) but no Filters chip declares that name"
+            readerNodeId
+            name
+    | PreEmitDefect.UnreferencedTransformParam(readerNodeId, name) ->
+        "FUARAN076",
+        DefectSeverity.Warning,
+        sprintf "'%s' declares Transform param '%s' but the pipeline never references it (paramsOf)" readerNodeId name
+    | PreEmitDefect.BlankGridColumn(nodeId, columnLabel) ->
+        "FUARAN077",
+        DefectSeverity.Warning,
+        sprintf "grid '%s' column '%s' has neither a value closure nor a field — it renders blank" nodeId columnLabel
+    | PreEmitDefect.UnstableRowIdentity nodeId ->
+        "FUARAN078",
+        DefectSeverity.Warning,
+        sprintf "grid '%s' has neither rowKey nor rowKeyField — no stable row identity" nodeId
+    | PreEmitDefect.OrphanQueryFetch(readerNodeId, queryName) ->
+        "FUARAN072",
+        DefectSeverity.Warning,
+        sprintf
+            "'%s' calls into Query '%s' but no Binding.Query in the tree reads that slot — an orphan fetch (name typo?)"
+            readerNodeId
+            queryName
+    | PreEmitDefect.CallResultDropped(readerNodeId, endpoint) ->
+        "FUARAN073",
+        DefectSeverity.Warning,
+        sprintf
+            "'%s' calls '%s' with neither an onResult closure nor an into target — the response is dropped (fine for a command endpoint; add into for data)"
+            readerNodeId
+            endpoint
+    | PreEmitDefect.DanglingSelection(readerNodeId, target) ->
+        "FUARAN070",
+        DefectSeverity.Error,
+        sprintf
+            "'%s' reads Binding.Selection on '%s' but no node with that id exists — point the binding at the selection-producing node's id"
+            readerNodeId
+            target
+    | PreEmitDefect.SelectionOverNonProducer(readerNodeId, target) ->
+        "FUARAN071",
+        DefectSeverity.Warning,
+        sprintf
+            "'%s' reads Binding.Selection on '%s', which is not a selection-producing (Visualisation) node — nothing in the tree will write that selection"
+            readerNodeId
+            target
+    | PreEmitDefect.DuplicateWriteBackKey(stateKey, writers) ->
+        "FUARAN085",
+        DefectSeverity.Warning,
+        sprintf
+            "state key '%s' has %d handler-free write-back writers (%s) — typing in one silently overwrites the other's captured value; give each field its own key"
+            stateKey
+            (List.length writers)
+            (writers
+             |> List.map (fun (nid, fid) -> sprintf "%s/%s" nid fid)
+             |> String.concat ", ")
+    | PreEmitDefect.InertControl(nodeId, control) ->
+        "FUARAN069",
+        DefectSeverity.Warning,
+        sprintf
+            "%s on '%s' has no event handler and no writable value binding — bind its value to $state.<key> / $filters.<name>, or supply the handler (Phase 426 write-back default)"
+            control
+            nodeId
+    | PreEmitDefect.DuplicateSwitchMatch(nodeId, matchValue) ->
+        "FUARAN082",
+        DefectSeverity.Error,
+        sprintf
+            "Switch '%s' has two or more cases matching '%s' — first-match-wins makes the later case dead; give each case a distinct match value (Phase 392)"
+            nodeId
+            matchValue
+    | PreEmitDefect.UngroundedSwitchStateKey nodeId ->
+        "FUARAN083",
+        DefectSeverity.Warning,
+        sprintf
+            "Switch '%s' has an empty stateKey — it can never resolve a case and is stuck on its default; name the state key the switch selects on (Phase 392)"
+            nodeId
+    | PreEmitDefect.ChartFieldUngrounded(nodeId, field) ->
+        "FUARAN086",
+        DefectSeverity.Error,
+        sprintf
+            "chart '%s' references field '%s' absent from its statically-known data schema — it would lower silently flat/empty (Phase 640)"
+            nodeId
+            field
+    | PreEmitDefect.ChartFieldTypeMismatch(nodeId, field, columnType) ->
+        "FUARAN087",
+        DefectSeverity.Error,
+        sprintf
+            "chart '%s' plots field '%s' of type '%s' — the lowering reads non-numeric cells as 0.0, a silently flat series (Phase 640)"
+            nodeId
+            field
+            columnType
+    | PreEmitDefect.ChartPieSeriesShape(nodeId, seriesCount) ->
+        "FUARAN088",
+        DefectSeverity.Error,
+        sprintf
+            "pie chart '%s' declares %d series — the pie lowering refuses anything but exactly one (no silent truncation; Phase 638/640)"
+            nodeId
+            seriesCount
+    | PreEmitDefect.ChartStackedMeaningless(nodeId, kind) ->
+        "FUARAN089",
+        DefectSeverity.Warning,
+        sprintf
+            "chart '%s' sets Stacked=true on kind %s — the lowering ignores it (dead intent; Phase 637/640)"
+            nodeId
+            kind
+    | PreEmitDefect.InertEditableGrid nodeId ->
+        "FUARAN090",
+        DefectSeverity.Warning,
+        sprintf
+            "grid '%s' sets editable=true but its source is not a direct $state binding — edits have nowhere to go, every cell renders read-only; source the grid (and any chart that should track edits) from a shared {\"$type\":\"State\",\"key\":…,\"default\":[rows]} binding"
+            nodeId
+
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
 /// `validate` passes a no-op; `validateWithRegistry` passes the registry's
