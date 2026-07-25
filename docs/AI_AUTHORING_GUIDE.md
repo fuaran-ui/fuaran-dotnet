@@ -707,6 +707,7 @@ Use this shape when the model-side active-tab state is a DU rather than an int. 
 | **FUARAN076** | Warning | A `Transform` `params` entry names a param the **pipeline never references** (`paramsOf`) – dead weight; rename the param or the pipeline reference. |
 | **FUARAN077** | Warning | A grid column has **neither `value` nor `field`** – it renders blank in every host (Phase 425). Always give a decoded column a `field`. |
 | **FUARAN078** | Warning | A `DataGrid` has **neither `rowKey` nor `rowKeyField`** – no stable row identity, so selection highlighting (Phase 427) and keyed diffing degrade. Give the grid a `rowKeyField`. |
+| **FUARAN090** | Warning | A `DataGrid` sets `editable: true` but its `source` is **not directly a `$state` binding** – edits have nowhere to go (a `Transform` pipeline is not invertible; `Static` rows are host data), so every cell renders read-only (Phase 663). Source the grid – and every reader that should track edits – from a shared `{"$type":"State","key":…,"defaultValue":[rows]}` binding. |
 
 `PreEmitValidate.validate` reports all of these; fix every reported defect before submitting the tree.
 
@@ -876,6 +877,20 @@ The renderer projects each `field` off the row (a `Transform` produces rows keye
 ```
 
 Give the grid a `rowKeyField` (stable identity – it also drives the selected-row highlight). The `nodeId` must name a real, selection-producing node: a `Selection` over an id absent from the tree is FUARAN070 (error); over a non-Visualisation node, FUARAN071 (warn). A present `onRowClick` closure wins and suppresses the default write.
+
+**An editable grid is the write-back default applied to rows (Phase 663).** `"editable": true` has semantics only when the grid's `source` is **directly** a `$state` binding carrying the rows as its default:
+
+```json
+{ "id": "perf-grid", "kind": { "$type": "DataGrid", "editable": true, "rowKeyField": "quarter",
+  "columns": [ …field-named Text/Numeric columns… ],
+  "source": { "$type": "State", "key": "perf-rows",
+              "defaultValue": [ { "quarter": "Q1", "revenue": 120 }, { "quarter": "Q2", "revenue": 150 } ] } } }
+{ "id": "perf-chart", "kind": { "$type": "Chart", "kind": "Bar", "xField": "quarter", "yFields": ["revenue"],
+  "source": { "$type": "State", "key": "perf-rows",
+              "defaultValue": [ { "quarter": "Q1", "revenue": 120 }, { "quarter": "Q2", "revenue": 150 } ] } } }
+```
+
+The renderer turns each field-named Text/Numeric cell into an input and commits the updated rows to the key on every edit; the chart on the same key re-renders live. `"editable": true` over a `Transform`/`Static` source is inert (the data is not writable – every cell renders read-only) and draws **FUARAN090** (warn). A `Transform` pipeline cannot read the edited rows back, so keep every edit-tracking reader on the plain `$state` source. Date columns and row add/remove are not part of the floor.
 
 ### The control write-back default – every interactive control is self-wiring (Phase 426)
 

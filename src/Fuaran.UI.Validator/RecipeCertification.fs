@@ -143,161 +143,18 @@ let private rawId (NodeId s) : string = s
 // ─── The validity ORACLE — PreEmitValidate as a Core Validator.Registry ─────
 
 /// Render a `PreEmitValidate.PreEmitDefect` as a stable (code, severity,
-/// message) triple. The codes mirror the shipped FUARAN* vocabulary so a
-/// certification counterexample reads identically to a runtime / build-time
-/// defect.
+/// message) triple. The projection itself lives beside the DU
+/// (`PreEmitValidate.describe`, Phase 664) so every consumer — this oracle,
+/// certification counterexamples, Fable-side hosts — shares one vocabulary.
 let private renderPreEmitDefect (d: PreEmitValidate.PreEmitDefect) : string * Fuaran.Core.Severity * string =
-    match d with
-    | PreEmitValidate.PreEmitDefect.DuplicateNodeId(id, count) ->
-        "FUARAN-DUP-ID", Fuaran.Core.Severity.Error, sprintf "node id '%s' appears %d times" id count
-    | PreEmitValidate.PreEmitDefect.EmptyNodeId ->
-        "FUARAN-EMPTY-ID", Fuaran.Core.Severity.Error, "a node carries an empty id"
-    | PreEmitValidate.PreEmitDefect.EmptyCustomKindIdentifier(m, c) ->
-        "FUARAN-EMPTY-CUSTOM",
-        Fuaran.Core.Severity.Error,
-        sprintf "Custom node has empty moduleId='%s' / componentId='%s'" m c
-    | PreEmitValidate.PreEmitDefect.CustomPropSchemaViolation(nodeId, moduleId, componentId, propDefects) ->
-        "FUARAN068",
-        Fuaran.Core.Severity.Error,
-        sprintf
-            "custom node '%s' (%s/%s) violates its declared prop schema — %d prop defect(s)"
-            nodeId
-            moduleId
-            componentId
-            (List.length propDefects)
-    | PreEmitValidate.PreEmitDefect.TabHeaderCountMismatch(nodeId, headerCount, childrenCount) ->
-        "FUARAN047",
-        Fuaran.Core.Severity.Error,
-        sprintf
-            "tabs '%s' declares %d headers but %d children — the renderer aligns headers 1:1 with children by index"
-            nodeId
-            headerCount
-            childrenCount
-    | PreEmitValidate.PreEmitDefect.TabTagCountMismatch(nodeId, tagCount, childrenCount) ->
-        "FUARAN048",
-        Fuaran.Core.Severity.Error,
-        sprintf
-            "tabs '%s' declares %d tags but %d children — the tag → index round-trip needs parity"
-            nodeId
-            tagCount
-            childrenCount
-    | PreEmitValidate.PreEmitDefect.TabActiveTagWithoutTags nodeId ->
-        "FUARAN049",
-        Fuaran.Core.Severity.Warning,
-        sprintf "tabs '%s' sets ActiveTag but TabTags = None — the tag binding has nothing to resolve against" nodeId
-    | PreEmitValidate.PreEmitDefect.DecorativeFilter(declaringNodeId, name) ->
-        "FUARAN074",
-        Fuaran.Core.Severity.Warning,
-        sprintf
-            "filter '%s' (declared on '%s') is consumed by nothing — no Binding.Filter read, Query.dependsOn, or Transform param references it"
-            name
-            declaringNodeId
-    | PreEmitValidate.PreEmitDefect.DanglingFilterReference(readerNodeId, name) ->
-        "FUARAN075",
-        Fuaran.Core.Severity.Error,
-        sprintf
-            "'%s' declares a filter edge on '%s' (dependsOn / Transform param source) but no Filters chip declares that name"
-            readerNodeId
-            name
-    | PreEmitValidate.PreEmitDefect.UnreferencedTransformParam(readerNodeId, name) ->
-        "FUARAN076",
-        Fuaran.Core.Severity.Warning,
-        sprintf "'%s' declares Transform param '%s' but the pipeline never references it (paramsOf)" readerNodeId name
-    | PreEmitValidate.PreEmitDefect.BlankGridColumn(nodeId, columnLabel) ->
-        "FUARAN077",
-        Fuaran.Core.Severity.Warning,
-        sprintf "grid '%s' column '%s' has neither a value closure nor a field — it renders blank" nodeId columnLabel
-    | PreEmitValidate.PreEmitDefect.UnstableRowIdentity nodeId ->
-        "FUARAN078",
-        Fuaran.Core.Severity.Warning,
-        sprintf "grid '%s' has neither rowKey nor rowKeyField — no stable row identity" nodeId
-    | PreEmitValidate.PreEmitDefect.OrphanQueryFetch(readerNodeId, queryName) ->
-        "FUARAN072",
-        Fuaran.Core.Severity.Warning,
-        sprintf
-            "'%s' calls into Query '%s' but no Binding.Query in the tree reads that slot — an orphan fetch (name typo?)"
-            readerNodeId
-            queryName
-    | PreEmitValidate.PreEmitDefect.CallResultDropped(readerNodeId, endpoint) ->
-        "FUARAN073",
-        Fuaran.Core.Severity.Warning,
-        sprintf
-            "'%s' calls '%s' with neither an onResult closure nor an into target — the response is dropped (fine for a command endpoint; add into for data)"
-            readerNodeId
-            endpoint
-    | PreEmitValidate.PreEmitDefect.DanglingSelection(readerNodeId, target) ->
-        "FUARAN070",
-        Fuaran.Core.Severity.Error,
-        sprintf
-            "'%s' reads Binding.Selection on '%s' but no node with that id exists — point the binding at the selection-producing node's id"
-            readerNodeId
-            target
-    | PreEmitValidate.PreEmitDefect.SelectionOverNonProducer(readerNodeId, target) ->
-        "FUARAN071",
-        Fuaran.Core.Severity.Warning,
-        sprintf
-            "'%s' reads Binding.Selection on '%s', which is not a selection-producing (Visualisation) node — nothing in the tree will write that selection"
-            readerNodeId
-            target
-    | PreEmitValidate.PreEmitDefect.DuplicateWriteBackKey(stateKey, writers) ->
-        "FUARAN085",
-        Fuaran.Core.Severity.Warning,
-        sprintf
-            "state key '%s' has %d handler-free write-back writers (%s) — typing in one silently overwrites the other's captured value; give each field its own key"
-            stateKey
-            (List.length writers)
-            (writers
-             |> List.map (fun (nid, fid) -> sprintf "%s/%s" nid fid)
-             |> String.concat ", ")
-    | PreEmitValidate.PreEmitDefect.InertControl(nodeId, control) ->
-        "FUARAN069",
-        Fuaran.Core.Severity.Warning,
-        sprintf
-            "%s on '%s' has no event handler and no writable value binding — bind its value to $state.<key> / $filters.<name>, or supply the handler (Phase 426 write-back default)"
-            control
-            nodeId
-    | PreEmitValidate.PreEmitDefect.DuplicateSwitchMatch(nodeId, matchValue) ->
-        "FUARAN082",
-        Fuaran.Core.Severity.Error,
-        sprintf
-            "Switch '%s' has two or more cases matching '%s' — first-match-wins makes the later case dead; give each case a distinct match value (Phase 392)"
-            nodeId
-            matchValue
-    | PreEmitValidate.PreEmitDefect.UngroundedSwitchStateKey nodeId ->
-        "FUARAN083",
-        Fuaran.Core.Severity.Warning,
-        sprintf
-            "Switch '%s' has an empty stateKey — it can never resolve a case and is stuck on its default; name the state key the switch selects on (Phase 392)"
-            nodeId
-    | PreEmitValidate.PreEmitDefect.ChartFieldUngrounded(nodeId, field) ->
-        "FUARAN086",
-        Fuaran.Core.Severity.Error,
-        sprintf
-            "chart '%s' references field '%s' absent from its statically-known data schema — it would lower silently flat/empty (Phase 640)"
-            nodeId
-            field
-    | PreEmitValidate.PreEmitDefect.ChartFieldTypeMismatch(nodeId, field, columnType) ->
-        "FUARAN087",
-        Fuaran.Core.Severity.Error,
-        sprintf
-            "chart '%s' plots field '%s' of type '%s' — the lowering reads non-numeric cells as 0.0, a silently flat series (Phase 640)"
-            nodeId
-            field
-            columnType
-    | PreEmitValidate.PreEmitDefect.ChartPieSeriesShape(nodeId, seriesCount) ->
-        "FUARAN088",
-        Fuaran.Core.Severity.Error,
-        sprintf
-            "pie chart '%s' declares %d series — the pie lowering refuses anything but exactly one (no silent truncation; Phase 638/640)"
-            nodeId
-            seriesCount
-    | PreEmitValidate.PreEmitDefect.ChartStackedMeaningless(nodeId, kind) ->
-        "FUARAN089",
-        Fuaran.Core.Severity.Warning,
-        sprintf
-            "chart '%s' sets Stacked=true on kind %s — the lowering ignores it (dead intent; Phase 637/640)"
-            nodeId
-            kind
+    let code, severity, message = PreEmitValidate.describe d
+
+    let coreSeverity =
+        match severity with
+        | PreEmitValidate.DefectSeverity.Error -> Fuaran.Core.Severity.Error
+        | PreEmitValidate.DefectSeverity.Warning -> Fuaran.Core.Severity.Warning
+
+    code, coreSeverity, message
 
 /// The UI validity oracle as a `Fuaran.Core.Validator.Registry<Node<'Msg>,
 /// NodeId>`: one rule family that runs the shipped `PreEmitValidate` tree walk

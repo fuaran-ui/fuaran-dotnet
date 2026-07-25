@@ -1580,6 +1580,18 @@ only when you mean it, and only a case from the list above; an unknown case fail
 }
 ```
 <!-- /fuaran:example -->
+
+   **An editable grid needs a shared `$state` source.** `"editable": true` only does
+   anything when the grid's `source` is **directly** `{ "$type": "State", "key": "<key>",
+   "defaultValue": [ <row objects> ] }` — the renderer then turns Text/Numeric field cells
+   into inputs and writes the updated rows back to that key on every edit. Point every
+   reader that should track the edits — typically a `Chart` — at the SAME `$state` key as
+   its own `source` (repeat the same `defaultValue` rows on each reader): an edit in the
+   grid re-renders them live. `"editable": true` over a `Transform` or `Static` source is
+   inert — the data is not writable, every cell renders read-only, and the validator warns
+   (FUARAN090). Do not combine `editable` with a pipeline: edit the raw rows in `$state`;
+   a `Transform` pipeline cannot read them back, so keep edit-tracking readers on the
+   plain `$state` source.
 9. **Fetch host data declaratively with `Call` + `into`.** A refresh / load button's action:
    `{ "$type": "Call", "endpoint": "<host endpoint>", "into": { "$type": "State", "key": "<key>" } }`
    (or `"into": { "$type": "Query", "name": "<name>" }`). Readers bind the same `$state` key /

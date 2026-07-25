@@ -11,6 +11,8 @@ module Fuaran.UI.Tests.FilterWiringValidate
 //    FUARAN076 — unreferenced Transform param (not in Transform.paramsOf)
 //    FUARAN077 — blank grid column (neither Value nor Field)
 //    FUARAN078 — unstable row identity (neither RowKey nor RowKeyField)
+//    FUARAN090 — inert editable grid (editable: true without a direct
+//                Binding.State source — Phase 663 write-back floor)
 // ============================================================================
 
 open Expecto
@@ -43,7 +45,7 @@ let private embeddedSource =
 let private paramPipeline: Fuaran.Core.Transform list =
     [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "dept")) ]
 
-let private gridWith (source: Binding<obj seq>) : Node<Msg> =
+let private gridWithEditable (editable: bool) (source: Binding<obj seq>) : Node<Msg> =
     { Id = NodeId "grid"
       Kind =
         NodeKind.Visualisation(
@@ -59,7 +61,7 @@ let private gridWith (source: Binding<obj seq>) : Node<Msg> =
                         Kind = CellKindErased.Text
                         Width = ColumnWidth.Auto } ]
                   OnRowClick = None
-                  Editable = false
+                  Editable = editable
                   StaticRows = None }
         )
       State = Defaults.stateBehaviour<Msg>
@@ -67,6 +69,8 @@ let private gridWith (source: Binding<obj seq>) : Node<Msg> =
       Accessibility = None
       Motion = Defaults.Motion.none
       ExtraAttributes = None }
+
+let private gridWith (source: Binding<obj seq>) : Node<Msg> = gridWithEditable false source
 
 [<Tests>]
 let tests =
@@ -203,4 +207,37 @@ let tests =
 
                   Expect.contains defects (PreEmitDefect.UnstableRowIdentity "bare-grid") "UnstableRowIdentity surfaced"
               | Ok() -> failtest "Expected FUARAN077 + FUARAN078 defects, got Ok"
+          }
+
+          test "FUARAN090: editable over a non-State source is inert and flagged" {
+              let grid = gridWithEditable true (Binding.Transform(embeddedSource, [], []))
+
+              let tree = dashboard "root" [ grid ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  Expect.contains defects (PreEmitDefect.InertEditableGrid "grid") "InertEditableGrid surfaced"
+              | Ok() -> failtest "Expected FUARAN090 defect, got Ok"
+          }
+
+          test "FUARAN090 does not fire for an editable State-sourced grid, nor for editable=false" {
+              let stateRows: obj seq =
+                  Seq.singleton (
+                      box (Map.ofList [ "dept", (box "eng" |> Unchecked.nonNull) ])
+                      |> Unchecked.nonNull
+                  )
+
+              let editableStateGrid =
+                  gridWithEditable true (Binding.State("grid-rows", stateRows))
+
+              match PreEmitValidate.validate (dashboard "root" [ editableStateGrid ]) with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok for an editable State-sourced grid, got: %A" defects
+
+              let readOnlyTransformGrid =
+                  gridWithEditable false (Binding.Transform(embeddedSource, [], []))
+
+              match PreEmitValidate.validate (dashboard "root" [ readOnlyTransformGrid ]) with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok for a read-only Transform grid, got: %A" defects
           } ]
