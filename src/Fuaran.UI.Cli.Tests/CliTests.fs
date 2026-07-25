@@ -78,3 +78,38 @@ let cliTests =
 
               Expect.equal got [ "a"; "prompt" ] "only the prompt words remain"
           } ]
+
+/// The emitted fsharp-fable scaffold is a STRING, so the compiler never checks
+/// it — these invariants are the only thing standing between a template typo and
+/// a broken-on-arrival scaffold. (Both were live defects once: the template used
+/// a `BindingResolver.BindingSources.empty` that does not exist, and wired the
+/// .NET-only `Fuaran.UI.Client` into a Fable panel.)
+[<Tests>]
+let scaffoldTemplateTests =
+    testList
+        "Fuaran.UI.Cli.Scaffold — emitted-template invariants"
+        [ test "uses the real empty BindingSources value" {
+              Expect.stringContains Scaffold.fsharpFablePanel "BindingResolver.empty" "the module-level `empty` let"
+
+              Expect.isFalse
+                  (Scaffold.fsharpFablePanel.Contains "BindingResolver.BindingSources.empty")
+                  "there is no `BindingSources` module — that spelling does not compile"
+          }
+
+          test "the Fable panel never references the .NET-only client package" {
+              // Fuaran.UI.Client opens System.Net.Http and is not source-packed for
+              // Fable; a browser panel must speak the wire contract directly.
+              for forbidden in [ "Fuaran.UI.Client"; "FuaranClient"; "FuaranSession" ] do
+                  Expect.isFalse
+                      (Scaffold.fsharpFablePanel.Contains forbidden)
+                      $"the Fable panel must not reference {forbidden}"
+          }
+
+          test "wires the canonical decode + render path" {
+              for required in
+                  [ "open Fuaran.UI.Ops"
+                    "open Fuaran.UI.Renderer"
+                    "JsonDecode.decodeNodeObj"
+                    "Render.renderWithSources" ] do
+                  Expect.stringContains Scaffold.fsharpFablePanel required "canonical decode/render wiring"
+          } ]
