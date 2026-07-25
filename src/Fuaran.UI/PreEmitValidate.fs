@@ -210,6 +210,17 @@ type PreEmitDefect =
     /// usually a kind switch that forgot the flag. Carries the node id and the
     /// kind name.
     | ChartStackedMeaningless of nodeId: string * kind: string
+    /// **FUARAN090 (Warning)**. A `DataGrid` carries `editable: true` but its
+    /// `source` is not a direct `Binding.State` (Phase 663) — the FUARAN069
+    /// inert-control condition replayed for the grid: the renderer has no
+    /// writable slot to commit an edit to (a `Transform` pipeline is not
+    /// invertible; `Static` / `Query` rows are host data; `staticRows` are
+    /// immutable by definition), so every cell renders read-only and the flag
+    /// is dead intent. Fix: source the grid — and every reader that should
+    /// track edits, e.g. a chart over the same data — from a shared
+    /// `{"$type": "State", "key": …, "default": [rows]}` binding. Carries the
+    /// grid node's id.
+    | InertEditableGrid of nodeId: string
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -329,6 +340,18 @@ let private validateCore
 
             if spec.RowKey.IsNone && spec.RowKeyField.IsNone then
                 defects.Add(PreEmitDefect.UnstableRowIdentity nodeIdStr)
+
+            // FUARAN090 (Phase 663): `editable: true` only means anything when the
+            // grid's source is a direct `Binding.State` — the renderer's grid
+            // write-back slot. Any other source (Transform / Static / Query /
+            // staticRows mode) renders read-only, so the flag is dead intent.
+            let editableWritable =
+                match spec.Source with
+                | Binding.State _ -> true
+                | _ -> false
+
+            if spec.Editable && not editableWritable then
+                defects.Add(PreEmitDefect.InertEditableGrid nodeIdStr)
         | NodeKind.Display _ -> () // Display kinds are leaves; future kind-specific invariants (e.g. HeadingLevel ∈ [1..6]) land here.
         | NodeKind.Input input ->
             // FUARAN069 (Phase 426): an interactive input whose handler is

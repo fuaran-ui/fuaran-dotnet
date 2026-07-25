@@ -298,6 +298,12 @@ let private renderPreEmitDefect (d: PreEmitValidate.PreEmitDefect) : string * Fu
             "chart '%s' sets Stacked=true on kind %s — the lowering ignores it (dead intent; Phase 637/640)"
             nodeId
             kind
+    | PreEmitValidate.PreEmitDefect.InertEditableGrid nodeId ->
+        "FUARAN090",
+        Fuaran.Core.Severity.Warning,
+        sprintf
+            "grid '%s' sets editable=true but its source is not a direct $state binding — edits have nowhere to go, every cell renders read-only; source the grid (and any chart that should track edits) from a shared {\"$type\":\"State\",\"key\":…,\"default\":[rows]} binding"
+            nodeId
 
 /// The UI validity oracle as a `Fuaran.Core.Validator.Registry<Node<'Msg>,
 /// NodeId>`: one rule family that runs the shipped `PreEmitValidate` tree walk

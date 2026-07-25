@@ -541,6 +541,21 @@ let private writeBackTo (ctx: RenderContext<'Msg>) (binding: Binding<'T>) (value
         | None -> FilterStore.clear name
     | _ -> ()
 
+/// Phase 663 — replace one field of a grid row for the editable-grid State
+/// write-back. Rows on the decoded path are `Map<string, obj>` (the
+/// `Transform` / decoded-`State` row shape — same contract as
+/// `BindingResolver.projectRowFieldValue`, including its Fable type-erasure
+/// caveat); a non-Map host row passes through unchanged on .NET (no sound
+/// write exists for an opaque row type).
+let private updateRowField (row: obj) (field: string) (newValue: obj) : obj =
+#if FABLE_COMPILER
+    box (Map.add field newValue (unbox<Map<string, obj>> row))
+#else
+    match row with
+    | :? Map<string, obj> as m -> box (Map.add field newValue m)
+    | _ -> row
+#endif
+
 // ─── Custom bounded-escape verification ────────────────────────────────────
 //
 // `NodeKind.Custom` is the language's principled escape hatch. It carries
@@ -3296,6 +3311,28 @@ and private renderGrid
                         |> Option.filter usableKey
                     | None -> None
 
+                // Phase 663 — the grid write-back floor (the Phase 426 control default replayed
+                // for the grid): `Editable = true` over a DIRECT `Binding.State` source commits
+                // an edited cell as the WHOLE updated rows value to the state key, so every
+                // other reader of that key (a Chart sourced on the same `$state` entry)
+                // re-renders with the edit. Any other source shape has no writable slot — a
+                // Transform pipeline is not invertible, Static/Query rows are host data — so
+                // the grid stays display-only (FUARAN090 warns pre-emit).
+                let editCommit: (int -> string -> obj -> unit) option =
+                    match spec.Editable, spec.Source with
+                    | true, Binding.State _ ->
+                        Some(fun rowIndex field newValue ->
+                            let newRows =
+                                rows
+                                |> List.mapi (fun i row ->
+                                    if i = rowIndex then
+                                        updateRowField row field newValue
+                                    else
+                                        row)
+
+                            writeBackTo ctx spec.Source (Some(box (Seq.ofList newRows))))
+                    | _ -> None
+
                 Html.table
                     [ prop.className "fuaran-grid"
                       prop.children
@@ -3306,7 +3343,7 @@ and private renderGrid
                                                   Html.th [ prop.className "fuaran-grid-header"; prop.text col.Label ] ] ] ]
                             Html.tbody
                                 [ prop.children
-                                      [ for row in rows ->
+                                      [ for (rowIndex, row) in List.indexed rows ->
                                             let isSelected =
                                                 match selectedKey, rowKeyOf with
                                                 | Some sel, Some keyOf -> keyOf row = sel
@@ -3325,11 +3362,36 @@ and private renderGrid
                                                       | None -> SelectionStore.set parentNodeId (box row))
                                                   prop.children
                                                       [ for col in spec.Columns ->
+                                                            // Editable write-back applies only on the declarative
+                                                            // path — a Field-projected Text/Numeric cell with no
+                                                            // Value closure (a closure's projection need not
+                                                            // correspond to any row field, so there is nothing
+                                                            // sound to write). Date and the interactive cell
+                                                            // kinds keep their existing behaviour.
+                                                            let commit: (CellValue -> unit) option =
+                                                                match editCommit, col.Value, col.Field, col.Kind with
+                                                                | Some ec,
+                                                                  None,
+                                                                  Some field,
+                                                                  (CellKindErased.Text | CellKindErased.Numeric) ->
+                                                                    Some(fun cv ->
+                                                                        match cv with
+                                                                        | CellValue.Numeric f ->
+                                                                            ec rowIndex field (box f)
+                                                                        | CellValue.Text s -> ec rowIndex field (box s)
+                                                                        | _ -> ())
+                                                                | _ -> None
+
                                                             Html.td
                                                                 [ prop.className "fuaran-grid-cell"
-                                                                  prop.children [ renderGridCell ctx col row ] ] ] ] ] ] ] ]
+                                                                  prop.children [ renderGridCell ctx commit col row ] ] ] ] ] ] ] ]
 
-and private renderGridCell (ctx: RenderContext<'Msg>) (col: ColumnErased<'Msg>) (row: obj) : ReactElement =
+and private renderGridCell
+    (ctx: RenderContext<'Msg>)
+    (commit: (CellValue -> unit) option)
+    (col: ColumnErased<'Msg>)
+    (row: obj)
+    : ReactElement =
     // Phase 425 — the closure wins when present; else the declarative `Field` projects the row
     // property; else the cell is empty. A decoded grid renders data from `Field` with zero host code.
     let value =
@@ -3348,7 +3410,48 @@ and private renderGridCell (ctx: RenderContext<'Msg>) (col: ColumnErased<'Msg>) 
     match col.Kind with
     | CellKindErased.Text
     | CellKindErased.Numeric
-    | CellKindErased.Date -> Html.span [ prop.text (renderCellValue col.Format value) ]
+    | CellKindErased.Date ->
+        // Phase 663 — a `commit` (the grid-level State write-back, threaded from `renderGrid`
+        // only for Field-projected Text/Numeric cells on an editable State-sourced grid) turns
+        // the display cell into the same input shapes as `CellKindErased.Editable`, committing
+        // the RAW value (never the formatted rendering). Absent `commit`, the display cell is
+        // byte-identical to the pre-663 span.
+        match commit with
+        | Some commitCell ->
+            match col.Kind, value with
+            | CellKindErased.Numeric, CellValue.Numeric n ->
+                Html.input
+                    [ prop.className "fuaran-grid-cell-editable"
+                      prop.type'.number
+                      prop.value n
+                      prop.onChange (fun (v: float) ->
+                          // An empty / mid-edit number input parses NaN — never commit it
+                          // (a NaN cell would silently flatten every chart on the key).
+                          if not (System.Double.IsNaN v) then
+                              commitCell (CellValue.Numeric v)) ]
+            | CellKindErased.Numeric, _ ->
+                // An Empty (or non-numeric) cell in a Numeric column: text input, committed
+                // only when the entry parses numerically.
+                Html.input
+                    [ prop.className "fuaran-grid-cell-editable"
+                      prop.type'.text
+                      prop.value (renderCellValue CellFormat.None value)
+                      prop.onChange (fun (v: string) ->
+                          match System.Double.TryParse v with
+                          | true, f -> commitCell (CellValue.Numeric f)
+                          | false, _ -> ()) ]
+            | _, _ ->
+                let current =
+                    match value with
+                    | CellValue.Text s -> s
+                    | other -> renderCellValue CellFormat.None other
+
+                Html.input
+                    [ prop.className "fuaran-grid-cell-editable"
+                      prop.type'.text
+                      prop.value current
+                      prop.onChange (fun (v: string) -> commitCell (CellValue.Text v)) ]
+        | None -> Html.span [ prop.text (renderCellValue col.Format value) ]
     | CellKindErased.Editable onEdit ->
         match value with
         | CellValue.Numeric n ->
