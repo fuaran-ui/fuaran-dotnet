@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>fuaran</ToolCommandName>
+    <PackageId>Fuaran.UI.Cli</PackageId>
+    <Description>The Fuaran generative-UI CLI as a dotnet tool — `fuaran generate | validate | scaffold` over the public F# surfaces, zero MCP config. Works against the real endpoint or the local mock. The F# front-end of the Fuaran CLI (sibling to the npm @fuaran-ui/cli). Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Scaffold.fs" />
+    <Compile Include="Commands.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.Client\Fuaran.UI.Client.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>
