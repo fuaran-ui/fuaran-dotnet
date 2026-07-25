@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Client</PackageId>
+    <Description>Fuaran.UI.Client — a thin, typed F#/.NET client over the Fuaran generation endpoint: a typed generate call, a session/turn-loop helper so each subsequent prompt is a cheap repair diff, and decode glue to Fuaran.UI.Renderer. The F# mirror of the TypeScript @fuaran-ui/client. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Contract.fs" />
+    <Compile Include="Wire.fs" />
+    <Compile Include="Client.fs" />
+    <Compile Include="Session.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Decode glue to a typed Node<obj> (Render.decodeTreeJson) is provided
+         via the language tier's canonical decoder; Fuaran.UI.Ops transitively
+         brings Fuaran.UI (the Node type). This is a plain .NET client (it uses
+         System.Net.Http + System.Text.Json), so it is NOT source-packed for
+         Fable — the browser BYOK path is served by the TypeScript sibling. -->
+    <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>
