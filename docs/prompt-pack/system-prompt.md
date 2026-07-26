@@ -259,12 +259,12 @@ is a JSON document whose own `$type` is the op kind (`EditNode`, `UpdateProp`,
 **Membership and order are separate ops, and neither takes an index.** `InsertChild` and
 `MoveNode` change *which* children a parent has, and both **append**. `ReorderChildren` states
 *what order* they are in, by naming every child id. To put a node anywhere but last, emit both in
-one `Batch`:
+one `Batch` — the ids below are the `composite-root` tree shown above:
 
 ```json
 {"$type":"Batch","ops":[
-  {"$type":"InsertChild","child":{"id":"summary","kind":{"$type":"Markdown","text":"Totals for Q3."}},"parentId":"dash"},
-  {"$type":"ReorderChildren","newOrder":["summary","metric-row","chart"],"parentId":"dash"}
+  {"$type":"InsertChild","child":{"id":"summary","kind":{"$type":"Markdown","text":"Totals for Q3."}},"parentId":"composite-root"},
+  {"$type":"ReorderChildren","newOrder":["summary","composite-card","stack-1"],"parentId":"composite-root"}
 ]}
 ```
 

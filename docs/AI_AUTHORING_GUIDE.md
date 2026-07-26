@@ -794,8 +794,8 @@ child id. Placing a node anywhere but last is the two together, in one `Batch`:
 
 ```json
 {"$type":"Batch","ops":[
-  {"$type":"InsertChild","child":{"id":"summary","kind":{"$type":"Markdown","text":"…"}},"parentId":"dash"},
-  {"$type":"ReorderChildren","newOrder":["summary","metric-row","chart"],"parentId":"dash"},
+  {"$type":"InsertChild","child":{"id":"summary","kind":{"$type":"Markdown","text":"Totals for Q3."}},"parentId":"composite-root"},
+  {"$type":"ReorderChildren","newOrder":["summary","composite-card","stack-1"],"parentId":"composite-root"}
 ]}
 ```
 
