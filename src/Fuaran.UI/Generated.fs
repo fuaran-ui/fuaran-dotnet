@@ -166,6 +166,9 @@ and [<RequireQualifiedAccess>] Action =
     | Call of endpoint: string * into: CallResultTarget option * onResult: unit option
     | Navigate of route: string
     | CommitLocal of nodeId: string
+    | Notify of channel: string * payload: JVal
+    | SetState of key: string * value: JVal
+    | AiTool of args: JVal * toolName: string
 
 and [<RequireQualifiedAccess>] CallResultTarget =
     | State of key: string
@@ -893,6 +896,9 @@ and private encAction (v: Action) : JVal =
     | Action.Call (endpoint, into, onResult) -> Canon.typed "Call" ([ Some("endpoint", JStr endpoint); (into |> Option.map (fun v -> "into", encCallResultTarget v)); (onResult |> Option.map (fun v -> "onResult", JStr "<closure>")) ] |> List.choose id)
     | Action.Navigate route -> Canon.typed "Navigate" [ "route", JStr route ]
     | Action.CommitLocal nodeId -> Canon.typed "CommitLocal" [ "nodeId", JStr nodeId ]
+    | Action.Notify (channel, payload) -> Canon.typed "Notify" [ "channel", JStr channel; "payload", id payload ]
+    | Action.SetState (key, value) -> Canon.typed "SetState" [ "key", JStr key; "value", id value ]
+    | Action.AiTool (args, toolName) -> Canon.typed "AiTool" [ "args", id args; "toolName", JStr toolName ]
 
 and private encCallResultTarget (v: CallResultTarget) : JVal =
     match v with
@@ -1165,6 +1171,10 @@ let private dFloat (j: JVal) : Result<float, string> =
     | _ -> Error "expected a number"
 
 let private dUnit (_: JVal) : Result<unit, string> = Ok()
+
+// Phase 676 — arbitrary JSON, kept verbatim. No shape check: the field's
+// contract is that its content is not the schema's business.
+let private dJson (j: JVal) : Result<JVal, string> = Ok j
 
 let private dList (dec: JVal -> Result<'T, string>) (j: JVal) : Result<'T list, string> =
     match j with
@@ -1519,6 +1529,18 @@ and private decAction (j: JVal) : Result<Action, string> =
         | "CommitLocal" ->
             dReq "nodeId" __fs dStr |> Result.bind (fun nodeId ->
             Ok(Action.CommitLocal(nodeId)))
+        | "Notify" ->
+            dReq "channel" __fs dStr |> Result.bind (fun channel ->
+            dReq "payload" __fs dJson |> Result.bind (fun payload ->
+            Ok(Action.Notify(channel, payload))))
+        | "SetState" ->
+            dReq "key" __fs dStr |> Result.bind (fun key ->
+            dReq "value" __fs dJson |> Result.bind (fun value ->
+            Ok(Action.SetState(key, value))))
+        | "AiTool" ->
+            dReq "args" __fs dJson |> Result.bind (fun args ->
+            dReq "toolName" __fs dStr |> Result.bind (fun toolName ->
+            Ok(Action.AiTool(args, toolName))))
         | __other -> Error ("unknown Action case: " + __other))
     | _ -> Error "expected a Action object"
 

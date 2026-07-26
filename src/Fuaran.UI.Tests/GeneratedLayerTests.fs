@@ -151,7 +151,7 @@ let generatedLayerTests =
               // ambiguous.
               let corpus = familyFixtures "nodes" "*.json"
 
-              Expect.equal corpus.Length 84 "the node corpus is the expected 84 fixtures"
+              Expect.equal corpus.Length 85 "the node corpus is the expected 85 fixtures"
 
               let failures =
                   corpus
@@ -214,7 +214,7 @@ let generatedLayerTests =
 
               Expect.equal
                   compared
-                  69
+                  70
                   (sprintf "the directly-compared set moved (%d of %d fixtures)" compared corpus.Length)
           }
 
@@ -325,7 +325,7 @@ let generatedLayerTests =
               // then has a checked-in source rather than a remembered one.
               let corpus = familyFixtures "nodes" "*.json"
 
-              Expect.equal corpus.Length 84 "the node corpus is the expected 84 fixtures"
+              Expect.equal corpus.Length 85 "the node corpus is the expected 85 fixtures"
 
               let covered =
                   corpus
@@ -337,7 +337,7 @@ let generatedLayerTests =
 
               Expect.equal
                   covered
-                  68
+                  69
                   (sprintf
                       "generated-layer corpus coverage moved (%d of %d fixtures decode+re-encode byte-identically)"
                       covered
