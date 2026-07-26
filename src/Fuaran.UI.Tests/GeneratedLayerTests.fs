@@ -30,14 +30,14 @@ open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.OpStream.Abstractions
 
-/// Locate the workspace-root shared corpus by climbing from the test binary —
-/// the same idiom `MarkdownCorpusTests` uses.
-let private corpusDir () : string option =
+/// Locate one family of the workspace-root shared corpus by climbing from the
+/// test binary — the same idiom `MarkdownCorpusTests` uses.
+let private familyDir (family: string) : string option =
     let rec climb (dir: DirectoryInfo option) =
         match dir with
         | None -> None
         | Some d ->
-            let candidate = Path.Combine(d.FullName, "wire-format-fixtures", "nodes")
+            let candidate = Path.Combine(d.FullName, "wire-format-fixtures", family)
 
             if Directory.Exists candidate then
                 Some candidate
@@ -46,11 +46,29 @@ let private corpusDir () : string option =
 
     climb (Some(DirectoryInfo(System.AppContext.BaseDirectory)))
 
+let private corpusDir () : string option = familyDir "nodes"
+
 let private fixture (name: string) : string option =
     corpusDir ()
     |> Option.map (fun d -> Path.Combine(d, name + ".json"))
     |> Option.filter File.Exists
     |> Option.map (File.ReadAllText >> fun s -> s.Trim())
+
+/// Every `<family>/<pattern>` fixture as (file name, trimmed contents).
+let private familyFixtures (family: string) (pattern: string) : (string * string) list =
+    match familyDir family with
+    | None -> []
+    | Some d ->
+        // `Path.GetFileName` is `string | null` under F# 10 nullness; a path from
+        // `GetFiles` always has one, so fall back to the whole path rather than
+        // threading an option no caller can act on.
+        let fileName (p: string) =
+            Path.GetFileName p |> Option.ofObj |> Option.defaultValue p
+
+        Directory.GetFiles(d, pattern)
+        |> Array.toList
+        |> List.sortBy fileName
+        |> List.map (fun p -> fileName p, (File.ReadAllText p).Trim())
 
 [<Tests>]
 let generatedLayerTests =
@@ -61,7 +79,11 @@ let generatedLayerTests =
               | None -> skiptest "wire-format-fixtures/nodes/heading-1.json not found"
               | Some expected ->
                   let generated: Generated.Node =
-                      Generated.mkHeading "heading-1" 2 (Generated.TextSource.Literal "Channel performance") Generated.HeadingVariant.Standard
+                      Generated.mkHeading
+                          "heading-1"
+                          2
+                          (Generated.TextSource.Literal "Channel performance")
+                          Generated.HeadingVariant.Standard
 
                   Expect.equal (Generated.encodeNode generated) expected "generated encoder == corpus bytes"
           }
@@ -102,4 +124,149 @@ let generatedLayerTests =
                   Generated.mkHeading "b" 2 (Generated.TextSource.Literal "x") Generated.HeadingVariant.Standard
 
               Expect.equal value.Id "b" "a plain structural record — no 'Msg anywhere in the type"
+          }
+
+          // ================================================================
+          //  Phase 672 task 3 — the policy layer is a SEAM, not a rewrite.
+          //
+          //  The generated decoder covers structure only. Diagnostics (six
+          //  `DecodeErrorCode`s with `$`-rooted paths), §16 lenient-accept and
+          //  the reject set are judgement rather than shape, and stay
+          //  hand-written ABOVE the generated layer. These two tests state what
+          //  "above" has to mean for that composition to actually hold.
+          // ================================================================
+
+          test "§16 normalisation output lands in the generated decoder's domain" {
+              // Each `lenient/*.expected.json` is what the hand-written policy
+              // layer produces AFTER normalising its shorthand input. Round-tripping
+              // those through the generated structural decoder is the seam claim:
+              // policy normalises, then hands off to generated structure.
+              //
+              // It holds for the vocabulary the IDL models — and measuring it is how
+              // we learned the IDL does NOT yet model all of it. The residue below is
+              // classified by cause and pinned, because the interesting regression is
+              // a fixture MOVING between buckets, which a bare pass/fail hides.
+              // Feeds Phase 672 task 5 / Phase 671 step 5.
+              //
+              // NOT a case for legacy vocabulary. Every fixture here is a `.expected`
+              // file — i.e. the CANONICAL form §16 normalises *to* — and the legacy
+              // aliases (`Card` / `Dashboard` / `Stack` / `Table`) appear only in the
+              // shorthand inputs, never in one of these. They are decode-side upgrade
+              // policy and belong above the seam; the IDL is right not to model them.
+              // The residue is entirely CURRENT vocabulary (`Fact`, `Action.Call`,
+              // `Action.Navigate`) plus two already-filed deferrals.
+              let expected = familyFixtures "lenient" "*.expected.json"
+
+              Expect.isGreaterThan expected.Length 0 "the lenient corpus was found"
+
+              let classify (name: string, json: string) =
+                  match Generated.decodeNode json with
+                  | Ok node when Generated.encodeNode node = json -> None
+                  | Ok _ -> Some("field-set drift", name)
+                  | Error e when e.Contains "unknown Binding case: Transform" ->
+                      // Phase 671 out-of-scope: `Binding.Transform` embeds a
+                      // `Fuaran.Core.DataFrame` pipeline with its own codec.
+                      Some("Binding.Transform (out of scope)", name)
+                  | Error e when e.Contains "null is not representable" ->
+                      // Phase 671 step 6: the wire-`null` operator decision.
+                      Some("wire null (undecided)", name)
+                  | Error e when e.Contains "unknown node kind" -> Some("node kind absent from the IDL", name)
+                  | Error e when e.Contains "unknown Action case" -> Some("Action case absent from the IDL", name)
+                  | Error e when e.Contains "missing required field" -> Some("optionality drift", name)
+                  | Error e -> Some("unclassified: " + e, name)
+
+              let buckets =
+                  expected
+                  |> List.choose classify
+                  |> List.groupBy fst
+                  |> List.map (fun (cause, xs) -> cause, List.length xs)
+                  |> List.sortBy fst
+
+              let roundTripped = expected.Length - (buckets |> List.sumBy snd)
+
+              Expect.equal
+                  buckets
+                  [ "Action case absent from the IDL", 2
+                    "Binding.Transform (out of scope)", 12
+                    "field-set drift", 4
+                    "node kind absent from the IDL", 2
+                    "optionality drift", 4
+                    "wire null (undecided)", 2 ]
+                  (sprintf
+                      "the IDL-coverage residue moved (%d of %d lenient-expected fixtures round-trip)"
+                      roundTripped
+                      expected.Length)
+          }
+
+          // ---- Phase 672 task 5: what the generator actually owns, measured ----
+          test "the generated layer's coverage of the node corpus is measured, not asserted" {
+              // Task 5 exists because "the tax collapsed" is worthless unspecified.
+              // This is the number: how much of the real 84-fixture node corpus the
+              // generated structural layer can currently decode AND re-encode
+              // byte-for-byte, entirely on its own.
+              //
+              // It is pinned deliberately low-friction in one direction: a phase that
+              // widens the IDL raises the count and must update it here, which is the
+              // point — the figure quoted in `WIRE_FORMAT.md` §11 and Phase 671 step 5
+              // then has a checked-in source rather than a remembered one.
+              let corpus = familyFixtures "nodes" "*.json"
+
+              Expect.equal corpus.Length 84 "the node corpus is the expected 84 fixtures"
+
+              let covered =
+                  corpus
+                  |> List.filter (fun (_, json) ->
+                      match Generated.decodeNode json with
+                      | Ok node -> Generated.encodeNode node = json
+                      | Error _ -> false)
+                  |> List.length
+
+              Expect.equal
+                  covered
+                  61
+                  (sprintf
+                      "generated-layer corpus coverage moved (%d of %d fixtures decode+re-encode byte-identically)"
+                      covered
+                      corpus.Length)
+          }
+
+          test "the generated structural decoder does not widen the accept set" {
+              // Every reject fixture must still be refused SOMEWHERE. Structure
+              // catches the malformed ones; the rest are refused by policy the
+              // generated layer deliberately does not model (empty node ids, the
+              // node envelope, validator-level constraints). Both counts are
+              // pinned: if a future generator change makes the structural layer
+              // start ACCEPTING something the corpus says must be refused, the
+              // split moves and this fails.
+              let rejects = familyFixtures "reject" "*.json"
+
+              Expect.equal rejects.Length 40 "the reject corpus is the expected 40 fixtures"
+
+              let refusedByStructure, acceptedByStructure =
+                  rejects
+                  |> List.partition (fun (_, json) ->
+                      match Generated.decodeNode json with
+                      | Error _ -> true
+                      | Ok _ -> false)
+
+              // Named, not just counted — a change of *which* fixture falls on
+              // which side is the interesting regression, and a bare count hides it.
+              let policyOwned = acceptedByStructure |> List.map fst
+
+              Expect.equal
+                  (List.length refusedByStructure + List.length policyOwned)
+                  40
+                  "every reject fixture is accounted for on one side of the seam"
+
+              // All three are refusals the generated layer structurally CANNOT make:
+              // an empty-but-well-typed node id is a validator rule, and both `style`
+              // cases live in the node envelope, which the IDL deliberately does not
+              // model (Phase 671 out-of-scope) — so the generated decoder never looks
+              // at those keys and cannot object to their contents.
+              Expect.equal
+                  policyOwned
+                  [ "reject-emptynodeid.json"
+                    "reject-unknown-tone.json"
+                    "reject-wrongtype-style-tone.json" ]
+                  "the policy-owned residue is exactly the shapes structure cannot judge"
           } ]
