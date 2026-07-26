@@ -148,13 +148,12 @@ let generatedLayerTests =
               // a fixture MOVING between buckets, which a bare pass/fail hides.
               // Feeds Phase 672 task 5 / Phase 671 step 5.
               //
-              // NOT a case for legacy vocabulary. Every fixture here is a `.expected`
-              // file — i.e. the CANONICAL form §16 normalises *to* — and the legacy
-              // aliases (`Card` / `Dashboard` / `Stack` / `Table`) appear only in the
-              // shorthand inputs, never in one of these. They are decode-side upgrade
-              // policy and belong above the seam; the IDL is right not to model them.
-              // The residue is entirely CURRENT vocabulary (`Fact`, `Action.Call`,
-              // `Action.Navigate`) plus two already-filed deferrals.
+              // NOT a case for retired vocabulary. Every fixture here is a `.expected`
+              // file — the CANONICAL form §16 normalises *to* — so the retired kind
+              // names (`Card` / `Dashboard` / `GridLayout` / `Stack` / `Table`) appear
+              // only in the shorthand inputs, never in one of these. The IDL is right
+              // not to model them. The residue is entirely CURRENT vocabulary (`Fact`,
+              // `Action.Call`, `Action.Navigate`) plus two already-filed deferrals.
               let expected = familyFixtures "lenient" "*.expected.json"
 
               Expect.isGreaterThan expected.Length 0 "the lenient corpus was found"
