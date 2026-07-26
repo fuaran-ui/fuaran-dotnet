@@ -962,6 +962,50 @@ let buttonClipboard: Node<obj> =
         ))
         None
 
+// Phase 676 — the JSON-payload actions, with payloads worth testing.
+//
+// `Notify` / `SetState` / `AiTool` each carry a `JVal` of arbitrary JSON, and
+// until now the corpus exercised them ONLY in the reject family (the null cases).
+// Nothing pinned what a real payload's bytes look like, so a codec that got
+// nesting, key order, escaping or float layout wrong would have passed.
+//
+// The payload is deliberately awkward, because that is the whole point of the
+// fixture: nested object inside an array inside an object, keys authored OUT of
+// order (rule 2 sorts them Ordinal on the way out), an empty object and an empty
+// array (neither is absence), a whole-valued float and one needing scientific
+// layout (rule 5), and strings carrying the two characters JSON must escape plus
+// a control character and an astral-plane codepoint (rule 6).
+let buttonJsonPayloads: Node<obj> =
+    let awkward =
+        JObj
+            [ "zeta", JStr "last key authored first"
+              "alpha", JInt 1
+              "nested",
+              JArr
+                  [ JObj [ "b", JBool true; "a", JFloat 1e-7 ]
+                    JArr [ JInt 0; JFloat 3.0 ]
+                    JObj []
+                    JArr [] ]
+              "escapes", JStr "quote\" back\\slash  astral-\U0001F600"
+              "float-whole", JFloat 2.0 ]
+
+    node
+        "btn-json-payloads"
+        (NodeKind.Input(
+            InputKind.Button
+                { Label = TextSource.Literal "Fire the JSON-payload actions"
+                  OnClick =
+                    Action.Chain
+                        [ Action.Notify("audit.channel", awkward)
+                          Action.SetState("draft", awkward)
+                          Action.AiTool("summarise", awkward) ]
+                  Variant = ButtonVariant.Primary
+                  Icon = None
+                  Tooltip = None
+                  Disabled = None }
+        ))
+        None
+
 // Action.ReadFileBody fixture for the round-trip suite (Phase 136). The
 // canonical "read the selected workbook as base64, then dispatch it to the
 // model" shape — placed on a Button.OnClick because OnSelect is a closure
@@ -2555,6 +2599,7 @@ let allNodes: (string * Node<obj>) list =
       "Input/Button", button
       "Input/Button (Action.WriteToClipboard chained with Dispatch)", buttonClipboard
       "Input/Button (Action.ReadFileBody base64)", buttonReadFile
+      "Input/Button (Notify / SetState / AiTool — JSON payloads)", buttonJsonPayloads
       "Input/FileUpload", fileUpload
       "Input/Select", select
       "Input/Select (multi-select — list value)", multiSelect
