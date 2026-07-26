@@ -33,7 +33,7 @@ let private styleRight (t: ToneVariant) : TreeOp<TestMsg> =
 /// The host op that instantiates the guest — inserts the mount region. Its
 /// content hash is the anchor the guest genesis links to.
 let private insMount: TreeOp<TestMsg> =
-    TreeOp.InsertChild(NodeId "dash", 2, Fuaran.markdown "mount-g1" "guest region")
+    TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "mount-g1" "guest region")
 
 /// A guest record lookup restricted to one stream's records (what interior
 /// replay is given — the anchor parent resolves to `None`, bounding the spine).

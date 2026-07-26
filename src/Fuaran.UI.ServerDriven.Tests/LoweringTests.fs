@@ -44,19 +44,33 @@ let tests =
                   [ DomPatch.ReorderChildren("dash", [ "n"; "m" ]) ]
                   "ReorderChildren maps node ids to raw strings"
 
+              // `newTree` must be the POST-apply tree: the DOM index is now derived
+              // from where the node actually landed, not carried on the op.
+              let afterMove =
+                  dash
+                      [ Fuaran.markdown "n" "world"
+                        Fuaran.dashboard
+                            "other"
+                            { Defaults.dashboard<obj> with
+                                Children = [ Fuaran.markdown "x" "x"; Fuaran.markdown "m" "hello" ] } ]
+
               Expect.equal
-                  (Lowering.lower stubRender tree [ TreeOp.MoveNode(NodeId "m", NodeId "other", 2) ])
-                  [ DomPatch.MoveNode("m", "other", 2) ]
-                  "MoveNode → identity-preserving DomPatch.MoveNode"
+                  (Lowering.lower stubRender afterMove [ TreeOp.MoveNode(NodeId "m", NodeId "other") ])
+                  [ DomPatch.MoveNode("m", "other", 1) ]
+                  "MoveNode → identity-preserving DomPatch.MoveNode, index derived from the result"
           }
 
           test "InsertChild renders the inserted subtree into an InsertFragment" {
               let child = Fuaran.markdown "fresh" "new"
 
+              // Post-apply tree: the child appended, so it is last (index 2).
+              let afterInsert =
+                  dash [ Fuaran.markdown "m" "hello"; Fuaran.markdown "n" "world"; child ]
+
               Expect.equal
-                  (Lowering.lower stubRender tree [ TreeOp.InsertChild(NodeId "dash", 1, child) ])
-                  [ DomPatch.InsertFragment("dash", 1, "<f id='fresh'/>") ]
-                  "InsertChild → InsertFragment with the rendered child"
+                  (Lowering.lower stubRender afterInsert [ TreeOp.InsertChild(NodeId "dash", child) ])
+                  [ DomPatch.InsertFragment("dash", 2, "<f id='fresh'/>") ]
+                  "InsertChild → InsertFragment, index derived from the result"
           }
 
           test "content ops re-render the changed node into a ReplaceFragment" {
@@ -86,10 +100,14 @@ let tests =
 
           test "Batch flattens to the concatenated lowering of its inner ops" {
               let ops =
-                  [ TreeOp.Batch [ TreeOp.RemoveNode(NodeId "m"); TreeOp.MoveNode(NodeId "n", NodeId "dash", 0) ] ]
+                  [ TreeOp.Batch [ TreeOp.RemoveNode(NodeId "m"); TreeOp.MoveNode(NodeId "n", NodeId "dash") ] ]
+
+              // Post-apply: `m` is gone and `n` was re-appended, so dash holds [n]
+              // and the derived DOM index is 0.
+              let afterBatch = dash [ Fuaran.markdown "n" "world" ]
 
               Expect.equal
-                  (Lowering.lower stubRender tree ops)
+                  (Lowering.lower stubRender afterBatch ops)
                   [ DomPatch.RemoveNode "m"; DomPatch.MoveNode("n", "dash", 0) ]
                   "Batch is flattened in order"
           }

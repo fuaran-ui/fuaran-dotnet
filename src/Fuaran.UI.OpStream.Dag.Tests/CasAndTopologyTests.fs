@@ -78,7 +78,7 @@ let private restyle =
 let private removeRight = TreeOp.RemoveNode rightChildId
 
 let private insertPane =
-    TreeOp.InsertChild(dashboardId, 0, Fuaran.markdown "extra" "Extra")
+    TreeOp.InsertChild(dashboardId, Fuaran.markdown "extra" "Extra")
 
 /// Build the branch fixture into a fresh sink; returns (sink, g, a, b, c).
 let private branchFixture () =

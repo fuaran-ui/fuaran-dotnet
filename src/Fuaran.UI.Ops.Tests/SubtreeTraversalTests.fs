@@ -25,7 +25,7 @@ module Fuaran.UI.Tests.SubtreeTraversal
 //
 //  The fix keeps the two questions apart. `getChildren` still answers the
 //  structural one and is unchanged — a `Switch`'s cases are keyed, so
-//  `InsertChild(switchId, 2, node)` should NOT acquire a meaning. `descendantNodes`
+//  `InsertChild(switchId, node)` should NOT acquire a meaning. `descendantNodes`
 //  answers the traversal one, and the enumeration + uniqueness paths use it.
 //
 //  `StateBehaviour.OnError` stays invisible and that is correct: it is
@@ -120,7 +120,7 @@ let duplicateIdTests =
     // before the traversal fix.
     let collisionCase (hidden: string) =
         test $"InsertChild is rejected when the id already exists at '{hidden}'" {
-            let op = TreeOp.InsertChild(NodeId "root", 0, leaf hidden)
+            let op = TreeOp.InsertChild(NodeId "root", leaf hidden)
 
             match Apply.apply op root with
             | Ok _ ->
@@ -136,7 +136,7 @@ let duplicateIdTests =
         // widened traversal that reported false positives would be a worse
         // defect than the one it replaced.
         test "a genuinely fresh id still inserts" {
-            let op = TreeOp.InsertChild(NodeId "root", 0, leaf "genuinely-new")
+            let op = TreeOp.InsertChild(NodeId "root", leaf "genuinely-new")
 
             match Apply.apply op root with
             | Ok updated -> Expect.isSome (Introspect.findNode (NodeId "genuinely-new") updated) "the new node landed"

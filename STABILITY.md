@@ -267,6 +267,43 @@ The following are explicitly **not** covered by semver and may change in any pat
 | Change the `JsonEncode` shape of `Action<'Msg>` | **Major** | Wire-format change; consumers persisting / transporting `Action` payloads break. |
 | Rename `Internal.SnapshotProjector` to `Internal.StateProjector` | **Patch** | Internal namespace; no consumer guarantee. |
 
+## Recorded breaking change — 0.4.0, `InsertChild` / `MoveNode` lose their position
+
+`TreeOp.InsertChild` and `TreeOp.MoveNode` no longer carry an integer position. Both **append**;
+`ReorderChildren` states order by naming node ids. Placing a node anywhere but last is
+`Batch [InsertChild …, ReorderChildren …]`.
+
+```fsharp
+// 0.3.x
+| InsertChild of parentId: NodeId * position: int * child: Node<'Msg>
+| MoveNode of NodeId * newParentId: NodeId * newPosition: int
+
+// 0.4.0
+| InsertChild of parentId: NodeId * child: Node<'Msg>
+| MoveNode of NodeId * newParentId: NodeId
+```
+
+**Major by both tests in the table above** — the DU case arities change, so pattern matches and
+construction sites stop compiling; and the wire shape changes, so persisted `TreeOp` payloads are
+affected. Carries `fuaran-core#95` onto the wire (`SkeletonOp` made the same removal in
+`Fuaran.Core.Ops` 0.2.0).
+
+**Why, in one line:** where a collection's members have identity, they are addressed by it — every
+node has an id, every other op addresses by one, and `ReorderChildren` already stated order that way,
+so the ordinal was the single place the structural surface departed from the tree's own identity
+model. It also named something the tree does not store, since children are a list and order is
+structural; an index is a projection over that list, valid only against one snapshot of it.
+
+**The rule this sets, for future surface changes:** an ordinal must not be reintroduced to address a
+collection whose members have identity. It stays legitimate exactly where identity is absent —
+`Columns[i]`, `Fields[i]`, `TabHeaders[i]` and the other bounded payload collections inside a single
+node are contained data, not tree structure, and are unaffected.
+
+**Migration.** A `0.3.x` emission still decodes: the decoder accepts and ignores a legacy
+`position` / `newPosition`, applying the op as an append. That is a migration mechanism for the
+hosts adopting independently, not a supported authoring form — the encoder never writes the field,
+and the tolerance is removed once every host is positionless (`fuaran#687`).
+
 ## How this policy interacts with phase authoring
 
 Per the workspace roadmap conventions, every phase that proposes a change to a stable surface (per the table above) must flag it explicitly in its phase body:

@@ -70,18 +70,6 @@ let private childlessKind (kind: NodeKind<'Msg>) (NodeId rawId) : ApplyError =
                 Some
                     "Address a Layout node (Box / SplitPanel / Tabs / Stepper / SummaryList / Disclosure / Modal / ScrollArea)." } }
 
-let private positionOutOfRange (NodeId rawId) (childCount: int) (position: int) : ApplyError =
-    { Code = ApplyErrorCode.PositionOutOfRange
-      Message =
-        sprintf
-            "Position %d is out of range for parent '%s' (valid: 0..%d, inclusive of append)."
-            position
-            rawId
-            childCount
-      Hint =
-        { ApplyHint.empty with
-            Suggestion = Some(sprintf "Pick a position between 0 and %d." childCount) } }
-
 let private duplicateNodeId (NodeId rawId) : ApplyError =
     { Code = ApplyErrorCode.DuplicateNodeId
       Message = sprintf "NodeId '%s' is already present in the tree; ids must be unique per §4g." rawId
@@ -1930,7 +1918,7 @@ let private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<
         | Error rej -> Error(mapRej rej)
 
     match op with
-    | TreeOp.InsertChild(parentId, position, child) ->
+    | TreeOp.InsertChild(parentId, child) ->
         // Duplicate-id pre-check, ahead of Core.
         //
         // Core does its own, but through `nodew.Children` — which IS
@@ -1947,11 +1935,10 @@ let private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<
         | Some dup -> Error(duplicateNodeId dup)
         | None ->
 
-            run (Fuaran.Core.SkeletonOp.InsertChild(parentId, position, child)) (fun rej ->
+            run (Fuaran.Core.SkeletonOp.InsertChild(parentId, child)) (fun rej ->
                 match rej with
                 | Fuaran.Core.Rejection.DuplicateId id -> duplicateNodeId id
                 | Fuaran.Core.Rejection.NotAContainer _ -> childlessOrParent parentId
-                | Fuaran.Core.Rejection.IndexOutOfRange(_, _, count) -> positionOutOfRange parentId count position
                 | Fuaran.Core.Rejection.UnknownNode _ -> parentNotFound parentId
                 | other -> unmapped other)
 
@@ -1979,7 +1966,7 @@ let private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<
                 | Fuaran.Core.Rejection.ReorderMismatch(_, expected, _) -> orderingMismatch parentId expected
                 | other -> unmapped other)
 
-    | TreeOp.MoveNode(target, newParentId, newPosition) ->
+    | TreeOp.MoveNode(target, newParentId) ->
         // Preserve UI's self / cycle codes+messages, which Core collapses into
         // WouldNestUnderSelf/CannotRemoveRoot and checks in a different order than
         // its canHold gate. After these two pre-checks Core sees only existence /
@@ -1999,11 +1986,9 @@ let private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<
                         Suggestion = Some "Pick a newParentId outside the target's subtree." }
             )
         else
-            run (Fuaran.Core.SkeletonOp.MoveNode(target, newParentId, newPosition)) (fun rej ->
+            run (Fuaran.Core.SkeletonOp.MoveNode(target, newParentId)) (fun rej ->
                 match rej with
                 | Fuaran.Core.Rejection.NotAContainer _ -> childlessOrParent newParentId
-                | Fuaran.Core.Rejection.IndexOutOfRange(_, _, count) ->
-                    positionOutOfRange newParentId count newPosition
                 | Fuaran.Core.Rejection.UnknownNode(id, _) ->
                     if id = target then
                         nodeNotFound target

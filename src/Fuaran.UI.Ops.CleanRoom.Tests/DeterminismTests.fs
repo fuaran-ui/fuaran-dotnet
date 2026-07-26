@@ -63,7 +63,7 @@ let tests =
           }
 
           test "MoveNode re-derives the real document" {
-              proveDeterministic "move" (TreeOp.MoveNode(NodeId "clause-1", NodeId "clause-2", 0))
+              proveDeterministic "move" (TreeOp.MoveNode(NodeId "clause-1", NodeId "clause-2"))
           }
 
           test "RemoveNode re-derives the real document" {
@@ -75,5 +75,5 @@ let tests =
                   "batch"
                   (TreeOp.Batch
                       [ TreeOp.RemoveNode(NodeId "recital")
-                        TreeOp.MoveNode(NodeId "clause-1", NodeId "clause-2", 0) ])
+                        TreeOp.MoveNode(NodeId "clause-1", NodeId "clause-2") ])
           } ]

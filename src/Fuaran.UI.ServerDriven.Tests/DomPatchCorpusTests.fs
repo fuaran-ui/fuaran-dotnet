@@ -29,6 +29,12 @@ let private dash (children: Node<obj> list) : Node<obj> =
         { Defaults.dashboard<obj> with
             Children = children }
 
+let private other (children: Node<obj> list) : Node<obj> =
+    Fuaran.dashboard
+        "other"
+        { Defaults.dashboard<obj> with
+            Children = children }
+
 let private tree = dash [ Fuaran.markdown "m" "hello"; Fuaran.markdown "n" "world" ]
 
 type private Case =
@@ -48,15 +54,21 @@ let private corpus: Case list =
         Ops = [ TreeOp.ReorderChildren(NodeId "dash", [ NodeId "n"; NodeId "m" ]) ]
         Expected = [ DomPatch.ReorderChildren("dash", [ "n"; "m" ]) ] }
 
+      // `Tree` is the POST-apply tree — the DOM index is derived from where the
+      // node landed, since the op no longer carries one.
       { Name = "MoveNode → identity-preserving DomPatch.MoveNode"
-        Tree = tree
-        Ops = [ TreeOp.MoveNode(NodeId "m", NodeId "other", 2) ]
-        Expected = [ DomPatch.MoveNode("m", "other", 2) ] }
+        Tree = dash [ Fuaran.markdown "n" "world"; other [ Fuaran.markdown "m" "hello" ] ]
+        Ops = [ TreeOp.MoveNode(NodeId "m", NodeId "other") ]
+        Expected = [ DomPatch.MoveNode("m", "other", 0) ] }
 
       { Name = "InsertChild → InsertFragment with the rendered child"
-        Tree = tree
-        Ops = [ TreeOp.InsertChild(NodeId "dash", 1, Fuaran.markdown "fresh" "new") ]
-        Expected = [ DomPatch.InsertFragment("dash", 1, "<f id='fresh'/>") ] }
+        Tree =
+          dash
+              [ Fuaran.markdown "m" "hello"
+                Fuaran.markdown "n" "world"
+                Fuaran.markdown "fresh" "new" ]
+        Ops = [ TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "fresh" "new") ]
+        Expected = [ DomPatch.InsertFragment("dash", 2, "<f id='fresh'/>") ] }
 
       { Name = "EditNode → ReplaceFragment of the re-rendered node"
         Tree = tree
@@ -76,8 +88,8 @@ let private corpus: Case list =
 
       { Name = "Batch flattens to its inner ops, in order"
         Tree = tree
-        Ops = [ TreeOp.Batch [ TreeOp.RemoveNode(NodeId "m"); TreeOp.MoveNode(NodeId "n", NodeId "dash", 0) ] ]
-        Expected = [ DomPatch.RemoveNode "m"; DomPatch.MoveNode("n", "dash", 0) ] }
+        Ops = [ TreeOp.Batch [ TreeOp.RemoveNode(NodeId "m"); TreeOp.MoveNode(NodeId "n", NodeId "dash") ] ]
+        Expected = [ DomPatch.RemoveNode "m"; DomPatch.MoveNode("n", "dash", 1) ] }
 
       { Name = "a content op for an absent node lowers to nothing"
         Tree = tree

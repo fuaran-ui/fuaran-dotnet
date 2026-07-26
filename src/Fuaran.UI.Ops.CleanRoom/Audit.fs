@@ -110,9 +110,9 @@ let rec referencedIds (op: TreeOp<'Msg>) : NodeId list =
     | TreeOp.ReplaceBinding(id, _, _) -> [ id ]
     | TreeOp.UpdateStyle(id, _) -> [ id ]
     | TreeOp.UpdateState(id, _) -> [ id ]
-    | TreeOp.InsertChild(parentId, _, _) -> [ parentId ]
+    | TreeOp.InsertChild(parentId, _) -> [ parentId ]
     | TreeOp.RemoveNode id -> [ id ]
-    | TreeOp.MoveNode(id, newParentId, _) -> [ id; newParentId ]
+    | TreeOp.MoveNode(id, newParentId) -> [ id; newParentId ]
     | TreeOp.ReorderChildren(parentId, newOrder) -> parentId :: newOrder
     | TreeOp.ReplaceRoot node -> [ node.Id ]
     | TreeOp.Batch inner -> inner |> List.collect referencedIds

@@ -158,16 +158,19 @@ public static class Ops
     public static FuaranOp EditNode(string nodeId, FuaranNode replacement) =>
         new(FsOp.NewEditNode(Id(nodeId), replacement.Inner.Kind));
 
-    /// <summary>Insert <paramref name="child"/> under <paramref name="parentId"/> at <paramref name="position"/> (0-based; append = child count).</summary>
-    public static FuaranOp InsertChild(string parentId, int position, FuaranNode child) =>
-        new(FsOp.NewInsertChild(Id(parentId), position, child.Inner));
+    /// <summary>Append <paramref name="child"/> under <paramref name="parentId"/>. To place it
+    /// elsewhere, follow with <see cref="ReorderChildren"/> in a batch — membership and order are
+    /// separate ops.</summary>
+    public static FuaranOp InsertChild(string parentId, FuaranNode child) =>
+        new(FsOp.NewInsertChild(Id(parentId), child.Inner));
 
     /// <summary>Remove the addressed node from its parent. Cannot remove the root.</summary>
     public static FuaranOp RemoveNode(string nodeId) => new(FsOp.NewRemoveNode(Id(nodeId)));
 
-    /// <summary>Move the addressed node under a new parent at <paramref name="newPosition"/>.</summary>
-    public static FuaranOp MoveNode(string nodeId, string newParentId, int newPosition) =>
-        new(FsOp.NewMoveNode(Id(nodeId), Id(newParentId), newPosition));
+    /// <summary>Move the addressed node under a new parent, appending. To place it elsewhere,
+    /// follow with <see cref="ReorderChildren"/> in a batch.</summary>
+    public static FuaranOp MoveNode(string nodeId, string newParentId) =>
+        new(FsOp.NewMoveNode(Id(nodeId), Id(newParentId)));
 
     /// <summary>Reorder a parent's children — <paramref name="newOrder"/> must be a permutation of the current child ids.</summary>
     public static FuaranOp ReorderChildren(string parentId, IEnumerable<string> newOrder) =>

@@ -90,15 +90,13 @@ let private writeOpFields (jw: Utf8JsonWriter) (op: TreeOp<'Msg>) =
         jw.WriteString("slot", slot)
     | TreeOp.UpdateStyle(target, _) -> writeNodeId jw "id" target
     | TreeOp.UpdateState(target, _) -> writeNodeId jw "id" target
-    | TreeOp.InsertChild(parentId, position, child) ->
+    | TreeOp.InsertChild(parentId, child) ->
         writeNodeId jw "parent_id" parentId
-        jw.WriteNumber("position", position)
         writeNodeId jw "child_id" child.Id
     | TreeOp.RemoveNode target -> writeNodeId jw "id" target
-    | TreeOp.MoveNode(target, newParentId, newPosition) ->
+    | TreeOp.MoveNode(target, newParentId) ->
         writeNodeId jw "id" target
         writeNodeId jw "new_parent_id" newParentId
-        jw.WriteNumber("new_position", newPosition)
     | TreeOp.ReorderChildren(parentId, newOrder) ->
         writeNodeId jw "parent_id" parentId
         jw.WriteStartArray("new_order")
@@ -224,15 +222,11 @@ let private opFields (op: TreeOp<'Msg>) : string list =
         | TreeOp.ReplaceBinding(target, slot, _) -> [ fieldStr "id" (rawId target); fieldStr "slot" slot ]
         | TreeOp.UpdateStyle(target, _) -> [ fieldStr "id" (rawId target) ]
         | TreeOp.UpdateState(target, _) -> [ fieldStr "id" (rawId target) ]
-        | TreeOp.InsertChild(parentId, position, child) ->
-            [ fieldStr "parent_id" (rawId parentId)
-              fieldNum "position" position
-              fieldStr "child_id" (rawId child.Id) ]
+        | TreeOp.InsertChild(parentId, child) ->
+            [ fieldStr "parent_id" (rawId parentId); fieldStr "child_id" (rawId child.Id) ]
         | TreeOp.RemoveNode target -> [ fieldStr "id" (rawId target) ]
-        | TreeOp.MoveNode(target, newParentId, newPosition) ->
-            [ fieldStr "id" (rawId target)
-              fieldStr "new_parent_id" (rawId newParentId)
-              fieldNum "new_position" newPosition ]
+        | TreeOp.MoveNode(target, newParentId) ->
+            [ fieldStr "id" (rawId target); fieldStr "new_parent_id" (rawId newParentId) ]
         | TreeOp.ReorderChildren(parentId, newOrder) ->
             [ fieldStr "parent_id" (rawId parentId)
               fieldRaw "new_order" (jsonArr (newOrder |> List.map (rawId >> jsonString))) ]

@@ -110,7 +110,7 @@ let lowerTree (root: Node<'Msg>) : TreeOp<'Msg> list =
         | None -> []
         | Some children ->
             children
-            |> List.mapi (fun i child -> TreeOp.InsertChild(node.Id, i, shellOf child) :: fill child)
+            |> List.map (fun child -> TreeOp.InsertChild(node.Id, shellOf child) :: fill child)
             |> List.concat
 
     fill root
@@ -148,9 +148,14 @@ let framesOf (encodeNode: Node<'Msg> -> string) (root: Node<'Msg>) : StreamFrame
         lowerTree root
         |> List.map (fun op ->
             match op with
-            | TreeOp.InsertChild(parentId, position, child) ->
+            | TreeOp.InsertChild(parentId, child) ->
                 { ParentId = Some parentId
-                  Position = position
+                  // The FRAME protocol keeps its ordinal: frames stream in order and a
+                  // progressive client may place them as they arrive. It is a separate
+                  // wire from the TreeOp and is deliberately not changed here — only the
+                  // op stops carrying one. Reconstruction below ignores it, because the
+                  // op appends and the frames are already in document order.
+                  Position = 0
                   NodeJson = encodeNode child }
             // `lowerTree` only ever produces `InsertChild`; this arm is
             // unreachable, kept total so a future lowering change is caught at
@@ -212,7 +217,7 @@ let decodeStream (frames: StreamFrame list) : Result<StreamDecode, JsonDecode.De
                         | Some parentId ->
                             match JsonDecode.decodeNodeObj frame.NodeJson with
                             | Error e -> Error e
-                            | Ok child -> loop (TreeOp.InsertChild(parentId, frame.Position, child) :: acc) rest
+                            | Ok child -> loop (TreeOp.InsertChild(parentId, child) :: acc) rest
 
                 match loop [] childFrames with
                 | Error e -> Error e

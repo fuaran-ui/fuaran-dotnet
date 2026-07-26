@@ -53,12 +53,10 @@ let fixtures: (string * string * Node<TestMsg> * Node<TestMsg> * Node<TestMsg>) 
 
     // 3. Disjoint structural inserts (NodeId-byte tie-break).
     let insA =
-        baseTree
-        |> applyOk (TreeOp.InsertChild(dashboardId, 2, Fuaran.markdown "zzz" "Z"))
+        baseTree |> applyOk (TreeOp.InsertChild(dashboardId, Fuaran.markdown "zzz" "Z"))
 
     let insB =
-        baseTree
-        |> applyOk (TreeOp.InsertChild(dashboardId, 2, Fuaran.markdown "aaa" "A"))
+        baseTree |> applyOk (TreeOp.InsertChild(dashboardId, Fuaran.markdown "aaa" "A"))
 
     [ "merge-disjoint", "Disjoint edits to different nodes (left tone vs right tone)", baseTree, disjointA, disjointB
       "merge-style-blend", "SemanticStyle sub-field blend (A tone + B voice on the same node)", baseTree, blendA, blendB

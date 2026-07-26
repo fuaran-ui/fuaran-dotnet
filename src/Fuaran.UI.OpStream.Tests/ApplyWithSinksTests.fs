@@ -132,7 +132,7 @@ let tests =
               let tree = buildDashboard ()
 
               let op1 = TreeOp.RemoveNode(NodeId "right"): TreeOp<TestMsg>
-              let op2 = TreeOp.InsertChild(NodeId "dash", 1, Fuaran.markdown "footer" "Footer")
+              let op2 = TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "footer" "Footer")
 
               let tree1 =
                   match

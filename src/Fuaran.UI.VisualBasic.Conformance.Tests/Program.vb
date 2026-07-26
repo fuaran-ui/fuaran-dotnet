@@ -79,7 +79,7 @@ Module Program
         h.Check("vb: validate reaches the C# veneer", Csharp.Fuaran.IsValid(vbCard))
 
         Dim m2 = FuaranXml.Translate(<Metric id="b" label="B" value="2" tone="Default"/>)
-        Dim insertOp = Csharp.Ops.InsertChild("k", 1, m2)
+        Dim insertOp = Csharp.Ops.InsertChild("k", m2)
         Dim applied = Csharp.Fuaran.Apply(vbCard, insertOp)
         h.Check("vb: apply reaches the C# engine",
                 applied.IsOk AndAlso applied.Value.Encode().Contains("""id"":""b"""),

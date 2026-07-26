@@ -117,9 +117,9 @@ module OpApplyTelemetry =
         | TreeOp.ReplaceBinding(NodeId id, _, _) -> Some id
         | TreeOp.UpdateStyle(NodeId id, _) -> Some id
         | TreeOp.UpdateState(NodeId id, _) -> Some id
-        | TreeOp.InsertChild(NodeId parentId, _, _) -> Some parentId
+        | TreeOp.InsertChild(NodeId parentId, _) -> Some parentId
         | TreeOp.RemoveNode(NodeId id) -> Some id
-        | TreeOp.MoveNode(NodeId id, _, _) -> Some id
+        | TreeOp.MoveNode(NodeId id, _) -> Some id
         | TreeOp.ReorderChildren(NodeId parentId, _) -> Some parentId
         | TreeOp.ReplaceRoot node -> let (NodeId rawId) = node.Id in Some rawId
         | TreeOp.Batch _ -> None

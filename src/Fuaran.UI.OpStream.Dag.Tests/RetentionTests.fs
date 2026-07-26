@@ -40,7 +40,7 @@ let private fixture () =
     let b = stepRecord "s" (Some a) (TreeOp.RemoveNode rightChildId) 3L
 
     let c =
-        stepRecord "s" (Some b) (TreeOp.InsertChild(dashboardId, 1, Fuaran.markdown "x" "X")) 4L
+        stepRecord "s" (Some b) (TreeOp.InsertChild(dashboardId, Fuaran.markdown "x" "X")) 4L
 
     let d = stepRecord "s" (Some a) (TreeOp.RemoveNode leftChildId) 5L
     add sink g

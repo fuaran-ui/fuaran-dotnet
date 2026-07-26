@@ -40,7 +40,7 @@ internal static class Runtime
             Format = CellFormat.Currency("GBP"),
             Tone = Tone.Default,
         });
-        var insertOp = Ops.InsertChild("insights", 1, m2);
+        var insertOp = Ops.InsertChild("insights", m2);
 
         var applied = Fuaran.Apply(card, insertOp);
         h.Check("apply: insert succeeds", applied.IsOk, applied.Error?.Message);

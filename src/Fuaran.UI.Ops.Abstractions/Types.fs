@@ -141,7 +141,7 @@ type TreeOp<'Msg> =
     /// is 0-indexed; `position = parent.Children.Length` appends. Parents
     /// without a `Children` field (every Display / Input / Visualisation
     /// kind) surface `ChildlessKind`.
-    | InsertChild of parentId: NodeId * position: int * child: Node<'Msg>
+    | InsertChild of parentId: NodeId * child: Node<'Msg>
 
     /// Remove the addressed node from its parent's `Children`. Cannot
     /// remove the root.
@@ -151,7 +151,7 @@ type TreeOp<'Msg> =
     /// and target parents must both exist and both have a `Children`
     /// field. Moving a node inside its own subtree surfaces `KindMismatch`
     /// (would create a cycle).
-    | MoveNode of NodeId * newParentId: NodeId * newPosition: int
+    | MoveNode of NodeId * newParentId: NodeId
 
     /// Reorder the addressed parent's children. `newOrder` must list
     /// exactly the current child IDs as a permutation; missing / extra /

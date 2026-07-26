@@ -29,7 +29,8 @@ open Fuaran.UI.Ops.Introspect
 //    - `RemoveNode`        → `DomPatch.RemoveNode`
 //    - `ReorderChildren`   → `DomPatch.ReorderChildren` (same-parent DOM reorder)
 //    - `MoveNode`          → `DomPatch.MoveNode` (identity-preserving relocate)
-//    - `InsertChild child` → `InsertFragment(parent, pos, renderFragment child)`
+//    - `InsertChild child` → `InsertFragment(parent, pos, renderFragment child)` — `pos`
+//      DERIVED from `newTree` (the ops append; the DOM still needs an index)
 //    - `Batch ops`         → the concatenated lowering of its inner ops.
 //
 //  `newTree` is the post-apply tree — content ops look the freshly-updated node
@@ -42,6 +43,22 @@ let private raw (NodeId s) : string = s
 /// Lower one `TreeOp` to its `DomPatch`es. `renderFragment` renders a node's
 /// HTML (host-injected); `newTree` is the post-apply tree.
 let rec lowerOp<'Msg> (renderFragment: Node<'Msg> -> string) (newTree: Node<'Msg>) (op: TreeOp<'Msg>) : DomPatch list =
+    // The DOM genuinely needs an insertion index — but it is DERIVED here, at the
+    // boundary that needs it, from the post-apply tree, rather than carried through
+    // the op vocabulary. `InsertChild` / `MoveNode` append, so the landed child is
+    // last under its new parent; falling back to 0 covers the parent-not-found case
+    // (the patch is then a no-op client-side anyway).
+    let landedIndex (parentId: NodeId) (childId: NodeId) : int =
+        match findNode parentId newTree with
+        | Some parent ->
+            match getChildren parent.Kind with
+            | Some kids ->
+                kids
+                |> List.tryFindIndex (fun c -> c.Id = childId)
+                |> Option.defaultValue (max 0 (List.length kids - 1))
+            | None -> 0
+        | None -> 0
+
     let reRender (id: NodeId) : DomPatch list =
         match findNode id newTree with
         | Some node -> [ DomPatch.ReplaceFragment(raw id, renderFragment node) ]
@@ -51,9 +68,9 @@ let rec lowerOp<'Msg> (renderFragment: Node<'Msg> -> string) (newTree: Node<'Msg
     | TreeOp.RemoveNode id -> [ DomPatch.RemoveNode(raw id) ]
     | TreeOp.ReorderChildren(parentId, orderedIds) ->
         [ DomPatch.ReorderChildren(raw parentId, orderedIds |> List.map raw) ]
-    | TreeOp.MoveNode(id, newParentId, position) -> [ DomPatch.MoveNode(raw id, raw newParentId, position) ]
-    | TreeOp.InsertChild(parentId, position, child) ->
-        [ DomPatch.InsertFragment(raw parentId, position, renderFragment child) ]
+    | TreeOp.MoveNode(id, newParentId) -> [ DomPatch.MoveNode(raw id, raw newParentId, landedIndex newParentId id) ]
+    | TreeOp.InsertChild(parentId, child) ->
+        [ DomPatch.InsertFragment(raw parentId, landedIndex parentId child.Id, renderFragment child) ]
     | TreeOp.EditNode(id, _)
     | TreeOp.UpdateProp(id, _, _)
     | TreeOp.UpdateStyle(id, _)

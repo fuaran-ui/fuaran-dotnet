@@ -727,9 +727,7 @@ module TreeOpDiff =
         // 2. Insert b-only subtrees, appended at the growing tail.
         let bOnly = bKids |> List.filter (fun n -> not (aIdSet.Contains(rawId n.Id)))
 
-        let inserts =
-            bOnly
-            |> List.mapi (fun i child -> TreeOp.InsertChild(parentId, List.length commonAOrder + i, child))
+        let inserts = bOnly |> List.map (fun child -> TreeOp.InsertChild(parentId, child))
 
         // 3. Reorder to b's exact order, if the post-insert order differs.
         let resultingOrder = commonAOrder @ (bOnly |> List.map (fun n -> rawId n.Id))
@@ -757,9 +755,11 @@ module TreeOpDiff =
     /// Precondition: `a.Id = b.Id`.
     ///
     /// Cross-parent moves are handled by a **correct-by-construction pre-pass**:
-    /// safe moves are emitted as `MoveNode`s (at position 0 — always
-    /// apply-valid; the move-free diff's `ReorderChildren` fixes the final
-    /// position) against an intermediate tree, then the existing move-free diff
+    /// safe moves are emitted as `MoveNode`s (which append; the move-free diff's
+    /// `ReorderChildren` fixes the final position — this diff already worked that
+    /// way, using position 0 as a placeholder, so losing the ordinal changed
+    /// nothing about its strategy) against an intermediate tree, then the
+    /// existing move-free diff
     /// runs `intermediate → b`. Both segments round-trip, so the whole does.
     let diff<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
         if rawId a.Id <> rawId b.Id then
@@ -774,7 +774,7 @@ module TreeOpDiff =
             | [] -> diffNode a b
             | moves ->
                 let moveOps =
-                    moves |> List.map (fun (id, newParent) -> TreeOp.MoveNode(id, newParent, 0))
+                    moves |> List.map (fun (id, newParent) -> TreeOp.MoveNode(id, newParent))
 
                 // Fold the moves through the apply engine to get the post-move
                 // intermediate, then diff the (now move-free) remainder. A move

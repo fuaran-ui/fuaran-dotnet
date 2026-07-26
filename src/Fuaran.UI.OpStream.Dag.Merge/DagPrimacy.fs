@@ -53,11 +53,11 @@ module DagPrimacy =
               i, "style.role"
               i, "style.voice" ]
         | TreeOp.UpdateState(id, _) -> [ rawId id, "state" ]
-        | TreeOp.InsertChild(parentId, _, _) -> [ rawId parentId, "children" ]
+        | TreeOp.InsertChild(parentId, _) -> [ rawId parentId, "children" ]
         | TreeOp.ReorderChildren(parentId, _) -> [ rawId parentId, "children" ]
         // The destination parent's child list changed; the SOURCE parent's also
         // did, but the op does not carry it — fall back for that cell.
-        | TreeOp.MoveNode(_, newParentId, _) -> [ rawId newParentId, "children" ]
+        | TreeOp.MoveNode(_, newParentId) -> [ rawId newParentId, "children" ]
         // The affected parent is not in the op — fall back to the tip author.
         | TreeOp.RemoveNode _ -> []
         // ReplaceRoot swaps the whole tree at the new root — like EditNode on the root.

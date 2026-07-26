@@ -43,9 +43,9 @@ let tests =
                     TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(nn 2.0)), OpKind.ReplaceBinding
                     TreeOp.UpdateStyle(NodeId "k", Defaults.style), OpKind.UpdateStyle
                     TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>), OpKind.UpdateState
-                    TreeOp.InsertChild(NodeId "p", 0, leafChild), OpKind.InsertChild
+                    TreeOp.InsertChild(NodeId "p", leafChild), OpKind.InsertChild
                     TreeOp.RemoveNode(NodeId "k"), OpKind.RemoveNode
-                    TreeOp.MoveNode(NodeId "k", NodeId "p", 0), OpKind.MoveNode
+                    TreeOp.MoveNode(NodeId "k", NodeId "p"), OpKind.MoveNode
                     TreeOp.ReorderChildren(NodeId "p", [ NodeId "k" ]), OpKind.ReorderChildren
                     TreeOp.Batch [], OpKind.Batch ]
 

@@ -38,7 +38,7 @@ let private style: SemanticStyle =
 
 /// The guest's op-stream: insert a note, restyle it, drop the right pane.
 let private guestOps: TreeOp<obj> list =
-    [ TreeOp.InsertChild(NodeId "g-dash", 2, Fuaran.markdown "g-note" "A note")
+    [ TreeOp.InsertChild(NodeId "g-dash", Fuaran.markdown "g-note" "A note")
       TreeOp.UpdateStyle(NodeId "g-note", style)
       TreeOp.RemoveNode(NodeId "g-right") ]
 

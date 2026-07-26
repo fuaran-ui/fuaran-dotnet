@@ -581,8 +581,7 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
         | Binding.Static v ->
             // Closures-as-Static aren't a thing — Static carries values.
             // Phase 677: an absent payload omits the key; it never emits null.
-            let valueField =
-                if isAbsentPayload v then [] else [ "value", staticEnc v ]
+            let valueField = if isAbsentPayload v then [] else [ "value", staticEnc v ]
 
             appendObject sb (case "Static" valueField)
         | Binding.Query(name, _accessor, dependsOn) ->
@@ -2223,23 +2222,15 @@ let private encodeTreeOp<'Msg> (op: TreeOp<'Msg>) : Appender =
                 appendObject
                     sb
                     (case "UpdateState" [ "state", stateBehaviourAppender state; "target", str (nodeIdStr target) ])
-            | TreeOp.InsertChild(parentId, position, child) ->
+            | TreeOp.InsertChild(parentId, child) ->
                 appendObject
                     sb
-                    (case
-                        "InsertChild"
-                        [ "child", nodeAppender child
-                          "parentId", str (nodeIdStr parentId)
-                          "position", int_ position ])
+                    (case "InsertChild" [ "child", nodeAppender child; "parentId", str (nodeIdStr parentId) ])
             | TreeOp.RemoveNode target -> appendObject sb (case "RemoveNode" [ "target", str (nodeIdStr target) ])
-            | TreeOp.MoveNode(target, newParentId, newPosition) ->
+            | TreeOp.MoveNode(target, newParentId) ->
                 appendObject
                     sb
-                    (case
-                        "MoveNode"
-                        [ "newParentId", str (nodeIdStr newParentId)
-                          "newPosition", int_ newPosition
-                          "target", str (nodeIdStr target) ])
+                    (case "MoveNode" [ "newParentId", str (nodeIdStr newParentId); "target", str (nodeIdStr target) ])
             | TreeOp.ReorderChildren(parentId, newOrder) ->
                 appendObject
                     sb

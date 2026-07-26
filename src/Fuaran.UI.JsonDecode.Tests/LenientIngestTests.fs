@@ -54,3 +54,47 @@ let tests =
                   "\"label\":\"Refresh\""
                   "the button label stays a bare string on the canonical wire"
           } ]
+
+
+[<Tests>]
+let legacyPositionTests =
+    // Phase 681's MIGRATION WINDOW. `InsertChild` / `MoveNode` lost their integer
+    // position (they append; `ReorderChildren` states order). Five hosts adopt
+    // independently, so the decoder ACCEPTS AND IGNORES the legacy field for now —
+    // a stored v1 emission still applies, as an append.
+    //
+    // The tolerance is a migration mechanism, not a second dialect offered to an
+    // author: nothing that teaches the wire mentions the field, and phase 687
+    // turns this into a decode error once every host is positionless.
+    testList
+        "legacy positional ops (681 migration window)"
+        [ test "InsertChild with a legacy `position` decodes, and the field is dropped" {
+              let legacy =
+                  """{"$type":"InsertChild","child":{"id":"n","kind":{"$type":"Markdown","text":"x"}},"parentId":"p","position":3}"""
+
+              match JsonDecode.decodeOp legacy with
+              | Error e -> failtestf "legacy InsertChild refused during the migration window: %A" e
+              | Ok op ->
+                  Expect.stringContains (CanonicalJson.encodeOp op) "\"parentId\":\"p\"" "parent survives"
+
+                  Expect.isFalse
+                      ((CanonicalJson.encodeOp op).Contains "position")
+                      "re-encoding drops the field — one wire dialect, not two"
+          }
+
+          test "MoveNode with a legacy `newPosition` decodes, and the field is dropped" {
+              let legacy =
+                  """{"$type":"MoveNode","newParentId":"q","newPosition":2,"target":"n"}"""
+
+              match JsonDecode.decodeOp legacy with
+              | Error e -> failtestf "legacy MoveNode refused during the migration window: %A" e
+              | Ok op -> Expect.isFalse ((CanonicalJson.encodeOp op).Contains "Position") "re-encoding drops the field"
+          }
+
+          test "the positionless form is what the encoder emits" {
+              let current = """{"$type":"MoveNode","newParentId":"q","target":"n"}"""
+
+              match JsonDecode.decodeOp current with
+              | Error e -> failtestf "canonical MoveNode refused: %A" e
+              | Ok op -> Expect.equal (CanonicalJson.encodeOp op) current "decode → re-encode is the identity"
+          } ]

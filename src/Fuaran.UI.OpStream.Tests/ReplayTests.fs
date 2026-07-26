@@ -54,7 +54,7 @@ let tests =
               let tree = buildDashboard ()
 
               let insertOp =
-                  TreeOp.InsertChild(NodeId "dash", 1, Fuaran.markdown "middle" "Middle pane")
+                  TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "middle" "Middle pane")
 
               let removeOp = TreeOp.RemoveNode(NodeId "left")
               let r1 = buildRecord "stream" 1 insertOp None (timestamp 100L)
@@ -63,14 +63,14 @@ let tests =
               match Replay.applyTo tree [ r1; r2 ] with
               | Ok result ->
                   let ids = childIds result
-                  Expect.equal ids [ "middle"; "right" ] "Left removed, middle inserted between left and right"
+                  Expect.equal ids [ "right"; "middle" ] "Left removed; middle APPENDED rather than placed between"
               | Error e -> failtestf "Expected Ok, got Error %A" e
           }
 
           test "Replay produces tree structurally equal to direct apply chain" {
               let tree = buildDashboard ()
               let op1 = TreeOp.RemoveNode(NodeId "right"): TreeOp<TestMsg>
-              let op2 = TreeOp.InsertChild(NodeId "dash", 1, Fuaran.markdown "footer" "Footer")
+              let op2 = TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "footer" "Footer")
               let r1 = buildRecord "stream" 1 op1 None (timestamp 100L)
               let r2 = buildRecord "stream" 2 op2 (Some r1) (timestamp 200L)
 

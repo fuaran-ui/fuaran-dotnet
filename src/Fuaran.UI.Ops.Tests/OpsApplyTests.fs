@@ -104,7 +104,7 @@ let tests =
           test "InsertChild appends a Markdown placeholder at the end of the dashboard" {
               let newNode = Fuaran.markdown "footnote" "Updated hourly."
 
-              match Apply.apply (TreeOp.InsertChild(NodeId "channel-analysis", 2, newNode)) dashboard with
+              match Apply.apply (TreeOp.InsertChild(NodeId "channel-analysis", newNode)) dashboard with
               | Ok updated ->
                   match updated.Kind with
                   | NodeKind.Layout(LayoutKind.Box spec) ->
@@ -135,13 +135,28 @@ let tests =
               | Error err -> failtestf "Expected Ok, got Error %A" err
           }
 
-          test "MoveNode relocates target between parents (single-level move trivially repositions)" {
-              // The fixture has a flat tree; move target to position 0 within
-              // the same parent — equivalent to a Reorder, exercises the
-              // move-into-same-parent path.
-              match Apply.apply (TreeOp.MoveNode(NodeId "channel-grid", NodeId "channel-analysis", 0)) dashboard with
+          test "MoveNode appends — membership only" {
+              // A same-parent move re-appends the target; it no longer carries a
+              // position, so "move to head" is the two-op form below.
+              match Apply.apply (TreeOp.MoveNode(NodeId "revenue-metric", NodeId "channel-analysis")) dashboard with
               | Ok updated ->
-                  Expect.equal (childIdOf updated 0) "channel-grid" "Grid moved to head"
+                  Expect.equal (childIdOf updated 0) "channel-grid" "the other child shifts up"
+                  Expect.equal (childIdOf updated 1) "revenue-metric" "the moved node is appended"
+              | Error err -> failtestf "Expected Ok, got Error %A" err
+          }
+
+          test "repositioning is the move plus a reorder — the two-op form" {
+              let op =
+                  TreeOp.Batch
+                      [ TreeOp.MoveNode(NodeId "channel-grid", NodeId "channel-analysis")
+                        TreeOp.ReorderChildren(
+                            NodeId "channel-analysis",
+                            [ NodeId "channel-grid"; NodeId "revenue-metric" ]
+                        ) ]
+
+              match Apply.apply op dashboard with
+              | Ok updated ->
+                  Expect.equal (childIdOf updated 0) "channel-grid" "Grid moved to head by naming the order"
                   Expect.equal (childIdOf updated 1) "revenue-metric" "Metric demoted"
               | Error err -> failtestf "Expected Ok, got Error %A" err
           }
@@ -511,7 +526,7 @@ let tests =
 
           test "InsertChild under a Display kind returns ChildlessKind" {
               let op =
-                  TreeOp.InsertChild(NodeId "revenue-metric", 0, Fuaran.markdown "noop" "ignored")
+                  TreeOp.InsertChild(NodeId "revenue-metric", Fuaran.markdown "noop" "ignored")
 
               match Apply.apply op dashboard with
               | Ok _ -> failtest "Expected ChildlessKind error"
@@ -520,19 +535,23 @@ let tests =
                   Expect.equal err.Hint.NodeKind (Some "Metric") "Hint.NodeKind = Metric"
           }
 
-          test "InsertChild at out-of-range position surfaces PositionOutOfRange" {
+          test "InsertChild cannot be out of range — it appends" {
+              // `PositionOutOfRange` still exists and is still raised, but only by the
+              // nested DATA paths (`Columns[i]`, `Fields[i]`): contained collections
+              // whose items have no identity keep their ordinals. A structural insert
+              // has no position to be wrong about.
               let op =
-                  TreeOp.InsertChild(NodeId "channel-analysis", 99, Fuaran.markdown "out-of-range" "ignored")
+                  TreeOp.InsertChild(NodeId "channel-analysis", Fuaran.markdown "appended" "lands last")
 
               match Apply.apply op dashboard with
-              | Ok _ -> failtest "Expected PositionOutOfRange"
-              | Error err -> Expect.equal err.Code ApplyErrorCode.PositionOutOfRange "Code = PositionOutOfRange"
+              | Ok updated -> Expect.equal (childIdOf updated 2) "appended" "appended after the existing two"
+              | Error err -> failtestf "Expected Ok, got Error %A" err
           }
 
           test "InsertChild with a duplicate NodeId surfaces DuplicateNodeId" {
               // Re-insert the existing Metric under the dashboard.
               let duplicate = revenueMetric
-              let op = TreeOp.InsertChild(NodeId "channel-analysis", 0, duplicate)
+              let op = TreeOp.InsertChild(NodeId "channel-analysis", duplicate)
 
               match Apply.apply op dashboard with
               | Ok _ -> failtest "Expected DuplicateNodeId"
@@ -551,7 +570,7 @@ let tests =
                           Children = [] }
 
               let newChild = Fuaran.markdown "first-child" "hello"
-              let op = TreeOp.InsertChild(NodeId "empty-insert-root", 0, newChild)
+              let op = TreeOp.InsertChild(NodeId "empty-insert-root", newChild)
 
               match Apply.apply op emptyDashboard with
               | Ok updated ->
@@ -574,7 +593,7 @@ let tests =
                           Children = [] }
 
               let colliding = Fuaran.markdown "root" "collides with parent id"
-              let op = TreeOp.InsertChild(NodeId "root", 0, colliding)
+              let op = TreeOp.InsertChild(NodeId "root", colliding)
 
               match Apply.apply op emptyRoot with
               | Ok _ -> failtest "Expected DuplicateNodeId"
@@ -777,7 +796,7 @@ let tests =
                           Label = TextSource.Literal "B"
                           Value = binding.``static`` 2.0 }
 
-              match Apply.apply (TreeOp.InsertChild(NodeId "summary-list", 1, extraRow)) summaryList with
+              match Apply.apply (TreeOp.InsertChild(NodeId "summary-list", extraRow)) summaryList with
               | Ok updated ->
                   match updated.Kind with
                   | NodeKind.Layout(LayoutKind.SummaryList spec) ->

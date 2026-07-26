@@ -24,7 +24,7 @@ let tests =
               // Selecting op1 must pull in op0 (op1 targets the node op0 created);
               // op2 is independent.
               let ops =
-                  [ TreeOp.InsertChild(dashboardId, 2, Fuaran.markdown "x" "X")
+                  [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "x" "X")
                     TreeOp.UpdateStyle(
                         NodeId "x",
                         { Defaults.style with
@@ -45,7 +45,7 @@ let tests =
 
           test "partial accept keeps a dependency-closed subset; emits Kept/Dropped" {
               let ops =
-                  [ TreeOp.InsertChild(dashboardId, 2, Fuaran.markdown "x" "X")
+                  [ TreeOp.InsertChild(dashboardId, Fuaran.markdown "x" "X")
                     TreeOp.UpdateStyle(
                         NodeId "x",
                         { Defaults.style with

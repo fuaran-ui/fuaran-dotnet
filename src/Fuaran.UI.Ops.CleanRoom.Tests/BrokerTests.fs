@@ -43,9 +43,7 @@ let tests =
               Expect.isTrue (isReleased (TreeOp.RemoveNode(NodeId "recital"))) "delete by known id"
           }
           test "MoveNode between known ids is released" {
-              Expect.isTrue
-                  (isReleased (TreeOp.MoveNode(NodeId "clause-1", NodeId "clause-2", 0)))
-                  "reparent by known ids"
+              Expect.isTrue (isReleased (TreeOp.MoveNode(NodeId "clause-1", NodeId "clause-2"))) "reparent by known ids"
           }
           test "ReorderChildren over known ids is released" {
               let op =
@@ -63,7 +61,7 @@ let tests =
               let op =
                   TreeOp.Batch
                       [ TreeOp.RemoveNode(NodeId "recital")
-                        TreeOp.MoveNode(NodeId "clause-1", NodeId "clause-2", 0) ]
+                        TreeOp.MoveNode(NodeId "clause-1", NodeId "clause-2") ]
 
               Expect.isTrue (isReleased op) "batch of move/delete"
           }
@@ -73,10 +71,10 @@ let tests =
               Expect.isTrue (isWithheld (TreeOp.RemoveNode(NodeId "ghost"))) "unknown delete target"
           }
           test "MoveNode to an unknown parent is withheld" {
-              Expect.isTrue (isWithheld (TreeOp.MoveNode(NodeId "clause-1", NodeId "ghost", 0))) "unknown move parent"
+              Expect.isTrue (isWithheld (TreeOp.MoveNode(NodeId "clause-1", NodeId "ghost"))) "unknown move parent"
           }
           test "MoveNode of an unknown node is withheld" {
-              Expect.isTrue (isWithheld (TreeOp.MoveNode(NodeId "ghost", NodeId "clause-2", 0))) "unknown move source"
+              Expect.isTrue (isWithheld (TreeOp.MoveNode(NodeId "ghost", NodeId "clause-2"))) "unknown move source"
           }
           test "ReorderChildren naming an unknown id is withheld" {
               let op = TreeOp.ReorderChildren(NodeId "doc-root", [ NodeId "ghost" ])
@@ -99,7 +97,7 @@ let tests =
           }
           test "InsertChild is withheld (inserts a new content-bearing subtree)" {
               Expect.isTrue
-                  (isWithheld (TreeOp.InsertChild(NodeId "doc-root", 0, Fuaran.markdown "smuggled" "secret")))
+                  (isWithheld (TreeOp.InsertChild(NodeId "doc-root", Fuaran.markdown "smuggled" "secret")))
                   "InsertChild"
           }
           test "UpdateState is withheld (carries content subtrees)" {

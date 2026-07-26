@@ -1035,15 +1035,9 @@ let private defs: (string * J) list =
                 [ "binding", ref "Binding"; "slot", str; "target", str ]
             duCase "UpdateStyle" [ "style"; "target" ] [ "style", ref "SemanticStyle"; "target", str ]
             duCase "UpdateState" [ "state"; "target" ] [ "state", ref "StateBehaviour"; "target", str ]
-            duCase
-                "InsertChild"
-                [ "child"; "parentId"; "position" ]
-                [ "child", ref "Node"; "parentId", str; "position", integer ]
+            duCase "InsertChild" [ "child"; "parentId" ] [ "child", ref "Node"; "parentId", str ]
             duCase "RemoveNode" [ "target" ] [ "target", str ]
-            duCase
-                "MoveNode"
-                [ "newParentId"; "newPosition"; "target" ]
-                [ "newParentId", str; "newPosition", integer; "target", str ]
+            duCase "MoveNode" [ "newParentId"; "target" ] [ "newParentId", str; "target", str ]
             duCase "ReorderChildren" [ "newOrder"; "parentId" ] [ "newOrder", arrayOf str; "parentId", str ]
             duCase "ReplaceRoot" [ "node" ] [ "node", ref "Node" ]
             duCase "Batch" [ "ops" ] [ "ops", arrayOf (ref "TreeOp") ] ] ]

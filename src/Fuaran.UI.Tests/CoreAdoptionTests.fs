@@ -206,7 +206,7 @@ let private genStreamOp (rng: CoreRng.T) : TreeOp<obj> * CoreRng.T =
     match pick with
     | 0 ->
         let v, r2 = CoreRng.next r1
-        TreeOp.InsertChild(NodeId "root", 0, unwrap (mkSpacer (sprintf "g%d" (v % 50)))), r2
+        TreeOp.InsertChild(NodeId "root", unwrap (mkSpacer (sprintf "g%d" (v % 50)))), r2
     | 1 -> TreeOp.RemoveNode(NodeId "s0"), r1
     | _ -> TreeOp.RemoveNode(NodeId "ghost"), r1
 
@@ -216,7 +216,7 @@ let private streamGen: Fuaran.Core.StreamGen<TreeOp<obj>, EqNode> =
 // Fuaran.UI's op-stream actor is now the typed `OpRecord.Actor` (Human/Agent), folded into the hash
 // (Phase 320). These string tags are just the conformance-fixture labels, not the op-record actor.
 let private uiOps: (string * TreeOp<obj>) list =
-    [ "human:ajw", TreeOp.InsertChild(NodeId "root", 1, unwrap (mkSpacer "s2"))
+    [ "human:ajw", TreeOp.InsertChild(NodeId "root", unwrap (mkSpacer "s2"))
       "agent:claude", TreeOp.RemoveNode(NodeId "s0") ]
 
 [<Tests>]
@@ -243,7 +243,7 @@ let tests =
           testCase "Core skeleton ops + invert operate over a concrete Fuaran.UI tree"
           <| fun _ ->
               let tree = mkStack "root" [ mkStack "a" [] ]
-              let op = Fuaran.Core.SkeletonOp.InsertChild(NodeId "root", 1, mkStack "b" [])
+              let op = Fuaran.Core.SkeletonOp.InsertChild(NodeId "root", mkStack "b" [])
 
               match Fuaran.Core.Ops.apply nodew idw op tree with
               | Ok post ->
@@ -308,13 +308,13 @@ let tests =
               // the certified witness produces (compared through the canonical encoding, the
               // domain's equality notion).
               let viaRuntime =
-                  UiApply.apply (TreeOp.InsertChild(NodeId "root", 1, unwrap (mkSpacer "s2"))) (unwrap baseTree)
+                  UiApply.apply (TreeOp.InsertChild(NodeId "root", unwrap (mkSpacer "s2"))) (unwrap baseTree)
 
               let viaCore =
                   Fuaran.Core.Ops.apply
                       nodew
                       idw
-                      (Fuaran.Core.SkeletonOp.InsertChild(NodeId "root", 1, mkSpacer "s2"))
+                      (Fuaran.Core.SkeletonOp.InsertChild(NodeId "root", mkSpacer "s2"))
                       baseTree
 
               match viaRuntime, viaCore with
@@ -330,7 +330,7 @@ let tests =
               // The §4d recovery hints the hand-rolled walker produced must survive the
               // Rejection → ApplyError translation: a childless-parent insert still names the
               // kind, a bad reorder still enumerates the expected child ids.
-              match UiApply.apply (TreeOp.InsertChild(NodeId "s0", 0, unwrap (mkSpacer "x"))) (unwrap baseTree) with
+              match UiApply.apply (TreeOp.InsertChild(NodeId "s0", unwrap (mkSpacer "x"))) (unwrap baseTree) with
               | Error e ->
                   Expect.equal e.Code ApplyErrorCode.ChildlessKind "leaf insert → ChildlessKind"
                   Expect.isSome e.Hint.NodeKind "ChildlessKind hint still names the target kind"
@@ -364,7 +364,7 @@ let tests =
                     Op =
                       fun rng ->
                           let v, r' = CoreRng.next rng
-                          TreeOp.InsertChild(NodeId "root", 0, unwrap (mkSpacer (sprintf "h%d" v))), r' }
+                          TreeOp.InsertChild(NodeId "root", unwrap (mkSpacer (sprintf "h%d" v))), r' }
 
               let assertAllPassed (context: string) (results: Fuaran.Core.LawResult list) =
                   let failures = results |> List.filter (fun r -> not r.Passed)

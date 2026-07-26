@@ -41,7 +41,7 @@ let private updatePropOp: TreeOp<unit> =
 /// A structural insert carrying a markdown subtree — the encode walks a whole
 /// `Node`, so the hash pre-image is materially larger than a granular edit.
 let private insertChildOp: TreeOp<unit> =
-    TreeOp.InsertChild(NodeId "root", 0, Fuaran.markdown "inserted" "An inserted line of body copy.")
+    TreeOp.InsertChild(NodeId "root", Fuaran.markdown "inserted" "An inserted line of body copy.")
 
 /// A batch of sixteen granular edits applied as one record — the wide-pre-image
 /// case a multi-edit AI turn persists atomically.

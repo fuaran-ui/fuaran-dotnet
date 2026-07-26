@@ -130,8 +130,8 @@ let tests =
                   let sink = InMemoryDagSink.create<TestMsg> ()
                   let a = stepRecord "s" None brand 1L
                   add sink a
-                  let insZ = TreeOp.InsertChild(dashboardId, 2, Fuaran.markdown "zzz" "Z pane")
-                  let insA = TreeOp.InsertChild(dashboardId, 2, Fuaran.markdown "aaa" "A pane")
+                  let insZ = TreeOp.InsertChild(dashboardId, Fuaran.markdown "zzz" "Z pane")
+                  let insA = TreeOp.InsertChild(dashboardId, Fuaran.markdown "aaa" "A pane")
                   let branchA = stepRecord "s" (Some a) insZ 2L
                   let branchB = stepRecord "s" (Some a) insA 3L
                   add sink branchA

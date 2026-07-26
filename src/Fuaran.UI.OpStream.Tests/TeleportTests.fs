@@ -88,7 +88,7 @@ let private exemplarBundle () : TeleportBundle<TestMsg> =
     { Tree = exemplarTree ()
       State = exemplarState
       History =
-        [ TreeOp.InsertChild(NodeId "wiz-steps", 2, Fuaran.markdown "step-review" "All done — review and finish.")
+        [ TreeOp.InsertChild(NodeId "wiz-steps", Fuaran.markdown "step-review" "All done — review and finish.")
           TreeOp.RemoveNode(NodeId "step-stale") ]
       ChainHead = Some(String.replicate 64 "a") }
 

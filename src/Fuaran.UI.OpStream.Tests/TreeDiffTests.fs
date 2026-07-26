@@ -80,12 +80,12 @@ let tests =
               | Error e -> failtestf "Apply failed: %A" e
           }
 
-          test "InsertChild op produces a single Added entry with the right parent + position" {
+          test "InsertChild op produces a single Added entry, appended" {
               let before = buildDashboard ()
 
               let newChild: Node<TestMsg> = Fuaran.markdown "middle" "Middle pane"
 
-              match Apply.apply (TreeOp.InsertChild(NodeId "dash", 1, newChild)) before with
+              match Apply.apply (TreeOp.InsertChild(NodeId "dash", newChild)) before with
               | Ok after ->
                   let result = TreeDiff.diff before after
                   let added, _, _, _, _, _ = countByKind result
@@ -93,10 +93,12 @@ let tests =
 
                   let isMiddleAdded (c: NodeChangeKind) =
                       match c with
-                      | NodeChangeKind.Added(Some(NodeId "dash"), 1) -> true
+                      | NodeChangeKind.Added(Some(NodeId "dash"), 2) -> true
                       | _ -> false
 
-                  Expect.isTrue (hasChangeFor "middle" isMiddleAdded result) "Middle inserted under dash at position 1"
+                  Expect.isTrue
+                      (hasChangeFor "middle" isMiddleAdded result)
+                      "Middle appended under dash — the diff still REPORTS a position, derived from the result"
               | Error e -> failtestf "Apply failed: %A" e
           }
 
@@ -135,8 +137,9 @@ let tests =
                       { Defaults.dashboard<TestMsg> with
                           Children = [ inner; Fuaran.markdown "side" "Side" ] }
 
-              // Move 'leaf' from 'inner' (position 0) to 'outer' (position 1).
-              let op = TreeOp.MoveNode(NodeId "leaf", NodeId "outer", 1)
+              // Move 'leaf' from 'inner' to 'outer'. The op appends, so it lands
+              // after 'side' — index 2, not the old explicit 1.
+              let op = TreeOp.MoveNode(NodeId "leaf", NodeId "outer")
 
               match Apply.apply op outer with
               | Ok after ->
@@ -146,12 +149,12 @@ let tests =
 
                   let isLeafMoveAcrossParents (c: NodeChangeKind) =
                       match c with
-                      | NodeChangeKind.Moved(Some(NodeId "inner"), 0, Some(NodeId "outer"), 1) -> true
+                      | NodeChangeKind.Moved(Some(NodeId "inner"), 0, Some(NodeId "outer"), 2) -> true
                       | _ -> false
 
                   Expect.isTrue
                       (hasChangeFor "leaf" isLeafMoveAcrossParents result)
-                      "Leaf moved from inner/0 to outer/1"
+                      "Leaf moved from inner/0 to outer/2 (appended)"
               | Error e -> failtestf "Apply failed: %A" e
           }
 
@@ -211,8 +214,7 @@ let tests =
               let start = buildDashboard ()
               let op1 = TreeOp.RemoveNode(NodeId "right"): TreeOp<TestMsg>
 
-              let op2 =
-                  TreeOp.InsertChild(NodeId "dash", 1, Fuaran.markdown "middle" "Middle pane")
+              let op2 = TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "middle" "Middle pane")
 
               match Apply.apply op1 start with
               | Ok t1 ->
@@ -260,7 +262,7 @@ let tests =
               let op1 = TreeOp.RemoveNode(NodeId "right"): TreeOp<TestMsg>
 
               let op2 =
-                  TreeOp.InsertChild(NodeId "dash", 1, Fuaran.markdown "middle" "Middle"): TreeOp<TestMsg>
+                  TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "middle" "Middle"): TreeOp<TestMsg>
 
               let r1 = buildRecord "stream" 1 op1 None (timestamp 100L)
               let r2 = buildRecord "stream" 2 op2 (Some r1) (timestamp 200L)
@@ -320,7 +322,7 @@ let tests =
               let op1 = TreeOp.RemoveNode(NodeId "right"): TreeOp<TestMsg>
 
               let op2 =
-                  TreeOp.InsertChild(NodeId "dash", 1, Fuaran.markdown "middle" "Middle"): TreeOp<TestMsg>
+                  TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "middle" "Middle"): TreeOp<TestMsg>
 
               let r1 = buildRecord "stream" 1 op1 None (timestamp 100L)
               let r2 = buildRecord "stream" 2 op2 (Some r1) (timestamp 200L)

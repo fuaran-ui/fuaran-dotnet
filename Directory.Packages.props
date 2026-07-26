@@ -86,32 +86,32 @@
          the UI NodeWitness. Tree/Ops/OpStream/Conformance are additionally consumed
          test-only by Fuaran.UI.Tests (CoreAdoptionTests.fs) to certify the witness +
          op-stream against the shared conformance kit. FSharp.Core-only (FGP 2). -->
-    <PackageVersion Include="Fuaran.Core.Tree" Version="0.1.11" />
-    <PackageVersion Include="Fuaran.Core.Ops" Version="0.1.11" />
-    <PackageVersion Include="Fuaran.Core.OpStream" Version="0.1.11" />
-    <PackageVersion Include="Fuaran.Core.Conformance" Version="0.1.11" />
+    <PackageVersion Include="Fuaran.Core.Tree" Version="0.2.0" />
+    <PackageVersion Include="Fuaran.Core.Ops" Version="0.2.0" />
+    <PackageVersion Include="Fuaran.Core.OpStream" Version="0.2.0" />
+    <PackageVersion Include="Fuaran.Core.Conformance" Version="0.2.0" />
     <!-- Fuaran.Core Compute strand — consumed by SHIPPING Fuaran.UI.* (Phase 282/Wave 42, the
          core-ui-spine-unification beachhead): the typed surface (Fuaran.UI), the wire codec seam
          (Fuaran.UI.OpStream.Abstractions encode + Fuaran.UI.Ops decode), and the evaluator
          (Fuaran.UI.Ops, delegating to Fuaran.Core.DataFrame). Fable-distributed (source-packed) so
          the Fable client compiles them; the wire serialises in the shared Canon `$type` discipline. -->
-    <PackageVersion Include="Fuaran.Core.Column" Version="0.1.11" />
-    <PackageVersion Include="Fuaran.Core.DataFrame" Version="0.1.11" />
+    <PackageVersion Include="Fuaran.Core.Column" Version="0.2.0" />
+    <PackageVersion Include="Fuaran.Core.DataFrame" Version="0.2.0" />
     <!-- Fuaran.Core.Wire — the canonical JVal JSON AST. Surfaced directly in the
          Fuaran.UI type contract (Custom props / action payloads / I18n args) and in
          TreeOp.UpdateProp's PropValue.Wire case. Already transitive via Column's
          codec; referenced explicitly because it is now part of the public surface. -->
-    <PackageVersion Include="Fuaran.Core.Wire" Version="0.1.11" />
+    <PackageVersion Include="Fuaran.Core.Wire" Version="0.2.0" />
     <!-- Fuaran.Core.Function — the invocable `Capability` + registry surface, consumed by
          Fuaran.UI.AiTools (Phase 283, the capability discovery + dispatch glue). Fable-distributed. -->
-    <PackageVersion Include="Fuaran.Core.Function" Version="0.1.11" />
+    <PackageVersion Include="Fuaran.Core.Function" Version="0.2.0" />
     <!-- Fuaran.Core.Observer — the generic runtime-verification seam (Phase 322). Consumed by
          Fuaran.UI.LayoutObserver, which becomes a domain instance of it. Dependency-free
          (FSharp.Core only). Fable-distributed (source-packed) so the Fable client compiles it. -->
-    <PackageVersion Include="Fuaran.Core.Observer" Version="0.1.11" />
+    <PackageVersion Include="Fuaran.Core.Observer" Version="0.2.0" />
     <!-- Fuaran.Core.Validator — consumed by the IDL-generated structural layer's
          plumbing (Phase 671): the generated `runValidator` scaffold projects Core
          `Defect`s. Pinned alongside the rest of the Core substrate. -->
-    <PackageVersion Include="Fuaran.Core.Validator" Version="0.1.11" />
+    <PackageVersion Include="Fuaran.Core.Validator" Version="0.2.0" />
   </ItemGroup>
 </Project>

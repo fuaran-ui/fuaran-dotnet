@@ -1095,16 +1095,14 @@ let rec private genOpSized (size: int) : Gen<TreeOp<obj>> =
           }
           gen {
               let! parent = genNonEmptyString
-              let! position = Gen.choose (0, 10)
               let! child = genNodeSized 2
-              return TreeOp.InsertChild(NodeId parent, position, child)
+              return TreeOp.InsertChild(NodeId parent, child)
           }
           Gen.map (fun t -> TreeOp.RemoveNode(NodeId t)) genNonEmptyString
           gen {
               let! target = genNonEmptyString
               let! parent = genNonEmptyString
-              let! position = Gen.choose (0, 10)
-              return TreeOp.MoveNode(NodeId target, NodeId parent, position)
+              return TreeOp.MoveNode(NodeId target, NodeId parent)
           }
           gen {
               let! parent = genNonEmptyString

@@ -110,8 +110,7 @@ module private SimpleSinkJson =
         match op with
         | TreeOp.RemoveNode(NodeId raw) -> sprintf "R|%s" raw
         | TreeOp.UpdateStyle(NodeId raw, style) -> sprintf "S|%s|%A|%A|%A" raw style.Tone style.Weight style.Emphasis
-        | TreeOp.MoveNode(NodeId target, NodeId newParent, newPosition) ->
-            sprintf "M|%s|%s|%d" target newParent newPosition
+        | TreeOp.MoveNode(NodeId target, NodeId newParent) -> sprintf "M|%s|%s" target newParent
         | TreeOp.ReorderChildren(NodeId parent, newOrder) ->
             let ids = newOrder |> List.map (fun (NodeId raw) -> raw) |> String.concat ","
             sprintf "O|%s|%s" parent ids
@@ -131,10 +130,7 @@ module private SimpleSinkJson =
                   Voice = FontVoice.Default }
 
             Ok(TreeOp.UpdateStyle(NodeId id, style))
-        | [| "M"; target; newParent; newPosStr |] ->
-            match Int32.TryParse newPosStr with
-            | true, n -> Ok(TreeOp.MoveNode(NodeId target, NodeId newParent, n))
-            | false, _ -> Error(sprintf "MoveNode: bad newPosition '%s'" newPosStr)
+        | [| "M"; target; newParent |] -> Ok(TreeOp.MoveNode(NodeId target, NodeId newParent))
         | [| "O"; parent; idsCsv |] ->
             let ids =
                 if idsCsv = "" then

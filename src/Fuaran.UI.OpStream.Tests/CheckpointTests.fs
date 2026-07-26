@@ -52,10 +52,10 @@ let private populate (streamId: string) (sink: IOpStreamCheckpointSink<TestMsg>)
 
     let ops: TreeOp<TestMsg> list =
         [ TreeOp.RemoveNode(NodeId "right")
-          TreeOp.InsertChild(NodeId "dash", 1, Fuaran.markdown "middle" "Middle pane")
+          TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "middle" "Middle pane")
           TreeOp.RemoveNode(NodeId "left")
-          TreeOp.InsertChild(NodeId "dash", 0, Fuaran.markdown "header" "Header")
-          TreeOp.InsertChild(NodeId "dash", 2, Fuaran.markdown "footer" "Footer") ]
+          TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "header" "Header")
+          TreeOp.InsertChild(NodeId "dash", Fuaran.markdown "footer" "Footer") ]
 
     let mutable previous: OpRecord<TestMsg> option = None
     let mutable seq = 1

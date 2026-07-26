@@ -188,7 +188,7 @@ let tests =
               Expect.isTrue
                   (ops
                    |> List.exists (function
-                       | TreeOp.InsertChild(NodeId "dash", _, _) -> true
+                       | TreeOp.InsertChild(NodeId "dash", _) -> true
                        | _ -> false))
                   "new child is inserted under dash"
           }
@@ -244,7 +244,7 @@ let tests =
               Expect.isTrue
                   (ops
                    |> List.exists (function
-                       | TreeOp.MoveNode(NodeId "x", NodeId "s2", _) -> true
+                       | TreeOp.MoveNode(NodeId "x", NodeId "s2") -> true
                        | _ -> false))
                   "a cross-parent move emits MoveNode to the new parent"
 

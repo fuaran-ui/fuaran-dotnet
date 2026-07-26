@@ -32,7 +32,7 @@ let private linearOps: TreeOp<TestMsg> list =
 
     [ TreeOp.UpdateStyle(leftChildId, restyle)
       TreeOp.RemoveNode rightChildId
-      TreeOp.InsertChild(dashboardId, 1, Fuaran.markdown "fresh" "Fresh pane") ]
+      TreeOp.InsertChild(dashboardId, Fuaran.markdown "fresh" "Fresh pane") ]
 
 /// Build the linear OpRecord history (hash-chained) for `linearOps`.
 let private buildLinear () : OpRecord<TestMsg> list =

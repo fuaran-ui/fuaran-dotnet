@@ -2355,11 +2355,11 @@ let opUpdateState: TreeOp<obj> =
           OnError = None }
     )
 
-let opInsertChild: TreeOp<obj> = TreeOp.InsertChild(NodeId "dash-empty", 0, metric)
+let opInsertChild: TreeOp<obj> = TreeOp.InsertChild(NodeId "dash-empty", metric)
 
 let opRemoveNode: TreeOp<obj> = TreeOp.RemoveNode(NodeId "metric-1")
 
-let opMoveNode: TreeOp<obj> = TreeOp.MoveNode(NodeId "metric-1", NodeId "card-1", 0)
+let opMoveNode: TreeOp<obj> = TreeOp.MoveNode(NodeId "metric-1", NodeId "card-1")
 
 let opReorderChildren: TreeOp<obj> =
     TreeOp.ReorderChildren(NodeId "stack-1", [ NodeId "markdown-1"; NodeId "metric-1" ])

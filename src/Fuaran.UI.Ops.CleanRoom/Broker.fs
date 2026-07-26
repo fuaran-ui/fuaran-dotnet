@@ -99,7 +99,7 @@ let enforce (skeleton: Skeleton) (op: TreeOp<'Msg>) : StructuralGateDecision<'Ms
                 StructuralGateDecision.Released op
             else
                 StructuralGateDecision.Withheld(unknownId target)
-        | TreeOp.MoveNode(target, newParentId, _) ->
+        | TreeOp.MoveNode(target, newParentId) ->
             if not (grounded target) then
                 StructuralGateDecision.Withheld(unknownId target)
             elif not (grounded newParentId) then

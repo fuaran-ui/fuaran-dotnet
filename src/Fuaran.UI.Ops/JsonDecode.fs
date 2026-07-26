@@ -4894,19 +4894,20 @@ let rec private decodeTreeOpAst (path: string) (j: Json) : Result<TreeOp<obj>, D
                 |> Result.bind (requireString (path + ".parentId"))
                 |> Result.map NodeId
 
-            let positionR =
-                requireField path fields "position" "position integer"
-                |> Result.bind (requireInt (path + ".position"))
-
             let childR =
                 requireField path fields "child" "child Node object"
                 |> Result.bind (decodeNodeAst (path + ".child"))
 
-            match parentR, positionR, childR with
-            | Ok parent, Ok position, Ok child -> Ok(TreeOp.InsertChild(parent, position, child))
-            | Error e, _, _
-            | _, Error e, _
-            | _, _, Error e -> Error e
+            // A legacy `position` is ACCEPTED AND IGNORED for the migration window
+            // (phase 681): five hosts adopt independently, and a stored v1 emission
+            // must still apply — as an append, since order is now ReorderChildren's.
+            // The tolerance is a migration mechanism, not a choice offered to an
+            // author: nothing that teaches the wire mentions the field. Phase 687
+            // closes the window and makes it a decode error.
+            match parentR, childR with
+            | Ok parent, Ok child -> Ok(TreeOp.InsertChild(parent, child))
+            | Error e, _
+            | _, Error e -> Error e
         | Ok "RemoveNode" ->
             requireField path fields "target" "target NodeId"
             |> Result.bind (requireString (path + ".target"))
@@ -4922,15 +4923,11 @@ let rec private decodeTreeOpAst (path: string) (j: Json) : Result<TreeOp<obj>, D
                 |> Result.bind (requireString (path + ".newParentId"))
                 |> Result.map NodeId
 
-            let newPositionR =
-                requireField path fields "newPosition" "new position integer"
-                |> Result.bind (requireInt (path + ".newPosition"))
-
-            match targetR, newParentR, newPositionR with
-            | Ok target, Ok newParent, Ok newPosition -> Ok(TreeOp.MoveNode(target, newParent, newPosition))
-            | Error e, _, _
-            | _, Error e, _
-            | _, _, Error e -> Error e
+            // Legacy `newPosition` accepted and ignored — see the InsertChild note.
+            match targetR, newParentR with
+            | Ok target, Ok newParent -> Ok(TreeOp.MoveNode(target, newParent))
+            | Error e, _
+            | _, Error e -> Error e
         | Ok "ReorderChildren" ->
             let parentR =
                 requireField path fields "parentId" "parent NodeId"
