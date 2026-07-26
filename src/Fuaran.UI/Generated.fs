@@ -134,6 +134,17 @@ type DeterminismSource =
     | Network
 
 [<RequireQualifiedAccess>]
+type ChannelDirection =
+    | OutOnly
+    | TwoWay
+
+[<RequireQualifiedAccess>]
+type TextAnchor =
+    | Start
+    | Middle
+    | End
+
+[<RequireQualifiedAccess>]
 type TextSource =
     | Literal of text: string
     | Bound of binding: Binding<string>
@@ -254,6 +265,62 @@ and [<RequireQualifiedAccess>] FragmentArg =
     | Bool of value: bool
     | Str of value: string
     | SlotArg of tree: Node
+
+and [<RequireQualifiedAccess>] CurveCommand =
+    | MoveTo of ``to``: DrawPoint
+    | LineTo of ``to``: DrawPoint
+    | CubicTo of control1: DrawPoint * control2: DrawPoint * ``to``: DrawPoint
+    | QuadraticTo of control: DrawPoint * ``to``: DrawPoint
+    | Close
+
+and [<RequireQualifiedAccess>] Shape =
+    | Group of children: Shape list * style: DrawStyle
+    | Rectangle of cornerRadius: float option * height: float * style: DrawStyle * width: float * x: float * y: float
+    | Line of style: DrawStyle * x1: float * x2: float * y1: float * y2: float
+    | Polyline of points: DrawPoint list * style: DrawStyle
+    | Polygon of points: DrawPoint list * style: DrawStyle
+    | Curve of commands: CurveCommand list * style: DrawStyle
+    | Circle of cx: float * cy: float * r: float * style: DrawStyle
+    | Ellipse of cx: float * cy: float * rx: float * ry: float * style: DrawStyle
+    | Label of style: DrawStyle * text: TextSource * x: float * y: float
+
+and SwitchCase =
+    {
+      Child: Node
+      Match: string
+    }
+
+and GuestChannel =
+    {
+      Direction: ChannelDirection
+      MessageShape: string option
+    }
+
+and DrawPoint =
+    {
+      X: float
+      Y: float
+    }
+
+and ViewBox =
+    {
+      Height: float
+      MinX: float
+      MinY: float
+      Width: float
+    }
+
+and DrawStyle =
+    {
+      Emphasis: Emphasis option
+      Fill: Binding<string> option
+      FontFamily: string option
+      FontSize: float option
+      Opacity: Binding<float> option
+      Stroke: Binding<string> option
+      StrokeWidth: Binding<float> option
+      TextAnchor: TextAnchor option
+    }
 
 and InvokeArg =
     {
@@ -462,6 +529,25 @@ and CodeBlockSpec =
       LineNumbers: bool
     }
 
+// Display
+and ToastSpec =
+    {
+      Dismissable: bool
+      Message: TextSource
+      Open: Binding<bool>
+      Tone: ToneVariant
+    }
+
+// Display
+and DrawingSpec =
+    {
+      Description: TextSource option
+      Shapes: Shape list
+      Style: DrawStyle
+      Title: TextSource option
+      ViewBox: ViewBox
+    }
+
 // Layout
 and BoxSpec =
     {
@@ -650,6 +736,24 @@ and FragmentRefSpec =
       Args: Map<string, FragmentArg> option
     }
 
+// Meta
+and SwitchSpec =
+    {
+      Cases: SwitchCase list
+      Default: Node
+      StateKey: string
+    }
+
+// Meta
+and MountSpec =
+    {
+      Capabilities: string list
+      Channel: GuestChannel
+      Inputs: Map<string, FragmentArg> option
+      OnBubble: unit option
+      ScopeId: string
+    }
+
 and [<RequireQualifiedAccess>] NodeKind =
     | Heading of HeadingSpec
     | Badge of BadgeSpec
@@ -666,6 +770,8 @@ and [<RequireQualifiedAccess>] NodeKind =
     | Fact of FactSpec
     | Sparkline of SparklineSpec
     | CodeBlock of CodeBlockSpec
+    | Toast of ToastSpec
+    | Drawing of DrawingSpec
     | Box of BoxSpec
     | SplitPanel of SplitPanelSpec
     | SummaryList of SummaryListSpec
@@ -686,6 +792,8 @@ and [<RequireQualifiedAccess>] NodeKind =
     | ErrorBoundary of ErrorBoundarySpec
     | FragmentDecl of FragmentDeclSpec
     | FragmentRef of FragmentRefSpec
+    | Switch of SwitchSpec
+    | Mount of MountSpec
 
 and Node = { Id: string; Kind: NodeKind }
 
@@ -819,6 +927,17 @@ let private encDeterminismSource (v: DeterminismSource) : JVal =
     | DeterminismSource.Random -> JStr "Random"
     | DeterminismSource.Network -> JStr "Network"
 
+let private encChannelDirection (v: ChannelDirection) : JVal =
+    match v with
+    | ChannelDirection.OutOnly -> JStr "OutOnly"
+    | ChannelDirection.TwoWay -> JStr "TwoWay"
+
+let private encTextAnchor (v: TextAnchor) : JVal =
+    match v with
+    | TextAnchor.Start -> JStr "Start"
+    | TextAnchor.Middle -> JStr "Middle"
+    | TextAnchor.End -> JStr "End"
+
 let rec private encNode (n: Node) : JVal =
     let kind =
         match n.Kind with
@@ -837,6 +956,8 @@ let rec private encNode (n: Node) : JVal =
         | NodeKind.Fact s -> encFactSpec s
         | NodeKind.Sparkline s -> encSparklineSpec s
         | NodeKind.CodeBlock s -> encCodeBlockSpec s
+        | NodeKind.Toast s -> encToastSpec s
+        | NodeKind.Drawing s -> encDrawingSpec s
         | NodeKind.Box s -> encBoxSpec s
         | NodeKind.SplitPanel s -> encSplitPanelSpec s
         | NodeKind.SummaryList s -> encSummaryListSpec s
@@ -857,6 +978,8 @@ let rec private encNode (n: Node) : JVal =
         | NodeKind.ErrorBoundary s -> encErrorBoundarySpec s
         | NodeKind.FragmentDecl s -> encFragmentDeclSpec s
         | NodeKind.FragmentRef s -> encFragmentRefSpec s
+        | NodeKind.Switch s -> encSwitchSpec s
+        | NodeKind.Mount s -> encMountSpec s
 
     JObj [ "id", JStr n.Id; "kind", kind ]
 
@@ -998,6 +1121,41 @@ and private encFragmentArg (v: FragmentArg) : JVal =
     | FragmentArg.Str value -> Canon.typed "Str" [ "value", JStr value ]
     | FragmentArg.SlotArg tree -> Canon.typed "SlotArg" [ "tree", encNode tree ]
 
+and private encCurveCommand (v: CurveCommand) : JVal =
+    match v with
+    | CurveCommand.MoveTo ``to`` -> Canon.typed "MoveTo" [ "to", encDrawPoint ``to`` ]
+    | CurveCommand.LineTo ``to`` -> Canon.typed "LineTo" [ "to", encDrawPoint ``to`` ]
+    | CurveCommand.CubicTo (control1, control2, ``to``) -> Canon.typed "CubicTo" [ "control1", encDrawPoint control1; "control2", encDrawPoint control2; "to", encDrawPoint ``to`` ]
+    | CurveCommand.QuadraticTo (control, ``to``) -> Canon.typed "QuadraticTo" [ "control", encDrawPoint control; "to", encDrawPoint ``to`` ]
+    | CurveCommand.Close -> Canon.typed "Close" [  ]
+
+and private encShape (v: Shape) : JVal =
+    match v with
+    | Shape.Group (children, style) -> Canon.typed "Group" [ "children", JArr(List.map encShape children); "style", encDrawStyle style ]
+    | Shape.Rectangle (cornerRadius, height, style, width, x, y) -> Canon.typed "Rectangle" ([ (cornerRadius |> Option.map (fun v -> "cornerRadius", JFloat v)); Some("height", JFloat height); Some("style", encDrawStyle style); Some("width", JFloat width); Some("x", JFloat x); Some("y", JFloat y) ] |> List.choose id)
+    | Shape.Line (style, x1, x2, y1, y2) -> Canon.typed "Line" [ "style", encDrawStyle style; "x1", JFloat x1; "x2", JFloat x2; "y1", JFloat y1; "y2", JFloat y2 ]
+    | Shape.Polyline (points, style) -> Canon.typed "Polyline" [ "points", JArr(List.map encDrawPoint points); "style", encDrawStyle style ]
+    | Shape.Polygon (points, style) -> Canon.typed "Polygon" [ "points", JArr(List.map encDrawPoint points); "style", encDrawStyle style ]
+    | Shape.Curve (commands, style) -> Canon.typed "Curve" [ "commands", JArr(List.map encCurveCommand commands); "style", encDrawStyle style ]
+    | Shape.Circle (cx, cy, r, style) -> Canon.typed "Circle" [ "cx", JFloat cx; "cy", JFloat cy; "r", JFloat r; "style", encDrawStyle style ]
+    | Shape.Ellipse (cx, cy, rx, ry, style) -> Canon.typed "Ellipse" [ "cx", JFloat cx; "cy", JFloat cy; "rx", JFloat rx; "ry", JFloat ry; "style", encDrawStyle style ]
+    | Shape.Label (style, text, x, y) -> Canon.typed "Label" [ "style", encDrawStyle style; "text", encTextSource text; "x", JFloat x; "y", JFloat y ]
+
+and private encSwitchCase (s: SwitchCase) : JVal =
+    JObj([ Some("child", encNode s.Child); Some("match", JStr s.Match) ] |> List.choose id)
+
+and private encGuestChannel (s: GuestChannel) : JVal =
+    JObj([ Some("direction", encChannelDirection s.Direction); (s.MessageShape |> Option.map (fun v -> "messageShape", JStr v)) ] |> List.choose id)
+
+and private encDrawPoint (s: DrawPoint) : JVal =
+    JObj([ Some("x", JFloat s.X); Some("y", JFloat s.Y) ] |> List.choose id)
+
+and private encViewBox (s: ViewBox) : JVal =
+    JObj([ Some("height", JFloat s.Height); Some("minX", JFloat s.MinX); Some("minY", JFloat s.MinY); Some("width", JFloat s.Width) ] |> List.choose id)
+
+and private encDrawStyle (s: DrawStyle) : JVal =
+    JObj([ (s.Emphasis |> Option.map (fun v -> "emphasis", encEmphasis v)); (s.Fill |> Option.map (fun v -> "fill", (encBinding JStr) v)); (s.FontFamily |> Option.map (fun v -> "fontFamily", JStr v)); (s.FontSize |> Option.map (fun v -> "fontSize", JFloat v)); (s.Opacity |> Option.map (fun v -> "opacity", (encBinding JFloat) v)); (s.Stroke |> Option.map (fun v -> "stroke", (encBinding JStr) v)); (s.StrokeWidth |> Option.map (fun v -> "strokeWidth", (encBinding JFloat) v)); (s.TextAnchor |> Option.map (fun v -> "textAnchor", encTextAnchor v)) ] |> List.choose id)
+
 and private encInvokeArg (s: InvokeArg) : JVal =
     JObj([ Some("addr", JStr s.Addr); Some("value", JStr s.Value) ] |> List.choose id)
 
@@ -1076,6 +1234,12 @@ and private encSparklineSpec (s: SparklineSpec) : JVal =
 and private encCodeBlockSpec (s: CodeBlockSpec) : JVal =
     Canon.typed "CodeBlock" ([ Some("code", JStr s.Code); Some("copyable", JBool s.Copyable); Some("highlightLines", JArr(List.map JInt s.HighlightLines)); Some("language", JStr s.Language); Some("lineNumbers", JBool s.LineNumbers) ] |> List.choose id)
 
+and private encToastSpec (s: ToastSpec) : JVal =
+    Canon.typed "Toast" ([ (if s.Dismissable = true then None else Some("dismissable", JBool s.Dismissable)); Some("message", encTextSource s.Message); Some("open", (encBinding JBool) s.Open); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)) ] |> List.choose id)
+
+and private encDrawingSpec (s: DrawingSpec) : JVal =
+    Canon.typed "Drawing" ([ (s.Description |> Option.map (fun v -> "description", encTextSource v)); Some("shapes", JArr(List.map encShape s.Shapes)); Some("style", encDrawStyle s.Style); (s.Title |> Option.map (fun v -> "title", encTextSource v)); Some("viewBox", encViewBox s.ViewBox) ] |> List.choose id)
+
 and private encBoxSpec (s: BoxSpec) : JVal =
     Canon.typed "Box" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); Some("layout", encLayoutMode s.Layout); Some("role", encBoxRole s.Role) ] |> List.choose id)
 
@@ -1135,6 +1299,12 @@ and private encFragmentDeclSpec (s: FragmentDeclSpec) : JVal =
 
 and private encFragmentRefSpec (s: FragmentRefSpec) : JVal =
     Canon.typed "FragmentRef" ([ Some("name", JStr s.Name); (s.Args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)) ] |> List.choose id)
+
+and private encSwitchSpec (s: SwitchSpec) : JVal =
+    Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); Some("stateKey", JStr s.StateKey) ] |> List.choose id)
+
+and private encMountSpec (s: MountSpec) : JVal =
+    Canon.typed "Mount" ([ Some("capabilities", JArr(List.map JStr s.Capabilities)); Some("channel", encGuestChannel s.Channel); (s.Inputs |> Option.map (fun v -> "inputs", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)); (s.OnBubble |> Option.map (fun v -> "onBubble", JStr "<closure>")); Some("scopeId", JStr s.ScopeId) ] |> List.choose id)
 
 let encodeNode (n: Node) : string = Canon.render (encNode n)
 
@@ -1367,6 +1537,19 @@ let private decDeterminismSource (j: JVal) : Result<DeterminismSource, string> =
     | JStr "Network" -> Ok DeterminismSource.Network
     | _ -> Error "not a DeterminismSource"
 
+let private decChannelDirection (j: JVal) : Result<ChannelDirection, string> =
+    match j with
+    | JStr "OutOnly" -> Ok ChannelDirection.OutOnly
+    | JStr "TwoWay" -> Ok ChannelDirection.TwoWay
+    | _ -> Error "not a ChannelDirection"
+
+let private decTextAnchor (j: JVal) : Result<TextAnchor, string> =
+    match j with
+    | JStr "Start" -> Ok TextAnchor.Start
+    | JStr "Middle" -> Ok TextAnchor.Middle
+    | JStr "End" -> Ok TextAnchor.End
+    | _ -> Error "not a TextAnchor"
+
 let rec private decNodeKind (j: JVal) : Result<NodeKind, string> =
     dObj j |> Result.bind (fun __fs ->
     dTag __fs |> Result.bind (fun __t ->
@@ -1386,6 +1569,8 @@ let rec private decNodeKind (j: JVal) : Result<NodeKind, string> =
     | "Fact" -> decFactSpec j |> Result.map NodeKind.Fact
     | "Sparkline" -> decSparklineSpec j |> Result.map NodeKind.Sparkline
     | "CodeBlock" -> decCodeBlockSpec j |> Result.map NodeKind.CodeBlock
+    | "Toast" -> decToastSpec j |> Result.map NodeKind.Toast
+    | "Drawing" -> decDrawingSpec j |> Result.map NodeKind.Drawing
     | "Box" -> decBoxSpec j |> Result.map NodeKind.Box
     | "SplitPanel" -> decSplitPanelSpec j |> Result.map NodeKind.SplitPanel
     | "SummaryList" -> decSummaryListSpec j |> Result.map NodeKind.SummaryList
@@ -1406,6 +1591,8 @@ let rec private decNodeKind (j: JVal) : Result<NodeKind, string> =
     | "ErrorBoundary" -> decErrorBoundarySpec j |> Result.map NodeKind.ErrorBoundary
     | "FragmentDecl" -> decFragmentDeclSpec j |> Result.map NodeKind.FragmentDecl
     | "FragmentRef" -> decFragmentRefSpec j |> Result.map NodeKind.FragmentRef
+    | "Switch" -> decSwitchSpec j |> Result.map NodeKind.Switch
+    | "Mount" -> decMountSpec j |> Result.map NodeKind.Mount
     | __other -> Error ("unknown node kind: " + __other)))
 
 and private decNode (j: JVal) : Result<Node, string> =
@@ -1845,6 +2032,126 @@ and private decFragmentArg (j: JVal) : Result<FragmentArg, string> =
         | __other -> Error ("unknown FragmentArg case: " + __other))
     | _ -> Error "expected a FragmentArg object"
 
+and private decCurveCommand (j: JVal) : Result<CurveCommand, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "MoveTo" ->
+            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
+            Ok(CurveCommand.MoveTo(``to``)))
+        | "LineTo" ->
+            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
+            Ok(CurveCommand.LineTo(``to``)))
+        | "CubicTo" ->
+            dReq "control1" __fs decDrawPoint |> Result.bind (fun control1 ->
+            dReq "control2" __fs decDrawPoint |> Result.bind (fun control2 ->
+            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
+            Ok(CurveCommand.CubicTo(control1, control2, ``to``)))))
+        | "QuadraticTo" ->
+            dReq "control" __fs decDrawPoint |> Result.bind (fun control ->
+            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
+            Ok(CurveCommand.QuadraticTo(control, ``to``))))
+        | "Close" -> Ok CurveCommand.Close
+        | __other -> Error ("unknown CurveCommand case: " + __other))
+    | _ -> Error "expected a CurveCommand object"
+
+and private decShape (j: JVal) : Result<Shape, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "Group" ->
+            dReq "children" __fs (dList decShape) |> Result.bind (fun children ->
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            Ok(Shape.Group(children, style))))
+        | "Rectangle" ->
+            dOpt "cornerRadius" __fs dFloat |> Result.bind (fun cornerRadius ->
+            dReq "height" __fs dFloat |> Result.bind (fun height ->
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            dReq "width" __fs dFloat |> Result.bind (fun width ->
+            dReq "x" __fs dFloat |> Result.bind (fun x ->
+            dReq "y" __fs dFloat |> Result.bind (fun y ->
+            Ok(Shape.Rectangle(cornerRadius, height, style, width, x, y))))))))
+        | "Line" ->
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            dReq "x1" __fs dFloat |> Result.bind (fun x1 ->
+            dReq "x2" __fs dFloat |> Result.bind (fun x2 ->
+            dReq "y1" __fs dFloat |> Result.bind (fun y1 ->
+            dReq "y2" __fs dFloat |> Result.bind (fun y2 ->
+            Ok(Shape.Line(style, x1, x2, y1, y2)))))))
+        | "Polyline" ->
+            dReq "points" __fs (dList decDrawPoint) |> Result.bind (fun points ->
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            Ok(Shape.Polyline(points, style))))
+        | "Polygon" ->
+            dReq "points" __fs (dList decDrawPoint) |> Result.bind (fun points ->
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            Ok(Shape.Polygon(points, style))))
+        | "Curve" ->
+            dReq "commands" __fs (dList decCurveCommand) |> Result.bind (fun commands ->
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            Ok(Shape.Curve(commands, style))))
+        | "Circle" ->
+            dReq "cx" __fs dFloat |> Result.bind (fun cx ->
+            dReq "cy" __fs dFloat |> Result.bind (fun cy ->
+            dReq "r" __fs dFloat |> Result.bind (fun r ->
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            Ok(Shape.Circle(cx, cy, r, style))))))
+        | "Ellipse" ->
+            dReq "cx" __fs dFloat |> Result.bind (fun cx ->
+            dReq "cy" __fs dFloat |> Result.bind (fun cy ->
+            dReq "rx" __fs dFloat |> Result.bind (fun rx ->
+            dReq "ry" __fs dFloat |> Result.bind (fun ry ->
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            Ok(Shape.Ellipse(cx, cy, rx, ry, style)))))))
+        | "Label" ->
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            dReq "text" __fs decTextSource |> Result.bind (fun text ->
+            dReq "x" __fs dFloat |> Result.bind (fun x ->
+            dReq "y" __fs dFloat |> Result.bind (fun y ->
+            Ok(Shape.Label(style, text, x, y))))))
+        | __other -> Error ("unknown Shape case: " + __other))
+    | _ -> Error "expected a Shape object"
+
+and private decSwitchCase (j: JVal) : Result<SwitchCase, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "child" __fs decNode |> Result.bind (fun child ->
+    dReq "match" __fs dStr |> Result.bind (fun ``match`` ->
+    Ok { Child = child; Match = ``match`` })))
+
+and private decGuestChannel (j: JVal) : Result<GuestChannel, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "direction" __fs decChannelDirection |> Result.bind (fun direction ->
+    dOpt "messageShape" __fs dStr |> Result.bind (fun messageShape ->
+    Ok { Direction = direction; MessageShape = messageShape })))
+
+and private decDrawPoint (j: JVal) : Result<DrawPoint, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "x" __fs dFloat |> Result.bind (fun x ->
+    dReq "y" __fs dFloat |> Result.bind (fun y ->
+    Ok { X = x; Y = y })))
+
+and private decViewBox (j: JVal) : Result<ViewBox, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "height" __fs dFloat |> Result.bind (fun height ->
+    dReq "minX" __fs dFloat |> Result.bind (fun minX ->
+    dReq "minY" __fs dFloat |> Result.bind (fun minY ->
+    dReq "width" __fs dFloat |> Result.bind (fun width ->
+    Ok { Height = height; MinX = minX; MinY = minY; Width = width })))))
+
+and private decDrawStyle (j: JVal) : Result<DrawStyle, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dOpt "emphasis" __fs decEmphasis |> Result.bind (fun emphasis ->
+    dOpt "fill" __fs (decBinding dStr) |> Result.bind (fun fill ->
+    dOpt "fontFamily" __fs dStr |> Result.bind (fun fontFamily ->
+    dOpt "fontSize" __fs dFloat |> Result.bind (fun fontSize ->
+    dOpt "opacity" __fs (decBinding dFloat) |> Result.bind (fun opacity ->
+    dOpt "stroke" __fs (decBinding dStr) |> Result.bind (fun stroke ->
+    dOpt "strokeWidth" __fs (decBinding dFloat) |> Result.bind (fun strokeWidth ->
+    dOpt "textAnchor" __fs decTextAnchor |> Result.bind (fun textAnchor ->
+    Ok { Emphasis = emphasis; Fill = fill; FontFamily = fontFamily; FontSize = fontSize; Opacity = opacity; Stroke = stroke; StrokeWidth = strokeWidth; TextAnchor = textAnchor })))))))))
+
 and private decInvokeArg (j: JVal) : Result<InvokeArg, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "addr" __fs dStr |> Result.bind (fun addr ->
@@ -2037,6 +2344,23 @@ and private decCodeBlockSpec (j: JVal) : Result<CodeBlockSpec, string> =
     dReq "lineNumbers" __fs dBool |> Result.bind (fun lineNumbers ->
     Ok { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }))))))
 
+and private decToastSpec (j: JVal) : Result<ToastSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "dismissable" __fs dBool (true) |> Result.bind (fun dismissable ->
+    dReq "message" __fs decTextSource |> Result.bind (fun message ->
+    dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
+    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
+    Ok { Dismissable = dismissable; Message = message; Open = ``open``; Tone = tone })))))
+
+and private decDrawingSpec (j: JVal) : Result<DrawingSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dOpt "description" __fs decTextSource |> Result.bind (fun description ->
+    dReq "shapes" __fs (dList decShape) |> Result.bind (fun shapes ->
+    dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+    dOpt "title" __fs decTextSource |> Result.bind (fun title ->
+    dReq "viewBox" __fs decViewBox |> Result.bind (fun viewBox ->
+    Ok { Description = description; Shapes = shapes; Style = style; Title = title; ViewBox = viewBox }))))))
+
 and private decBoxSpec (j: JVal) : Result<BoxSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
@@ -2205,6 +2529,22 @@ and private decFragmentRefSpec (j: JVal) : Result<FragmentRefSpec, string> =
     dOpt "args" __fs (dMap decFragmentArg) |> Result.bind (fun args ->
     Ok { Name = name; Args = args })))
 
+and private decSwitchSpec (j: JVal) : Result<SwitchSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "cases" __fs (dList decSwitchCase) |> Result.bind (fun cases ->
+    dReq "default" __fs decNode |> Result.bind (fun ``default`` ->
+    dReq "stateKey" __fs dStr |> Result.bind (fun stateKey ->
+    Ok { Cases = cases; Default = ``default``; StateKey = stateKey }))))
+
+and private decMountSpec (j: JVal) : Result<MountSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "capabilities" __fs (dList dStr) |> Result.bind (fun capabilities ->
+    dReq "channel" __fs decGuestChannel |> Result.bind (fun channel ->
+    dOpt "inputs" __fs (dMap decFragmentArg) |> Result.bind (fun inputs ->
+    dPresent "onBubble" __fs |> Result.bind (fun onBubble ->
+    dReq "scopeId" __fs dStr |> Result.bind (fun scopeId ->
+    Ok { Capabilities = capabilities; Channel = channel; Inputs = inputs; OnBubble = onBubble; ScopeId = scopeId }))))))
+
 /// Structural decode. The policy layer (diagnostics, §16 lenient-accept,
 /// the reject set) composes ABOVE this — see the Phase 672 note in the generator.
 let decodeNode (s: string) : Result<Node, string> =
@@ -2227,6 +2567,8 @@ let private witnessKindTag (n: Node) : string =
     | NodeKind.Fact _ -> "Fact"
     | NodeKind.Sparkline _ -> "Sparkline"
     | NodeKind.CodeBlock _ -> "CodeBlock"
+    | NodeKind.Toast _ -> "Toast"
+    | NodeKind.Drawing _ -> "Drawing"
     | NodeKind.Box _ -> "Box"
     | NodeKind.SplitPanel _ -> "SplitPanel"
     | NodeKind.SummaryList _ -> "SummaryList"
@@ -2247,6 +2589,8 @@ let private witnessKindTag (n: Node) : string =
     | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
     | NodeKind.FragmentDecl _ -> "FragmentDecl"
     | NodeKind.FragmentRef _ -> "FragmentRef"
+    | NodeKind.Switch _ -> "Switch"
+    | NodeKind.Mount _ -> "Mount"
 
 let private witnessChildren (n: Node) : Node list =
     match n.Kind with
@@ -2260,6 +2604,7 @@ let private witnessChildren (n: Node) : Node list =
     | NodeKind.Stepper s -> s.Children
     | NodeKind.ErrorBoundary s -> [ s.Child ] @ [ s.Fallback ]
     | NodeKind.FragmentDecl s -> [ s.Body ]
+    | NodeKind.Switch s -> [ s.Default ]
     | _ -> []
 
 let private witnessReplaceChildren (n: Node) (kids: Node list) : Node =
@@ -2274,6 +2619,7 @@ let private witnessReplaceChildren (n: Node) (kids: Node list) : Node =
     | NodeKind.Stepper s -> { n with Kind = NodeKind.Stepper { s with Children = kids } }
     | NodeKind.ErrorBoundary s -> { n with Kind = NodeKind.ErrorBoundary { s with Child = List.item 0 kids; Fallback = List.item 1 kids } }
     | NodeKind.FragmentDecl s -> { n with Kind = NodeKind.FragmentDecl { s with Body = List.head kids } }
+    | NodeKind.Switch s -> { n with Kind = NodeKind.Switch { s with Default = List.head kids } }
     | _ -> n
 
 let nodeWitness: NodeWitness<Node, string> =
@@ -2334,6 +2680,12 @@ let mkSparkline (id: string) (source: Binding<int list>) : Node =
 let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: int list) (language: string) (lineNumbers: bool) : Node =
     { Id = id; Kind = NodeKind.CodeBlock { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers } }
 
+let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node =
+    { Id = id; Kind = NodeKind.Toast { Dismissable = true; Message = message; Open = ``open``; Tone = ToneVariant.Default } }
+
+let mkDrawing (id: string) (shapes: Shape list) (style: DrawStyle) (viewBox: ViewBox) : Node =
+    { Id = id; Kind = NodeKind.Drawing { Description = None; Shapes = shapes; Style = style; Title = None; ViewBox = viewBox } }
+
 let mkBox (id: string) (children: Node list) (layout: LayoutMode) (role: BoxRole) : Node =
     { Id = id; Kind = NodeKind.Box { Children = children; Heading = None; Layout = layout; Role = role } }
 
@@ -2393,3 +2745,9 @@ let mkFragmentDecl (id: string) (body: Node) (name: string) : Node =
 
 let mkFragmentRef (id: string) (name: string) : Node =
     { Id = id; Kind = NodeKind.FragmentRef { Name = name; Args = None } }
+
+let mkSwitch (id: string) (cases: SwitchCase list) (``default``: Node) (stateKey: string) : Node =
+    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; StateKey = stateKey } }
+
+let mkMount (id: string) (capabilities: string list) (channel: GuestChannel) (scopeId: string) : Node =
+    { Id = id; Kind = NodeKind.Mount { Capabilities = capabilities; Channel = channel; Inputs = None; OnBubble = None; ScopeId = scopeId } }

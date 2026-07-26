@@ -214,7 +214,7 @@ let generatedLayerTests =
 
               Expect.equal
                   compared
-                  70
+                  76
                   (sprintf "the directly-compared set moved (%d of %d fixtures)" compared corpus.Length)
           }
 
@@ -337,7 +337,7 @@ let generatedLayerTests =
 
               Expect.equal
                   covered
-                  69
+                  75
                   (sprintf
                       "generated-layer corpus coverage moved (%d of %d fixtures decode+re-encode byte-identically)"
                       covered
