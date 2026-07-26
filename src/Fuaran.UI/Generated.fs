@@ -140,7 +140,7 @@ type TextSource =
 
 and [<RequireQualifiedAccess>] Binding<'T> =
     | Static of value: 'T option
-    | Query of accessor: unit * name: string
+    | Query of dependsOn: string list option * name: string
     | Filter of name: string
     | State of defaultValue: 'T option * key: string
     | Computed of fn: unit
@@ -488,6 +488,7 @@ and DisclosureSpec =
       Children: Node list
       DefaultOpen: bool
       Heading: TextSource
+      OnToggle: unit option
       Open: Binding<bool>
     }
 
@@ -516,6 +517,7 @@ and TabsSpec =
       ActiveIndex: Binding<int>
       Children: Node list
       OnSelect: unit option
+      OnSelectTag: unit option
       TabHeaders: TabHeader list option
       TabTags: string list option
       ActiveTag: Binding<string> option
@@ -545,6 +547,7 @@ and SelectSpec =
     {
       Label: TextSource
       OnChange: unit option
+      OnChangeMulti: unit option
       Source: Binding<SelectOption list>
       Value: Binding<string>
       Placeholder: TextSource option
@@ -862,7 +865,7 @@ and private encTextSource (v: TextSource) : JVal =
 and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     match v with
     | Binding.Static value -> Canon.typed "Static" ([ (value |> Option.map (fun v -> "value", encT v)) ] |> List.choose id)
-    | Binding.Query (accessor, name) -> Canon.typed "Query" [ "accessor", JStr "<closure>"; "name", JStr name ]
+    | Binding.Query (dependsOn, name) -> Canon.typed "Query" ([ (dependsOn |> Option.map (fun v -> "dependsOn", JArr(List.map JStr v))); Some("name", JStr name) ] |> List.choose id)
     | Binding.Filter name -> Canon.typed "Filter" [ "name", JStr name ]
     | Binding.State (defaultValue, key) -> Canon.typed "State" ([ (defaultValue |> Option.map (fun v -> "defaultValue", encT v)); Some("key", JStr key) ] |> List.choose id)
     | Binding.Computed fn -> Canon.typed "Computed" [ "fn", JStr "<closure>" ]
@@ -1077,7 +1080,7 @@ and private encSummaryListSpec (s: SummaryListSpec) : JVal =
     Canon.typed "SummaryList" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)) ] |> List.choose id)
 
 and private encDisclosureSpec (s: DisclosureSpec) : JVal =
-    Canon.typed "Disclosure" ([ Some("children", JArr(List.map encNode s.Children)); Some("defaultOpen", JBool s.DefaultOpen); Some("heading", encTextSource s.Heading); Some("open", (encBinding JBool) s.Open) ] |> List.choose id)
+    Canon.typed "Disclosure" ([ Some("children", JArr(List.map encNode s.Children)); Some("defaultOpen", JBool s.DefaultOpen); Some("heading", encTextSource s.Heading); (s.OnToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")); Some("open", (encBinding JBool) s.Open) ] |> List.choose id)
 
 and private encModalSpec (s: ModalSpec) : JVal =
     Canon.typed "Modal" ([ Some("children", JArr(List.map encNode s.Children)); Some("dismissable", JBool s.Dismissable); Some("onDismiss", encAction s.OnDismiss); Some("open", (encBinding JBool) s.Open); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)) ] |> List.choose id)
@@ -1086,7 +1089,7 @@ and private encScrollAreaSpec (s: ScrollAreaSpec) : JVal =
     Canon.typed "ScrollArea" ([ Some("children", JArr(List.map encNode s.Children)); Some("orientation", encScrollOrientation s.Orientation); (s.MaxHeight |> Option.map (fun v -> "maxHeight", JInt v)); (s.MaxWidth |> Option.map (fun v -> "maxWidth", JInt v)) ] |> List.choose id)
 
 and private encTabsSpec (s: TabsSpec) : JVal =
-    Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
+    Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.OnSelectTag |> Option.map (fun v -> "onSelectTag", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
 
 and private encStepperSpec (s: StepperSpec) : JVal =
     Canon.typed "Stepper" ([ Some("activeStep", (encBinding JInt) s.ActiveStep); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")) ] |> List.choose id)
@@ -1095,7 +1098,7 @@ and private encButtonSpec (s: ButtonSpec) : JVal =
     Canon.typed "Button" ([ Some("label", encTextSource s.Label); Some("onClick", encAction s.OnClick); Some("variant", encButtonVariant s.Variant); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Tooltip |> Option.map (fun v -> "tooltip", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
 and private encSelectSpec (s: SelectSpec) : JVal =
-    Canon.typed "Select" ([ Some("label", encTextSource s.Label); (s.OnChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); Some("value", (encBinding JStr) s.Value); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
+    Canon.typed "Select" ([ Some("label", encTextSource s.Label); (s.OnChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (s.OnChangeMulti |> Option.map (fun v -> "onChangeMulti", JStr "<closure>")); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); Some("value", (encBinding JStr) s.Value); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
 
 and private encFileUploadSpec (s: FileUploadSpec) : JVal =
     Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); Some("multiple", JBool s.Multiple); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
@@ -1425,9 +1428,9 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             dOpt "value" __fs decT |> Result.bind (fun value ->
             Ok(Binding.Static(value)))
         | "Query" ->
-            Ok() |> Result.bind (fun accessor ->
+            dOpt "dependsOn" __fs (dList dStr) |> Result.bind (fun dependsOn ->
             dReq "name" __fs dStr |> Result.bind (fun name ->
-            Ok(Binding.Query(accessor, name))))
+            Ok(Binding.Query(dependsOn, name))))
         | "Filter" ->
             dReq "name" __fs dStr |> Result.bind (fun name ->
             Ok(Binding.Filter(name)))
@@ -2037,8 +2040,9 @@ and private decDisclosureSpec (j: JVal) : Result<DisclosureSpec, string> =
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dReq "defaultOpen" __fs dBool |> Result.bind (fun defaultOpen ->
     dReq "heading" __fs decTextSource |> Result.bind (fun heading ->
+    dPresent "onToggle" __fs |> Result.bind (fun onToggle ->
     dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
-    Ok { Children = children; DefaultOpen = defaultOpen; Heading = heading; Open = ``open`` })))))
+    Ok { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = onToggle; Open = ``open`` }))))))
 
 and private decModalSpec (j: JVal) : Result<ModalSpec, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -2062,10 +2066,11 @@ and private decTabsSpec (j: JVal) : Result<TabsSpec, string> =
     dReq "activeIndex" __fs (decBinding dInt) |> Result.bind (fun activeIndex ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dPresent "onSelect" __fs |> Result.bind (fun onSelect ->
+    dPresent "onSelectTag" __fs |> Result.bind (fun onSelectTag ->
     dOpt "tabHeaders" __fs (dList decTabHeader) |> Result.bind (fun tabHeaders ->
     dOpt "tabTags" __fs (dList dStr) |> Result.bind (fun tabTags ->
     dOpt "activeTag" __fs (decBinding dStr) |> Result.bind (fun activeTag ->
-    Ok { ActiveIndex = activeIndex; Children = children; OnSelect = onSelect; TabHeaders = tabHeaders; TabTags = tabTags; ActiveTag = activeTag })))))))
+    Ok { ActiveIndex = activeIndex; Children = children; OnSelect = onSelect; OnSelectTag = onSelectTag; TabHeaders = tabHeaders; TabTags = tabTags; ActiveTag = activeTag }))))))))
 
 and private decStepperSpec (j: JVal) : Result<StepperSpec, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -2088,13 +2093,14 @@ and private decSelectSpec (j: JVal) : Result<SelectSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
     dPresent "onChange" __fs |> Result.bind (fun onChange ->
+    dPresent "onChangeMulti" __fs |> Result.bind (fun onChangeMulti ->
     dReq "source" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun source ->
     dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
     dOpt "placeholder" __fs decTextSource |> Result.bind (fun placeholder ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     dOpt "multiple" __fs dBool |> Result.bind (fun multiple ->
     dOpt "values" __fs (decBinding (dList dStr)) |> Result.bind (fun values ->
-    Ok { Label = label; OnChange = onChange; Source = source; Value = value; Placeholder = placeholder; Disabled = disabled; Multiple = multiple; Values = values })))))))))
+    Ok { Label = label; OnChange = onChange; OnChangeMulti = onChangeMulti; Source = source; Value = value; Placeholder = placeholder; Disabled = disabled; Multiple = multiple; Values = values }))))))))))
 
 and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -2316,7 +2322,7 @@ let mkSummaryList (id: string) (children: Node list) : Node =
     { Id = id; Kind = NodeKind.SummaryList { Children = children; Heading = None } }
 
 let mkDisclosure (id: string) (children: Node list) (defaultOpen: bool) (heading: TextSource) (``open``: Binding<bool>) : Node =
-    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; Open = ``open`` } }
+    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` } }
 
 let mkModal (id: string) (children: Node list) (dismissable: bool) (onDismiss: Action) (``open``: Binding<bool>) : Node =
     { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = onDismiss; Open = ``open``; Heading = None } }
@@ -2325,7 +2331,7 @@ let mkScrollArea (id: string) (children: Node list) (orientation: ScrollOrientat
     { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None } }
 
 let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node list) : Node =
-    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; OnSelect = None; TabHeaders = None; TabTags = None; ActiveTag = None } }
+    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None } }
 
 let mkStepper (id: string) (activeStep: Binding<int>) (children: Node list) : Node =
     { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None } }
@@ -2334,7 +2340,7 @@ let mkButton (id: string) (label: TextSource) (onClick: Action) (variant: Button
     { Id = id; Kind = NodeKind.Button { Label = label; OnClick = onClick; Variant = variant; Icon = None; Tooltip = None; Disabled = None } }
 
 let mkSelect (id: string) (label: TextSource) (source: Binding<SelectOption list>) (value: Binding<string>) : Node =
-    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None } }
+    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None } }
 
 let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) : Node =
     { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None } }

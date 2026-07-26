@@ -29,6 +29,7 @@ open Expecto
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.OpStream.Abstractions
+open Fuaran.UI.Ops
 
 /// Locate one family of the workspace-root shared corpus by climbing from the
 /// test binary — the same idiom `MarkdownCorpusTests` uses.
@@ -127,6 +128,97 @@ let generatedLayerTests =
           }
 
           // ================================================================
+          //  Phase 671 step 2 — the byte-diff, scaled to the whole corpus.
+          //
+          //  The step was written when the generated layer was ENCODER-ONLY, so
+          //  its note says each fixture "needs its equivalent hand-written `Node`
+          //  constructed" — 84 of them, by hand. Phase 672 shipped the generated
+          //  DECODER and that cost collapsed: each side can now build its own
+          //  value from the same corpus bytes, so the comparison is a loop.
+          //
+          //   hand-written:  JsonDecode.decodeNodeObj  >> CanonicalJson.encodeNode
+          //   generated:     Generated.decodeNode      >> Generated.encodeNode
+          //
+          //  Both are asserted against the corpus AND against each other, so a
+          //  compensating decode+encode bug on either side cannot hide: it would
+          //  have to reproduce the corpus bytes exactly to pass.
+          // ================================================================
+
+          test "hand-written encoder reproduces every corpus fixture (all 84)" {
+              // The control leg. It needs no generated layer, so it holds at 84
+              // even where the IDL does not yet model a fixture — which is what
+              // makes the generated leg's shortfall attributable rather than
+              // ambiguous.
+              let corpus = familyFixtures "nodes" "*.json"
+
+              Expect.equal corpus.Length 84 "the node corpus is the expected 84 fixtures"
+
+              let failures =
+                  corpus
+                  |> List.choose (fun (name, json) ->
+                      match JsonDecode.decodeNodeObj json with
+                      | Error e -> Some(name, sprintf "hand-written decode failed: %s at %s" e.Code e.Path)
+                      | Ok node when CanonicalJson.encodeNode node <> json ->
+                          Some(name, "hand-written re-encode differs")
+                      | Ok _ -> None)
+
+              Expect.isEmpty failures (sprintf "hand-written round-trip is not the identity for: %A" failures)
+          }
+
+          test "generated and hand-written encoders agree byte-for-byte across the corpus" {
+              // Phase 671 step 2 proper: the DIRECT diff, every fixture the
+              // generated layer can express. Three-way — each side against the
+              // corpus, and the two against each other.
+              let corpus = familyFixtures "nodes" "*.json"
+
+              let compared, disagreed =
+                  corpus
+                  |> List.fold
+                      (fun (n, bad) (name, json) ->
+                          match Generated.decodeNode json, JsonDecode.decodeNodeObj json with
+                          | Ok g, Ok h ->
+                              let fromGenerated = Generated.encodeNode g
+                              let fromHandWritten = CanonicalJson.encodeNode h
+
+                              if
+                                  fromGenerated = json
+                                  && fromHandWritten = json
+                                  && fromGenerated = fromHandWritten
+                              then
+                                  (n + 1, bad)
+                              else
+                                  (n + 1, (name, fromGenerated, fromHandWritten) :: bad)
+                          // Not comparable: the generated layer cannot express this
+                          // fixture yet. Counted by the coverage test below, which
+                          // names the causes; not a failure of the diff itself.
+                          | _ -> (n, bad))
+                      (0, [])
+
+              // The residue is NAMED, not merely counted. Every disagreement here is
+              // the generated layer decoding a fixture and then losing information
+              // on the way back out — a different and more actionable set than
+              // "cannot decode", and the reason this step earns its place over the
+              // transitive argument (generated == corpus == hand-written).
+              //
+              // It found five real IDL defects, four of them silent drops and one
+              // actively wrong: `Binding.Query` declared an `accessor` the wire
+              // dropped at 0.2.0, so the generated encoder emitted a field that
+              // does not exist. Also missing: `Query.dependsOn`, `Tabs.onSelectTag`,
+              // `Disclosure.onToggle`, `Select.onChangeMulti`.
+              //
+              // What remains is the node envelope, which the IDL models not at all.
+              Expect.equal
+                  (disagreed |> List.map (fun (n, _, _) -> n))
+                  [ "style-role-voice-1.json" ]
+                  "the only surviving disagreement is the unmodelled node envelope"
+
+              Expect.equal
+                  compared
+                  69
+                  (sprintf "the directly-compared set moved (%d of %d fixtures)" compared corpus.Length)
+          }
+
+          // ================================================================
           //  Phase 672 task 3 — the policy layer is a SEAM, not a rewrite.
           //
           //  The generated decoder covers structure only. Diagnostics (six
@@ -204,7 +296,7 @@ let generatedLayerTests =
               Expect.equal
                   buckets
                   [ "Binding.Transform (out of scope)", 12
-                    "field-set drift", 3
+                    "field-set drift", 2
                     "node envelope (unmodelled)", 1
                     // The residual 4 are Phase 596's auto-bind `value` omission, which
                     // is CONTEXT-dependent (it turns on the enclosing field's `id`), so
@@ -245,7 +337,7 @@ let generatedLayerTests =
 
               Expect.equal
                   covered
-                  65
+                  68
                   (sprintf
                       "generated-layer corpus coverage moved (%d of %d fixtures decode+re-encode byte-identically)"
                       covered
