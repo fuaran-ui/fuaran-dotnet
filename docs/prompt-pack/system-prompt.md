@@ -256,6 +256,25 @@ is a JSON document whose own `$type` is the op kind (`EditNode`, `UpdateProp`,
 `ReplaceBinding`, `UpdateStyle`, `UpdateState`, `InsertChild`, `RemoveNode`,
 `MoveNode`, `ReorderChildren`, `Batch`):
 
+**Membership and order are separate ops, and neither takes an index.** `InsertChild` and
+`MoveNode` change *which* children a parent has, and both **append**. `ReorderChildren` states
+*what order* they are in, by naming every child id. To put a node anywhere but last, emit both in
+one `Batch`:
+
+```json
+{"$type":"Batch","ops":[
+  {"$type":"InsertChild","child":{"id":"summary","kind":{"$type":"Markdown","text":"Totals for Q3."}},"parentId":"dash"},
+  {"$type":"ReorderChildren","newOrder":["summary","metric-row","chart"],"parentId":"dash"}
+]}
+```
+
+`newOrder` must list **exactly** the parent's children as they stand after the insert — no more, no
+fewer. A partial or stale list is rejected as `OrderingMismatch`, and the error names the ids it
+expected, so you can retry against them.
+
+Do not write a numeric position on any op. Bracket indices appear only inside `UpdateProp` **paths**
+(`"Columns[0].Label"`), which address data held inside a single node rather than a parent's children.
+
 <!-- fuaran:example fixture=op-replacebinding -->
 ```json
 {
@@ -1390,7 +1409,7 @@ Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` 
 **`$type` discriminators are closed vocabularies too** — each of these takes exactly one of its listed cases (a `Binding` case in a `TextSource` slot, or an invented case name, is an `UNKNOWN_DU_CASE` reject). A case's REQUIRED payload fields ride in parentheses — use those exact key names (`Navigate(route)` means the key is `route`, not `href`/`url`):
 
 - `Action.$type`: `Dispatch` · `Call(endpoint)` · `Notify(channel, payload)` · `Navigate(route)` · `SetState(key, value)` · `AiTool(args, toolName)` · `Chain(ops)` · `CommitLocal(nodeId)` · `WriteToClipboard(text)` · `ReadFileBody(encoding, fileRef, onRead)` · `Invoke(args, capabilityId)`
-- `Binding.$type`: `Static(value)` · `Query(name)` · `Filter(name)` · `Selection(nodeId)` · `State(defaultValue, key)` · `Computed(fn)` · `I18n(key)` · `Local(flushOn, format, initialFrom, onCommit, parse)` · `Format(format, locale, source)` · `Transform(pipeline, source)` · `Invoke(args, capabilityId)`
+- `Binding.$type`: `Static` · `Query(name)` · `Filter(name)` · `Selection(nodeId)` · `State(key)` · `Computed(fn)` · `I18n(key)` · `Local(flushOn, format, initialFrom, onCommit, parse)` · `Format(format, locale, source)` · `Transform(pipeline, source)` · `Invoke(args, capabilityId)`
 - `BoxLayout.$type`: `Auto`
 - `CallResultTarget.$type`: `State(key)` · `Query(name)`
 - `CellFormat.$type`: `None` · `Number` · `Currency(code)` · `Percent` · `SignificantDigits(digits)` · `Date(format)` · `Custom(fn)`
@@ -1407,7 +1426,7 @@ Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` 
 - `LocaleSource.$type`: `Ambient` · `Explicit(tag)`
 - `Scalar.$type`: `Int(value)` · `Float(value)` · `Bool(value)` · `Str(value)`
 - `Shape.$type`: `Group(children, style)` · `Rectangle(height, style, width, x, y)` · `Line(style, x1, x2, y1, y2)` · `Polyline(points, style)` · `Polygon(points, style)` · `Curve(commands, style)` · `Circle(cx, cy, r, style)` · `Ellipse(cx, cy, rx, ry, style)` · `Label(style, text, x, y)`
-- `TreeOp.$type`: `EditNode(newKind, target)` · `UpdateProp(path, target, value)` · `ReplaceBinding(binding, slot, target)` · `UpdateStyle(style, target)` · `UpdateState(state, target)` · `InsertChild(child, parentId, position)` · `RemoveNode(target)` · `MoveNode(newParentId, newPosition, target)` · `ReorderChildren(newOrder, parentId)` · `ReplaceRoot(node)` · `Batch(ops)`
+- `TreeOp.$type`: `EditNode(newKind, target)` · `UpdateProp(path, target, value)` · `ReplaceBinding(binding, slot, target)` · `UpdateStyle(style, target)` · `UpdateState(state, target)` · `InsertChild(child, parentId)` · `RemoveNode(target)` · `MoveNode(newParentId, target)` · `ReorderChildren(newOrder, parentId)` · `ReplaceRoot(node)` · `Batch(ops)`
 
 **Nested collection items carry required fields of their own** — the per-kind table above stops at the kind's top level; each item in these arrays must ALSO carry its required fields (`MISSING_FIELD` on absence):
 

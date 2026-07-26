@@ -634,7 +634,9 @@ let fewShot =
       "custom-1", "Emit the host-registered custom 'trend-card' component from the 'analytics' module."
       "op-replacebinding",
       "Edit the existing tree: pin node 'metric-1' to a static figure of 99.5 by replacing its Source binding."
-      "op-insertchild", "Edit the existing tree: insert the revenue metric as the first child of the empty dashboard."
+      "op-insertchild", "Edit the existing tree: add the revenue metric to the empty dashboard."
+      "op-reorderchildren",
+      "Edit the existing tree: put the markdown note above the metric in 'stack-1' by stating the order."
       "filterable-static-dashboard",
       "Build a content-performance dashboard from this data: region and genre dropdowns that filter both a retention line chart and an episode grid."
       "master-detail-preselected",

@@ -782,11 +782,30 @@ After the initial emission, subsequent turns can edit the tree via `Fuaran.UI.Op
 | **`ReplaceBinding`** | Replace a Binding-typed slot's binding source. | "Switch Metric.Value from Query 'revenue' to Query 'revenue-net'." |
 | **`UpdateStyle`** | Replace `SemanticStyle` wholesale. | "Change a callout from Tone.Info to Tone.Warning." |
 | **`UpdateState`** | Replace `StateBehaviour` wholesale. | "Update the Skeleton onLoading slot to use a different shape." |
-| **`InsertChild`** | Insert a new child at `position`. | "Add a Markdown summary after the Metric row." |
+| **`InsertChild`** | **Append** a new child to a parent. | "Add a Markdown summary to the dashboard." |
 | **`RemoveNode`** | Remove a node. | "Drop the deprecated progress bar." |
-| **`MoveNode`** | Move a subtree from one parent to another. | "Move the Metric from the header into the sidebar." |
-| **`ReorderChildren`** | Permute a parent's children. | "Reorder the dashboard tabs: General, Detail, Settings." |
+| **`MoveNode`** | Move a subtree to a different parent, **appending** it there. | "Move the Metric from the header into the sidebar." |
+| **`ReorderChildren`** | State a parent's child order, by naming every child id. | "Reorder the dashboard tabs: General, Detail, Settings." |
 | **`Batch`** | All-or-nothing group of inner ops. | "Insert a row + two Metrics in one atomic change." |
+
+**Membership and order are separate ops.** `InsertChild` and `MoveNode` change *which* children a
+parent has, and both **append**. `ReorderChildren` states *what order* they are in, by naming every
+child id. Placing a node anywhere but last is the two together, in one `Batch`:
+
+```json
+{"$type":"Batch","ops":[
+  {"$type":"InsertChild","child":{"id":"summary","kind":{"$type":"Markdown","text":"…"}},"parentId":"dash"},
+  {"$type":"ReorderChildren","newOrder":["summary","metric-row","chart"],"parentId":"dash"},
+]}
+```
+
+`newOrder` must name **exactly** the parent's children as they stand after the insert — a partial or
+stale list is `OrderingMismatch`, and the error lists the ids it expected.
+
+**None of these ops takes an index**, because a collection whose members have identity is addressed by
+identity. That is a different question from the bracket indices in `UpdateProp` paths below
+(`Columns[0].Label`): those address *contained data* inside a single node, whose items have no id of
+their own, and they are unaffected.
 
 **Emission model** (§4g): emit the **full tree** on turn 1 or on large restructures (>50% nodes changed); emit **ops** on subsequent turns when the change is small. The orchestrator picks the heuristic; you emit whichever the orchestrator's prompt asks for.
 
