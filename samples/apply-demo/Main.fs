@@ -48,7 +48,7 @@ let private baseTree: Node<obj> =
                       "headline-metric"
                       { Defaults.metric with
                           Label = TextSource.Literal "Original Label"
-                          Source = Binding.Static 42.0
+                          Value = Binding.Static 42.0
                           Format = format.number (Some 0)
                           Tone = ToneVariant.Brand } ] }
 
