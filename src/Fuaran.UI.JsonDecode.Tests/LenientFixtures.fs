@@ -208,50 +208,6 @@ let all: LenientFixture list =
           """{"id":"len-mrk","kind":{"$type":"Map","centreLatitude":51.5,"centreLongitude":-0.1,"source":{"$type":"Static","value":[]},"zoom":6}}"""
         Description = "Pre-429 opaque Map markers decode to the typed empty array" }
 
-      // ─── Phase 390 legacy container-kind read-compat ────────────────────
-      //  The four retired container tags (Stack / GridLayout / Dashboard /
-      //  Card) decode-upgrade to the equivalent `Box` on read (the same
-      //  accept-and-canonicalise law as §16, applied to the superseded
-      //  container vocabulary). A pre-merge op-stream / permalink therefore
-      //  replays: the legacy tag decodes to `Box` and re-encodes as `Box`
-      //  (never back to its old form). One fixture pins each upgrade.
-      { Id = "legacy-upgrade-stack"
-        LenientJson =
-          """{"id":"legacy-stack","kind":{"$type":"Stack","children":[],"orientation":"Horizontal","wrap":true}}"""
-        VerboseJson =
-          """{"id":"legacy-stack","kind":{"$type":"Box","children":[],"layout":{"$type":"Flex","direction":"Horizontal","wrap":true},"role":"Group"}}"""
-        Description = "Legacy `Stack` tag decode-upgrades to a Flex/Group Box (Phase 390)" }
-
-      { Id = "legacy-upgrade-gridlayout"
-        LenientJson = """{"id":"legacy-grid","kind":{"$type":"GridLayout","children":[],"cols":3}}"""
-        VerboseJson =
-          """{"id":"legacy-grid","kind":{"$type":"Box","children":[],"layout":{"$type":"Grid","cols":3},"role":"Group"}}"""
-        Description = "Legacy `GridLayout` tag decode-upgrades to a Grid/Group Box (Phase 390)" }
-
-      { Id = "legacy-upgrade-dashboard"
-        LenientJson = """{"id":"legacy-dash","kind":{"$type":"Dashboard","children":[]}}"""
-        VerboseJson =
-          """{"id":"legacy-dash","kind":{"$type":"Box","children":[],"layout":{"$type":"Auto"},"role":"Dashboard"}}"""
-        Description = "Legacy `Dashboard` tag decode-upgrades to an Auto/Dashboard Box (Phase 390)" }
-
-      { Id = "legacy-upgrade-card"
-        LenientJson =
-          """{"id":"legacy-card","kind":{"$type":"Card","children":[],"heading":{"$type":"Literal","text":"Legacy"}}}"""
-        VerboseJson =
-          """{"id":"legacy-card","kind":{"$type":"Box","children":[],"heading":{"$type":"Literal","text":"Legacy"},"layout":{"$type":"Flex","direction":"Vertical","wrap":false},"role":"Card"}}"""
-        Description = "Legacy `Card` tag decode-upgrades to a Flex/Card Box preserving the heading (Phase 390)" }
-
-      // ─── Phase 393 legacy Table read-compat ─────────────────────────────
-      //  The retired `Table` visualisation tag decode-upgrades to the static
-      //  read-only mode of `DataGrid` (`staticRows`); it never re-encodes as
-      //  `Table`. A pre-merge op-stream / permalink therefore replays: the
-      //  legacy `Table` decodes to a static `DataGrid` and re-encodes as one.
-      { Id = "legacy-upgrade-table"
-        LenientJson =
-          """{"id":"legacy-table","kind":{"$type":"Table","headers":[{"$type":"Literal","text":"A"}],"rows":[[{"$type":"Literal","text":"1"}]]}}"""
-        VerboseJson =
-          """{"id":"legacy-table","kind":{"$type":"DataGrid","columns":[],"editable":false,"source":{"$type":"Static","value":"<opaque>"},"staticRows":{"headers":[{"$type":"Literal","text":"A"}],"rows":[[{"$type":"Literal","text":"1"}]]}}}"""
-        Description = "Legacy `Table` tag decode-upgrades to a static read-only DataGrid (Phase 393)" }
 
       // ─── Phase 460 stylistic omit-when-default read-compat + lenient aliases ──
       //  (a) Explicit-default reads: a pre-460 emission that wrote the stylistic

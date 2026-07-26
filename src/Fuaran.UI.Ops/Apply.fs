@@ -66,7 +66,9 @@ let private childlessKind (kind: NodeKind<'Msg>) (NodeId rawId) : ApplyError =
       Hint =
         { ApplyHint.empty with
             NodeKind = Some(kindName kind)
-            Suggestion = Some "Address a Layout node (Dashboard / Stack / Grid / SplitPanel / Tabs / Card / Stepper)." } }
+            Suggestion =
+                Some
+                    "Address a Layout node (Box / SplitPanel / Tabs / Stepper / SummaryList / Disclosure / Modal / ScrollArea)." } }
 
 let private positionOutOfRange (NodeId rawId) (childCount: int) (position: int) : ApplyError =
     { Code = ApplyErrorCode.PositionOutOfRange

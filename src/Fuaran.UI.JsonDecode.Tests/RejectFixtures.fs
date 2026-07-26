@@ -163,13 +163,13 @@ let all: RejectFixture list =
         ExpectedPath = "$.style.tone"
         IsOp = false
         Description = "Style.tone is integer not string" }
-      { Id = "reject-wrongtype-dashboard-children"
+      { Id = "reject-wrongtype-box-children"
         Json =
-          """{"id":"x","kind":{"$type":"Dashboard","children":{}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+          """{"id":"x","kind":{"$type":"Box","children":{},"layout":{"$type":"Auto"},"role":"Group"},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
         ExpectedCode = DecodeErrorCode.WRONG_TYPE
         ExpectedPath = "$.kind.children"
         IsOp = false
-        Description = "Dashboard children is object not array" }
+        Description = "Box children is object not array" }
       { Id = "reject-wrongtype-discriminator"
         Json =
           """{"id":"x","kind":{"$type":"Markdown","text":{"$type":42,"text":"x"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

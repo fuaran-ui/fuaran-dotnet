@@ -156,7 +156,11 @@ let generatedLayerTests =
               // `Action.Call`, `Action.Navigate`) plus two already-filed deferrals.
               let expected = familyFixtures "lenient" "*.expected.json"
 
-              Expect.isGreaterThan expected.Length 0 "the lenient corpus was found"
+              // Pin the SIZE too, not just the buckets. Phase 673 removed five
+              // fixtures that were in the round-tripping set, so every bucket held
+              // steady and this test passed without noticing the corpus had shrunk.
+              // A count that only tracks failures is blind to the corpus itself.
+              Expect.equal expected.Length 47 "the lenient corpus is the expected 47 canonical fixtures"
 
               let classify (name: string, json: string) =
                   match Generated.decodeNode json with

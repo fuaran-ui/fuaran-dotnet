@@ -3607,21 +3607,6 @@ let private decodeVisKind (path: string) (j: Json) : Result<VisKind<obj>, Decode
         | Error e -> Error e
         | Ok "DataGrid" -> decodeGridSpec path j |> Result.map VisKind.DataGrid
         | Ok "Chart" -> decodeChartSpec path j |> Result.map VisKind.Chart
-        // Phase 393 — legacy decode-upgrade: a `Table` tag folds into a read-only
-        // `DataGrid` (the `StaticRows` mode). It is accepted on read but NEVER
-        // re-encodes as `Table` (the encoder has no `Table` arm), riding the Phase 390
-        // retired-kind seam.
-        | Ok "Table" ->
-            decodeStaticRows path j
-            |> Result.map (fun (headers, rows) ->
-                VisKind.DataGrid
-                    { Source = Binding.Static Seq.empty
-                      RowKey = None
-                      RowKeyField = None
-                      Columns = []
-                      OnRowClick = None
-                      Editable = false
-                      StaticRows = Some(headers, rows) })
         | Ok "Map" -> decodeMapSpec path j |> Result.map VisKind.Map
         | Ok s -> unknownDuCase path s "DataGrid | Chart | Table | Map"
 
@@ -3926,87 +3911,6 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, 
                     | _, Error e, _, _
                     | _, _, Error e, _
                     | _, _, _, Error e -> Error e
-            // ─── Legacy decode-upgrade (Phase 390) — the four retired container
-            //     tags decode-upgrade to the equivalent `Box` on read, so
-            //     pre-merge op-streams / permalinks replay. A legacy tag never
-            //     re-encodes to its old form (it round-trips as `Box`).
-            | "Dashboard" ->
-                getSpecFields ()
-                |> Result.bind (fun specFields -> decodeChildren specPath specFields)
-                |> Result.map (fun children ->
-                    LayoutKind.Box
-                        { Layout = BoxLayout.Auto
-                          Role = BoxRole.Dashboard
-                          Heading = Option.None
-                          Children = children })
-            | "Stack" ->
-                match getSpecFields () with
-                | Error e -> Error e
-                | Ok specFields ->
-                    let childrenR = decodeChildren specPath specFields
-
-                    let orientationR =
-                        match tryField specFields "orientation" with // 0.2.0 omitted-when-Horizontal
-                        | None -> Ok Horizontal
-                        | Some v -> decodeOrientation (specPath + ".orientation") v
-
-                    let wrapR =
-                        requireField specPath specFields "wrap" "wrap bool"
-                        |> Result.bind (requireBool (specPath + ".wrap"))
-
-                    match childrenR, orientationR, wrapR with
-                    | Ok children, Ok orientation, Ok wrap ->
-                        Ok(
-                            LayoutKind.Box
-                                { Layout =
-                                    BoxLayout.Flex
-                                        { Direction = orientation
-                                          Wrap = wrap
-                                          Gap = Option.None }
-                                  Role = BoxRole.Group
-                                  Heading = Option.None
-                                  Children = children }
-                        )
-                    | Error e, _, _
-                    | _, Error e, _
-                    | _, _, Error e -> Error e
-            | "GridLayout" ->
-                match getSpecFields () with
-                | Error e -> Error e
-                | Ok specFields ->
-                    let childrenR = decodeChildren specPath specFields
-
-                    let colsR =
-                        requireFieldAliased specPath specFields "cols" [ "columns" ] "cols integer"
-                        |> Result.bind (requireInt (specPath + ".cols"))
-
-                    // Additive optional `templateColumns`
-                    // string. When the wire payload omits the key, decode to
-                    // `None` (older-shaped fixtures stay decoder-clean
-                    // — the wire-shape lock invariant). When
-                    // present, the field is an arbitrary CSS string emitted
-                    // verbatim by the renderer.
-                    let templateColumnsR =
-                        match tryField specFields "templateColumns" with
-                        | None -> Ok Option.None
-                        | Some v -> requireString (specPath + ".templateColumns") v |> Result.map Some
-
-                    match childrenR, colsR, templateColumnsR with
-                    | Ok children, Ok cols, Ok templateColumns ->
-                        Ok(
-                            LayoutKind.Box
-                                { Layout =
-                                    BoxLayout.Grid
-                                        { Cols = cols
-                                          TemplateColumns = templateColumns
-                                          Gap = Option.None }
-                                  Role = BoxRole.Group
-                                  Heading = Option.None
-                                  Children = children }
-                        )
-                    | Error e, _, _
-                    | _, Error e, _
-                    | _, _, Error e -> Error e
             | "SplitPanel" ->
                 match getSpecFields () with
                 | Error e -> Error e
@@ -4128,32 +4032,6 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, 
                     | _, _, _, Error e, _, _
                     | _, _, _, _, Error e, _
                     | _, _, _, _, _, Error e -> Error e
-            | "Card" ->
-                match getSpecFields () with
-                | Error e -> Error e
-                | Ok specFields ->
-                    let childrenR = decodeChildren specPath specFields
-
-                    let headingR =
-                        match optFieldAliased specFields "heading" [ "title" ] with
-                        | None -> Ok None
-                        | Some v -> decodeTextSource (specPath + ".heading") v |> Result.map Some
-
-                    match childrenR, headingR with
-                    | Ok children, Ok heading ->
-                        Ok(
-                            LayoutKind.Box
-                                { Layout =
-                                    BoxLayout.Flex
-                                        { Direction = Vertical
-                                          Wrap = false
-                                          Gap = Option.None }
-                                  Role = BoxRole.Card
-                                  Heading = heading
-                                  Children = children }
-                        )
-                    | Error e, _
-                    | _, Error e -> Error e
             | "Stepper" ->
                 match getSpecFields () with
                 | Error e -> Error e
@@ -4323,10 +4201,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, 
                     | _, _, Error e, _
                     | _, _, _, Error e -> Error e
             | s ->
-                unknownDuCase
-                    path
-                    s
-                    "Box | Dashboard | Stack | GridLayout | SplitPanel | Tabs | Card | Stepper | SummaryList | Disclosure | Modal | ScrollArea"
+                unknownDuCase path s "Box | SplitPanel | Tabs | Stepper | SummaryList | Disclosure | Modal | ScrollArea"
 
 and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with
@@ -4341,13 +4216,13 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
         // the four inner decoders, the encoder, and SchemaGen — the §11
         // forward-coupling surface. An unrecognised discriminator falls
         // through to WRONG_NODE_KIND below.
-        | Ok("Box" | "Dashboard" | "Stack" | "GridLayout" | "SplitPanel" | "Tabs" | "Card" | "Stepper" | "SummaryList" | "Disclosure" | "Modal" | "ScrollArea") ->
+        | Ok("Box" | "SplitPanel" | "Tabs" | "Stepper" | "SummaryList" | "Disclosure" | "Modal" | "ScrollArea") ->
             decodeLayoutKind path j |> Result.map NodeKind.Layout
         | Ok("Heading" | "Markdown" | "Metric" | "Badge" | "Link" | "Image" | "List" | "Toast" | "CodeBlock" | "Math" | "Drawing" | "Sparkline" | "Callout" | "Progress" | "Skeleton" | "LabelValueRow" | "Fact") ->
             decodeDisplayKind path j |> Result.map NodeKind.Display
         | Ok("Form" | "Filters" | "Button" | "FileUpload" | "Select") ->
             decodeInputKind path j |> Result.map NodeKind.Input
-        | Ok("DataGrid" | "Chart" | "Table" | "Map") -> decodeVisKind path j |> Result.map NodeKind.Visualisation
+        | Ok("DataGrid" | "Chart" | "Map") -> decodeVisKind path j |> Result.map NodeKind.Visualisation
         | Ok "Custom" ->
             let moduleIdR =
                 requireField path fields "moduleId" "Custom moduleId string"
@@ -4684,7 +4559,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                 (path + ".$type")
                 (sprintf "unknown NodeKind discriminator '%s'" s)
                 (Some
-                    "a Layout primitive (Dashboard | Stack | GridLayout | SplitPanel | Tabs | Card | Stepper | SummaryList | Disclosure), a Display primitive (Heading | Markdown | Metric | Badge | Sparkline | Drawing | Callout | Progress | Skeleton | LabelValueRow), an Input primitive (Form | Filters | Button | FileUpload | Select), a Visualisation primitive (DataGrid | Chart | Table | Map), or Custom | ErrorBoundary | FragmentDecl | FragmentRef | Mount")
+                    "a Layout primitive (Box | SplitPanel | Tabs | Stepper | SummaryList | Disclosure | Modal | ScrollArea), a Display primitive (Heading | Markdown | Metric | Badge | Sparkline | Drawing | Callout | Progress | Skeleton | LabelValueRow), an Input primitive (Form | Filters | Button | FileUpload | Select), a Visualisation primitive (DataGrid | Chart | Map), or Custom | ErrorBoundary | FragmentDecl | FragmentRef | Mount")
 
 and private decodeAccessibility (path: string) (j: Json) : Result<Accessibility, DecodeError> =
     match requireObject path j with
