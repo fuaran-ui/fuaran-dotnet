@@ -162,9 +162,21 @@ let generatedLayerTests =
               // A count that only tracks failures is blind to the corpus itself.
               Expect.equal expected.Length 47 "the lenient corpus is the expected 47 canonical fixtures"
 
+              // A node-envelope key present on the input but dropped on re-encode is
+              // its own cause, not generic field drift: the IDL models no envelope.
+              let carriesEnvelope (json: string) =
+                  [ "\"state\":"; "\"style\":"; "\"accessibility\":" ]
+                  |> List.exists json.Contains
+
               let classify (name: string, json: string) =
                   match Generated.decodeNode json with
                   | Ok node when Generated.encodeNode node = json -> None
+                  | Ok node when carriesEnvelope json && not (carriesEnvelope (Generated.encodeNode node)) ->
+                      // Phase 671 scoped the envelope out on the stated grounds that
+                      // "no corpus Node fixture carries it". This fixture does, so that
+                      // rationale is falsified — the exclusion may still be right, but
+                      // it needs a better reason. Fed back to 671.
+                      Some("node envelope (unmodelled)", name)
                   | Ok _ -> Some("field-set drift", name)
                   | Error e when e.Contains "unknown Binding case: Transform" ->
                       // Phase 671 out-of-scope: `Binding.Transform` embeds a
@@ -189,10 +201,9 @@ let generatedLayerTests =
 
               Expect.equal
                   buckets
-                  [ "Action case absent from the IDL", 2
-                    "Binding.Transform (out of scope)", 12
+                  [ "Binding.Transform (out of scope)", 12
                     "field-set drift", 3
-                    "node kind absent from the IDL", 2
+                    "node envelope (unmodelled)", 1
                     // The residual 4 are Phase 596's auto-bind `value` omission, which
                     // is CONTEXT-dependent (it turns on the enclosing field's `id`), so
                     // no local `OmitDefault` in the IDL can express it. Not a flag away
@@ -230,7 +241,7 @@ let generatedLayerTests =
 
               Expect.equal
                   covered
-                  61
+                  62
                   (sprintf
                       "generated-layer corpus coverage moved (%d of %d fixtures decode+re-encode byte-identically)"
                       covered

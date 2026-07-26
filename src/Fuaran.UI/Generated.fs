@@ -163,6 +163,13 @@ and [<RequireQualifiedAccess>] Action =
     | Dispatch
     | Invoke of args: InvokeArg list * capabilityId: string
     | ReadFileBody of encoding: FileReadEncoding * fileRef: string * onRead: unit option
+    | Call of endpoint: string * into: CallResultTarget option * onResult: unit option
+    | Navigate of route: string
+    | CommitLocal of nodeId: string
+
+and [<RequireQualifiedAccess>] CallResultTarget =
+    | State of key: string
+    | Query of name: string
 
 and [<RequireQualifiedAccess>] Format =
     | Number of decimals: int option
@@ -426,6 +433,17 @@ and LabelValueRowSpec =
     }
 
 // Display
+and FactSpec =
+    {
+      Emphasis: bool
+      Help: TextSource option
+      Icon: string option
+      Label: TextSource
+      Tone: ToneVariant
+      Value: TextSource
+    }
+
+// Display
 and SparklineSpec =
     {
       Source: Binding<int list>
@@ -639,6 +657,7 @@ and [<RequireQualifiedAccess>] NodeKind =
     | Progress of ProgressSpec
     | Metric of MetricSpec
     | LabelValueRow of LabelValueRowSpec
+    | Fact of FactSpec
     | Sparkline of SparklineSpec
     | CodeBlock of CodeBlockSpec
     | Box of BoxSpec
@@ -809,6 +828,7 @@ let rec private encNode (n: Node) : JVal =
         | NodeKind.Progress s -> encProgressSpec s
         | NodeKind.Metric s -> encMetricSpec s
         | NodeKind.LabelValueRow s -> encLabelValueRowSpec s
+        | NodeKind.Fact s -> encFactSpec s
         | NodeKind.Sparkline s -> encSparklineSpec s
         | NodeKind.CodeBlock s -> encCodeBlockSpec s
         | NodeKind.Box s -> encBoxSpec s
@@ -867,6 +887,14 @@ and private encAction (v: Action) : JVal =
     | Action.Dispatch -> Canon.typed "Dispatch" [  ]
     | Action.Invoke (args, capabilityId) -> Canon.typed "Invoke" [ "args", JArr(List.map encInvokeArg args); "capabilityId", JStr capabilityId ]
     | Action.ReadFileBody (encoding, fileRef, onRead) -> Canon.typed "ReadFileBody" ([ Some("encoding", encFileReadEncoding encoding); Some("fileRef", JStr fileRef); (onRead |> Option.map (fun v -> "onRead", JStr "<closure>")) ] |> List.choose id)
+    | Action.Call (endpoint, into, onResult) -> Canon.typed "Call" ([ Some("endpoint", JStr endpoint); (into |> Option.map (fun v -> "into", encCallResultTarget v)); (onResult |> Option.map (fun v -> "onResult", JStr "<closure>")) ] |> List.choose id)
+    | Action.Navigate route -> Canon.typed "Navigate" [ "route", JStr route ]
+    | Action.CommitLocal nodeId -> Canon.typed "CommitLocal" [ "nodeId", JStr nodeId ]
+
+and private encCallResultTarget (v: CallResultTarget) : JVal =
+    match v with
+    | CallResultTarget.State key -> Canon.typed "State" [ "key", JStr key ]
+    | CallResultTarget.Query name -> Canon.typed "Query" [ "name", JStr name ]
 
 and private encFormat (v: Format) : JVal =
     match v with
@@ -1029,6 +1057,9 @@ and private encMetricSpec (s: MetricSpec) : JVal =
 
 and private encLabelValueRowSpec (s: LabelValueRowSpec) : JVal =
     Canon.typed "LabelValueRow" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (if s.Format = CellFormat.None then None else Some("format", encCellFormat s.Format)); Some("label", encTextSource s.Label); Some("value", (encBinding JFloat) s.Value); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
+
+and private encFactSpec (s: FactSpec) : JVal =
+    Canon.typed "Fact" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); Some("label", encTextSource s.Label); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); Some("value", encTextSource s.Value) ] |> List.choose id)
 
 and private encSparklineSpec (s: SparklineSpec) : JVal =
     Canon.typed "Sparkline" ([ Some("source", (encBinding (fun __xs -> JArr(List.map JInt __xs))) s.Source) ] |> List.choose id)
@@ -1339,6 +1370,7 @@ let rec private decNodeKind (j: JVal) : Result<NodeKind, string> =
     | "Progress" -> decProgressSpec j |> Result.map NodeKind.Progress
     | "Metric" -> decMetricSpec j |> Result.map NodeKind.Metric
     | "LabelValueRow" -> decLabelValueRowSpec j |> Result.map NodeKind.LabelValueRow
+    | "Fact" -> decFactSpec j |> Result.map NodeKind.Fact
     | "Sparkline" -> decSparklineSpec j |> Result.map NodeKind.Sparkline
     | "CodeBlock" -> decCodeBlockSpec j |> Result.map NodeKind.CodeBlock
     | "Box" -> decBoxSpec j |> Result.map NodeKind.Box
@@ -1473,8 +1505,33 @@ and private decAction (j: JVal) : Result<Action, string> =
             dReq "fileRef" __fs dStr |> Result.bind (fun fileRef ->
             dPresent "onRead" __fs |> Result.bind (fun onRead ->
             Ok(Action.ReadFileBody(encoding, fileRef, onRead)))))
+        | "Call" ->
+            dReq "endpoint" __fs dStr |> Result.bind (fun endpoint ->
+            dOpt "into" __fs decCallResultTarget |> Result.bind (fun into ->
+            dPresent "onResult" __fs |> Result.bind (fun onResult ->
+            Ok(Action.Call(endpoint, into, onResult)))))
+        | "Navigate" ->
+            dReq "route" __fs dStr |> Result.bind (fun route ->
+            Ok(Action.Navigate(route)))
+        | "CommitLocal" ->
+            dReq "nodeId" __fs dStr |> Result.bind (fun nodeId ->
+            Ok(Action.CommitLocal(nodeId)))
         | __other -> Error ("unknown Action case: " + __other))
     | _ -> Error "expected a Action object"
+
+and private decCallResultTarget (j: JVal) : Result<CallResultTarget, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "State" ->
+            dReq "key" __fs dStr |> Result.bind (fun key ->
+            Ok(CallResultTarget.State(key)))
+        | "Query" ->
+            dReq "name" __fs dStr |> Result.bind (fun name ->
+            Ok(CallResultTarget.Query(name)))
+        | __other -> Error ("unknown CallResultTarget case: " + __other))
+    | _ -> Error "expected a CallResultTarget object"
 
 and private decFormat (j: JVal) : Result<Format, string> =
     match j with
@@ -1931,6 +1988,16 @@ and private decLabelValueRowSpec (j: JVal) : Result<LabelValueRowSpec, string> =
     dOpt "help" __fs decTextSource |> Result.bind (fun help ->
     Ok { Emphasis = emphasis; Format = format; Label = label; Value = value; Help = help }))))))
 
+and private decFactSpec (j: JVal) : Result<FactSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "emphasis" __fs dBool (false) |> Result.bind (fun emphasis ->
+    dOpt "help" __fs decTextSource |> Result.bind (fun help ->
+    dOpt "icon" __fs dStr |> Result.bind (fun icon ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
+    dReq "value" __fs decTextSource |> Result.bind (fun value ->
+    Ok { Emphasis = emphasis; Help = help; Icon = icon; Label = label; Tone = tone; Value = value })))))))
+
 and private decSparklineSpec (j: JVal) : Result<SparklineSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "source" __fs (decBinding (dList dInt)) |> Result.bind (fun source ->
@@ -2129,6 +2196,7 @@ let private witnessKindTag (n: Node) : string =
     | NodeKind.Progress _ -> "Progress"
     | NodeKind.Metric _ -> "Metric"
     | NodeKind.LabelValueRow _ -> "LabelValueRow"
+    | NodeKind.Fact _ -> "Fact"
     | NodeKind.Sparkline _ -> "Sparkline"
     | NodeKind.CodeBlock _ -> "CodeBlock"
     | NodeKind.Box _ -> "Box"
@@ -2228,6 +2296,9 @@ let mkMetric (id: string) (label: TextSource) (value: Binding<float>) : Node =
 
 let mkLabelValueRow (id: string) (label: TextSource) (value: Binding<float>) : Node =
     { Id = id; Kind = NodeKind.LabelValueRow { Emphasis = false; Format = CellFormat.None; Label = label; Value = value; Help = None } }
+
+let mkFact (id: string) (label: TextSource) (value: TextSource) : Node =
+    { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value } }
 
 let mkSparkline (id: string) (source: Binding<int list>) : Node =
     { Id = id; Kind = NodeKind.Sparkline { Source = source } }
