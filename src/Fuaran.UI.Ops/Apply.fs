@@ -746,6 +746,123 @@ let private updateFragmentRef (field: string) (v: obj) (spec: FragmentRefSpec<'M
         | Error msg -> TypeMismatch msg
     | _ -> UnknownField
 
+// ─── Input-family field updates ────────────────────────────────────────────
+//
+// The whole `NodeKind.Input` family previously returned `NotSupportedYet` for
+// every top-level path, so no input control was editable field-by-field: the
+// only way to change a button's text was to swap the entire node via
+// `EditNode`. "Change this button's label" is about as ordinary as UI edits
+// get, and `Introspect.availableFields` was already ADVERTISING `Label` for a
+// Button — so the hint pointed authors at a path that then failed, which is a
+// hint that manufactures the retry it exists to prevent.
+//
+// The division of labour these arms follow is the one the rest of the engine
+// already uses, and it is why the handler and binding fields stay unsupported
+// rather than being wired here:
+//
+//   * UpdateProp      — literal, field-shaped values (a label, a variant, a
+//                       flag, an accept list).
+//   * ReplaceBinding  — `Binding<_>` slots (`Select.Source` / `Select.Value`,
+//                       and every kind's optional `Disabled`), which is what
+//                       `Introspect.bindingSlots` enumerates them for.
+//   * EditNode        — `Action<_>` handlers and closure-bearing fields
+//                       (`OnClick`, `OnSubmit`, `OnChange`, `OnSelect`), which
+//                       are not expressible as a wire value at all.
+//
+// A closure-bearing or binding field therefore reports `NotSupportedYet` (which
+// names the right op in its remediation) rather than `UnknownField` (which
+// would claim the field does not exist).
+
+let private updateButton (field: string) (v: obj) (spec: ButtonSpec<'Msg>) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Input(InputKind.Button newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Label" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSource v
+            |> Result.map (fun x -> { spec with Label = x }))
+    | "Variant" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryButtonVariant v
+            |> Result.map (fun x -> { spec with Variant = x }))
+    | "Icon" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryIconSourceOption v
+            |> Result.map (fun x -> { spec with Icon = x }))
+    | "Tooltip" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSourceOption v
+            |> Result.map (fun x -> { spec with Tooltip = x }))
+    | "OnClick"
+    | "Disabled" -> NotSupportedYet
+    | _ -> UnknownField
+
+let private updateSelect (field: string) (v: obj) (spec: SelectSpec<'Msg>) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Input(InputKind.Select newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Label" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSource v
+            |> Result.map (fun x -> { spec with Label = x }))
+    | "Placeholder" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSourceOption v
+            |> Result.map (fun x -> { spec with Placeholder = x }))
+    | "Source"
+    | "Value"
+    | "OnChange"
+    | "Disabled" -> NotSupportedYet
+    | _ -> UnknownField
+
+let private updateFileUpload (field: string) (v: obj) (spec: FileUploadSpec<'Msg>) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Input(InputKind.FileUpload newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Label" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSource v
+            |> Result.map (fun x -> { spec with Label = x }))
+    | "Accept" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryStringList v
+            |> Result.map (fun x -> { spec with Accept = x }))
+    | "Multiple" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with Multiple = x }))
+    | "OnSelect"
+    | "Disabled" -> NotSupportedYet
+    | _ -> UnknownField
+
+let private updateForm (field: string) (v: obj) (spec: FormSpec<'Msg>) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Input(InputKind.Form newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "SubmitLabel" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSource v
+            |> Result.map (fun x -> { spec with SubmitLabel = x }))
+    // `Fields` is a collection: its items are addressed by the NESTED surface
+    // (`Fields[i].Label` and friends, per Introspect.availableNestedPaths and
+    // `updateNestedForm`), never replaced wholesale through a top-level path.
+    | "Fields"
+    | "OnSubmit"
+    | "Disabled" -> NotSupportedYet
+    | _ -> UnknownField
+
 let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) : UpdateResult<'Msg> =
     match kind with
     | NodeKind.Layout layout ->
@@ -789,7 +906,16 @@ let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) 
         // Phase 524 — Drawing field-level UpdateProp not wired (a Drawing is a
         // whole-artefact swap via EditNode); whole-node swap remains available.
         | DisplayKind.Drawing _ -> NotSupportedYet
-    | NodeKind.Input _ -> NotSupportedYet
+    | NodeKind.Input input ->
+        match input with
+        | InputKind.Button spec -> updateButton field v spec
+        | InputKind.Select spec -> updateSelect field v spec
+        | InputKind.FileUpload spec -> updateFileUpload field v spec
+        | InputKind.Form spec -> updateForm field v spec
+        // Filters carries a bare `FilterSpec list`, not a record, so it has no
+        // top-level field surface at all — `Introspect.availableFields` already
+        // reports `[]` for it, and the two agree.
+        | InputKind.Filters _ -> NotSupportedYet
     | NodeKind.Visualisation _ -> NotSupportedYet
     | NodeKind.Custom _ -> NotSupportedYet
     // ErrorBoundary's `Child` + `Fallback` are
@@ -876,6 +1002,51 @@ let private parsePath (path: string) : Result<PathSeg list, string> =
                 | Error reason -> Error reason
 
         loop [] (path.Split '.' |> Array.toList)
+
+/// Canonicalise a path segment's field name to the PascalCase spelling the
+/// per-kind matchers compare against.
+///
+/// Wire field names are camelCase — that is how every field of every node is
+/// spelled on the wire, and how the didactic teaches them — whereas
+/// `UpdateProp.path` was resolved against the F# record field names, which are
+/// PascalCase. So `{"path":"subtext"}` was refused `FieldNotFound` whilst
+/// `{"path":"Subtext"}` applied: an author following the wire format everywhere
+/// else was punished for being consistent.
+///
+/// This is not a hypothetical. Two independent model families both emitted the
+/// camelCase spelling against a `Metric` when asked to change a caption, and
+/// both were refused; the asymmetry was ours, not theirs. Accepting the wire
+/// spelling is purely WIDENING — upper-casing an already-upper first character
+/// is the identity, so no path that previously resolved changes meaning, and
+/// nothing that previously applied now applies differently.
+let private canonicaliseField (field: string) : string =
+    if field.Length = 0 || System.Char.IsUpper field[0] then
+        field
+    else
+        string (System.Char.ToUpperInvariant field[0]) + field.Substring 1
+
+/// Drop a redundant leading `kind.` segment.
+///
+/// `UpdateProp.path` is rooted INSIDE the node's kind spec — `"subtext"`, not
+/// `"kind.subtext"` — but the wire nests those fields under a `kind` object
+/// (`{"id":"…","kind":{"$type":"Metric","subtext":"…"}}`), so that rooting
+/// convention is a fact about the op surface that the serialised tree gives no
+/// hint of. An author who reads the JSON in front of them and addresses the field
+/// by the path it actually occupies writes `kind.subtext`, and was refused.
+///
+/// That is not a hypothetical either: it is the exact shape one of the two model
+/// families emitted, whilst the other emitted the unprefixed spelling. Both
+/// readings are defensible, so both are accepted.
+///
+/// Unambiguous, because a node has no addressable top-level field named `Kind` —
+/// `kind` IS the spec container, and the two nested `Kind` sub-fields that exist
+/// (`Columns[i].Kind`, `Fields[i].Kind`) are closure-bearing and deliberately
+/// never addressable. Only a LEADING segment is stripped, and only when
+/// something follows it, so `Columns[0].Kind` is untouched.
+let private stripKindPrefix (segs: PathSeg list) : PathSeg list =
+    match segs with
+    | { Field = "Kind"; Index = None } :: rest when not rest.IsEmpty -> rest
+    | _ -> segs
 
 // ─── UpdateProp nested dispatch — per-kind typed traversal (Phase 364) ─────
 //
@@ -1592,7 +1763,18 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
             // enrich the hint with the kind's addressable paths.
             let resolvedKind = findNode target root |> Option.map _.Kind
             Error(pathInvalidWith path reason resolvedKind)
-        | Ok segs ->
+        | Ok rawSegs ->
+            // Accept the camelCase wire spelling of every segment, top-level and
+            // nested alike (see `canonicaliseField`). Applied here rather than in
+            // `parsePath` so the grammar diagnostics above still quote exactly
+            // what the author wrote.
+            let segs =
+                rawSegs
+                |> List.map (fun seg ->
+                    { seg with
+                        Field = canonicaliseField seg.Field })
+                |> stripKindPrefix
+
             match findNode target root with
             | None -> Error(nodeNotFound target)
             | Some targetNode ->

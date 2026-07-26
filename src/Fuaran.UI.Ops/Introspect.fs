@@ -113,7 +113,10 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
         // InputKind.Filters carries a bare list, not a record; no
         // top-level field surface for v1 UpdateProp.
         | InputKind.Filters _ -> []
-        | InputKind.Button _ -> [ "Label"; "OnClick"; "Variant"; "Icon" ]
+        // `Tooltip` joined the list when the Input family gained field-level
+        // UpdateProp: it is addressable, so advertising it is now accurate
+        // rather than aspirational.
+        | InputKind.Button _ -> [ "Label"; "OnClick"; "Variant"; "Icon"; "Tooltip" ]
         | InputKind.FileUpload _ -> [ "Label"; "Accept"; "Multiple"; "OnSelect" ]
         | InputKind.Select _ -> [ "Label"; "Source"; "Value"; "OnChange"; "Placeholder" ]
     | NodeKind.Visualisation vis ->

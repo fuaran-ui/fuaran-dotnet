@@ -5116,6 +5116,20 @@ module Coerce =
     let tryHeadingVariant (v: obj) : Result<HeadingVariant, string> = viaJson decodeHeadingVariant v
     let tryBadgeVariant (v: obj) : Result<BadgeVariant, string> = viaJson decodeBadgeVariant v
 
+    /// `Button.Variant : ButtonVariant` — the UpdateProp twin of
+    /// `decodeButtonVariant`, added with the Input family's field-level
+    /// UpdateProp surface so a `Button` is editable field-by-field rather than
+    /// only swappable wholesale via `EditNode`.
+    let tryButtonVariant (v: obj) : Result<ButtonVariant, string> = viaJson decodeButtonVariant v
+
+    /// `FileUpload.Accept : string list` — a JSON array of strings.
+    let tryStringList (v: obj) : Result<string list, string> =
+        let decodeStringList (path: string) (j: Json) =
+            requireArray path j
+            |> Result.bind (traverseIndexed (fun i item -> requireString (sprintf "%s[%d]" path i) item))
+
+        viaJson decodeStringList v
+
     /// JSON numbers decode as boxed float — narrow to int for fields like
     /// `Heading.Level` / `Grid.Cols` / `Skeleton.Rows`. Native F# callers
     /// who already box an int still go through `Apply.tryUnbox`'s direct
