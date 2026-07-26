@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 // Port allocation: the Fuaran workspace CLAUDE.md "Port allocation" table
-// reserves 24000–24009 for fuaran/samples/demo (Vite dev) and 14000–14009
+// reserves 24000–24009 for fuaran-dotnet/samples/demo (Vite dev) and 14000–14009
 // for the SSR-style preview server. This is a renderer demo — no SSR
 // backend exists yet, only the Vite dev server is wired.
 export default defineConfig({

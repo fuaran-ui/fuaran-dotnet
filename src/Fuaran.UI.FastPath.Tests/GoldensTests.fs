@@ -38,7 +38,7 @@ open Fuaran.UI
 module GoldensTests =
 
     /// The goldens live at the workspace-shared corpus root, a sibling of the
-    /// `fuaran/` repo — absent in a single-repo checkout (skip cleanly then, same
+    /// `fuaran-dotnet/` repo — absent in a single-repo checkout (skip cleanly then, same
     /// as the DAG / merge conformance suites).
     let private goldensPath =
         Path.Combine(

@@ -3,7 +3,7 @@
    renderer package if you want the canonical tokens here too:
      @import '@fuaran-ui/renderer/css';   (TS host)
    The F# renderer emits the same class vocabulary; copy
-   fuaran/src/Fuaran.UI.Renderer/content/fuaran-reference.css alongside this file
+   fuaran-dotnet/src/Fuaran.UI.Renderer/content/fuaran-reference.css alongside this file
    and @import it, or rely on your host's stylesheet. */
 
 :root {

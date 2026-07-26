@@ -39,6 +39,6 @@ natively, gets per-event HTTP governance for free, and reconnects via
 needs the lower per-message latency. The `IFuaranLiveChannel` seam makes that a
 swap, not a rewrite. WS owns its own reconnect + resequencing client-side (no
 EventSource freebie); the server half is `Frame.Seq` + `LiveConnection.Resync`.
-See `fuaran/docs/SERVER_DRIVEN.md`.
+See `fuaran-dotnet/docs/SERVER_DRIVEN.md`.
 
 **No platform-SDK dependency.** Apache-2.0 licensed — see the repo [LICENSE](../../LICENSE).

@@ -18,7 +18,7 @@ module Fuaran.UI.Renderer.Sanitize
 //  testable in isolation (the XSS-payload corpus lives
 //  in `Fuaran.UI.Tests/SanitizeTests.fs`).
 //
-//  Threat model summary (see `fuaran/SANITIZATION.md` for the full doc):
+//  Threat model summary (see `fuaran-dotnet/SANITIZATION.md` for the full doc):
 //    1. ExtraAttributes — drop `on*` event handlers, `style`, anything
 //       outside data-*/aria-*. Reject keys/values containing `<`, `>`,
 //       quote chars, or NULs (defence in depth — React's attribute
@@ -35,7 +35,7 @@ module Fuaran.UI.Renderer.Sanitize
 //       the primary gate when the source was the npm `marked` library).
 //
 //  The `NodeKind.Custom` runtime renderer is a HOST trust boundary, not
-//  an AI-emission surface — see `fuaran/SANITIZATION.md` "Custom-renderer
+//  an AI-emission surface — see `fuaran-dotnet/SANITIZATION.md` "Custom-renderer
 //  trust boundary". The host's `RegisterCustomRenderer` closure is
 //  expected to do its own escaping; this module does not police it.
 // ============================================================================
@@ -201,7 +201,7 @@ let sanitizeUrlOrBlank (url: string) : string =
 /// Hosts that need full DOMPurify-level sanitization layer it consumer-
 /// side over the markdown emission — Fuaran's renderer-side pass is the
 /// floor, not the ceiling. The contract is documented in
-/// `fuaran/SANITIZATION.md`.
+/// `fuaran-dotnet/SANITIZATION.md`.
 ///
 /// ⚠️ PRECONDITION (Phase 303): this is a *defence-in-depth* sweep over the Fuaran GFM renderer's
 /// own already-escaped-by-construction output — NOT a general-purpose HTML sanitizer. It is an

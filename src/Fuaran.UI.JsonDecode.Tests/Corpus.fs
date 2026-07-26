@@ -3,9 +3,9 @@ module Fuaran.UI.JsonDecode.Tests.Corpus
 // ============================================================================
 //  Language-neutral wire-format conformance corpus.
 //
-//  The canonical wire-format artefact is the spec (`fuaran/docs/WIRE_FORMAT.md`)
+//  The canonical wire-format artefact is the spec (`fuaran-dotnet/docs/WIRE_FORMAT.md`)
 //  + this corpus (`wire-format-fixtures/` at the WORKSPACE ROOT — a sibling of
-//  the `fuaran/` repo, shared with the Wave 9 TypeScript host and any future
+//  the `fuaran-dotnet/` repo, shared with the Wave 9 TypeScript host and any future
 //  conformant host). F# is one conformant host of that contract.
 //
 //  Two halves:
@@ -19,10 +19,10 @@ module Fuaran.UI.JsonDecode.Tests.Corpus
 //      JSON payloads, never the F# fixture values, so the assertions a second
 //      host (the TS decoder) runs are byte-identical to the F# ones.
 //
-//  Cross-repo note: the corpus lives at workspace root, OUTSIDE the `fuaran/`
+//  Cross-repo note: the corpus lives at workspace root, OUTSIDE the `fuaran-dotnet/`
 //  git repo. `findRoot` walks up from the test binary to find it. This binds
 //  the JsonDecode test suite to the Fuaran *workspace* checkout (siblings
-//  cloned together) rather than a standalone `fuaran/` clone — which is the
+//  cloned together) rather than a standalone `fuaran-dotnet/` clone — which is the
 //  intended posture: the corpus is a workspace-level shared artefact.
 // ============================================================================
 
@@ -98,7 +98,7 @@ let private writeManifest (outputDir: string) (kinds: string list) (entries: Fix
         + "refusal (expectedErrorCode at a path starting with expectedPath). elicitation-answer-accept / "
         + "elicitation-answer-reject fixtures (WIRE_FORMAT 18.4): the inputFile pairs {answer, contract}; "
         + "run the host's answer-conformance validation and assert acceptance or the expected refusal. "
-        + "See fuaran/docs/WIRE_FORMAT.md."
+        + "See fuaran-dotnet/docs/WIRE_FORMAT.md."
     )
 
     // Phase 548 — the canonical NodeKind enumeration: the emittable `kind.$type`
@@ -430,7 +430,7 @@ let findRoot () : string =
     | Some root -> root
     | None ->
         failwithf
-            "%s/manifest.json not found walking up from %s. The JsonDecode conformance suite requires the Fuaran workspace checkout (corpus lives at workspace root, a sibling of the fuaran/ repo). Regenerate with: dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-corpus <workspace-root>/%s"
+            "%s/manifest.json not found walking up from %s. The JsonDecode conformance suite requires the Fuaran workspace checkout (corpus lives at workspace root, a sibling of the fuaran-dotnet/ repo). Regenerate with: dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-corpus <workspace-root>/%s"
             corpusDirName
             AppContext.BaseDirectory
             corpusDirName

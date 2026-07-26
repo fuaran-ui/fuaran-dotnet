@@ -32,7 +32,7 @@ All packs land in `../local-nuget-feed/` for local downstream consumption.
 ## Layout
 
 ```
-fuaran/
+fuaran-dotnet/
 ├── src/                    # Language-tier projects
 │   ├── Fuaran.UI/
 │   ├── Fuaran.UI.Renderer/

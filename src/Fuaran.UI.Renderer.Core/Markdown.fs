@@ -15,8 +15,8 @@ module Fuaran.UI.Renderer.Markdown
 //  GFM feature set common-case correct; pathological CommonMark edge cases fall
 //  to the escaped-literal fallback (nothing renders *wrong*, just plainly).
 //
-//  THE THREE BUCKETS (the contract — also pinned in fuaran/docs/WIRE_FORMAT.md
-//  §12 and fuaran/docs/MARKDOWN.md):
+//  THE THREE BUCKETS (the contract — also pinned in fuaran-dotnet/docs/WIRE_FORMAT.md
+//  §12 and fuaran-dotnet/docs/MARKDOWN.md):
 //
 //    IN  — CommonMark core: ATX + setext headings, paragraphs, emphasis/strong,
 //          inline + fenced + indented code, blockquotes, ordered/unordered

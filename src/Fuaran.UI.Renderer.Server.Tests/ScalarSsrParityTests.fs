@@ -33,7 +33,7 @@ let private contains (needle: string) (haystack: string) =
     haystack.Contains(needle, System.StringComparison.Ordinal)
 
 /// Walk up from the test assembly until the workspace `wire-format-fixtures/`
-/// corpus is found (a sibling of the `fuaran/` repo).
+/// corpus is found (a sibling of the `fuaran-dotnet/` repo).
 let private corpusRoot () : string =
     let rec walk (dir: DirectoryInfo) =
         if isNull dir then

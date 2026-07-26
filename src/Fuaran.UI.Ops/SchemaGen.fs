@@ -1066,7 +1066,7 @@ let wireFormatSchema: string =
                   "Canonical JSON wire format for the Fuaran UI tree (Node) and tree edits (TreeOp), "
                   + "wire format v1. Generated from Fuaran.UI.Types via Fuaran.UI.Ops.SchemaGen; "
                   + "describes the output of CanonicalJson.encode* / the input JsonDecode.decode* accepts. "
-                  + "See fuaran/docs/WIRE_FORMAT.md."
+                  + "See fuaran-dotnet/docs/WIRE_FORMAT.md."
               )
               "oneOf", JArr [ ref "Node"; ref "TreeOp" ]
               "$defs", JObj defs ]

@@ -164,6 +164,8 @@
     <Compile Include="NodeMapTests.fs" />
     <Compile Include="WireSurvivabilityTests.fs" />
     <Compile Include="ChartLoweringTests.fs" />
+    <!-- Typed cross-host messaging (the MessageContract prototype). -->
+    <Compile Include="MessagingTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -184,6 +186,8 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />
+    <!-- Property-tests the MessageContract law (lower >> lift = id). -->
+    <PackageReference Include="FsCheck" />
     <PackageReference Include="FSharp.Core" />
     <!-- Fuaran.Core conformance substrate (test-only — CoreAdoptionTests.fs). -->
     <PackageReference Include="Fuaran.Core.Tree" />

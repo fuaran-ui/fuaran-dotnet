@@ -16,7 +16,7 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  the corpus pins both conformant hosts (F# + the TS `@fuaran-ui/ops` codec)
 //  to the same canonical bytes.
 //
-//  Regenerate (from fuaran/):
+//  Regenerate (from fuaran-dotnet/):
 //      dotnet run --project src/Fuaran.UI.OpStream.Dag.Tests -- --emit-dag-corpus ..\wire-format-fixtures
 // ============================================================================
 
@@ -87,7 +87,7 @@ let emit (root: string) : unit =
     let manifest =
         "{\n"
         + "  \"version\": 1,\n"
-        + "  \"description\": \"Fuaran DAG-record wire-format conformance corpus (Phase 178, additive). dag-record-round-trip: decode inputFile, re-encode, assert byte-equal to expectedFile. The op field nests the canonical TreeOp wire form. See fuaran/docs/WIRE_FORMAT.md.\",\n"
+        + "  \"description\": \"Fuaran DAG-record wire-format conformance corpus (Phase 178, additive). dag-record-round-trip: decode inputFile, re-encode, assert byte-equal to expectedFile. The op field nests the canonical TreeOp wire form. See fuaran-dotnet/docs/WIRE_FORMAT.md.\",\n"
         + "  \"fixtures\": [\n"
         + System.String.Join(",\n", manifestEntries)
         + "\n  ]\n}\n"

@@ -34,7 +34,7 @@ The wedge is **value-density** – Fuaran's record-shaped, NodeId-stable, state-
 ## 2. Repository + package layout
 
 ```
-fuaran/
+fuaran-dotnet/
 ├── Fuaran.sln
 ├── Build.fs / Build.fsproj                  — FAKE: Format / Build / Test / Pack / All
 ├── Directory.Build.props                    — TreatWarningsAsErrors=true, latest F#

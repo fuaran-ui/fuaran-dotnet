@@ -8,7 +8,7 @@ module Fuaran.UI.Renderer.MathMl
 //  markup from it) — the render-tier analogue of the wire codec's single
 //  canonical serialisation, mirroring the `DrawingSvg` builder. The TypeScript
 //  `@fuaran-ui/renderer` `mathMl` module is a byte-for-byte port; the shared
-//  oracle is the fixture table in `fuaran/docs/MATH-DEGRADATION.md`.
+//  oracle is the fixture table in `fuaran-dotnet/docs/MATH-DEGRADATION.md`.
 //
 //  It implements a small, CLOSED expression subset (superscript / subscript /
 //  the four operators + `=` / parentheses / identifiers / numbers / `\frac` /
@@ -241,7 +241,7 @@ and private parseSequence (p: P) (stop: char) : string =
     if not p.Ok then "" else String.concat "" parts
 
 /// Translate a LaTeX `source` in the closed subset (see
-/// `fuaran/docs/MATH-DEGRADATION.md`) to a native MathML fragment string, or
+/// `fuaran-dotnet/docs/MATH-DEGRADATION.md`) to a native MathML fragment string, or
 /// `None` when the input is outside the subset (the renderer then falls back to
 /// the raw-source span). Total — never throws on any input.
 let translate (source: string) (display: MathDisplay) : string option =

@@ -30,7 +30,7 @@ let element = Render.renderToElement BindingResolver.empty tree
 
 ## Server semantics
 
-See [`fuaran/docs/SSR.md`](../../docs/SSR.md) for the full per-kind behaviour
+See [`fuaran-dotnet/docs/SSR.md`](../../docs/SSR.md) for the full per-kind behaviour
 table. In brief: no runtime / no dispatch (Action-bearing nodes render inert; a
 `Link` is the crawlable no-JS path); the resolved/loaded `StateBehaviour` branch
 renders by default; client-library visualisations (`Chart` / `Map` / `DataGrid`)

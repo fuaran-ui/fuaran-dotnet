@@ -61,7 +61,7 @@ per-event HTTP governance for free (every client event is an ordinary request
 through the whole auth/rate-limit/audit pipeline), browser-native reconnect that
 maps 1:1 onto the journal via `Last-Event-ID`, and a smaller debuggable surface.
 The WebSocket backend (`Fuaran.UI.ServerDriven.WebSocket`) is the drop-in for
-*measured* high-frequency interaction. See `fuaran/docs/SERVER_DRIVEN.md`.
+*measured* high-frequency interaction. See `fuaran-dotnet/docs/SERVER_DRIVEN.md`.
 
 ## Testability
 

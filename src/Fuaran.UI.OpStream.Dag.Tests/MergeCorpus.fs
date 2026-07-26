@@ -21,7 +21,7 @@ open Fuaran.UI.OpStream.Dag.Tests.TestSupport
 //  (covered F#-side by the order-independence test), so a host-identical
 //  tree-merge makes the recursive-base host-identical by construction.
 //
-//  Regenerate (from fuaran/):
+//  Regenerate (from fuaran-dotnet/):
 //      dotnet run --project src/Fuaran.UI.OpStream.Dag.Tests -- --emit-merge-corpus ..\wire-format-fixtures
 // ============================================================================
 
@@ -185,7 +185,7 @@ let emit (root: string) : unit =
         )
 
     let manifest =
-        "{\n  \"version\": 1,\n  \"description\": \"Fuaran merge-conformance corpus (Phase 179 + 184, additive). merge-3way: decode base/a/b, run the deterministic 3-way tree merge, assert byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-validator-gated (Phase 184): run the documented sample validator over the auto-merge, diff introduced defects vs both parents, assert encodeVerdict(introduced) byte-equal to verdictFile and sha256(verdict) == verdictHash. See fuaran/docs/WIRE_FORMAT.md.\",\n  \"fixtures\": [\n"
+        "{\n  \"version\": 1,\n  \"description\": \"Fuaran merge-conformance corpus (Phase 179 + 184, additive). merge-3way: decode base/a/b, run the deterministic 3-way tree merge, assert byte-equal to expectedFile and sha256(expected) == outcomeHash. merge-validator-gated (Phase 184): run the documented sample validator over the auto-merge, diff introduced defects vs both parents, assert encodeVerdict(introduced) byte-equal to verdictFile and sha256(verdict) == verdictHash. See fuaran-dotnet/docs/WIRE_FORMAT.md.\",\n  \"fixtures\": [\n"
         + System.String.Join(",\n", entries)
         + "\n  ]\n}\n"
 

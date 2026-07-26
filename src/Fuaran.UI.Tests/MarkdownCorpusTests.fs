@@ -13,7 +13,7 @@ module Fuaran.UI.Tests.MarkdownCorpus
 //  `Py == corpus`) — together proving `F# == TS == Py`, the §11.1-style
 //  byte-parity gate applied to markdown rendering.
 //
-//  Skips gracefully when the corpus is absent (a standalone fuaran/ checkout
+//  Skips gracefully when the corpus is absent (a standalone fuaran-dotnet/ checkout
 //  without the workspace sibling) — the inline MarkdownTests still pin the
 //  contract in that case.
 // ============================================================================

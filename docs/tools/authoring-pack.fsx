@@ -30,8 +30,8 @@ open System.Text.RegularExpressions
 open System.Text.Encodings.Web
 
 // ── Paths ──────────────────────────────────────────────────────────────────────
-let scriptDir = __SOURCE_DIRECTORY__ //                       fuaran/docs/tools
-let docsDir = Directory.GetParent(scriptDir).FullName //      fuaran/docs
+let scriptDir = __SOURCE_DIRECTORY__ //                       fuaran-dotnet/docs/tools
+let docsDir = Directory.GetParent(scriptDir).FullName //      fuaran-dotnet/docs
 let fuaranDir = Directory.GetParent(docsDir).FullName //      fuaran
 let workspaceRoot = Directory.GetParent(fuaranDir).FullName // <workspace root>
 let fixturesDir = Path.Combine(workspaceRoot, "wire-format-fixtures")

@@ -6,9 +6,9 @@ import { fileURLToPath } from "url";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 // Port allocation: the Fuaran workspace CLAUDE.md "Port allocation" table
-// reserves 24010–24019 for fuaran/samples/catalog (Vite dev) and 14010–
+// reserves 24010–24019 for fuaran-dotnet/samples/catalog (Vite dev) and 14010–
 // 14019 for the SSR-style preview server. Website-class band, sibling-
-// disjoint from fuaran/samples/demo's 24000/14000 reservation.
+// disjoint from fuaran-dotnet/samples/demo's 24000/14000 reservation.
 export default defineConfig({
   // Phase 169 — static production build. `base: "./"` makes every emitted
   // asset reference relative, so the built `dist/` hosts from any static file

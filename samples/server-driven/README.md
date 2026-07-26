@@ -81,6 +81,6 @@ data: {"seq":1,"patches":[
   "effects":[]}
 ```
 
-See `fuaran/docs/SERVER_DRIVEN.md` (the "Form / input / local-state policy"
+See `fuaran-dotnet/docs/SERVER_DRIVEN.md` (the "Form / input / local-state policy"
 section) for the buffer-flush protocol + the round-trip-vs-buffer dividing line,
 plus the full architecture + transport-choice analysis.

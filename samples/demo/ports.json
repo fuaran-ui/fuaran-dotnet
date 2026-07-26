@@ -1,1 +1,1 @@
-{"kind":"ports","app":"fuaran/samples/demo","estate":"fuaran-ui","class":"website","server":[14000,14009],"client":[24000,24009]}
+{"kind":"ports","app":"fuaran-dotnet/samples/demo","estate":"fuaran-ui","class":"website","server":[14000,14009],"client":[24000,24009]}
