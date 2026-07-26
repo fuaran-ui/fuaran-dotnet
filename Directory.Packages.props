@@ -109,5 +109,9 @@
          Fuaran.UI.LayoutObserver, which becomes a domain instance of it. Dependency-free
          (FSharp.Core only). Fable-distributed (source-packed) so the Fable client compiles it. -->
     <PackageVersion Include="Fuaran.Core.Observer" Version="0.1.11" />
+    <!-- Fuaran.Core.Validator — consumed by the IDL-generated structural layer's
+         plumbing (Phase 671): the generated `runValidator` scaffold projects Core
+         `Defect`s. Pinned alongside the rest of the Core substrate. -->
+    <PackageVersion Include="Fuaran.Core.Validator" Version="0.1.11" />
   </ItemGroup>
 </Project>

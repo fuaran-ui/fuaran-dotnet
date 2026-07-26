@@ -164,6 +164,8 @@
     <Compile Include="NodeMapTests.fs" />
     <Compile Include="WireSurvivabilityTests.fs" />
     <Compile Include="ChartLoweringTests.fs" />
+    <!-- Phase 671: the IDL-generated structural layer, byte-diffed tier-side. -->
+    <Compile Include="GeneratedLayerTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

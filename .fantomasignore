@@ -1,0 +1,5 @@
+# Auto-generated F# synced from Fuaran-Core's IDL codegen (Phase 671) — do not
+# reformat it. The generator's output is the source of truth, and
+# scripts/sync-generated-layer.ps1 -Check byte-compares against it; a Fantomas
+# pass here would break that guard. Mirrors Fuaran-Core's own .fantomasignore.
+src/Fuaran.UI/Generated.fs

@@ -49,12 +49,17 @@
     <Compile Include="QuerySource.fs" />
     <Compile Include="QueryRefine.fs" />
     <Compile Include="RetrievalSource.fs" />
+    <Compile Include="Generated.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
     <!-- Canonical JSON AST (JVal): Custom props / action payloads / I18n args carry it
          directly in the type contract. Fable-distributed (source-packed). -->
     <PackageReference Include="Fuaran.Core.Wire" />
+    <!-- Phase 671: the IDL-generated structural layer's plumbing binds a
+         Core NodeWitness and a runValidator scaffold. -->
+    <PackageReference Include="Fuaran.Core.Tree" />
+    <PackageReference Include="Fuaran.Core.Validator" />
     <!-- Compute layer (Phase 282): the Binding.Transform case carries Fuaran.Core's columnar +
          dataframe types. Fable-distributed (source-packed), so the Fable client compiles them. -->
     <PackageReference Include="Fuaran.Core.Column" />
