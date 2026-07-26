@@ -49,10 +49,6 @@
     <Compile Include="QuerySource.fs" />
     <Compile Include="QueryRefine.fs" />
     <Compile Include="RetrievalSource.fs" />
-    <!-- Typed cross-host messaging: a MessageContract lowers a typed 'Msg onto
-         the wire-representable Action.Notify, so a dispatch survives encoding
-         without a wire change. See the module header. -->
-    <Compile Include="Messaging.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
