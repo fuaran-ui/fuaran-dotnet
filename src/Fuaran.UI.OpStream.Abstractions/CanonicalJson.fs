@@ -556,6 +556,17 @@ let rec private encodeTextSource (t: TextSource) : Appender =
         | TextSource.Bound b -> appendObject sb (case "Bound" [ "binding", encodeBinding<string> b ])
         | TextSource.I18n(key, args) -> appendObject sb (case "I18n" [ "args", encodeMap args; "key", str key ])
 
+/// Phase 677 — absence is STRUCTURAL, never a value. A payload that is absent
+/// (an obj-erased `null`, or a `None` in an option-typed slot such as
+/// `SelectSpec.Value : Binding<string option>`) omits its key entirely rather
+/// than emitting JSON `null`, for which the wire model has no case.
+///
+/// `isNull (box v)` is uniform across both: an F# `option` is a reference type
+/// whose `None` is represented as null, and Fable's `== null` catches its
+/// `undefined`. A real empty collection (`[]`, `Seq.empty`) is a live object and
+/// is NOT absent — "no selection" and "selected nothing" stay distinguishable.
+and private isAbsentPayload<'T> (v: 'T) : bool = isNull (box v)
+
 and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) : Appender =
     // Phase 429 — the typed-static-payload seam. `staticEnc` names the slot's
     // own encoding for the `'T` payload positions (`Static.value` and
@@ -569,7 +580,11 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
         match b with
         | Binding.Static v ->
             // Closures-as-Static aren't a thing — Static carries values.
-            appendObject sb (case "Static" [ "value", staticEnc v ])
+            // Phase 677: an absent payload omits the key; it never emits null.
+            let valueField =
+                if isAbsentPayload v then [] else [ "value", staticEnc v ]
+
+            appendObject sb (case "Static" valueField)
         | Binding.Query(name, _accessor, dependsOn) ->
             // §4i — accessor is a wire-expression closure; canonical form renders the name only and
             // the accessor as a sentinel. Phase 421 — `dependsOn` (the declared filter dependency
@@ -611,7 +626,14 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
 
             appendObject sb (case "Selection" (defaultField @ fieldField @ [ "nodeId", str (nodeIdStr nodeId) ]))
         | Binding.State(key, defaultValue) ->
-            appendObject sb (case "State" [ "defaultValue", staticEnc defaultValue; "key", str key ])
+            // Phase 677: same rule as `Static` — absence omits, never null.
+            let defaultField =
+                if isAbsentPayload defaultValue then
+                    []
+                else
+                    [ "defaultValue", staticEnc defaultValue ]
+
+            appendObject sb (case "State" (defaultField @ [ "key", str key ]))
         | Binding.Computed _ -> appendObject sb (case "Computed" [ "fn", sentinel closureSentinel ])
         | Binding.I18n(key, args) ->
             // i18n binding. Args are `Map<string, Binding<obj>>
@@ -790,7 +812,10 @@ let private staticStringOpt (v: string option) : Appender =
     fun sb ->
         match v with
         | Some s -> appendRawString sb s
-        | None -> appendNull sb
+        // Phase 677: unreachable — an absent payload omits its key upstream in
+        // `encodeBindingWith`, so this branch never renders. Kept total, and
+        // deliberately NOT emitting null: the wire model has no such value.
+        | None -> appendRawString sb ""
 
 let private staticStringList (xs: string list) : Appender =
     fun sb -> appendArrayWith sb (xs |> List.map str)

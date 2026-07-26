@@ -139,10 +139,10 @@ type TextSource =
     | Bound of binding: Binding<string>
 
 and [<RequireQualifiedAccess>] Binding<'T> =
-    | Static of value: 'T
+    | Static of value: 'T option
     | Query of accessor: unit * name: string
     | Filter of name: string
-    | State of defaultValue: 'T * key: string
+    | State of defaultValue: 'T option * key: string
     | Computed of fn: unit
     | Local of flushOn: LocalFlushTrigger * format: unit * initialFrom: Binding<'T> * onCommit: unit option * parse: unit
     | Format of format: Format * locale: LocaleSource * source: Binding<float>
@@ -861,10 +861,10 @@ and private encTextSource (v: TextSource) : JVal =
 
 and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     match v with
-    | Binding.Static value -> Canon.typed "Static" [ "value", encT value ]
+    | Binding.Static value -> Canon.typed "Static" ([ (value |> Option.map (fun v -> "value", encT v)) ] |> List.choose id)
     | Binding.Query (accessor, name) -> Canon.typed "Query" [ "accessor", JStr "<closure>"; "name", JStr name ]
     | Binding.Filter name -> Canon.typed "Filter" [ "name", JStr name ]
-    | Binding.State (defaultValue, key) -> Canon.typed "State" [ "defaultValue", encT defaultValue; "key", JStr key ]
+    | Binding.State (defaultValue, key) -> Canon.typed "State" ([ (defaultValue |> Option.map (fun v -> "defaultValue", encT v)); Some("key", JStr key) ] |> List.choose id)
     | Binding.Computed fn -> Canon.typed "Computed" [ "fn", JStr "<closure>" ]
     | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>") ] |> List.choose id)
     | Binding.Format (format, locale, source) -> Canon.typed "Format" [ "format", encFormat format; "locale", encLocaleSource locale; "source", (encBinding JFloat) source ]
@@ -1422,7 +1422,7 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
         dTag __fs |> Result.bind (fun __t ->
         match __t with
         | "Static" ->
-            dReq "value" __fs decT |> Result.bind (fun value ->
+            dOpt "value" __fs decT |> Result.bind (fun value ->
             Ok(Binding.Static(value)))
         | "Query" ->
             Ok() |> Result.bind (fun accessor ->
@@ -1432,7 +1432,7 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             dReq "name" __fs dStr |> Result.bind (fun name ->
             Ok(Binding.Filter(name)))
         | "State" ->
-            dReq "defaultValue" __fs decT |> Result.bind (fun defaultValue ->
+            dOpt "defaultValue" __fs decT |> Result.bind (fun defaultValue ->
             dReq "key" __fs dStr |> Result.bind (fun key ->
             Ok(Binding.State(defaultValue, key))))
         | "Computed" ->

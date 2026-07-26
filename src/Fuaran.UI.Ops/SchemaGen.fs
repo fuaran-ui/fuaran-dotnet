@@ -241,7 +241,10 @@ let private defs: (string * J) list =
       // below already names the element record shape.
       "Binding",
       union
-          [ duCase "Static" [ "value" ] [ "value", anyJson ]
+          // Phase 677 — `value` is OPTIONAL: absence is structural, so a binding
+          // carrying no value omits the key rather than emitting JSON null (for
+          // which the wire model has no case).
+          [ duCase "Static" [] [ "value", anyJson ]
             // `dependsOn` (Phase 421) is optional (omitted-when-empty) — the declared filter edge.
             duCase "Query" [ "name" ] [ "dependsOn", arrayOf str; "name", str ]
             duCase "Filter" [ "name" ] [ "defaultValue", anyJson; "name", str ]
@@ -250,7 +253,8 @@ let private defs: (string * J) list =
             // `field` (0.2.10, Phase 632) is optional — the declarative
             // row-field projection off the clicked row.
             duCase "Selection" [ "nodeId" ] [ "defaultValue", anyJson; "field", str; "nodeId", str ]
-            duCase "State" [ "defaultValue"; "key" ] [ "defaultValue", anyJson; "key", str ]
+            // Phase 677 — `defaultValue` is OPTIONAL for the same reason as `Static.value`.
+            duCase "State" [ "key" ] [ "defaultValue", anyJson; "key", str ]
             duCase "Computed" [ "fn" ] [ "fn", closure ]
             duCase
                 "I18n"

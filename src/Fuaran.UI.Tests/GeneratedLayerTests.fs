@@ -183,8 +183,10 @@ let generatedLayerTests =
                       // `Fuaran.Core.DataFrame` pipeline with its own codec.
                       Some("Binding.Transform (out of scope)", name)
                   | Error e when e.Contains "null is not representable" ->
-                      // Phase 671 step 6: the wire-`null` operator decision.
-                      Some("wire null (undecided)", name)
+                      // Phase 677 removed null from the wire entirely, so this can no
+                      // longer fire. Kept as a tripwire: if it ever does, a null has
+                      // crept back into a canonical fixture.
+                      Some("wire null (REGRESSION — null is back)", name)
                   | Error e when e.Contains "unknown node kind" -> Some("node kind absent from the IDL", name)
                   | Error e when e.Contains "unknown Action case" -> Some("Action case absent from the IDL", name)
                   | Error e when e.Contains "missing required field" -> Some("optionality drift", name)
@@ -208,8 +210,10 @@ let generatedLayerTests =
                     // is CONTEXT-dependent (it turns on the enclosing field's `id`), so
                     // no local `OmitDefault` in the IDL can express it. Not a flag away
                     // — see the note in Phase 672.
-                    "optionality drift", 4
-                    "wire null (undecided)", 2 ]
+                    //
+                    // The "wire null" bucket is GONE: Phase 677 removed null from the
+                    // wire model, so those two fixtures now round-trip.
+                    "optionality drift", 4 ]
                   (sprintf
                       "the IDL-coverage residue moved (%d of %d lenient-expected fixtures round-trip)"
                       roundTripped
@@ -241,7 +245,7 @@ let generatedLayerTests =
 
               Expect.equal
                   covered
-                  62
+                  65
                   (sprintf
                       "generated-layer corpus coverage moved (%d of %d fixtures decode+re-encode byte-identically)"
                       covered

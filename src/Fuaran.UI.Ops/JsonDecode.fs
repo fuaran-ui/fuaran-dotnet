@@ -1148,9 +1148,17 @@ and private bindingGeneric<'T>
             match requireDiscriminator path fields with
             | Error e -> Error e
             | Ok "Static" ->
-                match requireField path fields "value" "Binding.Static value of the slot's expected type" with
-                | Error e -> Error e
-                | Ok v -> parseStatic (path + ".value") v |> Result.map Binding.Static
+                // Phase 677 — absence is structural: a MISSING `value` means the
+                // binding carries none. The legacy `"value": null` form still
+                // decodes (§16 shorthand, since models emit null naturally) by
+                // routing to the very same per-slot absent handling, so the two
+                // spellings cannot disagree.
+                let v =
+                    match tryField fields "value" with
+                    | Some v -> v
+                    | None -> JNull
+
+                parseStatic (path + ".value") v |> Result.map Binding.Static
             | Ok "Query" ->
                 match requireField path fields "name" "query name string" with
                 | Error e -> Error e
@@ -1254,7 +1262,16 @@ and private bindingGeneric<'T>
                                 match parseStatic (path + ".defaultValue") dv with
                                 | Ok parsed -> parsed
                                 | Error _ -> placeholder
-                            | None -> placeholder
+                            // Phase 677 — an ABSENT default now means the binding
+                            // carries none, and must decode to the same value the
+                            // legacy `"defaultValue": null` did, or the encoder
+                            // re-emits a placeholder and the round-trip breaks
+                            // (caught by `form-declarative`'s Choice slot). Route
+                            // through the identical per-slot absent handling.
+                            | None ->
+                                match parseStatic (path + ".defaultValue") JNull with
+                                | Ok parsed -> parsed
+                                | Error _ -> placeholder
 
                         Binding.State(key, defaultV))
             | Ok "Computed" ->
