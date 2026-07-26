@@ -41,6 +41,14 @@ jobs:
         with:
           node-version: 20
 
+      # nuget.config's `local` source resolves to ../../../local-nuget-feed from
+      # the repo root — the maintainers' workspace feed, absent on a runner. NuGet
+      # hard-errors (NU1301) on a missing folder source rather than treating it as
+      # empty, so restore dies before it can fall through to nuget.org. Mint the
+      # empty dir at that exact depth; same step publish-packages.yml carries.
+      - name: Create empty local-nuget-feed on the runner
+        run: mkdir -p ../../../local-nuget-feed
+
       - name: Restore .NET tools
         run: dotnet tool restore
 
