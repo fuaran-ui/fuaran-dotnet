@@ -187,8 +187,12 @@ let generatedLayerTests =
                   buckets
                   [ "Action case absent from the IDL", 2
                     "Binding.Transform (out of scope)", 12
-                    "field-set drift", 4
+                    "field-set drift", 3
                     "node kind absent from the IDL", 2
+                    // The residual 4 are Phase 596's auto-bind `value` omission, which
+                    // is CONTEXT-dependent (it turns on the enclosing field's `id`), so
+                    // no local `OmitDefault` in the IDL can express it. Not a flag away
+                    // — see the note in Phase 672.
                     "optionality drift", 4
                     "wire null (undecided)", 2 ]
                   (sprintf

@@ -144,7 +144,7 @@ and [<RequireQualifiedAccess>] Binding<'T> =
     | Filter of name: string
     | State of defaultValue: 'T * key: string
     | Computed of fn: unit
-    | Local of flushOn: LocalFlushTrigger * format: unit * initialFrom: Binding<'T> * onCommit: unit * parse: unit
+    | Local of flushOn: LocalFlushTrigger * format: unit * initialFrom: Binding<'T> * onCommit: unit option * parse: unit
     | Format of format: Format * locale: LocaleSource * source: Binding<float>
     | Invoke of args: InvokeArg list * capabilityId: string
 
@@ -162,7 +162,7 @@ and [<RequireQualifiedAccess>] Action =
     | WriteToClipboard of text: string
     | Dispatch
     | Invoke of args: InvokeArg list * capabilityId: string
-    | ReadFileBody of encoding: FileReadEncoding * fileRef: string * onRead: unit
+    | ReadFileBody of encoding: FileReadEncoding * fileRef: string * onRead: unit option
 
 and [<RequireQualifiedAccess>] Format =
     | Number of decimals: int option
@@ -187,20 +187,20 @@ and [<RequireQualifiedAccess>] LayoutMode =
     | Grid of cols: int * templateColumns: string option
 
 and [<RequireQualifiedAccess>] FormFieldKind =
-    | Text of onChange: unit * value: Binding<string>
-    | Number of onChange: unit * value: Binding<float>
-    | Checkbox of onToggle: unit * value: Binding<bool>
-    | Choice of onChange: unit * options: Binding<SelectOption list> * value: Binding<string>
-    | TextArea of onChange: unit * rows: int * value: Binding<string>
-    | RangedNumber of onChange: unit * value: Binding<float> * min: float option * max: float option * step: float option
-    | SegmentedChoice of onChange: unit * options: Binding<SelectOption list> * orientation: Orientation * value: Binding<string>
-    | Date of onChange: unit * value: Binding<string> * variant: DateVariant * min: string option * max: string option * step: float option
+    | Text of onChange: unit option * value: Binding<string>
+    | Number of onChange: unit option * value: Binding<float>
+    | Checkbox of onToggle: unit option * value: Binding<bool>
+    | Choice of onChange: unit option * options: Binding<SelectOption list> * value: Binding<string>
+    | TextArea of onChange: unit option * rows: int * value: Binding<string>
+    | RangedNumber of onChange: unit option * value: Binding<float> * min: float option * max: float option * step: float option
+    | SegmentedChoice of onChange: unit option * options: Binding<SelectOption list> * orientation: Orientation * value: Binding<string>
+    | Date of onChange: unit option * value: Binding<string> * variant: DateVariant * min: string option * max: string option * step: float option
 
 and [<RequireQualifiedAccess>] FilterKind =
-    | Text of onChange: unit * value: Binding<string>
-    | Choice of onChange: unit * options: Binding<SelectOption list> * value: Binding<string>
-    | Range of onChange: unit * value: unit
-    | SegmentedChoice of onChange: unit * options: Binding<SelectOption list> * orientation: Orientation * value: Binding<string>
+    | Text of onChange: unit option * value: Binding<string>
+    | Choice of onChange: unit option * options: Binding<SelectOption list> * value: Binding<string>
+    | Range of onChange: unit option * value: unit
+    | SegmentedChoice of onChange: unit option * options: Binding<SelectOption list> * orientation: Orientation * value: Binding<string>
 
 and [<RequireQualifiedAccess>] ColumnWidth =
     | Auto
@@ -211,9 +211,9 @@ and [<RequireQualifiedAccess>] CellKindErased =
     | Text
     | Numeric
     | Date
-    | Editable of onEdit: unit
-    | Checkbox of get: unit * onToggle: unit
-    | Button of label: TextSource * onClick: unit
+    | Editable of onEdit: unit option
+    | Checkbox of get: unit * onToggle: unit option
+    | Button of label: TextSource * onClick: unit option
     | ButtonGroup of buttons: ButtonGroupItem list
     | Link of hrefFn: unit * labelFn: unit
     | Pill of labelFn: unit * toneFn: unit
@@ -305,7 +305,7 @@ and ColumnErased =
 and ButtonGroupItem =
     {
       Label: TextSource
-      OnClick: unit
+      OnClick: unit option
     }
 
 and ContentHash =
@@ -497,7 +497,7 @@ and TabsSpec =
     {
       ActiveIndex: Binding<int>
       Children: Node list
-      OnSelect: unit
+      OnSelect: unit option
       TabHeaders: TabHeader list option
       TabTags: string list option
       ActiveTag: Binding<string> option
@@ -508,7 +508,7 @@ and StepperSpec =
     {
       ActiveStep: Binding<int>
       Children: Node list
-      OnSelect: unit
+      OnSelect: unit option
     }
 
 // Input
@@ -526,7 +526,7 @@ and ButtonSpec =
 and SelectSpec =
     {
       Label: TextSource
-      OnChange: unit
+      OnChange: unit option
       Source: Binding<SelectOption list>
       Value: Binding<string>
       Placeholder: TextSource option
@@ -541,7 +541,7 @@ and FileUploadSpec =
       Accept: string list
       Label: TextSource
       Multiple: bool
-      OnSelect: unit
+      OnSelect: unit option
       Disabled: Binding<bool> option
     }
 
@@ -846,7 +846,7 @@ and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     | Binding.Filter name -> Canon.typed "Filter" [ "name", JStr name ]
     | Binding.State (defaultValue, key) -> Canon.typed "State" [ "defaultValue", encT defaultValue; "key", JStr key ]
     | Binding.Computed fn -> Canon.typed "Computed" [ "fn", JStr "<closure>" ]
-    | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" [ "flushOn", encLocalFlushTrigger flushOn; "format", JStr "<closure>"; "initialFrom", (encBinding encT) initialFrom; "onCommit", JStr "<closure>"; "parse", JStr "<closure>" ]
+    | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>") ] |> List.choose id)
     | Binding.Format (format, locale, source) -> Canon.typed "Format" [ "format", encFormat format; "locale", encLocaleSource locale; "source", (encBinding JFloat) source ]
     | Binding.Invoke (args, capabilityId) -> Canon.typed "Invoke" [ "args", JArr(List.map encInvokeArg args); "capabilityId", JStr capabilityId ]
 
@@ -866,7 +866,7 @@ and private encAction (v: Action) : JVal =
     | Action.WriteToClipboard text -> Canon.typed "WriteToClipboard" [ "text", JStr text ]
     | Action.Dispatch -> Canon.typed "Dispatch" [  ]
     | Action.Invoke (args, capabilityId) -> Canon.typed "Invoke" [ "args", JArr(List.map encInvokeArg args); "capabilityId", JStr capabilityId ]
-    | Action.ReadFileBody (encoding, fileRef, onRead) -> Canon.typed "ReadFileBody" [ "encoding", encFileReadEncoding encoding; "fileRef", JStr fileRef; "onRead", JStr "<closure>" ]
+    | Action.ReadFileBody (encoding, fileRef, onRead) -> Canon.typed "ReadFileBody" ([ Some("encoding", encFileReadEncoding encoding); Some("fileRef", JStr fileRef); (onRead |> Option.map (fun v -> "onRead", JStr "<closure>")) ] |> List.choose id)
 
 and private encFormat (v: Format) : JVal =
     match v with
@@ -896,21 +896,21 @@ and private encLayoutMode (v: LayoutMode) : JVal =
 
 and private encFormFieldKind (v: FormFieldKind) : JVal =
     match v with
-    | FormFieldKind.Text (onChange, value) -> Canon.typed "Text" [ "onChange", JStr "<closure>"; "value", (encBinding JStr) value ]
-    | FormFieldKind.Number (onChange, value) -> Canon.typed "Number" [ "onChange", JStr "<closure>"; "value", (encBinding JFloat) value ]
-    | FormFieldKind.Checkbox (onToggle, value) -> Canon.typed "Checkbox" [ "onToggle", JStr "<closure>"; "value", (encBinding JBool) value ]
-    | FormFieldKind.Choice (onChange, options, value) -> Canon.typed "Choice" [ "onChange", JStr "<closure>"; "options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options; "value", (encBinding JStr) value ]
-    | FormFieldKind.TextArea (onChange, rows, value) -> Canon.typed "TextArea" [ "onChange", JStr "<closure>"; "rows", JInt rows; "value", (encBinding JStr) value ]
-    | FormFieldKind.RangedNumber (onChange, value, min, max, step) -> Canon.typed "RangedNumber" ([ Some("onChange", JStr "<closure>"); Some("value", (encBinding JFloat) value); (min |> Option.map (fun v -> "min", JFloat v)); (max |> Option.map (fun v -> "max", JFloat v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
-    | FormFieldKind.SegmentedChoice (onChange, options, orientation, value) -> Canon.typed "SegmentedChoice" [ "onChange", JStr "<closure>"; "options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options; "orientation", encOrientation orientation; "value", (encBinding JStr) value ]
-    | FormFieldKind.Date (onChange, value, variant, min, max, step) -> Canon.typed "Date" ([ Some("onChange", JStr "<closure>"); Some("value", (encBinding JStr) value); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
+    | FormFieldKind.Text (onChange, value) -> Canon.typed "Text" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("value", (encBinding JStr) value) ] |> List.choose id)
+    | FormFieldKind.Number (onChange, value) -> Canon.typed "Number" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("value", (encBinding JFloat) value) ] |> List.choose id)
+    | FormFieldKind.Checkbox (onToggle, value) -> Canon.typed "Checkbox" ([ (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")); Some("value", (encBinding JBool) value) ] |> List.choose id)
+    | FormFieldKind.Choice (onChange, options, value) -> Canon.typed "Choice" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); Some("value", (encBinding JStr) value) ] |> List.choose id)
+    | FormFieldKind.TextArea (onChange, rows, value) -> Canon.typed "TextArea" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("rows", JInt rows); Some("value", (encBinding JStr) value) ] |> List.choose id)
+    | FormFieldKind.RangedNumber (onChange, value, min, max, step) -> Canon.typed "RangedNumber" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("value", (encBinding JFloat) value); (min |> Option.map (fun v -> "min", JFloat v)); (max |> Option.map (fun v -> "max", JFloat v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
+    | FormFieldKind.SegmentedChoice (onChange, options, orientation, value) -> Canon.typed "SegmentedChoice" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); Some("orientation", encOrientation orientation); Some("value", (encBinding JStr) value) ] |> List.choose id)
+    | FormFieldKind.Date (onChange, value, variant, min, max, step) -> Canon.typed "Date" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("value", (encBinding JStr) value); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
 
 and private encFilterKind (v: FilterKind) : JVal =
     match v with
-    | FilterKind.Text (onChange, value) -> Canon.typed "Text" [ "onChange", JStr "<closure>"; "value", (encBinding JStr) value ]
-    | FilterKind.Choice (onChange, options, value) -> Canon.typed "Choice" [ "onChange", JStr "<closure>"; "options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options; "value", (encBinding JStr) value ]
-    | FilterKind.Range (onChange, value) -> Canon.typed "Range" [ "onChange", JStr "<closure>"; "value", JStr "<opaque>" ]
-    | FilterKind.SegmentedChoice (onChange, options, orientation, value) -> Canon.typed "SegmentedChoice" [ "onChange", JStr "<closure>"; "options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options; "orientation", encOrientation orientation; "value", (encBinding JStr) value ]
+    | FilterKind.Text (onChange, value) -> Canon.typed "Text" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("value", (encBinding JStr) value) ] |> List.choose id)
+    | FilterKind.Choice (onChange, options, value) -> Canon.typed "Choice" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); Some("value", (encBinding JStr) value) ] |> List.choose id)
+    | FilterKind.Range (onChange, value) -> Canon.typed "Range" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("value", JStr "<opaque>") ] |> List.choose id)
+    | FilterKind.SegmentedChoice (onChange, options, orientation, value) -> Canon.typed "SegmentedChoice" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); Some("orientation", encOrientation orientation); Some("value", (encBinding JStr) value) ] |> List.choose id)
 
 and private encColumnWidth (v: ColumnWidth) : JVal =
     match v with
@@ -923,9 +923,9 @@ and private encCellKindErased (v: CellKindErased) : JVal =
     | CellKindErased.Text -> Canon.typed "Text" [  ]
     | CellKindErased.Numeric -> Canon.typed "Numeric" [  ]
     | CellKindErased.Date -> Canon.typed "Date" [  ]
-    | CellKindErased.Editable onEdit -> Canon.typed "Editable" [ "onEdit", JStr "<closure>" ]
-    | CellKindErased.Checkbox (get, onToggle) -> Canon.typed "Checkbox" [ "get", JStr "<closure>"; "onToggle", JStr "<closure>" ]
-    | CellKindErased.Button (label, onClick) -> Canon.typed "Button" [ "label", encTextSource label; "onClick", JStr "<closure>" ]
+    | CellKindErased.Editable onEdit -> Canon.typed "Editable" ([ (onEdit |> Option.map (fun v -> "onEdit", JStr "<closure>")) ] |> List.choose id)
+    | CellKindErased.Checkbox (get, onToggle) -> Canon.typed "Checkbox" ([ Some("get", JStr "<closure>"); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
+    | CellKindErased.Button (label, onClick) -> Canon.typed "Button" ([ Some("label", encTextSource label); (onClick |> Option.map (fun v -> "onClick", JStr "<closure>")) ] |> List.choose id)
     | CellKindErased.ButtonGroup buttons -> Canon.typed "ButtonGroup" [ "buttons", JArr(List.map encButtonGroupItem buttons) ]
     | CellKindErased.Link (hrefFn, labelFn) -> Canon.typed "Link" [ "hrefFn", JStr "<closure>"; "labelFn", JStr "<closure>" ]
     | CellKindErased.Pill (labelFn, toneFn) -> Canon.typed "Pill" [ "labelFn", JStr "<closure>"; "toneFn", JStr "<closure>" ]
@@ -986,7 +986,7 @@ and private encColumnErased (s: ColumnErased) : JVal =
     JObj([ (if s.Format = CellFormat.None then None else Some("format", encCellFormat s.Format)); Some("kind", encCellKindErased s.Kind); Some("label", JStr s.Label); Some("value", JStr "<closure>"); (if s.Width = ColumnWidth.Auto then None else Some("width", encColumnWidth s.Width)) ] |> List.choose id)
 
 and private encButtonGroupItem (s: ButtonGroupItem) : JVal =
-    JObj([ Some("label", encTextSource s.Label); Some("onClick", JStr "<closure>") ] |> List.choose id)
+    JObj([ Some("label", encTextSource s.Label); (s.OnClick |> Option.map (fun v -> "onClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encContentHash (s: ContentHash) : JVal =
     JObj([ Some("algorithm", JStr s.Algorithm); Some("hash", JStr s.Hash); Some("strictness", encHashStrictness s.Strictness) ] |> List.choose id)
@@ -1055,19 +1055,19 @@ and private encScrollAreaSpec (s: ScrollAreaSpec) : JVal =
     Canon.typed "ScrollArea" ([ Some("children", JArr(List.map encNode s.Children)); Some("orientation", encScrollOrientation s.Orientation); (s.MaxHeight |> Option.map (fun v -> "maxHeight", JInt v)); (s.MaxWidth |> Option.map (fun v -> "maxWidth", JInt v)) ] |> List.choose id)
 
 and private encTabsSpec (s: TabsSpec) : JVal =
-    Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); Some("onSelect", JStr "<closure>"); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
+    Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
 
 and private encStepperSpec (s: StepperSpec) : JVal =
-    Canon.typed "Stepper" ([ Some("activeStep", (encBinding JInt) s.ActiveStep); Some("children", JArr(List.map encNode s.Children)); Some("onSelect", JStr "<closure>") ] |> List.choose id)
+    Canon.typed "Stepper" ([ Some("activeStep", (encBinding JInt) s.ActiveStep); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")) ] |> List.choose id)
 
 and private encButtonSpec (s: ButtonSpec) : JVal =
     Canon.typed "Button" ([ Some("label", encTextSource s.Label); Some("onClick", encAction s.OnClick); Some("variant", encButtonVariant s.Variant); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Tooltip |> Option.map (fun v -> "tooltip", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
 and private encSelectSpec (s: SelectSpec) : JVal =
-    Canon.typed "Select" ([ Some("label", encTextSource s.Label); Some("onChange", JStr "<closure>"); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); Some("value", (encBinding JStr) s.Value); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
+    Canon.typed "Select" ([ Some("label", encTextSource s.Label); (s.OnChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); Some("value", (encBinding JStr) s.Value); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
 
 and private encFileUploadSpec (s: FileUploadSpec) : JVal =
-    Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); Some("multiple", JBool s.Multiple); Some("onSelect", JStr "<closure>"); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
+    Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); Some("multiple", JBool s.Multiple); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
 and private encFormSpec (s: FormSpec) : JVal =
     Canon.typed "Form" ([ Some("fields", JArr(List.map encFormField s.Fields)); Some("onSubmit", encAction s.OnSubmit); Some("submitLabel", encTextSource s.SubmitLabel); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
@@ -1410,7 +1410,7 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             dReq "flushOn" __fs decLocalFlushTrigger |> Result.bind (fun flushOn ->
             Ok() |> Result.bind (fun format ->
             dReq "initialFrom" __fs (decBinding decT) |> Result.bind (fun initialFrom ->
-            Ok() |> Result.bind (fun onCommit ->
+            dPresent "onCommit" __fs |> Result.bind (fun onCommit ->
             Ok() |> Result.bind (fun parse ->
             Ok(Binding.Local(flushOn, format, initialFrom, onCommit, parse)))))))
         | "Format" ->
@@ -1471,7 +1471,7 @@ and private decAction (j: JVal) : Result<Action, string> =
         | "ReadFileBody" ->
             dReq "encoding" __fs decFileReadEncoding |> Result.bind (fun encoding ->
             dReq "fileRef" __fs dStr |> Result.bind (fun fileRef ->
-            Ok() |> Result.bind (fun onRead ->
+            dPresent "onRead" __fs |> Result.bind (fun onRead ->
             Ok(Action.ReadFileBody(encoding, fileRef, onRead)))))
         | __other -> Error ("unknown Action case: " + __other))
     | _ -> Error "expected a Action object"
@@ -1548,42 +1548,42 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind, string> =
         dTag __fs |> Result.bind (fun __t ->
         match __t with
         | "Text" ->
-            Ok() |> Result.bind (fun onChange ->
+            dPresent "onChange" __fs |> Result.bind (fun onChange ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FormFieldKind.Text(onChange, value))))
         | "Number" ->
-            Ok() |> Result.bind (fun onChange ->
+            dPresent "onChange" __fs |> Result.bind (fun onChange ->
             dReq "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
             Ok(FormFieldKind.Number(onChange, value))))
         | "Checkbox" ->
-            Ok() |> Result.bind (fun onToggle ->
+            dPresent "onToggle" __fs |> Result.bind (fun onToggle ->
             dReq "value" __fs (decBinding dBool) |> Result.bind (fun value ->
             Ok(FormFieldKind.Checkbox(onToggle, value))))
         | "Choice" ->
-            Ok() |> Result.bind (fun onChange ->
+            dPresent "onChange" __fs |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FormFieldKind.Choice(onChange, options, value)))))
         | "TextArea" ->
-            Ok() |> Result.bind (fun onChange ->
+            dPresent "onChange" __fs |> Result.bind (fun onChange ->
             dReq "rows" __fs dInt |> Result.bind (fun rows ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FormFieldKind.TextArea(onChange, rows, value)))))
         | "RangedNumber" ->
-            Ok() |> Result.bind (fun onChange ->
+            dPresent "onChange" __fs |> Result.bind (fun onChange ->
             dReq "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
             dOpt "min" __fs dFloat |> Result.bind (fun min ->
             dOpt "max" __fs dFloat |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
             Ok(FormFieldKind.RangedNumber(onChange, value, min, max, step)))))))
         | "SegmentedChoice" ->
-            Ok() |> Result.bind (fun onChange ->
+            dPresent "onChange" __fs |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dReq "orientation" __fs decOrientation |> Result.bind (fun orientation ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FormFieldKind.SegmentedChoice(onChange, options, orientation, value))))))
         | "Date" ->
-            Ok() |> Result.bind (fun onChange ->
+            dPresent "onChange" __fs |> Result.bind (fun onChange ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             dReq "variant" __fs decDateVariant |> Result.bind (fun variant ->
             dOpt "min" __fs dStr |> Result.bind (fun min ->
@@ -1599,20 +1599,20 @@ and private decFilterKind (j: JVal) : Result<FilterKind, string> =
         dTag __fs |> Result.bind (fun __t ->
         match __t with
         | "Text" ->
-            Ok() |> Result.bind (fun onChange ->
+            dPresent "onChange" __fs |> Result.bind (fun onChange ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FilterKind.Text(onChange, value))))
         | "Choice" ->
-            Ok() |> Result.bind (fun onChange ->
+            dPresent "onChange" __fs |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FilterKind.Choice(onChange, options, value)))))
         | "Range" ->
-            Ok() |> Result.bind (fun onChange ->
+            dPresent "onChange" __fs |> Result.bind (fun onChange ->
             Ok() |> Result.bind (fun value ->
             Ok(FilterKind.Range(onChange, value))))
         | "SegmentedChoice" ->
-            Ok() |> Result.bind (fun onChange ->
+            dPresent "onChange" __fs |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dReq "orientation" __fs decOrientation |> Result.bind (fun orientation ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
@@ -1644,15 +1644,15 @@ and private decCellKindErased (j: JVal) : Result<CellKindErased, string> =
         | "Numeric" -> Ok CellKindErased.Numeric
         | "Date" -> Ok CellKindErased.Date
         | "Editable" ->
-            Ok() |> Result.bind (fun onEdit ->
+            dPresent "onEdit" __fs |> Result.bind (fun onEdit ->
             Ok(CellKindErased.Editable(onEdit)))
         | "Checkbox" ->
             Ok() |> Result.bind (fun get ->
-            Ok() |> Result.bind (fun onToggle ->
+            dPresent "onToggle" __fs |> Result.bind (fun onToggle ->
             Ok(CellKindErased.Checkbox(get, onToggle))))
         | "Button" ->
             dReq "label" __fs decTextSource |> Result.bind (fun label ->
-            Ok() |> Result.bind (fun onClick ->
+            dPresent "onClick" __fs |> Result.bind (fun onClick ->
             Ok(CellKindErased.Button(label, onClick))))
         | "ButtonGroup" ->
             dReq "buttons" __fs (dList decButtonGroupItem) |> Result.bind (fun buttons ->
@@ -1823,7 +1823,7 @@ and private decColumnErased (j: JVal) : Result<ColumnErased, string> =
 and private decButtonGroupItem (j: JVal) : Result<ButtonGroupItem, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    Ok() |> Result.bind (fun onClick ->
+    dPresent "onClick" __fs |> Result.bind (fun onClick ->
     Ok { Label = label; OnClick = onClick })))
 
 and private decContentHash (j: JVal) : Result<ContentHash, string> =
@@ -1994,7 +1994,7 @@ and private decTabsSpec (j: JVal) : Result<TabsSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "activeIndex" __fs (decBinding dInt) |> Result.bind (fun activeIndex ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    Ok() |> Result.bind (fun onSelect ->
+    dPresent "onSelect" __fs |> Result.bind (fun onSelect ->
     dOpt "tabHeaders" __fs (dList decTabHeader) |> Result.bind (fun tabHeaders ->
     dOpt "tabTags" __fs (dList dStr) |> Result.bind (fun tabTags ->
     dOpt "activeTag" __fs (decBinding dStr) |> Result.bind (fun activeTag ->
@@ -2004,7 +2004,7 @@ and private decStepperSpec (j: JVal) : Result<StepperSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "activeStep" __fs (decBinding dInt) |> Result.bind (fun activeStep ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    Ok() |> Result.bind (fun onSelect ->
+    dPresent "onSelect" __fs |> Result.bind (fun onSelect ->
     Ok { ActiveStep = activeStep; Children = children; OnSelect = onSelect }))))
 
 and private decButtonSpec (j: JVal) : Result<ButtonSpec, string> =
@@ -2020,7 +2020,7 @@ and private decButtonSpec (j: JVal) : Result<ButtonSpec, string> =
 and private decSelectSpec (j: JVal) : Result<SelectSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    Ok() |> Result.bind (fun onChange ->
+    dPresent "onChange" __fs |> Result.bind (fun onChange ->
     dReq "source" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun source ->
     dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
     dOpt "placeholder" __fs decTextSource |> Result.bind (fun placeholder ->
@@ -2034,7 +2034,7 @@ and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec, string> =
     dReq "accept" __fs (dList dStr) |> Result.bind (fun accept ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
     dReq "multiple" __fs dBool |> Result.bind (fun multiple ->
-    Ok() |> Result.bind (fun onSelect ->
+    dPresent "onSelect" __fs |> Result.bind (fun onSelect ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     Ok { Accept = accept; Label = label; Multiple = multiple; OnSelect = onSelect; Disabled = disabled }))))))
 
@@ -2253,20 +2253,20 @@ let mkModal (id: string) (children: Node list) (dismissable: bool) (onDismiss: A
 let mkScrollArea (id: string) (children: Node list) (orientation: ScrollOrientation) : Node =
     { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None } }
 
-let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node list) (onSelect: unit) : Node =
-    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; OnSelect = onSelect; TabHeaders = None; TabTags = None; ActiveTag = None } }
+let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node list) : Node =
+    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; OnSelect = None; TabHeaders = None; TabTags = None; ActiveTag = None } }
 
-let mkStepper (id: string) (activeStep: Binding<int>) (children: Node list) (onSelect: unit) : Node =
-    { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = onSelect } }
+let mkStepper (id: string) (activeStep: Binding<int>) (children: Node list) : Node =
+    { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None } }
 
 let mkButton (id: string) (label: TextSource) (onClick: Action) (variant: ButtonVariant) : Node =
     { Id = id; Kind = NodeKind.Button { Label = label; OnClick = onClick; Variant = variant; Icon = None; Tooltip = None; Disabled = None } }
 
-let mkSelect (id: string) (label: TextSource) (onChange: unit) (source: Binding<SelectOption list>) (value: Binding<string>) : Node =
-    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = onChange; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None } }
+let mkSelect (id: string) (label: TextSource) (source: Binding<SelectOption list>) (value: Binding<string>) : Node =
+    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None } }
 
-let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) (onSelect: unit) : Node =
-    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = onSelect; Disabled = None } }
+let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) : Node =
+    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None } }
 
 let mkForm (id: string) (fields: FormField list) (onSubmit: Action) (submitLabel: TextSource) : Node =
     { Id = id; Kind = NodeKind.Form { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = None } }
