@@ -14,6 +14,8 @@
     <Compile Include="GuestExportTests.fs" />
     <Compile Include="ApplyPersistTests.fs" />
     <Compile Include="ApplyWithSinksTests.fs" />
+    <!-- Phase 193: the append-only journal leg behind the in-page apply seam. -->
+    <Compile Include="JournalAppliedTests.fs" />
     <Compile Include="TamperTests.fs" />
     <Compile Include="ConcurrencyTests.fs" />
     <Compile Include="SqliteTests.fs" />

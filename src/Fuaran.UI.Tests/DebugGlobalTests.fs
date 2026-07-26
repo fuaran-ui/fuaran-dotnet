@@ -25,6 +25,7 @@ module Fuaran.UI.Tests.DebugGlobal
 //  the phase body.
 // ============================================================================
 
+open System
 open Expecto
 open Fuaran.UI
 open Fuaran.UI.Types
@@ -305,4 +306,57 @@ let tests =
               Expect.isFalse
                   ((runtime :> IFuaranRuntime).CanDispatch(ActionDescriptor.ApplyTreeOp "{}"))
                   "ApplyTreeOp denied"
+          } ]
+
+// ─── Phase 193 — durable-sink emission for the in-page apply path ────────────
+//
+// The emission DECISIONS are pure (the dispatch that consumes them is the
+// Fable-only shell), so they are pinned here the same way `applyGateDecision`
+// is. These shapes are parity-locked with the TypeScript mirror.
+
+[<Tests>]
+let debugGlobalEmissionTests =
+    testList
+        "DebugGlobal — durable-sink emission (Phase 193)"
+        [ test "a denial produces a deny record under the stable tool name" {
+              let at = DateTimeOffset(2026, 7, 26, 12, 0, 0, TimeSpan.Zero)
+
+              let record =
+                  DebugGlobal.denyTelemetry "operator-1" at "apply denied by policy gate: ApplyTreeOp"
+
+              Expect.equal record.ToolName "__fuaran.apply" "the console path has its own stable tool name"
+              Expect.equal record.ToolName DebugGlobal.ApplyToolName "the literal is the one used"
+              Expect.stringContains record.Reason "denied by policy gate" "carries the deny diagnostic verbatim"
+              Expect.equal record.UserId "operator-1" "carries the audit subject"
+              Expect.equal record.Timestamp at "carries the supplied instant"
+          }
+
+          test "a console-driven denial belongs to no module, page, or prompt" {
+              let record = DebugGlobal.denyTelemetry "operator" DateTimeOffset.UnixEpoch "denied"
+
+              // Operator-initiated: these are legitimately absent rather than
+              // fabricated, matching the OpRecord PromptId convention.
+              Expect.isNone record.ActiveModule "no module"
+              Expect.isNone record.ActivePage "no page"
+              Expect.isNone record.PromptId "no prompt"
+          }
+
+          test "only a genuinely applied op is journalled" {
+              Expect.isTrue (DebugGlobal.shouldJournal DebugGlobal.ApplyOutcome.Applied) "applied journals"
+
+              // A decode failure never produced a TreeOp and a rejected op changed
+              // no tree — journalling either would record an op that never happened.
+              Expect.isFalse
+                  (DebugGlobal.shouldJournal (DebugGlobal.ApplyOutcome.DecodeFailed "bad json"))
+                  "decode failure does not journal"
+
+              Expect.isFalse
+                  (DebugGlobal.shouldJournal (DebugGlobal.ApplyOutcome.Rejected "no such node"))
+                  "apply rejection does not journal"
+          }
+
+          test "DebugSinks.none is the historical warn-only behaviour" {
+              let sinks = DebugGlobal.DebugSinks.none
+              Expect.isNone sinks.TelemetrySink "no telemetry leg by default"
+              Expect.isNone sinks.OnApplied "no op-stream leg by default"
           } ]

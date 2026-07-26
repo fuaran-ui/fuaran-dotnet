@@ -56,6 +56,7 @@ module Fuaran.UI.Renderer.DebugGlobal
 // ============================================================================
 
 open Fuaran.UI.Types
+open Fuaran.UI.Telemetry.Abstractions
 
 /// Schema version of the `window.__fuaran` shape — independent of the
 /// renderer package's semver (the global is debug-only / unstable). Mirrors
@@ -371,6 +372,35 @@ type ApplyOutcome =
 /// policy gate allows the op — it is never called for a denied op.
 type ApplyHandler = string -> ApplyOutcome
 
+/// Durable-sink wiring for the in-page apply path (Phase 193). Both legs are
+/// optional and default to off, so `DebugSinks.none` reproduces the historical
+/// warn-only behaviour exactly.
+type DebugSinks =
+    {
+        /// Where a DENIED apply is recorded. The renderer already depends on the
+        /// telemetry abstractions, so this leg is wired in-package.
+        TelemetrySink: IFuaranTelemetrySink option
+        /// Where a PERMITTED apply's op JSON is handed for journalling. The host
+        /// wires this to `ApplyPersist.applyAndPersist` (or its own sink): the
+        /// op-stream append helper that owns hash-chaining is not Fable-portable,
+        /// so the chaining must not be rebuilt here. See the section header.
+        OnApplied: (string -> unit) option
+        /// Billing/audit subject recorded on the deny record. A console-driven
+        /// mutation is operator-initiated, so hosts that do not model a user can
+        /// leave the default.
+        UserId: string
+    }
+
+[<RequireQualifiedAccess>]
+module DebugSinks =
+
+    /// No durable emission — the pre-Phase-193 behaviour (deny warns, permitted
+    /// applies journal nowhere). The default for every existing call site.
+    let none: DebugSinks =
+        { TelemetrySink = None
+          OnApplied = None
+          UserId = "operator" }
+
 /// The gate decision for an in-page apply. `Ok ()` when the runtime's
 /// `CanDispatch(ApplyTreeOp …)` allows the mutation; `Error reason` (the deny
 /// diagnostic) when it denies. Pure — the .NET test runner pins it directly,
@@ -382,6 +412,65 @@ let applyGateDecision (runtime: Runtime.IFuaranRuntime) (opJson: string) : Resul
         Ok()
     else
         Error(sprintf "apply denied by policy gate: %s" (Runtime.ActionDescriptor.describe descriptor))
+
+// ─── Durable-sink emission for in-page apply (FGP 5, Phase 193) ─────────────
+//
+// `__fuaran.apply` is a THIRD dispatch path (it joins AI-tool dispatch and the
+// fast path). For the op stream to stay the source of truth, a console-driven
+// mutation must be as answerable as any other: every permitted op journals, and
+// every denial records. Otherwise the console is an unrecorded side channel —
+// "what did that session do?" has no answer.
+//
+// The two legs are wired differently, and not by preference:
+//
+//   * DENY → telemetry, in-package. `Fuaran.UI.Telemetry.Abstractions` is
+//     already a renderer dependency, so `IFuaranTelemetrySink.RecordDeny` is
+//     called directly. The deny envelope and the telemetry record are the same
+//     event on two surfaces.
+//
+//   * PERMITTED → op stream, through a HOST SEAM. The op-stream append helper
+//     that owns hash-chaining lives in `Fuaran.UI.OpStream.Replay`, which is
+//     NOT source-packed for Fable — a browser renderer cannot call it. The only
+//     in-renderer alternative would be to rebuild the chained record here,
+//     duplicating the chaining logic at a second site; a mis-chained stream is
+//     silent corruption of the thing FGP 5 makes authoritative. So the renderer
+//     hands the applied op to a host callback and the host journals it with
+//     `ApplyPersist.applyAndPersist` — chaining stays in the one function that
+//     owns it, and the renderer gains no new dependency (FGP 2).
+//
+// Both decisions below are PURE so the .NET test runner pins them directly, the
+// same way `applyGateDecision` is pinned — the Fable shell above is a thin
+// dispatch over these.
+
+/// The stable tool name the in-page apply path records denials under. A
+/// dedicated name (not a real AI tool) so the drift detector can tell a
+/// console-driven denial from a model-driven one. Parity-locked with the
+/// TypeScript mirror.
+[<Literal>]
+let ApplyToolName = "__fuaran.apply"
+
+/// Build the deny record for a rejected in-page apply. Pure, so the emitted
+/// shape is pinned by a test and stays parity-locked with the TS mirror.
+/// `ActiveModule` / `ActivePage` / `PromptId` are `None`: a console-driven
+/// mutation is operator-initiated and belongs to no module, page, or prompt.
+let denyTelemetry (userId: string) (occurredAt: System.DateTimeOffset) (reason: string) : DenyTelemetry =
+    { ToolName = ApplyToolName
+      Reason = reason
+      ActiveModule = None
+      ActivePage = None
+      PromptId = None
+      UserId = userId
+      Timestamp = occurredAt }
+
+/// Whether an outcome should be journalled to the op stream. ONLY a genuinely
+/// applied op is durable: a decode failure never produced a `TreeOp`, and a
+/// rejected one changed no tree, so journalling either would put an op in the
+/// stream that never happened.
+let shouldJournal (outcome: ApplyOutcome) : bool =
+    match outcome with
+    | ApplyOutcome.Applied -> true
+    | ApplyOutcome.DecodeFailed _
+    | ApplyOutcome.Rejected _ -> false
 
 // ─── help() text ────────────────────────────────────────────────────────────
 
@@ -501,7 +590,12 @@ let private slotResolutionToObj (kindForError: string) (nodeId: string) (slot: s
                       kindForError
               ) ]
 
-let private applyEnvelope (runtime: Runtime.IFuaranRuntime) (handler: ApplyHandler option) (opJson: string) : obj =
+let private applyEnvelope
+    (runtime: Runtime.IFuaranRuntime)
+    (sinks: DebugSinks)
+    (handler: ApplyHandler option)
+    (opJson: string)
+    : obj =
     match handler with
     | None ->
         createObj
@@ -515,13 +609,34 @@ let private applyEnvelope (runtime: Runtime.IFuaranRuntime) (handler: ApplyHandl
             // centralised warn channel — never raw console.*.
             runtime.Warn reason
 
+            // FGP 5 (Phase 193): the deny envelope and the telemetry record are
+            // the SAME event on two surfaces. Fire-and-forget — a failing sink
+            // must never gate dispatch, so it cannot change what the caller sees.
+            sinks.TelemetrySink
+            |> Option.iter (fun sink ->
+                try
+                    sink.RecordDeny(denyTelemetry sinks.UserId System.DateTimeOffset.UtcNow reason)
+                with _ ->
+                    ())
+
             createObj
                 [ "ok", box false
                   "status", box "denied"
                   "denied", box true
                   "error", box reason ]
         | Ok() ->
-            match h opJson with
+            let outcome = h opJson
+
+            // Only a genuinely applied op is durable — see `shouldJournal`.
+            if shouldJournal outcome then
+                sinks.OnApplied
+                |> Option.iter (fun journal ->
+                    try
+                        journal opJson
+                    with _ ->
+                        ())
+
+            match outcome with
             | ApplyOutcome.Applied -> createObj [ "ok", box true; "status", box "applied" ]
             | ApplyOutcome.DecodeFailed m -> createObj [ "ok", box false; "status", box "decodeFailed"; "error", box m ]
             | ApplyOutcome.Rejected m -> createObj [ "ok", box false; "status", box "rejected"; "error", box m ]
@@ -534,10 +649,11 @@ let private applyEnvelope (runtime: Runtime.IFuaranRuntime) (handler: ApplyHandl
 // Fable emits real n-ary JS functions (`__fuaran.getBindingValue(id, slot)`),
 // not curried unary chains.
 
-let buildGlobal
+let buildGlobalWithSinks
     (tree: Node<'Msg>)
     (sources: BindingResolver.BindingSources)
     (runtime: Runtime.IFuaranRuntime)
+    (sinks: DebugSinks)
     (applyHandler: ApplyHandler option)
     : obj =
     createObj
@@ -559,8 +675,17 @@ let buildGlobal
           "getRenderedDom", box (System.Func<string, obj>(fun id -> geometryObj id))
           "inspectTree", box (System.Func<obj>(fun () -> treeIntrospectionToObj (inspectTree tree)))
           "findNodes", box (System.Func<string, obj>(fun kind -> box (Array.ofList (findNodesByKind kind tree))))
-          "apply", box (System.Func<string, obj>(fun opJson -> applyEnvelope runtime applyHandler opJson))
+          "apply", box (System.Func<string, obj>(fun opJson -> applyEnvelope runtime sinks applyHandler opJson))
           "help", box (System.Func<obj>(fun () -> box helpText)) ]
+
+/// `buildGlobalWithSinks` with no durable emission — the historical surface.
+let buildGlobal
+    (tree: Node<'Msg>)
+    (sources: BindingResolver.BindingSources)
+    (runtime: Runtime.IFuaranRuntime)
+    (applyHandler: ApplyHandler option)
+    : obj =
+    buildGlobalWithSinks tree sources runtime DebugSinks.none applyHandler
 
 [<Emit("(typeof globalThis !== 'undefined') ? (globalThis.__fuaran = $0, true) : false")>]
 let private setWindowGlobal (value: obj) : bool = jsNative
@@ -574,6 +699,19 @@ let private clearWindowGlobal () : bool = jsNative
 /// is `None` for read-only hosts (apply returns the `unwired` envelope) and
 /// `Some` for hosts that own a TreeOp apply + setState loop. Call from the
 /// render path to keep the global pointed at the live tree.
+let registerWithSinks
+    (debug: bool)
+    (tree: Node<'Msg>)
+    (sources: BindingResolver.BindingSources)
+    (runtime: Runtime.IFuaranRuntime)
+    (sinks: DebugSinks)
+    (applyHandler: ApplyHandler option)
+    : unit =
+    if shouldRegister debug then
+        setWindowGlobal (buildGlobalWithSinks tree sources runtime sinks applyHandler)
+        |> ignore
+
+/// `registerWithSinks` with no durable emission — the historical surface.
 let register
     (debug: bool)
     (tree: Node<'Msg>)
@@ -581,8 +719,7 @@ let register
     (runtime: Runtime.IFuaranRuntime)
     (applyHandler: ApplyHandler option)
     : unit =
-    if shouldRegister debug then
-        setWindowGlobal (buildGlobal tree sources runtime applyHandler) |> ignore
+    registerWithSinks debug tree sources runtime DebugSinks.none applyHandler
 
 /// Remove `window.__fuaran` if present. Safe to call unconditionally (e.g. a
 /// React effect cleanup).
@@ -593,6 +730,16 @@ let unregister () : unit = clearWindowGlobal () |> ignore
 /// Non-Fable hosts (the .NET test runner / SSR) have no `window`; registration
 /// is a no-op. The pure introspection helpers above are still exercised by the
 /// .NET test runner.
+let registerWithSinks
+    (_debug: bool)
+    (_tree: Node<'Msg>)
+    (_sources: BindingResolver.BindingSources)
+    (_runtime: Runtime.IFuaranRuntime)
+    (_sinks: DebugSinks)
+    (_applyHandler: ApplyHandler option)
+    : unit =
+    ()
+
 let register
     (_debug: bool)
     (_tree: Node<'Msg>)

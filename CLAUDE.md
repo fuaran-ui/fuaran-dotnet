@@ -24,6 +24,8 @@ Cross-repo development conventions (port allocation, launcher patterns, formatti
 | `Fuaran.UI.Telemetry.Abstractions` | Telemetry record types + `IFuaranTelemetrySink` |
 | `Fuaran.UI.Telemetry.Default` | NoOp / InMemory / Console sinks + `applyWithTelemetry` |
 | `Fuaran.UI.Telemetry.Drift` | Aggregate metrics + window-over-window regression detector |
+| `Fuaran.UI.Client` | Typed F#/.NET client over the generation endpoint — `generate` + session turn-loop (repair diffs) + the closed repair loop + decode glue |
+| `Fuaran.UI.Cli` | The `fuaran` dotnet tool — `generate` / `validate` / `scaffold` over the public surfaces |
 
 All packs land in `../local-nuget-feed/` for local downstream consumption.
 

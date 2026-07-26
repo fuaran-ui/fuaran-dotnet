@@ -183,6 +183,25 @@ module ApplyPersist =
                 return Ok updated
         }
 
+    /// Journal an op that has ALREADY been applied — append-only, no re-apply.
+    ///
+    /// The Phase 193 in-page apply seam needs exactly this: the debug global's
+    /// host-supplied `ApplyHandler` has already decoded, applied, and
+    /// re-rendered by the time the op is handed over, so `applyAndPersist`
+    /// would apply it a SECOND time against the already-updated tree. This
+    /// appends the hash-chained record for the op that just happened, and
+    /// nothing else.
+    ///
+    /// Chaining is delegated to the same private helper `applyAndPersist` uses,
+    /// so there is exactly one place in the codebase that computes a record's
+    /// `PreviousHash` / `Sequence` — a second implementation is how a stream
+    /// silently mis-chains.
+    let journalApplied<'Msg> (sink: IOpStreamSink<'Msg>) (ctx: PersistContext) (op: TreeOp<'Msg>) : Async<unit> =
+        async {
+            let! latest = sink.LatestSequence ctx.StreamId
+            do! appendRecordAt sink ctx (latest + 1) op
+        }
+
 #if !FABLE_COMPILER
     /// Apply `op` against `tree` ONCE and fan out to BOTH sinks: persist a
     /// hash-chained `OpRecord` to the op-stream `sink` (on `Ok`) AND emit one
