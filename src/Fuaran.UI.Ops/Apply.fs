@@ -1931,13 +1931,29 @@ let private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<
 
     match op with
     | TreeOp.InsertChild(parentId, position, child) ->
-        run (Fuaran.Core.SkeletonOp.InsertChild(parentId, position, child)) (fun rej ->
-            match rej with
-            | Fuaran.Core.Rejection.DuplicateId id -> duplicateNodeId id
-            | Fuaran.Core.Rejection.NotAContainer _ -> childlessOrParent parentId
-            | Fuaran.Core.Rejection.IndexOutOfRange(_, _, count) -> positionOutOfRange parentId count position
-            | Fuaran.Core.Rejection.UnknownNode _ -> parentNotFound parentId
-            | other -> unmapped other)
+        // Duplicate-id pre-check, ahead of Core.
+        //
+        // Core does its own, but through `nodew.Children` — which IS
+        // `getChildren`, the STRUCTURAL surface. So Core's check cannot see a
+        // node held in a Switch case, an ErrorBoundary slot, a `State`
+        // alternative or a fragment `Slot` arg, and an insert colliding with one
+        // of those ids was accepted. §4g promises ids are unique per tree, and
+        // that promise is what `firstSharedId` was written to keep; it walks
+        // `descendantNodes`, so it sees positions the structural surface omits.
+        // Checking here rather than widening the witness is deliberate: the
+        // witness's `Children` is also what Core REBUILDS through, so widening
+        // it would have Core try to restructure keyed cases as an ordered list.
+        match firstSharedId root child with
+        | Some dup -> Error(duplicateNodeId dup)
+        | None ->
+
+            run (Fuaran.Core.SkeletonOp.InsertChild(parentId, position, child)) (fun rej ->
+                match rej with
+                | Fuaran.Core.Rejection.DuplicateId id -> duplicateNodeId id
+                | Fuaran.Core.Rejection.NotAContainer _ -> childlessOrParent parentId
+                | Fuaran.Core.Rejection.IndexOutOfRange(_, _, count) -> positionOutOfRange parentId count position
+                | Fuaran.Core.Rejection.UnknownNode _ -> parentNotFound parentId
+                | other -> unmapped other)
 
     | TreeOp.RemoveNode target ->
         run (Fuaran.Core.SkeletonOp.RemoveNode target) (fun rej ->

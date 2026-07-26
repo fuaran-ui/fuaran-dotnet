@@ -83,6 +83,17 @@ The following are covered by the semver rules above:
 - The `TreeOp<'Msg>` DU (the §4g op vocabulary).
 - The `ApplyError` / `ApplyErrorCode` / `ApplyHint` records (the §4d AI-recovery error shape).
 - The `Apply.apply : TreeOp<'Msg> -> Node<'Msg> -> Result<Node<'Msg>, ApplyError>` entry point.
+- **Id uniqueness (§4g) now actually holds across the whole tree** (0.3.3). Traversal was built on
+  `getChildren`, which answers only "which kinds accept the structural ops", so nodes held in
+  non-list positions — `Switch.Cases`/`Default`, `ErrorBoundary.Child`/`Fallback`, the
+  `StateBehaviour.OnLoading`/`OnEmpty` slots on *every* node, and `FragmentArg.Slot` args — were
+  invisible to `allNodeIds` / `findNode` / `collectNodeIdsInto`, and therefore to the duplicate-id
+  rejection (which reaches Core through a witness whose `Children` IS `getChildren`). An
+  `InsertChild` colliding with one of those ids was accepted. It is now refused. **This is a
+  behavioural tightening**: a tree that was accepted before may be refused now, and that refusal is
+  the guarantee working rather than a regression. `getChildren` is deliberately unchanged — a
+  `Switch`'s cases are keyed, so `InsertChild(switchId, 2, node)` must not acquire a meaning — and the
+  new `Introspect.descendantNodes` answers the traversal question separately.
 - **`Introspect.availableFields` is the UpdateProp surface, and every entry must be reachable** (0.3.2).
   A name appears there only if `UpdateProp` sets it, or it is a `Binding` slot also listed in
   `availableBindingSlots`, or it is reached structurally (the literal `Children`, or a prefix of an

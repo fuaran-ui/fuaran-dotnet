@@ -9,6 +9,7 @@
     <Compile Include="OpsApplyTests.fs" />
     <Compile Include="InputAndWireSpellingTests.fs" />
     <Compile Include="HintHonestyTests.fs" />
+    <Compile Include="SubtreeTraversalTests.fs" />
     <Compile Include="WireDecodeApplyTests.fs" />
     <!-- Phase 192 — the shared, pipeline-neutral apply-parity core, linked from
          samples/apply-demo so the .NET test and the Fable host run byte-identical
