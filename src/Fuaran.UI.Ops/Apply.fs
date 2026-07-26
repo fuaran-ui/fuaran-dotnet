@@ -863,6 +863,250 @@ let private updateForm (field: string) (v: obj) (spec: FormSpec<'Msg>) : UpdateR
     | "Disabled" -> NotSupportedYet
     | _ -> UnknownField
 
+// ─── Display / Layout / Visualisation kinds added after the original table ──
+//
+// These were unwired for one reason, and it is worth naming because it is not
+// a design constraint: each cited the previous omission as precedent. The chain
+// begins with `Sparkline`, whose omission is CORRECT — its only field is a
+// `Binding`, which is `ReplaceBinding`'s territory, so there is genuinely
+// nothing for `UpdateProp` to do there. That valid special case was then quoted
+// by kinds with two to five plainly settable fields each, across roughly 250
+// phase numbers, and every individual instance looked reasonable beside the one
+// before it. None of them was blocked by anything structural.
+//
+// The division of labour is unchanged: `Binding` slots stay `ReplaceBinding`'s,
+// `Action` handlers and child subtrees stay `EditNode`'s and the structural
+// ops', and both report `NotSupportedYet` so the refusal names the right op
+// rather than denying the field exists.
+
+let private updateImage (field: string) (v: obj) (spec: ImageSpec) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Display(DisplayKind.Image newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Alt" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSource v
+            |> Result.map (fun x -> { spec with Alt = x }))
+    | "Variant" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryImageVariant v
+            |> Result.map (fun x -> { spec with Variant = x }))
+    // `Src` is a Binding with no ReplaceBinding slot declared for Image, so it
+    // is reachable only via EditNode today. Deliberately not advertised.
+    | "Src" -> NotSupportedYet
+    | _ -> UnknownField
+
+let private updateToast (field: string) (v: obj) (spec: ToastSpec) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Display(DisplayKind.Toast newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Message" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSource v
+            |> Result.map (fun x -> { spec with Message = x }))
+    | "Tone" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTone v
+            |> Result.map (fun x -> { spec with Tone = x }))
+    | "Dismissable" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with Dismissable = x }))
+    | "Open" -> NotSupportedYet
+    | _ -> UnknownField
+
+let private updateMath (field: string) (v: obj) (spec: MathSpec) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Display(DisplayKind.Math newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Source" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryString v
+            |> Result.map (fun x -> { spec with Source = x }))
+    | "Display" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryMathDisplay v
+            |> Result.map (fun x -> { spec with Display = x }))
+    | _ -> UnknownField
+
+let private updateCodeBlock (field: string) (v: obj) (spec: CodeBlockSpec) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Display(DisplayKind.CodeBlock newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Code" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryString v
+            |> Result.map (fun x -> { spec with Code = x }))
+    | "Language" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryString v
+            |> Result.map (fun x -> { spec with Language = x }))
+    | "LineNumbers" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with LineNumbers = x }))
+    | "HighlightLines" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryIntList v
+            |> Result.map (fun x -> { spec with HighlightLines = x }))
+    | "Copyable" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with Copyable = x }))
+    | _ -> UnknownField
+
+let private updateList (field: string) (v: obj) (spec: ListSpec) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Display(DisplayKind.List newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Items" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSourceList v
+            |> Result.map (fun x -> { spec with Items = x }))
+    | "Ordered" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with Ordered = x }))
+    | _ -> UnknownField
+
+let private updateModal (field: string) (v: obj) (spec: ModalSpec<'Msg>) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Layout(LayoutKind.Modal newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Heading" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSourceOption v
+            |> Result.map (fun x -> { spec with Heading = x }))
+    | "Dismissable" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with Dismissable = x }))
+    // `Open` is a Binding with no declared ReplaceBinding slot for Modal (a gap
+    // worth closing separately); `Children` is the structural ops' surface;
+    // `OnDismiss` is an Action.
+    | "Open"
+    | "Children"
+    | "OnDismiss" -> NotSupportedYet
+    | _ -> UnknownField
+
+let private updateScrollArea (field: string) (v: obj) (spec: ScrollAreaSpec<'Msg>) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Layout(LayoutKind.ScrollArea newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Orientation" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryScrollOrientation v
+            |> Result.map (fun x -> { spec with Orientation = x }))
+    | "MaxHeight" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryIntOption v
+            |> Result.map (fun x -> { spec with MaxHeight = x }))
+    | "MaxWidth" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryIntOption v
+            |> Result.map (fun x -> { spec with MaxWidth = x }))
+    | "Children" -> NotSupportedYet
+    | _ -> UnknownField
+
+let private updateChartTop (field: string) (v: obj) (spec: ChartSpec<'Msg>) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Visualisation(VisKind.Chart newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Kind" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryChartKind v
+            |> Result.map (fun x -> { spec with Kind = x }))
+    | "XField" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryString v
+            |> Result.map (fun x -> { spec with XField = x }))
+    | "YFields" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryStringList v
+            |> Result.map (fun x -> { spec with YFields = x }))
+    | "Title" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSourceOption v
+            |> Result.map (fun x -> { spec with Title = x }))
+    | "Stacked" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with Stacked = x }))
+    | "Source"
+    | "OnPointClick" -> NotSupportedYet
+    | _ -> UnknownField
+
+let private updateGridTop (field: string) (v: obj) (spec: GridSpec<'Msg>) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Visualisation(VisKind.DataGrid newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Editable" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with Editable = x }))
+    | "RowKeyField" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryStringOption v
+            |> Result.map (fun x -> { spec with RowKeyField = x }))
+    // `Columns` is addressed through the nested surface (`Columns[i].Label`);
+    // `Source` is a ReplaceBinding slot; the rest are closures.
+    | "Source"
+    | "Columns"
+    | "RowKey"
+    | "OnRowClick"
+    | "StaticRows" -> NotSupportedYet
+    | _ -> UnknownField
+
+let private updateMapTop (field: string) (v: obj) (spec: MapSpec<'Msg>) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Visualisation(VisKind.Map newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "CentreLatitude" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryFloat v
+            |> Result.map (fun x -> { spec with CentreLatitude = x }))
+    | "CentreLongitude" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryFloat v
+            |> Result.map (fun x -> { spec with CentreLongitude = x }))
+    | "Zoom" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryInt v
+            |> Result.map (fun x -> { spec with Zoom = x }))
+    | "Source"
+    | "OnMarkerClick" -> NotSupportedYet
+    | _ -> UnknownField
+
 let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) : UpdateResult<'Msg> =
     match kind with
     | NodeKind.Layout layout ->
@@ -873,18 +1117,23 @@ let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) 
         | LayoutKind.Stepper spec -> updateStepper field v spec
         | LayoutKind.SummaryList spec -> updateSummaryList field v spec
         | LayoutKind.Disclosure spec -> updateDisclosure field v spec
-        // Phase 289 — Modal / ScrollArea field-level UpdateProp not wired yet
-        // (mirrors the Sparkline / Input precedent). Their child subtrees are
-        // still mutable via structural ops (Introspect.getChildren enumerates
-        // them) and the whole node is swappable via EditNode.
-        | LayoutKind.Modal _ -> NotSupportedYet
-        | LayoutKind.ScrollArea _ -> NotSupportedYet
+        | LayoutKind.Modal spec -> updateModal field v spec
+        | LayoutKind.ScrollArea spec -> updateScrollArea field v spec
     | NodeKind.Display display ->
         match display with
         | DisplayKind.Heading spec -> updateHeading field v spec
         | DisplayKind.Markdown spec -> updateMarkdown field v spec
         | DisplayKind.Metric spec -> updateMetric field v spec
         | DisplayKind.Badge spec -> updateBadge field v spec
+        // Sparkline's omission is PRINCIPLED, not a to-do, and this comment is
+        // load-bearing because the previous wording read as precedent and was
+        // quoted as such by five later kinds. `SparklineSpec` has exactly one
+        // field, `Source: Binding<float seq>`, which is a declared
+        // `ReplaceBinding` slot. There is no field-shaped value here for
+        // `UpdateProp` to set, so wiring it would add an arm that could only
+        // ever refuse. Do NOT cite this as a reason to skip another kind:
+        // check whether that kind has settable fields, which is a question
+        // about that kind and not about this one.
         | DisplayKind.Sparkline _ -> NotSupportedYet
         | DisplayKind.Callout spec -> updateCallout field v spec
         | DisplayKind.Progress spec -> updateProgress field v spec
@@ -892,17 +1141,16 @@ let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) 
         | DisplayKind.LabelValueRow spec -> updateLabelValueRow field v spec
         | DisplayKind.Fact spec -> updateFact field v spec
         | DisplayKind.Link spec -> updateLink field v spec
-        // Phase 287/289 — Image / List / Toast field-level UpdateProp not wired
-        // yet (mirrors the Sparkline precedent); whole-node swap via EditNode
-        // remains available.
-        | DisplayKind.Image _ -> NotSupportedYet
-        | DisplayKind.List _ -> NotSupportedYet
-        | DisplayKind.Toast _ -> NotSupportedYet
-        // Phase 290/293 — CodeBlock / Math field-level UpdateProp not wired
-        // (the spec is mostly literal strings, not the bound surface UpdateProp
-        // targets); whole-node swap via EditNode remains available.
-        | DisplayKind.CodeBlock _ -> NotSupportedYet
-        | DisplayKind.Math _ -> NotSupportedYet
+        | DisplayKind.Image spec -> updateImage field v spec
+        | DisplayKind.List spec -> updateList field v spec
+        | DisplayKind.Toast spec -> updateToast field v spec
+        // The old justification here claimed the spec is "mostly literal
+        // strings, not the bound surface UpdateProp targets". That had it
+        // backwards: literal strings are exactly what UpdateProp sets
+        // (`Markdown.Text`, `Heading.Text`), and "change the code in this
+        // block" is an obvious edit. Wired.
+        | DisplayKind.CodeBlock spec -> updateCodeBlock field v spec
+        | DisplayKind.Math spec -> updateMath field v spec
         // Phase 524 — Drawing field-level UpdateProp not wired (a Drawing is a
         // whole-artefact swap via EditNode); whole-node swap remains available.
         | DisplayKind.Drawing _ -> NotSupportedYet
@@ -916,7 +1164,11 @@ let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) 
         // top-level field surface at all — `Introspect.availableFields` already
         // reports `[]` for it, and the two agree.
         | InputKind.Filters _ -> NotSupportedYet
-    | NodeKind.Visualisation _ -> NotSupportedYet
+    | NodeKind.Visualisation vis ->
+        match vis with
+        | VisKind.Chart spec -> updateChartTop field v spec
+        | VisKind.DataGrid spec -> updateGridTop field v spec
+        | VisKind.Map spec -> updateMapTop field v spec
     | NodeKind.Custom _ -> NotSupportedYet
     // ErrorBoundary's `Child` + `Fallback` are
     // Node subtrees, not field-shaped values — the AI swaps them via

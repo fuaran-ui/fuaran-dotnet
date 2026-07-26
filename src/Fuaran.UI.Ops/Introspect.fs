@@ -45,6 +45,29 @@ open Fuaran.UI.Types
 let kindName (kind: NodeKind<'Msg>) : string = Kind.name kind
 
 // ─── Available top-level fields per kind (UpdateProp surface) ──────────────
+//
+// THE CONTRACT, stated because it was drifted from once and the drift was
+// expensive: this list is the **UpdateProp surface**, not an inventory of a
+// kind's fields. A name appears here only if it is reachable, by one of exactly
+// three routes, and `HintHonestyTests` enforces that:
+//
+//   1. UpdateProp sets it directly (the common case).
+//   2. It is a `Binding` slot, so `ReplaceBinding` sets it — it must then also
+//      appear in `availableBindingSlots` (`Select.Source`, `Sparkline.Source`).
+//   3. It is reached by the nested surface or the structural ops — it must then
+//      be a prefix of an `availableNestedPaths` entry (`Columns` ⇒
+//      `Columns[i].Label`), or the literal `Children`, whose route is
+//      InsertChild / RemoveNode / MoveNode / ReorderChildren.
+//
+// `Action` fields (`OnClick`, `OnSubmit`, `OnChange`, `OnSelect`, `OnRowClick`,
+// …) are on NONE of those routes: a closure is not expressible as a wire value,
+// so no op sets one and `EditNode` replaces the whole kind instead. They were
+// listed here and are not any more. Advertising an unreachable field is worse
+// than omitting it, because the author believes the hint, tries the path, and
+// gets a refusal that reads as a bug in their own emission — which is exactly
+// what two independent model families did against `Button.Label`. If actions
+// ever need describing, they want their own enumeration beside
+// `availableBindingSlots`, not a slot on this one.
 
 let availableFields (kind: NodeKind<'Msg>) : string list =
     match kind with
@@ -66,12 +89,11 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
         | LayoutKind.Stepper _ -> [ "ActiveStep"; "Children" ]
         | LayoutKind.SummaryList _ -> [ "Heading"; "Children" ]
         | LayoutKind.Disclosure _ -> [ "Heading"; "Open"; "DefaultOpen"; "Children" ]
-        // Phase 289 — Modal / ScrollArea field-level UpdateProp not wired
-        // (Apply returns NotSupportedYet); empty surface keeps the UpdateProp
-        // dispatcher from accepting names. Children are mutated via structural
-        // ops (getChildren / withChildren below).
-        | LayoutKind.Modal _ -> []
-        | LayoutKind.ScrollArea _ -> []
+        // `Children` is advertised but not UpdateProp-settable anywhere: it is
+        // the structural ops' surface (getChildren / withChildren below), and
+        // the NotSupportedYet hint names them. That is a signpost, not a lie.
+        | LayoutKind.Modal _ -> [ "Heading"; "Dismissable"; "Children" ]
+        | LayoutKind.ScrollArea _ -> [ "Orientation"; "MaxHeight"; "MaxWidth"; "Children" ]
     | NodeKind.Display display ->
         match display with
         | DisplayKind.Heading _ -> [ "Level"; "Text"; "Variant" ]
@@ -95,35 +117,32 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
         | DisplayKind.LabelValueRow _ -> [ "Label"; "Value"; "Format"; "Emphasis"; "Help" ]
         | DisplayKind.Fact _ -> [ "Label"; "Value"; "Icon"; "Tone"; "Emphasis"; "Help" ]
         | DisplayKind.Link _ -> [ "Href"; "Label"; "Rel"; "Target"; "Download" ]
-        // Phase 287/289 — field-level UpdateProp not wired (Apply returns
-        // NotSupportedYet); whole-node swap via EditNode remains available.
-        | DisplayKind.Image _ -> []
-        | DisplayKind.List _ -> []
-        | DisplayKind.Toast _ -> []
-        // Phase 290/293 — CodeBlock / Math UpdateProp not wired.
-        | DisplayKind.CodeBlock _ -> []
-        | DisplayKind.Math _ -> []
-        // Phase 524 — Drawing field-level UpdateProp not wired (geometry is a
-        // whole-artefact swap via EditNode); empty surface keeps the dispatcher
-        // from accepting names.
+        | DisplayKind.Image _ -> [ "Alt"; "Variant" ]
+        | DisplayKind.List _ -> [ "Items"; "Ordered" ]
+        | DisplayKind.Toast _ -> [ "Message"; "Tone"; "Dismissable" ]
+        | DisplayKind.CodeBlock _ -> [ "Code"; "Language"; "LineNumbers"; "HighlightLines"; "Copyable" ]
+        | DisplayKind.Math _ -> [ "Source"; "Display" ]
+        // Drawing stays a whole-artefact swap via EditNode: `Shapes` is a
+        // geometry list with no per-item identity, so there is nothing here a
+        // field-level path could address today. Empty, therefore honest.
         | DisplayKind.Drawing _ -> []
     | NodeKind.Input input ->
         match input with
-        | InputKind.Form _ -> [ "Fields"; "OnSubmit"; "SubmitLabel" ]
+        | InputKind.Form _ -> [ "Fields"; "SubmitLabel" ]
         // InputKind.Filters carries a bare list, not a record; no
         // top-level field surface for v1 UpdateProp.
         | InputKind.Filters _ -> []
         // `Tooltip` joined the list when the Input family gained field-level
         // UpdateProp: it is addressable, so advertising it is now accurate
         // rather than aspirational.
-        | InputKind.Button _ -> [ "Label"; "OnClick"; "Variant"; "Icon"; "Tooltip" ]
-        | InputKind.FileUpload _ -> [ "Label"; "Accept"; "Multiple"; "OnSelect" ]
-        | InputKind.Select _ -> [ "Label"; "Source"; "Value"; "OnChange"; "Placeholder" ]
+        | InputKind.Button _ -> [ "Label"; "Variant"; "Icon"; "Tooltip" ]
+        | InputKind.FileUpload _ -> [ "Label"; "Accept"; "Multiple" ]
+        | InputKind.Select _ -> [ "Label"; "Source"; "Value"; "Placeholder" ]
     | NodeKind.Visualisation vis ->
         match vis with
-        | VisKind.DataGrid _ -> [ "Source"; "RowKey"; "Columns"; "OnRowClick"; "Editable"; "StaticRows" ]
-        | VisKind.Chart _ -> [ "Source"; "Kind"; "XField"; "YFields"; "Title"; "OnPointClick" ]
-        | VisKind.Map _ -> [ "Source"; "CentreLatitude"; "CentreLongitude"; "Zoom"; "OnMarkerClick" ]
+        | VisKind.DataGrid _ -> [ "Source"; "Columns"; "Editable"; "RowKeyField" ]
+        | VisKind.Chart _ -> [ "Source"; "Kind"; "XField"; "YFields"; "Title"; "Stacked" ]
+        | VisKind.Map _ -> [ "Source"; "CentreLatitude"; "CentreLongitude"; "Zoom" ]
     // Custom is an open prop bag; the AI should swap it wholesale via
     // EditNode rather than edit individual props through this engine.
     | NodeKind.Custom(_, _, _, _, _) -> []

@@ -5122,13 +5122,42 @@ module Coerce =
     /// only swappable wholesale via `EditNode`.
     let tryButtonVariant (v: obj) : Result<ButtonVariant, string> = viaJson decodeButtonVariant v
 
-    /// `FileUpload.Accept : string list` — a JSON array of strings.
+    /// `FileUpload.Accept : string list` / `Chart.YFields : string list` — a
+    /// JSON array of strings.
     let tryStringList (v: obj) : Result<string list, string> =
         let decodeStringList (path: string) (j: Json) =
             requireArray path j
             |> Result.bind (traverseIndexed (fun i item -> requireString (sprintf "%s[%d]" path i) item))
 
         viaJson decodeStringList v
+
+    /// `CodeBlock.HighlightLines : int list`.
+    let tryIntList (v: obj) : Result<int list, string> =
+        let decodeIntList (path: string) (j: Json) =
+            requireArray path j
+            |> Result.bind (traverseIndexed (fun i item -> requireInt (sprintf "%s[%d]" path i) item))
+
+        viaJson decodeIntList v
+
+    /// `List.Items : TextSource list`.
+    let tryTextSourceList (v: obj) : Result<TextSource list, string> =
+        let decodeTextSourceList (path: string) (j: Json) =
+            requireArray path j
+            |> Result.bind (traverseIndexed (fun i item -> decodeTextSource (sprintf "%s[%d]" path i) item))
+
+        viaJson decodeTextSourceList v
+
+    // The remaining closed-enum twins, added with the Display / Layout /
+    // Visualisation field-level UpdateProp surface.
+    let tryImageVariant (v: obj) : Result<ImageVariant, string> = viaJson decodeImageVariant v
+    let tryMathDisplay (v: obj) : Result<MathDisplay, string> = viaJson decodeMathDisplay v
+
+    let tryScrollOrientation (v: obj) : Result<ScrollOrientation, string> = viaJson decodeScrollOrientation v
+
+    let tryChartKind (v: obj) : Result<ChartKind, string> = viaJson decodeChartKind v
+
+    /// `ScrollArea.MaxHeight` / `MaxWidth : int option`.
+    let tryIntOption (v: obj) : Result<int option, string> = viaJsonOpt requireInt v
 
     /// JSON numbers decode as boxed float — narrow to int for fields like
     /// `Heading.Level` / `Grid.Cols` / `Skeleton.Rows`. Native F# callers

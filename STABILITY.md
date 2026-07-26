@@ -83,6 +83,15 @@ The following are covered by the semver rules above:
 - The `TreeOp<'Msg>` DU (the §4g op vocabulary).
 - The `ApplyError` / `ApplyErrorCode` / `ApplyHint` records (the §4d AI-recovery error shape).
 - The `Apply.apply : TreeOp<'Msg> -> Node<'Msg> -> Result<Node<'Msg>, ApplyError>` entry point.
+- **`Introspect.availableFields` is the UpdateProp surface, and every entry must be reachable** (0.3.2).
+  A name appears there only if `UpdateProp` sets it, or it is a `Binding` slot also listed in
+  `availableBindingSlots`, or it is reached structurally (the literal `Children`, or a prefix of an
+  `availableNestedPaths` entry). `Action` fields were listed and are not any more: a closure is not
+  expressible as a wire value, so no op sets one. **Adding an unreachable entry is a defect, not a
+  documentation improvement** — the hint is what an author reads after a refused edit, so a name it
+  cannot satisfy sends them into a retry loop against their own correct emission. Enforced by
+  `HintHonestyTests` over the wire-format corpus, which covers 39 kinds and fails with the offending
+  `kind.field` named.
 - **`UpdateProp.path` accepted spellings** (0.3.1) — the path resolver accepts the **camelCase** wire
   spelling of a field (`"subtext"`) as well as the PascalCase record-field spelling (`"Subtext"`), and
   tolerates a redundant leading **`kind.`** segment (`"kind.subtext"`), which is the path the field
