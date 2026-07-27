@@ -4,6 +4,14 @@ module Fuaran.UI.Ops.CleanRoom.Tests.Fixtures
 // Trees are built from the language-tier smart constructors so node ids are
 // stable + addressable; content strings are distinctive sentinels so the
 // no-content-survives test can search for them.
+//
+// FUARAN002 flags a NodeId shared across two trees — worth knowing in ordinary
+// code, and precisely the contract here: `standInTree` is id-identical to
+// `realTree` by design, because `reattach` re-keys one onto the other by
+// NodeId (`Map.find tmpl.Id real`). Every id is meant to appear in both, so
+// the warning fires ten times and says nothing a reader of this file does not
+// already know.
+// fuaran-validator: disable FUARAN002 — the stand-in tree is id-identical to the real one by contract
 
 open Fuaran.UI
 open Fuaran.UI.Types
