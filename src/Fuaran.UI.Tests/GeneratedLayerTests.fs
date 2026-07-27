@@ -79,7 +79,7 @@ let generatedLayerTests =
               match fixture "heading-1" with
               | None -> skiptest "wire-format-fixtures/nodes/heading-1.json not found"
               | Some expected ->
-                  let generated: Generated.Node =
+                  let generated: Generated.Node<unit> =
                       Generated.mkHeading
                           "heading-1"
                           2
@@ -94,7 +94,7 @@ let generatedLayerTests =
               match fixture "heading-1" with
               | None -> skiptest "wire-format-fixtures/nodes/heading-1.json not found"
               | Some expected ->
-                  let generated: Generated.Node =
+                  let generated: Generated.Node<unit> =
                       Generated.mkHeading
                           "heading-1"
                           2
@@ -115,16 +115,35 @@ let generatedLayerTests =
                   Expect.equal fromGenerated fromHandWritten "generated == hand-written (the direct diff)"
           }
 
-          test "the generated structural value is 'Msg-free by construction" {
-              // The erasure boundary, stated as a compile-time fact: `Generated.Node`
-              // takes no type parameter, so there is no message type to lose. The
-              // closure slots the hand-written tier carries are erased to `unit`
-              // (e.g. `Binding.Query of accessor: unit * name: string`), and the
-              // encoder emits the sentinel unconditionally.
-              let value: Generated.Node =
+          test "the generated value carries 'Msg where the tier does, and nowhere else" {
+              // This test asserted the opposite until Phase 691: that `Generated.Node`
+              // took no type parameter, so there was no message type to lose. That
+              // erasure was a convenience of the first generator, not a property of the
+              // wire — the encoder emits `"<closure>"` without reading the slot, so the
+              // slot's HOST type was always free to declare (D2).
+              //
+              // What replaces it is the sharper claim: `'Msg` reaches exactly the types
+              // that genuinely dispatch. `Binding<'T>` is the guard — it holds closures
+              // (`Computed`, `Local`'s format/parse) but none of them produce a message,
+              // so it must stay msg-free, matching the hand-written tier, which
+              // obj-erases in the same places for the same reason.
+              let value: Generated.Node<unit> =
                   Generated.mkHeading "b" 2 (Generated.TextSource.Literal "x") Generated.HeadingVariant.Standard
 
-              Expect.equal value.Id "b" "a plain structural record — no 'Msg anywhere in the type"
+              Expect.equal value.Id "b" "the tree is generic in 'Msg and still constructs plainly"
+
+              // A `Binding<float>` with no `'Msg` in sight — if the fixpoint over-reached,
+              // this line stops compiling.
+              let binding: Generated.Binding<float> = Generated.Binding.Static(Some 1.0)
+
+              Expect.equal
+                  (Generated.encodeNode value)
+                  (Generated.encodeNode { value with Style = None })
+                  "the envelope is absent either way"
+
+              match binding with
+              | Generated.Binding.Static v -> Expect.equal v (Some 1.0) "Binding<'T> carries no message type"
+              | _ -> failtest "expected a Static binding"
           }
 
           // ================================================================

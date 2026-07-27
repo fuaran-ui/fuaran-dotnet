@@ -159,6 +159,17 @@ type FontVoice =
     | Structural
 
 [<RequireQualifiedAccess>]
+type Motion =
+    | None
+    | PulseDuringLoad
+    | FadeInOnMount
+    | SlideInFromBelow
+    | ShakeOnError
+    | RotateOnRefresh
+    | SlideInFromRight
+    | ExpandCollapse
+
+[<RequireQualifiedAccess>]
 type TextSource =
     | Literal of text: string
     | Bound of binding: Binding<string>
@@ -168,8 +179,8 @@ and [<RequireQualifiedAccess>] Binding<'T> =
     | Query of dependsOn: string list option * name: string
     | Filter of name: string
     | State of defaultValue: 'T option * key: string
-    | Computed of fn: unit
-    | Local of flushOn: LocalFlushTrigger * format: unit * initialFrom: Binding<'T> * onCommit: unit option * parse: unit
+    | Computed of fn: (obj -> 'T)
+    | Local of flushOn: LocalFlushTrigger * format: ('T -> string) * initialFrom: Binding<'T> * onCommit: ('T -> obj) option * parse: (string -> Result<'T, string>)
     | Format of format: Format * locale: LocaleSource * source: Binding<float>
     | Invoke of args: InvokeArg list * capabilityId: string
 
@@ -180,15 +191,15 @@ and [<RequireQualifiedAccess>] CellFormat =
     | Percent of decimals: int option
     | SignificantDigits of digits: int
     | Date of format: string
-    | Custom of fn: unit
+    | Custom of fn: (obj -> string)
 
-and [<RequireQualifiedAccess>] Action =
-    | Chain of ops: Action list
+and [<RequireQualifiedAccess>] Action<'Msg> =
+    | Chain of ops: Action<'Msg> list
     | WriteToClipboard of text: string
-    | Dispatch
+    | Dispatch of msg: ('Msg)
     | Invoke of args: InvokeArg list * capabilityId: string
-    | ReadFileBody of encoding: FileReadEncoding * fileRef: string * onRead: unit option
-    | Call of endpoint: string * into: CallResultTarget option * onResult: unit option
+    | ReadFileBody of encoding: FileReadEncoding * fileRef: string * onRead: (string -> 'Msg) option
+    | Call of endpoint: string * into: CallResultTarget option * onResult: (obj -> 'Msg) option
     | Navigate of route: string
     | CommitLocal of nodeId: string
     | Notify of channel: string * payload: JVal
@@ -221,39 +232,39 @@ and [<RequireQualifiedAccess>] LayoutMode =
     | Flex of direction: Orientation * wrap: bool
     | Grid of cols: int * templateColumns: string option
 
-and [<RequireQualifiedAccess>] FormFieldKind =
-    | Text of onChange: unit option * value: Binding<string>
-    | Number of onChange: unit option * value: Binding<float>
-    | Checkbox of onToggle: unit option * value: Binding<bool>
-    | Choice of onChange: unit option * options: Binding<SelectOption list> * value: Binding<string>
-    | TextArea of onChange: unit option * rows: int * value: Binding<string>
-    | RangedNumber of onChange: unit option * value: Binding<float> * min: float option * max: float option * step: float option
-    | SegmentedChoice of onChange: unit option * options: Binding<SelectOption list> * orientation: Orientation * value: Binding<string>
-    | Date of onChange: unit option * value: Binding<string> * variant: DateVariant * min: string option * max: string option * step: float option
+and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
+    | Text of onChange: (string -> Action<'Msg>) option * value: Binding<string>
+    | Number of onChange: (float -> Action<'Msg>) option * value: Binding<float>
+    | Checkbox of onToggle: (bool -> Action<'Msg>) option * value: Binding<bool>
+    | Choice of onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * value: Binding<string>
+    | TextArea of onChange: (float -> Action<'Msg>) option * rows: int * value: Binding<string>
+    | RangedNumber of onChange: (float -> Action<'Msg>) option * value: Binding<float> * min: float option * max: float option * step: float option
+    | SegmentedChoice of onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * orientation: Orientation * value: Binding<string>
+    | Date of onChange: (string option -> Action<'Msg>) option * value: Binding<string> * variant: DateVariant * min: string option * max: string option * step: float option
 
-and [<RequireQualifiedAccess>] FilterKind =
-    | Text of onChange: unit option * value: Binding<string>
-    | Choice of onChange: unit option * options: Binding<SelectOption list> * value: Binding<string>
-    | Range of onChange: unit option * value: unit
-    | SegmentedChoice of onChange: unit option * options: Binding<SelectOption list> * orientation: Orientation * value: Binding<string>
+and [<RequireQualifiedAccess>] FilterKind<'Msg> =
+    | Text of onChange: (string -> Action<'Msg>) option * value: Binding<string>
+    | Choice of onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * value: Binding<string>
+    | Range of onChange: (float * float -> Action<'Msg>) option * value: unit
+    | SegmentedChoice of onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * orientation: Orientation * value: Binding<string>
 
 and [<RequireQualifiedAccess>] ColumnWidth =
     | Auto
     | Fixed of pixels: int
     | Flex of weight: float
 
-and [<RequireQualifiedAccess>] CellKindErased =
+and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
     | Text
     | Numeric
     | Date
-    | Editable of onEdit: unit option
-    | Checkbox of get: unit * onToggle: unit option
-    | Button of label: TextSource * onClick: unit option
-    | ButtonGroup of buttons: ButtonGroupItem list
-    | Link of hrefFn: unit * labelFn: unit
-    | Pill of labelFn: unit * toneFn: unit
-    | Progress of fractionFn: unit * labelFn: unit
-    | Custom of fn: unit
+    | Editable of onEdit: (obj * obj -> Action<'Msg>) option
+    | Checkbox of get: (obj -> bool) * onToggle: (obj * bool -> Action<'Msg>) option
+    | Button of label: TextSource * onClick: (obj -> Action<'Msg>) option
+    | ButtonGroup of buttons: ButtonGroupItem<'Msg> list
+    | Link of hrefFn: (obj -> string) * labelFn: (obj -> TextSource)
+    | Pill of labelFn: (obj -> TextSource) * toneFn: (obj -> ToneVariant)
+    | Progress of fractionFn: (obj -> float) * labelFn: (obj -> TextSource)
+    | Custom of fn: ((obj -> JVal) -> Node<'Msg>)
 
 and [<RequireQualifiedAccess>] HoleValueSpace =
     | IntRange of max: int * min: int
@@ -273,12 +284,12 @@ and [<RequireQualifiedAccess>] HoleDecl =
     | Slot of kindConstraint: string option * name: string
     | Repeat of countSpace: HoleValueSpace * name: string
 
-and [<RequireQualifiedAccess>] FragmentArg =
+and [<RequireQualifiedAccess>] FragmentArg<'Msg> =
     | Int of value: int
     | Float of value: float
     | Bool of value: bool
     | Str of value: string
-    | SlotArg of tree: Node
+    | SlotArg of tree: Node<'Msg>
 
 and [<RequireQualifiedAccess>] CurveCommand =
     | MoveTo of ``to``: DrawPoint
@@ -307,11 +318,11 @@ and SemanticStyle =
       Weight: StyleWeight
     }
 
-and StateBehaviour =
+and StateBehaviour<'Msg> =
     {
-      OnEmpty: Node option
-      OnError: unit option
-      OnLoading: Node option
+      OnEmpty: Node<'Msg> option
+      OnError: (obj -> Node<'Msg>) option
+      OnLoading: Node<'Msg> option
     }
 
 and Accessibility =
@@ -324,9 +335,9 @@ and Accessibility =
       Role: string option
     }
 
-and SwitchCase =
+and SwitchCase<'Msg> =
     {
-      Child: Node
+      Child: Node<'Msg>
       Match: string
     }
 
@@ -387,18 +398,18 @@ and StaticRows =
       Rows: string list list
     }
 
-and FormField =
+and FormField<'Msg> =
     {
       Id: string
-      Kind: FormFieldKind
+      Kind: FormFieldKind<'Msg>
       Label: TextSource
       Required: bool
       Help: TextSource option
     }
 
-and FilterSpec =
+and FilterSpec<'Msg> =
     {
-      Kind: FilterKind
+      Kind: FilterKind<'Msg>
       Label: TextSource
       Name: string
     }
@@ -410,19 +421,19 @@ and TabHeader =
       Disabled: Binding<bool> option
     }
 
-and ColumnErased =
+and ColumnErased<'Msg> =
     {
       Format: CellFormat
-      Kind: CellKindErased
+      Kind: CellKindErased<'Msg>
       Label: string
-      Value: unit
+      Value: (obj -> obj)
       Width: ColumnWidth
     }
 
-and ButtonGroupItem =
+and ButtonGroupItem<'Msg> =
     {
       Label: TextSource
-      OnClick: unit option
+      OnClick: (obj -> Action<'Msg>) option
     }
 
 and ContentHash =
@@ -589,82 +600,82 @@ and DrawingSpec =
     }
 
 // Layout
-and BoxSpec =
+and BoxSpec<'Msg> =
     {
-      Children: Node list
+      Children: Node<'Msg> list
       Heading: TextSource option
       Layout: LayoutMode
       Role: BoxRole
     }
 
 // Layout
-and SplitPanelSpec =
+and SplitPanelSpec<'Msg> =
     {
-      Children: Node list
+      Children: Node<'Msg> list
       Weight: float
     }
 
 // Layout
-and SummaryListSpec =
+and SummaryListSpec<'Msg> =
     {
-      Children: Node list
+      Children: Node<'Msg> list
       Heading: TextSource option
     }
 
 // Layout
-and DisclosureSpec =
+and DisclosureSpec<'Msg> =
     {
-      Children: Node list
+      Children: Node<'Msg> list
       DefaultOpen: bool
       Heading: TextSource
-      OnToggle: unit option
+      OnToggle: (bool -> Action<'Msg>) option
       Open: Binding<bool>
     }
 
 // Layout
-and ModalSpec =
+and ModalSpec<'Msg> =
     {
-      Children: Node list
+      Children: Node<'Msg> list
       Dismissable: bool
-      OnDismiss: Action
+      OnDismiss: Action<'Msg>
       Open: Binding<bool>
       Heading: TextSource option
     }
 
 // Layout
-and ScrollAreaSpec =
+and ScrollAreaSpec<'Msg> =
     {
-      Children: Node list
+      Children: Node<'Msg> list
       Orientation: ScrollOrientation
       MaxHeight: int option
       MaxWidth: int option
     }
 
 // Layout
-and TabsSpec =
+and TabsSpec<'Msg> =
     {
       ActiveIndex: Binding<int>
-      Children: Node list
-      OnSelect: unit option
-      OnSelectTag: unit option
+      Children: Node<'Msg> list
+      OnSelect: (int -> Action<'Msg>) option
+      OnSelectTag: (string -> Action<'Msg>) option
       TabHeaders: TabHeader list option
       TabTags: string list option
       ActiveTag: Binding<string> option
     }
 
 // Layout
-and StepperSpec =
+and StepperSpec<'Msg> =
     {
       ActiveStep: Binding<int>
-      Children: Node list
-      OnSelect: unit option
+      Children: Node<'Msg> list
+      OnSelect: (int -> Action<'Msg>) option
     }
 
 // Input
-and ButtonSpec =
+and ButtonSpec<'Msg> =
     {
       Label: TextSource
-      OnClick: Action
+      OnClick: Action<'Msg>
       Variant: ButtonVariant
       Icon: string option
       Tooltip: TextSource option
@@ -672,11 +683,11 @@ and ButtonSpec =
     }
 
 // Input
-and SelectSpec =
+and SelectSpec<'Msg> =
     {
       Label: TextSource
-      OnChange: unit option
-      OnChangeMulti: unit option
+      OnChange: (string option -> Action<'Msg>) option
+      OnChangeMulti: (string list -> Action<'Msg>) option
       Source: Binding<SelectOption list>
       Value: Binding<string>
       Placeholder: TextSource option
@@ -686,43 +697,43 @@ and SelectSpec =
     }
 
 // Input
-and FileUploadSpec =
+and FileUploadSpec<'Msg> =
     {
       Accept: string list
       Label: TextSource
       Multiple: bool
-      OnSelect: unit option
+      OnSelect: (obj list -> Action<'Msg>) option
       Disabled: Binding<bool> option
     }
 
 // Input
-and FormSpec =
+and FormSpec<'Msg> =
     {
-      Fields: FormField list
-      OnSubmit: Action
+      Fields: FormField<'Msg> list
+      OnSubmit: Action<'Msg>
       SubmitLabel: TextSource
       Disabled: Binding<bool> option
     }
 
 // Input
-and FiltersSpec =
+and FiltersSpec<'Msg> =
     {
-      Items: FilterSpec list
+      Items: FilterSpec<'Msg> list
     }
 
 // Visualisation
-and DataGridSpec =
+and DataGridSpec<'Msg> =
     {
-      Columns: ColumnErased list
+      Columns: ColumnErased<'Msg> list
       Editable: bool
-      RowKey: unit option
+      RowKey: (obj -> string) option
       Source: Binding<unit>
       StaticRows: StaticRows option
-      OnRowClick: unit option
+      OnRowClick: (obj -> Action<'Msg>) option
     }
 
 // Visualisation
-and ChartSpec =
+and ChartSpec<'Msg> =
     {
       Kind: ChartKind
       Source: Binding<unit>
@@ -730,17 +741,17 @@ and ChartSpec =
       XField: string
       YFields: string list
       Title: TextSource option
-      OnPointClick: unit option
+      OnPointClick: (obj -> Action<'Msg>) option
     }
 
 // Visualisation
-and MapSpec =
+and MapSpec<'Msg> =
     {
       CentreLatitude: float
       CentreLongitude: float
       Source: Binding<MapMarker list>
       Zoom: int
-      OnMarkerClick: unit option
+      OnMarkerClick: (MapMarker -> Action<'Msg>) option
     }
 
 // Meta
@@ -754,47 +765,47 @@ and CustomSpec =
     }
 
 // Meta
-and ErrorBoundarySpec =
+and ErrorBoundarySpec<'Msg> =
     {
-      Child: Node
-      Fallback: Node
+      Child: Node<'Msg>
+      Fallback: Node<'Msg>
     }
 
 // Meta
-and FragmentDeclSpec =
+and FragmentDeclSpec<'Msg> =
     {
-      Body: Node
+      Body: Node<'Msg>
       Name: string
       Holes: HoleDecl list option
       Effect: EffectClass option
     }
 
 // Meta
-and FragmentRefSpec =
+and FragmentRefSpec<'Msg> =
     {
       Name: string
-      Args: Map<string, FragmentArg> option
+      Args: Map<string, FragmentArg<'Msg>> option
     }
 
 // Meta
-and SwitchSpec =
+and SwitchSpec<'Msg> =
     {
-      Cases: SwitchCase list
-      Default: Node
+      Cases: SwitchCase<'Msg> list
+      Default: Node<'Msg>
       StateKey: string
     }
 
 // Meta
-and MountSpec =
+and MountSpec<'Msg> =
     {
       Capabilities: string list
       Channel: GuestChannel
-      Inputs: Map<string, FragmentArg> option
-      OnBubble: unit option
+      Inputs: Map<string, FragmentArg<'Msg>> option
+      OnBubble: (obj -> Action<'Msg>) option
       ScopeId: string
     }
 
-and [<RequireQualifiedAccess>] NodeKind =
+and [<RequireQualifiedAccess>] NodeKind<'Msg> =
     | Heading of HeadingSpec
     | Badge of BadgeSpec
     | Markdown of MarkdownSpec
@@ -812,35 +823,37 @@ and [<RequireQualifiedAccess>] NodeKind =
     | CodeBlock of CodeBlockSpec
     | Toast of ToastSpec
     | Drawing of DrawingSpec
-    | Box of BoxSpec
-    | SplitPanel of SplitPanelSpec
-    | SummaryList of SummaryListSpec
-    | Disclosure of DisclosureSpec
-    | Modal of ModalSpec
-    | ScrollArea of ScrollAreaSpec
-    | Tabs of TabsSpec
-    | Stepper of StepperSpec
-    | Button of ButtonSpec
-    | Select of SelectSpec
-    | FileUpload of FileUploadSpec
-    | Form of FormSpec
-    | Filters of FiltersSpec
-    | DataGrid of DataGridSpec
-    | Chart of ChartSpec
-    | Map of MapSpec
+    | Box of BoxSpec<'Msg>
+    | SplitPanel of SplitPanelSpec<'Msg>
+    | SummaryList of SummaryListSpec<'Msg>
+    | Disclosure of DisclosureSpec<'Msg>
+    | Modal of ModalSpec<'Msg>
+    | ScrollArea of ScrollAreaSpec<'Msg>
+    | Tabs of TabsSpec<'Msg>
+    | Stepper of StepperSpec<'Msg>
+    | Button of ButtonSpec<'Msg>
+    | Select of SelectSpec<'Msg>
+    | FileUpload of FileUploadSpec<'Msg>
+    | Form of FormSpec<'Msg>
+    | Filters of FiltersSpec<'Msg>
+    | DataGrid of DataGridSpec<'Msg>
+    | Chart of ChartSpec<'Msg>
+    | Map of MapSpec<'Msg>
     | Custom of CustomSpec
-    | ErrorBoundary of ErrorBoundarySpec
-    | FragmentDecl of FragmentDeclSpec
-    | FragmentRef of FragmentRefSpec
-    | Switch of SwitchSpec
-    | Mount of MountSpec
+    | ErrorBoundary of ErrorBoundarySpec<'Msg>
+    | FragmentDecl of FragmentDeclSpec<'Msg>
+    | FragmentRef of FragmentRefSpec<'Msg>
+    | Switch of SwitchSpec<'Msg>
+    | Mount of MountSpec<'Msg>
 
-and Node =
+and Node<'Msg> =
     {
       Id: string
-      Kind: NodeKind
+      Kind: NodeKind<'Msg>
       Accessibility: Accessibility option
-      State: StateBehaviour option
+      ExtraAttributes: (Map<string, string> option)
+      Motion: (Motion option)
+      State: StateBehaviour<'Msg> option
       Style: SemanticStyle option
     }
 
@@ -999,7 +1012,18 @@ let private encFontVoice (v: FontVoice) : JVal =
     | FontVoice.Display -> JStr "Display"
     | FontVoice.Structural -> JStr "Structural"
 
-let rec private encNode (n: Node) : JVal =
+let private encMotion (v: Motion) : JVal =
+    match v with
+    | Motion.None -> JStr "None"
+    | Motion.PulseDuringLoad -> JStr "PulseDuringLoad"
+    | Motion.FadeInOnMount -> JStr "FadeInOnMount"
+    | Motion.SlideInFromBelow -> JStr "SlideInFromBelow"
+    | Motion.ShakeOnError -> JStr "ShakeOnError"
+    | Motion.RotateOnRefresh -> JStr "RotateOnRefresh"
+    | Motion.SlideInFromRight -> JStr "SlideInFromRight"
+    | Motion.ExpandCollapse -> JStr "ExpandCollapse"
+
+let rec private encNode (n: Node<'Msg>) : JVal =
     let kind =
         match n.Kind with
         | NodeKind.Heading s -> encHeadingSpec s
@@ -1042,7 +1066,7 @@ let rec private encNode (n: Node) : JVal =
         | NodeKind.Switch s -> encSwitchSpec s
         | NodeKind.Mount s -> encMountSpec s
 
-    JObj([ Some("id", JStr n.Id); Some("kind", kind); (n.Accessibility |> Option.map (fun v -> "accessibility", encAccessibility v)); (n.State |> Option.map (fun v -> "state", encStateBehaviour v)); (n.Style |> Option.map (fun v -> "style", encSemanticStyle v)) ] |> List.choose id)
+    JObj([ Some("id", JStr n.Id); Some("kind", kind); (n.Accessibility |> Option.map (fun v -> "accessibility", encAccessibility v)); None; None; (n.State |> Option.map (fun v -> "state", encStateBehaviour v)); (n.Style |> Option.map (fun v -> "style", encSemanticStyle v)) ] |> List.choose id)
 
 and private encTextSource (v: TextSource) : JVal =
     match v with
@@ -1070,11 +1094,11 @@ and private encCellFormat (v: CellFormat) : JVal =
     | CellFormat.Date format -> Canon.typed "Date" [ "format", JStr format ]
     | CellFormat.Custom fn -> Canon.typed "Custom" [ "fn", JStr "<closure>" ]
 
-and private encAction (v: Action) : JVal =
+and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     match v with
     | Action.Chain ops -> Canon.typed "Chain" [ "ops", JArr(List.map encAction ops) ]
     | Action.WriteToClipboard text -> Canon.typed "WriteToClipboard" [ "text", JStr text ]
-    | Action.Dispatch -> Canon.typed "Dispatch" [  ]
+    | Action.Dispatch msg -> Canon.typed "Dispatch" ([ None ] |> List.choose id)
     | Action.Invoke (args, capabilityId) -> Canon.typed "Invoke" [ "args", JArr(List.map encInvokeArg args); "capabilityId", JStr capabilityId ]
     | Action.ReadFileBody (encoding, fileRef, onRead) -> Canon.typed "ReadFileBody" ([ Some("encoding", encFileReadEncoding encoding); Some("fileRef", JStr fileRef); (onRead |> Option.map (fun v -> "onRead", JStr "<closure>")) ] |> List.choose id)
     | Action.Call (endpoint, into, onResult) -> Canon.typed "Call" ([ Some("endpoint", JStr endpoint); (into |> Option.map (fun v -> "into", encCallResultTarget v)); (onResult |> Option.map (fun v -> "onResult", JStr "<closure>")) ] |> List.choose id)
@@ -1115,7 +1139,7 @@ and private encLayoutMode (v: LayoutMode) : JVal =
     | LayoutMode.Flex (direction, wrap) -> Canon.typed "Flex" [ "direction", encOrientation direction; "wrap", JBool wrap ]
     | LayoutMode.Grid (cols, templateColumns) -> Canon.typed "Grid" ([ Some("cols", JInt cols); (templateColumns |> Option.map (fun v -> "templateColumns", JStr v)) ] |> List.choose id)
 
-and private encFormFieldKind (v: FormFieldKind) : JVal =
+and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     match v with
     | FormFieldKind.Text (onChange, value) -> Canon.typed "Text" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("value", (encBinding JStr) value) ] |> List.choose id)
     | FormFieldKind.Number (onChange, value) -> Canon.typed "Number" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("value", (encBinding JFloat) value) ] |> List.choose id)
@@ -1126,7 +1150,7 @@ and private encFormFieldKind (v: FormFieldKind) : JVal =
     | FormFieldKind.SegmentedChoice (onChange, options, orientation, value) -> Canon.typed "SegmentedChoice" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); Some("orientation", encOrientation orientation); Some("value", (encBinding JStr) value) ] |> List.choose id)
     | FormFieldKind.Date (onChange, value, variant, min, max, step) -> Canon.typed "Date" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("value", (encBinding JStr) value); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
 
-and private encFilterKind (v: FilterKind) : JVal =
+and private encFilterKind<'Msg> (v: FilterKind<'Msg>) : JVal =
     match v with
     | FilterKind.Text (onChange, value) -> Canon.typed "Text" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("value", (encBinding JStr) value) ] |> List.choose id)
     | FilterKind.Choice (onChange, options, value) -> Canon.typed "Choice" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); Some("value", (encBinding JStr) value) ] |> List.choose id)
@@ -1139,7 +1163,7 @@ and private encColumnWidth (v: ColumnWidth) : JVal =
     | ColumnWidth.Fixed pixels -> Canon.typed "Fixed" [ "pixels", JInt pixels ]
     | ColumnWidth.Flex weight -> Canon.typed "Flex" [ "weight", JFloat weight ]
 
-and private encCellKindErased (v: CellKindErased) : JVal =
+and private encCellKindErased<'Msg> (v: CellKindErased<'Msg>) : JVal =
     match v with
     | CellKindErased.Text -> Canon.typed "Text" [  ]
     | CellKindErased.Numeric -> Canon.typed "Numeric" [  ]
@@ -1174,7 +1198,7 @@ and private encHoleDecl (v: HoleDecl) : JVal =
     | HoleDecl.Slot (kindConstraint, name) -> Canon.typed "Slot" ([ (kindConstraint |> Option.map (fun v -> "kindConstraint", JStr v)); Some("name", JStr name) ] |> List.choose id)
     | HoleDecl.Repeat (countSpace, name) -> Canon.typed "Repeat" [ "countSpace", encHoleValueSpace countSpace; "name", JStr name ]
 
-and private encFragmentArg (v: FragmentArg) : JVal =
+and private encFragmentArg<'Msg> (v: FragmentArg<'Msg>) : JVal =
     match v with
     | FragmentArg.Int value -> Canon.typed "Int" [ "value", JInt value ]
     | FragmentArg.Float value -> Canon.typed "Float" [ "value", JFloat value ]
@@ -1205,13 +1229,13 @@ and private encShape (v: Shape) : JVal =
 and private encSemanticStyle (s: SemanticStyle) : JVal =
     JObj([ (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (if s.Role = StyleRole.None then None else Some("role", encStyleRole s.Role)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Voice = FontVoice.Default then None else Some("voice", encFontVoice s.Voice)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)) ] |> List.choose id)
 
-and private encStateBehaviour (s: StateBehaviour) : JVal =
+and private encStateBehaviour<'Msg> (s: StateBehaviour<'Msg>) : JVal =
     JObj([ (s.OnEmpty |> Option.map (fun v -> "onEmpty", encNode v)); (s.OnError |> Option.map (fun v -> "onError", JStr "<closure>")); (s.OnLoading |> Option.map (fun v -> "onLoading", encNode v)) ] |> List.choose id)
 
 and private encAccessibility (s: Accessibility) : JVal =
     JObj([ (s.DescribedBy |> Option.map (fun v -> "describedBy", JStr v)); (s.Hidden |> Option.map (fun v -> "hidden", (encBinding JBool) v)); (s.Label |> Option.map (fun v -> "label", (encBinding JStr) v)); (s.LabelledBy |> Option.map (fun v -> "labelledBy", JStr v)); (s.LiveRegion |> Option.map (fun v -> "liveRegion", JStr v)); (s.Role |> Option.map (fun v -> "role", JStr v)) ] |> List.choose id)
 
-and private encSwitchCase (s: SwitchCase) : JVal =
+and private encSwitchCase<'Msg> (s: SwitchCase<'Msg>) : JVal =
     JObj([ Some("child", encNode s.Child); Some("match", JStr s.Match) ] |> List.choose id)
 
 and private encGuestChannel (s: GuestChannel) : JVal =
@@ -1238,19 +1262,19 @@ and private encMapMarker (s: MapMarker) : JVal =
 and private encStaticRows (s: StaticRows) : JVal =
     JObj([ Some("headers", JArr(List.map JStr s.Headers)); Some("rows", JArr(List.map (fun __xs -> JArr(List.map JStr __xs)) s.Rows)) ] |> List.choose id)
 
-and private encFormField (s: FormField) : JVal =
+and private encFormField<'Msg> (s: FormField<'Msg>) : JVal =
     JObj([ Some("id", JStr s.Id); Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("required", JBool s.Required); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
 
-and private encFilterSpec (s: FilterSpec) : JVal =
+and private encFilterSpec<'Msg> (s: FilterSpec<'Msg>) : JVal =
     JObj([ Some("kind", encFilterKind s.Kind); Some("label", encTextSource s.Label); Some("name", JStr s.Name) ] |> List.choose id)
 
 and private encTabHeader (s: TabHeader) : JVal =
     JObj([ Some("label", encTextSource s.Label); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
-and private encColumnErased (s: ColumnErased) : JVal =
-    JObj([ (if s.Format = CellFormat.None then None else Some("format", encCellFormat s.Format)); Some("kind", encCellKindErased s.Kind); Some("label", JStr s.Label); Some("value", JStr "<closure>"); (if s.Width = ColumnWidth.Auto then None else Some("width", encColumnWidth s.Width)) ] |> List.choose id)
+and private encColumnErased<'Msg> (s: ColumnErased<'Msg>) : JVal =
+    JObj([ (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); Some("kind", encCellKindErased s.Kind); Some("label", JStr s.Label); Some("value", JStr "<closure>"); (match s.Width with | ColumnWidth.Auto -> None | _ -> Some("width", encColumnWidth s.Width)) ] |> List.choose id)
 
-and private encButtonGroupItem (s: ButtonGroupItem) : JVal =
+and private encButtonGroupItem<'Msg> (s: ButtonGroupItem<'Msg>) : JVal =
     JObj([ Some("label", encTextSource s.Label); (s.OnClick |> Option.map (fun v -> "onClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encContentHash (s: ContentHash) : JVal =
@@ -1290,10 +1314,10 @@ and private encProgressSpec (s: ProgressSpec) : JVal =
     Canon.typed "Progress" ([ Some("fraction", (encBinding JFloat) s.Fraction); (if s.Indeterminate = false then None else Some("indeterminate", JBool s.Indeterminate)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Label |> Option.map (fun v -> "label", encTextSource v)); (s.Caveat |> Option.map (fun v -> "caveat", encTextSource v)) ] |> List.choose id)
 
 and private encMetricSpec (s: MetricSpec) : JVal =
-    Canon.typed "Metric" ([ Some("label", encTextSource s.Label); Some("value", (encBinding JFloat) s.Value); (if s.Format = CellFormat.None then None else Some("format", encCellFormat s.Format)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)); (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (s.Trend |> Option.map (fun v -> "trend", (encBinding JFloat) v)); (s.TrendFormat |> Option.map (fun v -> "trendFormat", encCellFormat v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Subtext |> Option.map (fun v -> "subtext", encTextSource v)) ] |> List.choose id)
+    Canon.typed "Metric" ([ Some("label", encTextSource s.Label); Some("value", (encBinding JFloat) s.Value); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)); (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (s.Trend |> Option.map (fun v -> "trend", (encBinding JFloat) v)); (s.TrendFormat |> Option.map (fun v -> "trendFormat", encCellFormat v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Subtext |> Option.map (fun v -> "subtext", encTextSource v)) ] |> List.choose id)
 
 and private encLabelValueRowSpec (s: LabelValueRowSpec) : JVal =
-    Canon.typed "LabelValueRow" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (if s.Format = CellFormat.None then None else Some("format", encCellFormat s.Format)); Some("label", encTextSource s.Label); Some("value", (encBinding JFloat) s.Value); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
+    Canon.typed "LabelValueRow" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); Some("label", encTextSource s.Label); Some("value", (encBinding JFloat) s.Value); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
 
 and private encFactSpec (s: FactSpec) : JVal =
     Canon.typed "Fact" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); Some("label", encTextSource s.Label); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); Some("value", encTextSource s.Value) ] |> List.choose id)
@@ -1310,73 +1334,73 @@ and private encToastSpec (s: ToastSpec) : JVal =
 and private encDrawingSpec (s: DrawingSpec) : JVal =
     Canon.typed "Drawing" ([ (s.Description |> Option.map (fun v -> "description", encTextSource v)); Some("shapes", JArr(List.map encShape s.Shapes)); Some("style", encDrawStyle s.Style); (s.Title |> Option.map (fun v -> "title", encTextSource v)); Some("viewBox", encViewBox s.ViewBox) ] |> List.choose id)
 
-and private encBoxSpec (s: BoxSpec) : JVal =
+and private encBoxSpec<'Msg> (s: BoxSpec<'Msg>) : JVal =
     Canon.typed "Box" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); Some("layout", encLayoutMode s.Layout); Some("role", encBoxRole s.Role) ] |> List.choose id)
 
-and private encSplitPanelSpec (s: SplitPanelSpec) : JVal =
+and private encSplitPanelSpec<'Msg> (s: SplitPanelSpec<'Msg>) : JVal =
     Canon.typed "SplitPanel" ([ Some("children", JArr(List.map encNode s.Children)); Some("weight", JFloat s.Weight) ] |> List.choose id)
 
-and private encSummaryListSpec (s: SummaryListSpec) : JVal =
+and private encSummaryListSpec<'Msg> (s: SummaryListSpec<'Msg>) : JVal =
     Canon.typed "SummaryList" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)) ] |> List.choose id)
 
-and private encDisclosureSpec (s: DisclosureSpec) : JVal =
+and private encDisclosureSpec<'Msg> (s: DisclosureSpec<'Msg>) : JVal =
     Canon.typed "Disclosure" ([ Some("children", JArr(List.map encNode s.Children)); Some("defaultOpen", JBool s.DefaultOpen); Some("heading", encTextSource s.Heading); (s.OnToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")); Some("open", (encBinding JBool) s.Open) ] |> List.choose id)
 
-and private encModalSpec (s: ModalSpec) : JVal =
+and private encModalSpec<'Msg> (s: ModalSpec<'Msg>) : JVal =
     Canon.typed "Modal" ([ Some("children", JArr(List.map encNode s.Children)); Some("dismissable", JBool s.Dismissable); Some("onDismiss", encAction s.OnDismiss); Some("open", (encBinding JBool) s.Open); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)) ] |> List.choose id)
 
-and private encScrollAreaSpec (s: ScrollAreaSpec) : JVal =
+and private encScrollAreaSpec<'Msg> (s: ScrollAreaSpec<'Msg>) : JVal =
     Canon.typed "ScrollArea" ([ Some("children", JArr(List.map encNode s.Children)); Some("orientation", encScrollOrientation s.Orientation); (s.MaxHeight |> Option.map (fun v -> "maxHeight", JInt v)); (s.MaxWidth |> Option.map (fun v -> "maxWidth", JInt v)) ] |> List.choose id)
 
-and private encTabsSpec (s: TabsSpec) : JVal =
+and private encTabsSpec<'Msg> (s: TabsSpec<'Msg>) : JVal =
     Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.OnSelectTag |> Option.map (fun v -> "onSelectTag", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
 
-and private encStepperSpec (s: StepperSpec) : JVal =
+and private encStepperSpec<'Msg> (s: StepperSpec<'Msg>) : JVal =
     Canon.typed "Stepper" ([ Some("activeStep", (encBinding JInt) s.ActiveStep); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")) ] |> List.choose id)
 
-and private encButtonSpec (s: ButtonSpec) : JVal =
+and private encButtonSpec<'Msg> (s: ButtonSpec<'Msg>) : JVal =
     Canon.typed "Button" ([ Some("label", encTextSource s.Label); Some("onClick", encAction s.OnClick); Some("variant", encButtonVariant s.Variant); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Tooltip |> Option.map (fun v -> "tooltip", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
-and private encSelectSpec (s: SelectSpec) : JVal =
+and private encSelectSpec<'Msg> (s: SelectSpec<'Msg>) : JVal =
     Canon.typed "Select" ([ Some("label", encTextSource s.Label); (s.OnChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (s.OnChangeMulti |> Option.map (fun v -> "onChangeMulti", JStr "<closure>")); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); Some("value", (encBinding JStr) s.Value); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
 
-and private encFileUploadSpec (s: FileUploadSpec) : JVal =
+and private encFileUploadSpec<'Msg> (s: FileUploadSpec<'Msg>) : JVal =
     Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); Some("multiple", JBool s.Multiple); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
-and private encFormSpec (s: FormSpec) : JVal =
+and private encFormSpec<'Msg> (s: FormSpec<'Msg>) : JVal =
     Canon.typed "Form" ([ Some("fields", JArr(List.map encFormField s.Fields)); Some("onSubmit", encAction s.OnSubmit); Some("submitLabel", encTextSource s.SubmitLabel); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
-and private encFiltersSpec (s: FiltersSpec) : JVal =
+and private encFiltersSpec<'Msg> (s: FiltersSpec<'Msg>) : JVal =
     Canon.typed "Filters" ([ Some("items", JArr(List.map encFilterSpec s.Items)) ] |> List.choose id)
 
-and private encDataGridSpec (s: DataGridSpec) : JVal =
+and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
     Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); Some("source", (encBinding (fun _ -> JStr "<opaque>")) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
 
-and private encChartSpec (s: ChartSpec) : JVal =
+and private encChartSpec<'Msg> (s: ChartSpec<'Msg>) : JVal =
     Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding (fun _ -> JStr "<opaque>")) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
 
-and private encMapSpec (s: MapSpec) : JVal =
+and private encMapSpec<'Msg> (s: MapSpec<'Msg>) : JVal =
     Canon.typed "Map" ([ Some("centreLatitude", JFloat s.CentreLatitude); Some("centreLongitude", JFloat s.CentreLongitude); Some("source", (encBinding (fun __xs -> JArr(List.map encMapMarker __xs))) s.Source); Some("zoom", JInt s.Zoom); (s.OnMarkerClick |> Option.map (fun v -> "onMarkerClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encCustomSpec (s: CustomSpec) : JVal =
     Canon.typed "Custom" ([ Some("moduleId", JStr s.ModuleId); Some("componentId", JStr s.ComponentId); Some("props", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (fun _ -> JStr "<opaque>") v))) s.Props); (s.ContentHash |> Option.map (fun v -> "contentHash", encContentHash v)); (s.ExposedNodeIds |> Option.map (fun v -> "exposedNodeIds", JArr(List.map JStr v))) ] |> List.choose id)
 
-and private encErrorBoundarySpec (s: ErrorBoundarySpec) : JVal =
+and private encErrorBoundarySpec<'Msg> (s: ErrorBoundarySpec<'Msg>) : JVal =
     Canon.typed "ErrorBoundary" ([ Some("child", encNode s.Child); Some("fallback", encNode s.Fallback) ] |> List.choose id)
 
-and private encFragmentDeclSpec (s: FragmentDeclSpec) : JVal =
+and private encFragmentDeclSpec<'Msg> (s: FragmentDeclSpec<'Msg>) : JVal =
     Canon.typed "FragmentDecl" ([ Some("body", encNode s.Body); Some("name", JStr s.Name); (s.Holes |> Option.map (fun v -> "holes", JArr(List.map encHoleDecl v))); (s.Effect |> Option.map (fun v -> "effect", encEffectClass v)) ] |> List.choose id)
 
-and private encFragmentRefSpec (s: FragmentRefSpec) : JVal =
+and private encFragmentRefSpec<'Msg> (s: FragmentRefSpec<'Msg>) : JVal =
     Canon.typed "FragmentRef" ([ Some("name", JStr s.Name); (s.Args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)) ] |> List.choose id)
 
-and private encSwitchSpec (s: SwitchSpec) : JVal =
+and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =
     Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); Some("stateKey", JStr s.StateKey) ] |> List.choose id)
 
-and private encMountSpec (s: MountSpec) : JVal =
+and private encMountSpec<'Msg> (s: MountSpec<'Msg>) : JVal =
     Canon.typed "Mount" ([ Some("capabilities", JArr(List.map JStr s.Capabilities)); Some("channel", encGuestChannel s.Channel); (s.Inputs |> Option.map (fun v -> "inputs", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)); (s.OnBubble |> Option.map (fun v -> "onBubble", JStr "<closure>")); Some("scopeId", JStr s.ScopeId) ] |> List.choose id)
 
-let encodeNode (n: Node) : string = Canon.render (encNode n)
+let encodeNode (n: Node<'Msg>) : string = Canon.render (encNode n)
 
 let private dObj (j: JVal) : Result<(string * JVal) list, string> =
     match j with
@@ -1636,7 +1660,19 @@ let private decFontVoice (j: JVal) : Result<FontVoice, string> =
     | JStr "Structural" -> Ok FontVoice.Structural
     | _ -> Error "not a FontVoice"
 
-let rec private decNodeKind (j: JVal) : Result<NodeKind, string> =
+let private decMotion (j: JVal) : Result<Motion, string> =
+    match j with
+    | JStr "None" -> Ok Motion.None
+    | JStr "PulseDuringLoad" -> Ok Motion.PulseDuringLoad
+    | JStr "FadeInOnMount" -> Ok Motion.FadeInOnMount
+    | JStr "SlideInFromBelow" -> Ok Motion.SlideInFromBelow
+    | JStr "ShakeOnError" -> Ok Motion.ShakeOnError
+    | JStr "RotateOnRefresh" -> Ok Motion.RotateOnRefresh
+    | JStr "SlideInFromRight" -> Ok Motion.SlideInFromRight
+    | JStr "ExpandCollapse" -> Ok Motion.ExpandCollapse
+    | _ -> Error "not a Motion"
+
+let rec private decNodeKind (j: JVal) : Result<NodeKind<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dTag __fs |> Result.bind (fun __t ->
     match __t with
@@ -1681,14 +1717,16 @@ let rec private decNodeKind (j: JVal) : Result<NodeKind, string> =
     | "Mount" -> decMountSpec j |> Result.map NodeKind.Mount
     | __other -> Error ("unknown node kind: " + __other)))
 
-and private decNode (j: JVal) : Result<Node, string> =
+and private decNode (j: JVal) : Result<Node<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "id" __fs dStr |> Result.bind (fun id ->
     dReq "kind" __fs decNodeKind |> Result.bind (fun kind ->
     dOpt "accessibility" __fs decAccessibility |> Result.bind (fun accessibility ->
+    Ok (None) |> Result.bind (fun extraAttributes ->
+    Ok (None) |> Result.bind (fun motion ->
     dOpt "state" __fs decStateBehaviour |> Result.bind (fun state ->
     dOpt "style" __fs decSemanticStyle |> Result.bind (fun style ->
-    Ok { Id = id; Kind = kind; Accessibility = accessibility; State = state; Style = style }))))))
+    Ok { Id = id; Kind = kind; Accessibility = accessibility; ExtraAttributes = extraAttributes; Motion = motion; State = state; Style = style }))))))))
 
 and private decTextSource (j: JVal) : Result<TextSource, string> =
     match j with
@@ -1725,14 +1763,14 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             dReq "key" __fs dStr |> Result.bind (fun key ->
             Ok(Binding.State(defaultValue, key))))
         | "Computed" ->
-            Ok() |> Result.bind (fun fn ->
+            Ok ((fun _ -> Unchecked.defaultof<'T>)) |> Result.bind (fun fn ->
             Ok(Binding.Computed(fn)))
         | "Local" ->
             dReq "flushOn" __fs decLocalFlushTrigger |> Result.bind (fun flushOn ->
-            Ok() |> Result.bind (fun format ->
+            Ok ((fun _ -> "")) |> Result.bind (fun format ->
             dReq "initialFrom" __fs (decBinding decT) |> Result.bind (fun initialFrom ->
-            dPresent "onCommit" __fs |> Result.bind (fun onCommit ->
-            Ok() |> Result.bind (fun parse ->
+            (dPresent "onCommit" __fs |> Result.map (Option.map (fun () -> (fun _ -> ("<closure>" :> obj))))) |> Result.bind (fun onCommit ->
+            Ok ((fun _ -> Error "<closure>")) |> Result.bind (fun parse ->
             Ok(Binding.Local(flushOn, format, initialFrom, onCommit, parse)))))))
         | "Format" ->
             dReq "format" __fs decFormat |> Result.bind (fun format ->
@@ -1768,12 +1806,12 @@ and private decCellFormat (j: JVal) : Result<CellFormat, string> =
             dReq "format" __fs dStr |> Result.bind (fun format ->
             Ok(CellFormat.Date(format)))
         | "Custom" ->
-            Ok() |> Result.bind (fun fn ->
+            Ok ((fun _ -> "")) |> Result.bind (fun fn ->
             Ok(CellFormat.Custom(fn)))
         | __other -> Error ("unknown CellFormat case: " + __other))
     | _ -> Error "expected a CellFormat object"
 
-and private decAction (j: JVal) : Result<Action, string> =
+and private decAction (j: JVal) : Result<Action<obj>, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
         dTag __fs |> Result.bind (fun __t ->
@@ -1784,7 +1822,9 @@ and private decAction (j: JVal) : Result<Action, string> =
         | "WriteToClipboard" ->
             dReq "text" __fs dStr |> Result.bind (fun text ->
             Ok(Action.WriteToClipboard(text)))
-        | "Dispatch" -> Ok Action.Dispatch
+        | "Dispatch" ->
+            Ok ((("<dispatch>" :> obj))) |> Result.bind (fun msg ->
+            Ok(Action.Dispatch(msg)))
         | "Invoke" ->
             dReq "args" __fs (dList decInvokeArg) |> Result.bind (fun args ->
             dReq "capabilityId" __fs dStr |> Result.bind (fun capabilityId ->
@@ -1792,12 +1832,12 @@ and private decAction (j: JVal) : Result<Action, string> =
         | "ReadFileBody" ->
             dReq "encoding" __fs decFileReadEncoding |> Result.bind (fun encoding ->
             dReq "fileRef" __fs dStr |> Result.bind (fun fileRef ->
-            dPresent "onRead" __fs |> Result.bind (fun onRead ->
+            (dPresent "onRead" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> ("<closure>" :> obj))))) |> Result.bind (fun onRead ->
             Ok(Action.ReadFileBody(encoding, fileRef, onRead)))))
         | "Call" ->
             dReq "endpoint" __fs dStr |> Result.bind (fun endpoint ->
             dOpt "into" __fs decCallResultTarget |> Result.bind (fun into ->
-            dPresent "onResult" __fs |> Result.bind (fun onResult ->
+            (dPresent "onResult" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> ("<closure>" :> obj))))) |> Result.bind (fun onResult ->
             Ok(Action.Call(endpoint, into, onResult)))))
         | "Navigate" ->
             dReq "route" __fs dStr |> Result.bind (fun route ->
@@ -1900,48 +1940,48 @@ and private decLayoutMode (j: JVal) : Result<LayoutMode, string> =
         | __other -> Error ("unknown LayoutMode case: " + __other))
     | _ -> Error "expected a LayoutMode object"
 
-and private decFormFieldKind (j: JVal) : Result<FormFieldKind, string> =
+and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
         dTag __fs |> Result.bind (fun __t ->
         match __t with
         | "Text" ->
-            dPresent "onChange" __fs |> Result.bind (fun onChange ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FormFieldKind.Text(onChange, value))))
         | "Number" ->
-            dPresent "onChange" __fs |> Result.bind (fun onChange ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
             Ok(FormFieldKind.Number(onChange, value))))
         | "Checkbox" ->
-            dPresent "onToggle" __fs |> Result.bind (fun onToggle ->
+            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
             dReq "value" __fs (decBinding dBool) |> Result.bind (fun value ->
             Ok(FormFieldKind.Checkbox(onToggle, value))))
         | "Choice" ->
-            dPresent "onChange" __fs |> Result.bind (fun onChange ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FormFieldKind.Choice(onChange, options, value)))))
         | "TextArea" ->
-            dPresent "onChange" __fs |> Result.bind (fun onChange ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "rows" __fs dInt |> Result.bind (fun rows ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FormFieldKind.TextArea(onChange, rows, value)))))
         | "RangedNumber" ->
-            dPresent "onChange" __fs |> Result.bind (fun onChange ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
             dOpt "min" __fs dFloat |> Result.bind (fun min ->
             dOpt "max" __fs dFloat |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
             Ok(FormFieldKind.RangedNumber(onChange, value, min, max, step)))))))
         | "SegmentedChoice" ->
-            dPresent "onChange" __fs |> Result.bind (fun onChange ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dReq "orientation" __fs decOrientation |> Result.bind (fun orientation ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FormFieldKind.SegmentedChoice(onChange, options, orientation, value))))))
         | "Date" ->
-            dPresent "onChange" __fs |> Result.bind (fun onChange ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             dReq "variant" __fs decDateVariant |> Result.bind (fun variant ->
             dOpt "min" __fs dStr |> Result.bind (fun min ->
@@ -1951,26 +1991,26 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind, string> =
         | __other -> Error ("unknown FormFieldKind case: " + __other))
     | _ -> Error "expected a FormFieldKind object"
 
-and private decFilterKind (j: JVal) : Result<FilterKind, string> =
+and private decFilterKind (j: JVal) : Result<FilterKind<obj>, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
         dTag __fs |> Result.bind (fun __t ->
         match __t with
         | "Text" ->
-            dPresent "onChange" __fs |> Result.bind (fun onChange ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FilterKind.Text(onChange, value))))
         | "Choice" ->
-            dPresent "onChange" __fs |> Result.bind (fun onChange ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FilterKind.Choice(onChange, options, value)))))
         | "Range" ->
-            dPresent "onChange" __fs |> Result.bind (fun onChange ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float * float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             Ok() |> Result.bind (fun value ->
             Ok(FilterKind.Range(onChange, value))))
         | "SegmentedChoice" ->
-            dPresent "onChange" __fs |> Result.bind (fun onChange ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dReq "orientation" __fs decOrientation |> Result.bind (fun orientation ->
             dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
@@ -1993,7 +2033,7 @@ and private decColumnWidth (j: JVal) : Result<ColumnWidth, string> =
         | __other -> Error ("unknown ColumnWidth case: " + __other))
     | _ -> Error "expected a ColumnWidth object"
 
-and private decCellKindErased (j: JVal) : Result<CellKindErased, string> =
+and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
         dTag __fs |> Result.bind (fun __t ->
@@ -2002,33 +2042,33 @@ and private decCellKindErased (j: JVal) : Result<CellKindErased, string> =
         | "Numeric" -> Ok CellKindErased.Numeric
         | "Date" -> Ok CellKindErased.Date
         | "Editable" ->
-            dPresent "onEdit" __fs |> Result.bind (fun onEdit ->
+            (dPresent "onEdit" __fs |> Result.map (Option.map (fun () -> (fun (_: obj * obj) -> Action.Chain [])))) |> Result.bind (fun onEdit ->
             Ok(CellKindErased.Editable(onEdit)))
         | "Checkbox" ->
-            Ok() |> Result.bind (fun get ->
-            dPresent "onToggle" __fs |> Result.bind (fun onToggle ->
+            Ok ((fun _ -> false)) |> Result.bind (fun get ->
+            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: obj * bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
             Ok(CellKindErased.Checkbox(get, onToggle))))
         | "Button" ->
             dReq "label" __fs decTextSource |> Result.bind (fun label ->
-            dPresent "onClick" __fs |> Result.bind (fun onClick ->
+            (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onClick ->
             Ok(CellKindErased.Button(label, onClick))))
         | "ButtonGroup" ->
             dReq "buttons" __fs (dList decButtonGroupItem) |> Result.bind (fun buttons ->
             Ok(CellKindErased.ButtonGroup(buttons)))
         | "Link" ->
-            Ok() |> Result.bind (fun hrefFn ->
-            Ok() |> Result.bind (fun labelFn ->
+            Ok ((fun _ -> "")) |> Result.bind (fun hrefFn ->
+            Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
             Ok(CellKindErased.Link(hrefFn, labelFn))))
         | "Pill" ->
-            Ok() |> Result.bind (fun labelFn ->
-            Ok() |> Result.bind (fun toneFn ->
+            Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
+            Ok ((fun _ -> ToneVariant.Default)) |> Result.bind (fun toneFn ->
             Ok(CellKindErased.Pill(labelFn, toneFn))))
         | "Progress" ->
-            Ok() |> Result.bind (fun fractionFn ->
-            Ok() |> Result.bind (fun labelFn ->
+            Ok ((fun _ -> 0.0)) |> Result.bind (fun fractionFn ->
+            Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
             Ok(CellKindErased.Progress(fractionFn, labelFn))))
         | "Custom" ->
-            Ok() |> Result.bind (fun fn ->
+            Ok ((fun _ -> Unchecked.defaultof<Node<obj>>)) |> Result.bind (fun fn ->
             Ok(CellKindErased.Custom(fn)))
         | __other -> Error ("unknown CellKindErased case: " + __other))
     | _ -> Error "expected a CellKindErased object"
@@ -2098,7 +2138,7 @@ and private decHoleDecl (j: JVal) : Result<HoleDecl, string> =
         | __other -> Error ("unknown HoleDecl case: " + __other))
     | _ -> Error "expected a HoleDecl object"
 
-and private decFragmentArg (j: JVal) : Result<FragmentArg, string> =
+and private decFragmentArg (j: JVal) : Result<FragmentArg<obj>, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
         dTag __fs |> Result.bind (fun __t ->
@@ -2212,10 +2252,10 @@ and private decSemanticStyle (j: JVal) : Result<SemanticStyle, string> =
     dDef "weight" __fs decStyleWeight (StyleWeight.Standard) |> Result.bind (fun weight ->
     Ok { Emphasis = emphasis; Role = role; Tone = tone; Voice = voice; Weight = weight }))))))
 
-and private decStateBehaviour (j: JVal) : Result<StateBehaviour, string> =
+and private decStateBehaviour (j: JVal) : Result<StateBehaviour<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dOpt "onEmpty" __fs decNode |> Result.bind (fun onEmpty ->
-    dPresent "onError" __fs |> Result.bind (fun onError ->
+    (dPresent "onError" __fs |> Result.map (Option.map (fun () -> (fun _ -> Unchecked.defaultof<Node<obj>>)))) |> Result.bind (fun onError ->
     dOpt "onLoading" __fs decNode |> Result.bind (fun onLoading ->
     Ok { OnEmpty = onEmpty; OnError = onError; OnLoading = onLoading }))))
 
@@ -2229,7 +2269,7 @@ and private decAccessibility (j: JVal) : Result<Accessibility, string> =
     dOpt "role" __fs dStr |> Result.bind (fun role ->
     Ok { DescribedBy = describedBy; Hidden = hidden; Label = label; LabelledBy = labelledBy; LiveRegion = liveRegion; Role = role })))))))
 
-and private decSwitchCase (j: JVal) : Result<SwitchCase, string> =
+and private decSwitchCase (j: JVal) : Result<SwitchCase<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "child" __fs decNode |> Result.bind (fun child ->
     dReq "match" __fs dStr |> Result.bind (fun ``match`` ->
@@ -2292,7 +2332,7 @@ and private decStaticRows (j: JVal) : Result<StaticRows, string> =
     dReq "rows" __fs (dList (dList dStr)) |> Result.bind (fun rows ->
     Ok { Headers = headers; Rows = rows })))
 
-and private decFormField (j: JVal) : Result<FormField, string> =
+and private decFormField (j: JVal) : Result<FormField<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "id" __fs dStr |> Result.bind (fun id ->
     dReq "kind" __fs decFormFieldKind |> Result.bind (fun kind ->
@@ -2301,7 +2341,7 @@ and private decFormField (j: JVal) : Result<FormField, string> =
     dOpt "help" __fs decTextSource |> Result.bind (fun help ->
     Ok { Id = id; Kind = kind; Label = label; Required = required; Help = help }))))))
 
-and private decFilterSpec (j: JVal) : Result<FilterSpec, string> =
+and private decFilterSpec (j: JVal) : Result<FilterSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "kind" __fs decFilterKind |> Result.bind (fun kind ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
@@ -2315,19 +2355,19 @@ and private decTabHeader (j: JVal) : Result<TabHeader, string> =
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     Ok { Label = label; Icon = icon; Disabled = disabled }))))
 
-and private decColumnErased (j: JVal) : Result<ColumnErased, string> =
+and private decColumnErased (j: JVal) : Result<ColumnErased<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
     dReq "kind" __fs decCellKindErased |> Result.bind (fun kind ->
     dReq "label" __fs dStr |> Result.bind (fun label ->
-    Ok() |> Result.bind (fun value ->
+    Ok ((fun _ -> ("<closure>" :> obj))) |> Result.bind (fun value ->
     dDef "width" __fs decColumnWidth (ColumnWidth.Auto) |> Result.bind (fun width ->
     Ok { Format = format; Kind = kind; Label = label; Value = value; Width = width }))))))
 
-and private decButtonGroupItem (j: JVal) : Result<ButtonGroupItem, string> =
+and private decButtonGroupItem (j: JVal) : Result<ButtonGroupItem<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dPresent "onClick" __fs |> Result.bind (fun onClick ->
+    (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onClick ->
     Ok { Label = label; OnClick = onClick })))
 
 and private decContentHash (j: JVal) : Result<ContentHash, string> =
@@ -2476,7 +2516,7 @@ and private decDrawingSpec (j: JVal) : Result<DrawingSpec, string> =
     dReq "viewBox" __fs decViewBox |> Result.bind (fun viewBox ->
     Ok { Description = description; Shapes = shapes; Style = style; Title = title; ViewBox = viewBox }))))))
 
-and private decBoxSpec (j: JVal) : Result<BoxSpec, string> =
+and private decBoxSpec (j: JVal) : Result<BoxSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
@@ -2484,28 +2524,28 @@ and private decBoxSpec (j: JVal) : Result<BoxSpec, string> =
     dReq "role" __fs decBoxRole |> Result.bind (fun role ->
     Ok { Children = children; Heading = heading; Layout = layout; Role = role })))))
 
-and private decSplitPanelSpec (j: JVal) : Result<SplitPanelSpec, string> =
+and private decSplitPanelSpec (j: JVal) : Result<SplitPanelSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dReq "weight" __fs dFloat |> Result.bind (fun weight ->
     Ok { Children = children; Weight = weight })))
 
-and private decSummaryListSpec (j: JVal) : Result<SummaryListSpec, string> =
+and private decSummaryListSpec (j: JVal) : Result<SummaryListSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
     Ok { Children = children; Heading = heading })))
 
-and private decDisclosureSpec (j: JVal) : Result<DisclosureSpec, string> =
+and private decDisclosureSpec (j: JVal) : Result<DisclosureSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dReq "defaultOpen" __fs dBool |> Result.bind (fun defaultOpen ->
     dReq "heading" __fs decTextSource |> Result.bind (fun heading ->
-    dPresent "onToggle" __fs |> Result.bind (fun onToggle ->
+    (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
     dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
     Ok { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = onToggle; Open = ``open`` }))))))
 
-and private decModalSpec (j: JVal) : Result<ModalSpec, string> =
+and private decModalSpec (j: JVal) : Result<ModalSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dReq "dismissable" __fs dBool |> Result.bind (fun dismissable ->
@@ -2514,7 +2554,7 @@ and private decModalSpec (j: JVal) : Result<ModalSpec, string> =
     dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
     Ok { Children = children; Dismissable = dismissable; OnDismiss = onDismiss; Open = ``open``; Heading = heading }))))))
 
-and private decScrollAreaSpec (j: JVal) : Result<ScrollAreaSpec, string> =
+and private decScrollAreaSpec (j: JVal) : Result<ScrollAreaSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
     dReq "orientation" __fs decScrollOrientation |> Result.bind (fun orientation ->
@@ -2522,25 +2562,25 @@ and private decScrollAreaSpec (j: JVal) : Result<ScrollAreaSpec, string> =
     dOpt "maxWidth" __fs dInt |> Result.bind (fun maxWidth ->
     Ok { Children = children; Orientation = orientation; MaxHeight = maxHeight; MaxWidth = maxWidth })))))
 
-and private decTabsSpec (j: JVal) : Result<TabsSpec, string> =
+and private decTabsSpec (j: JVal) : Result<TabsSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "activeIndex" __fs (decBinding dInt) |> Result.bind (fun activeIndex ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    dPresent "onSelect" __fs |> Result.bind (fun onSelect ->
-    dPresent "onSelectTag" __fs |> Result.bind (fun onSelectTag ->
+    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: int) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
+    (dPresent "onSelectTag" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onSelectTag ->
     dOpt "tabHeaders" __fs (dList decTabHeader) |> Result.bind (fun tabHeaders ->
     dOpt "tabTags" __fs (dList dStr) |> Result.bind (fun tabTags ->
     dOpt "activeTag" __fs (decBinding dStr) |> Result.bind (fun activeTag ->
     Ok { ActiveIndex = activeIndex; Children = children; OnSelect = onSelect; OnSelectTag = onSelectTag; TabHeaders = tabHeaders; TabTags = tabTags; ActiveTag = activeTag }))))))))
 
-and private decStepperSpec (j: JVal) : Result<StepperSpec, string> =
+and private decStepperSpec (j: JVal) : Result<StepperSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "activeStep" __fs (decBinding dInt) |> Result.bind (fun activeStep ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    dPresent "onSelect" __fs |> Result.bind (fun onSelect ->
+    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: int) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
     Ok { ActiveStep = activeStep; Children = children; OnSelect = onSelect }))))
 
-and private decButtonSpec (j: JVal) : Result<ButtonSpec, string> =
+and private decButtonSpec (j: JVal) : Result<ButtonSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
     dReq "onClick" __fs decAction |> Result.bind (fun onClick ->
@@ -2550,11 +2590,11 @@ and private decButtonSpec (j: JVal) : Result<ButtonSpec, string> =
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     Ok { Label = label; OnClick = onClick; Variant = variant; Icon = icon; Tooltip = tooltip; Disabled = disabled })))))))
 
-and private decSelectSpec (j: JVal) : Result<SelectSpec, string> =
+and private decSelectSpec (j: JVal) : Result<SelectSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dPresent "onChange" __fs |> Result.bind (fun onChange ->
-    dPresent "onChangeMulti" __fs |> Result.bind (fun onChangeMulti ->
+    (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+    (dPresent "onChangeMulti" __fs |> Result.map (Option.map (fun () -> (fun (_: string list) -> Action.Chain [])))) |> Result.bind (fun onChangeMulti ->
     dReq "source" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun source ->
     dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
     dOpt "placeholder" __fs decTextSource |> Result.bind (fun placeholder ->
@@ -2563,16 +2603,16 @@ and private decSelectSpec (j: JVal) : Result<SelectSpec, string> =
     dOpt "values" __fs (decBinding (dList dStr)) |> Result.bind (fun values ->
     Ok { Label = label; OnChange = onChange; OnChangeMulti = onChangeMulti; Source = source; Value = value; Placeholder = placeholder; Disabled = disabled; Multiple = multiple; Values = values }))))))))))
 
-and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec, string> =
+and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "accept" __fs (dList dStr) |> Result.bind (fun accept ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
     dReq "multiple" __fs dBool |> Result.bind (fun multiple ->
-    dPresent "onSelect" __fs |> Result.bind (fun onSelect ->
+    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: obj list) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     Ok { Accept = accept; Label = label; Multiple = multiple; OnSelect = onSelect; Disabled = disabled }))))))
 
-and private decFormSpec (j: JVal) : Result<FormSpec, string> =
+and private decFormSpec (j: JVal) : Result<FormSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "fields" __fs (dList decFormField) |> Result.bind (fun fields ->
     dReq "onSubmit" __fs decAction |> Result.bind (fun onSubmit ->
@@ -2580,22 +2620,22 @@ and private decFormSpec (j: JVal) : Result<FormSpec, string> =
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     Ok { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = disabled })))))
 
-and private decFiltersSpec (j: JVal) : Result<FiltersSpec, string> =
+and private decFiltersSpec (j: JVal) : Result<FiltersSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "items" __fs (dList decFilterSpec) |> Result.bind (fun items ->
     Ok { Items = items }))
 
-and private decDataGridSpec (j: JVal) : Result<DataGridSpec, string> =
+and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "columns" __fs (dList decColumnErased) |> Result.bind (fun columns ->
     dDef "editable" __fs dBool (false) |> Result.bind (fun editable ->
-    dPresent "rowKey" __fs |> Result.bind (fun rowKey ->
+    (dPresent "rowKey" __fs |> Result.map (Option.map (fun () -> (fun _ -> "")))) |> Result.bind (fun rowKey ->
     dReq "source" __fs (decBinding dUnit) |> Result.bind (fun source ->
     dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
-    dPresent "onRowClick" __fs |> Result.bind (fun onRowClick ->
+    (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
     Ok { Columns = columns; Editable = editable; RowKey = rowKey; Source = source; StaticRows = staticRows; OnRowClick = onRowClick })))))))
 
-and private decChartSpec (j: JVal) : Result<ChartSpec, string> =
+and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "kind" __fs decChartKind |> Result.bind (fun kind ->
     dReq "source" __fs (decBinding dUnit) |> Result.bind (fun source ->
@@ -2603,16 +2643,16 @@ and private decChartSpec (j: JVal) : Result<ChartSpec, string> =
     dReq "xField" __fs dStr |> Result.bind (fun xField ->
     dReq "yFields" __fs (dList dStr) |> Result.bind (fun yFields ->
     dOpt "title" __fs decTextSource |> Result.bind (fun title ->
-    dPresent "onPointClick" __fs |> Result.bind (fun onPointClick ->
+    (dPresent "onPointClick" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onPointClick ->
     Ok { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = title; OnPointClick = onPointClick }))))))))
 
-and private decMapSpec (j: JVal) : Result<MapSpec, string> =
+and private decMapSpec (j: JVal) : Result<MapSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "centreLatitude" __fs dFloat |> Result.bind (fun centreLatitude ->
     dReq "centreLongitude" __fs dFloat |> Result.bind (fun centreLongitude ->
     dReq "source" __fs (decBinding (dList decMapMarker)) |> Result.bind (fun source ->
     dReq "zoom" __fs dInt |> Result.bind (fun zoom ->
-    dPresent "onMarkerClick" __fs |> Result.bind (fun onMarkerClick ->
+    (dPresent "onMarkerClick" __fs |> Result.map (Option.map (fun () -> (fun (_: MapMarker) -> Action.Chain [])))) |> Result.bind (fun onMarkerClick ->
     Ok { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = onMarkerClick }))))))
 
 and private decCustomSpec (j: JVal) : Result<CustomSpec, string> =
@@ -2624,13 +2664,13 @@ and private decCustomSpec (j: JVal) : Result<CustomSpec, string> =
     dOpt "exposedNodeIds" __fs (dList dStr) |> Result.bind (fun exposedNodeIds ->
     Ok { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = contentHash; ExposedNodeIds = exposedNodeIds }))))))
 
-and private decErrorBoundarySpec (j: JVal) : Result<ErrorBoundarySpec, string> =
+and private decErrorBoundarySpec (j: JVal) : Result<ErrorBoundarySpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "child" __fs decNode |> Result.bind (fun child ->
     dReq "fallback" __fs decNode |> Result.bind (fun fallback ->
     Ok { Child = child; Fallback = fallback })))
 
-and private decFragmentDeclSpec (j: JVal) : Result<FragmentDeclSpec, string> =
+and private decFragmentDeclSpec (j: JVal) : Result<FragmentDeclSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "body" __fs decNode |> Result.bind (fun body ->
     dReq "name" __fs dStr |> Result.bind (fun name ->
@@ -2638,34 +2678,34 @@ and private decFragmentDeclSpec (j: JVal) : Result<FragmentDeclSpec, string> =
     dOpt "effect" __fs decEffectClass |> Result.bind (fun effect ->
     Ok { Body = body; Name = name; Holes = holes; Effect = effect })))))
 
-and private decFragmentRefSpec (j: JVal) : Result<FragmentRefSpec, string> =
+and private decFragmentRefSpec (j: JVal) : Result<FragmentRefSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "name" __fs dStr |> Result.bind (fun name ->
     dOpt "args" __fs (dMap decFragmentArg) |> Result.bind (fun args ->
     Ok { Name = name; Args = args })))
 
-and private decSwitchSpec (j: JVal) : Result<SwitchSpec, string> =
+and private decSwitchSpec (j: JVal) : Result<SwitchSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "cases" __fs (dList decSwitchCase) |> Result.bind (fun cases ->
     dReq "default" __fs decNode |> Result.bind (fun ``default`` ->
     dReq "stateKey" __fs dStr |> Result.bind (fun stateKey ->
     Ok { Cases = cases; Default = ``default``; StateKey = stateKey }))))
 
-and private decMountSpec (j: JVal) : Result<MountSpec, string> =
+and private decMountSpec (j: JVal) : Result<MountSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "capabilities" __fs (dList dStr) |> Result.bind (fun capabilities ->
     dReq "channel" __fs decGuestChannel |> Result.bind (fun channel ->
     dOpt "inputs" __fs (dMap decFragmentArg) |> Result.bind (fun inputs ->
-    dPresent "onBubble" __fs |> Result.bind (fun onBubble ->
+    (dPresent "onBubble" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onBubble ->
     dReq "scopeId" __fs dStr |> Result.bind (fun scopeId ->
     Ok { Capabilities = capabilities; Channel = channel; Inputs = inputs; OnBubble = onBubble; ScopeId = scopeId }))))))
 
 /// Structural decode. The policy layer (diagnostics, §16 lenient-accept,
 /// the reject set) composes ABOVE this — see the Phase 672 note in the generator.
-let decodeNode (s: string) : Result<Node, string> =
+let decodeNode (s: string) : Result<Node<obj>, string> =
     Json.parse s |> Result.bind decNode
 
-let private witnessKindTag (n: Node) : string =
+let private witnessKindTag (n: Node<'Msg>) : string =
     match n.Kind with
     | NodeKind.Heading _ -> "Heading"
     | NodeKind.Badge _ -> "Badge"
@@ -2707,7 +2747,7 @@ let private witnessKindTag (n: Node) : string =
     | NodeKind.Switch _ -> "Switch"
     | NodeKind.Mount _ -> "Mount"
 
-let private witnessChildren (n: Node) : Node list =
+let private witnessChildren (n: Node<'Msg>) : Node<'Msg> list =
     match n.Kind with
     | NodeKind.Box s -> s.Children
     | NodeKind.SplitPanel s -> s.Children
@@ -2722,7 +2762,7 @@ let private witnessChildren (n: Node) : Node list =
     | NodeKind.Switch s -> [ s.Default ]
     | _ -> []
 
-let private witnessReplaceChildren (n: Node) (kids: Node list) : Node =
+let private witnessReplaceChildren (n: Node<'Msg>) (kids: Node<'Msg> list) : Node<'Msg> =
     match n.Kind with
     | NodeKind.Box s -> { n with Kind = NodeKind.Box { s with Children = kids } }
     | NodeKind.SplitPanel s -> { n with Kind = NodeKind.SplitPanel { s with Children = kids } }
@@ -2737,132 +2777,132 @@ let private witnessReplaceChildren (n: Node) (kids: Node list) : Node =
     | NodeKind.Switch s -> { n with Kind = NodeKind.Switch { s with Default = List.head kids } }
     | _ -> n
 
-let nodeWitness: NodeWitness<Node, string> =
+let nodeWitness: NodeWitness<Node<'Msg>, string> =
     { Id = fun n -> n.Id
       KindTag = witnessKindTag
       Children = witnessChildren
       ReplaceChildren = witnessReplaceChildren }
 
 // Validator scaffold — register domain RuleFamilies into `reg`; rule content stays domain-side.
-let runValidator (reg: Validator.Registry<Node, string>) (root: Node) : Defect<string> list =
+let runValidator (reg: Validator.Registry<Node<'Msg>, string>) (root: Node<'Msg>) : Defect<string> list =
     Validator.runAll nodeWitness reg root
 
 // Smart constructors — required-without-default fields are parameters; IDL-declared
 // defaults are filled, other optionals default to None.
 
-let mkHeading (id: string) (level: int) (text: TextSource) (variant: HeadingVariant) : Node =
-    { Id = id; Kind = NodeKind.Heading { Level = level; Text = text; Variant = variant }; Accessibility = None; State = None; Style = None }
+let mkHeading (id: string) (level: int) (text: TextSource) (variant: HeadingVariant) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Heading { Level = level; Text = text; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkBadge (id: string) (label: TextSource) (variant: BadgeVariant) : Node =
-    { Id = id; Kind = NodeKind.Badge { Label = label; Variant = variant }; Accessibility = None; State = None; Style = None }
+let mkBadge (id: string) (label: TextSource) (variant: BadgeVariant) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Badge { Label = label; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkMarkdown (id: string) (text: TextSource) : Node =
-    { Id = id; Kind = NodeKind.Markdown { Text = text }; Accessibility = None; State = None; Style = None }
+let mkMarkdown (id: string) (text: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Markdown { Text = text }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkMath (id: string) (source: string) (display: MathDisplay) : Node =
-    { Id = id; Kind = NodeKind.Math { Source = source; Display = display }; Accessibility = None; State = None; Style = None }
+let mkMath (id: string) (source: string) (display: MathDisplay) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Math { Source = source; Display = display }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkSkeleton (id: string) (rows: int) : Node =
-    { Id = id; Kind = NodeKind.Skeleton { Rows = rows }; Accessibility = None; State = None; Style = None }
+let mkSkeleton (id: string) (rows: int) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Skeleton { Rows = rows }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkList (id: string) (items: TextSource list) (ordered: bool) : Node =
-    { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered }; Accessibility = None; State = None; Style = None }
+let mkList (id: string) (items: TextSource list) (ordered: bool) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: ImageVariant) : Node =
-    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant }; Accessibility = None; State = None; Style = None }
+let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: ImageVariant) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node =
-    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None }; Accessibility = None; State = None; Style = None }
+let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkCallout (id: string) (body: TextSource) : Node =
-    { Id = id; Kind = NodeKind.Callout { Body = body; Dismissable = false; Tone = ToneVariant.Default; Heading = None; Icon = None }; Accessibility = None; State = None; Style = None }
+let mkCallout (id: string) (body: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Callout { Body = body; Dismissable = false; Tone = ToneVariant.Default; Heading = None; Icon = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkProgress (id: string) (fraction: Binding<float>) : Node =
-    { Id = id; Kind = NodeKind.Progress { Fraction = fraction; Indeterminate = false; Tone = ToneVariant.Default; Label = None; Caveat = None }; Accessibility = None; State = None; Style = None }
+let mkProgress (id: string) (fraction: Binding<float>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Progress { Fraction = fraction; Indeterminate = false; Tone = ToneVariant.Default; Label = None; Caveat = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkMetric (id: string) (label: TextSource) (value: Binding<float>) : Node =
-    { Id = id; Kind = NodeKind.Metric { Label = label; Value = value; Format = CellFormat.None; Tone = ToneVariant.Default; Weight = StyleWeight.Standard; Emphasis = Emphasis.Normal; Trend = None; TrendFormat = None; Icon = None; Subtext = None }; Accessibility = None; State = None; Style = None }
+let mkMetric (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Metric { Label = label; Value = value; Format = CellFormat.None; Tone = ToneVariant.Default; Weight = StyleWeight.Standard; Emphasis = Emphasis.Normal; Trend = None; TrendFormat = None; Icon = None; Subtext = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkLabelValueRow (id: string) (label: TextSource) (value: Binding<float>) : Node =
-    { Id = id; Kind = NodeKind.LabelValueRow { Emphasis = false; Format = CellFormat.None; Label = label; Value = value; Help = None }; Accessibility = None; State = None; Style = None }
+let mkLabelValueRow (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.LabelValueRow { Emphasis = false; Format = CellFormat.None; Label = label; Value = value; Help = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkFact (id: string) (label: TextSource) (value: TextSource) : Node =
-    { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value }; Accessibility = None; State = None; Style = None }
+let mkFact (id: string) (label: TextSource) (value: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkSparkline (id: string) (source: Binding<int list>) : Node =
-    { Id = id; Kind = NodeKind.Sparkline { Source = source }; Accessibility = None; State = None; Style = None }
+let mkSparkline (id: string) (source: Binding<int list>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Sparkline { Source = source }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: int list) (language: string) (lineNumbers: bool) : Node =
-    { Id = id; Kind = NodeKind.CodeBlock { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }; Accessibility = None; State = None; Style = None }
+let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: int list) (language: string) (lineNumbers: bool) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.CodeBlock { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node =
-    { Id = id; Kind = NodeKind.Toast { Dismissable = true; Message = message; Open = ``open``; Tone = ToneVariant.Default }; Accessibility = None; State = None; Style = None }
+let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Toast { Dismissable = true; Message = message; Open = ``open``; Tone = ToneVariant.Default }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkDrawing (id: string) (shapes: Shape list) (style: DrawStyle) (viewBox: ViewBox) : Node =
-    { Id = id; Kind = NodeKind.Drawing { Description = None; Shapes = shapes; Style = style; Title = None; ViewBox = viewBox }; Accessibility = None; State = None; Style = None }
+let mkDrawing (id: string) (shapes: Shape list) (style: DrawStyle) (viewBox: ViewBox) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Drawing { Description = None; Shapes = shapes; Style = style; Title = None; ViewBox = viewBox }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkBox (id: string) (children: Node list) (layout: LayoutMode) (role: BoxRole) : Node =
-    { Id = id; Kind = NodeKind.Box { Children = children; Heading = None; Layout = layout; Role = role }; Accessibility = None; State = None; Style = None }
+let mkBox (id: string) (children: Node<'Msg> list) (layout: LayoutMode) (role: BoxRole) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Box { Children = children; Heading = None; Layout = layout; Role = role }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkSplitPanel (id: string) (children: Node list) (weight: float) : Node =
-    { Id = id; Kind = NodeKind.SplitPanel { Children = children; Weight = weight }; Accessibility = None; State = None; Style = None }
+let mkSplitPanel (id: string) (children: Node<'Msg> list) (weight: float) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.SplitPanel { Children = children; Weight = weight }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkSummaryList (id: string) (children: Node list) : Node =
-    { Id = id; Kind = NodeKind.SummaryList { Children = children; Heading = None }; Accessibility = None; State = None; Style = None }
+let mkSummaryList (id: string) (children: Node<'Msg> list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.SummaryList { Children = children; Heading = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkDisclosure (id: string) (children: Node list) (defaultOpen: bool) (heading: TextSource) (``open``: Binding<bool>) : Node =
-    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` }; Accessibility = None; State = None; Style = None }
+let mkDisclosure (id: string) (children: Node<'Msg> list) (defaultOpen: bool) (heading: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkModal (id: string) (children: Node list) (dismissable: bool) (onDismiss: Action) (``open``: Binding<bool>) : Node =
-    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = onDismiss; Open = ``open``; Heading = None }; Accessibility = None; State = None; Style = None }
+let mkModal (id: string) (children: Node<'Msg> list) (dismissable: bool) (onDismiss: Action<'Msg>) (``open``: Binding<bool>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = onDismiss; Open = ``open``; Heading = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkScrollArea (id: string) (children: Node list) (orientation: ScrollOrientation) : Node =
-    { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None }; Accessibility = None; State = None; Style = None }
+let mkScrollArea (id: string) (children: Node<'Msg> list) (orientation: ScrollOrientation) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node list) : Node =
-    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; State = None; Style = None }
+let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkStepper (id: string) (activeStep: Binding<int>) (children: Node list) : Node =
-    { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None }; Accessibility = None; State = None; Style = None }
+let mkStepper (id: string) (activeStep: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkButton (id: string) (label: TextSource) (onClick: Action) (variant: ButtonVariant) : Node =
-    { Id = id; Kind = NodeKind.Button { Label = label; OnClick = onClick; Variant = variant; Icon = None; Tooltip = None; Disabled = None }; Accessibility = None; State = None; Style = None }
+let mkButton (id: string) (label: TextSource) (onClick: Action<'Msg>) (variant: ButtonVariant) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Button { Label = label; OnClick = onClick; Variant = variant; Icon = None; Tooltip = None; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkSelect (id: string) (label: TextSource) (source: Binding<SelectOption list>) (value: Binding<string>) : Node =
-    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None }; Accessibility = None; State = None; Style = None }
+let mkSelect (id: string) (label: TextSource) (source: Binding<SelectOption list>) (value: Binding<string>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) : Node =
-    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None }; Accessibility = None; State = None; Style = None }
+let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkForm (id: string) (fields: FormField list) (onSubmit: Action) (submitLabel: TextSource) : Node =
-    { Id = id; Kind = NodeKind.Form { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = None }; Accessibility = None; State = None; Style = None }
+let mkForm (id: string) (fields: FormField<'Msg> list) (onSubmit: Action<'Msg>) (submitLabel: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Form { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkFilters (id: string) (items: FilterSpec list) : Node =
-    { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; State = None; Style = None }
+let mkFilters (id: string) (items: FilterSpec<'Msg> list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkDataGrid (id: string) (columns: ColumnErased list) (source: Binding<unit>) : Node =
-    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; State = None; Style = None }
+let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<unit>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkChart (id: string) (kind: ChartKind) (source: Binding<unit>) (stacked: bool) (xField: string) (yFields: string list) : Node =
-    { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; OnPointClick = None }; Accessibility = None; State = None; Style = None }
+let mkChart (id: string) (kind: ChartKind) (source: Binding<unit>) (stacked: bool) (xField: string) (yFields: string list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node =
-    { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; State = None; Style = None }
+let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<string, unit>) : Node =
-    { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; State = None; Style = None }
+let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<string, unit>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkErrorBoundary (id: string) (child: Node) (fallback: Node) : Node =
-    { Id = id; Kind = NodeKind.ErrorBoundary { Child = child; Fallback = fallback }; Accessibility = None; State = None; Style = None }
+let mkErrorBoundary (id: string) (child: Node<'Msg>) (fallback: Node<'Msg>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.ErrorBoundary { Child = child; Fallback = fallback }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkFragmentDecl (id: string) (body: Node) (name: string) : Node =
-    { Id = id; Kind = NodeKind.FragmentDecl { Body = body; Name = name; Holes = None; Effect = None }; Accessibility = None; State = None; Style = None }
+let mkFragmentDecl (id: string) (body: Node<'Msg>) (name: string) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.FragmentDecl { Body = body; Name = name; Holes = None; Effect = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkFragmentRef (id: string) (name: string) : Node =
-    { Id = id; Kind = NodeKind.FragmentRef { Name = name; Args = None }; Accessibility = None; State = None; Style = None }
+let mkFragmentRef (id: string) (name: string) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.FragmentRef { Name = name; Args = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkSwitch (id: string) (cases: SwitchCase list) (``default``: Node) (stateKey: string) : Node =
-    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; StateKey = stateKey }; Accessibility = None; State = None; Style = None }
+let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; StateKey = stateKey }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkMount (id: string) (capabilities: string list) (channel: GuestChannel) (scopeId: string) : Node =
-    { Id = id; Kind = NodeKind.Mount { Capabilities = capabilities; Channel = channel; Inputs = None; OnBubble = None; ScopeId = scopeId }; Accessibility = None; State = None; Style = None }
+let mkMount (id: string) (capabilities: string list) (channel: GuestChannel) (scopeId: string) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Mount { Capabilities = capabilities; Channel = channel; Inputs = None; OnBubble = None; ScopeId = scopeId }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
