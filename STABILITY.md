@@ -304,6 +304,72 @@ node are contained data, not tree structure, and are unaffected.
 hosts adopting independently, not a supported authoring form — the encoder never writes the field,
 and the tolerance is removed once every host is positionless (`fuaran#687`).
 
+## Recorded breaking change — 0.5.0, the opaque correlation slot + the validate telemetry leg
+
+Phase 330's public half. Two changes, both requiring consumer edits.
+
+`RenderContext` gains a required `SessionContext: Map<string, string>` — the host's opaque
+correlation slot, read per render and stamped onto `RenderFailureTelemetry` by
+`emitRenderFailureWithContext` via the well-known keys `Render.promptIdKey` / `Render.userIdKey`.
+
+```fsharp
+// 0.4.0
+{ Sources = …; Sink = … }
+
+// 0.5.0 — every RenderContext literal names the new field
+{ Sources = …; Sink = …; SessionContext = Map.empty }
+```
+
+Deliberately a **map, not a typed record**. The renderer does not know, and must not know, what a
+host's ids mean — it threads and stamps them; a typed `{ PromptId; TurnId; UserId }` would publish a
+host's correlation design on a public surface, and a map cannot by construction. Precedent:
+`Node.ExtraAttributes`. The slot is never hashed and never on the wire. A `Mount` guest inherits the
+host's context, so a failure inside a mounted region belongs to the interaction that mounted it. The
+node-hash `CorrelationId` stays alongside as the intra-frame disambiguator — a different job.
+
+`IFuaranTelemetrySink` gains a **sixth member** for the validate leg, with the new
+`ValidateOutcomeTelemetry` record and `ValidateOutcome` DU (`Clean` / `Warnings` / `Errors` /
+`NotRun`). Net-new rather than a wiring fix: `Fuaran.UI.Validator` is a build-time AST walker over
+source and cannot see a tree produced at runtime, so no validate leg existed to wire. `NotRun`
+carries a reason but **no count** — an aggregate reading "we could not check" as "zero findings"
+would report a broken validator as a clean session.
+
+**Major by the first test in the table above** — a required record field and an added interface
+member both stop consumer code compiling. Migration is mechanical: add `SessionContext = Map.empty`
+to each `RenderContext` literal (which reproduces 0.4.0 behaviour exactly), and implement the sixth
+sink member. The pre-330 `emitRenderFailure` arity survives as a `Map.empty` wrapper, so existing
+call sites of *that* function are unchanged.
+
+## Recorded change — 0.6.0, correlation-aware render entry + validator corrections
+
+**Additive on the renderer.** `renderWithSourcesSinkAndContext` is `renderWithSourcesAndSink` plus
+the host's `SessionContext` — a separate entry point rather than a parameter on the existing one, so
+a host with no correlation context never writes `Map.empty` at a call site that never had the
+concept. The context is a **value read once for this render**: a host that captures one at
+construction and reuses it freezes the first interaction's id onto every later frame's telemetry.
+
+**`Fuaran.UI.Validator` behaviour changes.** Two false-positive classes removed and one new opt-out.
+All three change what an existing project's `Validate` run reports, so they are called out here even
+though no type signature moved:
+
+- **FUARAN001 no longer fires across two trees that share a root id.** Per-tree NodeId uniqueness was
+  grouped by the root's *id string*, so two `Fuaran.dashboard "doc"` invocations were treated as one
+  tree and every id they legitimately shared was reported as an intra-tree duplicate. A tree is now
+  identified by its root **call site**. Cross-tree sharing was always meant to be the FUARAN002
+  warning, and now is. Strictly a false-positive reduction — a genuine duplicate inside one tree
+  still errors.
+- **FUARAN044 accepts `FormFieldKind.RangedNumber`.** The renderer mounts the per-NodeId `useState`
+  buffer for three field kinds; the rule recognised two, so a `binding.local` inside a
+  `RangedNumber` field was a false error on correct code. The recognised set must track `Render.fs`'s
+  `Binding.Local` arms.
+- **Source-level suppression pragmas** — `// fuaran-validator: disable <CODES>` (file-scoped) and
+  `// fuaran-validator: disable-next-line <CODES>`. For source that deliberately holds a rejected
+  shape, canonically a negative test asserting the runtime reports the defect. Only the reporting
+  layer is filtered — every check still runs — and suppressed findings are counted in the run summary
+  rather than hidden. `Validator.RunResult` gains a `Suppressed: int` field, which is a recompile for
+  any consumer constructing that record directly (the CLI is the expected consumption surface). See
+  the [validator README](src/Fuaran.UI.Validator/README.md#suppressing-a-finding).
+
 ## How this policy interacts with phase authoring
 
 Per the workspace roadmap conventions, every phase that proposes a change to a stable surface (per the table above) must flag it explicitly in its phase body:
@@ -316,7 +382,9 @@ Roadmap maintenance passes scan for this annotation and surface major-version-bu
 
 ## Versioning policy (release identifiers)
 
-The `<Version>` property in [`Directory.Build.props`](Directory.Build.props) governs the package id+version pair pushed to the GitHub Packages NuGet feed. Policy: **per-release semver bump**.
+The `<Version>` property in [`Directory.Build.props`](Directory.Build.props) governs the package id+version pair pushed to **nuget.org**, the sole released channel — public and no-auth-restore. Policy: **per-release semver bump**.
+
+> **A version is released only when a `v*` tag has been pushed and the packages are visible on nuget.org.** Bumping `<Version>` does not release anything; it only claims the next slot. Check the registry, not the last workflow run — 0.5.0 was bumped past on the belief it had shipped, when in fact no `v0.5.0` tag was ever pushed and 0.5.0 exists nowhere but one machine's local feed. **nuget.org is permanent**: a published version can be unlisted but never deleted or replaced.
 
 - Pre-1.0: `0.0.1-alpha.N` form (e.g. `0.0.1-alpha.1` → `0.0.1-alpha.2`). Each release bumps the trailing `N`. Annotate the bump in the commit body when it lands.
 - Post-1.0: standard semver per the "Semver" section above (major / minor / patch).
