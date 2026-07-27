@@ -309,7 +309,23 @@ let private registerTargets () =
             dotnet [ "run"; "--project"; validatorProject; "-c"; "Release"; "--"; project ] repoRoot)
 
     Target.create "Pack" (fun _ ->
-        let feed = Path.Combine(repoRoot, "..", "..", "..", "local-nuget-feed")
+        // Default: the workspace-shared inner-loop feed, so a local `-t Pack`
+        // keeps shadowing released packages for downstream consumers exactly as
+        // before.
+        //
+        // `FUARAN_PACK_OUTPUT` overrides it, and the publish workflow sets it to
+        // a repo-local dir. That is load-bearing rather than tidy: the push step
+        // used to glob the SHARED feed, so its input was "whatever .nupkg files
+        // happen to sit in that folder" — safe on a runner only because the
+        // folder is minted empty there, and on a developer machine that glob
+        // reaches ~1900 packs, nearly all of them private. Packing to a
+        // repo-local dir makes the push step's input this repo's own output by
+        // construction.
+        let feed =
+            match System.Environment.GetEnvironmentVariable "FUARAN_PACK_OUTPUT" with
+            | null
+            | "" -> Path.Combine(repoRoot, "..", "..", "..", "local-nuget-feed")
+            | dir -> dir
 
         for project in packableProjects do
             dotnet [ "pack"; project; "-c"; "Release"; "-o"; feed ] repoRoot)

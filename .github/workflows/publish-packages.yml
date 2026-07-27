@@ -46,7 +46,13 @@ jobs:
       # `-t Pack` selects the FAKE Pack target. A bare `-- Pack` is NOT a target
       # selector — FAKE ignores it and runs the default `All` target (Format ->
       # Build -> Test), packing nothing.
+      # FUARAN_PACK_OUTPUT redirects the packs into a repo-local dir instead of
+      # the workspace-shared feed, so the push step below pushes THIS repo's
+      # output rather than whatever happens to sit in the shared folder. See the
+      # push step's comment for why that distinction matters.
       - name: Pack
+        env:
+          FUARAN_PACK_OUTPUT: ${{ github.workspace }}/artifacts
         run: dotnet run --project Build.fsproj -- -t Pack
 
       # Auth is Trusted Publishing (OIDC): a policy on nuget.org (repo owner /
@@ -63,17 +69,43 @@ jobs:
 
       - name: Push to nuget.org
         run: |
-          # nullglob so an empty feed yields an empty list (not the literal
+          # Push from the repo-local artifacts dir the Pack step wrote, NOT from
+          # the workspace-shared feed.
+          #
+          # This used to glob ../../../local-nuget-feed/*.nupkg — every .nupkg in
+          # the shared folder, not this repo's output. It was safe here only
+          # because the runner mints that folder empty; the same step on a
+          # developer machine would enumerate ~1900 packs, nearly all of them
+          # PRIVATE (Fuaran.UI.Orchestration.*, ToolUp.*, Fuaran.App.*,
+          # Fuaran.Roadmap.*), and push them to the public registry.
+          # --skip-duplicate would not have saved it: those ids do not exist on
+          # nuget.org, so they would have been created, not skipped.
+          #
+          # nullglob so an empty dir yields an empty list (not the literal
           # pattern), and push each package individually — `dotnet nuget push`
           # takes a single root path, and a single-quoted wildcard is passed
           # to it verbatim (it does not shell-expand), which fails as a
           # literal filename.
           shopt -s nullglob
-          pkgs=(../../../local-nuget-feed/*.nupkg)
+          pkgs=("$GITHUB_WORKSPACE"/artifacts/*.nupkg)
           if [ ${#pkgs[@]} -eq 0 ]; then
-            echo "No .nupkg files found in ../../../local-nuget-feed/ — Pack produced nothing." >&2
+            echo "No .nupkg files found in artifacts/ — Pack produced nothing." >&2
             exit 1
           fi
+          # Defence in depth behind the dedicated output dir: every packable
+          # project in Build.fs carries a Fuaran.UI.* id, so anything else
+          # reaching this loop means the output dir was re-pointed at a shared
+          # location. Refuse rather than publish it.
+          for pkg in "${pkgs[@]}"; do
+            case "$(basename "$pkg")" in
+              Fuaran.UI.*) ;;
+              *)
+                echo "refusing to push unexpected package id: $(basename "$pkg")" >&2
+                echo "this workflow publishes only this repo's own Fuaran.UI.* packs." >&2
+                exit 1
+                ;;
+            esac
+          done
           for pkg in "${pkgs[@]}"; do
             dotnet nuget push "$pkg" \
               --source https://api.nuget.org/v3/index.json \
