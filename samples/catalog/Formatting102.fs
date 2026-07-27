@@ -139,7 +139,8 @@ let view (_model: Model) (dispatch: Msg -> unit) : ReactElement =
           InErrorBoundary = false
           Fragments = Map.empty
           ExpandingFragments = Set.empty
-          Scope = None }
+          Scope = None
+          SessionContext = Map.empty }
 
     React.Fragment
         [ Render.themeStyleElement Defaults.theme

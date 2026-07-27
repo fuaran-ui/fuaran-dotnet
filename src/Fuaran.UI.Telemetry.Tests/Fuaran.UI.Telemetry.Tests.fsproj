@@ -12,6 +12,9 @@
     <Compile Include="GuestTelemetryTests.fs" />
     <Compile Include="ConsoleDevToolsSinkTests.fs" />
     <Compile Include="ApplyTests.fs" />
+    <!-- Phase 330: the runtime validate-outcome leg + the open-surface
+         invariant that keeps the correlation vocabulary generic. -->
+    <Compile Include="ValidateOutcomeTests.fs" />
     <Compile Include="DriftTests.fs" />
     <Compile Include="ProviderDriftTests.fs" />
     <Compile Include="StyleDriftTests.fs" />

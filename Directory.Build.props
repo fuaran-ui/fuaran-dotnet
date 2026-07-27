@@ -10,7 +10,16 @@
     <Authors>Andrew J. Willshire</Authors>
     <Company>Diametrical Ltd</Company>
     <Copyright>Copyright 2026 Diametrical Ltd</Copyright>
-    <Version>0.4.0</Version>
+    <!-- 0.5.0 (Phase 330 — the interaction-correlation spine): BREAKING on two
+         public surfaces, pre-1.0 so it rides a minor bump.
+         `IFuaranTelemetrySink` gains a sixth abstract member
+         (`RecordValidateOutcome`), per the pre-1.0-minor-add precedent this
+         interface documents for itself — every direct implementer adds
+         `member _.RecordValidateOutcome _ = ()`. And
+         `Render.RenderContext` gains a required `SessionContext` field, so a
+         host constructing the record literally stops compiling until it adds
+         `SessionContext = Map.empty`. Consumers repin. -->
+    <Version>0.5.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

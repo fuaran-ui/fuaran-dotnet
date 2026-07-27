@@ -69,6 +69,7 @@ type private CaptureSink() =
         member _.RecordRenderFailure _ = ()
         member _.RecordProviderCall _ = ()
         member _.RecordCacheStat t = stats.Add t
+        member _.RecordValidateOutcome _ = ()
 
 let private ok (label: string) (r: Result<Derivation<unit>, string>) : Derivation<unit> =
     match r with

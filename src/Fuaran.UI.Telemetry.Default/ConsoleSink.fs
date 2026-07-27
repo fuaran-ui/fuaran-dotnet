@@ -101,6 +101,31 @@ module private Format =
         | CacheOutcome.Incremental n -> string n
         | _ -> "-"
 
+    /// Phase 330 — the runtime-validate leg. `findings=?` for a `NotRun`
+    /// outcome, never `0`: "we could not check" and "we checked and found
+    /// nothing" must not read alike on a console someone is scanning.
+    let validateOutcome (t: ValidateOutcomeTelemetry) : string =
+        let findings =
+            match ValidateOutcome.findingCount t.Outcome with
+            | Some n -> string n
+            | None -> "?"
+
+        let detail =
+            match t.Outcome with
+            | ValidateOutcome.NotRun reason -> sprintf " reason=%s" reason
+            | _ ->
+                match t.TopCodes with
+                | [] -> ""
+                | codes -> " codes=" + String.concat "," codes
+
+        sprintf
+            "[fuaran.telemetry] validate outcome=%s findings=%s%s prompt=%s ts=%s"
+            (ValidateOutcome.name t.Outcome)
+            findings
+            detail
+            (Option.defaultValue "-" t.PromptId)
+            (isoTimestamp t.Timestamp)
+
     let cacheStat (t: CacheStatTelemetry) : string =
         sprintf
             "[fuaran.telemetry] cache-stat cache=%s outcome=%s recomputed=%s size=%d/%d ts=%s"
@@ -143,6 +168,12 @@ type ConsoleSink() =
         member _.RecordCacheStat telemetry =
             try
                 Console.WriteLine(Format.cacheStat telemetry)
+            with _ ->
+                ()
+
+        member _.RecordValidateOutcome telemetry =
+            try
+                Console.WriteLine(Format.validateOutcome telemetry)
             with _ ->
                 ()
 

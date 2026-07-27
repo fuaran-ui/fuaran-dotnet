@@ -162,7 +162,8 @@ let private aiEvalRenderCtx () : Render.RenderContext<obj> =
       InErrorBoundary = false
       Fragments = Map.empty
       ExpandingFragments = Set.empty
-      Scope = None }
+      Scope = None
+      SessionContext = Map.empty }
 
 let private aiEvalView (model: AiEvalModel) (dispatch: AiEvalMsg -> unit) : ReactElement =
     React.Fragment
@@ -224,7 +225,8 @@ let private parityView () : ReactElement =
                     InErrorBoundary = false
                     Fragments = Map.empty
                     ExpandingFragments = Set.empty
-                    Scope = None }
+                    Scope = None
+                    SessionContext = Map.empty }
 
               Html.div
                   [ prop.id ("parity-fuaran-" + p.Id)

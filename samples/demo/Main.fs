@@ -449,7 +449,8 @@ let view (model: Model) (dispatch: Msg -> unit) =
           InErrorBoundary = false
           Fragments = Map.empty
           ExpandingFragments = Set.empty
-          Scope = None }
+          Scope = None
+          SessionContext = Map.empty }
 
     // Phase 90 — register the in-page introspection REPL over the live tree.
     // `debug = true` here means "opt in"; `DebugGlobal.shouldRegister` still

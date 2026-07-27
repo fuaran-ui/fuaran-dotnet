@@ -238,7 +238,8 @@ let private renderContext (locale: LocaleOption) : Render.RenderContext<unit> =
       InErrorBoundary = false
       Fragments = Map.empty
       ExpandingFragments = Set.empty
-      Scope = None }
+      Scope = None
+      SessionContext = Map.empty }
 
 // ─── Side-nav ────────────────────────────────────────────────────────────
 

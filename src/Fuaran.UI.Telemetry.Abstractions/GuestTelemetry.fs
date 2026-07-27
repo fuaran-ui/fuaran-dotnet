@@ -81,7 +81,8 @@ module GuestTelemetry =
             member _.RecordDeny _ = ()
             member _.RecordRenderFailure _ = ()
             member _.RecordProviderCall _ = ()
-            member _.RecordCacheStat _ = () }
+            member _.RecordCacheStat _ = ()
+            member _.RecordValidateOutcome _ = () }
 
     /// Deliver one record to the scope's current sink (registered or the
     /// isolated no-op) and, when rollup is enabled, to the aggregate sink.
@@ -133,7 +134,10 @@ module GuestTelemetry =
                 deliver scopeId (fun s -> s.RecordProviderCall t)
 
             member _.RecordCacheStat t =
-                deliver scopeId (fun s -> s.RecordCacheStat t) }
+                deliver scopeId (fun s -> s.RecordCacheStat t)
+
+            member _.RecordValidateOutcome t =
+                deliver scopeId (fun s -> s.RecordValidateOutcome t) }
 
     /// Opt into the host-rollup view: every guest-resolved sink additionally
     /// tees its records into `aggregate` (all guests at once). Guest records

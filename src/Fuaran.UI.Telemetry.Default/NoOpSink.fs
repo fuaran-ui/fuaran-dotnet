@@ -5,15 +5,14 @@ open Fuaran.UI.Telemetry.Abstractions
 // ============================================================================
 //  NoOpSink — the explicit "I don't care" sink.
 //
-//  Default at `Orchestration.installWithTelemetry` when the host doesn't
-//  supply a real sink. Both `RecordOpApply` and `RecordDeny` are unit-
-//  returning no-ops; the call site pays a single virtual dispatch per
-//  event and nothing else.
+//  The default a host installs when it does not supply a real sink. Every
+//  member is a unit-returning no-op; the call site pays a single virtual
+//  dispatch per event and nothing else.
 //
 //  Picking NoOpSink as the install default (rather than `None : IFuaranTelemetrySink option`)
-//  keeps the call shape `sink.RecordOpApply tel` uniform — the
-//  AuthorizingRuntime deny branch and the apply-engine dispatch point
-//  don't need to wrap in `Option.iter`.
+//  keeps the call shape `sink.RecordOpApply tel` uniform — a host's dispatch
+//  points and the apply-engine dispatch point don't need to wrap in
+//  `Option.iter`.
 // ============================================================================
 
 type NoOpSink() =
@@ -23,6 +22,7 @@ type NoOpSink() =
         member _.RecordRenderFailure _ = ()
         member _.RecordProviderCall _ = ()
         member _.RecordCacheStat _ = ()
+        member _.RecordValidateOutcome _ = ()
 
 [<RequireQualifiedAccess>]
 module NoOpSink =

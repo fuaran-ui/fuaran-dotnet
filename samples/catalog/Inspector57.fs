@@ -224,7 +224,8 @@ let private renderTreeAfter (tree: Node<unit>) : ReactElement =
           InErrorBoundary = false
           Fragments = Map.empty
           ExpandingFragments = Set.empty
-          Scope = None }
+          Scope = None
+          SessionContext = Map.empty }
 
     Render.render ctx tree
 

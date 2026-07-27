@@ -52,6 +52,7 @@ type private RecordingSink() =
         member _.RecordRenderFailure tel = renderFailures.Add tel
         member _.RecordProviderCall _ = ()
         member _.RecordCacheStat _ = ()
+        member _.RecordValidateOutcome _ = ()
 
 /// Sink whose `RecordRenderFailure` throws — pins the "best-effort"
 /// contract: `emitRenderFailure` must not propagate sink failures into
@@ -66,6 +67,7 @@ type private ThrowingRenderFailureSink() =
 
         member _.RecordProviderCall _ = ()
         member _.RecordCacheStat _ = ()
+        member _.RecordValidateOutcome _ = ()
 
 type private Msg = NoOp
 
@@ -178,8 +180,95 @@ let tests =
               Expect.equal tel.ErrorMessage "boom — accessor blew up" "error message threaded through verbatim"
               Expect.equal tel.CaughtBy RenderFailureSource.PerNodeGuard "caught-by source pinned"
               Expect.equal tel.CorrelationId corrId "correlation id matches the helper's return"
-              Expect.equal tel.PromptId None "prompt id defaults to None (renderer doesn't surface session id)"
-              Expect.equal tel.UserId None "user id defaults to None (renderer doesn't surface user id)"
+              Expect.equal tel.PromptId None "no correlation context supplied ⇒ prompt id stays None"
+              Expect.equal tel.UserId None "no correlation context supplied ⇒ user id stays None"
+          }
+
+          // ── Phase 330: the opaque correlation-context slot ────────────────
+          test "emitRenderFailureWithContext stamps the host's opaque ids onto the telemetry" {
+              let sink = RecordingSink()
+
+              let context =
+                  Map.ofList
+                      [ Render.promptIdKey, "interaction-42"
+                        Render.userIdKey, "user-7"
+                        // An unknown key is carried by the context and simply
+                        // ignored by the renderer — the slot is opaque, so a
+                        // host may put whatever it correlates on in there.
+                        "somethingElse", "ignored" ]
+
+              Render.emitRenderFailureWithContext
+                  (Some(sink :> IFuaranTelemetrySink))
+                  context
+                  "throwing-metric"
+                  "Display.Metric"
+                  "boom"
+                  RenderFailureSource.PerNodeGuard
+              |> ignore
+
+              let tel = sink.RenderFailures[0]
+              Expect.equal tel.PromptId (Some "interaction-42") "the interaction id is stamped"
+              Expect.equal tel.UserId (Some "user-7") "the user id is stamped"
+          }
+
+          test "an empty correlation context reproduces the pre-330 behaviour exactly" {
+              let sink = RecordingSink()
+
+              let withEmptyMap =
+                  Render.emitRenderFailureWithContext
+                      (Some(sink :> IFuaranTelemetrySink))
+                      Map.empty
+                      "n"
+                      "Display.Metric"
+                      "boom"
+                      RenderFailureSource.PerNodeGuard
+
+              let viaOldArity =
+                  Render.emitRenderFailure
+                      (Some(sink :> IFuaranTelemetrySink))
+                      "n"
+                      "Display.Metric"
+                      "boom"
+                      RenderFailureSource.PerNodeGuard
+
+              Expect.equal viaOldArity withEmptyMap "the correlation id is unchanged"
+              Expect.equal sink.RenderFailures.Count 2 "both emitted"
+              Expect.isNone sink.RenderFailures[0].PromptId "empty map ⇒ None"
+              Expect.isNone sink.RenderFailures[1].PromptId "the pre-330 arity ⇒ None"
+          }
+
+          test "the correlation id is independent of the interaction id" {
+              // Two failures in ONE interaction on DIFFERENT nodes share the
+              // interaction id and must still be distinguishable within the
+              // frame — which is the whole reason the node-hash correlation id
+              // stays alongside it rather than being replaced by it.
+              let sink = RecordingSink()
+              let context = Map.ofList [ Render.promptIdKey, "one-interaction" ]
+
+              let a =
+                  Render.emitRenderFailureWithContext
+                      (Some(sink :> IFuaranTelemetrySink))
+                      context
+                      "node-a"
+                      "Display.Metric"
+                      "boom"
+                      RenderFailureSource.PerNodeGuard
+
+              let b =
+                  Render.emitRenderFailureWithContext
+                      (Some(sink :> IFuaranTelemetrySink))
+                      context
+                      "node-b"
+                      "Display.Metric"
+                      "boom"
+                      RenderFailureSource.PerNodeGuard
+
+              Expect.notEqual b a "different nodes ⇒ different intra-frame correlation ids"
+
+              Expect.equal
+                  (sink.RenderFailures[0].PromptId)
+                  (sink.RenderFailures[1].PromptId)
+                  "while both carry the same interaction id"
           }
 
           test "emitRenderFailure with CaughtBy = ErrorBoundary tags the source correctly" {

@@ -32,6 +32,7 @@ type private RecordingTelemetrySink() =
         member _.RecordRenderFailure _ = ()
         member _.RecordProviderCall _ = ()
         member _.RecordCacheStat _ = ()
+        member _.RecordValidateOutcome _ = ()
 
 /// IFuaranTelemetrySink whose RecordOpApply throws — to verify the best-effort
 /// contract (a misbehaving telemetry sink must not break apply + persist).
@@ -44,6 +45,7 @@ type private ThrowingTelemetrySink() =
         member _.RecordRenderFailure _ = ()
         member _.RecordProviderCall _ = ()
         member _.RecordCacheStat _ = ()
+        member _.RecordValidateOutcome _ = ()
 
 let private childIds (root: Node<TestMsg>) : string list =
     match root.Kind with

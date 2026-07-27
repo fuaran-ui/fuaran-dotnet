@@ -48,7 +48,8 @@ let private renderCtx: Render.RenderContext<unit> =
       InErrorBoundary = false
       Fragments = Map.empty
       ExpandingFragments = Set.empty
-      Scope = None }
+      Scope = None
+      SessionContext = Map.empty }
 
 let private sample (entry: Matrix.KindEntry) : ReactElement =
     let node = entry.Build(ToneVariant.Brand, StyleWeight.Standard, Emphasis.Normal)

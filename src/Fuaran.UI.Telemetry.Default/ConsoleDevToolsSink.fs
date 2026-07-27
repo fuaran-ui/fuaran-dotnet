@@ -86,12 +86,16 @@ type ConsoleDevToolsWriter() =
 /// the `MinSeverity` floor so the sink runs noisily in dev (`defaults`) and
 /// quietly in a near-prod diagnostic build (`denialsAndFailuresOnly`).
 type ConsoleDevToolsOptions =
-    { ShowOpApply: bool
-      ShowDeny: bool
-      ShowRenderFailure: bool
-      ShowProviderCall: bool
-      ShowCacheStat: bool
-      MinSeverity: DevToolsLevel }
+    {
+        ShowOpApply: bool
+        ShowDeny: bool
+        ShowRenderFailure: bool
+        ShowProviderCall: bool
+        ShowCacheStat: bool
+        /// Phase 330 — the runtime-validate leg.
+        ShowValidateOutcome: bool
+        MinSeverity: DevToolsLevel
+    }
 
 [<RequireQualifiedAccess>]
 module ConsoleDevToolsOptions =
@@ -102,6 +106,7 @@ module ConsoleDevToolsOptions =
           ShowRenderFailure = true
           ShowProviderCall = true
           ShowCacheStat = true
+          ShowValidateOutcome = true
           MinSeverity = DevToolsLevel.Info }
 
     /// Quiet diagnostic mode — successful applies suppressed (both by the
@@ -116,6 +121,9 @@ module ConsoleDevToolsOptions =
           // Cache stats are pure-performance signal (Info); the `Warn` floor
           // suppresses them in this quiet mode without needing the toggle off.
           ShowCacheStat = true
+          // A clean validation is Info (suppressed by the Warn floor); findings
+          // are Warn/Error, so this quiet mode still narrates a failed validate.
+          ShowValidateOutcome = true
           MinSeverity = DevToolsLevel.Warn }
 
 [<RequireQualifiedAccess>]
@@ -224,6 +232,42 @@ module private Render =
 
         DevToolsLevel.Info, header, rows
 
+    /// Phase 330 — the runtime-validate leg. Severity follows the outcome:
+    /// clean is Info, warnings are Warn, errors are Error — and `NotRun` is
+    /// Warn, because a validator that did not run is a wiring problem worth
+    /// noticing, not a pass.
+    let validateOutcome (t: ValidateOutcomeTelemetry) : DevToolsLevel * string * (string * string) list =
+        let level =
+            match t.Outcome with
+            | ValidateOutcome.Clean -> DevToolsLevel.Info
+            | ValidateOutcome.Warnings _ -> DevToolsLevel.Warn
+            | ValidateOutcome.Errors _ -> DevToolsLevel.Error
+            | ValidateOutcome.NotRun _ -> DevToolsLevel.Warn
+
+        let findings =
+            match ValidateOutcome.findingCount t.Outcome with
+            | Some n -> string n
+            | None -> "?"
+
+        let header =
+            sprintf "validate %s (%s findings)" (ValidateOutcome.name t.Outcome) findings
+
+        let detailRows =
+            match t.Outcome with
+            | ValidateOutcome.NotRun reason -> [ "reason", reason ]
+            | _ ->
+                match t.TopCodes with
+                | [] -> []
+                | codes -> [ "codes", String.concat ", " codes ]
+
+        let rows =
+            detailRows
+            @ [ "prompt", opt t.PromptId
+                "user", opt t.UserId
+                "ts", isoTimestamp t.Timestamp ]
+
+        level, header, rows
+
 /// A presentational `IFuaranTelemetrySink` that narrates the telemetry stream as
 /// grouped, severity-tagged DevTools-console records. Construct with the default
 /// `.NET` writer (`create` / `createWith`) or inject a browser/console-group
@@ -258,6 +302,9 @@ type ConsoleDevToolsSink(options: ConsoleDevToolsOptions, writer: IDevToolsConso
 
         member _.RecordCacheStat(telemetry: CacheStatTelemetry) : unit =
             emit options.ShowCacheStat (Render.cacheStat telemetry)
+
+        member _.RecordValidateOutcome(telemetry: ValidateOutcomeTelemetry) : unit =
+            emit options.ShowValidateOutcome (Render.validateOutcome telemetry)
 
 [<RequireQualifiedAccess>]
 module ConsoleDevToolsSink =

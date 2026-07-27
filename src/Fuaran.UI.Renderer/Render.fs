@@ -143,14 +143,46 @@ let nodeKindName<'Msg> (kind: NodeKind<'Msg>) : string =
     | NodeKind.FragmentRef _ -> "FragmentRef"
     | NodeKind.Mount spec -> sprintf "Mount.%s" spec.ScopeId
 
-/// Emit one render-failure telemetry event through the optional sink.
+// ─── The opaque session-context keys (Phase 330) ───────────────────────────
+//
+// The renderer reads exactly two well-known keys out of
+// `RenderContext.SessionContext` and stamps their values onto render-failure
+// telemetry. Both are GENERIC names for generic notions: an id that ties this
+// render to the interaction that caused it, and an id for whoever the host
+// attributes it to. The renderer never interprets either value — it copies
+// them — so a host is free to put whatever correlates its own system in them.
+//
+// They are literals rather than magic strings at the call site so a host and
+// the renderer cannot disagree about spelling.
+
+/// `SessionContext` key whose value is stamped onto
+/// `RenderFailureTelemetry.PromptId` — the correlation token for the
+/// interaction that produced this render.
+[<Literal>]
+let promptIdKey = "promptId"
+
+/// `SessionContext` key whose value is stamped onto
+/// `RenderFailureTelemetry.UserId`.
+[<Literal>]
+let userIdKey = "userId"
+
+/// Emit one render-failure telemetry event through the optional sink, stamped
+/// with the host's opaque correlation context.
+///
 /// Sink failures are swallowed (telemetry is best-effort by the
 /// `IFuaranTelemetrySink` contract); a throwing sink does not poison
 /// the render path. Pure helper so the call-sites stay readable.
 /// Public so the .NET-side test runner can assert against the sink
 /// without driving Feliz's React-substrate.
-let emitRenderFailure
+///
+/// `sessionContext` is read for `promptIdKey` / `userIdKey` only; an empty map
+/// reproduces the pre-330 behaviour exactly (both fields `None`). The returned
+/// `CorrelationId` is unchanged — a content hash of node id + kind, which
+/// disambiguates concurrent failures WITHIN one frame and is a different job
+/// from the interaction id.
+let emitRenderFailureWithContext
     (sink: IFuaranTelemetrySink option)
+    (sessionContext: Map<string, string>)
     (nodeId: string)
     (kindName: string)
     (errorMessage: string)
@@ -167,14 +199,26 @@ let emitRenderFailure
                   ErrorMessage = errorMessage
                   CaughtBy = source
                   CorrelationId = corrId
-                  PromptId = None
-                  UserId = None
+                  PromptId = Map.tryFind promptIdKey sessionContext
+                  UserId = Map.tryFind userIdKey sessionContext
                   Timestamp = System.DateTimeOffset.UtcNow }
         with _ ->
             ()
     | None -> ()
 
     corrId
+
+/// `emitRenderFailureWithContext` with no correlation context — the pre-330
+/// arity, kept so existing callers compile unchanged. Equivalent to passing
+/// `Map.empty`.
+let emitRenderFailure
+    (sink: IFuaranTelemetrySink option)
+    (nodeId: string)
+    (kindName: string)
+    (errorMessage: string)
+    (source: RenderFailureSource)
+    : string =
+    emitRenderFailureWithContext sink Map.empty nodeId kindName errorMessage source
 
 /// Default fallback placeholder rendered in place of a single throwing
 /// node by the per-node render guard. Carries `data-fuaran-render-failed`
@@ -255,6 +299,28 @@ type RenderContext<'Msg> =
         /// host's. Set at a `Mount` boundary (per its guest scope id) or at a
         /// scope-aware render entry (`?scope`).
         Scope: string option
+        /// Host-supplied correlation context for this render, as an OPAQUE
+        /// string map (Phase 330). `Map.empty` (the default at every
+        /// convenience entry point) means the host supplies none and nothing
+        /// changes — a simple-tree host passes nothing and pays nothing
+        /// (GP 13).
+        ///
+        /// The renderer reads exactly one well-known key from it —
+        /// `Render.promptIdKey` — and stamps the value onto
+        /// `RenderFailureTelemetry.PromptId`, so a render failure joins the
+        /// same interaction as the op-record and apply telemetry that
+        /// preceded it. Every other key is carried untouched.
+        ///
+        /// **Deliberately a `Map<string,string>` rather than a typed
+        /// correlation record.** The renderer does not know, and must not
+        /// know, what a host's ids MEAN — it threads and stamps them. A typed
+        /// `{ PromptId; TurnId; UserId }` field set would publish a host's
+        /// correlation design on this surface; an opaque map cannot, by
+        /// construction. Precedent: `Node.ExtraAttributes`.
+        ///
+        /// Contract: never hashed, never on the wire, host-filled, opaque
+        /// keys.
+        SessionContext: Map<string, string>
     }
 
 // ─── Text-source rendering — handles i18n + bound text ─────────────────────
@@ -1207,8 +1273,9 @@ let rec private renderKind
             render boundaryCtx spec.Child
         with ex ->
             let corrId =
-                emitRenderFailure
+                emitRenderFailureWithContext
                     ctx.TelemetrySink
+                    ctx.SessionContext
                     parentNodeId
                     (nodeKindName kind)
                     ex.Message
@@ -1224,8 +1291,9 @@ let rec private renderKind
                 // bare-bones placeholder so something paints. The
                 // correlation id from the primary failure threads through
                 // to the placeholder so log filters can join the two.
-                emitRenderFailure
+                emitRenderFailureWithContext
                     ctx.TelemetrySink
+                    ctx.SessionContext
                     parentNodeId
                     (nodeKindName kind + ".Fallback")
                     ex2.Message
@@ -1425,7 +1493,11 @@ let rec private renderKind
                       InErrorBoundary = false
                       Fragments = collectFragments Map.empty guestTree
                       ExpandingFragments = Set.empty
-                      Scope = Some spec.ScopeId }
+                      Scope = Some spec.ScopeId
+                      // The host's correlation context follows the guest: a
+                      // failure inside a mounted region belongs to the same
+                      // interaction as the render that mounted it (Phase 330).
+                      SessionContext = ctx.SessionContext }
 
                 // Route through the late-bound hook (a function *value*), not a
                 // direct call into the recursive `render` group at type obj —
@@ -3801,8 +3873,9 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
             renderKind ctx id node.State node.Kind
         with ex when not ctx.InErrorBoundary ->
             let corrId =
-                emitRenderFailure
+                emitRenderFailureWithContext
                     ctx.TelemetrySink
+                    ctx.SessionContext
                     id
                     (nodeKindName node.Kind)
                     ex.Message
@@ -3871,7 +3944,8 @@ let renderWithSources
           // common case.
           Fragments = collectFragments Map.empty node
           ExpandingFragments = Set.empty
-          Scope = None }
+          Scope = None
+          SessionContext = Map.empty }
         node
 
 /// Convenience entry point that pre-wires the optional
@@ -3897,7 +3971,8 @@ let renderWithSourcesAndSink
           InErrorBoundary = false
           Fragments = collectFragments Map.empty node
           ExpandingFragments = Set.empty
-          Scope = None }
+          Scope = None
+          SessionContext = Map.empty }
         node
 
 /// Scope-aware render entry (Phase 266, §4o). Renders `node` under an explicit
@@ -3928,7 +4003,8 @@ let renderWithSourcesInScope
           InErrorBoundary = false
           Fragments = collectFragments Map.empty node
           ExpandingFragments = Set.empty
-          Scope = Some scopeId }
+          Scope = Some scopeId
+          SessionContext = Map.empty }
         node
 
 // ─── State-reactive render (Phase 106) ─────────────────────────────────────

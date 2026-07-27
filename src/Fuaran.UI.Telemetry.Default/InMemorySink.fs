@@ -33,6 +33,8 @@ type InMemorySink(?capacity: int) =
     let renderFailures = ResizeArray<RenderFailureTelemetry>(capacity)
     let providerCalls = ResizeArray<ProviderCallTelemetry>(capacity)
     let cacheStats = ResizeArray<CacheStatTelemetry>(capacity)
+    // Phase 330: the fourth leg of the interaction-correlation spine.
+    let validateOutcomes = ResizeArray<ValidateOutcomeTelemetry>(capacity)
     let lockObj = obj ()
 
     let appendBounded (buf: ResizeArray<_>) (record: _) =
@@ -61,6 +63,9 @@ type InMemorySink(?capacity: int) =
         member _.RecordCacheStat telemetry =
             lock lockObj (fun () -> appendBounded cacheStats telemetry)
 
+        member _.RecordValidateOutcome telemetry =
+            lock lockObj (fun () -> appendBounded validateOutcomes telemetry)
+
     /// Snapshot of every op-apply record currently in the buffer, in
     /// insertion order. Returns a fresh list so callers can hold it
     /// outside the lock.
@@ -86,6 +91,11 @@ type InMemorySink(?capacity: int) =
     member _.CacheStatRecords: CacheStatTelemetry list =
         lock lockObj (fun () -> List.ofSeq cacheStats)
 
+    /// Snapshot of every runtime-validate record currently in the buffer, in
+    /// insertion order. Fresh list, lock-free for callers.
+    member _.ValidateOutcomeRecords: ValidateOutcomeTelemetry list =
+        lock lockObj (fun () -> List.ofSeq validateOutcomes)
+
     /// Reset all buffers — for test-isolation between cases.
     member _.Clear() : unit =
         lock lockObj (fun () ->
@@ -93,7 +103,8 @@ type InMemorySink(?capacity: int) =
             denies.Clear()
             renderFailures.Clear()
             providerCalls.Clear()
-            cacheStats.Clear())
+            cacheStats.Clear()
+            validateOutcomes.Clear())
 
 [<RequireQualifiedAccess>]
 module InMemorySink =

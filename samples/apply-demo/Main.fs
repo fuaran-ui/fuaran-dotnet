@@ -86,7 +86,8 @@ let view (model: Model) (dispatch: Msg -> unit) =
           InErrorBoundary = false
           Fragments = Map.empty
           ExpandingFragments = Set.empty
-          Scope = None }
+          Scope = None
+          SessionContext = Map.empty }
 
     // The host-supplied apply handler: decode the wire TreeOp, apply it to the
     // live Node<obj> tree, and dispatch ReplaceTree to re-render. Phase 90's

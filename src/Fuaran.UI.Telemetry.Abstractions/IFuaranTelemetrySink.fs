@@ -68,3 +68,20 @@ type IFuaranTelemetrySink =
     /// minor add — direct implementers add `member _.RecordCacheStat _ = ()`
     /// alongside their existing members.
     abstract member RecordCacheStat: telemetry: CacheStatTelemetry -> unit
+
+    /// Record one RUNTIME validation outcome for a tree (Phase 330). Called by
+    /// whatever tier validated an emitted tree, AFTER validation returns —
+    /// clean, warnings, errors, or not-run. This is the fourth leg of the
+    /// interaction-correlation spine: with the same opaque `PromptId` on the
+    /// op-record, the apply telemetry, the render telemetry and this record,
+    /// one interaction is reconstructable end to end.
+    ///
+    /// Note what this is NOT: `Fuaran.UI.Validator` is a build-time AST walker
+    /// over source and cannot see a tree produced at runtime. This member is
+    /// the seam for the runtime counterpart; the build-time validator is a
+    /// different job and is unaffected. Must not throw, same best-effort
+    /// contract as every member above. Following the established precedent,
+    /// adding this abstract member is a pre-1.0 minor add — direct
+    /// implementers add `member _.RecordValidateOutcome _ = ()` alongside
+    /// their existing members.
+    abstract member RecordValidateOutcome: telemetry: ValidateOutcomeTelemetry -> unit

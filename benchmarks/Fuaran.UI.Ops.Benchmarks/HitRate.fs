@@ -47,6 +47,8 @@ type CountingSink() =
             else
                 rederive <- rederive + 1
 
+        member _.RecordValidateOutcome _ = ()
+
 /// Run a representative edit session over one scenario and return the memo
 /// reuse fraction. The session shape: one cold derivation (MISS), then
 /// `valueEdits` value-only edits (each INCREMENTAL — the cheap path), with a

@@ -131,7 +131,8 @@ let tests =
                       member _.RecordDeny _ = ()
                       member _.RecordRenderFailure _ = ()
                       member _.RecordProviderCall _ = ()
-                      member _.RecordCacheStat _ = () }
+                      member _.RecordCacheStat _ = ()
+                      member _.RecordValidateOutcome _ = () }
 
               let op = TreeOp.RemoveNode(NodeId "revenue-metric")
               let result = Apply.applyWithTelemetry throwingSink ctx op dashboard

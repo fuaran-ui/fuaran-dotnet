@@ -24,6 +24,10 @@
     <Compile Include="RenderFailureTelemetry.fs" />
     <Compile Include="ProviderCallTelemetry.fs" />
     <Compile Include="CacheStatTelemetry.fs" />
+    <!-- Phase 330: the runtime validate-outcome record — the fourth leg of the
+         interaction-correlation spine. The build-time Validator is a different
+         job and is untouched; this is the seam a runtime validator reports to. -->
+    <Compile Include="ValidateOutcomeTelemetry.fs" />
     <Compile Include="IFuaranTelemetrySink.fs" />
     <!-- Phase 270 (§4o): per-guest-scope sink resolution + the scope-attributed
          warn/trace channel. Compiled after the sink interface it resolves. -->
