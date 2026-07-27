@@ -11,6 +11,13 @@ module Fuaran.UI.ServerDriven.Tests.FormBufferTests
 //
 // Non-`Local` fields are NOT part of the protocol — a form of non-`Local` fields
 // behaves exactly as the pre-policy 152 path (only `OnSubmit` fires).
+//
+// FUARAN042 asks a Local-bound field for a display formatter so the buffer can
+// round-trip through the renderer. These fields never reach a renderer: they are
+// inputs to the server-side flush fold under test, and the assertions are about
+// which actions a flush produces, not about how a value displays. A formatter
+// added to satisfy the rule would be dead weight the tests never read.
+// fuaran-validator: disable FUARAN042 — server-side flush fixtures, no display layer
 
 open Expecto
 open Fuaran.UI

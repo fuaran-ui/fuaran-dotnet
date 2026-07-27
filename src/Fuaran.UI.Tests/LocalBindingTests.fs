@@ -18,6 +18,13 @@ open Fuaran.UI.Types
 //     is the only place the buffer-overlay lives.
 //   - `Action.CommitLocal` is constructable + carries the typed nodeId.
 //
+//  These are unit tests of the `binding.local` CONSTRUCTOR: each builds the
+//  binding as a standalone value and inspects the payload, which is exactly
+//  the shape FUARAN044 requires to sit inside a FormFieldKind.Text/Number.
+//  Wrapping them in a form field to satisfy the rule would change what is
+//  under test from the binding to the field, so the code is suppressed here.
+// fuaran-validator: disable FUARAN044 — constructor unit tests, no enclosing form field by design
+//
 //  Renderer-side React state behaviour (keystroke buffer / blur flush /
 //  re-sync invariant) is exercised in the catalog's Playwright spec
 //  (`samples/catalog/snapshot/local-bindings.spec.mts`) — those need a

@@ -12,6 +12,14 @@ open Fuaran.UI.PreEmitValidate
 //  shape's empty-string-rejection, `Fuaran.UI.PreEmitValidate.validate`
 //  is the canonical pre-submission gate. These tests exercise the
 //  defect classes the walker can report.
+//
+//  Every tree below is a NEGATIVE fixture: the malformed tabs shape IS the
+//  test input, constructed so `validate` can be asserted to report it. The
+//  build-time validator sees the same defect at the same source and is
+//  correct to — so the two tab-shape codes are suppressed for this file.
+//  Narrowing this to the individual call sites would need a pragma per
+//  fixture and would rot as tests are added; the whole file is fixtures.
+// fuaran-validator: disable FUARAN047, FUARAN048 — negative-test fixtures
 // ============================================================================
 
 type private Msg = NoOp

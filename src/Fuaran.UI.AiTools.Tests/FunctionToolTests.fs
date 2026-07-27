@@ -71,10 +71,15 @@ let private embed (q: QNode) : Node<unit> =
 
 // ─── the UI outer fragment (a dashboard with one query slot) ─────────────────
 
-/// A dashboard fragment declaring a single `Slot` hole `chart`, marked in the
-/// body by an unbound `FragmentRef` named `chart`. Pure-deterministic on its own
-/// — its effect becomes `network` only once the live-query result is composed in.
-let private dashboardFragment (declId: string) (slotName: string) : Node<unit> =
+/// A dashboard fragment declaring a single `Slot` hole `slotName`, marked in the
+/// body by an unbound `FragmentRef` of the same name. Pure-deterministic on its
+/// own — its effect becomes `network` only once the live-query result is composed
+/// in.
+///
+/// The fragment NAME is a parameter, not a literal: fragment names are unique per
+/// project (FUARAN056), so each test case that wants its own fixture fragment
+/// mints its own name rather than every case re-declaring one shared "dashboard".
+let private dashboardFragment (declId: string) (fragName: string) (slotName: string) : Node<unit> =
     let body =
         Fuaran.stack
             "db"
@@ -88,7 +93,7 @@ let private dashboardFragment (declId: string) (slotName: string) : Node<unit> =
 
     Fuaran.fragmentDecl
         declId
-        { Name = FragmentId "dashboard"
+        { Name = FragmentId fragName
           Body = body
           Holes = [ HoleDecl.Slot(slotName, None) ]
           Effect = EffectClass.pureDeterministic }
@@ -103,7 +108,11 @@ let tests =
           <| fun _ ->
               let declId = "dash"
               let slotName = "chart"
-              let outer = dashboardFragment declId slotName
+              // One binding, used by BOTH the fixture and the manual wiring below:
+              // the manual reconstruction is the same fragment, so its name matches
+              // by construction rather than by a second literal that could drift.
+              let fragName = "dashboard"
+              let outer = dashboardFragment declId fragName slotName
 
               let queryOut =
                   { QId = "q1"
@@ -140,7 +149,7 @@ let tests =
 
                   Fuaran.fragmentDecl
                       declId
-                      { Name = FragmentId "dashboard"
+                      { Name = FragmentId fragName
                         Body = body
                         Holes = []
                         Effect = EffectClass.pureDeterministic }
@@ -151,7 +160,7 @@ let tests =
           <| fun _ ->
               let declId = "dash"
               let slotName = "chart"
-              let outer = dashboardFragment declId slotName
+              let outer = dashboardFragment declId "dashboard-effect" slotName
 
               let queryOut =
                   { QId = "q1"
@@ -170,23 +179,31 @@ let tests =
               // the two inserted subtrees carry disjoint interior node ids.
               let declId = "twin"
 
+              // The slot names are bound once and threaded through the hole decl,
+              // its body marker and the hole address — the same shape
+              // `dashboardFragment` uses above. An unbound slot marker is NOT a
+              // reference to a declared fragment, so writing it as a bare literal
+              // would read as an unresolved `fragmentRef` (FUARAN057).
+              let slotL = "left"
+              let slotR = "right"
+
               let outer =
                   let body =
                       Fuaran.stack
                           "row"
                           { Defaults.stack with
-                              Children = [ Fuaran.fragmentRef "s1" "left"; Fuaran.fragmentRef "s2" "right" ] }
+                              Children = [ Fuaran.fragmentRef "s1" slotL; Fuaran.fragmentRef "s2" slotR ] }
 
                   Fuaran.fragmentDecl
                       declId
                       { Name = FragmentId "twin"
                         Body = body
-                        Holes = [ HoleDecl.Slot("left", None); HoleDecl.Slot("right", None) ]
+                        Holes = [ HoleDecl.Slot(slotL, None); HoleDecl.Slot(slotR, None) ]
                         Effect = EffectClass.pureDeterministic }
 
               let queryOut = { QId = "q"; Label = "x"; Kids = [] }
-              let addrL = FunctionTool.holeAddr declId "left"
-              let addrR = FunctionTool.holeAddr declId "right"
+              let addrL = FunctionTool.holeAddr declId slotL
+              let addrR = FunctionTool.holeAddr declId slotR
 
               let afterL =
                   match FunctionTool.composeIntoSlot queryWitness embed addrL queryOut outer with
@@ -234,7 +251,7 @@ let tests =
               // the wire-format corpus pins).
               let declId = "dash"
               let slotName = "chart"
-              let outer = dashboardFragment declId slotName
+              let outer = dashboardFragment declId "dashboard-parity" slotName
 
               let queryOut =
                   { QId = "q1"
@@ -253,7 +270,7 @@ let tests =
           testCase "binding an unknown slot address is a typed error (default-deny by shape)"
           <| fun _ ->
               let declId = "dash"
-              let outer = dashboardFragment declId "chart"
+              let outer = dashboardFragment declId "dashboard-unknown-slot" "chart"
               let queryOut = { QId = "q1"; Label = "x"; Kids = [] }
               let bogus = FunctionTool.holeAddr declId "nonexistent"
 
@@ -272,14 +289,14 @@ let tests =
           <| fun _ ->
               let body =
                   Fuaran.dashboard
-                      "d"
+                      "d-pure"
                       { Defaults.dashboard<unit> with
-                          Children = [ Fuaran.markdown "m" "static" ] }
+                          Children = [ Fuaran.markdown "m-pure" "static" ] }
 
               let decl =
                   Fuaran.fragmentDecl
-                      "outer"
-                      { Name = FragmentId "outer"
+                      "outer-pure"
+                      { Name = FragmentId "outer-pure"
                         Body = body
                         Holes = []
                         Effect = EffectClass.pureDeterministic }
@@ -294,22 +311,22 @@ let tests =
 
               let networkSub =
                   Fuaran.fragmentDecl
-                      "netsub"
-                      { Name = FragmentId "netsub"
-                        Body = Fuaran.markdown "n" "live query"
+                      "netsub-understated"
+                      { Name = FragmentId "netsub-understated"
+                        Body = Fuaran.markdown "n-understated" "live query"
                         Holes = []
                         Effect = uiNetwork }
 
               let body =
                   Fuaran.dashboard
-                      "d"
+                      "d-understated"
                       { Defaults.dashboard<unit> with
                           Children = [ networkSub ] }
 
               let decl =
                   Fuaran.fragmentDecl
-                      "outer"
-                      { Name = FragmentId "outer"
+                      "outer-understated"
+                      { Name = FragmentId "outer-understated"
                         Body = body
                         Holes = []
                         Effect = EffectClass.pureDeterministic }
@@ -332,22 +349,22 @@ let tests =
 
               let networkSub =
                   Fuaran.fragmentDecl
-                      "netsub"
-                      { Name = FragmentId "netsub"
-                        Body = Fuaran.markdown "n" "live query"
+                      "netsub-honest"
+                      { Name = FragmentId "netsub-honest"
+                        Body = Fuaran.markdown "n-honest" "live query"
                         Holes = []
                         Effect = uiNetwork }
 
               let body =
                   Fuaran.dashboard
-                      "d"
+                      "d-honest"
                       { Defaults.dashboard<unit> with
                           Children = [ networkSub ] }
 
               let decl =
                   Fuaran.fragmentDecl
-                      "outer"
-                      { Name = FragmentId "outer"
+                      "outer-honest"
+                      { Name = FragmentId "outer-honest"
                         Body = body
                         Holes = []
                         Effect = uiNetwork }
