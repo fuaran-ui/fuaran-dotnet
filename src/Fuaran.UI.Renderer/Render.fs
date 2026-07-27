@@ -3975,6 +3975,42 @@ let renderWithSourcesAndSink
           SessionContext = Map.empty }
         node
 
+/// Correlation-aware render entry (Phase 330). As `renderWithSourcesAndSink`,
+/// plus the host's opaque `SessionContext` — so a render failure inside this
+/// tree carries the interaction id the host supplied, and joins whatever else
+/// that host stamped with the same id.
+///
+/// A separate entry point rather than a parameter on the existing one: a host
+/// with no correlation context should not have to write `Map.empty` at a call
+/// site that never had the concept. Passing `Map.empty` here is exactly
+/// `renderWithSourcesAndSink`.
+///
+/// The context is a VALUE, read once for this render. A host whose id changes
+/// per interaction re-reads its own current value at each render call — which
+/// is the natural shape, because render is already per-frame. Do NOT capture a
+/// context at host-construction time and reuse it: that freezes the first
+/// interaction's id onto every later frame's telemetry.
+let renderWithSourcesSinkAndContext
+    (sources: BindingResolver.BindingSources)
+    (runtime: Runtime.IFuaranRuntime)
+    (telemetrySink: IFuaranTelemetrySink)
+    (sessionContext: Map<string, string>)
+    (dispatch: 'Msg -> unit)
+    (node: Node<'Msg>)
+    : ReactElement =
+    render
+        { Sources = sources
+          Runtime = runtime
+          VisAdapter = VisAdapter.noOp<'Msg>
+          Dispatch = dispatch
+          TelemetrySink = Some telemetrySink
+          InErrorBoundary = false
+          Fragments = collectFragments Map.empty node
+          ExpandingFragments = Set.empty
+          Scope = None
+          SessionContext = sessionContext }
+        node
+
 /// Scope-aware render entry (Phase 266, §4o). Renders `node` under an explicit
 /// runtime `scopeId`: `Binding.State` reads resolve against
 /// `StateStore.forScope scopeId` (its snapshot merged over `sources.State`, scoped

@@ -19,7 +19,13 @@
          `Render.RenderContext` gains a required `SessionContext` field, so a
          host constructing the record literally stops compiling until it adds
          `SessionContext = Map.empty`. Consumers repin. -->
-    <Version>0.5.0</Version>
+    <!-- 0.6.0 (Phase 330, second slice): additive —
+         `Render.renderWithSourcesSinkAndContext`, the correlation-aware render
+         entry a host calls to thread its opaque SessionContext. Additive, but a
+         public-contract addition never rides a same-version repack (the
+         workspace producer-side pinning rule), and 0.5.0 was already published.
+         -->
+    <Version>0.6.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
