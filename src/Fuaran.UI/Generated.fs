@@ -145,6 +145,20 @@ type TextAnchor =
     | End
 
 [<RequireQualifiedAccess>]
+type StyleRole =
+    | None
+    | Eyebrow
+    | Data
+    | Lede
+    | Caption
+
+[<RequireQualifiedAccess>]
+type FontVoice =
+    | Default
+    | Display
+    | Structural
+
+[<RequireQualifiedAccess>]
 type TextSource =
     | Literal of text: string
     | Bound of binding: Binding<string>
@@ -283,6 +297,32 @@ and [<RequireQualifiedAccess>] Shape =
     | Circle of cx: float * cy: float * r: float * style: DrawStyle
     | Ellipse of cx: float * cy: float * rx: float * ry: float * style: DrawStyle
     | Label of style: DrawStyle * text: TextSource * x: float * y: float
+
+and SemanticStyle =
+    {
+      Emphasis: Emphasis
+      Role: StyleRole
+      Tone: ToneVariant
+      Voice: FontVoice
+      Weight: StyleWeight
+    }
+
+and StateBehaviour =
+    {
+      OnEmpty: Node option
+      OnError: unit option
+      OnLoading: Node option
+    }
+
+and Accessibility =
+    {
+      DescribedBy: string option
+      Hidden: Binding<bool> option
+      Label: Binding<string> option
+      LabelledBy: string option
+      LiveRegion: string option
+      Role: string option
+    }
 
 and SwitchCase =
     {
@@ -795,7 +835,14 @@ and [<RequireQualifiedAccess>] NodeKind =
     | Switch of SwitchSpec
     | Mount of MountSpec
 
-and Node = { Id: string; Kind: NodeKind }
+and Node =
+    {
+      Id: string
+      Kind: NodeKind
+      Accessibility: Accessibility option
+      State: StateBehaviour option
+      Style: SemanticStyle option
+    }
 
 let private encHeadingVariant (v: HeadingVariant) : JVal =
     match v with
@@ -938,6 +985,20 @@ let private encTextAnchor (v: TextAnchor) : JVal =
     | TextAnchor.Middle -> JStr "Middle"
     | TextAnchor.End -> JStr "End"
 
+let private encStyleRole (v: StyleRole) : JVal =
+    match v with
+    | StyleRole.None -> JStr "None"
+    | StyleRole.Eyebrow -> JStr "Eyebrow"
+    | StyleRole.Data -> JStr "Data"
+    | StyleRole.Lede -> JStr "Lede"
+    | StyleRole.Caption -> JStr "Caption"
+
+let private encFontVoice (v: FontVoice) : JVal =
+    match v with
+    | FontVoice.Default -> JStr "Default"
+    | FontVoice.Display -> JStr "Display"
+    | FontVoice.Structural -> JStr "Structural"
+
 let rec private encNode (n: Node) : JVal =
     let kind =
         match n.Kind with
@@ -981,7 +1042,7 @@ let rec private encNode (n: Node) : JVal =
         | NodeKind.Switch s -> encSwitchSpec s
         | NodeKind.Mount s -> encMountSpec s
 
-    JObj [ "id", JStr n.Id; "kind", kind ]
+    JObj([ Some("id", JStr n.Id); Some("kind", kind); (n.Accessibility |> Option.map (fun v -> "accessibility", encAccessibility v)); (n.State |> Option.map (fun v -> "state", encStateBehaviour v)); (n.Style |> Option.map (fun v -> "style", encSemanticStyle v)) ] |> List.choose id)
 
 and private encTextSource (v: TextSource) : JVal =
     match v with
@@ -1140,6 +1201,15 @@ and private encShape (v: Shape) : JVal =
     | Shape.Circle (cx, cy, r, style) -> Canon.typed "Circle" [ "cx", JFloat cx; "cy", JFloat cy; "r", JFloat r; "style", encDrawStyle style ]
     | Shape.Ellipse (cx, cy, rx, ry, style) -> Canon.typed "Ellipse" [ "cx", JFloat cx; "cy", JFloat cy; "rx", JFloat rx; "ry", JFloat ry; "style", encDrawStyle style ]
     | Shape.Label (style, text, x, y) -> Canon.typed "Label" [ "style", encDrawStyle style; "text", encTextSource text; "x", JFloat x; "y", JFloat y ]
+
+and private encSemanticStyle (s: SemanticStyle) : JVal =
+    JObj([ (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (if s.Role = StyleRole.None then None else Some("role", encStyleRole s.Role)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Voice = FontVoice.Default then None else Some("voice", encFontVoice s.Voice)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)) ] |> List.choose id)
+
+and private encStateBehaviour (s: StateBehaviour) : JVal =
+    JObj([ (s.OnEmpty |> Option.map (fun v -> "onEmpty", encNode v)); (s.OnError |> Option.map (fun v -> "onError", JStr "<closure>")); (s.OnLoading |> Option.map (fun v -> "onLoading", encNode v)) ] |> List.choose id)
+
+and private encAccessibility (s: Accessibility) : JVal =
+    JObj([ (s.DescribedBy |> Option.map (fun v -> "describedBy", JStr v)); (s.Hidden |> Option.map (fun v -> "hidden", (encBinding JBool) v)); (s.Label |> Option.map (fun v -> "label", (encBinding JStr) v)); (s.LabelledBy |> Option.map (fun v -> "labelledBy", JStr v)); (s.LiveRegion |> Option.map (fun v -> "liveRegion", JStr v)); (s.Role |> Option.map (fun v -> "role", JStr v)) ] |> List.choose id)
 
 and private encSwitchCase (s: SwitchCase) : JVal =
     JObj([ Some("child", encNode s.Child); Some("match", JStr s.Match) ] |> List.choose id)
@@ -1550,6 +1620,22 @@ let private decTextAnchor (j: JVal) : Result<TextAnchor, string> =
     | JStr "End" -> Ok TextAnchor.End
     | _ -> Error "not a TextAnchor"
 
+let private decStyleRole (j: JVal) : Result<StyleRole, string> =
+    match j with
+    | JStr "None" -> Ok StyleRole.None
+    | JStr "Eyebrow" -> Ok StyleRole.Eyebrow
+    | JStr "Data" -> Ok StyleRole.Data
+    | JStr "Lede" -> Ok StyleRole.Lede
+    | JStr "Caption" -> Ok StyleRole.Caption
+    | _ -> Error "not a StyleRole"
+
+let private decFontVoice (j: JVal) : Result<FontVoice, string> =
+    match j with
+    | JStr "Default" -> Ok FontVoice.Default
+    | JStr "Display" -> Ok FontVoice.Display
+    | JStr "Structural" -> Ok FontVoice.Structural
+    | _ -> Error "not a FontVoice"
+
 let rec private decNodeKind (j: JVal) : Result<NodeKind, string> =
     dObj j |> Result.bind (fun __fs ->
     dTag __fs |> Result.bind (fun __t ->
@@ -1599,7 +1685,10 @@ and private decNode (j: JVal) : Result<Node, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "id" __fs dStr |> Result.bind (fun id ->
     dReq "kind" __fs decNodeKind |> Result.bind (fun kind ->
-    Ok { Id = id; Kind = kind })))
+    dOpt "accessibility" __fs decAccessibility |> Result.bind (fun accessibility ->
+    dOpt "state" __fs decStateBehaviour |> Result.bind (fun state ->
+    dOpt "style" __fs decSemanticStyle |> Result.bind (fun style ->
+    Ok { Id = id; Kind = kind; Accessibility = accessibility; State = state; Style = style }))))))
 
 and private decTextSource (j: JVal) : Result<TextSource, string> =
     match j with
@@ -2113,6 +2202,32 @@ and private decShape (j: JVal) : Result<Shape, string> =
             Ok(Shape.Label(style, text, x, y))))))
         | __other -> Error ("unknown Shape case: " + __other))
     | _ -> Error "expected a Shape object"
+
+and private decSemanticStyle (j: JVal) : Result<SemanticStyle, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "emphasis" __fs decEmphasis (Emphasis.Normal) |> Result.bind (fun emphasis ->
+    dDef "role" __fs decStyleRole (StyleRole.None) |> Result.bind (fun role ->
+    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
+    dDef "voice" __fs decFontVoice (FontVoice.Default) |> Result.bind (fun voice ->
+    dDef "weight" __fs decStyleWeight (StyleWeight.Standard) |> Result.bind (fun weight ->
+    Ok { Emphasis = emphasis; Role = role; Tone = tone; Voice = voice; Weight = weight }))))))
+
+and private decStateBehaviour (j: JVal) : Result<StateBehaviour, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dOpt "onEmpty" __fs decNode |> Result.bind (fun onEmpty ->
+    dPresent "onError" __fs |> Result.bind (fun onError ->
+    dOpt "onLoading" __fs decNode |> Result.bind (fun onLoading ->
+    Ok { OnEmpty = onEmpty; OnError = onError; OnLoading = onLoading }))))
+
+and private decAccessibility (j: JVal) : Result<Accessibility, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dOpt "describedBy" __fs dStr |> Result.bind (fun describedBy ->
+    dOpt "hidden" __fs (decBinding dBool) |> Result.bind (fun hidden ->
+    dOpt "label" __fs (decBinding dStr) |> Result.bind (fun label ->
+    dOpt "labelledBy" __fs dStr |> Result.bind (fun labelledBy ->
+    dOpt "liveRegion" __fs dStr |> Result.bind (fun liveRegion ->
+    dOpt "role" __fs dStr |> Result.bind (fun role ->
+    Ok { DescribedBy = describedBy; Hidden = hidden; Label = label; LabelledBy = labelledBy; LiveRegion = liveRegion; Role = role })))))))
 
 and private decSwitchCase (j: JVal) : Result<SwitchCase, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -2636,118 +2751,118 @@ let runValidator (reg: Validator.Registry<Node, string>) (root: Node) : Defect<s
 // defaults are filled, other optionals default to None.
 
 let mkHeading (id: string) (level: int) (text: TextSource) (variant: HeadingVariant) : Node =
-    { Id = id; Kind = NodeKind.Heading { Level = level; Text = text; Variant = variant } }
+    { Id = id; Kind = NodeKind.Heading { Level = level; Text = text; Variant = variant }; Accessibility = None; State = None; Style = None }
 
 let mkBadge (id: string) (label: TextSource) (variant: BadgeVariant) : Node =
-    { Id = id; Kind = NodeKind.Badge { Label = label; Variant = variant } }
+    { Id = id; Kind = NodeKind.Badge { Label = label; Variant = variant }; Accessibility = None; State = None; Style = None }
 
 let mkMarkdown (id: string) (text: TextSource) : Node =
-    { Id = id; Kind = NodeKind.Markdown { Text = text } }
+    { Id = id; Kind = NodeKind.Markdown { Text = text }; Accessibility = None; State = None; Style = None }
 
 let mkMath (id: string) (source: string) (display: MathDisplay) : Node =
-    { Id = id; Kind = NodeKind.Math { Source = source; Display = display } }
+    { Id = id; Kind = NodeKind.Math { Source = source; Display = display }; Accessibility = None; State = None; Style = None }
 
 let mkSkeleton (id: string) (rows: int) : Node =
-    { Id = id; Kind = NodeKind.Skeleton { Rows = rows } }
+    { Id = id; Kind = NodeKind.Skeleton { Rows = rows }; Accessibility = None; State = None; Style = None }
 
 let mkList (id: string) (items: TextSource list) (ordered: bool) : Node =
-    { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered } }
+    { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered }; Accessibility = None; State = None; Style = None }
 
 let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: ImageVariant) : Node =
-    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant } }
+    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant }; Accessibility = None; State = None; Style = None }
 
 let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node =
-    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None } }
+    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None }; Accessibility = None; State = None; Style = None }
 
 let mkCallout (id: string) (body: TextSource) : Node =
-    { Id = id; Kind = NodeKind.Callout { Body = body; Dismissable = false; Tone = ToneVariant.Default; Heading = None; Icon = None } }
+    { Id = id; Kind = NodeKind.Callout { Body = body; Dismissable = false; Tone = ToneVariant.Default; Heading = None; Icon = None }; Accessibility = None; State = None; Style = None }
 
 let mkProgress (id: string) (fraction: Binding<float>) : Node =
-    { Id = id; Kind = NodeKind.Progress { Fraction = fraction; Indeterminate = false; Tone = ToneVariant.Default; Label = None; Caveat = None } }
+    { Id = id; Kind = NodeKind.Progress { Fraction = fraction; Indeterminate = false; Tone = ToneVariant.Default; Label = None; Caveat = None }; Accessibility = None; State = None; Style = None }
 
 let mkMetric (id: string) (label: TextSource) (value: Binding<float>) : Node =
-    { Id = id; Kind = NodeKind.Metric { Label = label; Value = value; Format = CellFormat.None; Tone = ToneVariant.Default; Weight = StyleWeight.Standard; Emphasis = Emphasis.Normal; Trend = None; TrendFormat = None; Icon = None; Subtext = None } }
+    { Id = id; Kind = NodeKind.Metric { Label = label; Value = value; Format = CellFormat.None; Tone = ToneVariant.Default; Weight = StyleWeight.Standard; Emphasis = Emphasis.Normal; Trend = None; TrendFormat = None; Icon = None; Subtext = None }; Accessibility = None; State = None; Style = None }
 
 let mkLabelValueRow (id: string) (label: TextSource) (value: Binding<float>) : Node =
-    { Id = id; Kind = NodeKind.LabelValueRow { Emphasis = false; Format = CellFormat.None; Label = label; Value = value; Help = None } }
+    { Id = id; Kind = NodeKind.LabelValueRow { Emphasis = false; Format = CellFormat.None; Label = label; Value = value; Help = None }; Accessibility = None; State = None; Style = None }
 
 let mkFact (id: string) (label: TextSource) (value: TextSource) : Node =
-    { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value } }
+    { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value }; Accessibility = None; State = None; Style = None }
 
 let mkSparkline (id: string) (source: Binding<int list>) : Node =
-    { Id = id; Kind = NodeKind.Sparkline { Source = source } }
+    { Id = id; Kind = NodeKind.Sparkline { Source = source }; Accessibility = None; State = None; Style = None }
 
 let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: int list) (language: string) (lineNumbers: bool) : Node =
-    { Id = id; Kind = NodeKind.CodeBlock { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers } }
+    { Id = id; Kind = NodeKind.CodeBlock { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }; Accessibility = None; State = None; Style = None }
 
 let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node =
-    { Id = id; Kind = NodeKind.Toast { Dismissable = true; Message = message; Open = ``open``; Tone = ToneVariant.Default } }
+    { Id = id; Kind = NodeKind.Toast { Dismissable = true; Message = message; Open = ``open``; Tone = ToneVariant.Default }; Accessibility = None; State = None; Style = None }
 
 let mkDrawing (id: string) (shapes: Shape list) (style: DrawStyle) (viewBox: ViewBox) : Node =
-    { Id = id; Kind = NodeKind.Drawing { Description = None; Shapes = shapes; Style = style; Title = None; ViewBox = viewBox } }
+    { Id = id; Kind = NodeKind.Drawing { Description = None; Shapes = shapes; Style = style; Title = None; ViewBox = viewBox }; Accessibility = None; State = None; Style = None }
 
 let mkBox (id: string) (children: Node list) (layout: LayoutMode) (role: BoxRole) : Node =
-    { Id = id; Kind = NodeKind.Box { Children = children; Heading = None; Layout = layout; Role = role } }
+    { Id = id; Kind = NodeKind.Box { Children = children; Heading = None; Layout = layout; Role = role }; Accessibility = None; State = None; Style = None }
 
 let mkSplitPanel (id: string) (children: Node list) (weight: float) : Node =
-    { Id = id; Kind = NodeKind.SplitPanel { Children = children; Weight = weight } }
+    { Id = id; Kind = NodeKind.SplitPanel { Children = children; Weight = weight }; Accessibility = None; State = None; Style = None }
 
 let mkSummaryList (id: string) (children: Node list) : Node =
-    { Id = id; Kind = NodeKind.SummaryList { Children = children; Heading = None } }
+    { Id = id; Kind = NodeKind.SummaryList { Children = children; Heading = None }; Accessibility = None; State = None; Style = None }
 
 let mkDisclosure (id: string) (children: Node list) (defaultOpen: bool) (heading: TextSource) (``open``: Binding<bool>) : Node =
-    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` } }
+    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` }; Accessibility = None; State = None; Style = None }
 
 let mkModal (id: string) (children: Node list) (dismissable: bool) (onDismiss: Action) (``open``: Binding<bool>) : Node =
-    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = onDismiss; Open = ``open``; Heading = None } }
+    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = onDismiss; Open = ``open``; Heading = None }; Accessibility = None; State = None; Style = None }
 
 let mkScrollArea (id: string) (children: Node list) (orientation: ScrollOrientation) : Node =
-    { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None } }
+    { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None }; Accessibility = None; State = None; Style = None }
 
 let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node list) : Node =
-    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None } }
+    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; State = None; Style = None }
 
 let mkStepper (id: string) (activeStep: Binding<int>) (children: Node list) : Node =
-    { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None } }
+    { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None }; Accessibility = None; State = None; Style = None }
 
 let mkButton (id: string) (label: TextSource) (onClick: Action) (variant: ButtonVariant) : Node =
-    { Id = id; Kind = NodeKind.Button { Label = label; OnClick = onClick; Variant = variant; Icon = None; Tooltip = None; Disabled = None } }
+    { Id = id; Kind = NodeKind.Button { Label = label; OnClick = onClick; Variant = variant; Icon = None; Tooltip = None; Disabled = None }; Accessibility = None; State = None; Style = None }
 
 let mkSelect (id: string) (label: TextSource) (source: Binding<SelectOption list>) (value: Binding<string>) : Node =
-    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None } }
+    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None }; Accessibility = None; State = None; Style = None }
 
 let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) : Node =
-    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None } }
+    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None }; Accessibility = None; State = None; Style = None }
 
 let mkForm (id: string) (fields: FormField list) (onSubmit: Action) (submitLabel: TextSource) : Node =
-    { Id = id; Kind = NodeKind.Form { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = None } }
+    { Id = id; Kind = NodeKind.Form { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = None }; Accessibility = None; State = None; Style = None }
 
 let mkFilters (id: string) (items: FilterSpec list) : Node =
-    { Id = id; Kind = NodeKind.Filters { Items = items } }
+    { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; State = None; Style = None }
 
 let mkDataGrid (id: string) (columns: ColumnErased list) (source: Binding<unit>) : Node =
-    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; Source = source; StaticRows = None; OnRowClick = None } }
+    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; State = None; Style = None }
 
 let mkChart (id: string) (kind: ChartKind) (source: Binding<unit>) (stacked: bool) (xField: string) (yFields: string list) : Node =
-    { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; OnPointClick = None } }
+    { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; OnPointClick = None }; Accessibility = None; State = None; Style = None }
 
 let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node =
-    { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None } }
+    { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; State = None; Style = None }
 
 let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<string, unit>) : Node =
-    { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None } }
+    { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; State = None; Style = None }
 
 let mkErrorBoundary (id: string) (child: Node) (fallback: Node) : Node =
-    { Id = id; Kind = NodeKind.ErrorBoundary { Child = child; Fallback = fallback } }
+    { Id = id; Kind = NodeKind.ErrorBoundary { Child = child; Fallback = fallback }; Accessibility = None; State = None; Style = None }
 
 let mkFragmentDecl (id: string) (body: Node) (name: string) : Node =
-    { Id = id; Kind = NodeKind.FragmentDecl { Body = body; Name = name; Holes = None; Effect = None } }
+    { Id = id; Kind = NodeKind.FragmentDecl { Body = body; Name = name; Holes = None; Effect = None }; Accessibility = None; State = None; Style = None }
 
 let mkFragmentRef (id: string) (name: string) : Node =
-    { Id = id; Kind = NodeKind.FragmentRef { Name = name; Args = None } }
+    { Id = id; Kind = NodeKind.FragmentRef { Name = name; Args = None }; Accessibility = None; State = None; Style = None }
 
 let mkSwitch (id: string) (cases: SwitchCase list) (``default``: Node) (stateKey: string) : Node =
-    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; StateKey = stateKey } }
+    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; StateKey = stateKey }; Accessibility = None; State = None; Style = None }
 
 let mkMount (id: string) (capabilities: string list) (channel: GuestChannel) (scopeId: string) : Node =
-    { Id = id; Kind = NodeKind.Mount { Capabilities = capabilities; Channel = channel; Inputs = None; OnBubble = None; ScopeId = scopeId } }
+    { Id = id; Kind = NodeKind.Mount { Capabilities = capabilities; Channel = channel; Inputs = None; OnBubble = None; ScopeId = scopeId }; Accessibility = None; State = None; Style = None }

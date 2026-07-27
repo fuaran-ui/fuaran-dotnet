@@ -206,11 +206,16 @@ let generatedLayerTests =
               // does not exist. Also missing: `Query.dependsOn`, `Tabs.onSelectTag`,
               // `Disclosure.onToggle`, `Select.onChangeMulti`.
               //
-              // What remains is the node envelope, which the IDL models not at all.
+              // The node envelope was the last one, and Phase 690 closed it: the IDL
+              // now declares `state` / `style` / `accessibility`, so the generated
+              // encoder no longer drops `style-role-voice-1`'s `{role,voice}` on the
+              // way back out. **Empty** is the interesting state for this list — the
+              // generated encoder now agrees with the hand-written one on every one
+              // of the 85 fixtures it can decode.
               Expect.equal
                   (disagreed |> List.map (fun (n, _, _) -> n))
-                  [ "style-role-voice-1.json" ]
-                  "the only surviving disagreement is the unmodelled node envelope"
+                  []
+                  "the generated and hand-written encoders now agree on every decodable fixture"
 
               Expect.equal
                   compared
@@ -297,7 +302,6 @@ let generatedLayerTests =
                   buckets
                   [ "Binding.Transform (out of scope)", 12
                     "field-set drift", 2
-                    "node envelope (unmodelled)", 1
                     // The residual 4 are Phase 596's auto-bind `value` omission, which
                     // is CONTEXT-dependent (it turns on the enclosing field's `id`), so
                     // no local `OmitDefault` in the IDL can express it. Not a flag away
@@ -327,17 +331,30 @@ let generatedLayerTests =
 
               Expect.equal corpus.Length 85 "the node corpus is the expected 85 fixtures"
 
-              let covered =
-                  corpus
-                  |> List.filter (fun (_, json) ->
-                      match Generated.decodeNode json with
-                      | Ok node -> Generated.encodeNode node = json
-                      | Error _ -> false)
-                  |> List.length
+              let isCovered (json: string) =
+                  match Generated.decodeNode json with
+                  | Ok node -> Generated.encodeNode node = json
+                  | Error _ -> false
 
+              let uncovered, coveredFixtures =
+                  corpus |> List.partition (fun (_, json) -> not (isCovered json))
+
+              let covered = List.length coveredFixtures
+
+              // The count says how far; the NAMES say what is left, which is what a
+              // later phase needs. Printed rather than pinned: pinning both a count
+              // and a list makes every change fail twice with the same information.
+              printfn "── generated-layer residue: %d of %d uncovered ──" uncovered.Length corpus.Length
+
+              for name, _ in uncovered do
+                  printfn "   %s" name
+
+              // 75 → 76 at Phase 690, which modelled the node envelope: the gain is
+              // `style-role-voice-1`, previously the corpus's one DRIFT (decoded, then
+              // re-encoded WITHOUT its `style`) rather than a clean non-decode.
               Expect.equal
                   covered
-                  75
+                  76
                   (sprintf
                       "generated-layer corpus coverage moved (%d of %d fixtures decode+re-encode byte-identically)"
                       covered
@@ -372,15 +389,16 @@ let generatedLayerTests =
                   40
                   "every reject fixture is accounted for on one side of the seam"
 
-              // All three are refusals the generated layer structurally CANNOT make:
-              // an empty-but-well-typed node id is a validator rule, and both `style`
-              // cases live in the node envelope, which the IDL deliberately does not
-              // model (Phase 671 out-of-scope) — so the generated decoder never looks
-              // at those keys and cannot object to their contents.
+              // Three became one at Phase 690, and the two that moved did so for the
+              // right reason: `reject-unknown-tone` and `reject-wrongtype-style-tone`
+              // are both *inside* the node envelope, which the IDL now models — so the
+              // generated decoder reads `style` and refuses a bad `tone` on structure
+              // alone, where before it never looked at the key.
+              //
+              // What is left is the one refusal structure genuinely cannot make: an
+              // empty-but-well-typed node id is a validator rule, not a shape.
               Expect.equal
                   policyOwned
-                  [ "reject-emptynodeid.json"
-                    "reject-unknown-tone.json"
-                    "reject-wrongtype-style-tone.json" ]
+                  [ "reject-emptynodeid.json" ]
                   "the policy-owned residue is exactly the shapes structure cannot judge"
           } ]
