@@ -75,7 +75,17 @@ type FuaranCall =
         NodeIdLiteral: string option
         /// NodeId of the nearest enclosing tree-root call (Fuaran.dashboard).
         /// `None` if this call site is itself the root or not under one.
+        /// This is the human-readable tree NAME reported in findings — it is
+        /// NOT an identity: see `TreeRootKey`.
         TreeRoot: string option
+        /// Identity of the nearest enclosing tree-root CALL SITE — unique per
+        /// root invocation across the whole walk. Two `Fuaran.dashboard "doc"`
+        /// invocations are two DIFFERENT trees that happen to share a root id
+        /// (a template and its stand-in, two fixtures, two modules), so
+        /// per-tree checks must group on this and report `TreeRoot`. Grouping
+        /// on the id string instead conflates them and reports every shared id
+        /// as an intra-tree duplicate.
+        TreeRootKey: string option
         /// Source location of the smart-ctor identifier.
         Location: Location
         /// `binding.query "name" ...` references inside this call's record
@@ -298,20 +308,37 @@ let rec private payloadCaseName (expr: SynExpr) : string option =
     | SynExpr.LongIdent(longDotId = SynLongIdent(id = ids)) when not ids.IsEmpty -> Some (List.last ids).idText
     | _ -> None
 
-type private WalkState =
-    { File: string
-      mutable Calls: FuaranCall list
-      mutable TreeRootStack: string list }
+/// A tree-root call site: its minted identity key + the NodeId literal that
+/// names it in findings.
+type private TreeIdentity = { Key: string; Name: string }
 
-let private pushRoot (state: WalkState) (rootId: string) =
-    state.TreeRootStack <- rootId :: state.TreeRootStack
+type private WalkState =
+    {
+        File: string
+        mutable Calls: FuaranCall list
+        /// Monotonic counter minting a distinct key per tree-root call site in
+        /// this file. Two roots sharing a NodeId still get distinct keys.
+        mutable RootSeq: int
+        mutable TreeRootStack: TreeIdentity list
+    }
+
+/// Mint the identity of a tree-root call site. The key carries the file so
+/// two files each rooting a `"doc"` tree stay distinct trees.
+let private mintRoot (state: WalkState) (rootId: string) : TreeIdentity =
+    state.RootSeq <- state.RootSeq + 1
+
+    { Key = sprintf "%s|%s#%d" state.File rootId state.RootSeq
+      Name = rootId }
+
+let private pushRoot (state: WalkState) (root: TreeIdentity) =
+    state.TreeRootStack <- root :: state.TreeRootStack
 
 let private popRoot (state: WalkState) =
     match state.TreeRootStack with
     | [] -> ()
     | _ :: rest -> state.TreeRootStack <- rest
 
-let private currentRoot (state: WalkState) : string option =
+let private currentRoot (state: WalkState) : TreeIdentity option =
     match state.TreeRootStack with
     | top :: _ -> Some top
     | [] -> None
@@ -786,13 +813,26 @@ let private visitFuaranCall (state: WalkState) (ctor: string) (ctorRange: range)
 
     let priorRoot = currentRoot state
 
+    // Mint this call's own tree identity BEFORE the record is built, so a root
+    // call is filed under the tree it opens rather than under the enclosing
+    // one. `None` unless this ctor roots a tree and supplies a literal id.
+    let selfRoot =
+        match treeRoots.Contains ctor, nodeIdLiteral with
+        | true, Some id -> Some(mintRoot state id)
+        | _ -> None
+
+    // A nested root keeps the OUTER tree for its own record (its descendants
+    // pick up the inner one via the stack) — the pre-existing precedence.
+    let tree =
+        match priorRoot with
+        | Some _ -> priorRoot
+        | None -> selfRoot
+
     let call =
         { Ctor = ctor
           NodeIdLiteral = nodeIdLiteral
-          TreeRoot =
-            match priorRoot, treeRoots.Contains ctor, nodeIdLiteral with
-            | None, true, Some id -> Some id // self-root
-            | other, _, _ -> other
+          TreeRoot = tree |> Option.map _.Name
+          TreeRootKey = tree |> Option.map _.Key
           Location = mkLocation state.File ctorRange
           QueryReferences = List.ofSeq queries
           DispatchReferences = List.ofSeq dispatches
@@ -804,10 +844,7 @@ let private visitFuaranCall (state: WalkState) (ctor: string) (ctorRange: range)
 
     state.Calls <- call :: state.Calls
 
-    if treeRoots.Contains ctor then
-        match nodeIdLiteral with
-        | Some id -> pushRoot state id
-        | None -> ()
+    selfRoot |> Option.iter (pushRoot state)
 
 /// Recursive walk over the syntax tree. We look for `Fuaran.<ctor> "id" { ... }`
 /// shapes anywhere they appear. The outer pattern is
@@ -903,6 +940,7 @@ let walkFile (checker: FSharpChecker) (file: string) : Async<FuaranCall list> =
         let state =
             { File = file
               Calls = []
+              RootSeq = 0
               TreeRootStack = [] }
 
         match parseResult.ParseTree with

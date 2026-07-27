@@ -16,6 +16,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Findings.fs" />
+    <Compile Include="Suppressions.fs" />
     <Compile Include="Manifest.fs" />
     <Compile Include="AstWalker.fs" />
     <Compile Include="NodeIdCheck.fs" />

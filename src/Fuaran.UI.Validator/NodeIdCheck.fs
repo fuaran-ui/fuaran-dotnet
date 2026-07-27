@@ -8,10 +8,14 @@ module Fuaran.UI.Validator.NodeIdCheck
 //  modules independently use the same id, but worth flagging when it might
 //  surprise the AI's reasoning).
 //
-//  A "tree" is the call sub-graph rooted at a `Fuaran.dashboard` invocation
-//  (see AstWalker.treeRoots). Calls without a tree root (loose components)
-//  are pooled into a synthetic `__loose__` bucket for cross-tree comparison
-//  only — they emit no per-tree duplicates.
+//  A "tree" is the call sub-graph rooted at a `Fuaran.dashboard` INVOCATION
+//  (see AstWalker.treeRoots) — identified by `TreeRootKey`, the call site,
+//  not by the root's NodeId. Two invocations rooting `"doc"` are two trees:
+//  a template and its stand-in, or two independent fixtures, legitimately
+//  share every id, and grouping on the id string would report each of those
+//  shared ids as an intra-tree duplicate. Calls without a tree root (loose
+//  components) are pooled into a synthetic `__loose__` bucket for cross-tree
+//  comparison only — they emit no per-tree duplicates.
 // ============================================================================
 
 open Fuaran.UI.Validator.AstWalker
@@ -27,7 +31,10 @@ let check (calls: FuaranCall list) : Finding list =
             | Some id ->
                 Some
                     {| Id = id
-                       Tree = c.TreeRoot |> Option.defaultValue looseBucket
+                       // Identity for grouping — the root CALL SITE.
+                       Tree = c.TreeRootKey |> Option.defaultValue looseBucket
+                       // The root's NodeId — for the human-readable message only.
+                       TreeName = c.TreeRoot |> Option.defaultValue looseBucket
                        Call = c |}
             | None -> None)
 
@@ -53,7 +60,7 @@ let check (calls: FuaranCall list) : Finding list =
                                 (sprintf
                                     "Duplicate NodeId \"%s\" within tree \"%s\" — every NodeId inside one Fuaran.dashboard subtree must be unique (§4g op-target stability)."
                                     id
-                                    tree))))
+                                    w.TreeName))))
 
     let crossTreeWarnings =
         withIds
@@ -64,6 +71,8 @@ let check (calls: FuaranCall list) : Finding list =
             if List.length distinctTrees < 2 then
                 []
             else
+                let names = items |> List.map _.TreeName |> List.distinct |> List.sort
+
                 items
                 |> List.map (fun w ->
                     create
@@ -73,6 +82,6 @@ let check (calls: FuaranCall list) : Finding list =
                         (sprintf
                             "NodeId \"%s\" appears across multiple trees (%s) — legitimate when modules share a stable id, but worth flagging."
                             id
-                            (distinctTrees |> List.sort |> String.concat ", "))))
+                            (names |> String.concat ", "))))
 
     perTreeErrors @ crossTreeWarnings

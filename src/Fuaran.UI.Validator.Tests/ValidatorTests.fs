@@ -1417,4 +1417,176 @@ let build () =
               let result = runValidator projectPath None
 
               Expect.isFalse (hasCode "FUARAN065" result.Findings) "no value-space finding for an in-range default"
+          }
+
+          // ── Tree identity: a tree is a ROOT CALL SITE, not a root id ──────
+          //
+          // Two independent trees may legitimately share every NodeId — a
+          // template and its content-free stand-in, or two fixtures. Grouping
+          // per-tree uniqueness on the root's id string conflates them and
+          // reports each shared id as an intra-tree duplicate.
+
+          test "two trees sharing a root id are two trees (FUARAN002), not one with duplicates (FUARAN001)" {
+              let source =
+                  """module Sample.SameRootId
+
+open Fuaran.UI
+
+let real () =
+    Fuaran.dashboard "doc-root"
+        { Defaults.dashboard with Children = [ Fuaran.metric "clause-1" Defaults.metric ] }
+
+let standIn () =
+    Fuaran.dashboard "doc-root"
+        { Defaults.dashboard with Children = [ Fuaran.metric "clause-1" Defaults.metric ] }
+"""
+
+              let dir = freshDir "same-root-id"
+              let projectPath = writeFsproj dir "SameRootId.fsproj"
+              writeFile dir "Source.fs" source |> ignore
+
+              let result = runValidator projectPath None
+
+              Expect.isFalse
+                  (hasCode "FUARAN001" result.Findings)
+                  "no intra-tree duplicate — the two dashboards are distinct trees"
+
+              Expect.isTrue (hasCode "FUARAN002" result.Findings) "the shared ids surface as the cross-tree warning"
+              Expect.equal (severityCount Error result.Findings) 0 "no Errors"
+          }
+
+          test "a duplicate inside ONE tree is still an Error when a same-id sibling tree exists" {
+              let source =
+                  """module Sample.DupWithTwin
+
+open Fuaran.UI
+
+let withDup () =
+    Fuaran.dashboard "root"
+        { Defaults.dashboard with
+            Children = [ Fuaran.metric "same" Defaults.metric; Fuaran.metric "same" Defaults.metric ] }
+
+let clean () =
+    Fuaran.dashboard "root"
+        { Defaults.dashboard with Children = [ Fuaran.metric "other" Defaults.metric ] }
+"""
+
+              let dir = freshDir "dup-with-twin"
+              let projectPath = writeFsproj dir "DupWithTwin.fsproj"
+              writeFile dir "Source.fs" source |> ignore
+
+              let result = runValidator projectPath None
+
+              Expect.isTrue (hasCode "FUARAN001" result.Findings) "the genuine intra-tree duplicate still errors"
+          }
+
+          // ── FUARAN044's local-hosting kind set tracks the renderer ────────
+
+          test "binding.local inside FormFieldKind.RangedNumber is not flagged (FUARAN044)" {
+              let source =
+                  """module Sample.RangedLocal
+
+open Fuaran.UI
+open Fuaran.UI.Types
+
+type Msg = SetAge of float
+
+let field =
+    FormFieldKind.RangedNumber(
+        binding.local
+            (Binding.Static 0.0)
+            LocalFlushTrigger.OnSubmit
+            (fun a -> Action.Dispatch(SetAge a))
+            (Some string)
+            (fun s -> Ok 0.0),
+        None,
+        Defaults.numberConstraints
+    )
+"""
+
+              let dir = freshDir "ranged-local"
+              let projectPath = writeFsproj dir "RangedLocal.fsproj"
+              writeFile dir "Source.fs" source |> ignore
+
+              let result = runValidator projectPath None
+
+              Expect.isFalse
+                  (hasCode "FUARAN044" result.Findings)
+                  "RangedNumber mounts the Local useState slot, same as Number"
+          }
+
+          // ── Suppression pragmas ──────────────────────────────────────────
+
+          test "a file-scoped disable pragma suppresses the named code and is counted" {
+              let dir = freshDir "suppress-file"
+              let projectPath = writeFsproj dir "SuppressFile.fsproj"
+
+              let source =
+                  "// fuaran-validator: disable FUARAN001 — negative-test fixture\n"
+                  + duplicateNodeIdSource
+
+              writeFile dir "Source.fs" source |> ignore
+
+              let result = runValidator projectPath None
+
+              Expect.isFalse (hasCode "FUARAN001" result.Findings) "the suppressed code is gone from the findings"
+              Expect.equal (severityCount Error result.Findings) 0 "no Errors survive"
+              Expect.isGreaterThan result.Suppressed 0 "the run reports what it suppressed"
+          }
+
+          test "a disable pragma naming a different code suppresses nothing" {
+              let dir = freshDir "suppress-other"
+              let projectPath = writeFsproj dir "SuppressOther.fsproj"
+
+              let source = "// fuaran-validator: disable FUARAN057\n" + duplicateNodeIdSource
+
+              writeFile dir "Source.fs" source |> ignore
+
+              let result = runValidator projectPath None
+
+              Expect.isTrue (hasCode "FUARAN001" result.Findings) "an unrelated code is untouched"
+              Expect.equal result.Suppressed 0 "nothing was suppressed"
+          }
+
+          test "disable-next-line suppresses only the line that follows it" {
+              // Two duplicate-id call sites; the pragma covers the first only,
+              // so exactly one FUARAN001 survives.
+              let source =
+                  """module Sample.NextLine
+
+open Fuaran.UI
+
+let build () =
+    Fuaran.dashboard "nl-dashboard"
+        { Defaults.dashboard with
+            Children =
+                [
+                  // fuaran-validator: disable-next-line FUARAN001
+                  Fuaran.metric "shared-id" Defaults.metric
+                  Fuaran.metric "shared-id" Defaults.metric ] }
+"""
+
+              let dir = freshDir "suppress-line"
+              let projectPath = writeFsproj dir "SuppressLine.fsproj"
+              writeFile dir "Source.fs" source |> ignore
+
+              let result = runValidator projectPath None
+
+              let dupes = result.Findings |> List.filter (fun f -> f.Code = "FUARAN001")
+
+              Expect.equal (List.length dupes) 1 "only the un-pragma'd call site still reports"
+              Expect.equal result.Suppressed 1 "exactly one finding suppressed"
+          }
+
+          test "a bare disable with no code suppresses nothing" {
+              let dir = freshDir "suppress-bare"
+              let projectPath = writeFsproj dir "SuppressBare.fsproj"
+
+              let source = "// fuaran-validator: disable\n" + duplicateNodeIdSource
+              writeFile dir "Source.fs" source |> ignore
+
+              let result = runValidator projectPath None
+
+              Expect.isTrue (hasCode "FUARAN001" result.Findings) "a codeless pragma is not a blanket disable"
+              Expect.equal result.Suppressed 0 "nothing was suppressed"
           } ]

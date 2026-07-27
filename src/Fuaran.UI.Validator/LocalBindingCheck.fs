@@ -21,15 +21,18 @@ module Fuaran.UI.Validator.LocalBindingCheck
 //
 //   - FUARAN044 LocalBindingOnNonInputField     (Error): `binding.local`
 //     appears outside a `FormFieldKind.Text(...)` / `FormFieldKind.Number(...)`
-//     enclosing position (e.g. assigned to a `Metric.Source` slot). The
-//     renderer's useState-slot wiring is only active for those two kinds;
-//     anywhere else the binding silently resolves to its InitialFrom-side
-//     and the local-buffer semantics are lost.
+//     / `FormFieldKind.RangedNumber(...)` enclosing position (e.g. assigned
+//     to a `Metric.Source` slot). The renderer's useState-slot wiring is only
+//     active for those three kinds; anywhere else the binding silently
+//     resolves to its InitialFrom-side and the local-buffer semantics are
+//     lost. The recognised set is `localHostingKinds` below and must track
+//     `Render.fs`'s `Binding.Local` arms — omitting a kind the renderer does
+//     support turns this Error into a false positive on correct code.
 //
 //  All three rules walk the untyped F# AST per the validator's scope —
 //  they don't consult the typed type-universe. A `binding.local` call
 //  enclosing context is detected lexically (the nearest enclosing
-//  `FormFieldKind.Text` or `FormFieldKind.Number` application).
+//  local-hosting `FormFieldKind` application).
 // ============================================================================
 
 open System.IO
@@ -50,9 +53,9 @@ type private LocalBindingCall =
         /// True when the AST shows `flushOn = OnCommitAction` (or the
         /// fully-qualified `LocalFlushTrigger.OnCommitAction`).
         FlushOnIsCommitAction: bool
-        /// The enclosing kind shape — `Some "Text"` / `Some "Number"` when
-        /// the binding sits inside a `FormFieldKind.Text(...)` /
-        /// `FormFieldKind.Number(...)` constructor; `None` for any other
+        /// The enclosing kind shape — `Some "Text"` / `Some "Number"` /
+        /// `Some "RangedNumber"` when the binding sits inside one of the
+        /// local-hosting `FormFieldKind` constructors; `None` for any other
         /// position.
         EnclosingKind: string option
     }
@@ -96,13 +99,19 @@ let private (|BindingLocal|_|) (expr: SynExpr) =
     | Some(prefix, "local") when not prefix.IsEmpty && List.last prefix = "binding" -> Some()
     | _ -> None
 
-/// `FormFieldKind.Text` / `FormFieldKind.Number`.
+/// The field kinds whose renderer arm mounts the per-NodeId `useState`
+/// buffer — i.e. the positions where a `Binding.Local` actually behaves as a
+/// local buffer. Kept in step with `Render.fs`'s `Binding.Local` arms:
+/// `FormFieldKind.Text`, `.Number` and `.RangedNumber` (the last renders
+/// "exactly like the plain Number arm, Local-bound variant included").
+let private localHostingKinds = Set.ofList [ "Text"; "Number"; "RangedNumber" ]
+
 let private (|FormFieldKindCtor|_|) (expr: SynExpr) =
     match leafIdent expr with
     | Some(prefix, leaf) when
         not prefix.IsEmpty
         && List.last prefix = "FormFieldKind"
-        && (leaf = "Text" || leaf = "Number")
+        && localHostingKinds.Contains leaf
         ->
         Some leaf
     | _ -> None
@@ -152,9 +161,9 @@ type private WalkState =
       mutable LocalCalls: LocalBindingCall list
       mutable CommitRefs: CommitLocalReference list
       // The currently-active enclosing FormFieldKind shape ("Text",
-      // "Number", or none). Pushed when we descend into the args of a
-      // `FormFieldKind.Text` / `FormFieldKind.Number` application; popped
-      // when we leave.
+      // "Number", "RangedNumber", or none). Pushed when we descend into the
+      // args of a local-hosting `FormFieldKind` application; popped when we
+      // leave.
       mutable EnclosingKindStack: string list }
 
 let private currentEnclosingKind (s: WalkState) : string option =
@@ -344,7 +353,7 @@ let checkSources (checker: FSharpChecker) (files: string list) : Async<Finding l
                             Error
                             "FUARAN044"
                             call.Location
-                            "binding.local was used outside an enclosing FormFieldKind.Text(...) or FormFieldKind.Number(...) constructor — the renderer's useState slot is only mounted for those two field kinds. Move the Local binding into a form-field Text/Number value, or use binding.state / binding.query for read-side bindings."
+                            "binding.local was used outside an enclosing FormFieldKind.Text(...) / FormFieldKind.Number(...) / FormFieldKind.RangedNumber(...) constructor — the renderer's useState slot is only mounted for those three field kinds. Move the Local binding into a form-field Text/Number/RangedNumber value, or use binding.state / binding.query for read-side bindings."
                         :: acc
                 | Some _ -> ()
 

@@ -82,11 +82,20 @@ let main argv =
             let warningCount =
                 result.Findings |> List.filter (fun f -> not (isError f)) |> List.length
 
+            // Suppressed findings are counted in the summary, never hidden — a
+            // silenced rule should still be visible in the build log.
+            let suppressedNote =
+                if result.Suppressed > 0 then
+                    sprintf ", %d suppressed" result.Suppressed
+                else
+                    ""
+
             printfn
-                "Fuaran.UI.Validator: %d file(s), %d error(s), %d warning(s), manifest=%s"
+                "Fuaran.UI.Validator: %d file(s), %d error(s), %d warning(s)%s, manifest=%s"
                 result.FilesWalked
                 errorCount
                 warningCount
+                suppressedNote
                 (result.ManifestPath |> Option.defaultValue "(none)")
 
             if errorCount > 0 then 1 else 0

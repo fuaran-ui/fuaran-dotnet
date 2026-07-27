@@ -31,10 +31,16 @@ type RunOptions =
     }
 
 type RunResult =
-    { Findings: Finding list
-      ManifestPath: string option
-      ManifestLoaded: bool
-      FilesWalked: int }
+    {
+        Findings: Finding list
+        ManifestPath: string option
+        ManifestLoaded: bool
+        FilesWalked: int
+        /// Findings dropped by a source-level `// fuaran-validator: disable`
+        /// pragma. Reported so a suppression is visible in the run summary
+        /// rather than silently shrinking the finding count.
+        Suppressed: int
+    }
 
 let private projectDirectory (projectPath: string) =
     let full = Path.GetFullPath projectPath
@@ -183,9 +189,16 @@ let run (options: RunOptions) : Async<RunResult> =
                     Suggestion = None } ]
             | Some _ -> []
 
+        // Source-level pragmas filter the REPORTING layer — every check ran in
+        // full and stayed oblivious to them. Applied to the preamble too, so a
+        // project-wide code can be silenced from any of its own sources.
+        let kept, suppressed =
+            Suppressions.apply (Suppressions.collect sourceFiles) (preamble @ findings)
+
         return
-            { Findings = preamble @ findings
+            { Findings = kept
               ManifestPath = manifestPath
               ManifestLoaded = manifestPath.IsSome
-              FilesWalked = sourceFiles.Length }
+              FilesWalked = sourceFiles.Length
+              Suppressed = suppressed }
     }
