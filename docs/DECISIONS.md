@@ -10,6 +10,49 @@ consequence.
 
 ---
 
+## 2026-07-28 — D3: the IDL reaches full `Binding` parity by hosting foreign codecs, not by re-modelling them
+
+**Decided.** The generated `Binding<'T>` now carries every case the hand-written encoder can emit
+(`Transform`, `Selection`, `I18n`, `Filter.defaultValue`, and host-only `accessor` slots on `Query` /
+`Selection` included), and the full 85-fixture node corpus round-trips through the generated layer
+alone. Four modelling decisions carry it, each a shape the swap (692–694) inherits:
+
+1. **A hosted slot (`THosted`) delegates to a host codec instead of re-modelling its vocabulary.**
+   `Binding.Transform`'s `source` / `pipeline` are real `Fuaran.Core.DataSource` / `Fuaran.Core.Transform`
+   values encoded by `ColumnCodec` / `DataFrameCodec` — the codecs the evaluator already trusts, under
+   the same `Canon` discipline, so the composite splices in canonical. Re-modelling the DataFrame
+   vocabulary as IDL unions was rejected: it would mint a second set of types beside the ones
+   `DataFrame.evalPipelineInEnv` consumes, and the two would drift. Everywhere except the generated F#
+   (schema, TS backend, interpreter, sampler) a hosted slot is verbatim JSON, exactly like `TJson` —
+   its content is the host codec's business.
+2. **Obj-erased binding positions instantiate at `JVal`.** `Transform.params[].from` and `I18n.args`
+   are `Binding<obj>` in the hand-written tier, encoded best-effort; the generated layer uses
+   `Binding<JVal>` — typed, verbatim, byte-faithful. `TOpaque` was rejected for these positions: it
+   erases a real `defaultValue` to a sentinel, which is silent data loss (the D1 argument, again).
+3. **Absence is authorable.** Every control `value` slot (and `Modal.onDismiss`, and the grid's
+   `value`/`field`, `rowKey`/`rowKeyField` siblings) is `option` in the generated types because the
+   wire says absence is legal (Phase 596 auto-bind, Phase 425/426). The context-dependent synthesis —
+   absent value ⇒ `Filter(name)` / `State(field id, placeholder)` — stays policy in the hand-written
+   decoder ABOVE the structural layer; structure carries absence as absence. Consequence for the swap:
+   the generated types can express "auto-bind me" (`None`) where the hand-written types must replicate
+   the synthesis by hand — strictly more expressive, and a shape change at every construction site.
+4. **The `Range` value's transparent Static is a SLOT convention, not a union one.** `Binding.Static`
+   of a range pair encodes as the bare `{"max":…,"min":…}` object; other cases stay `$type`-tagged.
+   The slot carries its own hosted codec over the generated `encBinding`/`decBinding` + a `RangePair`
+   record (the IDL has no tuple type; the record IS the wire object, so the hand-written
+   `float * float` becomes `RangePair` at the swap).
+
+**Not modelled — `Deferred<'T>` (`Pending`/`Ready`/`Error`).** It is not a `Binding` case and not wire
+vocabulary at all: it is the resolver's runtime envelope for an `Invoke` in flight ("a runtime value;
+not wire-serialised"), and the corpus carries no occurrence. It stays a hand-written runtime type,
+untouched by the generated layer and by the swap.
+
+**Also corrected in passing.** The IDL's separate `FilterKind` union was pre-0.2.0 drift — the
+hand-written `FilterSpec` holds a `FormFieldKind` (the filters-unification), so the IDL now does too,
+and the drifted union is deleted.
+
+---
+
 ## 2026-07-27 — D2: a closure's HOST type is free, so the generated layer can be the authoring type
 
 **Decided.** A function-typed slot declares its host signature in the IDL (`TFn`), and any type

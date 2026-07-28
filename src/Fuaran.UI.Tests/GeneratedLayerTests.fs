@@ -238,7 +238,7 @@ let generatedLayerTests =
 
               Expect.equal
                   compared
-                  76
+                  85
                   (sprintf "the directly-compared set moved (%d of %d fixtures)" compared corpus.Length)
           }
 
@@ -295,9 +295,10 @@ let generatedLayerTests =
                       Some("node envelope (unmodelled)", name)
                   | Ok _ -> Some("field-set drift", name)
                   | Error e when e.Contains "unknown Binding case: Transform" ->
-                      // Phase 671 out-of-scope: `Binding.Transform` embeds a
-                      // `Fuaran.Core.DataFrame` pipeline with its own codec.
-                      Some("Binding.Transform (out of scope)", name)
+                      // Phase 692 modelled Transform (THosted → Core's own codecs), so
+                      // this can no longer fire. Kept as a tripwire, like "wire null":
+                      // if it ever does, the Transform case has fallen out of the IDL.
+                      Some("Binding.Transform (REGRESSION — case lost)", name)
                   | Error e when e.Contains "null is not representable" ->
                       // Phase 677 removed null from the wire entirely, so this can no
                       // longer fire. Kept as a tripwire: if it ever does, a null has
@@ -317,18 +318,20 @@ let generatedLayerTests =
 
               let roundTripped = expected.Length - (buckets |> List.sumBy snd)
 
+              // The residue is EMPTY as of the Phase 692 gap-closure. The three
+              // buckets it last held all resolved by modelling, not by loosening:
+              //  - "Binding.Transform (out of scope)" ×12 — Transform is modelled via
+              //    THosted slots delegating to Core's own codecs;
+              //  - "field-set drift" ×2 — the Phase 425 declarative grid vocabulary
+              //    (`ColumnErased.field`, optional `value`, `rowKeyField`);
+              //  - "optionality drift" ×4 — Phase 596 auto-bind: every control `value`
+              //    slot is Optional (absence is legal canonical wire), and the
+              //    context-dependent SYNTHESIS stays policy above this layer, so the
+              //    earlier "no local OmitDefault can express it" note stands — absence
+              //    just no longer needs expressing to round-trip.
               Expect.equal
                   buckets
-                  [ "Binding.Transform (out of scope)", 12
-                    "field-set drift", 2
-                    // The residual 4 are Phase 596's auto-bind `value` omission, which
-                    // is CONTEXT-dependent (it turns on the enclosing field's `id`), so
-                    // no local `OmitDefault` in the IDL can express it. Not a flag away
-                    // — see the note in Phase 672.
-                    //
-                    // The "wire null" bucket is GONE: Phase 677 removed null from the
-                    // wire model, so those two fixtures now round-trip.
-                    "optionality drift", 4 ]
+                  []
                   (sprintf
                       "the IDL-coverage residue moved (%d of %d lenient-expected fixtures round-trip)"
                       roundTripped
@@ -368,12 +371,16 @@ let generatedLayerTests =
               for name, _ in uncovered do
                   printfn "   %s" name
 
-              // 75 → 76 at Phase 690, which modelled the node envelope: the gain is
-              // `style-role-voice-1`, previously the corpus's one DRIFT (decoded, then
-              // re-encoded WITHOUT its `style`) rather than a clean non-decode.
+              // 75 → 76 at Phase 690 (the node envelope; the gain was
+              // `style-role-voice-1`). 76 → 85 at the Phase 692 gap-closure: the
+              // 9-fixture residue fell to Binding.Transform/Selection (THosted +
+              // host-only accessors), the Phase 596 optional `value` slots, the
+              // Phase 425 grid `field`/`rowKeyField` vocabulary, and Modal's
+              // Phase 426 optional `onDismiss`. The whole node corpus now
+              // round-trips through the generated layer alone.
               Expect.equal
                   covered
-                  76
+                  85
                   (sprintf
                       "generated-layer corpus coverage moved (%d of %d fixtures decode+re-encode byte-identically)"
                       covered
