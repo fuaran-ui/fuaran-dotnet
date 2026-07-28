@@ -384,5 +384,16 @@ let private registerTargets () =
 let main args =
     init args
     registerTargets ()
-    Target.runOrDefaultWithArguments "All"
+
+    // FAKE's CLI selects a target only via `-t <name>` / `--target <name>`; a bare
+    // positional (`dotnet run -- Validate`) falls through to <targetargs>, so the
+    // default target ran regardless of the argument. Dispatch the documented
+    // `-- <Target>` form by hand; flag-shaped args (`-t Pack`, `--list`) still go
+    // through FAKE's own parser.
+    let target =
+        match args |> Array.tryHead with
+        | Some t when not (t.StartsWith "-") -> t
+        | _ -> "All"
+
+    Target.runOrDefaultWithArguments target
     0
