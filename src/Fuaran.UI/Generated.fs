@@ -774,7 +774,7 @@ and CustomSpec =
     {
       ModuleId: string
       ComponentId: string
-      Props: Map<string, unit>
+      Props: Map<string, JVal>
       ContentHash: ContentHash option
       ExposedNodeIds: string list option
     }
@@ -1403,7 +1403,7 @@ and private encMapSpec<'Msg> (s: MapSpec<'Msg>) : JVal =
     Canon.typed "Map" ([ Some("centreLatitude", JFloat s.CentreLatitude); Some("centreLongitude", JFloat s.CentreLongitude); Some("source", (encBinding (fun __xs -> JArr(List.map encMapMarker __xs))) s.Source); Some("zoom", JInt s.Zoom); (s.OnMarkerClick |> Option.map (fun v -> "onMarkerClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encCustomSpec (s: CustomSpec) : JVal =
-    Canon.typed "Custom" ([ Some("moduleId", JStr s.ModuleId); Some("componentId", JStr s.ComponentId); Some("props", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (fun _ -> JStr "<opaque>") v))) s.Props); (s.ContentHash |> Option.map (fun v -> "contentHash", encContentHash v)); (s.ExposedNodeIds |> Option.map (fun v -> "exposedNodeIds", JArr(List.map JStr v))) ] |> List.choose id)
+    Canon.typed "Custom" ([ Some("moduleId", JStr s.ModuleId); Some("componentId", JStr s.ComponentId); Some("props", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, id v))) s.Props); (s.ContentHash |> Option.map (fun v -> "contentHash", encContentHash v)); (s.ExposedNodeIds |> Option.map (fun v -> "exposedNodeIds", JArr(List.map JStr v))) ] |> List.choose id)
 
 and private encErrorBoundarySpec<'Msg> (s: ErrorBoundarySpec<'Msg>) : JVal =
     Canon.typed "ErrorBoundary" ([ Some("child", encNode s.Child); Some("fallback", encNode s.Fallback) ] |> List.choose id)
@@ -2699,7 +2699,7 @@ and private decCustomSpec (j: JVal) : Result<CustomSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "moduleId" __fs dStr |> Result.bind (fun moduleId ->
     dReq "componentId" __fs dStr |> Result.bind (fun componentId ->
-    dReq "props" __fs (dMap dUnit) |> Result.bind (fun props ->
+    dReq "props" __fs (dMap dJson) |> Result.bind (fun props ->
     dOpt "contentHash" __fs decContentHash |> Result.bind (fun contentHash ->
     dOpt "exposedNodeIds" __fs (dList dStr) |> Result.bind (fun exposedNodeIds ->
     Ok { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = contentHash; ExposedNodeIds = exposedNodeIds }))))))
@@ -2929,7 +2929,7 @@ let mkChart (id: string) (kind: ChartKind) (source: Binding<obj seq>) (stacked: 
 let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<string, unit>) : Node<'Msg> =
+let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<string, JVal>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkErrorBoundary (id: string) (child: Node<'Msg>) (fallback: Node<'Msg>) : Node<'Msg> =
