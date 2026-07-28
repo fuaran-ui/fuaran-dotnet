@@ -173,19 +173,20 @@ type Motion =
 type TextSource =
     | Literal of text: string
     | Bound of binding: Binding<string>
+    | I18n of key: string * args: Map<string, JVal>
 
 and [<RequireQualifiedAccess>] Binding<'T> =
     | Static of value: 'T option
-    | Query of accessor: (obj -> 'T) * dependsOn: string list option * name: string
-    | Filter of defaultValue: 'T option * name: string
-    | Selection of accessor: (obj -> 'T) * defaultValue: 'T option * field: string option * nodeId: string
-    | State of defaultValue: 'T option * key: string
+    | Query of name: string * accessor: (obj -> 'T) * dependsOn: string list option
+    | Filter of name: string * defaultValue: 'T option
+    | Selection of nodeId: string * accessor: (obj -> 'T) * defaultValue: 'T option * field: string option
+    | State of key: string * defaultValue: 'T option
     | Computed of fn: (obj -> 'T)
     | Local of flushOn: LocalFlushTrigger * format: ('T -> string) * initialFrom: Binding<'T> * onCommit: ('T -> obj) option * parse: (string -> Result<'T, string>)
-    | Format of format: Format * locale: LocaleSource * source: Binding<float>
-    | I18n of args: Map<string, Binding<JVal>> option * key: string
-    | Transform of ``params``: TransformParam list option * pipeline: Fuaran.Core.Transform list * source: Fuaran.Core.DataSource
-    | Invoke of args: InvokeArg list * capabilityId: string
+    | Format of source: Binding<float> * format: Format * locale: LocaleSource
+    | I18n of key: string * args: Map<string, Binding<JVal>> option
+    | Transform of source: Fuaran.Core.DataSource * pipeline: Fuaran.Core.Transform list * ``params``: TransformParam list option
+    | Invoke of capabilityId: string * args: InvokeArg list
 
 and [<RequireQualifiedAccess>] CellFormat =
     | None
@@ -200,14 +201,14 @@ and [<RequireQualifiedAccess>] Action<'Msg> =
     | Chain of ops: Action<'Msg> list
     | WriteToClipboard of text: string
     | Dispatch of msg: ('Msg)
-    | Invoke of args: InvokeArg list * capabilityId: string
-    | ReadFileBody of encoding: FileReadEncoding * fileRef: string * onRead: (string -> 'Msg) option
-    | Call of endpoint: string * into: CallResultTarget option * onResult: (obj -> 'Msg) option
+    | Invoke of capabilityId: string * args: InvokeArg list
+    | ReadFileBody of fileRef: string * encoding: FileReadEncoding * onRead: (string -> 'Msg) option
+    | Call of endpoint: string * onResult: (obj -> 'Msg) option * into: CallResultTarget option
     | Navigate of route: string
     | CommitLocal of nodeId: string
     | Notify of channel: string * payload: JVal
     | SetState of key: string * value: JVal
-    | AiTool of args: JVal * toolName: string
+    | AiTool of toolName: string * args: JVal
 
 and [<RequireQualifiedAccess>] CallResultTarget =
     | State of key: string
@@ -236,15 +237,15 @@ and [<RequireQualifiedAccess>] LayoutMode =
     | Grid of cols: int * templateColumns: string option
 
 and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
-    | Text of onChange: (string -> Action<'Msg>) option * value: Binding<string> option
-    | Number of onChange: (float -> Action<'Msg>) option * value: Binding<float> option
-    | Checkbox of onToggle: (bool -> Action<'Msg>) option * value: Binding<bool> option
-    | Choice of onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * value: Binding<string> option
-    | TextArea of onChange: (string -> Action<'Msg>) option * rows: int * value: Binding<string> option
-    | RangedNumber of onChange: (float -> Action<'Msg>) option * value: Binding<float> option * min: float option * max: float option * step: float option
-    | Range of max: float option * min: float option * onChange: (float * float -> Action<'Msg>) option * step: float option * value: Binding<RangePair> option
-    | SegmentedChoice of onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * orientation: Orientation * value: Binding<string> option
-    | Date of onChange: (string option -> Action<'Msg>) option * value: Binding<string> option * variant: DateVariant * min: string option * max: string option * step: float option
+    | Text of value: Binding<string> option * onChange: (string -> Action<'Msg>) option
+    | Number of value: Binding<float> option * onChange: (float -> Action<'Msg>) option
+    | Checkbox of value: Binding<bool> option * onToggle: (bool -> Action<'Msg>) option
+    | Choice of options: Binding<SelectOption list> * value: Binding<string> option * onChange: (string option -> Action<'Msg>) option
+    | TextArea of value: Binding<string> option * onChange: (string -> Action<'Msg>) option * rows: int
+    | RangedNumber of value: Binding<float> option * onChange: (float -> Action<'Msg>) option * min: float option * max: float option * step: float option
+    | Range of value: Binding<RangePair> option * onChange: (float * float -> Action<'Msg>) option * min: float option * max: float option * step: float option
+    | SegmentedChoice of options: Binding<SelectOption list> * value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * orientation: Orientation
+    | Date of value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
 
 and [<RequireQualifiedAccess>] ColumnWidth =
     | Auto
@@ -1084,20 +1085,21 @@ and private encTextSource (v: TextSource) : JVal =
     match v with
     | TextSource.Literal text -> JStr text
     | TextSource.Bound binding -> Canon.typed "Bound" [ "binding", (encBinding JStr) binding ]
+    | TextSource.I18n (key, args) -> Canon.typed "I18n" [ "key", JStr key; "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, id v))) args ]
 
 and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     match v with
     | Binding.Static value -> Canon.typed "Static" ([ (value |> Option.map (fun v -> "value", encT v)) ] |> List.choose id)
-    | Binding.Query (accessor, dependsOn, name) -> Canon.typed "Query" ([ None; (dependsOn |> Option.map (fun v -> "dependsOn", JArr(List.map JStr v))); Some("name", JStr name) ] |> List.choose id)
-    | Binding.Filter (defaultValue, name) -> Canon.typed "Filter" ([ (defaultValue |> Option.map (fun v -> "defaultValue", encT v)); Some("name", JStr name) ] |> List.choose id)
-    | Binding.Selection (accessor, defaultValue, field, nodeId) -> Canon.typed "Selection" ([ None; (defaultValue |> Option.map (fun v -> "defaultValue", encT v)); (field |> Option.map (fun v -> "field", JStr v)); Some("nodeId", JStr nodeId) ] |> List.choose id)
-    | Binding.State (defaultValue, key) -> Canon.typed "State" ([ (defaultValue |> Option.map (fun v -> "defaultValue", encT v)); Some("key", JStr key) ] |> List.choose id)
+    | Binding.Query (name, accessor, dependsOn) -> Canon.typed "Query" ([ Some("name", JStr name); None; (dependsOn |> Option.map (fun v -> "dependsOn", JArr(List.map JStr v))) ] |> List.choose id)
+    | Binding.Filter (name, defaultValue) -> Canon.typed "Filter" ([ Some("name", JStr name); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
+    | Binding.Selection (nodeId, accessor, defaultValue, field) -> Canon.typed "Selection" ([ Some("nodeId", JStr nodeId); None; (defaultValue |> Option.map (fun v -> "defaultValue", encT v)); (field |> Option.map (fun v -> "field", JStr v)) ] |> List.choose id)
+    | Binding.State (key, defaultValue) -> Canon.typed "State" ([ Some("key", JStr key); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
     | Binding.Computed fn -> Canon.typed "Computed" [ "fn", JStr "<closure>" ]
     | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>") ] |> List.choose id)
-    | Binding.Format (format, locale, source) -> Canon.typed "Format" [ "format", encFormat format; "locale", encLocaleSource locale; "source", (encBinding JFloat) source ]
-    | Binding.I18n (args, key) -> Canon.typed "I18n" ([ (args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (encBinding id) v))) v)); Some("key", JStr key) ] |> List.choose id)
-    | Binding.Transform (``params``, pipeline, source) -> Canon.typed "Transform" ([ (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))); Some("pipeline", JArr(List.map Fuaran.Core.DataFrameCodec.encodeTransform pipeline)); Some("source", Fuaran.Core.ColumnCodec.encodeJson source) ] |> List.choose id)
-    | Binding.Invoke (args, capabilityId) -> Canon.typed "Invoke" [ "args", JArr(List.map encInvokeArg args); "capabilityId", JStr capabilityId ]
+    | Binding.Format (source, format, locale) -> Canon.typed "Format" [ "source", (encBinding JFloat) source; "format", encFormat format; "locale", encLocaleSource locale ]
+    | Binding.I18n (key, args) -> Canon.typed "I18n" ([ Some("key", JStr key); (args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (encBinding id) v))) v)) ] |> List.choose id)
+    | Binding.Transform (source, pipeline, ``params``) -> Canon.typed "Transform" ([ Some("source", Fuaran.Core.ColumnCodec.encodeJson source); Some("pipeline", JArr(List.map Fuaran.Core.DataFrameCodec.encodeTransform pipeline)); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
+    | Binding.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
 
 and private encCellFormat (v: CellFormat) : JVal =
     match v with
@@ -1114,14 +1116,14 @@ and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     | Action.Chain ops -> Canon.typed "Chain" [ "ops", JArr(List.map encAction ops) ]
     | Action.WriteToClipboard text -> Canon.typed "WriteToClipboard" [ "text", JStr text ]
     | Action.Dispatch msg -> Canon.typed "Dispatch" ([ None ] |> List.choose id)
-    | Action.Invoke (args, capabilityId) -> Canon.typed "Invoke" [ "args", JArr(List.map encInvokeArg args); "capabilityId", JStr capabilityId ]
-    | Action.ReadFileBody (encoding, fileRef, onRead) -> Canon.typed "ReadFileBody" ([ Some("encoding", encFileReadEncoding encoding); Some("fileRef", JStr fileRef); (onRead |> Option.map (fun v -> "onRead", JStr "<closure>")) ] |> List.choose id)
-    | Action.Call (endpoint, into, onResult) -> Canon.typed "Call" ([ Some("endpoint", JStr endpoint); (into |> Option.map (fun v -> "into", encCallResultTarget v)); (onResult |> Option.map (fun v -> "onResult", JStr "<closure>")) ] |> List.choose id)
+    | Action.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
+    | Action.ReadFileBody (fileRef, encoding, onRead) -> Canon.typed "ReadFileBody" ([ Some("fileRef", JStr fileRef); Some("encoding", encFileReadEncoding encoding); (onRead |> Option.map (fun v -> "onRead", JStr "<closure>")) ] |> List.choose id)
+    | Action.Call (endpoint, onResult, into) -> Canon.typed "Call" ([ Some("endpoint", JStr endpoint); (onResult |> Option.map (fun v -> "onResult", JStr "<closure>")); (into |> Option.map (fun v -> "into", encCallResultTarget v)) ] |> List.choose id)
     | Action.Navigate route -> Canon.typed "Navigate" [ "route", JStr route ]
     | Action.CommitLocal nodeId -> Canon.typed "CommitLocal" [ "nodeId", JStr nodeId ]
     | Action.Notify (channel, payload) -> Canon.typed "Notify" [ "channel", JStr channel; "payload", id payload ]
     | Action.SetState (key, value) -> Canon.typed "SetState" [ "key", JStr key; "value", id value ]
-    | Action.AiTool (args, toolName) -> Canon.typed "AiTool" [ "args", id args; "toolName", JStr toolName ]
+    | Action.AiTool (toolName, args) -> Canon.typed "AiTool" [ "toolName", JStr toolName; "args", id args ]
 
 and private encCallResultTarget (v: CallResultTarget) : JVal =
     match v with
@@ -1156,15 +1158,15 @@ and private encLayoutMode (v: LayoutMode) : JVal =
 
 and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     match v with
-    | FormFieldKind.Text (onChange, value) -> Canon.typed "Text" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
-    | FormFieldKind.Number (onChange, value) -> Canon.typed "Number" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding JFloat) v)) ] |> List.choose id)
-    | FormFieldKind.Checkbox (onToggle, value) -> Canon.typed "Checkbox" ([ (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding JBool) v)) ] |> List.choose id)
-    | FormFieldKind.Choice (onChange, options, value) -> Canon.typed "Choice" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
-    | FormFieldKind.TextArea (onChange, rows, value) -> Canon.typed "TextArea" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("rows", JInt rows); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
-    | FormFieldKind.RangedNumber (onChange, value, min, max, step) -> Canon.typed "RangedNumber" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding JFloat) v)); (min |> Option.map (fun v -> "min", JFloat v)); (max |> Option.map (fun v -> "max", JFloat v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
-    | FormFieldKind.Range (max, min, onChange, step, value) -> Canon.typed "Range" ([ (max |> Option.map (fun v -> "max", JFloat v)); (min |> Option.map (fun v -> "min", JFloat v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (step |> Option.map (fun v -> "step", JFloat v)); (value |> Option.map (fun v -> "value", (fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other) v)) ] |> List.choose id)
-    | FormFieldKind.SegmentedChoice (onChange, options, orientation, value) -> Canon.typed "SegmentedChoice" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); Some("orientation", encOrientation orientation); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
-    | FormFieldKind.Date (onChange, value, variant, min, max, step) -> Canon.typed "Date" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
+    | FormFieldKind.Text (value, onChange) -> Canon.typed "Text" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Number (value, onChange) -> Canon.typed "Number" ([ (value |> Option.map (fun v -> "value", (encBinding JFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Checkbox (value, onToggle) -> Canon.typed "Checkbox" ([ (value |> Option.map (fun v -> "value", (encBinding JBool) v)); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Choice (options, value, onChange) -> Canon.typed "Choice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.TextArea (value, onChange, rows) -> Canon.typed "TextArea" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("rows", JInt rows) ] |> List.choose id)
+    | FormFieldKind.RangedNumber (value, onChange, min, max, step) -> Canon.typed "RangedNumber" ([ (value |> Option.map (fun v -> "value", (encBinding JFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", JFloat v)); (max |> Option.map (fun v -> "max", JFloat v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
+    | FormFieldKind.Range (value, onChange, min, max, step) -> Canon.typed "Range" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", JFloat v)); (max |> Option.map (fun v -> "max", JFloat v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
+    | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("orientation", encOrientation orientation) ] |> List.choose id)
+    | FormFieldKind.Date (value, onChange, variant, min, max, step) -> Canon.typed "Date" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
 
 and private encColumnWidth (v: ColumnWidth) : JVal =
     match v with
@@ -1754,6 +1756,10 @@ and private decTextSource (j: JVal) : Result<TextSource, string> =
         | "Bound" ->
             dReq "binding" __fs (decBinding dStr) |> Result.bind (fun binding ->
             Ok(TextSource.Bound(binding)))
+        | "I18n" ->
+            dReq "key" __fs dStr |> Result.bind (fun key ->
+            dReq "args" __fs (dMap dJson) |> Result.bind (fun args ->
+            Ok(TextSource.I18n(key, args))))
         | __other -> Error ("unknown TextSource case: " + __other))
     | __bare ->
         dStr __bare |> Result.bind (fun text -> Ok(TextSource.Literal(text)))
@@ -1767,24 +1773,24 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             dOpt "value" __fs decT |> Result.bind (fun value ->
             Ok(Binding.Static(value)))
         | "Query" ->
+            dReq "name" __fs dStr |> Result.bind (fun name ->
             Ok ((fun (raw: obj) -> unbox raw)) |> Result.bind (fun accessor ->
             dOpt "dependsOn" __fs (dList dStr) |> Result.bind (fun dependsOn ->
-            dReq "name" __fs dStr |> Result.bind (fun name ->
-            Ok(Binding.Query(accessor, dependsOn, name)))))
+            Ok(Binding.Query(name, accessor, dependsOn)))))
         | "Filter" ->
-            dOpt "defaultValue" __fs decT |> Result.bind (fun defaultValue ->
             dReq "name" __fs dStr |> Result.bind (fun name ->
-            Ok(Binding.Filter(defaultValue, name))))
+            dOpt "defaultValue" __fs decT |> Result.bind (fun defaultValue ->
+            Ok(Binding.Filter(name, defaultValue))))
         | "Selection" ->
+            dReq "nodeId" __fs dStr |> Result.bind (fun nodeId ->
             Ok ((fun (raw: obj) -> unbox raw)) |> Result.bind (fun accessor ->
             dOpt "defaultValue" __fs decT |> Result.bind (fun defaultValue ->
             dOpt "field" __fs dStr |> Result.bind (fun field ->
-            dReq "nodeId" __fs dStr |> Result.bind (fun nodeId ->
-            Ok(Binding.Selection(accessor, defaultValue, field, nodeId))))))
+            Ok(Binding.Selection(nodeId, accessor, defaultValue, field))))))
         | "State" ->
-            dOpt "defaultValue" __fs decT |> Result.bind (fun defaultValue ->
             dReq "key" __fs dStr |> Result.bind (fun key ->
-            Ok(Binding.State(defaultValue, key))))
+            dOpt "defaultValue" __fs decT |> Result.bind (fun defaultValue ->
+            Ok(Binding.State(key, defaultValue))))
         | "Computed" ->
             Ok ((fun _ -> Unchecked.defaultof<'T>)) |> Result.bind (fun fn ->
             Ok(Binding.Computed(fn)))
@@ -1796,23 +1802,23 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             Ok ((fun _ -> Error "<closure>")) |> Result.bind (fun parse ->
             Ok(Binding.Local(flushOn, format, initialFrom, onCommit, parse)))))))
         | "Format" ->
+            dReq "source" __fs (decBinding dFloat) |> Result.bind (fun source ->
             dReq "format" __fs decFormat |> Result.bind (fun format ->
             dReq "locale" __fs decLocaleSource |> Result.bind (fun locale ->
-            dReq "source" __fs (decBinding dFloat) |> Result.bind (fun source ->
-            Ok(Binding.Format(format, locale, source)))))
+            Ok(Binding.Format(source, format, locale)))))
         | "I18n" ->
-            dOpt "args" __fs (dMap (decBinding dJson)) |> Result.bind (fun args ->
             dReq "key" __fs dStr |> Result.bind (fun key ->
-            Ok(Binding.I18n(args, key))))
+            dOpt "args" __fs (dMap (decBinding dJson)) |> Result.bind (fun args ->
+            Ok(Binding.I18n(key, args))))
         | "Transform" ->
-            dOpt "params" __fs (dList decTransformParam) |> Result.bind (fun ``params`` ->
-            dReq "pipeline" __fs (dList (fun __j -> Fuaran.Core.DataFrameCodec.decodeTransform __j |> Result.mapError string)) |> Result.bind (fun pipeline ->
             dReq "source" __fs (fun __j -> Fuaran.Core.ColumnCodec.decodeJson __j |> Result.mapError string) |> Result.bind (fun source ->
-            Ok(Binding.Transform(``params``, pipeline, source)))))
+            dReq "pipeline" __fs (dList (fun __j -> Fuaran.Core.DataFrameCodec.decodeTransform __j |> Result.mapError string)) |> Result.bind (fun pipeline ->
+            dOpt "params" __fs (dList decTransformParam) |> Result.bind (fun ``params`` ->
+            Ok(Binding.Transform(source, pipeline, ``params``)))))
         | "Invoke" ->
-            dReq "args" __fs (dList decInvokeArg) |> Result.bind (fun args ->
             dReq "capabilityId" __fs dStr |> Result.bind (fun capabilityId ->
-            Ok(Binding.Invoke(args, capabilityId))))
+            dReq "args" __fs (dList decInvokeArg) |> Result.bind (fun args ->
+            Ok(Binding.Invoke(capabilityId, args))))
         | __other -> Error ("unknown Binding case: " + __other))
     | _ -> Error "expected a Binding object"
 
@@ -1858,19 +1864,19 @@ and private decAction (j: JVal) : Result<Action<obj>, string> =
             Ok ((("<dispatch>" :> obj))) |> Result.bind (fun msg ->
             Ok(Action.Dispatch(msg)))
         | "Invoke" ->
-            dReq "args" __fs (dList decInvokeArg) |> Result.bind (fun args ->
             dReq "capabilityId" __fs dStr |> Result.bind (fun capabilityId ->
-            Ok(Action.Invoke(args, capabilityId))))
+            dReq "args" __fs (dList decInvokeArg) |> Result.bind (fun args ->
+            Ok(Action.Invoke(capabilityId, args))))
         | "ReadFileBody" ->
-            dReq "encoding" __fs decFileReadEncoding |> Result.bind (fun encoding ->
             dReq "fileRef" __fs dStr |> Result.bind (fun fileRef ->
+            dReq "encoding" __fs decFileReadEncoding |> Result.bind (fun encoding ->
             (dPresent "onRead" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> ("<closure>" :> obj))))) |> Result.bind (fun onRead ->
-            Ok(Action.ReadFileBody(encoding, fileRef, onRead)))))
+            Ok(Action.ReadFileBody(fileRef, encoding, onRead)))))
         | "Call" ->
             dReq "endpoint" __fs dStr |> Result.bind (fun endpoint ->
-            dOpt "into" __fs decCallResultTarget |> Result.bind (fun into ->
             (dPresent "onResult" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> ("<closure>" :> obj))))) |> Result.bind (fun onResult ->
-            Ok(Action.Call(endpoint, into, onResult)))))
+            dOpt "into" __fs decCallResultTarget |> Result.bind (fun into ->
+            Ok(Action.Call(endpoint, onResult, into)))))
         | "Navigate" ->
             dReq "route" __fs dStr |> Result.bind (fun route ->
             Ok(Action.Navigate(route)))
@@ -1886,9 +1892,9 @@ and private decAction (j: JVal) : Result<Action<obj>, string> =
             dReq "value" __fs dJson |> Result.bind (fun value ->
             Ok(Action.SetState(key, value))))
         | "AiTool" ->
-            dReq "args" __fs dJson |> Result.bind (fun args ->
             dReq "toolName" __fs dStr |> Result.bind (fun toolName ->
-            Ok(Action.AiTool(args, toolName))))
+            dReq "args" __fs dJson |> Result.bind (fun args ->
+            Ok(Action.AiTool(toolName, args))))
         | __other -> Error ("unknown Action case: " + __other))
     | _ -> Error "expected a Action object"
 
@@ -1978,55 +1984,55 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, string> =
         dTag __fs |> Result.bind (fun __t ->
         match __t with
         | "Text" ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            Ok(FormFieldKind.Text(onChange, value))))
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            Ok(FormFieldKind.Text(value, onChange))))
         | "Number" ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dOpt "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
-            Ok(FormFieldKind.Number(onChange, value))))
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            Ok(FormFieldKind.Number(value, onChange))))
         | "Checkbox" ->
-            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
             dOpt "value" __fs (decBinding dBool) |> Result.bind (fun value ->
-            Ok(FormFieldKind.Checkbox(onToggle, value))))
+            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
+            Ok(FormFieldKind.Checkbox(value, onToggle))))
         | "Choice" ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            Ok(FormFieldKind.Choice(onChange, options, value)))))
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            Ok(FormFieldKind.Choice(options, value, onChange)))))
         | "TextArea" ->
+            dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "rows" __fs dInt |> Result.bind (fun rows ->
-            dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            Ok(FormFieldKind.TextArea(onChange, rows, value)))))
+            Ok(FormFieldKind.TextArea(value, onChange, rows)))))
         | "RangedNumber" ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dOpt "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dOpt "min" __fs dFloat |> Result.bind (fun min ->
             dOpt "max" __fs dFloat |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
-            Ok(FormFieldKind.RangedNumber(onChange, value, min, max, step)))))))
+            Ok(FormFieldKind.RangedNumber(value, onChange, min, max, step)))))))
         | "Range" ->
-            dOpt "max" __fs dFloat |> Result.bind (fun max ->
-            dOpt "min" __fs dFloat |> Result.bind (fun min ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float * float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
-            dOpt "step" __fs dFloat |> Result.bind (fun step ->
             dOpt "value" __fs (fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = "$type")) -> decRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decRangePair __other) |> Result.bind (fun value ->
-            Ok(FormFieldKind.Range(max, min, onChange, step, value)))))))
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float * float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "min" __fs dFloat |> Result.bind (fun min ->
+            dOpt "max" __fs dFloat |> Result.bind (fun max ->
+            dOpt "step" __fs dFloat |> Result.bind (fun step ->
+            Ok(FormFieldKind.Range(value, onChange, min, max, step)))))))
         | "SegmentedChoice" ->
-            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
-            dReq "orientation" __fs decOrientation |> Result.bind (fun orientation ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-            Ok(FormFieldKind.SegmentedChoice(onChange, options, orientation, value))))))
-        | "Date" ->
             (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dReq "orientation" __fs decOrientation |> Result.bind (fun orientation ->
+            Ok(FormFieldKind.SegmentedChoice(options, value, onChange, orientation))))))
+        | "Date" ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
             dReq "variant" __fs decDateVariant |> Result.bind (fun variant ->
             dOpt "min" __fs dStr |> Result.bind (fun min ->
             dOpt "max" __fs dStr |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
-            Ok(FormFieldKind.Date(onChange, value, variant, min, max, step))))))))
+            Ok(FormFieldKind.Date(value, onChange, variant, min, max, step))))))))
         | __other -> Error ("unknown FormFieldKind case: " + __other))
     | _ -> Error "expected a FormFieldKind object"
 
