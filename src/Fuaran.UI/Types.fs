@@ -1633,6 +1633,22 @@ and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
         onChange: (string -> Action<'Msg>) option *
         variant: DateVariant *
         constraints: DateFieldConstraints
+    /// Single-control date range (Phase 725) — `Range`'s pair mechanics with
+    /// `Date`'s value conventions. The bound value is an ordered
+    /// `(from, to)` pair of ISO-8601 strings per `variant` (`YYYY-MM-DD` for
+    /// `Date`, `HH:MM` for `Time`, `YYYY-MM-DDTHH:MM` for `DateTime`);
+    /// `constraints` (`Min` / `Max` / `Step`) bound BOTH ends, mirroring
+    /// `RangedNumber`. In a filter context the pair binds ONE filter param,
+    /// not two — which is the whole reason the case exists: the
+    /// two-`Date`-field workaround splits one semantic value across two
+    /// uncoordinated bindings. A literal pair whose `from` sorts after its
+    /// `to` is a decode error (ordinal string compare — total for
+    /// same-variant ISO-8601 strings).
+    | DateRange of
+        value: Binding<string * string> *
+        onChange: ((string * string) -> Action<'Msg>) option *
+        variant: DateVariant *
+        constraints: DateFieldConstraints
 
 /// Optional date/time-field bounds (Phase 288). `Min` / `Max` are ISO-8601
 /// strings (matching the field's bound value); `Step` is in seconds. All

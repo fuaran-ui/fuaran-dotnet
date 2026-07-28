@@ -334,4 +334,20 @@ let all: RejectFixture list =
         ExpectedCode = DecodeErrorCode.WRONG_TYPE
         ExpectedPath = "$.kind.text.args.name"
         IsOp = false
-        Description = "null I18n arg value (structured JVal position)" } ]
+        Description = "null I18n arg value (structured JVal position)" }
+
+      // ─── DateRange ordering (Phase 725) ─────────────────────────────────
+      //
+      // A LITERAL date-range pair is ordered: `from <= to`. Same-variant
+      // ISO-8601 strings sort lexicographically in chronological order, so the
+      // check is an ordinal compare — no date parsing, no locale, total for
+      // every variant. Didactic by design: the message names the rule and the
+      // fix, because a reversed pair is the natural first mistake for a control
+      // whose two ends look interchangeable.
+      { Id = "reject-daterange-unordered"
+        Json =
+          """{"id":"f1","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateRange","value":{"from":"2026-03-08","to":"2026-03-01"},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].kind.value"
+        IsOp = false
+        Description = "DateRange literal pair with start after end — the ordered-pair rule (Phase 725)" } ]

@@ -1661,6 +1661,57 @@ let private decodeBindingFloatPair (path: string) (j: Json) : Result<Binding<flo
         parseStatic path j |> Result.map Binding.Static
     | _ -> bindingGeneric<float * float> path parseStatic (0.0, 0.0) j
 
+let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<string * string>, DecodeError> =
+    // Phase 725 — the DateRange control's (from, to) ISO-8601 pair. Mirrors
+    // `decodeBindingFloatPair`: the bare `{from, to}` object is canonical, a
+    // two-element `[from, to]` array is the lenient coercion, and the
+    // `Static`-enveloped form stays accepted through the generic dispatch.
+    let ordered (p: string) (a: string, b: string) : Result<string * string, DecodeError> =
+        // Didactic domain rule: a LITERAL pair must be ordered. Same-variant
+        // ISO-8601 strings sort lexicographically in chronological order, so an
+        // ordinal compare is total here — no date parsing, no locale. Only a
+        // literal pair is checked; a bound pair's ordering is a runtime concern.
+        if String.CompareOrdinal(a, b) > 0 then
+            err
+                DecodeErrorCode.WRONG_TYPE
+                p
+                (sprintf
+                    "date-range start '%s' is after end '%s' — a DateRange pair is ordered (from <= to); ISO-8601 strings of one variant compare lexicographically, so swap the two values"
+                    a
+                    b)
+                (Some "ordered ISO-8601 pair ({\"from\": <iso>, \"to\": <iso>} with from <= to)")
+        else
+            Ok(a, b)
+
+    let parseStatic (p: string) (v: Json) : Result<string * string, DecodeError> =
+        match v with
+        | JObject pf ->
+            match tryField pf "from", tryField pf "to" with
+            | Some f, Some t ->
+                match requireString (p + ".from") f, requireString (p + ".to") t with
+                | Ok a, Ok b -> ordered p (a, b)
+                | Error e, _
+                | _, Error e -> Error e
+            | _ -> wrongType p "object with from and to ISO-8601 strings"
+        | JArray [ a; b ] ->
+            match requireString (p + "[0]") a, requireString (p + "[1]") b with
+            | Ok x, Ok y -> ordered p (x, y)
+            | Error e, _
+            | _, Error e -> Error e
+        | _ -> wrongType p "date-range pair ({from, to} object or [from, to] array)"
+
+    // The canonical Static pair rides as the BARE `{from, to}` object (the
+    // Range precedent, no envelope) — accept it before the generic binding
+    // dispatch, which would otherwise demand a `$type`.
+    match j with
+    | JObject pf when
+        (tryField pf "$type").IsNone
+        && (tryField pf "from").IsSome
+        && (tryField pf "to").IsSome
+        ->
+        parseStatic path j |> Result.map Binding.Static
+    | _ -> bindingGeneric<string * string> path parseStatic ("", "") j
+
 let private decodeBindingObjSeq (path: string) (j: Json) : Result<Binding<obj seq>, DecodeError> =
     let parseStatic (p: string) (v: Json) : Result<obj seq, DecodeError> =
         match v with
@@ -3020,8 +3071,62 @@ let private decodeFormFieldKind
             | _, _, Error e, _, _
             | _, _, _, Error e, _
             | _, _, _, _, Error e -> Error e
+        | Ok "DateRange" ->
+            // Phase 725 — single-control date range. `value` is a
+            // `Binding<string * string>` carrying the ordered ISO-8601 pair
+            // (canonically the bare `{from, to}` object); `variant` selects the
+            // control for both ends; optional min/max (ISO strings) + step
+            // (seconds) bound both ends and decode to None when absent.
+            let valueR =
+                match tryField fields "value" with
+                | Some v -> decodeBindingStringPair (path + ".value") v
+                | None ->
+                    match autoBind with
+                    // ONE filter param carries the whole pair (the case's
+                    // reason to exist) — never two.
+                    | FilterChip n -> Ok(Binding.Filter(n, None))
+                    | FormFieldId id -> Ok(Binding.State(id, Fuaran.UI.Defaults.ControlValueDefaults.dateRange))
+                    | NoAutoBind -> missingField path "value" "Binding<string * string> value"
+
+            let variantR =
+                requireField path fields "variant" "DateVariant"
+                |> Result.bind (decodeDateVariant (path + ".variant"))
+
+            let minR =
+                match tryField fields "min" with
+                | None -> Ok None
+                | Some j -> requireString (path + ".min") j |> Result.map Some
+
+            let maxR =
+                match tryField fields "max" with
+                | None -> Ok None
+                | Some j -> requireString (path + ".max") j |> Result.map Some
+
+            let stepR =
+                match tryField fields "step" with
+                | None -> Ok None
+                | Some j -> requireFloat (path + ".step") j |> Result.map Some
+
+            match valueR, variantR, minR, maxR, stepR with
+            | Ok value, Ok variant, Ok min, Ok max, Ok step ->
+                Ok(
+                    FormFieldKind.DateRange(
+                        value,
+                        handlerOpt "onChange",
+                        variant,
+                        { Min = min; Max = max; Step = step }
+                    )
+                )
+            | Error e, _, _, _, _
+            | _, Error e, _, _, _
+            | _, _, Error e, _, _
+            | _, _, _, Error e, _
+            | _, _, _, _, Error e -> Error e
         | Ok s ->
-            unknownDuCase path s "Text | Number | RangedNumber | Checkbox | Choice | SegmentedChoice | TextArea | Date"
+            unknownDuCase
+                path
+                s
+                "Text | Number | RangedNumber | Checkbox | Choice | SegmentedChoice | TextArea | Date | DateRange"
 
 let private decodeFormField (path: string) (j: Json) : Result<FormField<obj>, DecodeError> =
     match requireObject path j with

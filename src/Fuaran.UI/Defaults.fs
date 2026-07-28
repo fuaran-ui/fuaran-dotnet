@@ -911,3 +911,6 @@ module ControlValueDefaults =
     let range: float * float = (0.0, 0.0)
     /// ISO-empty — the Date control's value is an ISO-8601 string.
     let date: string = ""
+    /// ISO-empty both ends — the DateRange control's value is an ordered
+    /// `(from, to)` pair of ISO-8601 strings (Phase 725).
+    let dateRange: string * string = ("", "")

@@ -566,7 +566,8 @@ let private validateCore
                  | FormFieldKind.RangedNumber(value, oc, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Range(value, oc, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.SegmentedChoice(_, value, oc, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Date(value, oc, _, _) -> recordWriteBack value oc.IsNone)
+                 | FormFieldKind.Date(value, oc, _, _) -> recordWriteBack value oc.IsNone
+                 | FormFieldKind.DateRange(value, oc, _, _) -> recordWriteBack value oc.IsNone)
 
                 let inert =
                     match field.Kind with
@@ -579,6 +580,7 @@ let private validateCore
                     | FormFieldKind.Range(value, oc, _) -> oc.IsNone && not (isWriteBackTarget value)
                     | FormFieldKind.SegmentedChoice(_, value, oc, _) -> oc.IsNone && not (isWriteBackTarget value)
                     | FormFieldKind.Date(value, oc, _, _) -> oc.IsNone && not (isWriteBackTarget value)
+                    | FormFieldKind.DateRange(value, oc, _, _) -> oc.IsNone && not (isWriteBackTarget value)
 
                 if inert then
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, sprintf "FormField(%s)" field.Id))

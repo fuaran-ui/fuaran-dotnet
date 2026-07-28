@@ -901,6 +901,7 @@ let private keysOfFormFieldKind<'Msg> (channel: KeyChannel) (kind: FormFieldKind
     | FormFieldKind.Choice(opts, value, _) -> keysOfBinding channel opts @ keysOfBinding channel value
     | FormFieldKind.SegmentedChoice(opts, value, _, _) -> keysOfBinding channel opts @ keysOfBinding channel value
     | FormFieldKind.Date(v, _, _, _) -> keysOfBinding channel v
+    | FormFieldKind.DateRange(v, _, _, _) -> keysOfBinding channel v
 
 
 let rec collectKeys<'Msg> (channel: KeyChannel) (node: Node<'Msg>) : Set<string> =
@@ -2950,6 +2951,54 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.onChange (fun (v: string) -> handle onChange value (Some(box v)) v) ]
                 @ constraintAttrs
             )
+        | FormFieldKind.DateRange(value, onChange, variant, constraints) ->
+            // Phase 725 — single-control date range: `Range`'s two-input shape
+            // with `Date`'s native control per variant. Both ends share the
+            // min/max/step attributes (the constraints bound the whole range),
+            // and either change emits the WHOLE pair through the standard
+            // write-back — one value, not two. Class vocabulary is reused, not
+            // extended (the reference-CSS parity lock).
+            let fromV, toV =
+                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ("", "")
+
+            let inputType =
+                match variant with
+                | DateVariant.Date -> "date"
+                | DateVariant.Time -> "time"
+                | DateVariant.DateTime -> "datetime-local"
+
+            let constraintAttrs =
+                [ match constraints.Min with
+                  | Some m -> prop.custom ("min", m)
+                  | None -> ()
+                  match constraints.Max with
+                  | Some m -> prop.custom ("max", m)
+                  | None -> ()
+                  match constraints.Step with
+                  | Some s -> prop.step s
+                  | None -> () ]
+
+            Html.span
+                [ prop.className "fuaran-field-range"
+                  prop.children
+                      [ Html.input (
+                            [ prop.className "fuaran-form-input fuaran-form-date fuaran-field-range-min"
+                              prop.type' inputType
+                              prop.id field.Id
+                              prop.required field.Required
+                              prop.value fromV
+                              prop.onChange (fun (v: string) -> handle onChange value (Some(box (v, toV))) (v, toV)) ]
+                            @ constraintAttrs
+                        )
+                        Html.span [ prop.className "fuaran-field-range-sep"; prop.text "–" ]
+                        Html.input (
+                            [ prop.className "fuaran-form-input fuaran-form-date fuaran-field-range-max"
+                              prop.type' inputType
+                              prop.required field.Required
+                              prop.value toV
+                              prop.onChange (fun (v: string) -> handle onChange value (Some(box (fromV, v))) (fromV, v)) ]
+                            @ constraintAttrs
+                        ) ] ]
 
     Html.div
         [ prop.className "fuaran-form-field"
@@ -2991,6 +3040,13 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
         | None -> writeChoiceValue chosen
 
     let handleRange (onChange: (float * float -> Action<'Msg>) option) (pair: float * float) : unit =
+        match onChange with
+        | Some oc -> runAction ctx (oc pair)
+        | None -> FilterStore.set spec.Name (box pair)
+
+    // Phase 725 — the date-range chip writes ONE filter key holding the whole
+    // (from, to) pair, exactly as `handleRange` does for the numeric pair.
+    let handleDateRange (onChange: (string * string -> Action<'Msg>) option) (pair: string * string) : unit =
         match onChange with
         | Some oc -> runAction ctx (oc pair)
         | None -> FilterStore.set spec.Name (box pair)
@@ -3099,6 +3155,48 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                               prop.className "fuaran-filter-range-max"
                               prop.value maxV
                               prop.onChange (fun (v: float) -> handleRange onChange (minV, v)) ] ] ]
+        | FormFieldKind.DateRange(value, onChange, variant, constraints) ->
+            // Phase 725 — the date-range chip: two native date/time inputs
+            // over ONE filter param carrying the whole (from, to) pair. Both
+            // ends share the min/max/step attributes.
+            let fromV, toV =
+                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ("", "")
+
+            let inputType =
+                match variant with
+                | DateVariant.Date -> "date"
+                | DateVariant.Time -> "time"
+                | DateVariant.DateTime -> "datetime-local"
+
+            let constraintAttrs =
+                [ match constraints.Min with
+                  | Some m -> prop.custom ("min", m)
+                  | None -> ()
+                  match constraints.Max with
+                  | Some m -> prop.custom ("max", m)
+                  | None -> ()
+                  match constraints.Step with
+                  | Some s -> prop.step s
+                  | None -> () ]
+
+            Html.span
+                [ prop.className "fuaran-filter-range"
+                  prop.children
+                      [ Html.input (
+                            [ prop.type' inputType
+                              prop.className "fuaran-filter-input fuaran-filter-range-min"
+                              prop.value fromV
+                              prop.onChange (fun (v: string) -> handleDateRange onChange (v, toV)) ]
+                            @ constraintAttrs
+                        )
+                        Html.span [ prop.className "fuaran-filter-range-sep"; prop.text "–" ]
+                        Html.input (
+                            [ prop.type' inputType
+                              prop.className "fuaran-filter-input fuaran-filter-range-max"
+                              prop.value toV
+                              prop.onChange (fun (v: string) -> handleDateRange onChange (fromV, v)) ]
+                            @ constraintAttrs
+                        ) ] ]
         | FormFieldKind.SegmentedChoice(options, value, onChange, orientation) ->
             // Visible-options exclusive-choice filter. Parallel
             // surface to `FormFieldKind.SegmentedChoice`; uses the filter's

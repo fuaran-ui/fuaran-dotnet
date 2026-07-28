@@ -256,6 +256,8 @@ and mapFormFieldKind (f: 'a -> 'b) (kind: FormFieldKind<'a>) : FormFieldKind<'b>
         FormFieldKind.SegmentedChoice(options, value, mapHandler onChange, orientation)
     | FormFieldKind.Date(value, onChange, variant, constraints) ->
         FormFieldKind.Date(value, mapHandler onChange, variant, constraints)
+    | FormFieldKind.DateRange(value, onChange, variant, constraints) ->
+        FormFieldKind.DateRange(value, mapHandler onChange, variant, constraints)
 
 and mapFilterSpec (f: 'a -> 'b) (spec: FilterSpec<'a>) : FilterSpec<'b> =
     // 0.2.0 filters-unification: the chip's control is an ordinary

@@ -170,7 +170,7 @@ let generatedLayerTests =
               // ambiguous.
               let corpus = familyFixtures "nodes" "*.json"
 
-              Expect.equal corpus.Length 85 "the node corpus is the expected 85 fixtures"
+              Expect.equal corpus.Length 87 "the node corpus is the expected 87 fixtures"
 
               let failures =
                   corpus
@@ -230,12 +230,17 @@ let generatedLayerTests =
               // encoder no longer drops `style-role-voice-1`'s `{role,voice}` on the
               // way back out. **Empty** is the interesting state for this list — the
               // generated encoder now agrees with the hand-written one on every one
-              // of the 85 fixtures it can decode.
+              // of the fixtures it can decode.
               Expect.equal
                   (disagreed |> List.map (fun (n, _, _) -> n))
                   []
                   "the generated and hand-written encoders now agree on every decodable fixture"
 
+              // 85 of 87 since Phase 725: the two `DateRange` node fixtures are not
+              // COMPARABLE, because `FormFieldKind.DateRange` is not yet in the IDL
+              // (the IDL lives in the substrate sibling, so the generated layer
+              // follows a vocabulary addition rather than landing with it). They are
+              // named by the coverage test below; the diff itself is unweakened.
               Expect.equal
                   compared
                   85
@@ -276,7 +281,12 @@ let generatedLayerTests =
               // fixtures that were in the round-tripping set, so every bucket held
               // steady and this test passed without noticing the corpus had shrunk.
               // A count that only tracks failures is blind to the corpus itself.
-              Expect.equal expected.Length 47 "the lenient corpus is the expected 47 canonical fixtures"
+              // 47 → 52 at Phase 719 (the five compact authoring twins); 52 → 54 at
+              // Phase 725 (the two `DateRange` pair shorthands). The 719 bump was
+              // never applied here, so this pin was red against the published corpus
+              // before 725 corrected it — the hazard a size pin exists to catch,
+              // caught one release late.
+              Expect.equal expected.Length 54 "the lenient corpus is the expected 54 canonical fixtures"
 
               // A node-envelope key present on the input but dropped on re-encode is
               // its own cause, not generic field drift: the IDL models no envelope.
@@ -329,9 +339,17 @@ let generatedLayerTests =
               //    context-dependent SYNTHESIS stays policy above this layer, so the
               //    earlier "no local OmitDefault can express it" note stands — absence
               //    just no longer needs expressing to round-trip.
+              //
+              // Phase 725 reopened it with ONE bucket of two: the `DateRange` pair
+              // shorthands, whose canonical output the IDL cannot yet decode
+              // (`unknown FormFieldKind case: DateRange`). The IDL lives in the
+              // substrate sibling, so a UI vocabulary addition necessarily lands here
+              // first; the bucket closes when the generated layer is re-synced. It is
+              // a COVERAGE gap, not a normalisation failure — the hand-written policy
+              // layer round-trips both fixtures (the lenient-accept suite is green).
               Expect.equal
                   buckets
-                  []
+                  [ "unclassified: unknown FormFieldKind case: DateRange", 2 ]
                   (sprintf
                       "the IDL-coverage residue moved (%d of %d lenient-expected fixtures round-trip)"
                       roundTripped
@@ -351,7 +369,7 @@ let generatedLayerTests =
               // then has a checked-in source rather than a remembered one.
               let corpus = familyFixtures "nodes" "*.json"
 
-              Expect.equal corpus.Length 85 "the node corpus is the expected 85 fixtures"
+              Expect.equal corpus.Length 87 "the node corpus is the expected 87 fixtures"
 
               let isCovered (json: string) =
                   match Generated.decodeNode json with
@@ -378,6 +396,12 @@ let generatedLayerTests =
               // Phase 425 grid `field`/`rowKeyField` vocabulary, and Modal's
               // Phase 426 optional `onDismiss`. The whole node corpus now
               // round-trips through the generated layer alone.
+              //
+              // 85 of 87 at Phase 725: the residue is exactly the two `DateRange`
+              // node fixtures. The IDL lives in the substrate sibling, so a UI
+              // vocabulary addition lands here first and the generated layer follows
+              // — the number going DOWN by an addition is the honest reading, not a
+              // regression in what the generator already covers.
               Expect.equal
                   covered
                   85
@@ -397,7 +421,7 @@ let generatedLayerTests =
               // split moves and this fails.
               let rejects = familyFixtures "reject" "*.json"
 
-              Expect.equal rejects.Length 40 "the reject corpus is the expected 40 fixtures"
+              Expect.equal rejects.Length 41 "the reject corpus is the expected 41 fixtures"
 
               let refusedByStructure, acceptedByStructure =
                   rejects
@@ -412,7 +436,7 @@ let generatedLayerTests =
 
               Expect.equal
                   (List.length refusedByStructure + List.length policyOwned)
-                  40
+                  41
                   "every reject fixture is accounted for on one side of the seam"
 
               // Three became one at Phase 690, and the two that moved did so for the

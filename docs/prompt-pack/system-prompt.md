@@ -1190,7 +1190,7 @@ Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` 
 - `CellValue.$type`: `Numeric(value)` · `Text(value)` · `Bool(value)` · `Date(unixSeconds)` · `Empty`
 - `ColumnWidth.$type`: `Auto` · `Fixed(pixels)` · `Flex(weight)`
 - `CurveCommand.$type`: `MoveTo(to)` · `LineTo(to)` · `CubicTo(control1, control2, to)` · `QuadraticTo(control, to)` · `Close`
-- `FormFieldKind.$type`: `Text` · `Number` · `Range` · `Checkbox` · `Choice(options)` · `RangedNumber` · `SegmentedChoice(options, orientation)` · `TextArea(rows)` · `Date(variant)`
+- `FormFieldKind.$type`: `Text` · `Number` · `Range` · `Checkbox` · `Choice(options)` · `RangedNumber` · `SegmentedChoice(options, orientation)` · `TextArea(rows)` · `Date(variant)` · `DateRange(variant)`
 - `Format.$type`: `Number` · `Currency(isoCode)` · `Percent` · `Date(dateStyle)` · `RelativeTime(unit)`
 - `FragmentArg.$type`: `Int(value)` · `Float(value)` · `Bool(value)` · `Str(value)` · `SlotArg(tree)`
 - `HoleDecl.$type`: `Value(name, space)` · `Slot(name)` · `Repeat(countSpace, name)`

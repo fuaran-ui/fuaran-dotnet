@@ -881,6 +881,86 @@ let formDate: Node<obj> =
         ))
         None
 
+/// Round-trip cover for `FormFieldKind.DateRange` (Phase 725) — the
+/// single-control date range. Exercises all three variants and the
+/// present/absent constraint combinations, plus the Phase 426 handler-free
+/// shape, so the encoder's omit-when-None discipline and the decoder's
+/// optional-field branch stay in lockstep. The Static pair rides as the bare
+/// `{from, to}` object (the `Range` posture, no `Static` envelope).
+let formDateRange: Node<obj> =
+    let stayField: FormField<obj> =
+        { Id = "stay"
+          Label = TextSource.Literal "Stay"
+          Kind =
+            FormFieldKind.DateRange(
+                Binding.Static("2026-03-01", "2026-03-08"),
+                Some(fun _ -> placeholderChain),
+                DateVariant.Date,
+                { Min = Some "2026-01-01"
+                  Max = Some "2026-12-31"
+                  Step = None }
+            )
+          Required = true
+          Help = None }
+
+    // Handler-free (Phase 426) — `onChange` is omitted on the wire and the
+    // renderer writes the changed pair back to the value slot.
+    let shiftField: FormField<obj> =
+        { Id = "shift"
+          Label = TextSource.Literal "Shift"
+          Kind =
+            FormFieldKind.DateRange(
+                Binding.State("shift", ("08:00", "17:00")),
+                None,
+                DateVariant.Time,
+                { Min = None
+                  Max = None
+                  Step = Some 900.0 }
+            )
+          Required = false
+          Help = None }
+
+    let windowField: FormField<obj> =
+        { Id = "window"
+          Label = TextSource.Literal "Window"
+          Kind =
+            FormFieldKind.DateRange(
+                Binding.Static("2026-03-01T09:00", "2026-03-01T17:00"),
+                Some(fun _ -> placeholderChain),
+                DateVariant.DateTime,
+                { Min = None; Max = None; Step = None }
+            )
+          Required = false
+          Help = None }
+
+    node
+        "form-date-range"
+        (NodeKind.Form(
+            { Fields = [ stayField; shiftField; windowField ]
+              OnSubmit = placeholderChain
+              SubmitLabel = TextSource.Literal "Book"
+              Disabled = Option.None }
+        ))
+        None
+
+/// Filter-context cover for `FormFieldKind.DateRange` (Phase 725). The chip's
+/// `value` is the exact auto-binding (`Filter(name)`), so it is OMITTED on the
+/// wire per the FilterSpec auto-bind rule — and the pair binds ONE filter
+/// param, not two, which is the case's reason to exist.
+let filtersDateRange: Node<obj> =
+    let stayChip: FilterSpec<obj> =
+        { Name = "stay"
+          Label = TextSource.Literal "Stay"
+          Field =
+            FormFieldKind.DateRange(
+                Binding.Filter("stay", None),
+                None,
+                DateVariant.Date,
+                { Min = None; Max = None; Step = None }
+            ) }
+
+    node "filters-date-range" (NodeKind.Filters([ stayChip ])) None
+
 let button: Node<obj> =
     node
         "btn-1"
@@ -2473,6 +2553,9 @@ let allNodes: (string * Node<obj>) list =
       "Input/Filters (declarative — omitted onChange + typed range bounds)", filtersDeclarative
       "Input/Form (SegmentedChoice horizontal + vertical)", formSegmentedChoice
       "Input/Form (Date — date/time/datetime variants + bounds)", formDate
+      "Input/Form (Phase 725 — DateRange: single-control date range, bare {from,to} pair + bounds)", formDateRange
+      "Input/Filters (Phase 725 — DateRange chip: one filter param carries the pair, value auto-bound)",
+      filtersDateRange
       "Input/Filters (SegmentedFilter horizontal)", filtersSegmented
       "Input/Button", button
       "Input/Button (Action.WriteToClipboard chained with Dispatch)", buttonClipboard

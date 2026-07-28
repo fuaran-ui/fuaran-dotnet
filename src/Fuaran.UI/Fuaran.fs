@@ -475,6 +475,36 @@ module FormFieldKind =
                 Step = step }
         )
 
+    /// Single-control date range (Phase 725) — the pair-valued sibling of
+    /// `date`. `value` is a `Binding<string * string>` carrying the ordered
+    /// `(from, to)` ISO-8601 pair; `variant` selects the native control for
+    /// both ends; `min` / `max` (ISO strings) + `step` (seconds) bound BOTH
+    /// ends. Author example:
+    ///
+    ///   FormFieldKind.dateRange
+    ///       (value = binding.state "stay" ("", ""))
+    ///       (onChange = SetStay >> Action.dispatch)
+    ///       DateVariant.Date
+    ///       (Some "2026-01-01")
+    ///       None None
+    let dateRange
+        (value: Binding<string * string>)
+        (onChange: string * string -> Action<'Msg>)
+        (variant: DateVariant)
+        (min: string option)
+        (max: string option)
+        (step: float option)
+        : FormFieldKind<'Msg> =
+        FormFieldKind.DateRange(
+            value,
+            Some onChange,
+            variant,
+            { Defaults.dateFieldConstraints with
+                Min = min
+                Max = max
+                Step = step }
+        )
+
     // ── Handler-free (declarative) ctors — Phase 426, the control write-back
     //    default. Each emits `onChange = None`, the shape an AI author uses: the
     //    renderer writes the changed value back to the field's own `value`
@@ -543,6 +573,25 @@ module FormFieldKind =
                 Step = step }
         )
 
+    /// Handler-free `DateRange` — writes the changed `(from, to)` ISO-8601
+    /// pair back to the value slot.
+    let dateRangeDeclarative
+        (value: Binding<string * string>)
+        (variant: DateVariant)
+        (min: string option)
+        (max: string option)
+        (step: float option)
+        : FormFieldKind<'Msg> =
+        FormFieldKind.DateRange(
+            value,
+            None,
+            variant,
+            { Defaults.dateFieldConstraints with
+                Min = min
+                Max = max
+                Step = step }
+        )
+
 /// Smart-ctors for filter strips. Closure-bearing ctors (`Some onChange`) preserve the
 /// F#-authored dispatch behaviour byte-for-byte; the closure-free ctors (Phase 423) emit
 /// `onChange = None`, the shape an AI author uses — the renderer's reactive FilterStore then
@@ -573,6 +622,11 @@ module FilterField =
     /// Dual-thumb range chip bound to its own filter key.
     let range (name: string) : FormFieldKind<'Msg> =
         FormFieldKind.Range(Binding.Filter(name, None), None, None)
+
+    /// Date-range chip bound to its own filter key (Phase 725). ONE filter
+    /// param carries the whole `(from, to)` pair — the reason the case exists.
+    let dateRange (name: string) (variant: DateVariant) : FormFieldKind<'Msg> =
+        FormFieldKind.DateRange(Binding.Filter(name, None), None, variant, Defaults.dateFieldConstraints)
 
 // ─── Column helpers (§4c lines 523–529) ───────────────────────────────────
 

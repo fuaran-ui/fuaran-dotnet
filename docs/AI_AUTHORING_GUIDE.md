@@ -313,6 +313,9 @@ A `Fuaran.form` carries an ordered list of fields; each field's `Kind` chooses t
 | `FormFieldKind.Choice` | Dropdown (`<select>`) – exclusive choice from a list that may be long or dynamically-sized. |
 | `FormFieldKind.SegmentedChoice` (Phase 66) | Visible-options exclusive choice. `Horizontal` = segmented control pill row; `Vertical` = radio-button list. See "Segmented choice" below. |
 | `FormFieldKind.TextArea` | Multi-line text. |
+| `FormFieldKind.Range` | Dual-thumb numeric range. The value is a `(min, max)` pair; optional `Min` / `Max` / `Step` bound both ends. |
+| `FormFieldKind.Date` | Date / time / datetime input. The value is an ISO-8601 string; `DateVariant` picks the native control. |
+| `FormFieldKind.DateRange` | Start-and-end dates in **one** control — the value is an ordered `(from, to)` pair of ISO-8601 strings, with `DateVariant` and the optional ISO `Min` / `Max` + numeric `Step` bounding both ends. Reach for this rather than two `Date` fields whenever the two dates are one value: in a filter strip it binds **one** filter param, so everything downstream scopes off a single key. A literal pair must be ordered (`from <= to`) or the tree is refused at decode. |
 
 #### Segmented choice (Phase 66)
 

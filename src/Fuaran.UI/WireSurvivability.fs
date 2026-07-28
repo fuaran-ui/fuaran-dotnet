@@ -128,6 +128,7 @@ let all: Classification list =
       pt "FormFieldKind.RangedNumber" writeBack
       pt "FormFieldKind.SegmentedChoice" writeBack
       pt "FormFieldKind.Date" writeBack
+      pt "FormFieldKind.DateRange" writeBack // Phase 725 — the pair survives; the onChange closure erases
 
       // 0.2.0 filters-unification: chips carry FormFieldKind controls — the
       // FormFieldKind rows above cover them; Range is the absorbed range chip.

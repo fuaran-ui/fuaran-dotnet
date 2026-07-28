@@ -1264,6 +1264,17 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                 | DateVariant.DateTime -> "datetime-local"
 
             t, (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
+        | FormFieldKind.DateRange(_, _, variant, _) ->
+            // Phase 725 — the variant types BOTH ends; the pair itself is
+            // rendered by the dedicated dual-input branch below, so the
+            // single-control tuple carries only the type.
+            let t =
+                match variant with
+                | DateVariant.Date -> "date"
+                | DateVariant.Time -> "time"
+                | DateVariant.DateTime -> "datetime-local"
+
+            t, ""
 
     // `data-fuaran-field` is the per-field buffer marker (Phase 152 form policy):
     // the server-driven shim reads + harvests it (the live DOM value IS the
@@ -1271,18 +1282,57 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
     // addresses it. Additive, server-tier-only — the same shim-bridge pattern as
     // `data-tab-index` / `data-filter-name` / `data-step-index`.
     let control =
-        match controlType with
-        | "textarea" ->
-            Html.textarea
-                [ prop.className "fuaran-form-field-control"
-                  prop.custom ("data-fuaran-field", field.Id)
-                  prop.value valueText ]
+        match field.Kind with
+        | FormFieldKind.DateRange(v, _, _, constraints) ->
+            // Phase 725 — SSR parity with the client's dual-input range: two
+            // native date/time inputs (per variant) over the pair's ends,
+            // sharing the min/max/step attributes. Inert like every other
+            // server-rendered control; the FROM end carries the per-field
+            // buffer marker (the pair's addressable slot).
+            let fromV, toV =
+                BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue ("", "")
+
+            let constraintAttrs =
+                [ match constraints.Min with
+                  | Some m -> prop.custom ("min", m)
+                  | None -> ()
+                  match constraints.Max with
+                  | Some m -> prop.custom ("max", m)
+                  | None -> ()
+                  match constraints.Step with
+                  | Some s -> prop.custom ("step", string s)
+                  | None -> () ]
+
+            Html.span
+                [ prop.className "fuaran-field-range"
+                  prop.children
+                      [ Html.input (
+                            [ prop.className "fuaran-form-field-control fuaran-field-range-min"
+                              prop.custom ("data-fuaran-field", field.Id)
+                              prop.custom ("type", controlType)
+                              prop.value fromV ]
+                            @ constraintAttrs
+                        )
+                        Html.span [ prop.className "fuaran-field-range-sep"; prop.text "–" ]
+                        Html.input (
+                            [ prop.className "fuaran-form-field-control fuaran-field-range-max"
+                              prop.custom ("type", controlType)
+                              prop.value toV ]
+                            @ constraintAttrs
+                        ) ] ]
         | _ ->
-            Html.input
-                [ prop.className "fuaran-form-field-control"
-                  prop.custom ("data-fuaran-field", field.Id)
-                  prop.custom ("type", controlType)
-                  prop.value valueText ]
+            match controlType with
+            | "textarea" ->
+                Html.textarea
+                    [ prop.className "fuaran-form-field-control"
+                      prop.custom ("data-fuaran-field", field.Id)
+                      prop.value valueText ]
+            | _ ->
+                Html.input
+                    [ prop.className "fuaran-form-field-control"
+                      prop.custom ("data-fuaran-field", field.Id)
+                      prop.custom ("type", controlType)
+                      prop.value valueText ]
 
     Html.label
         [ prop.className "fuaran-form-field"
@@ -1312,6 +1362,9 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
         | FormFieldKind.RangedNumber _ -> "number"
         | FormFieldKind.Checkbox _ -> "checkbox"
         | FormFieldKind.Date _ -> "date"
+        // Phase 725 — a date range is a range chip whose ends are dates; it
+        // reuses the existing `range` chip class rather than minting one.
+        | FormFieldKind.DateRange _ -> "range"
 
     let labelText = renderText ctx spec.Label
 
@@ -1386,6 +1439,47 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                             [ prop.className "fuaran-filter-range-max"
                               prop.custom ("type", "number")
                               prop.value (string maxV) ] ] ]
+        | FormFieldKind.DateRange(value, _, variant, constraints) ->
+            // Phase 725 — the date-range chip, inert: two native date/time
+            // inputs over ONE filter param carrying the whole pair. Mirrors
+            // the client renderer's shape + class vocabulary.
+            let fromV, toV =
+                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ("", "")
+
+            let inputType =
+                match variant with
+                | DateVariant.Date -> "date"
+                | DateVariant.Time -> "time"
+                | DateVariant.DateTime -> "datetime-local"
+
+            let constraintAttrs =
+                [ match constraints.Min with
+                  | Some m -> prop.custom ("min", m)
+                  | None -> ()
+                  match constraints.Max with
+                  | Some m -> prop.custom ("max", m)
+                  | None -> ()
+                  match constraints.Step with
+                  | Some s -> prop.custom ("step", string s)
+                  | None -> () ]
+
+            Html.span
+                [ prop.className "fuaran-filter-range"
+                  prop.custom ("data-filter-name", spec.Name)
+                  prop.children
+                      [ Html.input (
+                            [ prop.className "fuaran-filter-input fuaran-filter-range-min"
+                              prop.custom ("type", inputType)
+                              prop.value fromV ]
+                            @ constraintAttrs
+                        )
+                        Html.span [ prop.className "fuaran-filter-range-sep"; prop.text "–" ]
+                        Html.input (
+                            [ prop.className "fuaran-filter-input fuaran-filter-range-max"
+                              prop.custom ("type", inputType)
+                              prop.value toV ]
+                            @ constraintAttrs
+                        ) ] ]
         | FormFieldKind.SegmentedChoice(options, value, _, orientation) ->
             renderSegmentedFilter ctx spec.Name options value orientation
 

@@ -233,7 +233,10 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                 | FormFieldKind.RangedNumber _
                 | FormFieldKind.Range _
                 | FormFieldKind.Checkbox _
-                | FormFieldKind.Date _ -> None)
+                | FormFieldKind.Date _
+                // Phase 725 — a DateRange handler takes the (from, to) pair,
+                // not the single chosen string this resolution carries.
+                | FormFieldKind.DateRange _ -> None)
     | NodeKind.Disclosure(spec) ->
         // Default to "open" when no explicit bool rides along (a summary click).
         // `OnToggle` is optional (Phase 426) — a `None` disclosure has no

@@ -1362,6 +1362,46 @@ let private encodeFormFieldKind<'Msg> (autoBind: ControlAutoBind) (k: FormFieldK
                      @ valueField encodeBinding<string> Fuaran.UI.Defaults.ControlValueDefaults.date value
                      @ [ "variant", encodeDateVariant variant ]
                      @ constraintFields))
+        | FormFieldKind.DateRange(value, oc, variant, constraints) ->
+            // Phase 725 — single-control date range. `Range`'s pair posture
+            // with `Date`'s value conventions: the Static pair rides as the
+            // BARE {from, to} object (no `Static` envelope), `variant` is
+            // always emitted, and the ISO min/max + numeric step are omitted
+            // when absent (rule 4).
+            let pairValue (v: Binding<string * string>) : Appender =
+                match v with
+                | Binding.Static(fromV, toV) -> fun sb2 -> appendObject sb2 [ "from", str fromV; "to", str toV ]
+                | other ->
+                    encodeBindingWith (fun (a, b) -> fun sb2 -> appendObject sb2 [ "from", str a; "to", str b ]) other
+
+            let constraintFields =
+                [ match constraints.Min with
+                  | Some m -> "min", str m
+                  | None -> ()
+                  match constraints.Max with
+                  | Some m -> "max", str m
+                  | None -> ()
+                  match constraints.Step with
+                  | Some s -> "step", float_ s
+                  | None -> () ]
+
+            let vField =
+                match autoBind, value with
+                | FilterChip n, Binding.Filter(fn, None) when fn = n -> []
+                | FormFieldId fieldId, Binding.State(key, d) when
+                    key = fieldId && d = Fuaran.UI.Defaults.ControlValueDefaults.dateRange
+                    ->
+                    []
+                | _ -> [ "value", pairValue value ]
+
+            appendObject
+                sb
+                (case
+                    "DateRange"
+                    (handlerField "onChange" oc
+                     @ vField
+                     @ [ "variant", encodeDateVariant variant ]
+                     @ constraintFields))
 
 let private encodeFormField<'Msg> (f: FormField<'Msg>) : Appender =
     fun sb ->

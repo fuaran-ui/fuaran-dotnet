@@ -14,7 +14,10 @@ module Fuaran.UI.JsonDecode.Tests.SchemaConformance
 //    1. Every accept-fixture (node-round-trip / op-round-trip) VALIDATES against
 //       the schema — mirrors `JsonDecode.decode* = Ok`.
 //    2. Every reject-fixture FAILS the schema (or is not parseable JSON, the
-//       INVALID_JSON case) — mirrors `JsonDecode.decode* = Error`.
+//       INVALID_JSON case) — mirrors `JsonDecode.decode* = Error`. The one
+//       exception is the named `schemaInexpressibleRejects` set: rules Draft
+//       2020-12 provably cannot state (cross-field ordering), pinned inversely
+//       so the exemption cannot outlive its reason.
 //    3. Stale-schema guard: the committed schema.json is byte-identical to a
 //       fresh `SchemaGen.wireFormatSchema` — the regenerate-and-diff guard that
 //       keeps the schema co-updated with Types.fs (WIRE_FORMAT.md §11). If this
@@ -71,16 +74,49 @@ let private acceptTest (e: Corpus.FixtureEntry) : Test =
         | Some false -> failtestf "schema REJECTED an accept-fixture (JsonDecode accepts it)\n  input: %s" wire
         | None -> failtestf "accept-fixture is not parseable JSON\n  input: %s" wire)
 
-let private rejectTest (e: Corpus.FixtureEntry) : Test =
-    testCase (sprintf "reject — %s (%s) — fails the schema" e.Description e.Id) (fun () ->
-        let wire = Corpus.readPayload corpusRoot e.InputFile
+/// Reject fixtures whose rule Draft 2020-12 **provably cannot express**, so the
+/// decoder is their only enforcer. Named, never counted — a fixture MOVING onto
+/// or off this list is the interesting event, and a bare exemption count hides
+/// it. The same posture the generated-layer seam takes for its policy-owned
+/// residue (`GeneratedLayerTests.fs`).
+///
+/// - `reject-daterange-unordered` (Phase 725): `DateRange.value` must satisfy
+///   `from <= to`. Draft 2020-12 has no keyword that relates two sibling
+///   property values, so the payload is a well-formed `{from, to}` object by
+///   every shape rule the schema can state. Ordering is decoder policy.
+///
+/// Each entry is asserted schema-VALID below — the INVERSE pin. If the schema
+/// ever gains the power to refuse one of these, this test fails and the list
+/// shrinks deliberately rather than the exemption quietly outliving its reason.
+let private schemaInexpressibleRejects: Set<string> =
+    set [ "reject-daterange-unordered" ]
 
-        match validate wire with
-        // Unparseable JSON OR schema-invalid both count as a rejection,
-        // consistent with JsonDecode returning Error.
-        | None -> ()
-        | Some false -> ()
-        | Some true -> failtestf "schema ACCEPTED a reject-fixture (JsonDecode rejects it)\n  input: %s" wire)
+let private rejectTest (e: Corpus.FixtureEntry) : Test =
+    if schemaInexpressibleRejects.Contains e.Id then
+        testCase
+            (sprintf "reject — %s (%s) — decoder-only rule, schema cannot express it" e.Description e.Id)
+            (fun () ->
+                let wire = Corpus.readPayload corpusRoot e.InputFile
+
+                match validate wire with
+                | Some true -> ()
+                | Some false ->
+                    failtestf
+                        "the schema now REFUSES '%s' — remove it from schemaInexpressibleRejects; the exemption has outlived its reason\n  input: %s"
+                        e.Id
+                        wire
+                | None ->
+                    failtestf "exempt reject-fixture '%s' is not parseable JSON — it belongs in the ordinary set" e.Id)
+    else
+        testCase (sprintf "reject — %s (%s) — fails the schema" e.Description e.Id) (fun () ->
+            let wire = Corpus.readPayload corpusRoot e.InputFile
+
+            match validate wire with
+            // Unparseable JSON OR schema-invalid both count as a rejection,
+            // consistent with JsonDecode returning Error.
+            | None -> ()
+            | Some false -> ()
+            | Some true -> failtestf "schema ACCEPTED a reject-fixture (JsonDecode rejects it)\n  input: %s" wire)
 
 [<Tests>]
 let acceptConformance =

@@ -25,7 +25,14 @@
          public-contract addition never rides a same-version repack (the
          workspace producer-side pinning rule), and 0.5.0 was already published.
          -->
-    <Version>0.6.0</Version>
+    <!-- 0.7.0 (Phase 725): `FormFieldKind` gains a `DateRange` case — the
+         single-control date range. Additive on the wire (no existing emission
+         changes meaning), but a new DU case breaks every consumer's exhaustive
+         `match` over `FormFieldKind`, which is a source break under F#'s
+         `TreatWarningsAsErrors` even though STABILITY.md classifies DU
+         exhaustiveness as non-breaking. Either way it is a public-contract
+         addition, so it takes its own version rather than repacking 0.6.0. -->
+    <Version>0.7.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

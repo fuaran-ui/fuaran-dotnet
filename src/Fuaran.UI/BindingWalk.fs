@@ -136,6 +136,7 @@ let private usesOfFormFieldKind<'Msg> (kind: FormFieldKind<'Msg>) : BindingUse l
     | FormFieldKind.Choice(opts, value, _) -> usesOfBinding opts @ usesOfBinding value
     | FormFieldKind.SegmentedChoice(opts, value, _, _) -> usesOfBinding opts @ usesOfBinding value
     | FormFieldKind.Date(v, _, _, _) -> usesOfBinding v
+    | FormFieldKind.DateRange(v, _, _, _) -> usesOfBinding v
 
 /// The `Action.Call`s reachable from a wire-survivable action value,
 /// recursing `Chain` (Phase 428). Non-Call arms carry no fetch.

@@ -228,6 +228,7 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
             | FormFieldKind.Range(value, _, _) -> add BindingSinkClass.Numeric value
             | FormFieldKind.Checkbox(value, _) -> add BindingSinkClass.Boolean value
             | FormFieldKind.Date(value, _, _, _) -> add BindingSinkClass.Temporal value
+            | FormFieldKind.DateRange(value, _, _, _) -> add BindingSinkClass.Temporal value
             | FormFieldKind.Text(value, _) -> add BindingSinkClass.Categorical value
             | FormFieldKind.TextArea(value, _, _) -> add BindingSinkClass.Categorical value
             | FormFieldKind.Choice(_, value, _) -> add BindingSinkClass.Categorical value

@@ -411,6 +411,19 @@ let private defs: (string * J) list =
                   "variant", ref "DateVariant"
                   "min", str
                   "max", str
+                  "step", number ]
+            // Phase 725 — the single-control date range. `value` carries the
+            // ordered ISO-8601 (from, to) pair, canonically the bare
+            // {from, to} object (like `Range`'s bare {min, max}), so the slot
+            // is `anyJson` rather than a `Binding` ref.
+            duCase
+                "DateRange"
+                [ "variant" ]
+                [ "onChange", closure
+                  "value", anyJson
+                  "variant", ref "DateVariant"
+                  "min", str
+                  "max", str
                   "step", number ] ]
 
       // `onChange` is optional (Phase 423) — present as the `"<closure>"` const when an F#-authored

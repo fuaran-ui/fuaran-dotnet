@@ -625,6 +625,8 @@ let fewShot =
       "A save form: a required name field, an age number, a required 'I agree' checkbox, a tier dropdown, and a notes text area."
       "filters-declarative",
       "A filter strip that scopes a dataset: a search box, a tier dropdown, and an age range — self-wiring, no host code (each chip omits onChange and its value reads its own filter)."
+      "filters-date-range",
+      "A filter strip with a single date-range chip: pick a start and end date in one control, scoping everything downstream through one filter param."
       "lenient-grid-transform-param-compact",
       "A grid of embedded department data scoped by a filter: the transform's filter step compares the dept column to a param sourced from the 'dept' filter chip, so the grid re-filters as the chip changes."
       "query-dependson",

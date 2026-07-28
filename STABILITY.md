@@ -382,6 +382,30 @@ though no type signature moved:
   any consumer constructing that record directly (the CLI is the expected consumption surface). See
   the [validator README](src/Fuaran.UI.Validator/README.md#suppressing-a-finding).
 
+## Recorded change — 0.7.0, `FormFieldKind.DateRange`
+
+**Additive wire vocabulary.** `FormFieldKind` gains a `DateRange` case — the single-control date
+range (`value: Binding<string * string>` carrying the ordered ISO-8601 `(from, to)` pair, plus the
+`DateVariant` and the `DateFieldConstraints` that bound both ends). No existing emission changes
+meaning: a tree with no `DateRange` field encodes to exactly the bytes it did at 0.6.0.
+
+**What it costs a consumer.** Per the [Semver](#semver) note above, a new DU case is *minor*, not
+major — but it is a new case in a widely-matched DU, so any consumer with an exhaustive `match` over
+`FormFieldKind` gets `FS0025`, which is a build break under `TreatWarningsAsErrors`. Sites to expect
+in a renderer or analysis pass: the form-field control arm, the filter-chip control arm, binding
+walks, and any write-back/inertness classification.
+
+**Wire contract.** `{"$type":"DateRange","onChange"?:"<closure>","value":<Binding<string*string>>,
+"variant":"Date"|"Time"|"DateTime","min"?:<iso>,"max"?:<iso>,"step"?:<number>}`. The `Static` pair
+rides as the bare `{"from":…,"to":…}` object — the `FormFieldKind.Range` posture, no `Static`
+envelope — with the `[from,to]` array and the enveloped form decode-accepted. A **literal** pair must
+be ordered (`from <= to`, ordinal compare); a reversed one is a `WRONG_TYPE` decode error naming the
+rule. Corpus: `nodes/form-date-range.json`, `nodes/filters-date-range.json`,
+`reject/reject-daterange-unordered.json`, `lenient/lenient-daterange-{bare-array,static-envelope}.json`.
+
+**Host adoption.** The F# reference and the shared corpus land together; the other conformant hosts
+follow by fixture (their decode legs are filed as their own phases).
+
 ## How this policy interacts with phase authoring
 
 Per the workspace roadmap conventions, every phase that proposes a change to a stable surface (per the table above) must flag it explicitly in its phase body:
