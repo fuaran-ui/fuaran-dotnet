@@ -623,3 +623,153 @@ let isAncestorOf (ancestorId: NodeId) (descendantId: NodeId) (root: Node<'Msg>) 
             true
         else
             allNodeIds ancestor |> List.contains descendantId
+
+// ─── §16 canonical-form projection (Phase 694) ─────────────────────────────
+//
+// The policy half the retired hand-written encoder carried inline: the
+// canonical wire spells three things as ABSENCE that the type system can also
+// spell explicitly — a control value that is exactly its context's Phase 596
+// auto-binding (`State(field id, typed placeholder)` on a form field,
+// `Filter(name, None)` on a chip), an all-default `SemanticStyle`, and an
+// all-`None` `StateBehaviour`. `canonicalForm` rewrites a tree into that
+// canonical shape so the structural (generated) encoder emits canonical bytes;
+// the tier's policy encoder (`CanonicalJson.encodeNode`) applies it, and
+// `JsonDecode`'s decode-side collapses mirror it. It lives HERE because the
+// traversal reuses this module's kind-complete lens — no second per-kind walk.
+
+let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
+    // A value slot that spells the field's exact auto-binding collapses to
+    // `None` (the canonical omitted form). Any other value passes through.
+    let collapse (expected: 'v option) (value: Binding<'v> option) : Binding<'v> option =
+        match value with
+        | Some(Binding.State(key, dv)) when key = field.Id && dv = expected -> None
+        | v -> v
+
+    let kind =
+        match field.Kind with
+        | FormFieldKind.Text(value, oc) ->
+            FormFieldKind.Text(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.text) value, oc)
+        | FormFieldKind.Number(value, oc) ->
+            FormFieldKind.Number(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.number) value, oc)
+        | FormFieldKind.Checkbox(value, ot) ->
+            FormFieldKind.Checkbox(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) value, ot)
+        | FormFieldKind.Choice(options, value, oc) ->
+            FormFieldKind.Choice(options, collapse Fuaran.UI.Defaults.ControlValueDefaults.choice value, oc)
+        | FormFieldKind.TextArea(value, oc, rows) ->
+            FormFieldKind.TextArea(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.text) value, oc, rows)
+        | FormFieldKind.RangedNumber(value, oc, mn, mx, st) ->
+            FormFieldKind.RangedNumber(
+                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.number) value,
+                oc,
+                mn,
+                mx,
+                st
+            )
+        | FormFieldKind.Range(value, oc, mn, mx, st) ->
+            FormFieldKind.Range(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.range) value, oc, mn, mx, st)
+        | FormFieldKind.SegmentedChoice(options, value, oc, orientation) ->
+            FormFieldKind.SegmentedChoice(
+                options,
+                collapse Fuaran.UI.Defaults.ControlValueDefaults.choice value,
+                oc,
+                orientation
+            )
+        | FormFieldKind.Date(value, oc, variant, mn, mx, st) ->
+            FormFieldKind.Date(
+                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.date) value,
+                oc,
+                variant,
+                mn,
+                mx,
+                st
+            )
+
+    { field with Kind = kind }
+
+and private canonicalFilterItem (item: FilterSpec<'Msg>) : FilterSpec<'Msg> =
+    // A chip value that spells the chip's own auto-binding collapses to `None`.
+    let collapse (value: Binding<'v> option) : Binding<'v> option =
+        match value with
+        | Some(Binding.Filter(name, None)) when name = item.Name -> None
+        | v -> v
+
+    let kind =
+        match item.Kind with
+        | FormFieldKind.Text(value, oc) -> FormFieldKind.Text(collapse value, oc)
+        | FormFieldKind.Number(value, oc) -> FormFieldKind.Number(collapse value, oc)
+        | FormFieldKind.Checkbox(value, ot) -> FormFieldKind.Checkbox(collapse value, ot)
+        | FormFieldKind.Choice(options, value, oc) -> FormFieldKind.Choice(options, collapse value, oc)
+        | FormFieldKind.TextArea(value, oc, rows) -> FormFieldKind.TextArea(collapse value, oc, rows)
+        | FormFieldKind.RangedNumber(value, oc, mn, mx, st) ->
+            FormFieldKind.RangedNumber(collapse value, oc, mn, mx, st)
+        | FormFieldKind.Range(value, oc, mn, mx, st) -> FormFieldKind.Range(collapse value, oc, mn, mx, st)
+        | FormFieldKind.SegmentedChoice(options, value, oc, orientation) ->
+            FormFieldKind.SegmentedChoice(options, collapse value, oc, orientation)
+        | FormFieldKind.Date(value, oc, variant, mn, mx, st) ->
+            FormFieldKind.Date(collapse value, oc, variant, mn, mx, st)
+
+    { item with Kind = kind }
+
+/// Rewrite a whole tree into §16 canonical form. Identity on trees that are
+/// already canonical (every decoded tree is, since the decode-side collapses).
+and canonicalForm (node: Node<'Msg>) : Node<'Msg> =
+    // Kind-level value-slot collapses.
+    let kind =
+        match node.Kind with
+        | NodeKind.Form spec ->
+            NodeKind.Form
+                { spec with
+                    Fields = spec.Fields |> List.map canonicalFormField }
+        | NodeKind.Filters spec ->
+            NodeKind.Filters
+                { spec with
+                    Items = spec.Items |> List.map canonicalFilterItem }
+        | k -> k
+
+    // Structural children.
+    let kind =
+        match getChildren kind with
+        | Some children ->
+            match withChildren kind (children |> List.map canonicalForm) with
+            | Some rewritten -> rewritten
+            | None -> kind
+        | None -> kind
+
+    let node = { node with Kind = kind }
+
+    // Non-structural slots (state OnLoading/OnEmpty + kind-held nodes the
+    // structural-children walk cannot reach) recurse through the shared lens.
+    let slots, put = nonStructuralSlots node
+
+    let node =
+        if List.isEmpty slots then
+            node
+        else
+            put (slots |> List.map canonicalForm)
+
+    { node with
+        State =
+            node.State
+            |> Option.bind (fun s ->
+                if s.OnLoading.IsNone && s.OnEmpty.IsNone && s.OnError.IsNone then
+                    None
+                else
+                    Some s)
+        Style =
+            node.Style
+            |> Option.bind (fun s -> if s = Fuaran.UI.Defaults.style then None else Some s) }
+
+/// Rewrite a bare `NodeKind` into §16 canonical form (the op codec's
+/// `EditNode.newKind` splice). Routed through `canonicalForm` on a scratch
+/// envelope so there is exactly ONE canonicalising traversal — never a second
+/// per-kind walk to keep in step.
+let canonicalFormKind (kind: NodeKind<'Msg>) : NodeKind<'Msg> =
+    (canonicalForm
+        { Id = "«canonical-form-scratch»"
+          Kind = kind
+          State = None
+          Style = None
+          Accessibility = None
+          Motion = None
+          ExtraAttributes = None })
+        .Kind

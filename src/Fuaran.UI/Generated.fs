@@ -693,7 +693,7 @@ and ButtonSpec<'Msg> =
       OnClick: Action<'Msg>
       Variant: ButtonVariant
       Icon: string option
-      Tooltip: TextSource option
+      Tooltip: (TextSource option)
       Disabled: Binding<bool> option
     }
 
@@ -1040,48 +1040,50 @@ let private encMotion (v: Motion) : JVal =
     | Motion.SlideInFromRight -> JStr "SlideInFromRight"
     | Motion.ExpandCollapse -> JStr "ExpandCollapse"
 
-let rec private encNode (n: Node<'Msg>) : JVal =
-    let kind =
-        match n.Kind with
-        | NodeKind.Heading s -> encHeadingSpec s
-        | NodeKind.Badge s -> encBadgeSpec s
-        | NodeKind.Markdown s -> encMarkdownSpec s
-        | NodeKind.Math s -> encMathSpec s
-        | NodeKind.Skeleton s -> encSkeletonSpec s
-        | NodeKind.List s -> encListSpec s
-        | NodeKind.Image s -> encImageSpec s
-        | NodeKind.Link s -> encLinkSpec s
-        | NodeKind.Callout s -> encCalloutSpec s
-        | NodeKind.Progress s -> encProgressSpec s
-        | NodeKind.Metric s -> encMetricSpec s
-        | NodeKind.LabelValueRow s -> encLabelValueRowSpec s
-        | NodeKind.Fact s -> encFactSpec s
-        | NodeKind.Sparkline s -> encSparklineSpec s
-        | NodeKind.CodeBlock s -> encCodeBlockSpec s
-        | NodeKind.Toast s -> encToastSpec s
-        | NodeKind.Drawing s -> encDrawingSpec s
-        | NodeKind.Box s -> encBoxSpec s
-        | NodeKind.SplitPanel s -> encSplitPanelSpec s
-        | NodeKind.SummaryList s -> encSummaryListSpec s
-        | NodeKind.Disclosure s -> encDisclosureSpec s
-        | NodeKind.Modal s -> encModalSpec s
-        | NodeKind.ScrollArea s -> encScrollAreaSpec s
-        | NodeKind.Tabs s -> encTabsSpec s
-        | NodeKind.Stepper s -> encStepperSpec s
-        | NodeKind.Button s -> encButtonSpec s
-        | NodeKind.Select s -> encSelectSpec s
-        | NodeKind.FileUpload s -> encFileUploadSpec s
-        | NodeKind.Form s -> encFormSpec s
-        | NodeKind.Filters s -> encFiltersSpec s
-        | NodeKind.DataGrid s -> encDataGridSpec s
-        | NodeKind.Chart s -> encChartSpec s
-        | NodeKind.Map s -> encMapSpec s
-        | NodeKind.Custom s -> encCustomSpec s
-        | NodeKind.ErrorBoundary s -> encErrorBoundarySpec s
-        | NodeKind.FragmentDecl s -> encFragmentDeclSpec s
-        | NodeKind.FragmentRef s -> encFragmentRefSpec s
-        | NodeKind.Switch s -> encSwitchSpec s
-        | NodeKind.Mount s -> encMountSpec s
+let rec private encNodeKind (k: NodeKind<'Msg>) : JVal =
+    match k with
+    | NodeKind.Heading s -> encHeadingSpec s
+    | NodeKind.Badge s -> encBadgeSpec s
+    | NodeKind.Markdown s -> encMarkdownSpec s
+    | NodeKind.Math s -> encMathSpec s
+    | NodeKind.Skeleton s -> encSkeletonSpec s
+    | NodeKind.List s -> encListSpec s
+    | NodeKind.Image s -> encImageSpec s
+    | NodeKind.Link s -> encLinkSpec s
+    | NodeKind.Callout s -> encCalloutSpec s
+    | NodeKind.Progress s -> encProgressSpec s
+    | NodeKind.Metric s -> encMetricSpec s
+    | NodeKind.LabelValueRow s -> encLabelValueRowSpec s
+    | NodeKind.Fact s -> encFactSpec s
+    | NodeKind.Sparkline s -> encSparklineSpec s
+    | NodeKind.CodeBlock s -> encCodeBlockSpec s
+    | NodeKind.Toast s -> encToastSpec s
+    | NodeKind.Drawing s -> encDrawingSpec s
+    | NodeKind.Box s -> encBoxSpec s
+    | NodeKind.SplitPanel s -> encSplitPanelSpec s
+    | NodeKind.SummaryList s -> encSummaryListSpec s
+    | NodeKind.Disclosure s -> encDisclosureSpec s
+    | NodeKind.Modal s -> encModalSpec s
+    | NodeKind.ScrollArea s -> encScrollAreaSpec s
+    | NodeKind.Tabs s -> encTabsSpec s
+    | NodeKind.Stepper s -> encStepperSpec s
+    | NodeKind.Button s -> encButtonSpec s
+    | NodeKind.Select s -> encSelectSpec s
+    | NodeKind.FileUpload s -> encFileUploadSpec s
+    | NodeKind.Form s -> encFormSpec s
+    | NodeKind.Filters s -> encFiltersSpec s
+    | NodeKind.DataGrid s -> encDataGridSpec s
+    | NodeKind.Chart s -> encChartSpec s
+    | NodeKind.Map s -> encMapSpec s
+    | NodeKind.Custom s -> encCustomSpec s
+    | NodeKind.ErrorBoundary s -> encErrorBoundarySpec s
+    | NodeKind.FragmentDecl s -> encFragmentDeclSpec s
+    | NodeKind.FragmentRef s -> encFragmentRefSpec s
+    | NodeKind.Switch s -> encSwitchSpec s
+    | NodeKind.Mount s -> encMountSpec s
+
+and private encNode (n: Node<'Msg>) : JVal =
+    let kind = encNodeKind n.Kind
 
     JObj([ Some("id", JStr n.Id); Some("kind", kind); (n.Accessibility |> Option.map (fun v -> "accessibility", encAccessibility v)); None; None; (n.State |> Option.map (fun v -> "state", encStateBehaviour v)); (n.Style |> Option.map (fun v -> "style", encSemanticStyle v)) ] |> List.choose id)
 
@@ -1380,7 +1382,7 @@ and private encStepperSpec<'Msg> (s: StepperSpec<'Msg>) : JVal =
     Canon.typed "Stepper" ([ Some("activeStep", (encBinding JInt) s.ActiveStep); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")) ] |> List.choose id)
 
 and private encButtonSpec<'Msg> (s: ButtonSpec<'Msg>) : JVal =
-    Canon.typed "Button" ([ Some("label", encTextSource s.Label); Some("onClick", encAction s.OnClick); Some("variant", encButtonVariant s.Variant); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Tooltip |> Option.map (fun v -> "tooltip", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
+    Canon.typed "Button" ([ Some("label", encTextSource s.Label); Some("onClick", encAction s.OnClick); Some("variant", encButtonVariant s.Variant); (s.Icon |> Option.map (fun v -> "icon", JStr v)); None; (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
 and private encSelectSpec<'Msg> (s: SelectSpec<'Msg>) : JVal =
     Canon.typed "Select" ([ Some("label", encTextSource s.Label); (s.OnChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (s.OnChangeMulti |> Option.map (fun v -> "onChangeMulti", JStr "<closure>")); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); Some("value", (encBinding JStr) s.Value); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
@@ -1422,6 +1424,16 @@ and private encMountSpec<'Msg> (s: MountSpec<'Msg>) : JVal =
     Canon.typed "Mount" ([ Some("capabilities", JArr(List.map JStr s.Capabilities)); Some("channel", encGuestChannel s.Channel); (s.Inputs |> Option.map (fun v -> "inputs", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)); (s.OnBubble |> Option.map (fun v -> "onBubble", JStr "<closure>")); Some("scopeId", JStr s.ScopeId) ] |> List.choose id)
 
 let encodeNode (n: Node<'Msg>) : string = Canon.render (encNode n)
+
+/// JVal-level accessors (Phase 694) — for host codecs that splice generated
+/// encodings into a larger canonical document (e.g. a TreeOp codec).
+let encodeNodeJson (n: Node<'Msg>) : JVal = encNode n
+
+let encodeNodeKindJson (k: NodeKind<'Msg>) : JVal = encNodeKind k
+
+let encodeStateBehaviourJson (s: StateBehaviour<'Msg>) : JVal = encStateBehaviour s
+
+let encodeSemanticStyleJson (s: SemanticStyle) : JVal = encSemanticStyle s
 
 let private dObj (j: JVal) : Result<(string * JVal) list, string> =
     match j with
@@ -2627,7 +2639,7 @@ and private decButtonSpec (j: JVal) : Result<ButtonSpec<obj>, string> =
     dReq "onClick" __fs decAction |> Result.bind (fun onClick ->
     dReq "variant" __fs decButtonVariant |> Result.bind (fun variant ->
     dOpt "icon" __fs dStr |> Result.bind (fun icon ->
-    dOpt "tooltip" __fs decTextSource |> Result.bind (fun tooltip ->
+    Ok (None) |> Result.bind (fun tooltip ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     Ok { Label = label; OnClick = onClick; Variant = variant; Icon = icon; Tooltip = tooltip; Disabled = disabled })))))))
 

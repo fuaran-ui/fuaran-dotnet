@@ -533,10 +533,11 @@ and GuestChannel = Generated.GuestChannel
 /// host pushing messages into the guest; `TwoWay` additionally permits host→guest push (which couples
 /// the two lifecycles — memo open Q2, resolved: OutOnly default, TwoWay opt-in per-mount).
 and ChannelDirection = Generated.ChannelDirection
-/// A per-`Mount` capability tag (§4o.4) — e.g. `CapabilityTag "notify"`, `CapabilityTag "call:reports.*"`.
-/// The boundary's policy gate consults these before letting a guest `Action<obj>` reach the host tree; an
-/// empty list is default-deny of every host-affecting action.
-and CapabilityTag = CapabilityTag of string
+// Phase 694 — the `CapabilityTag` wrapper is DELETED: `MountSpec.Capabilities`
+// is a bare `string list` since the swap and nothing constructed or matched the
+// wrapper any more (its last reference was a comment). A per-`Mount` capability
+// tag (§4o.4) is the bare string, e.g. `"notify"`, `"call:reports.*"`; an empty
+// list is default-deny of every host-affecting action.
 
 // ─── Layout — semantic intent, not pixel-pushing ────────────────────
 //

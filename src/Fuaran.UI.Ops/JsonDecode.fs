@@ -2915,24 +2915,30 @@ let private decodeFormFieldKind
             | Some _ -> Some(fun _ -> Action.Chain [])
             | None -> None
 
-        // Value slot: present ⇒ typed decode; absent ⇒ the context's
-        // auto-binding — Filter(name) on a chip, State(field id, typed
-        // placeholder) on a form field (Phase 596) — else MISSING_FIELD.
+        // Value slot: present ⇒ typed decode; absent ⇒ `None` in an auto-bind
+        // context (Phase 596) — else MISSING_FIELD.
+        //
+        // Phase 694: absence stays STRUCTURAL. Decode no longer synthesises the
+        // auto-binding into the tree — `None` IS the canonical decoded shape
+        // (matching the generated decoder), and the renderers substitute the
+        // exact synthesised binding at render time (the stage-3 mirror). An
+        // EXPLICIT value decodes as written — the §16 collapse to the omitted
+        // canonical form happens at encode time (`Introspect.canonicalForm`,
+        // where the retired hand encoder used to perform it), keeping the hand
+        // and generated decoders tree-convergent. `autoBind` still gates
+        // required-vs-optional: a NoAutoBind (erased/unknown) context keeps the
+        // pre-596 contract.
         let valueOr
             (dec: string -> Json -> Result<Binding<'v>, DecodeError>)
-            (autoDefault: 'v option)
+            (_autoDefault: 'v option)
             (expected: string)
             : Result<Binding<'v> option, DecodeError> =
-            // The slot is `Binding<'v> option` since the swap. Present decodes
-            // `Some`; absent synthesises the context auto-binding (the encoder
-            // omission mirrors the exact shape); a NoAutoBind context still
-            // requires the key (the pre-596 contract).
             match tryField fields "value" with
             | Some v -> dec (path + ".value") v |> Result.map Some
             | None ->
                 match autoBind with
-                | FilterChip n -> Ok(Some(Binding.Filter(n, None)))
-                | FormFieldId id -> Ok(Some(Binding.State(id, autoDefault)))
+                | FilterChip _
+                | FormFieldId _ -> Ok None
                 | NoAutoBind -> missingField path "value" expected
 
         match requireDiscriminator path fields with
@@ -2964,12 +2970,13 @@ let private decodeFormFieldKind
         | Ok "Range" ->
             // 0.2.0 — dual-thumb numeric range (absorbed FilterKind.RangeFilter).
             let valueR =
+                // Phase 694 — absence stays structural (`None`); see `valueOr`.
                 match tryField fields "value" with
                 | Some v -> decodeBindingRangePair (path + ".value") v |> Result.map Some
                 | None ->
                     match autoBind with
-                    | FilterChip n -> Ok(Some(Binding.Filter(n, None)))
-                    | FormFieldId id -> Ok(Some(Binding.State(id, Some Fuaran.UI.Defaults.ControlValueDefaults.range)))
+                    | FilterChip _
+                    | FormFieldId _ -> Ok None
                     | NoAutoBind -> missingField path "value" "Binding<RangePair> value"
 
             valueR

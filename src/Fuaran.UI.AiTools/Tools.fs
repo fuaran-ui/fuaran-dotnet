@@ -529,8 +529,8 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
             | ChannelDirection.OutOnly -> "OutOnly"
             | ChannelDirection.TwoWay -> "TwoWay"
 
-        // `Capabilities` is a bare `string list` since the swap (the
-        // `CapabilityTag` wrapper survives only at ops/store boundaries).
+        // `Capabilities` is a bare `string list` since the swap (the old
+        // wrapper DU is deleted — Phase 694).
         let capabilityTags = spec.Capabilities
 
         [ valueEntry "ScopeId" spec.ScopeId
