@@ -196,13 +196,25 @@ slot (a `Some Defaults.style` would emit `"style":{}` where omission is canonica
 - Retired spec types (`DashboardSpec`, `StackSpec`, `CardSpec`, `GridLayoutSpec`) — verify dead
   (0.2.0 Box unification) and delete.
 
-### Stage 5 (693) — renderer + apply engine internals; Stage 6 (694) — deletion + measurement
+### Stage 5 (693) — renderer + apply engine internals — **DONE (by construction at 4b; checks recorded)**
 
-Stages 1–4 already force most of the renderer/apply compile fixes. 693's residue: `JsonDecode`
-decodes INTO the generated types everywhere (keeping diagnostics/§16 policy), the resolver reads
-the new shapes. 694: delete the hand-written structural definitions that remain, delete
-`CanonicalJson.encodeNode` in favour of `Generated.encodeNode` (the TreeOp codec re-points at it),
-then run the add-a-kind mirror-count measurement the phase mandates.
+The abbreviation mechanism made 693 fall out of 692's stage 4b: the renderer, apply engine, decoder
+and resolver compile against the generated types because `Types.fs` IS the generated types. The two
+deliberate checks the phase owned are recorded in its body (2026-07-28): `castBinding<'T>` covers
+all 11 generated `Binding` cases exhaustively (option payloads threaded, `Local` re-boxing correct,
+cast-mismatch recovery unchanged), and the counts are honest — 1,127 `Node`/`NodeKind` occurrences
+across 165 files all denote the generated types; 38 hand-written types remain in `Types.fs` by
+bucket (ops-boundary `NodeId`; author-surface facades; D3 host/runtime surface); `CapabilityTag`
+found dead (one comment reference) — a 694 deletion item.
+
+### Stage 6 (694) — deletion + measurement
+
+Delete the hand-written structural definitions that remain, delete `CanonicalJson.encodeNode` in
+favour of `Generated.encodeNode` (the TreeOp codec re-points at it), then run the add-a-kind
+mirror-count measurement the phase mandates. Named deletion items from the earlier stages: the
+dead `CapabilityTag` DU (stage 5's finding), the unused `mk<Kind>` emission question (stage 4b's
+task-3 fold), and the retired author specs (`DashboardSpec` / `StackSpec` / `CardSpec` /
+`GridLayoutSpec`) if the verify-dead check agrees.
 
 ## Open questions (decide at the stage, not silently)
 
