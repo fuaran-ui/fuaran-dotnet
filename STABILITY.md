@@ -55,6 +55,18 @@ DU exhaustiveness warnings (F#'s `FS0025`) are *not* considered breaking. Adding
 The following are covered by the semver rules above:
 
 ### `Fuaran.UI`
+- **Phase 692 (BREAKING — next release is a major/minor-zero bump): `NodeKind<'Msg>` is flat.** The
+  four behavioural-category wrapper cases (`Layout of LayoutKind` / `Display of DisplayKind` /
+  `Input of InputKind` / `Visualisation of VisKind`) are removed, and the 33 kinds they wrapped are
+  now direct cases of `NodeKind<'Msg>` beside the six structural ones; the `LayoutKind` /
+  `DisplayKind` / `InputKind` / `VisKind` DUs no longer exist. This matches the shape the wire has
+  always declared canonical (`WIRE_FORMAT.md` §3.2 — the categories were "a host-side classification
+  recovered on decode") and is the precondition for the IDL-generated structural layer becoming the
+  authoring type. The classification itself survives as the derived `NodeCategory` DU +
+  `Kind.category`. **Migration:** `NodeKind.Display(DisplayKind.Heading s)` becomes
+  `NodeKind.Heading s` (construction and match sites alike); code that dispatched on the category
+  wrappers matches on `Kind.category kind` instead. Smart-constructor authoring (`Fuaran.button` …)
+  is unchanged.
 - The §4b record contract (per [`src/Fuaran.UI/Types.fs`](src/Fuaran.UI/Types.fs)) – `Node`, `NodeKind`, `NodeId`, `Binding<'T>`, `Action<'Msg>`, `StateBehaviour`, `Column`, `CellFormat`, `SemanticStyle`, `Display`, and every other record / DU exported from `Types.fs`. Theme-as-API adds `Theme`, `ColorVar`, `ToneStops`, `Tones`, `Spacing`, `FontScale`, `FontWeight`, `LineHeight`, `Radius`, `ButtonSize`; the interaction-state extension adds `Interaction`, `ToneStateMatrix`, `FocusRing`.
 - Phase 62 additions to `Binding<'T>` / `Action<'Msg>` – `Binding.Local`, `LocalBinding<'T>`, `LocalFlushTrigger` (cases `OnBlur` / `OnSubmit` / `OnDebounce of int` / `OnCommitAction`), `Action.CommitLocal of string`. Stable on the same Pre-1.0 minor-bump axis as the rest of the §4b contract.
 - Phase 64 addition to `Action<'Msg>` – `Action.WriteToClipboard of text: string` (the typed clipboard-write intent). Renderer-side substrate: `IFuaranRuntime.WriteToClipboard: text: string -> unit`. Stable on the same Pre-1.0 minor-bump axis as the rest of the §4b contract.
