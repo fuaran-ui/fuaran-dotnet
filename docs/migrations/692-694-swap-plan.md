@@ -24,7 +24,27 @@ modules/members, fix their bodies), let the compiler enumerate the sites, apply 
 then the full gate: Fantomas → FAKE `Test` (all suites + C#/VB conformance) → `dotnet fable`
 samples/demo → the corpus byte-gates (`GeneratedLayerTests` 85/85 + the hand-written leg).
 
-### Stage 1 — `Binding<'T>` + satellites (`Format`, `LocaleSource`, `LocalFlushTrigger`, `SelectOption`, `InvokeArg`, `TransformParam`, `RangePair`)
+### Stage 1 — `Binding<'T>` + satellites — **DONE (branch commit `baba9a7`, all gates green)**
+
+Landed 2026-07-28: 73 files, full FAKE Test (incl. 352 C# + 338 VB conformance, GeneratedLayerTests
+85/85, JsonDecode 510/510), Fable demo clean, zero corpus byte changes. `SelectOption` / `RangePair`
+proved to be stage-3 concerns (they ride `FormFieldKind`) and were not needed here. Two findings the
+later stages must respect:
+
+1. **Store values stay RAW.** The Filter / State / Selection stores hold raw host values (`box
+   "eng"`, the raw clicked row) — resolving a `Binding<JVal>` source AT `JVal` unbox-throws on .NET
+   and silently mis-matches under Fable erasure. `BindingResolver` therefore resolves Transform
+   params / I18n args at `obj` through an explicit `objOfJValBinding` erasure and coerces afterwards
+   (`:? JVal` → typed cell/arg projection; anything else raw). Any future JVal-typed store read must
+   go through the same seam.
+2. **Absence still routes through the slot's parser.** `{"$type":"Static"}` and the legacy
+   `"value": null` §16 shorthand decode by handing `JNull` to the slot's own `parseStatic` (an
+   options slot normalises to `[]`, an option-typed slot to inner `None`, a scalar slot rejects) —
+   a decoder shortcut that mapped null straight to outer `None` broke the
+   `lenient-null-static-options` byte gate. Keep the parser in the loop; the outer/inner absence
+   forms reconcile at the encoder's `isAbsentPayload` check.
+
+#### The original stage-1 delta table (as planned)
 
 ~98 files reference `Binding` cases. Residual deltas (order already matches):
 
