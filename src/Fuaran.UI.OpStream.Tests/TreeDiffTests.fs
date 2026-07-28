@@ -186,10 +186,9 @@ let tests =
               let before = buildDashboard ()
 
               let newKind: NodeKind<TestMsg> =
-                  NodeKind.Display(
-                      DisplayKind.Badge
-                          { Label = TextSource.Literal "STATUS"
-                            Variant = BadgeVariant.Brand }
+                  NodeKind.Badge(
+                      { Label = TextSource.Literal "STATUS"
+                        Variant = BadgeVariant.Brand }
                   )
 
               let op = TreeOp.EditNode(NodeId "left", newKind)

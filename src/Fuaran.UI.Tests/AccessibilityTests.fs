@@ -216,7 +216,7 @@ let tests =
                           Children = [] }
 
               match dashboardNode.Kind with
-              | NodeKind.Layout(LayoutKind.Box { Role = BoxRole.Dashboard }) -> ()
+              | NodeKind.Box({ Role = BoxRole.Dashboard }) -> ()
               | other -> failtestf "Expected Layout.Box with Dashboard role, got %A" other
 
               // Dashboard's default is Main role

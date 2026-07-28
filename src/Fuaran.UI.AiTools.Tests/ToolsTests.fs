@@ -407,7 +407,7 @@ let private bareNode (id: string) (kind: NodeKind<Msg>) : Node<Msg> =
 /// so the per-slot consistency loop has nothing to assert.
 let private bindingBearingFixtures: Node<Msg> list =
     [ Fuaran.metric "n-metric" Defaults.metric
-      bareNode "n-sparkline" (NodeKind.Display(DisplayKind.Sparkline Defaults.sparkline))
+      bareNode "n-sparkline" (NodeKind.Sparkline(Defaults.sparkline))
       Fuaran.progress "n-progress" Defaults.progress
       Fuaran.labelValueRow "n-lvr" Defaults.labelValueRow
       Fuaran.stepper "n-stepper" Defaults.stepper<Msg>

@@ -75,73 +75,40 @@ let private correlationId (seed: string) : string = Ids.deterministicCorrelation
 // projection without driving Feliz's React-substrate. The renderer's
 // internal call sites still consume it through the module namespace.
 let nodeKindName<'Msg> (kind: NodeKind<'Msg>) : string =
+    // Phase 692 — the "Category.Kind" projection survives the flattening (the
+    // .NET-side tests pin these strings), but the category is now DERIVED
+    // (`Kind.category`) and the kind name comes from `Kind.name`, so a new kind
+    // extends those rather than a third enumeration here.
     match kind with
-    | NodeKind.Layout layout ->
+    // Box renders under a role-dependent display name — the retired Card /
+    // Dashboard / Separator / Grid / Stack vocabulary the catalog pins.
+    | NodeKind.Box spec ->
         let inner =
-            match layout with
-            | LayoutKind.Box spec ->
-                match spec.Role, spec.Layout with
-                | BoxRole.Card, _ -> "Card"
-                | (BoxRole.Dashboard, _)
-                | (BoxRole.Group, BoxLayout.Auto) -> "Dashboard"
-                | BoxRole.Separator, _ -> "Separator"
-                | BoxRole.Group, BoxLayout.Grid _ -> "Grid"
-                | BoxRole.Group, BoxLayout.Flex _ -> "Stack"
-            | LayoutKind.SplitPanel _ -> "SplitPanel"
-            | LayoutKind.Tabs _ -> "Tabs"
-            | LayoutKind.Stepper _ -> "Stepper"
-            | LayoutKind.SummaryList _ -> "SummaryList"
-            | LayoutKind.Disclosure _ -> "Disclosure"
-            | LayoutKind.Modal _ -> "Modal"
-            | LayoutKind.ScrollArea _ -> "ScrollArea"
+            match spec.Role, spec.Layout with
+            | BoxRole.Card, _ -> "Card"
+            | (BoxRole.Dashboard, _)
+            | (BoxRole.Group, BoxLayout.Auto) -> "Dashboard"
+            | BoxRole.Separator, _ -> "Separator"
+            | BoxRole.Group, BoxLayout.Grid _ -> "Grid"
+            | BoxRole.Group, BoxLayout.Flex _ -> "Stack"
 
         "Layout." + inner
-    | NodeKind.Display display ->
-        let inner =
-            match display with
-            | DisplayKind.Heading _ -> "Heading"
-            | DisplayKind.Markdown _ -> "Markdown"
-            | DisplayKind.Metric _ -> "Metric"
-            | DisplayKind.Badge _ -> "Badge"
-            | DisplayKind.Sparkline _ -> "Sparkline"
-            | DisplayKind.Callout _ -> "Callout"
-            | DisplayKind.Progress _ -> "Progress"
-            | DisplayKind.Skeleton _ -> "Skeleton"
-            | DisplayKind.LabelValueRow _ -> "LabelValueRow"
-            | DisplayKind.Fact _ -> "Fact"
-            | DisplayKind.Link _ -> "Link"
-            | DisplayKind.Image _ -> "Image"
-            | DisplayKind.List _ -> "List"
-            | DisplayKind.Toast _ -> "Toast"
-            | DisplayKind.CodeBlock _ -> "CodeBlock"
-            | DisplayKind.Math _ -> "Math"
-            | DisplayKind.Drawing _ -> "Drawing"
-
-        "Display." + inner
-    | NodeKind.Input input ->
-        let inner =
-            match input with
-            | InputKind.Form _ -> "Form"
-            | InputKind.Filters _ -> "Filters"
-            | InputKind.Button _ -> "Button"
-            | InputKind.FileUpload _ -> "FileUpload"
-            | InputKind.Select _ -> "Select"
-
-        "Input." + inner
-    | NodeKind.Visualisation vis ->
-        let inner =
-            match vis with
-            | VisKind.DataGrid _ -> "Grid"
-            | VisKind.Chart _ -> "Chart"
-            | VisKind.Map _ -> "Map"
-
-        "Visualisation." + inner
     | NodeKind.Custom(moduleId, componentId, _, _, _) -> sprintf "Custom.%s.%s" moduleId componentId
     | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
     | NodeKind.Switch _ -> "Switch"
     | NodeKind.FragmentDecl _ -> "FragmentDecl"
     | NodeKind.FragmentRef _ -> "FragmentRef"
     | NodeKind.Mount spec -> sprintf "Mount.%s" spec.ScopeId
+    | k ->
+        let category =
+            match Kind.category k with
+            | NodeCategory.Layout -> "Layout"
+            | NodeCategory.Display -> "Display"
+            | NodeCategory.Input -> "Input"
+            | NodeCategory.Visualisation -> "Visualisation"
+            | NodeCategory.Structural -> "Structural"
+
+        category + "." + Kind.name k
 
 // ─── The opaque session-context keys (Phase 330) ───────────────────────────
 //
@@ -782,19 +749,14 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
         // shorter code.
         let acc' = Map.add spec.Name spec.Body acc
         collectFragments acc' spec.Body
-    | NodeKind.Layout layout ->
-        let children =
-            match layout with
-            | LayoutKind.Box s -> s.Children
-            | LayoutKind.SplitPanel s -> s.Children
-            | LayoutKind.Tabs s -> s.Children
-            | LayoutKind.Stepper s -> s.Children
-            | LayoutKind.SummaryList s -> s.Children
-            | LayoutKind.Disclosure s -> s.Children
-            | LayoutKind.Modal s -> s.Children
-            | LayoutKind.ScrollArea s -> s.Children
-
-        children |> List.fold collectFragments acc
+    | NodeKind.Box s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.SplitPanel s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.Tabs s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.Stepper s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.SummaryList s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.Disclosure s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.Modal s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.ScrollArea s -> s.Children |> List.fold collectFragments acc
     | NodeKind.ErrorBoundary spec ->
         let acc' = collectFragments acc spec.Child
         collectFragments acc' spec.Fallback
@@ -805,9 +767,31 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
             spec.Cases |> List.fold (fun a (_, child) -> collectFragments a child) acc
 
         collectFragments acc' spec.Default
-    | NodeKind.Display _
-    | NodeKind.Input _
-    | NodeKind.Visualisation _
+    | NodeKind.Heading _
+    | NodeKind.Markdown _
+    | NodeKind.Metric _
+    | NodeKind.Badge _
+    | NodeKind.Sparkline _
+    | NodeKind.Callout _
+    | NodeKind.Progress _
+    | NodeKind.Skeleton _
+    | NodeKind.LabelValueRow _
+    | NodeKind.Fact _
+    | NodeKind.Link _
+    | NodeKind.Image _
+    | NodeKind.List _
+    | NodeKind.Toast _
+    | NodeKind.CodeBlock _
+    | NodeKind.Math _
+    | NodeKind.Drawing _
+    | NodeKind.Form _
+    | NodeKind.Filters _
+    | NodeKind.Button _
+    | NodeKind.FileUpload _
+    | NodeKind.Select _
+    | NodeKind.DataGrid _
+    | NodeKind.Chart _
+    | NodeKind.Map _
     | NodeKind.Custom _
     | NodeKind.FragmentRef _
     // Mount (§4o) — the guest is a separate scope with its own fragment table
@@ -937,10 +921,131 @@ let rec collectKeys<'Msg> (channel: KeyChannel) (node: Node<'Msg>) : Set<string>
 /// `collectKeys` to recurse into.
 and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string list * Node<'Msg> list =
     match kind with
-    | NodeKind.Layout layout -> layoutKeys channel layout
-    | NodeKind.Display display -> displayKeys channel display, []
-    | NodeKind.Input input -> inputKeys channel input, []
-    | NodeKind.Visualisation vis -> visKeys channel vis, []
+    // -- Layout --
+    | NodeKind.Box s -> keysOfTextOpt channel s.Heading, s.Children
+    | NodeKind.SplitPanel s -> [], s.Children
+    | NodeKind.SummaryList s -> keysOfTextOpt channel s.Heading, s.Children
+    | NodeKind.Stepper s -> keysOfBinding channel s.ActiveStep, s.Children
+    | NodeKind.Disclosure s -> (keysOfText channel s.Heading @ keysOfBinding channel s.Open), s.Children
+    | NodeKind.Tabs s ->
+        let headerKeys =
+            match s.TabHeaders with
+            | Some headers ->
+                headers
+                |> List.collect (fun h -> keysOfText channel h.Label @ keysOfBindingOpt channel h.Disabled)
+            | None -> []
+
+        (keysOfBinding channel s.ActiveIndex
+         @ keysOfBindingOpt channel s.ActiveTag
+         @ headerKeys),
+        s.Children
+    | NodeKind.Modal s -> (keysOfTextOpt channel s.Heading @ keysOfBinding channel s.Open), s.Children
+    | NodeKind.ScrollArea s -> [], s.Children
+    // -- Display --
+    | NodeKind.Heading h -> keysOfText channel h.Text, []
+    | NodeKind.Markdown m -> keysOfText channel m.Text, []
+    | NodeKind.Metric k ->
+        let __v =
+            keysOfText channel k.Label
+            @ keysOfBinding channel k.Value
+            @ keysOfBindingOpt channel k.Trend
+            @ keysOfTextOpt channel k.Subtext
+
+        __v, []
+    | NodeKind.Badge b -> keysOfText channel b.Label, []
+    | NodeKind.Sparkline s -> keysOfBinding channel s.Source, []
+    | NodeKind.Callout c -> keysOfTextOpt channel c.Heading @ keysOfText channel c.Body, []
+    | NodeKind.Progress p ->
+        let __v =
+            keysOfBinding channel p.Fraction
+            @ keysOfTextOpt channel p.Label
+            @ keysOfTextOpt channel p.Caveat
+
+        __v, []
+    | NodeKind.Skeleton _ -> [], []
+    | NodeKind.LabelValueRow r ->
+        let __v =
+            keysOfText channel r.Label
+            @ keysOfBinding channel r.Value
+            @ keysOfTextOpt channel r.Help
+
+        __v, []
+    | NodeKind.Fact fa ->
+        let __v =
+            keysOfText channel fa.Label
+            @ keysOfText channel fa.Value
+            @ keysOfTextOpt channel fa.Help
+
+        __v, []
+    | NodeKind.Link l -> keysOfBinding channel l.Href @ keysOfText channel l.Label, []
+    | NodeKind.Image i -> keysOfBinding channel i.Src @ keysOfText channel i.Alt, []
+    | NodeKind.List l -> l.Items |> List.collect (keysOfText channel), []
+    | NodeKind.Toast t ->
+        let __v = keysOfText channel t.Message @ keysOfBinding channel t.Open
+        // CodeBlock + Math carry plain strings, not bindings — no reactive keys.
+
+        __v, []
+    | NodeKind.CodeBlock _ -> [], []
+    | NodeKind.Math _ ->
+        let __v = []
+        // Phase 524 ships a placeholder render; the reactive DrawStyle-colour keys
+        // are wired with the real SVG renderer in Phase 525.
+
+        __v, []
+    | NodeKind.Drawing _ -> [], []
+    // -- Input --
+    | NodeKind.Button b ->
+        let __v =
+            keysOfText channel b.Label
+            @ keysOfTextOpt channel b.Tooltip
+            @ keysOfBindingOpt channel b.Disabled
+
+        __v, []
+    | NodeKind.FileUpload fu -> keysOfText channel fu.Label @ keysOfBindingOpt channel fu.Disabled, []
+    | NodeKind.Select s ->
+        let __v =
+            keysOfText channel s.Label
+            @ keysOfBinding channel s.Source
+            @ keysOfBinding channel s.Value
+            // Phase 291 — the multi-select value binding (Some only in multi mode).
+            @ keysOfBindingOpt channel s.Values
+            @ keysOfTextOpt channel s.Placeholder
+            @ keysOfBindingOpt channel s.Disabled
+
+        __v, []
+    | NodeKind.Form f ->
+        let __v =
+            let fieldKeys =
+                f.Fields
+                |> List.collect (fun field ->
+                    keysOfText channel field.Label
+                    @ keysOfTextOpt channel field.Help
+                    @ keysOfFormFieldKind channel field.Kind)
+
+            keysOfText channel f.SubmitLabel
+            @ keysOfBindingOpt channel f.Disabled
+            @ fieldKeys
+
+        __v, []
+    | NodeKind.Filters filters ->
+        let __v =
+            filters
+            |> List.collect (fun fs -> keysOfText channel fs.Label @ keysOfFormFieldKind channel fs.Field)
+
+        __v, []
+    // -- Vis --
+    | NodeKind.DataGrid g ->
+        let __v =
+            keysOfBinding channel g.Source
+            @ (match g.StaticRows with
+               | Some(headers, rows) ->
+                   (headers |> List.collect (keysOfText channel))
+                   @ (rows |> List.collect (List.collect (keysOfText channel)))
+               | None -> [])
+
+        __v, []
+    | NodeKind.Chart c -> keysOfBinding channel c.Source @ keysOfTextOpt channel c.Title, []
+    | NodeKind.Map m -> keysOfBinding channel m.Source, []
     | NodeKind.ErrorBoundary spec -> [], [ spec.Child; spec.Fallback ]
     | NodeKind.Switch spec ->
         // Switch reads its StateKey off the state channel, so it registers that
@@ -962,106 +1067,6 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
     // live in the guest scope, not the host binding registry, so the
     // boundary contributes no host keys and no host children to recurse.
     | NodeKind.Mount _ -> [], []
-
-and private layoutKeys<'Msg> (channel: KeyChannel) (layout: LayoutKind<'Msg>) : string list * Node<'Msg> list =
-    match layout with
-    | LayoutKind.Box s -> keysOfTextOpt channel s.Heading, s.Children
-    | LayoutKind.SplitPanel s -> [], s.Children
-    | LayoutKind.SummaryList s -> keysOfTextOpt channel s.Heading, s.Children
-    | LayoutKind.Stepper s -> keysOfBinding channel s.ActiveStep, s.Children
-    | LayoutKind.Disclosure s -> (keysOfText channel s.Heading @ keysOfBinding channel s.Open), s.Children
-    | LayoutKind.Tabs s ->
-        let headerKeys =
-            match s.TabHeaders with
-            | Some headers ->
-                headers
-                |> List.collect (fun h -> keysOfText channel h.Label @ keysOfBindingOpt channel h.Disabled)
-            | None -> []
-
-        (keysOfBinding channel s.ActiveIndex
-         @ keysOfBindingOpt channel s.ActiveTag
-         @ headerKeys),
-        s.Children
-    | LayoutKind.Modal s -> (keysOfTextOpt channel s.Heading @ keysOfBinding channel s.Open), s.Children
-    | LayoutKind.ScrollArea s -> [], s.Children
-
-and private displayKeys<'Msg> (channel: KeyChannel) (display: DisplayKind<'Msg>) : string list =
-    match display with
-    | DisplayKind.Heading h -> keysOfText channel h.Text
-    | DisplayKind.Markdown m -> keysOfText channel m.Text
-    | DisplayKind.Metric k ->
-        keysOfText channel k.Label
-        @ keysOfBinding channel k.Value
-        @ keysOfBindingOpt channel k.Trend
-        @ keysOfTextOpt channel k.Subtext
-    | DisplayKind.Badge b -> keysOfText channel b.Label
-    | DisplayKind.Sparkline s -> keysOfBinding channel s.Source
-    | DisplayKind.Callout c -> keysOfTextOpt channel c.Heading @ keysOfText channel c.Body
-    | DisplayKind.Progress p ->
-        keysOfBinding channel p.Fraction
-        @ keysOfTextOpt channel p.Label
-        @ keysOfTextOpt channel p.Caveat
-    | DisplayKind.Skeleton _ -> []
-    | DisplayKind.LabelValueRow r ->
-        keysOfText channel r.Label
-        @ keysOfBinding channel r.Value
-        @ keysOfTextOpt channel r.Help
-    | DisplayKind.Fact fa ->
-        keysOfText channel fa.Label
-        @ keysOfText channel fa.Value
-        @ keysOfTextOpt channel fa.Help
-    | DisplayKind.Link l -> keysOfBinding channel l.Href @ keysOfText channel l.Label
-    | DisplayKind.Image i -> keysOfBinding channel i.Src @ keysOfText channel i.Alt
-    | DisplayKind.List l -> l.Items |> List.collect (keysOfText channel)
-    | DisplayKind.Toast t -> keysOfText channel t.Message @ keysOfBinding channel t.Open
-    // CodeBlock + Math carry plain strings, not bindings — no reactive keys.
-    | DisplayKind.CodeBlock _ -> []
-    | DisplayKind.Math _ -> []
-    // Phase 524 ships a placeholder render; the reactive DrawStyle-colour keys
-    // are wired with the real SVG renderer in Phase 525.
-    | DisplayKind.Drawing _ -> []
-
-and private inputKeys<'Msg> (channel: KeyChannel) (input: InputKind<'Msg>) : string list =
-    match input with
-    | InputKind.Button b ->
-        keysOfText channel b.Label
-        @ keysOfTextOpt channel b.Tooltip
-        @ keysOfBindingOpt channel b.Disabled
-    | InputKind.FileUpload fu -> keysOfText channel fu.Label @ keysOfBindingOpt channel fu.Disabled
-    | InputKind.Select s ->
-        keysOfText channel s.Label
-        @ keysOfBinding channel s.Source
-        @ keysOfBinding channel s.Value
-        // Phase 291 — the multi-select value binding (Some only in multi mode).
-        @ keysOfBindingOpt channel s.Values
-        @ keysOfTextOpt channel s.Placeholder
-        @ keysOfBindingOpt channel s.Disabled
-    | InputKind.Form f ->
-        let fieldKeys =
-            f.Fields
-            |> List.collect (fun field ->
-                keysOfText channel field.Label
-                @ keysOfTextOpt channel field.Help
-                @ keysOfFormFieldKind channel field.Kind)
-
-        keysOfText channel f.SubmitLabel
-        @ keysOfBindingOpt channel f.Disabled
-        @ fieldKeys
-    | InputKind.Filters filters ->
-        filters
-        |> List.collect (fun fs -> keysOfText channel fs.Label @ keysOfFormFieldKind channel fs.Field)
-
-and private visKeys<'Msg> (channel: KeyChannel) (vis: VisKind<'Msg>) : string list =
-    match vis with
-    | VisKind.DataGrid g ->
-        keysOfBinding channel g.Source
-        @ (match g.StaticRows with
-           | Some(headers, rows) ->
-               (headers |> List.collect (keysOfText channel))
-               @ (rows |> List.collect (List.collect (keysOfText channel)))
-           | None -> [])
-    | VisKind.Chart c -> keysOfBinding channel c.Source @ keysOfTextOpt channel c.Title
-    | VisKind.Map m -> keysOfBinding channel m.Source
 
 // ── Public channel aliases ──────────────────────────────────────────────────
 //  The State-channel names are the Phase 106 public surface (the .NET test runner + reactive host
@@ -1130,58 +1135,46 @@ let rec private namespaceNode<'Msg> (prefix: string) (node: Node<'Msg>) : Node<'
 
 and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKind<'Msg> =
     match kind with
-    | NodeKind.Layout layout ->
-        let recur = namespaceNode prefix
-
-        match layout with
-        | LayoutKind.Box s ->
-            NodeKind.Layout(
-                LayoutKind.Box
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | LayoutKind.SplitPanel s ->
-            NodeKind.Layout(
-                LayoutKind.SplitPanel
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | LayoutKind.Tabs s ->
-            NodeKind.Layout(
-                LayoutKind.Tabs
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | LayoutKind.Stepper s ->
-            NodeKind.Layout(
-                LayoutKind.Stepper
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | LayoutKind.SummaryList s ->
-            NodeKind.Layout(
-                LayoutKind.SummaryList
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | LayoutKind.Disclosure s ->
-            NodeKind.Layout(
-                LayoutKind.Disclosure
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | LayoutKind.Modal s ->
-            NodeKind.Layout(
-                LayoutKind.Modal
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | LayoutKind.ScrollArea s ->
-            NodeKind.Layout(
-                LayoutKind.ScrollArea
-                    { s with
-                        Children = List.map recur s.Children }
-            )
+    | NodeKind.Box s ->
+        NodeKind.Box(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.SplitPanel s ->
+        NodeKind.SplitPanel(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.Tabs s ->
+        NodeKind.Tabs(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.Stepper s ->
+        NodeKind.Stepper(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.SummaryList s ->
+        NodeKind.SummaryList(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.Disclosure s ->
+        NodeKind.Disclosure(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.Modal s ->
+        NodeKind.Modal(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.ScrollArea s ->
+        NodeKind.ScrollArea(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
     | NodeKind.ErrorBoundary spec ->
         NodeKind.ErrorBoundary
             { Child = namespaceNode prefix spec.Child
@@ -1201,9 +1194,31 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
             { spec with
                 Body = namespaceNode prefix spec.Body }
     | NodeKind.FragmentRef _
-    | NodeKind.Display _
-    | NodeKind.Input _
-    | NodeKind.Visualisation _
+    | NodeKind.Heading _
+    | NodeKind.Markdown _
+    | NodeKind.Metric _
+    | NodeKind.Badge _
+    | NodeKind.Sparkline _
+    | NodeKind.Callout _
+    | NodeKind.Progress _
+    | NodeKind.Skeleton _
+    | NodeKind.LabelValueRow _
+    | NodeKind.Fact _
+    | NodeKind.Link _
+    | NodeKind.Image _
+    | NodeKind.List _
+    | NodeKind.Toast _
+    | NodeKind.CodeBlock _
+    | NodeKind.Math _
+    | NodeKind.Drawing _
+    | NodeKind.Form _
+    | NodeKind.Filters _
+    | NodeKind.Button _
+    | NodeKind.FileUpload _
+    | NodeKind.Select _
+    | NodeKind.DataGrid _
+    | NodeKind.Chart _
+    | NodeKind.Map _
     | NodeKind.Custom _
     // Mount (§4o) — the guest interior is a separate scope namespaced by its
     // own loader; the host fragment prefix does not rewrite guest ids. Leave
@@ -1243,10 +1258,767 @@ let rec private renderKind
     (kind: NodeKind<'Msg>)
     : ReactElement =
     match kind with
-    | NodeKind.Layout layout -> renderLayout ctx parentNodeId layout
-    | NodeKind.Display display -> renderDisplay ctx parentNodeId state display
-    | NodeKind.Input input -> renderInput ctx input
-    | NodeKind.Visualisation vis -> renderVis ctx parentNodeId state vis
+    // -- Layout --
+    // Phase 390 — the unified container. Role + layout mode drive the emitted
+    // element + classes so each retired kind's HTML/a11y is byte-identical:
+    // Card role → <section class="fuaran-layout-card">; Dashboard role →
+    // <div class="fuaran-layout-dashboard">; Group+Grid → grid div; Group+Flex
+    // → stack div; Separator role → <hr class="fuaran-layout-separator"> (the
+    // retired `Divider`, Phase 459).
+    | NodeKind.Box spec ->
+        match spec.Role, spec.Layout with
+        | BoxRole.Card, _ ->
+            Html.section
+                [ prop.className "fuaran-layout-card"
+                  prop.children
+                      [ match spec.Heading with
+                        | Some heading ->
+                            Html.header [ prop.className "fuaran-card-heading"; prop.text (renderText ctx heading) ]
+                        | None -> Html.none
+                        Html.div
+                            [ prop.className "fuaran-card-body"
+                              prop.children (spec.Children |> List.map (render ctx)) ] ] ]
+        | BoxRole.Dashboard, _
+        | BoxRole.Group, BoxLayout.Auto ->
+            Html.div
+                [ prop.className "fuaran-layout-dashboard"
+                  prop.children (spec.Children |> List.map (render ctx)) ]
+        | BoxRole.Separator, _ -> Html.hr [ prop.className "fuaran-layout-separator" ]
+        | BoxRole.Group, BoxLayout.Grid g ->
+            // Column count rides on inline style (not a `-cols-N` class suffix)
+            // so CSS hosts don't have to pre-declare / Tailwind-safelist every N.
+            // The additive `TemplateColumns` field short-circuits the
+            // `Cols`-based `repeat(N, 1fr)` emission when `Some` — the verbatim
+            // string is emitted so irregular-column grids can be authored
+            // without escaping to Feliz. `None` preserves the prior emission
+            // shape byte-identical.
+            let templateColumns =
+                match g.TemplateColumns with
+                | Some custom -> custom
+                | None -> sprintf "repeat(%d, 1fr)" g.Cols
+
+            // `gap` (Phase 459 — the Spacer replacement) emits only when set, so
+            // gap-free grids stay byte-identical to the pre-459 emission.
+            let gridStyle =
+                [ style.custom ("gridTemplateColumns", templateColumns) ]
+                @ (match g.Gap with
+                   | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
+                   | None -> [])
+
+            Html.div
+                [ prop.className "fuaran-layout-grid"
+                  prop.style gridStyle
+                  prop.children (spec.Children |> List.map (render ctx)) ]
+        | BoxRole.Group, BoxLayout.Flex f ->
+            let dir =
+                match f.Direction with
+                | Vertical -> "fuaran-stack-vertical"
+                | Horizontal -> "fuaran-stack-horizontal"
+
+            let wrap = if f.Wrap then " fuaran-stack-wrap" else ""
+
+            // `gap` emits only when set (Phase 459) — a gap-free stack carries no
+            // `style` attribute, byte-identical to the pre-459 emission.
+            Html.div (
+                [ prop.className (sprintf "fuaran-layout-stack %s%s" dir wrap) ]
+                @ (match f.Gap with
+                   | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
+                   | None -> [])
+                @ [ prop.children (spec.Children |> List.map (render ctx)) ]
+            )
+    | NodeKind.SplitPanel spec ->
+        // Two-child shape — the first child takes `Weight` of the row, the
+        // second child takes `1 - Weight`. Renders both even when the child
+        // count is more than 2 (extras land in the second pane); render
+        // nothing-special when the child count is less than 2 (the
+        // type-system doesn't enforce arity; the renderer must be
+        // tolerant).
+        let weightLeft = max 0.0 (min 1.0 spec.Weight)
+        let weightRight = 1.0 - weightLeft
+
+        let renderedChildren = spec.Children |> List.map (render ctx)
+
+        let leftChildren, rightChildren =
+            match renderedChildren with
+            | [] -> [], []
+            | [ a ] -> [ a ], []
+            | a :: rest -> [ a ], rest
+
+        Html.div
+            [ prop.className "fuaran-layout-split-panel"
+              prop.children
+                  [ Html.div
+                        [ prop.className "fuaran-split-pane fuaran-split-pane-left"
+                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightLeft) ]
+                          prop.children leftChildren ]
+                    Html.div
+                        [ prop.className "fuaran-split-pane fuaran-split-pane-right"
+                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightRight) ]
+                          prop.children rightChildren ] ] ]
+    | NodeKind.Tabs spec ->
+        // Worked-example follow-on:
+        // TabsSpec extends with `ActiveIndex: Binding<int>` and
+        // `OnSelect: int -> Action<'Msg>`. The renderer extends
+        // further with `TabHeaders` / `TabTags` / `ActiveTag` / `OnSelectTag`
+        // for explicit per-tab declarations + a typed-tag overlay, plus full
+        // ARIA tablist semantics + keyboard navigation. The integer-indexed
+        // shape stays the canonical wire form; tag overlay is consumer
+        // ergonomics for model-side DU-typed active-tab state.
+
+        let parentNodeIdStr = parentNodeId
+
+        // Card-heading-inference fallback (back-compat). Used only
+        // when TabHeaders is None — legacy authoring shape.
+        let tabsLabelFromChild (child: Node<'Msg>) : string =
+            match child.Kind with
+            | NodeKind.Box { Role = BoxRole.Card
+                             Heading = Some h } -> renderText ctx h
+            | _ ->
+                match child.Id with
+                | NodeId s -> s
+
+        // Resolved per-tab label + disabled state + optional icon.
+        // When `TabHeaders = Some hs`, use the explicit declarations; when
+        // `None`, walk children with the legacy inference path. FUARAN047
+        // catches length mismatches at validate time so the runtime trusts
+        // the alignment.
+        let perTab
+            : {| label: string
+                 icon: string option
+                 disabled: bool |} list =
+            match spec.TabHeaders with
+            | Some headers ->
+                headers
+                |> List.map (fun h ->
+                    let disabled =
+                        h.Disabled
+                        |> Option.bind (BindingResolver.tryResolve ctx.Sources)
+                        |> Option.defaultValue false
+
+                    let icon = h.Icon |> Option.map (fun (IconSource s) -> s)
+
+                    {| label = renderText ctx h.Label
+                       icon = icon
+                       disabled = disabled |})
+            | None ->
+                spec.Children
+                |> List.map (fun child ->
+                    {| label = tabsLabelFromChild child
+                       icon = None
+                       disabled = false |})
+
+        let orientationClass =
+            match spec.Orientation with
+            | Horizontal -> "fuaran-tabs-horizontal"
+            | Vertical -> "fuaran-tabs-vertical"
+
+        // Tag-overlay resolution. When `TabTags` + `ActiveTag` are
+        // both `Some`, resolve the tag binding to a string, find its position
+        // in the tag list, and use that as the active index. Falls back to
+        // the integer-indexed `ActiveIndex` when either is missing or the
+        // resolved tag does not appear in `TabTags`. FUARAN049 warns on
+        // ActiveTag-without-TabTags at validate time.
+        let resolvedFromTag: int option =
+            match spec.TabTags, spec.ActiveTag with
+            | Some tags, Some tagBinding ->
+                BindingResolver.tryResolve ctx.Sources tagBinding
+                |> Option.bind (fun tag -> tags |> List.tryFindIndex ((=) tag))
+            | _ -> None
+
+        let activeIndex =
+            resolvedFromTag
+            |> Option.orElseWith (fun () -> BindingResolver.tryResolve ctx.Sources spec.ActiveIndex)
+            |> Option.defaultValue 0
+            |> max 0
+            |> min (max 0 (spec.Children.Length - 1))
+
+        let activeChild =
+            spec.Children
+            |> List.tryItem activeIndex
+            |> Option.orElseWith (fun () -> spec.Children |> List.tryHead)
+
+        // Composite click handler. Fires the integer-indexed `OnSelect i`
+        // when present; additionally fires `OnSelectTag tag` when both the
+        // typed-tag overlay and the per-tab tag are populated. Authors who
+        // wire only the integer path see no behavioural change. Phase 426:
+        // an omitted `OnSelect` writes the clicked index back to a writable
+        // `ActiveIndex` binding (the write-back default), and an omitted
+        // `OnSelectTag` with a populated tag overlay writes the clicked tag
+        // back to a writable `ActiveTag` binding — so decoded tabs switch
+        // panes with zero host code.
+        let dispatchTabIndex (i: int) =
+            match spec.OnSelect with
+            | Some onSelect -> runAction ctx (onSelect i)
+            | None -> writeBackTo ctx spec.ActiveIndex (Some(box i))
+
+            match spec.OnSelectTag, spec.TabTags with
+            | Some onTag, Some tags ->
+                match List.tryItem i tags with
+                | Some tag -> runAction ctx (onTag tag)
+                | None -> ()
+            | None, Some tags ->
+                match spec.ActiveTag, List.tryItem i tags with
+                | Some tagBinding, Some tag -> writeBackTo ctx tagBinding (Some(box tag))
+                | _ -> ()
+            | _ -> ()
+
+        // Stable IDs the ARIA attributes reference. Derived from
+        // the parent NodeId + tab index so cross-render snapshot diffs are
+        // stable; collisions across multiple Tabs nodes on the same page are
+        // structurally avoided by NodeId uniqueness (a renderer invariant).
+        let tabId (i: int) = sprintf "%s-tab-%d" parentNodeIdStr i
+        let panelId (i: int) = sprintf "%s-panel-%d" parentNodeIdStr i
+
+        // Arrow-key navigation walks past disabled tabs. `dir` is
+        // +1 / -1; wraps at list ends. Returns the same starting index when
+        // no enabled tab is found (avoid infinite recursion via visited
+        // counter).
+        let nextEnabledIndex (start: int) (dir: int) : int =
+            let n = perTab.Length
+
+            if n = 0 then
+                0
+            else
+                let rec loop (visited: int) (idx: int) =
+                    if visited >= n then
+                        start
+                    else
+                        let candidate = ((idx + dir) % n + n) % n
+
+                        if perTab[candidate].disabled then
+                            loop (visited + 1) candidate
+                        else
+                            candidate
+
+                loop 0 start
+
+        let firstEnabledIndex () : int =
+            perTab |> List.tryFindIndex (fun t -> not t.disabled) |> Option.defaultValue 0
+
+        let lastEnabledIndex () : int =
+            perTab
+            |> List.mapi (fun i t -> i, t)
+            |> List.rev
+            |> List.tryFind (fun (_, t) -> not t.disabled)
+            |> Option.map fst
+            |> Option.defaultValue (max 0 (perTab.Length - 1))
+
+        let isVertical = spec.Orientation = Vertical
+
+        // Focus management lives in the DOM directly — we read the stable
+        // tab id and call `.focus()` on the matching element. This avoids
+        // useRef-per-tab while still satisfying the ARIA tablist roving-
+        // tabindex pattern (the active tab carries `tabindex=0`; the rest
+        // carry `tabindex=-1`).
+        let focusTab (i: int) : unit =
+#if FABLE_COMPILER
+            let el = Browser.Dom.document.getElementById (tabId i)
+
+            if not (isNull el) then
+                el.focus ()
+#else
+            ignore i
+#endif
+
+        let handleKeyDown (e: Browser.Types.KeyboardEvent) =
+            let key = e.key
+            let prevKey = if isVertical then "ArrowUp" else "ArrowLeft"
+            let nextKey = if isVertical then "ArrowDown" else "ArrowRight"
+
+            let target =
+                if key = prevKey then Some(nextEnabledIndex activeIndex -1)
+                elif key = nextKey then Some(nextEnabledIndex activeIndex 1)
+                elif key = "Home" then Some(firstEnabledIndex ())
+                elif key = "End" then Some(lastEnabledIndex ())
+                elif key = "Enter" || key = " " then Some activeIndex
+                else None
+
+            match target with
+            | Some i ->
+                e.preventDefault ()
+                dispatchTabIndex i
+                focusTab i
+            | None -> ()
+
+        Html.div
+            [ prop.className (sprintf "fuaran-layout-tabs %s" orientationClass)
+              prop.children
+                  [ Html.div
+                        [ prop.className "fuaran-tabs-bar"
+                          prop.role "tablist"
+                          prop.custom ("aria-orientation", (if isVertical then "vertical" else "horizontal"))
+                          prop.onKeyDown handleKeyDown
+                          prop.children
+                              [ for (i, t) in List.indexed perTab ->
+                                    let isActive = i = activeIndex
+
+                                    let cls =
+                                        let parts =
+                                            [ "fuaran-tab"
+                                              if isActive then
+                                                  "fuaran-tab-active"
+                                              if t.disabled then
+                                                  "fuaran-tab-disabled" ]
+
+                                        String.concat " " parts
+
+                                    let labelChildren =
+                                        [ match t.icon with
+                                          | Some iconSrc -> iconHook "fuaran-tab-icon" iconSrc
+                                          | None -> ()
+                                          Html.span [ prop.className "fuaran-tab-label"; prop.text t.label ] ]
+
+                                    Html.button
+                                        [ prop.id (tabId i)
+                                          prop.className cls
+                                          prop.role "tab"
+                                          prop.custom ("aria-selected", (if isActive then "true" else "false"))
+                                          prop.custom ("aria-controls", panelId i)
+                                          prop.tabIndex (if isActive then 0 else -1)
+                                          prop.custom ("data-tab-index", i)
+                                          if t.disabled then
+                                              prop.custom ("aria-disabled", "true")
+                                              prop.disabled true
+                                          prop.onClick (fun _ ->
+                                              if not t.disabled then
+                                                  dispatchTabIndex i)
+                                          prop.children labelChildren ] ] ]
+                    Html.div
+                        [ prop.className "fuaran-tabs-panels"
+                          prop.children (
+                              match activeChild with
+                              | Some childNode ->
+                                  [ Html.div
+                                        [ prop.id (panelId activeIndex)
+                                          prop.role "tabpanel"
+                                          prop.custom ("aria-labelledby", tabId activeIndex)
+                                          prop.tabIndex 0
+                                          prop.className "fuaran-tabs-panel"
+                                          prop.children [ render ctx childNode ] ] ]
+                              | None -> []
+                          ) ] ] ]
+    | NodeKind.SummaryList spec ->
+        // Feliz-parity additive: single-card-of-rows
+        // shape — typically wraps LabelValueRow children with divider rules
+        // between them (rendered via CSS, not per-child wrappers). Optional
+        // section heading mirrors `Card.Heading`'s shape.
+        Html.section
+            [ prop.className "fuaran-layout-summary-list"
+              prop.children
+                  [ match spec.Heading with
+                    | Some heading ->
+                        Html.header
+                            [ prop.className "fuaran-summary-list-heading"
+                              prop.text (renderText ctx heading) ]
+                    | None -> Html.none
+                    Html.div
+                        [ prop.className "fuaran-summary-list-body"
+                          prop.children (spec.Children |> List.map (render ctx)) ] ] ]
+    | NodeKind.Disclosure spec ->
+        // Additive: HTML-native `<details>` / `<summary>`
+        // accordion. The `Open` binding overlays controlled-mode semantics
+        // via React's `open` prop (`prop.isOpen`); when the binding resolves
+        // to a value, that value drives the element. `resolvedOpen` folds
+        // `DefaultOpen` in as the fallback, so the section starts in the right
+        // state on the first frame without a separate `defaultOpen` attribute
+        // (which React doesn't recognise on `<details>` and warns about — it
+        // would also be dead, since the element is always controlled here).
+        //
+        // The `toggle` event fires on `<details>` whenever the open state
+        // changes (user click or programmatic). The renderer reads the new
+        // `open` value off `e.target` and dispatches `OnToggle`.
+        //
+        // Native HTML5 `<details>` already exposes `aria-expanded` through
+        // the accessibility tree (browsers + assistive tech derive it from
+        // the `open` attribute) — no explicit `aria-expanded` emission
+        // needed. The outer `render` wrapper still applies the Node-level
+        // Region role from `Defaults.Accessibility.disclosure`.
+        let resolvedOpen =
+            BindingResolver.tryResolve ctx.Sources spec.Open
+            |> Option.defaultValue spec.DefaultOpen
+
+        Html.details
+            [ prop.className "fuaran-layout-disclosure"
+              prop.isOpen resolvedOpen
+              prop.custom (
+                  "onToggle",
+                  System.Func<Browser.Types.Event, unit>(fun (e: Browser.Types.Event) ->
+                      // Fable.Browser.Dom 2.20 doesn't ship a typed
+                      // HTMLDetailsElement binding. Read the `open` boolean
+                      // attribute off the target HTMLElement — the attribute
+                      // is present (value `""`) when open, absent (`null`)
+                      // when closed.
+                      let target = e.target :?> Browser.Types.HTMLElement
+                      let isOpen = not (isNull (target.getAttribute "open"))
+                      // Phase 426: the closure wins; an omitted handler writes
+                      // the new open value back to a writable `Open` binding.
+                      match spec.OnToggle with
+                      | Some onToggle -> runAction ctx (onToggle isOpen)
+                      | None -> writeBackTo ctx spec.Open (Some(box isOpen)))
+              )
+              prop.children
+                  [ Html.summary
+                        [ prop.className "fuaran-disclosure-summary"
+                          prop.text (renderText ctx spec.Heading) ]
+                    Html.div
+                        [ prop.className "fuaran-disclosure-body"
+                          prop.children (spec.Children |> List.map (render ctx)) ] ] ]
+    | NodeKind.Stepper spec ->
+        // Each child becomes a numbered step; the active step is read from
+        // `spec.ActiveStep` (a Binding<int>). Renderer marks the active
+        // step with a class so CSS can style it. A step-header click fires
+        // `spec.OnSelect i` (default no-op `Chain []`), mirroring tabs.
+        let activeIndex =
+            BindingResolver.tryResolve ctx.Sources spec.ActiveStep |> Option.defaultValue 0
+
+        Html.div
+            [ prop.className "fuaran-layout-stepper"
+              prop.children
+                  [ Html.ol
+                        [ prop.className "fuaran-stepper-numbers"
+                          prop.children
+                              [ for i in 0 .. spec.Children.Length - 1 ->
+                                    let isActive = i = activeIndex
+
+                                    Html.li
+                                        [ prop.className (
+                                              if isActive then
+                                                  "fuaran-stepper-step fuaran-stepper-step-active"
+                                              else
+                                                  "fuaran-stepper-step"
+                                          )
+                                          prop.onClick (fun _ -> runAction ctx (spec.OnSelect i))
+                                          prop.text (sprintf "%d" (i + 1)) ] ] ]
+                    Html.div
+                        [ prop.className "fuaran-stepper-body"
+                          prop.children (
+                              match List.tryItem activeIndex spec.Children with
+                              | Some node -> [ render ctx node ]
+                              | None -> []
+                          ) ] ] ]
+    | NodeKind.Modal spec ->
+        // Phase 289 overlay render-fidelity contract: the overlay is ALWAYS in
+        // the DOM (no React portal), positioned + z-indexed by CSS; closed =
+        // the `hidden` attribute, not an absent node — so SSR and CSR emit the
+        // identical structure and hydration never mismatches. `role="dialog"` +
+        // `aria-modal` mark the dialog. Backdrop / close-button click fire
+        // `OnDismiss` (client-only handlers; absent server-side, attached on
+        // hydration — not a structural difference). Focus-trap is an additive
+        // client enhancement that does not alter the hydrated DOM.
+        let isOpen =
+            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
+
+        // Phase 426: the wire-survivable action wins; an omitted `OnDismiss`
+        // writes `false` back to a writable `Open` binding — a decoded
+        // dismissable modal closes itself with zero host code.
+        let dismiss () =
+            match spec.OnDismiss with
+            | Some action -> runAction ctx action
+            | None -> writeBackTo ctx spec.Open (Some(box false))
+
+        let headingEls =
+            match spec.Heading with
+            | Some h -> [ Html.h2 [ prop.className "fuaran-modal-heading"; prop.text (renderText ctx h) ] ]
+            | None -> []
+
+        let dismissEls =
+            if spec.Dismissable then
+                [ Html.button
+                      [ prop.className "fuaran-modal-dismiss"
+                        prop.type' "button"
+                        prop.ariaLabel "Close"
+                        prop.onClick (fun _ -> dismiss ())
+                        prop.text "×" ] ]
+            else
+                []
+
+        Html.div
+            [ prop.className "fuaran-modal-overlay"
+              if not isOpen then
+                  prop.custom ("hidden", "")
+              prop.onClick (fun _ ->
+                  if spec.Dismissable then
+                      dismiss ())
+              prop.children
+                  [ Html.div
+                        [ prop.className "fuaran-modal-dialog"
+                          prop.role "dialog"
+                          prop.custom ("aria-modal", "true")
+                          prop.children (
+                              headingEls
+                              @ dismissEls
+                              @ [ Html.div
+                                      [ prop.className "fuaran-modal-body"
+                                        prop.children (spec.Children |> List.map (render ctx)) ] ]
+                          ) ] ] ]
+    | NodeKind.ScrollArea spec ->
+        // Phase 289 — overflow/scroll container. The scroll axis is a class
+        // (CSS owns `overflow`); optional pixel bounds are inline max-height /
+        // max-width via the shared Feliz `style` DSL (identical SSR↔CSR).
+        let axisClass =
+            match spec.Orientation with
+            | ScrollOrientation.Vertical -> "fuaran-scrollarea fuaran-scrollarea-vertical"
+            | ScrollOrientation.Horizontal -> "fuaran-scrollarea fuaran-scrollarea-horizontal"
+            | ScrollOrientation.Both -> "fuaran-scrollarea fuaran-scrollarea-both"
+
+        let styleProps =
+            [ match spec.MaxHeight with
+              | Some h -> style.maxHeight (length.px h)
+              | None -> ()
+              match spec.MaxWidth with
+              | Some w -> style.maxWidth (length.px w)
+              | None -> () ]
+
+        Html.div
+            [ prop.className axisClass
+              prop.tabIndex 0
+              if not styleProps.IsEmpty then
+                  prop.style styleProps
+              prop.children (spec.Children |> List.map (render ctx)) ]
+    // -- Display --
+    | NodeKind.Heading spec ->
+        // Feliz-parity additive: Heading.Variant
+        // appends `fuaran-heading-{variant}` so eyebrow / caption / lead
+        // styling can pick out the shape without overriding `<h{Level}>`
+        // semantics. `Standard` emits the bare `fuaran-heading` class —
+        // existing callers see no class change.
+        let variantSuffix =
+            match spec.Variant with
+            | HeadingVariant.Standard -> ""
+            | HeadingVariant.Eyebrow -> " fuaran-heading-eyebrow"
+            | HeadingVariant.Caption -> " fuaran-heading-caption"
+            | HeadingVariant.Lead -> " fuaran-heading-lead"
+
+        let props: IReactProperty list =
+            [ prop.className (sprintf "fuaran-heading%s" variantSuffix)
+              prop.text (renderText ctx spec.Text) ]
+
+        // HTML heading levels are 1..6; anything outside that range falls to h6.
+        match spec.Level with
+        | 1 -> Html.h1 props
+        | 2 -> Html.h2 props
+        | 3 -> Html.h3 props
+        | 4 -> Html.h4 props
+        | 5 -> Html.h5 props
+        | _ -> Html.h6 props
+    | NodeKind.Markdown spec ->
+        // Phase 292: one deterministic GFM renderer in Renderer.Core. The same
+        // `Markdown.toHtml` runs on Fable (client) and .NET (Renderer.Server),
+        // so SSR↔CSR output is byte-identical by construction (was: npm `marked`
+        // here, Markdig server-side — two different renders of the same node).
+        let html = Markdown.toHtml (renderText ctx spec.Text)
+
+        Html.div [ prop.className "fuaran-markdown"; prop.dangerouslySetInnerHTML html ]
+    | NodeKind.Metric spec -> renderMetric ctx parentNodeId state spec
+    | NodeKind.Badge spec ->
+        Html.span
+            [ prop.className (sprintf "fuaran-badge fuaran-badge-%s" (badgeVariantClass spec.Variant))
+              prop.text (renderText ctx spec.Label) ]
+    | NodeKind.Skeleton spec ->
+        Html.div
+            [ prop.className "fuaran-skeleton"
+              prop.children [ for _ in 1 .. spec.Rows -> Html.div [ prop.className "fuaran-skeleton-row" ] ] ]
+    | NodeKind.Callout spec -> renderCallout ctx spec
+    | NodeKind.Progress spec -> renderProgress ctx parentNodeId state spec
+    | NodeKind.Sparkline spec -> renderSparkline ctx spec
+    | NodeKind.Drawing spec ->
+        // Phase 525 — first-party inline SVG from the canonical Core builder
+        // (the ONE serialisation the SSR + TS + Python legs also emit, so the
+        // client / server are parity by construction). Rides
+        // `dangerouslySetInnerHTML` like Markdown/Math — an inert display node.
+        Html.div [ prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) spec) ]
+    | NodeKind.LabelValueRow spec -> renderLabelValueRow ctx parentNodeId state spec
+    | NodeKind.Fact spec -> renderFact ctx spec
+    | NodeKind.Link spec ->
+        // A real `<a href>` — crawlable + works with JS disabled. `href`
+        // resolves the binding then passes through `Sanitize.sanitizeUrlOrBlank`
+        // (blocks javascript:/vbscript:/raw data:; rejected URLs collapse to
+        // `about:blank` so the anchor stays structurally valid). `rel` /
+        // `target` emit when set; `download` emits a bare boolean attribute.
+        let resolvedHref =
+            BindingResolver.tryResolve ctx.Sources spec.Href |> Option.defaultValue ""
+
+        let safeHref = Sanitize.sanitizeUrlOrBlank resolvedHref
+
+        let optionalAttrs: IReactProperty list =
+            [ match spec.Rel with
+              | Some rel -> prop.rel rel
+              | None -> ()
+              match spec.Target with
+              | Some target -> prop.custom ("target", target)
+              | None -> ()
+              if spec.Download then
+                  prop.custom ("download", "") ]
+
+        Html.a (
+            [ prop.className "fuaran-link"; prop.href safeHref ]
+            @ optionalAttrs
+            @ [ prop.text (renderText ctx spec.Label) ]
+        )
+    | NodeKind.Image spec ->
+        // Phase 287 — real `<img>`; `src` resolves then passes through
+        // `Sanitize.sanitizeUrlOrBlank` (blocks javascript:/vbscript:/file:);
+        // `alt` is mandatory; `variant` appends an Avatar / Rounded class.
+        let resolvedSrc =
+            BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
+
+        let safeSrc = Sanitize.sanitizeUrlOrBlank resolvedSrc
+
+        let variantClass =
+            match spec.Variant with
+            | ImageVariant.Default -> "fuaran-image"
+            | ImageVariant.Avatar -> "fuaran-image fuaran-image-avatar"
+            | ImageVariant.Rounded -> "fuaran-image fuaran-image-rounded"
+
+        Html.img
+            [ prop.className variantClass
+              prop.src safeSrc
+              prop.alt (renderText ctx spec.Alt) ]
+    | NodeKind.List spec ->
+        // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
+        let items =
+            spec.Items
+            |> List.map (fun item -> Html.li [ prop.className "fuaran-list-item"; prop.text (renderText ctx item) ])
+
+        if spec.Ordered then
+            Html.ol [ prop.className "fuaran-list fuaran-list-ordered"; prop.children items ]
+        else
+            Html.ul [ prop.className "fuaran-list fuaran-list-unordered"; prop.children items ]
+    | NodeKind.Toast spec ->
+        // Phase 289 overlay render-fidelity contract: ALWAYS in the DOM (no
+        // portal); closed = the `hidden` attribute. `role="status"` +
+        // `aria-live="polite"` announce the message without interrupting.
+        let isOpen =
+            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
+
+        let toneClass =
+            match spec.Tone with
+            | Default -> "default"
+            | Subdued -> "subdued"
+            | Brand -> "brand"
+            | Success -> "success"
+            | Warning -> "warning"
+            | Critical -> "critical"
+            | Info -> "info"
+
+        let dismissEls =
+            if spec.Dismissable then
+                [ Html.button
+                      [ prop.className "fuaran-toast-dismiss"
+                        prop.type' "button"
+                        prop.ariaLabel "Dismiss"
+                        prop.text "×" ] ]
+            else
+                []
+
+        Html.div
+            [ prop.className (sprintf "fuaran-toast fuaran-toast-%s" toneClass)
+              prop.role "status"
+              prop.custom ("aria-live", "polite")
+              if not isOpen then
+                  prop.custom ("hidden", "")
+              prop.children (
+                  [ Html.span
+                        [ prop.className "fuaran-toast-message"
+                          prop.text (renderText ctx spec.Message) ] ]
+                  @ dismissEls
+              ) ]
+    | NodeKind.CodeBlock spec ->
+        // Phase 290 — DETERMINISTIC `<pre><code>` (HTML-escaped via `prop.text`,
+        // NO markdown library), byte-identical across all hosts + SSR. Syntax
+        // highlighting is a client-only post-hydration enhancement that targets
+        // the `language-{x}` class — explicitly NOT emitted here (outside the
+        // parity output). Line numbers + highlight ranges are deterministic
+        // class / data hooks the enhancement reads.
+        let containerClass =
+            if spec.LineNumbers then
+                "fuaran-codeblock fuaran-codeblock-numbered"
+            else
+                "fuaran-codeblock"
+
+        let highlightAttr =
+            match spec.HighlightLines with
+            | [] -> []
+            | lines -> [ prop.custom ("data-highlight-lines", String.concat "," (lines |> List.map string)) ]
+
+        let copyEls =
+            if spec.Copyable then
+                [ Html.button
+                      [ prop.className "fuaran-codeblock-copy"
+                        prop.type' "button"
+                        prop.ariaLabel "Copy"
+                        prop.text "Copy" ] ]
+            else
+                []
+
+        Html.div (
+            [ prop.className containerClass; prop.custom ("data-language", spec.Language) ]
+            @ highlightAttr
+            @ [ prop.children (
+                    copyEls
+                    @ [ Html.pre
+                            [ prop.className "fuaran-codeblock-pre"
+                              prop.children
+                                  [ Html.code
+                                        [ prop.className (sprintf "fuaran-codeblock-code language-%s" spec.Language)
+                                          prop.text spec.Code ] ] ] ]
+                ) ]
+        )
+    | NodeKind.Math spec ->
+        // Phase 658 — DETERMINISTIC native MathML for the closed subset (real
+        // superscripts / fractions with NO JavaScript); the raw escaped LaTeX
+        // source span for out-of-subset input (today's fallback, unchanged).
+        // KaTeX upgrades EITHER shape client-only post-hydration (targets the
+        // `.fuaran-math` container, reads `data-fuaran-math-src`), OUTSIDE the
+        // parity output. `MathMl.translate` is a pure Fable-safe function shared
+        // with the server renderer, so both emit byte-identical markup — see
+        // docs/MATH-DEGRADATION.md (the normative subset + fixture oracle).
+        let mathml = MathMl.translate spec.Source spec.Display
+
+        let displayStr, isBlock =
+            match spec.Display with
+            | MathDisplay.Block -> "block", true
+            | MathDisplay.Inline -> "inline", false
+
+        let containerProps =
+            [ prop.className (
+                  if isBlock then
+                      "fuaran-math fuaran-math-block"
+                  else
+                      "fuaran-math fuaran-math-inline"
+              )
+              prop.custom ("data-math-display", displayStr)
+              prop.custom ("data-fuaran-math-src", spec.Source) ]
+
+        let content =
+            match mathml with
+            | Some markup -> [ prop.dangerouslySetInnerHTML markup ]
+            | None -> [ prop.children [ Html.span [ prop.className "fuaran-math-source"; prop.text spec.Source ] ] ]
+
+        if isBlock then
+            Html.div (containerProps @ content)
+        else
+            Html.span (containerProps @ content)
+    // -- Input --
+    | NodeKind.Button spec -> renderButton ctx spec
+    | NodeKind.Select spec -> renderSelect ctx spec
+    | NodeKind.Form spec -> renderForm ctx spec
+    | NodeKind.Filters specs -> renderFilters ctx specs
+    | NodeKind.FileUpload spec -> renderFileUpload ctx spec
+    // -- Vis --
+    | NodeKind.DataGrid spec ->
+        // Phase 393 — a static read-only grid renders the semantic <table> leg (byte-identical to the
+        // retired Table); a data-bound grid takes the ordinary grid path.
+        match spec.StaticRows with
+        | Some(headers, rows) ->
+            renderTable
+                ctx
+                { Headers = headers
+                  Rows = rows
+                  OnRowClick = None }
+        | None -> renderGrid ctx parentNodeId state spec
+    | NodeKind.Chart spec -> renderChart ctx parentNodeId state spec
+    | NodeKind.Map spec -> renderMap ctx parentNodeId state spec
     | NodeKind.ErrorBoundary spec ->
         // Render-time error boundary. The author wraps a subtree
         // they expect *may* fail under some inputs; this case catches throws
@@ -1516,757 +2288,7 @@ let rec private renderKind
 
 // ─── Layouts ───────────────────────────────────────────────────────────────
 
-and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layout: LayoutKind<'Msg>) : ReactElement =
-    match layout with
-    // Phase 390 — the unified container. Role + layout mode drive the emitted
-    // element + classes so each retired kind's HTML/a11y is byte-identical:
-    // Card role → <section class="fuaran-layout-card">; Dashboard role →
-    // <div class="fuaran-layout-dashboard">; Group+Grid → grid div; Group+Flex
-    // → stack div; Separator role → <hr class="fuaran-layout-separator"> (the
-    // retired `Divider`, Phase 459).
-    | LayoutKind.Box spec ->
-        match spec.Role, spec.Layout with
-        | BoxRole.Card, _ ->
-            Html.section
-                [ prop.className "fuaran-layout-card"
-                  prop.children
-                      [ match spec.Heading with
-                        | Some heading ->
-                            Html.header [ prop.className "fuaran-card-heading"; prop.text (renderText ctx heading) ]
-                        | None -> Html.none
-                        Html.div
-                            [ prop.className "fuaran-card-body"
-                              prop.children (spec.Children |> List.map (render ctx)) ] ] ]
-        | BoxRole.Dashboard, _
-        | BoxRole.Group, BoxLayout.Auto ->
-            Html.div
-                [ prop.className "fuaran-layout-dashboard"
-                  prop.children (spec.Children |> List.map (render ctx)) ]
-        | BoxRole.Separator, _ -> Html.hr [ prop.className "fuaran-layout-separator" ]
-        | BoxRole.Group, BoxLayout.Grid g ->
-            // Column count rides on inline style (not a `-cols-N` class suffix)
-            // so CSS hosts don't have to pre-declare / Tailwind-safelist every N.
-            // The additive `TemplateColumns` field short-circuits the
-            // `Cols`-based `repeat(N, 1fr)` emission when `Some` — the verbatim
-            // string is emitted so irregular-column grids can be authored
-            // without escaping to Feliz. `None` preserves the prior emission
-            // shape byte-identical.
-            let templateColumns =
-                match g.TemplateColumns with
-                | Some custom -> custom
-                | None -> sprintf "repeat(%d, 1fr)" g.Cols
-
-            // `gap` (Phase 459 — the Spacer replacement) emits only when set, so
-            // gap-free grids stay byte-identical to the pre-459 emission.
-            let gridStyle =
-                [ style.custom ("gridTemplateColumns", templateColumns) ]
-                @ (match g.Gap with
-                   | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
-                   | None -> [])
-
-            Html.div
-                [ prop.className "fuaran-layout-grid"
-                  prop.style gridStyle
-                  prop.children (spec.Children |> List.map (render ctx)) ]
-        | BoxRole.Group, BoxLayout.Flex f ->
-            let dir =
-                match f.Direction with
-                | Vertical -> "fuaran-stack-vertical"
-                | Horizontal -> "fuaran-stack-horizontal"
-
-            let wrap = if f.Wrap then " fuaran-stack-wrap" else ""
-
-            // `gap` emits only when set (Phase 459) — a gap-free stack carries no
-            // `style` attribute, byte-identical to the pre-459 emission.
-            Html.div (
-                [ prop.className (sprintf "fuaran-layout-stack %s%s" dir wrap) ]
-                @ (match f.Gap with
-                   | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
-                   | None -> [])
-                @ [ prop.children (spec.Children |> List.map (render ctx)) ]
-            )
-    | LayoutKind.SplitPanel spec ->
-        // Two-child shape — the first child takes `Weight` of the row, the
-        // second child takes `1 - Weight`. Renders both even when the child
-        // count is more than 2 (extras land in the second pane); render
-        // nothing-special when the child count is less than 2 (the
-        // type-system doesn't enforce arity; the renderer must be
-        // tolerant).
-        let weightLeft = max 0.0 (min 1.0 spec.Weight)
-        let weightRight = 1.0 - weightLeft
-
-        let renderedChildren = spec.Children |> List.map (render ctx)
-
-        let leftChildren, rightChildren =
-            match renderedChildren with
-            | [] -> [], []
-            | [ a ] -> [ a ], []
-            | a :: rest -> [ a ], rest
-
-        Html.div
-            [ prop.className "fuaran-layout-split-panel"
-              prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-split-pane fuaran-split-pane-left"
-                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightLeft) ]
-                          prop.children leftChildren ]
-                    Html.div
-                        [ prop.className "fuaran-split-pane fuaran-split-pane-right"
-                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightRight) ]
-                          prop.children rightChildren ] ] ]
-    | LayoutKind.Tabs spec ->
-        // Worked-example follow-on:
-        // TabsSpec extends with `ActiveIndex: Binding<int>` and
-        // `OnSelect: int -> Action<'Msg>`. The renderer extends
-        // further with `TabHeaders` / `TabTags` / `ActiveTag` / `OnSelectTag`
-        // for explicit per-tab declarations + a typed-tag overlay, plus full
-        // ARIA tablist semantics + keyboard navigation. The integer-indexed
-        // shape stays the canonical wire form; tag overlay is consumer
-        // ergonomics for model-side DU-typed active-tab state.
-
-        let parentNodeIdStr = parentNodeId
-
-        // Card-heading-inference fallback (back-compat). Used only
-        // when TabHeaders is None — legacy authoring shape.
-        let tabsLabelFromChild (child: Node<'Msg>) : string =
-            match child.Kind with
-            | NodeKind.Layout(LayoutKind.Box { Role = BoxRole.Card
-                                               Heading = Some h }) -> renderText ctx h
-            | _ ->
-                match child.Id with
-                | NodeId s -> s
-
-        // Resolved per-tab label + disabled state + optional icon.
-        // When `TabHeaders = Some hs`, use the explicit declarations; when
-        // `None`, walk children with the legacy inference path. FUARAN047
-        // catches length mismatches at validate time so the runtime trusts
-        // the alignment.
-        let perTab
-            : {| label: string
-                 icon: string option
-                 disabled: bool |} list =
-            match spec.TabHeaders with
-            | Some headers ->
-                headers
-                |> List.map (fun h ->
-                    let disabled =
-                        h.Disabled
-                        |> Option.bind (BindingResolver.tryResolve ctx.Sources)
-                        |> Option.defaultValue false
-
-                    let icon = h.Icon |> Option.map (fun (IconSource s) -> s)
-
-                    {| label = renderText ctx h.Label
-                       icon = icon
-                       disabled = disabled |})
-            | None ->
-                spec.Children
-                |> List.map (fun child ->
-                    {| label = tabsLabelFromChild child
-                       icon = None
-                       disabled = false |})
-
-        let orientationClass =
-            match spec.Orientation with
-            | Horizontal -> "fuaran-tabs-horizontal"
-            | Vertical -> "fuaran-tabs-vertical"
-
-        // Tag-overlay resolution. When `TabTags` + `ActiveTag` are
-        // both `Some`, resolve the tag binding to a string, find its position
-        // in the tag list, and use that as the active index. Falls back to
-        // the integer-indexed `ActiveIndex` when either is missing or the
-        // resolved tag does not appear in `TabTags`. FUARAN049 warns on
-        // ActiveTag-without-TabTags at validate time.
-        let resolvedFromTag: int option =
-            match spec.TabTags, spec.ActiveTag with
-            | Some tags, Some tagBinding ->
-                BindingResolver.tryResolve ctx.Sources tagBinding
-                |> Option.bind (fun tag -> tags |> List.tryFindIndex ((=) tag))
-            | _ -> None
-
-        let activeIndex =
-            resolvedFromTag
-            |> Option.orElseWith (fun () -> BindingResolver.tryResolve ctx.Sources spec.ActiveIndex)
-            |> Option.defaultValue 0
-            |> max 0
-            |> min (max 0 (spec.Children.Length - 1))
-
-        let activeChild =
-            spec.Children
-            |> List.tryItem activeIndex
-            |> Option.orElseWith (fun () -> spec.Children |> List.tryHead)
-
-        // Composite click handler. Fires the integer-indexed `OnSelect i`
-        // when present; additionally fires `OnSelectTag tag` when both the
-        // typed-tag overlay and the per-tab tag are populated. Authors who
-        // wire only the integer path see no behavioural change. Phase 426:
-        // an omitted `OnSelect` writes the clicked index back to a writable
-        // `ActiveIndex` binding (the write-back default), and an omitted
-        // `OnSelectTag` with a populated tag overlay writes the clicked tag
-        // back to a writable `ActiveTag` binding — so decoded tabs switch
-        // panes with zero host code.
-        let dispatchTabIndex (i: int) =
-            match spec.OnSelect with
-            | Some onSelect -> runAction ctx (onSelect i)
-            | None -> writeBackTo ctx spec.ActiveIndex (Some(box i))
-
-            match spec.OnSelectTag, spec.TabTags with
-            | Some onTag, Some tags ->
-                match List.tryItem i tags with
-                | Some tag -> runAction ctx (onTag tag)
-                | None -> ()
-            | None, Some tags ->
-                match spec.ActiveTag, List.tryItem i tags with
-                | Some tagBinding, Some tag -> writeBackTo ctx tagBinding (Some(box tag))
-                | _ -> ()
-            | _ -> ()
-
-        // Stable IDs the ARIA attributes reference. Derived from
-        // the parent NodeId + tab index so cross-render snapshot diffs are
-        // stable; collisions across multiple Tabs nodes on the same page are
-        // structurally avoided by NodeId uniqueness (a renderer invariant).
-        let tabId (i: int) = sprintf "%s-tab-%d" parentNodeIdStr i
-        let panelId (i: int) = sprintf "%s-panel-%d" parentNodeIdStr i
-
-        // Arrow-key navigation walks past disabled tabs. `dir` is
-        // +1 / -1; wraps at list ends. Returns the same starting index when
-        // no enabled tab is found (avoid infinite recursion via visited
-        // counter).
-        let nextEnabledIndex (start: int) (dir: int) : int =
-            let n = perTab.Length
-
-            if n = 0 then
-                0
-            else
-                let rec loop (visited: int) (idx: int) =
-                    if visited >= n then
-                        start
-                    else
-                        let candidate = ((idx + dir) % n + n) % n
-
-                        if perTab[candidate].disabled then
-                            loop (visited + 1) candidate
-                        else
-                            candidate
-
-                loop 0 start
-
-        let firstEnabledIndex () : int =
-            perTab |> List.tryFindIndex (fun t -> not t.disabled) |> Option.defaultValue 0
-
-        let lastEnabledIndex () : int =
-            perTab
-            |> List.mapi (fun i t -> i, t)
-            |> List.rev
-            |> List.tryFind (fun (_, t) -> not t.disabled)
-            |> Option.map fst
-            |> Option.defaultValue (max 0 (perTab.Length - 1))
-
-        let isVertical = spec.Orientation = Vertical
-
-        // Focus management lives in the DOM directly — we read the stable
-        // tab id and call `.focus()` on the matching element. This avoids
-        // useRef-per-tab while still satisfying the ARIA tablist roving-
-        // tabindex pattern (the active tab carries `tabindex=0`; the rest
-        // carry `tabindex=-1`).
-        let focusTab (i: int) : unit =
-#if FABLE_COMPILER
-            let el = Browser.Dom.document.getElementById (tabId i)
-
-            if not (isNull el) then
-                el.focus ()
-#else
-            ignore i
-#endif
-
-        let handleKeyDown (e: Browser.Types.KeyboardEvent) =
-            let key = e.key
-            let prevKey = if isVertical then "ArrowUp" else "ArrowLeft"
-            let nextKey = if isVertical then "ArrowDown" else "ArrowRight"
-
-            let target =
-                if key = prevKey then Some(nextEnabledIndex activeIndex -1)
-                elif key = nextKey then Some(nextEnabledIndex activeIndex 1)
-                elif key = "Home" then Some(firstEnabledIndex ())
-                elif key = "End" then Some(lastEnabledIndex ())
-                elif key = "Enter" || key = " " then Some activeIndex
-                else None
-
-            match target with
-            | Some i ->
-                e.preventDefault ()
-                dispatchTabIndex i
-                focusTab i
-            | None -> ()
-
-        Html.div
-            [ prop.className (sprintf "fuaran-layout-tabs %s" orientationClass)
-              prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-tabs-bar"
-                          prop.role "tablist"
-                          prop.custom ("aria-orientation", (if isVertical then "vertical" else "horizontal"))
-                          prop.onKeyDown handleKeyDown
-                          prop.children
-                              [ for (i, t) in List.indexed perTab ->
-                                    let isActive = i = activeIndex
-
-                                    let cls =
-                                        let parts =
-                                            [ "fuaran-tab"
-                                              if isActive then
-                                                  "fuaran-tab-active"
-                                              if t.disabled then
-                                                  "fuaran-tab-disabled" ]
-
-                                        String.concat " " parts
-
-                                    let labelChildren =
-                                        [ match t.icon with
-                                          | Some iconSrc -> iconHook "fuaran-tab-icon" iconSrc
-                                          | None -> ()
-                                          Html.span [ prop.className "fuaran-tab-label"; prop.text t.label ] ]
-
-                                    Html.button
-                                        [ prop.id (tabId i)
-                                          prop.className cls
-                                          prop.role "tab"
-                                          prop.custom ("aria-selected", (if isActive then "true" else "false"))
-                                          prop.custom ("aria-controls", panelId i)
-                                          prop.tabIndex (if isActive then 0 else -1)
-                                          prop.custom ("data-tab-index", i)
-                                          if t.disabled then
-                                              prop.custom ("aria-disabled", "true")
-                                              prop.disabled true
-                                          prop.onClick (fun _ ->
-                                              if not t.disabled then
-                                                  dispatchTabIndex i)
-                                          prop.children labelChildren ] ] ]
-                    Html.div
-                        [ prop.className "fuaran-tabs-panels"
-                          prop.children (
-                              match activeChild with
-                              | Some childNode ->
-                                  [ Html.div
-                                        [ prop.id (panelId activeIndex)
-                                          prop.role "tabpanel"
-                                          prop.custom ("aria-labelledby", tabId activeIndex)
-                                          prop.tabIndex 0
-                                          prop.className "fuaran-tabs-panel"
-                                          prop.children [ render ctx childNode ] ] ]
-                              | None -> []
-                          ) ] ] ]
-    | LayoutKind.SummaryList spec ->
-        // Feliz-parity additive: single-card-of-rows
-        // shape — typically wraps LabelValueRow children with divider rules
-        // between them (rendered via CSS, not per-child wrappers). Optional
-        // section heading mirrors `Card.Heading`'s shape.
-        Html.section
-            [ prop.className "fuaran-layout-summary-list"
-              prop.children
-                  [ match spec.Heading with
-                    | Some heading ->
-                        Html.header
-                            [ prop.className "fuaran-summary-list-heading"
-                              prop.text (renderText ctx heading) ]
-                    | None -> Html.none
-                    Html.div
-                        [ prop.className "fuaran-summary-list-body"
-                          prop.children (spec.Children |> List.map (render ctx)) ] ] ]
-    | LayoutKind.Disclosure spec ->
-        // Additive: HTML-native `<details>` / `<summary>`
-        // accordion. The `Open` binding overlays controlled-mode semantics
-        // via React's `open` prop (`prop.isOpen`); when the binding resolves
-        // to a value, that value drives the element. `resolvedOpen` folds
-        // `DefaultOpen` in as the fallback, so the section starts in the right
-        // state on the first frame without a separate `defaultOpen` attribute
-        // (which React doesn't recognise on `<details>` and warns about — it
-        // would also be dead, since the element is always controlled here).
-        //
-        // The `toggle` event fires on `<details>` whenever the open state
-        // changes (user click or programmatic). The renderer reads the new
-        // `open` value off `e.target` and dispatches `OnToggle`.
-        //
-        // Native HTML5 `<details>` already exposes `aria-expanded` through
-        // the accessibility tree (browsers + assistive tech derive it from
-        // the `open` attribute) — no explicit `aria-expanded` emission
-        // needed. The outer `render` wrapper still applies the Node-level
-        // Region role from `Defaults.Accessibility.disclosure`.
-        let resolvedOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open
-            |> Option.defaultValue spec.DefaultOpen
-
-        Html.details
-            [ prop.className "fuaran-layout-disclosure"
-              prop.isOpen resolvedOpen
-              prop.custom (
-                  "onToggle",
-                  System.Func<Browser.Types.Event, unit>(fun (e: Browser.Types.Event) ->
-                      // Fable.Browser.Dom 2.20 doesn't ship a typed
-                      // HTMLDetailsElement binding. Read the `open` boolean
-                      // attribute off the target HTMLElement — the attribute
-                      // is present (value `""`) when open, absent (`null`)
-                      // when closed.
-                      let target = e.target :?> Browser.Types.HTMLElement
-                      let isOpen = not (isNull (target.getAttribute "open"))
-                      // Phase 426: the closure wins; an omitted handler writes
-                      // the new open value back to a writable `Open` binding.
-                      match spec.OnToggle with
-                      | Some onToggle -> runAction ctx (onToggle isOpen)
-                      | None -> writeBackTo ctx spec.Open (Some(box isOpen)))
-              )
-              prop.children
-                  [ Html.summary
-                        [ prop.className "fuaran-disclosure-summary"
-                          prop.text (renderText ctx spec.Heading) ]
-                    Html.div
-                        [ prop.className "fuaran-disclosure-body"
-                          prop.children (spec.Children |> List.map (render ctx)) ] ] ]
-    | LayoutKind.Stepper spec ->
-        // Each child becomes a numbered step; the active step is read from
-        // `spec.ActiveStep` (a Binding<int>). Renderer marks the active
-        // step with a class so CSS can style it. A step-header click fires
-        // `spec.OnSelect i` (default no-op `Chain []`), mirroring tabs.
-        let activeIndex =
-            BindingResolver.tryResolve ctx.Sources spec.ActiveStep |> Option.defaultValue 0
-
-        Html.div
-            [ prop.className "fuaran-layout-stepper"
-              prop.children
-                  [ Html.ol
-                        [ prop.className "fuaran-stepper-numbers"
-                          prop.children
-                              [ for i in 0 .. spec.Children.Length - 1 ->
-                                    let isActive = i = activeIndex
-
-                                    Html.li
-                                        [ prop.className (
-                                              if isActive then
-                                                  "fuaran-stepper-step fuaran-stepper-step-active"
-                                              else
-                                                  "fuaran-stepper-step"
-                                          )
-                                          prop.onClick (fun _ -> runAction ctx (spec.OnSelect i))
-                                          prop.text (sprintf "%d" (i + 1)) ] ] ]
-                    Html.div
-                        [ prop.className "fuaran-stepper-body"
-                          prop.children (
-                              match List.tryItem activeIndex spec.Children with
-                              | Some node -> [ render ctx node ]
-                              | None -> []
-                          ) ] ] ]
-    | LayoutKind.Modal spec ->
-        // Phase 289 overlay render-fidelity contract: the overlay is ALWAYS in
-        // the DOM (no React portal), positioned + z-indexed by CSS; closed =
-        // the `hidden` attribute, not an absent node — so SSR and CSR emit the
-        // identical structure and hydration never mismatches. `role="dialog"` +
-        // `aria-modal` mark the dialog. Backdrop / close-button click fire
-        // `OnDismiss` (client-only handlers; absent server-side, attached on
-        // hydration — not a structural difference). Focus-trap is an additive
-        // client enhancement that does not alter the hydrated DOM.
-        let isOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
-
-        // Phase 426: the wire-survivable action wins; an omitted `OnDismiss`
-        // writes `false` back to a writable `Open` binding — a decoded
-        // dismissable modal closes itself with zero host code.
-        let dismiss () =
-            match spec.OnDismiss with
-            | Some action -> runAction ctx action
-            | None -> writeBackTo ctx spec.Open (Some(box false))
-
-        let headingEls =
-            match spec.Heading with
-            | Some h -> [ Html.h2 [ prop.className "fuaran-modal-heading"; prop.text (renderText ctx h) ] ]
-            | None -> []
-
-        let dismissEls =
-            if spec.Dismissable then
-                [ Html.button
-                      [ prop.className "fuaran-modal-dismiss"
-                        prop.type' "button"
-                        prop.ariaLabel "Close"
-                        prop.onClick (fun _ -> dismiss ())
-                        prop.text "×" ] ]
-            else
-                []
-
-        Html.div
-            [ prop.className "fuaran-modal-overlay"
-              if not isOpen then
-                  prop.custom ("hidden", "")
-              prop.onClick (fun _ ->
-                  if spec.Dismissable then
-                      dismiss ())
-              prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-modal-dialog"
-                          prop.role "dialog"
-                          prop.custom ("aria-modal", "true")
-                          prop.children (
-                              headingEls
-                              @ dismissEls
-                              @ [ Html.div
-                                      [ prop.className "fuaran-modal-body"
-                                        prop.children (spec.Children |> List.map (render ctx)) ] ]
-                          ) ] ] ]
-    | LayoutKind.ScrollArea spec ->
-        // Phase 289 — overflow/scroll container. The scroll axis is a class
-        // (CSS owns `overflow`); optional pixel bounds are inline max-height /
-        // max-width via the shared Feliz `style` DSL (identical SSR↔CSR).
-        let axisClass =
-            match spec.Orientation with
-            | ScrollOrientation.Vertical -> "fuaran-scrollarea fuaran-scrollarea-vertical"
-            | ScrollOrientation.Horizontal -> "fuaran-scrollarea fuaran-scrollarea-horizontal"
-            | ScrollOrientation.Both -> "fuaran-scrollarea fuaran-scrollarea-both"
-
-        let styleProps =
-            [ match spec.MaxHeight with
-              | Some h -> style.maxHeight (length.px h)
-              | None -> ()
-              match spec.MaxWidth with
-              | Some w -> style.maxWidth (length.px w)
-              | None -> () ]
-
-        Html.div
-            [ prop.className axisClass
-              prop.tabIndex 0
-              if not styleProps.IsEmpty then
-                  prop.style styleProps
-              prop.children (spec.Children |> List.map (render ctx)) ]
-
 // ─── Displays ──────────────────────────────────────────────────────────────
-
-and private renderDisplay
-    (ctx: RenderContext<'Msg>)
-    (parentNodeId: string)
-    (state: StateBehaviour<'Msg>)
-    (display: DisplayKind<'Msg>)
-    : ReactElement =
-    match display with
-    | DisplayKind.Heading spec ->
-        // Feliz-parity additive: Heading.Variant
-        // appends `fuaran-heading-{variant}` so eyebrow / caption / lead
-        // styling can pick out the shape without overriding `<h{Level}>`
-        // semantics. `Standard` emits the bare `fuaran-heading` class —
-        // existing callers see no class change.
-        let variantSuffix =
-            match spec.Variant with
-            | HeadingVariant.Standard -> ""
-            | HeadingVariant.Eyebrow -> " fuaran-heading-eyebrow"
-            | HeadingVariant.Caption -> " fuaran-heading-caption"
-            | HeadingVariant.Lead -> " fuaran-heading-lead"
-
-        let props: IReactProperty list =
-            [ prop.className (sprintf "fuaran-heading%s" variantSuffix)
-              prop.text (renderText ctx spec.Text) ]
-
-        // HTML heading levels are 1..6; anything outside that range falls to h6.
-        match spec.Level with
-        | 1 -> Html.h1 props
-        | 2 -> Html.h2 props
-        | 3 -> Html.h3 props
-        | 4 -> Html.h4 props
-        | 5 -> Html.h5 props
-        | _ -> Html.h6 props
-    | DisplayKind.Markdown spec ->
-        // Phase 292: one deterministic GFM renderer in Renderer.Core. The same
-        // `Markdown.toHtml` runs on Fable (client) and .NET (Renderer.Server),
-        // so SSR↔CSR output is byte-identical by construction (was: npm `marked`
-        // here, Markdig server-side — two different renders of the same node).
-        let html = Markdown.toHtml (renderText ctx spec.Text)
-
-        Html.div [ prop.className "fuaran-markdown"; prop.dangerouslySetInnerHTML html ]
-    | DisplayKind.Metric spec -> renderMetric ctx parentNodeId state spec
-    | DisplayKind.Badge spec ->
-        Html.span
-            [ prop.className (sprintf "fuaran-badge fuaran-badge-%s" (badgeVariantClass spec.Variant))
-              prop.text (renderText ctx spec.Label) ]
-    | DisplayKind.Skeleton spec ->
-        Html.div
-            [ prop.className "fuaran-skeleton"
-              prop.children [ for _ in 1 .. spec.Rows -> Html.div [ prop.className "fuaran-skeleton-row" ] ] ]
-    | DisplayKind.Callout spec -> renderCallout ctx spec
-    | DisplayKind.Progress spec -> renderProgress ctx parentNodeId state spec
-    | DisplayKind.Sparkline spec -> renderSparkline ctx spec
-    | DisplayKind.Drawing spec ->
-        // Phase 525 — first-party inline SVG from the canonical Core builder
-        // (the ONE serialisation the SSR + TS + Python legs also emit, so the
-        // client / server are parity by construction). Rides
-        // `dangerouslySetInnerHTML` like Markdown/Math — an inert display node.
-        Html.div [ prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) spec) ]
-    | DisplayKind.LabelValueRow spec -> renderLabelValueRow ctx parentNodeId state spec
-    | DisplayKind.Fact spec -> renderFact ctx spec
-    | DisplayKind.Link spec ->
-        // A real `<a href>` — crawlable + works with JS disabled. `href`
-        // resolves the binding then passes through `Sanitize.sanitizeUrlOrBlank`
-        // (blocks javascript:/vbscript:/raw data:; rejected URLs collapse to
-        // `about:blank` so the anchor stays structurally valid). `rel` /
-        // `target` emit when set; `download` emits a bare boolean attribute.
-        let resolvedHref =
-            BindingResolver.tryResolve ctx.Sources spec.Href |> Option.defaultValue ""
-
-        let safeHref = Sanitize.sanitizeUrlOrBlank resolvedHref
-
-        let optionalAttrs: IReactProperty list =
-            [ match spec.Rel with
-              | Some rel -> prop.rel rel
-              | None -> ()
-              match spec.Target with
-              | Some target -> prop.custom ("target", target)
-              | None -> ()
-              if spec.Download then
-                  prop.custom ("download", "") ]
-
-        Html.a (
-            [ prop.className "fuaran-link"; prop.href safeHref ]
-            @ optionalAttrs
-            @ [ prop.text (renderText ctx spec.Label) ]
-        )
-    | DisplayKind.Image spec ->
-        // Phase 287 — real `<img>`; `src` resolves then passes through
-        // `Sanitize.sanitizeUrlOrBlank` (blocks javascript:/vbscript:/file:);
-        // `alt` is mandatory; `variant` appends an Avatar / Rounded class.
-        let resolvedSrc =
-            BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
-
-        let safeSrc = Sanitize.sanitizeUrlOrBlank resolvedSrc
-
-        let variantClass =
-            match spec.Variant with
-            | ImageVariant.Default -> "fuaran-image"
-            | ImageVariant.Avatar -> "fuaran-image fuaran-image-avatar"
-            | ImageVariant.Rounded -> "fuaran-image fuaran-image-rounded"
-
-        Html.img
-            [ prop.className variantClass
-              prop.src safeSrc
-              prop.alt (renderText ctx spec.Alt) ]
-    | DisplayKind.List spec ->
-        // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
-        let items =
-            spec.Items
-            |> List.map (fun item -> Html.li [ prop.className "fuaran-list-item"; prop.text (renderText ctx item) ])
-
-        if spec.Ordered then
-            Html.ol [ prop.className "fuaran-list fuaran-list-ordered"; prop.children items ]
-        else
-            Html.ul [ prop.className "fuaran-list fuaran-list-unordered"; prop.children items ]
-    | DisplayKind.Toast spec ->
-        // Phase 289 overlay render-fidelity contract: ALWAYS in the DOM (no
-        // portal); closed = the `hidden` attribute. `role="status"` +
-        // `aria-live="polite"` announce the message without interrupting.
-        let isOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
-
-        let toneClass =
-            match spec.Tone with
-            | Default -> "default"
-            | Subdued -> "subdued"
-            | Brand -> "brand"
-            | Success -> "success"
-            | Warning -> "warning"
-            | Critical -> "critical"
-            | Info -> "info"
-
-        let dismissEls =
-            if spec.Dismissable then
-                [ Html.button
-                      [ prop.className "fuaran-toast-dismiss"
-                        prop.type' "button"
-                        prop.ariaLabel "Dismiss"
-                        prop.text "×" ] ]
-            else
-                []
-
-        Html.div
-            [ prop.className (sprintf "fuaran-toast fuaran-toast-%s" toneClass)
-              prop.role "status"
-              prop.custom ("aria-live", "polite")
-              if not isOpen then
-                  prop.custom ("hidden", "")
-              prop.children (
-                  [ Html.span
-                        [ prop.className "fuaran-toast-message"
-                          prop.text (renderText ctx spec.Message) ] ]
-                  @ dismissEls
-              ) ]
-    | DisplayKind.CodeBlock spec ->
-        // Phase 290 — DETERMINISTIC `<pre><code>` (HTML-escaped via `prop.text`,
-        // NO markdown library), byte-identical across all hosts + SSR. Syntax
-        // highlighting is a client-only post-hydration enhancement that targets
-        // the `language-{x}` class — explicitly NOT emitted here (outside the
-        // parity output). Line numbers + highlight ranges are deterministic
-        // class / data hooks the enhancement reads.
-        let containerClass =
-            if spec.LineNumbers then
-                "fuaran-codeblock fuaran-codeblock-numbered"
-            else
-                "fuaran-codeblock"
-
-        let highlightAttr =
-            match spec.HighlightLines with
-            | [] -> []
-            | lines -> [ prop.custom ("data-highlight-lines", String.concat "," (lines |> List.map string)) ]
-
-        let copyEls =
-            if spec.Copyable then
-                [ Html.button
-                      [ prop.className "fuaran-codeblock-copy"
-                        prop.type' "button"
-                        prop.ariaLabel "Copy"
-                        prop.text "Copy" ] ]
-            else
-                []
-
-        Html.div (
-            [ prop.className containerClass; prop.custom ("data-language", spec.Language) ]
-            @ highlightAttr
-            @ [ prop.children (
-                    copyEls
-                    @ [ Html.pre
-                            [ prop.className "fuaran-codeblock-pre"
-                              prop.children
-                                  [ Html.code
-                                        [ prop.className (sprintf "fuaran-codeblock-code language-%s" spec.Language)
-                                          prop.text spec.Code ] ] ] ]
-                ) ]
-        )
-    | DisplayKind.Math spec ->
-        // Phase 658 — DETERMINISTIC native MathML for the closed subset (real
-        // superscripts / fractions with NO JavaScript); the raw escaped LaTeX
-        // source span for out-of-subset input (today's fallback, unchanged).
-        // KaTeX upgrades EITHER shape client-only post-hydration (targets the
-        // `.fuaran-math` container, reads `data-fuaran-math-src`), OUTSIDE the
-        // parity output. `MathMl.translate` is a pure Fable-safe function shared
-        // with the server renderer, so both emit byte-identical markup — see
-        // docs/MATH-DEGRADATION.md (the normative subset + fixture oracle).
-        let mathml = MathMl.translate spec.Source spec.Display
-
-        let displayStr, isBlock =
-            match spec.Display with
-            | MathDisplay.Block -> "block", true
-            | MathDisplay.Inline -> "inline", false
-
-        let containerProps =
-            [ prop.className (
-                  if isBlock then
-                      "fuaran-math fuaran-math-block"
-                  else
-                      "fuaran-math fuaran-math-inline"
-              )
-              prop.custom ("data-math-display", displayStr)
-              prop.custom ("data-fuaran-math-src", spec.Source) ]
-
-        let content =
-            match mathml with
-            | Some markup -> [ prop.dangerouslySetInnerHTML markup ]
-            | None -> [ prop.children [ Html.span [ prop.className "fuaran-math-source"; prop.text spec.Source ] ] ]
-
-        if isBlock then
-            Html.div (containerProps @ content)
-        else
-            Html.span (containerProps @ content)
 
 and private renderMetric
     (ctx: RenderContext<'Msg>)
@@ -2500,14 +2522,6 @@ and private renderSparkline (ctx: RenderContext<'Msg>) (spec: SparklineSpec) : R
     | _ -> Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
 
 // ─── Inputs ────────────────────────────────────────────────────────────────
-
-and private renderInput (ctx: RenderContext<'Msg>) (input: InputKind<'Msg>) : ReactElement =
-    match input with
-    | InputKind.Button spec -> renderButton ctx spec
-    | InputKind.Select spec -> renderSelect ctx spec
-    | InputKind.Form spec -> renderForm ctx spec
-    | InputKind.Filters specs -> renderFilters ctx specs
-    | InputKind.FileUpload spec -> renderFileUpload ctx spec
 
 and private renderButton (ctx: RenderContext<'Msg>) (spec: ButtonSpec<'Msg>) : ReactElement =
     let unwired = containsUnwiredAction spec.OnClick
@@ -3290,27 +3304,6 @@ and private renderFileUpload (ctx: RenderContext<'Msg>) (spec: FileUploadSpec<'M
                 Html.input inputProps ] ]
 
 // ─── Visualisations ────────────────────────────────────────────────────────
-
-and private renderVis
-    (ctx: RenderContext<'Msg>)
-    (parentNodeId: string)
-    (state: StateBehaviour<'Msg>)
-    (vis: VisKind<'Msg>)
-    : ReactElement =
-    match vis with
-    | VisKind.DataGrid spec ->
-        // Phase 393 — a static read-only grid renders the semantic <table> leg (byte-identical to the
-        // retired Table); a data-bound grid takes the ordinary grid path.
-        match spec.StaticRows with
-        | Some(headers, rows) ->
-            renderTable
-                ctx
-                { Headers = headers
-                  Rows = rows
-                  OnRowClick = None }
-        | None -> renderGrid ctx parentNodeId state spec
-    | VisKind.Chart spec -> renderChart ctx parentNodeId state spec
-    | VisKind.Map spec -> renderMap ctx parentNodeId state spec
 
 and private renderGrid
     (ctx: RenderContext<'Msg>)

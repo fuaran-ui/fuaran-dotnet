@@ -88,45 +88,40 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
     let rec walk (n: Node<'Msg>) =
         let (NodeId nodeId) = n.Id
 
-        match n.Kind with
-        | NodeKind.Layout layout ->
-            let children =
-                match layout with
-                | LayoutKind.Box s -> s.Children
-                | LayoutKind.SplitPanel s -> s.Children
-                | LayoutKind.Stepper s -> s.Children
-                | LayoutKind.SummaryList s -> s.Children
-                | LayoutKind.ScrollArea s -> s.Children
-                | LayoutKind.Modal s ->
-                    // `onDismiss` is a wire-survivable Action, never a
-                    // sentinel — only its interior Calls are lintable.
-                    s.OnDismiss |> Option.iter (fun a -> findings.AddRange(callFindings nodeId a))
-                    s.Children
-                | LayoutKind.Tabs s ->
-                    handler
-                        nodeId
-                        "TabsSpec.onSelect"
-                        s.OnSelect.IsSome
-                        (isWritable s.ActiveIndex)
-                        "$state (activeIndex)"
+        // Phase 692 — one flat match, where this was three nested under the
+        // category envelope. Every arm yields the children to descend into.
+        let children =
+            match n.Kind with
+            // -- Layout --
+            | NodeKind.Box s -> s.Children
+            | NodeKind.SplitPanel s -> s.Children
+            | NodeKind.Stepper s -> s.Children
+            | NodeKind.SummaryList s -> s.Children
+            | NodeKind.ScrollArea s -> s.Children
+            | NodeKind.Modal s ->
+                // `onDismiss` is a wire-survivable Action, never a
+                // sentinel — only its interior Calls are lintable.
+                s.OnDismiss |> Option.iter (fun a -> findings.AddRange(callFindings nodeId a))
+                s.Children
+            | NodeKind.Tabs s ->
+                handler nodeId "TabsSpec.onSelect" s.OnSelect.IsSome (isWritable s.ActiveIndex) "$state (activeIndex)"
 
-                    handler
-                        nodeId
-                        "TabsSpec.onSelectTag"
-                        s.OnSelectTag.IsSome
-                        (s.ActiveTag |> Option.map isWritable |> Option.defaultValue false)
-                        "$state (activeTag)"
+                handler
+                    nodeId
+                    "TabsSpec.onSelectTag"
+                    s.OnSelectTag.IsSome
+                    (s.ActiveTag |> Option.map isWritable |> Option.defaultValue false)
+                    "$state (activeTag)"
 
-                    s.Children
-                | LayoutKind.Disclosure s ->
-                    handler nodeId "DisclosureSpec.onToggle" s.OnToggle.IsSome (isWritable s.Open) "$state (open)"
-                    s.Children
-
-            children |> List.iter walk
-        | NodeKind.Input input ->
-            match input with
-            | InputKind.Button b -> findings.AddRange(callFindings nodeId b.OnClick)
-            | InputKind.Form f ->
+                s.Children
+            | NodeKind.Disclosure s ->
+                handler nodeId "DisclosureSpec.onToggle" s.OnToggle.IsSome (isWritable s.Open) "$state (open)"
+                s.Children
+            // -- Input --
+            | NodeKind.Button b ->
+                findings.AddRange(callFindings nodeId b.OnClick)
+                []
+            | NodeKind.Form f ->
                 findings.AddRange(callFindings nodeId f.OnSubmit)
 
                 for field in f.Fields do
@@ -149,7 +144,9 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
                     | FormFieldKind.Date(v, oc, _, _) ->
                         handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
-            | InputKind.Select s ->
+
+                []
+            | NodeKind.Select s ->
                 handler nodeId "SelectSpec.onChange" s.OnChange.IsSome (isWritable s.Value) "$state (value)"
 
                 handler
@@ -158,7 +155,9 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                     s.OnChangeMulti.IsSome
                     (s.Values |> Option.map isWritable |> Option.defaultValue false)
                     "$state (values)"
-            | InputKind.Filters filters ->
+
+                []
+            | NodeKind.Filters filters ->
                 for fs in filters do
                     // A chip's write-back needs no writable value binding —
                     // it writes its own `$filters.<name>` (423); a present
@@ -188,10 +187,13 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                                     fs.Name
                                     fs.Name }
                         )
-            | InputKind.FileUpload _ -> () // HostOnlyByDesign (see SlotCapability)
-        | NodeKind.Visualisation vis ->
-            match vis with
-            | VisKind.DataGrid g ->
+
+                []
+            | NodeKind.FileUpload _ ->
+                () // HostOnlyByDesign (see SlotCapability)
+                []
+            // -- Visualisation --
+            | NodeKind.DataGrid g ->
                 handler nodeId "GridSpec.onRowClick" g.OnRowClick.IsSome true "$selection (its own NodeId)"
 
                 if g.RowKey.IsSome then
@@ -212,22 +214,44 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                                     "replace column '%s''s value closure with field: \"<row property>\" — the decoded closure renders blank and shadows the field form"
                                     col.Label)
                         )
-            | VisKind.Chart _
-            | VisKind.Map _ -> () // click handlers are HostOnlyByDesign rows
-        | NodeKind.ErrorBoundary spec ->
-            walk spec.Child
-            walk spec.Fallback
-        | NodeKind.Switch spec ->
-            // Switch has no closure-bearing slots (StateKey is a string; the
-            // cases/default are Nodes) — nothing dead-on-decode of its own, so
-            // just descend into the case children + default.
-            spec.Cases |> List.iter (fun (_, child) -> walk child)
-            walk spec.Default
-        | NodeKind.FragmentDecl spec -> walk spec.Body
-        | NodeKind.Display _
-        | NodeKind.Custom _
-        | NodeKind.FragmentRef _
-        | NodeKind.Mount _ -> ()
+
+                []
+            | NodeKind.Chart _
+            | NodeKind.Map _ ->
+                () // click handlers are HostOnlyByDesign rows
+                []
+            // -- Structural --
+            | NodeKind.ErrorBoundary spec -> [ spec.Child; spec.Fallback ]
+            | NodeKind.Switch spec ->
+                // Switch has no closure-bearing slots (StateKey is a string; the
+                // cases/default are Nodes) — nothing dead-on-decode of its own, so
+                // just descend into the case children + default.
+                (spec.Cases |> List.map snd) @ [ spec.Default ]
+            | NodeKind.FragmentDecl spec -> [ spec.Body ]
+            // -- Display --
+            // Leaves, with no closure-bearing slot this check can call dead.
+            | NodeKind.Heading _
+            | NodeKind.Markdown _
+            | NodeKind.Metric _
+            | NodeKind.Badge _
+            | NodeKind.Sparkline _
+            | NodeKind.Callout _
+            | NodeKind.Progress _
+            | NodeKind.Skeleton _
+            | NodeKind.LabelValueRow _
+            | NodeKind.Fact _
+            | NodeKind.Link _
+            | NodeKind.Image _
+            | NodeKind.List _
+            | NodeKind.Toast _
+            | NodeKind.CodeBlock _
+            | NodeKind.Math _
+            | NodeKind.Drawing _
+            | NodeKind.Custom _
+            | NodeKind.FragmentRef _
+            | NodeKind.Mount _ -> []
+
+        children |> List.iter walk
 
     walk root
     List.ofSeq findings

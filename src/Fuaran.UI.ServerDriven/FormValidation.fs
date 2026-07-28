@@ -153,7 +153,7 @@ let stepWithValidation
     match findNode (NodeId ev.NodeId) session.Tree with
     | Some node ->
         match node.Kind with
-        | NodeKind.Input(InputKind.Form form) when ev.Event = "submit" ->
+        | NodeKind.Form(form) when ev.Event = "submit" ->
             let submission =
                 { FormNodeId = ev.NodeId
                   Form = form

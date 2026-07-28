@@ -172,14 +172,14 @@ let rec private collectFragments (acc: Map<FragmentId, Node<obj>>) (node: Node<o
 
     let children =
         match node.Kind with
-        | NodeKind.Layout(LayoutKind.Box s) -> s.Children
-        | NodeKind.Layout(LayoutKind.SplitPanel s) -> s.Children
-        | NodeKind.Layout(LayoutKind.Tabs s) -> s.Children
-        | NodeKind.Layout(LayoutKind.Stepper s) -> s.Children
-        | NodeKind.Layout(LayoutKind.SummaryList s) -> s.Children
-        | NodeKind.Layout(LayoutKind.Disclosure s) -> s.Children
-        | NodeKind.Layout(LayoutKind.Modal s) -> s.Children
-        | NodeKind.Layout(LayoutKind.ScrollArea s) -> s.Children
+        | NodeKind.Box(s) -> s.Children
+        | NodeKind.SplitPanel(s) -> s.Children
+        | NodeKind.Tabs(s) -> s.Children
+        | NodeKind.Stepper(s) -> s.Children
+        | NodeKind.SummaryList(s) -> s.Children
+        | NodeKind.Disclosure(s) -> s.Children
+        | NodeKind.Modal(s) -> s.Children
+        | NodeKind.ScrollArea(s) -> s.Children
         | NodeKind.ErrorBoundary s -> [ s.Child ]
         | NodeKind.Switch s -> (s.Cases |> List.map snd) @ [ s.Default ]
         | NodeKind.FragmentDecl s -> [ s.Body ]
@@ -268,10 +268,841 @@ and private renderKind
     (kind: NodeKind<obj>)
     : ReactElement =
     match kind with
-    | NodeKind.Layout layout -> renderLayout ctx parentNodeId layout
-    | NodeKind.Display display -> renderDisplay ctx state display
-    | NodeKind.Input input -> renderInput ctx input
-    | NodeKind.Visualisation vis -> renderVis ctx vis
+    // -- Layout --
+    // Phase 390 — the unified container; role + layout drive the emitted
+    // element + classes so SSR output stays byte-identical to the pre-merge
+    // per-kind emission (and to the client renderer — SSR parity corpus).
+    | NodeKind.Box spec ->
+        match spec.Role, spec.Layout with
+        | BoxRole.Card, _ ->
+            Html.section
+                [ prop.className "fuaran-layout-card"
+                  prop.children
+                      [ match spec.Heading with
+                        | Some heading ->
+                            Html.header [ prop.className "fuaran-card-heading"; prop.text (renderText ctx heading) ]
+                        | None -> Html.none
+                        Html.div
+                            [ prop.className "fuaran-card-body"
+                              prop.children (spec.Children |> List.map (renderNode ctx)) ] ] ]
+        | BoxRole.Dashboard, _
+        | BoxRole.Group, BoxLayout.Auto ->
+            Html.div
+                [ prop.className "fuaran-layout-dashboard"
+                  prop.children (spec.Children |> List.map (renderNode ctx)) ]
+        | BoxRole.Separator, _ -> Html.hr [ prop.className "fuaran-layout-separator" ]
+        | BoxRole.Group, BoxLayout.Grid g ->
+            let templateColumns =
+                match g.TemplateColumns with
+                | Some custom -> custom
+                | None -> sprintf "repeat(%d, 1fr)" g.Cols
+
+            // `gap` (Phase 459) emits only when set — gap-free grids stay
+            // byte-identical to the pre-459 emission (SSR parity with the client).
+            let gridStyle =
+                [ style.custom ("gridTemplateColumns", templateColumns) ]
+                @ (match g.Gap with
+                   | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
+                   | None -> [])
+
+            Html.div
+                [ prop.className "fuaran-layout-grid"
+                  prop.style gridStyle
+                  prop.children (spec.Children |> List.map (renderNode ctx)) ]
+        | BoxRole.Group, BoxLayout.Flex f ->
+            let dir =
+                match f.Direction with
+                | Vertical -> "fuaran-stack-vertical"
+                | Horizontal -> "fuaran-stack-horizontal"
+
+            let wrap = if f.Wrap then " fuaran-stack-wrap" else ""
+
+            Html.div (
+                [ prop.className (sprintf "fuaran-layout-stack %s%s" dir wrap) ]
+                @ (match f.Gap with
+                   | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
+                   | None -> [])
+                @ [ prop.children (spec.Children |> List.map (renderNode ctx)) ]
+            )
+    | NodeKind.SplitPanel spec ->
+        let weightLeft = max 0.0 (min 1.0 spec.Weight)
+        let weightRight = 1.0 - weightLeft
+        let renderedChildren = spec.Children |> List.map (renderNode ctx)
+
+        let leftChildren, rightChildren =
+            match renderedChildren with
+            | [] -> [], []
+            | [ a ] -> [ a ], []
+            | a :: rest -> [ a ], rest
+
+        Html.div
+            [ prop.className "fuaran-layout-split-panel"
+              prop.children
+                  [ Html.div
+                        [ prop.className "fuaran-split-pane fuaran-split-pane-left"
+                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightLeft) ]
+                          prop.children leftChildren ]
+                    Html.div
+                        [ prop.className "fuaran-split-pane fuaran-split-pane-right"
+                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightRight) ]
+                          prop.children rightChildren ] ] ]
+    | NodeKind.Tabs spec ->
+        // Static tablist + the active panel. Keyboard nav + click dispatch are
+        // client-only (hydration); the server emits the ARIA structure inert.
+        let parentNodeIdStr = parentNodeId
+
+        let tabsLabelFromChild (child: Node<obj>) : string =
+            match child.Kind with
+            | NodeKind.Box { Role = BoxRole.Card
+                             Heading = Some h } -> renderText ctx h
+            | _ ->
+                match child.Id with
+                | NodeId s -> s
+
+        let perTab
+            : {| label: string
+                 icon: string option
+                 disabled: bool |} list =
+            match spec.TabHeaders with
+            | Some headers ->
+                headers
+                |> List.map (fun h ->
+                    let disabled =
+                        h.Disabled
+                        |> Option.bind (BindingResolver.tryResolve ctx.Sources)
+                        |> Option.defaultValue false
+
+                    let icon = h.Icon |> Option.map (fun (IconSource s) -> s)
+
+                    {| label = renderText ctx h.Label
+                       icon = icon
+                       disabled = disabled |})
+            | None ->
+                spec.Children
+                |> List.map (fun child ->
+                    {| label = tabsLabelFromChild child
+                       icon = None
+                       disabled = false |})
+
+        let orientationClass =
+            match spec.Orientation with
+            | Horizontal -> "fuaran-tabs-horizontal"
+            | Vertical -> "fuaran-tabs-vertical"
+
+        let isVertical = spec.Orientation = Vertical
+
+        let resolvedFromTag: int option =
+            match spec.TabTags, spec.ActiveTag with
+            | Some tags, Some tagBinding ->
+                BindingResolver.tryResolve ctx.Sources tagBinding
+                |> Option.bind (fun tag -> tags |> List.tryFindIndex ((=) tag))
+            | _ -> None
+
+        let activeIndex =
+            resolvedFromTag
+            |> Option.orElseWith (fun () -> BindingResolver.tryResolve ctx.Sources spec.ActiveIndex)
+            |> Option.defaultValue 0
+            |> max 0
+            |> min (max 0 (spec.Children.Length - 1))
+
+        let activeChild =
+            spec.Children
+            |> List.tryItem activeIndex
+            |> Option.orElseWith (fun () -> spec.Children |> List.tryHead)
+
+        let tabId (i: int) = sprintf "%s-tab-%d" parentNodeIdStr i
+        let panelId (i: int) = sprintf "%s-panel-%d" parentNodeIdStr i
+
+        Html.div
+            [ prop.className (sprintf "fuaran-layout-tabs %s" orientationClass)
+              prop.children
+                  [ Html.div
+                        [ prop.className "fuaran-tabs-bar"
+                          prop.role "tablist"
+                          prop.custom ("aria-orientation", (if isVertical then "vertical" else "horizontal"))
+                          prop.children
+                              [ for (i, t) in List.indexed perTab ->
+                                    let isActive = i = activeIndex
+
+                                    let cls =
+                                        String.concat
+                                            " "
+                                            [ "fuaran-tab"
+                                              if isActive then
+                                                  "fuaran-tab-active"
+                                              if t.disabled then
+                                                  "fuaran-tab-disabled" ]
+
+                                    Html.button (
+                                        [ prop.id (tabId i)
+                                          prop.className cls
+                                          prop.role "tab"
+                                          prop.custom ("aria-selected", (if isActive then "true" else "false"))
+                                          prop.custom ("aria-controls", panelId i)
+                                          prop.tabIndex (if isActive then 0 else -1)
+                                          prop.custom ("data-tab-index", string i) ]
+                                        @ (if t.disabled then
+                                               [ prop.custom ("aria-disabled", "true"); prop.disabled true ]
+                                           else
+                                               [])
+                                        @ [ prop.children
+                                                [ match t.icon with
+                                                  | Some iconSrc -> iconHook "fuaran-tab-icon" iconSrc
+                                                  | None -> Html.none
+                                                  Html.span [ prop.className "fuaran-tab-label"; prop.text t.label ] ] ]
+                                    ) ] ]
+                    Html.div
+                        [ prop.className "fuaran-tabs-panels"
+                          prop.children (
+                              match activeChild with
+                              | Some childNode ->
+                                  [ Html.div
+                                        [ prop.id (panelId activeIndex)
+                                          prop.role "tabpanel"
+                                          prop.custom ("aria-labelledby", tabId activeIndex)
+                                          prop.tabIndex 0
+                                          prop.className "fuaran-tabs-panel"
+                                          prop.children [ renderNode ctx childNode ] ] ]
+                              | None -> []
+                          ) ] ] ]
+    | NodeKind.SummaryList spec ->
+        Html.section
+            [ prop.className "fuaran-layout-summary-list"
+              prop.children
+                  [ match spec.Heading with
+                    | Some heading ->
+                        Html.header
+                            [ prop.className "fuaran-summary-list-heading"
+                              prop.text (renderText ctx heading) ]
+                    | None -> Html.none
+                    Html.div
+                        [ prop.className "fuaran-summary-list-body"
+                          prop.children (spec.Children |> List.map (renderNode ctx)) ] ] ]
+    | NodeKind.Disclosure spec ->
+        let resolvedOpen =
+            BindingResolver.tryResolve ctx.Sources spec.Open
+            |> Option.defaultValue spec.DefaultOpen
+
+        Html.details (
+            [ prop.className "fuaran-layout-disclosure" ]
+            @ (if resolvedOpen then [ prop.custom ("open", "") ] else [])
+            @ [ prop.children
+                    [ Html.summary
+                          [ prop.className "fuaran-disclosure-summary"
+                            prop.text (renderText ctx spec.Heading) ]
+                      Html.div
+                          [ prop.className "fuaran-disclosure-body"
+                            prop.children (spec.Children |> List.map (renderNode ctx)) ] ] ]
+        )
+    | NodeKind.Stepper spec ->
+        let activeIndex =
+            BindingResolver.tryResolve ctx.Sources spec.ActiveStep |> Option.defaultValue 0
+
+        Html.div
+            [ prop.className "fuaran-layout-stepper"
+              prop.children
+                  [ Html.ol
+                        [ prop.className "fuaran-stepper-numbers"
+                          prop.children
+                              [ for i in 0 .. spec.Children.Length - 1 ->
+                                    let isActive = i = activeIndex
+
+                                    Html.li
+                                        [ prop.className (
+                                              if isActive then
+                                                  "fuaran-stepper-step fuaran-stepper-step-active"
+                                              else
+                                                  "fuaran-stepper-step"
+                                          )
+                                          // Server-driven step selection: the live
+                                          // shim bridges a step-header click to
+                                          // `payload.index` off this attribute
+                                          // (mirrors the tab bar's data-tab-index).
+                                          prop.custom ("data-step-index", string i)
+                                          prop.text (sprintf "%d" (i + 1)) ] ] ]
+                    Html.div
+                        [ prop.className "fuaran-stepper-body"
+                          prop.children (
+                              match List.tryItem activeIndex spec.Children with
+                              | Some node -> [ renderNode ctx node ]
+                              | None -> []
+                          ) ] ] ]
+    | NodeKind.Modal spec ->
+        // Phase 289 overlay render-fidelity contract (server half): the overlay
+        // is ALWAYS emitted (no portal), positioned + z-indexed by CSS; closed =
+        // the `hidden` attribute. Structure is byte-identical to the client
+        // renderer (same classes + `role="dialog"` + `aria-modal`) so React
+        // hydration finds the DOM it expects. Dismiss handlers are client-only
+        // (attached on hydration) — not a structural difference.
+        let isOpen =
+            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
+
+        let headingEls =
+            match spec.Heading with
+            | Some h -> [ Html.h2 [ prop.className "fuaran-modal-heading"; prop.text (renderText ctx h) ] ]
+            | None -> []
+
+        let dismissEls =
+            if spec.Dismissable then
+                [ Html.button
+                      [ prop.className "fuaran-modal-dismiss"
+                        prop.custom ("type", "button")
+                        prop.ariaLabel "Close"
+                        prop.text "×" ] ]
+            else
+                []
+
+        Html.div (
+            [ prop.className "fuaran-modal-overlay" ]
+            @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
+            @ [ prop.children
+                    [ Html.div
+                          [ prop.className "fuaran-modal-dialog"
+                            prop.role "dialog"
+                            prop.custom ("aria-modal", "true")
+                            prop.children (
+                                headingEls
+                                @ dismissEls
+                                @ [ Html.div
+                                        [ prop.className "fuaran-modal-body"
+                                          prop.children (spec.Children |> List.map (renderNode ctx)) ] ]
+                            ) ] ] ]
+        )
+    | NodeKind.ScrollArea spec ->
+        let axisClass =
+            match spec.Orientation with
+            | ScrollOrientation.Vertical -> "fuaran-scrollarea fuaran-scrollarea-vertical"
+            | ScrollOrientation.Horizontal -> "fuaran-scrollarea fuaran-scrollarea-horizontal"
+            | ScrollOrientation.Both -> "fuaran-scrollarea fuaran-scrollarea-both"
+
+        let styleProps =
+            [ match spec.MaxHeight with
+              | Some h -> style.maxHeight (length.px h)
+              | None -> ()
+              match spec.MaxWidth with
+              | Some w -> style.maxWidth (length.px w)
+              | None -> () ]
+
+        Html.div (
+            // `prop.custom ("tabindex", ...)` emits the lowercase attribute the
+            // client's React `prop.tabIndex` normalises to — keeps SSR↔CSR
+            // byte-identical (Feliz.ViewEngine's `prop.tabIndex` would emit the
+            // camelCase `tabIndex`, diverging from React's DOM `tabindex`).
+            [ prop.className axisClass; prop.custom ("tabindex", "0") ]
+            @ (if styleProps.IsEmpty then [] else [ prop.style styleProps ])
+            @ [ prop.children (spec.Children |> List.map (renderNode ctx)) ]
+        )
+    // -- Display --
+    | NodeKind.Heading spec ->
+        let variantSuffix =
+            match spec.Variant with
+            | HeadingVariant.Standard -> ""
+            | HeadingVariant.Eyebrow -> " fuaran-heading-eyebrow"
+            | HeadingVariant.Caption -> " fuaran-heading-caption"
+            | HeadingVariant.Lead -> " fuaran-heading-lead"
+
+        let props =
+            [ prop.className (sprintf "fuaran-heading%s" variantSuffix)
+              prop.text (renderText ctx spec.Text) ]
+
+        match spec.Level with
+        | 1 -> Html.h1 props
+        | 2 -> Html.h2 props
+        | 3 -> Html.h3 props
+        | 4 -> Html.h4 props
+        | 5 -> Html.h5 props
+        | _ -> Html.h6 props
+    | NodeKind.Markdown spec ->
+        Html.div
+            [ prop.className "fuaran-markdown"
+              prop.dangerouslySetInnerHTML (Markdown.toHtml (renderText ctx spec.Text)) ]
+    | NodeKind.Metric spec ->
+        // Phase 632 — the Metric value is a scalar slot: a `Binding.Transform`
+        // resolves to its 1×1 result cell (a global aggregate / row-field
+        // lookup), the same dispatch as the client's `renderMetric`.
+        let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
+
+        match resolution, state.OnLoading with
+        | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
+        | _ ->
+            Html.div
+                [ prop.className (sprintf "fuaran-metric fuaran-metric-%s" (Theme.toneVar spec.Tone))
+                  prop.children
+                      [ match spec.Icon with
+                        | Some(IconSource icon) -> iconHook "fuaran-metric-icon" icon
+                        | None -> Html.none
+                        Html.div [ prop.className "fuaran-metric-label"; prop.text (renderText ctx spec.Label) ]
+                        Html.div
+                            [ prop.className "fuaran-metric-value"
+                              prop.text (
+                                  match resolution with
+                                  | BindingResolver.Resolved value -> formatNumber spec.Format value
+                                  | BindingResolver.NotResolved -> "—"
+                                  | BindingResolver.Errored msg -> sprintf "(error: %s)" msg
+                                  | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
+                              ) ]
+                        match spec.Trend with
+                        | Some trendBinding ->
+                            Html.div
+                                [ prop.className "fuaran-metric-trend"
+                                  prop.text (
+                                      match BindingResolver.tryResolveScalarFloat ctx.Sources trendBinding with
+                                      | Some t ->
+                                          formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t
+                                      | None -> ""
+                                  ) ]
+                        | None -> Html.none
+                        match spec.Subtext with
+                        | Some subtext ->
+                            Html.div [ prop.className "fuaran-metric-subtext"; prop.text (renderText ctx subtext) ]
+                        | None -> Html.none ] ]
+    | NodeKind.Badge spec ->
+        Html.span
+            [ prop.className (sprintf "fuaran-badge fuaran-badge-%s" (badgeVariantClass spec.Variant))
+              prop.text (renderText ctx spec.Label) ]
+    | NodeKind.Skeleton spec ->
+        Html.div
+            [ prop.className "fuaran-skeleton"
+              prop.children [ for _ in 1 .. spec.Rows -> Html.div [ prop.className "fuaran-skeleton-row" ] ] ]
+    | NodeKind.Callout spec ->
+        Html.div
+            [ prop.className (sprintf "fuaran-callout fuaran-callout-%s" (Theme.toneVar spec.Tone))
+              prop.children
+                  [ match spec.Icon with
+                    | Some(IconSource icon) -> iconHook "fuaran-callout-icon" icon
+                    | None -> Html.none
+                    match spec.Heading with
+                    | Some heading ->
+                        Html.div [ prop.className "fuaran-callout-heading"; prop.text (renderText ctx heading) ]
+                    | None -> Html.none
+                    Html.div [ prop.className "fuaran-callout-body"; prop.text (renderText ctx spec.Body) ] ] ]
+    | NodeKind.Progress spec ->
+        let resolution = BindingResolver.resolve ctx.Sources spec.Fraction
+
+        match resolution, state.OnLoading with
+        | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
+        | _ ->
+            let fraction =
+                match resolution with
+                | BindingResolver.Resolved value -> value
+                | _ -> 0.0
+
+            Html.div
+                [ prop.className (
+                      sprintf
+                          "fuaran-progress fuaran-progress-%s%s"
+                          (Theme.toneVar spec.Tone)
+                          (if spec.Indeterminate then
+                               " fuaran-progress-indeterminate"
+                           else
+                               "")
+                  )
+                  prop.children
+                      [ match spec.Label with
+                        | Some label ->
+                            Html.div [ prop.className "fuaran-progress-label"; prop.text (renderText ctx label) ]
+                        | None -> Html.none
+                        Html.div
+                            [ prop.className "fuaran-progress-bar"
+                              prop.children
+                                  [ Html.div
+                                        [ prop.className "fuaran-progress-fill"
+                                          prop.style [ style.custom ("width", sprintf "%f%%" (fraction * 100.0)) ] ] ] ] ] ]
+    | NodeKind.Sparkline _ ->
+        // The client emits an inline SVG polyline; SSR emits the same hook +
+        // an em-dash placeholder (the data renders client-side on hydration).
+        Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
+    | NodeKind.Drawing spec ->
+        // Phase 525 — the SAME canonical Core SVG string the client emits (so
+        // SSR ↔ CSR are byte-identical for this static-geometry node); resolved
+        // + rendered on the server, headless included (D4).
+        Html.div [ prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) spec) ]
+    | NodeKind.LabelValueRow spec ->
+        // Phase 632 — a scalar slot: Transform resolves to its 1×1 result cell,
+        // and an ambiguous (>1×1) result stays loud, matching the client's
+        // `renderLabelValueRow` value projection.
+        let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
+
+        match resolution, state.OnLoading with
+        | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
+        | _ ->
+            let emphasisSuffix =
+                if spec.Emphasis then
+                    " fuaran-label-value-row-emphasis"
+                else
+                    ""
+
+            Html.div
+                [ prop.className (sprintf "fuaran-label-value-row%s" emphasisSuffix)
+                  prop.children
+                      [ Html.span
+                            [ prop.className "fuaran-label-value-row-label"
+                              prop.text (renderText ctx spec.Label) ]
+                        Html.span
+                            [ prop.className "fuaran-label-value-row-value"
+                              prop.text (
+                                  match resolution with
+                                  | BindingResolver.Resolved value -> formatNumber spec.Format value
+                                  | BindingResolver.NotResolved -> "—"
+                                  | BindingResolver.Errored msg -> sprintf "(error: %s)" msg
+                                  | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
+                              ) ] ] ]
+    | NodeKind.Fact spec ->
+        // Server-side Fact mirrors the client tile; `renderText` resolves the
+        // TextSource value identically on both sides (see the module doc's
+        // SSR<->CSR parity note).
+        let emphasisSuffix = if spec.Emphasis then " fuaran-fact-emphasis" else ""
+
+        Html.div
+            [ prop.className (sprintf "fuaran-fact fuaran-fact-%s%s" (Theme.toneVar spec.Tone) emphasisSuffix)
+              prop.children
+                  [ Html.div [ prop.className "fuaran-fact-label"; prop.text (renderText ctx spec.Label) ]
+                    Html.div
+                        [ prop.className "fuaran-fact-value"
+                          prop.children
+                              [ match spec.Icon with
+                                | Some(IconSource icon) -> iconHook "fuaran-fact-icon" icon
+                                | None -> Html.none
+                                Html.span [ prop.text (renderText ctx spec.Value) ] ] ]
+                    match spec.Help with
+                    | Some help -> Html.div [ prop.className "fuaran-fact-help"; prop.text (renderText ctx help) ]
+                    | None -> Html.none ] ]
+    | NodeKind.Link spec ->
+        let resolvedHref =
+            BindingResolver.tryResolve ctx.Sources spec.Href |> Option.defaultValue ""
+
+        let safeHref = Sanitize.sanitizeUrlOrBlank resolvedHref
+
+        Html.a (
+            [ prop.className "fuaran-link"; prop.href safeHref ]
+            @ (match spec.Rel with
+               | Some rel -> [ prop.custom ("rel", rel) ]
+               | None -> [])
+            @ (match spec.Target with
+               | Some target -> [ prop.custom ("target", target) ]
+               | None -> [])
+            @ (if spec.Download then
+                   [ prop.custom ("download", "") ]
+               else
+                   [])
+            @ [ prop.text (renderText ctx spec.Label) ]
+        )
+    | NodeKind.Image spec ->
+        let resolvedSrc =
+            BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
+
+        let safeSrc = Sanitize.sanitizeUrlOrBlank resolvedSrc
+
+        let variantClass =
+            match spec.Variant with
+            | ImageVariant.Default -> "fuaran-image"
+            | ImageVariant.Avatar -> "fuaran-image fuaran-image-avatar"
+            | ImageVariant.Rounded -> "fuaran-image fuaran-image-rounded"
+
+        Html.img
+            [ prop.className variantClass
+              prop.src safeSrc
+              prop.alt (renderText ctx spec.Alt) ]
+    | NodeKind.List spec ->
+        let items =
+            spec.Items
+            |> List.map (fun item -> Html.li [ prop.className "fuaran-list-item"; prop.text (renderText ctx item) ])
+
+        if spec.Ordered then
+            Html.ol [ prop.className "fuaran-list fuaran-list-ordered"; prop.children items ]
+        else
+            Html.ul [ prop.className "fuaran-list fuaran-list-unordered"; prop.children items ]
+    | NodeKind.Toast spec ->
+        // Phase 289 overlay render-fidelity contract (server half): ALWAYS
+        // emitted; closed = the `hidden` attribute. `role="status"` +
+        // `aria-live="polite"` — byte-identical to the client renderer.
+        let isOpen =
+            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
+
+        let toneClass =
+            match spec.Tone with
+            | Default -> "default"
+            | Subdued -> "subdued"
+            | Brand -> "brand"
+            | Success -> "success"
+            | Warning -> "warning"
+            | Critical -> "critical"
+            | Info -> "info"
+
+        let dismissEls =
+            if spec.Dismissable then
+                [ Html.button
+                      [ prop.className "fuaran-toast-dismiss"
+                        prop.custom ("type", "button")
+                        prop.ariaLabel "Dismiss"
+                        prop.text "×" ] ]
+            else
+                []
+
+        Html.div (
+            [ prop.className (sprintf "fuaran-toast fuaran-toast-%s" toneClass)
+              prop.role "status"
+              prop.custom ("aria-live", "polite") ]
+            @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
+            @ [ prop.children (
+                    [ Html.span
+                          [ prop.className "fuaran-toast-message"
+                            prop.text (renderText ctx spec.Message) ] ]
+                    @ dismissEls
+                ) ]
+        )
+    | NodeKind.CodeBlock spec ->
+        // Phase 290 — DETERMINISTIC `<pre><code>` (HTML-escaped via `prop.text`,
+        // no markdown library), byte-identical to the client renderer. Syntax
+        // highlighting is a client-only post-hydration enhancement (targets
+        // `language-{x}`) — not emitted here, so it is outside the parity output.
+        let containerClass =
+            if spec.LineNumbers then
+                "fuaran-codeblock fuaran-codeblock-numbered"
+            else
+                "fuaran-codeblock"
+
+        let highlightAttr =
+            match spec.HighlightLines with
+            | [] -> []
+            | lines -> [ prop.custom ("data-highlight-lines", String.concat "," (lines |> List.map string)) ]
+
+        let copyEls =
+            if spec.Copyable then
+                [ Html.button
+                      [ prop.className "fuaran-codeblock-copy"
+                        prop.custom ("type", "button")
+                        prop.ariaLabel "Copy"
+                        prop.text "Copy" ] ]
+            else
+                []
+
+        Html.div (
+            [ prop.className containerClass; prop.custom ("data-language", spec.Language) ]
+            @ highlightAttr
+            @ [ prop.children (
+                    copyEls
+                    @ [ Html.pre
+                            [ prop.className "fuaran-codeblock-pre"
+                              prop.children
+                                  [ Html.code
+                                        [ prop.className (sprintf "fuaran-codeblock-code language-%s" spec.Language)
+                                          prop.text spec.Code ] ] ] ]
+                ) ]
+        )
+    | NodeKind.Math spec ->
+        // Phase 658 — DETERMINISTIC native MathML for the closed subset (real
+        // superscripts with NO JavaScript); the raw escaped-source span for
+        // out-of-subset input. Byte-identical to the client renderer via the
+        // shared `MathMl.translate`. KaTeX upgrades either shape client-only
+        // (targets the `.fuaran-math` container), outside parity. See
+        // docs/MATH-DEGRADATION.md.
+        let mathml = MathMl.translate spec.Source spec.Display
+
+        let displayStr, isBlock =
+            match spec.Display with
+            | MathDisplay.Block -> "block", true
+            | MathDisplay.Inline -> "inline", false
+
+        let containerProps =
+            [ prop.className (
+                  if isBlock then
+                      "fuaran-math fuaran-math-block"
+                  else
+                      "fuaran-math fuaran-math-inline"
+              )
+              prop.custom ("data-math-display", displayStr)
+              prop.custom ("data-fuaran-math-src", spec.Source) ]
+
+        let content =
+            match mathml with
+            | Some markup -> [ prop.dangerouslySetInnerHTML markup ]
+            | None -> [ prop.children [ Html.span [ prop.className "fuaran-math-source"; prop.text spec.Source ] ] ]
+
+        if isBlock then
+            Html.div (containerProps @ content)
+        else
+            Html.span (containerProps @ content)
+    // -- Input --
+    | NodeKind.Button spec ->
+        let variantClass = buttonVariantClass spec.Variant
+
+        let isDisabled =
+            spec.Disabled
+            |> Option.bind (BindingResolver.tryResolve ctx.Sources)
+            |> Option.defaultValue false
+
+        // `data-fuaran-commit` (Phase 152 form policy): a button whose action is
+        // an explicit per-field flush (`Action.CommitLocal fieldId`) carries the
+        // committed field id so the server-driven shim harvests that buffered
+        // field's value into the click payload (the "Apply" boundary, the
+        // `OnCommitAction` analogue of submit). Server-tier-only marker.
+        let commitProps =
+            match spec.OnClick with
+            | Action.CommitLocal fieldId -> [ prop.custom ("data-fuaran-commit", fieldId) ]
+            | _ -> []
+
+        Html.button (
+            [ prop.className (sprintf "fuaran-button fuaran-button-%s" variantClass)
+              // The uniform icon hook: an icon-bearing button wraps its label
+              // as a text node beside the hook; an icon-less button keeps the
+              // plain `prop.text` shape (markup unchanged for existing trees).
+              match spec.Icon with
+              | Some(IconSource icon) ->
+                  prop.children [ iconHook "fuaran-button-icon" icon; Html.text (renderText ctx spec.Label) ]
+              | None -> prop.text (renderText ctx spec.Label) ]
+            @ (match spec.Tooltip with
+               | Some t -> [ prop.title (renderText ctx t) ]
+               | None -> [])
+            @ commitProps
+            @ (if isDisabled then [ prop.disabled true ] else [])
+        )
+    | NodeKind.Select spec ->
+        let options = resolveOptions ctx spec.Source
+        let selected = BindingResolver.tryResolve ctx.Sources spec.Value |> Option.flatten
+
+        let isDisabled =
+            spec.Disabled
+            |> Option.bind (BindingResolver.tryResolve ctx.Sources)
+            |> Option.defaultValue false
+
+        let placeholderItem =
+            match spec.Placeholder with
+            | Some placeholder -> [ Html.option [ prop.value ""; prop.text (renderText ctx placeholder) ] ]
+            | None -> []
+
+        let optionItems =
+            [ for option in options -> Html.option [ prop.value option.Value; prop.text (renderText ctx option.Label) ] ]
+
+        Html.label
+            [ prop.className "fuaran-select"
+              prop.children
+                  [ Html.span [ prop.className "fuaran-select-label"; prop.text (renderText ctx spec.Label) ]
+                    Html.select (
+                        [ prop.className "fuaran-select-control" ]
+                        // Phase 291 — emit `multiple` for a multi-select; the
+                        // single-value `value` only when single-select (a
+                        // controlled `<select multiple>` rejects a scalar value).
+                        @ (if spec.Multiple then
+                               [ prop.custom ("multiple", "") ]
+                           else
+                               [ prop.value (selected |> Option.defaultValue "") ])
+                        @ (if isDisabled then [ prop.disabled true ] else [])
+                        @ [ prop.children (placeholderItem @ optionItems) ]
+                    ) ] ]
+    | NodeKind.Form spec ->
+        let fieldNodes = spec.Fields |> List.map (renderFormField ctx)
+
+        let submitNode =
+            Html.button
+                [ prop.className "fuaran-form-submit"
+                  prop.custom ("type", "submit")
+                  prop.text (renderText ctx spec.SubmitLabel) ]
+
+        let body = fieldNodes @ [ submitNode ]
+
+        let formChildren =
+            match spec.Disabled with
+            | Some disabled ->
+                let isDisabled =
+                    BindingResolver.tryResolve ctx.Sources disabled |> Option.defaultValue false
+
+                [ Html.fieldSet (
+                      [ prop.className "fuaran-form-fieldset" ]
+                      @ (if isDisabled then [ prop.disabled true ] else [])
+                      @ [ prop.children body ]
+                  ) ]
+            | None -> body
+
+        Html.form [ prop.className "fuaran-form"; prop.children formChildren ]
+    | NodeKind.Filters specs ->
+        Html.div
+            [ prop.className "fuaran-filters"
+              prop.children [ for spec in specs -> renderFilterSpec ctx spec ] ]
+    | NodeKind.FileUpload spec ->
+        Html.label
+            [ prop.className "fuaran-file-upload"
+              prop.children
+                  [ Html.span
+                        [ prop.className "fuaran-file-upload-label"
+                          prop.text (renderText ctx spec.Label) ]
+                    Html.input [ prop.className "fuaran-file-upload-control"; prop.custom ("type", "file") ] ] ]
+    // -- Vis --
+    | NodeKind.DataGrid spec ->
+        match spec.StaticRows with
+        | Some(headers, rows) ->
+            // Phase 393 — static read-only mode: SSR renders the full semantic <table> statically
+            // (byte-identical to the retired Table), NOT a hydration placeholder.
+            let headerCells =
+                [ for h in headers -> Html.th [ prop.className "fuaran-table-header"; prop.text (renderText ctx h) ] ]
+
+            let bodyRows =
+                [ for row in rows ->
+                      Html.tr
+                          [ prop.className "fuaran-table-row"
+                            prop.children
+                                [ for cell in row ->
+                                      Html.td [ prop.className "fuaran-table-cell"; prop.text (renderText ctx cell) ] ] ] ]
+
+            Html.table
+                [ prop.className "fuaran-table"
+                  prop.children [ Html.thead [ Html.tr headerCells ]; Html.tbody bodyRows ] ]
+        | None ->
+            // Client-library grid. SSR emits a deterministic placeholder carrying a
+            // row-count data attribute for later hydration (never a blank).
+            let rowCount =
+                BindingResolver.tryResolve ctx.Sources spec.Source
+                |> Option.map Seq.length
+                |> Option.defaultValue 0
+
+            Html.div
+                [ prop.className "fuaran-grid fuaran-grid-ssr-placeholder"
+                  prop.custom ("data-fuaran-ssr-placeholder", "DataGrid")
+                  prop.custom ("data-fuaran-row-count", string rowCount)
+                  prop.text (sprintf "[Grid: %d rows — hydrates client-side]" rowCount) ]
+    | NodeKind.Chart spec ->
+        match BindingResolver.resolve<obj seq> ctx.Sources spec.Source, spec.Kind with
+        | BindingResolver.Resolved rows, kind when Fuaran.UI.Charts.isLowered kind ->
+            // Phase 526 — the SSR renders the SAME first-party lowered Drawing
+            // SVG the client does (static geometry ⇒ no client-hydration
+            // placeholder for a lowered kind; SSR ↔ CSR byte-parity via the
+            // shared lowering + Drawing builder). The lowered-kind set is
+            // `Charts.isLowered` — one source of truth with the client branch.
+            Html.div
+                [ prop.dangerouslySetInnerHTML (
+                      DrawingSvg.render ctx.Sources (renderText ctx) (Fuaran.UI.Charts.lower spec rows)
+                  ) ]
+        | resolution, _ ->
+            // Unresolved data, or a not-yet-lowered kind (Heatmap): the
+            // client-hydration placeholder.
+            let rowCount =
+                match resolution with
+                | BindingResolver.Resolved seq -> Seq.length seq
+                | _ -> 0
+
+            Html.div
+                [ prop.className "fuaran-chart fuaran-chart-ssr-placeholder"
+                  prop.custom ("data-fuaran-ssr-placeholder", "Chart")
+                  prop.custom ("data-fuaran-row-count", string rowCount)
+                  prop.children
+                      [ match spec.Title with
+                        | Some title ->
+                            Html.div [ prop.className "fuaran-chart-title"; prop.text (renderText ctx title) ]
+                        | None -> Html.none
+                        Html.div
+                            [ prop.className "fuaran-chart-placeholder"
+                              prop.text (sprintf "[Chart: %d rows — hydrates client-side]" rowCount) ] ] ]
+    | NodeKind.Map spec ->
+        let markerCount =
+            BindingResolver.tryResolve ctx.Sources spec.Source
+            |> Option.map Seq.length
+            |> Option.defaultValue 0
+
+        Html.div
+            [ prop.className "fuaran-map fuaran-map-ssr-placeholder"
+              prop.custom ("data-fuaran-ssr-placeholder", "Map")
+              prop.custom ("data-fuaran-marker-count", string markerCount)
+              prop.text (sprintf "[Map: %d markers — hydrates client-side]" markerCount) ]
     | NodeKind.ErrorBoundary spec ->
         // Server has no throws to catch — render the protected child subtree
         // directly. The Fallback is the client-runtime degradation path.
@@ -399,778 +1230,9 @@ and private renderCustom
 
 // ─── Layouts ────────────────────────────────────────────────────────────────
 
-and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layout: LayoutKind<obj>) : ReactElement =
-    match layout with
-    // Phase 390 — the unified container; role + layout drive the emitted
-    // element + classes so SSR output stays byte-identical to the pre-merge
-    // per-kind emission (and to the client renderer — SSR parity corpus).
-    | LayoutKind.Box spec ->
-        match spec.Role, spec.Layout with
-        | BoxRole.Card, _ ->
-            Html.section
-                [ prop.className "fuaran-layout-card"
-                  prop.children
-                      [ match spec.Heading with
-                        | Some heading ->
-                            Html.header [ prop.className "fuaran-card-heading"; prop.text (renderText ctx heading) ]
-                        | None -> Html.none
-                        Html.div
-                            [ prop.className "fuaran-card-body"
-                              prop.children (spec.Children |> List.map (renderNode ctx)) ] ] ]
-        | BoxRole.Dashboard, _
-        | BoxRole.Group, BoxLayout.Auto ->
-            Html.div
-                [ prop.className "fuaran-layout-dashboard"
-                  prop.children (spec.Children |> List.map (renderNode ctx)) ]
-        | BoxRole.Separator, _ -> Html.hr [ prop.className "fuaran-layout-separator" ]
-        | BoxRole.Group, BoxLayout.Grid g ->
-            let templateColumns =
-                match g.TemplateColumns with
-                | Some custom -> custom
-                | None -> sprintf "repeat(%d, 1fr)" g.Cols
-
-            // `gap` (Phase 459) emits only when set — gap-free grids stay
-            // byte-identical to the pre-459 emission (SSR parity with the client).
-            let gridStyle =
-                [ style.custom ("gridTemplateColumns", templateColumns) ]
-                @ (match g.Gap with
-                   | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
-                   | None -> [])
-
-            Html.div
-                [ prop.className "fuaran-layout-grid"
-                  prop.style gridStyle
-                  prop.children (spec.Children |> List.map (renderNode ctx)) ]
-        | BoxRole.Group, BoxLayout.Flex f ->
-            let dir =
-                match f.Direction with
-                | Vertical -> "fuaran-stack-vertical"
-                | Horizontal -> "fuaran-stack-horizontal"
-
-            let wrap = if f.Wrap then " fuaran-stack-wrap" else ""
-
-            Html.div (
-                [ prop.className (sprintf "fuaran-layout-stack %s%s" dir wrap) ]
-                @ (match f.Gap with
-                   | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
-                   | None -> [])
-                @ [ prop.children (spec.Children |> List.map (renderNode ctx)) ]
-            )
-    | LayoutKind.SplitPanel spec ->
-        let weightLeft = max 0.0 (min 1.0 spec.Weight)
-        let weightRight = 1.0 - weightLeft
-        let renderedChildren = spec.Children |> List.map (renderNode ctx)
-
-        let leftChildren, rightChildren =
-            match renderedChildren with
-            | [] -> [], []
-            | [ a ] -> [ a ], []
-            | a :: rest -> [ a ], rest
-
-        Html.div
-            [ prop.className "fuaran-layout-split-panel"
-              prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-split-pane fuaran-split-pane-left"
-                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightLeft) ]
-                          prop.children leftChildren ]
-                    Html.div
-                        [ prop.className "fuaran-split-pane fuaran-split-pane-right"
-                          prop.style [ style.custom ("flex", sprintf "%f 1 0" weightRight) ]
-                          prop.children rightChildren ] ] ]
-    | LayoutKind.Tabs spec ->
-        // Static tablist + the active panel. Keyboard nav + click dispatch are
-        // client-only (hydration); the server emits the ARIA structure inert.
-        let parentNodeIdStr = parentNodeId
-
-        let tabsLabelFromChild (child: Node<obj>) : string =
-            match child.Kind with
-            | NodeKind.Layout(LayoutKind.Box { Role = BoxRole.Card
-                                               Heading = Some h }) -> renderText ctx h
-            | _ ->
-                match child.Id with
-                | NodeId s -> s
-
-        let perTab
-            : {| label: string
-                 icon: string option
-                 disabled: bool |} list =
-            match spec.TabHeaders with
-            | Some headers ->
-                headers
-                |> List.map (fun h ->
-                    let disabled =
-                        h.Disabled
-                        |> Option.bind (BindingResolver.tryResolve ctx.Sources)
-                        |> Option.defaultValue false
-
-                    let icon = h.Icon |> Option.map (fun (IconSource s) -> s)
-
-                    {| label = renderText ctx h.Label
-                       icon = icon
-                       disabled = disabled |})
-            | None ->
-                spec.Children
-                |> List.map (fun child ->
-                    {| label = tabsLabelFromChild child
-                       icon = None
-                       disabled = false |})
-
-        let orientationClass =
-            match spec.Orientation with
-            | Horizontal -> "fuaran-tabs-horizontal"
-            | Vertical -> "fuaran-tabs-vertical"
-
-        let isVertical = spec.Orientation = Vertical
-
-        let resolvedFromTag: int option =
-            match spec.TabTags, spec.ActiveTag with
-            | Some tags, Some tagBinding ->
-                BindingResolver.tryResolve ctx.Sources tagBinding
-                |> Option.bind (fun tag -> tags |> List.tryFindIndex ((=) tag))
-            | _ -> None
-
-        let activeIndex =
-            resolvedFromTag
-            |> Option.orElseWith (fun () -> BindingResolver.tryResolve ctx.Sources spec.ActiveIndex)
-            |> Option.defaultValue 0
-            |> max 0
-            |> min (max 0 (spec.Children.Length - 1))
-
-        let activeChild =
-            spec.Children
-            |> List.tryItem activeIndex
-            |> Option.orElseWith (fun () -> spec.Children |> List.tryHead)
-
-        let tabId (i: int) = sprintf "%s-tab-%d" parentNodeIdStr i
-        let panelId (i: int) = sprintf "%s-panel-%d" parentNodeIdStr i
-
-        Html.div
-            [ prop.className (sprintf "fuaran-layout-tabs %s" orientationClass)
-              prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-tabs-bar"
-                          prop.role "tablist"
-                          prop.custom ("aria-orientation", (if isVertical then "vertical" else "horizontal"))
-                          prop.children
-                              [ for (i, t) in List.indexed perTab ->
-                                    let isActive = i = activeIndex
-
-                                    let cls =
-                                        String.concat
-                                            " "
-                                            [ "fuaran-tab"
-                                              if isActive then
-                                                  "fuaran-tab-active"
-                                              if t.disabled then
-                                                  "fuaran-tab-disabled" ]
-
-                                    Html.button (
-                                        [ prop.id (tabId i)
-                                          prop.className cls
-                                          prop.role "tab"
-                                          prop.custom ("aria-selected", (if isActive then "true" else "false"))
-                                          prop.custom ("aria-controls", panelId i)
-                                          prop.tabIndex (if isActive then 0 else -1)
-                                          prop.custom ("data-tab-index", string i) ]
-                                        @ (if t.disabled then
-                                               [ prop.custom ("aria-disabled", "true"); prop.disabled true ]
-                                           else
-                                               [])
-                                        @ [ prop.children
-                                                [ match t.icon with
-                                                  | Some iconSrc -> iconHook "fuaran-tab-icon" iconSrc
-                                                  | None -> Html.none
-                                                  Html.span [ prop.className "fuaran-tab-label"; prop.text t.label ] ] ]
-                                    ) ] ]
-                    Html.div
-                        [ prop.className "fuaran-tabs-panels"
-                          prop.children (
-                              match activeChild with
-                              | Some childNode ->
-                                  [ Html.div
-                                        [ prop.id (panelId activeIndex)
-                                          prop.role "tabpanel"
-                                          prop.custom ("aria-labelledby", tabId activeIndex)
-                                          prop.tabIndex 0
-                                          prop.className "fuaran-tabs-panel"
-                                          prop.children [ renderNode ctx childNode ] ] ]
-                              | None -> []
-                          ) ] ] ]
-    | LayoutKind.SummaryList spec ->
-        Html.section
-            [ prop.className "fuaran-layout-summary-list"
-              prop.children
-                  [ match spec.Heading with
-                    | Some heading ->
-                        Html.header
-                            [ prop.className "fuaran-summary-list-heading"
-                              prop.text (renderText ctx heading) ]
-                    | None -> Html.none
-                    Html.div
-                        [ prop.className "fuaran-summary-list-body"
-                          prop.children (spec.Children |> List.map (renderNode ctx)) ] ] ]
-    | LayoutKind.Disclosure spec ->
-        let resolvedOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open
-            |> Option.defaultValue spec.DefaultOpen
-
-        Html.details (
-            [ prop.className "fuaran-layout-disclosure" ]
-            @ (if resolvedOpen then [ prop.custom ("open", "") ] else [])
-            @ [ prop.children
-                    [ Html.summary
-                          [ prop.className "fuaran-disclosure-summary"
-                            prop.text (renderText ctx spec.Heading) ]
-                      Html.div
-                          [ prop.className "fuaran-disclosure-body"
-                            prop.children (spec.Children |> List.map (renderNode ctx)) ] ] ]
-        )
-    | LayoutKind.Stepper spec ->
-        let activeIndex =
-            BindingResolver.tryResolve ctx.Sources spec.ActiveStep |> Option.defaultValue 0
-
-        Html.div
-            [ prop.className "fuaran-layout-stepper"
-              prop.children
-                  [ Html.ol
-                        [ prop.className "fuaran-stepper-numbers"
-                          prop.children
-                              [ for i in 0 .. spec.Children.Length - 1 ->
-                                    let isActive = i = activeIndex
-
-                                    Html.li
-                                        [ prop.className (
-                                              if isActive then
-                                                  "fuaran-stepper-step fuaran-stepper-step-active"
-                                              else
-                                                  "fuaran-stepper-step"
-                                          )
-                                          // Server-driven step selection: the live
-                                          // shim bridges a step-header click to
-                                          // `payload.index` off this attribute
-                                          // (mirrors the tab bar's data-tab-index).
-                                          prop.custom ("data-step-index", string i)
-                                          prop.text (sprintf "%d" (i + 1)) ] ] ]
-                    Html.div
-                        [ prop.className "fuaran-stepper-body"
-                          prop.children (
-                              match List.tryItem activeIndex spec.Children with
-                              | Some node -> [ renderNode ctx node ]
-                              | None -> []
-                          ) ] ] ]
-    | LayoutKind.Modal spec ->
-        // Phase 289 overlay render-fidelity contract (server half): the overlay
-        // is ALWAYS emitted (no portal), positioned + z-indexed by CSS; closed =
-        // the `hidden` attribute. Structure is byte-identical to the client
-        // renderer (same classes + `role="dialog"` + `aria-modal`) so React
-        // hydration finds the DOM it expects. Dismiss handlers are client-only
-        // (attached on hydration) — not a structural difference.
-        let isOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
-
-        let headingEls =
-            match spec.Heading with
-            | Some h -> [ Html.h2 [ prop.className "fuaran-modal-heading"; prop.text (renderText ctx h) ] ]
-            | None -> []
-
-        let dismissEls =
-            if spec.Dismissable then
-                [ Html.button
-                      [ prop.className "fuaran-modal-dismiss"
-                        prop.custom ("type", "button")
-                        prop.ariaLabel "Close"
-                        prop.text "×" ] ]
-            else
-                []
-
-        Html.div (
-            [ prop.className "fuaran-modal-overlay" ]
-            @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
-            @ [ prop.children
-                    [ Html.div
-                          [ prop.className "fuaran-modal-dialog"
-                            prop.role "dialog"
-                            prop.custom ("aria-modal", "true")
-                            prop.children (
-                                headingEls
-                                @ dismissEls
-                                @ [ Html.div
-                                        [ prop.className "fuaran-modal-body"
-                                          prop.children (spec.Children |> List.map (renderNode ctx)) ] ]
-                            ) ] ] ]
-        )
-    | LayoutKind.ScrollArea spec ->
-        let axisClass =
-            match spec.Orientation with
-            | ScrollOrientation.Vertical -> "fuaran-scrollarea fuaran-scrollarea-vertical"
-            | ScrollOrientation.Horizontal -> "fuaran-scrollarea fuaran-scrollarea-horizontal"
-            | ScrollOrientation.Both -> "fuaran-scrollarea fuaran-scrollarea-both"
-
-        let styleProps =
-            [ match spec.MaxHeight with
-              | Some h -> style.maxHeight (length.px h)
-              | None -> ()
-              match spec.MaxWidth with
-              | Some w -> style.maxWidth (length.px w)
-              | None -> () ]
-
-        Html.div (
-            // `prop.custom ("tabindex", ...)` emits the lowercase attribute the
-            // client's React `prop.tabIndex` normalises to — keeps SSR↔CSR
-            // byte-identical (Feliz.ViewEngine's `prop.tabIndex` would emit the
-            // camelCase `tabIndex`, diverging from React's DOM `tabindex`).
-            [ prop.className axisClass; prop.custom ("tabindex", "0") ]
-            @ (if styleProps.IsEmpty then [] else [ prop.style styleProps ])
-            @ [ prop.children (spec.Children |> List.map (renderNode ctx)) ]
-        )
-
 // ─── Displays ────────────────────────────────────────────────────────────────
 
-and private renderDisplay
-    (ctx: ServerRenderContext)
-    (state: StateBehaviour<obj>)
-    (display: DisplayKind<obj>)
-    : ReactElement =
-    match display with
-    | DisplayKind.Heading spec ->
-        let variantSuffix =
-            match spec.Variant with
-            | HeadingVariant.Standard -> ""
-            | HeadingVariant.Eyebrow -> " fuaran-heading-eyebrow"
-            | HeadingVariant.Caption -> " fuaran-heading-caption"
-            | HeadingVariant.Lead -> " fuaran-heading-lead"
-
-        let props =
-            [ prop.className (sprintf "fuaran-heading%s" variantSuffix)
-              prop.text (renderText ctx spec.Text) ]
-
-        match spec.Level with
-        | 1 -> Html.h1 props
-        | 2 -> Html.h2 props
-        | 3 -> Html.h3 props
-        | 4 -> Html.h4 props
-        | 5 -> Html.h5 props
-        | _ -> Html.h6 props
-    | DisplayKind.Markdown spec ->
-        Html.div
-            [ prop.className "fuaran-markdown"
-              prop.dangerouslySetInnerHTML (Markdown.toHtml (renderText ctx spec.Text)) ]
-    | DisplayKind.Metric spec ->
-        // Phase 632 — the Metric value is a scalar slot: a `Binding.Transform`
-        // resolves to its 1×1 result cell (a global aggregate / row-field
-        // lookup), the same dispatch as the client's `renderMetric`.
-        let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
-
-        match resolution, state.OnLoading with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
-        | _ ->
-            Html.div
-                [ prop.className (sprintf "fuaran-metric fuaran-metric-%s" (Theme.toneVar spec.Tone))
-                  prop.children
-                      [ match spec.Icon with
-                        | Some(IconSource icon) -> iconHook "fuaran-metric-icon" icon
-                        | None -> Html.none
-                        Html.div [ prop.className "fuaran-metric-label"; prop.text (renderText ctx spec.Label) ]
-                        Html.div
-                            [ prop.className "fuaran-metric-value"
-                              prop.text (
-                                  match resolution with
-                                  | BindingResolver.Resolved value -> formatNumber spec.Format value
-                                  | BindingResolver.NotResolved -> "—"
-                                  | BindingResolver.Errored msg -> sprintf "(error: %s)" msg
-                                  | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
-                              ) ]
-                        match spec.Trend with
-                        | Some trendBinding ->
-                            Html.div
-                                [ prop.className "fuaran-metric-trend"
-                                  prop.text (
-                                      match BindingResolver.tryResolveScalarFloat ctx.Sources trendBinding with
-                                      | Some t ->
-                                          formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t
-                                      | None -> ""
-                                  ) ]
-                        | None -> Html.none
-                        match spec.Subtext with
-                        | Some subtext ->
-                            Html.div [ prop.className "fuaran-metric-subtext"; prop.text (renderText ctx subtext) ]
-                        | None -> Html.none ] ]
-    | DisplayKind.Badge spec ->
-        Html.span
-            [ prop.className (sprintf "fuaran-badge fuaran-badge-%s" (badgeVariantClass spec.Variant))
-              prop.text (renderText ctx spec.Label) ]
-    | DisplayKind.Skeleton spec ->
-        Html.div
-            [ prop.className "fuaran-skeleton"
-              prop.children [ for _ in 1 .. spec.Rows -> Html.div [ prop.className "fuaran-skeleton-row" ] ] ]
-    | DisplayKind.Callout spec ->
-        Html.div
-            [ prop.className (sprintf "fuaran-callout fuaran-callout-%s" (Theme.toneVar spec.Tone))
-              prop.children
-                  [ match spec.Icon with
-                    | Some(IconSource icon) -> iconHook "fuaran-callout-icon" icon
-                    | None -> Html.none
-                    match spec.Heading with
-                    | Some heading ->
-                        Html.div [ prop.className "fuaran-callout-heading"; prop.text (renderText ctx heading) ]
-                    | None -> Html.none
-                    Html.div [ prop.className "fuaran-callout-body"; prop.text (renderText ctx spec.Body) ] ] ]
-    | DisplayKind.Progress spec ->
-        let resolution = BindingResolver.resolve ctx.Sources spec.Fraction
-
-        match resolution, state.OnLoading with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
-        | _ ->
-            let fraction =
-                match resolution with
-                | BindingResolver.Resolved value -> value
-                | _ -> 0.0
-
-            Html.div
-                [ prop.className (
-                      sprintf
-                          "fuaran-progress fuaran-progress-%s%s"
-                          (Theme.toneVar spec.Tone)
-                          (if spec.Indeterminate then
-                               " fuaran-progress-indeterminate"
-                           else
-                               "")
-                  )
-                  prop.children
-                      [ match spec.Label with
-                        | Some label ->
-                            Html.div [ prop.className "fuaran-progress-label"; prop.text (renderText ctx label) ]
-                        | None -> Html.none
-                        Html.div
-                            [ prop.className "fuaran-progress-bar"
-                              prop.children
-                                  [ Html.div
-                                        [ prop.className "fuaran-progress-fill"
-                                          prop.style [ style.custom ("width", sprintf "%f%%" (fraction * 100.0)) ] ] ] ] ] ]
-    | DisplayKind.Sparkline _ ->
-        // The client emits an inline SVG polyline; SSR emits the same hook +
-        // an em-dash placeholder (the data renders client-side on hydration).
-        Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
-    | DisplayKind.Drawing spec ->
-        // Phase 525 — the SAME canonical Core SVG string the client emits (so
-        // SSR ↔ CSR are byte-identical for this static-geometry node); resolved
-        // + rendered on the server, headless included (D4).
-        Html.div [ prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) spec) ]
-    | DisplayKind.LabelValueRow spec ->
-        // Phase 632 — a scalar slot: Transform resolves to its 1×1 result cell,
-        // and an ambiguous (>1×1) result stays loud, matching the client's
-        // `renderLabelValueRow` value projection.
-        let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
-
-        match resolution, state.OnLoading with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
-        | _ ->
-            let emphasisSuffix =
-                if spec.Emphasis then
-                    " fuaran-label-value-row-emphasis"
-                else
-                    ""
-
-            Html.div
-                [ prop.className (sprintf "fuaran-label-value-row%s" emphasisSuffix)
-                  prop.children
-                      [ Html.span
-                            [ prop.className "fuaran-label-value-row-label"
-                              prop.text (renderText ctx spec.Label) ]
-                        Html.span
-                            [ prop.className "fuaran-label-value-row-value"
-                              prop.text (
-                                  match resolution with
-                                  | BindingResolver.Resolved value -> formatNumber spec.Format value
-                                  | BindingResolver.NotResolved -> "—"
-                                  | BindingResolver.Errored msg -> sprintf "(error: %s)" msg
-                                  | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
-                              ) ] ] ]
-    | DisplayKind.Fact spec ->
-        // Server-side Fact mirrors the client tile; `renderText` resolves the
-        // TextSource value identically on both sides (see the module doc's
-        // SSR<->CSR parity note).
-        let emphasisSuffix = if spec.Emphasis then " fuaran-fact-emphasis" else ""
-
-        Html.div
-            [ prop.className (sprintf "fuaran-fact fuaran-fact-%s%s" (Theme.toneVar spec.Tone) emphasisSuffix)
-              prop.children
-                  [ Html.div [ prop.className "fuaran-fact-label"; prop.text (renderText ctx spec.Label) ]
-                    Html.div
-                        [ prop.className "fuaran-fact-value"
-                          prop.children
-                              [ match spec.Icon with
-                                | Some(IconSource icon) -> iconHook "fuaran-fact-icon" icon
-                                | None -> Html.none
-                                Html.span [ prop.text (renderText ctx spec.Value) ] ] ]
-                    match spec.Help with
-                    | Some help -> Html.div [ prop.className "fuaran-fact-help"; prop.text (renderText ctx help) ]
-                    | None -> Html.none ] ]
-    | DisplayKind.Link spec ->
-        let resolvedHref =
-            BindingResolver.tryResolve ctx.Sources spec.Href |> Option.defaultValue ""
-
-        let safeHref = Sanitize.sanitizeUrlOrBlank resolvedHref
-
-        Html.a (
-            [ prop.className "fuaran-link"; prop.href safeHref ]
-            @ (match spec.Rel with
-               | Some rel -> [ prop.custom ("rel", rel) ]
-               | None -> [])
-            @ (match spec.Target with
-               | Some target -> [ prop.custom ("target", target) ]
-               | None -> [])
-            @ (if spec.Download then
-                   [ prop.custom ("download", "") ]
-               else
-                   [])
-            @ [ prop.text (renderText ctx spec.Label) ]
-        )
-    | DisplayKind.Image spec ->
-        let resolvedSrc =
-            BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
-
-        let safeSrc = Sanitize.sanitizeUrlOrBlank resolvedSrc
-
-        let variantClass =
-            match spec.Variant with
-            | ImageVariant.Default -> "fuaran-image"
-            | ImageVariant.Avatar -> "fuaran-image fuaran-image-avatar"
-            | ImageVariant.Rounded -> "fuaran-image fuaran-image-rounded"
-
-        Html.img
-            [ prop.className variantClass
-              prop.src safeSrc
-              prop.alt (renderText ctx spec.Alt) ]
-    | DisplayKind.List spec ->
-        let items =
-            spec.Items
-            |> List.map (fun item -> Html.li [ prop.className "fuaran-list-item"; prop.text (renderText ctx item) ])
-
-        if spec.Ordered then
-            Html.ol [ prop.className "fuaran-list fuaran-list-ordered"; prop.children items ]
-        else
-            Html.ul [ prop.className "fuaran-list fuaran-list-unordered"; prop.children items ]
-    | DisplayKind.Toast spec ->
-        // Phase 289 overlay render-fidelity contract (server half): ALWAYS
-        // emitted; closed = the `hidden` attribute. `role="status"` +
-        // `aria-live="polite"` — byte-identical to the client renderer.
-        let isOpen =
-            BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
-
-        let toneClass =
-            match spec.Tone with
-            | Default -> "default"
-            | Subdued -> "subdued"
-            | Brand -> "brand"
-            | Success -> "success"
-            | Warning -> "warning"
-            | Critical -> "critical"
-            | Info -> "info"
-
-        let dismissEls =
-            if spec.Dismissable then
-                [ Html.button
-                      [ prop.className "fuaran-toast-dismiss"
-                        prop.custom ("type", "button")
-                        prop.ariaLabel "Dismiss"
-                        prop.text "×" ] ]
-            else
-                []
-
-        Html.div (
-            [ prop.className (sprintf "fuaran-toast fuaran-toast-%s" toneClass)
-              prop.role "status"
-              prop.custom ("aria-live", "polite") ]
-            @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
-            @ [ prop.children (
-                    [ Html.span
-                          [ prop.className "fuaran-toast-message"
-                            prop.text (renderText ctx spec.Message) ] ]
-                    @ dismissEls
-                ) ]
-        )
-    | DisplayKind.CodeBlock spec ->
-        // Phase 290 — DETERMINISTIC `<pre><code>` (HTML-escaped via `prop.text`,
-        // no markdown library), byte-identical to the client renderer. Syntax
-        // highlighting is a client-only post-hydration enhancement (targets
-        // `language-{x}`) — not emitted here, so it is outside the parity output.
-        let containerClass =
-            if spec.LineNumbers then
-                "fuaran-codeblock fuaran-codeblock-numbered"
-            else
-                "fuaran-codeblock"
-
-        let highlightAttr =
-            match spec.HighlightLines with
-            | [] -> []
-            | lines -> [ prop.custom ("data-highlight-lines", String.concat "," (lines |> List.map string)) ]
-
-        let copyEls =
-            if spec.Copyable then
-                [ Html.button
-                      [ prop.className "fuaran-codeblock-copy"
-                        prop.custom ("type", "button")
-                        prop.ariaLabel "Copy"
-                        prop.text "Copy" ] ]
-            else
-                []
-
-        Html.div (
-            [ prop.className containerClass; prop.custom ("data-language", spec.Language) ]
-            @ highlightAttr
-            @ [ prop.children (
-                    copyEls
-                    @ [ Html.pre
-                            [ prop.className "fuaran-codeblock-pre"
-                              prop.children
-                                  [ Html.code
-                                        [ prop.className (sprintf "fuaran-codeblock-code language-%s" spec.Language)
-                                          prop.text spec.Code ] ] ] ]
-                ) ]
-        )
-    | DisplayKind.Math spec ->
-        // Phase 658 — DETERMINISTIC native MathML for the closed subset (real
-        // superscripts with NO JavaScript); the raw escaped-source span for
-        // out-of-subset input. Byte-identical to the client renderer via the
-        // shared `MathMl.translate`. KaTeX upgrades either shape client-only
-        // (targets the `.fuaran-math` container), outside parity. See
-        // docs/MATH-DEGRADATION.md.
-        let mathml = MathMl.translate spec.Source spec.Display
-
-        let displayStr, isBlock =
-            match spec.Display with
-            | MathDisplay.Block -> "block", true
-            | MathDisplay.Inline -> "inline", false
-
-        let containerProps =
-            [ prop.className (
-                  if isBlock then
-                      "fuaran-math fuaran-math-block"
-                  else
-                      "fuaran-math fuaran-math-inline"
-              )
-              prop.custom ("data-math-display", displayStr)
-              prop.custom ("data-fuaran-math-src", spec.Source) ]
-
-        let content =
-            match mathml with
-            | Some markup -> [ prop.dangerouslySetInnerHTML markup ]
-            | None -> [ prop.children [ Html.span [ prop.className "fuaran-math-source"; prop.text spec.Source ] ] ]
-
-        if isBlock then
-            Html.div (containerProps @ content)
-        else
-            Html.span (containerProps @ content)
-
 // ─── Inputs (rendered inert — no dispatch server-side) ──────────────────────
-
-and private renderInput (ctx: ServerRenderContext) (input: InputKind<obj>) : ReactElement =
-    match input with
-    | InputKind.Button spec ->
-        let variantClass = buttonVariantClass spec.Variant
-
-        let isDisabled =
-            spec.Disabled
-            |> Option.bind (BindingResolver.tryResolve ctx.Sources)
-            |> Option.defaultValue false
-
-        // `data-fuaran-commit` (Phase 152 form policy): a button whose action is
-        // an explicit per-field flush (`Action.CommitLocal fieldId`) carries the
-        // committed field id so the server-driven shim harvests that buffered
-        // field's value into the click payload (the "Apply" boundary, the
-        // `OnCommitAction` analogue of submit). Server-tier-only marker.
-        let commitProps =
-            match spec.OnClick with
-            | Action.CommitLocal fieldId -> [ prop.custom ("data-fuaran-commit", fieldId) ]
-            | _ -> []
-
-        Html.button (
-            [ prop.className (sprintf "fuaran-button fuaran-button-%s" variantClass)
-              // The uniform icon hook: an icon-bearing button wraps its label
-              // as a text node beside the hook; an icon-less button keeps the
-              // plain `prop.text` shape (markup unchanged for existing trees).
-              match spec.Icon with
-              | Some(IconSource icon) ->
-                  prop.children [ iconHook "fuaran-button-icon" icon; Html.text (renderText ctx spec.Label) ]
-              | None -> prop.text (renderText ctx spec.Label) ]
-            @ (match spec.Tooltip with
-               | Some t -> [ prop.title (renderText ctx t) ]
-               | None -> [])
-            @ commitProps
-            @ (if isDisabled then [ prop.disabled true ] else [])
-        )
-    | InputKind.Select spec ->
-        let options = resolveOptions ctx spec.Source
-        let selected = BindingResolver.tryResolve ctx.Sources spec.Value |> Option.flatten
-
-        let isDisabled =
-            spec.Disabled
-            |> Option.bind (BindingResolver.tryResolve ctx.Sources)
-            |> Option.defaultValue false
-
-        let placeholderItem =
-            match spec.Placeholder with
-            | Some placeholder -> [ Html.option [ prop.value ""; prop.text (renderText ctx placeholder) ] ]
-            | None -> []
-
-        let optionItems =
-            [ for option in options -> Html.option [ prop.value option.Value; prop.text (renderText ctx option.Label) ] ]
-
-        Html.label
-            [ prop.className "fuaran-select"
-              prop.children
-                  [ Html.span [ prop.className "fuaran-select-label"; prop.text (renderText ctx spec.Label) ]
-                    Html.select (
-                        [ prop.className "fuaran-select-control" ]
-                        // Phase 291 — emit `multiple` for a multi-select; the
-                        // single-value `value` only when single-select (a
-                        // controlled `<select multiple>` rejects a scalar value).
-                        @ (if spec.Multiple then
-                               [ prop.custom ("multiple", "") ]
-                           else
-                               [ prop.value (selected |> Option.defaultValue "") ])
-                        @ (if isDisabled then [ prop.disabled true ] else [])
-                        @ [ prop.children (placeholderItem @ optionItems) ]
-                    ) ] ]
-    | InputKind.Form spec ->
-        let fieldNodes = spec.Fields |> List.map (renderFormField ctx)
-
-        let submitNode =
-            Html.button
-                [ prop.className "fuaran-form-submit"
-                  prop.custom ("type", "submit")
-                  prop.text (renderText ctx spec.SubmitLabel) ]
-
-        let body = fieldNodes @ [ submitNode ]
-
-        let formChildren =
-            match spec.Disabled with
-            | Some disabled ->
-                let isDisabled =
-                    BindingResolver.tryResolve ctx.Sources disabled |> Option.defaultValue false
-
-                [ Html.fieldSet (
-                      [ prop.className "fuaran-form-fieldset" ]
-                      @ (if isDisabled then [ prop.disabled true ] else [])
-                      @ [ prop.children body ]
-                  ) ]
-            | None -> body
-
-        Html.form [ prop.className "fuaran-form"; prop.children formChildren ]
-    | InputKind.Filters specs ->
-        Html.div
-            [ prop.className "fuaran-filters"
-              prop.children [ for spec in specs -> renderFilterSpec ctx spec ] ]
-    | InputKind.FileUpload spec ->
-        Html.label
-            [ prop.className "fuaran-file-upload"
-              prop.children
-                  [ Html.span
-                        [ prop.className "fuaran-file-upload-label"
-                          prop.text (renderText ctx spec.Label) ]
-                    Html.input [ prop.className "fuaran-file-upload-control"; prop.custom ("type", "file") ] ] ]
 
 /// A form field rendered inert: the labelled control with the correct class
 /// vocabulary. Interactive binding (onChange) is a client-hydration concern.
@@ -1409,84 +1471,6 @@ and private renderSegmentedFilter
               ) ]
 
 // ─── Visualisations ──────────────────────────────────────────────────────────
-
-and private renderVis (ctx: ServerRenderContext) (vis: VisKind<obj>) : ReactElement =
-    match vis with
-    | VisKind.DataGrid spec ->
-        match spec.StaticRows with
-        | Some(headers, rows) ->
-            // Phase 393 — static read-only mode: SSR renders the full semantic <table> statically
-            // (byte-identical to the retired Table), NOT a hydration placeholder.
-            let headerCells =
-                [ for h in headers -> Html.th [ prop.className "fuaran-table-header"; prop.text (renderText ctx h) ] ]
-
-            let bodyRows =
-                [ for row in rows ->
-                      Html.tr
-                          [ prop.className "fuaran-table-row"
-                            prop.children
-                                [ for cell in row ->
-                                      Html.td [ prop.className "fuaran-table-cell"; prop.text (renderText ctx cell) ] ] ] ]
-
-            Html.table
-                [ prop.className "fuaran-table"
-                  prop.children [ Html.thead [ Html.tr headerCells ]; Html.tbody bodyRows ] ]
-        | None ->
-            // Client-library grid. SSR emits a deterministic placeholder carrying a
-            // row-count data attribute for later hydration (never a blank).
-            let rowCount =
-                BindingResolver.tryResolve ctx.Sources spec.Source
-                |> Option.map Seq.length
-                |> Option.defaultValue 0
-
-            Html.div
-                [ prop.className "fuaran-grid fuaran-grid-ssr-placeholder"
-                  prop.custom ("data-fuaran-ssr-placeholder", "DataGrid")
-                  prop.custom ("data-fuaran-row-count", string rowCount)
-                  prop.text (sprintf "[Grid: %d rows — hydrates client-side]" rowCount) ]
-    | VisKind.Chart spec ->
-        match BindingResolver.resolve<obj seq> ctx.Sources spec.Source, spec.Kind with
-        | BindingResolver.Resolved rows, kind when Fuaran.UI.Charts.isLowered kind ->
-            // Phase 526 — the SSR renders the SAME first-party lowered Drawing
-            // SVG the client does (static geometry ⇒ no client-hydration
-            // placeholder for a lowered kind; SSR ↔ CSR byte-parity via the
-            // shared lowering + Drawing builder). The lowered-kind set is
-            // `Charts.isLowered` — one source of truth with the client branch.
-            Html.div
-                [ prop.dangerouslySetInnerHTML (
-                      DrawingSvg.render ctx.Sources (renderText ctx) (Fuaran.UI.Charts.lower spec rows)
-                  ) ]
-        | resolution, _ ->
-            // Unresolved data, or a not-yet-lowered kind (Heatmap): the
-            // client-hydration placeholder.
-            let rowCount =
-                match resolution with
-                | BindingResolver.Resolved seq -> Seq.length seq
-                | _ -> 0
-
-            Html.div
-                [ prop.className "fuaran-chart fuaran-chart-ssr-placeholder"
-                  prop.custom ("data-fuaran-ssr-placeholder", "Chart")
-                  prop.custom ("data-fuaran-row-count", string rowCount)
-                  prop.children
-                      [ match spec.Title with
-                        | Some title ->
-                            Html.div [ prop.className "fuaran-chart-title"; prop.text (renderText ctx title) ]
-                        | None -> Html.none
-                        Html.div
-                            [ prop.className "fuaran-chart-placeholder"
-                              prop.text (sprintf "[Chart: %d rows — hydrates client-side]" rowCount) ] ] ]
-    | VisKind.Map spec ->
-        let markerCount =
-            BindingResolver.tryResolve ctx.Sources spec.Source
-            |> Option.map Seq.length
-            |> Option.defaultValue 0
-
-        Html.div
-            [ prop.className "fuaran-map fuaran-map-ssr-placeholder"
-              prop.custom ("data-fuaran-ssr-placeholder", "Map")
-              prop.custom ("data-fuaran-marker-count", string markerCount)
-              prop.text (sprintf "[Map: %d markers — hydrates client-side]" markerCount) ]
 
 // ─── Public entry points ─────────────────────────────────────────────────────
 

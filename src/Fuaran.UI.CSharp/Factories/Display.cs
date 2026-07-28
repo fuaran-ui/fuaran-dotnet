@@ -14,17 +14,16 @@ public static partial class Fuaran
     public static FuaranNode Badge(BadgeOptions options) =>
         BuildBare(
             options.Id,
-            FsTypes.NodeKind<object>.NewDisplay(
-                FsTypes.DisplayKind<object>.NewBadge(new FsTypes.BadgeSpec(options.Label.Inner, options.Variant.ToFs()))));
+            // Phase 692 — the category wrapper is gone; the kind factories are flat.
+            FsTypes.NodeKind<object>.NewBadge(new FsTypes.BadgeSpec(options.Label.Inner, options.Variant.ToFs())));
 
     /// <summary>A sparkline. (Built bare — no F# smart ctor.)</summary>
     public static FuaranNode Sparkline(SparklineOptions options) =>
         BuildBare(
             options.Id,
-            FsTypes.NodeKind<object>.NewDisplay(
-                FsTypes.DisplayKind<object>.NewSparkline(
-                    new FsTypes.SparklineSpec(
-                        (options.Source ?? Binding.Static(Enumerable.Empty<double>())).Inner))));
+            FsTypes.NodeKind<object>.NewSparkline(
+                new FsTypes.SparklineSpec(
+                    (options.Source ?? Binding.Static(Enumerable.Empty<double>())).Inner)));
 
     // Phase 459 — Spacer retired: inter-child space is now a Box layout `Gap`
     // (see BoxOptions), not a node.

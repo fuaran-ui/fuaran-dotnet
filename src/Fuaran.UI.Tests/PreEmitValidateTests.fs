@@ -433,15 +433,14 @@ let tests =
               let grid: Node<Msg> =
                   { Id = NodeId "orders-grid"
                     Kind =
-                      NodeKind.Visualisation(
-                          VisKind.DataGrid
-                              { Source = Binding.Static Seq.empty
-                                RowKey = None
-                                RowKeyField = Some "id"
-                                Columns = []
-                                OnRowClick = None
-                                Editable = false
-                                StaticRows = None }
+                      NodeKind.DataGrid(
+                          { Source = Binding.Static Seq.empty
+                            RowKey = None
+                            RowKeyField = Some "id"
+                            Columns = []
+                            OnRowClick = None
+                            Editable = false
+                            StaticRows = None }
                       )
                     State = Defaults.stateBehaviour<Msg>
                     Style = Defaults.style

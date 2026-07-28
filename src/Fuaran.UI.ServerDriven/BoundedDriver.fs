@@ -104,104 +104,92 @@ let private resolveTextOpt (sources: BindingSources) (t: TextSource option) : Te
 let private resolveOwnFields (sources: BindingSources) (node: Node<obj>) : Node<obj> =
     let kind =
         match node.Kind with
-        | NodeKind.Display d ->
-            let d' =
-                match d with
-                | DisplayKind.Heading s ->
-                    DisplayKind.Heading
-                        { s with
-                            Text = resolveText sources s.Text }
-                | DisplayKind.Markdown s ->
-                    DisplayKind.Markdown
-                        { s with
-                            Text = resolveText sources s.Text }
-                | DisplayKind.Badge s ->
-                    DisplayKind.Badge
-                        { s with
-                            Label = resolveText sources s.Label }
-                | DisplayKind.Metric s ->
-                    DisplayKind.Metric
-                        { s with
-                            Label = resolveText sources s.Label
-                            Value = substB sources s.Value
-                            Trend = substBOpt sources s.Trend
-                            Subtext = resolveTextOpt sources s.Subtext }
-                | DisplayKind.Callout s ->
-                    DisplayKind.Callout
-                        { s with
-                            Heading = resolveTextOpt sources s.Heading
-                            Body = resolveText sources s.Body }
-                | DisplayKind.Progress s ->
-                    DisplayKind.Progress
-                        { s with
-                            Fraction = substB sources s.Fraction
-                            Label = resolveTextOpt sources s.Label
-                            Caveat = resolveTextOpt sources s.Caveat }
-                | DisplayKind.LabelValueRow s ->
-                    DisplayKind.LabelValueRow
-                        { s with
-                            Label = resolveText sources s.Label
-                            Value = substB sources s.Value
-                            Help = resolveTextOpt sources s.Help }
-                | DisplayKind.Link s ->
-                    DisplayKind.Link
-                        { s with
-                            Href = substB sources s.Href
-                            Label = resolveText sources s.Label }
-                | DisplayKind.Sparkline s ->
-                    DisplayKind.Sparkline
-                        { s with
-                            Source = substB sources s.Source }
-                | other -> other
+        // Phase 692 — one flat match with one catch-all, where this was three
+        // nested per-category matches each with its own. Uncovered kinds still
+        // pass through (the floor).
+        | NodeKind.Heading s ->
+            NodeKind.Heading
+                { s with
+                    Text = resolveText sources s.Text }
+        | NodeKind.Markdown s ->
+            NodeKind.Markdown
+                { s with
+                    Text = resolveText sources s.Text }
+        | NodeKind.Badge s ->
+            NodeKind.Badge
+                { s with
+                    Label = resolveText sources s.Label }
+        | NodeKind.Metric s ->
+            NodeKind.Metric
+                { s with
+                    Label = resolveText sources s.Label
+                    Value = substB sources s.Value
+                    Trend = substBOpt sources s.Trend
+                    Subtext = resolveTextOpt sources s.Subtext }
+        | NodeKind.Callout s ->
+            NodeKind.Callout
+                { s with
+                    Heading = resolveTextOpt sources s.Heading
+                    Body = resolveText sources s.Body }
+        | NodeKind.Progress s ->
+            NodeKind.Progress
+                { s with
+                    Fraction = substB sources s.Fraction
+                    Label = resolveTextOpt sources s.Label
+                    Caveat = resolveTextOpt sources s.Caveat }
+        | NodeKind.LabelValueRow s ->
+            NodeKind.LabelValueRow
+                { s with
+                    Label = resolveText sources s.Label
+                    Value = substB sources s.Value
+                    Help = resolveTextOpt sources s.Help }
+        | NodeKind.Link s ->
+            NodeKind.Link
+                { s with
+                    Href = substB sources s.Href
+                    Label = resolveText sources s.Label }
+        | NodeKind.Sparkline s ->
+            NodeKind.Sparkline
+                { s with
+                    Source = substB sources s.Source }
 
-            NodeKind.Display d'
-        | NodeKind.Input i ->
-            let i' =
-                match i with
-                | InputKind.Button s ->
-                    InputKind.Button
-                        { s with
-                            Label = resolveText sources s.Label
-                            Tooltip = resolveTextOpt sources s.Tooltip
-                            Disabled = substBOpt sources s.Disabled }
-                | InputKind.Select s ->
-                    InputKind.Select
-                        { s with
-                            Label = resolveText sources s.Label
-                            Source = substB sources s.Source
-                            Value = substB sources s.Value
-                            Placeholder = resolveTextOpt sources s.Placeholder }
-                | other -> other
+        | NodeKind.Button s ->
+            NodeKind.Button
+                { s with
+                    Label = resolveText sources s.Label
+                    Tooltip = resolveTextOpt sources s.Tooltip
+                    Disabled = substBOpt sources s.Disabled }
+        | NodeKind.Select s ->
+            NodeKind.Select
+                { s with
+                    Label = resolveText sources s.Label
+                    Source = substB sources s.Source
+                    Value = substB sources s.Value
+                    Placeholder = resolveTextOpt sources s.Placeholder }
 
-            NodeKind.Input i'
-        | NodeKind.Layout l ->
-            let l' =
-                match l with
-                | LayoutKind.Tabs s ->
-                    LayoutKind.Tabs
-                        { s with
-                            ActiveIndex = substB sources s.ActiveIndex
-                            ActiveTag = substBOpt sources s.ActiveTag }
-                | LayoutKind.Stepper s ->
-                    LayoutKind.Stepper
-                        { s with
-                            ActiveStep = substB sources s.ActiveStep }
-                | LayoutKind.Disclosure s ->
-                    LayoutKind.Disclosure
-                        { s with
-                            Open = substB sources s.Open
-                            Heading = resolveText sources s.Heading }
-                | LayoutKind.Box s ->
-                    LayoutKind.Box
-                        { s with
-                            Heading = resolveTextOpt sources s.Heading }
-                | LayoutKind.SummaryList s ->
-                    LayoutKind.SummaryList
-                        { s with
-                            Heading = resolveTextOpt sources s.Heading }
-                | other -> other
+        | NodeKind.Tabs s ->
+            NodeKind.Tabs
+                { s with
+                    ActiveIndex = substB sources s.ActiveIndex
+                    ActiveTag = substBOpt sources s.ActiveTag }
+        | NodeKind.Stepper s ->
+            NodeKind.Stepper
+                { s with
+                    ActiveStep = substB sources s.ActiveStep }
+        | NodeKind.Disclosure s ->
+            NodeKind.Disclosure
+                { s with
+                    Open = substB sources s.Open
+                    Heading = resolveText sources s.Heading }
+        | NodeKind.Box s ->
+            NodeKind.Box
+                { s with
+                    Heading = resolveTextOpt sources s.Heading }
+        | NodeKind.SummaryList s ->
+            NodeKind.SummaryList
+                { s with
+                    Heading = resolveTextOpt sources s.Heading }
 
-            NodeKind.Layout l'
         | other -> other
 
     { node with Kind = kind }

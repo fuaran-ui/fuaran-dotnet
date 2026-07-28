@@ -85,8 +85,7 @@ let journalAppliedTests =
               // `journalApplied` never receives the tree, so it cannot mutate it —
               // pinned here as the behavioural contract the seam relies on.
               match tree.Kind with
-              | NodeKind.Layout(LayoutKind.Box spec) ->
-                  Expect.equal spec.Children.Length 2 "the tree still has both children"
+              | NodeKind.Box(spec) -> Expect.equal spec.Children.Length 2 "the tree still has both children"
               | other -> failtestf "expected a dashboard, got %A" other
           }
 

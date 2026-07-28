@@ -284,12 +284,11 @@ let mountScopeTests =
               let guest =
                   mkNode
                       "guest-root"
-                      (NodeKind.Layout(
-                          LayoutKind.Box
-                              { Layout = BoxLayout.Auto
-                                Role = BoxRole.Dashboard
-                                Heading = None
-                                Children = [] }
+                      (NodeKind.Box(
+                          { Layout = BoxLayout.Auto
+                            Role = BoxRole.Dashboard
+                            Heading = None
+                            Children = [] }
                       ))
 
               let rt = recordingRuntime loaded (Some guest)

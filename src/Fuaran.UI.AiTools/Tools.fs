@@ -80,38 +80,38 @@ let private resolveOptionalSlot<'T>
 
 let private extractBindings (ctx: IntrospectionContext) (kind: NodeKind<'Msg>) : Map<string, ResolvedBindingResult> =
     match kind with
-    | NodeKind.Display(DisplayKind.Metric spec) ->
+    | NodeKind.Metric(spec) ->
         let baseMap = Map.empty |> Map.add "Value" (resolveSlot ctx spec.Value)
 
         match spec.Trend with
         | Some trend -> baseMap |> Map.add "Trend" (resolveSlot ctx trend)
         | None -> baseMap
-    | NodeKind.Display(DisplayKind.Sparkline spec) -> Map.ofList [ "Source", resolveSlot ctx spec.Source ]
-    | NodeKind.Display(DisplayKind.Progress spec) -> Map.ofList [ "Fraction", resolveSlot ctx spec.Fraction ]
+    | NodeKind.Sparkline(spec) -> Map.ofList [ "Source", resolveSlot ctx spec.Source ]
+    | NodeKind.Progress(spec) -> Map.ofList [ "Fraction", resolveSlot ctx spec.Fraction ]
     // LabelValueRow's single Binding-typed slot.
-    | NodeKind.Display(DisplayKind.LabelValueRow spec) -> Map.ofList [ "Value", resolveSlot ctx spec.Value ]
+    | NodeKind.LabelValueRow(spec) -> Map.ofList [ "Value", resolveSlot ctx spec.Value ]
     // Link's Href is a Binding<string> slot.
-    | NodeKind.Display(DisplayKind.Link spec) -> Map.ofList [ "Href", resolveSlot ctx spec.Href ]
-    | NodeKind.Layout(LayoutKind.Stepper spec) -> Map.ofList [ "ActiveStep", resolveSlot ctx spec.ActiveStep ]
+    | NodeKind.Link(spec) -> Map.ofList [ "Href", resolveSlot ctx spec.Href ]
+    | NodeKind.Stepper(spec) -> Map.ofList [ "ActiveStep", resolveSlot ctx spec.ActiveStep ]
     // Tabs: ActiveIndex always resolves; ActiveTag is the optional typed-tag
     // overlay — added only when `Some`, mirroring Metric.Trend's shape above.
-    | NodeKind.Layout(LayoutKind.Tabs spec) ->
+    | NodeKind.Tabs(spec) ->
         let baseMap = Map.empty |> Map.add "ActiveIndex" (resolveSlot ctx spec.ActiveIndex)
 
         match spec.ActiveTag with
         | Some tag -> baseMap |> Map.add "ActiveTag" (resolveSlot ctx tag)
         | None -> baseMap
-    | NodeKind.Layout(LayoutKind.Disclosure spec) -> Map.ofList [ "Open", resolveSlot ctx spec.Open ]
+    | NodeKind.Disclosure(spec) -> Map.ofList [ "Open", resolveSlot ctx spec.Open ]
     // Button: Disabled is the optional bound disabled-state — added only when
     // `Some`, mirroring Metric.Trend / Tabs.ActiveTag above.
-    | NodeKind.Input(InputKind.Button spec) ->
+    | NodeKind.Button(spec) ->
         match spec.Disabled with
         | Some disabled -> Map.ofList [ "Disabled", resolveSlot ctx disabled ]
         | None -> Map.empty
     // Select: Source + Value always resolve; Disabled is the optional bound
     // disabled-state (Phase 130) — added only when `Some`, mirroring
     // Button.Disabled / Metric.Trend.
-    | NodeKind.Input(InputKind.Select spec) ->
+    | NodeKind.Select(spec) ->
         let baseMap =
             Map.ofList [ "Source", resolveSlot ctx spec.Source; "Value", resolveSlot ctx spec.Value ]
 
@@ -120,17 +120,17 @@ let private extractBindings (ctx: IntrospectionContext) (kind: NodeKind<'Msg>) :
         | None -> baseMap
     // Form / FileUpload: the optional bound disabled-state (Phase 130) is the
     // only Binding-typed slot — added only when `Some`.
-    | NodeKind.Input(InputKind.Form spec) ->
+    | NodeKind.Form(spec) ->
         match spec.Disabled with
         | Some disabled -> Map.ofList [ "Disabled", resolveSlot ctx disabled ]
         | None -> Map.empty
-    | NodeKind.Input(InputKind.FileUpload spec) ->
+    | NodeKind.FileUpload(spec) ->
         match spec.Disabled with
         | Some disabled -> Map.ofList [ "Disabled", resolveSlot ctx disabled ]
         | None -> Map.empty
-    | NodeKind.Visualisation(VisKind.DataGrid spec) -> Map.ofList [ "Source", resolveSlot ctx spec.Source ]
-    | NodeKind.Visualisation(VisKind.Chart spec) -> Map.ofList [ "Source", resolveSlot ctx spec.Source ]
-    | NodeKind.Visualisation(VisKind.Map spec) -> Map.ofList [ "Source", resolveSlot ctx spec.Source ]
+    | NodeKind.DataGrid(spec) -> Map.ofList [ "Source", resolveSlot ctx spec.Source ]
+    | NodeKind.Chart(spec) -> Map.ofList [ "Source", resolveSlot ctx spec.Source ]
+    | NodeKind.Map(spec) -> Map.ofList [ "Source", resolveSlot ctx spec.Source ]
     | _ -> Map.empty
 
 // ─── Per-NodeKind binding-slot lookup (for getBindingValue) ─────────────────
@@ -144,8 +144,8 @@ let private extractSlot<'Msg>
     (slot: string)
     : ResolvedBindingResult option =
     match kind, slot with
-    | NodeKind.Display(DisplayKind.Metric spec), "Value" -> Some(resolveSlot ctx spec.Value)
-    | NodeKind.Display(DisplayKind.Metric spec), "Trend" ->
+    | NodeKind.Metric(spec), "Value" -> Some(resolveSlot ctx spec.Value)
+    | NodeKind.Metric(spec), "Trend" ->
         match spec.Trend with
         | Some trend -> Some(resolveSlot ctx trend)
         | None ->
@@ -160,14 +160,14 @@ let private extractSlot<'Msg>
                       TypeHint = None
                       Source = BindingSource.Static }
             )
-    | NodeKind.Display(DisplayKind.Sparkline spec), "Source" -> Some(resolveSlot ctx spec.Source)
-    | NodeKind.Display(DisplayKind.Progress spec), "Fraction" -> Some(resolveSlot ctx spec.Fraction)
+    | NodeKind.Sparkline(spec), "Source" -> Some(resolveSlot ctx spec.Source)
+    | NodeKind.Progress(spec), "Fraction" -> Some(resolveSlot ctx spec.Fraction)
     // LabelValueRow's Source slot.
-    | NodeKind.Display(DisplayKind.LabelValueRow spec), "Value" -> Some(resolveSlot ctx spec.Value)
-    | NodeKind.Display(DisplayKind.Link spec), "Href" -> Some(resolveSlot ctx spec.Href)
-    | NodeKind.Layout(LayoutKind.Stepper spec), "ActiveStep" -> Some(resolveSlot ctx spec.ActiveStep)
-    | NodeKind.Layout(LayoutKind.Tabs spec), "ActiveIndex" -> Some(resolveSlot ctx spec.ActiveIndex)
-    | NodeKind.Layout(LayoutKind.Tabs spec), "ActiveTag" ->
+    | NodeKind.LabelValueRow(spec), "Value" -> Some(resolveSlot ctx spec.Value)
+    | NodeKind.Link(spec), "Href" -> Some(resolveSlot ctx spec.Href)
+    | NodeKind.Stepper(spec), "ActiveStep" -> Some(resolveSlot ctx spec.ActiveStep)
+    | NodeKind.Tabs(spec), "ActiveIndex" -> Some(resolveSlot ctx spec.ActiveIndex)
+    | NodeKind.Tabs(spec), "ActiveTag" ->
         match spec.ActiveTag with
         | Some tag -> Some(resolveSlot ctx tag)
         | None ->
@@ -181,8 +181,8 @@ let private extractSlot<'Msg>
                       TypeHint = None
                       Source = BindingSource.Static }
             )
-    | NodeKind.Layout(LayoutKind.Disclosure spec), "Open" -> Some(resolveSlot ctx spec.Open)
-    | NodeKind.Input(InputKind.Button spec), "Disabled" ->
+    | NodeKind.Disclosure(spec), "Open" -> Some(resolveSlot ctx spec.Open)
+    | NodeKind.Button(spec), "Disabled" ->
         match spec.Disabled with
         | Some disabled -> Some(resolveSlot ctx disabled)
         | None ->
@@ -197,19 +197,19 @@ let private extractSlot<'Msg>
                       TypeHint = None
                       Source = BindingSource.Static }
             )
-    | NodeKind.Input(InputKind.Select spec), "Source" -> Some(resolveSlot ctx spec.Source)
-    | NodeKind.Input(InputKind.Select spec), "Value" -> Some(resolveSlot ctx spec.Value)
+    | NodeKind.Select(spec), "Source" -> Some(resolveSlot ctx spec.Source)
+    | NodeKind.Select(spec), "Value" -> Some(resolveSlot ctx spec.Value)
     // Phase 130: Select / Form / FileUpload optional bound disabled-state.
     // When absent, surface as Resolved with no value (synthetic-None posture,
     // mirroring Button.Disabled / Tabs.ActiveTag / Metric.Trend) so the
     // orchestrator distinguishes "slot exists but no override" from "slot
     // missing".
-    | NodeKind.Input(InputKind.Select spec), "Disabled" -> resolveOptionalSlot ctx spec.Disabled
-    | NodeKind.Input(InputKind.Form spec), "Disabled" -> resolveOptionalSlot ctx spec.Disabled
-    | NodeKind.Input(InputKind.FileUpload spec), "Disabled" -> resolveOptionalSlot ctx spec.Disabled
-    | NodeKind.Visualisation(VisKind.DataGrid spec), "Source" -> Some(resolveSlot ctx spec.Source)
-    | NodeKind.Visualisation(VisKind.Chart spec), "Source" -> Some(resolveSlot ctx spec.Source)
-    | NodeKind.Visualisation(VisKind.Map spec), "Source" -> Some(resolveSlot ctx spec.Source)
+    | NodeKind.Select(spec), "Disabled" -> resolveOptionalSlot ctx spec.Disabled
+    | NodeKind.Form(spec), "Disabled" -> resolveOptionalSlot ctx spec.Disabled
+    | NodeKind.FileUpload(spec), "Disabled" -> resolveOptionalSlot ctx spec.Disabled
+    | NodeKind.DataGrid(spec), "Source" -> Some(resolveSlot ctx spec.Source)
+    | NodeKind.Chart(spec), "Source" -> Some(resolveSlot ctx spec.Source)
+    | NodeKind.Map(spec), "Source" -> Some(resolveSlot ctx spec.Source)
     | _ -> None
 
 // ─── Per-NodeKind props extraction ─────────────────────────────────────────
@@ -244,7 +244,7 @@ let private valueEntry (name: string) (value: obj) : PropEntry =
 
 let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
     match kind with
-    | NodeKind.Layout(LayoutKind.Box spec) ->
+    | NodeKind.Box(spec) ->
         // Phase 390 — surface the layout-mode-appropriate props (mirroring the
         // retired Stack/GridLayout/Card surfaces) plus the optional Heading.
         let layoutEntries =
@@ -264,30 +264,30 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
             | None -> [ entry "Heading" None (Some "TextSource option") ]
 
         layoutEntries @ headingEntries
-    | NodeKind.Layout(LayoutKind.SplitPanel spec) -> [ valueEntry "Weight" spec.Weight ]
-    | NodeKind.Layout(LayoutKind.Tabs spec) -> [ valueEntry "Orientation" spec.Orientation ]
-    | NodeKind.Layout(LayoutKind.Stepper _) ->
+    | NodeKind.SplitPanel(spec) -> [ valueEntry "Weight" spec.Weight ]
+    | NodeKind.Tabs(spec) -> [ valueEntry "Orientation" spec.Orientation ]
+    | NodeKind.Stepper(_) ->
         // ActiveStep is a Binding slot exposed via `extractBindings`, not
         // a top-level prop. No non-binding scalars on Stepper.
         []
-    | NodeKind.Layout(LayoutKind.SummaryList spec) ->
+    | NodeKind.SummaryList(spec) ->
         // Surface the optional section heading.
         match spec.Heading with
         | Some h -> [ valueEntry "Heading" h ]
         | None -> [ entry "Heading" None (Some "TextSource option") ]
-    | NodeKind.Layout(LayoutKind.Disclosure spec) ->
+    | NodeKind.Disclosure(spec) ->
         // Surface required Heading + DefaultOpen scalar.
         // Open is a Binding<bool> — exposed via the binding-slots extractor
         // rather than as a scalar prop.
         [ valueEntry "Heading" spec.Heading; valueEntry "DefaultOpen" spec.DefaultOpen ]
-    | NodeKind.Layout(LayoutKind.Modal spec) ->
+    | NodeKind.Modal(spec) ->
         // Phase 289 — Dismissable + optional Heading scalars (Open binding +
         // OnDismiss action are not scalar props).
         [ valueEntry "Dismissable" spec.Dismissable
           (match spec.Heading with
            | Some h -> valueEntry "Heading" h
            | None -> entry "Heading" None (Some "TextSource option")) ]
-    | NodeKind.Layout(LayoutKind.ScrollArea spec) ->
+    | NodeKind.ScrollArea(spec) ->
         // Phase 289 — scroll axis + optional pixel bounds.
         [ valueEntry "Orientation" spec.Orientation
           (match spec.MaxHeight with
@@ -296,13 +296,13 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
           (match spec.MaxWidth with
            | Some w -> valueEntry "MaxWidth" w
            | None -> entry "MaxWidth" None (Some "int option")) ]
-    | NodeKind.Display(DisplayKind.Heading spec) ->
+    | NodeKind.Heading(spec) ->
         // Include Variant alongside Level + Text.
         [ valueEntry "Level" spec.Level
           valueEntry "Text" spec.Text
           valueEntry "Variant" spec.Variant ]
-    | NodeKind.Display(DisplayKind.Markdown spec) -> [ valueEntry "Text" spec.Text ]
-    | NodeKind.Display(DisplayKind.Metric spec) ->
+    | NodeKind.Markdown(spec) -> [ valueEntry "Text" spec.Text ]
+    | NodeKind.Metric(spec) ->
         [ valueEntry "Label" spec.Label
           valueEntry "Format" spec.Format
           valueEntry "Tone" spec.Tone
@@ -317,9 +317,9 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
           (match spec.Subtext with
            | Some s -> valueEntry "Subtext" s
            | None -> entry "Subtext" None (Some "TextSource option")) ]
-    | NodeKind.Display(DisplayKind.Badge spec) -> [ valueEntry "Label" spec.Label; valueEntry "Variant" spec.Variant ]
-    | NodeKind.Display(DisplayKind.Sparkline _) -> []
-    | NodeKind.Display(DisplayKind.Callout spec) ->
+    | NodeKind.Badge(spec) -> [ valueEntry "Label" spec.Label; valueEntry "Variant" spec.Variant ]
+    | NodeKind.Sparkline(_) -> []
+    | NodeKind.Callout(spec) ->
         [ valueEntry "Tone" spec.Tone
           (match spec.Heading with
            | Some h -> valueEntry "Heading" h
@@ -329,7 +329,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
            | Some i -> valueEntry "Icon" i
            | None -> entry "Icon" None (Some "IconSource option"))
           valueEntry "Dismissable" spec.Dismissable ]
-    | NodeKind.Display(DisplayKind.Progress spec) ->
+    | NodeKind.Progress(spec) ->
         [ (match spec.Label with
            | Some l -> valueEntry "Label" l
            | None -> entry "Label" None (Some "TextSource option"))
@@ -338,8 +338,8 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
            | None -> entry "Caveat" None (Some "TextSource option"))
           valueEntry "Indeterminate" spec.Indeterminate
           valueEntry "Tone" spec.Tone ]
-    | NodeKind.Display(DisplayKind.Skeleton spec) -> [ valueEntry "Rows" spec.Rows ]
-    | NodeKind.Display(DisplayKind.LabelValueRow spec) ->
+    | NodeKind.Skeleton(spec) -> [ valueEntry "Rows" spec.Rows ]
+    | NodeKind.LabelValueRow(spec) ->
         // Source is a Binding slot exposed via
         // extractBindings; the remaining four fields are scalar props.
         [ valueEntry "Label" spec.Label
@@ -348,7 +348,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
           (match spec.Help with
            | Some h -> valueEntry "Help" h
            | None -> entry "Help" None (Some "TextSource option")) ]
-    | NodeKind.Display(DisplayKind.Fact spec) ->
+    | NodeKind.Fact(spec) ->
         // No Binding slot: `Value` is a TextSource (its Bound leg resolves
         // through renderText, not the slot surface) — all five are props.
         [ valueEntry "Label" spec.Label
@@ -358,7 +358,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
           (match spec.Help with
            | Some h -> valueEntry "Help" h
            | None -> entry "Help" None (Some "TextSource option")) ]
-    | NodeKind.Display(DisplayKind.Link spec) ->
+    | NodeKind.Link(spec) ->
         // Href is a Binding slot exposed via extractBindings; the remaining
         // fields are scalar props.
         [ valueEntry "Label" spec.Label
@@ -369,20 +369,20 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
            | Some t -> valueEntry "Target" t
            | None -> entry "Target" None (Some "string option"))
           valueEntry "Download" spec.Download ]
-    | NodeKind.Display(DisplayKind.Image spec) ->
+    | NodeKind.Image(spec) ->
         // Phase 287 — Src is a Binding<string> (sanitised at render); Alt +
         // Variant are scalar props.
         [ valueEntry "Alt" spec.Alt; valueEntry "Variant" spec.Variant ]
-    | NodeKind.Display(DisplayKind.List spec) ->
+    | NodeKind.List(spec) ->
         [ valueEntry "Ordered" spec.Ordered
           entry "ItemCount" (Some(boxNN (List.length spec.Items))) (Some "TextSource list (count)") ]
-    | NodeKind.Display(DisplayKind.Toast spec) ->
+    | NodeKind.Toast(spec) ->
         // Phase 289 — Open is a Binding<bool>; Message + Tone + Dismissable are
         // scalar props.
         [ valueEntry "Message" spec.Message
           valueEntry "Tone" spec.Tone
           valueEntry "Dismissable" spec.Dismissable ]
-    | NodeKind.Display(DisplayKind.CodeBlock spec) ->
+    | NodeKind.CodeBlock(spec) ->
         // Phase 290 — Language + LineNumbers + Copyable scalars + a code-length
         // peek (the raw source itself is not surfaced as a scalar prop).
         [ valueEntry "Language" spec.Language
@@ -390,12 +390,12 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
           valueEntry "Copyable" spec.Copyable
           entry "CodeLength" (Some(boxNN spec.Code.Length)) (Some "int (source length)")
           entry "HighlightLineCount" (Some(boxNN (List.length spec.HighlightLines))) (Some "int list (count)") ]
-    | NodeKind.Display(DisplayKind.Math spec) ->
+    | NodeKind.Math(spec) ->
         // Phase 293 — Display mode + a source-length peek (the LaTeX source is
         // not surfaced as a scalar prop).
         [ valueEntry "Display" spec.Display
           entry "SourceLength" (Some(boxNN spec.Source.Length)) (Some "int (LaTeX source length)") ]
-    | NodeKind.Display(DisplayKind.Drawing spec) ->
+    | NodeKind.Drawing(spec) ->
         // Phase 524 — surface shape-count + a viewBox peek; the typed Shape list
         // is inspected structurally, not as scalar props.
         [ entry "ShapeCount" (Some(boxNN (List.length spec.Shapes))) (Some "Shape list (count)")
@@ -407,31 +407,31 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
                   )
               ))
               (Some "ViewBox (minX minY width height)") ]
-    | NodeKind.Input(InputKind.Form spec) ->
+    | NodeKind.Form(spec) ->
         [ valueEntry "SubmitLabel" spec.SubmitLabel
           opaqueFn "OnSubmit" "Action<'Msg>"
           entry "Fields" (Some(boxNN (List.length spec.Fields))) (Some "FormField list (count)") ]
-    | NodeKind.Input(InputKind.Filters specs) ->
+    | NodeKind.Filters(specs) ->
         [ entry "FilterCount" (Some(boxNN (List.length specs))) (Some "FilterSpec list (count)") ]
-    | NodeKind.Input(InputKind.Button spec) ->
+    | NodeKind.Button(spec) ->
         [ valueEntry "Label" spec.Label
           valueEntry "Variant" spec.Variant
           (match spec.Icon with
            | Some i -> valueEntry "Icon" i
            | None -> entry "Icon" None (Some "IconSource option"))
           opaqueFn "OnClick" "Action<'Msg>" ]
-    | NodeKind.Input(InputKind.FileUpload spec) ->
+    | NodeKind.FileUpload(spec) ->
         [ valueEntry "Label" spec.Label
           entry "Accept" (Some(boxNN (String.concat ", " spec.Accept))) (Some "string list (comma-joined for the wire)")
           valueEntry "Multiple" spec.Multiple
           opaqueFn "OnSelect" "FileSelection list -> Action<'Msg>" ]
-    | NodeKind.Input(InputKind.Select spec) ->
+    | NodeKind.Select(spec) ->
         [ valueEntry "Label" spec.Label
           (match spec.Placeholder with
            | Some p -> valueEntry "Placeholder" p
            | None -> entry "Placeholder" None (Some "TextSource option"))
           opaqueFn "OnChange" "string option -> Action<'Msg>" ]
-    | NodeKind.Visualisation(VisKind.DataGrid spec) ->
+    | NodeKind.DataGrid(spec) ->
         [ entry "ColumnCount" (Some(boxNN (List.length spec.Columns))) (Some "Column list (count)")
           valueEntry "Editable" spec.Editable
           (match spec.OnRowClick with
@@ -444,7 +444,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
                    [ entry "HeaderCount" (Some(boxNN (List.length headers))) (Some "TextSource list (count)")
                      entry "RowCount" (Some(boxNN (List.length rows))) (Some "TextSource list list (count)") ]
                | None -> []) ]
-    | NodeKind.Visualisation(VisKind.Chart spec) ->
+    | NodeKind.Chart(spec) ->
         [ valueEntry "Kind" spec.Kind
           valueEntry "XField" spec.XField
           entry
@@ -457,7 +457,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
           (match spec.OnPointClick with
            | Some _ -> opaqueFn "OnPointClick" "obj -> Action<'Msg>"
            | None -> entry "OnPointClick" None (Some "(obj -> Action<'Msg>) option")) ]
-    | NodeKind.Visualisation(VisKind.Map spec) ->
+    | NodeKind.Map(spec) ->
         [ valueEntry "CentreLatitude" spec.CentreLatitude
           valueEntry "CentreLongitude" spec.CentreLongitude
           valueEntry "Zoom" spec.Zoom

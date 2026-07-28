@@ -184,12 +184,12 @@ let rec encodeAction (action: Action<'Msg>) : string =
 
 let private childrenOf (node: Node<obj>) : Node<obj> list =
     match node.Kind with
-    | NodeKind.Layout(LayoutKind.Box s) -> s.Children
-    | NodeKind.Layout(LayoutKind.SplitPanel s) -> s.Children
-    | NodeKind.Layout(LayoutKind.Tabs s) -> s.Children
-    | NodeKind.Layout(LayoutKind.Stepper s) -> s.Children
-    | NodeKind.Layout(LayoutKind.SummaryList s) -> s.Children
-    | NodeKind.Layout(LayoutKind.Disclosure s) -> s.Children
+    | NodeKind.Box(s) -> s.Children
+    | NodeKind.SplitPanel(s) -> s.Children
+    | NodeKind.Tabs(s) -> s.Children
+    | NodeKind.Stepper(s) -> s.Children
+    | NodeKind.SummaryList(s) -> s.Children
+    | NodeKind.Disclosure(s) -> s.Children
     | NodeKind.ErrorBoundary s -> [ s.Child ]
     | NodeKind.FragmentDecl s -> [ s.Body ]
     | _ -> []
@@ -197,8 +197,8 @@ let private childrenOf (node: Node<obj>) : Node<obj> list =
 /// The node's own directly-readable `Action`, if it is an event-bearing leaf.
 let private actionOf (node: Node<obj>) : Action<obj> option =
     match node.Kind with
-    | NodeKind.Input(InputKind.Button spec) -> Some spec.OnClick
-    | NodeKind.Input(InputKind.Form spec) -> Some spec.OnSubmit
+    | NodeKind.Button(spec) -> Some spec.OnClick
+    | NodeKind.Form(spec) -> Some spec.OnSubmit
     | _ -> None
 
 /// DFS collect every `(nodeId, Action)` for event-bearing nodes, in document

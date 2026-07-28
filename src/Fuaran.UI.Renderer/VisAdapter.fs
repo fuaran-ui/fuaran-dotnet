@@ -3,7 +3,7 @@ module Fuaran.UI.Renderer.VisAdapter
 // ============================================================================
 //  Fuaran — visualisation adapter seam (session 3b)
 //
-//  `VisKind.DataGrid` and `VisKind.Chart` are the two `Visualisation` kinds with
+//  `NodeKind.DataGrid` and `NodeKind.Chart` are the two `Visualisation` kinds with
 //  third-party-library implementations whose authoring shape doesn't fit
 //  the simple Feliz render path. The renderer ships a simple-HTML-table
 //  fallback for Grid + a labelled-placeholder for Chart (per

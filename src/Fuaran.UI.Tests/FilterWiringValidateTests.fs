@@ -48,21 +48,20 @@ let private paramPipeline: Fuaran.Core.Transform list =
 let private gridWithEditable (editable: bool) (source: Binding<obj seq>) : Node<Msg> =
     { Id = NodeId "grid"
       Kind =
-        NodeKind.Visualisation(
-            VisKind.DataGrid
-                { Source = source
-                  RowKey = None
-                  RowKeyField = Some "dept"
-                  Columns =
-                    [ { Label = "Dept"
-                        Value = None
-                        Field = Some "dept"
-                        Format = CellFormat.None
-                        Kind = CellKindErased.Text
-                        Width = ColumnWidth.Auto } ]
-                  OnRowClick = None
-                  Editable = editable
-                  StaticRows = None }
+        NodeKind.DataGrid(
+            { Source = source
+              RowKey = None
+              RowKeyField = Some "dept"
+              Columns =
+                [ { Label = "Dept"
+                    Value = None
+                    Field = Some "dept"
+                    Format = CellFormat.None
+                    Kind = CellKindErased.Text
+                    Width = ColumnWidth.Auto } ]
+              OnRowClick = None
+              Editable = editable
+              StaticRows = None }
         )
       State = Defaults.stateBehaviour<Msg>
       Style = Defaults.style
@@ -174,21 +173,20 @@ let tests =
               let bareGrid: Node<Msg> =
                   { Id = NodeId "bare-grid"
                     Kind =
-                      NodeKind.Visualisation(
-                          VisKind.DataGrid
-                              { Source = Binding.Static Seq.empty
-                                RowKey = None
-                                RowKeyField = None
-                                Columns =
-                                  [ { Label = "Blank"
-                                      Value = None
-                                      Field = None
-                                      Format = CellFormat.None
-                                      Kind = CellKindErased.Text
-                                      Width = ColumnWidth.Auto } ]
-                                OnRowClick = None
-                                Editable = false
-                                StaticRows = None }
+                      NodeKind.DataGrid(
+                          { Source = Binding.Static Seq.empty
+                            RowKey = None
+                            RowKeyField = None
+                            Columns =
+                              [ { Label = "Blank"
+                                  Value = None
+                                  Field = None
+                                  Format = CellFormat.None
+                                  Kind = CellKindErased.Text
+                                  Width = ColumnWidth.Auto } ]
+                            OnRowClick = None
+                            Editable = false
+                            StaticRows = None }
                       )
                     State = Defaults.stateBehaviour<Msg>
                     Style = Defaults.style

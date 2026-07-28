@@ -110,7 +110,7 @@ let tests =
               let rec findFragmentDecls (node: Node<Msg>) : FragmentId list =
                   match node.Kind with
                   | NodeKind.FragmentDecl spec -> [ spec.Name ] @ findFragmentDecls spec.Body
-                  | NodeKind.Layout(LayoutKind.Box s) -> s.Children |> List.collect findFragmentDecls
+                  | NodeKind.Box(s) -> s.Children |> List.collect findFragmentDecls
                   | _ -> []
 
               let names = findFragmentDecls tree
@@ -145,7 +145,7 @@ let tests =
           test "PreEmitValidate.validate flags an empty NodeId inside a FragmentDecl body" {
               let badBody: Node<Msg> =
                   { Id = NodeId ""
-                    Kind = NodeKind.Display(DisplayKind.Skeleton { Rows = 1 })
+                    Kind = NodeKind.Skeleton({ Rows = 1 })
                     State = Defaults.stateBehaviour<Msg>
                     Style = Defaults.style
                     Accessibility = Option.None

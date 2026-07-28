@@ -83,7 +83,7 @@ type ButtonVariant =
     | Tertiary
     | Destructive
 
-/// Presentation shape for `DisplayKind.Image` (Phase 287). `Default` is a
+/// Presentation shape for `NodeKind.Image` (Phase 287). `Default` is a
 /// plain in-flow `<img>`; `Avatar` is a circular crop (the "user picture"
 /// shape that was previously impossible without a Custom escape); `Rounded`
 /// is a soft-cornered rectangle. Bounded by design — the renderer maps each
@@ -94,7 +94,7 @@ type ImageVariant =
     | Avatar
     | Rounded
 
-/// Scroll axis for `LayoutKind.ScrollArea` (Phase 289). Selects which
+/// Scroll axis for `NodeKind.ScrollArea` (Phase 289). Selects which
 /// overflow axis the container clips + scrolls: `Vertical` → `overflow-y`,
 /// `Horizontal` → `overflow-x`, `Both` → both. The renderer maps each to a
 /// `fuaran-scrollarea-{axis}` class.
@@ -115,7 +115,7 @@ type DateVariant =
     | Time
     | DateTime
 
-/// Presentation mode for `DisplayKind.Math` (Phase 293). `Inline` flows the
+/// Presentation mode for `NodeKind.Math` (Phase 293). `Inline` flows the
 /// equation within surrounding text (a `<span>`); `Block` is a centred display
 /// equation on its own line (a `<div>`). The renderer's deterministic fallback
 /// emits the raw LaTeX source in the matching container; KaTeX upgrades it
@@ -642,10 +642,158 @@ and Accessibility =
     }
 
 and [<RequireQualifiedAccess>] NodeKind<'Msg> =
-    | Layout of LayoutKind<'Msg>
-    | Display of DisplayKind<'Msg>
-    | Input of InputKind<'Msg>
-    | Visualisation of VisKind<'Msg>
+    // ─── Phase 692: the vocabulary is FLAT ─────────────────────────────
+    //
+    // The four behavioural categories (Layout / Display / Input / Visualisation)
+    // were a host-side envelope over these cases. `WIRE_FORMAT.md` §3.2 already
+    // called them "a host-side classification recovered on decode" — the wire has
+    // never had them, and the decoder rebuilt them from the flat `$type`. Keeping
+    // them cost a level of nesting at every construction and match site, and put
+    // the host tree one shape away from the IDL-generated one.
+    //
+    // The categories are not lost, only unnested: each is still recoverable from
+    // the case (see `NodeKind.category`), which is all the renderer and AiTools
+    // ever used them for.
+
+    // ── Layout ──
+    /// Phase 390 — the unified container primitive; absorbs the retired
+    /// `Stack` / `GridLayout` / `Dashboard` / `Card` near-synonyms. Layout mode
+    /// = how children arrange; Role = what the container means (emitted element
+    /// + ARIA landmark + `fuaran-*` chrome). The author-facing `StackSpec` /
+    /// `GridLayoutSpec` / `DashboardSpec` / `CardSpec` records survive as
+    /// smart-ctor inputs that translate into `Box` — the wire consolidates, the
+    /// authoring surface does not. See `docs/BOX-CONTAINER-UNIFICATION.md`.
+    | Box of BoxSpec<'Msg>
+    | SplitPanel of SplitPanelSpec<'Msg>
+    | Tabs of TabsSpec<'Msg>
+    | Stepper of StepperSpec<'Msg>
+    /// Feliz-parity additive: single-card container
+    /// of label/value rows (typically `NodeKind.LabelValueRow` children).
+    /// Distinct shape from `Card` — no internal per-child padding, divider
+    /// rules between children, optional section heading. Closes the
+    /// "list-of-stats-in-one-card" gap that Feliz expresses
+    /// as a hand-rolled `<div class="flex justify-between">` per row.
+    | SummaryList of SummaryListSpec<'Msg>
+    /// Typed accordion / collapsible primitive.
+    /// Renders as HTML-native `<details>` / `<summary>` so the open/closed
+    /// toggle works without React state; the `Open` binding overlays
+    /// controlled-mode semantics for hosts that need model-driven state.
+    /// Closes the "long itemised disclosure list" Feliz
+    /// escape — see `DisclosureSpec` for the field-level rationale.
+    | Disclosure of DisclosureSpec<'Msg>
+    /// Out-of-flow overlay container (Phase 289) — the
+    /// single most-missed primitive. Carries an `Open` `Binding<bool>`, an
+    /// optional heading, a `Dismissable` flag, an `OnDismiss` action, and a
+    /// child subtree. Renders inline (no React portal) with `role="dialog"` +
+    /// `aria-modal`, positioned + z-indexed by CSS so SSR and CSR emit
+    /// byte-identical structure (no hydration mismatch). Focus management is an
+    /// additive client-only enhancement that does not alter the hydrated DOM —
+    /// see the overlay render-fidelity contract in docs/SSR.md.
+    | Modal of ModalSpec<'Msg>
+    /// Overflow / scroll container (Phase 289) — the
+    /// in-flow container the fidelity check still lacked. `Orientation` selects
+    /// the scroll axis; optional `MaxHeight` / `MaxWidth` (pixels) bound the
+    /// viewport. Overflow clipping + scrollbar are a genuine cross-host
+    /// divergence point pinned by the SSR-parity corpus.
+    | ScrollArea of ScrollAreaSpec<'Msg>
+
+
+    // ── Display ──
+    | Heading of HeadingSpec
+    | Markdown of MarkdownSpec
+    | Metric of MetricSpec
+    | Badge of BadgeSpec
+    | Sparkline of SparklineSpec
+    | Callout of CalloutSpec
+    | Progress of ProgressSpec
+    // Skeleton is a renderer-emitted state placeholder; authors compose it
+    // via `Fuaran.skeleton` for the OnLoading slot. §4c lines 504–542.
+    | Skeleton of SkeletonSpec
+    /// A single
+    /// label-left / value-right row, baseline-aligned. The primitive
+    /// `SummaryList` consumes; can stand alone too. Honours `StateBehaviour`
+    /// `OnLoading` / `OnError` slots the same way `Metric` does (the resolver
+    /// runs against `Source`).
+    | LabelValueRow of LabelValueRowSpec
+    /// A labeled TEXT fact — "Patient: Alice Smith", "Policy: POL-99382-X".
+    /// The complementary kind to `Metric` (numeric-only, trendable) and
+    /// `LabelValueRow` (numeric row): `Fact` is where a text-valued fact
+    /// lives. Added 2026-07-17 after the launch eval showed every frontier
+    /// model forcing text facts into `Metric.Source: Binding<float>`
+    /// (~130 cells, 6 tasks at 0%): the type error was correct — the missing
+    /// kind was the defect. `Value` is a `TextSource`, so static text,
+    /// host-bound values (`Bound`), and i18n all ride the vocabulary models
+    /// already use for labels; no new binding surface.
+    | Fact of FactSpec
+    /// A crawlable hyperlink primitive (Phase 139). Renders a real
+    /// `<a href>` in both the client and server renderers — followable
+    /// with JavaScript disabled and visible to search-engine crawlers,
+    /// unlike `NodeKind.Button` + `Action.Navigate` (which is the SPA
+    /// client-routing gesture, wired as an onClick through the runtime).
+    /// Reach for `Link` for real destinations (SEO, no-JS); reach for
+    /// `Button` + `Action.Navigate` for stateful in-app routing.
+    | Link of LinkSpec
+    /// A standalone image primitive (Phase 287). `IconSource`
+    /// is a *field* on other specs, but there was no image *node* — embedding
+    /// one meant a Markdown escape or a Custom. Renders a real `<img>` in both
+    /// renderers with `src` routed through `Sanitize.sanitizeUrlOrBlank` and a
+    /// mandatory `Alt` text (accessibility floor). The `Variant` covers the
+    /// Avatar (circular) case the audit flagged.
+    | Image of ImageSpec
+    /// A structured item list (Phase 287) — distinct
+    /// from `Table` (tabular), `SummaryList` (label/value rows), and Markdown
+    /// bullets (free text). Renders `<ul>` / `<ol>` of `<li>` per item.
+    | List of ListSpec
+    /// A transient overlay notification surface (Phase
+    /// 289). The DECLARATIVE, in-tree, SSR-rendered counterpart to the
+    /// imperative `Action.Notify` (which a host maps to ephemeral chrome with no
+    /// tree node). Reach for `Toast` when the notification is model-driven +
+    /// bound to an `Open` state that hydrates cleanly; reach for `Action.Notify`
+    /// for fire-and-forget host chrome. Renders inline (no portal) with
+    /// `role="status"` / `aria-live`, positioned by CSS — see the overlay
+    /// render-fidelity contract in docs/SSR.md.
+    | Toast of ToastSpec
+    /// A first-class code-display primitive (Phase 290).
+    /// Owns a DETERMINISTIC `<pre><code>` structure (HTML-escaped, no markdown
+    /// library) byte-identical across all hosts + SSR. Syntax highlighting is a
+    /// client-only post-hydration enhancement (targets the `language-{x}`
+    /// class), explicitly OUTSIDE the parity byte-diff. Carries a `Language`
+    /// tag, optional line numbers + highlight ranges, and a copy affordance.
+    | CodeBlock of CodeBlockSpec
+    /// A LaTeX math primitive (Phase 293). `Source` is
+    /// deterministic + parity-clean as data; the parity-checked render is the
+    /// raw escaped source in a known container. KaTeX upgrades it client-only
+    /// post-hydration, OUTSIDE the byte-diff — the no-JS / SSR reader sees the
+    /// source fallback, the JS reader sees rendered math, no parity hazard.
+    | Math of MathSpec
+    /// A bounded, typed vector-graphics primitive (Phase 524) — the shared
+    /// render target every `Chart` lowers to (Phase 526) and the reusable
+    /// substrate for maps/diagrams. Carries a closed, typed `Shape` DU (no raw
+    /// SVG markup, no `Path`/`d` escape hatch — the opposite of `Custom`), a
+    /// `ViewBox` coordinate space, and style bindings. Naming is chosen for the
+    /// data-science audience: `Drawing` (not `Vector`, a numeric array), and
+    /// its shapes spell out `Rectangle` (not `Rect`) / `Label` (not `Text`).
+    /// The first-party inline-SVG renderer arrives in Phase 525; 524 is the
+    /// wire vocabulary + codec + corpus only. See
+    /// docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md (D1, §3, §5).
+    | Drawing of DrawingSpec
+
+
+    // ── Input ──
+    | Form of FormSpec<'Msg>
+    | Filters of FilterSpec<'Msg> list
+    | Button of ButtonSpec<'Msg>
+    | FileUpload of FileUploadSpec<'Msg>
+    | Select of SelectSpec<'Msg>
+
+    // ── Vis ──
+    | DataGrid of GridSpec<'Msg>
+    | Chart of ChartSpec<'Msg>
+    // Phase 393 — the `Table` case is retired; static read-only tables are the
+    // `GridSpec.StaticRows` mode of `DataGrid`. A legacy `Table` wire tag
+    // decode-upgrades into a read-only `DataGrid` (never re-encodes as `Table`).
+    | Map of MapSpec<'Msg>
+
     /// The existing escape gains two additive
     /// optional safety surfaces. `contentHash` lets op-stream replay +
     /// renderer verify the body's identity hasn't drifted from its
@@ -820,48 +968,6 @@ and CapabilityTag = CapabilityTag of string
 //
 // Per Defect (3) resolution: each LayoutKind case carries its own spec
 // record with `Children: Node<'Msg> list` as a regular record field.
-
-and [<RequireQualifiedAccess>] LayoutKind<'Msg> =
-    /// Phase 390 — the unified container primitive; absorbs the retired
-    /// `Stack` / `GridLayout` / `Dashboard` / `Card` near-synonyms. Layout mode
-    /// = how children arrange; Role = what the container means (emitted element
-    /// + ARIA landmark + `fuaran-*` chrome). The author-facing `StackSpec` /
-    /// `GridLayoutSpec` / `DashboardSpec` / `CardSpec` records survive as
-    /// smart-ctor inputs that translate into `Box` — the wire consolidates, the
-    /// authoring surface does not. See `docs/BOX-CONTAINER-UNIFICATION.md`.
-    | Box of BoxSpec<'Msg>
-    | SplitPanel of SplitPanelSpec<'Msg>
-    | Tabs of TabsSpec<'Msg>
-    | Stepper of StepperSpec<'Msg>
-    /// Feliz-parity additive: single-card container
-    /// of label/value rows (typically `DisplayKind.LabelValueRow` children).
-    /// Distinct shape from `Card` — no internal per-child padding, divider
-    /// rules between children, optional section heading. Closes the
-    /// "list-of-stats-in-one-card" gap that Feliz expresses
-    /// as a hand-rolled `<div class="flex justify-between">` per row.
-    | SummaryList of SummaryListSpec<'Msg>
-    /// Typed accordion / collapsible primitive.
-    /// Renders as HTML-native `<details>` / `<summary>` so the open/closed
-    /// toggle works without React state; the `Open` binding overlays
-    /// controlled-mode semantics for hosts that need model-driven state.
-    /// Closes the "long itemised disclosure list" Feliz
-    /// escape — see `DisclosureSpec` for the field-level rationale.
-    | Disclosure of DisclosureSpec<'Msg>
-    /// Out-of-flow overlay container (Phase 289) — the
-    /// single most-missed primitive. Carries an `Open` `Binding<bool>`, an
-    /// optional heading, a `Dismissable` flag, an `OnDismiss` action, and a
-    /// child subtree. Renders inline (no React portal) with `role="dialog"` +
-    /// `aria-modal`, positioned + z-indexed by CSS so SSR and CSR emit
-    /// byte-identical structure (no hydration mismatch). Focus management is an
-    /// additive client-only enhancement that does not alter the hydrated DOM —
-    /// see the overlay render-fidelity contract in docs/SSR.md.
-    | Modal of ModalSpec<'Msg>
-    /// Overflow / scroll container (Phase 289) — the
-    /// in-flow container the fidelity check still lacked. `Orientation` selects
-    /// the scroll axis; optional `MaxHeight` / `MaxWidth` (pixels) bound the
-    /// viewport. Overflow clipping + scrollbar are a genuine cross-host
-    /// divergence point pinned by the SSR-parity corpus.
-    | ScrollArea of ScrollAreaSpec<'Msg>
 
 /// §4b (Phase 390) — the unified container spec. `Layout` names how children
 /// arrange; `Role` names what the container means (drives the emitted element,
@@ -1038,12 +1144,12 @@ and StepperSpec<'Msg> =
         OnSelect: int -> Action<'Msg>
     }
 
-/// See `LayoutKind.SummaryList`.
+/// See `NodeKind.SummaryList`.
 and SummaryListSpec<'Msg> =
     { Heading: TextSource option
       Children: Node<'Msg> list }
 
-/// See `LayoutKind.Disclosure`.
+/// See `NodeKind.Disclosure`.
 ///
 /// `Open` is the controlled-state binding: when it resolves, the renderer
 /// reflects its value onto the `<details>` element's `open` attribute. Hosts
@@ -1075,7 +1181,7 @@ and DisclosureSpec<'Msg> =
       Children: Node<'Msg> list
       DefaultOpen: bool }
 
-/// See `LayoutKind.Modal` (Phase 289). `Open` is the controlled visibility
+/// See `NodeKind.Modal` (Phase 289). `Open` is the controlled visibility
 /// binding; `OnDismiss` is the action fired when the user dismisses (backdrop
 /// click / close button / Esc) — wire-survivable like `FormSpec.OnSubmit`.
 /// Optional since Phase 426 (the control write-back default): `Some action`
@@ -1092,7 +1198,7 @@ and ModalSpec<'Msg> =
       Children: Node<'Msg> list
       OnDismiss: Action<'Msg> option }
 
-/// See `LayoutKind.ScrollArea` (Phase 289). `Orientation` selects the scroll
+/// See `NodeKind.ScrollArea` (Phase 289). `Orientation` selects the scroll
 /// axis; `MaxHeight` / `MaxWidth` (pixels, optional) bound the scroll viewport
 /// — the renderer emits the matching `max-height` / `max-width` inline style
 /// when set.
@@ -1104,86 +1210,6 @@ and ScrollAreaSpec<'Msg> =
 
 // ─── Display — pure presentation, no Msg ────────────────────────────
 
-and [<RequireQualifiedAccess>] DisplayKind<'Msg> =
-    | Heading of HeadingSpec
-    | Markdown of MarkdownSpec
-    | Metric of MetricSpec
-    | Badge of BadgeSpec
-    | Sparkline of SparklineSpec
-    | Callout of CalloutSpec
-    | Progress of ProgressSpec
-    // Skeleton is a renderer-emitted state placeholder; authors compose it
-    // via `Fuaran.skeleton` for the OnLoading slot. §4c lines 504–542.
-    | Skeleton of SkeletonSpec
-    /// A single
-    /// label-left / value-right row, baseline-aligned. The primitive
-    /// `SummaryList` consumes; can stand alone too. Honours `StateBehaviour`
-    /// `OnLoading` / `OnError` slots the same way `Metric` does (the resolver
-    /// runs against `Source`).
-    | LabelValueRow of LabelValueRowSpec
-    /// A labeled TEXT fact — "Patient: Alice Smith", "Policy: POL-99382-X".
-    /// The complementary kind to `Metric` (numeric-only, trendable) and
-    /// `LabelValueRow` (numeric row): `Fact` is where a text-valued fact
-    /// lives. Added 2026-07-17 after the launch eval showed every frontier
-    /// model forcing text facts into `Metric.Source: Binding<float>`
-    /// (~130 cells, 6 tasks at 0%): the type error was correct — the missing
-    /// kind was the defect. `Value` is a `TextSource`, so static text,
-    /// host-bound values (`Bound`), and i18n all ride the vocabulary models
-    /// already use for labels; no new binding surface.
-    | Fact of FactSpec
-    /// A crawlable hyperlink primitive (Phase 139). Renders a real
-    /// `<a href>` in both the client and server renderers — followable
-    /// with JavaScript disabled and visible to search-engine crawlers,
-    /// unlike `InputKind.Button` + `Action.Navigate` (which is the SPA
-    /// client-routing gesture, wired as an onClick through the runtime).
-    /// Reach for `Link` for real destinations (SEO, no-JS); reach for
-    /// `Button` + `Action.Navigate` for stateful in-app routing.
-    | Link of LinkSpec
-    /// A standalone image primitive (Phase 287). `IconSource`
-    /// is a *field* on other specs, but there was no image *node* — embedding
-    /// one meant a Markdown escape or a Custom. Renders a real `<img>` in both
-    /// renderers with `src` routed through `Sanitize.sanitizeUrlOrBlank` and a
-    /// mandatory `Alt` text (accessibility floor). The `Variant` covers the
-    /// Avatar (circular) case the audit flagged.
-    | Image of ImageSpec
-    /// A structured item list (Phase 287) — distinct
-    /// from `Table` (tabular), `SummaryList` (label/value rows), and Markdown
-    /// bullets (free text). Renders `<ul>` / `<ol>` of `<li>` per item.
-    | List of ListSpec
-    /// A transient overlay notification surface (Phase
-    /// 289). The DECLARATIVE, in-tree, SSR-rendered counterpart to the
-    /// imperative `Action.Notify` (which a host maps to ephemeral chrome with no
-    /// tree node). Reach for `Toast` when the notification is model-driven +
-    /// bound to an `Open` state that hydrates cleanly; reach for `Action.Notify`
-    /// for fire-and-forget host chrome. Renders inline (no portal) with
-    /// `role="status"` / `aria-live`, positioned by CSS — see the overlay
-    /// render-fidelity contract in docs/SSR.md.
-    | Toast of ToastSpec
-    /// A first-class code-display primitive (Phase 290).
-    /// Owns a DETERMINISTIC `<pre><code>` structure (HTML-escaped, no markdown
-    /// library) byte-identical across all hosts + SSR. Syntax highlighting is a
-    /// client-only post-hydration enhancement (targets the `language-{x}`
-    /// class), explicitly OUTSIDE the parity byte-diff. Carries a `Language`
-    /// tag, optional line numbers + highlight ranges, and a copy affordance.
-    | CodeBlock of CodeBlockSpec
-    /// A LaTeX math primitive (Phase 293). `Source` is
-    /// deterministic + parity-clean as data; the parity-checked render is the
-    /// raw escaped source in a known container. KaTeX upgrades it client-only
-    /// post-hydration, OUTSIDE the byte-diff — the no-JS / SSR reader sees the
-    /// source fallback, the JS reader sees rendered math, no parity hazard.
-    | Math of MathSpec
-    /// A bounded, typed vector-graphics primitive (Phase 524) — the shared
-    /// render target every `Chart` lowers to (Phase 526) and the reusable
-    /// substrate for maps/diagrams. Carries a closed, typed `Shape` DU (no raw
-    /// SVG markup, no `Path`/`d` escape hatch — the opposite of `Custom`), a
-    /// `ViewBox` coordinate space, and style bindings. Naming is chosen for the
-    /// data-science audience: `Drawing` (not `Vector`, a numeric array), and
-    /// its shapes spell out `Rectangle` (not `Rect`) / `Label` (not `Text`).
-    /// The first-party inline-SVG renderer arrives in Phase 525; 524 is the
-    /// wire vocabulary + codec + corpus only. See
-    /// docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md (D1, §3, §5).
-    | Drawing of DrawingSpec
-
 /// `Emphasis` bolds the row when it represents a total / highlight; `Help`
 /// renders as small-print under the label when set.
 and LabelValueRowSpec =
@@ -1193,7 +1219,7 @@ and LabelValueRowSpec =
       Emphasis: bool
       Help: TextSource option }
 
-/// See `DisplayKind.Fact`. `Emphasis` gives the value KPI-tile prominence
+/// See `NodeKind.Fact`. `Emphasis` gives the value KPI-tile prominence
 /// (inside a `Dashboard` role it tiles like a `Metric` card); `Help` is
 /// small-print under the label, mirroring `LabelValueRow`.
 and FactSpec =
@@ -1230,7 +1256,7 @@ and BadgeSpec =
     { Label: TextSource
       Variant: BadgeVariant }
 
-/// §4b — `DisplayKind.Link`'s typed spec (Phase 139). `Href` is a
+/// §4b — `NodeKind.Link`'s typed spec (Phase 139). `Href` is a
 /// `Binding<string>` so the destination can be static or data-bound;
 /// the renderer routes it through `Sanitize.sanitizeUrlOrBlank` (blocks
 /// `javascript:` / `vbscript:` / raw `data:` before it reaches the DOM).
@@ -1245,7 +1271,7 @@ and LinkSpec =
       Target: string option
       Download: bool }
 
-/// §4b — `DisplayKind.Image`'s typed spec (Phase 287). `Src` is a
+/// §4b — `NodeKind.Image`'s typed spec (Phase 287). `Src` is a
 /// `Binding<string>` routed through `Sanitize.sanitizeUrlOrBlank` at render
 /// time (blocks `javascript:` / `vbscript:` / `file:` and unknown schemes).
 /// `Alt` is mandatory — the accessibility floor for a non-decorative image
@@ -1256,13 +1282,13 @@ and ImageSpec =
       Alt: TextSource
       Variant: ImageVariant }
 
-/// §4b — `DisplayKind.List`'s typed spec (Phase 287). `Items` is the ordered
+/// §4b — `NodeKind.List`'s typed spec (Phase 287). `Items` is the ordered
 /// list of item texts; `Ordered` selects `<ol>` (true) vs `<ul>` (false).
 and ListSpec =
     { Items: TextSource list
       Ordered: bool }
 
-/// §4n — `DisplayKind.Toast`'s typed spec (Phase 289). The declarative,
+/// §4n — `NodeKind.Toast`'s typed spec (Phase 289). The declarative,
 /// in-tree, SSR-rendered notification surface. `Open` is the controlled
 /// visibility binding (resolves `true` → shown); `Tone` selects the status
 /// colour; `Dismissable` adds a close affordance. Renders inline (no portal),
@@ -1274,7 +1300,7 @@ and ToastSpec =
       Open: Binding<bool>
       Dismissable: bool }
 
-/// §4b — `DisplayKind.CodeBlock`'s typed spec (Phase 290). `Code` is the raw
+/// §4b — `NodeKind.CodeBlock`'s typed spec (Phase 290). `Code` is the raw
 /// source (HTML-escaped at render, never markdown-parsed); `Language` is the
 /// highlight hint emitted as `language-{Language}` on the `<code>` element;
 /// `LineNumbers` toggles a CSS-counter gutter; `HighlightLines` is the set of
@@ -1288,7 +1314,7 @@ and CodeBlockSpec =
       HighlightLines: int list
       Copyable: bool }
 
-/// §4b — `DisplayKind.Math`'s typed spec (Phase 293). `Source` is the LaTeX
+/// §4b — `NodeKind.Math`'s typed spec (Phase 293). `Source` is the LaTeX
 /// string (escaped in the deterministic fallback render); `Display` selects an
 /// inline `<span>` vs a block `<div>`. Defaults in `Defaults.math`.
 and MathSpec =
@@ -1296,7 +1322,7 @@ and MathSpec =
 
 and SparklineSpec = { Source: Binding<float seq> }
 
-/// §4b — a 2-D user-space coordinate box for `DisplayKind.Drawing` (Phase
+/// §4b — a 2-D user-space coordinate box for `NodeKind.Drawing` (Phase
 /// 524). Mirrors SVG's `viewBox` (`minX minY width height`); the renderer
 /// (Phase 525) maps it to the rendered `<svg viewBox>`. Plain floats — a
 /// `Drawing` is a *resolved* geometric artefact (a chart lowers to concrete
@@ -1371,7 +1397,7 @@ and DrawStyle =
     }
 
 /// §4b — the closed, typed vector-graphics shape vocabulary for
-/// `DisplayKind.Drawing` (Phase 524). Every case is wire-survivable and
+/// `NodeKind.Drawing` (Phase 524). Every case is wire-survivable and
 /// introspectable — the opposite of `NodeKind.Custom`: no raw SVG markup, no
 /// arbitrary attribute bag, no `Path`/`d` escape hatch (see `CurveCommand`).
 /// Coordinates are user-space floats in the drawing's `ViewBox`; `Group` nests
@@ -1389,7 +1415,7 @@ and [<RequireQualifiedAccess>] Shape =
     | Ellipse of cx: float * cy: float * rx: float * ry: float * style: DrawStyle
     | Label of x: float * y: float * text: TextSource * style: DrawStyle
 
-/// §4b — `DisplayKind.Drawing`'s typed spec (Phase 524). `ViewBox` is the
+/// §4b — `NodeKind.Drawing`'s typed spec (Phase 524). `ViewBox` is the
 /// user-space coordinate box; `Shapes` is the ordered draw list (painter's
 /// order); `Style` is the root style inherited by shapes that omit their own;
 /// `Title` / `Description` are the optional accessible name / long description
@@ -1441,13 +1467,6 @@ and ProgressSpec =
       Tone: ToneVariant }
 
 // ─── Input — interactive, carries Msg via Action<'Msg> ──────────────
-
-and [<RequireQualifiedAccess>] InputKind<'Msg> =
-    | Form of FormSpec<'Msg>
-    | Filters of FilterSpec<'Msg> list
-    | Button of ButtonSpec<'Msg>
-    | FileUpload of FileUploadSpec<'Msg>
-    | Select of SelectSpec<'Msg>
 
 and ButtonSpec<'Msg> =
     {
@@ -1748,7 +1767,7 @@ and [<RequireQualifiedAccess>] ChartKind =
 
 /// Author-facing carrier for a **static read-only table** (Phase 393). No longer a
 /// `VisKind` case of its own — `Fuaran.table` lowers it into the read-only mode of
-/// `VisKind.DataGrid` (`GridSpec.StaticRows`), so one tabular kind owns both the
+/// `NodeKind.DataGrid` (`GridSpec.StaticRows`), so one tabular kind owns both the
 /// static and the data-bound surface. Use it for static reference tables, glossary
 /// definitions, structured help content; cells carry `TextSource` so i18n +
 /// binding-substitution still apply. `OnRowClick` is retained for source
@@ -1777,14 +1796,6 @@ and MapMarker =
 
 // ─── Visualisation — data-bound, complex ─────────────────────────────
 
-and [<RequireQualifiedAccess>] VisKind<'Msg> =
-    | DataGrid of GridSpec<'Msg>
-    | Chart of ChartSpec<'Msg>
-    // Phase 393 — the `Table` case is retired; static read-only tables are the
-    // `GridSpec.StaticRows` mode of `DataGrid`. A legacy `Table` wire tag
-    // decode-upgrades into a read-only `DataGrid` (never re-encodes as `Table`).
-    | Map of MapSpec<'Msg>
-
 /// Per Defect (1) resolution: row-typed fields are `obj`-erased at the
 /// tree level. Authors construct a typed `GridSpecOf<'row,'Msg>` facade
 /// (below) and `Fuaran.grid` boxes it into this shape. The renderer trusts
@@ -1800,7 +1811,7 @@ and GridSpec<'Msg> =
       OnRowClick: (obj -> Action<'Msg>) option
       Editable: bool
       // Phase 393 — the static read-only mode. `Some (headers, rows)` marks this grid
-      // as a static text table folded in from the retired `VisKind.Table`: the
+      // as a static text table folded in from the retired `NodeKind.Table`: the
       // renderer emits semantic `<table>` markup from these `TextSource` cells and
       // ignores `Source` / `Columns`. `None` is the ordinary data-bound grid. A
       // legacy `Table` document decode-upgrades into a grid with this field set.
@@ -2486,6 +2497,21 @@ module Binding =
             | _ -> failwithf "Selection field '%s': the selected value is not a row (Map<string, obj>)" field
 #endif
 
+/// The behavioural category a kind belongs to. Phase 692 unnested these from
+/// `NodeKind` — they were a host-side envelope over a wire that has never had
+/// them (`WIRE_FORMAT.md` §3.2: "a host-side classification recovered on decode").
+/// What the renderer, AiTools and the theme bridge actually wanted was the
+/// classification, not the nesting, so it is derived here instead.
+[<RequireQualifiedAccess>]
+type NodeCategory =
+    | Layout
+    | Display
+    | Input
+    | Visualisation
+    /// `Custom` / `ErrorBoundary` / `Switch` / `FragmentDecl` / `FragmentRef` /
+    /// `Mount` — the cases that never had a behavioural category.
+    | Structural
+
 /// Kind-tag introspection over `NodeKind` — the canonical bare-string name of
 /// a node's kind ("Heading", "Stack", "Metric", …). Lives in the base package
 /// (alongside `NodeKind`) so every tier can name a kind without a downstream
@@ -2499,53 +2525,88 @@ module Binding =
 [<RequireQualifiedAccess>]
 module Kind =
     /// The canonical kind-tag string of a node's kind. Total over `NodeKind`;
-    /// `VisKind.DataGrid` intentionally tags as `"Grid"` (its wire name).
+    /// `DataGrid` intentionally tags as `"Grid"` (its wire name).
     let name (kind: NodeKind<'Msg>) : string =
         match kind with
-        | NodeKind.Layout layout ->
-            match layout with
-            | LayoutKind.Box _ -> "Box"
-            | LayoutKind.SplitPanel _ -> "SplitPanel"
-            | LayoutKind.Tabs _ -> "Tabs"
-            | LayoutKind.Stepper _ -> "Stepper"
-            | LayoutKind.SummaryList _ -> "SummaryList"
-            | LayoutKind.Disclosure _ -> "Disclosure"
-            | LayoutKind.Modal _ -> "Modal"
-            | LayoutKind.ScrollArea _ -> "ScrollArea"
-        | NodeKind.Display display ->
-            match display with
-            | DisplayKind.Heading _ -> "Heading"
-            | DisplayKind.Markdown _ -> "Markdown"
-            | DisplayKind.Metric _ -> "Metric"
-            | DisplayKind.Badge _ -> "Badge"
-            | DisplayKind.Sparkline _ -> "Sparkline"
-            | DisplayKind.Callout _ -> "Callout"
-            | DisplayKind.Progress _ -> "Progress"
-            | DisplayKind.Skeleton _ -> "Skeleton"
-            | DisplayKind.LabelValueRow _ -> "LabelValueRow"
-            | DisplayKind.Fact _ -> "Fact"
-            | DisplayKind.Link _ -> "Link"
-            | DisplayKind.Image _ -> "Image"
-            | DisplayKind.List _ -> "List"
-            | DisplayKind.Toast _ -> "Toast"
-            | DisplayKind.CodeBlock _ -> "CodeBlock"
-            | DisplayKind.Math _ -> "Math"
-            | DisplayKind.Drawing _ -> "Drawing"
-        | NodeKind.Input input ->
-            match input with
-            | InputKind.Form _ -> "Form"
-            | InputKind.Filters _ -> "Filters"
-            | InputKind.Button _ -> "Button"
-            | InputKind.FileUpload _ -> "FileUpload"
-            | InputKind.Select _ -> "Select"
-        | NodeKind.Visualisation vis ->
-            match vis with
-            | VisKind.DataGrid _ -> "Grid"
-            | VisKind.Chart _ -> "Chart"
-            | VisKind.Map _ -> "Map"
+        | NodeKind.Box _ -> "Box"
+        | NodeKind.SplitPanel _ -> "SplitPanel"
+        | NodeKind.Tabs _ -> "Tabs"
+        | NodeKind.Stepper _ -> "Stepper"
+        | NodeKind.SummaryList _ -> "SummaryList"
+        | NodeKind.Disclosure _ -> "Disclosure"
+        | NodeKind.Modal _ -> "Modal"
+        | NodeKind.ScrollArea _ -> "ScrollArea"
+        | NodeKind.Heading _ -> "Heading"
+        | NodeKind.Markdown _ -> "Markdown"
+        | NodeKind.Metric _ -> "Metric"
+        | NodeKind.Badge _ -> "Badge"
+        | NodeKind.Sparkline _ -> "Sparkline"
+        | NodeKind.Callout _ -> "Callout"
+        | NodeKind.Progress _ -> "Progress"
+        | NodeKind.Skeleton _ -> "Skeleton"
+        | NodeKind.LabelValueRow _ -> "LabelValueRow"
+        | NodeKind.Fact _ -> "Fact"
+        | NodeKind.Link _ -> "Link"
+        | NodeKind.Image _ -> "Image"
+        | NodeKind.List _ -> "List"
+        | NodeKind.Toast _ -> "Toast"
+        | NodeKind.CodeBlock _ -> "CodeBlock"
+        | NodeKind.Math _ -> "Math"
+        | NodeKind.Drawing _ -> "Drawing"
+        | NodeKind.Form _ -> "Form"
+        | NodeKind.Filters _ -> "Filters"
+        | NodeKind.Button _ -> "Button"
+        | NodeKind.FileUpload _ -> "FileUpload"
+        | NodeKind.Select _ -> "Select"
+        | NodeKind.DataGrid _ -> "Grid"
+        | NodeKind.Chart _ -> "Chart"
+        | NodeKind.Map _ -> "Map"
         | NodeKind.Custom(_, _, _, _, _) -> "Custom"
         | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
         | NodeKind.Switch _ -> "Switch"
         | NodeKind.FragmentDecl _ -> "FragmentDecl"
         | NodeKind.FragmentRef _ -> "FragmentRef"
         | NodeKind.Mount _ -> "Mount"
+
+    /// The behavioural category of a kind — derived, not stored (Phase 692).
+    let category (kind: NodeKind<'Msg>) : NodeCategory =
+        match kind with
+        | NodeKind.Box _
+        | NodeKind.SplitPanel _
+        | NodeKind.Tabs _
+        | NodeKind.Stepper _
+        | NodeKind.SummaryList _
+        | NodeKind.Disclosure _
+        | NodeKind.Modal _
+        | NodeKind.ScrollArea _ -> NodeCategory.Layout
+        | NodeKind.Heading _
+        | NodeKind.Markdown _
+        | NodeKind.Metric _
+        | NodeKind.Badge _
+        | NodeKind.Sparkline _
+        | NodeKind.Callout _
+        | NodeKind.Progress _
+        | NodeKind.Skeleton _
+        | NodeKind.LabelValueRow _
+        | NodeKind.Fact _
+        | NodeKind.Link _
+        | NodeKind.Image _
+        | NodeKind.List _
+        | NodeKind.Toast _
+        | NodeKind.CodeBlock _
+        | NodeKind.Math _
+        | NodeKind.Drawing _ -> NodeCategory.Display
+        | NodeKind.Form _
+        | NodeKind.Filters _
+        | NodeKind.Button _
+        | NodeKind.FileUpload _
+        | NodeKind.Select _ -> NodeCategory.Input
+        | NodeKind.DataGrid _
+        | NodeKind.Chart _
+        | NodeKind.Map _ -> NodeCategory.Visualisation
+        | NodeKind.Custom _
+        | NodeKind.ErrorBoundary _
+        | NodeKind.Switch _
+        | NodeKind.FragmentDecl _
+        | NodeKind.FragmentRef _
+        | NodeKind.Mount _ -> NodeCategory.Structural

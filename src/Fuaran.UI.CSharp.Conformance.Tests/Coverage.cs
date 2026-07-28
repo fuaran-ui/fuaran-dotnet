@@ -33,14 +33,10 @@ internal static class Coverage
     {
         var factoryNames = FactoryNames;
 
-        var kindCaseNames =
-            UnionCaseNames(typeof(FsTypes.LayoutKind<object>))
-                .Concat(UnionCaseNames(typeof(FsTypes.DisplayKind<object>)))
-                .Concat(UnionCaseNames(typeof(FsTypes.InputKind<object>)))
-                .Concat(UnionCaseNames(typeof(FsTypes.VisKind<object>)))
-                // The structural NodeKind cases that aren't behind a category DU.
-                .Concat(new[] { "Custom", "ErrorBoundary", "Switch", "FragmentDecl", "FragmentRef", "Mount" })
-                .ToList();
+        // Phase 692 — NodeKind is flat: every kind (and the six structural
+        // cases) enumerates directly off the one DU, which is exactly what
+        // makes this pin total by reflection rather than by four lists.
+        var kindCaseNames = UnionCaseNames(typeof(FsTypes.NodeKind<object>)).ToList();
 
         foreach (var caseName in kindCaseNames)
         {

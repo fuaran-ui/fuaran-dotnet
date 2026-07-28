@@ -180,8 +180,8 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         let (NodeId readerId) = n.Id
 
         let isProducer =
-            match n.Kind with
-            | NodeKind.Visualisation _ -> true
+            match Kind.category n.Kind with
+            | NodeCategory.Visualisation -> true
             | _ -> false
 
         nodes[readerId] <- isProducer
@@ -190,56 +190,58 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         | Some a -> record readerId (usesOfBindingOpt a.Label @ usesOfBindingOpt a.Hidden)
         | None -> ()
 
-        match n.Kind with
-        | NodeKind.Layout layout ->
-            let directUses, children =
-                match layout with
-                | LayoutKind.Box s -> usesOfTextOpt s.Heading, s.Children
-                | LayoutKind.SplitPanel s -> [], s.Children
-                | LayoutKind.SummaryList s -> usesOfTextOpt s.Heading, s.Children
-                | LayoutKind.Stepper s -> usesOfBinding s.ActiveStep, s.Children
-                | LayoutKind.Disclosure s -> (usesOfText s.Heading @ usesOfBinding s.Open), s.Children
-                | LayoutKind.Tabs s ->
-                    let headerUses =
-                        match s.TabHeaders with
-                        | Some headers ->
-                            headers
-                            |> List.collect (fun h -> usesOfText h.Label @ usesOfBindingOpt h.Disabled)
-                        | None -> []
+        // Phase 692 — one exhaustive match over the flat vocabulary, where this
+        // was four nested ones under the category envelope. Every arm yields
+        // `(the bindings it reads, the children to walk)`; only the container
+        // kinds have children, so the rest yield `[]`.
+        let directUses, children =
+            match n.Kind with
+            // ── Layout ──
+            | NodeKind.Box s -> usesOfTextOpt s.Heading, s.Children
+            | NodeKind.SplitPanel s -> [], s.Children
+            | NodeKind.SummaryList s -> usesOfTextOpt s.Heading, s.Children
+            | NodeKind.Stepper s -> usesOfBinding s.ActiveStep, s.Children
+            | NodeKind.Disclosure s -> (usesOfText s.Heading @ usesOfBinding s.Open), s.Children
+            | NodeKind.Tabs s ->
+                let headerUses =
+                    match s.TabHeaders with
+                    | Some headers ->
+                        headers
+                        |> List.collect (fun h -> usesOfText h.Label @ usesOfBindingOpt h.Disabled)
+                    | None -> []
 
-                    (usesOfBinding s.ActiveIndex @ usesOfBindingOpt s.ActiveTag @ headerUses), s.Children
-                | LayoutKind.Modal s ->
-                    // Modal's OnDismiss is the wire-survivable Action slot (Phase 428).
-                    s.OnDismiss |> Option.iter (recordCalls readerId)
-                    (usesOfTextOpt s.Heading @ usesOfBinding s.Open), s.Children
-                | LayoutKind.ScrollArea s -> [], s.Children
-
-            record readerId directUses
-            children |> List.iter walk
-        | NodeKind.Display display ->
-            let directUses =
-                match display with
-                | DisplayKind.Heading h -> usesOfText h.Text
-                | DisplayKind.Markdown m -> usesOfText m.Text
-                | DisplayKind.Metric k ->
+                (usesOfBinding s.ActiveIndex @ usesOfBindingOpt s.ActiveTag @ headerUses), s.Children
+            | NodeKind.Modal s ->
+                // Modal's OnDismiss is the wire-survivable Action slot (Phase 428).
+                s.OnDismiss |> Option.iter (recordCalls readerId)
+                (usesOfTextOpt s.Heading @ usesOfBinding s.Open), s.Children
+            | NodeKind.ScrollArea s -> [], s.Children
+            // ── Display ──
+            | NodeKind.Heading h -> usesOfText h.Text, []
+            | NodeKind.Markdown m -> usesOfText m.Text, []
+            | NodeKind.Metric k ->
+                let uses =
                     usesOfText k.Label
                     @ usesOfBinding k.Value
                     @ usesOfBindingOpt k.Trend
                     @ usesOfTextOpt k.Subtext
-                | DisplayKind.Badge b -> usesOfText b.Label
-                | DisplayKind.Sparkline s -> usesOfBinding s.Source
-                | DisplayKind.Callout c -> usesOfTextOpt c.Heading @ usesOfText c.Body
-                | DisplayKind.Progress p -> usesOfBinding p.Fraction @ usesOfTextOpt p.Label @ usesOfTextOpt p.Caveat
-                | DisplayKind.Skeleton _ -> []
-                | DisplayKind.LabelValueRow r -> usesOfText r.Label @ usesOfBinding r.Value @ usesOfTextOpt r.Help
-                | DisplayKind.Fact fa -> usesOfText fa.Label @ usesOfText fa.Value @ usesOfTextOpt fa.Help
-                | DisplayKind.Link l -> usesOfBinding l.Href @ usesOfText l.Label
-                | DisplayKind.Image i -> usesOfBinding i.Src @ usesOfText i.Alt
-                | DisplayKind.List l -> l.Items |> List.collect usesOfText
-                | DisplayKind.Toast t -> usesOfText t.Message @ usesOfBinding t.Open
-                | DisplayKind.CodeBlock _ -> []
-                | DisplayKind.Math _ -> []
-                | DisplayKind.Drawing d ->
+
+                uses, []
+            | NodeKind.Badge b -> usesOfText b.Label, []
+            | NodeKind.Sparkline s -> usesOfBinding s.Source, []
+            | NodeKind.Callout c -> usesOfTextOpt c.Heading @ usesOfText c.Body, []
+            | NodeKind.Progress p -> usesOfBinding p.Fraction @ usesOfTextOpt p.Label @ usesOfTextOpt p.Caveat, []
+            | NodeKind.Skeleton _ -> [], []
+            | NodeKind.LabelValueRow r -> usesOfText r.Label @ usesOfBinding r.Value @ usesOfTextOpt r.Help, []
+            | NodeKind.Fact fa -> usesOfText fa.Label @ usesOfText fa.Value @ usesOfTextOpt fa.Help, []
+            | NodeKind.Link l -> usesOfBinding l.Href @ usesOfText l.Label, []
+            | NodeKind.Image i -> usesOfBinding i.Src @ usesOfText i.Alt, []
+            | NodeKind.List l -> l.Items |> List.collect usesOfText, []
+            | NodeKind.Toast t -> usesOfText t.Message @ usesOfBinding t.Open, []
+            | NodeKind.CodeBlock _ -> [], []
+            | NodeKind.Math _ -> [], []
+            | NodeKind.Drawing d ->
+                let uses =
                     // Phase 524 — geometry is static; the reactive slots are the
                     // DrawStyle colour bindings + Label text, walked recursively
                     // through Group nesting.
@@ -266,23 +268,28 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                     @ usesOfTextOpt d.Title
                     @ usesOfTextOpt d.Description
 
-            record readerId directUses
-        | NodeKind.Input input ->
-            let directUses =
-                match input with
-                | InputKind.Button b ->
+                uses, []
+            // ── Input ──
+            | NodeKind.Button b ->
+                let uses =
                     // OnClick is a wire-survivable Action slot (Phase 428).
                     recordCalls readerId b.OnClick
                     usesOfText b.Label @ usesOfTextOpt b.Tooltip @ usesOfBindingOpt b.Disabled
-                | InputKind.FileUpload fu -> usesOfText fu.Label @ usesOfBindingOpt fu.Disabled
-                | InputKind.Select s ->
+
+                uses, []
+            | NodeKind.FileUpload fu -> usesOfText fu.Label @ usesOfBindingOpt fu.Disabled, []
+            | NodeKind.Select s ->
+                let uses =
                     usesOfText s.Label
                     @ usesOfBinding s.Source
                     @ usesOfBinding s.Value
                     @ usesOfBindingOpt s.Values
                     @ usesOfTextOpt s.Placeholder
                     @ usesOfBindingOpt s.Disabled
-                | InputKind.Form f ->
+
+                uses, []
+            | NodeKind.Form f ->
+                let uses =
                     // OnSubmit is a wire-survivable Action slot (Phase 428).
                     recordCalls readerId f.OnSubmit
 
@@ -294,18 +301,20 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                             @ usesOfFormFieldKind field.Kind)
 
                     usesOfText f.SubmitLabel @ usesOfBindingOpt f.Disabled @ fieldUses
-                | InputKind.Filters filters ->
+
+                uses, []
+            | NodeKind.Filters filters ->
+                let uses =
                     for fs in filters do
                         declaredFilters.Add(readerId, fs.Name)
 
                     filters
                     |> List.collect (fun fs -> usesOfText fs.Label @ usesOfFormFieldKind fs.Field)
 
-            record readerId directUses
-        | NodeKind.Visualisation vis ->
-            let directUses =
-                match vis with
-                | VisKind.DataGrid g ->
+                uses, []
+            // ── Visualisation ──
+            | NodeKind.DataGrid g ->
+                let uses =
                     // Phase 393 — a static read-only grid carries its cells as `TextSource`
                     // in `StaticRows`; a data-bound grid carries a `Source` binding.
                     usesOfBinding g.Source
@@ -314,25 +323,25 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                            (headers |> List.collect usesOfText)
                            @ (rows |> List.collect (List.collect usesOfText))
                        | None -> [])
-                | VisKind.Chart c -> usesOfBinding c.Source @ usesOfTextOpt c.Title
-                | VisKind.Map m -> usesOfBinding m.Source
 
-            record readerId directUses
-        | NodeKind.ErrorBoundary spec ->
-            walk spec.Child
-            walk spec.Fallback
-        | NodeKind.Switch spec ->
+                uses, []
+            | NodeKind.Chart c -> usesOfBinding c.Source @ usesOfTextOpt c.Title, []
+            | NodeKind.Map m -> usesOfBinding m.Source, []
+            // ── Structural ──
+            | NodeKind.ErrorBoundary spec -> [], [ spec.Child; spec.Fallback ]
             // The StateKey is a literal string (not a Binding), so it records no
-            // filter/query use here; walk the case children + default so their
+            // filter/query use here; the case children + default are walked so their
             // own bindings are captured.
-            spec.Cases |> List.iter (fun (_, child) -> walk child)
-            walk spec.Default
-        | NodeKind.FragmentDecl spec -> walk spec.Body
-        // Custom props are JVal literals, not bindings; a FragmentRef carries
-        // no body; a Mount guest owns its own scoped stores.
-        | NodeKind.Custom _
-        | NodeKind.FragmentRef _
-        | NodeKind.Mount _ -> ()
+            | NodeKind.Switch spec -> [], (spec.Cases |> List.map snd) @ [ spec.Default ]
+            | NodeKind.FragmentDecl spec -> [], [ spec.Body ]
+            // Custom props are JVal literals, not bindings; a FragmentRef carries
+            // no body; a Mount guest owns its own scoped stores.
+            | NodeKind.Custom _
+            | NodeKind.FragmentRef _
+            | NodeKind.Mount _ -> [], []
+
+        record readerId directUses
+        children |> List.iter walk
 
     walk root
 

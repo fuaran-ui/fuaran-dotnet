@@ -47,8 +47,8 @@ let tests =
               Expect.equal (idOf node) "channel-analysis" "Id is set"
 
               match node.Kind with
-              | NodeKind.Layout(LayoutKind.Box spec) -> Expect.equal spec.Children.Length 0 "Children is empty"
-              | other -> failtestf "Expected LayoutKind.Box, got %A" other
+              | NodeKind.Box(spec) -> Expect.equal spec.Children.Length 0 "Children is empty"
+              | other -> failtestf "Expected NodeKind.Box, got %A" other
           }
 
           test "Fuaran.metric wraps a MetricSpec with Defaults.metric overrides applied" {
@@ -64,14 +64,14 @@ let tests =
               Expect.equal (idOf node) "revenue-metric" "Id is set"
 
               match node.Kind with
-              | NodeKind.Display(DisplayKind.Metric spec) ->
+              | NodeKind.Metric(spec) ->
                   Expect.equal (literalOf spec.Label) "Revenue" "Label set"
                   Expect.equal spec.Tone ToneVariant.Brand "Tone overridden"
 
                   match spec.Format with
                   | CellFormat.Currency code -> Expect.equal code "GBP" "Currency code"
                   | other -> failtestf "Expected CellFormat.Currency, got %A" other
-              | other -> failtestf "Expected DisplayKind.Metric, got %A" other
+              | other -> failtestf "Expected NodeKind.Metric, got %A" other
           }
 
           test "Fuaran.grid boxes a typed GridSpecOf<'row,'Msg> into a row-erased GridSpec" {
@@ -90,11 +90,11 @@ let tests =
               Expect.equal (idOf node) "channel-grid" "Id is set"
 
               match node.Kind with
-              | NodeKind.Visualisation(VisKind.DataGrid spec) ->
+              | NodeKind.DataGrid(spec) ->
                   Expect.equal spec.Columns.Length 2 "Two columns boxed in"
                   Expect.equal spec.Editable false "Editable stays default"
                   Expect.isSome spec.OnRowClick "OnRowClick wired"
-              | other -> failtestf "Expected VisKind.DataGrid, got %A" other
+              | other -> failtestf "Expected NodeKind.DataGrid, got %A" other
           }
 
           test "Column.withPill sets CellKind.Pill reusing the column value as the label" {
@@ -152,9 +152,8 @@ let tests =
               Expect.equal (idOf node) "no-data" "Id is set"
 
               match node.Kind with
-              | NodeKind.Display(DisplayKind.Markdown spec) ->
-                  Expect.equal (literalOf spec.Text) "No revenue data yet." "Body text wired"
-              | other -> failtestf "Expected DisplayKind.Markdown, got %A" other
+              | NodeKind.Markdown(spec) -> Expect.equal (literalOf spec.Text) "No revenue data yet." "Body text wired"
+              | other -> failtestf "Expected NodeKind.Markdown, got %A" other
           }
 
           test "Fuaran.button wraps a ButtonSpec with the given OnClick action" {
@@ -169,14 +168,14 @@ let tests =
               Expect.equal (idOf node) "submit-button" "Id is set"
 
               match node.Kind with
-              | NodeKind.Input(InputKind.Button spec) ->
+              | NodeKind.Button(spec) ->
                   Expect.equal (literalOf spec.Label) "Submit" "Label set"
                   Expect.equal spec.Variant ButtonVariant.Primary "Variant overridden"
 
                   match spec.OnClick with
                   | Action.Dispatch(SelectRow 0) -> ()
                   | other -> failtestf "Expected Action.Dispatch(SelectRow 0), got %A" other
-              | other -> failtestf "Expected InputKind.Button, got %A" other
+              | other -> failtestf "Expected NodeKind.Button, got %A" other
           }
 
           test "Fuaran.callout wraps a CalloutSpec with tone + body" {
@@ -191,10 +190,10 @@ let tests =
               Expect.equal (idOf node) "tier-banner" "Id is set"
 
               match node.Kind with
-              | NodeKind.Display(DisplayKind.Callout spec) ->
+              | NodeKind.Callout(spec) ->
                   Expect.equal spec.Tone ToneVariant.Warning "Tone overridden"
                   Expect.equal spec.Dismissable true "Dismissable overridden"
-              | other -> failtestf "Expected DisplayKind.Callout, got %A" other
+              | other -> failtestf "Expected NodeKind.Callout, got %A" other
           }
 
           test
@@ -210,10 +209,10 @@ let tests =
               Expect.equal (idOf node) "joint-progress" "Id is set"
 
               match node.Kind with
-              | NodeKind.Display(DisplayKind.Progress spec) ->
+              | NodeKind.Progress(spec) ->
                   Expect.equal spec.Indeterminate true "Indeterminate set"
                   Expect.isSome spec.Caveat "Caveat present"
-              | other -> failtestf "Expected DisplayKind.Progress, got %A" other
+              | other -> failtestf "Expected NodeKind.Progress, got %A" other
           }
 
           test "Defaults.metric.Source resolves to NotResolved (un-overridden default sentinel)" {
@@ -381,11 +380,11 @@ let tests =
                           Wrap = true }
 
               match node.Kind with
-              | NodeKind.Layout(LayoutKind.Box spec) ->
+              | NodeKind.Box(spec) ->
                   match spec.Layout with
                   | BoxLayout.Flex f -> Expect.equal f.Wrap true "Wrap = true propagated"
                   | other -> failtestf "Expected BoxLayout.Flex, got %A" other
-              | other -> failtestf "Expected LayoutKind.Box, got %A" other
+              | other -> failtestf "Expected NodeKind.Box, got %A" other
           }
 
           test "Defaults.heading.Variant is Standard (preserves legacy behaviour)" {
@@ -403,9 +402,9 @@ let tests =
               Expect.equal (idOf node) "tax-year-banner" "Id is set"
 
               match node.Kind with
-              | NodeKind.Display(DisplayKind.Heading spec) ->
+              | NodeKind.Heading(spec) ->
                   Expect.equal spec.Variant HeadingVariant.Eyebrow "Variant = Eyebrow propagated"
-              | other -> failtestf "Expected DisplayKind.Heading, got %A" other
+              | other -> failtestf "Expected NodeKind.Heading, got %A" other
           }
 
           test "Fuaran.labelValueRow wraps a LabelValueRowSpec with the source binding + format" {
@@ -421,13 +420,13 @@ let tests =
               Expect.equal (idOf node) "row-take-home" "Id is set"
 
               match node.Kind with
-              | NodeKind.Display(DisplayKind.LabelValueRow spec) ->
+              | NodeKind.LabelValueRow(spec) ->
                   Expect.equal spec.Emphasis true "Emphasis propagated"
 
                   match spec.Format with
                   | CellFormat.Currency code -> Expect.equal code "GBP" "Currency code set"
                   | other -> failtestf "Expected CellFormat.Currency, got %A" other
-              | other -> failtestf "Expected DisplayKind.LabelValueRow, got %A" other
+              | other -> failtestf "Expected NodeKind.LabelValueRow, got %A" other
           }
 
           test "Defaults.labelValueRow.Source resolves to NotResolved (same sentinel encoding as Metric)" {
@@ -457,13 +456,13 @@ let tests =
               Expect.equal (idOf node) "tax-breakdown" "Id is set"
 
               match node.Kind with
-              | NodeKind.Layout(LayoutKind.SummaryList spec) ->
+              | NodeKind.SummaryList(spec) ->
                   Expect.equal spec.Children.Length 1 "One child wired"
 
                   match spec.Heading with
                   | Some(TextSource.Literal "Tax breakdown") -> ()
                   | other -> failtestf "Expected literal heading, got %A" other
-              | other -> failtestf "Expected LayoutKind.SummaryList, got %A" other
+              | other -> failtestf "Expected NodeKind.SummaryList, got %A" other
           }
 
           test "Fuaran.gridLayout default carries TemplateColumns = None (legacy shape preserved)" {
@@ -479,13 +478,13 @@ let tests =
                           Children = [] }
 
               match node.Kind with
-              | NodeKind.Layout(LayoutKind.Box spec) ->
+              | NodeKind.Box(spec) ->
                   match spec.Layout with
                   | BoxLayout.Grid g ->
                       Expect.equal g.Cols 3 "Cols overridden"
                       Expect.equal g.TemplateColumns None "TemplateColumns defaults to None"
                   | other -> failtestf "Expected BoxLayout.Grid, got %A" other
-              | other -> failtestf "Expected LayoutKind.Box, got %A" other
+              | other -> failtestf "Expected NodeKind.Box, got %A" other
           }
 
           test "Fuaran.gridLayoutTemplated pre-populates TemplateColumns (escape)" {
@@ -501,7 +500,7 @@ let tests =
                           Children = [] }
 
               match node.Kind with
-              | NodeKind.Layout(LayoutKind.Box spec) ->
+              | NodeKind.Box(spec) ->
                   match spec.Layout with
                   | BoxLayout.Grid g ->
                       Expect.equal
@@ -509,7 +508,7 @@ let tests =
                           (Some "100px repeat(3, minmax(30px, 1fr))")
                           "TemplateColumns wired verbatim"
                   | other -> failtestf "Expected BoxLayout.Grid, got %A" other
-              | other -> failtestf "Expected LayoutKind.Box, got %A" other
+              | other -> failtestf "Expected NodeKind.Box, got %A" other
           }
 
           test "Fuaran.gridLayoutTemplated overrides a spec that already carried TemplateColumns" {
@@ -525,10 +524,10 @@ let tests =
                           Children = [] }
 
               match node.Kind with
-              | NodeKind.Layout(LayoutKind.Box spec) ->
+              | NodeKind.Box(spec) ->
                   match spec.Layout with
                   | BoxLayout.Grid g ->
                       Expect.equal g.TemplateColumns (Some "1fr 2fr") "Explicit smart-ctor arg overrides the spec field"
                   | other -> failtestf "Expected BoxLayout.Grid, got %A" other
-              | other -> failtestf "Expected LayoutKind.Box, got %A" other
+              | other -> failtestf "Expected NodeKind.Box, got %A" other
           } ]

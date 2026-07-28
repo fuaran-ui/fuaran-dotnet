@@ -46,10 +46,9 @@ let tests =
               let sink = InMemorySink()
 
               let newKind =
-                  NodeKind.Display(
-                      DisplayKind.Heading
-                          { Defaults.heading with
-                              Text = TextSource.Literal "Renamed" }
+                  NodeKind.Heading(
+                      { Defaults.heading with
+                          Text = TextSource.Literal "Renamed" }
                   )
 
               let op = TreeOp.EditNode(NodeId "revenue-metric", newKind)

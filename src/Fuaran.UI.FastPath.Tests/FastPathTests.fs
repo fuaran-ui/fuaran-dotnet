@@ -11,8 +11,8 @@ module FastPathTests =
     /// Collect every metric `Source` binding in a tree (for the ComputeLayer check).
     let rec private metricSources (n: Node<unit>) : Binding<float> list =
         match n.Kind with
-        | NodeKind.Display(DisplayKind.Metric spec) -> [ spec.Value ]
-        | NodeKind.Layout(LayoutKind.Box s) -> s.Children |> List.collect metricSources
+        | NodeKind.Metric(spec) -> [ spec.Value ]
+        | NodeKind.Box(s) -> s.Children |> List.collect metricSources
         | _ -> []
 
     let private isTransform (b: Binding<float>) : bool =

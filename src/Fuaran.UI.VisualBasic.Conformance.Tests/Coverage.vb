@@ -14,19 +14,10 @@ Module Coverage
     ' any future one) authors under its own case name — derived by reflection so a
     ' new top-level NodeKind case can never silently slip past this guard (the
     ' Phase-265 Mount omission a hardcoded list allowed).
-    Private ReadOnly ContainerCases As String() = {"Layout", "Display", "Input", "Visualisation"}
-
     Sub Run(h As Harness)
-        Dim structuralCases =
-            UnionCaseNames(GetType(FsTypes.NodeKind(Of Object))).
-            Where(Function(c) Not ContainerCases.Contains(c))
-
-        Dim kindCaseNames =
-            UnionCaseNames(GetType(FsTypes.LayoutKind(Of Object))).
-            Concat(UnionCaseNames(GetType(FsTypes.DisplayKind(Of Object)))).
-            Concat(UnionCaseNames(GetType(FsTypes.InputKind(Of Object)))).
-            Concat(UnionCaseNames(GetType(FsTypes.VisKind(Of Object)))).
-            Concat(structuralCases)
+        ' Phase 692 - NodeKind is flat: every kind and the six structural cases
+        ' enumerate off the one DU, so the pin is total by reflection alone.
+        Dim kindCaseNames = UnionCaseNames(GetType(FsTypes.NodeKind(Of Object)))
 
         For Each caseName In kindCaseNames
             ' LayoutKind.GridLayout is authored as <Grid> (DataGrid keeps its name).

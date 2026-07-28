@@ -96,26 +96,21 @@ type ValidatedEvent<'Msg> =
 /// or `Markdown` node accepts no events).
 let legitimateEvents (node: Node<'Msg>) : Set<string> =
     match node.Kind with
-    | NodeKind.Input inp ->
-        match inp with
-        | InputKind.Button _ -> set [ "click" ]
-        | InputKind.Select _ -> set [ "change" ]
-        // A Form node receives its submit, plus field-level change/input that
-        // bubble to the form (per-field addressing is the driver's form policy).
-        | InputKind.Form _ -> set [ "submit"; "change"; "input" ]
-        // Field-level change/input bubble to the Filters node; a segmented
-        // filter's horizontal shape is per-option buttons, so its selection
-        // arrives as a bubbled click (mirrors the tab-header path).
-        | InputKind.Filters _ -> set [ "change"; "input"; "click" ]
-        | InputKind.FileUpload _ -> set [ "change"; "file-read" ]
-    | NodeKind.Layout lay ->
-        match lay with
-        // Tab headers + step headers + disclosure summaries arrive as
-        // bubbled clicks.
-        | LayoutKind.Tabs _ -> set [ "click"; "change" ]
-        | LayoutKind.Stepper _ -> set [ "click"; "change" ]
-        | LayoutKind.Disclosure _ -> set [ "click"; "change"; "toggle" ]
-        | _ -> Set.empty
+    | NodeKind.Button _ -> set [ "click" ]
+    | NodeKind.Select _ -> set [ "change" ]
+    // A Form node receives its submit, plus field-level change/input that
+    // bubble to the form (per-field addressing is the driver's form policy).
+    | NodeKind.Form _ -> set [ "submit"; "change"; "input" ]
+    // Field-level change/input bubble to the Filters node; a segmented
+    // filter's horizontal shape is per-option buttons, so its selection
+    // arrives as a bubbled click (mirrors the tab-header path).
+    | NodeKind.Filters _ -> set [ "change"; "input"; "click" ]
+    | NodeKind.FileUpload _ -> set [ "change"; "file-read" ]
+    // Tab headers + step headers + disclosure summaries arrive as
+    // bubbled clicks.
+    | NodeKind.Tabs _ -> set [ "click"; "change" ]
+    | NodeKind.Stepper _ -> set [ "click"; "change" ]
+    | NodeKind.Disclosure _ -> set [ "click"; "change"; "toggle" ]
     | _ -> Set.empty
 
 // ─── payload accessors ──────────────────────────────────────────────────────
@@ -147,7 +142,7 @@ let private selectValue (p: Map<string, LiveValue>) : string option = tryStr "va
 /// are enforced downstream at interpret time. Returns `Ok ()` when in-bounds.
 let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, RejectReason> =
     match node.Kind with
-    | NodeKind.Input(InputKind.Select spec) when ev.Event = "change" ->
+    | NodeKind.Select(spec) when ev.Event = "change" ->
         match spec.Source, selectValue ev.Payload with
         | Binding.Static options, Some chosen ->
             if options |> List.exists (fun o -> o.Value = chosen) then
@@ -157,7 +152,7 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
         // Dynamic option source, or a clear-to-none change: accept (bounds
         // enforced at interpret time against live binding sources).
         | _ -> Ok()
-    | NodeKind.Input(InputKind.Filters specs) ->
+    | NodeKind.Filters(specs) ->
         // A name-addressed filter event must name a filter the node declares
         // (a forged / stale name is attack surface, same as a forged nodeId),
         // and a choice-shaped filter with statically-resolved options must
@@ -200,13 +195,13 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
 /// addressing) — the driver no-ops those.
 let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
     match node.Kind with
-    | NodeKind.Input(InputKind.Button spec) when ev.Event = "click" -> Some spec.OnClick
+    | NodeKind.Button(spec) when ev.Event = "click" -> Some spec.OnClick
     // `OnChange` is optional (Phase 426) — a `None` (declarative / write-back)
     // select has no server-side action to dispatch; the driver no-ops it.
-    | NodeKind.Input(InputKind.Select spec) when ev.Event = "change" ->
+    | NodeKind.Select(spec) when ev.Event = "change" ->
         spec.OnChange |> Option.map (fun oc -> oc (selectValue ev.Payload))
-    | NodeKind.Input(InputKind.Form spec) when ev.Event = "submit" -> Some spec.OnSubmit
-    | NodeKind.Input(InputKind.Filters specs) ->
+    | NodeKind.Form(spec) when ev.Event = "submit" -> Some spec.OnSubmit
+    | NodeKind.Filters(specs) ->
         // Name-addressed: the shim bridges the changed control's filter name
         // across as `payload.name` (`data-filter-name`); boundsCheck already
         // verified it names a declared filter and the value is in-bounds.
@@ -239,14 +234,14 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                 | FormFieldKind.Range _
                 | FormFieldKind.Checkbox _
                 | FormFieldKind.Date _ -> None)
-    | NodeKind.Layout(LayoutKind.Disclosure spec) ->
+    | NodeKind.Disclosure(spec) ->
         // Default to "open" when no explicit bool rides along (a summary click).
         // `OnToggle` is optional (Phase 426) — a `None` disclosure has no
         // server-side action; the driver no-ops it (the write-back default is
         // a client-side store path).
         let isOpen = tryBool "open" ev.Payload |> Option.defaultValue true
         spec.OnToggle |> Option.map (fun ot -> ot isOpen)
-    | NodeKind.Layout(LayoutKind.Tabs spec) ->
+    | NodeKind.Tabs(spec) ->
         match tryStr "value" ev.Payload, spec.OnSelectTag with
         | Some tag, Some onTag -> Some(onTag tag)
         | _ ->
@@ -254,7 +249,7 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
             match tryNum "index" ev.Payload, spec.OnSelect with
             | Some i, Some onSelect -> Some(onSelect (int i))
             | _ -> None
-    | NodeKind.Layout(LayoutKind.Stepper spec) ->
+    | NodeKind.Stepper(spec) ->
         // A step-header click: the shim bridges the clicked step's index
         // across as `payload.index` (`data-step-index`), mirroring tabs.
         match tryNum "index" ev.Payload with

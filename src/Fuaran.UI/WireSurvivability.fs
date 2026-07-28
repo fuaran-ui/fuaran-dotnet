@@ -74,11 +74,8 @@ let private writeBack =
 /// The whole-vocabulary classification. One row per author-facing DU case.
 let all: Classification list =
     [
-      // ── NodeKind ─────────────────────────────────────────────────────────
-      sv "NodeKind.Layout"
-      sv "NodeKind.Display"
-      sv "NodeKind.Input"
-      sv "NodeKind.Visualisation"
+      // ── NodeKind (structural cases; Phase 692 — the four category wrappers
+      // are gone, their kinds are the flat rows below) ─────────────────────
       sv "NodeKind.Custom" // structural: props (Map<string,JVal>) round-trip; the rendered body is a host registry reference
       sv "NodeKind.ErrorBoundary"
       sv "NodeKind.Switch"
@@ -86,41 +83,41 @@ let all: Classification list =
       sv "NodeKind.FragmentRef"
       pt "NodeKind.Mount" None // scopeId/inputs/channel/capabilities survive; OnBubble closure + guest interior are host composition (§4o)
 
-      // ── LayoutKind ───────────────────────────────────────────────────────
-      sv "LayoutKind.Box"
-      sv "LayoutKind.SplitPanel"
-      pt "LayoutKind.Tabs" writeBack // OnSelect / OnSelectTag closures erase
-      pt "LayoutKind.Stepper" None // OnSelect closure erases; ActiveStep write-back unshipped — host wiring
-      sv "LayoutKind.SummaryList"
-      pt "LayoutKind.Disclosure" writeBack // OnToggle closure erases
-      sv "LayoutKind.Modal" // OnDismiss is an Action (wire-survivable), not a closure
-      sv "LayoutKind.ScrollArea"
+      // ── Layout kinds ─────────────────────────────────────────────────────
+      sv "NodeKind.Box"
+      sv "NodeKind.SplitPanel"
+      pt "NodeKind.Tabs" writeBack // OnSelect / OnSelectTag closures erase
+      pt "NodeKind.Stepper" None // OnSelect closure erases; ActiveStep write-back unshipped — host wiring
+      sv "NodeKind.SummaryList"
+      pt "NodeKind.Disclosure" writeBack // OnToggle closure erases
+      sv "NodeKind.Modal" // OnDismiss is an Action (wire-survivable), not a closure
+      sv "NodeKind.ScrollArea"
 
-      // ── DisplayKind (pure presentation — all survivable) ─────────────────
-      sv "DisplayKind.Heading"
-      sv "DisplayKind.Markdown"
-      sv "DisplayKind.Metric"
-      sv "DisplayKind.Badge"
-      sv "DisplayKind.Sparkline"
-      sv "DisplayKind.Callout"
-      sv "DisplayKind.Progress"
-      sv "DisplayKind.Skeleton"
-      sv "DisplayKind.LabelValueRow"
-      sv "DisplayKind.Fact"
-      sv "DisplayKind.Link"
-      sv "DisplayKind.Image"
-      sv "DisplayKind.List"
-      sv "DisplayKind.Toast"
-      sv "DisplayKind.CodeBlock"
-      sv "DisplayKind.Math"
-      sv "DisplayKind.Drawing" // closed/typed Shape DU; geometry static, colours are survivable Bindings (Phase 524)
+      // ── Display kinds (pure presentation — all survivable) ───────────────
+      sv "NodeKind.Heading"
+      sv "NodeKind.Markdown"
+      sv "NodeKind.Metric"
+      sv "NodeKind.Badge"
+      sv "NodeKind.Sparkline"
+      sv "NodeKind.Callout"
+      sv "NodeKind.Progress"
+      sv "NodeKind.Skeleton"
+      sv "NodeKind.LabelValueRow"
+      sv "NodeKind.Fact"
+      sv "NodeKind.Link"
+      sv "NodeKind.Image"
+      sv "NodeKind.List"
+      sv "NodeKind.Toast"
+      sv "NodeKind.CodeBlock"
+      sv "NodeKind.Math"
+      sv "NodeKind.Drawing" // closed/typed Shape DU; geometry static, colours are survivable Bindings (Phase 524)
 
-      // ── InputKind ────────────────────────────────────────────────────────
-      sv "InputKind.Form" // OnSubmit is an Action (wire-survivable)
-      sv "InputKind.Filters"
-      sv "InputKind.Button" // OnClick is an Action (wire-survivable)
-      pt "InputKind.FileUpload" None // OnSelect closure carries a non-scalar payload — host wiring
-      pt "InputKind.Select" writeBack // OnChange / OnChangeMulti closures erase
+      // ── Input kinds ──────────────────────────────────────────────────────
+      sv "NodeKind.Form" // OnSubmit is an Action (wire-survivable)
+      sv "NodeKind.Filters"
+      sv "NodeKind.Button" // OnClick is an Action (wire-survivable)
+      pt "NodeKind.FileUpload" None // OnSelect closure carries a non-scalar payload — host wiring
+      pt "NodeKind.Select" writeBack // OnChange / OnChangeMulti closures erase
 
       // ── FormFieldKind (value survives; onChange/onToggle closure erases) ──
       pt "FormFieldKind.Text" writeBack
@@ -136,13 +133,13 @@ let all: Classification list =
       // FormFieldKind rows above cover them; Range is the absorbed range chip.
       pt "FormFieldKind.Range" writeBack
 
-      // ── VisKind ──────────────────────────────────────────────────────────
+      // ── Visualisation kinds ──────────────────────────────────────────────
       pt
-          "VisKind.DataGrid"
+          "NodeKind.DataGrid"
           (Some
               "use Column.Field + CellFormat instead of a closure Value; RowKeyField instead of RowKey; the click write-back default for OnRowClick")
-      pt "VisKind.Chart" None // OnPointClick selection host-only
-      pt "VisKind.Map" None // OnMarkerClick host-only
+      pt "NodeKind.Chart" None // OnPointClick selection host-only
+      pt "NodeKind.Map" None // OnMarkerClick host-only
 
       // ── CellKindErased (grid cells) ──────────────────────────────────────
       sv "CellKindErased.Text"

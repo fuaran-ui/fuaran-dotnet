@@ -192,30 +192,33 @@ let uiValidityRegistry<'Msg> : Fuaran.Core.Validator.Registry<Node<'Msg>, NodeId
 
 let private getChildren<'Msg> (node: Node<'Msg>) : Node<'Msg> list option =
     match node.Kind with
-    | NodeKind.Layout layout ->
-        match layout with
-        | LayoutKind.Box s -> Some s.Children
-        | LayoutKind.SplitPanel s -> Some s.Children
-        | LayoutKind.Tabs s -> Some s.Children
-        | LayoutKind.Stepper s -> Some s.Children
-        | LayoutKind.SummaryList s -> Some s.Children
-        | LayoutKind.Disclosure s -> Some s.Children
-        | LayoutKind.Modal s -> Some s.Children
-        | LayoutKind.ScrollArea s -> Some s.Children
+    | NodeKind.Box s -> Some s.Children
+    | NodeKind.SplitPanel s -> Some s.Children
+    | NodeKind.Tabs s -> Some s.Children
+    | NodeKind.Stepper s -> Some s.Children
+    | NodeKind.SummaryList s -> Some s.Children
+    | NodeKind.Disclosure s -> Some s.Children
+    | NodeKind.Modal s -> Some s.Children
+    | NodeKind.ScrollArea s -> Some s.Children
     | _ -> None
 
 let private kindTag<'Msg> (node: Node<'Msg>) : string =
+    // Phase 692 — the four families reported their CATEGORY here, the structural
+    // six their case name. `Kind.category` preserves that surface exactly.
     match node.Kind with
-    | NodeKind.Layout _ -> "Layout"
-    | NodeKind.Display _ -> "Display"
-    | NodeKind.Input _ -> "Input"
-    | NodeKind.Visualisation _ -> "Visualisation"
     | NodeKind.Custom _ -> "Custom"
     | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
     | NodeKind.Switch _ -> "Switch"
     | NodeKind.FragmentDecl _ -> "FragmentDecl"
     | NodeKind.FragmentRef _ -> "FragmentRef"
     | NodeKind.Mount _ -> "Mount"
+    | k ->
+        match Kind.category k with
+        | NodeCategory.Layout -> "Layout"
+        | NodeCategory.Display -> "Display"
+        | NodeCategory.Input -> "Input"
+        | NodeCategory.Visualisation -> "Visualisation"
+        | NodeCategory.Structural -> "Structural"
 
 /// Parse a Core value-arg string back into the boxed `obj` a UI value/repeat
 /// hole binds (mirrors `HoleValueSpace.validate`'s expected boxings) — the
