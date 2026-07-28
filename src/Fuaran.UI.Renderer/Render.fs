@@ -75,10 +75,10 @@ let private correlationId (seed: string) : string = Ids.deterministicCorrelation
 // projection without driving Feliz's React-substrate. The renderer's
 // internal call sites still consume it through the module namespace.
 let nodeKindName<'Msg> (kind: NodeKind<'Msg>) : string =
-    // Phase 692 — the "Category.Kind" projection survives the flattening (this
-    // string is pinned by the .NET-side tests), but the category is now DERIVED
+    // Phase 692 — the "Category.Kind" projection survives the flattening (the
+    // .NET-side tests pin these strings), but the category is now DERIVED
     // (`Kind.category`) and the kind name comes from `Kind.name`, so a new kind
-    // extends this by extending those rather than a third enumeration here.
+    // extends those rather than a third enumeration here.
     match kind with
     // Box renders under a role-dependent display name — the retired Card /
     // Dashboard / Separator / Grid / Stack vocabulary the catalog pins.
@@ -950,9 +950,9 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
             @ keysOfBinding channel k.Value
             @ keysOfBindingOpt channel k.Trend
             @ keysOfTextOpt channel k.Subtext
-        | NodeKind.Badge b -> keysOfText channel b.Label
 
         __v, []
+    | NodeKind.Badge b -> keysOfText channel b.Label, []
     | NodeKind.Sparkline s -> keysOfBinding channel s.Source, []
     | NodeKind.Callout c -> keysOfTextOpt channel c.Heading @ keysOfText channel c.Body, []
     | NodeKind.Progress p ->
@@ -960,21 +960,24 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
             keysOfBinding channel p.Fraction
             @ keysOfTextOpt channel p.Label
             @ keysOfTextOpt channel p.Caveat
-        | NodeKind.Skeleton _ -> []
 
         __v, []
+    | NodeKind.Skeleton _ -> [], []
     | NodeKind.LabelValueRow r ->
         let __v =
             keysOfText channel r.Label
             @ keysOfBinding channel r.Value
             @ keysOfTextOpt channel r.Help
-        | NodeKind.Fact fa ->
+
+        __v, []
+    | NodeKind.Fact fa ->
+        let __v =
             keysOfText channel fa.Label
             @ keysOfText channel fa.Value
             @ keysOfTextOpt channel fa.Help
-        | NodeKind.Link l -> keysOfBinding channel l.Href @ keysOfText channel l.Label
 
         __v, []
+    | NodeKind.Link l -> keysOfBinding channel l.Href @ keysOfText channel l.Label, []
     | NodeKind.Image i -> keysOfBinding channel i.Src @ keysOfText channel i.Alt, []
     | NodeKind.List l -> l.Items |> List.collect (keysOfText channel), []
     | NodeKind.Toast t ->
@@ -998,9 +1001,9 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
             keysOfText channel b.Label
             @ keysOfTextOpt channel b.Tooltip
             @ keysOfBindingOpt channel b.Disabled
-        | NodeKind.FileUpload fu -> keysOfText channel fu.Label @ keysOfBindingOpt channel fu.Disabled
 
         __v, []
+    | NodeKind.FileUpload fu -> keysOfText channel fu.Label @ keysOfBindingOpt channel fu.Disabled, []
     | NodeKind.Select s ->
         let __v =
             keysOfText channel s.Label
@@ -1010,7 +1013,10 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
             @ keysOfBindingOpt channel s.Values
             @ keysOfTextOpt channel s.Placeholder
             @ keysOfBindingOpt channel s.Disabled
-        | NodeKind.Form f ->
+
+        __v, []
+    | NodeKind.Form f ->
+        let __v =
             let fieldKeys =
                 f.Fields
                 |> List.collect (fun field ->
@@ -1021,7 +1027,10 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
             keysOfText channel f.SubmitLabel
             @ keysOfBindingOpt channel f.Disabled
             @ fieldKeys
-        | NodeKind.Filters filters ->
+
+        __v, []
+    | NodeKind.Filters filters ->
+        let __v =
             filters
             |> List.collect (fun fs -> keysOfText channel fs.Label @ keysOfFormFieldKind channel fs.Field)
 
@@ -1128,50 +1137,46 @@ let rec private namespaceNode<'Msg> (prefix: string) (node: Node<'Msg>) : Node<'
 
 and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKind<'Msg> =
     match kind with
-    | NodeKind.Layout layout ->
-        let recur = namespaceNode prefix
-
-        match layout with
-        | NodeKind.Box s ->
-            NodeKind.Box(
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | NodeKind.SplitPanel s ->
-            NodeKind.SplitPanel(
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | NodeKind.Tabs s ->
-            NodeKind.Tabs(
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | NodeKind.Stepper s ->
-            NodeKind.Stepper(
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | NodeKind.SummaryList s ->
-            NodeKind.SummaryList(
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | NodeKind.Disclosure s ->
-            NodeKind.Disclosure(
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | NodeKind.Modal s ->
-            NodeKind.Modal(
-                    { s with
-                        Children = List.map recur s.Children }
-            )
-        | NodeKind.ScrollArea s ->
-            NodeKind.ScrollArea(
-                    { s with
-                        Children = List.map recur s.Children }
-            )
+    | NodeKind.Box s ->
+        NodeKind.Box(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.SplitPanel s ->
+        NodeKind.SplitPanel(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.Tabs s ->
+        NodeKind.Tabs(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.Stepper s ->
+        NodeKind.Stepper(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.SummaryList s ->
+        NodeKind.SummaryList(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.Disclosure s ->
+        NodeKind.Disclosure(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.Modal s ->
+        NodeKind.Modal(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
+    | NodeKind.ScrollArea s ->
+        NodeKind.ScrollArea(
+            { s with
+                Children = List.map (namespaceNode prefix) s.Children }
+        )
     | NodeKind.ErrorBoundary spec ->
         NodeKind.ErrorBoundary
             { Child = namespaceNode prefix spec.Child
@@ -1191,9 +1196,31 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
             { spec with
                 Body = namespaceNode prefix spec.Body }
     | NodeKind.FragmentRef _
-    | NodeKind.Display _
-    | NodeKind.Input _
-    | NodeKind.Visualisation _
+    | NodeKind.Heading _
+    | NodeKind.Markdown _
+    | NodeKind.Metric _
+    | NodeKind.Badge _
+    | NodeKind.Sparkline _
+    | NodeKind.Callout _
+    | NodeKind.Progress _
+    | NodeKind.Skeleton _
+    | NodeKind.LabelValueRow _
+    | NodeKind.Fact _
+    | NodeKind.Link _
+    | NodeKind.Image _
+    | NodeKind.List _
+    | NodeKind.Toast _
+    | NodeKind.CodeBlock _
+    | NodeKind.Math _
+    | NodeKind.Drawing _
+    | NodeKind.Form _
+    | NodeKind.Filters _
+    | NodeKind.Button _
+    | NodeKind.FileUpload _
+    | NodeKind.Select _
+    | NodeKind.DataGrid _
+    | NodeKind.Chart _
+    | NodeKind.Map _
     | NodeKind.Custom _
     // Mount (§4o) — the guest interior is a separate scope namespaced by its
     // own loader; the host fragment prefix does not rewrite guest ids. Leave
@@ -1233,281 +1260,7 @@ let rec private renderKind
     (kind: NodeKind<'Msg>)
     : ReactElement =
     match kind with
-    | NodeKind.Layout layout -> renderLayout ctx parentNodeId layout
-    | NodeKind.Display display -> renderDisplay ctx parentNodeId state display
-    | NodeKind.Input input -> renderInput ctx input
-    | NodeKind.Visualisation vis -> renderVis ctx parentNodeId state vis
-    | NodeKind.ErrorBoundary spec ->
-        // Render-time error boundary. The author wraps a subtree
-        // they expect *may* fail under some inputs; this case catches throws
-        // inside the child and substitutes the typed Fallback Node.
-        //
-        // Per-node-guard interplay: the boundary sets
-        // `InErrorBoundary = true` for the child's render so the per-node
-        // guard *suspends* — throws propagate up to this catch instead of
-        // being absorbed by a fallback placeholder mid-subtree. That's
-        // the whole point of authoring a boundary: opt into "I want the
-        // FALLBACK subtree, not a placeholder where the bad leaf was". The
-        // fallback then renders with `InErrorBoundary = false` so its own
-        // children re-enable the per-node guard (a flaky fallback degrades
-        // gracefully too, but not by escalating up to a grandparent
-        // boundary — the boundary already absorbed responsibility).
-        //
-        // Nested boundaries: when the child subtree itself contains another
-        // `ErrorBoundary`, the inner boundary's `InErrorBoundary = true`
-        // override scopes locally — the inner catches its own subtree's
-        // throws and the outer never sees them.
-        let boundaryCtx = { ctx with InErrorBoundary = true }
-
-        try
-            render boundaryCtx spec.Child
-        with ex ->
-            let corrId =
-                emitRenderFailureWithContext
-                    ctx.TelemetrySink
-                    ctx.SessionContext
-                    parentNodeId
-                    (nodeKindName kind)
-                    ex.Message
-                    RenderFailureSource.ErrorBoundary
-
-            let fallbackCtx = { ctx with InErrorBoundary = false }
-
-            try
-                render fallbackCtx spec.Fallback
-            with ex2 ->
-                // Fallback itself threw — emit a secondary telemetry event
-                // so the operator sees BOTH failures and falls back to a
-                // bare-bones placeholder so something paints. The
-                // correlation id from the primary failure threads through
-                // to the placeholder so log filters can join the two.
-                emitRenderFailureWithContext
-                    ctx.TelemetrySink
-                    ctx.SessionContext
-                    parentNodeId
-                    (nodeKindName kind + ".Fallback")
-                    ex2.Message
-                    RenderFailureSource.ErrorBoundary
-                |> ignore
-
-                renderNodeFallback
-                    parentNodeId
-                    (nodeKindName kind + ".Fallback")
-                    (sprintf "child failed (%s); fallback also failed (%s)" ex.Message ex2.Message)
-                    corrId
-    | NodeKind.Switch spec ->
-        // State-bound conditional child (Phase 392). Read the reactive state
-        // value at `spec.StateKey` (scope-aware, mirroring `writeBackTo` /
-        // `Action.SetState` routing), match its string form against each case in
-        // order (first-match-wins), and render that case's child — else the
-        // `Default`. The surface is subscribed to `spec.StateKey` via
-        // `kindKeys`/`collectKeys`, so a global `Action.SetState` re-renders here
-        // and re-selects the matching case with no bespoke dispatch path (FGP 3).
-        let currentValue =
-            match ctx.Scope with
-            | Some scopeId -> (StateStore.forScope scopeId).Get spec.StateKey
-            | None -> StateStore.get spec.StateKey
-
-        let matched =
-            match currentValue with
-            | Some v ->
-                let valueStr = if isNull v then "" else string v
-
-                spec.Cases
-                |> List.tryPick (fun (m, child) -> if m = valueStr then Some child else None)
-            | None -> None
-
-        match matched with
-        | Some child -> render ctx child
-        | None -> render ctx spec.Default
-    | NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds) ->
-        // Dispatch through the runtime's Custom-renderer surface.
-        // Bounded-escape verification:
-        //   1. Hash check (pre-dispatch) via TryGetCustomRenderer.
-        //   2. Exposed-NodeIds DOM walk (post-mount) when the tree declares
-        //      any. .NET-side: no-op (FUARAN053 covers build-time).
-        // Hosts implementing TryRenderCustom directly continue
-        // working — their TryGetCustomRenderer returns None and the renderer
-        // falls through to TryRenderCustom for the actual dispatch.
-
-        let renderPlaceholder () : ReactElement =
-            let propKeys = props |> Map.toList |> List.map fst |> String.concat ", "
-
-            Html.div
-                [ prop.className "fuaran-custom-placeholder"
-                  prop.children
-                      [ Html.div
-                            [ prop.className "fuaran-custom-label"
-                              prop.text (sprintf "Custom %s.%s" moduleId componentId) ]
-                        Html.div
-                            [ prop.className "fuaran-custom-props"
-                              prop.text (sprintf "props: %s" propKeys) ] ] ]
-
-        let registryProbe = ctx.Runtime.TryGetCustomRenderer(moduleId, componentId)
-        let registryHash = registryProbe |> Option.bind snd
-        let outcome = classifyCustomHash contentHash registryHash
-
-        let dispatchToRenderer () : ReactElement =
-            match registryProbe with
-            | Some(fn, _) -> fn props
-            | None ->
-                match ctx.Runtime.TryRenderCustom(moduleId, componentId, props) with
-                | Some element -> element
-                | None -> renderPlaceholder ()
-
-        let renderedElement =
-            match outcome with
-            | CustomHashOutcome.Match
-            | CustomHashOutcome.NoTreeHash -> dispatchToRenderer ()
-            | CustomHashOutcome.RegistryNoHash
-            | CustomHashOutcome.MismatchAdvisory ->
-                ctx.Runtime.Warn(formatHashMismatchPayload moduleId componentId contentHash registryHash)
-                dispatchToRenderer ()
-            | CustomHashOutcome.MismatchStrict ->
-                ctx.Runtime.Warn(formatHashMismatchPayload moduleId componentId contentHash registryHash)
-                // OnError-routing: synthesize a BindingResolution-shaped
-                // payload (closest existing ErrorKind for a renderer-side
-                // failure that didn't cross the wire) and render the
-                // consumer-supplied error slot when present. When absent,
-                // fall back to the placeholder so the failure stays visible.
-                match state.OnError with
-                | Some onErr ->
-                    let payload =
-                        { Kind = ErrorKind.BindingResolution
-                          Message =
-                            sprintf
-                                "Custom hash mismatch for %s.%s — registered renderer's hash differs from the declared ContentHash (StrictReplay)."
-                                moduleId
-                                componentId
-                          CorrelationId = correlationId (parentNodeId + "|custom-hash") }
-
-                    render ctx (onErr payload)
-                | None -> renderPlaceholder ()
-
-        // Exposed-NodeIds post-mount DOM walk. Skip the syscall
-        // entirely when the tree doesn't declare any (the common case).
-        match exposedNodeIds with
-        | [] -> ()
-        | _ -> scheduleExposedNodeIdsVerification parentNodeId exposedNodeIds ctx.Runtime
-
-        renderedElement
-    | NodeKind.FragmentDecl _ ->
-        // The declaration site renders nothing
-        // visible. The Body is the *template* that FragmentRef sites
-        // expand — emitting the body here would defeat the entire
-        // emission-economy win (a referenced body would render twice:
-        // once at the decl, once at the ref). The outer wrapper still
-        // emits with `data-fuaran-node-id` so layout-observer +
-        // op-stream-replay machinery keep addressing the decl node.
-        Html.none
-    | NodeKind.FragmentRef spec ->
-        // Expand the referenced fragment with
-        // interior NodeIds namespaced under the ref's id so multiple
-        // refs to the same fragment produce DOM-unique addressable
-        // ids. Unresolved + cyclic references render a labelled
-        // placeholder rather than throwing — the renderer guard would
-        // catch a throw, but the labelled placeholder is friendlier in
-        // dev tools and threads through `Warn` for observability.
-        let (FragmentId rawName) = spec.Name
-
-        if Set.contains spec.Name ctx.ExpandingFragments then
-            ctx.Runtime.Warn(
-                sprintf
-                    "[fuaran:fragment] cycle detected expanding ref '%s' → fragment '%s'; rendering placeholder. Validator FUARAN058 catches this at build time."
-                    parentNodeId
-                    rawName
-            )
-
-            Html.div
-                [ prop.className "fuaran-fragment-cycle-placeholder"
-                  prop.custom ("data-fuaran-fragment-cycle", rawName)
-                  prop.text (sprintf "[fuaran:fragment cycle '%s']" rawName) ]
-        else
-            match Map.tryFind spec.Name ctx.Fragments with
-            | None ->
-                ctx.Runtime.Warn(
-                    sprintf
-                        "[fuaran:fragment] ref '%s' points to fragment '%s' which has no declaration in this tree; rendering placeholder. Validator FUARAN057 catches this at build time."
-                        parentNodeId
-                        rawName
-                )
-
-                Html.div
-                    [ prop.className "fuaran-fragment-unresolved-placeholder"
-                      prop.custom ("data-fuaran-fragment-unresolved", rawName)
-                      prop.text (sprintf "[fuaran:fragment unresolved '%s']" rawName) ]
-            | Some body ->
-                // Prefix interior ids with the ref's NodeId + "." so
-                // sibling refs to the same fragment stay DOM-unique.
-                // `parentNodeId` is already the ref's fully-prefixed id
-                // (the outer expansion, if any, rewrote it before this
-                // render call), so nested expansion naturally produces
-                // `outerRef.innerRef.btn` without re-concatenating an
-                // ambient prefix.
-                let prefix = parentNodeId + "."
-                let namespaced = namespaceNode prefix body
-
-                let expandedCtx =
-                    { ctx with
-                        ExpandingFragments = Set.add spec.Name ctx.ExpandingFragments }
-
-                render expandedCtx namespaced
-    | NodeKind.Mount spec ->
-        // Isolation/embedding boundary (Phase 265/266, §4o). Resolve the guest
-        // via the host's loader seam (`IFuaranRuntime.TryLoadGuest`); when a
-        // guest tree is returned, render it under its OWN FuaranRuntimeScope
-        // (scoped `StateStore`) with dispatch bridged through the mount's
-        // `OnBubble` channel — a guest action (obj) becomes a host `Action<'Msg>`
-        // run in the host context, so the host `'Msg` stays behind the boundary
-        // while the guest space is fully obj-typed and its state is isolated.
-        // The `data-fuaran-mount-scope` boundary attribute is preserved so the
-        // LayoutObserver + TreeDiff address across the boundary (§4o.6). When no
-        // loader is wired (the default / standalone / server case), the declared
-        // empty state renders — a Mount in an unwired host is inert, never a throw.
-        let boundaryChild =
-            match ctx.Runtime.TryLoadGuest spec.ScopeId, renderGuestHook with
-            | Some guestTree, Some renderGuest ->
-                // Merge the guest scope's StateStore snapshot over the inherited
-                // State sources (scoped values win) so the guest reads its own
-                // isolated state; the host's default store is untouched.
-                let scopedState =
-                    (StateStore.forScope spec.ScopeId).Snapshot()
-                    |> Map.fold (fun acc k v -> Map.add k v acc) ctx.Sources.State
-
-                let guestCtx: RenderContext<obj> =
-                    { Sources = { ctx.Sources with State = scopedState }
-                      Runtime = ctx.Runtime
-                      VisAdapter = VisAdapter.noOp<obj>
-                      Dispatch = (fun (o: obj) -> runAction ctx (spec.OnBubble o))
-                      TelemetrySink = ctx.TelemetrySink
-                      InErrorBoundary = false
-                      Fragments = collectFragments Map.empty guestTree
-                      ExpandingFragments = Set.empty
-                      Scope = Some spec.ScopeId
-                      // The host's correlation context follows the guest: a
-                      // failure inside a mounted region belongs to the same
-                      // interaction as the render that mounted it (Phase 330).
-                      SessionContext = ctx.SessionContext }
-
-                // Route through the late-bound hook (a function *value*), not a
-                // direct call into the recursive `render` group at type obj —
-                // F# forbids polymorphic recursion, so the obj-typed guest render
-                // crosses the type boundary via the hook set at module init below.
-                renderGuest guestCtx guestTree
-            | _ ->
-                Html.div
-                    [ prop.className "fuaran-mount-placeholder"
-                      prop.text (sprintf "[fuaran:mount '%s' — guest loader not attached]" spec.ScopeId) ]
-
-        Html.div
-            [ prop.className "fuaran-mount-boundary"
-              prop.custom ("data-fuaran-mount-scope", spec.ScopeId)
-              prop.children [ boundaryChild ] ]
-
-// ─── Layouts ───────────────────────────────────────────────────────────────
-
-and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layout: LayoutKind<'Msg>) : ReactElement =
-    match layout with
+    // -- Layout --
     // Phase 390 — the unified container. Role + layout mode drive the emitted
     // element + classes so each retired kind's HTML/a11y is byte-identical:
     // Card role → <section class="fuaran-layout-card">; Dashboard role →
@@ -2023,16 +1776,7 @@ and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layo
               if not styleProps.IsEmpty then
                   prop.style styleProps
               prop.children (spec.Children |> List.map (render ctx)) ]
-
-// ─── Displays ──────────────────────────────────────────────────────────────
-
-and private renderDisplay
-    (ctx: RenderContext<'Msg>)
-    (parentNodeId: string)
-    (state: StateBehaviour<'Msg>)
-    (display: DisplayKind<'Msg>)
-    : ReactElement =
-    match display with
+    // -- Display --
     | NodeKind.Heading spec ->
         // Feliz-parity additive: Heading.Variant
         // appends `fuaran-heading-{variant}` so eyebrow / caption / lead
@@ -2256,6 +2000,296 @@ and private renderDisplay
             Html.div (containerProps @ content)
         else
             Html.span (containerProps @ content)
+    // -- Input --
+    | NodeKind.Button spec -> renderButton ctx spec
+    | NodeKind.Select spec -> renderSelect ctx spec
+    | NodeKind.Form spec -> renderForm ctx spec
+    | NodeKind.Filters specs -> renderFilters ctx specs
+    | NodeKind.FileUpload spec -> renderFileUpload ctx spec
+    // -- Vis --
+    | NodeKind.DataGrid spec ->
+        // Phase 393 — a static read-only grid renders the semantic <table> leg (byte-identical to the
+        // retired Table); a data-bound grid takes the ordinary grid path.
+        match spec.StaticRows with
+        | Some(headers, rows) ->
+            renderTable
+                ctx
+                { Headers = headers
+                  Rows = rows
+                  OnRowClick = None }
+        | None -> renderGrid ctx parentNodeId state spec
+    | NodeKind.Chart spec -> renderChart ctx parentNodeId state spec
+    | NodeKind.Map spec -> renderMap ctx parentNodeId state spec
+    | NodeKind.ErrorBoundary spec ->
+        // Render-time error boundary. The author wraps a subtree
+        // they expect *may* fail under some inputs; this case catches throws
+        // inside the child and substitutes the typed Fallback Node.
+        //
+        // Per-node-guard interplay: the boundary sets
+        // `InErrorBoundary = true` for the child's render so the per-node
+        // guard *suspends* — throws propagate up to this catch instead of
+        // being absorbed by a fallback placeholder mid-subtree. That's
+        // the whole point of authoring a boundary: opt into "I want the
+        // FALLBACK subtree, not a placeholder where the bad leaf was". The
+        // fallback then renders with `InErrorBoundary = false` so its own
+        // children re-enable the per-node guard (a flaky fallback degrades
+        // gracefully too, but not by escalating up to a grandparent
+        // boundary — the boundary already absorbed responsibility).
+        //
+        // Nested boundaries: when the child subtree itself contains another
+        // `ErrorBoundary`, the inner boundary's `InErrorBoundary = true`
+        // override scopes locally — the inner catches its own subtree's
+        // throws and the outer never sees them.
+        let boundaryCtx = { ctx with InErrorBoundary = true }
+
+        try
+            render boundaryCtx spec.Child
+        with ex ->
+            let corrId =
+                emitRenderFailureWithContext
+                    ctx.TelemetrySink
+                    ctx.SessionContext
+                    parentNodeId
+                    (nodeKindName kind)
+                    ex.Message
+                    RenderFailureSource.ErrorBoundary
+
+            let fallbackCtx = { ctx with InErrorBoundary = false }
+
+            try
+                render fallbackCtx spec.Fallback
+            with ex2 ->
+                // Fallback itself threw — emit a secondary telemetry event
+                // so the operator sees BOTH failures and falls back to a
+                // bare-bones placeholder so something paints. The
+                // correlation id from the primary failure threads through
+                // to the placeholder so log filters can join the two.
+                emitRenderFailureWithContext
+                    ctx.TelemetrySink
+                    ctx.SessionContext
+                    parentNodeId
+                    (nodeKindName kind + ".Fallback")
+                    ex2.Message
+                    RenderFailureSource.ErrorBoundary
+                |> ignore
+
+                renderNodeFallback
+                    parentNodeId
+                    (nodeKindName kind + ".Fallback")
+                    (sprintf "child failed (%s); fallback also failed (%s)" ex.Message ex2.Message)
+                    corrId
+    | NodeKind.Switch spec ->
+        // State-bound conditional child (Phase 392). Read the reactive state
+        // value at `spec.StateKey` (scope-aware, mirroring `writeBackTo` /
+        // `Action.SetState` routing), match its string form against each case in
+        // order (first-match-wins), and render that case's child — else the
+        // `Default`. The surface is subscribed to `spec.StateKey` via
+        // `kindKeys`/`collectKeys`, so a global `Action.SetState` re-renders here
+        // and re-selects the matching case with no bespoke dispatch path (FGP 3).
+        let currentValue =
+            match ctx.Scope with
+            | Some scopeId -> (StateStore.forScope scopeId).Get spec.StateKey
+            | None -> StateStore.get spec.StateKey
+
+        let matched =
+            match currentValue with
+            | Some v ->
+                let valueStr = if isNull v then "" else string v
+
+                spec.Cases
+                |> List.tryPick (fun (m, child) -> if m = valueStr then Some child else None)
+            | None -> None
+
+        match matched with
+        | Some child -> render ctx child
+        | None -> render ctx spec.Default
+    | NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds) ->
+        // Dispatch through the runtime's Custom-renderer surface.
+        // Bounded-escape verification:
+        //   1. Hash check (pre-dispatch) via TryGetCustomRenderer.
+        //   2. Exposed-NodeIds DOM walk (post-mount) when the tree declares
+        //      any. .NET-side: no-op (FUARAN053 covers build-time).
+        // Hosts implementing TryRenderCustom directly continue
+        // working — their TryGetCustomRenderer returns None and the renderer
+        // falls through to TryRenderCustom for the actual dispatch.
+
+        let renderPlaceholder () : ReactElement =
+            let propKeys = props |> Map.toList |> List.map fst |> String.concat ", "
+
+            Html.div
+                [ prop.className "fuaran-custom-placeholder"
+                  prop.children
+                      [ Html.div
+                            [ prop.className "fuaran-custom-label"
+                              prop.text (sprintf "Custom %s.%s" moduleId componentId) ]
+                        Html.div
+                            [ prop.className "fuaran-custom-props"
+                              prop.text (sprintf "props: %s" propKeys) ] ] ]
+
+        let registryProbe = ctx.Runtime.TryGetCustomRenderer(moduleId, componentId)
+        let registryHash = registryProbe |> Option.bind snd
+        let outcome = classifyCustomHash contentHash registryHash
+
+        let dispatchToRenderer () : ReactElement =
+            match registryProbe with
+            | Some(fn, _) -> fn props
+            | None ->
+                match ctx.Runtime.TryRenderCustom(moduleId, componentId, props) with
+                | Some element -> element
+                | None -> renderPlaceholder ()
+
+        let renderedElement =
+            match outcome with
+            | CustomHashOutcome.Match
+            | CustomHashOutcome.NoTreeHash -> dispatchToRenderer ()
+            | CustomHashOutcome.RegistryNoHash
+            | CustomHashOutcome.MismatchAdvisory ->
+                ctx.Runtime.Warn(formatHashMismatchPayload moduleId componentId contentHash registryHash)
+                dispatchToRenderer ()
+            | CustomHashOutcome.MismatchStrict ->
+                ctx.Runtime.Warn(formatHashMismatchPayload moduleId componentId contentHash registryHash)
+                // OnError-routing: synthesize a BindingResolution-shaped
+                // payload (closest existing ErrorKind for a renderer-side
+                // failure that didn't cross the wire) and render the
+                // consumer-supplied error slot when present. When absent,
+                // fall back to the placeholder so the failure stays visible.
+                match state.OnError with
+                | Some onErr ->
+                    let payload =
+                        { Kind = ErrorKind.BindingResolution
+                          Message =
+                            sprintf
+                                "Custom hash mismatch for %s.%s — registered renderer's hash differs from the declared ContentHash (StrictReplay)."
+                                moduleId
+                                componentId
+                          CorrelationId = correlationId (parentNodeId + "|custom-hash") }
+
+                    render ctx (onErr payload)
+                | None -> renderPlaceholder ()
+
+        // Exposed-NodeIds post-mount DOM walk. Skip the syscall
+        // entirely when the tree doesn't declare any (the common case).
+        match exposedNodeIds with
+        | [] -> ()
+        | _ -> scheduleExposedNodeIdsVerification parentNodeId exposedNodeIds ctx.Runtime
+
+        renderedElement
+    | NodeKind.FragmentDecl _ ->
+        // The declaration site renders nothing
+        // visible. The Body is the *template* that FragmentRef sites
+        // expand — emitting the body here would defeat the entire
+        // emission-economy win (a referenced body would render twice:
+        // once at the decl, once at the ref). The outer wrapper still
+        // emits with `data-fuaran-node-id` so layout-observer +
+        // op-stream-replay machinery keep addressing the decl node.
+        Html.none
+    | NodeKind.FragmentRef spec ->
+        // Expand the referenced fragment with
+        // interior NodeIds namespaced under the ref's id so multiple
+        // refs to the same fragment produce DOM-unique addressable
+        // ids. Unresolved + cyclic references render a labelled
+        // placeholder rather than throwing — the renderer guard would
+        // catch a throw, but the labelled placeholder is friendlier in
+        // dev tools and threads through `Warn` for observability.
+        let (FragmentId rawName) = spec.Name
+
+        if Set.contains spec.Name ctx.ExpandingFragments then
+            ctx.Runtime.Warn(
+                sprintf
+                    "[fuaran:fragment] cycle detected expanding ref '%s' → fragment '%s'; rendering placeholder. Validator FUARAN058 catches this at build time."
+                    parentNodeId
+                    rawName
+            )
+
+            Html.div
+                [ prop.className "fuaran-fragment-cycle-placeholder"
+                  prop.custom ("data-fuaran-fragment-cycle", rawName)
+                  prop.text (sprintf "[fuaran:fragment cycle '%s']" rawName) ]
+        else
+            match Map.tryFind spec.Name ctx.Fragments with
+            | None ->
+                ctx.Runtime.Warn(
+                    sprintf
+                        "[fuaran:fragment] ref '%s' points to fragment '%s' which has no declaration in this tree; rendering placeholder. Validator FUARAN057 catches this at build time."
+                        parentNodeId
+                        rawName
+                )
+
+                Html.div
+                    [ prop.className "fuaran-fragment-unresolved-placeholder"
+                      prop.custom ("data-fuaran-fragment-unresolved", rawName)
+                      prop.text (sprintf "[fuaran:fragment unresolved '%s']" rawName) ]
+            | Some body ->
+                // Prefix interior ids with the ref's NodeId + "." so
+                // sibling refs to the same fragment stay DOM-unique.
+                // `parentNodeId` is already the ref's fully-prefixed id
+                // (the outer expansion, if any, rewrote it before this
+                // render call), so nested expansion naturally produces
+                // `outerRef.innerRef.btn` without re-concatenating an
+                // ambient prefix.
+                let prefix = parentNodeId + "."
+                let namespaced = namespaceNode prefix body
+
+                let expandedCtx =
+                    { ctx with
+                        ExpandingFragments = Set.add spec.Name ctx.ExpandingFragments }
+
+                render expandedCtx namespaced
+    | NodeKind.Mount spec ->
+        // Isolation/embedding boundary (Phase 265/266, §4o). Resolve the guest
+        // via the host's loader seam (`IFuaranRuntime.TryLoadGuest`); when a
+        // guest tree is returned, render it under its OWN FuaranRuntimeScope
+        // (scoped `StateStore`) with dispatch bridged through the mount's
+        // `OnBubble` channel — a guest action (obj) becomes a host `Action<'Msg>`
+        // run in the host context, so the host `'Msg` stays behind the boundary
+        // while the guest space is fully obj-typed and its state is isolated.
+        // The `data-fuaran-mount-scope` boundary attribute is preserved so the
+        // LayoutObserver + TreeDiff address across the boundary (§4o.6). When no
+        // loader is wired (the default / standalone / server case), the declared
+        // empty state renders — a Mount in an unwired host is inert, never a throw.
+        let boundaryChild =
+            match ctx.Runtime.TryLoadGuest spec.ScopeId, renderGuestHook with
+            | Some guestTree, Some renderGuest ->
+                // Merge the guest scope's StateStore snapshot over the inherited
+                // State sources (scoped values win) so the guest reads its own
+                // isolated state; the host's default store is untouched.
+                let scopedState =
+                    (StateStore.forScope spec.ScopeId).Snapshot()
+                    |> Map.fold (fun acc k v -> Map.add k v acc) ctx.Sources.State
+
+                let guestCtx: RenderContext<obj> =
+                    { Sources = { ctx.Sources with State = scopedState }
+                      Runtime = ctx.Runtime
+                      VisAdapter = VisAdapter.noOp<obj>
+                      Dispatch = (fun (o: obj) -> runAction ctx (spec.OnBubble o))
+                      TelemetrySink = ctx.TelemetrySink
+                      InErrorBoundary = false
+                      Fragments = collectFragments Map.empty guestTree
+                      ExpandingFragments = Set.empty
+                      Scope = Some spec.ScopeId
+                      // The host's correlation context follows the guest: a
+                      // failure inside a mounted region belongs to the same
+                      // interaction as the render that mounted it (Phase 330).
+                      SessionContext = ctx.SessionContext }
+
+                // Route through the late-bound hook (a function *value*), not a
+                // direct call into the recursive `render` group at type obj —
+                // F# forbids polymorphic recursion, so the obj-typed guest render
+                // crosses the type boundary via the hook set at module init below.
+                renderGuest guestCtx guestTree
+            | _ ->
+                Html.div
+                    [ prop.className "fuaran-mount-placeholder"
+                      prop.text (sprintf "[fuaran:mount '%s' — guest loader not attached]" spec.ScopeId) ]
+
+        Html.div
+            [ prop.className "fuaran-mount-boundary"
+              prop.custom ("data-fuaran-mount-scope", spec.ScopeId)
+              prop.children [ boundaryChild ] ]
+
+// ─── Layouts ───────────────────────────────────────────────────────────────
+
+// ─── Displays ──────────────────────────────────────────────────────────────
 
 and private renderMetric
     (ctx: RenderContext<'Msg>)
@@ -2489,14 +2523,6 @@ and private renderSparkline (ctx: RenderContext<'Msg>) (spec: SparklineSpec) : R
     | _ -> Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
 
 // ─── Inputs ────────────────────────────────────────────────────────────────
-
-and private renderInput (ctx: RenderContext<'Msg>) (input: InputKind<'Msg>) : ReactElement =
-    match input with
-    | NodeKind.Button spec -> renderButton ctx spec
-    | NodeKind.Select spec -> renderSelect ctx spec
-    | NodeKind.Form spec -> renderForm ctx spec
-    | NodeKind.Filters specs -> renderFilters ctx specs
-    | NodeKind.FileUpload spec -> renderFileUpload ctx spec
 
 and private renderButton (ctx: RenderContext<'Msg>) (spec: ButtonSpec<'Msg>) : ReactElement =
     let unwired = containsUnwiredAction spec.OnClick
@@ -3279,27 +3305,6 @@ and private renderFileUpload (ctx: RenderContext<'Msg>) (spec: FileUploadSpec<'M
                 Html.input inputProps ] ]
 
 // ─── Visualisations ────────────────────────────────────────────────────────
-
-and private renderVis
-    (ctx: RenderContext<'Msg>)
-    (parentNodeId: string)
-    (state: StateBehaviour<'Msg>)
-    (vis: VisKind<'Msg>)
-    : ReactElement =
-    match vis with
-    | NodeKind.DataGrid spec ->
-        // Phase 393 — a static read-only grid renders the semantic <table> leg (byte-identical to the
-        // retired Table); a data-bound grid takes the ordinary grid path.
-        match spec.StaticRows with
-        | Some(headers, rows) ->
-            renderTable
-                ctx
-                { Headers = headers
-                  Rows = rows
-                  OnRowClick = None }
-        | None -> renderGrid ctx parentNodeId state spec
-    | NodeKind.Chart spec -> renderChart ctx parentNodeId state spec
-    | NodeKind.Map spec -> renderMap ctx parentNodeId state spec
 
 and private renderGrid
     (ctx: RenderContext<'Msg>)
