@@ -69,18 +69,18 @@ let tests =
                       parseDecimalLenient
 
               match b with
-              | Binding.Local local ->
-                  Expect.equal local.FlushOn LocalFlushTrigger.OnBlur "FlushOn preserved"
+              | Binding.Local(flushOn, format, initialFrom, _, parse) ->
+                  Expect.equal flushOn LocalFlushTrigger.OnBlur "FlushOn preserved"
 
-                  match local.InitialFrom with
+                  match initialFrom with
                   | Binding.State(key, dv) ->
                       Expect.equal key "salary" "InitialFrom key preserved"
-                      Expect.equal dv 50000m "InitialFrom default preserved"
+                      Expect.equal dv (Some 50000m) "InitialFrom default preserved"
                   | other -> failtestf "Expected Binding.State InitialFrom, got %A" other
 
-                  Expect.isTrue local.Format.IsSome "Format closure preserved"
+                  Expect.equal (format 1000m) "1,000" "Format closure preserved"
 
-                  match local.Parse "1,000" with
+                  match parse "1,000" with
                   | Ok v -> Expect.equal v 1000m "Parse strips commas"
                   | Error e -> failtestf "Expected parse Ok, got Error %s" e
               | other -> failtestf "Expected Binding.Local, got %A" other
@@ -98,16 +98,16 @@ let tests =
                       parseDecimalLenient
 
               match b with
-              | Binding.Local local ->
+              | Binding.Local(_, _, _, Some onCommit, _) ->
                   // OnCommit : 'T -> obj — the smart-ctor wraps the typed
                   // Action<'Msg> in a box; the renderer recovers via unbox.
-                  let raw = local.OnCommit 250000m
+                  let raw = onCommit 250000m
                   let recovered = unbox<Action<Msg>> raw
 
                   match recovered with
                   | Action.Dispatch(SetSalary v) -> Expect.equal v 250000m "Dispatched Msg payload preserved"
                   | other -> failtestf "Expected Action.Dispatch(SetSalary 250000m), got %A" other
-              | other -> failtestf "Expected Binding.Local, got %A" other
+              | other -> failtestf "Expected Binding.Local with Some onCommit, got %A" other
           }
 
           test "BindingResolver.resolve on Binding.Local falls through to InitialFrom" {
@@ -167,13 +167,14 @@ let tests =
           }
 
           test "Defaults.localBinding's Parse returns the placeholder Error" {
-              let defaultLocal: LocalBinding<decimal> = Defaults.localBinding<decimal>
-
-              match defaultLocal.Parse "anything" with
-              | Error msg ->
-                  Expect.stringContains
-                      msg
-                      "no Parse function"
-                      "Defaults placeholder Parse returns an Error noting the gap"
-              | Ok _ -> failtest "Expected Defaults.localBinding.Parse to return Error"
+              match Defaults.localBinding<decimal> with
+              | Binding.Local(_, _, _, _, parse) ->
+                  match parse "anything" with
+                  | Error msg ->
+                      Expect.stringContains
+                          msg
+                          "no Parse function"
+                          "Defaults placeholder Parse returns an Error noting the gap"
+                  | Ok _ -> failtest "Expected Defaults.localBinding.Parse to return Error"
+              | other -> failtestf "Expected Defaults.localBinding to be Binding.Local, got %A" other
           } ]

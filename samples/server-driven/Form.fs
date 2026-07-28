@@ -60,7 +60,7 @@ let private nameField: FormField<obj> =
         Kind =
             FormFieldKind.Text(
                 binding.local
-                    (Binding.Static "")
+                    (Binding.Static(Some ""))
                     LocalFlushTrigger.OnCommitAction
                     (fun n -> dispatch (SetName n))
                     None
@@ -77,7 +77,7 @@ let private ageField: FormField<obj> =
         Kind =
             FormFieldKind.RangedNumber(
                 binding.local
-                    (Binding.Static 30.0)
+                    (Binding.Static(Some 30.0))
                     LocalFlushTrigger.OnSubmit
                     (fun a -> dispatch (SetAge a))
                     None

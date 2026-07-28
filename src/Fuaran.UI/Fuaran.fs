@@ -168,44 +168,58 @@ module Node =
 
 [<RequireQualifiedAccess>]
 module binding =
-    let none<'T> : Binding<'T> = Binding.Static Unchecked.defaultof<'T>
+    // Stage 1 of the 692-694 swap: these builders construct the GENERATED
+    // `Binding<'T>` (Types.fs aliases it). Signatures are unchanged — the
+    // shape deltas (option payloads, bare-string nodeId, record params) are
+    // absorbed here, which is what keeps author code stable.
 
-    let ``static`` (value: 'T) : Binding<'T> = Binding.Static value
+    let none<'T> : Binding<'T> = Binding.Static None
+
+    let ``static`` (value: 'T) : Binding<'T> = Binding.Static(Some value)
 
     /// Per Defect (2) resolution: typed accessor `'result -> 'T` is boxed
     /// to `obj -> 'T` at the tree level. The author writes
     /// `binding.query "totalRevenue" _.amount` — `'result` is inferred from
     /// the schema-registered query result type at the typed-API surface.
     let query (name: string) (accessor: 'result -> 'T) : Binding<'T> =
-        Binding.Query(name, (fun (o: obj) -> accessor (unbox<'result> o)), [])
+        Binding.Query(name, (fun (o: obj) -> accessor (unbox<'result> o)), None)
 
     /// A host-computed query that declares its filter dependency edge (Phase 421). `dependsOn` names
     /// the filters that scope this consumer — the tree owns the edge (AI-authorable, validator-visible,
     /// op-stream-replayable), the accessor closure still owns the predicate. A filter-store change
-    /// re-resolves the query.
+    /// re-resolves the query. An empty list is "no edge" and stays off the wire (`None`).
     let queryDependsOn (name: string) (dependsOn: string list) (accessor: 'result -> 'T) : Binding<'T> =
-        Binding.Query(name, (fun (o: obj) -> accessor (unbox<'result> o)), dependsOn)
+        Binding.Query(
+            name,
+            (fun (o: obj) -> accessor (unbox<'result> o)),
+            (if List.isEmpty dependsOn then None else Some dependsOn)
+        )
 
     let filter (name: string) : Binding<'T> = Binding.Filter(name, None)
 
     let selection (nodeId: string) (accessor: 'row -> 'T) : Binding<'T> =
-        Binding.Selection(NodeId nodeId, (fun (o: obj) -> accessor (unbox<'row> o)), None, None)
+        Binding.Selection(nodeId, (fun (o: obj) -> accessor (unbox<'row> o)), None, None)
 
     /// A selection read with a default (Phase 629): yields `defaultValue`
     /// until the user first selects a row on `nodeId`.
     let selectionWithDefault (nodeId: string) (accessor: 'row -> 'T) (defaultValue: 'T) : Binding<'T> =
-        Binding.Selection(NodeId nodeId, (fun (o: obj) -> accessor (unbox<'row> o)), Some defaultValue, None)
+        Binding.Selection(nodeId, (fun (o: obj) -> accessor (unbox<'row> o)), Some defaultValue, None)
 
     /// A declarative row-field selection read (Phase 632): projects `field`
     /// off the clicked row — the wire-expressible twin of a typed accessor.
     /// `defaultValue` (the projected scalar, not a row) yields until the user
     /// first selects a row on `nodeId`.
     let selectionField (nodeId: string) (field: string) (defaultValue: 'T option) : Binding<'T> =
-        Binding.Selection(NodeId nodeId, Binding.projectSelectionField<'T> field, defaultValue, Some field)
+        Binding.Selection(nodeId, Binding.projectSelectionField<'T> field, defaultValue, Some field)
 
-    let state (key: string) (defaultValue: 'T) : Binding<'T> = Binding.State(key, defaultValue)
+    let state (key: string) (defaultValue: 'T) : Binding<'T> = Binding.State(key, Some defaultValue)
 
-    let computed (f: BindingContext -> 'T) : Binding<'T> = Binding.Computed f
+    /// A state read whose slot carries NO default — resolves to nothing until
+    /// the key is first written (the wire's `{"$type":"State","key":…}` form).
+    let stateNoDefault (key: string) : Binding<'T> = Binding.State(key, None)
+
+    let computed (f: BindingContext -> 'T) : Binding<'T> =
+        Binding.Computed(fun (o: obj) -> f (unbox<BindingContext> o))
 
     /// Locale-aware formatted value (Phase 102). Wraps a numeric `source`
     /// binding and projects it to a localised display *string* via the
@@ -226,26 +240,32 @@ module binding =
     /// `Table` / `Metric`); the `Fuaran.UI.Ops` evaluator runs it via the `Fuaran.Core.DataFrame`
     /// reference evaluator. Authored idiomatically with the `Fuaran.Core.DataFrame` algebra ctors.
     let transform (source: Fuaran.Core.DataSource) (pipeline: Fuaran.Core.Transform list) : Binding<obj seq> =
-        Binding.Transform(source, pipeline, [])
+        Binding.Transform(source, pipeline, None)
 
     /// A parameterised declarative dataframe transform (Phase 424). `parameters` binds each
-    /// `ColExpr.Param` name the pipeline references to a scalar `Binding<obj>` source (author a
+    /// `ColExpr.Param` name the pipeline references to a scalar `Binding<JVal>` source (author a
     /// `binding.filter`/`binding.state`/`binding.static`), so a `filter` step comparing a `col`
     /// against a `param` scopes the rows by a live filter/state value with zero host code. The
     /// filter→consumer edge is derived from `Transform.paramsOf` — never separately declared.
+    /// (`Binding<JVal>` since the swap — the typed verbatim carrier for the obj-erased position, D3.)
     let transformWith
         (source: Fuaran.Core.DataSource)
         (pipeline: Fuaran.Core.Transform list)
-        (parameters: (string * Binding<obj>) list)
+        (parameters: (string * Binding<JVal>) list)
         : Binding<obj seq> =
-        Binding.Transform(source, pipeline, parameters)
+        let ps =
+            parameters
+            |> List.map (fun (name, fromB) -> ({ From = fromB; Name = name }: TransformParam))
+
+        Binding.Transform(source, pipeline, (if List.isEmpty ps then None else Some ps))
 
     /// Invoke a host-registered compute capability for a value (Phase 283 — the Compute layer's
     /// hard-stuff seam). `capabilityId` references a `Fuaran.Core.Capability` in the host registry;
     /// `args` are scalar `(addr, value)` pairs validated against its `Signature` before dispatch.
     /// Resolves to a `Deferred<'T>` rendered through the node's `StateBehaviour` (`Pending` →
     /// `onLoading`, `Error` → `onError`). The body is host-provided, never on the wire.
-    let invoke (capabilityId: string) (args: (string * string) list) : Binding<'T> = Binding.Invoke(capabilityId, args)
+    let invoke (capabilityId: string) (args: (string * string) list) : Binding<'T> =
+        Binding.Invoke(capabilityId, args |> List.map (fun (addr, v) -> ({ Addr = addr; Value = v }: InvokeArg)))
 
     /// Component-scoped local buffer for controlled text/number
     /// inputs. `initialFrom` re-sync source (typically another binding like
@@ -268,16 +288,20 @@ module binding =
         (format: ('T -> string) option)
         (parse: string -> Result<'T, string>)
         : Binding<'T> =
-        Binding.Local
-            { InitialFrom = initialFrom
-              FlushOn = flushOn
-              // Obj-erase the Action<'Msg> at the tree level the same way
-              // Action.Call's `onResult: obj -> 'Msg` is erased — the
-              // renderer recovers it by unboxing at dispatch time. See the
-              // Defect (2) resolution in Types.fs for the wider rationale.
-              OnCommit = (fun (t: 'T) -> box (onCommit t))
-              Format = format
-              Parse = parse }
+        // Positional since the swap (flushOn, format, initialFrom, onCommit, parse).
+        // `format` is a required slot on the generated case — a `None` here bakes
+        // the renderer's old default (`string<'T>`) into the closure itself.
+        // The Action<'Msg> obj-erasure is unchanged (the Defect (2) resolution):
+        // the renderer recovers it by unboxing at dispatch time.
+        Binding.Local(
+            flushOn,
+            (match format with
+             | Some f -> f
+             | None -> fun (v: 'T) -> string (box v)),
+            initialFrom,
+            Some(fun (t: 'T) -> box (onCommit t)),
+            parse
+        )
 
     #warnon "3261"
 
@@ -877,7 +901,7 @@ module Fuaran =
             id
             (NodeKind.Link(
                 { Defaults.link with
-                    Href = Binding.Static href
+                    Href = Binding.Static(Some href)
                     Label = TextSource.Literal label }
             ))
             Defaults.Accessibility.none
@@ -895,7 +919,7 @@ module Fuaran =
             id
             (NodeKind.Image(
                 { Defaults.image with
-                    Src = Binding.Static src
+                    Src = Binding.Static(Some src)
                     Alt = TextSource.Literal alt }
             ))
             Defaults.Accessibility.none
@@ -1069,7 +1093,7 @@ module Fuaran =
     /// was host-only and is not carried (the mode is non-interactive).
     let table (id: string) (spec: TableSpec<'Msg>) : Node<'Msg> =
         let staticGrid: GridSpec<'Msg> =
-            { Source = Binding.Static Seq.empty
+            { Source = Binding.Static None
               RowKey = None
               RowKeyField = None
               Columns = []
@@ -1091,13 +1115,13 @@ module Fuaran =
         let erased: GridSpec<'Msg> =
             { Source =
                 match spec.Source with
-                | Binding.Static rows -> Binding.Static(rows |> Seq.cast<obj>)
+                | Binding.Static rows -> Binding.Static(rows |> Option.map Seq.cast<obj>)
                 | Binding.Query(name, acc, dependsOn) ->
                     Binding.Query(name, (fun o -> acc o |> Seq.cast<obj>), dependsOn)
                 | Binding.Filter(name, _) -> Binding.Filter(name, None)
                 | Binding.Selection(nodeId, acc, dv, fld) ->
-                    Binding.Selection(nodeId, (fun o -> acc o |> Seq.cast<obj>), dv |> Option.map (Seq.cast<obj>), fld)
-                | Binding.State(key, dv) -> Binding.State(key, dv |> Seq.cast<obj>)
+                    Binding.Selection(nodeId, (fun o -> acc o |> Seq.cast<obj>), dv |> Option.map Seq.cast<obj>, fld)
+                | Binding.State(key, dv) -> Binding.State(key, dv |> Option.map Seq.cast<obj>)
                 | Binding.Computed f -> Binding.Computed(fun ctx -> f ctx |> Seq.cast<obj>)
                 // `Binding.I18n` is semantically for `Binding<string>`
                 // bindings, but the DU is parameterised on 'T so the typechecker
@@ -1111,7 +1135,7 @@ module Fuaran =
                 // seq>` Source at the type level; resolution falls through to the
                 // InitialFrom binding, surfacing the mis-use as the underlying
                 // source rather than swallowing it silently.
-                | Binding.Local _ -> Binding.Static Seq.empty
+                | Binding.Local _ -> Binding.Static None
                 // `Binding.Format` is semantically for `Binding<string>`
                 // (the formatter returns a string). The DU is parameterised on
                 // 'T so it type-checks on a grid's `Binding<'row seq>` Source;

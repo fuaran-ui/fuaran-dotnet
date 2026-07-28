@@ -118,7 +118,7 @@ let private healthyMetric (id: string) (label: string) (value: float) : Node<Msg
         id
         { Defaults.metric with
             Label = TextSource.Literal label
-            Value = Binding.Static value }
+            Value = Binding.Static(Some value) }
 
 let private heading (id: string) (level: int) (text: string) : Node<Msg> =
     Fuaran.heading

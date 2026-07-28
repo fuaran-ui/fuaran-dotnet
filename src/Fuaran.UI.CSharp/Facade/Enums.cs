@@ -1,4 +1,5 @@
 using FsTypes = Fuaran.UI.Types;
+using FsGen = Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp;
 
@@ -131,27 +132,27 @@ internal static class EnumMap
     internal static FsTypes.MathDisplay ToFs(this MathDisplay d) =>
         d == MathDisplay.Inline ? FsTypes.MathDisplay.Inline : FsTypes.MathDisplay.Block;
 
-    internal static FsTypes.DateStyle ToFs(this DateStyle d) =>
+    internal static FsGen.DateStyle ToFs(this DateStyle d) =>
         d switch
         {
-            DateStyle.Short => FsTypes.DateStyle.Short,
-            DateStyle.Medium => FsTypes.DateStyle.Medium,
-            DateStyle.Long => FsTypes.DateStyle.Long,
-            DateStyle.Full => FsTypes.DateStyle.Full,
-            _ => FsTypes.DateStyle.Medium,
+            DateStyle.Short => FsGen.DateStyle.Short,
+            DateStyle.Medium => FsGen.DateStyle.Medium,
+            DateStyle.Long => FsGen.DateStyle.Long,
+            DateStyle.Full => FsGen.DateStyle.Full,
+            _ => FsGen.DateStyle.Medium,
         };
 
-    internal static FsTypes.RelativeTimeUnit ToFs(this RelativeTimeUnit u) =>
+    internal static FsGen.RelativeTimeUnit ToFs(this RelativeTimeUnit u) =>
         u switch
         {
-            RelativeTimeUnit.Second => FsTypes.RelativeTimeUnit.Second,
-            RelativeTimeUnit.Minute => FsTypes.RelativeTimeUnit.Minute,
-            RelativeTimeUnit.Hour => FsTypes.RelativeTimeUnit.Hour,
-            RelativeTimeUnit.Day => FsTypes.RelativeTimeUnit.Day,
-            RelativeTimeUnit.Week => FsTypes.RelativeTimeUnit.Week,
-            RelativeTimeUnit.Month => FsTypes.RelativeTimeUnit.Month,
-            RelativeTimeUnit.Year => FsTypes.RelativeTimeUnit.Year,
-            _ => FsTypes.RelativeTimeUnit.Day,
+            RelativeTimeUnit.Second => FsGen.RelativeTimeUnit.Second,
+            RelativeTimeUnit.Minute => FsGen.RelativeTimeUnit.Minute,
+            RelativeTimeUnit.Hour => FsGen.RelativeTimeUnit.Hour,
+            RelativeTimeUnit.Day => FsGen.RelativeTimeUnit.Day,
+            RelativeTimeUnit.Week => FsGen.RelativeTimeUnit.Week,
+            RelativeTimeUnit.Month => FsGen.RelativeTimeUnit.Month,
+            RelativeTimeUnit.Year => FsGen.RelativeTimeUnit.Year,
+            _ => FsGen.RelativeTimeUnit.Day,
         };
 
     internal static FsTypes.ChartKind ToFs(this ChartKind k) =>

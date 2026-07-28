@@ -22,7 +22,7 @@ let private nn (v: 'T) : obj = box v |> Unchecked.nonNull
 
 // The shape `JsonDecode` produces for a decoded `Selection` (Phase 427): an identity accessor.
 let private decodedSelection: Binding<obj> =
-    Binding.Selection(NodeId "orders-grid", (fun (raw: obj) -> raw), None, None)
+    Binding.Selection("orders-grid", (fun (raw: obj) -> raw), None, None)
 
 [<Tests>]
 let tests =
@@ -88,7 +88,7 @@ let tests =
                       "detail"
                       { Defaults.metric with
                           Label = TextSource.Literal "Selected"
-                          Value = Binding.Selection(NodeId "orders-grid", (fun (raw: obj) -> unbox raw), None, None) }
+                          Value = Binding.Selection("orders-grid", (fun (raw: obj) -> unbox raw), None, None) }
 
               let tree =
                   Fuaran.dashboard

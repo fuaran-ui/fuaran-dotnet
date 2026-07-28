@@ -17,7 +17,7 @@ open Fuaran.UI.Renderer
 let private nn (v: 'T) : obj = box v |> Unchecked.nonNull
 
 let private decodedQuery: Binding<obj> =
-    Binding.Query("orders", (fun (raw: obj) -> raw), [ "status" ])
+    Binding.Query("orders", (fun (raw: obj) -> raw), Some [ "status" ])
 
 [<Tests>]
 let tests =

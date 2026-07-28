@@ -118,9 +118,9 @@ let private tabsNode (model: Model) : Node<Msg> =
                           Label = TextSource.Literal "Detail" }
                       { Defaults.tabHeader with
                           Label = TextSource.Literal "Audit"
-                          Disabled = Some(Binding.Static true) } ]
+                          Disabled = Some(Binding.Static(Some true)) } ]
             TabTags = Some [ "overview"; "detail"; "audit" ]
-            ActiveTag = Some(Binding.Static(tagOf model.Active))
+            ActiveTag = Some(Binding.Static(Some(tagOf model.Active)))
             OnSelectTag = Some(fun tag -> Action.Dispatch(SetActive(tabOf tag))) }
 
 // ─── Runtime wiring — register the Custom renderer ─────────────────────────

@@ -253,27 +253,28 @@ let inline private isCastMismatch (ex: exn) : bool =
 /// runtime type; the apply engine catches and surfaces as KindMismatch.
 let rec private castBinding<'T> (b: Binding<obj>) : Binding<'T> =
     match b with
-    | Binding.Static v -> Binding.Static(unbox<'T> v)
+    | Binding.Static v -> Binding.Static(v |> Option.map unbox<'T>)
     | Binding.Query(name, accessor, dependsOn) -> Binding.Query(name, accessor >> unbox<'T>, dependsOn)
     | Binding.Filter(name, dv) -> Binding.Filter(name, dv |> Option.map unbox<'T>)
     | Binding.Selection(id, accessor, dv, fld) ->
         Binding.Selection(id, accessor >> unbox<'T>, dv |> Option.map unbox<'T>, fld)
-    | Binding.State(key, defaultValue) -> Binding.State(key, unbox<'T> defaultValue)
+    | Binding.State(key, defaultValue) -> Binding.State(key, defaultValue |> Option.map unbox<'T>)
     | Binding.Computed f -> Binding.Computed(f >> unbox<'T>)
-    // i18n bindings carry only string key + obj-typed args, no
+    // i18n bindings carry only string key + JVal-typed args, no
     // 'T payload to cast. Pass through; the resolver enforces 'T = string at
     // resolution time.
     | Binding.I18n(key, args) -> Binding.I18n(key, args)
-    // Local bindings carry an InitialFrom of the same 'T plus
-    // obj-erased OnCommit / Format / Parse. Recurse InitialFrom; box-wrap
+    // Local bindings carry an initialFrom of the same 'T plus
+    // obj-erased onCommit / format / parse. Recurse initialFrom; box-wrap
     // 'T → obj on the obj-typed projections so the typed payload matches.
-    | Binding.Local local ->
-        Binding.Local
-            { InitialFrom = castBinding<'T> local.InitialFrom
-              FlushOn = local.FlushOn
-              OnCommit = (fun (t: 'T) -> local.OnCommit(box t))
-              Format = local.Format |> Option.map (fun f -> fun (t: 'T) -> f (box t))
-              Parse = (fun s -> local.Parse s |> Result.map unbox<'T>) }
+    | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+        Binding.Local(
+            flushOn,
+            (fun (t: 'T) -> format (box t)),
+            castBinding<'T> initialFrom,
+            onCommit |> Option.map (fun oc -> fun (t: 'T) -> oc (box t)),
+            (fun s -> parse s |> Result.map unbox<'T>)
+        )
     // Format bindings carry a `Binding<float>` source + bounded
     // Format / LocaleSource — no 'T payload to cast (the formatter always
     // produces a string). Pass through; the resolver enforces 'T = string

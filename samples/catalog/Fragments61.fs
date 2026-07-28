@@ -114,7 +114,7 @@ let private metric (id: string) (label: string) (value: float) : Node<Msg> =
         id
         { Defaults.metric with
             Label = TextSource.Literal label
-            Value = Binding.Static value }
+            Value = Binding.Static(Some value) }
 
 let private card (id: string) (title: string) (children: Node<Msg> list) : Node<Msg> =
     Fuaran.card

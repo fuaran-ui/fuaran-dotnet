@@ -18,6 +18,10 @@
     <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Stage 1 of the 692-694 swap: the generated structural layer compiles FIRST
+         so Types.fs can alias its vocabulary (type abbreviations over
+         Fuaran.UI.Generated). Generated.fs depends only on Fuaran.Core. -->
+    <Compile Include="Generated.fs" />
     <Compile Include="Types.fs" />
     <!-- Phase 268: Node.mapMsg — exhaustive ('a -> 'b) -> Node<'a> -> Node<'b>
          relabel of a tree's message type (the erasure `embed` lowers through).
@@ -49,7 +53,6 @@
     <Compile Include="QuerySource.fs" />
     <Compile Include="QueryRefine.fs" />
     <Compile Include="RetrievalSource.fs" />
-    <Compile Include="Generated.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

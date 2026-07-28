@@ -89,7 +89,15 @@ let tests =
 
           test "FUARAN074 does not fire when a Transform param consumes the filter" {
               let grid =
-                  gridWith (Binding.Transform(embeddedSource, paramPipeline, [ "dept", Binding.Filter("dept", None) ]))
+                  gridWith (
+                      Binding.Transform(
+                          embeddedSource,
+                          paramPipeline,
+                          Some
+                              [ { From = Binding.Filter("dept", None)
+                                  Name = "dept" } ]
+                      )
+                  )
 
               let tree = dashboard "root" [ declarativeChip "dept"; grid ]
 
@@ -104,7 +112,7 @@ let tests =
                       "orders-metric"
                       { Defaults.metric with
                           Label = TextSource.Literal "Orders"
-                          Value = Binding.Query("orders", (fun (raw: obj) -> unbox raw), [ "status" ]) }
+                          Value = Binding.Query("orders", (fun (raw: obj) -> unbox raw), Some [ "status" ]) }
 
               let tree = dashboard "root" [ declarativeChip "status"; reader ]
 
@@ -119,7 +127,7 @@ let tests =
                       "orders-metric"
                       { Defaults.metric with
                           Label = TextSource.Literal "Orders"
-                          Value = Binding.Query("orders", (fun (raw: obj) -> unbox raw), [ "no-such-filter" ]) }
+                          Value = Binding.Query("orders", (fun (raw: obj) -> unbox raw), Some [ "no-such-filter" ]) }
 
               let tree = dashboard "root" [ reader ]
 
@@ -134,7 +142,15 @@ let tests =
 
           test "FUARAN075: a Transform param Filter source naming an undeclared filter is dangling" {
               let grid =
-                  gridWith (Binding.Transform(embeddedSource, paramPipeline, [ "dept", Binding.Filter("dept", None) ]))
+                  gridWith (
+                      Binding.Transform(
+                          embeddedSource,
+                          paramPipeline,
+                          Some
+                              [ { From = Binding.Filter("dept", None)
+                                  Name = "dept" } ]
+                      )
+                  )
 
               let tree = dashboard "root" [ grid ]
 
@@ -153,8 +169,11 @@ let tests =
                       Binding.Transform(
                           embeddedSource,
                           paramPipeline,
-                          [ "dept", Binding.Filter("dept", None)
-                            "orphan", Binding.State("x", (box "" |> Unchecked.nonNull)) ]
+                          Some
+                              [ { From = Binding.Filter("dept", None)
+                                  Name = "dept" }
+                                { From = Binding.State("x", Some(Fuaran.Core.JStr ""))
+                                  Name = "orphan" } ]
                       )
                   )
 
@@ -174,7 +193,7 @@ let tests =
                   { Id = NodeId "bare-grid"
                     Kind =
                       NodeKind.DataGrid(
-                          { Source = Binding.Static Seq.empty
+                          { Source = Binding.Static(Some Seq.empty)
                             RowKey = None
                             RowKeyField = None
                             Columns =
@@ -208,7 +227,7 @@ let tests =
           }
 
           test "FUARAN090: editable over a non-State source is inert and flagged" {
-              let grid = gridWithEditable true (Binding.Transform(embeddedSource, [], []))
+              let grid = gridWithEditable true (Binding.Transform(embeddedSource, [], None))
 
               let tree = dashboard "root" [ grid ]
 
@@ -226,14 +245,14 @@ let tests =
                   )
 
               let editableStateGrid =
-                  gridWithEditable true (Binding.State("grid-rows", stateRows))
+                  gridWithEditable true (Binding.State("grid-rows", Some stateRows))
 
               match PreEmitValidate.validate (dashboard "root" [ editableStateGrid ]) with
               | Ok() -> ()
               | Error defects -> failtestf "Expected Ok for an editable State-sourced grid, got: %A" defects
 
               let readOnlyTransformGrid =
-                  gridWithEditable false (Binding.Transform(embeddedSource, [], []))
+                  gridWithEditable false (Binding.Transform(embeddedSource, [], None))
 
               match PreEmitValidate.validate (dashboard "root" [ readOnlyTransformGrid ]) with
               | Ok() -> ()

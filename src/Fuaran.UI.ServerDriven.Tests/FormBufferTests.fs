@@ -57,7 +57,7 @@ let private nameField: FormField<Msg> =
         Kind =
             FormFieldKind.Text(
                 binding.local
-                    (Binding.Static "")
+                    (Binding.Static(Some ""))
                     LocalFlushTrigger.OnCommitAction
                     (fun n -> Action.Dispatch(SetName n))
                     None
@@ -71,7 +71,7 @@ let private ageField: FormField<Msg> =
         Kind =
             FormFieldKind.RangedNumber(
                 binding.local
-                    (Binding.Static 0.0)
+                    (Binding.Static(Some 0.0))
                     LocalFlushTrigger.OnSubmit
                     (fun a -> Action.Dispatch(SetAge a))
                     None
@@ -149,7 +149,7 @@ let tests =
               let plain =
                   { Defaults.formField<Msg> with
                       Id = "p"
-                      Kind = FormFieldKind.Text(Binding.Static "", Some(fun _ -> Action.Chain [])) }
+                      Kind = FormFieldKind.Text(Binding.Static(Some ""), Some(fun _ -> Action.Chain [])) }
 
               Expect.isNone (fieldFlushAction plain (LiveValue.Str "z")) "a non-Local field is not buffered here"
           }

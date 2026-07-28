@@ -111,8 +111,8 @@ let tests =
                           Label = TextSource.Literal "Revenue"
                           Value = src }
 
-              let a = dash [ metric (Binding.Static 1.0) ]
-              let b = dash [ metric (Binding.Static 2.0) ]
+              let a = dash [ metric (Binding.Static(Some 1.0)) ]
+              let b = dash [ metric (Binding.Static(Some 2.0)) ]
               let ops = roundTrip a b
 
               Expect.isTrue
@@ -169,7 +169,7 @@ let tests =
                           Trend = trend }
 
               let a = dash [ metric None ]
-              let b = dash [ metric (Some(Binding.Static 0.1)) ]
+              let b = dash [ metric (Some(Binding.Static(Some 0.1))) ]
               let ops = roundTrip a b
 
               Expect.isTrue

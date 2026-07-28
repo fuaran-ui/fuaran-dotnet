@@ -47,7 +47,7 @@ let private tree: Node<Msg> =
                   Fuaran.select
                       "sel"
                       { Defaults.select<Msg> with
-                          Source = Binding.Static [ opt "a"; opt "b" ]
+                          Source = Binding.Static(Some [ opt "a"; opt "b" ])
                           OnChange = Some(fun v -> Action.Dispatch(Picked v)) }
                   Fuaran.form
                       "frm"
@@ -71,14 +71,15 @@ let private tree: Node<Msg> =
                           Label = TextSource.Literal "Region"
                           Field =
                             FormFieldKind.SegmentedChoice(
-                                Binding.Static [ opt "north"; opt "south" ],
+                                Binding.Static(Some [ opt "north"; opt "south" ]),
                                 Binding.Static None,
                                 Some(fun v -> Action.Dispatch(RegionFiltered v)),
                                 Horizontal
                             ) }
                         { Name = "name"
                           Label = TextSource.Literal "Name"
-                          Field = FormFieldKind.Text(Binding.Static "", Some(fun v -> Action.Dispatch(NameFiltered v))) } ]
+                          Field =
+                            FormFieldKind.Text(Binding.Static(Some ""), Some(fun v -> Action.Dispatch(NameFiltered v))) } ]
                   Fuaran.markdown "md" "just text" ] }
 
 let private ev nodeId event payload =

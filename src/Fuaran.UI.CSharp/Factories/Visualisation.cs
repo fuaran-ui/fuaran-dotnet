@@ -41,9 +41,10 @@ public static partial class Fuaran
         new(FsFactory.map<object>(
             options.Id,
             new FsTypes.MapSpec<object>(
-                FsTypes.Binding<IEnumerable<FsTypes.MapMarker>>.NewStatic(
-                    (options.Markers ?? Enumerable.Empty<(double, double, string)>())
-                        .Select(m => new FsTypes.MapMarker(m.Item1, m.Item2, FsTypes.TextSource.NewLiteral(m.Item3)))),
+                global::Fuaran.UI.Generated.Binding<IEnumerable<FsTypes.MapMarker>>.NewStatic(
+                    Fs.Some<IEnumerable<FsTypes.MapMarker>>(
+                        (options.Markers ?? Enumerable.Empty<(double, double, string)>())
+                            .Select(m => new FsTypes.MapMarker(m.Item1, m.Item2, FsTypes.TextSource.NewLiteral(m.Item3))))),
                 options.CentreLatitude,
                 options.CentreLongitude,
                 options.Zoom,

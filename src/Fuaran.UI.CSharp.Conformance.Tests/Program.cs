@@ -134,13 +134,13 @@ internal static class Oracle
     {
         var spec = new global::Fuaran.UI.Types.MetricSpec(
             global::Fuaran.UI.Types.TextSource.NewLiteral("Revenue"),
-            global::Fuaran.UI.Types.Binding<double>.NewStatic(1234.5),
+            global::Fuaran.UI.Generated.Binding<double>.NewStatic(Microsoft.FSharp.Core.FSharpOption<double>.Some(1234.5)),
             global::Fuaran.UI.Types.CellFormat.NewCurrency("GBP"),
             global::Fuaran.UI.Types.ToneVariant.Brand,
             global::Fuaran.UI.Types.StyleWeight.Standard,
             global::Fuaran.UI.Types.Emphasis.Normal,
-            Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Types.Binding<double>>.Some(
-                global::Fuaran.UI.Types.Binding<double>.NewStatic(0.07)),
+            Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<double>>.Some(
+                global::Fuaran.UI.Generated.Binding<double>.NewStatic(Microsoft.FSharp.Core.FSharpOption<double>.Some(0.07))),
             Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Types.CellFormat>.Some(
                 global::Fuaran.UI.Types.CellFormat.NewPercent(Microsoft.FSharp.Core.FSharpOption<int>.Some(1))),
             Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Types.IconSource>.Some(

@@ -144,70 +144,27 @@ type ColumnWidth =
 // bindings (`Binding.I18n`); this closes the locale-correct *number / date /
 // currency* formatting gap a data-heavy consumer needs.
 
-/// Date-presentation breadth for `Format.Date`. Maps to the browser
-/// `Intl.DateTimeFormat` `dateStyle` option (Fable) and to `System.Globalization`
-/// standard date format specifiers on the .NET fallback. Bounded by design —
-/// no per-component field bag, no raw `Intl` options.
-[<RequireQualifiedAccess>]
-type DateStyle =
-    | Short
-    | Medium
-    | Long
-    | Full
+// Stage 1 of the 692-694 swap: the locale-aware format vocabulary is the
+// IDL-GENERATED type set now — these abbreviations point the established names
+// at `Fuaran.UI.Generated`. Shapes are identical (RQA, same cases, same field
+// names); the semantic documentation lives on the IDL declarations in
+// Fuaran-Core's `UiIdl.fs` and in `docs/` (Format semantics: the numeric cases
+// read the source as a plain number, `Date` as whole Unix-epoch seconds,
+// `RelativeTime` as a signed count of its unit; no raw `Intl` option-bag
+// escape — FGP 1).
 
-/// Relative-time grain for `Format.RelativeTime`. The numeric source is read
-/// as a signed count of this unit relative to "now" (e.g. `-3` + `Day` →
-/// "3 days ago"). Maps to the browser `Intl.RelativeTimeFormat` `unit`
-/// argument (Fable) / a documented string fallback (.NET). Bounded — the
-/// seven CLDR relative-time units, no sub-second / quarter escape.
-[<RequireQualifiedAccess>]
-type RelativeTimeUnit =
-    | Second
-    | Minute
-    | Hour
-    | Day
-    | Week
-    | Month
-    | Year
+/// Date-presentation breadth for `Format.Date` (generated — see `Fuaran.UI.Generated`).
+type DateStyle = Generated.DateStyle
 
-/// Bounded, semantic locale-aware formatting intent carried by
-/// `Binding.Format`. The numeric `Number` / `Currency` / `Percent` cases read
-/// the source as a plain number; the `Date` case reads it as whole Unix-epoch
-/// seconds; `RelativeTime` reads it as a signed count of its `unit`. NO raw
-/// `Intl` option-bag escape — adding a presentation knob is an additive DU
-/// case, reviewed against the typed-surface posture (FGP 1), not a free-form
-/// string. Parallel to [[CellFormat]] but locale-aware.
-[<RequireQualifiedAccess>]
-type Format =
-    /// Plain decimal number. `decimals` pins the fraction-digit count
-    /// (min = max); `None` lets the locale's default grouping / fraction
-    /// rules apply.
-    | Number of decimals: int option
-    /// Currency amount. `isoCode` is the ISO-4217 currency code (e.g.
-    /// `"GBP"`, `"USD"`, `"JPY"`). The validator (FUARAN061) rejects a
-    /// blank code at build time; the renderer's currency symbol + fraction
-    /// digits derive from the code × locale.
-    | Currency of isoCode: string
-    /// Percentage. The source is read as a ratio (`0.42` → "42%"), matching
-    /// `Intl.NumberFormat({ style: 'percent' })`. `decimals` pins the
-    /// fraction-digit count; `None` uses the locale default.
-    | Percent of decimals: int option
-    /// Absolute date/time, source read as whole Unix-epoch seconds.
-    | Date of dateStyle: DateStyle
-    /// Relative time ("3 days ago" / "in 2 hours"), source read as a signed
-    /// count of `unit` relative to now.
-    | RelativeTime of unit: RelativeTimeUnit
+/// Relative-time grain for `Format.RelativeTime` (generated).
+type RelativeTimeUnit = Generated.RelativeTimeUnit
 
-/// Locale selector for `Binding.Format`. `Ambient` defers to the host-supplied
-/// ambient locale (the Phase 12.I locale source — `BindingSources.Locale` on
-/// the renderer side, identity-default to the runtime default when the host
-/// supplies none); `Explicit` pins a BCP-47 locale tag (e.g. `"en-GB"`,
-/// `"fr-FR"`). `Ambient` is the default smart-ctor choice so the AI emits
-/// locale-agnostic intent and the host's locale flows through automatically.
-[<RequireQualifiedAccess>]
-type LocaleSource =
-    | Ambient
-    | Explicit of tag: string
+/// Bounded, semantic locale-aware formatting intent carried by `Binding.Format` (generated).
+type Format = Generated.Format
+
+/// Locale selector for `Binding.Format` — `Ambient` defers to the host-supplied
+/// ambient locale; `Explicit` pins a BCP-47 tag (generated).
+type LocaleSource = Generated.LocaleSource
 
 /// TODO P12 s3+: ApiEndpoint shape (likely a Fable.Remoting handle).
 type ApiEndpoint = ApiEndpoint of string
@@ -1997,129 +1954,19 @@ and Emphasis =
 // Per Defect (2) resolution: `Query` / `Selection` payloads stay obj-erased
 // at the tree level; typed entry points (`binding.query`, `binding.selection`
 // in Fuaran.fs) wrap typed accessors in obj-erasing closures.
+//
+// Stage 1 of the 692-694 swap: `Binding<'T>` IS the IDL-generated union now
+// (full case parity since the Phase 692 gap-closure; case-field order matches
+// the old hand-written positional order, so sites read unchanged). The deltas
+// against the pre-swap type, recorded in DECISIONS.md D3 and the swap plan:
+// `Static`/`State` payloads are `option` (absence is structural), `Query.dependsOn`
+// is `string list option`, `Selection.nodeId` is a bare `string` (the `NodeId`
+// wrapper erases at this seam), `Local` is positional (the `LocalBinding` record
+// is retired; order: flushOn, format, initialFrom, onCommit option, parse),
+// `I18n` args / `Transform` params carry `Binding<JVal>` sources, and
+// `Invoke`/`Transform` tuple lists became `InvokeArg` / `TransformParam` records.
 
-and [<RequireQualifiedAccess>] Binding<'T> =
-    | Static of 'T
-    /// A host-computed data source. `accessor` (obj-erased, host-reattached) projects the host's
-    /// `queryResults.<name>` value to `'T`. `dependsOn` (Phase 421) optionally declares *which*
-    /// filters scope this consumer — the tree owns the dependency *edge* (so the AI can author it,
-    /// the validator sees it, the op-stream replays it, restoring symmetry with `Binding.Selection`),
-    /// while the closure still owns *how* it filters. A filter-store change re-resolves every `Query`
-    /// whose `dependsOn` names it. Omitted-when-empty on the wire (byte-stable). This is the
-    /// host-computed half of the filter-wiring story; the declarative-data half is
-    /// `Binding.Transform`'s `params` (Phase 424) — no predicate language enters the tree here.
-    | Query of name: string * accessor: (obj -> 'T) * dependsOn: string list
-    /// `defaultValue` (0.2.0) — the value the resolver yields when the filter
-    /// store has no entry for `name` yet, and the value the renderer seeds the
-    /// store with on first mount. Closes the pre-selected-filter gap (a Filter
-    /// binding used to force wired-but-no-default; State forced default-but-
-    /// unwired). `None` — today's behaviour, resolver misses resolve to nothing.
-    | Filter of name: string * defaultValue: 'T option
-    /// `defaultValue` (0.2.9, Phase 629) — the value the resolver yields when
-    /// no row has been selected on `nodeId` yet; the default stops applying
-    /// after the first real selection (the `Filter.defaultValue` law, replayed
-    /// for the selection channel). Closes the pre-selected-row gap the 040/c3
-    /// eval cluster measured: `Selection` used to force wired-but-no-default,
-    /// `State` forced default-but-unwired — models refused the degradation
-    /// 9/9 twice. `None` — prior behaviour, unselected resolves to nothing.
-    ///
-    /// `field` (0.2.10, Phase 632) — the declarative row-field projection: a
-    /// decoded Selection's accessor projects this named field off the clicked
-    /// row (the grid writes the full row; Phase-427 identity yields the row
-    /// itself). Makes "the selected row's `subject`" a wire-expressible scalar
-    /// and keeps a `Transform.params` Selection source scalar after a real
-    /// click (pre-632 the post-click row was a loud non-scalar param error).
-    /// `None` — the identity accessor, pre-632 bytes unchanged. The field
-    /// name is carried alongside the accessor because the closure cannot be
-    /// re-serialised: the encoder writes `field` back from here.
-    | Selection of nodeId: NodeId * accessor: (obj -> 'T) * defaultValue: 'T option * field: string option
-    | State of key: string * defaultValue: 'T
-    /// **Host-only (does not survive the wire).** A `BindingContext -> 'T` closure — it erases to the
-    /// `"<closure>"` sentinel on the canonical wire (`WIRE_FORMAT.md` §4/§10), so a decoded,
-    /// op-stream-replayed, or introspected tree — and the TypeScript / Python hosts — sees an inert
-    /// placeholder (the display shows nothing). A sanctioned **F#-only authoring escape**, not an
-    /// AI-emittable construct: prefer `Binding.State` / `Binding.Filter` for reactive values,
-    /// `Binding.Transform` for declarative data derivation, or `Binding.Format` for locale/number
-    /// formatting — all wire-survivable. Classified in [[Fuaran.UI.WireSurvivability]]; the build-time
-    /// `Fuaran.UI.Validator` `WireSurvivabilityCheck` (FUARAN084) flags it (advisory when
-    /// hand-authored, Error in orchestrated contexts). See the survivability boundary table in
-    /// `WIRE_FORMAT.md` and `AI_AUTHORING_GUIDE.md`.
-    | Computed of (BindingContext -> 'T)
-    /// Localised string from an i18n catalog. `key` is the
-    /// catalog key (e.g. `"button.submit"`); `args` is an optional map of
-    /// `{argName}` placeholder values, each a `Binding<obj>` resolved
-    /// per-render. The resolved string flows through `BindingSources.I18nResolver`
-    /// (interface `II18nResolver`). Semantically constrained to `Binding<string>`
-    /// use — the resolver always returns a string; using `Binding.I18n` against
-    /// a non-string `'T` will throw at resolution (same shape as the
-    /// `Binding.Query` accessor's runtime cast).
-    | I18n of key: string * args: Map<string, Binding<obj>> option
-    /// Component-scoped local buffer for controlled text/number
-    /// inputs. The renderer maintains a per-NodeId `React.useState` slot
-    /// seeded from `InitialFrom`, parses keystrokes via `Parse`, and
-    /// dispatches `OnCommit` only on the `FlushOn` boundary (blur / submit /
-    /// debounce / explicit CommitLocal). Mid-edit external `InitialFrom`
-    /// changes re-sync the buffer only when its `Parse` result does not
-    /// equal the new external value — preserving the user's typing position.
-    /// Constrained to `FormFieldKind.Text` / `FormFieldKind.Number` use;
-    /// validator FUARAN044 enforces non-input placement; FUARAN042 / 043
-    /// enforce Format/Parse + flush-source presence.
-    | Local of LocalBinding<'T>
-    /// Locale-aware formatted value (Phase 102). Wraps a
-    /// numeric `source` binding and projects it to a localised display
-    /// *string* via the browser `Intl` API (Fable) / a documented
-    /// `System.Globalization` fallback (.NET). `format` is the bounded
-    /// semantic intent ([[Format]] — Number / Currency / Percent / Date /
-    /// RelativeTime, NOT a raw `Intl` option bag); `locale` selects the
-    /// BCP-47 locale ([[LocaleSource]]: `Ambient` defers to the host's
-    /// 12.I locale source, identity-default to the runtime default).
-    /// Semantically constrained to `Binding<string>` use — the formatter
-    /// always returns a string, so using `Binding.Format` against a
-    /// non-string `'T` throws at resolution (same shape as the
-    /// `Binding.I18n` resolver cast). For `Date` / `RelativeTime` the
-    /// numeric `source` is interpreted per the [[Format]] case docs (Date =
-    /// whole Unix-epoch seconds; RelativeTime = a signed count of its unit).
-    | Format of source: Binding<float> * format: Format * locale: LocaleSource
-    /// Declarative dataframe transform (Phase 282 / Wave 42 — the Compute layer).
-    /// A serialisable `Fuaran.Core.DataFrame` pipeline (the full v1 verb set:
-    /// filter / project / derive / groupBy / join / window / pivot / unpivot /
-    /// sort / distinct / limit / union) over a columnar `Fuaran.Core.DataSource`,
-    /// evaluated client-side **as data** — no closure on the wire. At a
-    /// data-bearing node (`DataGrid` / `Chart` / `Table`) it is semantically
-    /// `Binding<obj seq>`: the `Fuaran.UI.Ops` evaluator delegates to the
-    /// `Fuaran.Core.DataFrame` reference evaluator and the result rows resolve
-    /// as the node's data source. In a SCALAR slot (0.2.10, Phase 632 — a
-    /// `TextSource.Bound`, a Metric / LabelValueRow value) it resolves to the
-    /// lone cell of an exactly-1×1 result: `filter → project [col] → limit 1`
-    /// (row-field lookup) and `groupBy(keys: [], aggs: [one agg])` (global
-    /// aggregate) are the canonical scalar terminals; >1 row/col is a loud
-    /// resolver error, an empty result renders absence (except a trailing
-    /// global single-`count`, which resolves 0). The wire carries the source +
-    /// pipeline in the shared `Canon` `$type` discipline (the codecs round-trip
-    /// them through `Fuaran.Core.ColumnCodec` / `DataFrameCodec`).
-    ///
-    /// `parameters` (Phase 424) binds each `ColExpr.Param` name the pipeline references
-    /// (`fuaran-core#77`) to a scalar `Binding<obj>` source (`Filter` / `State` / `Static` /
-    /// `Selection`) — so a `filter` step can compare a `col` against a live filter/state value, the
-    /// declarative-data twin of `Query.dependsOn`. The resolver resolves each param to a `Cell`,
-    /// prunes any `filter` step whose params are unbound (the one lenient "unset filter ⇒ no
-    /// constraint" rule), and delegates to `DataFrame.evalPipelineInEnv`. The filter→consumer edge is
-    /// *derived* from `Transform.paramsOf` + these sources, never separately declared. Omitted-when-
-    /// empty on the wire, so a param-free `Transform` is byte-identical to the Phase 282 shape.
-    | Transform of
-        source: Fuaran.Core.DataSource *
-        pipeline: Fuaran.Core.Transform list *
-        parameters: (string * Binding<obj>) list
-    /// Invoke a host-registered compute capability (Phase 283 — the Compute layer's
-    /// hard-stuff seam). `capabilityId` references a `Fuaran.Core.Capability` in the host
-    /// registry; `args` are typed `(addr, value)` scalar arguments validated against the
-    /// capability's `Signature` before dispatch (default-deny by shape). The body is
-    /// host-provided, never on the wire. Resolves to a `Deferred<'T>` value — `Pending`
-    /// shows the node's `onLoading` subtree, `Error` its `onError`, `Ready` the value —
-    /// reusing the existing `StateBehaviour` surface (no new node concept). A
-    /// non-`Deterministic` invocation journals its realized result through the
-    /// `Fuaran.Core` determinism-capture seam for exact replay.
-    | Invoke of capabilityId: string * args: (string * string) list
+and Binding<'T> = Generated.Binding<'T>
 
 /// The async value envelope of a `Binding.Invoke` (Phase 283). Rendered through the existing
 /// `StateBehaviour` surface — `Pending` → `onLoading`, `Error` → `onError`, `Ready` → the value —
@@ -2134,27 +1981,19 @@ and [<RequireQualifiedAccess>] Deferred<'T> =
 /// Salary-style shape); form-scoped flushing uses `OnSubmit`; live-
 /// validating inputs use `OnDebounce` with a millisecond delay; explicit
 /// "Apply" buttons use `OnCommitAction` paired with `Action.CommitLocal`.
-and [<RequireQualifiedAccess>] LocalFlushTrigger =
-    | OnBlur
-    | OnSubmit
-    | OnDebounce of milliseconds: int
-    | OnCommitAction
+and LocalFlushTrigger = Generated.LocalFlushTrigger
 
-/// The body of a `Binding<'T>.Local`. `InitialFrom` is the
-/// re-sync source (typically a `State` or `Query` binding); `FlushOn`
-/// names the commit boundary; `OnCommit` is the action the renderer
-/// dispatches when the buffer flushes; `Format` / `Parse` are the
-/// display-format hook + reverse-format pair (consumer-side functions,
-/// not registered in the typed surface — see `binding.local`).
-///
-/// 'Msg is parametric on the same family the surrounding `Node<'Msg>`
-/// carries, so `OnCommit` can return any consumer Action shape.
-and LocalBinding<'T> =
-    { InitialFrom: Binding<'T>
-      FlushOn: LocalFlushTrigger
-      OnCommit: 'T -> obj
-      Format: ('T -> string) option
-      Parse: string -> Result<'T, string> }
+// _(The `LocalBinding<'T>` record is retired with the swap — `Binding.Local` is
+// positional in the generated union: flushOn, format, initialFrom, onCommit
+// option, parse. The renderer dispatches `onCommit` when the buffer flushes;
+// `format`/`parse` are the display-format hook + reverse-format pair.)_
+
+/// One `Binding.Transform` parameter — binds a pipeline `ColExpr.Param` name to a
+/// scalar binding source (generated; `From` carries `Binding<JVal>`).
+and TransformParam = Generated.TransformParam
+
+/// A capability-invoke argument (generated; `Addr`/`Value` — was `(string * string)`).
+and InvokeArg = Generated.InvokeArg
 
 // ─── Actions — effect-typed ──────────────────────────────────────────
 //

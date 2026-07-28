@@ -52,31 +52,33 @@ let NotProvidedSentinel = "__fuaran_not_provided__"
 // names. The accessor returns `Unchecked.defaultof<'T>` but is never
 // invoked under the sentinel path.
 let private noBinding<'T> : Binding<'T> =
-    Binding.Query(NotProvidedSentinel, (fun _ -> Unchecked.defaultof<'T>), [])
+    Binding.Query(NotProvidedSentinel, (fun _ -> Unchecked.defaultof<'T>), None)
 
 // ─── Local binding default ───────────────────────────────────────────────────
 //
-// `localBinding` is the per-`LocalBinding<'T>` stub authors / smart-ctors use
-// as a starting point. Like `noBinding<'T>`, the `InitialFrom` is the
-// `NotProvidedSentinel` query — authors override via `binding.local`.
-// `Format = None` + `Parse = identity-error` together represent the
-// "must-be-overridden" state PreEmitValidate FUARAN042 catches if it
-// reaches the wire.
+// `localBinding` is the `Binding.Local` stub authors / smart-ctors use as a
+// starting point (positional since the swap — the `LocalBinding<'T>` record is
+// retired). Like `noBinding<'T>`, the initialFrom is the `NotProvidedSentinel`
+// query — authors override via `binding.local`. The identity-error `parse`
+// represents the "must-be-overridden" state PreEmitValidate FUARAN042 catches
+// if it reaches the wire.
 
 #nowarn "3261"
 
-let localBinding<'T> : LocalBinding<'T> =
-    { InitialFrom = noBinding<'T>
-      FlushOn = LocalFlushTrigger.OnBlur
-      // Non-null sentinel string — F# 10 nullness disallows `box ()` here
-      // because the boxed unit value is `null`. The renderer never
-      // dispatches this sentinel (validator FUARAN042 rejects a Local
-      // binding without Format/Parse, and the renderer only dispatches
-      // through `OnCommit` after Parse succeeds, which a defaulted
-      // Parse can never do).
-      OnCommit = (fun _ -> box "__fuaran_local_no_commit__")
-      Format = Option.None
-      Parse = (fun _ -> Error "no Parse function supplied to Binding.Local") }
+let localBinding<'T> : Binding<'T> =
+    Binding.Local(
+        LocalFlushTrigger.OnBlur,
+        (fun (v: 'T) -> string (box v)),
+        noBinding<'T>,
+        // Non-null sentinel string — F# 10 nullness disallows `box ()` here
+        // because the boxed unit value is `null`. The renderer never
+        // dispatches this sentinel (validator FUARAN042 rejects a Local
+        // binding without Format/Parse, and the renderer only dispatches
+        // through `onCommit` after `parse` succeeds, which the defaulted
+        // `parse` can never do).
+        Some(fun _ -> box "__fuaran_local_no_commit__"),
+        (fun _ -> Error "no Parse function supplied to Binding.Local")
+    )
 
 #warnon "3261"
 
@@ -108,7 +110,7 @@ let tabs<'Msg> : TabsSpec<'Msg> =
     // pre-426 no-op closure, minus the sentinel on the wire).
     { Orientation = Horizontal
       Children = []
-      ActiveIndex = Binding.Static 0
+      ActiveIndex = Binding.Static(Some 0)
       OnSelect = Option.None
       TabHeaders = Option.None
       TabTags = Option.None
@@ -126,7 +128,7 @@ let tabHeader: TabHeader =
 let card<'Msg> : CardSpec<'Msg> = { Heading = Option.None; Children = [] }
 
 let stepper<'Msg> : StepperSpec<'Msg> =
-    { ActiveStep = Binding.Static 0
+    { ActiveStep = Binding.Static(Some 0)
       Children = []
       OnSelect = (fun _ -> Action.Chain []) }
 
@@ -137,7 +139,7 @@ let disclosure<'Msg> : DisclosureSpec<'Msg> =
     // `OnToggle = None` (Phase 426): the write-back default — a State/Filter-bound
     // `Open` gets the new open value written back by the renderer.
     { Heading = emptyLiteral
-      Open = Binding.Static false
+      Open = Binding.Static(Some false)
       OnToggle = Option.None
       Children = []
       DefaultOpen = false }
@@ -145,7 +147,7 @@ let disclosure<'Msg> : DisclosureSpec<'Msg> =
 let modal<'Msg> : ModalSpec<'Msg> =
     // `OnDismiss = None` (Phase 426): the write-back default — a State/Filter-bound
     // `Open` gets `false` written back on dismiss.
-    { Open = Binding.Static false
+    { Open = Binding.Static(Some false)
       Heading = Option.None
       Dismissable = true
       Children = []
@@ -214,7 +216,7 @@ let list: ListSpec = { Items = []; Ordered = false }
 let toast: ToastSpec =
     { Message = emptyLiteral
       Tone = ToneVariant.Info
-      Open = Binding.Static false
+      Open = Binding.Static(Some false)
       Dismissable = true }
 
 let codeBlock: CodeBlockSpec =
@@ -266,7 +268,7 @@ let callout: CalloutSpec =
       Dismissable = false }
 
 let progress: ProgressSpec =
-    { Fraction = Binding.Static 0.0
+    { Fraction = Binding.Static(Some 0.0)
       Label = Option.None
       Caveat = Option.None
       Indeterminate = false
@@ -286,8 +288,8 @@ let select<'Msg> : SelectSpec<'Msg> =
     // `OnChange = None` (Phase 426): the write-back default — a State/Filter-bound
     // `Value` gets the chosen option written back by the renderer.
     { Label = emptyLiteral
-      Source = Binding.Static []
-      Value = Binding.Static Option.None
+      Source = Binding.Static(Some [])
+      Value = Binding.Static None
       OnChange = Option.None
       Placeholder = Option.None
       Disabled = Option.None
@@ -308,7 +310,7 @@ let formField<'Msg> : FormField<'Msg> =
     // State/Filter-bound `value` gets the typed string written back.
     { Id = ""
       Label = emptyLiteral
-      Kind = FormFieldKind.Text(Binding.Static "", Option.None)
+      Kind = FormFieldKind.Text(Binding.Static(Some ""), Option.None)
       Required = false
       Help = Option.None }
 
@@ -332,7 +334,7 @@ let dateFieldConstraints: DateFieldConstraints =
 let filter<'Msg> : FilterSpec<'Msg> =
     { Name = ""
       Label = emptyLiteral
-      Field = FormFieldKind.Text(Binding.Static "", Option.None) }
+      Field = FormFieldKind.Text(Binding.Static(Some ""), Option.None) }
 
 let fileUpload<'Msg> : FileUploadSpec<'Msg> =
     { Label = emptyLiteral

@@ -214,7 +214,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                       "contributor-peer"
                       { Defaults.select<Msg> with
                           Label = TextSource.Literal "Contributor peer"
-                          Source = Binding.Static contributorOptions
+                          Source = Binding.Static(Some contributorOptions)
                           Value = binding.state "contributorPick" None
                           OnChange = Some(fun v -> Action.dispatch (PickContributor v))
                           Placeholder = Some(TextSource.Literal "Choose a peer…") }
@@ -246,7 +246,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                                                   Label = TextSource.Literal "Category"
                                                   Kind =
                                                       FormFieldKind.Choice(
-                                                          Binding.Static categoryOptions,
+                                                          Binding.Static(Some categoryOptions),
                                                           binding.state "formChoice" None,
                                                           Some(fun v -> Action.dispatch (SetFormChoice v))
                                                       )
@@ -362,13 +362,15 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                       { Defaults.map<Msg> with
                           Source =
                               Binding.Static(
-                                  [ { Latitude = 51.5074
-                                      Longitude = -0.1278
-                                      Label = TextSource.Literal "London" }
-                                    { Latitude = 40.7128
-                                      Longitude = -74.006
-                                      Label = TextSource.Literal "New York" } ]
-                                  :> MapMarker seq
+                                  Some(
+                                      [ { Latitude = 51.5074
+                                          Longitude = -0.1278
+                                          Label = TextSource.Literal "London" }
+                                        { Latitude = 40.7128
+                                          Longitude = -74.006
+                                          Label = TextSource.Literal "New York" } ]
+                                      :> MapMarker seq
+                                  )
                               )
                           CentreLatitude = 30.0
                           CentreLongitude = -30.0

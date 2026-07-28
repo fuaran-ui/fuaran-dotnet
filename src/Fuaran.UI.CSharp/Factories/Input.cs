@@ -14,17 +14,20 @@ public static partial class Fuaran
     // F# `string option` projects to C# as the nullable-annotated `FSharpOption<string>?`
     // (F# 10 nullness). These helpers instantiate the option-value binding + no-op handler
     // with the matching annotation, so the smart-ctor call sites stay CS8620-clean.
-    internal static FsTypes.Binding<Microsoft.FSharp.Core.FSharpOption<string>?> OptStrValue(string? selected) =>
-        FsTypes.Binding<Microsoft.FSharp.Core.FSharpOption<string>?>.NewStatic(Fs.OptStr(selected!));
+    internal static global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Core.FSharpOption<string>?> OptStrValue(
+        string? selected) =>
+        global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Core.FSharpOption<string>?>.NewStatic(
+            Microsoft.FSharp.Core.FSharpOption<Microsoft.FSharp.Core.FSharpOption<string>?>.Some(Fs.OptStr(selected!)));
 
     internal static Microsoft.FSharp.Core.FSharpFunc<Microsoft.FSharp.Core.FSharpOption<string>?, FsAction> NoOptStrHandler() =>
         Fs.Func<Microsoft.FSharp.Core.FSharpOption<string>?, FsAction>(_ => NoAction);
 
-    internal static FsTypes.Binding<Microsoft.FSharp.Collections.FSharpList<FsTypes.SelectOption>> OptionSource(
+    internal static global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<FsTypes.SelectOption>> OptionSource(
         IEnumerable<(string Value, string Label)>? options) =>
-        FsTypes.Binding<Microsoft.FSharp.Collections.FSharpList<FsTypes.SelectOption>>.NewStatic(
-            Fs.List((options ?? Enumerable.Empty<(string, string)>())
-                .Select(o => new FsTypes.SelectOption(o.Value, FsTypes.TextSource.NewLiteral(o.Label)))));
+        global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<FsTypes.SelectOption>>.NewStatic(
+            Microsoft.FSharp.Core.FSharpOption<Microsoft.FSharp.Collections.FSharpList<FsTypes.SelectOption>>.Some(
+                Fs.List((options ?? Enumerable.Empty<(string, string)>())
+                    .Select(o => new FsTypes.SelectOption(o.Value, FsTypes.TextSource.NewLiteral(o.Label))))));
 
     /// <summary>A form — an ordered list of fields plus a submit action.</summary>
     public static FuaranNode Form(FormOptions options) =>
@@ -34,7 +37,7 @@ public static partial class Fuaran
                 Fs.List((options.Fields ?? Enumerable.Empty<FormField>()).Select(f => f.Inner)),
                 NoAction,
                 options.SubmitLabel.Inner,
-                Fs.None<FsTypes.Binding<bool>>())));
+                Fs.None<global::Fuaran.UI.Generated.Binding<bool>>())));
 
     /// <summary>A single-select dropdown.</summary>
     public static FuaranNode Select(SelectOptions options) =>
@@ -46,9 +49,9 @@ public static partial class Fuaran
                 OptStrValue(options.Value),
                 NoOptStrHandler(),
                 options.Placeholder is { } p ? Fs.Some(p.Inner) : Fs.None<FsTypes.TextSource>(),
-                Fs.None<FsTypes.Binding<bool>>(),
+                Fs.None<global::Fuaran.UI.Generated.Binding<bool>>(),
                 false,
-                Fs.None<FsTypes.Binding<Microsoft.FSharp.Collections.FSharpList<string>>>(),
+                Fs.None<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<Microsoft.FSharp.Collections.FSharpList<string>, FsAction>>())));
 
     /// <summary>A multi-select (<c>&lt;select multiple&gt;</c>).</summary>
@@ -57,8 +60,8 @@ public static partial class Fuaran
             options.Id,
             options.Label.Inner,
             OptionSource(options.Options),
-            FsTypes.Binding<Microsoft.FSharp.Collections.FSharpList<string>>.NewStatic(
-                Fs.List(options.Values ?? Enumerable.Empty<string>())),
+            global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>.NewStatic(
+                Fs.Some(Fs.List(options.Values ?? Enumerable.Empty<string>()))),
             NoHandler<Microsoft.FSharp.Collections.FSharpList<string>>()));
 
     /// <summary>A filter strip.</summary>
@@ -76,7 +79,7 @@ public static partial class Fuaran
                 Fs.List(options.Accept ?? Enumerable.Empty<string>()),
                 options.Multiple,
                 Fs.Func<Microsoft.FSharp.Collections.FSharpList<FsTypes.FileSelection>, FsAction>(_ => NoAction),
-                Fs.None<FsTypes.Binding<bool>>())));
+                Fs.None<global::Fuaran.UI.Generated.Binding<bool>>())));
 }
 
 /// <summary>A form field — build with the static factories (<see cref="Text"/> / <see cref="Number"/> / …).</summary>
@@ -96,19 +99,19 @@ public sealed class FormField
 
     /// <summary>A text field.</summary>
     public static FormField Text(string id, Text label, string initial = "", bool required = false, Text? help = null) =>
-        Make(id, label, FsTypes.FormFieldKind<object>.NewText(FsTypes.Binding<string>.NewStatic(initial), NoFieldHandler<string>()), required, help);
+        Make(id, label, FsTypes.FormFieldKind<object>.NewText(global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(initial)), NoFieldHandler<string>()), required, help);
 
     /// <summary>A number field.</summary>
     public static FormField Number(string id, Text label, double initial = 0.0, bool required = false, Text? help = null) =>
-        Make(id, label, FsTypes.FormFieldKind<object>.NewNumber(FsTypes.Binding<double>.NewStatic(initial), NoFieldHandler<double>()), required, help);
+        Make(id, label, FsTypes.FormFieldKind<object>.NewNumber(global::Fuaran.UI.Generated.Binding<double>.NewStatic(Fs.Some(initial)), NoFieldHandler<double>()), required, help);
 
     /// <summary>A checkbox field.</summary>
     public static FormField Checkbox(string id, Text label, bool initial = false, bool required = false, Text? help = null) =>
-        Make(id, label, FsTypes.FormFieldKind<object>.NewCheckbox(FsTypes.Binding<bool>.NewStatic(initial), NoFieldHandler<bool>()), required, help);
+        Make(id, label, FsTypes.FormFieldKind<object>.NewCheckbox(global::Fuaran.UI.Generated.Binding<bool>.NewStatic(Fs.Some(initial)), NoFieldHandler<bool>()), required, help);
 
     /// <summary>A multi-line text-area field.</summary>
     public static FormField TextArea(string id, Text label, int rows = 4, string initial = "", bool required = false, Text? help = null) =>
-        Make(id, label, FsTypes.FormFieldKind<object>.NewTextArea(FsTypes.Binding<string>.NewStatic(initial), NoFieldHandler<string>(), rows), required, help);
+        Make(id, label, FsTypes.FormFieldKind<object>.NewTextArea(global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(initial)), NoFieldHandler<string>(), rows), required, help);
 
     /// <summary>A single-choice (dropdown) field.</summary>
     public static FormField Choice(string id, Text label, string? selected, IEnumerable<(string Value, string Label)> options, bool required = false, Text? help = null) =>
@@ -144,7 +147,7 @@ public sealed class Filter
             name,
             label.Inner,
             FsTypes.FormFieldKind<object>.NewText(
-                FsTypes.Binding<string>.NewFilter(name, Microsoft.FSharp.Core.FSharpOption<string>.None),
+                global::Fuaran.UI.Generated.Binding<string>.NewFilter(name, Microsoft.FSharp.Core.FSharpOption<string>.None),
                 null)));
 
     /// <summary>A choice filter chip bound to its own filter key.</summary>
@@ -154,7 +157,7 @@ public sealed class Filter
             label.Inner,
             FsTypes.FormFieldKind<object>.NewChoice(
                 Fuaran.OptionSource(options),
-                FsTypes.Binding<Microsoft.FSharp.Core.FSharpOption<string>?>.NewFilter(
+                global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Core.FSharpOption<string>?>.NewFilter(
                     name,
                     Microsoft.FSharp.Core.FSharpOption<Microsoft.FSharp.Core.FSharpOption<string>?>.None),
                 null)));

@@ -24,6 +24,7 @@ module Fuaran.UI.BindingWalk
 // ============================================================================
 
 open Fuaran.UI.Types
+open Fuaran.Core
 
 /// One observed binding usage — the validation-oriented projection of a
 /// `Binding<'T>` read. `Query` carries its `dependsOn` filter names so the
@@ -79,10 +80,10 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     match binding with
     | Binding.State(key, _) -> [ BindingUse.State key ]
     | Binding.Filter(name, _) -> [ BindingUse.Filter name ]
-    | Binding.Selection(NodeId nodeId, _, _, _) -> [ BindingUse.Selection nodeId ]
-    | Binding.Query(name, _, dependsOn) -> [ BindingUse.Query(name, dependsOn) ]
-    | Binding.Local local -> usesOfBinding local.InitialFrom
-    | Binding.I18n(_, Some args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<obj> ab)
+    | Binding.Selection(nodeId, _, _, _) -> [ BindingUse.Selection nodeId ]
+    | Binding.Query(name, _, dependsOn) -> [ BindingUse.Query(name, defaultArg dependsOn []) ]
+    | Binding.Local(_, _, initialFrom, _, _) -> usesOfBinding initialFrom
+    | Binding.I18n(_, Some args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<JVal> ab)
     | Binding.I18n(_, None) -> []
     | Binding.Format(source, _, _) -> usesOfBinding source
     | Binding.Transform(_, pipeline, parameters) ->
@@ -91,10 +92,10 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
         // outside it is dead weight (FUARAN076).
         let referenced = Fuaran.Core.Transform.paramsOf pipeline |> Set.ofList
 
-        parameters
-        |> List.collect (fun (name, fromB) ->
+        defaultArg parameters []
+        |> List.collect (fun (p: TransformParam) ->
             let sourceUses =
-                usesOfBinding fromB
+                usesOfBinding p.From
                 |> List.map (function
                     // A param's Filter source is the DECLARED filter→consumer
                     // edge (the 424 construct) — distinct from a plain value
@@ -102,7 +103,7 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
                     | BindingUse.Filter filterName -> BindingUse.TransformParamFilter filterName
                     | other -> other)
 
-            BindingUse.TransformParam(name, Set.contains name referenced) :: sourceUses)
+            BindingUse.TransformParam(p.Name, Set.contains p.Name referenced) :: sourceUses)
     | Binding.Invoke _
     | Binding.Static _
     | Binding.Computed _ -> []

@@ -1100,6 +1100,11 @@ let private decodeIconSource (path: string) (j: Json) : Result<IconSource, Decod
 let rec private decodeBindingObj (path: string) (j: Json) : Result<Binding<obj>, DecodeError> =
     bindingGeneric<obj> path (fun _ v -> Ok(decodeObj v)) (box closureSentinel) j
 
+/// The `Binding<JVal>` flavour (the swap's typed verbatim carrier, D3) —
+/// `Binding.I18n` args and `Binding.Transform` param sources since the swap.
+and private decodeBindingJVal (path: string) (j: Json) : Result<Binding<JVal>, DecodeError> =
+    bindingGeneric<JVal> path (fun _ v -> Ok(jsonToJVal v)) (JStr closureSentinel) j
+
 and private decodeLocalFlushTrigger (path: string) (j: Json) : Result<LocalFlushTrigger, DecodeError> =
     // 4-case DU; one carries a `milliseconds: int` payload.
     match requireObject path j with
@@ -1139,7 +1144,7 @@ and private bindingGeneric<'T>
     | JArray _
     | JString _
     | JNumber _
-    | JBool _ -> parseStatic path j |> Result.map Binding.Static
+    | JBool _ -> parseStatic path j |> Result.map (Some >> Binding.Static)
     | _ ->
 
         match requireObject path j with
@@ -1148,31 +1153,38 @@ and private bindingGeneric<'T>
             match requireDiscriminator path fields with
             | Error e -> Error e
             | Ok "Static" ->
-                // Phase 677 — absence is structural: a MISSING `value` means the
-                // binding carries none. The legacy `"value": null` form still
-                // decodes (§16 shorthand, since models emit null naturally) by
-                // routing to the very same per-slot absent handling, so the two
-                // spellings cannot disagree.
+                // Phase 677 — absence is structural: a MISSING `value` (and the
+                // legacy `"value": null` §16 shorthand) routes through the SLOT'S
+                // own parser exactly as before the swap — the slot decides what
+                // null means (an options slot normalises to `[]`, an option-typed
+                // slot to its inner `None`, a scalar slot rejects). The parsed
+                // payload wraps in the generated `Some`; a null-ish parsed
+                // representation still omits its key at encode (the encoder's
+                // inner `isAbsentPayload` check), so the two spellings cannot
+                // disagree on the wire.
                 let v =
                     match tryField fields "value" with
                     | Some v -> v
                     | None -> JNull
 
-                parseStatic (path + ".value") v |> Result.map Binding.Static
+                parseStatic (path + ".value") v |> Result.map (Some >> Binding.Static)
             | Ok "Query" ->
                 match requireField path fields "name" "query name string" with
                 | Error e -> Error e
                 | Ok v ->
                     requireString (path + ".name") v
                     |> Result.bind (fun name ->
-                        // Phase 421 — optional `dependsOn` string array (the declared filter edge); absent → [].
+                        // Phase 421 — optional `dependsOn` string array (the declared filter
+                        // edge); absent → `None` (the swap's typed absence; an explicit empty
+                        // array normalises to `None` so re-encode stays canonical-minimal).
                         let dependsOnR =
                             // Field aliases: deps/dependencies — the React-hooks prior.
                             match optFieldAliased fields "dependsOn" [ "deps"; "dependencies" ] with
-                            | None -> Ok []
+                            | None -> Ok None
                             | Some dJ ->
                                 requireArray (path + ".dependsOn") dJ
                                 |> Result.bind (traverse (requireString (path + ".dependsOn[]")))
+                                |> Result.map (fun l -> if List.isEmpty l then None else Some l)
 
                         dependsOnR
                         |> Result.map (fun dependsOn ->
@@ -1242,7 +1254,7 @@ and private bindingGeneric<'T>
                             | Some f -> Fuaran.UI.Types.Binding.projectSelectionField<'T> f
                             | None -> fun (raw: obj) -> unbox raw
 
-                        Binding.Selection(NodeId id, accessor, defaultV, fieldV))
+                        Binding.Selection(id, accessor, defaultV, fieldV))
             | Ok "State" ->
                 match requireField path fields "key" "state key string" with
                 | Error e -> Error e
@@ -1252,26 +1264,20 @@ and private bindingGeneric<'T>
                         // Decode the carried `defaultValue` through the typed
                         // static parser when it parses (Phase 426 — the write-back
                         // default reads a decoded field's own State default, and
-                        // the TS decoder already carries it); an absent /
-                        // unparseable default falls back to the typed placeholder
-                        // (read-compat with the pre-426 behaviour).
+                        // the TS decoder already carries it). Since the swap an
+                        // absent / null / unparseable default is the OUTER `None`
+                        // of the generated `defaultValue: 'T option` — the typed
+                        // absence the encoder omits, so the round-trip is exact
+                        // without a placeholder standing in.
                         let defaultV =
                             // Field aliases: initialValue/default — the React useState prior.
                             match optFieldAliased fields "defaultValue" [ "initialValue"; "default" ] with
+                            | Some JNull
+                            | None -> None
                             | Some dv ->
                                 match parseStatic (path + ".defaultValue") dv with
-                                | Ok parsed -> parsed
-                                | Error _ -> placeholder
-                            // Phase 677 — an ABSENT default now means the binding
-                            // carries none, and must decode to the same value the
-                            // legacy `"defaultValue": null` did, or the encoder
-                            // re-emits a placeholder and the round-trip breaks
-                            // (caught by `form-declarative`'s Choice slot). Route
-                            // through the identical per-slot absent handling.
-                            | None ->
-                                match parseStatic (path + ".defaultValue") JNull with
-                                | Ok parsed -> parsed
-                                | Error _ -> placeholder
+                                | Ok parsed -> Some parsed
+                                | Error _ -> None
 
                         Binding.State(key, defaultV))
             | Ok "Computed" ->
@@ -1317,13 +1323,19 @@ and private bindingGeneric<'T>
                         match flushR with
                         | Error e -> Error e
                         | Ok flushOn ->
+                            // Positional since the swap (flushOn, format, initialFrom,
+                            // onCommit, parse). The decoded stand-ins are unchanged in
+                            // meaning: `format` is the renderer's old `None`-default
+                            // (`string<'T>`) baked into the required slot, `onCommit` /
+                            // `parse` the sentinel placeholders a host re-attaches over.
                             Ok(
-                                Binding.Local
-                                    { InitialFrom = initialFrom
-                                      FlushOn = flushOn
-                                      OnCommit = (fun _ -> box closureSentinel)
-                                      Format = None
-                                      Parse = (fun _ -> Error closureSentinel) }
+                                Binding.Local(
+                                    flushOn,
+                                    (fun (v: 'T) -> string (box v)),
+                                    initialFrom,
+                                    Some(fun _ -> box closureSentinel),
+                                    (fun _ -> Error closureSentinel)
+                                )
                             )
             | Ok "Format" ->
                 // Locale-aware formatted binding (Phase 102). `source`
@@ -1372,7 +1384,7 @@ and private bindingGeneric<'T>
                                 // Phase 424 — optional `params`: [{ "from": <Binding>, "name": <string> }, …]
                                 // binding each `ColExpr.Param` name to a scalar `Binding<obj>` source.
                                 // Absent → `[]` (byte-identical to the Phase 282 shape).
-                                let decodeParam (el: Json) : Result<string * Binding<obj>, DecodeError> =
+                                let decodeParam (el: Json) : Result<string * Binding<JVal>, DecodeError> =
                                     match requireObject (path + ".params[]") el with
                                     | Error e -> Error e
                                     | Ok pf ->
@@ -1391,7 +1403,7 @@ and private bindingGeneric<'T>
                                                 "from"
                                                 [ "value" ]
                                                 "param source Binding"
-                                            |> Result.bind (decodeBindingObj (path + ".params." + name + ".from"))
+                                            |> Result.bind (decodeBindingJVal (path + ".params." + name + ".from"))
                                             |> Result.map (fun fromB -> name, fromB)
 
                                 let paramsR =
@@ -1412,13 +1424,21 @@ and private bindingGeneric<'T>
                                             pf
                                             |> Map.toList
                                             |> traverse (fun (name, v) ->
-                                                decodeBindingObj (path + ".params." + name + ".from") v
+                                                decodeBindingJVal (path + ".params." + name + ".from") v
                                                 |> Result.map (fun b -> name, b))
                                     | Some pJ ->
                                         requireArray (path + ".params") pJ |> Result.bind (traverse decodeParam)
 
                                 paramsR
-                                |> Result.map (fun parameters -> Binding.Transform(source, pipeline, parameters))
+                                |> Result.map (fun parameters ->
+                                    // Since the swap: `TransformParam` records, omitted-when-empty
+                                    // as the typed outer `None`.
+                                    let ps =
+                                        parameters
+                                        |> List.map (fun (name, fromB) ->
+                                            ({ From = fromB; Name = name }: TransformParam))
+
+                                    Binding.Transform(source, pipeline, (if List.isEmpty ps then None else Some ps)))
             | Ok "Invoke" ->
                 // Phase 283 — invoke a host-registered capability for a value. `capabilityId` + scalar
                 // `(addr, value)` args; the body is never on the wire. Types as `Binding<'T>` for any
@@ -1433,7 +1453,11 @@ and private bindingGeneric<'T>
                         | Error e -> Error e
                         | Ok argsJ ->
                             decodeInvokeArgs (path + ".args") argsJ
-                            |> Result.map (fun args -> Binding.Invoke(capabilityId, args))
+                            |> Result.map (fun args ->
+                                Binding.Invoke(
+                                    capabilityId,
+                                    args |> List.map (fun (addr, v) -> ({ Addr = addr; Value = v }: InvokeArg))
+                                ))
             // Pilot-5 lenient wave 2 — the `TextSource.Bound` wrapper convention
             // transferred to a bare-Binding slot: models emit
             // {"$type":"Bound","binding":X} in Metric.value / LabelValueRow etc.
@@ -1451,14 +1475,14 @@ and private bindingGeneric<'T>
                     s
                     "Static | Query | Filter | Selection | State | Computed | I18n | Local | Format | Transform | Invoke"
 
-and private decodeBindingObjArgs (path: string) (j: Json) : Result<Map<string, Binding<obj>>, DecodeError> =
+and private decodeBindingObjArgs (path: string) (j: Json) : Result<Map<string, Binding<JVal>>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
         let entries = fields |> Map.toList
 
         let mapped =
-            traverse (fun (k, v) -> decodeBindingObj (path + "." + k) v |> Result.map (fun b -> k, b)) entries
+            traverse (fun (k, v) -> decodeBindingJVal (path + "." + k) v |> Result.map (fun b -> k, b)) entries
 
         mapped |> Result.map Map.ofList
 
@@ -1658,7 +1682,7 @@ let private decodeBindingFloatPair (path: string) (j: Json) : Result<Binding<flo
         && (tryField pf "min").IsSome
         && (tryField pf "max").IsSome
         ->
-        parseStatic path j |> Result.map Binding.Static
+        parseStatic path j |> Result.map (Some >> Binding.Static)
     | _ -> bindingGeneric<float * float> path parseStatic (0.0, 0.0) j
 
 let private decodeBindingObjSeq (path: string) (j: Json) : Result<Binding<obj seq>, DecodeError> =
@@ -2874,7 +2898,9 @@ let private decodeFormFieldKind
             | None ->
                 match autoBind with
                 | FilterChip n -> Ok(Binding.Filter(n, None))
-                | FormFieldId id -> Ok(Binding.State(id, autoDefault))
+                // The typed placeholder wraps into the generated `defaultValue: 'T option`;
+                // the encoder's auto-bind omission matches on exactly this shape.
+                | FormFieldId id -> Ok(Binding.State(id, Some autoDefault))
                 | NoAutoBind -> missingField path "value" expected
 
         match requireDiscriminator path fields with
@@ -2908,7 +2934,7 @@ let private decodeFormFieldKind
                 | None ->
                     match autoBind with
                     | FilterChip n -> Ok(Binding.Filter(n, None))
-                    | FormFieldId id -> Ok(Binding.State(id, Fuaran.UI.Defaults.ControlValueDefaults.range))
+                    | FormFieldId id -> Ok(Binding.State(id, Some Fuaran.UI.Defaults.ControlValueDefaults.range))
                     | NoAutoBind -> missingField path "value" "Binding<float * float> value"
 
             valueR
@@ -4009,7 +4035,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
 
                     let activeIndexR =
                         match tryField specFields "activeIndex" with
-                        | None -> Ok(Binding.Static 0)
+                        | None -> Ok(Binding.Static(Some 0))
                         | Some v -> decodeBindingInt (specPath + ".activeIndex") v
 
                     match childrenR, orientationR, tabHeadersR, tabTagsR, activeTagR, activeIndexR with
@@ -4100,7 +4126,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
 
                     let openR =
                         match tryField specFields "open" with
-                        | None -> Ok(Binding.Static false)
+                        | None -> Ok(Binding.Static(Some false))
                         | Some v -> decodeBindingBool (specPath + ".open") v
 
                     let defaultOpenR =

@@ -121,7 +121,7 @@ let tests =
               let a11y =
                   Some
                       { Defaults.Accessibility.empty with
-                          Label = Some(Binding.Static "Close dialog") }
+                          Label = Some(Binding.Static(Some "Close dialog")) }
 
               let attrs = Render.accessibilityAttributes BindingResolver.empty a11y
 
@@ -149,7 +149,7 @@ let tests =
               let a11y =
                   Some
                       { Defaults.Accessibility.empty with
-                          Label = Some(Binding.Static "") }
+                          Label = Some(Binding.Static(Some "")) }
 
               let attrs = Render.accessibilityAttributes BindingResolver.empty a11y
 
@@ -175,7 +175,7 @@ let tests =
               let a11yTrue =
                   Some
                       { Defaults.Accessibility.empty with
-                          Hidden = Some(Binding.Static true) }
+                          Hidden = Some(Binding.Static(Some true)) }
 
               let attrsTrue = Render.accessibilityAttributes BindingResolver.empty a11yTrue
 
@@ -184,7 +184,7 @@ let tests =
               let a11yFalse =
                   Some
                       { Defaults.Accessibility.empty with
-                          Hidden = Some(Binding.Static false) }
+                          Hidden = Some(Binding.Static(Some false)) }
 
               let attrsFalse = Render.accessibilityAttributes BindingResolver.empty a11yFalse
 

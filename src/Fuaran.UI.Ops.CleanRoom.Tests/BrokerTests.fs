@@ -92,7 +92,7 @@ let tests =
           }
           test "ReplaceBinding is withheld (carries a value)" {
               Expect.isTrue
-                  (isWithheld (TreeOp.ReplaceBinding(NodeId "headline-metric", "Source", Binding.Static(nn 1.0))))
+                  (isWithheld (TreeOp.ReplaceBinding(NodeId "headline-metric", "Source", Binding.Static(Some(nn 1.0)))))
                   "ReplaceBinding"
           }
           test "InsertChild is withheld (inserts a new content-bearing subtree)" {

@@ -38,11 +38,9 @@ let identify<'T> (binding: Binding<'T>) : BindingSource * string =
     | Binding.Query(name, _, _) -> BindingSource.Query name, sprintf "$queries.%s" name
     | Binding.Filter(name, _) -> BindingSource.Filter name, sprintf "$filters.%s" name
     | Binding.Selection(nodeId, _, _, _) ->
-        let raw =
-            match nodeId with
-            | NodeId s -> s
-
-        BindingSource.Selection nodeId, sprintf "$selection.%s" raw
+        // Bare-string nodeId since the swap; the probe's own `BindingSource`
+        // vocabulary keeps the `NodeId` wrapper.
+        BindingSource.Selection(NodeId nodeId), sprintf "$selection.%s" nodeId
     | Binding.State(key, _) -> BindingSource.State key, sprintf "$state.%s" key
     | Binding.Computed _ -> BindingSource.Computed, "$computed"
     | Binding.I18n(key, _) -> BindingSource.I18n key, sprintf "$i18n.%s" key
@@ -117,7 +115,10 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
                   AvailableAlternatives = [] } }
 
     match binding with
-    | Binding.Static value -> resolvedOk value
+    // Mirror BindingResolver: the absent payload resolves to the slot's
+    // default representation (the pre-swap `Static` carried exactly that).
+    | Binding.Static(Some value) -> resolvedOk value
+    | Binding.Static None -> resolvedOk Unchecked.defaultof<'T>
 
     | Binding.Query(name, _, _) when name = Fuaran.UI.Defaults.NotProvidedSentinel ->
         // Mirror BindingResolver: the Defaults sentinel encodes "the
@@ -160,18 +161,14 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
                 (Some "Set the filter via a Filters component or via SetState on the filter key.")
 
     | Binding.Selection(nodeId, accessor, defaultValue, _) ->
-        match Map.tryFind nodeId ctx.Sources.Selections with
+        match Map.tryFind (NodeId nodeId) ctx.Sources.Selections with
         | Some raw ->
             try
                 resolvedOk (accessor raw)
             with ex ->
-                let rawId =
-                    match nodeId with
-                    | NodeId s -> s
-
                 failed
                     BindingErrorCode.AccessorThrew
-                    (sprintf "Selection on '%s' accessor threw: %s" rawId ex.Message)
+                    (sprintf "Selection on '%s' accessor threw: %s" nodeId ex.Message)
                     (Some "Verify the accessor's expected row shape matches the selected row.")
         | None ->
             // 0.2.9 (Phase 629) — mirror the renderer's resolver: an
@@ -181,13 +178,9 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
             match defaultValue with
             | Some d -> resolvedOk d
             | None ->
-                let rawId =
-                    match nodeId with
-                    | NodeId s -> s
-
                 failed
                     BindingErrorCode.NotResolvedYet
-                    (sprintf "Selection on '%s' has no current value." rawId)
+                    (sprintf "Selection on '%s' has no current value." nodeId)
                     (Some "Selection is set when the user picks a row; wait for the interaction or seed via SetState.")
 
     | Binding.State(key, defaultValue) ->
@@ -202,9 +195,11 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
                     (Some "State store value's runtime type does not match the binding's typed declaration.")
         | None ->
             // Mirror BindingResolver: absent State key resolves to the
-            // binding's declared default, not NotResolved. The Defaults
-            // sentinel surfaces as a `Resolved` with that default value.
-            resolvedOk defaultValue
+            // binding's declared default, not NotResolved; a default-less
+            // binding resolves to the slot's default representation.
+            match defaultValue with
+            | Some d -> resolvedOk d
+            | None -> resolvedOk Unchecked.defaultof<'T>
 
     | Binding.Computed _ ->
         // Computed bindings carry a `BindingContext -> 'T` function;
@@ -218,12 +213,12 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
             "Computed bindings are not yet introspectable (the BindingContext is renderer-side)."
             (Some "Express the same derivation via Binding.Query + a computed-column accessor, then introspect that.")
 
-    | Binding.Local local ->
-        // Local binding's read side is its InitialFrom source.
+    | Binding.Local(_, _, initialFrom, _, _) ->
+        // Local binding's read side is its initialFrom source.
         // Recurse the resolution so the orchestrator sees the underlying
         // value; the buffer-overlay state is renderer-only and not part
         // of the introspection surface.
-        tryResolveBinding<'T> ctx local.InitialFrom
+        tryResolveBinding<'T> ctx initialFrom
 
     | Binding.I18n(key, _args) ->
         // i18n bindings resolve via the renderer's

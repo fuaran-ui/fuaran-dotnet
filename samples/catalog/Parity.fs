@@ -192,7 +192,7 @@ let private fuaranStatsList () : Node<unit> =
                           ("lvr-" + label.Replace(" ", "-"))
                           { Defaults.labelValueRow with
                               Label = TextSource.Literal label
-                              Value = Binding.Static value
+                              Value = Binding.Static(Some value)
                               Format = format.currency "GBP"
                               Emphasis = emph } ] }
 
@@ -210,7 +210,7 @@ let private fuaranMetricGrid () : Node<unit> =
                           ("metric-" + label.Replace(" ", "-"))
                           { Defaults.metric with
                               Label = TextSource.Literal label
-                              Value = Binding.Static value
+                              Value = Binding.Static(Some value)
                               Tone = tone
                               Format =
                                   (if label = "Bounce rate" then
@@ -227,17 +227,17 @@ let private fuaranForm () : Node<unit> =
                 [ { Defaults.formField<unit> with
                       Id = "cohort-name"
                       Label = TextSource.Literal "Cohort name"
-                      Kind = FormFieldKind.Text(Binding.Static "", Some(fun _ -> Action.Chain [])) }
+                      Kind = FormFieldKind.Text(Binding.Static(Some ""), Some(fun _ -> Action.Chain [])) }
                   { Defaults.formField<unit> with
                       Id = "sample-size"
                       Label = TextSource.Literal "Sample size"
-                      Kind = FormFieldKind.Number(Binding.Static 0.0, Some(fun _ -> Action.Chain [])) } ] }
+                      Kind = FormFieldKind.Number(Binding.Static(Some 0.0), Some(fun _ -> Action.Chain [])) } ] }
 
 let private fuaranTabbedCard () : Node<unit> =
     Fuaran.tabs
         "parity-tabbed-card"
         { Defaults.tabs<unit> with
-            ActiveIndex = Binding.Static 0
+            ActiveIndex = Binding.Static(Some 0)
             Children =
                 [ Fuaran.card
                       "tab-overview"

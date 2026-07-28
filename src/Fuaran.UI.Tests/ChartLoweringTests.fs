@@ -178,7 +178,7 @@ let private buildRows (case: Case) : obj list =
         box (Map.ofList fields))
 
 let private specOf (case: Case) : ChartSpec<obj> =
-    { Source = Binding.Static(Seq.ofList (buildRows case))
+    { Source = Binding.Static(Some(Seq.ofList (buildRows case)))
       Kind = case.Kind
       XField = case.XField
       YFields = case.YFields

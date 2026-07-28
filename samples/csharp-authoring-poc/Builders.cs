@@ -47,13 +47,15 @@ namespace Fuaran.UI.CSharp.Poc;
 internal static class Txt
 {
     public static TextSource Literal(string s) => TextSource.NewLiteral(s);
-    public static TextSource Bound(Binding<string> b) => TextSource.NewBound(b);
+    public static TextSource Bound(global::Fuaran.UI.Generated.Binding<string> b) => TextSource.NewBound(b);
 }
 
 internal static class Bind
 {
-    public static Binding<T> Static<T>(T v) => Binding<T>.NewStatic(v);
-    public static Binding<T> State<T>(string key, T def) => Binding<T>.NewState(key, def);
+    public static global::Fuaran.UI.Generated.Binding<T> Static<T>(T v) =>
+        global::Fuaran.UI.Generated.Binding<T>.NewStatic(FSharpOption<T>.Some(v));
+    public static global::Fuaran.UI.Generated.Binding<T> State<T>(string key, T def) =>
+        global::Fuaran.UI.Generated.Binding<T>.NewState(key, FSharpOption<T>.Some(def));
 }
 
 internal static class Fmt
@@ -191,12 +193,13 @@ internal sealed class DashboardBuilder : NodeBuilder
 internal sealed class MetricBuilder : NodeBuilder
 {
     private TextSource _label = Txt.Literal("");
-    private Binding<double> _source = Bind.Static(0.0);
+    private global::Fuaran.UI.Generated.Binding<double> _source = Bind.Static(0.0);
     private CellFormat _format = Fmt.None;
     private ToneVariant _tone = ToneVariant.Default;
     private StyleWeight _weight = StyleWeight.Standard;
     private Emphasis _emphasis = Emphasis.Normal;
-    private FSharpOption<Binding<double>> _trend = Fs.None<Binding<double>>();
+    private FSharpOption<global::Fuaran.UI.Generated.Binding<double>> _trend =
+        Fs.None<global::Fuaran.UI.Generated.Binding<double>>();
     private FSharpOption<CellFormat> _trendFormat = Fs.None<CellFormat>();
     private FSharpOption<IconSource> _icon = Fs.None<IconSource>();
     private FSharpOption<TextSource> _subtext = Fs.None<TextSource>();
@@ -267,7 +270,8 @@ internal sealed class ButtonBuilder : NodeBuilder
     private ButtonVariant _variant = ButtonVariant.Primary;
     private FSharpOption<IconSource> _icon = Fs.None<IconSource>();
     private FSharpOption<TextSource> _tooltip = Fs.None<TextSource>();
-    private FSharpOption<Binding<bool>> _disabled = Fs.None<Binding<bool>>();
+    private FSharpOption<global::Fuaran.UI.Generated.Binding<bool>> _disabled =
+        Fs.None<global::Fuaran.UI.Generated.Binding<bool>>();
 
     public ButtonBuilder(string id) : base(id) { }
 
@@ -338,7 +342,8 @@ internal sealed class FormBuilder : NodeBuilder
     private readonly List<FieldBuilder> _fields = new();
     private FsAction _onSubmit = Act.Chain();
     private TextSource _submitLabel = Txt.Literal("Submit");
-    private FSharpOption<Binding<bool>> _disabled = Fs.None<Binding<bool>>();
+    private FSharpOption<global::Fuaran.UI.Generated.Binding<bool>> _disabled =
+        Fs.None<global::Fuaran.UI.Generated.Binding<bool>>();
 
     public FormBuilder(string id) : base(id) { }
 

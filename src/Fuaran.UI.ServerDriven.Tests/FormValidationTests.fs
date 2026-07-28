@@ -37,7 +37,7 @@ let private formSpec: FormSpec<Msg> =
                   Label = TextSource.Literal "Age"
                   Kind =
                       FormFieldKind.rangedNumber
-                          (Binding.Static 0.0)
+                          (Binding.Static(Some 0.0))
                           (fun _ -> Action.Dispatch Submit)
                           (Some 0.0)
                           (Some 120.0)

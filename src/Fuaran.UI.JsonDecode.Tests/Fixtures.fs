@@ -59,12 +59,12 @@ let private node (id: string) (kind: NodeKind<obj>) (accessibility: Accessibilit
 
 let private metricSpec: MetricSpec =
     { Label = TextSource.Literal "Revenue"
-      Value = Binding.Static 1234.5
+      Value = Binding.Static(Some 1234.5)
       Format = CellFormat.Currency "GBP"
       Tone = ToneVariant.Brand
       Weight = StyleWeight.Standard
       Emphasis = Emphasis.Normal
-      Trend = Some(Binding.Static 0.07)
+      Trend = Some(Binding.Static(Some 0.07))
       TrendFormat = Some(CellFormat.Percent(Some 1))
       Icon = Some(IconSource "trending-up")
       Subtext = Some(TextSource.Literal "vs last month") }
@@ -89,7 +89,7 @@ let private metricFloat (id: string) (value: float) : Node<obj> =
         id
         (NodeKind.Metric(
             { metricSpec with
-                Value = Binding.Static value
+                Value = Binding.Static(Some value)
                 Trend = None
                 TrendFormat = None }
         ))
@@ -141,7 +141,7 @@ let link: Node<obj> =
     node
         "link-1"
         (NodeKind.Link(
-            { Href = Binding.Static "/about"
+            { Href = Binding.Static(Some "/about")
               Label = TextSource.Literal "About us"
               Rel = Some "noopener"
               Target = Some "_blank"
@@ -155,7 +155,7 @@ let image: Node<obj> =
     node
         "image-1"
         (NodeKind.Image(
-            { Src = Binding.Static "/avatar.png"
+            { Src = Binding.Static(Some "/avatar.png")
               Alt = TextSource.Literal "User avatar"
               Variant = ImageVariant.Avatar }
         ))
@@ -179,7 +179,7 @@ let toast: Node<obj> =
         (NodeKind.Toast(
             { Message = TextSource.Literal "Saved"
               Tone = ToneVariant.Success
-              Open = Binding.Static true
+              Open = Binding.Static(Some true)
               Dismissable = true }
         ))
         None
@@ -209,7 +209,7 @@ let math: Node<obj> =
         None
 
 let sparkline: Node<obj> =
-    node "spark-1" (NodeKind.Sparkline({ Source = Binding.Static(seq [ 1.0; 2.0; 3.0; 2.0; 4.0 ]) })) None
+    node "spark-1" (NodeKind.Sparkline({ Source = Binding.Static(Some(seq [ 1.0; 2.0; 3.0; 2.0; 4.0 ])) })) None
 
 let private bareDrawStyle: DrawStyle =
     { Fill = None
@@ -224,16 +224,16 @@ let private bareDrawStyle: DrawStyle =
 
 let private styledDraw (fill: string) (stroke: string) : DrawStyle =
     { bareDrawStyle with
-        Fill = Some(Binding.Static fill)
-        Stroke = Some(Binding.Static stroke)
-        StrokeWidth = Some(Binding.Static 1.5)
-        Opacity = Some(Binding.Static 0.9) }
+        Fill = Some(Binding.Static(Some fill))
+        Stroke = Some(Binding.Static(Some stroke))
+        StrokeWidth = Some(Binding.Static(Some 1.5))
+        Opacity = Some(Binding.Static(Some 0.9)) }
 
 /// A `Label` text style exercising the Phase 528.1 fields (anchor / size /
 /// weight / font-family) — pins them cross-host in the corpus.
 let private labelTextStyle: DrawStyle =
     { bareDrawStyle with
-        Fill = Some(Binding.Static "#111111")
+        Fill = Some(Binding.Static(Some "#111111"))
         TextAnchor = Some TextAnchor.Middle
         FontSize = Some 14.0
         Emphasis = Some Emphasis.Loud
@@ -317,7 +317,7 @@ let progress: Node<obj> =
     node
         "progress-1"
         (NodeKind.Progress(
-            { Fraction = Binding.Static 0.42
+            { Fraction = Binding.Static(Some 0.42)
               Label = Some(TextSource.Literal "Loading...")
               Caveat = None
               Indeterminate = false
@@ -330,7 +330,7 @@ let labelValueRow: Node<obj> =
         "lvr-1"
         (NodeKind.LabelValueRow(
             { Label = TextSource.Literal "Total"
-              Value = Binding.Static 42.0
+              Value = Binding.Static(Some 42.0)
               Format = CellFormat.Number(Some 2)
               Emphasis = true
               Help = Some(TextSource.Literal "Last 30 days") }
@@ -460,7 +460,7 @@ let tabs: Node<obj> =
         (NodeKind.Tabs(
             { Orientation = Horizontal
               Children = [ metric ]
-              ActiveIndex = Binding.Static 0
+              ActiveIndex = Binding.Static(Some 0)
               // `Some` (Phase 426) — keeps the `"onSelect":"<closure>"`
               // sentinel on the wire, so this fixture stays byte-identical
               // to the pre-426 corpus (the closure-authored shape).
@@ -485,7 +485,7 @@ let tabsExplicitHeaders: Node<obj> =
               // Non-zero ActiveIndex (Phase 126) — exercises the
               // now-carried selected-tab binding round-tripping a value
               // other than the default 0.
-              ActiveIndex = Binding.Static 1
+              ActiveIndex = Binding.Static(Some 1)
               OnSelect = Some(fun _ -> Action.Chain [])
               TabHeaders =
                 Some
@@ -494,9 +494,9 @@ let tabsExplicitHeaders: Node<obj> =
                         Disabled = Option.None }
                       { Label = TextSource.Literal "Detail"
                         Icon = Option.None
-                        Disabled = Some(Binding.Static false) } ]
+                        Disabled = Some(Binding.Static(Some false)) } ]
               TabTags = Some [ "overview"; "detail" ]
-              ActiveTag = Some(Binding.Static "overview")
+              ActiveTag = Some(Binding.Static(Some "overview"))
               OnSelectTag = Option.None }
         ))
         None
@@ -520,7 +520,7 @@ let stepper: Node<obj> =
     node
         "step-1"
         (NodeKind.Stepper(
-            { ActiveStep = Binding.Static 1
+            { ActiveStep = Binding.Static(Some 1)
               Children = [ markdown; markdown ]
               OnSelect = (fun _ -> Action.Chain []) }
         ))
@@ -545,7 +545,7 @@ let disclosure: Node<obj> =
         "discl-1"
         (NodeKind.Disclosure(
             { Heading = TextSource.Literal "Additional entitlements"
-              Open = Binding.Static false
+              Open = Binding.Static(Some false)
               OnToggle = Option.None
               Children = [ markdown ]
               DefaultOpen = true }
@@ -560,7 +560,7 @@ let modal: Node<obj> =
     node
         "modal-1"
         (NodeKind.Modal(
-            { Open = Binding.Static false
+            { Open = Binding.Static(Some false)
               Heading = Some(TextSource.Literal "Confirm")
               Dismissable = true
               Children = [ markdown ]
@@ -589,21 +589,21 @@ let formAllFields: Node<obj> =
     let textField: FormField<obj> =
         { Id = "name"
           Label = TextSource.Literal "Name"
-          Kind = FormFieldKind.Text(Binding.Static "", Some(fun _ -> placeholderChain))
+          Kind = FormFieldKind.Text(Binding.Static(Some ""), Some(fun _ -> placeholderChain))
           Required = true
           Help = Some(TextSource.Literal "Full legal name") }
 
     let numberField: FormField<obj> =
         { Id = "age"
           Label = TextSource.Literal "Age"
-          Kind = FormFieldKind.Number(Binding.Static 0.0, Some(fun _ -> placeholderChain))
+          Kind = FormFieldKind.Number(Binding.Static(Some 0.0), Some(fun _ -> placeholderChain))
           Required = false
           Help = None }
 
     let checkboxField: FormField<obj> =
         { Id = "agree"
           Label = TextSource.Literal "I agree"
-          Kind = FormFieldKind.Checkbox(Binding.Static false, Some(fun _ -> placeholderChain))
+          Kind = FormFieldKind.Checkbox(Binding.Static(Some false), Some(fun _ -> placeholderChain))
           Required = true
           Help = None }
 
@@ -612,12 +612,14 @@ let formAllFields: Node<obj> =
           Label = TextSource.Literal "Tier"
           Kind =
             FormFieldKind.Choice(
-                Binding.Static
-                    [ { Value = "basic"
-                        Label = TextSource.Literal "Basic" }
-                      { Value = "pro"
-                        Label = TextSource.Literal "Pro" } ],
-                Binding.Static(Some "basic"),
+                Binding.Static(
+                    Some
+                        [ { Value = "basic"
+                            Label = TextSource.Literal "Basic" }
+                          { Value = "pro"
+                            Label = TextSource.Literal "Pro" } ]
+                ),
+                Binding.Static(Some(Some "basic")),
                 Some(fun _ -> placeholderChain)
             )
           Required = false
@@ -626,7 +628,7 @@ let formAllFields: Node<obj> =
     let textareaField: FormField<obj> =
         { Id = "notes"
           Label = TextSource.Literal "Notes"
-          Kind = FormFieldKind.TextArea(Binding.Static "", Some(fun _ -> placeholderChain), 5)
+          Kind = FormFieldKind.TextArea(Binding.Static(Some ""), Some(fun _ -> placeholderChain), 5)
           Required = false
           Help = None }
 
@@ -639,7 +641,7 @@ let formAllFields: Node<obj> =
               // Phase 130: bound form-level disabled-state (the
               // interactive-state class-fix); exercises the new optional
               // slot in the corpus round-trip.
-              Disabled = Some(Binding.State("formBusy", false)) }
+              Disabled = Some(Binding.State("formBusy", Some false)) }
         ))
         None
 
@@ -654,7 +656,7 @@ let formRangedNumber: Node<obj> =
           Label = TextSource.Literal "Year"
           Kind =
             FormFieldKind.RangedNumber(
-                Binding.Static 2024.0,
+                Binding.Static(Some 2024.0),
                 Some(fun _ -> placeholderChain),
                 { Min = Some 1979.0
                   Max = Some 2028.0
@@ -668,7 +670,7 @@ let formRangedNumber: Node<obj> =
           Label = TextSource.Literal "Years contributed"
           Kind =
             FormFieldKind.RangedNumber(
-                Binding.Static 10.0,
+                Binding.Static(Some 10.0),
                 Some(fun _ -> placeholderChain),
                 { Min = Some 0.0
                   Max = None
@@ -682,7 +684,7 @@ let formRangedNumber: Node<obj> =
           Label = TextSource.Literal "Amount"
           Kind =
             FormFieldKind.RangedNumber(
-                Binding.Static 100.0,
+                Binding.Static(Some 100.0),
                 Some(fun _ -> placeholderChain),
                 { Min = None; Max = None; Step = None }
             )
@@ -704,17 +706,19 @@ let filtersBoth: Node<obj> =
     let textFilter: FilterSpec<obj> =
         { Name = "q"
           Label = TextSource.Literal "Search"
-          Field = FormFieldKind.Text(Binding.Static "", Some(fun _ -> placeholderChain)) }
+          Field = FormFieldKind.Text(Binding.Static(Some ""), Some(fun _ -> placeholderChain)) }
 
     let choiceFilter: FilterSpec<obj> =
         { Name = "tier"
           Label = TextSource.Literal "Tier"
           Field =
             FormFieldKind.Choice(
-                Binding.Static
-                    [ { Value = "all"
-                        Label = TextSource.Literal "All" } ],
-                Binding.Static(Some "all"),
+                Binding.Static(
+                    Some
+                        [ { Value = "all"
+                            Label = TextSource.Literal "All" } ]
+                ),
+                Binding.Static(Some(Some "all")),
                 Some(fun _ -> placeholderChain)
             ) }
 
@@ -734,9 +738,11 @@ let filtersDeclarative: Node<obj> =
           Label = TextSource.Literal "Tier"
           Field =
             FormFieldKind.Choice(
-                Binding.Static
-                    [ { Value = "all"
-                        Label = TextSource.Literal "All" } ],
+                Binding.Static(
+                    Some
+                        [ { Value = "all"
+                            Label = TextSource.Literal "All" } ]
+                ),
                 Binding.Filter("tier", None),
                 None
             ) }
@@ -744,7 +750,7 @@ let filtersDeclarative: Node<obj> =
     let rangeFilter: FilterSpec<obj> =
         { Name = "age"
           Label = TextSource.Literal "Age"
-          Field = FormFieldKind.Range(Binding.Static(0.0, 100.0), None, None) }
+          Field = FormFieldKind.Range(Binding.Static(Some(0.0, 100.0)), None, None) }
 
     node "filters-declarative" (NodeKind.Filters([ textFilter; choiceFilter; rangeFilter ])) None
 
@@ -767,8 +773,8 @@ let formSegmentedChoice: Node<obj> =
           Label = TextSource.Literal "Metric"
           Kind =
             FormFieldKind.SegmentedChoice(
-                Binding.Static opts,
-                Binding.Static(Some "effective"),
+                Binding.Static(Some opts),
+                Binding.Static(Some(Some "effective")),
                 Some(fun _ -> placeholderChain),
                 Horizontal
             )
@@ -780,11 +786,13 @@ let formSegmentedChoice: Node<obj> =
           Label = TextSource.Literal "Tier"
           Kind =
             FormFieldKind.SegmentedChoice(
-                Binding.Static
-                    [ { Value = "low"
-                        Label = TextSource.Literal "Low" }
-                      { Value = "high"
-                        Label = TextSource.Literal "High" } ],
+                Binding.Static(
+                    Some
+                        [ { Value = "low"
+                            Label = TextSource.Literal "Low" }
+                          { Value = "high"
+                            Label = TextSource.Literal "High" } ]
+                ),
                 Binding.Static None,
                 Some(fun _ -> placeholderChain),
                 Vertical
@@ -810,12 +818,14 @@ let filtersSegmented: Node<obj> =
           Label = TextSource.Literal "View"
           Field =
             FormFieldKind.SegmentedChoice(
-                Binding.Static
-                    [ { Value = "table"
-                        Label = TextSource.Literal "Table" }
-                      { Value = "chart"
-                        Label = TextSource.Literal "Chart" } ],
-                Binding.Static(Some "table"),
+                Binding.Static(
+                    Some
+                        [ { Value = "table"
+                            Label = TextSource.Literal "Table" }
+                          { Value = "chart"
+                            Label = TextSource.Literal "Chart" } ]
+                ),
+                Binding.Static(Some(Some "table")),
                 Some(fun _ -> placeholderChain),
                 Horizontal
             ) }
@@ -833,7 +843,7 @@ let formDate: Node<obj> =
           Label = TextSource.Literal "Check in"
           Kind =
             FormFieldKind.Date(
-                Binding.Static "2026-01-15",
+                Binding.Static(Some "2026-01-15"),
                 Some(fun _ -> placeholderChain),
                 DateVariant.Date,
                 { Min = Some "2026-01-01"
@@ -848,7 +858,7 @@ let formDate: Node<obj> =
           Label = TextSource.Literal "Alarm"
           Kind =
             FormFieldKind.Date(
-                Binding.Static "08:30",
+                Binding.Static(Some "08:30"),
                 Some(fun _ -> placeholderChain),
                 DateVariant.Time,
                 { Min = None
@@ -863,7 +873,7 @@ let formDate: Node<obj> =
           Label = TextSource.Literal "Meeting"
           Kind =
             FormFieldKind.Date(
-                Binding.Static "2026-03-01T14:00",
+                Binding.Static(Some "2026-03-01T14:00"),
                 Some(fun _ -> placeholderChain),
                 DateVariant.DateTime,
                 { Min = None; Max = None; Step = None }
@@ -892,7 +902,7 @@ let button: Node<obj> =
               Tooltip = None
               // Phase 129: bound disabled-state — the canonical
               // "disabled while a calc is in flight" shape.
-              Disabled = Some(Binding.State("loading", false)) }
+              Disabled = Some(Binding.State("loading", Some false)) }
         ))
         None
 
@@ -1025,7 +1035,7 @@ let callInto: Node<obj> =
             (NodeKind.Metric(
                 { Fuaran.UI.Defaults.metric with
                     Label = TextSource.Literal "Total"
-                    Value = Binding.State("total", 0.0) }
+                    Value = Binding.State("total", Some 0.0) }
             ))
             None
 
@@ -1048,7 +1058,7 @@ let callInto: Node<obj> =
             (NodeKind.Metric(
                 { Fuaran.UI.Defaults.metric with
                     Label = TextSource.Literal "Orders"
-                    Value = Binding.Query("orders", (fun (raw: obj) -> unbox raw), []) }
+                    Value = Binding.Query("orders", (fun (raw: obj) -> unbox raw), None) }
             ))
             None
 
@@ -1076,7 +1086,11 @@ let metricInvoke: Node<obj> =
         "metric-invoke"
         (NodeKind.Metric(
             { metricSpec with
-                Value = Binding.Invoke("forecast.revenue", [ "horizon", "12"; "scenario", "base" ])
+                Value =
+                    Binding.Invoke(
+                        "forecast.revenue",
+                        [ { Addr = "horizon"; Value = "12" }; { Addr = "scenario"; Value = "base" } ]
+                    )
                 Trend = None
                 TrendFormat = None }
         ))
@@ -1105,7 +1119,7 @@ let fileUpload: Node<obj> =
               Multiple = false
               OnSelect = (fun _ -> placeholderChain)
               // Phase 130: bound disabled-state corpus coverage.
-              Disabled = Some(Binding.State("uploadBusy", false)) }
+              Disabled = Some(Binding.State("uploadBusy", Some false)) }
         ))
         None
 
@@ -1115,16 +1129,18 @@ let select: Node<obj> =
         (NodeKind.Select(
             { Label = TextSource.Literal "Region"
               Source =
-                Binding.Static
-                    [ { Value = "uk"
-                        Label = TextSource.Literal "UK" } ]
-              Value = Binding.Static(Some "uk")
+                Binding.Static(
+                    Some
+                        [ { Value = "uk"
+                            Label = TextSource.Literal "UK" } ]
+                )
+              Value = Binding.Static(Some(Some "uk"))
               // `Some` (Phase 426) — keeps `"onChange":"<closure>"` on the
               // wire, byte-identical to the pre-426 corpus.
               OnChange = Some(fun _ -> placeholderChain)
               Placeholder = Some(TextSource.Literal "Choose one")
               // Phase 130: bound disabled-state corpus coverage.
-              Disabled = Some(Binding.State("selectBusy", false))
+              Disabled = Some(Binding.State("selectBusy", Some false))
               // Phase 291: single-select — Multiple/Values/OnChangeMulti
               // omitted on the wire (the degenerate case stays byte-stable).
               Multiple = false
@@ -1145,17 +1161,19 @@ let multiSelect: Node<obj> =
         (NodeKind.Select(
             { Label = TextSource.Literal "Tags"
               Source =
-                Binding.Static
-                    [ { Value = "red"
-                        Label = TextSource.Literal "Red" }
-                      { Value = "green"
-                        Label = TextSource.Literal "Green" } ]
-              Value = Binding.Static Option.None
+                Binding.Static(
+                    Some
+                        [ { Value = "red"
+                            Label = TextSource.Literal "Red" }
+                          { Value = "green"
+                            Label = TextSource.Literal "Green" } ]
+                )
+              Value = Binding.Static None
               OnChange = Some(fun _ -> placeholderChain)
               Placeholder = Option.None
               Disabled = Option.None
               Multiple = true
-              Values = Some(Binding.Static [ "red"; "green" ])
+              Values = Some(Binding.Static(Some [ "red"; "green" ]))
               OnChangeMulti = Option.None }
         ))
         None
@@ -1170,21 +1188,21 @@ let formDeclarative: Node<obj> =
     let textField: FormField<obj> =
         { Id = "profile-name"
           Label = TextSource.Literal "Name"
-          Kind = FormFieldKind.Text(Binding.State("profileName", ""), Option.None)
+          Kind = FormFieldKind.Text(Binding.State("profileName", Some ""), Option.None)
           Required = true
           Help = None }
 
     let numberField: FormField<obj> =
         { Id = "profile-age"
           Label = TextSource.Literal "Age"
-          Kind = FormFieldKind.Number(Binding.State("profileAge", 0.0), Option.None)
+          Kind = FormFieldKind.Number(Binding.State("profileAge", Some 0.0), Option.None)
           Required = false
           Help = None }
 
     let checkboxField: FormField<obj> =
         { Id = "profile-agree"
           Label = TextSource.Literal "I agree"
-          Kind = FormFieldKind.Checkbox(Binding.State("profileAgree", false), Option.None)
+          Kind = FormFieldKind.Checkbox(Binding.State("profileAgree", Some false), Option.None)
           Required = true
           Help = None }
 
@@ -1193,12 +1211,14 @@ let formDeclarative: Node<obj> =
           Label = TextSource.Literal "Tier"
           Kind =
             FormFieldKind.Choice(
-                Binding.Static
-                    [ { Value = "basic"
-                        Label = TextSource.Literal "Basic" }
-                      { Value = "pro"
-                        Label = TextSource.Literal "Pro" } ],
-                Binding.State("profileTier", (Option.None: string option)),
+                Binding.Static(
+                    Some
+                        [ { Value = "basic"
+                            Label = TextSource.Literal "Basic" }
+                          { Value = "pro"
+                            Label = TextSource.Literal "Pro" } ]
+                ),
+                Binding.State("profileTier", Some(Option.None: string option)),
                 Option.None
             )
           Required = false
@@ -1224,7 +1244,10 @@ let formDeclarativeMinimal: Node<obj> =
         { Id = "guest-name"
           Label = TextSource.Literal "Name"
           Kind =
-            FormFieldKind.Text(Binding.State("guest-name", Fuaran.UI.Defaults.ControlValueDefaults.text), Option.None)
+            FormFieldKind.Text(
+                Binding.State("guest-name", Some Fuaran.UI.Defaults.ControlValueDefaults.text),
+                Option.None
+            )
           Required = true
           Help = None }
 
@@ -1233,7 +1256,7 @@ let formDeclarativeMinimal: Node<obj> =
           Label = TextSource.Literal "Party size"
           Kind =
             FormFieldKind.Number(
-                Binding.State("party-size", Fuaran.UI.Defaults.ControlValueDefaults.number),
+                Binding.State("party-size", Some Fuaran.UI.Defaults.ControlValueDefaults.number),
                 Option.None
             )
           Required = false
@@ -1244,12 +1267,14 @@ let formDeclarativeMinimal: Node<obj> =
           Label = TextSource.Literal "Seating"
           Kind =
             FormFieldKind.Choice(
-                Binding.Static
-                    [ { Value = "indoor"
-                        Label = TextSource.Literal "Indoor" }
-                      { Value = "terrace"
-                        Label = TextSource.Literal "Terrace" } ],
-                Binding.State("seating", Fuaran.UI.Defaults.ControlValueDefaults.choice),
+                Binding.Static(
+                    Some
+                        [ { Value = "indoor"
+                            Label = TextSource.Literal "Indoor" }
+                          { Value = "terrace"
+                            Label = TextSource.Literal "Terrace" } ]
+                ),
+                Binding.State("seating", Some Fuaran.UI.Defaults.ControlValueDefaults.choice),
                 Option.None
             )
           Required = false
@@ -1260,7 +1285,7 @@ let formDeclarativeMinimal: Node<obj> =
           Label = TextSource.Literal "Date"
           Kind =
             FormFieldKind.Date(
-                Binding.State("visit-date", Fuaran.UI.Defaults.ControlValueDefaults.date),
+                Binding.State("visit-date", Some Fuaran.UI.Defaults.ControlValueDefaults.date),
                 Option.None,
                 DateVariant.Date,
                 { Min = None; Max = None; Step = None }
@@ -1291,7 +1316,7 @@ let controlsDeclarative: Node<obj> =
             (NodeKind.Tabs(
                 { Orientation = Horizontal
                   Children = [ markdown ]
-                  ActiveIndex = Binding.State("activePane", 0)
+                  ActiveIndex = Binding.State("activePane", Some 0)
                   OnSelect = Option.None
                   TabHeaders = Option.None
                   TabTags = Option.None
@@ -1304,7 +1329,7 @@ let controlsDeclarative: Node<obj> =
         node
             "decl-modal"
             (NodeKind.Modal(
-                { Open = Binding.State("modalOpen", false)
+                { Open = Binding.State("modalOpen", Some false)
                   Heading = Some(TextSource.Literal "Confirm")
                   Dismissable = true
                   Children = [ markdown ]
@@ -1317,7 +1342,7 @@ let controlsDeclarative: Node<obj> =
             "decl-disclosure"
             (NodeKind.Disclosure(
                 { Heading = TextSource.Literal "Advanced"
-                  Open = Binding.State("advancedOpen", false)
+                  Open = Binding.State("advancedOpen", Some false)
                   OnToggle = Option.None
                   Children = [ markdown ]
                   DefaultOpen = false }
@@ -1330,10 +1355,12 @@ let controlsDeclarative: Node<obj> =
             (NodeKind.Select(
                 { Label = TextSource.Literal "Region"
                   Source =
-                    Binding.Static
-                        [ { Value = "uk"
-                            Label = TextSource.Literal "UK" } ]
-                  Value = Binding.State("region", (Option.None: string option))
+                    Binding.Static(
+                        Some
+                            [ { Value = "uk"
+                                Label = TextSource.Literal "UK" } ]
+                    )
+                  Value = Binding.State("region", Some(Option.None: string option))
                   OnChange = Option.None
                   Placeholder = Some(TextSource.Literal "Choose one")
                   Disabled = Option.None
@@ -1369,11 +1396,11 @@ let multiSelectClosure: Node<obj> =
             (NodeKind.Tabs(
                 { Orientation = Horizontal
                   Children = [ markdown; sparkline ]
-                  ActiveIndex = Binding.Static 0
+                  ActiveIndex = Binding.Static(Some 0)
                   OnSelect = Some(fun _ -> placeholderChain)
                   TabHeaders = Option.None
                   TabTags = Some [ "overview"; "detail" ]
-                  ActiveTag = Some(Binding.Static "overview")
+                  ActiveTag = Some(Binding.Static(Some "overview"))
                   OnSelectTag = Some(fun _ -> placeholderChain) }
             ))
             None
@@ -1383,7 +1410,7 @@ let multiSelectClosure: Node<obj> =
             "closure-disclosure"
             (NodeKind.Disclosure(
                 { Heading = TextSource.Literal "Advanced"
-                  Open = Binding.Static false
+                  Open = Binding.Static(Some false)
                   OnToggle = Some(fun _ -> placeholderChain)
                   Children = [ markdown ]
                   DefaultOpen = false }
@@ -1396,15 +1423,17 @@ let multiSelectClosure: Node<obj> =
             (NodeKind.Select(
                 { Label = TextSource.Literal "Tags"
                   Source =
-                    Binding.Static
-                        [ { Value = "red"
-                            Label = TextSource.Literal "Red" } ]
-                  Value = Binding.Static Option.None
+                    Binding.Static(
+                        Some
+                            [ { Value = "red"
+                                Label = TextSource.Literal "Red" } ]
+                    )
+                  Value = Binding.Static None
                   OnChange = Some(fun _ -> placeholderChain)
                   Placeholder = Option.None
                   Disabled = Option.None
                   Multiple = true
-                  Values = Some(Binding.Static [ "red" ])
+                  Values = Some(Binding.Static(Some [ "red" ]))
                   OnChangeMulti = Some(fun _ -> placeholderChain) }
             ))
             None
@@ -1437,7 +1466,7 @@ let gridVis: Node<obj> =
     node
         "grid-1"
         (NodeKind.DataGrid(
-            { Source = Binding.Static Seq.empty
+            { Source = Binding.Static(Some Seq.empty)
               RowKey = Some(fun _ -> "<closure>")
               RowKeyField = None
               Columns = [ col ]
@@ -1451,7 +1480,7 @@ let chart: Node<obj> =
     node
         "chart-1"
         (NodeKind.Chart(
-            { Source = Binding.Static Seq.empty
+            { Source = Binding.Static(Some Seq.empty)
               Kind = ChartKind.Line
               XField = "month"
               YFields = [ "revenue"; "cost" ]
@@ -1498,7 +1527,7 @@ let gridTransform: Node<obj> =
     node
         "grid-transform"
         (NodeKind.DataGrid(
-            { Source = Binding.Transform(source, pipeline, [])
+            { Source = Binding.Transform(source, pipeline, None)
               RowKey = Some(fun _ -> "<closure>")
               RowKeyField = None
               Columns = []
@@ -1528,7 +1557,14 @@ let gridTransformParam: Node<obj> =
     node
         "grid-transform-param"
         (NodeKind.DataGrid(
-            { Source = Binding.Transform(source, pipeline, [ "dept", Binding.Filter("dept", None) ])
+            { Source =
+                Binding.Transform(
+                    source,
+                    pipeline,
+                    Some
+                        [ { From = Binding.Filter("dept", None)
+                            Name = "dept" } ]
+                )
               RowKey = Some(fun _ -> "<closure>")
               RowKeyField = None
               Columns = []
@@ -1560,7 +1596,7 @@ let gridFieldNamed: Node<obj> =
     node
         "grid-field-named"
         (NodeKind.DataGrid(
-            { Source = Binding.Transform(source, [], [])
+            { Source = Binding.Transform(source, [], None)
               RowKey = None
               RowKeyField = Some "dept"
               Columns = [ fieldCol "Dept" "dept"; fieldCol "Amount" "amount" ]
@@ -1611,7 +1647,7 @@ let masterDetailPreselected: Node<obj> =
                 [ node
                       "ticket-grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Transform(source, [], [])
+                          { Source = Binding.Transform(source, [], None)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns = [ fieldCol "Ticket" "id"; fieldCol "Priority" "priority" ]
@@ -1644,7 +1680,7 @@ let masterDetailPreselected: Node<obj> =
                                           Value =
                                             TextSource.Bound(
                                                 Binding.Selection(
-                                                    NodeId "ticket-grid",
+                                                    "ticket-grid",
                                                     Binding.projectSelectionField<string> "id",
                                                     Some "TCK-2041",
                                                     Some "id"
@@ -1676,16 +1712,18 @@ let masterDetailPreselected: Node<obj> =
                                             Fuaran.Core.Param "ticketId"
                                         )
                                     ) ],
-                                  [ "ticketId",
-                                    // 0.2.10 (Phase 632): `field` keeps the param SCALAR
-                                    // after a real click — the identity form handed the
-                                    // whole row to `objToCell` (a loud non-scalar error).
-                                    Binding.Selection(
-                                        NodeId "ticket-grid",
-                                        Binding.projectSelectionField<obj> "id",
-                                        Some(box "TCK-2041"),
-                                        Some "id"
-                                    ) ]
+                                  Some
+                                      [ { From =
+                                            // 0.2.10 (Phase 632): `field` keeps the param SCALAR
+                                            // after a real click — the identity form handed the
+                                            // whole row to `objToCell` (a loud non-scalar error).
+                                            Binding.Selection(
+                                                "ticket-grid",
+                                                Binding.projectSelectionField<JVal> "id",
+                                                Some(JStr "TCK-2041"),
+                                                Some "id"
+                                            )
+                                          Name = "ticketId" } ]
                               )
                             RowKey = None
                             RowKeyField = Some "id"
@@ -1745,7 +1783,7 @@ let scalarTransformComposition: Node<obj> =
                 [ node
                       "scalar-ticket-grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Transform(source, [], [])
+                          { Source = Binding.Transform(source, [], None)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns =
@@ -1786,7 +1824,7 @@ let scalarTransformComposition: Node<obj> =
                                                 Fn = Fuaran.Core.AggFn.Count
                                                 Of = "id" } ]
                                         ) ],
-                                      []
+                                      None
                                   )
                               )
                             Variant = BadgeVariant.Critical }
@@ -1810,13 +1848,15 @@ let scalarTransformComposition: Node<obj> =
                                         )
                                         Fuaran.Core.Project [ "alert", "alert" ]
                                         Fuaran.Core.Limit(1, 0) ],
-                                      [ "ticketId",
-                                        Binding.Selection(
-                                            NodeId "scalar-ticket-grid",
-                                            Binding.projectSelectionField<obj> "id",
-                                            Some(box "TCK-2041"),
-                                            Some "id"
-                                        ) ]
+                                      Some
+                                          [ { From =
+                                                Binding.Selection(
+                                                    "scalar-ticket-grid",
+                                                    Binding.projectSelectionField<JVal> "id",
+                                                    Some(JStr "TCK-2041"),
+                                                    Some "id"
+                                                )
+                                              Name = "ticketId" } ]
                                   )
                               )
                             Icon = None
@@ -1867,8 +1907,11 @@ let filterableStaticDashboard: Node<obj> =
                   Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "region", Fuaran.Core.Param "region")
               )
               Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "genre", Fuaran.Core.Param "genre")) ],
-            [ "region", Binding.Filter("region", None)
-              "genre", Binding.Filter("genre", None) ]
+            Some
+                [ { From = Binding.Filter("region", None)
+                    Name = "region" }
+                  { From = Binding.Filter("genre", None)
+                    Name = "genre" } ]
         )
 
     let choice (name: string) (label: string) (options: (string * string) list) : FilterSpec<obj> =
@@ -1876,10 +1919,12 @@ let filterableStaticDashboard: Node<obj> =
           Label = TextSource.Literal label
           Field =
             FormFieldKind.Choice(
-                Binding.Static
-                    [ for value, optLabel in options ->
-                          { Value = value
-                            Label = TextSource.Literal optLabel } ],
+                Binding.Static(
+                    Some
+                        [ for value, optLabel in options ->
+                              { Value = value
+                                Label = TextSource.Literal optLabel } ]
+                ),
                 Binding.Filter(name, None),
                 None
             ) }
@@ -1941,7 +1986,7 @@ let queryDependsOn: Node<obj> =
         "query-dependson"
         (NodeKind.Metric(
             { metricSpec with
-                Value = Binding.Query("orders", (fun _ -> 0.0), [ "status"; "region" ])
+                Value = Binding.Query("orders", (fun _ -> 0.0), Some [ "status"; "region" ])
                 Trend = None
                 TrendFormat = None }
         ))
@@ -1953,7 +1998,7 @@ let table: Node<obj> =
         (
         // Phase 393 — the static read-only table is now the `StaticRows` mode of `DataGrid`.
         NodeKind.DataGrid
-            { Source = Binding.Static Seq.empty
+            { Source = Binding.Static(Some Seq.empty)
               RowKey = None
               RowKeyField = None
               Columns = []
@@ -1973,10 +2018,12 @@ let mapVis: Node<obj> =
         (NodeKind.Map(
             { Source =
                 Binding.Static(
-                    seq
-                        [ { Latitude = 51.5
-                            Longitude = -0.12
-                            Label = TextSource.Literal "London" } ]
+                    Some(
+                        seq
+                            [ { Latitude = 51.5
+                                Longitude = -0.12
+                                Label = TextSource.Literal "London" } ]
+                    )
                 )
               CentreLatitude = 51.5
               CentreLongitude = -0.12
@@ -2204,7 +2251,7 @@ let opUpdateProp: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "metric-1", "Label", PropValue.Wire(JStr "Updated revenue"))
 
 let opReplaceBinding: TreeOp<obj> =
-    TreeOp.ReplaceBinding(NodeId "metric-1", "Value", Binding.Static(box 99.5))
+    TreeOp.ReplaceBinding(NodeId "metric-1", "Value", Binding.Static(Some(box 99.5)))
 
 let opUpdateStyle: TreeOp<obj> =
     TreeOp.UpdateStyle(
@@ -2313,17 +2360,19 @@ let opUpdatePropNestedMalformed: TreeOp<obj> =
 // slot.
 
 let formLocalText: Node<obj> =
-    let localFloat: LocalBinding<string> =
-        { InitialFrom = Binding.State("salary", "")
-          FlushOn = LocalFlushTrigger.OnBlur
-          OnCommit = (fun _ -> box (Action.Chain []: Action<obj>))
-          Format = Some(fun (s: string) -> s)
-          Parse = (fun (raw: string) -> Ok raw) }
+    let localFloat: Binding<string> =
+        Binding.Local(
+            LocalFlushTrigger.OnBlur,
+            (fun (s: string) -> s),
+            Binding.State("salary", Some ""),
+            Some(fun _ -> box (Action.Chain []: Action<obj>)),
+            (fun (raw: string) -> Ok raw)
+        )
 
     let textField: FormField<obj> =
         { Id = "salary-input"
           Label = TextSource.Literal "Salary"
-          Kind = FormFieldKind.Text(Binding.Local localFloat, Some(fun _ -> placeholderChain))
+          Kind = FormFieldKind.Text(localFloat, Some(fun _ -> placeholderChain))
           Required = false
           Help = None }
 
@@ -2340,17 +2389,19 @@ let formLocalText: Node<obj> =
 // Form whose single Text field uses `Binding.Local` with FlushOn =
 // OnDebounce 250 — exercises the payload-carrying flush trigger.
 let formLocalDebounce: Node<obj> =
-    let localDebounce: LocalBinding<string> =
-        { InitialFrom = Binding.Static "draft@example.com"
-          FlushOn = LocalFlushTrigger.OnDebounce 250
-          OnCommit = (fun _ -> box (Action.Chain []: Action<obj>))
-          Format = Some id
-          Parse = (fun raw -> Ok raw) }
+    let localDebounce: Binding<string> =
+        Binding.Local(
+            LocalFlushTrigger.OnDebounce 250,
+            id,
+            Binding.Static(Some "draft@example.com"),
+            Some(fun _ -> box (Action.Chain []: Action<obj>)),
+            (fun raw -> Ok raw)
+        )
 
     let textField: FormField<obj> =
         { Id = "email-input"
           Label = TextSource.Literal "Email"
-          Kind = FormFieldKind.Text(Binding.Local localDebounce, Some(fun _ -> placeholderChain))
+          Kind = FormFieldKind.Text(localDebounce, Some(fun _ -> placeholderChain))
           Required = true
           Help = None }
 
@@ -2402,22 +2453,24 @@ let formatBindings: Node<obj> =
               Children =
                 [ md
                       "fmt-number"
-                      (Binding.Format(Binding.Static 1234.5, Format.Number(Some 2), LocaleSource.Explicit "en-US"))
+                      (Binding.Format(Binding.Static(Some 1234.5), Format.Number(Some 2), LocaleSource.Explicit "en-US"))
                   md
                       "fmt-currency"
-                      (Binding.Format(Binding.Static 1234.5, Format.Currency "GBP", LocaleSource.Explicit "en-GB"))
-                  md "fmt-percent" (Binding.Format(Binding.Static 0.42, Format.Percent None, LocaleSource.Ambient))
+                      (Binding.Format(Binding.Static(Some 1234.5), Format.Currency "GBP", LocaleSource.Explicit "en-GB"))
+                  md
+                      "fmt-percent"
+                      (Binding.Format(Binding.Static(Some 0.42), Format.Percent None, LocaleSource.Ambient))
                   md
                       "fmt-date"
                       (Binding.Format(
-                          Binding.Static 1700000000.0,
+                          Binding.Static(Some 1700000000.0),
                           Format.Date DateStyle.Medium,
                           LocaleSource.Explicit "fr-FR"
                       ))
                   md
                       "fmt-relative"
                       (Binding.Format(
-                          Binding.Static -3.0,
+                          Binding.Static(Some(-3.0)),
                           Format.RelativeTime RelativeTimeUnit.Day,
                           LocaleSource.Explicit "en-US"
                       )) ] }

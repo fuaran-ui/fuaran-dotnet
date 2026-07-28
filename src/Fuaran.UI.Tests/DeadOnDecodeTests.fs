@@ -77,7 +77,7 @@ let tests =
                           { Fields =
                               [ { Id = "name"
                                   Label = TextSource.Literal "Name"
-                                  Kind = FormFieldKind.Text(Binding.Static "", Some placeholder)
+                                  Kind = FormFieldKind.Text(Binding.Static(Some ""), Some placeholder)
                                   Required = false
                                   Help = None } ]
                             OnSubmit = Action.Chain []
@@ -89,7 +89,7 @@ let tests =
                   node
                       "grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Static Seq.empty
+                          { Source = Binding.Static(Some Seq.empty)
                             RowKey = Some(fun _ -> "<closure>")
                             RowKeyField = None
                             Columns =
@@ -151,7 +151,7 @@ let tests =
                           { Fields =
                               [ { Id = "name"
                                   Label = TextSource.Literal "Name"
-                                  Kind = FormFieldKind.Text(Binding.State("name", ""), None)
+                                  Kind = FormFieldKind.Text(Binding.State("name", Some ""), None)
                                   Required = false
                                   Help = None } ]
                             OnSubmit = Action.Chain []
@@ -163,7 +163,7 @@ let tests =
                   node
                       "grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Static Seq.empty
+                          { Source = Binding.Static(Some Seq.empty)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns =

@@ -34,7 +34,7 @@ public static partial class Fuaran
                 NoHandler<int>(),
                 Fs.None<Microsoft.FSharp.Collections.FSharpList<FsTypes.TabHeader>>(),
                 Fs.None<Microsoft.FSharp.Collections.FSharpList<string>>(),
-                Fs.None<FsTypes.Binding<string>>(),
+                Fs.None<global::Fuaran.UI.Generated.Binding<string>>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<string, FsAction>>())));
 
     /// <summary>A stepper. The active step is driven by <c>ActiveStep</c>.</summary>

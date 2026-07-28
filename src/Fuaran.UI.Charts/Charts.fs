@@ -159,12 +159,12 @@ let private withSeriesMark (seriesField: string) (style: DrawStyle) : DrawStyle 
 
 let private styleFill (fill: string) : DrawStyle =
     { baseStyle with
-        Fill = Some(Binding.Static fill) }
+        Fill = Some(Binding.Static(Some fill)) }
 
 let private styleStroke (stroke: string) (width: float) : DrawStyle =
     { baseStyle with
-        Stroke = Some(Binding.Static stroke)
-        StrokeWidth = Some(Binding.Static width) }
+        Stroke = Some(Binding.Static(Some stroke))
+        StrokeWidth = Some(Binding.Static(Some width)) }
 
 /// A translucent categorical fill (Phase 637 — area bands). The gridlines stay
 /// legible through the band; the series' full-strength Polyline edge on top
@@ -174,17 +174,17 @@ let private areaFillOpacity = 0.35
 
 let private styleFillOpacity (fill: string) (opacity: float) : DrawStyle =
     { baseStyle with
-        Fill = Some(Binding.Static fill)
-        Opacity = Some(Binding.Static opacity) }
+        Fill = Some(Binding.Static(Some fill))
+        Opacity = Some(Binding.Static(Some opacity)) }
 
 /// A surface-relative structural stroke (Phase 536): `currentColor` at a per-role
 /// opacity, so axis + gridlines ink from the surface's own text colour. Used for
 /// the chrome (axes, gridlines) — series lines keep their categorical hex.
 let private styleStrokeInk (opacity: float) (width: float) : DrawStyle =
     { baseStyle with
-        Stroke = Some(Binding.Static ink)
-        StrokeWidth = Some(Binding.Static width)
-        Opacity = Some(Binding.Static opacity) }
+        Stroke = Some(Binding.Static(Some ink))
+        StrokeWidth = Some(Binding.Static(Some width))
+        Opacity = Some(Binding.Static(Some opacity)) }
 
 let private emptyStyle: DrawStyle = baseStyle
 
@@ -193,8 +193,8 @@ let private emptyStyle: DrawStyle = baseStyle
 /// size + weight + the chart font.
 let private textStyle (opacity: float option) (anchor: TextAnchor) (size: float) (emphasis: Emphasis) : DrawStyle =
     { baseStyle with
-        Fill = Some(Binding.Static ink)
-        Opacity = opacity |> Option.map Binding.Static
+        Fill = Some(Binding.Static(Some ink))
+        Opacity = opacity |> Option.map (Some >> Binding.Static)
         TextAnchor = Some anchor
         FontSize = Some size
         Emphasis = Some emphasis

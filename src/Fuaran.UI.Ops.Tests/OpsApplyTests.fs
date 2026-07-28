@@ -399,7 +399,7 @@ let tests =
                   TreeOp.UpdateProp(
                       NodeId "analysis-tabs",
                       "TabHeaders[0].Disabled",
-                      PropValue.Native(nn (Binding.Static true: Binding<bool>))
+                      PropValue.Native(nn (Binding.Static(Some true): Binding<bool>))
                   )
 
               match Apply.apply op analysisTabs with
@@ -407,7 +407,7 @@ let tests =
                   match updated.Kind with
                   | NodeKind.Tabs(spec) ->
                       match spec.TabHeaders with
-                      | Some [ { Disabled = Some(Binding.Static true) }; _ ] -> ()
+                      | Some [ { Disabled = Some(Binding.Static(Some true)) }; _ ] -> ()
                       | other -> failtestf "Expected first header disabled, got %A" other
                   | other -> failtestf "Expected Tabs, got %A" other
               | Error err -> failtestf "Expected Ok, got Error %A" err
@@ -481,7 +481,7 @@ let tests =
           // ─── ReplaceBinding ────────────────────────────────────────────────
 
           test "ReplaceBinding 'Source' on the Metric swaps in the new typed binding" {
-              let newBinding: Binding<obj> = Binding.Static(nn 12345.0)
+              let newBinding: Binding<obj> = Binding.Static(Some(nn 12345.0))
               let op = TreeOp.ReplaceBinding(NodeId "revenue-metric", "Value", newBinding)
 
               match Apply.apply op dashboard with
@@ -489,7 +489,7 @@ let tests =
                   match Introspect.findNode (NodeId "revenue-metric") updated with
                   | Some { Kind = NodeKind.Metric(spec) } ->
                       match spec.Value with
-                      | Binding.Static v -> Expect.equal v 12345.0 "Static value updated"
+                      | Binding.Static(Some v) -> Expect.equal v 12345.0 "Static value updated"
                       | other -> failtestf "Expected Binding.Static, got %A" other
                   | _ -> failtest "Metric not found"
               | Error err -> failtestf "Expected Ok, got Error %A" err
@@ -497,7 +497,7 @@ let tests =
 
           test "ReplaceBinding against an unknown slot returns SlotNotFound with available slots hint" {
               let op =
-                  TreeOp.ReplaceBinding(NodeId "revenue-metric", "Bogus", Binding.Static(nn 0.0))
+                  TreeOp.ReplaceBinding(NodeId "revenue-metric", "Bogus", Binding.Static(Some(nn 0.0)))
 
               match Apply.apply op dashboard with
               | Ok _ -> failtest "Expected SlotNotFound error"
@@ -758,7 +758,7 @@ let tests =
                           Label = TextSource.Literal "Income"
                           Value = binding.``static`` 50000.0 }
 
-              let newBinding: Binding<obj> = Binding.Static(nn 62500.0)
+              let newBinding: Binding<obj> = Binding.Static(Some(nn 62500.0))
               let op = TreeOp.ReplaceBinding(NodeId "row-income", "Value", newBinding)
 
               match Apply.apply op row with
@@ -766,7 +766,7 @@ let tests =
                   match updated.Kind with
                   | NodeKind.LabelValueRow(spec) ->
                       match spec.Value with
-                      | Binding.Static v -> Expect.equal v 62500.0 "Static binding updated"
+                      | Binding.Static(Some v) -> Expect.equal v 62500.0 "Static binding updated"
                       | other -> failtestf "Expected Binding.Static, got %A" other
                   | other -> failtestf "Expected LabelValueRow, got %A" other
               | Error err -> failtestf "Expected Ok, got Error %A" err

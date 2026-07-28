@@ -92,12 +92,12 @@ let private demoMetric (tone, weight, emphasis) : Node<unit> =
         (idFor "metric" tone weight emphasis)
         { Defaults.metric with
             Label = TextSource.Bound(Binding.I18n("catalog.metric.label", None))
-            Value = Binding.Static 142_500.0
+            Value = Binding.Static(Some 142_500.0)
             Format = format.currency "GBP"
             Tone = tone
             Weight = weight
             Emphasis = emphasis
-            Trend = Some(Binding.Static 0.083)
+            Trend = Some(Binding.Static(Some 0.083))
             TrendFormat = Some(format.percent (Some 1)) }
 
 let private demoBadge (tone, weight, emphasis) : Node<unit> =
@@ -166,7 +166,7 @@ let private demoProgress (tone, weight, emphasis) : Node<unit> =
     Fuaran.progress
         (idFor "progress" tone weight emphasis)
         { Defaults.progress with
-            Fraction = Binding.Static 0.42
+            Fraction = Binding.Static(Some 0.42)
             Tone = tone
             Label = Some(TextSource.Literal "Loading channels…") }
 
@@ -174,7 +174,7 @@ let private demoSparkline (tone, weight, emphasis) : Node<unit> =
     let id = idFor "sparkline" tone weight emphasis
 
     { Id = NodeId id
-      Kind = NodeKind.Sparkline({ Source = Binding.Static [ 1.0; 4.0; 2.0; 6.0; 3.0; 8.0; 5.0; 9.0 ] })
+      Kind = NodeKind.Sparkline({ Source = Binding.Static(Some [ 1.0; 4.0; 2.0; 6.0; 3.0; 8.0; 5.0; 9.0 ]) })
       State = Defaults.stateBehaviour<unit>
       Style =
         { Tone = tone
@@ -197,7 +197,7 @@ let private demoLabelValueRow (tone, weight, emphasis) : Node<unit> =
         (idFor "labelValueRow" tone weight emphasis)
         { Defaults.labelValueRow with
             Label = TextSource.Bound(Binding.I18n("catalog.labelValueRow.label", None))
-            Value = Binding.Static 142_500.0
+            Value = Binding.Static(Some 142_500.0)
             Format = format.currency "GBP"
             Emphasis = (emphasis = Emphasis.Loud)
             Help = Some(TextSource.Literal "Year-to-date, gross.") }
@@ -222,13 +222,15 @@ let private demoSelect (tone, weight, emphasis) : Node<unit> =
         { Defaults.select<unit> with
             Label = TextSource.Literal "Contributor peer"
             Source =
-                Binding.Static
-                    [ { Value = "buyer-peer"
-                        Label = TextSource.Literal "Buyer peer" }
-                      { Value = "seller-peer"
-                        Label = TextSource.Literal "Seller peer" }
-                      { Value = "portal-peer"
-                        Label = TextSource.Literal "Portal peer" } ]
+                Binding.Static(
+                    Some
+                        [ { Value = "buyer-peer"
+                            Label = TextSource.Literal "Buyer peer" }
+                          { Value = "seller-peer"
+                            Label = TextSource.Literal "Seller peer" }
+                          { Value = "portal-peer"
+                            Label = TextSource.Literal "Portal peer" } ]
+                )
             Value = Binding.Static None
             OnChange = Some(fun _ -> Action.Chain [])
             Placeholder = Some(TextSource.Literal "Choose a peer…") }
@@ -243,11 +245,11 @@ let private demoForm (tone, weight, emphasis) : Node<unit> =
                       Id = "form-text"
                       Label = TextSource.Literal "Cohort name"
                       Required = true
-                      Kind = FormFieldKind.Text(Binding.Static "", Some(fun _ -> Action.Chain [])) }
+                      Kind = FormFieldKind.Text(Binding.Static(Some ""), Some(fun _ -> Action.Chain [])) }
                   { Defaults.formField<unit> with
                       Id = "form-number"
                       Label = TextSource.Literal "Sample size"
-                      Kind = FormFieldKind.Number(Binding.Static 100.0, Some(fun _ -> Action.Chain [])) } ] }
+                      Kind = FormFieldKind.Number(Binding.Static(Some 100.0), Some(fun _ -> Action.Chain [])) } ] }
 
 let private demoFormRangedNumber (tone, weight, emphasis) : Node<unit> =
     // Catalog axis. Each field exercises one of the eight
@@ -268,7 +270,7 @@ let private demoFormRangedNumber (tone, weight, emphasis) : Node<unit> =
             Id = id
             Label = TextSource.Literal label
             Help = Some(TextSource.Literal help)
-            Kind = FormFieldKind.rangedNumber (Binding.Static init) (fun _ -> Action.Chain []) minV maxV stepV }
+            Kind = FormFieldKind.rangedNumber (Binding.Static(Some init)) (fun _ -> Action.Chain []) minV maxV stepV }
 
     Fuaran.form
         (idFor "formRangedNumber" tone weight emphasis)
@@ -297,7 +299,7 @@ let private demoFilters (tone, weight, emphasis) : Node<unit> =
         [ { Defaults.filter<unit> with
               Name = "text-filter"
               Label = TextSource.Literal "Search"
-              Field = FormFieldKind.Text(Binding.Static "", Some(fun _ -> Action.Chain [])) } ]
+              Field = FormFieldKind.Text(Binding.Static(Some ""), Some(fun _ -> Action.Chain [])) } ]
 
 let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
     // Catalog axis. Three exclusive-choice surfaces:
@@ -335,7 +337,7 @@ let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
                       Help = Some(TextSource.Literal "3-way segmented control — no initial selection")
                       Kind =
                           FormFieldKind.SegmentedChoice(
-                              Binding.Static metricOpts,
+                              Binding.Static(Some metricOpts),
                               Binding.Static None,
                               Some(fun _ -> Action.Chain []),
                               Horizontal
@@ -346,7 +348,7 @@ let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
                       Help = Some(TextSource.Literal "Native radio-button list — browser handles arrow-key nav")
                       Kind =
                           FormFieldKind.SegmentedChoice(
-                              Binding.Static tierOpts,
+                              Binding.Static(Some tierOpts),
                               Binding.Static None,
                               Some(fun _ -> Action.Chain []),
                               Vertical
@@ -357,8 +359,8 @@ let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
                       Help = Some(TextSource.Literal "Initial selection — exercises active-state styling")
                       Kind =
                           FormFieldKind.SegmentedChoice(
-                              Binding.Static metricOpts,
-                              Binding.Static(Some "marginal"),
+                              Binding.Static(Some metricOpts),
+                              Binding.Static(Some(Some "marginal")),
                               Some(fun _ -> Action.Chain []),
                               Horizontal
                           ) } ] }
@@ -394,13 +396,15 @@ let private demoMap (tone, weight, emphasis) : Node<unit> =
         { Defaults.map<unit> with
             Source =
                 Binding.Static(
-                    [ { Latitude = 51.5074
-                        Longitude = -0.1278
-                        Label = TextSource.Literal "London" }
-                      { Latitude = 40.7128
-                        Longitude = -74.006
-                        Label = TextSource.Literal "New York" } ]
-                    :> MapMarker seq
+                    Some(
+                        [ { Latitude = 51.5074
+                            Longitude = -0.1278
+                            Label = TextSource.Literal "London" }
+                          { Latitude = 40.7128
+                            Longitude = -74.006
+                            Label = TextSource.Literal "New York" } ]
+                        :> MapMarker seq
+                    )
                 )
             CentreLatitude = 30.0
             CentreLongitude = -30.0
@@ -410,7 +414,7 @@ let private demoChart (tone, weight, emphasis) : Node<unit> =
     Fuaran.chart
         (idFor "chart" tone weight emphasis)
         { Defaults.chart<unit> with
-            Source = Binding.Static Seq.empty
+            Source = Binding.Static(Some Seq.empty)
             Kind = ChartKind.Bar
             XField = "x"
             YFields = [ "y" ]
@@ -432,7 +436,7 @@ let private demoGrid (tone, weight, emphasis) : Node<unit> =
     Fuaran.grid
         (idFor "grid" tone weight emphasis)
         { Defaults.grid<GridRow, unit> with
-            Source = Binding.Static gridRows
+            Source = Binding.Static(Some gridRows)
             RowKey = (fun r -> string r.Row)
             Columns =
                 [ Column.text "Channel" (fun r -> r.Name)
@@ -504,7 +508,7 @@ let private demoTabs (tone, weight, emphasis) : Node<unit> =
     Fuaran.tabs
         (idFor "tabs" tone weight emphasis)
         { Defaults.tabs<unit> with
-            ActiveIndex = Binding.Static 0
+            ActiveIndex = Binding.Static(Some 0)
             Children =
                 [ Fuaran.card
                       "_tab1"
@@ -528,7 +532,7 @@ let private demoStepper (tone, weight, emphasis) : Node<unit> =
     Fuaran.stepper
         (idFor "stepper" tone weight emphasis)
         { Defaults.stepper<unit> with
-            ActiveStep = Binding.Static 1
+            ActiveStep = Binding.Static(Some 1)
             Children =
                 [ Fuaran.markdown "_s1" "Step 1 — define cohort."
                   Fuaran.markdown "_s2" "Step 2 — choose dimensions."
@@ -544,13 +548,13 @@ let private demoSummaryList (tone, weight, emphasis) : Node<unit> =
                       "_lvr1"
                       { Defaults.labelValueRow with
                           Label = TextSource.Literal "Revenue"
-                          Value = Binding.Static 142_500.0
+                          Value = Binding.Static(Some 142_500.0)
                           Format = format.currency "GBP" }
                   Fuaran.labelValueRow
                       "_lvr2"
                       { Defaults.labelValueRow with
                           Label = TextSource.Literal "Total"
-                          Value = Binding.Static 158_900.0
+                          Value = Binding.Static(Some 158_900.0)
                           Format = format.currency "GBP"
                           Emphasis = true } ] }
 

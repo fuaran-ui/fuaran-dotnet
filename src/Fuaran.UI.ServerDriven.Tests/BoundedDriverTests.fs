@@ -38,7 +38,7 @@ let private boundMarkdown (id: string) (key: string) (dflt: string) : Node<obj> 
     let n = Fuaran.markdown id "placeholder"
 
     { n with
-        Kind = NodeKind.Markdown({ Text = TextSource.Bound(Binding.State(key, dflt)) }) }
+        Kind = NodeKind.Markdown({ Text = TextSource.Bound(Binding.State(key, Some dflt)) }) }
 
 /// A dashboard: a button (OnClick supplied) + the reactive Markdown bound to
 /// state key "msg" (default "init").

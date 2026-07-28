@@ -75,10 +75,10 @@ let drawingSvgTests =
           test "Rectangle with cornerRadius + resolved style attrs" {
               let styled: DrawStyle =
                   { noStyle with
-                      Fill = Some(Binding.Static "#39c")
-                      Stroke = Some(Binding.Static "#123")
-                      StrokeWidth = Some(Binding.Static 1.5)
-                      Opacity = Some(Binding.Static 0.9) }
+                      Fill = Some(Binding.Static(Some "#39c"))
+                      Stroke = Some(Binding.Static(Some "#123"))
+                      StrokeWidth = Some(Binding.Static(Some 1.5))
+                      Opacity = Some(Binding.Static(Some 0.9)) }
 
               let svg =
                   render (drawing [ Shape.Rectangle(10.0, 10.0, 80.0, 40.0, Some 4.0, styled) ] None)
@@ -133,7 +133,7 @@ let drawingSvgTests =
           test "Label text style — anchor + font + size + weight (Phase 528.1)" {
               let styled: DrawStyle =
                   { noStyle with
-                      Fill = Some(Binding.Static "#111")
+                      Fill = Some(Binding.Static(Some "#111"))
                       TextAnchor = Some TextAnchor.End
                       FontFamily = Some "system-ui, sans-serif"
                       FontSize = Some 16.0
@@ -167,7 +167,7 @@ let drawingSvgTests =
                           [ Shape.Group(
                                 [ Shape.Circle(5.0, 5.0, 2.0, noStyle) ],
                                 { noStyle with
-                                    Stroke = Some(Binding.Static "#000") }
+                                    Stroke = Some(Binding.Static(Some "#000")) }
                             ) ]
                           None
                   )

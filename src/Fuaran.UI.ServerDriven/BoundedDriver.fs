@@ -74,7 +74,7 @@ open Fuaran.UI.Renderer.BindingResolver
 /// loading / error states still apply). Generic over the binding's `'T`.
 let private substB (sources: BindingSources) (b: Binding<'T>) : Binding<'T> =
     match BindingResolver.resolve sources b with
-    | Resolved v -> Binding.Static v
+    | Resolved v -> Binding.Static(Some v)
     | NotResolved
     | Errored _
     | I18nUnresolved _ -> b

@@ -281,7 +281,9 @@ let tests =
               // `Binding.State` slot into derived label text. The resolver must
               // hand the closure a context populated from the live `State` bag.
               let computed: Binding<string> =
-                  Binding.Computed(fun ctx ->
+                  Binding.Computed(fun (o: obj) ->
+                      let ctx = unbox<BindingContext> o
+
                       if ctx.TryGetState<bool> "busy" = Some true then
                           "Working…"
                       else
@@ -299,7 +301,9 @@ let tests =
 
           test "Binding.Computed sees the State default branch when the key is absent" {
               let computed: Binding<string> =
-                  Binding.Computed(fun ctx ->
+                  Binding.Computed(fun (o: obj) ->
+                      let ctx = unbox<BindingContext> o
+
                       if ctx.TryGetState<bool> "busy" = Some true then
                           "Working…"
                       else
@@ -335,7 +339,9 @@ let tests =
               // under the .NET runner; TryGetState swallows it to None rather
               // than letting the Computed closure throw.
               let computed: Binding<string> =
-                  Binding.Computed(fun ctx ->
+                  Binding.Computed(fun (o: obj) ->
+                      let ctx = unbox<BindingContext> o
+
                       match ctx.TryGetState<bool> "busy" with
                       | Some true -> "on"
                       | Some false -> "off"

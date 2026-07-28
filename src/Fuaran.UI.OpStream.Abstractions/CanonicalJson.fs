@@ -581,19 +581,25 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
         | Binding.Static v ->
             // Closures-as-Static aren't a thing — Static carries values.
             // Phase 677: an absent payload omits the key; it never emits null.
-            let valueField = if isAbsentPayload v then [] else [ "value", staticEnc v ]
+            // Since the swap absence is the OUTER `None` of the generated
+            // `value: 'T option`; the inner `isAbsentPayload` check keeps a
+            // legacy `Some null` / option-typed-slot `Some None` byte-identical.
+            let valueField =
+                match v with
+                | Some p when not (isAbsentPayload p) -> [ "value", staticEnc p ]
+                | _ -> []
 
             appendObject sb (case "Static" valueField)
         | Binding.Query(name, _accessor, dependsOn) ->
             // §4i — accessor is a wire-expression closure; canonical form renders the name only and
             // the accessor as a sentinel. Phase 421 — `dependsOn` (the declared filter dependency
-            // edge) rides as a string array, omitted-when-empty so the degenerate Query is byte-stable.
-            // Ordinal order: `$type` < `accessor` < `dependsOn` < `name`.
+            // edge) rides as a string array, omitted-when-empty/absent so the degenerate Query is
+            // byte-stable. Ordinal order: `$type` < `accessor` < `dependsOn` < `name`.
             let dependsOnField =
-                if List.isEmpty dependsOn then
-                    []
-                else
-                    [ "dependsOn", (fun sb -> appendArrayWith sb (dependsOn |> List.map str)) ]
+                match dependsOn with
+                | None
+                | Some [] -> []
+                | Some deps -> [ "dependsOn", (fun sb -> appendArrayWith sb (deps |> List.map str)) ]
 
             appendObject sb (case "Query" (dependsOnField @ [ "name", str name ]))
         | Binding.Filter(name, defaultValue) ->
@@ -623,42 +629,46 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
                 | Some f -> [ "field", str f ]
                 | None -> []
 
-            appendObject sb (case "Selection" (defaultField @ fieldField @ [ "nodeId", str (nodeIdStr nodeId) ]))
+            appendObject sb (case "Selection" (defaultField @ fieldField @ [ "nodeId", str nodeId ]))
         | Binding.State(key, defaultValue) ->
-            // Phase 677: same rule as `Static` — absence omits, never null.
+            // Phase 677: same rule as `Static` — absence omits, never null
+            // (outer `None` since the swap; inner absence still omits too).
             let defaultField =
-                if isAbsentPayload defaultValue then
-                    []
-                else
-                    [ "defaultValue", staticEnc defaultValue ]
+                match defaultValue with
+                | Some d when not (isAbsentPayload d) -> [ "defaultValue", staticEnc d ]
+                | _ -> []
 
             appendObject sb (case "State" (defaultField @ [ "key", str key ]))
         | Binding.Computed _ -> appendObject sb (case "Computed" [ "fn", sentinel closureSentinel ])
         | Binding.I18n(key, args) ->
-            // i18n binding. Args are `Map<string, Binding<obj>>
-            // option`; each `Binding<obj>` renders via `encodeBinding<obj>`
-            // recursively. None args ⇒ omit the field; Some ⇒ encode an
-            // object map keyed by arg name. Field order matches `TextSource.I18n`
-            // (args first, key second) per the existing canonical convention.
+            // i18n binding. Args are `Map<string, Binding<JVal>> option` (the
+            // swap's typed verbatim carrier); each renders via the JVal-typed
+            // binding encoder recursively. None args ⇒ omit the field; Some ⇒
+            // encode an object map keyed by arg name. Field order matches
+            // `TextSource.I18n` (args first, key second) per the existing
+            // canonical convention.
             let argsField =
                 args
-                |> Option.map (fun (m: Map<string, Binding<obj>>) ->
-                    let fields = m |> Map.toList |> List.map (fun (k, v) -> k, encodeBinding<obj> v)
+                |> Option.map (fun (m: Map<string, Binding<JVal>>) ->
+                    let fields =
+                        m
+                        |> Map.toList
+                        |> List.map (fun (k, v) -> k, encodeBindingWith<JVal> (fun jv -> encodeJVal jv) v)
 
                     let argsAppender: Appender = fun sb -> appendObject sb fields
                     "args", argsAppender)
                 |> Option.toList
 
             appendObject sb (case "I18n" (argsField @ [ "key", str key ]))
-        | Binding.Local local ->
-            // Local binding. `OnCommit` / `Format` / `Parse` are
-            // closures; encode as `<closure>` sentinels. `InitialFrom`
-            // recurses through encodeBinding for the same 'T; `FlushOn`
-            // is its own DU. Field order matches the established lexicographic
-            // shape: flushOn, initialFrom, then the three closure sentinels.
+        | Binding.Local(flushOn, _format, initialFrom, onCommit, _parse) ->
+            // Local binding (positional since the swap). `format` / `parse` are
+            // closures encoded as `<closure>` sentinels unconditionally (both
+            // slots are required); `onCommit` rides only when present — decode
+            // always restores `Some`, so the corpus stays byte-identical.
+            // `initialFrom` recurses through the same 'T; `flushOn` is its own DU.
             let flushAppender: Appender =
                 fun sb ->
-                    match local.FlushOn with
+                    match flushOn with
                     | LocalFlushTrigger.OnBlur -> appendObject sb (case "OnBlur" [])
                     | LocalFlushTrigger.OnSubmit -> appendObject sb (case "OnSubmit" [])
                     | LocalFlushTrigger.OnCommitAction -> appendObject sb (case "OnCommitAction" [])
@@ -667,15 +677,20 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
                             sb
                             (case "OnDebounce" [ "milliseconds", (fun sb -> sb.Append(string ms) |> ignore) ])
 
+            let onCommitField =
+                match onCommit with
+                | Some _ -> [ "onCommit", sentinel closureSentinel ]
+                | None -> []
+
             appendObject
                 sb
                 (case
                     "Local"
-                    [ "flushOn", flushAppender
-                      "format", sentinel closureSentinel
-                      "initialFrom", encodeBindingWith<'T> staticEnc local.InitialFrom
-                      "onCommit", sentinel closureSentinel
-                      "parse", sentinel closureSentinel ])
+                    ([ "flushOn", flushAppender
+                       "format", sentinel closureSentinel
+                       "initialFrom", encodeBindingWith<'T> staticEnc initialFrom ]
+                     @ onCommitField
+                     @ [ "parse", sentinel closureSentinel ]))
         | Binding.Format(source, format, locale) ->
             // Locale-aware formatted value (Phase 102). `source`
             // is always `Binding<float>` (independent of 'T); `format` /
@@ -699,16 +714,21 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
             // Phase 424 — `params` binds `ColExpr.Param` names to scalar `Binding<obj>` sources;
             // omitted-when-empty so a param-free Transform is byte-identical to the Phase 282 wire.
             let paramField =
-                if List.isEmpty parameters then
-                    []
-                else
+                match parameters with
+                | None
+                | Some [] -> []
+                | Some ps ->
                     [ "params",
                       (fun sb ->
                           appendArrayWith
                               sb
-                              (parameters
-                               |> List.map (fun (name, fromB) ->
-                                   fun sb -> appendObject sb [ "from", encodeBinding<obj> fromB; "name", str name ]))) ]
+                              (ps
+                               |> List.map (fun (p: TransformParam) ->
+                                   fun sb ->
+                                       appendObject
+                                           sb
+                                           [ "from", encodeBindingWith<JVal> (fun jv -> encodeJVal jv) p.From
+                                             "name", str p.Name ]))) ]
 
             appendObject
                 sb
@@ -719,9 +739,15 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
                          "source", (fun sb -> sb.Append(Fuaran.Core.ColumnCodec.encode source) |> ignore) ]))
         | Binding.Invoke(capabilityId, args) ->
             // Phase 283 — invoke a host-registered capability for a value. `args` are scalar
-            // `(addr, value)` pairs (validated host-side against the capability's signature); the
-            // body is never on the wire. Field order is canonical (`$type` < `args` < `capabilityId`).
-            appendObject sb (case "Invoke" [ "args", invokeArgsAppender args; "capabilityId", str capabilityId ])
+            // `InvokeArg` records since the swap (validated host-side against the capability's
+            // signature); the body is never on the wire. Field order is canonical
+            // (`$type` < `args` < `capabilityId`).
+            appendObject
+                sb
+                (case
+                    "Invoke"
+                    [ "args", invokeArgsAppender (args |> List.map (fun (a: InvokeArg) -> a.Addr, a.Value))
+                      "capabilityId", str capabilityId ])
 
 and private encodeBinding<'T> (b: Binding<'T>) : Appender =
     // Default static encoding — the `appendObj` best-effort primitives +
@@ -1209,7 +1235,7 @@ let private encodeFormFieldKind<'Msg> (autoBind: ControlAutoBind) (k: FormFieldK
         let valueField (enc: Binding<'v> -> Appender) (autoDefault: 'v) (v: Binding<'v>) : Field list =
             match autoBind, v with
             | FilterChip n, Binding.Filter(fn, None) when fn = n -> []
-            | FormFieldId fieldId, Binding.State(key, d) when key = fieldId && d = autoDefault -> []
+            | FormFieldId fieldId, Binding.State(key, Some d) when key = fieldId && d = autoDefault -> []
             | _ -> [ "value", enc v ]
 
         // Handlers ride the wire only when present (Phase 426, generalising the
@@ -1309,7 +1335,8 @@ let private encodeFormFieldKind<'Msg> (autoBind: ControlAutoBind) (k: FormFieldK
             // omitted when absent (rule 4).
             let rangeValue (v: Binding<float * float>) : Appender =
                 match v with
-                | Binding.Static(minV, maxV) -> fun sb2 -> appendObject sb2 [ "max", float_ maxV; "min", float_ minV ]
+                | Binding.Static(Some(minV, maxV)) ->
+                    fun sb2 -> appendObject sb2 [ "max", float_ maxV; "min", float_ minV ]
                 | other ->
                     encodeBindingWith
                         (fun (a, b) -> fun sb2 -> appendObject sb2 [ "max", float_ b; "min", float_ a ])
@@ -1332,7 +1359,7 @@ let private encodeFormFieldKind<'Msg> (autoBind: ControlAutoBind) (k: FormFieldK
             let vField =
                 match autoBind, value with
                 | FilterChip n, Binding.Filter(fn, None) when fn = n -> []
-                | FormFieldId fieldId, Binding.State(key, d) when
+                | FormFieldId fieldId, Binding.State(key, Some d) when
                     key = fieldId && d = Fuaran.UI.Defaults.ControlValueDefaults.range
                     ->
                     []

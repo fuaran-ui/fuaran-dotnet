@@ -104,7 +104,7 @@ let bindingExpression (binding: Binding<'T>) : string * string =
     | Binding.Static _ -> "Static", "$static"
     | Binding.Query(name, _, _) -> "Query", sprintf "$queries.%s" name
     | Binding.Filter(name, _) -> "Filter", sprintf "$filters.%s" name
-    | Binding.Selection(NodeId raw, _, _, _) -> "Selection", sprintf "$selection.%s" raw
+    | Binding.Selection(raw, _, _, _) -> "Selection", sprintf "$selection.%s" raw
     | Binding.State(key, _) -> "State", sprintf "$state.%s" key
     | Binding.Computed _ -> "Computed", "$computed"
     | Binding.I18n(key, _) -> "I18n", sprintf "$i18n.%s" key

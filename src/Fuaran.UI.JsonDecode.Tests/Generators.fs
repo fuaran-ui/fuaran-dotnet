@@ -288,30 +288,31 @@ let private genLocaleSource: Gen<LocaleSource> =
 
 let rec private genBindingWith (genStatic: Gen<'T>) (placeholder: 'T) : Gen<Binding<'T>> =
     Gen.oneof
-        [ Gen.map Binding.Static genStatic
-          Gen.map (fun n -> Binding.Query(n, (fun _ -> placeholder), [])) genNonEmptyString
+        [ Gen.map (fun v -> Binding.Static(Some v)) genStatic
+          Gen.map (fun n -> Binding.Query(n, (fun _ -> placeholder), None)) genNonEmptyString
           Gen.map (fun n -> Binding.Filter(n, None)) genNonEmptyString
-          Gen.map (fun n -> Binding.Selection(NodeId n, (fun _ -> placeholder), None, None)) genNonEmptyString
-          Gen.map (fun k -> Binding.State(k, placeholder)) genNonEmptyString
+          Gen.map (fun n -> Binding.Selection(n, (fun _ -> placeholder), None, None)) genNonEmptyString
+          Gen.map (fun k -> Binding.State(k, Some placeholder)) genNonEmptyString
           Gen.constant (Binding.Computed(fun _ -> placeholder))
           Gen.map (fun k -> Binding.I18n(k, None)) genNonEmptyString
           gen {
               let! fmt = genFormat
               let! loc = genLocaleSource
               let! v = genFiniteFloat
-              return Binding.Format(Binding.Static v, fmt, loc)
+              return Binding.Format(Binding.Static(Some v), fmt, loc)
           }
           gen {
               let! init = genStatic
               let! flush = genFlushTrigger
 
               return
-                  Binding.Local
-                      { InitialFrom = Binding.Static init
-                        FlushOn = flush
-                        OnCommit = (fun _ -> box "<commit>")
-                        Format = None
-                        Parse = (fun _ -> Ok placeholder) }
+                  Binding.Local(
+                      flush,
+                      (fun v -> string (box v)),
+                      Binding.Static(Some init),
+                      Some(fun _ -> box "<commit>"),
+                      (fun _ -> Ok placeholder)
+                  )
           } ]
 
 let private genBindingFloat: Gen<Binding<float>> = genBindingWith genFloat 0.0
@@ -324,12 +325,12 @@ let private genBindingBool: Gen<Binding<bool>> = genBindingWith genBool false
 /// arbitrary default).
 let private genBindingObj: Gen<Binding<obj>> =
     Gen.oneof
-        [ Gen.map (fun (s: string) -> Binding.Static(box s)) genString
-          Gen.map (fun (f: float) -> Binding.Static(box f)) genFiniteFloat
-          Gen.map (fun (b: bool) -> Binding.Static(box b)) genBool
-          Gen.map (fun n -> Binding.Query(n, (fun _ -> box "<q>"), [])) genNonEmptyString
+        [ Gen.map (fun (s: string) -> Binding.Static(Some(box s))) genString
+          Gen.map (fun (f: float) -> Binding.Static(Some(box f))) genFiniteFloat
+          Gen.map (fun (b: bool) -> Binding.Static(Some(box b))) genBool
+          Gen.map (fun n -> Binding.Query(n, (fun _ -> box "<q>"), None)) genNonEmptyString
           Gen.map (fun n -> Binding.Filter(n, None)) genNonEmptyString
-          Gen.map (fun n -> Binding.Selection(NodeId n, (fun _ -> box "<s>"), None, None)) genNonEmptyString
+          Gen.map (fun n -> Binding.Selection(n, (fun _ -> box "<s>"), None, None)) genNonEmptyString
           Gen.constant (Binding.Computed(fun _ -> box "<c>"))
           Gen.map (fun k -> Binding.I18n(k, None)) genNonEmptyString ]
 
@@ -356,7 +357,7 @@ let private genSelectOption: Gen<SelectOption> =
 /// real reference → `"<opaque>"`), plus the non-collection arms.
 let private genBindingSelectOptions: Gen<Binding<SelectOption list>> =
     Gen.oneof
-        [ Gen.map Binding.Static (Gen.nonEmptyListOf genSelectOption)
+        [ Gen.map (fun opts -> Binding.Static(Some opts)) (Gen.nonEmptyListOf genSelectOption)
           Gen.map (fun n -> Binding.Filter(n, None)) genNonEmptyString
           Gen.constant (
               Binding.Computed(fun _ ->
@@ -366,7 +367,7 @@ let private genBindingSelectOptions: Gen<Binding<SelectOption list>> =
 
 let private genBindingStringOpt: Gen<Binding<string option>> =
     Gen.oneof
-        [ Gen.map (fun s -> Binding.Static(Some s)) genString
+        [ Gen.map (fun s -> Binding.Static(Some(Some s))) genString
           Gen.constant (Binding.Static None)
           Gen.map (fun n -> Binding.Filter(n, None)) genNonEmptyString ]
 
@@ -470,7 +471,7 @@ let private genDisplayKind: Gen<NodeKind<obj>> =
           }
           Gen.map
               (fun b -> NodeKind.Sparkline { Source = b })
-              (Gen.map Binding.Static (Gen.nonEmptyListOf genFiniteFloat |> Gen.map Seq.ofList))
+              (Gen.map (fun s -> Binding.Static(Some s)) (Gen.nonEmptyListOf genFiniteFloat |> Gen.map Seq.ofList))
           Gen.map NodeKind.Callout genCalloutSpec
           Gen.map NodeKind.Progress genProgressSpec
           Gen.map (fun r -> NodeKind.Skeleton { Rows = r }) (Gen.choose (0, 12))
@@ -592,12 +593,12 @@ let private genFilters: Gen<FilterSpec<obj> list> =
             // `ft-range-typed` carries authorable {min,max} bounds.
             [ mk "ft-text" (FormFieldKind.Text(sText, Some(fun _ -> Action.Chain [])))
               mk "ft-choice" (FormFieldKind.Choice(sOpts, sVal, Some(fun _ -> Action.Chain [])))
-              mk "ft-range" (FormFieldKind.Range(Binding.Static(0.0, 0.0), Some(fun _ -> Action.Chain []), None))
+              mk "ft-range" (FormFieldKind.Range(Binding.Static(Some(0.0, 0.0)), Some(fun _ -> Action.Chain []), None))
               mk "ft-seg" (FormFieldKind.SegmentedChoice(sOpts, sVal, Some(fun _ -> Action.Chain []), orientation))
               mk "ft-auto" (FormFieldKind.Text(Binding.Filter("ft-auto", None), None))
               mk "ft-text-decl" (FormFieldKind.Text(Binding.Filter("q", None), None))
               mk "ft-choice-decl" (FormFieldKind.Choice(sOpts, sVal, None))
-              mk "ft-range-typed" (FormFieldKind.Range(Binding.Static(1.0, 9.0), None, None))
+              mk "ft-range-typed" (FormFieldKind.Range(Binding.Static(Some(1.0, 9.0)), None, None))
               mk "ft-seg-decl" (FormFieldKind.SegmentedChoice(sOpts, sVal, None, orientation)) ]
     }
 
@@ -663,7 +664,11 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
               Placeholder = placeholder
               Disabled = disabled
               Multiple = multiple
-              Values = (if multiple then Some(Binding.Static vlist) else Option.None)
+              Values =
+                (if multiple then
+                     Some(Binding.Static(Some vlist))
+                 else
+                     Option.None)
               OnChangeMulti =
                 (if multiple && withHandlers then
                      Some(fun _ -> Action.Chain [])
@@ -732,7 +737,7 @@ let private genGridSpec: Gen<GridSpec<obj>> =
         let! editable = genBool
 
         return
-            { Source = Binding.Static Seq.empty
+            { Source = Binding.Static(Some Seq.empty)
               RowKey = Some(fun _ -> "<rowkey>")
               RowKeyField = None
               Columns = columns
@@ -750,7 +755,7 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         let! stacked = genBool
 
         return
-            { Source = Binding.Static Seq.empty
+            { Source = Binding.Static(Some Seq.empty)
               Kind = kind
               XField = xField
               YFields = yFields
@@ -766,7 +771,7 @@ let private genMapSpec: Gen<MapSpec<obj>> =
         let! zoom = Gen.choose (0, 20)
 
         return
-            { Source = Binding.Static Seq.empty
+            { Source = Binding.Static(Some Seq.empty)
               CentreLatitude = lat
               CentreLongitude = lon
               Zoom = zoom

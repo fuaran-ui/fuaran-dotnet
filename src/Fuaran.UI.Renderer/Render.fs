@@ -843,28 +843,30 @@ let rec keysOfBinding<'T> (channel: KeyChannel) (binding: Binding<'T>) : string 
         | _ -> []
     // A `Binding.Selection` reader (Phase 427) subscribes to its producer node's id on the
     // Selection channel, so a row click re-renders every reader of that grid.
-    | Binding.Selection(NodeId nodeId, _, _, _) ->
+    | Binding.Selection(nodeId, _, _, _) ->
         match channel with
         | SelectionChannel -> [ nodeId ]
         | _ -> []
-    | Binding.Local local -> keysOfBinding channel local.InitialFrom
+    | Binding.Local(_, _, initialFrom, _, _) -> keysOfBinding channel initialFrom
     | Binding.I18n(_, Some args) ->
         args
         |> Map.toList
-        |> List.collect (fun (_, ab) -> keysOfBinding<obj> channel ab)
+        |> List.collect (fun (_, ab) -> keysOfBinding<JVal> channel ab)
     | Binding.I18n(_, None) -> []
     | Binding.Format(source, _, _) -> keysOfBinding channel source
     // A parameterised `Transform` (Phase 424) reads through to each param's scalar source, so a chip
     // write re-evaluates every pipeline parameterised on it (its filter/state keys are the union of
     // its param sources' keys). A param-free `Transform` still contributes nothing.
-    | Binding.Transform(_, _, parameters) -> parameters |> List.collect (fun (_, fromB) -> keysOfBinding channel fromB)
+    | Binding.Transform(_, _, parameters) ->
+        defaultArg parameters []
+        |> List.collect (fun (p: TransformParam) -> keysOfBinding channel p.From)
     // A `Query`'s `dependsOn` (Phase 421) names the FILTERS that scope it — a filter-store change
     // re-resolves the query. On the Filter channel it contributes those names (the invalidation
     // subscription); on the Query channel (Phase 428) it contributes its own name, so a
     // `Call … into Query <name>` write re-renders every reader of that slot.
     | Binding.Query(name, _, dependsOn) ->
         match channel with
-        | FilterChannel -> dependsOn
+        | FilterChannel -> defaultArg dependsOn []
         | QueryChannel -> [ name ]
         | StateChannel
         | SelectionChannel -> []
@@ -2713,21 +2715,19 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
         match field.Kind with
         | FormFieldKind.Text(value, onChange) ->
             match value with
-            | Binding.Local local ->
+            | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
                 // Local-bound text field — render via the
                 // function-component shape that maintains the per-NodeId
-                // React.useState buffer and InitialFrom re-sync invariant.
+                // React.useState buffer and initialFrom re-sync invariant.
                 let external =
-                    BindingResolver.tryResolve ctx.Sources local.InitialFrom
-                    |> Option.defaultValue ""
-
-                let formatter = local.Format |> Option.defaultValue id
+                    BindingResolver.tryResolve ctx.Sources initialFrom |> Option.defaultValue ""
 
                 let commit (parsed: string) : unit =
-                    // local.OnCommit returns an obj-erased Action; unbox
-                    // back to the typed Action<'Msg> the smart-ctor wrapped.
-                    let action = unbox<Action<'Msg>> (local.OnCommit parsed)
-                    runAction ctx action
+                    // onCommit returns an obj-erased Action; unbox back to the
+                    // typed Action<'Msg> the smart-ctor wrapped. An absent
+                    // onCommit (possible on the generated shape) commits nothing.
+                    onCommit
+                    |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
 
                 LocalBindings.localTextInput
                     {| nodeId = fieldNodeId
@@ -2735,9 +2735,9 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                        className = "fuaran-form-input"
                        required = field.Required
                        externalValue = external
-                       flushOn = local.FlushOn
-                       formatter = formatter
-                       parser = local.Parse
+                       flushOn = flushOn
+                       formatter = format
+                       parser = parse
                        commit = commit |}
             | _ ->
                 let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
@@ -2751,20 +2751,17 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                       prop.onChange (fun (v: string) -> handle onChange value (Some(box v)) v) ]
         | FormFieldKind.Number(value, onChange) ->
             match value with
-            | Binding.Local local ->
+            | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
                 // Local-bound number field — see the Text-side
                 // mirror above. The renderer uses `type=text` +
                 // `inputMode=numeric` so the consumer-side formatter
                 // (thousands separators etc.) survives.
                 let external =
-                    BindingResolver.tryResolve ctx.Sources local.InitialFrom
-                    |> Option.defaultValue 0.0
-
-                let formatter = local.Format |> Option.defaultValue (fun v -> string v)
+                    BindingResolver.tryResolve ctx.Sources initialFrom |> Option.defaultValue 0.0
 
                 let commit (parsed: float) : unit =
-                    let action = unbox<Action<'Msg>> (local.OnCommit parsed)
-                    runAction ctx action
+                    onCommit
+                    |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
 
                 LocalBindings.localNumberInput
                     {| nodeId = fieldNodeId
@@ -2772,9 +2769,9 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                        className = "fuaran-form-input"
                        required = field.Required
                        externalValue = external
-                       flushOn = local.FlushOn
-                       formatter = formatter
-                       parser = local.Parse
+                       flushOn = flushOn
+                       formatter = format
+                       parser = parse
                        commit = commit
                        // `FormFieldKind.Number` carries no
                        // constraints, so the existing arm renders byte-
@@ -2860,16 +2857,13 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   | None -> () ]
 
             match value with
-            | Binding.Local local ->
+            | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
                 let external =
-                    BindingResolver.tryResolve ctx.Sources local.InitialFrom
-                    |> Option.defaultValue 0.0
-
-                let formatter = local.Format |> Option.defaultValue (fun v -> string v)
+                    BindingResolver.tryResolve ctx.Sources initialFrom |> Option.defaultValue 0.0
 
                 let commit (parsed: float) : unit =
-                    let action = unbox<Action<'Msg>> (local.OnCommit parsed)
-                    runAction ctx action
+                    onCommit
+                    |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
 
                 LocalBindings.localNumberInput
                     {| nodeId = fieldNodeId
@@ -2877,9 +2871,9 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                        className = "fuaran-form-input"
                        required = field.Required
                        externalValue = external
-                       flushOn = local.FlushOn
-                       formatter = formatter
-                       parser = local.Parse
+                       flushOn = flushOn
+                       formatter = format
+                       parser = parse
                        commit = commit
                        constraints = constraints |}
             | _ ->

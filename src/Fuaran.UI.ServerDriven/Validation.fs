@@ -144,7 +144,7 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
     match node.Kind with
     | NodeKind.Select(spec) when ev.Event = "change" ->
         match spec.Source, selectValue ev.Payload with
-        | Binding.Static options, Some chosen ->
+        | Binding.Static(Some options), Some chosen ->
             if options |> List.exists (fun o -> o.Value = chosen) then
                 Ok()
             else
@@ -167,7 +167,7 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
             | Some f ->
                 let checkOptions (options: Binding<SelectOption list>) =
                     match options, selectValue ev.Payload with
-                    | Binding.Static opts, Some chosen when chosen <> "" ->
+                    | Binding.Static(Some opts), Some chosen when chosen <> "" ->
                         if opts |> List.exists (fun o -> o.Value = chosen) then
                             Ok()
                         else

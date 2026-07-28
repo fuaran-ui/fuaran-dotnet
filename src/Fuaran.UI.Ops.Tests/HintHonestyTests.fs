@@ -166,7 +166,7 @@ let hintHonestyTests =
                   |> List.collect (fun (kindName, node, root) ->
                       Introspect.availableBindingSlots node.Kind
                       |> List.choose (fun slot ->
-                          let op = TreeOp.ReplaceBinding(node.Id, slot, Binding.Static(nn "probe"))
+                          let op = TreeOp.ReplaceBinding(node.Id, slot, Binding.Static(Some(nn "probe")))
 
                           match Apply.apply op root with
                           | Ok _ -> None

@@ -137,7 +137,8 @@ let nodeMapTests =
               let field: FormField<int> =
                   { Id = "name"
                     Label = TextSource.Literal "Name"
-                    Kind = FormFieldKind.Text(Binding.Static "", Some(fun (s: string) -> Action.Dispatch s.Length))
+                    Kind =
+                      FormFieldKind.Text(Binding.Static(Some ""), Some(fun (s: string) -> Action.Dispatch s.Length))
                     Required = false
                     Help = None }
 

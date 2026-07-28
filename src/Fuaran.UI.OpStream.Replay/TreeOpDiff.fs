@@ -160,21 +160,22 @@ module TreeOpDiff =
     /// closures round-trip via the `"<closure>"` canonical sentinel.
     let rec private toObjBinding<'T> (b: Binding<'T>) : Binding<obj> =
         match b with
-        | Binding.Static v -> Binding.Static(boxNN v)
+        | Binding.Static v -> Binding.Static(v |> Option.map boxNN)
         | Binding.Query(name, accessor, dependsOn) -> Binding.Query(name, accessor >> boxNN, dependsOn)
         | Binding.Filter(name, dv) -> Binding.Filter(name, dv |> Option.map boxNN)
         | Binding.Selection(id, accessor, dv, fld) ->
             Binding.Selection(id, accessor >> boxNN, dv |> Option.map boxNN, fld)
-        | Binding.State(key, defaultValue) -> Binding.State(key, boxNN defaultValue)
+        | Binding.State(key, defaultValue) -> Binding.State(key, defaultValue |> Option.map boxNN)
         | Binding.Computed f -> Binding.Computed(f >> boxNN)
         | Binding.I18n(key, args) -> Binding.I18n(key, args)
-        | Binding.Local local ->
-            Binding.Local
-                { InitialFrom = toObjBinding local.InitialFrom
-                  FlushOn = local.FlushOn
-                  OnCommit = (fun (o: obj) -> local.OnCommit(unbox<'T> o))
-                  Format = local.Format |> Option.map (fun f -> (fun (o: obj) -> f (unbox<'T> o)))
-                  Parse = (fun s -> local.Parse s |> Result.map boxNN) }
+        | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+            Binding.Local(
+                flushOn,
+                (fun (o: obj) -> format (unbox<'T> o)),
+                toObjBinding initialFrom,
+                onCommit |> Option.map (fun oc -> fun (o: obj) -> oc (unbox<'T> o)),
+                (fun s -> parse s |> Result.map boxNN)
+            )
         | Binding.Format(source, format, locale) -> Binding.Format(source, format, locale)
         | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)
         | Binding.Invoke(capabilityId, args) -> Binding.Invoke(capabilityId, args)

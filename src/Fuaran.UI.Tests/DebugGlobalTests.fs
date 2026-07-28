@@ -56,7 +56,7 @@ let private selectNode: Node<unit> =
     Fuaran.select
         "sel"
         { Defaults.select<unit> with
-            Source = Binding.Static []
+            Source = Binding.Static(Some [])
             Value = binding.state "pick" Option.None }
 
 let private markdownNode: Node<unit> = Fuaran.markdown "md" "hello"
@@ -163,7 +163,7 @@ let tests =
           }
 
           test "bindingExpression mirrors BindingProbe.identify" {
-              Expect.equal (DebugGlobal.bindingExpression (Binding.Static 1.0)) ("Static", "$static") "Static"
+              Expect.equal (DebugGlobal.bindingExpression (Binding.Static(Some 1.0))) ("Static", "$static") "Static"
               Expect.equal (DebugGlobal.bindingExpression (binding.state "k" 0.0)) ("State", "$state.k") "State"
 
               Expect.equal

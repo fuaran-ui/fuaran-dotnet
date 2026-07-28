@@ -37,7 +37,7 @@ let private revenueMetric: Node<obj> =
       Kind =
         NodeKind.Metric(
             { Label = TextSource.Literal "Revenue"
-              Value = Binding.Static 0.0
+              Value = Binding.Static(Some 0.0)
               Format = CellFormat.Currency "USD"
               Tone = ToneVariant.Brand
               Weight = StyleWeight.Standard
@@ -102,7 +102,7 @@ let tests =
                       let spec = metricOf updated
 
                       match spec.Trend with
-                      | Some(Binding.Static v) -> Expect.equal v -125.0 "Trend Static value"
+                      | Some(Binding.Static(Some v)) -> Expect.equal v -125.0 "Trend Static value"
                       | other -> failtestf "Expected Some (Binding.Static -125.0), got %A" other
           }
 
@@ -127,7 +127,7 @@ let tests =
                       let spec = metricOf updated
 
                       match spec.Value with
-                      | Binding.Static v -> Expect.equal v 42000.0 "Source Static value"
+                      | Binding.Static(Some v) -> Expect.equal v 42000.0 "Source Static value"
                       | other -> failtestf "Expected Binding.Static 42000.0, got %A" other
           }
 
@@ -189,7 +189,7 @@ let tests =
                       Id = NodeId "channel-grid"
                       Kind =
                           NodeKind.DataGrid(
-                              { Source = Binding.Static Seq.empty
+                              { Source = Binding.Static(Some Seq.empty)
                                 RowKey = Some(fun _ -> "")
                                 RowKeyField = None
                                 Columns =
@@ -227,7 +227,7 @@ let tests =
                       Id = NodeId "channel-grid"
                       Kind =
                           NodeKind.DataGrid(
-                              { Source = Binding.Static Seq.empty
+                              { Source = Binding.Static(Some Seq.empty)
                                 RowKey = Some(fun _ -> "")
                                 RowKeyField = None
                                 Columns =

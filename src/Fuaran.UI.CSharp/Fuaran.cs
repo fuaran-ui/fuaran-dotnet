@@ -123,7 +123,7 @@ public static partial class Fuaran
                 options.Tone.ToFs(),
                 options.Weight.ToFs(),
                 options.Emphasis.ToFs(),
-                options.Trend is { } t ? Fs.Some(t.Inner) : Fs.None<FsTypes.Binding<double>>(),
+                options.Trend is { } t ? Fs.Some(t.Inner) : Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
                 options.TrendFormat is { } tf ? Fs.Some(tf.Inner) : Fs.None<FsTypes.CellFormat>(),
                 Icon(options.Icon),
                 options.Subtext is { } s ? Fs.Some(s.Inner) : Fs.None<FsTypes.TextSource>())));
@@ -150,5 +150,5 @@ public static partial class Fuaran
                 options.Variant.ToFs(),
                 Icon(options.Icon),
                 Fs.None<FsTypes.TextSource>(),
-                Fs.None<FsTypes.Binding<bool>>())));
+                Fs.None<global::Fuaran.UI.Generated.Binding<bool>>())));
 }

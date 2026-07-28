@@ -41,7 +41,7 @@ let private chromeTree: Node<obj> =
             "row1"
             { Defaults.labelValueRow with
                 Label = TextSource.Literal "Revenue"
-                Value = Binding.Static 1234.0
+                Value = Binding.Static(Some 1234.0)
                 Format = CellFormat.Number(Some 0) }
 
     let summary: Node<obj> =
@@ -56,7 +56,7 @@ let private chromeTree: Node<obj> =
             "disc"
             { Defaults.disclosure<obj> with
                 Heading = TextSource.Literal "Details"
-                Open = Binding.Static true
+                Open = Binding.Static(Some true)
                 DefaultOpen = true
                 Children = [ (Fuaran.markdown "dmd" "More info.": Node<obj>) ] }
 
@@ -145,7 +145,7 @@ let serverRenderTests =
                       "chart"
                       { Defaults.chart<obj> with
                           Kind = ChartKind.Bar
-                          Source = Binding.Static(Seq.ofList [ row "Q1" 10.0; row "Q2" 20.0 ])
+                          Source = Binding.Static(Some(Seq.ofList [ row "Q1" 10.0; row "Q2" 20.0 ]))
                           XField = "x"
                           YFields = [ "y" ] }
 
@@ -165,7 +165,7 @@ let serverRenderTests =
                       "chart"
                       { Defaults.chart<obj> with
                           Kind = ChartKind.Heatmap
-                          Source = Binding.Static(Seq.ofList [ box 1; box 2; box 3 ])
+                          Source = Binding.Static(Some(Seq.ofList [ box 1; box 2; box 3 ]))
                           XField = "x"
                           YFields = [ "y" ] }
 
