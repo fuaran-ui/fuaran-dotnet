@@ -30,6 +30,8 @@ dist/
 # Claude Code per-machine settings + worktrees
 .claude/worktrees/
 .claude/settings.local.json
+# Browser-preview launcher config — machine-local unless deliberately committed
+.claude/launch.json
 
 # Local NuGet drop folder produced by `dotnet run -- Pack` (consumer-local).
 # Fuaran packs into the workspace-level ../local-nuget-feed/, not here, so this
