@@ -312,8 +312,11 @@ module TreeOpDiff =
     /// `tryFieldLevel`). The field names match `Apply`'s `UpdateProp` dispatch
     /// exactly; `tryUnbox`'s fast path resolves a `box`ed typed value directly.
     let private extractFieldUpdates<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
-        let disp d = NodeKind.Display d
-        let lay l = NodeKind.Layout l
+        // Phase 692 — the category wrappers are gone; the kinds are flat, so the
+        // rebuild helpers are the identity and are kept only to avoid touching
+        // the fifty swap sites below.
+        let disp (d: NodeKind<'Msg>) = d
+        let lay (l: NodeKind<'Msg>) = l
 
         // Emit UpdateProp(field, b's `PropValue`) only when swapping a's field to
         // b's value actually changes a's canonical shell. The caller builds the

@@ -431,72 +431,71 @@ let private validateCore
         recordNodeId n.Id
         // Per-kind: check kind-specific invariants + enumerate children.
         match n.Kind with
-        | NodeKind.Layout layout ->
-            match layout with
-            | NodeKind.Box spec -> spec.Children |> List.iter walk
-            | NodeKind.SplitPanel spec -> spec.Children |> List.iter walk
-            | NodeKind.Tabs spec ->
-                // FUARAN047 / FUARAN048 / FUARAN049
-                // tabs-shape invariants. Length mismatches are construction
-                // defects (the renderer would silently drop headers or tags
-                // past the children boundary); ActiveTag-without-TabTags
-                // is a semantic mistake (the tag binding has nowhere to
-                // resolve to). The `NodeId raw` extraction matches the
-                // existing `recordNodeId` pattern.
-                let (NodeId nodeIdStr) = n.Id
-                let childrenCount = spec.Children.Length
+        // -- Layout --
+        | NodeKind.Box spec -> spec.Children |> List.iter walk
+        | NodeKind.SplitPanel spec -> spec.Children |> List.iter walk
+        | NodeKind.Tabs spec ->
+            // FUARAN047 / FUARAN048 / FUARAN049
+            // tabs-shape invariants. Length mismatches are construction
+            // defects (the renderer would silently drop headers or tags
+            // past the children boundary); ActiveTag-without-TabTags
+            // is a semantic mistake (the tag binding has nowhere to
+            // resolve to). The `NodeId raw` extraction matches the
+            // existing `recordNodeId` pattern.
+            let (NodeId nodeIdStr) = n.Id
+            let childrenCount = spec.Children.Length
 
-                match spec.TabHeaders with
-                | Some hs when hs.Length <> childrenCount ->
-                    defects.Add(PreEmitDefect.TabHeaderCountMismatch(nodeIdStr, hs.Length, childrenCount))
-                | _ -> ()
+            match spec.TabHeaders with
+            | Some hs when hs.Length <> childrenCount ->
+                defects.Add(PreEmitDefect.TabHeaderCountMismatch(nodeIdStr, hs.Length, childrenCount))
+            | _ -> ()
 
-                match spec.TabTags with
-                | Some ts when ts.Length <> childrenCount ->
-                    defects.Add(PreEmitDefect.TabTagCountMismatch(nodeIdStr, ts.Length, childrenCount))
-                | _ -> ()
+            match spec.TabTags with
+            | Some ts when ts.Length <> childrenCount ->
+                defects.Add(PreEmitDefect.TabTagCountMismatch(nodeIdStr, ts.Length, childrenCount))
+            | _ -> ()
 
-                match spec.ActiveTag, spec.TabTags with
-                | Some _, None -> defects.Add(PreEmitDefect.TabActiveTagWithoutTags nodeIdStr)
-                | _ -> ()
+            match spec.ActiveTag, spec.TabTags with
+            | Some _, None -> defects.Add(PreEmitDefect.TabActiveTagWithoutTags nodeIdStr)
+            | _ -> ()
 
-                // FUARAN069 (Phase 426): tabs are live when either channel can
-                // carry a click — a handler, or a writable slot the write-back
-                // default targets (integer: ActiveIndex; tag overlay:
-                // ActiveTag when TabTags is populated).
-                let indexLive = spec.OnSelect.IsSome || isWriteBackTarget spec.ActiveIndex
+            // FUARAN069 (Phase 426): tabs are live when either channel can
+            // carry a click — a handler, or a writable slot the write-back
+            // default targets (integer: ActiveIndex; tag overlay:
+            // ActiveTag when TabTags is populated).
+            let indexLive = spec.OnSelect.IsSome || isWriteBackTarget spec.ActiveIndex
 
-                let tagLive =
-                    match spec.OnSelectTag, spec.TabTags, spec.ActiveTag with
-                    | Some _, Some _, _ -> true
-                    | None, Some _, Some tagBinding -> isWriteBackTarget tagBinding
-                    | _ -> false
+            let tagLive =
+                match spec.OnSelectTag, spec.TabTags, spec.ActiveTag with
+                | Some _, Some _, _ -> true
+                | None, Some _, Some tagBinding -> isWriteBackTarget tagBinding
+                | _ -> false
 
-                if not (indexLive || tagLive) then
-                    defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Tabs"))
+            if not (indexLive || tagLive) then
+                defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Tabs"))
 
-                spec.Children |> List.iter walk
-            | NodeKind.Stepper spec -> spec.Children |> List.iter walk
-            | NodeKind.SummaryList spec -> spec.Children |> List.iter walk
-            | NodeKind.Disclosure spec ->
-                // FUARAN069 (Phase 426): no toggle handler and no writable
-                // `Open` slot — the model never hears the native toggle.
-                let (NodeId nodeIdStr) = n.Id
+            spec.Children |> List.iter walk
+        | NodeKind.Stepper spec -> spec.Children |> List.iter walk
+        | NodeKind.SummaryList spec -> spec.Children |> List.iter walk
+        | NodeKind.Disclosure spec ->
+            // FUARAN069 (Phase 426): no toggle handler and no writable
+            // `Open` slot — the model never hears the native toggle.
+            let (NodeId nodeIdStr) = n.Id
 
-                if spec.OnToggle.IsNone && not (isWriteBackTarget spec.Open) then
-                    defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Disclosure"))
+            if spec.OnToggle.IsNone && not (isWriteBackTarget spec.Open) then
+                defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Disclosure"))
 
-                spec.Children |> List.iter walk
-            | NodeKind.Modal spec ->
-                // FUARAN069 (Phase 426): a dismissable modal with no dismiss
-                // action and no writable `Open` slot can never close.
-                let (NodeId nodeIdStr) = n.Id
+            spec.Children |> List.iter walk
+        | NodeKind.Modal spec ->
+            // FUARAN069 (Phase 426): a dismissable modal with no dismiss
+            // action and no writable `Open` slot can never close.
+            let (NodeId nodeIdStr) = n.Id
 
-                if spec.Dismissable && spec.OnDismiss.IsNone && not (isWriteBackTarget spec.Open) then
-                    defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Modal"))
+            if spec.Dismissable && spec.OnDismiss.IsNone && not (isWriteBackTarget spec.Open) then
+                defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Modal"))
 
-                spec.Children |> List.iter walk
-            | NodeKind.ScrollArea spec -> spec.Children |> List.iter walk
+            spec.Children |> List.iter walk
+        | NodeKind.ScrollArea spec -> spec.Children |> List.iter walk
         | NodeKind.DataGrid( spec) ->
             // FUARAN077 / FUARAN078 (Phase 425 follow-up): the declarative grid
             // display floor — every column needs a Value closure or a Field,
@@ -522,13 +521,31 @@ let private validateCore
 
             if spec.Editable && not editableWritable then
                 defects.Add(PreEmitDefect.InertEditableGrid nodeIdStr)
-        | NodeKind.Display _ -> () // Display kinds are leaves; future kind-specific invariants (e.g. HeadingLevel ∈ [1..6]) land here.
-        | NodeKind.Input input ->
-            // FUARAN069 (Phase 426): an interactive input whose handler is
-            // omitted needs a writable value binding for the write-back
-            // default to target; anything else is an inert control. Filter
-            // chips are exempt — a handler-free chip always writes its own
-            // `$filters.<name>` (Phase 423), so it can never be inert.
+        // Display kinds are leaves; future kind-specific invariants (e.g.
+        // HeadingLevel ∈ [1..6]) land here.
+        | NodeKind.Heading _
+        | NodeKind.Markdown _
+        | NodeKind.Metric _
+        | NodeKind.Badge _
+        | NodeKind.Sparkline _
+        | NodeKind.Callout _
+        | NodeKind.Progress _
+        | NodeKind.Skeleton _
+        | NodeKind.LabelValueRow _
+        | NodeKind.Fact _
+        | NodeKind.Link _
+        | NodeKind.Image _
+        | NodeKind.List _
+        | NodeKind.Toast _
+        | NodeKind.CodeBlock _
+        | NodeKind.Math _
+        | NodeKind.Drawing _ -> ()
+        // FUARAN069 (Phase 426): an interactive input whose handler is
+        // omitted needs a writable value binding for the write-back
+        // default to target; anything else is an inert control. Filter
+        // chips are exempt — a handler-free chip always writes its own
+        // `$filters.<name>` (Phase 423), so it can never be inert.
+        | NodeKind.Form spec ->
             let (NodeId nodeIdStr) = n.Id
 
             let checkField (field: FormField<'Msg>) =
@@ -566,22 +583,23 @@ let private validateCore
                 if inert then
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, sprintf "FormField(%s)" field.Id))
 
-            match input with
-            | NodeKind.Form spec -> spec.Fields |> List.iter checkField
-            | NodeKind.Select spec ->
-                if spec.Multiple then
-                    let valuesLive =
-                        match spec.Values with
-                        | Some values -> isWriteBackTarget values
-                        | None -> false
+            spec.Fields |> List.iter checkField
+        | NodeKind.Select spec ->
+            let (NodeId nodeIdStr) = n.Id
 
-                    if spec.OnChangeMulti.IsNone && not valuesLive then
-                        defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select(multiple)"))
-                elif spec.OnChange.IsNone && not (isWriteBackTarget spec.Value) then
-                    defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select"))
-            | NodeKind.Filters _
-            | NodeKind.Button _
-            | NodeKind.FileUpload _ -> ()
+            if spec.Multiple then
+                let valuesLive =
+                    match spec.Values with
+                    | Some values -> isWriteBackTarget values
+                    | None -> false
+
+                if spec.OnChangeMulti.IsNone && not valuesLive then
+                    defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select(multiple)"))
+            elif spec.OnChange.IsNone && not (isWriteBackTarget spec.Value) then
+                defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select"))
+        | NodeKind.Filters _
+        | NodeKind.Button _
+        | NodeKind.FileUpload _ -> ()
         | NodeKind.Chart( spec) ->
             // FUARAN086–089 (Phase 640): schema-grounded chart validation. An
             // ungrounded field reference is the LANGUAGE's defect to catch
@@ -645,7 +663,9 @@ let private validateCore
                          if not (numeric t) then
                              defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, yf, ColumnType.tag t))
              | _ -> ())
-        | NodeKind.Visualisation _ -> () // The other visualisations are leaves with no pre-emit invariants yet.
+        // The other visualisations are leaves with no pre-emit invariants yet.
+        | NodeKind.Chart _
+        | NodeKind.Map _ -> ()
         | NodeKind.Custom(moduleId, componentId, props, _, _) ->
             if moduleId = "" || componentId = "" then
                 defects.Add(PreEmitDefect.EmptyCustomKindIdentifier(moduleId, componentId))

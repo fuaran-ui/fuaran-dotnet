@@ -485,8 +485,7 @@ and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layo
 
         let tabsLabelFromChild (child: Node<obj>) : string =
             match child.Kind with
-            | NodeKind.Box( { Role = BoxRole.Card
-                                               Heading = Some h }) -> renderText ctx h
+            | NodeKind.Box { Role = BoxRole.Card; Heading = Some h } -> renderText ctx h
             | _ ->
                 match child.Id with
                 | NodeId s -> s

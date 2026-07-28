@@ -1097,66 +1097,62 @@ let private updateMapTop (field: string) (v: obj) (spec: MapSpec<'Msg>) : Update
 
 let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) : UpdateResult<'Msg> =
     match kind with
-    | NodeKind.Layout layout ->
-        match layout with
-        | NodeKind.Box spec -> updateBox field v spec
-        | NodeKind.SplitPanel spec -> updateSplitPanel field v spec
-        | NodeKind.Tabs spec -> updateTabs field v spec
-        | NodeKind.Stepper spec -> updateStepper field v spec
-        | NodeKind.SummaryList spec -> updateSummaryList field v spec
-        | NodeKind.Disclosure spec -> updateDisclosure field v spec
-        | NodeKind.Modal spec -> updateModal field v spec
-        | NodeKind.ScrollArea spec -> updateScrollArea field v spec
-    | NodeKind.Display display ->
-        match display with
-        | NodeKind.Heading spec -> updateHeading field v spec
-        | NodeKind.Markdown spec -> updateMarkdown field v spec
-        | NodeKind.Metric spec -> updateMetric field v spec
-        | NodeKind.Badge spec -> updateBadge field v spec
-        // Sparkline's omission is PRINCIPLED, not a to-do, and this comment is
-        // load-bearing because the previous wording read as precedent and was
-        // quoted as such by five later kinds. `SparklineSpec` has exactly one
-        // field, `Source: Binding<float seq>`, which is a declared
-        // `ReplaceBinding` slot. There is no field-shaped value here for
-        // `UpdateProp` to set, so wiring it would add an arm that could only
-        // ever refuse. Do NOT cite this as a reason to skip another kind:
-        // check whether that kind has settable fields, which is a question
-        // about that kind and not about this one.
-        | NodeKind.Sparkline _ -> NotSupportedYet
-        | NodeKind.Callout spec -> updateCallout field v spec
-        | NodeKind.Progress spec -> updateProgress field v spec
-        | NodeKind.Skeleton spec -> updateSkeleton field v spec
-        | NodeKind.LabelValueRow spec -> updateLabelValueRow field v spec
-        | NodeKind.Fact spec -> updateFact field v spec
-        | NodeKind.Link spec -> updateLink field v spec
-        | NodeKind.Image spec -> updateImage field v spec
-        | NodeKind.List spec -> updateList field v spec
-        | NodeKind.Toast spec -> updateToast field v spec
-        // The old justification here claimed the spec is "mostly literal
-        // strings, not the bound surface UpdateProp targets". That had it
-        // backwards: literal strings are exactly what UpdateProp sets
-        // (`Markdown.Text`, `Heading.Text`), and "change the code in this
-        // block" is an obvious edit. Wired.
-        | NodeKind.CodeBlock spec -> updateCodeBlock field v spec
-        | NodeKind.Math spec -> updateMath field v spec
-        // Phase 524 — Drawing field-level UpdateProp not wired (a Drawing is a
-        // whole-artefact swap via EditNode); whole-node swap remains available.
-        | NodeKind.Drawing _ -> NotSupportedYet
-    | NodeKind.Input input ->
-        match input with
-        | NodeKind.Button spec -> updateButton field v spec
-        | NodeKind.Select spec -> updateSelect field v spec
-        | NodeKind.FileUpload spec -> updateFileUpload field v spec
-        | NodeKind.Form spec -> updateForm field v spec
-        // Filters carries a bare `FilterSpec list`, not a record, so it has no
-        // top-level field surface at all — `Introspect.availableFields` already
-        // reports `[]` for it, and the two agree.
-        | NodeKind.Filters _ -> NotSupportedYet
-    | NodeKind.Visualisation vis ->
-        match vis with
-        | NodeKind.Chart spec -> updateChartTop field v spec
-        | NodeKind.DataGrid spec -> updateGridTop field v spec
-        | NodeKind.Map spec -> updateMapTop field v spec
+    // -- Layout --
+    | NodeKind.Box spec -> updateBox field v spec
+    | NodeKind.SplitPanel spec -> updateSplitPanel field v spec
+    | NodeKind.Tabs spec -> updateTabs field v spec
+    | NodeKind.Stepper spec -> updateStepper field v spec
+    | NodeKind.SummaryList spec -> updateSummaryList field v spec
+    | NodeKind.Disclosure spec -> updateDisclosure field v spec
+    | NodeKind.Modal spec -> updateModal field v spec
+    | NodeKind.ScrollArea spec -> updateScrollArea field v spec
+    // -- Display --
+    | NodeKind.Heading spec -> updateHeading field v spec
+    | NodeKind.Markdown spec -> updateMarkdown field v spec
+    | NodeKind.Metric spec -> updateMetric field v spec
+    | NodeKind.Badge spec -> updateBadge field v spec
+    // Sparkline's omission is PRINCIPLED, not a to-do, and this comment is
+    // load-bearing because the previous wording read as precedent and was
+    // quoted as such by five later kinds. `SparklineSpec` has exactly one
+    // field, `Source: Binding<float seq>`, which is a declared
+    // `ReplaceBinding` slot. There is no field-shaped value here for
+    // `UpdateProp` to set, so wiring it would add an arm that could only
+    // ever refuse. Do NOT cite this as a reason to skip another kind:
+    // check whether that kind has settable fields, which is a question
+    // about that kind and not about this one.
+    | NodeKind.Sparkline _ -> NotSupportedYet
+    | NodeKind.Callout spec -> updateCallout field v spec
+    | NodeKind.Progress spec -> updateProgress field v spec
+    | NodeKind.Skeleton spec -> updateSkeleton field v spec
+    | NodeKind.LabelValueRow spec -> updateLabelValueRow field v spec
+    | NodeKind.Fact spec -> updateFact field v spec
+    | NodeKind.Link spec -> updateLink field v spec
+    | NodeKind.Image spec -> updateImage field v spec
+    | NodeKind.List spec -> updateList field v spec
+    | NodeKind.Toast spec -> updateToast field v spec
+    // The old justification here claimed the spec is "mostly literal
+    // strings, not the bound surface UpdateProp targets". That had it
+    // backwards: literal strings are exactly what UpdateProp sets
+    // (`Markdown.Text`, `Heading.Text`), and "change the code in this
+    // block" is an obvious edit. Wired.
+    | NodeKind.CodeBlock spec -> updateCodeBlock field v spec
+    | NodeKind.Math spec -> updateMath field v spec
+    // Phase 524 — Drawing field-level UpdateProp not wired (a Drawing is a
+    // whole-artefact swap via EditNode); whole-node swap remains available.
+    | NodeKind.Drawing _ -> NotSupportedYet
+    // -- Input --
+    | NodeKind.Button spec -> updateButton field v spec
+    | NodeKind.Select spec -> updateSelect field v spec
+    | NodeKind.FileUpload spec -> updateFileUpload field v spec
+    | NodeKind.Form spec -> updateForm field v spec
+    // Filters carries a bare `FilterSpec list`, not a record, so it has no
+    // top-level field surface at all — `Introspect.availableFields` already
+    // reports `[]` for it, and the two agree.
+    | NodeKind.Filters _ -> NotSupportedYet
+    // -- Visualisation --
+    | NodeKind.Chart spec -> updateChartTop field v spec
+    | NodeKind.DataGrid spec -> updateGridTop field v spec
+    | NodeKind.Map spec -> updateMapTop field v spec
     | NodeKind.Custom _ -> NotSupportedYet
     // ErrorBoundary's `Child` + `Fallback` are
     // Node subtrees, not field-shaped values — the AI swaps them via

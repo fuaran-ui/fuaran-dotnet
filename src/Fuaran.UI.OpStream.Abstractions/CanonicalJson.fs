@@ -1193,27 +1193,6 @@ let private encodeDrawingSpec (s: DrawingSpec) : Appender =
 
         appendObject sb (fields @ optionals)
 
-let private encodeDisplayKind<'Msg> (d: DisplayKind<'Msg>) : Appender =
-    fun sb ->
-        match d with
-        | NodeKind.Heading s -> hoistSpec "Heading" (encodeHeadingSpec s) sb
-        | NodeKind.Markdown s -> hoistSpec "Markdown" (encodeMarkdownSpec s) sb
-        | NodeKind.Metric s -> hoistSpec "Metric" (encodeMetricSpec s) sb
-        | NodeKind.Badge s -> hoistSpec "Badge" (encodeBadgeSpec s) sb
-        | NodeKind.Sparkline s -> hoistSpec "Sparkline" (encodeSparklineSpec s) sb
-        | NodeKind.Callout s -> hoistSpec "Callout" (encodeCalloutSpec s) sb
-        | NodeKind.Progress s -> hoistSpec "Progress" (encodeProgressSpec s) sb
-        | NodeKind.Skeleton s -> hoistSpec "Skeleton" (encodeSkeletonSpec s) sb
-        | NodeKind.LabelValueRow s -> hoistSpec "LabelValueRow" (encodeLabelValueRowSpec s) sb
-        | NodeKind.Fact s -> hoistSpec "Fact" (encodeFactSpec s) sb
-        | NodeKind.Link s -> hoistSpec "Link" (encodeLinkSpec s) sb
-        | NodeKind.Image s -> hoistSpec "Image" (encodeImageSpec s) sb
-        | NodeKind.List s -> hoistSpec "List" (encodeListSpec s) sb
-        | NodeKind.Toast s -> hoistSpec "Toast" (encodeToastSpec s) sb
-        | NodeKind.CodeBlock s -> hoistSpec "CodeBlock" (encodeCodeBlockSpec s) sb
-        | NodeKind.Math s -> hoistSpec "Math" (encodeMathSpec s) sb
-        | NodeKind.Drawing s -> hoistSpec "Drawing" (encodeDrawingSpec s) sb
-
 /// Phase 596 — the auto-bind context for a control's `value` slot, mirroring
 /// the decoder's synthesis exactly. A `value` that is the context's exact
 /// auto-binding is OMITTED — `Filter(name, None)` on a chip (0.2.0),
@@ -1481,18 +1460,6 @@ let private encodeFileUploadSpec<'Msg> (s: FileUploadSpec<'Msg>) : Appender =
 
         appendObject sb (fields @ optionals)
 
-let private encodeInputKind<'Msg> (i: InputKind<'Msg>) : Appender =
-    fun sb ->
-        match i with
-        | NodeKind.Form s -> hoistSpec "Form" (encodeFormSpec s) sb
-        | NodeKind.Filters items ->
-            appendObject
-                sb
-                (case "Filters" [ "items", (fun sb -> appendArrayWith sb (items |> List.map encodeFilterSpec)) ])
-        | NodeKind.Button s -> hoistSpec "Button" (encodeButtonSpec s) sb
-        | NodeKind.FileUpload s -> hoistSpec "FileUpload" (encodeFileUploadSpec s) sb
-        | NodeKind.Select s -> hoistSpec "Select" (encodeSelectSpec s) sb
-
 let private encodeCellKindErased<'Msg> (k: CellKindErased<'Msg>) : Appender =
     fun sb ->
         match k with
@@ -1604,13 +1571,6 @@ let private encodeMapSpec<'Msg> (s: MapSpec<'Msg>) : Appender =
 
         appendObject sb (fields @ optionals)
 
-let private encodeVisKind<'Msg> (v: VisKind<'Msg>) : Appender =
-    fun sb ->
-        match v with
-        | NodeKind.DataGrid s -> hoistSpec "DataGrid" (encodeGridSpec s) sb
-        | NodeKind.Chart s -> hoistSpec "Chart" (encodeChartSpec s) sb
-        | NodeKind.Map s -> hoistSpec "Map" (encodeMapSpec s) sb
-
 // ─── Parameterised-fragment hole / effect / scalar encoders (Phase 180) ─────
 //
 // Additive to the FragmentDecl / FragmentRef wire shape. None of these reference
@@ -1687,9 +1647,16 @@ let private encodeEffectClass (e: EffectClass) : Appender =
 // LayoutKind references Node<'Msg> via Children — mutually recursive with
 // encodeNode below.
 
-let rec private layoutKindAppender<'Msg> (l: LayoutKind<'Msg>) : Appender =
+let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
     fun sb ->
-        match l with
+        match k with
+        // The four behavioural categories are flat on the wire (WIRE_FORMAT
+        // §3.2): a node's `kind` carries the primitive discriminator directly
+        // (e.g. {"$type":"LabelValueRow",…}). The category — Layout / Display
+        // / Input / Visualisation — is a host-side classification recovered on
+        // decode, not a wire nesting level, so we emit the inner kind appender
+        // straight into the `kind` slot with no category envelope.
+        // -- Layout --
         | NodeKind.Box spec ->
             // Phase 390 — the unified container. Ordinal key order:
             // children < heading < layout < role. `layout` is a discriminated
@@ -1884,20 +1851,37 @@ let rec private layoutKindAppender<'Msg> (l: LayoutKind<'Msg>) : Appender =
                     appendObject sb (fields @ optionals)
 
             hoistSpec "ScrollArea" inner sb
-
-and private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
-    fun sb ->
-        match k with
-        // The four behavioural categories are flat on the wire (WIRE_FORMAT
-        // §3.2): a node's `kind` carries the primitive discriminator directly
-        // (e.g. {"$type":"LabelValueRow",…}). The category — Layout / Display
-        // / Input / Visualisation — is a host-side classification recovered on
-        // decode, not a wire nesting level, so we emit the inner kind appender
-        // straight into the `kind` slot with no category envelope.
-        | NodeKind.Layout l -> layoutKindAppender l sb
-        | NodeKind.Display d -> encodeDisplayKind d sb
-        | NodeKind.Input i -> encodeInputKind i sb
-        | NodeKind.Visualisation v -> encodeVisKind v sb
+        // -- Display --
+        | NodeKind.Heading s -> hoistSpec "Heading" (encodeHeadingSpec s) sb
+        | NodeKind.Markdown s -> hoistSpec "Markdown" (encodeMarkdownSpec s) sb
+        | NodeKind.Metric s -> hoistSpec "Metric" (encodeMetricSpec s) sb
+        | NodeKind.Badge s -> hoistSpec "Badge" (encodeBadgeSpec s) sb
+        | NodeKind.Sparkline s -> hoistSpec "Sparkline" (encodeSparklineSpec s) sb
+        | NodeKind.Callout s -> hoistSpec "Callout" (encodeCalloutSpec s) sb
+        | NodeKind.Progress s -> hoistSpec "Progress" (encodeProgressSpec s) sb
+        | NodeKind.Skeleton s -> hoistSpec "Skeleton" (encodeSkeletonSpec s) sb
+        | NodeKind.LabelValueRow s -> hoistSpec "LabelValueRow" (encodeLabelValueRowSpec s) sb
+        | NodeKind.Fact s -> hoistSpec "Fact" (encodeFactSpec s) sb
+        | NodeKind.Link s -> hoistSpec "Link" (encodeLinkSpec s) sb
+        | NodeKind.Image s -> hoistSpec "Image" (encodeImageSpec s) sb
+        | NodeKind.List s -> hoistSpec "List" (encodeListSpec s) sb
+        | NodeKind.Toast s -> hoistSpec "Toast" (encodeToastSpec s) sb
+        | NodeKind.CodeBlock s -> hoistSpec "CodeBlock" (encodeCodeBlockSpec s) sb
+        | NodeKind.Math s -> hoistSpec "Math" (encodeMathSpec s) sb
+        | NodeKind.Drawing s -> hoistSpec "Drawing" (encodeDrawingSpec s) sb
+        // -- Input --
+        | NodeKind.Form s -> hoistSpec "Form" (encodeFormSpec s) sb
+        | NodeKind.Filters items ->
+            appendObject
+                sb
+                (case "Filters" [ "items", (fun sb -> appendArrayWith sb (items |> List.map encodeFilterSpec)) ])
+        | NodeKind.Button s -> hoistSpec "Button" (encodeButtonSpec s) sb
+        | NodeKind.FileUpload s -> hoistSpec "FileUpload" (encodeFileUploadSpec s) sb
+        | NodeKind.Select s -> hoistSpec "Select" (encodeSelectSpec s) sb
+        // -- Vis --
+        | NodeKind.DataGrid s -> hoistSpec "DataGrid" (encodeGridSpec s) sb
+        | NodeKind.Chart s -> hoistSpec "Chart" (encodeChartSpec s) sb
+        | NodeKind.Map s -> hoistSpec "Map" (encodeMapSpec s) sb
         | NodeKind.ErrorBoundary spec ->
             // The render-time error boundary is an
             // AI-emittable shape, so it round-trips through the wire form

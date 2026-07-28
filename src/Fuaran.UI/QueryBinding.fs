@@ -193,52 +193,45 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
         | Some binding -> add sink binding
         | None -> ()
 
+    // This walk was already selective (each category ended in `| _ -> ()`), so
+    // the flat form keeps the same posture: named sinks, then a catch-all.
     match n.Kind with
-    | NodeKind.Display display ->
-        match display with
-        | NodeKind.Metric spec ->
-            add BindingSinkClass.Numeric spec.Value
-            addOpt BindingSinkClass.Numeric spec.Trend
-        | NodeKind.LabelValueRow spec -> add BindingSinkClass.Numeric spec.Value
-        | NodeKind.Progress spec -> add BindingSinkClass.Numeric spec.Fraction
-        | NodeKind.Sparkline spec -> add BindingSinkClass.Numeric spec.Source
-        | _ -> ()
-    | NodeKind.Visualisation vis ->
-        match vis with
-        | NodeKind.Chart spec ->
-            // The axis/series field names resolve against the schema only when
-            // the chart's data IS the resolved query (Source = Binding.Query).
-            // A static / transform-sourced chart names columns of a different
-            // source the passed schema does not describe — skip it.
-            match spec.Source with
-            | Binding.Query _ ->
-                acc.Add
-                    { Column = spec.XField
-                      Sink = BindingSinkClass.Categorical
-                      NodeId = nid }
+    | NodeKind.Metric spec ->
+        add BindingSinkClass.Numeric spec.Value
+        addOpt BindingSinkClass.Numeric spec.Trend
+    | NodeKind.LabelValueRow spec -> add BindingSinkClass.Numeric spec.Value
+    | NodeKind.Progress spec -> add BindingSinkClass.Numeric spec.Fraction
+    | NodeKind.Sparkline spec -> add BindingSinkClass.Numeric spec.Source
+    | NodeKind.Chart spec ->
+        // The axis/series field names resolve against the schema only when
+        // the chart's data IS the resolved query (Source = Binding.Query).
+        // A static / transform-sourced chart names columns of a different
+        // source the passed schema does not describe — skip it.
+        match spec.Source with
+        | Binding.Query _ ->
+            acc.Add
+                { Column = spec.XField
+                  Sink = BindingSinkClass.Categorical
+                  NodeId = nid }
 
-                for yf in spec.YFields do
-                    acc.Add
-                        { Column = yf
-                          Sink = BindingSinkClass.Numeric
-                          NodeId = nid }
-            | _ -> ()
+            for yf in spec.YFields do
+                acc.Add
+                    { Column = yf
+                      Sink = BindingSinkClass.Numeric
+                      NodeId = nid }
         | _ -> ()
-    | NodeKind.Input input ->
-        match input with
-        | NodeKind.Form spec ->
-            for field in spec.Fields do
-                match field.Kind with
-                | FormFieldKind.Number(value, _) -> add BindingSinkClass.Numeric value
-                | FormFieldKind.RangedNumber(value, _, _) -> add BindingSinkClass.Numeric value
-                | FormFieldKind.Range(value, _, _) -> add BindingSinkClass.Numeric value
-                | FormFieldKind.Checkbox(value, _) -> add BindingSinkClass.Boolean value
-                | FormFieldKind.Date(value, _, _, _) -> add BindingSinkClass.Temporal value
-                | FormFieldKind.Text(value, _) -> add BindingSinkClass.Categorical value
-                | FormFieldKind.TextArea(value, _, _) -> add BindingSinkClass.Categorical value
-                | FormFieldKind.Choice(_, value, _) -> add BindingSinkClass.Categorical value
-                | FormFieldKind.SegmentedChoice(_, value, _, _) -> add BindingSinkClass.Categorical value
-        | _ -> ()
+    | NodeKind.Form spec ->
+        for field in spec.Fields do
+            match field.Kind with
+            | FormFieldKind.Number(value, _) -> add BindingSinkClass.Numeric value
+            | FormFieldKind.RangedNumber(value, _, _) -> add BindingSinkClass.Numeric value
+            | FormFieldKind.Range(value, _, _) -> add BindingSinkClass.Numeric value
+            | FormFieldKind.Checkbox(value, _) -> add BindingSinkClass.Boolean value
+            | FormFieldKind.Date(value, _, _, _) -> add BindingSinkClass.Temporal value
+            | FormFieldKind.Text(value, _) -> add BindingSinkClass.Categorical value
+            | FormFieldKind.TextArea(value, _, _) -> add BindingSinkClass.Categorical value
+            | FormFieldKind.Choice(_, value, _) -> add BindingSinkClass.Categorical value
+            | FormFieldKind.SegmentedChoice(_, value, _, _) -> add BindingSinkClass.Categorical value
     | _ -> ()
 
     List.ofSeq acc
@@ -253,16 +246,15 @@ let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list =
         acc.AddRange(queryBoundRefsOfNode n)
 
         match n.Kind with
-        | NodeKind.Layout layout ->
-            match layout with
-            | NodeKind.Box spec -> spec.Children |> List.iter walk
-            | NodeKind.SplitPanel spec -> spec.Children |> List.iter walk
-            | NodeKind.Tabs spec -> spec.Children |> List.iter walk
-            | NodeKind.Stepper spec -> spec.Children |> List.iter walk
-            | NodeKind.SummaryList spec -> spec.Children |> List.iter walk
-            | NodeKind.Disclosure spec -> spec.Children |> List.iter walk
-            | NodeKind.Modal spec -> spec.Children |> List.iter walk
-            | NodeKind.ScrollArea spec -> spec.Children |> List.iter walk
+        // -- Layout --
+        | NodeKind.Box spec -> spec.Children |> List.iter walk
+        | NodeKind.SplitPanel spec -> spec.Children |> List.iter walk
+        | NodeKind.Tabs spec -> spec.Children |> List.iter walk
+        | NodeKind.Stepper spec -> spec.Children |> List.iter walk
+        | NodeKind.SummaryList spec -> spec.Children |> List.iter walk
+        | NodeKind.Disclosure spec -> spec.Children |> List.iter walk
+        | NodeKind.Modal spec -> spec.Children |> List.iter walk
+        | NodeKind.ScrollArea spec -> spec.Children |> List.iter walk
         | NodeKind.ErrorBoundary spec ->
             walk spec.Child
             walk spec.Fallback
@@ -270,9 +262,32 @@ let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list =
             spec.Cases |> List.iter (fun (_, child) -> walk child)
             walk spec.Default
         | NodeKind.FragmentDecl spec -> walk spec.Body
-        | NodeKind.Display _
-        | NodeKind.Input _
-        | NodeKind.Visualisation _
+        // Every childless kind — Display / Input / Visualisation leaves.
+        | NodeKind.Heading _
+        | NodeKind.Markdown _
+        | NodeKind.Metric _
+        | NodeKind.Badge _
+        | NodeKind.Sparkline _
+        | NodeKind.Callout _
+        | NodeKind.Progress _
+        | NodeKind.Skeleton _
+        | NodeKind.LabelValueRow _
+        | NodeKind.Fact _
+        | NodeKind.Link _
+        | NodeKind.Image _
+        | NodeKind.List _
+        | NodeKind.Toast _
+        | NodeKind.CodeBlock _
+        | NodeKind.Math _
+        | NodeKind.Drawing _
+        | NodeKind.Form _
+        | NodeKind.Filters _
+        | NodeKind.Button _
+        | NodeKind.FileUpload _
+        | NodeKind.Select _
+        | NodeKind.DataGrid _
+        | NodeKind.Chart _
+        | NodeKind.Map _
         | NodeKind.Custom _
         | NodeKind.FragmentRef _
         // Mount (§4o) is an opaque isolation boundary — the guest carries its

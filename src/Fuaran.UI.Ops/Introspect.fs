@@ -71,80 +71,74 @@ let kindName (kind: NodeKind<'Msg>) : string = Kind.name kind
 
 let availableFields (kind: NodeKind<'Msg>) : string list =
     match kind with
-    | NodeKind.Layout layout ->
-        match layout with
-        | NodeKind.Box spec ->
-            // Field surface is layout-mode-dependent, preserving the retired
-            // kinds' updatable fields: Flex → Orientation/Wrap (Stack), Grid →
-            // Cols/TemplateColumns (GridLayout), plus Heading (Card) always.
-            let layoutFields =
-                match spec.Layout with
-                | BoxLayout.Flex _ -> [ "Orientation"; "Wrap" ]
-                | BoxLayout.Grid _ -> [ "Cols"; "TemplateColumns" ]
-                | BoxLayout.Auto -> []
+    // -- Layout --
+    | NodeKind.Box spec ->
+        // Field surface is layout-mode-dependent, preserving the retired
+        // kinds' updatable fields: Flex → Orientation/Wrap (Stack), Grid →
+        // Cols/TemplateColumns (GridLayout), plus Heading (Card) always.
+        let layoutFields =
+            match spec.Layout with
+            | BoxLayout.Flex _ -> [ "Orientation"; "Wrap" ]
+            | BoxLayout.Grid _ -> [ "Cols"; "TemplateColumns" ]
+            | BoxLayout.Auto -> []
 
-            layoutFields @ [ "Heading"; "Children" ]
-        | NodeKind.SplitPanel _ -> [ "Weight"; "Children" ]
-        | NodeKind.Tabs _ -> [ "Orientation"; "Children" ]
-        | NodeKind.Stepper _ -> [ "ActiveStep"; "Children" ]
-        | NodeKind.SummaryList _ -> [ "Heading"; "Children" ]
-        | NodeKind.Disclosure _ -> [ "Heading"; "Open"; "DefaultOpen"; "Children" ]
-        // `Children` is advertised but not UpdateProp-settable anywhere: it is
-        // the structural ops' surface (getChildren / withChildren below), and
-        // the NotSupportedYet hint names them. That is a signpost, not a lie.
-        | NodeKind.Modal _ -> [ "Heading"; "Dismissable"; "Children" ]
-        | NodeKind.ScrollArea _ -> [ "Orientation"; "MaxHeight"; "MaxWidth"; "Children" ]
-    | NodeKind.Display display ->
-        match display with
-        | NodeKind.Heading _ -> [ "Level"; "Text"; "Variant" ]
-        | NodeKind.Markdown _ -> [ "Text" ]
-        | NodeKind.Metric _ ->
-            [ "Label"
-              "Value"
-              "Format"
-              "Tone"
-              "Weight"
-              "Emphasis"
-              "Trend"
-              "TrendFormat"
-              "Icon"
-              "Subtext" ]
-        | NodeKind.Badge _ -> [ "Label"; "Variant" ]
-        | NodeKind.Sparkline _ -> [ "Source" ]
-        | NodeKind.Callout _ -> [ "Tone"; "Heading"; "Body"; "Icon"; "Dismissable" ]
-        | NodeKind.Progress _ -> [ "Fraction"; "Label"; "Caveat"; "Indeterminate"; "Tone" ]
-        | NodeKind.Skeleton _ -> [ "Rows" ]
-        | NodeKind.LabelValueRow _ -> [ "Label"; "Value"; "Format"; "Emphasis"; "Help" ]
-        | NodeKind.Fact _ -> [ "Label"; "Value"; "Icon"; "Tone"; "Emphasis"; "Help" ]
-        | NodeKind.Link _ -> [ "Href"; "Label"; "Rel"; "Target"; "Download" ]
-        | NodeKind.Image _ -> [ "Alt"; "Variant" ]
-        | NodeKind.List _ -> [ "Items"; "Ordered" ]
-        | NodeKind.Toast _ -> [ "Message"; "Tone"; "Dismissable" ]
-        | NodeKind.CodeBlock _ -> [ "Code"; "Language"; "LineNumbers"; "HighlightLines"; "Copyable" ]
-        | NodeKind.Math _ -> [ "Source"; "Display" ]
-        // Drawing stays a whole-artefact swap via EditNode: `Shapes` is a
-        // geometry list with no per-item identity, so there is nothing here a
-        // field-level path could address today. Empty, therefore honest.
-        | NodeKind.Drawing _ -> []
-    | NodeKind.Input input ->
-        match input with
-        | NodeKind.Form _ -> [ "Fields"; "SubmitLabel" ]
-        // NodeKind.Filters carries a bare list, not a record; no
-        // top-level field surface for v1 UpdateProp.
-        | NodeKind.Filters _ -> []
-        // `Tooltip` joined the list when the Input family gained field-level
-        // UpdateProp: it is addressable, so advertising it is now accurate
-        // rather than aspirational.
-        | NodeKind.Button _ -> [ "Label"; "Variant"; "Icon"; "Tooltip" ]
-        | NodeKind.FileUpload _ -> [ "Label"; "Accept"; "Multiple" ]
-        | NodeKind.Select _ -> [ "Label"; "Source"; "Value"; "Placeholder" ]
-    | NodeKind.Visualisation vis ->
-        match vis with
-        | NodeKind.DataGrid _ -> [ "Source"; "Columns"; "Editable"; "RowKeyField" ]
-        | NodeKind.Chart _ -> [ "Source"; "Kind"; "XField"; "YFields"; "Title"; "Stacked" ]
-        | NodeKind.Map _ -> [ "Source"; "CentreLatitude"; "CentreLongitude"; "Zoom" ]
-    // Custom is an open prop bag; the AI should swap it wholesale via
-    // EditNode rather than edit individual props through this engine.
+        layoutFields @ [ "Heading"; "Children" ]
+    | NodeKind.SplitPanel _ -> [ "Weight"; "Children" ]
+    | NodeKind.Tabs _ -> [ "Orientation"; "Children" ]
+    | NodeKind.Stepper _ -> [ "ActiveStep"; "Children" ]
+    | NodeKind.SummaryList _ -> [ "Heading"; "Children" ]
+    | NodeKind.Disclosure _ -> [ "Heading"; "Open"; "DefaultOpen"; "Children" ]
+    // `Children` is advertised but not UpdateProp-settable anywhere: it is
+    // the structural ops' surface (getChildren / withChildren below), and
+    // the NotSupportedYet hint names them. That is a signpost, not a lie.
+    | NodeKind.Modal _ -> [ "Heading"; "Dismissable"; "Children" ]
+    | NodeKind.ScrollArea _ -> [ "Orientation"; "MaxHeight"; "MaxWidth"; "Children" ]
+    // -- Display --
+    | NodeKind.Heading _ -> [ "Level"; "Text"; "Variant" ]
+    | NodeKind.Markdown _ -> [ "Text" ]
+    | NodeKind.Metric _ ->
+        [ "Label"
+          "Value"
+          "Format"
+          "Tone"
+          "Weight"
+          "Emphasis"
+          "Trend"
+          "TrendFormat"
+          "Icon"
+          "Subtext" ]
+    | NodeKind.Badge _ -> [ "Label"; "Variant" ]
+    | NodeKind.Sparkline _ -> [ "Source" ]
+    | NodeKind.Callout _ -> [ "Tone"; "Heading"; "Body"; "Icon"; "Dismissable" ]
+    | NodeKind.Progress _ -> [ "Fraction"; "Label"; "Caveat"; "Indeterminate"; "Tone" ]
+    | NodeKind.Skeleton _ -> [ "Rows" ]
+    | NodeKind.LabelValueRow _ -> [ "Label"; "Value"; "Format"; "Emphasis"; "Help" ]
+    | NodeKind.Fact _ -> [ "Label"; "Value"; "Icon"; "Tone"; "Emphasis"; "Help" ]
+    | NodeKind.Link _ -> [ "Href"; "Label"; "Rel"; "Target"; "Download" ]
+    | NodeKind.Image _ -> [ "Alt"; "Variant" ]
+    | NodeKind.List _ -> [ "Items"; "Ordered" ]
+    | NodeKind.Toast _ -> [ "Message"; "Tone"; "Dismissable" ]
+    | NodeKind.CodeBlock _ -> [ "Code"; "Language"; "LineNumbers"; "HighlightLines"; "Copyable" ]
+    | NodeKind.Math _ -> [ "Source"; "Display" ]
+    // Drawing stays a whole-artefact swap via EditNode: `Shapes` is a
+    // geometry list with no per-item identity, so there is nothing here a
+    // field-level path could address today. Empty, therefore honest.
+    | NodeKind.Drawing _ -> []
+    // -- Input --
+    | NodeKind.Form _ -> [ "Fields"; "SubmitLabel" ]
+    // NodeKind.Filters carries a bare list, not a record; no
+    // top-level field surface for v1 UpdateProp.
+    | NodeKind.Filters _ -> []
+    // `Tooltip` joined the list when the Input family gained field-level
+    // UpdateProp: it is addressable, so advertising it is now accurate
+    // rather than aspirational.
+    | NodeKind.Button _ -> [ "Label"; "Variant"; "Icon"; "Tooltip" ]
+    | NodeKind.FileUpload _ -> [ "Label"; "Accept"; "Multiple" ]
+    | NodeKind.Select _ -> [ "Label"; "Source"; "Value"; "Placeholder" ]
+    // -- Visualisation --
+    | NodeKind.DataGrid _ -> [ "Source"; "Columns"; "Editable"; "RowKeyField" ]
+    | NodeKind.Chart _ -> [ "Source"; "Kind"; "XField"; "YFields"; "Title"; "Stacked" ]
+    | NodeKind.Map _ -> [ "Source"; "CentreLatitude"; "CentreLongitude"; "Zoom" ]
     | NodeKind.Custom(_, _, _, _, _) -> []
     // ErrorBoundary carries `Child` + `Fallback`
     // as Node subtrees; the AI should swap them via EditNode rather
@@ -260,26 +254,15 @@ let interactiveStateSlots (kind: NodeKind<'Msg>) : string list =
 
 let getChildren (kind: NodeKind<'Msg>) : Node<'Msg> list option =
     match kind with
-    | NodeKind.Layout layout ->
-        match layout with
-        | NodeKind.Box spec -> Some spec.Children
-        | NodeKind.SplitPanel spec -> Some spec.Children
-        | NodeKind.Tabs spec -> Some spec.Children
-        | NodeKind.Stepper spec -> Some spec.Children
-        | NodeKind.SummaryList spec -> Some spec.Children
-        | NodeKind.Disclosure spec -> Some spec.Children
-        | NodeKind.Modal spec -> Some spec.Children
-        | NodeKind.ScrollArea spec -> Some spec.Children
-    // FragmentDecl exposes its `Body` as a
-    // single-element children list so the standard tree walkers
-    // (`findNode` / `mapNode` / `allNodeIds` / `nodesWithField`) traverse
-    // into it. This means interior fragment-body nodes are addressable
-    // by their bare NodeId through the normal `Apply.apply` dispatch —
-    // `EditNode("btn", ...)` / `UpdateProp("btn", ...)` reach into a
-    // referenced fragment's body the same way they reach a Layout's
-    // child. Structural ops (InsertChild / RemoveNode) against the decl
-    // itself surface `ChildlessKind` via `withChildren`'s length-≠-1
-    // guard below.
+    // -- Layout --
+    | NodeKind.Box spec -> Some spec.Children
+    | NodeKind.SplitPanel spec -> Some spec.Children
+    | NodeKind.Tabs spec -> Some spec.Children
+    | NodeKind.Stepper spec -> Some spec.Children
+    | NodeKind.SummaryList spec -> Some spec.Children
+    | NodeKind.Disclosure spec -> Some spec.Children
+    | NodeKind.Modal spec -> Some spec.Children
+    | NodeKind.ScrollArea spec -> Some spec.Children
     | NodeKind.FragmentDecl spec -> Some [ spec.Body ]
     // FragmentRef is a pure leaf — the renderer expands it at render
     // time via a separate resolver walk; the apply engine treats it as
@@ -289,23 +272,15 @@ let getChildren (kind: NodeKind<'Msg>) : Node<'Msg> list option =
 
 let withChildren (kind: NodeKind<'Msg>) (children: Node<'Msg> list) : NodeKind<'Msg> option =
     match kind with
-    | NodeKind.Layout layout ->
-        match layout with
-        | NodeKind.Box spec -> Some(NodeKind.Box( { spec with Children = children }))
-        | NodeKind.SplitPanel spec -> Some(NodeKind.SplitPanel( { spec with Children = children }))
-        | NodeKind.Tabs spec -> Some(NodeKind.Tabs( { spec with Children = children }))
-        | NodeKind.Stepper spec -> Some(NodeKind.Stepper( { spec with Children = children }))
-        | NodeKind.SummaryList spec -> Some(NodeKind.SummaryList( { spec with Children = children }))
-        | NodeKind.Disclosure spec -> Some(NodeKind.Disclosure( { spec with Children = children }))
-        | NodeKind.Modal spec -> Some(NodeKind.Modal( { spec with Children = children }))
-        | NodeKind.ScrollArea spec -> Some(NodeKind.ScrollArea( { spec with Children = children }))
-    // Re-pack the single-element children list back into the
-    // decl's `Body`. Pass-through of a length-1 list happens during the
-    // normal `mapNode` traversal (one child was mapped, one comes back).
-    // A length-≠-1 list means the caller is trying to InsertChild /
-    // RemoveNode against the decl itself — fragments don't structurally
-    // accept children, only a body; returning `None` surfaces
-    // `ChildlessKind` through the apply engine's standard path.
+    // -- Layout --
+    | NodeKind.Box spec -> Some(NodeKind.Box( { spec with Children = children }))
+    | NodeKind.SplitPanel spec -> Some(NodeKind.SplitPanel( { spec with Children = children }))
+    | NodeKind.Tabs spec -> Some(NodeKind.Tabs( { spec with Children = children }))
+    | NodeKind.Stepper spec -> Some(NodeKind.Stepper( { spec with Children = children }))
+    | NodeKind.SummaryList spec -> Some(NodeKind.SummaryList( { spec with Children = children }))
+    | NodeKind.Disclosure spec -> Some(NodeKind.Disclosure( { spec with Children = children }))
+    | NodeKind.Modal spec -> Some(NodeKind.Modal( { spec with Children = children }))
+    | NodeKind.ScrollArea spec -> Some(NodeKind.ScrollArea( { spec with Children = children }))
     | NodeKind.FragmentDecl spec ->
         match children with
         | [ single ] -> Some(NodeKind.FragmentDecl { spec with Body = single })

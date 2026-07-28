@@ -169,9 +169,7 @@ let private textSourceOptLength (t: TextSource option) : int =
 /// only widen the abstraction, never narrow it).
 let private ownContentLength (kind: NodeKind<'Msg>) : int =
     match kind with
-    | NodeKind.Display display ->
-        match display with
-        | NodeKind.Heading s -> textSourceLength s.Text
+    | NodeKind.Heading s -> textSourceLength s.Text
         | NodeKind.Markdown s -> textSourceLength s.Text
         | NodeKind.Badge s -> textSourceLength s.Label
         | NodeKind.Metric s -> textSourceLength s.Label + textSourceOptLength s.Subtext
@@ -182,15 +180,11 @@ let private ownContentLength (kind: NodeKind<'Msg>) : int =
         | NodeKind.List s -> s.Items |> List.sumBy textSourceLength
         | NodeKind.Toast s -> textSourceLength s.Message
         | NodeKind.CodeBlock s -> String.length s.Code
-        | NodeKind.Math s -> String.length s.Source
-        | _ -> 0
-    | NodeKind.Layout layout ->
-        match layout with
-        | NodeKind.Box s -> textSourceOptLength s.Heading
-        | NodeKind.SummaryList s -> textSourceOptLength s.Heading
-        | NodeKind.Disclosure s -> textSourceLength s.Heading
-        | NodeKind.Modal s -> textSourceOptLength s.Heading
-        | _ -> 0
+    | NodeKind.Math s -> String.length s.Source
+    | NodeKind.Box s -> textSourceOptLength s.Heading
+    | NodeKind.SummaryList s -> textSourceOptLength s.Heading
+    | NodeKind.Disclosure s -> textSourceLength s.Heading
+    | NodeKind.Modal s -> textSourceOptLength s.Heading
     | _ -> 0
 
 // ─── Role classification ────────────────────────────────────────────────────
@@ -198,27 +192,26 @@ let private ownContentLength (kind: NodeKind<'Msg>) : int =
 /// Map a `NodeKind` to its bounded, domain-neutral `StructuralRole`. Pure
 /// dispatch on the kind discriminator — no content inspected.
 let roleOf (kind: NodeKind<'Msg>) : StructuralRole =
+    // Phase 692 — the category wrappers this dispatched on are gone; the derived
+    // `Kind.category` carries the same classification. The Display kinds whose
+    // role differs from their category's default are matched first.
     match kind with
-    | NodeKind.Layout _ -> StructuralRole.Container
-    | NodeKind.Display display ->
-        match display with
-        | NodeKind.Heading _ -> StructuralRole.Heading
-        | NodeKind.Metric _
-        | NodeKind.Sparkline _ -> StructuralRole.DataView
-        | NodeKind.Image _ -> StructuralRole.Media
-        | _ -> StructuralRole.TextBlock
-    | NodeKind.Input _ -> StructuralRole.Interactive
-    | NodeKind.Visualisation _ -> StructuralRole.DataView
+    | NodeKind.Heading _ -> StructuralRole.Heading
+    | NodeKind.Metric _
+    | NodeKind.Sparkline _ -> StructuralRole.DataView
+    | NodeKind.Image _ -> StructuralRole.Media
     | NodeKind.Custom _ -> StructuralRole.Opaque
-    | NodeKind.ErrorBoundary _
     // Switch (Phase 392) is a structural control-flow primitive — it selects a
-    // child subtree by state; the chosen child carries its own role.
-    | NodeKind.Switch _
-    | NodeKind.FragmentDecl _
-    | NodeKind.FragmentRef _
-    // Mount (§4o) is a structural isolation boundary — the guest's own content
-    // is classified in its own scope, so at the host level it is Structural.
-    | NodeKind.Mount _ -> StructuralRole.Structural
+    // child subtree by state; the chosen child carries its own role. Mount (§4o)
+    // is a structural isolation boundary — the guest's own content is classified
+    // in its own scope, so at the host level it is Structural.
+    | _ ->
+        match Kind.category kind with
+        | NodeCategory.Layout -> StructuralRole.Container
+        | NodeCategory.Display -> StructuralRole.TextBlock
+        | NodeCategory.Input -> StructuralRole.Interactive
+        | NodeCategory.Visualisation -> StructuralRole.DataView
+        | NodeCategory.Structural -> StructuralRole.Structural
 
 // ─── Projection ─────────────────────────────────────────────────────────────
 

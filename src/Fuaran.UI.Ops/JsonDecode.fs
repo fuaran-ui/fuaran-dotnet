@@ -2752,7 +2752,7 @@ let private decodeDrawingSpec (path: string) (j: Json) : Result<DrawingSpec, Dec
         | _, _, _, Error e, _
         | _, _, _, _, Error e -> Error e
 
-let private decodeDisplayKind (path: string) (j: Json) : Result<DisplayKind<obj>, DecodeError> =
+let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
@@ -3299,7 +3299,7 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
         | _, _, Error e, _
         | _, _, _, Error e -> Error e
 
-let private decodeInputKind (path: string) (j: Json) : Result<InputKind<obj>, DecodeError> =
+let private decodeInputKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
@@ -3616,7 +3616,7 @@ let private decodeMapSpec (path: string) (j: Json) : Result<MapSpec<obj>, Decode
         | _, _, _, Error e, _
         | _, _, _, _, Error e -> Error e
 
-let private decodeVisKind (path: string) (j: Json) : Result<VisKind<obj>, DecodeError> =
+let private decodeVisKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
@@ -3803,7 +3803,7 @@ let rec private decodeChildren (path: string) (fields: Map<string, Json>) : Resu
         | Error e -> Error e
         | Ok xs -> traverseIndexed (fun i item -> decodeNodeAst (sprintf "%s.children[%d]" path i) item) xs
 
-and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, DecodeError> =
+and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
@@ -4234,12 +4234,14 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
         // forward-coupling surface. An unrecognised discriminator falls
         // through to WRONG_NODE_KIND below.
         | Ok("Box" | "SplitPanel" | "Tabs" | "Stepper" | "SummaryList" | "Disclosure" | "Modal" | "ScrollArea") ->
-            decodeLayoutKind path j |> Result.map NodeKind.Layout
+            // Phase 692 — the family decoders now build flat NodeKind cases
+            // directly; the category wrappers they used to re-wrap into are gone.
+            decodeLayoutKind path j
         | Ok("Heading" | "Markdown" | "Metric" | "Badge" | "Link" | "Image" | "List" | "Toast" | "CodeBlock" | "Math" | "Drawing" | "Sparkline" | "Callout" | "Progress" | "Skeleton" | "LabelValueRow" | "Fact") ->
-            decodeDisplayKind path j |> Result.map NodeKind.Display
+            decodeDisplayKind path j
         | Ok("Form" | "Filters" | "Button" | "FileUpload" | "Select") ->
-            decodeInputKind path j |> Result.map NodeKind.Input
-        | Ok("DataGrid" | "Chart" | "Map") -> decodeVisKind path j |> Result.map NodeKind.Visualisation
+            decodeInputKind path j
+        | Ok("DataGrid" | "Chart" | "Map") -> decodeVisKind path j
         | Ok "Custom" ->
             let moduleIdR =
                 requireField path fields "moduleId" "Custom moduleId string"

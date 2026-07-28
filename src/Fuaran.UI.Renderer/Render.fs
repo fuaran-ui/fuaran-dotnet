@@ -75,73 +75,40 @@ let private correlationId (seed: string) : string = Ids.deterministicCorrelation
 // projection without driving Feliz's React-substrate. The renderer's
 // internal call sites still consume it through the module namespace.
 let nodeKindName<'Msg> (kind: NodeKind<'Msg>) : string =
+    // Phase 692 — the "Category.Kind" projection survives the flattening (this
+    // string is pinned by the .NET-side tests), but the category is now DERIVED
+    // (`Kind.category`) and the kind name comes from `Kind.name`, so a new kind
+    // extends this by extending those rather than a third enumeration here.
     match kind with
-    | NodeKind.Layout layout ->
+    // Box renders under a role-dependent display name — the retired Card /
+    // Dashboard / Separator / Grid / Stack vocabulary the catalog pins.
+    | NodeKind.Box spec ->
         let inner =
-            match layout with
-            | NodeKind.Box spec ->
-                match spec.Role, spec.Layout with
-                | BoxRole.Card, _ -> "Card"
-                | (BoxRole.Dashboard, _)
-                | (BoxRole.Group, BoxLayout.Auto) -> "Dashboard"
-                | BoxRole.Separator, _ -> "Separator"
-                | BoxRole.Group, BoxLayout.Grid _ -> "Grid"
-                | BoxRole.Group, BoxLayout.Flex _ -> "Stack"
-            | NodeKind.SplitPanel _ -> "SplitPanel"
-            | NodeKind.Tabs _ -> "Tabs"
-            | NodeKind.Stepper _ -> "Stepper"
-            | NodeKind.SummaryList _ -> "SummaryList"
-            | NodeKind.Disclosure _ -> "Disclosure"
-            | NodeKind.Modal _ -> "Modal"
-            | NodeKind.ScrollArea _ -> "ScrollArea"
+            match spec.Role, spec.Layout with
+            | BoxRole.Card, _ -> "Card"
+            | (BoxRole.Dashboard, _)
+            | (BoxRole.Group, BoxLayout.Auto) -> "Dashboard"
+            | BoxRole.Separator, _ -> "Separator"
+            | BoxRole.Group, BoxLayout.Grid _ -> "Grid"
+            | BoxRole.Group, BoxLayout.Flex _ -> "Stack"
 
         "Layout." + inner
-    | NodeKind.Display display ->
-        let inner =
-            match display with
-            | NodeKind.Heading _ -> "Heading"
-            | NodeKind.Markdown _ -> "Markdown"
-            | NodeKind.Metric _ -> "Metric"
-            | NodeKind.Badge _ -> "Badge"
-            | NodeKind.Sparkline _ -> "Sparkline"
-            | NodeKind.Callout _ -> "Callout"
-            | NodeKind.Progress _ -> "Progress"
-            | NodeKind.Skeleton _ -> "Skeleton"
-            | NodeKind.LabelValueRow _ -> "LabelValueRow"
-            | NodeKind.Fact _ -> "Fact"
-            | NodeKind.Link _ -> "Link"
-            | NodeKind.Image _ -> "Image"
-            | NodeKind.List _ -> "List"
-            | NodeKind.Toast _ -> "Toast"
-            | NodeKind.CodeBlock _ -> "CodeBlock"
-            | NodeKind.Math _ -> "Math"
-            | NodeKind.Drawing _ -> "Drawing"
-
-        "Display." + inner
-    | NodeKind.Input input ->
-        let inner =
-            match input with
-            | NodeKind.Form _ -> "Form"
-            | NodeKind.Filters _ -> "Filters"
-            | NodeKind.Button _ -> "Button"
-            | NodeKind.FileUpload _ -> "FileUpload"
-            | NodeKind.Select _ -> "Select"
-
-        "Input." + inner
-    | NodeKind.Visualisation vis ->
-        let inner =
-            match vis with
-            | NodeKind.DataGrid _ -> "Grid"
-            | NodeKind.Chart _ -> "Chart"
-            | NodeKind.Map _ -> "Map"
-
-        "Visualisation." + inner
     | NodeKind.Custom(moduleId, componentId, _, _, _) -> sprintf "Custom.%s.%s" moduleId componentId
     | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
     | NodeKind.Switch _ -> "Switch"
     | NodeKind.FragmentDecl _ -> "FragmentDecl"
     | NodeKind.FragmentRef _ -> "FragmentRef"
     | NodeKind.Mount spec -> sprintf "Mount.%s" spec.ScopeId
+    | k ->
+        let category =
+            match Kind.category k with
+            | NodeCategory.Layout -> "Layout"
+            | NodeCategory.Display -> "Display"
+            | NodeCategory.Input -> "Input"
+            | NodeCategory.Visualisation -> "Visualisation"
+            | NodeCategory.Structural -> "Structural"
+
+        category + "." + Kind.name k
 
 // ─── The opaque session-context keys (Phase 330) ───────────────────────────
 //
@@ -782,19 +749,14 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
         // shorter code.
         let acc' = Map.add spec.Name spec.Body acc
         collectFragments acc' spec.Body
-    | NodeKind.Layout layout ->
-        let children =
-            match layout with
-            | NodeKind.Box s -> s.Children
-            | NodeKind.SplitPanel s -> s.Children
-            | NodeKind.Tabs s -> s.Children
-            | NodeKind.Stepper s -> s.Children
-            | NodeKind.SummaryList s -> s.Children
-            | NodeKind.Disclosure s -> s.Children
-            | NodeKind.Modal s -> s.Children
-            | NodeKind.ScrollArea s -> s.Children
-
-        children |> List.fold collectFragments acc
+    | NodeKind.Box s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.SplitPanel s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.Tabs s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.Stepper s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.SummaryList s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.Disclosure s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.Modal s -> s.Children |> List.fold collectFragments acc
+    | NodeKind.ScrollArea s -> s.Children |> List.fold collectFragments acc
     | NodeKind.ErrorBoundary spec ->
         let acc' = collectFragments acc spec.Child
         collectFragments acc' spec.Fallback
@@ -805,9 +767,31 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
             spec.Cases |> List.fold (fun a (_, child) -> collectFragments a child) acc
 
         collectFragments acc' spec.Default
-    | NodeKind.Display _
-    | NodeKind.Input _
-    | NodeKind.Visualisation _
+    | NodeKind.Heading _
+    | NodeKind.Markdown _
+    | NodeKind.Metric _
+    | NodeKind.Badge _
+    | NodeKind.Sparkline _
+    | NodeKind.Callout _
+    | NodeKind.Progress _
+    | NodeKind.Skeleton _
+    | NodeKind.LabelValueRow _
+    | NodeKind.Fact _
+    | NodeKind.Link _
+    | NodeKind.Image _
+    | NodeKind.List _
+    | NodeKind.Toast _
+    | NodeKind.CodeBlock _
+    | NodeKind.Math _
+    | NodeKind.Drawing _
+    | NodeKind.Form _
+    | NodeKind.Filters _
+    | NodeKind.Button _
+    | NodeKind.FileUpload _
+    | NodeKind.Select _
+    | NodeKind.DataGrid _
+    | NodeKind.Chart _
+    | NodeKind.Map _
     | NodeKind.Custom _
     | NodeKind.FragmentRef _
     // Mount (§4o) — the guest is a separate scope with its own fragment table
@@ -937,10 +921,124 @@ let rec collectKeys<'Msg> (channel: KeyChannel) (node: Node<'Msg>) : Set<string>
 /// `collectKeys` to recurse into.
 and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string list * Node<'Msg> list =
     match kind with
-    | NodeKind.Layout layout -> layoutKeys channel layout
-    | NodeKind.Display display -> displayKeys channel display, []
-    | NodeKind.Input input -> inputKeys channel input, []
-    | NodeKind.Visualisation vis -> visKeys channel vis, []
+    // -- Layout --
+    | NodeKind.Box s -> keysOfTextOpt channel s.Heading, s.Children
+    | NodeKind.SplitPanel s -> [], s.Children
+    | NodeKind.SummaryList s -> keysOfTextOpt channel s.Heading, s.Children
+    | NodeKind.Stepper s -> keysOfBinding channel s.ActiveStep, s.Children
+    | NodeKind.Disclosure s -> (keysOfText channel s.Heading @ keysOfBinding channel s.Open), s.Children
+    | NodeKind.Tabs s ->
+        let headerKeys =
+            match s.TabHeaders with
+            | Some headers ->
+                headers
+                |> List.collect (fun h -> keysOfText channel h.Label @ keysOfBindingOpt channel h.Disabled)
+            | None -> []
+
+        (keysOfBinding channel s.ActiveIndex
+         @ keysOfBindingOpt channel s.ActiveTag
+         @ headerKeys),
+        s.Children
+    | NodeKind.Modal s -> (keysOfTextOpt channel s.Heading @ keysOfBinding channel s.Open), s.Children
+    | NodeKind.ScrollArea s -> [], s.Children
+    // -- Display --
+    | NodeKind.Heading h -> keysOfText channel h.Text, []
+    | NodeKind.Markdown m -> keysOfText channel m.Text, []
+    | NodeKind.Metric k ->
+        let __v =
+            keysOfText channel k.Label
+            @ keysOfBinding channel k.Value
+            @ keysOfBindingOpt channel k.Trend
+            @ keysOfTextOpt channel k.Subtext
+        | NodeKind.Badge b -> keysOfText channel b.Label
+
+        __v, []
+    | NodeKind.Sparkline s -> keysOfBinding channel s.Source, []
+    | NodeKind.Callout c -> keysOfTextOpt channel c.Heading @ keysOfText channel c.Body, []
+    | NodeKind.Progress p ->
+        let __v =
+            keysOfBinding channel p.Fraction
+            @ keysOfTextOpt channel p.Label
+            @ keysOfTextOpt channel p.Caveat
+        | NodeKind.Skeleton _ -> []
+
+        __v, []
+    | NodeKind.LabelValueRow r ->
+        let __v =
+            keysOfText channel r.Label
+            @ keysOfBinding channel r.Value
+            @ keysOfTextOpt channel r.Help
+        | NodeKind.Fact fa ->
+            keysOfText channel fa.Label
+            @ keysOfText channel fa.Value
+            @ keysOfTextOpt channel fa.Help
+        | NodeKind.Link l -> keysOfBinding channel l.Href @ keysOfText channel l.Label
+
+        __v, []
+    | NodeKind.Image i -> keysOfBinding channel i.Src @ keysOfText channel i.Alt, []
+    | NodeKind.List l -> l.Items |> List.collect (keysOfText channel), []
+    | NodeKind.Toast t ->
+        let __v =
+            keysOfText channel t.Message @ keysOfBinding channel t.Open
+        // CodeBlock + Math carry plain strings, not bindings — no reactive keys.
+
+        __v, []
+    | NodeKind.CodeBlock _ -> [], []
+    | NodeKind.Math _ ->
+        let __v =
+            []
+        // Phase 524 ships a placeholder render; the reactive DrawStyle-colour keys
+        // are wired with the real SVG renderer in Phase 525.
+
+        __v, []
+    | NodeKind.Drawing _ -> [], []
+    // -- Input --
+    | NodeKind.Button b ->
+        let __v =
+            keysOfText channel b.Label
+            @ keysOfTextOpt channel b.Tooltip
+            @ keysOfBindingOpt channel b.Disabled
+        | NodeKind.FileUpload fu -> keysOfText channel fu.Label @ keysOfBindingOpt channel fu.Disabled
+
+        __v, []
+    | NodeKind.Select s ->
+        let __v =
+            keysOfText channel s.Label
+            @ keysOfBinding channel s.Source
+            @ keysOfBinding channel s.Value
+            // Phase 291 — the multi-select value binding (Some only in multi mode).
+            @ keysOfBindingOpt channel s.Values
+            @ keysOfTextOpt channel s.Placeholder
+            @ keysOfBindingOpt channel s.Disabled
+        | NodeKind.Form f ->
+            let fieldKeys =
+                f.Fields
+                |> List.collect (fun field ->
+                    keysOfText channel field.Label
+                    @ keysOfTextOpt channel field.Help
+                    @ keysOfFormFieldKind channel field.Kind)
+
+            keysOfText channel f.SubmitLabel
+            @ keysOfBindingOpt channel f.Disabled
+            @ fieldKeys
+        | NodeKind.Filters filters ->
+            filters
+            |> List.collect (fun fs -> keysOfText channel fs.Label @ keysOfFormFieldKind channel fs.Field)
+
+        __v, []
+    // -- Vis --
+    | NodeKind.DataGrid g ->
+        let __v =
+            keysOfBinding channel g.Source
+            @ (match g.StaticRows with
+               | Some(headers, rows) ->
+                   (headers |> List.collect (keysOfText channel))
+                   @ (rows |> List.collect (List.collect (keysOfText channel)))
+               | None -> [])
+
+        __v, []
+    | NodeKind.Chart c -> keysOfBinding channel c.Source @ keysOfTextOpt channel c.Title, []
+    | NodeKind.Map m -> keysOfBinding channel m.Source, []
     | NodeKind.ErrorBoundary spec -> [], [ spec.Child; spec.Fallback ]
     | NodeKind.Switch spec ->
         // Switch reads its StateKey off the state channel, so it registers that
@@ -962,106 +1060,6 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
     // live in the guest scope, not the host binding registry, so the
     // boundary contributes no host keys and no host children to recurse.
     | NodeKind.Mount _ -> [], []
-
-and private layoutKeys<'Msg> (channel: KeyChannel) (layout: LayoutKind<'Msg>) : string list * Node<'Msg> list =
-    match layout with
-    | NodeKind.Box s -> keysOfTextOpt channel s.Heading, s.Children
-    | NodeKind.SplitPanel s -> [], s.Children
-    | NodeKind.SummaryList s -> keysOfTextOpt channel s.Heading, s.Children
-    | NodeKind.Stepper s -> keysOfBinding channel s.ActiveStep, s.Children
-    | NodeKind.Disclosure s -> (keysOfText channel s.Heading @ keysOfBinding channel s.Open), s.Children
-    | NodeKind.Tabs s ->
-        let headerKeys =
-            match s.TabHeaders with
-            | Some headers ->
-                headers
-                |> List.collect (fun h -> keysOfText channel h.Label @ keysOfBindingOpt channel h.Disabled)
-            | None -> []
-
-        (keysOfBinding channel s.ActiveIndex
-         @ keysOfBindingOpt channel s.ActiveTag
-         @ headerKeys),
-        s.Children
-    | NodeKind.Modal s -> (keysOfTextOpt channel s.Heading @ keysOfBinding channel s.Open), s.Children
-    | NodeKind.ScrollArea s -> [], s.Children
-
-and private displayKeys<'Msg> (channel: KeyChannel) (display: DisplayKind<'Msg>) : string list =
-    match display with
-    | NodeKind.Heading h -> keysOfText channel h.Text
-    | NodeKind.Markdown m -> keysOfText channel m.Text
-    | NodeKind.Metric k ->
-        keysOfText channel k.Label
-        @ keysOfBinding channel k.Value
-        @ keysOfBindingOpt channel k.Trend
-        @ keysOfTextOpt channel k.Subtext
-    | NodeKind.Badge b -> keysOfText channel b.Label
-    | NodeKind.Sparkline s -> keysOfBinding channel s.Source
-    | NodeKind.Callout c -> keysOfTextOpt channel c.Heading @ keysOfText channel c.Body
-    | NodeKind.Progress p ->
-        keysOfBinding channel p.Fraction
-        @ keysOfTextOpt channel p.Label
-        @ keysOfTextOpt channel p.Caveat
-    | NodeKind.Skeleton _ -> []
-    | NodeKind.LabelValueRow r ->
-        keysOfText channel r.Label
-        @ keysOfBinding channel r.Value
-        @ keysOfTextOpt channel r.Help
-    | NodeKind.Fact fa ->
-        keysOfText channel fa.Label
-        @ keysOfText channel fa.Value
-        @ keysOfTextOpt channel fa.Help
-    | NodeKind.Link l -> keysOfBinding channel l.Href @ keysOfText channel l.Label
-    | NodeKind.Image i -> keysOfBinding channel i.Src @ keysOfText channel i.Alt
-    | NodeKind.List l -> l.Items |> List.collect (keysOfText channel)
-    | NodeKind.Toast t -> keysOfText channel t.Message @ keysOfBinding channel t.Open
-    // CodeBlock + Math carry plain strings, not bindings — no reactive keys.
-    | NodeKind.CodeBlock _ -> []
-    | NodeKind.Math _ -> []
-    // Phase 524 ships a placeholder render; the reactive DrawStyle-colour keys
-    // are wired with the real SVG renderer in Phase 525.
-    | NodeKind.Drawing _ -> []
-
-and private inputKeys<'Msg> (channel: KeyChannel) (input: InputKind<'Msg>) : string list =
-    match input with
-    | NodeKind.Button b ->
-        keysOfText channel b.Label
-        @ keysOfTextOpt channel b.Tooltip
-        @ keysOfBindingOpt channel b.Disabled
-    | NodeKind.FileUpload fu -> keysOfText channel fu.Label @ keysOfBindingOpt channel fu.Disabled
-    | NodeKind.Select s ->
-        keysOfText channel s.Label
-        @ keysOfBinding channel s.Source
-        @ keysOfBinding channel s.Value
-        // Phase 291 — the multi-select value binding (Some only in multi mode).
-        @ keysOfBindingOpt channel s.Values
-        @ keysOfTextOpt channel s.Placeholder
-        @ keysOfBindingOpt channel s.Disabled
-    | NodeKind.Form f ->
-        let fieldKeys =
-            f.Fields
-            |> List.collect (fun field ->
-                keysOfText channel field.Label
-                @ keysOfTextOpt channel field.Help
-                @ keysOfFormFieldKind channel field.Kind)
-
-        keysOfText channel f.SubmitLabel
-        @ keysOfBindingOpt channel f.Disabled
-        @ fieldKeys
-    | NodeKind.Filters filters ->
-        filters
-        |> List.collect (fun fs -> keysOfText channel fs.Label @ keysOfFormFieldKind channel fs.Field)
-
-and private visKeys<'Msg> (channel: KeyChannel) (vis: VisKind<'Msg>) : string list =
-    match vis with
-    | NodeKind.DataGrid g ->
-        keysOfBinding channel g.Source
-        @ (match g.StaticRows with
-           | Some(headers, rows) ->
-               (headers |> List.collect (keysOfText channel))
-               @ (rows |> List.collect (List.collect (keysOfText channel)))
-           | None -> [])
-    | NodeKind.Chart c -> keysOfBinding channel c.Source @ keysOfTextOpt channel c.Title
-    | NodeKind.Map m -> keysOfBinding channel m.Source
 
 // ── Public channel aliases ──────────────────────────────────────────────────
 //  The State-channel names are the Phase 106 public surface (the .NET test runner + reactive host
@@ -1622,8 +1620,7 @@ and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layo
         // when TabHeaders is None — legacy authoring shape.
         let tabsLabelFromChild (child: Node<'Msg>) : string =
             match child.Kind with
-            | NodeKind.Box( { Role = BoxRole.Card
-                                               Heading = Some h }) -> renderText ctx h
+            | NodeKind.Box { Role = BoxRole.Card; Heading = Some h } -> renderText ctx h
             | _ ->
                 match child.Id with
                 | NodeId s -> s

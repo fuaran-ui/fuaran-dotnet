@@ -40,34 +40,27 @@ module FragmentApply =
 
     let private getChildren<'Msg> (node: Node<'Msg>) : Node<'Msg> list option =
         match node.Kind with
-        | NodeKind.Layout layout ->
-            match layout with
-            | NodeKind.Box s -> Some s.Children
-            | NodeKind.SplitPanel s -> Some s.Children
-            | NodeKind.Tabs s -> Some s.Children
-            | NodeKind.Stepper s -> Some s.Children
-            | NodeKind.SummaryList s -> Some s.Children
-            | NodeKind.Disclosure s -> Some s.Children
-            | NodeKind.Modal s -> Some s.Children
-            | NodeKind.ScrollArea s -> Some s.Children
+        | NodeKind.Box s -> Some s.Children
+        | NodeKind.SplitPanel s -> Some s.Children
+        | NodeKind.Tabs s -> Some s.Children
+        | NodeKind.Stepper s -> Some s.Children
+        | NodeKind.SummaryList s -> Some s.Children
+        | NodeKind.Disclosure s -> Some s.Children
+        | NodeKind.Modal s -> Some s.Children
+        | NodeKind.ScrollArea s -> Some s.Children
         | _ -> None
 
     let private setChildren<'Msg> (children: Node<'Msg> list) (node: Node<'Msg>) : Node<'Msg> =
         let kind =
             match node.Kind with
-            | NodeKind.Layout layout ->
-                let l =
-                    match layout with
-                    | NodeKind.Box s -> NodeKind.Box { s with Children = children }
-                    | NodeKind.SplitPanel s -> NodeKind.SplitPanel { s with Children = children }
-                    | NodeKind.Tabs s -> NodeKind.Tabs { s with Children = children }
-                    | NodeKind.Stepper s -> NodeKind.Stepper { s with Children = children }
-                    | NodeKind.SummaryList s -> NodeKind.SummaryList { s with Children = children }
-                    | NodeKind.Disclosure s -> NodeKind.Disclosure { s with Children = children }
-                    | NodeKind.Modal s -> NodeKind.Modal { s with Children = children }
-                    | NodeKind.ScrollArea s -> NodeKind.ScrollArea { s with Children = children }
-
-                NodeKind.Layout l
+            | NodeKind.Box s -> NodeKind.Box { s with Children = children }
+            | NodeKind.SplitPanel s -> NodeKind.SplitPanel { s with Children = children }
+            | NodeKind.Tabs s -> NodeKind.Tabs { s with Children = children }
+            | NodeKind.Stepper s -> NodeKind.Stepper { s with Children = children }
+            | NodeKind.SummaryList s -> NodeKind.SummaryList { s with Children = children }
+            | NodeKind.Disclosure s -> NodeKind.Disclosure { s with Children = children }
+            | NodeKind.Modal s -> NodeKind.Modal { s with Children = children }
+            | NodeKind.ScrollArea s -> NodeKind.ScrollArea { s with Children = children }
             | other -> other
 
         { node with Kind = kind }
