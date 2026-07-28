@@ -29,6 +29,7 @@ type BoxRole =
     | Dashboard
     | Card
     | Group
+    | Separator
 
 [<RequireQualifiedAccess>]
 type MathDisplay =
@@ -233,8 +234,8 @@ and [<RequireQualifiedAccess>] LocalFlushTrigger =
 
 and [<RequireQualifiedAccess>] LayoutMode =
     | Auto
-    | Flex of direction: Orientation * wrap: bool
-    | Grid of cols: int * templateColumns: string option
+    | Flex of direction: Orientation * wrap: bool * gap: int option
+    | Grid of cols: int * templateColumns: string option * gap: int option
 
 and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | Text of value: Binding<string> option * onChange: (string -> Action<'Msg>) option
@@ -897,6 +898,7 @@ let private encBoxRole (v: BoxRole) : JVal =
     | BoxRole.Dashboard -> JStr "Dashboard"
     | BoxRole.Card -> JStr "Card"
     | BoxRole.Group -> JStr "Group"
+    | BoxRole.Separator -> JStr "Separator"
 
 let private encMathDisplay (v: MathDisplay) : JVal =
     match v with
@@ -1154,8 +1156,8 @@ and private encLocalFlushTrigger (v: LocalFlushTrigger) : JVal =
 and private encLayoutMode (v: LayoutMode) : JVal =
     match v with
     | LayoutMode.Auto -> Canon.typed "Auto" [  ]
-    | LayoutMode.Flex (direction, wrap) -> Canon.typed "Flex" [ "direction", encOrientation direction; "wrap", JBool wrap ]
-    | LayoutMode.Grid (cols, templateColumns) -> Canon.typed "Grid" ([ Some("cols", JInt cols); (templateColumns |> Option.map (fun v -> "templateColumns", JStr v)) ] |> List.choose id)
+    | LayoutMode.Flex (direction, wrap, gap) -> Canon.typed "Flex" ([ Some("direction", encOrientation direction); Some("wrap", JBool wrap); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
+    | LayoutMode.Grid (cols, templateColumns, gap) -> Canon.typed "Grid" ([ Some("cols", JInt cols); (templateColumns |> Option.map (fun v -> "templateColumns", JStr v)); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
 
 and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     match v with
@@ -1529,6 +1531,7 @@ let private decBoxRole (j: JVal) : Result<BoxRole, string> =
     | JStr "Dashboard" -> Ok BoxRole.Dashboard
     | JStr "Card" -> Ok BoxRole.Card
     | JStr "Group" -> Ok BoxRole.Group
+    | JStr "Separator" -> Ok BoxRole.Separator
     | _ -> Error "not a BoxRole"
 
 let private decMathDisplay (j: JVal) : Result<MathDisplay, string> =
@@ -1972,11 +1975,13 @@ and private decLayoutMode (j: JVal) : Result<LayoutMode, string> =
         | "Flex" ->
             dReq "direction" __fs decOrientation |> Result.bind (fun direction ->
             dReq "wrap" __fs dBool |> Result.bind (fun wrap ->
-            Ok(LayoutMode.Flex(direction, wrap))))
+            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
+            Ok(LayoutMode.Flex(direction, wrap, gap)))))
         | "Grid" ->
             dReq "cols" __fs dInt |> Result.bind (fun cols ->
             dOpt "templateColumns" __fs dStr |> Result.bind (fun templateColumns ->
-            Ok(LayoutMode.Grid(cols, templateColumns))))
+            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
+            Ok(LayoutMode.Grid(cols, templateColumns, gap)))))
         | __other -> Error ("unknown LayoutMode case: " + __other))
     | _ -> Error "expected a LayoutMode object"
 
