@@ -21,6 +21,7 @@
     <!-- Stage 1 of the 692-694 swap: the generated structural layer compiles FIRST
          so Types.fs can alias its vocabulary (type abbreviations over
          Fuaran.UI.Generated). Generated.fs depends only on Fuaran.Core. -->
+    <Compile Include="HostPrelude.fs" />
     <Compile Include="Generated.fs" />
     <Compile Include="Types.fs" />
     <!-- Phase 268: Node.mapMsg — exhaustive ('a -> 'b) -> Node<'a> -> Node<'b>

@@ -2196,7 +2196,7 @@ let rec private renderKind
                 // fall back to the placeholder so the failure stays visible.
                 match state.OnError with
                 | Some onErr ->
-                    let payload =
+                    let payload: ErrorPayload =
                         { Kind = ErrorKind.BindingResolution
                           Message =
                             sprintf

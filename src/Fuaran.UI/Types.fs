@@ -176,18 +176,9 @@ module BindingContext =
     /// Pipeline-style typed read: `ctx |> BindingContext.tryGetState<bool> "busy"`.
     let tryGetState<'T> (key: string) (ctx: BindingContext) : 'T option = ctx.TryGetState<'T>(key)
 
-type ErrorKind =
-    | NotFound
-    | Forbidden
-    | Server
-    | Network
-    | Timeout
-    /// Client-side: the renderer encountered a `Binding` it could not
-    /// resolve (accessor threw, value did not unbox to expected type,
-    /// computed binding threw). Distinct from `Server` — the failure
-    /// did not cross the wire. Downstream observability filters keyed
-    /// on `Server` should NOT fire for these.
-    | BindingResolution
+/// Moved to `HostPrelude.fs` with the swap (the IDL's `THosted` slots reference
+/// it from `Generated.fs`, which compiles first); re-exposed here unchanged.
+type ErrorKind = HostPrelude.ErrorKind
 
 // ─── Identity ───────────────────────────────────────────────────────
 
@@ -261,30 +252,12 @@ type PropSchema = PropDecl list
 // `LabelledBy` / `DescribedBy` reference other Nodes by `NodeId`; the
 // renderer resolves them to the target's stable HTML `id` attribute.
 
-[<RequireQualifiedAccess>]
-type AriaRole =
-    | Button
-    | Link
-    | Dialog
-    | Alert
-    | Status
-    | Banner
-    | Navigation
-    | Main
-    | Form
-    | Region
-    | Heading
-    | Progressbar
-    | Tab
-    | Tablist
-    | Tabpanel
-    | Custom of role: string
+// `AriaRole` / `LiveRegionKind` moved to `HostPrelude.fs` with the swap — the
+// Accessibility record's role/liveRegion slots are `THosted` in the IDL, so
+// `Generated.fs` (compiled first) references the prelude definitions + codecs.
+type AriaRole = HostPrelude.AriaRole
 
-[<RequireQualifiedAccess>]
-type LiveRegionKind =
-    | Polite
-    | Assertive
-    | Off
+type LiveRegionKind = HostPrelude.LiveRegionKind
 
 // ─── i18n resolver ──────────────────────────────────────────────────
 //
@@ -1605,10 +1578,7 @@ and StateBehaviour<'Msg> =
       OnEmpty: Node<'Msg> option
       OnError: (ErrorPayload -> Node<'Msg>) option }
 
-and ErrorPayload =
-    { Kind: ErrorKind
-      Message: string
-      CorrelationId: string }
+and ErrorPayload = HostPrelude.ErrorPayload
 
 // ─── Style — semantic, not CSS ───────────────────────────────────────
 

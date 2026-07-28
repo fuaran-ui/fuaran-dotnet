@@ -406,12 +406,12 @@ let private encodeColumnWidth (w: ColumnWidth) : Appender =
 let private encodeErrorKind (k: ErrorKind) : Appender =
     fun sb ->
         match k with
-        | NotFound -> appendRawString sb "NotFound"
-        | Forbidden -> appendRawString sb "Forbidden"
-        | Server -> appendRawString sb "Server"
-        | Network -> appendRawString sb "Network"
-        | Timeout -> appendRawString sb "Timeout"
-        | BindingResolution -> appendRawString sb "BindingResolution"
+        | ErrorKind.NotFound -> appendRawString sb "NotFound"
+        | ErrorKind.Forbidden -> appendRawString sb "Forbidden"
+        | ErrorKind.Server -> appendRawString sb "Server"
+        | ErrorKind.Network -> appendRawString sb "Network"
+        | ErrorKind.Timeout -> appendRawString sb "Timeout"
+        | ErrorKind.BindingResolution -> appendRawString sb "BindingResolution"
 
 let private encodeIconSource (IconSource raw) : Appender = str raw
 

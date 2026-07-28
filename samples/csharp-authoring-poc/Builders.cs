@@ -101,7 +101,7 @@ internal static class Act
 internal static class Defaults
 {
     public static readonly StateBehaviour<object> EmptyState =
-        new(Fs.None<Node<object>>(), Fs.None<Node<object>>(), Fs.None<FSharpFunc<ErrorPayload, Node<object>>>());
+        new(Fs.None<Node<object>>(), Fs.None<Node<object>>(), Fs.None<FSharpFunc<global::Fuaran.UI.HostPrelude.ErrorPayload, Node<object>>>());
 
     public static readonly SemanticStyle Style =
         new(ToneVariant.Default, StyleWeight.Standard, Emphasis.Normal, StyleRole.None, FontVoice.Default);

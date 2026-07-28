@@ -43,7 +43,7 @@ public static partial class Fuaran
             new FsTypes.StateBehaviour<object>(
                 Fs.None<FsNode>(),
                 Fs.None<FsNode>(),
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsTypes.ErrorPayload, FsNode>>()),
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<global::Fuaran.UI.HostPrelude.ErrorPayload, FsNode>>()),
             new FsTypes.SemanticStyle(
                 FsGen.ToneVariant.Default,
                 FsGen.StyleWeight.Standard,

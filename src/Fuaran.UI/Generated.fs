@@ -321,7 +321,7 @@ and SemanticStyle =
 and StateBehaviour<'Msg> =
     {
       OnEmpty: Node<'Msg> option
-      OnError: (obj -> Node<'Msg>) option
+      OnError: (Fuaran.UI.HostPrelude.ErrorPayload -> Node<'Msg>) option
       OnLoading: Node<'Msg> option
     }
 
@@ -331,8 +331,8 @@ and Accessibility =
       Hidden: Binding<bool> option
       Label: Binding<string> option
       LabelledBy: string option
-      LiveRegion: string option
-      Role: string option
+      LiveRegion: Fuaran.UI.HostPrelude.LiveRegionKind option
+      Role: Fuaran.UI.HostPrelude.AriaRole option
     }
 
 and SwitchCase<'Msg> =
@@ -1247,7 +1247,7 @@ and private encStateBehaviour<'Msg> (s: StateBehaviour<'Msg>) : JVal =
     JObj([ (s.OnEmpty |> Option.map (fun v -> "onEmpty", encNode v)); (s.OnError |> Option.map (fun v -> "onError", JStr "<closure>")); (s.OnLoading |> Option.map (fun v -> "onLoading", encNode v)) ] |> List.choose id)
 
 and private encAccessibility (s: Accessibility) : JVal =
-    JObj([ (s.DescribedBy |> Option.map (fun v -> "describedBy", JStr v)); (s.Hidden |> Option.map (fun v -> "hidden", (encBinding JBool) v)); (s.Label |> Option.map (fun v -> "label", (encBinding JStr) v)); (s.LabelledBy |> Option.map (fun v -> "labelledBy", JStr v)); (s.LiveRegion |> Option.map (fun v -> "liveRegion", JStr v)); (s.Role |> Option.map (fun v -> "role", JStr v)) ] |> List.choose id)
+    JObj([ (s.DescribedBy |> Option.map (fun v -> "describedBy", JStr v)); (s.Hidden |> Option.map (fun v -> "hidden", (encBinding JBool) v)); (s.Label |> Option.map (fun v -> "label", (encBinding JStr) v)); (s.LabelledBy |> Option.map (fun v -> "labelledBy", JStr v)); (s.LiveRegion |> Option.map (fun v -> "liveRegion", Fuaran.UI.HostPrelude.encLiveRegionKind v)); (s.Role |> Option.map (fun v -> "role", Fuaran.UI.HostPrelude.encAriaRole v)) ] |> List.choose id)
 
 and private encSwitchCase<'Msg> (s: SwitchCase<'Msg>) : JVal =
     JObj([ Some("child", encNode s.Child); Some("match", JStr s.Match) ] |> List.choose id)
@@ -2290,8 +2290,8 @@ and private decAccessibility (j: JVal) : Result<Accessibility, string> =
     dOpt "hidden" __fs (decBinding dBool) |> Result.bind (fun hidden ->
     dOpt "label" __fs (decBinding dStr) |> Result.bind (fun label ->
     dOpt "labelledBy" __fs dStr |> Result.bind (fun labelledBy ->
-    dOpt "liveRegion" __fs dStr |> Result.bind (fun liveRegion ->
-    dOpt "role" __fs dStr |> Result.bind (fun role ->
+    dOpt "liveRegion" __fs Fuaran.UI.HostPrelude.decLiveRegionKind |> Result.bind (fun liveRegion ->
+    dOpt "role" __fs Fuaran.UI.HostPrelude.decAriaRole |> Result.bind (fun role ->
     Ok { DescribedBy = describedBy; Hidden = hidden; Label = label; LabelledBy = labelledBy; LiveRegion = liveRegion; Role = role })))))))
 
 and private decSwitchCase (j: JVal) : Result<SwitchCase<obj>, string> =
