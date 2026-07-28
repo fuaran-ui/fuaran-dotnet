@@ -376,9 +376,14 @@ let private genBindingSelectOptions: Gen<Binding<SelectOption list>> =
                       Label = "<opaque>" } ])
           ) ]
 
-let private genBindingStringOpt: Gen<Binding<string option>> =
+/// Select value slot (stage-4a type swap): the slot is now a REQUIRED
+/// `Binding<string>` — the old inner-option shapes map one-to-one
+/// (`Static(Some(Some s))` → `Static(Some s)`; the inner-None "no selection"
+/// → `Static None`; the chip self-read stays `Filter(n, None)`). Mirrors the
+/// old `genBindingStringOpt` arms at the new type.
+let private genSelectValue: Gen<Binding<string>> =
     Gen.oneof
-        [ Gen.map (fun s -> Binding.Static(Some(Some s))) genString
+        [ Gen.map (fun s -> Binding.Static(Some s)) genString
           Gen.constant (Binding.Static None)
           Gen.map (fun n -> Binding.Filter(n, None)) genNonEmptyString ]
 
@@ -419,7 +424,7 @@ let private genMetricSpec: Gen<MetricSpec> =
         let! emphasis = genEmphasis
         let! trend = genOption genBindingFloat
         let! trendFormat = genOption genCellFormat
-        let! icon = genOption (Gen.map IconSource genNonEmptyString)
+        let! icon = genOption genNonEmptyString
         let! subtext = genOption genTextSource
 
         return
@@ -440,7 +445,7 @@ let private genCalloutSpec: Gen<CalloutSpec> =
         let! tone = genTone
         let! heading = genOption genTextSource
         let! body = genTextSource
-        let! icon = genOption (Gen.map IconSource genNonEmptyString)
+        let! icon = genOption genNonEmptyString
         let! dismissable = genBool
 
         return
@@ -495,7 +500,7 @@ let private genDisplayKind: Gen<NodeKind<obj>> =
           }
           Gen.map
               (fun b -> NodeKind.Sparkline { Source = b })
-              (Gen.map (fun s -> Binding.Static(Some s)) (Gen.nonEmptyListOf genFiniteFloat |> Gen.map Seq.ofList))
+              (Gen.map (fun s -> Binding.Static(Some s)) (Gen.nonEmptyListOf genFiniteFloat))
           Gen.map NodeKind.Callout genCalloutSpec
           Gen.map NodeKind.Progress genProgressSpec
           Gen.map (fun r -> NodeKind.Skeleton { Rows = r }) (Gen.choose (0, 12))
@@ -651,7 +656,7 @@ let private genButtonSpec: Gen<ButtonSpec<obj>> =
         let! label = genTextSource
         let! onClick = genAction
         let! variant = genButtonVariant
-        let! icon = genOption (Gen.map IconSource genNonEmptyString)
+        let! icon = genOption genNonEmptyString
         let! tooltip = genOption genTextSource
         let! disabled = genOption genBindingBool
 
@@ -675,7 +680,7 @@ let private genFileUploadSpec: Gen<FileUploadSpec<obj>> =
             { Label = label
               Accept = accept
               Multiple = multiple
-              OnSelect = (fun _ -> Action.Chain [])
+              OnSelect = Some(fun _ -> Action.Chain [])
               Disabled = disabled }
     }
 
@@ -683,7 +688,7 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
     gen {
         let! label = genTextSource
         let! source = genBindingSelectOptions
-        let! value = genBindingStringOpt
+        let! value = genSelectValue
         let! placeholder = genOption genTextSource
         let! disabled = genOption genBindingBool
         // Phase 291 — exercise both single- and multi-select. `Multiple = true`
@@ -707,7 +712,7 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
                      Option.None)
               Placeholder = placeholder
               Disabled = disabled
-              Multiple = multiple
+              Multiple = (if multiple then Some true else Option.None)
               Values =
                 (if multiple then
                      Some(Binding.Static(Some vlist))
@@ -815,7 +820,7 @@ let private genMapSpec: Gen<MapSpec<obj>> =
         let! zoom = Gen.choose (0, 20)
 
         return
-            { Source = Binding.Static(Some Seq.empty)
+            { Source = Binding.Static(Some([]: MapMarker list))
               CentreLatitude = lat
               CentreLongitude = lon
               Zoom = zoom
@@ -882,8 +887,8 @@ let private genSemanticStyle: Gen<SemanticStyle> =
 let private genAccessibility: Gen<Accessibility> =
     gen {
         let! label = genOption genBindingString
-        let! labelledBy = genOption (Gen.map NodeId genNonEmptyString)
-        let! describedBy = genOption (Gen.map NodeId genNonEmptyString)
+        let! labelledBy = genOption genNonEmptyString
+        let! describedBy = genOption genNonEmptyString
         let! role = genOption genAriaRole
         let! live = genOption genLiveRegion
         let! hidden = genOption genBindingBool

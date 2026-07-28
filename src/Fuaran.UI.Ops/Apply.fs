@@ -386,7 +386,7 @@ let private updateMetric (field: string) (v: obj) (spec: MetricSpec) : UpdateRes
             |> Result.map (fun x -> { spec with TrendFormat = x }))
     | "Icon" ->
         wrap (fun v ->
-            coerceField JsonDecode.Coerce.tryIconSourceOption v
+            coerceField JsonDecode.Coerce.tryStringOption v
             |> Result.map (fun x -> { spec with Icon = x }))
     | "Subtext" ->
         wrap (fun v ->
@@ -499,7 +499,7 @@ let private updateCallout (field: string) (v: obj) (spec: CalloutSpec) : UpdateR
             |> Result.map (fun x -> { spec with Body = x }))
     | "Icon" ->
         wrap (fun v ->
-            coerceField JsonDecode.Coerce.tryIconSourceOption v
+            coerceField JsonDecode.Coerce.tryStringOption v
             |> Result.map (fun x -> { spec with Icon = x }))
     | "Dismissable" ->
         wrap (fun v ->
@@ -705,7 +705,7 @@ let private updateFact (field: string) (v: obj) (spec: FactSpec) : UpdateResult<
             |> Result.map (fun x -> { spec with Help = x }))
     | "Icon" ->
         wrap (fun v ->
-            coerceField JsonDecode.Coerce.tryIconSourceOption v
+            coerceField JsonDecode.Coerce.tryStringOption v
             |> Result.map (fun x -> { spec with Icon = x }))
     | _ -> UnknownField
 
@@ -778,7 +778,7 @@ let private updateButton (field: string) (v: obj) (spec: ButtonSpec<'Msg>) : Upd
             |> Result.map (fun x -> { spec with Variant = x }))
     | "Icon" ->
         wrap (fun v ->
-            coerceField JsonDecode.Coerce.tryIconSourceOption v
+            coerceField JsonDecode.Coerce.tryStringOption v
             |> Result.map (fun x -> { spec with Icon = x }))
     | "Tooltip" ->
         wrap (fun v ->
@@ -1493,7 +1493,7 @@ let private replaceBindingSparkline
             Ok(
                 NodeKind.Sparkline(
                     { spec with
-                        Source = castBinding<float seq> b }
+                        Source = castBinding<float list> b }
                 )
             )
         | _ -> Error(slotNotFound (NodeKind.Sparkline(spec)) (NodeId "_") slot)
@@ -1637,7 +1637,7 @@ let private replaceBindingMap
             Ok(
                 NodeKind.Map(
                     { spec with
-                        Source = castBinding<MapMarker seq> b }
+                        Source = castBinding<MapMarker list> b }
                 )
             )
         | _ -> Error(slotNotFound (NodeKind.Map(spec)) (NodeId "_") slot)
@@ -1694,7 +1694,7 @@ let private replaceBindingSelect
             Ok(
                 NodeKind.Select(
                     { spec with
-                        Value = castBinding<string option> b }
+                        Value = castBinding<string> b }
                 )
             )
         // Phase 130: optional bound disabled-state; replacing it installs

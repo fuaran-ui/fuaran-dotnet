@@ -154,7 +154,7 @@ let private friendlyFallback: Node<Msg> =
             Body =
                 TextSource.Literal
                     "The author-supplied fallback subtree rendered instead. Real consumers would offer a retry, link to docs, or surface a captured error id."
-            Icon = Some(IconSource "alert")
+            Icon = Some "alert"
             Dismissable = false }
 
 let private boundaryCaughtCard: Node<Msg> =

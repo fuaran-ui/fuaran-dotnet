@@ -1044,7 +1044,7 @@ module Fuaran =
                 { Defaults.select with
                     Label = label
                     Source = source
-                    Multiple = true
+                    Multiple = Some true
                     Values = Some values
                     OnChangeMulti = Some onChange }
             ))

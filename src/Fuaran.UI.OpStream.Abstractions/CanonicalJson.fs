@@ -918,7 +918,7 @@ let private encodeMetricSpec (s: MetricSpec) : Appender =
               emphasisOptional s.Emphasis
               s.Trend |> Option.map (fun b -> "trend", encodeBinding<float> b)
               s.TrendFormat |> Option.map (fun f -> "trendFormat", encodeCellFormat f)
-              s.Icon |> Option.map (fun i -> "icon", encodeIconSource i)
+              s.Icon |> Option.map (fun i -> "icon", str i)
               s.Subtext |> Option.map (fun t -> "subtext", encodeTextSource t) ]
             |> List.choose id
 
@@ -966,7 +966,7 @@ let private encodeFactSpec (s: FactSpec) : Appender =
             [ (if s.Emphasis then Some("emphasis", bool_ true) else None)
               toneOptional s.Tone
               s.Help |> Option.map (fun t -> "help", encodeTextSource t)
-              s.Icon |> Option.map (fun i -> "icon", encodeIconSource i) ]
+              s.Icon |> Option.map (fun i -> "icon", str i) ]
             |> List.choose id
 
         appendObject sb (fields @ optionals)
@@ -1052,7 +1052,7 @@ let private encodeCalloutSpec (s: CalloutSpec) : Appender =
                    None)
               toneOptional s.Tone
               s.Heading |> Option.map (fun t -> "heading", encodeTextSource t)
-              s.Icon |> Option.map (fun i -> "icon", encodeIconSource i) ]
+              s.Icon |> Option.map (fun i -> "icon", str i) ]
             |> List.choose id
 
         appendObject sb (fields @ optionals)
@@ -1440,7 +1440,7 @@ let private encodeButtonSpec<'Msg> (s: ButtonSpec<'Msg>) : Appender =
               "variant", encodeButtonVariant s.Variant ]
 
         let optionals =
-            [ s.Icon |> Option.map (fun i -> "icon", encodeIconSource i)
+            [ s.Icon |> Option.map (fun i -> "icon", str i)
               // Optional bound disabled-state — emitted only when `Some`,
               // mirroring `MetricSpec.Trend`'s optional-binding shape.
               s.Disabled |> Option.map (fun b -> "disabled", encodeBinding<bool> b) ]
@@ -1453,7 +1453,7 @@ let private encodeSelectSpec<'Msg> (s: SelectSpec<'Msg>) : Appender =
         let fields =
             [ "label", encodeTextSource s.Label
               "source", encodeBindingWith staticSelectOptions s.Source
-              "value", encodeBindingWith staticStringOpt s.Value ]
+              "value", encodeBinding<string> s.Value ]
 
         let optionals =
             [ // Phase 426: `onChange` rides the wire only when present. A `Some`
@@ -1467,7 +1467,7 @@ let private encodeSelectSpec<'Msg> (s: SelectSpec<'Msg>) : Appender =
               // Phase 291: multi-select. `multiple` omitted when `false` and
               // `values` omitted when `None`, so single-select wire is
               // byte-identical to pre-multi-select fixtures (the degenerate case).
-              (if s.Multiple then Some("multiple", bool_ true) else None)
+              (s.Multiple |> Option.map (fun m -> "multiple", bool_ m))
               s.Values |> Option.map (fun b -> "values", encodeBindingWith staticStringList b)
               // Phase 426: the multi-select handler now carries its own sentinel
               // key when present (previously never encoded), so a closure-authored
@@ -2174,8 +2174,8 @@ and private encodeAccessibility (a: Accessibility) : Appender =
     fun sb ->
         let optionals =
             [ a.Label |> Option.map (fun b -> "label", encodeBinding<string> b)
-              a.LabelledBy |> Option.map (fun id -> "labelledBy", str (nodeIdStr id))
-              a.DescribedBy |> Option.map (fun id -> "describedBy", str (nodeIdStr id))
+              a.LabelledBy |> Option.map (fun id -> "labelledBy", str id)
+              a.DescribedBy |> Option.map (fun id -> "describedBy", str id)
               a.Role |> Option.map (fun r -> "role", encodeAriaRole r)
               a.LiveRegion |> Option.map (fun k -> "liveRegion", encodeLiveRegion k)
               a.Hidden |> Option.map (fun b -> "hidden", encodeBinding<bool> b) ]

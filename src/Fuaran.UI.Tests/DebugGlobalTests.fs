@@ -57,7 +57,7 @@ let private selectNode: Node<unit> =
         "sel"
         { Defaults.select<unit> with
             Source = Binding.Static(Some [])
-            Value = binding.state "pick" Option.None }
+            Value = binding.stateNoDefault "pick" }
 
 let private markdownNode: Node<unit> = Fuaran.markdown "md" "hello"
 

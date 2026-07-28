@@ -67,11 +67,10 @@ let accessibilityAttributes
             |> Option.filter (fun t -> t <> "")
             |> Option.map (fun t -> "aria-label", t)
 
-        let labelledByAttr =
-            a.LabelledBy |> Option.map (fun (NodeId nid) -> "aria-labelledby", nid)
+        let labelledByAttr = a.LabelledBy |> Option.map (fun nid -> "aria-labelledby", nid)
 
         let describedByAttr =
-            a.DescribedBy |> Option.map (fun (NodeId nid) -> "aria-describedby", nid)
+            a.DescribedBy |> Option.map (fun nid -> "aria-describedby", nid)
 
         let roleAttr = a.Role |> Option.map (fun r -> "role", ariaRoleString r)
 

@@ -31,7 +31,7 @@ let private textOf (t: TextSource) : string =
 let private render spec =
     DrawingSvg.render BindingResolver.empty textOf spec
 
-let private drawing shapes title =
+let private drawing shapes title : DrawingSpec =
     { ViewBox =
         { MinX = 0.0
           MinY = 0.0

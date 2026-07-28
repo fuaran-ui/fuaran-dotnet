@@ -269,7 +269,7 @@ and mapFileUploadSpec (f: 'a -> 'b) (spec: FileUploadSpec<'a>) : FileUploadSpec<
     { Label = spec.Label
       Accept = spec.Accept
       Multiple = spec.Multiple
-      OnSelect = spec.OnSelect >> mapAction f
+      OnSelect = spec.OnSelect |> Option.map (fun h -> h >> mapAction f)
       Disabled = spec.Disabled }
 
 // ─── Visualisations — data-bound; the tree stores the erased grid shapes ────

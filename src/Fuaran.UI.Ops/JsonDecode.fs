@@ -1669,19 +1669,17 @@ let private decodeBindingStringList (path: string) (j: Json) : Result<Binding<st
 
     bindingGeneric<string list> path parseStatic [ opaqueSentinel ] j
 
-let private decodeBindingFloatSeq (path: string) (j: Json) : Result<Binding<float seq>, DecodeError> =
-    let parseStatic (p: string) (v: Json) : Result<float seq, DecodeError> =
+let private decodeBindingFloatSeq (path: string) (j: Json) : Result<Binding<float list>, DecodeError> =
+    let parseStatic (p: string) (v: Json) : Result<float list, DecodeError> =
         match v with
-        | JNull -> Ok Seq.empty // pre-429 read-compat: an empty-list-backed seq boxed to `null`
-        | JString s when s = opaqueSentinel -> Ok Seq.empty
+        | JNull -> Ok [] // pre-429 read-compat: an empty-list-backed seq boxed to `null`
+        | JString s when s = opaqueSentinel -> Ok []
         | _ ->
             match requireArray p v with
             | Error e -> Error e
-            | Ok xs ->
-                traverseIndexed (fun i item -> requireFloat (sprintf "%s[%d]" p i) item) xs
-                |> Result.map (fun ns -> ns :> float seq)
+            | Ok xs -> traverseIndexed (fun i item -> requireFloat (sprintf "%s[%d]" p i) item) xs
 
-    bindingGeneric<float seq> path parseStatic Seq.empty j
+    bindingGeneric<float list> path parseStatic [] j
 
 let private decodeBindingRangePair (path: string) (j: Json) : Result<Binding<RangePair>, DecodeError> =
     // 0.2.0 — the dual-thumb Range control's (min, max) pair, the `RangePair`
@@ -1765,19 +1763,17 @@ let private decodeMapMarker (path: string) (j: Json) : Result<MapMarker, DecodeE
         | _, Error e, _
         | _, _, Error e -> Error e
 
-let private decodeBindingMarkerSeq (path: string) (j: Json) : Result<Binding<MapMarker seq>, DecodeError> =
-    let parseStatic (p: string) (v: Json) : Result<MapMarker seq, DecodeError> =
+let private decodeBindingMarkerSeq (path: string) (j: Json) : Result<Binding<MapMarker list>, DecodeError> =
+    let parseStatic (p: string) (v: Json) : Result<MapMarker list, DecodeError> =
         match v with
-        | JNull -> Ok Seq.empty // pre-429 read-compat: an empty-list-backed seq boxed to `null`
-        | JString s when s = opaqueSentinel -> Ok Seq.empty
+        | JNull -> Ok [] // pre-429 read-compat: an empty-list-backed seq boxed to `null`
+        | JString s when s = opaqueSentinel -> Ok []
         | _ ->
             match requireArray p v with
             | Error e -> Error e
-            | Ok xs ->
-                traverseIndexed (fun i m -> decodeMapMarker (sprintf "%s[%d]" p i) m) xs
-                |> Result.map (fun ms -> ms :> MapMarker seq)
+            | Ok xs -> traverseIndexed (fun i m -> decodeMapMarker (sprintf "%s[%d]" p i) m) xs
 
-    bindingGeneric<MapMarker seq> path parseStatic Seq.empty j
+    bindingGeneric<MapMarker list> path parseStatic [] j
 
 // ─── Action<obj> decoder ────────────────────────────────────────────────
 //
@@ -2017,7 +2013,7 @@ let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, Decod
         let iconR =
             match tryField fields "icon" with
             | None -> Ok None
-            | Some v -> decodeIconSource (path + ".icon") v |> Result.map Some
+            | Some v -> requireString (path + ".icon") v |> Result.map Some
 
         let subtextR =
             match tryField fields "subtext" with
@@ -2109,7 +2105,7 @@ let private decodeFactSpec (path: string) (j: Json) : Result<FactSpec, DecodeErr
         let iconR =
             match tryField fields "icon" with
             | None -> Ok None
-            | Some v -> decodeIconSource (path + ".icon") v |> Result.map Some
+            | Some v -> requireString (path + ".icon") v |> Result.map Some
 
         match labelR, valueR, toneR, emphasisR, helpR, iconR with
         | Ok label, Ok value, Ok tone, Ok emphasis, Ok help, Ok icon ->
@@ -2425,7 +2421,7 @@ let private decodeCalloutSpec (path: string) (j: Json) : Result<CalloutSpec, Dec
         let iconR =
             match tryField fields "icon" with
             | None -> Ok None
-            | Some v -> decodeIconSource (path + ".icon") v |> Result.map Some
+            | Some v -> requireString (path + ".icon") v |> Result.map Some
 
         match toneR, bodyR, dismissableR, headingR, iconR with
         | Ok tone, Ok body, Ok dismissable, Ok heading, Ok icon ->
@@ -3232,7 +3228,7 @@ let private decodeButtonSpec (path: string) (j: Json) : Result<ButtonSpec<obj>, 
         let iconR =
             match tryField fields "icon" with
             | None -> Ok None
-            | Some v -> decodeIconSource (path + ".icon") v |> Result.map Some
+            | Some v -> requireString (path + ".icon") v |> Result.map Some
 
         let disabledR =
             match tryField fields "disabled" with
@@ -3270,8 +3266,8 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
             |> Result.bind (decodeBindingSelectOptions (path + ".source"))
 
         let valueR =
-            requireField path fields "value" "Binding<string option>"
-            |> Result.bind (decodeBindingStringOpt (path + ".value"))
+            requireField path fields "value" "Binding<string>"
+            |> Result.bind (decodeBindingChoiceValue (path + ".value"))
 
         let placeholderR =
             match tryField fields "placeholder" with
@@ -3287,8 +3283,8 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
         // `values` absent ⇒ None.
         let multipleR =
             match tryField fields "multiple" with
-            | None -> Ok false
-            | Some v -> requireBool (path + ".multiple") v
+            | None -> Ok Option.None
+            | Some v -> requireBool (path + ".multiple") v |> Result.map Some
 
         let valuesR =
             match tryField fields "values" with
@@ -3356,7 +3352,10 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
                 { Label = label
                   Accept = accept
                   Multiple = multiple
-                  OnSelect = (fun _ -> Action.Chain [])
+                  OnSelect =
+                    (match tryField fields "onSelect" with
+                     | Some _ -> Some(fun _ -> Action.Chain [])
+                     | None -> Option.None)
                   Disabled = disabled }
         | Error e, _, _, _
         | _, Error e, _, _
@@ -4690,12 +4689,12 @@ and private decodeAccessibility (path: string) (j: Json) : Result<Accessibility,
         let labelledByR =
             match tryField fields "labelledBy" with
             | None -> Ok None
-            | Some v -> requireString (path + ".labelledBy") v |> Result.map (fun s -> Some(NodeId s))
+            | Some v -> requireString (path + ".labelledBy") v |> Result.map Some
 
         let describedByR =
             match tryField fields "describedBy" with
             | None -> Ok None
-            | Some v -> requireString (path + ".describedBy") v |> Result.map (fun s -> Some(NodeId s))
+            | Some v -> requireString (path + ".describedBy") v |> Result.map Some
 
         let roleR =
             match tryField fields "role" with
@@ -4845,12 +4844,14 @@ and private decodeNodeAst (path: string) (j: Json) : Result<Node<obj>, DecodeErr
         let styleR =
             match tryField fields "style" with
             | None ->
-                Ok
+                Ok(
                     { Emphasis = Emphasis.Normal
                       Tone = ToneVariant.Default
                       Weight = StyleWeight.Standard
                       Role = StyleRole.None
                       Voice = FontVoice.Default }
+                    : SemanticStyle
+                )
             | Some v -> decodeSemanticStyle (path + ".style") v
 
         let accessibilityR =

@@ -30,6 +30,20 @@ type ErrorPayload =
       Message: string
       CorrelationId: string }
 
+/// Opaque handle to a selected file's blob (`Id` is the only wire-visible part;
+/// `Handle` carries the boxed browser `File` on browser hosts — a sanctioned
+/// host-blob boundary, unboxed by the renderer's `FileReader` arm).
+type FileRef = { Id: string; Handle: obj option }
+
+/// Browser file metadata handed to `FileUpload.onSelect` (closure arg — never
+/// serialises, so no codec). `Ref` carries the opaque blob handle so `OnSelect`
+/// can chain `Action.ReadFileBody` to ingest the body.
+type FileSelection =
+    { Name: string
+      Size: int64
+      MimeType: string
+      Ref: FileRef }
+
 /// ARIA role — a closed convenience list plus `Custom` verbatim passthrough
 /// (the wire position admits any string; canonical cases emit lower-case).
 [<RequireQualifiedAccess>]

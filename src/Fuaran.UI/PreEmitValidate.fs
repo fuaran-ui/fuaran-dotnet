@@ -599,7 +599,7 @@ let private validateCore
         | NodeKind.Select spec ->
             let (NodeId nodeIdStr) = n.Id
 
-            if spec.Multiple then
+            if spec.Multiple = Some true then
                 let valuesLive =
                     match spec.Values with
                     | Some values -> isWriteBackTarget values

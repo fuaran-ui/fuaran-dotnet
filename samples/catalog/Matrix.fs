@@ -369,7 +369,7 @@ let private demoFileUpload (tone, weight, emphasis) : Node<unit> =
             Label = TextSource.Literal "Upload fitted-parameters file"
             Accept = [ ".csv"; ".json" ]
             Multiple = false
-            OnSelect = (fun _ -> Action.Chain []) }
+            OnSelect = Some(fun _ -> Action.Chain []) }
 
 let private demoTable (tone, weight, emphasis) : Node<unit> =
     Fuaran.table
@@ -399,7 +399,7 @@ let private demoMap (tone, weight, emphasis) : Node<unit> =
     Fuaran.map
         (idFor "map" tone weight emphasis)
         { Defaults.map<unit> with
-            Source = Binding.Static(Some(markers :> MapMarker seq))
+            Source = Binding.Static(Some markers)
             CentreLatitude = 30.0
             CentreLongitude = -30.0
             Zoom = 3 }

@@ -2356,7 +2356,7 @@ and private renderMetric
             [ prop.className (sprintf "fuaran-metric fuaran-metric-%s" (Theme.toneVar spec.Tone))
               prop.children
                   [ match spec.Icon with
-                    | Some(IconSource icon) -> iconHook "fuaran-metric-icon" icon
+                    | Some icon -> iconHook "fuaran-metric-icon" icon
                     | None -> Html.none
                     Html.div [ prop.className "fuaran-metric-label"; prop.text (renderText ctx spec.Label) ]
                     Html.div
@@ -2397,7 +2397,7 @@ and private renderFact (ctx: RenderContext<'Msg>) (spec: FactSpec) : ReactElemen
                     [ prop.className "fuaran-fact-value"
                       prop.children
                           [ match spec.Icon with
-                            | Some(IconSource icon) -> iconHook "fuaran-fact-icon" icon
+                            | Some icon -> iconHook "fuaran-fact-icon" icon
                             | None -> Html.none
                             Html.span [ prop.text (renderText ctx spec.Value) ] ] ]
                 match spec.Help with
@@ -2409,7 +2409,7 @@ and private renderCallout (ctx: RenderContext<'Msg>) (spec: CalloutSpec) : React
         [ prop.className (sprintf "fuaran-callout fuaran-callout-%s" (Theme.toneVar spec.Tone))
           prop.children
               [ match spec.Icon with
-                | Some(IconSource icon) -> iconHook "fuaran-callout-icon" icon
+                | Some icon -> iconHook "fuaran-callout-icon" icon
                 | None -> Html.none
                 match spec.Heading with
                 | Some heading ->
@@ -2605,8 +2605,7 @@ and private renderButton (ctx: RenderContext<'Msg>) (spec: ButtonSpec<'Msg>) : R
           // text node beside the hook; an icon-less button keeps the plain
           // `prop.text` shape (markup unchanged for existing trees).
           match spec.Icon with
-          | Some(IconSource icon) ->
-              prop.children [ iconHook "fuaran-button-icon" icon; Html.text (renderText ctx spec.Label) ]
+          | Some icon -> prop.children [ iconHook "fuaran-button-icon" icon; Html.text (renderText ctx spec.Label) ]
           | None -> prop.text (renderText ctx spec.Label)
           match tooltipText with
           | Some t -> prop.title t
@@ -2618,7 +2617,12 @@ and private renderButton (ctx: RenderContext<'Msg>) (spec: ButtonSpec<'Msg>) : R
 and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : ReactElement =
     let options = resolveOptions ctx spec.Source
 
-    let selected = BindingResolver.tryResolve ctx.Sources spec.Value |> Option.flatten
+    // `Value` is `Binding<string>` since the swap — a null/empty
+    // resolution is no-selection (the same projection as
+    // `renderSegmentedChoiceCore`).
+    let selected =
+        BindingResolver.tryResolve ctx.Sources spec.Value
+        |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
 
     let placeholderItem =
         match spec.Placeholder with
@@ -2636,7 +2640,8 @@ and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : R
         |> Option.defaultValue false
 
     let control =
-        if spec.Multiple then
+        // `Multiple` is `bool option` since the swap — absent means single-select.
+        if spec.Multiple = Some true then
             // Phase 291 — `<select multiple>`. The selection is the resolved
             // `Values` list; `onChange` reads every selected option and fires
             // `OnChangeMulti` with the value list. Phase 426: an omitted
@@ -3413,7 +3418,7 @@ and private renderFileUpload (ctx: RenderContext<'Msg>) (spec: FileUploadSpec<'M
           // browser-side; the consumer's Action.Call typically pairs the
           // list with a multipart upload.
           prop.onChange (fun (files: Browser.Types.File list) ->
-              let selections =
+              let selections: FileSelection list =
                   // Phase 136: carry an opaque `FileRef` per selection. `Ref.Id`
                   // is an index-qualified stable token (the only part that ever
                   // serialises); `Ref.Handle` boxes the actual browser `File`
@@ -3428,7 +3433,11 @@ and private renderFileUpload (ctx: RenderContext<'Msg>) (spec: FileUploadSpec<'M
                           { Id = sprintf "%d:%s" i f.name
                             Handle = Some(box f) } })
 
-              runAction ctx (spec.OnSelect selections)) ]
+              // `OnSelect` is optional since the swap — an absent handler
+              // means no dispatch (an AI-authored upload without a handler
+              // is inert server-side).
+              spec.OnSelect
+              |> Option.iter (fun onSelect -> runAction ctx (onSelect selections))) ]
 
     Html.label
         [ prop.className "fuaran-file-upload"
@@ -3828,7 +3837,7 @@ and private renderMap
     // shows the slot is reaching live data. Real Leaflet integration
     // requires a host-provided npm dep — out of Fuaran's standalone-posture
     // scope, so it's adapter-shaped like AG Charts.
-    let resolution = BindingResolver.resolve<MapMarker seq> ctx.Sources spec.Source
+    let resolution = BindingResolver.resolve<MapMarker list> ctx.Sources spec.Source
 
     match resolution, state.OnLoading, state.OnError with
     | BindingResolver.NotResolved, Some loadingNode, _ -> render ctx loadingNode

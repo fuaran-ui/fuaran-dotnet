@@ -26,10 +26,12 @@ public static partial class Fuaran
     internal static Microsoft.FSharp.Collections.FSharpList<FsNode> Kids(IEnumerable<FuaranNode>? children) =>
         Fs.List((children ?? Enumerable.Empty<FuaranNode>()).Select(c => c.Inner));
 
-    internal static Microsoft.FSharp.Core.FSharpOption<FsTypes.IconSource> Icon(string? icon) =>
+    // Phase 692/694 swap: the generated spec records carry `Icon: string option`
+    // directly (no `IconSource` wrap).
+    internal static Microsoft.FSharp.Core.FSharpOption<string> Icon(string? icon) =>
         icon is null
-            ? Microsoft.FSharp.Core.FSharpOption<FsTypes.IconSource>.None
-            : Microsoft.FSharp.Core.FSharpOption<FsTypes.IconSource>.Some(FsTypes.IconSource.NewIconSource(icon));
+            ? Microsoft.FSharp.Core.FSharpOption<string>.None
+            : Microsoft.FSharp.Core.FSharpOption<string>.Some(icon);
 
     // The three display kinds without an F# smart constructor (Badge / Sparkline /
     // Spacer) are built directly here with the same defaults `buildNode` applies —
@@ -44,13 +46,15 @@ public static partial class Fuaran
                 Fs.None<FsNode>(),
                 Fs.None<FsNode>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<global::Fuaran.UI.HostPrelude.ErrorPayload, FsNode>>()),
-            new FsTypes.SemanticStyle(
-                FsGen.ToneVariant.Default,
-                FsGen.StyleWeight.Standard,
+            // Generated SemanticStyle declares (Emphasis, Role, Tone, Voice, Weight) —
+            // ctor is declaration order (Generated.fs), not the old hand order.
+            new FsGen.SemanticStyle(
                 FsGen.Emphasis.Normal,
                 FsGen.StyleRole.None,
-                FsGen.FontVoice.Default),
-            Fs.None<FsTypes.Accessibility>(),
+                FsGen.ToneVariant.Default,
+                FsGen.FontVoice.Default,
+                FsGen.StyleWeight.Standard),
+            Fs.None<FsGen.Accessibility>(),
             Fs.None<FsGen.Motion>(),
             Fs.None<Microsoft.FSharp.Collections.FSharpMap<string, string>>()));
 
@@ -117,7 +121,9 @@ public static partial class Fuaran
     public static FuaranNode Metric(MetricOptions options) =>
         new(FsFactory.metric<object>(
             options.Id,
-            new FsTypes.MetricSpec(
+            // Generated MetricSpec ctor is Generated.fs declaration order (Label, Value,
+            // Format, Tone, Weight, Emphasis, Trend, TrendFormat, Icon, Subtext).
+            new FsGen.MetricSpec(
                 options.Label.Inner,
                 options.Value.Inner,
                 options.Format.Inner,
@@ -133,11 +139,11 @@ public static partial class Fuaran
     public static FuaranNode Heading(HeadingOptions options) =>
         new(FsFactory.heading<object>(
             options.Id,
-            new FsTypes.HeadingSpec(options.Level, options.Text.Inner, options.Variant.ToFs())));
+            new FsGen.HeadingSpec(options.Level, options.Text.Inner, options.Variant.ToFs())));
 
     /// <summary>A markdown block.</summary>
     public static FuaranNode Markdown(MarkdownOptions options) =>
-        new(FsFactory.markdownSpec<object>(options.Id, new FsTypes.MarkdownSpec(options.Text.Inner)));
+        new(FsFactory.markdownSpec<object>(options.Id, new FsGen.MarkdownSpec(options.Text.Inner)));
 
     // ─── Input ────────────────────────────────────────────────────────────────
 
@@ -145,7 +151,9 @@ public static partial class Fuaran
     public static FuaranNode Button(ButtonOptions options) =>
         new(FsFactory.button<object>(
             options.Id,
-            new FsTypes.ButtonSpec<object>(
+            // Generated ButtonSpec ctor is Generated.fs declaration order (Label,
+            // OnClick, Variant, Icon, Tooltip, Disabled).
+            new FsGen.ButtonSpec<object>(
                 options.Label.Inner,
                 global::Fuaran.UI.Generated.Action<object>.NewChain(Fs.Empty<global::Fuaran.UI.Generated.Action<object>>()),
                 options.Variant.ToFs(),

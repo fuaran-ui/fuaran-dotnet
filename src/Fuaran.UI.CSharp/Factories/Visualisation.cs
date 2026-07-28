@@ -41,14 +41,18 @@ public static partial class Fuaran
     public static FuaranNode Map(MapOptions options) =>
         new(FsFactory.map<object>(
             options.Id,
-            new FsTypes.MapSpec<object>(
-                global::Fuaran.UI.Generated.Binding<IEnumerable<FsGen.MapMarker>>.NewStatic(
-                    Fs.Some<IEnumerable<FsGen.MapMarker>>(
-                        (options.Markers ?? Enumerable.Empty<(double, double, string)>())
-                            // Generated MapMarker declares (Label, Latitude, Longitude); Label is a bare string.
-                            .Select(m => new FsGen.MapMarker(m.Item3, m.Item1, m.Item2)))),
+            // Generated MapSpec ctor is Generated.fs declaration order (CentreLatitude,
+            // CentreLongitude, Source, Zoom, OnMarkerClick), not the old Source-first
+            // hand order; Source now binds an F# `MapMarker list`.
+            new FsGen.MapSpec<object>(
                 options.CentreLatitude,
                 options.CentreLongitude,
+                global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<FsGen.MapMarker>>.NewStatic(
+                    Fs.Some(
+                        Fs.List(
+                            (options.Markers ?? Enumerable.Empty<(double, double, string)>())
+                                // Generated MapMarker declares (Label, Latitude, Longitude); Label is a bare string.
+                                .Select(m => new FsGen.MapMarker(m.Item3, m.Item1, m.Item2))))),
                 options.Zoom,
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsGen.MapMarker, FsAction>>())));
 

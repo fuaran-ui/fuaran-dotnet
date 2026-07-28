@@ -29,7 +29,7 @@ open Fuaran.UI.Renderer.Runtime
 
 type private Msg = WorkbookLoaded of string
 
-let private aRef =
+let private aRef: FileRef =
     { Id = "workbook-upload:0"
       Handle = None }
 

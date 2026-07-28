@@ -195,7 +195,7 @@ let tests =
                           { Label = TextSource.Literal "Upload"
                             Accept = []
                             Multiple = false
-                            OnSelect = (fun _ -> Action.Chain [])
+                            OnSelect = Some(fun _ -> Action.Chain [])
                             Disabled = None }
                       ))
 

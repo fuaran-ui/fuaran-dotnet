@@ -162,8 +162,8 @@ let tests =
               let a11y =
                   Some
                       { Defaults.Accessibility.empty with
-                          LabelledBy = Some(NodeId "heading-1")
-                          DescribedBy = Some(NodeId "help-text") }
+                          LabelledBy = Some "heading-1"
+                          DescribedBy = Some "help-text" }
 
               let attrs = Render.accessibilityAttributes BindingResolver.empty a11y
 

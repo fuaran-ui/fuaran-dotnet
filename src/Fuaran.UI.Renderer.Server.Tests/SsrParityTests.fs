@@ -159,7 +159,7 @@ let private fixtures: Fixture list =
               { Defaults.metric with
                   Label = TextSource.Literal "Rev"
                   Value = Binding.Static(Some 9.0)
-                  Icon = Some(IconSource "trend-glyph") }
+                  Icon = Some "trend-glyph" }
         Expected =
           [ "fuaran-metric"
             "fuaran-metric-label"
@@ -174,7 +174,7 @@ let private fixtures: Fixture list =
               { Defaults.fact with
                   Label = TextSource.Literal "Patient"
                   Value = TextSource.Literal "Alice"
-                  Icon = Some(IconSource "user-glyph") }
+                  Icon = Some "user-glyph" }
         Expected =
           [ "fuaran-fact"
             "fuaran-fact-label"
@@ -193,7 +193,7 @@ let private fixtures: Fixture list =
               "cl"
               { Defaults.callout with
                   Body = TextSource.Literal "B"
-                  Icon = Some(IconSource "info-glyph") }
+                  Icon = Some "info-glyph" }
         Expected =
           [ "fuaran-callout"
             "fuaran-callout-body"
@@ -207,7 +207,7 @@ let private fixtures: Fixture list =
               { Defaults.button<obj> with
                   Label = TextSource.Literal "Go"
                   Variant = ButtonVariant.Primary
-                  Icon = Some(IconSource "go-glyph") }
+                  Icon = Some "go-glyph" }
         Expected =
           [ "fuaran-button"
             "fuaran-button-primary"

@@ -230,7 +230,7 @@ let math: MathSpec =
     { Source = ""
       Display = MathDisplay.Block }
 
-let sparkline: SparklineSpec = { Source = noBinding<float seq> }
+let sparkline: SparklineSpec = { Source = noBinding<float list> }
 
 /// An all-inherited draw style — every field `None`, so a shape emits `{}` and
 /// inherits the renderer's defaults (Phase 524).
@@ -295,7 +295,7 @@ let select<'Msg> : SelectSpec<'Msg> =
       Disabled = Option.None
       // Phase 291: single-select by default — Multiple/Values/OnChangeMulti
       // omitted on the wire so every existing Select fixture stays byte-identical.
-      Multiple = false
+      Multiple = Option.None
       Values = Option.None
       OnChangeMulti = Option.None }
 
@@ -340,7 +340,7 @@ let fileUpload<'Msg> : FileUploadSpec<'Msg> =
     { Label = emptyLiteral
       Accept = []
       Multiple = false
-      OnSelect = (fun _ -> Action.Chain [])
+      OnSelect = Some(fun _ -> Action.Chain [])
       Disabled = Option.None }
 
 // ─── Visualisation defaults ─────────────────────────────────────────────────
@@ -360,7 +360,7 @@ let table<'Msg> : TableSpec<'Msg> =
       OnRowClick = Option.None }
 
 let map<'Msg> : MapSpec<'Msg> =
-    { Source = noBinding<MapMarker seq>
+    { Source = noBinding<MapMarker list>
       CentreLatitude = 0.0
       CentreLongitude = 0.0
       Zoom = 4

@@ -12,14 +12,15 @@ namespace Fuaran.UI.CSharp;
 // state (field values, select value) is what rides the wire.
 public static partial class Fuaran
 {
-    // F# `string option` projects to C# as the nullable-annotated `FSharpOption<string>?`
-    // (F# 10 nullness). These helpers instantiate the option-value binding + no-op handler
-    // with the matching annotation, so the smart-ctor call sites stay CS8620-clean.
-    internal static global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Core.FSharpOption<string>?> OptStrValue(
-        string? selected) =>
-        global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Core.FSharpOption<string>?>.NewStatic(
-            Microsoft.FSharp.Core.FSharpOption<Microsoft.FSharp.Core.FSharpOption<string>?>.Some(Fs.OptStr(selected!)));
+    // Generated SelectSpec.Value is a plain `Binding<string>` (the old
+    // `Binding<string option>` double option flattened): "no selection" is
+    // `Static None`, a selection is `Static (Some v)`.
+    internal static global::Fuaran.UI.Generated.Binding<string> OptStrValue(string? selected) =>
+        global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.OptStr(selected!));
 
+    // F# `string option` projects to C# as the nullable-annotated `FSharpOption<string>?`
+    // (F# 10 nullness); the no-op handler carries the matching annotation so the
+    // smart-ctor call sites stay CS8620-clean.
     internal static Microsoft.FSharp.Core.FSharpFunc<Microsoft.FSharp.Core.FSharpOption<string>?, FsAction> NoOptStrHandler() =>
         Fs.Func<Microsoft.FSharp.Core.FSharpOption<string>?, FsAction>(_ => NoAction);
 
@@ -45,7 +46,9 @@ public static partial class Fuaran
     public static FuaranNode Form(FormOptions options) =>
         new(FsFactory.form<object>(
             options.Id,
-            new FsTypes.FormSpec<object>(
+            // Generated FormSpec ctor is Generated.fs declaration order (Fields,
+            // OnSubmit, SubmitLabel, Disabled).
+            new FsGen.FormSpec<object>(
                 Fs.List((options.Fields ?? Enumerable.Empty<FormField>()).Select(f => f.Inner)),
                 NoAction,
                 options.SubmitLabel.Inner,
@@ -55,16 +58,19 @@ public static partial class Fuaran
     public static FuaranNode Select(SelectOptions options) =>
         new(FsFactory.select<object>(
             options.Id,
-            new FsTypes.SelectSpec<object>(
+            // Generated SelectSpec ctor is Generated.fs declaration order (Label,
+            // OnChange, OnChangeMulti, Source, Value, Placeholder, Disabled, Multiple,
+            // Values); Multiple is now `bool option` (single-select = None).
+            new FsGen.SelectSpec<object>(
                 options.Label.Inner,
+                Fs.Some(NoOptStrHandler()),
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<Microsoft.FSharp.Collections.FSharpList<string>, FsAction>>(),
                 OptionSource(options.Options),
                 OptStrValue(options.Value),
-                Fs.Some(NoOptStrHandler()),
                 options.Placeholder is { } p ? Fs.Some(p.Inner) : Fs.None<FsGen.TextSource>(),
                 Fs.None<global::Fuaran.UI.Generated.Binding<bool>>(),
-                false,
-                Fs.None<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>>(),
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<Microsoft.FSharp.Collections.FSharpList<string>, FsAction>>())));
+                Fs.None<bool>(),
+                Fs.None<global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<string>>>())));
 
     /// <summary>A multi-select (<c>&lt;select multiple&gt;</c>).</summary>
     public static FuaranNode MultiSelect(MultiSelectOptions options) =>
@@ -86,11 +92,17 @@ public static partial class Fuaran
     public static FuaranNode FileUpload(FileUploadOptions options) =>
         new(FsFactory.fileUpload<object>(
             options.Id,
-            new FsTypes.FileUploadSpec<object>(
-                options.Label.Inner,
+            // Generated FileUploadSpec ctor is Generated.fs declaration order (Accept,
+            // Label, Multiple, OnSelect, Disabled); OnSelect is optional now and
+            // FileSelection lives in HostPrelude — the facade keeps its no-op handler
+            // (Some-wrapped) so the wire shape is unchanged.
+            new FsGen.FileUploadSpec<object>(
                 Fs.List(options.Accept ?? Enumerable.Empty<string>()),
+                options.Label.Inner,
                 options.Multiple,
-                Fs.Func<Microsoft.FSharp.Collections.FSharpList<FsTypes.FileSelection>, FsAction>(_ => NoAction),
+                Fs.Some(
+                    Fs.Func<Microsoft.FSharp.Collections.FSharpList<global::Fuaran.UI.HostPrelude.FileSelection>, FsAction>(
+                        _ => NoAction)),
                 Fs.None<global::Fuaran.UI.Generated.Binding<bool>>())));
 }
 

@@ -629,7 +629,7 @@ and private renderKind
                 [ prop.className (sprintf "fuaran-metric fuaran-metric-%s" (Theme.toneVar spec.Tone))
                   prop.children
                       [ match spec.Icon with
-                        | Some(IconSource icon) -> iconHook "fuaran-metric-icon" icon
+                        | Some icon -> iconHook "fuaran-metric-icon" icon
                         | None -> Html.none
                         Html.div [ prop.className "fuaran-metric-label"; prop.text (renderText ctx spec.Label) ]
                         Html.div
@@ -669,7 +669,7 @@ and private renderKind
             [ prop.className (sprintf "fuaran-callout fuaran-callout-%s" (Theme.toneVar spec.Tone))
               prop.children
                   [ match spec.Icon with
-                    | Some(IconSource icon) -> iconHook "fuaran-callout-icon" icon
+                    | Some icon -> iconHook "fuaran-callout-icon" icon
                     | None -> Html.none
                     match spec.Heading with
                     | Some heading ->
@@ -761,7 +761,7 @@ and private renderKind
                         [ prop.className "fuaran-fact-value"
                           prop.children
                               [ match spec.Icon with
-                                | Some(IconSource icon) -> iconHook "fuaran-fact-icon" icon
+                                | Some icon -> iconHook "fuaran-fact-icon" icon
                                 | None -> Html.none
                                 Html.span [ prop.text (renderText ctx spec.Value) ] ] ]
                     match spec.Help with
@@ -948,8 +948,7 @@ and private renderKind
               // as a text node beside the hook; an icon-less button keeps the
               // plain `prop.text` shape (markup unchanged for existing trees).
               match spec.Icon with
-              | Some(IconSource icon) ->
-                  prop.children [ iconHook "fuaran-button-icon" icon; Html.text (renderText ctx spec.Label) ]
+              | Some icon -> prop.children [ iconHook "fuaran-button-icon" icon; Html.text (renderText ctx spec.Label) ]
               | None -> prop.text (renderText ctx spec.Label) ]
             @ (match spec.Tooltip with
                | Some t -> [ prop.title (renderText ctx t) ]
@@ -959,7 +958,11 @@ and private renderKind
         )
     | NodeKind.Select spec ->
         let options = resolveOptions ctx spec.Source
-        let selected = BindingResolver.tryResolve ctx.Sources spec.Value |> Option.flatten
+        // The select value is `Binding<string>` since the swap — a null/empty
+        // resolution is no-selection (the segmented-filter shape).
+        let selected =
+            BindingResolver.tryResolve ctx.Sources spec.Value
+            |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
 
         let isDisabled =
             spec.Disabled
@@ -983,7 +986,7 @@ and private renderKind
                         // Phase 291 — emit `multiple` for a multi-select; the
                         // single-value `value` only when single-select (a
                         // controlled `<select multiple>` rejects a scalar value).
-                        @ (if spec.Multiple then
+                        @ (if spec.Multiple = Some true then
                                [ prop.custom ("multiple", "") ]
                            else
                                [ prop.value (selected |> Option.defaultValue "") ])

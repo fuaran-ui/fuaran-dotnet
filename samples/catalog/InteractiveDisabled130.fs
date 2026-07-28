@@ -71,7 +71,7 @@ let private readerPane: Node<Msg> =
                           Label = TextSource.Literal "Region"
                           Source =
                               Binding.Static(Some [ { Value = "uk"; Label = "UK" }; { Value = "us"; Label = "US" } ])
-                          Value = Binding.Static(Some(Some "uk"))
+                          Value = Binding.Static(Some "uk")
                           Disabled = Some busyBinding }
                   Fuaran.form
                       "idp-form"

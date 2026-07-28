@@ -215,7 +215,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                       { Defaults.select<Msg> with
                           Label = TextSource.Literal "Contributor peer"
                           Source = Binding.Static(Some contributorOptions)
-                          Value = binding.state "contributorPick" None
+                          Value = binding.stateNoDefault "contributorPick"
                           OnChange = Some(fun v -> Action.dispatch (PickContributor v))
                           Placeholder = Some(TextSource.Literal "Choose a peer…") }
                   |> Node.onEmpty (Fuaran.markdown "no-contributors" "No Contributor peers configured.")
@@ -325,7 +325,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                           Label = TextSource.Literal "Upload fitted-parameters file"
                           Accept = [ ".csv"; ".json" ]
                           Multiple = false
-                          OnSelect = (fun files -> Action.dispatch (FilesSelected files)) }
+                          OnSelect = Some(fun files -> Action.dispatch (FilesSelected files)) }
 
                   // Chart (falls back to labelled placeholder — no AG Charts adapter wired)
                   Fuaran.chart
@@ -368,7 +368,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                   Fuaran.map
                       "showcase-map"
                       { Defaults.map<Msg> with
-                          Source = Binding.Static(Some(mapMarkers :> MapMarker seq))
+                          Source = Binding.Static(Some mapMarkers)
                           CentreLatitude = 30.0
                           CentreLongitude = -30.0
                           Zoom = 3 } ] }

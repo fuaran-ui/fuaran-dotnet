@@ -456,27 +456,7 @@ type Node<'Msg> =
         ExtraAttributes: Map<string, string> option
     }
 
-and Accessibility =
-    {
-        /// Human-readable label for screen readers (`aria-label`). When `None`
-        /// AND the Node's structural label field (e.g. `ButtonSpec.Label`) is
-        /// non-empty, the renderer's per-Kind fallback uses the structural label.
-        Label: Binding<string> option
-        /// Reference to another Node whose text labels this one (`aria-labelledby`).
-        /// Mutually exclusive with `Label` in practice — set one OR the other.
-        LabelledBy: NodeId option
-        /// Reference to another Node whose text describes this one (`aria-describedby`).
-        DescribedBy: NodeId option
-        /// ARIA role override; `None` lets the renderer pick a default based on
-        /// the NodeKind (or omit `role` entirely for purely structural nodes).
-        Role: AriaRole option
-        /// `aria-live` politeness for dynamically-updating regions
-        /// (notifications, toasts, async-loading regions).
-        LiveRegion: LiveRegionKind option
-        /// When `true`, emits `aria-hidden="true"` so screen readers skip this
-        /// subtree. Bound to support conditional hiding (modal backdrop, etc.).
-        Hidden: Binding<bool> option
-    }
+and Accessibility = Generated.Accessibility
 
 and [<RequireQualifiedAccess>] NodeKind<'Msg> =
     // ─── Phase 692: the vocabulary is FLAT ─────────────────────────────
@@ -1026,23 +1006,12 @@ and ScrollAreaSpec<'Msg> =
 
 /// `Emphasis` bolds the row when it represents a total / highlight; `Help`
 /// renders as small-print under the label when set.
-and LabelValueRowSpec =
-    { Label: TextSource
-      Value: Binding<float>
-      Format: CellFormat
-      Emphasis: bool
-      Help: TextSource option }
+and LabelValueRowSpec = Generated.LabelValueRowSpec
 
 /// See `NodeKind.Fact`. `Emphasis` gives the value KPI-tile prominence
 /// (inside a `Dashboard` role it tiles like a `Metric` card); `Help` is
 /// small-print under the label, mirroring `LabelValueRow`.
-and FactSpec =
-    { Label: TextSource
-      Value: TextSource
-      Icon: IconSource option
-      Tone: ToneVariant
-      Emphasis: bool
-      Help: TextSource option }
+and FactSpec = Generated.FactSpec
 
 /// Heading variants beyond
 /// the `<h{Level}>` Standard. Variants emit the same `<h{Level}>` tag but
@@ -1051,20 +1020,11 @@ and FactSpec =
 /// `<h1..h6>` semantics.
 and HeadingVariant = Generated.HeadingVariant
 
-and HeadingSpec =
-    {
-        Level: int
-        Text: TextSource
-        /// Defaults to `Standard` (no class fragment
-        /// change, no behavioural change for default callers).
-        Variant: HeadingVariant
-    }
+and HeadingSpec = Generated.HeadingSpec
 
-and MarkdownSpec = { Text: TextSource }
+and MarkdownSpec = Generated.MarkdownSpec
 
-and BadgeSpec =
-    { Label: TextSource
-      Variant: BadgeVariant }
+and BadgeSpec = Generated.BadgeSpec
 
 /// §4b — `NodeKind.Link`'s typed spec (Phase 139). `Href` is a
 /// `Binding<string>` so the destination can be static or data-bound;
@@ -1074,12 +1034,7 @@ and BadgeSpec =
 /// (`rel="noopener"`, `target="_blank"`, …); `Download` emits a bare
 /// `download` attribute. All but `Href` / `Label` default off in
 /// `Defaults.link`, so the AI emits only what differs.
-and LinkSpec =
-    { Href: Binding<string>
-      Label: TextSource
-      Rel: string option
-      Target: string option
-      Download: bool }
+and LinkSpec = Generated.LinkSpec
 
 /// §4b — `NodeKind.Image`'s typed spec (Phase 287). `Src` is a
 /// `Binding<string>` routed through `Sanitize.sanitizeUrlOrBlank` at render
@@ -1087,16 +1042,11 @@ and LinkSpec =
 /// `Alt` is mandatory — the accessibility floor for a non-decorative image
 /// (pass an empty `Literal ""` only for a purely decorative one). `Variant`
 /// defaults to `Default` in `Defaults.image`.
-and ImageSpec =
-    { Src: Binding<string>
-      Alt: TextSource
-      Variant: ImageVariant }
+and ImageSpec = Generated.ImageSpec
 
 /// §4b — `NodeKind.List`'s typed spec (Phase 287). `Items` is the ordered
 /// list of item texts; `Ordered` selects `<ol>` (true) vs `<ul>` (false).
-and ListSpec =
-    { Items: TextSource list
-      Ordered: bool }
+and ListSpec = Generated.ListSpec
 
 /// §4n — `NodeKind.Toast`'s typed spec (Phase 289). The declarative,
 /// in-tree, SSR-rendered notification surface. `Open` is the controlled
@@ -1104,11 +1054,7 @@ and ListSpec =
 /// colour; `Dismissable` adds a close affordance. Renders inline (no portal),
 /// positioned by CSS, with `role="status"` + an `aria-live` region — see the
 /// overlay render-fidelity contract (docs/SSR.md). Defaults in `Defaults.toast`.
-and ToastSpec =
-    { Message: TextSource
-      Tone: ToneVariant
-      Open: Binding<bool>
-      Dismissable: bool }
+and ToastSpec = Generated.ToastSpec
 
 /// §4b — `NodeKind.CodeBlock`'s typed spec (Phase 290). `Code` is the raw
 /// source (HTML-escaped at render, never markdown-parsed); `Language` is the
@@ -1117,20 +1063,14 @@ and ToastSpec =
 /// 1-based line numbers to mark (emitted as a deterministic
 /// `data-highlight-lines` attribute the client enhancement reads); `Copyable`
 /// renders a copy affordance. All default in `Defaults.codeBlock`.
-and CodeBlockSpec =
-    { Code: string
-      Language: string
-      LineNumbers: bool
-      HighlightLines: int list
-      Copyable: bool }
+and CodeBlockSpec = Generated.CodeBlockSpec
 
 /// §4b — `NodeKind.Math`'s typed spec (Phase 293). `Source` is the LaTeX
 /// string (escaped in the deterministic fallback render); `Display` selects an
 /// inline `<span>` vs a block `<div>`. Defaults in `Defaults.math`.
-and MathSpec =
-    { Source: string; Display: MathDisplay }
+and MathSpec = Generated.MathSpec
 
-and SparklineSpec = { Source: Binding<float seq> }
+and SparklineSpec = Generated.SparklineSpec
 
 /// §4b — a 2-D user-space coordinate box for `NodeKind.Drawing` (Phase
 /// 524). Mirrors SVG's `viewBox` (`minX minY width height`); the renderer
@@ -1190,121 +1130,30 @@ and Shape = Generated.Shape
 /// the renderer (Phase 525) emits as `role="img"` + `<title>` / `<desc>`. This
 /// is the shared render target every chart lowers to (Phase 526). Defaults in
 /// `Defaults.drawing`.
-and DrawingSpec =
-    { ViewBox: ViewBox
-      Shapes: Shape list
-      Style: DrawStyle
-      Title: TextSource option
-      Description: TextSource option }
+and DrawingSpec = Generated.DrawingSpec
 
-and SkeletonSpec = { Rows: int }
+and SkeletonSpec = Generated.SkeletonSpec
 
 /// §4b lines 473–487 — Metric's typed spec record. All fields default in
 /// `Defaults.metric`; AI emits only what differs.
-and MetricSpec =
-    { Label: TextSource
-      // 0.2.0 rename (pre-launch clean break): the scalar displayed value is
-      // `value` across Metric / LabelValueRow / Fact; `source` is reserved
-      // for collection data feeds (grids/charts/options). No legacy alias.
-      Value: Binding<float>
-      Format: CellFormat
-      Tone: ToneVariant
-      Weight: StyleWeight
-      Emphasis: Emphasis
-      Trend: Binding<float> option
-      TrendFormat: CellFormat option
-      Icon: IconSource option
-      Subtext: TextSource option }
+and MetricSpec = Generated.MetricSpec
 
 /// §4k Q3.4 — tier/mode/status banner; sized for content blocks.
 /// Toasts are separate (§4n overlay surfaces, session 3+).
-and CalloutSpec =
-    { Tone: ToneVariant
-      Heading: TextSource option
-      Body: TextSource
-      Icon: IconSource option
-      Dismissable: bool }
+and CalloutSpec = Generated.CalloutSpec
 
 /// §4k Q3.4 — long-running async indicator. Use `Indeterminate = true`
 /// with a `Caveat` when no honest 0..1 bound exists, per the §4k indeterminate-progress guidance.
-and ProgressSpec =
-    { Fraction: Binding<float>
-      Label: TextSource option
-      Caveat: TextSource option
-      Indeterminate: bool
-      Tone: ToneVariant }
+and ProgressSpec = Generated.ProgressSpec
 
 // ─── Input — interactive, carries Msg via Action<'Msg> ──────────────
 
-and ButtonSpec<'Msg> =
-    {
-        Label: TextSource
-        OnClick: Action<'Msg>
-        Variant: ButtonVariant
-        Icon: IconSource option
-        /// Hover tooltip surfaced via the browser's native `title`
-        /// attribute. `None` means no tooltip (the v1 default). The text
-        /// goes through the same `TextSource` resolution path as `Label`
-        /// — i18n keys + bound expressions both work. The native `title`
-        /// rendering is intentionally minimal (browser default styling);
-        /// design-system-styled tooltip surfaces are a separate component
-        /// concern and stay outside `ButtonSpec`.
-        Tooltip: TextSource option
-        /// Optional bound disabled-state. `None` (the default) means the
-        /// button is always enabled; `Some binding` disables the button
-        /// whenever the bound `bool` resolves `true` — the canonical
-        /// "disabled while a calc is in flight" shape. The renderer emits
-        /// the HTML `disabled` attribute when the binding resolves `true`
-        /// and omits it otherwise. As an optional `Binding<bool>` slot it
-        /// is ReplaceBinding-able + introspectable under the slot name
-        /// `Disabled` (mirrors `MetricSpec.Trend` / `TabsSpec.ActiveTag`).
-        Disabled: Binding<bool> option
-    }
+and ButtonSpec<'Msg> = Generated.ButtonSpec<'Msg>
 
 /// §4c idiom — filtered pickers. Authors filter inside the binding accessor,
 /// not via a `Filter` field on the spec. The component is shape-stable across
 /// "tier ≥ 1" / "recently active" / "owned by me" use cases.
-and SelectSpec<'Msg> =
-    {
-        Label: TextSource
-        Source: Binding<SelectOption list>
-        Value: Binding<string option>
-        /// Optional single-select change handler (Phase 426 — the control
-        /// write-back default). `Some` dispatches on change exactly as before
-        /// (`"onChange":"<closure>"` on the wire, byte-stable); `None` — the
-        /// AI-authored / decoded shape — arms the renderer's write-back
-        /// default: a `Value` bound directly to `Binding.State`/`Binding.Filter`
-        /// has the chosen option written to that slot on change.
-        OnChange: (string option -> Action<'Msg>) option
-        Placeholder: TextSource option
-        /// Optional bound disabled-state (Phase 130 — the interactive-state
-        /// class-fix generalising `ButtonSpec.Disabled`). `None` (the default)
-        /// means the select is always enabled; `Some binding` disables the
-        /// `<select>` whenever the bound `bool` resolves `true`. The renderer
-        /// emits the HTML `disabled` attribute when it resolves `true` and omits
-        /// it otherwise. As an optional `Binding<bool>` slot it is
-        /// ReplaceBinding-able + introspectable under the slot name `Disabled`
-        /// (mirrors `ButtonSpec.Disabled` / `MetricSpec.Trend`).
-        Disabled: Binding<bool> option
-        /// Multi-select flag (Phase 291). `false` (the
-        /// default) is single-select — `Value` / `OnChange` carry the chosen
-        /// option, and the field is omitted on the wire (the degenerate case
-        /// stays byte-identical to pre-multi-select fixtures). When `true`, the
-        /// renderer emits a `<select multiple>` and the selection is carried by
-        /// `Values` / `OnChangeMulti` (a list) instead of `Value` / `OnChange`.
-        Multiple: bool
-        /// The multi-select value binding (Phase 291).
-        /// `None` for single-select (omitted on the wire); `Some binding` when
-        /// `Multiple` — resolves to the list of selected option values.
-        /// ReplaceBinding-able + introspectable under the slot name `Values`.
-        Values: Binding<string list> option
-        /// The multi-select change handler (Phase 291).
-        /// Fires with the full selected-value list. `None` for single-select.
-        /// Since Phase 426 a `Some` closure rides the wire as its own
-        /// `"onChangeMulti":"<closure>"` sentinel; a multi-select whose
-        /// handler is `None` falls to the write-back default against `Values`.
-        OnChangeMulti: (string list -> Action<'Msg>) option
-    }
+and SelectSpec<'Msg> = Generated.SelectSpec<'Msg>
 
 /// A single Select option. `Value` is the wire id (stable, ASCII-safe);
 /// `Label` is the displayed text.
@@ -1315,22 +1164,7 @@ and SelectOption = Generated.SelectOption
 /// per-field `Kind` rather than a stringly-typed cell-type discriminator —
 /// the renderer pattern-matches Kind to choose the input element + wire the
 /// `onChange` handler back into typed `Action<'Msg>`.
-and FormSpec<'Msg> =
-    {
-        Fields: FormField<'Msg> list
-        OnSubmit: Action<'Msg>
-        SubmitLabel: TextSource
-        /// Optional bound disabled-state (Phase 130 — the interactive-state
-        /// class-fix generalising `ButtonSpec.Disabled`). `None` (the default)
-        /// leaves the form enabled; `Some binding` disables the whole form
-        /// whenever the bound `bool` resolves `true` — the canonical "disable
-        /// every field + submit while a calc is in flight" shape. The renderer
-        /// wraps the fields + submit in a `<fieldset disabled>` (native HTML
-        /// cascade), so every descendant control is disabled at once. As an
-        /// optional `Binding<bool>` slot it is ReplaceBinding-able +
-        /// introspectable under the slot name `Disabled`.
-        Disabled: Binding<bool> option
-    }
+and FormSpec<'Msg> = Generated.FormSpec<'Msg>
 
 and FormField<'Msg> = Generated.FormField<'Msg>
 // Every value-carrying event handler is optional (Phase 426 — the control write-back
@@ -1389,40 +1223,16 @@ and FileReadEncoding = Generated.FileReadEncoding
 /// dependency leaks into the typed-tree package); the `box`/`unbox` round-trip
 /// is a sanctioned host-blob boundary (the renderer's `FileReader` arm
 /// unboxes it), in the same family as the Custom-renderer prop bag.
-and FileRef = { Id: string; Handle: obj option }
+and FileRef = HostPrelude.FileRef
 
 /// FileSelection is the metadata the browser exposes for an `<input type=file>`
 /// change event. The actual `File` blob stays browser-side; `Ref` carries an
 /// opaque handle to it (Phase 136) so `OnSelect` can chain
 /// `Action.ReadFileBody` to ingest the body — the metadata + handle, never
 /// the blob, are what the spec hands the author.
-and FileUploadSpec<'Msg> =
-    {
-        Label: TextSource
-        Accept: string list
-        Multiple: bool
-        OnSelect: FileSelection list -> Action<'Msg>
-        /// Optional bound disabled-state (Phase 130 — the interactive-state
-        /// class-fix generalising `ButtonSpec.Disabled`). `None` (the default)
-        /// leaves the upload control enabled; `Some binding` disables the
-        /// `<input type=file>` whenever the bound `bool` resolves `true`. The
-        /// renderer emits the HTML `disabled` attribute when it resolves `true`.
-        /// ReplaceBinding-able + introspectable under the slot name `Disabled`.
-        Disabled: Binding<bool> option
-    }
+and FileUploadSpec<'Msg> = Generated.FileUploadSpec<'Msg>
 
-and FileSelection =
-    {
-        Name: string
-        Size: int64
-        MimeType: string
-        /// Phase 136 — opaque handle to the selected file's blob, so `OnSelect`
-        /// can chain `Action.ReadFileBody Ref encoding onRead` to ingest the
-        /// body with no consumer-side `FileReader` interop. Carries the boxed
-        /// browser `File` on browser hosts; only `Ref.Id` ever serialises.
-        /// Constructed by the renderer when the change event fires.
-        Ref: FileRef
-    }
+and FileSelection = HostPrelude.FileSelection
 
 /// AG Charts-shaped chart spec. `Source` resolves to a row sequence; `XField`
 /// and `YFields` name the row's property keys to plot. AG Charts adapter
@@ -1465,12 +1275,7 @@ and TableSpec<'Msg> =
 /// longitude in decimal degrees. The renderer defers to a host-provided map
 /// library (Leaflet via Fable interop); falls back to a labelled placeholder
 /// when no adapter is wired.
-and MapSpec<'Msg> =
-    { Source: Binding<MapMarker seq>
-      CentreLatitude: float
-      CentreLongitude: float
-      Zoom: int
-      OnMarkerClick: (MapMarker -> Action<'Msg>) option }
+and MapSpec<'Msg> = Generated.MapSpec<'Msg>
 
 and MapMarker = Generated.MapMarker
 // ─── Visualisation — data-bound, complex ─────────────────────────────
@@ -1582,27 +1387,7 @@ and ErrorPayload = HostPrelude.ErrorPayload
 
 // ─── Style — semantic, not CSS ───────────────────────────────────────
 
-and SemanticStyle =
-    {
-        Tone: ToneVariant
-        Weight: StyleWeight
-        Emphasis: Emphasis
-        /// §4b (Phase 147) — the node's named semantic *content role*, an
-        /// additive bounded vocabulary the AI emits as intent
-        /// (`Role = StyleRole.Data`). Projects a `fuaran-role-{role}` class
-        /// fragment the host CSS owns; `StyleRole.None` (the default) emits
-        /// nothing, so a tree authored before the field existed renders
-        /// byte-identically. Distinct from `HeadingVariant` (which owns the
-        /// heading-text eyebrow/caption/lead variants) — `StyleRole` tags the
-        /// content role of *any* node.
-        Role: StyleRole
-        /// §4b (Phase 147) — the node's font *voice*: the display-voice
-        /// (large, expressive, cover/hero) vs structural-voice (body, UI
-        /// chrome) split the narrow `Tone/Weight/Emphasis` triple can't name.
-        /// Projects a `fuaran-voice-{voice}` class fragment; `FontVoice.Default`
-        /// (the default) emits nothing (byte-identical for existing trees).
-        Voice: FontVoice
-    }
+and SemanticStyle = Generated.SemanticStyle
 
 /// §4b (Phase 147) — the bounded, additive-only semantic content-role
 /// vocabulary. The AI emits a role as *intent*; the renderer projects a

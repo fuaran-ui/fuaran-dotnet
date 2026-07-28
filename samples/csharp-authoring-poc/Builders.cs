@@ -32,6 +32,12 @@ using HeadingVariant = Fuaran.UI.Generated.HeadingVariant;
 using ChartKind = Fuaran.UI.Generated.ChartKind;
 using SelectOption = Fuaran.UI.Generated.SelectOption;
 using Motion = Fuaran.UI.Generated.Motion;
+using SemanticStyle = Fuaran.UI.Generated.SemanticStyle;
+using Accessibility = Fuaran.UI.Generated.Accessibility;
+using MetricSpec = Fuaran.UI.Generated.MetricSpec;
+using HeadingSpec = Fuaran.UI.Generated.HeadingSpec;
+using BadgeSpec = Fuaran.UI.Generated.BadgeSpec;
+using MarkdownSpec = Fuaran.UI.Generated.MarkdownSpec;
 
 namespace Fuaran.UI.CSharp.Poc;
 
@@ -103,8 +109,10 @@ internal static class Defaults
     public static readonly StateBehaviour<object> EmptyState =
         new(Fs.None<Node<object>>(), Fs.None<Node<object>>(), Fs.None<FSharpFunc<global::Fuaran.UI.HostPrelude.ErrorPayload, Node<object>>>());
 
+    // Generated SemanticStyle declares (Emphasis, Role, Tone, Voice, Weight) —
+    // ctor is declaration order (Generated.fs), not the old hand order.
     public static readonly SemanticStyle Style =
-        new(ToneVariant.Default, StyleWeight.Standard, Emphasis.Normal, StyleRole.None, FontVoice.Default);
+        new(Emphasis.Normal, StyleRole.None, ToneVariant.Default, FontVoice.Default, StyleWeight.Standard);
 
     public static readonly FsAction PlaceholderChain = Act.Chain();
 }
@@ -224,7 +232,8 @@ internal sealed class MetricBuilder : NodeBuilder
     private FSharpOption<global::Fuaran.UI.Generated.Binding<double>> _trend =
         Fs.None<global::Fuaran.UI.Generated.Binding<double>>();
     private FSharpOption<CellFormat> _trendFormat = Fs.None<CellFormat>();
-    private FSharpOption<IconSource> _icon = Fs.None<IconSource>();
+    // Generated MetricSpec.Icon is a bare `string option` (no IconSource wrap).
+    private FSharpOption<string> _icon = Fs.None<string>();
     private FSharpOption<TextSource> _subtext = Fs.None<TextSource>();
 
     public MetricBuilder(string id) : base(id) { }
@@ -235,7 +244,7 @@ internal sealed class MetricBuilder : NodeBuilder
     public MetricBuilder Tone(ToneVariant t) { _tone = t; return this; }
     public MetricBuilder Trend(double value) { _trend = Fs.Some(Bind.Static(value)); return this; }
     public MetricBuilder TrendFormat(CellFormat f) { _trendFormat = Fs.Some(f); return this; }
-    public MetricBuilder Icon(string icon) { _icon = Fs.Some(IconSource.NewIconSource(icon)); return this; }
+    public MetricBuilder Icon(string icon) { _icon = Fs.Some(icon); return this; }
     public MetricBuilder Subtext(string text) { _subtext = Fs.Some(Txt.Literal(text)); return this; }
 
     protected override NodeKind<object> BuildKind() =>
@@ -291,7 +300,8 @@ internal sealed class ButtonBuilder : NodeBuilder
     private TextSource _label = Txt.Literal("");
     private FsAction _onClick = Act.Chain();
     private ButtonVariant _variant = ButtonVariant.Primary;
-    private FSharpOption<IconSource> _icon = Fs.None<IconSource>();
+    // Generated ButtonSpec.Icon is a bare `string option` (no IconSource wrap).
+    private FSharpOption<string> _icon = Fs.None<string>();
     private FSharpOption<TextSource> _tooltip = Fs.None<TextSource>();
     private FSharpOption<global::Fuaran.UI.Generated.Binding<bool>> _disabled =
         Fs.None<global::Fuaran.UI.Generated.Binding<bool>>();
@@ -301,13 +311,13 @@ internal sealed class ButtonBuilder : NodeBuilder
     public ButtonBuilder Label(string text) { _label = Txt.Literal(text); return this; }
     public ButtonBuilder OnClick(FsAction action) { _onClick = action; return this; }
     public ButtonBuilder Variant(ButtonVariant v) { _variant = v; return this; }
-    public ButtonBuilder Icon(string icon) { _icon = Fs.Some(IconSource.NewIconSource(icon)); return this; }
+    public ButtonBuilder Icon(string icon) { _icon = Fs.Some(icon); return this; }
     public ButtonBuilder DisabledWhen(string stateKey, bool defaultValue = false)
     { _disabled = Fs.Some(Bind.State(stateKey, defaultValue)); return this; }
 
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewButton(
-            new ButtonSpec<object>(_label, _onClick, _variant, _icon, _tooltip, _disabled));
+            new FsGen.ButtonSpec<object>(_label, _onClick, _variant, _icon, _tooltip, _disabled));
 }
 
 /// <summary>A single form field. DU field-kinds surface as factory methods
@@ -383,7 +393,9 @@ internal sealed class FormBuilder : NodeBuilder
 
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewForm(
-            new FormSpec<object>(
+            // Generated FormSpec ctor is Generated.fs declaration order (Fields,
+            // OnSubmit, SubmitLabel, Disabled).
+            new FsGen.FormSpec<object>(
                 Fs.List(_fields.Select(f => f.Build()).ToArray()),
                 _onSubmit,
                 _submitLabel,

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.FSharp.Collections;
 using Microsoft.FSharp.Core;
+using FsGen = Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp;
 
@@ -73,4 +74,37 @@ internal static class Fs
     /// <summary>Read an F# <c>option</c> to a C# nullable reference (or null).</summary>
     public static T ToNullable<T>(FSharpOption<T> opt) where T : class =>
         FSharpOption<T>.get_IsSome(opt) ? opt.Value : null;
+
+    /// <summary>
+    /// Re-type a <c>Binding&lt;TIn&gt;</c> as a <c>Binding&lt;TOut&gt;</c> by mapping its
+    /// carried value(s) through <paramref name="f"/> (Phase 692/694 swap: generated spec
+    /// slots such as <c>SparklineSpec.Source</c> / <c>MapSpec.Source</c> now bind F#
+    /// <c>list</c>s where the facade authors <c>IEnumerable</c>s). Covers exactly the
+    /// value-carrying cases the public <see cref="Binding"/> facade can author
+    /// (Static / Query / Filter / State / Selection); anything else is unreachable from
+    /// the facade for a collection-typed binding and throws loudly rather than
+    /// mis-translating.
+    /// </summary>
+    public static FsGen.Binding<TOut> MapBinding<TIn, TOut>(FsGen.Binding<TIn> binding, Func<TIn, TOut> f)
+    {
+        FSharpOption<TOut> MapOpt(FSharpOption<TIn> opt) =>
+            FSharpOption<TIn>.get_IsSome(opt) ? FSharpOption<TOut>.Some(f(opt.Value)) : FSharpOption<TOut>.None;
+
+        return binding switch
+        {
+            FsGen.Binding<TIn>.Static s => FsGen.Binding<TOut>.NewStatic(MapOpt(s.value)),
+            FsGen.Binding<TIn>.Query q =>
+                FsGen.Binding<TOut>.NewQuery(q.name, Func<object, TOut>(o => f(q.accessor.Invoke(o))), q.dependsOn),
+            FsGen.Binding<TIn>.Filter fl => FsGen.Binding<TOut>.NewFilter(fl.name, MapOpt(fl.defaultValue)),
+            FsGen.Binding<TIn>.State st => FsGen.Binding<TOut>.NewState(st.key, MapOpt(st.defaultValue)),
+            FsGen.Binding<TIn>.Selection sel =>
+                FsGen.Binding<TOut>.NewSelection(
+                    sel.nodeId,
+                    Func<object, TOut>(o => f(sel.accessor.Invoke(o))),
+                    MapOpt(sel.defaultValue),
+                    sel.field),
+            _ => throw new NotSupportedException(
+                $"Binding case '{binding.GetType().Name}' cannot be re-typed by the C# facade."),
+        };
+    }
 }

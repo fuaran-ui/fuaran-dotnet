@@ -122,7 +122,7 @@ module private SimpleSinkJson =
         match parts with
         | [| "R"; id |] -> Ok(TreeOp.RemoveNode(NodeId id))
         | [| "S"; id; tone; weight; emphasis |] ->
-            let style =
+            let style: SemanticStyle =
                 { Tone = toneOf tone
                   Weight = weightOf weight
                   Emphasis = emphasisOf emphasis

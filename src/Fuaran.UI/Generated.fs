@@ -581,7 +581,7 @@ and FactSpec =
 // Display
 and SparklineSpec =
     {
-      Source: Binding<int list>
+      Source: Binding<float list>
     }
 
 // Display
@@ -716,7 +716,7 @@ and FileUploadSpec<'Msg> =
       Accept: string list
       Label: TextSource
       Multiple: bool
-      OnSelect: (obj list -> Action<'Msg>) option
+      OnSelect: (Fuaran.UI.HostPrelude.FileSelection list -> Action<'Msg>) option
       Disabled: Binding<bool> option
     }
 
@@ -1343,7 +1343,7 @@ and private encFactSpec (s: FactSpec) : JVal =
     Canon.typed "Fact" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); Some("label", encTextSource s.Label); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); Some("value", encTextSource s.Value) ] |> List.choose id)
 
 and private encSparklineSpec (s: SparklineSpec) : JVal =
-    Canon.typed "Sparkline" ([ Some("source", (encBinding (fun __xs -> JArr(List.map JInt __xs))) s.Source) ] |> List.choose id)
+    Canon.typed "Sparkline" ([ Some("source", (encBinding (fun __xs -> JArr(List.map JFloat __xs))) s.Source) ] |> List.choose id)
 
 and private encCodeBlockSpec (s: CodeBlockSpec) : JVal =
     Canon.typed "CodeBlock" ([ Some("code", JStr s.Code); Some("copyable", JBool s.Copyable); Some("highlightLines", JArr(List.map JInt s.HighlightLines)); Some("language", JStr s.Language); Some("lineNumbers", JBool s.LineNumbers) ] |> List.choose id)
@@ -2526,7 +2526,7 @@ and private decFactSpec (j: JVal) : Result<FactSpec, string> =
 
 and private decSparklineSpec (j: JVal) : Result<SparklineSpec, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "source" __fs (decBinding (dList dInt)) |> Result.bind (fun source ->
+    dReq "source" __fs (decBinding (dList dFloat)) |> Result.bind (fun source ->
     Ok { Source = source }))
 
 and private decCodeBlockSpec (j: JVal) : Result<CodeBlockSpec, string> =
@@ -2647,7 +2647,7 @@ and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec<obj>, string> =
     dReq "accept" __fs (dList dStr) |> Result.bind (fun accept ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
     dReq "multiple" __fs dBool |> Result.bind (fun multiple ->
-    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: obj list) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
+    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.UI.HostPrelude.FileSelection list) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     Ok { Accept = accept; Label = label; Multiple = multiple; OnSelect = onSelect; Disabled = disabled }))))))
 
@@ -2869,7 +2869,7 @@ let mkLabelValueRow (id: string) (label: TextSource) (value: Binding<float>) : N
 let mkFact (id: string) (label: TextSource) (value: TextSource) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkSparkline (id: string) (source: Binding<int list>) : Node<'Msg> =
+let mkSparkline (id: string) (source: Binding<float list>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Sparkline { Source = source }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: int list) (language: string) (lineNumbers: bool) : Node<'Msg> =

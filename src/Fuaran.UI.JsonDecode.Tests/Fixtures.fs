@@ -66,7 +66,7 @@ let private metricSpec: MetricSpec =
       Emphasis = Emphasis.Normal
       Trend = Some(Binding.Static(Some 0.07))
       TrendFormat = Some(CellFormat.Percent(Some 1))
-      Icon = Some(IconSource "trending-up")
+      Icon = Some "trending-up"
       Subtext = Some(TextSource.Literal "vs last month") }
 
 let metric: Node<obj> = node "metric-1" (NodeKind.Metric(metricSpec)) None
@@ -209,7 +209,7 @@ let math: Node<obj> =
         None
 
 let sparkline: Node<obj> =
-    node "spark-1" (NodeKind.Sparkline({ Source = Binding.Static(Some(seq [ 1.0; 2.0; 3.0; 2.0; 4.0 ])) })) None
+    node "spark-1" (NodeKind.Sparkline({ Source = Binding.Static(Some [ 1.0; 2.0; 3.0; 2.0; 4.0 ]) })) None
 
 let private bareDrawStyle: DrawStyle =
     { Fill = None
@@ -308,7 +308,7 @@ let callout: Node<obj> =
             { Tone = ToneVariant.Warning
               Heading = Some(TextSource.Literal "Heads up")
               Body = TextSource.Literal "Live data is delayed."
-              Icon = Some(IconSource "alert")
+              Icon = Some "alert"
               Dismissable = true }
         ))
         None
@@ -345,7 +345,7 @@ let fact: Node<obj> =
         (NodeKind.Fact(
             { Label = TextSource.Literal "Patient"
               Value = TextSource.Literal "Alice Smith"
-              Icon = Some(IconSource "user")
+              Icon = Some "user"
               Tone = ToneVariant.Brand
               Emphasis = true
               Help = Some(TextSource.Literal "Primary insured") }
@@ -876,7 +876,7 @@ let button: Node<obj> =
             { Label = TextSource.Literal "Refresh"
               OnClick = placeholderChain
               Variant = ButtonVariant.Primary
-              Icon = Some(IconSource "refresh")
+              Icon = Some "refresh"
               Tooltip = None
               // Phase 129: bound disabled-state — the canonical
               // "disabled while a calc is in flight" shape.
@@ -1095,7 +1095,7 @@ let fileUpload: Node<obj> =
             { Label = TextSource.Literal "Upload CSV"
               Accept = [ ".csv"; "text/csv" ]
               Multiple = false
-              OnSelect = (fun _ -> placeholderChain)
+              OnSelect = Some(fun _ -> placeholderChain)
               // Phase 130: bound disabled-state corpus coverage.
               Disabled = Some(Binding.State("uploadBusy", Some false)) }
         ))
@@ -1107,7 +1107,7 @@ let select: Node<obj> =
         (NodeKind.Select(
             { Label = TextSource.Literal "Region"
               Source = Binding.Static(Some [ { Value = "uk"; Label = "UK" } ])
-              Value = Binding.Static(Some(Some "uk"))
+              Value = Binding.Static(Some "uk")
               // `Some` (Phase 426) — keeps `"onChange":"<closure>"` on the
               // wire, byte-identical to the pre-426 corpus.
               OnChange = Some(fun _ -> placeholderChain)
@@ -1116,7 +1116,7 @@ let select: Node<obj> =
               Disabled = Some(Binding.State("selectBusy", Some false))
               // Phase 291: single-select — Multiple/Values/OnChangeMulti
               // omitted on the wire (the degenerate case stays byte-stable).
-              Multiple = false
+              Multiple = None
               Values = Option.None
               OnChangeMulti = Option.None }
         ))
@@ -1138,7 +1138,7 @@ let multiSelect: Node<obj> =
               OnChange = Some(fun _ -> placeholderChain)
               Placeholder = Option.None
               Disabled = Option.None
-              Multiple = true
+              Multiple = Some true
               Values = Some(Binding.Static(Some [ "red"; "green" ]))
               OnChangeMulti = Option.None }
         ))
@@ -1315,11 +1315,11 @@ let controlsDeclarative: Node<obj> =
             (NodeKind.Select(
                 { Label = TextSource.Literal "Region"
                   Source = Binding.Static(Some [ { Value = "uk"; Label = "UK" } ])
-                  Value = Binding.State("region", Some(Option.None: string option))
+                  Value = Binding.State("region", None)
                   OnChange = Option.None
                   Placeholder = Some(TextSource.Literal "Choose one")
                   Disabled = Option.None
-                  Multiple = false
+                  Multiple = None
                   Values = Option.None
                   OnChangeMulti = Option.None }
             ))
@@ -1382,7 +1382,7 @@ let multiSelectClosure: Node<obj> =
                   OnChange = Some(fun _ -> placeholderChain)
                   Placeholder = Option.None
                   Disabled = Option.None
-                  Multiple = true
+                  Multiple = Some true
                   Values = Some(Binding.Static(Some [ "red" ]))
                   OnChangeMulti = Some(fun _ -> placeholderChain) }
             ))
@@ -1964,10 +1964,10 @@ let mapVis: Node<obj> =
             { Source =
                 Binding.Static(
                     Some(
-                        seq
-                            [ { Latitude = 51.5
-                                Longitude = -0.12
-                                Label = "London" } ]
+                        [ { Latitude = 51.5
+                            Longitude = -0.12
+                            Label = "London" } ]
+                        : MapMarker list
                     )
                 )
               CentreLatitude = 51.5

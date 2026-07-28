@@ -227,9 +227,9 @@ module TreeOpDiff =
         | Some v -> Some(PropValue.Wire(JStr v))
         | None -> None
 
-    let private pvIconOpt (i: IconSource option) : PropValue option =
+    let private pvIconOpt (i: string option) : PropValue option =
         match i with
-        | Some(IconSource raw) -> Some(PropValue.Wire(JStr raw))
+        | Some raw -> Some(PropValue.Wire(JStr raw))
         | None -> None
 
     let private pvOrientation (o: Orientation) : PropValue =

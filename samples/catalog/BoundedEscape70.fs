@@ -117,7 +117,7 @@ let private onErrorSlot (payload: ErrorPayload) : Node<Msg> =
             Tone = ToneVariant.Critical
             Heading = Some(TextSource.Literal "Hash mismatch — OnError slot rendered")
             Body = TextSource.Literal payload.Message
-            Icon = Some(IconSource "alert")
+            Icon = Some "alert"
             Dismissable = false }
 
 let private greenCard: Node<Msg> =
