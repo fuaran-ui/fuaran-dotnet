@@ -625,7 +625,7 @@ let fewShot =
       "A save form: a required name field, an age number, a required 'I agree' checkbox, a tier dropdown, and a notes text area."
       "filters-declarative",
       "A filter strip that scopes a dataset: a search box, a tier dropdown, and an age range — self-wiring, no host code (each chip omits onChange and its value reads its own filter)."
-      "grid-transform-param",
+      "lenient-grid-transform-param-compact",
       "A grid of embedded department data scoped by a filter: the transform's filter step compares the dept column to a param sourced from the 'dept' filter chip, so the grid re-filters as the chip changes."
       "query-dependson",
       "A revenue metric fed by a host 'orders' query that declares it depends on the status and region filters — the host re-runs the query when either filter changes."
@@ -637,11 +637,11 @@ let fewShot =
       "op-insertchild", "Edit the existing tree: add the revenue metric to the empty dashboard."
       "op-reorderchildren",
       "Edit the existing tree: put the markdown note above the metric in 'stack-1' by stating the order."
-      "filterable-static-dashboard",
+      "lenient-filterable-static-dashboard-compact",
       "Build a content-performance dashboard from this data: region and genre dropdowns that filter both a retention line chart and an episode grid."
-      "master-detail-preselected",
+      "lenient-master-detail-preselected-compact",
       "A support-ticket triage screen: a ticket grid with TCK-2041 selected by default, and a detail card showing the selected ticket."
-      "scalar-transform-composition",
+      "lenient-scalar-transform-composition-compact",
       "A triage dashboard over embedded ticket data: a badge counting the critical tickets, and a warning callout whose body is the selected ticket's alert text (TCK-2041 selected by default)." ]
 
 let buildFewShotJsonl () =

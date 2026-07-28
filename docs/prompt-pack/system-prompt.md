@@ -429,7 +429,7 @@ it has **no selection property**, so inventing `defaultSelection` / `selectedRow
 it fails), and each detail slot binds a **`Selection` on the grid with the demanded
 `defaultValue`** (idiom 1). The full canonical composition:
 
-<!-- fuaran:example fixture=master-detail-preselected -->
+<!-- fuaran:example fixture=lenient-master-detail-preselected-compact -->
 ```json
 {
   "id": "master-detail-preselected",
@@ -462,37 +462,15 @@ it fails), and each detail slot binds a **`Selection` on the grid with the deman
             "pipeline": [],
             "source": {
               "columns": {
-                "id": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "TCK-2041",
-                    "TCK-2042"
-                  ]
-                },
-                "priority": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "high",
-                    "low"
-                  ]
-                }
-              },
-              "schema": [
-                {
-                  "name": "id",
-                  "type": "string"
-                },
-                {
-                  "name": "priority",
-                  "type": "string"
-                }
-              ]
+                "id": [
+                  "TCK-2041",
+                  "TCK-2042"
+                ],
+                "priority": [
+                  "high",
+                  "low"
+                ]
+              }
             }
           }
         }
@@ -582,37 +560,15 @@ it fails), and each detail slot binds a **`Selection` on the grid with the deman
             ],
             "source": {
               "columns": {
-                "id": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "TCK-2041",
-                    "TCK-2042"
-                  ]
-                },
-                "priority": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "high",
-                    "low"
-                  ]
-                }
-              },
-              "schema": [
-                {
-                  "name": "id",
-                  "type": "string"
-                },
-                {
-                  "name": "priority",
-                  "type": "string"
-                }
-              ]
+                "id": [
+                  "TCK-2041",
+                  "TCK-2042"
+                ],
+                "priority": [
+                  "high",
+                  "low"
+                ]
+              }
             }
           }
         }
@@ -644,6 +600,12 @@ with `lower` applied to both sides). Beyond binary predicates the algebra has `i
 over a literal item list), `isNull` (absence test), and the scalar fns
 `concat | trim | replace | dateDiffDays` alongside `abs | round | floor | ceil | length | lower |
 upper | substr | datePart` — `concat` stringifies non-string cells, so display labels need no cast.
+**Emit the form the examples show.** Every embedded-data example in this pack uses the minimal
+authoring form — bare arrays for all-valid columns, no `validity` masks, no `schema`. Reach for the
+full `{ "values": …, "validity": … }` + `schema` envelope ONLY when a column genuinely needs it:
+date/timestamp types, absent cells, or mixed numeric kinds. An all-`true` validity mask, or a
+`schema` restating plain string/int/float/bool types the cells already show, is pure dead weight —
+it spends your output budget restating what the data already says.
 Every pipeline step is a `$type`-discriminated op
 (`filter | project | derive | groupBy | join | window | pivot | unpivot | sort | distinct |
 limit | union`) — a step without `$type` is rejected. Canonical step fields: `sort` is
@@ -684,7 +646,7 @@ error, never a silent first cell — always end with one of the two terminals. B
 compose in one tree; the grid, the badge count, and the selected-row callout below all
 read the same embedded source:
 
-<!-- fuaran:example fixture=scalar-transform-composition -->
+<!-- fuaran:example fixture=lenient-scalar-transform-composition-compact -->
 ```json
 {
   "id": "scalar-transform-composition",
@@ -717,57 +679,22 @@ read the same embedded source:
             "pipeline": [],
             "source": {
               "columns": {
-                "alert": {
-                  "validity": [
-                    true,
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "TCK-2041 breaches SLA in 2 hours",
-                    "TCK-2042 breaches SLA in 5 hours",
-                    "TCK-2043 breaches SLA in 9 hours"
-                  ]
-                },
-                "id": {
-                  "validity": [
-                    true,
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "TCK-2041",
-                    "TCK-2042",
-                    "TCK-2043"
-                  ]
-                },
-                "severity": {
-                  "validity": [
-                    true,
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "critical",
-                    "high",
-                    "critical"
-                  ]
-                }
-              },
-              "schema": [
-                {
-                  "name": "id",
-                  "type": "string"
-                },
-                {
-                  "name": "alert",
-                  "type": "string"
-                },
-                {
-                  "name": "severity",
-                  "type": "string"
-                }
-              ]
+                "alert": [
+                  "TCK-2041 breaches SLA in 2 hours",
+                  "TCK-2042 breaches SLA in 5 hours",
+                  "TCK-2043 breaches SLA in 9 hours"
+                ],
+                "id": [
+                  "TCK-2041",
+                  "TCK-2042",
+                  "TCK-2043"
+                ],
+                "severity": [
+                  "critical",
+                  "high",
+                  "critical"
+                ]
+              }
             }
           }
         }
@@ -813,57 +740,22 @@ read the same embedded source:
               ],
               "source": {
                 "columns": {
-                  "alert": {
-                    "validity": [
-                      true,
-                      true,
-                      true
-                    ],
-                    "values": [
-                      "TCK-2041 breaches SLA in 2 hours",
-                      "TCK-2042 breaches SLA in 5 hours",
-                      "TCK-2043 breaches SLA in 9 hours"
-                    ]
-                  },
-                  "id": {
-                    "validity": [
-                      true,
-                      true,
-                      true
-                    ],
-                    "values": [
-                      "TCK-2041",
-                      "TCK-2042",
-                      "TCK-2043"
-                    ]
-                  },
-                  "severity": {
-                    "validity": [
-                      true,
-                      true,
-                      true
-                    ],
-                    "values": [
-                      "critical",
-                      "high",
-                      "critical"
-                    ]
-                  }
-                },
-                "schema": [
-                  {
-                    "name": "id",
-                    "type": "string"
-                  },
-                  {
-                    "name": "alert",
-                    "type": "string"
-                  },
-                  {
-                    "name": "severity",
-                    "type": "string"
-                  }
-                ]
+                  "alert": [
+                    "TCK-2041 breaches SLA in 2 hours",
+                    "TCK-2042 breaches SLA in 5 hours",
+                    "TCK-2043 breaches SLA in 9 hours"
+                  ],
+                  "id": [
+                    "TCK-2041",
+                    "TCK-2042",
+                    "TCK-2043"
+                  ],
+                  "severity": [
+                    "critical",
+                    "high",
+                    "critical"
+                  ]
+                }
               }
             }
           },
@@ -922,57 +814,22 @@ read the same embedded source:
               ],
               "source": {
                 "columns": {
-                  "alert": {
-                    "validity": [
-                      true,
-                      true,
-                      true
-                    ],
-                    "values": [
-                      "TCK-2041 breaches SLA in 2 hours",
-                      "TCK-2042 breaches SLA in 5 hours",
-                      "TCK-2043 breaches SLA in 9 hours"
-                    ]
-                  },
-                  "id": {
-                    "validity": [
-                      true,
-                      true,
-                      true
-                    ],
-                    "values": [
-                      "TCK-2041",
-                      "TCK-2042",
-                      "TCK-2043"
-                    ]
-                  },
-                  "severity": {
-                    "validity": [
-                      true,
-                      true,
-                      true
-                    ],
-                    "values": [
-                      "critical",
-                      "high",
-                      "critical"
-                    ]
-                  }
-                },
-                "schema": [
-                  {
-                    "name": "id",
-                    "type": "string"
-                  },
-                  {
-                    "name": "alert",
-                    "type": "string"
-                  },
-                  {
-                    "name": "severity",
-                    "type": "string"
-                  }
-                ]
+                  "alert": [
+                    "TCK-2041 breaches SLA in 2 hours",
+                    "TCK-2042 breaches SLA in 5 hours",
+                    "TCK-2043 breaches SLA in 9 hours"
+                  ],
+                  "id": [
+                    "TCK-2041",
+                    "TCK-2042",
+                    "TCK-2043"
+                  ],
+                  "severity": [
+                    "critical",
+                    "high",
+                    "critical"
+                  ]
+                }
               }
             }
           },
@@ -1021,7 +878,7 @@ source is a `Transform` over the embedded data, with one param per filter (`"fro
 pipeline step applying each param. The full canonical composition — two filter
 dropdowns wired into both a chart and a grid over prompt-given data:
 
-<!-- fuaran:example fixture=filterable-static-dashboard -->
+<!-- fuaran:example fixture=lenient-filterable-static-dashboard-compact -->
 ```json
 {
   "id": "filterable-static-dashboard",
@@ -1133,65 +990,23 @@ dropdowns wired into both a chart and a grid over prompt-given data:
             ],
             "source": {
               "columns": {
-                "genre": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "drama",
-                    "docs"
-                  ]
-                },
-                "month": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "jan",
-                    "jan"
-                  ]
-                },
-                "region": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "emea",
-                    "amer"
-                  ]
-                },
-                "retention": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    0.62,
-                    0.55
-                  ]
-                }
-              },
-              "schema": [
-                {
-                  "name": "region",
-                  "type": "string"
-                },
-                {
-                  "name": "genre",
-                  "type": "string"
-                },
-                {
-                  "name": "month",
-                  "type": "string"
-                },
-                {
-                  "name": "retention",
-                  "type": "float"
-                }
-              ]
+                "genre": [
+                  "drama",
+                  "docs"
+                ],
+                "month": [
+                  "jan",
+                  "jan"
+                ],
+                "region": [
+                  "emea",
+                  "amer"
+                ],
+                "retention": [
+                  0.62,
+                  0.55
+                ]
+              }
             }
           },
           "stacked": false,
@@ -1275,65 +1090,23 @@ dropdowns wired into both a chart and a grid over prompt-given data:
             ],
             "source": {
               "columns": {
-                "genre": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "drama",
-                    "docs"
-                  ]
-                },
-                "month": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "jan",
-                    "jan"
-                  ]
-                },
-                "region": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    "emea",
-                    "amer"
-                  ]
-                },
-                "retention": {
-                  "validity": [
-                    true,
-                    true
-                  ],
-                  "values": [
-                    0.62,
-                    0.55
-                  ]
-                }
-              },
-              "schema": [
-                {
-                  "name": "region",
-                  "type": "string"
-                },
-                {
-                  "name": "genre",
-                  "type": "string"
-                },
-                {
-                  "name": "month",
-                  "type": "string"
-                },
-                {
-                  "name": "retention",
-                  "type": "float"
-                }
-              ]
+                "genre": [
+                  "drama",
+                  "docs"
+                ],
+                "month": [
+                  "jan",
+                  "jan"
+                ],
+                "region": [
+                  "emea",
+                  "amer"
+                ],
+                "retention": [
+                  0.62,
+                  0.55
+                ]
+              }
             }
           }
         }
@@ -1544,7 +1317,7 @@ only when you mean it, and only a case from the list above; an unknown case fail
    never arrays-of-arrays or bare scalars — and every column object carries its own
    required fields):
 
-<!-- fuaran:example fixture=grid-field-named -->
+<!-- fuaran:example fixture=lenient-grid-field-named-compact -->
 ```json
 {
   "id": "grid-field-named",
@@ -1572,33 +1345,13 @@ only when you mean it, and only a case from the list above; an unknown case fail
       "pipeline": [],
       "source": {
         "columns": {
-          "amount": {
-            "validity": [
-              true
-            ],
-            "values": [
-              100
-            ]
-          },
-          "dept": {
-            "validity": [
-              true
-            ],
-            "values": [
-              "eng"
-            ]
-          }
-        },
-        "schema": [
-          {
-            "name": "dept",
-            "type": "string"
-          },
-          {
-            "name": "amount",
-            "type": "int"
-          }
-        ]
+          "amount": [
+            100
+          ],
+          "dept": [
+            "eng"
+          ]
+        }
       }
     }
   }
