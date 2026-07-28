@@ -202,7 +202,7 @@ and [<RequireQualifiedAccess>] Action<'Msg> =
     | WriteToClipboard of text: string
     | Dispatch of msg: ('Msg)
     | Invoke of capabilityId: string * args: InvokeArg list
-    | ReadFileBody of fileRef: string * encoding: FileReadEncoding * onRead: (string -> 'Msg) option
+    | ReadFileBody of fileRef: string * fileHandle: (obj option) * encoding: FileReadEncoding * onRead: (string -> 'Msg) option
     | Call of endpoint: string * onResult: (obj -> 'Msg) option * into: CallResultTarget option
     | Navigate of route: string
     | CommitLocal of nodeId: string
@@ -1117,7 +1117,7 @@ and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     | Action.WriteToClipboard text -> Canon.typed "WriteToClipboard" [ "text", JStr text ]
     | Action.Dispatch msg -> Canon.typed "Dispatch" ([ None ] |> List.choose id)
     | Action.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
-    | Action.ReadFileBody (fileRef, encoding, onRead) -> Canon.typed "ReadFileBody" ([ Some("fileRef", JStr fileRef); Some("encoding", encFileReadEncoding encoding); (onRead |> Option.map (fun v -> "onRead", JStr "<closure>")) ] |> List.choose id)
+    | Action.ReadFileBody (fileRef, fileHandle, encoding, onRead) -> Canon.typed "ReadFileBody" ([ Some("fileRef", JStr fileRef); None; Some("encoding", encFileReadEncoding encoding); (onRead |> Option.map (fun v -> "onRead", JStr "<closure>")) ] |> List.choose id)
     | Action.Call (endpoint, onResult, into) -> Canon.typed "Call" ([ Some("endpoint", JStr endpoint); (onResult |> Option.map (fun v -> "onResult", JStr "<closure>")); (into |> Option.map (fun v -> "into", encCallResultTarget v)) ] |> List.choose id)
     | Action.Navigate route -> Canon.typed "Navigate" [ "route", JStr route ]
     | Action.CommitLocal nodeId -> Canon.typed "CommitLocal" [ "nodeId", JStr nodeId ]
@@ -1869,9 +1869,10 @@ and private decAction (j: JVal) : Result<Action<obj>, string> =
             Ok(Action.Invoke(capabilityId, args))))
         | "ReadFileBody" ->
             dReq "fileRef" __fs dStr |> Result.bind (fun fileRef ->
+            Ok (None) |> Result.bind (fun fileHandle ->
             dReq "encoding" __fs decFileReadEncoding |> Result.bind (fun encoding ->
             (dPresent "onRead" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> ("<closure>" :> obj))))) |> Result.bind (fun onRead ->
-            Ok(Action.ReadFileBody(fileRef, encoding, onRead)))))
+            Ok(Action.ReadFileBody(fileRef, fileHandle, encoding, onRead))))))
         | "Call" ->
             dReq "endpoint" __fs dStr |> Result.bind (fun endpoint ->
             (dPresent "onResult" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> ("<closure>" :> obj))))) |> Result.bind (fun onResult ->
