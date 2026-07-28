@@ -110,7 +110,7 @@ let tests =
               // that constructing `{ Defaults.errorBoundary with Child = ... }`
               // doesn't leave Fallback in an unauthored state.
               match spec.Child.Kind, spec.Fallback.Kind with
-              | NodeKind.Skeleton( _), NodeKind.Skeleton( _) -> ()
+              | NodeKind.Skeleton(_), NodeKind.Skeleton(_) -> ()
               | other -> failtestf "expected both halves to default to Skeleton, got %A" other
           }
 

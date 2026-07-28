@@ -348,7 +348,7 @@ module TreeOpDiff =
                 []
 
         match a.Kind, b.Kind with
-        | NodeKind.Heading( sa), NodeKind.Heading( sb) ->
+        | NodeKind.Heading(sa), NodeKind.Heading(sb) ->
             prop
                 "Level"
                 (pvInt sb.Level)
@@ -364,13 +364,13 @@ module TreeOpDiff =
                 (pvHeadingVariant sb.Variant)
                 { a with
                     Kind = disp (NodeKind.Heading { sa with Variant = sb.Variant }) }
-        | NodeKind.Markdown( sa), NodeKind.Markdown( sb) ->
+        | NodeKind.Markdown(sa), NodeKind.Markdown(sb) ->
             prop
                 "Text"
                 (pvText sb.Text)
                 { a with
                     Kind = disp (NodeKind.Markdown { sa with Text = sb.Text }) }
-        | NodeKind.Badge( sa), NodeKind.Badge( sb) ->
+        | NodeKind.Badge(sa), NodeKind.Badge(sb) ->
             prop
                 "Label"
                 (pvText sb.Label)
@@ -381,7 +381,7 @@ module TreeOpDiff =
                 (pvBadgeVariant sb.Variant)
                 { a with
                     Kind = disp (NodeKind.Badge { sa with Variant = sb.Variant }) }
-        | NodeKind.Metric( sa), NodeKind.Metric( sb) ->
+        | NodeKind.Metric(sa), NodeKind.Metric(sb) ->
             // Scalar fields + the Source binding slot. The optional Trend slot
             // (Binding option) falls to the EditNode floor (ReplaceBinding only
             // sets Some).
@@ -415,7 +415,7 @@ module TreeOpDiff =
                 (toObjBinding sb.Value)
                 { a with
                     Kind = disp (NodeKind.Metric { sa with Value = sb.Value }) }
-        | NodeKind.Callout( sa), NodeKind.Callout( sb) ->
+        | NodeKind.Callout(sa), NodeKind.Callout(sb) ->
             prop
                 "Tone"
                 (pvTone sb.Tone)
@@ -441,7 +441,7 @@ module TreeOpDiff =
                 (pvBool sb.Dismissable)
                 { a with
                     Kind = disp (NodeKind.Callout { sa with Dismissable = sb.Dismissable }) }
-        | NodeKind.Progress( sa), NodeKind.Progress( sb) ->
+        | NodeKind.Progress(sa), NodeKind.Progress(sb) ->
             propOpt
                 "Label"
                 (pvTextOpt sb.Label)
@@ -472,7 +472,7 @@ module TreeOpDiff =
                 (toObjBinding sb.Fraction)
                 { a with
                     Kind = disp (NodeKind.Progress { sa with Fraction = sb.Fraction }) }
-        | NodeKind.LabelValueRow( sa), NodeKind.LabelValueRow( sb) ->
+        | NodeKind.LabelValueRow(sa), NodeKind.LabelValueRow(sb) ->
             prop
                 "Label"
                 (pvText sb.Label)
@@ -498,7 +498,7 @@ module TreeOpDiff =
                 (toObjBinding sb.Value)
                 { a with
                     Kind = disp (NodeKind.LabelValueRow { sa with Value = sb.Value }) }
-        | NodeKind.Link( sa), NodeKind.Link( sb) ->
+        | NodeKind.Link(sa), NodeKind.Link(sb) ->
             prop
                 "Label"
                 (pvText sb.Label)
@@ -524,19 +524,19 @@ module TreeOpDiff =
                 (toObjBinding sb.Href)
                 { a with
                     Kind = disp (NodeKind.Link { sa with Href = sb.Href }) }
-        | NodeKind.Sparkline( sa), NodeKind.Sparkline( sb) ->
+        | NodeKind.Sparkline(sa), NodeKind.Sparkline(sb) ->
             bind
                 "Source"
                 (toObjBinding sb.Source)
                 { a with
                     Kind = disp (NodeKind.Sparkline { sa with Source = sb.Source }) }
-        | NodeKind.Skeleton( sa), NodeKind.Skeleton( sb) ->
+        | NodeKind.Skeleton(sa), NodeKind.Skeleton(sb) ->
             prop
                 "Rows"
                 (pvInt sb.Rows)
                 { a with
                     Kind = disp (NodeKind.Skeleton { sa with Rows = sb.Rows }) }
-        | NodeKind.Box( sa), NodeKind.Box( sb) ->
+        | NodeKind.Box(sa), NodeKind.Box(sb) ->
             // Phase 390 — diff the layout-mode fields (mirroring the retired
             // Stack/GridLayout diffs) + Heading. Propose-then-verify (below)
             // makes this safe: a mode or role change these granular ops can't
@@ -596,25 +596,25 @@ module TreeOpDiff =
                 (pvTextOpt sb.Heading)
                 { a with
                     Kind = lay (NodeKind.Box { sa with Heading = sb.Heading }) }
-        | NodeKind.SplitPanel( sa), NodeKind.SplitPanel( sb) ->
+        | NodeKind.SplitPanel(sa), NodeKind.SplitPanel(sb) ->
             prop
                 "Weight"
                 (pvFloat sb.Weight)
                 { a with
                     Kind = lay (NodeKind.SplitPanel { sa with Weight = sb.Weight }) }
-        | NodeKind.Tabs( sa), NodeKind.Tabs( sb) ->
+        | NodeKind.Tabs(sa), NodeKind.Tabs(sb) ->
             prop
                 "Orientation"
                 (pvOrientation sb.Orientation)
                 { a with
                     Kind = lay (NodeKind.Tabs { sa with Orientation = sb.Orientation }) }
-        | NodeKind.SummaryList( sa), NodeKind.SummaryList( sb) ->
+        | NodeKind.SummaryList(sa), NodeKind.SummaryList(sb) ->
             propOpt
                 "Heading"
                 (pvTextOpt sb.Heading)
                 { a with
                     Kind = lay (NodeKind.SummaryList { sa with Heading = sb.Heading }) }
-        | NodeKind.Disclosure( sa), NodeKind.Disclosure( sb) ->
+        | NodeKind.Disclosure(sa), NodeKind.Disclosure(sb) ->
             prop
                 "Heading"
                 (pvText sb.Heading)
@@ -630,7 +630,7 @@ module TreeOpDiff =
                 (toObjBinding sb.Open)
                 { a with
                     Kind = lay (NodeKind.Disclosure { sa with Open = sb.Open }) }
-        | NodeKind.Stepper( sa), NodeKind.Stepper( sb) ->
+        | NodeKind.Stepper(sa), NodeKind.Stepper(sb) ->
             bind
                 "ActiveStep"
                 (toObjBinding sb.ActiveStep)

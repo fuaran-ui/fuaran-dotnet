@@ -104,12 +104,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                 s.OnDismiss |> Option.iter (fun a -> findings.AddRange(callFindings nodeId a))
                 s.Children
             | NodeKind.Tabs s ->
-                handler
-                    nodeId
-                    "TabsSpec.onSelect"
-                    s.OnSelect.IsSome
-                    (isWritable s.ActiveIndex)
-                    "$state (activeIndex)"
+                handler nodeId "TabsSpec.onSelect" s.OnSelect.IsSome (isWritable s.ActiveIndex) "$state (activeIndex)"
 
                 handler
                     nodeId
@@ -149,6 +144,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
                     | FormFieldKind.Date(v, oc, _, _) ->
                         handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
+
                 []
             | NodeKind.Select s ->
                 handler nodeId "SelectSpec.onChange" s.OnChange.IsSome (isWritable s.Value) "$state (value)"
@@ -159,6 +155,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                     s.OnChangeMulti.IsSome
                     (s.Values |> Option.map isWritable |> Option.defaultValue false)
                     "$state (values)"
+
                 []
             | NodeKind.Filters filters ->
                 for fs in filters do
@@ -190,6 +187,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                                     fs.Name
                                     fs.Name }
                         )
+
                 []
             | NodeKind.FileUpload _ ->
                 () // HostOnlyByDesign (see SlotCapability)
@@ -216,6 +214,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                                     "replace column '%s''s value closure with field: \"<row property>\" — the decoded closure renders blank and shadows the field form"
                                     col.Label)
                         )
+
                 []
             | NodeKind.Chart _
             | NodeKind.Map _ ->

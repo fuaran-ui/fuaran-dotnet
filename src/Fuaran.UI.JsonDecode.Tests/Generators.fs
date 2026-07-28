@@ -700,7 +700,7 @@ let private genGridColumns: Gen<ColumnErased<obj> list> =
               CellKindErased.Progress((fun _ -> 0.5), Some(fun _ -> TextSource.Literal "p"))
               CellKindErased.Custom(fun _ ->
                   { Id = NodeId "cell-custom"
-                    Kind = NodeKind.Markdown( { Text = TextSource.Literal "x" })
+                    Kind = NodeKind.Markdown({ Text = TextSource.Literal "x" })
                     State =
                       { OnLoading = None
                         OnEmpty = None
@@ -963,12 +963,7 @@ let rec private genLayoutKind (size: int) : Gen<NodeKind<obj>> =
           } ]
 
 and private genNodeKind (size: int) : Gen<NodeKind<obj>> =
-    let leaves =
-        [ genDisplayKind
-          genInputKind
-          genVisKind
-          genCustom
-          genFragmentRef ]
+    let leaves = [ genDisplayKind; genInputKind; genVisKind; genCustom; genFragmentRef ]
 
     let branches =
         if size > 0 then
@@ -1026,7 +1021,7 @@ and private genStateBehaviour (size: int) : Gen<StateBehaviour<obj>> =
 
 and private placeholderErrorNode: Node<obj> =
     { Id = NodeId "err"
-      Kind = NodeKind.Markdown( { Text = TextSource.Literal "err" })
+      Kind = NodeKind.Markdown({ Text = TextSource.Literal "err" })
       State =
         { OnLoading = None
           OnEmpty = None

@@ -47,8 +47,8 @@ let tests =
 
               let newKind =
                   NodeKind.Heading(
-                          { Defaults.heading with
-                              Text = TextSource.Literal "Renamed" }
+                      { Defaults.heading with
+                          Text = TextSource.Literal "Renamed" }
                   )
 
               let op = TreeOp.EditNode(NodeId "revenue-metric", newKind)

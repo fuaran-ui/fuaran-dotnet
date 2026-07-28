@@ -174,37 +174,37 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
 
 let availableBindingSlots (kind: NodeKind<'Msg>) : string list =
     match kind with
-    | NodeKind.Metric( _) -> [ "Value"; "Trend" ]
-    | NodeKind.Sparkline( _) -> [ "Source" ]
-    | NodeKind.Progress( _) -> [ "Fraction" ]
-    | NodeKind.LabelValueRow( _) -> [ "Value" ]
-    | NodeKind.Stepper( _) -> [ "ActiveStep" ]
+    | NodeKind.Metric(_) -> [ "Value"; "Trend" ]
+    | NodeKind.Sparkline(_) -> [ "Source" ]
+    | NodeKind.Progress(_) -> [ "Fraction" ]
+    | NodeKind.LabelValueRow(_) -> [ "Value" ]
+    | NodeKind.Stepper(_) -> [ "ActiveStep" ]
     // Tabs' active-tab state: the integer `ActiveIndex` (canonical wire shape,
     // mirrors Stepper.ActiveStep) plus the optional typed-tag overlay
     // `ActiveTag` (mirrors Metric.Trend — always listed; resolves to a
     // synthetic-None when the option is absent).
-    | NodeKind.Tabs( _) -> [ "ActiveIndex"; "ActiveTag" ]
+    | NodeKind.Tabs(_) -> [ "ActiveIndex"; "ActiveTag" ]
     // Disclosure's controlled open-state binding. Note `Open` is *also* an
     // UpdateProp field (`availableFields` above) — it is dual-surface, so
     // both representations must stay in sync (Phase 118 consistency test).
-    | NodeKind.Disclosure( _) -> [ "Open" ]
+    | NodeKind.Disclosure(_) -> [ "Open" ]
     // Button's optional bound disabled-state. `Disabled` is always listed
     // (mirrors Metric.Trend / Tabs.ActiveTag) — it resolves to a
     // synthetic-None when the option is absent, and ReplaceBinding installs
     // `Some`.
-    | NodeKind.Button( _) -> [ "Disabled" ]
+    | NodeKind.Button(_) -> [ "Disabled" ]
     // Select's bound source / value plus the Phase 130 optional bound
     // disabled-state (always listed; synthetic-None when absent, mirroring
     // Button.Disabled / Metric.Trend).
-    | NodeKind.Select( _) -> [ "Source"; "Value"; "Disabled" ]
+    | NodeKind.Select(_) -> [ "Source"; "Value"; "Disabled" ]
     // Form / FileUpload gain a single optional bound disabled-state slot
     // (Phase 130 — the interactive-state class-fix). Form had no binding slot
     // before; FileUpload neither. Both are always listed.
-    | NodeKind.Form( _) -> [ "Disabled" ]
-    | NodeKind.FileUpload( _) -> [ "Disabled" ]
-    | NodeKind.DataGrid( _) -> [ "Source" ]
-    | NodeKind.Chart( _) -> [ "Source" ]
-    | NodeKind.Map( _) -> [ "Source" ]
+    | NodeKind.Form(_) -> [ "Disabled" ]
+    | NodeKind.FileUpload(_) -> [ "Disabled" ]
+    | NodeKind.DataGrid(_) -> [ "Source" ]
+    | NodeKind.Chart(_) -> [ "Source" ]
+    | NodeKind.Map(_) -> [ "Source" ]
     | _ -> []
 
 // ─── Available nested paths per kind (Phase 364 — UpdateProp nested surface) ─
@@ -218,10 +218,10 @@ let availableBindingSlots (kind: NodeKind<'Msg>) : string list =
 
 let availableNestedPaths (kind: NodeKind<'Msg>) : string list =
     match kind with
-    | NodeKind.DataGrid( _) -> [ "Columns[i].Label"; "Columns[i].Format"; "Columns[i].Width" ]
-    | NodeKind.Chart( _) -> [ "YFields[i]" ]
-    | NodeKind.Tabs( _) -> [ "TabHeaders[i].Label"; "TabHeaders[i].Icon"; "TabHeaders[i].Disabled" ]
-    | NodeKind.Form( _) -> [ "Fields[i].Label"; "Fields[i].Required"; "Fields[i].Help" ]
+    | NodeKind.DataGrid(_) -> [ "Columns[i].Label"; "Columns[i].Format"; "Columns[i].Width" ]
+    | NodeKind.Chart(_) -> [ "YFields[i]" ]
+    | NodeKind.Tabs(_) -> [ "TabHeaders[i].Label"; "TabHeaders[i].Icon"; "TabHeaders[i].Disabled" ]
+    | NodeKind.Form(_) -> [ "Fields[i].Label"; "Fields[i].Required"; "Fields[i].Help" ]
     | _ -> []
 
 // ─── Interactive runtime-state slots (Phase 130) ───────────────────────────
@@ -244,10 +244,10 @@ let availableNestedPaths (kind: NodeKind<'Msg>) : string list =
 // empty `availableBindingSlots`).
 let interactiveStateSlots (kind: NodeKind<'Msg>) : string list =
     match kind with
-    | NodeKind.Button( _) -> [ "Disabled" ]
-    | NodeKind.Select( _) -> [ "Disabled" ]
-    | NodeKind.Form( _) -> [ "Disabled" ]
-    | NodeKind.FileUpload( _) -> [ "Disabled" ]
+    | NodeKind.Button(_) -> [ "Disabled" ]
+    | NodeKind.Select(_) -> [ "Disabled" ]
+    | NodeKind.Form(_) -> [ "Disabled" ]
+    | NodeKind.FileUpload(_) -> [ "Disabled" ]
     | _ -> []
 
 // ─── Children getter / setter ─────────────────────────────────────────────
@@ -273,14 +273,14 @@ let getChildren (kind: NodeKind<'Msg>) : Node<'Msg> list option =
 let withChildren (kind: NodeKind<'Msg>) (children: Node<'Msg> list) : NodeKind<'Msg> option =
     match kind with
     // -- Layout --
-    | NodeKind.Box spec -> Some(NodeKind.Box( { spec with Children = children }))
-    | NodeKind.SplitPanel spec -> Some(NodeKind.SplitPanel( { spec with Children = children }))
-    | NodeKind.Tabs spec -> Some(NodeKind.Tabs( { spec with Children = children }))
-    | NodeKind.Stepper spec -> Some(NodeKind.Stepper( { spec with Children = children }))
-    | NodeKind.SummaryList spec -> Some(NodeKind.SummaryList( { spec with Children = children }))
-    | NodeKind.Disclosure spec -> Some(NodeKind.Disclosure( { spec with Children = children }))
-    | NodeKind.Modal spec -> Some(NodeKind.Modal( { spec with Children = children }))
-    | NodeKind.ScrollArea spec -> Some(NodeKind.ScrollArea( { spec with Children = children }))
+    | NodeKind.Box spec -> Some(NodeKind.Box({ spec with Children = children }))
+    | NodeKind.SplitPanel spec -> Some(NodeKind.SplitPanel({ spec with Children = children }))
+    | NodeKind.Tabs spec -> Some(NodeKind.Tabs({ spec with Children = children }))
+    | NodeKind.Stepper spec -> Some(NodeKind.Stepper({ spec with Children = children }))
+    | NodeKind.SummaryList spec -> Some(NodeKind.SummaryList({ spec with Children = children }))
+    | NodeKind.Disclosure spec -> Some(NodeKind.Disclosure({ spec with Children = children }))
+    | NodeKind.Modal spec -> Some(NodeKind.Modal({ spec with Children = children }))
+    | NodeKind.ScrollArea spec -> Some(NodeKind.ScrollArea({ spec with Children = children }))
     | NodeKind.FragmentDecl spec ->
         match children with
         | [ single ] -> Some(NodeKind.FragmentDecl { spec with Body = single })

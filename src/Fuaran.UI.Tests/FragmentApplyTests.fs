@@ -41,7 +41,7 @@ let private slotArg: Node<unit> = Fuaran.markdown "body" "slot content"
 
 let private childIds (n: Node<unit>) : string list =
     match n.Kind with
-    | NodeKind.Box( s) -> s.Children |> List.map (fun c -> let (NodeId i) = c.Id in i)
+    | NodeKind.Box(s) -> s.Children |> List.map (fun c -> let (NodeId i) = c.Id in i)
     | _ -> []
 
 [<Tests>]

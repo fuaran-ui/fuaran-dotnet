@@ -91,7 +91,7 @@ let private mixChart: Node<Msg> =
 
 let private childIdOf (root: Node<Msg>) (index: int) : string =
     match root.Kind with
-    | NodeKind.Box( spec) -> idOf spec.Children[index].Id
+    | NodeKind.Box(spec) -> idOf spec.Children[index].Id
     | other -> failtestf "Expected Box root, got %A" other
 
 [<Tests>]
@@ -107,7 +107,7 @@ let tests =
               match Apply.apply (TreeOp.InsertChild(NodeId "channel-analysis", newNode)) dashboard with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.Box( spec) ->
+                  | NodeKind.Box(spec) ->
                       Expect.equal spec.Children.Length 3 "Three children after insert"
                       Expect.equal (idOf spec.Children[2].Id) "footnote" "Footnote landed at position 2"
                   | other -> failtestf "Expected Dashboard, got %A" other
@@ -118,7 +118,7 @@ let tests =
               match Apply.apply (TreeOp.RemoveNode(NodeId "channel-grid")) dashboard with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.Box( spec) ->
+                  | NodeKind.Box(spec) ->
                       Expect.equal spec.Children.Length 1 "One child after remove"
                       Expect.equal (idOf spec.Children[0].Id) "revenue-metric" "Survivor is the Metric"
                   | other -> failtestf "Expected Dashboard, got %A" other
@@ -169,7 +169,7 @@ let tests =
                   Expect.equal (idOf updated.Id) "fresh-root" "the root node id is now the replacement's"
 
                   match updated.Kind with
-                  | NodeKind.Markdown( _) -> ()
+                  | NodeKind.Markdown(_) -> ()
                   | other -> failtestf "Expected the replacement Markdown root, got %A" other
               | Error err -> failtestf "Expected Ok, got Error %A" err
           }
@@ -213,8 +213,7 @@ let tests =
           }
 
           test "EditNode swaps the addressed node's Kind wholesale, preserving Id" {
-              let newKind =
-                  NodeKind.Markdown( { Text = TextSource.Literal "Replaced" })
+              let newKind = NodeKind.Markdown({ Text = TextSource.Literal "Replaced" })
 
               match Apply.apply (TreeOp.EditNode(NodeId "revenue-metric", newKind)) dashboard with
               | Ok updated ->
@@ -223,7 +222,7 @@ let tests =
                       Expect.equal (idOf node.Id) "revenue-metric" "Id preserved"
 
                       match node.Kind with
-                      | NodeKind.Markdown( spec) ->
+                      | NodeKind.Markdown(spec) ->
                           match spec.Text with
                           | TextSource.Literal "Replaced" -> ()
                           | other -> failtestf "Expected 'Replaced' literal, got %A" other
@@ -241,8 +240,7 @@ let tests =
               match Apply.apply op dashboard with
               | Ok updated ->
                   match Introspect.findNode (NodeId "revenue-metric") updated with
-                  | Some { Kind = NodeKind.Metric( spec) } ->
-                      Expect.equal spec.Tone ToneVariant.Critical "Tone updated"
+                  | Some { Kind = NodeKind.Metric(spec) } -> Expect.equal spec.Tone ToneVariant.Critical "Tone updated"
                   | _ -> failtest "Metric not found / not Metric"
               | Error err -> failtestf "Expected Ok, got Error %A" err
           }
@@ -274,7 +272,7 @@ let tests =
               match Apply.apply op dashboard with
               | Ok updated ->
                   match Introspect.findNode (NodeId "channel-grid") updated with
-                  | Some { Kind = NodeKind.DataGrid( spec) } ->
+                  | Some { Kind = NodeKind.DataGrid(spec) } ->
                       Expect.equal spec.Columns[0].Label "Sales channel" "Column label renamed"
                   | _ -> failtest "Grid not found / not DataGrid"
               | Error err -> failtestf "Expected Ok, got Error %A" err
@@ -291,7 +289,7 @@ let tests =
               match Apply.apply op dashboard with
               | Ok updated ->
                   match Introspect.findNode (NodeId "channel-grid") updated with
-                  | Some { Kind = NodeKind.DataGrid( spec) } ->
+                  | Some { Kind = NodeKind.DataGrid(spec) } ->
                       Expect.equal spec.Columns[0].Width (ColumnWidth.Fixed 120) "Column width updated"
                   | _ -> failtest "Grid not found / not DataGrid"
               | Error err -> failtestf "Expected Ok, got Error %A" err
@@ -385,7 +383,7 @@ let tests =
               match Apply.apply op analysisTabs with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.Tabs( spec) ->
+                  | NodeKind.Tabs(spec) ->
                       match spec.TabHeaders with
                       | Some headers ->
                           match headers[1].Label with
@@ -407,7 +405,7 @@ let tests =
               match Apply.apply op analysisTabs with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.Tabs( spec) ->
+                  | NodeKind.Tabs(spec) ->
                       match spec.TabHeaders with
                       | Some [ { Disabled = Some(Binding.Static true) }; _ ] -> ()
                       | other -> failtestf "Expected first header disabled, got %A" other
@@ -443,7 +441,7 @@ let tests =
               match Apply.apply op signupForm with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.Form( spec) ->
+                  | NodeKind.Form(spec) ->
                       Expect.isTrue spec.Fields[0].Required "First field now required"
                       Expect.isFalse spec.Fields[1].Required "Second field untouched"
                   | other -> failtestf "Expected Form, got %A" other
@@ -466,8 +464,7 @@ let tests =
               match Apply.apply op mixChart with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.Chart( spec) ->
-                      Expect.equal spec.YFields [ "revenue"; "profit" ] "Second y-field rewritten"
+                  | NodeKind.Chart(spec) -> Expect.equal spec.YFields [ "revenue"; "profit" ] "Second y-field rewritten"
                   | other -> failtestf "Expected Chart, got %A" other
               | Error err -> failtestf "Expected Ok, got Error %A" err
           }
@@ -490,7 +487,7 @@ let tests =
               match Apply.apply op dashboard with
               | Ok updated ->
                   match Introspect.findNode (NodeId "revenue-metric") updated with
-                  | Some { Kind = NodeKind.Metric( spec) } ->
+                  | Some { Kind = NodeKind.Metric(spec) } ->
                       match spec.Value with
                       | Binding.Static v -> Expect.equal v 12345.0 "Static value updated"
                       | other -> failtestf "Expected Binding.Static, got %A" other
@@ -575,7 +572,7 @@ let tests =
               match Apply.apply op emptyDashboard with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.Box( spec) ->
+                  | NodeKind.Box(spec) ->
                       Expect.equal spec.Children.Length 1 "One child after insert"
                       Expect.equal (idOf spec.Children[0].Id) "first-child" "Inserted child landed at position 0"
                   | other -> failtestf "Expected Dashboard, got %A" other
@@ -617,8 +614,7 @@ let tests =
               match Apply.apply op emptyDashboard with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.Box( spec) ->
-                      Expect.equal spec.Children.Length 0 "Still zero children after no-op reorder"
+                  | NodeKind.Box(spec) -> Expect.equal spec.Children.Length 0 "Still zero children after no-op reorder"
                   | other -> failtestf "Expected Dashboard, got %A" other
               | Error err -> failtestf "Expected Ok, got Error %A" err
           }
@@ -703,7 +699,7 @@ let tests =
               match Apply.apply op stackNode with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.Box( spec) ->
+                  | NodeKind.Box(spec) ->
                       match spec.Layout with
                       | BoxLayout.Flex f -> Expect.equal f.Wrap true "Wrap flipped to true"
                       | other -> failtestf "Expected BoxLayout.Flex, got %A" other
@@ -724,7 +720,7 @@ let tests =
               match Apply.apply op headingNode with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.Heading( spec) ->
+                  | NodeKind.Heading(spec) ->
                       Expect.equal spec.Variant HeadingVariant.Eyebrow "Variant updated to Eyebrow"
                   | other -> failtestf "Expected Heading, got %A" other
               | Error err -> failtestf "Expected Ok, got Error %A" err
@@ -768,7 +764,7 @@ let tests =
               match Apply.apply op row with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.LabelValueRow( spec) ->
+                  | NodeKind.LabelValueRow(spec) ->
                       match spec.Value with
                       | Binding.Static v -> Expect.equal v 62500.0 "Static binding updated"
                       | other -> failtestf "Expected Binding.Static, got %A" other
@@ -799,7 +795,7 @@ let tests =
               match Apply.apply (TreeOp.InsertChild(NodeId "summary-list", extraRow)) summaryList with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.SummaryList( spec) ->
+                  | NodeKind.SummaryList(spec) ->
                       Expect.equal spec.Children.Length 2 "Two rows after insert"
                       Expect.equal (idOf spec.Children[1].Id) "row-b" "Row B appended"
                   | other -> failtestf "Expected SummaryList, got %A" other
@@ -823,7 +819,7 @@ let tests =
               match Apply.apply op summaryList with
               | Ok updated ->
                   match updated.Kind with
-                  | NodeKind.SummaryList( spec) ->
+                  | NodeKind.SummaryList(spec) ->
                       match spec.Heading with
                       | Some(TextSource.Literal "Income") -> ()
                       | other -> failtestf "Expected Some Literal 'Income', got %A" other

@@ -32,14 +32,14 @@ let private stack (id: string) (children: Node<Msg> list) : Node<Msg> =
     node
         id
         (NodeKind.Box(
-                { Layout =
-                    BoxLayout.Flex
-                        { Direction = Vertical
-                          Wrap = false
-                          Gap = None }
-                  Role = BoxRole.Group
-                  Heading = None
-                  Children = children }
+            { Layout =
+                BoxLayout.Flex
+                    { Direction = Vertical
+                      Wrap = false
+                      Gap = None }
+              Role = BoxRole.Group
+              Heading = None
+              Children = children }
         ))
 
 /// The shape a decoded closure takes — an inert placeholder.
@@ -74,43 +74,43 @@ let tests =
                   node
                       "frm"
                       (NodeKind.Form(
-                              { Fields =
-                                  [ { Id = "name"
-                                      Label = TextSource.Literal "Name"
-                                      Kind = FormFieldKind.Text(Binding.Static "", Some placeholder)
-                                      Required = false
-                                      Help = None } ]
-                                OnSubmit = Action.Chain []
-                                SubmitLabel = TextSource.Literal "Save"
-                                Disabled = None }
+                          { Fields =
+                              [ { Id = "name"
+                                  Label = TextSource.Literal "Name"
+                                  Kind = FormFieldKind.Text(Binding.Static "", Some placeholder)
+                                  Required = false
+                                  Help = None } ]
+                            OnSubmit = Action.Chain []
+                            SubmitLabel = TextSource.Literal "Save"
+                            Disabled = None }
                       ))
 
               let closureGrid =
                   node
                       "grid"
                       (NodeKind.DataGrid(
-                              { Source = Binding.Static Seq.empty
-                                RowKey = Some(fun _ -> "<closure>")
-                                RowKeyField = None
-                                Columns =
-                                  [ { Label = "Dept"
-                                      Value = Some(fun _ -> CellValue.Empty)
-                                      Field = None
-                                      Format = CellFormat.None
-                                      Kind = CellKindErased.Text
-                                      Width = ColumnWidth.Auto } ]
-                                OnRowClick = None
-                                Editable = false
-                                StaticRows = None }
+                          { Source = Binding.Static Seq.empty
+                            RowKey = Some(fun _ -> "<closure>")
+                            RowKeyField = None
+                            Columns =
+                              [ { Label = "Dept"
+                                  Value = Some(fun _ -> CellValue.Empty)
+                                  Field = None
+                                  Format = CellFormat.None
+                                  Kind = CellKindErased.Text
+                                  Width = ColumnWidth.Auto } ]
+                            OnRowClick = None
+                            Editable = false
+                            StaticRows = None }
                       ))
 
               let closureCall =
                   node
                       "fetch"
                       (NodeKind.Button(
-                              { Defaults.button<Msg> with
-                                  Label = TextSource.Literal "Fetch"
-                                  OnClick = Action.Call(ApiEndpoint "/api/x", Some(fun (_: obj) -> NoOp), None) }
+                          { Defaults.button<Msg> with
+                              Label = TextSource.Literal "Fetch"
+                              OnClick = Action.Call(ApiEndpoint "/api/x", Some(fun (_: obj) -> NoOp), None) }
                       ))
 
               let findings =
@@ -148,44 +148,43 @@ let tests =
                   node
                       "frm"
                       (NodeKind.Form(
-                              { Fields =
-                                  [ { Id = "name"
-                                      Label = TextSource.Literal "Name"
-                                      Kind = FormFieldKind.Text(Binding.State("name", ""), None)
-                                      Required = false
-                                      Help = None } ]
-                                OnSubmit = Action.Chain []
-                                SubmitLabel = TextSource.Literal "Save"
-                                Disabled = None }
+                          { Fields =
+                              [ { Id = "name"
+                                  Label = TextSource.Literal "Name"
+                                  Kind = FormFieldKind.Text(Binding.State("name", ""), None)
+                                  Required = false
+                                  Help = None } ]
+                            OnSubmit = Action.Chain []
+                            SubmitLabel = TextSource.Literal "Save"
+                            Disabled = None }
                       ))
 
               let fieldGrid =
                   node
                       "grid"
                       (NodeKind.DataGrid(
-                              { Source = Binding.Static Seq.empty
-                                RowKey = None
-                                RowKeyField = Some "id"
-                                Columns =
-                                  [ { Label = "Dept"
-                                      Value = None
-                                      Field = Some "dept"
-                                      Format = CellFormat.None
-                                      Kind = CellKindErased.Text
-                                      Width = ColumnWidth.Auto } ]
-                                OnRowClick = None
-                                Editable = false
-                                StaticRows = None }
+                          { Source = Binding.Static Seq.empty
+                            RowKey = None
+                            RowKeyField = Some "id"
+                            Columns =
+                              [ { Label = "Dept"
+                                  Value = None
+                                  Field = Some "dept"
+                                  Format = CellFormat.None
+                                  Kind = CellKindErased.Text
+                                  Width = ColumnWidth.Auto } ]
+                            OnRowClick = None
+                            Editable = false
+                            StaticRows = None }
                       ))
 
               let declarativeFetch =
                   node
                       "fetch"
                       (NodeKind.Button(
-                              { Defaults.button<Msg> with
-                                  Label = TextSource.Literal "Fetch"
-                                  OnClick =
-                                      Action.Call(ApiEndpoint "/api/x", None, Some(CallResultTarget.IntoState "x")) }
+                          { Defaults.button<Msg> with
+                              Label = TextSource.Literal "Fetch"
+                              OnClick = Action.Call(ApiEndpoint "/api/x", None, Some(CallResultTarget.IntoState "x")) }
                       ))
 
               // A FileUpload's onSelect is HostOnlyByDesign — silent.
@@ -193,11 +192,11 @@ let tests =
                   node
                       "up"
                       (NodeKind.FileUpload(
-                              { Label = TextSource.Literal "Upload"
-                                Accept = []
-                                Multiple = false
-                                OnSelect = (fun _ -> Action.Chain [])
-                                Disabled = None }
+                          { Label = TextSource.Literal "Upload"
+                            Accept = []
+                            Multiple = false
+                            OnSelect = (fun _ -> Action.Chain [])
+                            Disabled = None }
                       ))
 
               let findings =

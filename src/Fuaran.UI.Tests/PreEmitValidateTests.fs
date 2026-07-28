@@ -434,13 +434,13 @@ let tests =
                   { Id = NodeId "orders-grid"
                     Kind =
                       NodeKind.DataGrid(
-                              { Source = Binding.Static Seq.empty
-                                RowKey = None
-                                RowKeyField = Some "id"
-                                Columns = []
-                                OnRowClick = None
-                                Editable = false
-                                StaticRows = None }
+                          { Source = Binding.Static Seq.empty
+                            RowKey = None
+                            RowKeyField = Some "id"
+                            Columns = []
+                            OnRowClick = None
+                            Editable = false
+                            StaticRows = None }
                       )
                     State = Defaults.stateBehaviour<Msg>
                     Style = Defaults.style

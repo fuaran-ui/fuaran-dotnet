@@ -496,7 +496,7 @@ let private validateCore
 
             spec.Children |> List.iter walk
         | NodeKind.ScrollArea spec -> spec.Children |> List.iter walk
-        | NodeKind.DataGrid( spec) ->
+        | NodeKind.DataGrid(spec) ->
             // FUARAN077 / FUARAN078 (Phase 425 follow-up): the declarative grid
             // display floor — every column needs a Value closure or a Field,
             // and the grid needs a RowKey closure or a RowKeyField for stable
@@ -600,7 +600,7 @@ let private validateCore
         | NodeKind.Filters _
         | NodeKind.Button _
         | NodeKind.FileUpload _ -> ()
-        | NodeKind.Chart( spec) ->
+        | NodeKind.Chart(spec) ->
             // FUARAN086–089 (Phase 640): schema-grounded chart validation. An
             // ungrounded field reference is the LANGUAGE's defect to catch
             // before lowering — a wrong field name otherwise lowers to a

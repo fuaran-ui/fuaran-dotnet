@@ -47,7 +47,7 @@ let private lookupOf (records: DagOpRecord<TestMsg> list) : string -> DagOpRecor
 
 let private childIds (tree: Node<TestMsg>) : string list =
     match tree.Kind with
-    | NodeKind.Box( spec) -> spec.Children |> List.map (fun c -> let (NodeId s) = c.Id in s)
+    | NodeKind.Box(spec) -> spec.Children |> List.map (fun c -> let (NodeId s) = c.Id in s)
     | _ -> []
 
 let private records (sink: IDagOpStreamSink<TestMsg>) (streamId: string) : DagOpRecord<TestMsg> list =

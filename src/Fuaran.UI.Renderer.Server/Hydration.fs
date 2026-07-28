@@ -84,12 +84,12 @@ let islandScriptId (islandId: string) : string =
 /// `collectFragments` child map) — the walk basis for island collection.
 let private childrenOf (node: Node<obj>) : Node<obj> list =
     match node.Kind with
-    | NodeKind.Box( s) -> s.Children
-    | NodeKind.SplitPanel( s) -> s.Children
-    | NodeKind.Tabs( s) -> s.Children
-    | NodeKind.Stepper( s) -> s.Children
-    | NodeKind.SummaryList( s) -> s.Children
-    | NodeKind.Disclosure( s) -> s.Children
+    | NodeKind.Box(s) -> s.Children
+    | NodeKind.SplitPanel(s) -> s.Children
+    | NodeKind.Tabs(s) -> s.Children
+    | NodeKind.Stepper(s) -> s.Children
+    | NodeKind.SummaryList(s) -> s.Children
+    | NodeKind.Disclosure(s) -> s.Children
     | NodeKind.ErrorBoundary s -> [ s.Child ]
     | NodeKind.FragmentDecl s -> [ s.Body ]
     | _ -> []

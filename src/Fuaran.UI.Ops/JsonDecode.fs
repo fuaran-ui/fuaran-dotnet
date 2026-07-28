@@ -633,7 +633,7 @@ let private decodeInvokeArgs (path: string) (j: Json) : Result<(string * string)
 
 let private placeholderClosureNode: Node<obj> =
     { Id = NodeId closureSentinel
-      Kind = NodeKind.Markdown( { Text = TextSource.Literal closureSentinel })
+      Kind = NodeKind.Markdown({ Text = TextSource.Literal closureSentinel })
       State =
         { OnLoading = None
           OnEmpty = None
@@ -2804,22 +2804,13 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 getSpec ()
                 |> Result.bind (decodeLabelValueRowSpec specPath)
                 |> Result.map NodeKind.LabelValueRow
-            | "Fact" ->
-                getSpec ()
-                |> Result.bind (decodeFactSpec specPath)
-                |> Result.map NodeKind.Fact
-            | "Link" ->
-                getSpec ()
-                |> Result.bind (decodeLinkSpec specPath)
-                |> Result.map NodeKind.Link
+            | "Fact" -> getSpec () |> Result.bind (decodeFactSpec specPath) |> Result.map NodeKind.Fact
+            | "Link" -> getSpec () |> Result.bind (decodeLinkSpec specPath) |> Result.map NodeKind.Link
             | "Image" ->
                 getSpec ()
                 |> Result.bind (decodeImageSpec specPath)
                 |> Result.map NodeKind.Image
-            | "List" ->
-                getSpec ()
-                |> Result.bind (decodeListSpec specPath)
-                |> Result.map NodeKind.List
+            | "List" -> getSpec () |> Result.bind (decodeListSpec specPath) |> Result.map NodeKind.List
             | "Toast" ->
                 getSpec ()
                 |> Result.bind (decodeToastSpec specPath)
@@ -2828,10 +2819,7 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 getSpec ()
                 |> Result.bind (decodeCodeBlockSpec specPath)
                 |> Result.map NodeKind.CodeBlock
-            | "Math" ->
-                getSpec ()
-                |> Result.bind (decodeMathSpec specPath)
-                |> Result.map NodeKind.Math
+            | "Math" -> getSpec () |> Result.bind (decodeMathSpec specPath) |> Result.map NodeKind.Math
             | "Drawing" ->
                 getSpec ()
                 |> Result.bind (decodeDrawingSpec specPath)
@@ -4239,8 +4227,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
             decodeLayoutKind path j
         | Ok("Heading" | "Markdown" | "Metric" | "Badge" | "Link" | "Image" | "List" | "Toast" | "CodeBlock" | "Math" | "Drawing" | "Sparkline" | "Callout" | "Progress" | "Skeleton" | "LabelValueRow" | "Fact") ->
             decodeDisplayKind path j
-        | Ok("Form" | "Filters" | "Button" | "FileUpload" | "Select") ->
-            decodeInputKind path j
+        | Ok("Form" | "Filters" | "Button" | "FileUpload" | "Select") -> decodeInputKind path j
         | Ok("DataGrid" | "Chart" | "Map") -> decodeVisKind path j
         | Ok "Custom" ->
             let moduleIdR =

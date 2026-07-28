@@ -168,8 +168,8 @@ let private fuaranChipStrip () : Node<unit> =
                       { Id = NodeId("chip-" + label)
                         Kind =
                           NodeKind.Badge(
-                                  { Label = TextSource.Literal label
-                                    Variant = BadgeVariant.Neutral }
+                              { Label = TextSource.Literal label
+                                Variant = BadgeVariant.Neutral }
                           )
                         State = Defaults.stateBehaviour<unit>
                         Style = Defaults.style

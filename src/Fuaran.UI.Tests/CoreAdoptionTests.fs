@@ -119,14 +119,14 @@ let private mkStack (id: string) (kids: EqNode list) : EqNode =
         { Id = NodeId id
           Kind =
             NodeKind.Box(
-                    { Layout =
-                        BoxLayout.Flex
-                            { Direction = Vertical
-                              Wrap = false
-                              Gap = None }
-                      Role = BoxRole.Group
-                      Heading = None
-                      Children = kids |> List.map unwrap }
+                { Layout =
+                    BoxLayout.Flex
+                        { Direction = Vertical
+                          Wrap = false
+                          Gap = None }
+                  Role = BoxRole.Group
+                  Heading = None
+                  Children = kids |> List.map unwrap }
             )
           State = Defaults.stateBehaviour
           Style = Defaults.style
@@ -139,7 +139,7 @@ let private mkSpacer (id: string) : EqNode =
         { Id = NodeId id
           // Phase 459 — Spacer retired; a childless Markdown leaf serves the
           // same "leaf with no bindings/handlers" role this op-stream test needs.
-          Kind = NodeKind.Markdown( { Text = TextSource.Literal "" })
+          Kind = NodeKind.Markdown({ Text = TextSource.Literal "" })
           State = Defaults.stateBehaviour
           Style = Defaults.style
           Accessibility = Option.None

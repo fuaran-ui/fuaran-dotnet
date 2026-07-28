@@ -121,12 +121,12 @@ internal sealed class CardBuilder : NodeBuilder
     public CardBuilder Children(params NodeBuilder[] kids) { _children.AddRange(kids); return this; }
 
     protected override NodeKind<object> BuildKind() =>
-        NodeKind<object>.NewLayout(LayoutKind<object>.NewBox(
+        NodeKind<object>.NewBox(
             new BoxSpec<object>(
                 BoxLayout.NewFlex(new FlexLayout(Orientation.Vertical, false, Fs.None<int>())),
                 BoxRole.Card,
                 _heading,
-                Fs.List(_children.Select(c => c.Build()).ToArray()))));
+                Fs.List(_children.Select(c => c.Build()).ToArray())));
 }
 
 internal sealed class StackBuilder : NodeBuilder
@@ -142,12 +142,12 @@ internal sealed class StackBuilder : NodeBuilder
     public StackBuilder Children(params NodeBuilder[] kids) { _children.AddRange(kids); return this; }
 
     protected override NodeKind<object> BuildKind() =>
-        NodeKind<object>.NewLayout(LayoutKind<object>.NewBox(
+        NodeKind<object>.NewBox(
             new BoxSpec<object>(
                 BoxLayout.NewFlex(new FlexLayout(_orientation, _wrap, Fs.None<int>())),
                 BoxRole.Group,
                 Fs.None<TextSource>(),
-                Fs.List(_children.Select(c => c.Build()).ToArray()))));
+                Fs.List(_children.Select(c => c.Build()).ToArray())));
 }
 
 internal sealed class GridBuilder : NodeBuilder
@@ -161,12 +161,12 @@ internal sealed class GridBuilder : NodeBuilder
     public GridBuilder Children(params NodeBuilder[] kids) { _children.AddRange(kids); return this; }
 
     protected override NodeKind<object> BuildKind() =>
-        NodeKind<object>.NewLayout(LayoutKind<object>.NewBox(
+        NodeKind<object>.NewBox(
             new BoxSpec<object>(
                 BoxLayout.NewGrid(new GridTemplate(_cols, Fs.None<string>(), Fs.None<int>())),
                 BoxRole.Group,
                 Fs.None<TextSource>(),
-                Fs.List(_children.Select(c => c.Build()).ToArray()))));
+                Fs.List(_children.Select(c => c.Build()).ToArray())));
 }
 
 internal sealed class DashboardBuilder : NodeBuilder
@@ -178,12 +178,12 @@ internal sealed class DashboardBuilder : NodeBuilder
     public DashboardBuilder Children(params NodeBuilder[] kids) { _children.AddRange(kids); return this; }
 
     protected override NodeKind<object> BuildKind() =>
-        NodeKind<object>.NewLayout(LayoutKind<object>.NewBox(
+        NodeKind<object>.NewBox(
             new BoxSpec<object>(
                 BoxLayout.Auto,
                 BoxRole.Dashboard,
                 Fs.None<TextSource>(),
-                Fs.List(_children.Select(c => c.Build()).ToArray()))));
+                Fs.List(_children.Select(c => c.Build()).ToArray())));
 }
 
 // ─── Display builders ───────────────────────────────────────────────────────
@@ -213,8 +213,8 @@ internal sealed class MetricBuilder : NodeBuilder
     public MetricBuilder Subtext(string text) { _subtext = Fs.Some(Txt.Literal(text)); return this; }
 
     protected override NodeKind<object> BuildKind() =>
-        NodeKind<object>.NewDisplay(DisplayKind<object>.NewMetric(
-            new MetricSpec(_label, _source, _format, _tone, _weight, _emphasis, _trend, _trendFormat, _icon, _subtext)));
+        NodeKind<object>.NewMetric(
+            new MetricSpec(_label, _source, _format, _tone, _weight, _emphasis, _trend, _trendFormat, _icon, _subtext));
 }
 
 internal sealed class HeadingBuilder : NodeBuilder
@@ -228,8 +228,8 @@ internal sealed class HeadingBuilder : NodeBuilder
     public HeadingBuilder Text(string text) { _text = Txt.Literal(text); return this; }
 
     protected override NodeKind<object> BuildKind() =>
-        NodeKind<object>.NewDisplay(DisplayKind<object>.NewHeading(
-            new HeadingSpec(_level, _text, HeadingVariant.Standard)));
+        NodeKind<object>.NewHeading(
+            new HeadingSpec(_level, _text, HeadingVariant.Standard));
 }
 
 internal sealed class BadgeBuilder : NodeBuilder
@@ -243,7 +243,7 @@ internal sealed class BadgeBuilder : NodeBuilder
     public BadgeBuilder Variant(BadgeVariant v) { _variant = v; return this; }
 
     protected override NodeKind<object> BuildKind() =>
-        NodeKind<object>.NewDisplay(DisplayKind<object>.NewBadge(new BadgeSpec(_label, _variant)));
+        NodeKind<object>.NewBadge(new BadgeSpec(_label, _variant));
 }
 
 internal sealed class MarkdownBuilder : NodeBuilder
@@ -255,7 +255,7 @@ internal sealed class MarkdownBuilder : NodeBuilder
     public MarkdownBuilder Text(string text) { _text = Txt.Literal(text); return this; }
 
     protected override NodeKind<object> BuildKind() =>
-        NodeKind<object>.NewDisplay(DisplayKind<object>.NewMarkdown(new MarkdownSpec(_text)));
+        NodeKind<object>.NewMarkdown(new MarkdownSpec(_text));
 }
 
 // ─── Input builders ─────────────────────────────────────────────────────────
@@ -279,8 +279,8 @@ internal sealed class ButtonBuilder : NodeBuilder
     { _disabled = Fs.Some(Bind.State(stateKey, defaultValue)); return this; }
 
     protected override NodeKind<object> BuildKind() =>
-        NodeKind<object>.NewInput(InputKind<object>.NewButton(
-            new ButtonSpec<object>(_label, _onClick, _variant, _icon, _tooltip, _disabled)));
+        NodeKind<object>.NewButton(
+            new ButtonSpec<object>(_label, _onClick, _variant, _icon, _tooltip, _disabled));
 }
 
 /// <summary>A single form field. DU field-kinds surface as factory methods
@@ -348,12 +348,12 @@ internal sealed class FormBuilder : NodeBuilder
     { _disabled = Fs.Some(Bind.State(stateKey, defaultValue)); return this; }
 
     protected override NodeKind<object> BuildKind() =>
-        NodeKind<object>.NewInput(InputKind<object>.NewForm(
+        NodeKind<object>.NewForm(
             new FormSpec<object>(
                 Fs.List(_fields.Select(f => f.Build()).ToArray()),
                 _onSubmit,
                 _submitLabel,
-                _disabled)));
+                _disabled));
 }
 
 // ─── Visualisation builders ─────────────────────────────────────────────────
@@ -380,7 +380,7 @@ internal sealed class ChartBuilder : NodeBuilder
         // encoder ("<opaque>"), matching the corpus chart fixture. A real chart
         // binds a row sequence via a query/state binding.
         var source = Bind.Static<IEnumerable<object>>(Enumerable.Empty<object>());
-        return NodeKind<object>.NewVisualisation(VisKind<object>.NewChart(
+        return NodeKind<object>.NewChart(
             new ChartSpec<object>(
                 source,
                 _kind,
@@ -388,7 +388,7 @@ internal sealed class ChartBuilder : NodeBuilder
                 _yFields,
                 _title,
                 Fs.None<FSharpFunc<object, FsAction>>(),
-                _stacked)));
+                _stacked));
     }
 }
 

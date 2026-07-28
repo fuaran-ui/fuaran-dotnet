@@ -110,22 +110,22 @@ let private kindAt (root: Node<Msg>) (nodeId: string) : NodeKind<Msg> =
 
 let private buttonAt (root: Node<Msg>) (nodeId: string) : ButtonSpec<Msg> =
     match kindAt root nodeId with
-    | NodeKind.Button( spec) -> spec
+    | NodeKind.Button(spec) -> spec
     | other -> failtestf "Expected a Button at '%s', got %A" nodeId other
 
 let private selectAt (root: Node<Msg>) (nodeId: string) : SelectSpec<Msg> =
     match kindAt root nodeId with
-    | NodeKind.Select( spec) -> spec
+    | NodeKind.Select(spec) -> spec
     | other -> failtestf "Expected a Select at '%s', got %A" nodeId other
 
 let private formAt (root: Node<Msg>) (nodeId: string) : FormSpec<Msg> =
     match kindAt root nodeId with
-    | NodeKind.Form( spec) -> spec
+    | NodeKind.Form(spec) -> spec
     | other -> failtestf "Expected a Form at '%s', got %A" nodeId other
 
 let private metricAt (root: Node<Msg>) (nodeId: string) : MetricSpec =
     match kindAt root nodeId with
-    | NodeKind.Metric( spec) -> spec
+    | NodeKind.Metric(spec) -> spec
     | other -> failtestf "Expected a Metric at '%s', got %A" nodeId other
 
 [<Tests>]
@@ -271,7 +271,7 @@ let inputFieldUpdateTests =
               let updated = controlPanel |> update "evidence-upload" "multiple" true
 
               match kindAt updated "evidence-upload" with
-              | NodeKind.FileUpload( spec) -> Expect.isTrue spec.Multiple "Multiple written"
+              | NodeKind.FileUpload(spec) -> Expect.isTrue spec.Multiple "Multiple written"
               | other -> failtestf "Expected a FileUpload, got %A" other
           }
 

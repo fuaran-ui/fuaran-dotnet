@@ -142,7 +142,7 @@ let private selectValue (p: Map<string, LiveValue>) : string option = tryStr "va
 /// are enforced downstream at interpret time. Returns `Ok ()` when in-bounds.
 let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, RejectReason> =
     match node.Kind with
-    | NodeKind.Select( spec) when ev.Event = "change" ->
+    | NodeKind.Select(spec) when ev.Event = "change" ->
         match spec.Source, selectValue ev.Payload with
         | Binding.Static options, Some chosen ->
             if options |> List.exists (fun o -> o.Value = chosen) then
@@ -152,7 +152,7 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
         // Dynamic option source, or a clear-to-none change: accept (bounds
         // enforced at interpret time against live binding sources).
         | _ -> Ok()
-    | NodeKind.Filters( specs) ->
+    | NodeKind.Filters(specs) ->
         // A name-addressed filter event must name a filter the node declares
         // (a forged / stale name is attack surface, same as a forged nodeId),
         // and a choice-shaped filter with statically-resolved options must
@@ -195,13 +195,13 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
 /// addressing) — the driver no-ops those.
 let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
     match node.Kind with
-    | NodeKind.Button( spec) when ev.Event = "click" -> Some spec.OnClick
+    | NodeKind.Button(spec) when ev.Event = "click" -> Some spec.OnClick
     // `OnChange` is optional (Phase 426) — a `None` (declarative / write-back)
     // select has no server-side action to dispatch; the driver no-ops it.
-    | NodeKind.Select( spec) when ev.Event = "change" ->
+    | NodeKind.Select(spec) when ev.Event = "change" ->
         spec.OnChange |> Option.map (fun oc -> oc (selectValue ev.Payload))
-    | NodeKind.Form( spec) when ev.Event = "submit" -> Some spec.OnSubmit
-    | NodeKind.Filters( specs) ->
+    | NodeKind.Form(spec) when ev.Event = "submit" -> Some spec.OnSubmit
+    | NodeKind.Filters(specs) ->
         // Name-addressed: the shim bridges the changed control's filter name
         // across as `payload.name` (`data-filter-name`); boundsCheck already
         // verified it names a declared filter and the value is in-bounds.
@@ -234,14 +234,14 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                 | FormFieldKind.Range _
                 | FormFieldKind.Checkbox _
                 | FormFieldKind.Date _ -> None)
-    | NodeKind.Disclosure( spec) ->
+    | NodeKind.Disclosure(spec) ->
         // Default to "open" when no explicit bool rides along (a summary click).
         // `OnToggle` is optional (Phase 426) — a `None` disclosure has no
         // server-side action; the driver no-ops it (the write-back default is
         // a client-side store path).
         let isOpen = tryBool "open" ev.Payload |> Option.defaultValue true
         spec.OnToggle |> Option.map (fun ot -> ot isOpen)
-    | NodeKind.Tabs( spec) ->
+    | NodeKind.Tabs(spec) ->
         match tryStr "value" ev.Payload, spec.OnSelectTag with
         | Some tag, Some onTag -> Some(onTag tag)
         | _ ->
@@ -249,7 +249,7 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
             match tryNum "index" ev.Payload, spec.OnSelect with
             | Some i, Some onSelect -> Some(onSelect (int i))
             | _ -> None
-    | NodeKind.Stepper( spec) ->
+    | NodeKind.Stepper(spec) ->
         // A step-header click: the shim bridges the clicked step's index
         // across as `payload.index` (`data-step-index`), mirroring tabs.
         match tryNum "index" ev.Payload with

@@ -38,7 +38,7 @@ let private boundMarkdown (id: string) (key: string) (dflt: string) : Node<obj> 
     let n = Fuaran.markdown id "placeholder"
 
     { n with
-        Kind = NodeKind.Markdown( { Text = TextSource.Bound(Binding.State(key, dflt)) }) }
+        Kind = NodeKind.Markdown({ Text = TextSource.Bound(Binding.State(key, dflt)) }) }
 
 /// A dashboard: a button (OnClick supplied) + the reactive Markdown bound to
 /// state key "msg" (default "init").
@@ -77,7 +77,7 @@ let private markdownLiteral (tree: Node<obj>) (id: string) : string option =
     match findNode (NodeId id) tree with
     | Some node ->
         match node.Kind with
-        | NodeKind.Markdown( { Text = TextSource.Literal s }) -> Some s
+        | NodeKind.Markdown({ Text = TextSource.Literal s }) -> Some s
         | _ -> None
     | None -> None
 

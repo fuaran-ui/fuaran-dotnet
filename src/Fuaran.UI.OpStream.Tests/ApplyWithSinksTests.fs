@@ -49,7 +49,7 @@ type private ThrowingTelemetrySink() =
 
 let private childIds (root: Node<TestMsg>) : string list =
     match root.Kind with
-    | NodeKind.Box( spec) ->
+    | NodeKind.Box(spec) ->
         spec.Children
         |> List.map (fun n ->
             match n.Id with

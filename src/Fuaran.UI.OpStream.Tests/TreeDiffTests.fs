@@ -187,8 +187,8 @@ let tests =
 
               let newKind: NodeKind<TestMsg> =
                   NodeKind.Badge(
-                          { Label = TextSource.Literal "STATUS"
-                            Variant = BadgeVariant.Brand }
+                      { Label = TextSource.Literal "STATUS"
+                        Variant = BadgeVariant.Brand }
                   )
 
               let op = TreeOp.EditNode(NodeId "left", newKind)

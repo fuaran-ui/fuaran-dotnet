@@ -981,15 +981,13 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
     | NodeKind.Image i -> keysOfBinding channel i.Src @ keysOfText channel i.Alt, []
     | NodeKind.List l -> l.Items |> List.collect (keysOfText channel), []
     | NodeKind.Toast t ->
-        let __v =
-            keysOfText channel t.Message @ keysOfBinding channel t.Open
+        let __v = keysOfText channel t.Message @ keysOfBinding channel t.Open
         // CodeBlock + Math carry plain strings, not bindings — no reactive keys.
 
         __v, []
     | NodeKind.CodeBlock _ -> [], []
     | NodeKind.Math _ ->
-        let __v =
-            []
+        let __v = []
         // Phase 524 ships a placeholder render; the reactive DrawStyle-colour keys
         // are wired with the real SVG renderer in Phase 525.
 
@@ -1373,7 +1371,8 @@ let rec private renderKind
         // when TabHeaders is None — legacy authoring shape.
         let tabsLabelFromChild (child: Node<'Msg>) : string =
             match child.Kind with
-            | NodeKind.Box { Role = BoxRole.Card; Heading = Some h } -> renderText ctx h
+            | NodeKind.Box { Role = BoxRole.Card
+                             Heading = Some h } -> renderText ctx h
             | _ ->
                 match child.Id with
                 | NodeId s -> s

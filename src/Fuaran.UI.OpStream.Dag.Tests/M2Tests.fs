@@ -35,9 +35,9 @@ let private nn (value: 'T) : obj = box value |> Unchecked.nonNull
 /// for a pinned Markdown.Text (both kinds expose a `Text: TextSource`).
 let private headingLeft (text: string) : NodeKind<TestMsg> =
     NodeKind.Heading(
-            { Level = 2
-              Text = TextSource.Literal text
-              Variant = HeadingVariant.Standard }
+        { Level = 2
+          Text = TextSource.Literal text
+          Variant = HeadingVariant.Standard }
     )
 
 [<Tests>]
@@ -65,7 +65,7 @@ let tests =
               | MergeResult.Merged(_, tree) ->
                   let leftStyle =
                       match tree.Kind with
-                      | NodeKind.Box( spec) ->
+                      | NodeKind.Box(spec) ->
                           spec.Children
                           |> List.tryFind (fun c -> c.Id = leftChildId)
                           |> Option.map _.Style
@@ -190,7 +190,7 @@ let tests =
                       Kind = headingLeft "AI heading" }
 
               match ReassertPin.tryReassert baseLeft humanLeft aiLeft with
-              | Some(NodeKind.Heading( spec)) ->
+              | Some(NodeKind.Heading(spec)) ->
                   match spec.Text with
                   | TextSource.Literal s ->
                       Expect.equal s "Pinned by human" "human's pinned Text re-stamped onto the new Heading"

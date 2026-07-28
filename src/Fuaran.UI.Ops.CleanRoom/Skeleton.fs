@@ -170,16 +170,16 @@ let private textSourceOptLength (t: TextSource option) : int =
 let private ownContentLength (kind: NodeKind<'Msg>) : int =
     match kind with
     | NodeKind.Heading s -> textSourceLength s.Text
-        | NodeKind.Markdown s -> textSourceLength s.Text
-        | NodeKind.Badge s -> textSourceLength s.Label
-        | NodeKind.Metric s -> textSourceLength s.Label + textSourceOptLength s.Subtext
-        | NodeKind.Callout s -> textSourceLength s.Body + textSourceOptLength s.Heading
-        | NodeKind.LabelValueRow s -> textSourceLength s.Label
-        | NodeKind.Link s -> textSourceLength s.Label
-        | NodeKind.Image s -> textSourceLength s.Alt
-        | NodeKind.List s -> s.Items |> List.sumBy textSourceLength
-        | NodeKind.Toast s -> textSourceLength s.Message
-        | NodeKind.CodeBlock s -> String.length s.Code
+    | NodeKind.Markdown s -> textSourceLength s.Text
+    | NodeKind.Badge s -> textSourceLength s.Label
+    | NodeKind.Metric s -> textSourceLength s.Label + textSourceOptLength s.Subtext
+    | NodeKind.Callout s -> textSourceLength s.Body + textSourceOptLength s.Heading
+    | NodeKind.LabelValueRow s -> textSourceLength s.Label
+    | NodeKind.Link s -> textSourceLength s.Label
+    | NodeKind.Image s -> textSourceLength s.Alt
+    | NodeKind.List s -> s.Items |> List.sumBy textSourceLength
+    | NodeKind.Toast s -> textSourceLength s.Message
+    | NodeKind.CodeBlock s -> String.length s.Code
     | NodeKind.Math s -> String.length s.Source
     | NodeKind.Box s -> textSourceOptLength s.Heading
     | NodeKind.SummaryList s -> textSourceOptLength s.Heading

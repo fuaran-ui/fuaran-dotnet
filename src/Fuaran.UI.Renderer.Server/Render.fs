@@ -172,14 +172,14 @@ let rec private collectFragments (acc: Map<FragmentId, Node<obj>>) (node: Node<o
 
     let children =
         match node.Kind with
-        | NodeKind.Box( s) -> s.Children
-        | NodeKind.SplitPanel( s) -> s.Children
-        | NodeKind.Tabs( s) -> s.Children
-        | NodeKind.Stepper( s) -> s.Children
-        | NodeKind.SummaryList( s) -> s.Children
-        | NodeKind.Disclosure( s) -> s.Children
-        | NodeKind.Modal( s) -> s.Children
-        | NodeKind.ScrollArea( s) -> s.Children
+        | NodeKind.Box(s) -> s.Children
+        | NodeKind.SplitPanel(s) -> s.Children
+        | NodeKind.Tabs(s) -> s.Children
+        | NodeKind.Stepper(s) -> s.Children
+        | NodeKind.SummaryList(s) -> s.Children
+        | NodeKind.Disclosure(s) -> s.Children
+        | NodeKind.Modal(s) -> s.Children
+        | NodeKind.ScrollArea(s) -> s.Children
         | NodeKind.ErrorBoundary s -> [ s.Child ]
         | NodeKind.Switch s -> (s.Cases |> List.map snd) @ [ s.Default ]
         | NodeKind.FragmentDecl s -> [ s.Body ]
@@ -353,7 +353,8 @@ and private renderKind
 
         let tabsLabelFromChild (child: Node<obj>) : string =
             match child.Kind with
-            | NodeKind.Box { Role = BoxRole.Card; Heading = Some h } -> renderText ctx h
+            | NodeKind.Box { Role = BoxRole.Card
+                             Heading = Some h } -> renderText ctx h
             | _ ->
                 match child.Id with
                 | NodeId s -> s

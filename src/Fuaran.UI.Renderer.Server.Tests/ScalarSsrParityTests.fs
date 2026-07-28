@@ -65,7 +65,7 @@ let rec private tryFindNode (id: string) (node: Node<obj>) : Node<obj> option =
     else
         let children =
             match node.Kind with
-            | NodeKind.Box( s) -> s.Children
+            | NodeKind.Box(s) -> s.Children
             | _ -> []
 
         children |> List.tryPick (tryFindNode id)
@@ -97,7 +97,7 @@ let scalarSsrParityTests =
               // the 1×1 scalar law resolves the lone cell (Phase 632).
               let badgeText =
                   match (findNode "critical-count-badge" tree).Kind with
-                  | NodeKind.Badge( spec) -> clientTextOf spec.Label
+                  | NodeKind.Badge(spec) -> clientTextOf spec.Label
                   | k -> failwithf "unexpected kind for critical-count-badge: %A" k
 
               Expect.equal badgeText "2" "the client-dispatch scalar resolution of the Badge count"
@@ -111,7 +111,7 @@ let scalarSsrParityTests =
               // alert column (project + limit 1 — the row-field-lookup terminal).
               let calloutText =
                   match (findNode "sla-warning" tree).Kind with
-                  | NodeKind.Callout( spec) -> clientTextOf spec.Body
+                  | NodeKind.Callout(spec) -> clientTextOf spec.Body
                   | k -> failwithf "unexpected kind for sla-warning: %A" k
 
               Expect.equal
@@ -134,7 +134,7 @@ let scalarSsrParityTests =
               // on either host; resolution-time defaulting IS the mechanism.
               let factText =
                   match (findNode "detail-ticket" tree).Kind with
-                  | NodeKind.Fact( spec) -> clientTextOf spec.Value
+                  | NodeKind.Fact(spec) -> clientTextOf spec.Value
                   | k -> failwithf "unexpected kind for detail-ticket: %A" k
 
               Expect.equal factText "TCK-2041" "the client-dispatch resolution of the preselected detail"

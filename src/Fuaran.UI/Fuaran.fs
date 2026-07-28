@@ -690,16 +690,16 @@ module Fuaran =
     /// The unified container smart-ctor (Phase 390). `Stack` / `GridLayout` /
     /// `Dashboard` / `Card` are `Box`-emitting convenience surfaces over this.
     let box (id: string) (spec: BoxSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.Box( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.Box(spec)) Defaults.Accessibility.none
 
     let dashboard (id: string) (spec: DashboardSpec<'Msg>) : Node<'Msg> =
         buildNode
             id
             (NodeKind.Box(
-                    { Layout = BoxLayout.Auto
-                      Role = BoxRole.Dashboard
-                      Heading = Option.None
-                      Children = spec.Children }
+                { Layout = BoxLayout.Auto
+                  Role = BoxRole.Dashboard
+                  Heading = Option.None
+                  Children = spec.Children }
             ))
             Defaults.Accessibility.dashboard
 
@@ -707,14 +707,14 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                    { Layout =
-                        BoxLayout.Flex
-                            { Direction = spec.Orientation
-                              Wrap = spec.Wrap
-                              Gap = Option.None }
-                      Role = BoxRole.Group
-                      Heading = Option.None
-                      Children = spec.Children }
+                { Layout =
+                    BoxLayout.Flex
+                        { Direction = spec.Orientation
+                          Wrap = spec.Wrap
+                          Gap = Option.None }
+                  Role = BoxRole.Group
+                  Heading = Option.None
+                  Children = spec.Children }
             ))
             Defaults.Accessibility.none
 
@@ -722,14 +722,14 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                    { Layout =
-                        BoxLayout.Grid
-                            { Cols = spec.Cols
-                              TemplateColumns = spec.TemplateColumns
-                              Gap = Option.None }
-                      Role = BoxRole.Group
-                      Heading = Option.None
-                      Children = spec.Children }
+                { Layout =
+                    BoxLayout.Grid
+                        { Cols = spec.Cols
+                          TemplateColumns = spec.TemplateColumns
+                          Gap = Option.None }
+                  Role = BoxRole.Group
+                  Heading = Option.None
+                  Children = spec.Children }
             ))
             Defaults.Accessibility.none
 
@@ -747,22 +747,22 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                    { Layout =
-                        BoxLayout.Grid
-                            { Cols = spec.Cols
-                              TemplateColumns = Some templateColumns
-                              Gap = Option.None }
-                      Role = BoxRole.Group
-                      Heading = Option.None
-                      Children = spec.Children }
+                { Layout =
+                    BoxLayout.Grid
+                        { Cols = spec.Cols
+                          TemplateColumns = Some templateColumns
+                          Gap = Option.None }
+                  Role = BoxRole.Group
+                  Heading = Option.None
+                  Children = spec.Children }
             ))
             Defaults.Accessibility.none
 
     let splitPanel (id: string) (spec: SplitPanelSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.SplitPanel( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.SplitPanel(spec)) Defaults.Accessibility.none
 
     let tabs (id: string) (spec: TabsSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.Tabs( spec)) Defaults.Accessibility.tabs
+        buildNode id (NodeKind.Tabs(spec)) Defaults.Accessibility.tabs
 
     /// Tabs smart-ctor for the typed-tag overlay entry
     /// point. Requires both `TabHeaders` and `TabTags` to be populated — the
@@ -772,7 +772,7 @@ module Fuaran =
     /// validation time; tag/binding-without-tags surfaces as FUARAN049.
     let tabsTagged (id: string) (spec: TabsSpec<'Msg>) : Node<'Msg> =
         match spec.TabHeaders, spec.TabTags with
-        | Some _, Some _ -> buildNode id (NodeKind.Tabs( spec)) Defaults.Accessibility.tabs
+        | Some _, Some _ -> buildNode id (NodeKind.Tabs(spec)) Defaults.Accessibility.tabs
         | _ ->
             failwith
                 "Fuaran.tabsTagged requires both TabHeaders and TabTags to be populated; use Fuaran.tabs for the integer-indexed shape."
@@ -781,25 +781,25 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                    { Layout =
-                        BoxLayout.Flex
-                            { Direction = Vertical
-                              Wrap = false
-                              Gap = Option.None }
-                      Role = BoxRole.Card
-                      Heading = spec.Heading
-                      Children = spec.Children }
+                { Layout =
+                    BoxLayout.Flex
+                        { Direction = Vertical
+                          Wrap = false
+                          Gap = Option.None }
+                  Role = BoxRole.Card
+                  Heading = spec.Heading
+                  Children = spec.Children }
             ))
             Defaults.Accessibility.card
 
     let stepper (id: string) (spec: StepperSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.Stepper( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.Stepper(spec)) Defaults.Accessibility.none
 
     /// Feliz-parity additive: single-card-of-rows
     /// layout — typically wraps `Fuaran.labelValueRow` children. See
     /// `NodeKind.SummaryList` for when to reach for this instead of `Card`.
     let summaryList (id: string) (spec: SummaryListSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.SummaryList( spec)) Defaults.Accessibility.summaryList
+        buildNode id (NodeKind.SummaryList(spec)) Defaults.Accessibility.summaryList
 
     /// Typed accordion / collapsible layout.
     /// Renders as HTML-native `<details>` / `<summary>` with `aria-expanded`
@@ -808,7 +808,7 @@ module Fuaran =
     /// model (advanced settings, "Additional X" sub-form, FAQ entries);
     /// choose `Card` when the content is always visible.
     let disclosure (id: string) (spec: DisclosureSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.Disclosure( spec)) Defaults.Accessibility.disclosure
+        buildNode id (NodeKind.Disclosure(spec)) Defaults.Accessibility.disclosure
 
     /// Out-of-flow overlay dialog (Phase 289). Carries an `Open` binding, an
     /// optional heading, a `Dismissable` flag, an `OnDismiss` action, and a
@@ -817,19 +817,19 @@ module Fuaran =
     /// structure (no hydration mismatch). See the render-fidelity contract in
     /// docs/SSR.md.
     let modal (id: string) (spec: ModalSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.Modal( spec)) Defaults.Accessibility.modal
+        buildNode id (NodeKind.Modal(spec)) Defaults.Accessibility.modal
 
     /// Overflow / scroll container (Phase 289). `Orientation` selects the
     /// scroll axis; optional `MaxHeight` / `MaxWidth` (pixels) bound the
     /// viewport. Overflow + scrollbar render identically SSR↔CSR (pinned by
     /// the SSR-parity corpus).
     let scrollArea (id: string) (spec: ScrollAreaSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.ScrollArea( spec)) Defaults.Accessibility.scrollArea
+        buildNode id (NodeKind.ScrollArea(spec)) Defaults.Accessibility.scrollArea
 
     // ─── Display ────────────────────────────────────────────────────────
 
     let metric (id: string) (spec: MetricSpec) : Node<'Msg> =
-        buildNode id (NodeKind.Metric( spec)) Defaults.Accessibility.metric
+        buildNode id (NodeKind.Metric(spec)) Defaults.Accessibility.metric
 
     /// Feliz-parity additive: typed heading
     /// constructor. Use `Variant = Eyebrow` / `Caption` / `Lead` for
@@ -838,7 +838,7 @@ module Fuaran =
     /// semantics. Default callers see no class change (Variant defaults
     /// to Standard via `Defaults.heading`).
     let heading (id: string) (spec: HeadingSpec) : Node<'Msg> =
-        buildNode id (NodeKind.Heading( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.Heading(spec)) Defaults.Accessibility.none
 
     /// Feliz-parity additive: single-row
     /// label-left / value-right primitive. Consumed by `Fuaran.summaryList`
@@ -846,7 +846,7 @@ module Fuaran =
     /// the resolution / state-slot dispatch — `OnLoading` / `OnError`
     /// honoured).
     let labelValueRow (id: string) (spec: LabelValueRowSpec) : Node<'Msg> =
-        buildNode id (NodeKind.LabelValueRow( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.LabelValueRow(spec)) Defaults.Accessibility.none
 
     /// A labeled TEXT fact tile — the complementary kind to the numeric
     /// `Metric` / `LabelValueRow`. Positional 80% case:
@@ -856,15 +856,15 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Fact(
-                    { Defaults.fact with
-                        Label = TextSource.Literal label
-                        Value = TextSource.Literal value }
+                { Defaults.fact with
+                    Label = TextSource.Literal label
+                    Value = TextSource.Literal value }
             ))
             Defaults.Accessibility.none
 
     /// Record-form `Fact` (tone / emphasis / icon / help).
     let factSpec (id: string) (spec: FactSpec) : Node<'Msg> =
-        buildNode id (NodeKind.Fact( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.Fact(spec)) Defaults.Accessibility.none
 
     /// Crawlable hyperlink (Phase 139). Two-tier API per §4c: positional
     /// `Fuaran.link "id" "https://…" "Label"` for the static-href 80% case;
@@ -876,14 +876,14 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Link(
-                    { Defaults.link with
-                        Href = Binding.Static href
-                        Label = TextSource.Literal label }
+                { Defaults.link with
+                    Href = Binding.Static href
+                    Label = TextSource.Literal label }
             ))
             Defaults.Accessibility.none
 
     let linkSpec (id: string) (spec: LinkSpec) : Node<'Msg> =
-        buildNode id (NodeKind.Link( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.Link(spec)) Defaults.Accessibility.none
 
     /// Standalone image (Phase 287). Two-tier API: positional
     /// `Fuaran.image "id" "https://…" "alt text"` for the static-src 80% case;
@@ -894,14 +894,14 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Image(
-                    { Defaults.image with
-                        Src = Binding.Static src
-                        Alt = TextSource.Literal alt }
+                { Defaults.image with
+                    Src = Binding.Static src
+                    Alt = TextSource.Literal alt }
             ))
             Defaults.Accessibility.none
 
     let imageSpec (id: string) (spec: ImageSpec) : Node<'Msg> =
-        buildNode id (NodeKind.Image( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.Image(spec)) Defaults.Accessibility.none
 
     /// Structured item list (Phase 287). Positional
     /// `Fuaran.list "id" [ "First"; "Second" ]` builds an unordered list of
@@ -911,13 +911,13 @@ module Fuaran =
         buildNode
             id
             (NodeKind.List(
-                    { Defaults.list with
-                        Items = items |> List.map TextSource.Literal }
+                { Defaults.list with
+                    Items = items |> List.map TextSource.Literal }
             ))
             Defaults.Accessibility.none
 
     let listSpec (id: string) (spec: ListSpec) : Node<'Msg> =
-        buildNode id (NodeKind.List( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.List(spec)) Defaults.Accessibility.none
 
     /// A separator — a plain horizontal rule (Phase 459: the retired `Divider`,
     /// now a `Box` `Separator` role). Renders `<hr class="fuaran-layout-separator">`.
@@ -927,14 +927,14 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                    { Layout =
-                        BoxLayout.Flex
-                            { Direction = Horizontal
-                              Wrap = false
-                              Gap = Option.None }
-                      Role = BoxRole.Separator
-                      Heading = Option.None
-                      Children = [] }
+                { Layout =
+                    BoxLayout.Flex
+                        { Direction = Horizontal
+                          Wrap = false
+                          Gap = Option.None }
+                  Role = BoxRole.Separator
+                  Heading = Option.None
+                  Children = [] }
             ))
             Defaults.Accessibility.none
 
@@ -943,7 +943,7 @@ module Fuaran =
     /// with `role="status"` + `aria-live` — see the overlay render-fidelity
     /// contract in docs/SSR.md.
     let toast (id: string) (spec: ToastSpec) : Node<'Msg> =
-        buildNode id (NodeKind.Toast( spec)) Defaults.Accessibility.toast
+        buildNode id (NodeKind.Toast(spec)) Defaults.Accessibility.toast
 
     /// First-class code display (Phase 290). Positional
     /// `Fuaran.codeBlock "id" "fsharp" "let x = 1"` for the language+code 80%
@@ -954,27 +954,24 @@ module Fuaran =
         buildNode
             id
             (NodeKind.CodeBlock(
-                    { Defaults.codeBlock with
-                        Language = language
-                        Code = code }
+                { Defaults.codeBlock with
+                    Language = language
+                    Code = code }
             ))
             Defaults.Accessibility.none
 
     let codeBlockSpec (id: string) (spec: CodeBlockSpec) : Node<'Msg> =
-        buildNode id (NodeKind.CodeBlock( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.CodeBlock(spec)) Defaults.Accessibility.none
 
     /// LaTeX math (Phase 293). `Fuaran.math "id" "x^2 + y^2 = z^2"` is a block
     /// equation; the `mathSpec` twin takes the full record (inline mode). The
     /// parity render is the deterministic escaped-source fallback; KaTeX is a
     /// client-only post-hydration enhancement.
     let math (id: string) (source: string) : Node<'Msg> =
-        buildNode
-            id
-            (NodeKind.Math( { Defaults.math with Source = source }))
-            Defaults.Accessibility.none
+        buildNode id (NodeKind.Math({ Defaults.math with Source = source })) Defaults.Accessibility.none
 
     let mathSpec (id: string) (spec: MathSpec) : Node<'Msg> =
-        buildNode id (NodeKind.Math( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.Math(spec)) Defaults.Accessibility.none
 
     /// Bounded, typed vector-graphics primitive (Phase 524) — the shared render
     /// target charts lower to and the substrate for maps/diagrams. Positional
@@ -987,14 +984,14 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Drawing(
-                    { Defaults.drawing with
-                        ViewBox = viewBox
-                        Shapes = shapes }
+                { Defaults.drawing with
+                    ViewBox = viewBox
+                    Shapes = shapes }
             ))
             Defaults.Accessibility.none
 
     let drawingSpec (id: string) (spec: DrawingSpec) : Node<'Msg> =
-        buildNode id (NodeKind.Drawing( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.Drawing(spec)) Defaults.Accessibility.none
 
     /// Two-tier API per §4c: positional text for the 80% case
     /// (`Fuaran.markdown "id" "body"`), full record form via the `markdownSpec`
@@ -1003,30 +1000,30 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Markdown(
-                    { Defaults.markdown with
-                        Text = TextSource.Literal body }
+                { Defaults.markdown with
+                    Text = TextSource.Literal body }
             ))
             Defaults.Accessibility.none
 
     let markdownSpec (id: string) (spec: MarkdownSpec) : Node<'Msg> =
-        buildNode id (NodeKind.Markdown( spec)) Defaults.Accessibility.none
+        buildNode id (NodeKind.Markdown(spec)) Defaults.Accessibility.none
 
     let callout (id: string) (spec: CalloutSpec) : Node<'Msg> =
-        buildNode id (NodeKind.Callout( spec)) Defaults.Accessibility.callout
+        buildNode id (NodeKind.Callout(spec)) Defaults.Accessibility.callout
 
     let progress (id: string) (spec: ProgressSpec) : Node<'Msg> =
-        buildNode id (NodeKind.Progress( spec)) Defaults.Accessibility.progress
+        buildNode id (NodeKind.Progress(spec)) Defaults.Accessibility.progress
 
     let skeleton (id: string) (rows: int) : Node<'Msg> =
-        buildNode id (NodeKind.Skeleton( { Rows = rows })) Defaults.Accessibility.none
+        buildNode id (NodeKind.Skeleton({ Rows = rows })) Defaults.Accessibility.none
 
     // ─── Input ──────────────────────────────────────────────────────────
 
     let button (id: string) (spec: ButtonSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.Button( spec)) Defaults.Accessibility.button
+        buildNode id (NodeKind.Button(spec)) Defaults.Accessibility.button
 
     let select (id: string) (spec: SelectSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.Select( spec)) Defaults.Accessibility.select
+        buildNode id (NodeKind.Select(spec)) Defaults.Accessibility.select
 
     /// Multi-select (Phase 291). Sets `Multiple = true` and wires the
     /// list-valued selection (`Values` / `OnChangeMulti`); the single-value
@@ -1043,28 +1040,28 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Select(
-                    { Defaults.select with
-                        Label = label
-                        Source = source
-                        Multiple = true
-                        Values = Some values
-                        OnChangeMulti = Some onChange }
+                { Defaults.select with
+                    Label = label
+                    Source = source
+                    Multiple = true
+                    Values = Some values
+                    OnChangeMulti = Some onChange }
             ))
             Defaults.Accessibility.select
 
     let form (id: string) (spec: FormSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.Form( spec)) Defaults.Accessibility.form
+        buildNode id (NodeKind.Form(spec)) Defaults.Accessibility.form
 
     let filters (id: string) (specs: FilterSpec<'Msg> list) : Node<'Msg> =
-        buildNode id (NodeKind.Filters( specs)) Defaults.Accessibility.none
+        buildNode id (NodeKind.Filters(specs)) Defaults.Accessibility.none
 
     let fileUpload (id: string) (spec: FileUploadSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.FileUpload( spec)) Defaults.Accessibility.fileUpload
+        buildNode id (NodeKind.FileUpload(spec)) Defaults.Accessibility.fileUpload
 
     // ─── Visualisation ──────────────────────────────────────────────────
 
     let chart (id: string) (spec: ChartSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.Chart( spec)) Defaults.Accessibility.chart
+        buildNode id (NodeKind.Chart(spec)) Defaults.Accessibility.chart
 
     /// Phase 393 — a static read-only table. Lowers into the `StaticRows` mode of
     /// `NodeKind.DataGrid` (one tabular kind); the renderer emits semantic `<table>`
@@ -1080,10 +1077,10 @@ module Fuaran =
               Editable = false
               StaticRows = Some(spec.Headers, spec.Rows) }
 
-        buildNode id (NodeKind.DataGrid( staticGrid)) Defaults.Accessibility.table
+        buildNode id (NodeKind.DataGrid(staticGrid)) Defaults.Accessibility.table
 
     let map (id: string) (spec: MapSpec<'Msg>) : Node<'Msg> =
-        buildNode id (NodeKind.Map( spec)) Defaults.Accessibility.map
+        buildNode id (NodeKind.Map(spec)) Defaults.Accessibility.map
 
     /// Per Defect (1) resolution: take a typed `GridSpecOf<'row,'Msg>`, box
     /// the row accessors into `GridSpec<'Msg>` (the tree-level obj-erased
@@ -1135,7 +1132,7 @@ module Fuaran =
               Editable = spec.Editable
               StaticRows = None }
 
-        buildNode id (NodeKind.DataGrid( erased)) Defaults.Accessibility.grid
+        buildNode id (NodeKind.DataGrid(erased)) Defaults.Accessibility.grid
 
     #warnon "3261"
 

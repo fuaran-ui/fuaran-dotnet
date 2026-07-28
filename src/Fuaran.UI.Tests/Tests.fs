@@ -47,7 +47,7 @@ let tests =
               Expect.equal (idOf node) "channel-analysis" "Id is set"
 
               match node.Kind with
-              | NodeKind.Box( spec) -> Expect.equal spec.Children.Length 0 "Children is empty"
+              | NodeKind.Box(spec) -> Expect.equal spec.Children.Length 0 "Children is empty"
               | other -> failtestf "Expected NodeKind.Box, got %A" other
           }
 
@@ -64,7 +64,7 @@ let tests =
               Expect.equal (idOf node) "revenue-metric" "Id is set"
 
               match node.Kind with
-              | NodeKind.Metric( spec) ->
+              | NodeKind.Metric(spec) ->
                   Expect.equal (literalOf spec.Label) "Revenue" "Label set"
                   Expect.equal spec.Tone ToneVariant.Brand "Tone overridden"
 
@@ -90,7 +90,7 @@ let tests =
               Expect.equal (idOf node) "channel-grid" "Id is set"
 
               match node.Kind with
-              | NodeKind.DataGrid( spec) ->
+              | NodeKind.DataGrid(spec) ->
                   Expect.equal spec.Columns.Length 2 "Two columns boxed in"
                   Expect.equal spec.Editable false "Editable stays default"
                   Expect.isSome spec.OnRowClick "OnRowClick wired"
@@ -152,8 +152,7 @@ let tests =
               Expect.equal (idOf node) "no-data" "Id is set"
 
               match node.Kind with
-              | NodeKind.Markdown( spec) ->
-                  Expect.equal (literalOf spec.Text) "No revenue data yet." "Body text wired"
+              | NodeKind.Markdown(spec) -> Expect.equal (literalOf spec.Text) "No revenue data yet." "Body text wired"
               | other -> failtestf "Expected NodeKind.Markdown, got %A" other
           }
 
@@ -169,7 +168,7 @@ let tests =
               Expect.equal (idOf node) "submit-button" "Id is set"
 
               match node.Kind with
-              | NodeKind.Button( spec) ->
+              | NodeKind.Button(spec) ->
                   Expect.equal (literalOf spec.Label) "Submit" "Label set"
                   Expect.equal spec.Variant ButtonVariant.Primary "Variant overridden"
 
@@ -191,7 +190,7 @@ let tests =
               Expect.equal (idOf node) "tier-banner" "Id is set"
 
               match node.Kind with
-              | NodeKind.Callout( spec) ->
+              | NodeKind.Callout(spec) ->
                   Expect.equal spec.Tone ToneVariant.Warning "Tone overridden"
                   Expect.equal spec.Dismissable true "Dismissable overridden"
               | other -> failtestf "Expected NodeKind.Callout, got %A" other
@@ -210,7 +209,7 @@ let tests =
               Expect.equal (idOf node) "joint-progress" "Id is set"
 
               match node.Kind with
-              | NodeKind.Progress( spec) ->
+              | NodeKind.Progress(spec) ->
                   Expect.equal spec.Indeterminate true "Indeterminate set"
                   Expect.isSome spec.Caveat "Caveat present"
               | other -> failtestf "Expected NodeKind.Progress, got %A" other
@@ -381,7 +380,7 @@ let tests =
                           Wrap = true }
 
               match node.Kind with
-              | NodeKind.Box( spec) ->
+              | NodeKind.Box(spec) ->
                   match spec.Layout with
                   | BoxLayout.Flex f -> Expect.equal f.Wrap true "Wrap = true propagated"
                   | other -> failtestf "Expected BoxLayout.Flex, got %A" other
@@ -403,7 +402,7 @@ let tests =
               Expect.equal (idOf node) "tax-year-banner" "Id is set"
 
               match node.Kind with
-              | NodeKind.Heading( spec) ->
+              | NodeKind.Heading(spec) ->
                   Expect.equal spec.Variant HeadingVariant.Eyebrow "Variant = Eyebrow propagated"
               | other -> failtestf "Expected NodeKind.Heading, got %A" other
           }
@@ -421,7 +420,7 @@ let tests =
               Expect.equal (idOf node) "row-take-home" "Id is set"
 
               match node.Kind with
-              | NodeKind.LabelValueRow( spec) ->
+              | NodeKind.LabelValueRow(spec) ->
                   Expect.equal spec.Emphasis true "Emphasis propagated"
 
                   match spec.Format with
@@ -457,7 +456,7 @@ let tests =
               Expect.equal (idOf node) "tax-breakdown" "Id is set"
 
               match node.Kind with
-              | NodeKind.SummaryList( spec) ->
+              | NodeKind.SummaryList(spec) ->
                   Expect.equal spec.Children.Length 1 "One child wired"
 
                   match spec.Heading with
@@ -479,7 +478,7 @@ let tests =
                           Children = [] }
 
               match node.Kind with
-              | NodeKind.Box( spec) ->
+              | NodeKind.Box(spec) ->
                   match spec.Layout with
                   | BoxLayout.Grid g ->
                       Expect.equal g.Cols 3 "Cols overridden"
@@ -501,7 +500,7 @@ let tests =
                           Children = [] }
 
               match node.Kind with
-              | NodeKind.Box( spec) ->
+              | NodeKind.Box(spec) ->
                   match spec.Layout with
                   | BoxLayout.Grid g ->
                       Expect.equal
@@ -525,7 +524,7 @@ let tests =
                           Children = [] }
 
               match node.Kind with
-              | NodeKind.Box( spec) ->
+              | NodeKind.Box(spec) ->
                   match spec.Layout with
                   | BoxLayout.Grid g ->
                       Expect.equal g.TemplateColumns (Some "1fr 2fr") "Explicit smart-ctor arg overrides the spec field"

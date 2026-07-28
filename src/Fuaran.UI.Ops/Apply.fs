@@ -347,7 +347,7 @@ let inline private coerceField (coerce: obj -> Result<'T, string>) (v: obj) : Re
 let private updateMetric (field: string) (v: obj) (spec: MetricSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Metric( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Metric(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -396,7 +396,7 @@ let private updateMetric (field: string) (v: obj) (spec: MetricSpec) : UpdateRes
 let private updateHeading (field: string) (v: obj) (spec: HeadingSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Heading( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Heading(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -419,14 +419,14 @@ let private updateMarkdown (field: string) (v: obj) (spec: MarkdownSpec) : Updat
     match field with
     | "Text" ->
         match coerceField JsonDecode.Coerce.tryTextSource v with
-        | Ok x -> Updated(NodeKind.Markdown( { spec with Text = x }))
+        | Ok x -> Updated(NodeKind.Markdown({ spec with Text = x }))
         | Error msg -> TypeMismatch msg
     | _ -> UnknownField
 
 let private updateBadge (field: string) (v: obj) (spec: BadgeSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Badge( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Badge(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -443,7 +443,7 @@ let private updateBadge (field: string) (v: obj) (spec: BadgeSpec) : UpdateResul
 let private updateLink (field: string) (v: obj) (spec: LinkSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Link( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Link(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -473,14 +473,14 @@ let private updateSkeleton (field: string) (v: obj) (spec: SkeletonSpec) : Updat
     match field with
     | "Rows" ->
         match coerceField JsonDecode.Coerce.tryInt v with
-        | Ok x -> Updated(NodeKind.Skeleton( { spec with Rows = x }))
+        | Ok x -> Updated(NodeKind.Skeleton({ spec with Rows = x }))
         | Error msg -> TypeMismatch msg
     | _ -> UnknownField
 
 let private updateCallout (field: string) (v: obj) (spec: CalloutSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Callout( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Callout(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -509,7 +509,7 @@ let private updateCallout (field: string) (v: obj) (spec: CalloutSpec) : UpdateR
 let private updateProgress (field: string) (v: obj) (spec: ProgressSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Progress( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Progress(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -541,8 +541,7 @@ let private updateProgress (field: string) (v: obj) (spec: ProgressSpec) : Updat
 // replaying `UpdateProp` against an upgraded `Box` node keep working. A field
 // that does not match the box's current layout mode is `UnknownField`.
 let private updateBox (field: string) (v: obj) (spec: BoxSpec<'Msg>) : UpdateResult<'Msg> =
-    let updated (s: BoxSpec<'Msg>) =
-        Updated(NodeKind.Box( s))
+    let updated (s: BoxSpec<'Msg>) = Updated(NodeKind.Box(s))
 
     match field, spec.Layout with
     | "Orientation", BoxLayout.Flex f ->
@@ -592,7 +591,7 @@ let private updateSplitPanel (field: string) (v: obj) (spec: SplitPanelSpec<'Msg
     match field with
     | "Weight" ->
         match coerceField JsonDecode.Coerce.tryFloat v with
-        | Ok x -> Updated(NodeKind.SplitPanel( { spec with Weight = x }))
+        | Ok x -> Updated(NodeKind.SplitPanel({ spec with Weight = x }))
         | Error msg -> TypeMismatch msg
     | "Children" -> NotSupportedYet
     | _ -> UnknownField
@@ -601,7 +600,7 @@ let private updateTabs (field: string) (v: obj) (spec: TabsSpec<'Msg>) : UpdateR
     match field with
     | "Orientation" ->
         match coerceField JsonDecode.Coerce.tryOrientation v with
-        | Ok x -> Updated(NodeKind.Tabs( { spec with Orientation = x }))
+        | Ok x -> Updated(NodeKind.Tabs({ spec with Orientation = x }))
         | Error msg -> TypeMismatch msg
     | "Children" -> NotSupportedYet
     | _ -> UnknownField
@@ -610,7 +609,7 @@ let private updateStepper (field: string) (v: obj) (spec: StepperSpec<'Msg>) : U
     match field with
     | "ActiveStep" ->
         match coerceField JsonDecode.Coerce.tryBindingInt v with
-        | Ok x -> Updated(NodeKind.Stepper( { spec with ActiveStep = x }))
+        | Ok x -> Updated(NodeKind.Stepper({ spec with ActiveStep = x }))
         | Error msg -> TypeMismatch msg
     | "Children" -> NotSupportedYet
     | _ -> UnknownField
@@ -622,7 +621,7 @@ let private updateSummaryList (field: string) (v: obj) (spec: SummaryListSpec<'M
     match field with
     | "Heading" ->
         match coerceField JsonDecode.Coerce.tryTextSourceOption v with
-        | Ok x -> Updated(NodeKind.SummaryList( { spec with Heading = x }))
+        | Ok x -> Updated(NodeKind.SummaryList({ spec with Heading = x }))
         | Error msg -> TypeMismatch msg
     | "Children" -> NotSupportedYet
     | _ -> UnknownField
@@ -634,15 +633,15 @@ let private updateDisclosure (field: string) (v: obj) (spec: DisclosureSpec<'Msg
     match field with
     | "Heading" ->
         match coerceField JsonDecode.Coerce.tryTextSource v with
-        | Ok x -> Updated(NodeKind.Disclosure( { spec with Heading = x }))
+        | Ok x -> Updated(NodeKind.Disclosure({ spec with Heading = x }))
         | Error msg -> TypeMismatch msg
     | "Open" ->
         match coerceField JsonDecode.Coerce.tryBindingBool v with
-        | Ok x -> Updated(NodeKind.Disclosure( { spec with Open = x }))
+        | Ok x -> Updated(NodeKind.Disclosure({ spec with Open = x }))
         | Error msg -> TypeMismatch msg
     | "DefaultOpen" ->
         match coerceField JsonDecode.Coerce.tryBool v with
-        | Ok x -> Updated(NodeKind.Disclosure( { spec with DefaultOpen = x }))
+        | Ok x -> Updated(NodeKind.Disclosure({ spec with DefaultOpen = x }))
         | Error msg -> TypeMismatch msg
     | "Children" -> NotSupportedYet
     | _ -> UnknownField
@@ -650,7 +649,7 @@ let private updateDisclosure (field: string) (v: obj) (spec: DisclosureSpec<'Msg
 let private updateLabelValueRow (field: string) (v: obj) (spec: LabelValueRowSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.LabelValueRow( newSpec))
+        | Ok newSpec -> Updated(NodeKind.LabelValueRow(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -679,7 +678,7 @@ let private updateLabelValueRow (field: string) (v: obj) (spec: LabelValueRowSpe
 let private updateFact (field: string) (v: obj) (spec: FactSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Fact( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Fact(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -764,7 +763,7 @@ let private updateFragmentRef (field: string) (v: obj) (spec: FragmentRefSpec<'M
 let private updateButton (field: string) (v: obj) (spec: ButtonSpec<'Msg>) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Button( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Button(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -791,7 +790,7 @@ let private updateButton (field: string) (v: obj) (spec: ButtonSpec<'Msg>) : Upd
 let private updateSelect (field: string) (v: obj) (spec: SelectSpec<'Msg>) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Select( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Select(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -812,7 +811,7 @@ let private updateSelect (field: string) (v: obj) (spec: SelectSpec<'Msg>) : Upd
 let private updateFileUpload (field: string) (v: obj) (spec: FileUploadSpec<'Msg>) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.FileUpload( newSpec))
+        | Ok newSpec -> Updated(NodeKind.FileUpload(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -835,7 +834,7 @@ let private updateFileUpload (field: string) (v: obj) (spec: FileUploadSpec<'Msg
 let private updateForm (field: string) (v: obj) (spec: FormSpec<'Msg>) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Form( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Form(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -870,7 +869,7 @@ let private updateForm (field: string) (v: obj) (spec: FormSpec<'Msg>) : UpdateR
 let private updateImage (field: string) (v: obj) (spec: ImageSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Image( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Image(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -890,7 +889,7 @@ let private updateImage (field: string) (v: obj) (spec: ImageSpec) : UpdateResul
 let private updateToast (field: string) (v: obj) (spec: ToastSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Toast( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Toast(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -912,7 +911,7 @@ let private updateToast (field: string) (v: obj) (spec: ToastSpec) : UpdateResul
 let private updateMath (field: string) (v: obj) (spec: MathSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Math( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Math(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -929,7 +928,7 @@ let private updateMath (field: string) (v: obj) (spec: MathSpec) : UpdateResult<
 let private updateCodeBlock (field: string) (v: obj) (spec: CodeBlockSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.CodeBlock( newSpec))
+        | Ok newSpec -> Updated(NodeKind.CodeBlock(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -958,7 +957,7 @@ let private updateCodeBlock (field: string) (v: obj) (spec: CodeBlockSpec) : Upd
 let private updateList (field: string) (v: obj) (spec: ListSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.List( newSpec))
+        | Ok newSpec -> Updated(NodeKind.List(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -975,7 +974,7 @@ let private updateList (field: string) (v: obj) (spec: ListSpec) : UpdateResult<
 let private updateModal (field: string) (v: obj) (spec: ModalSpec<'Msg>) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Modal( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Modal(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -998,7 +997,7 @@ let private updateModal (field: string) (v: obj) (spec: ModalSpec<'Msg>) : Updat
 let private updateScrollArea (field: string) (v: obj) (spec: ScrollAreaSpec<'Msg>) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.ScrollArea( newSpec))
+        | Ok newSpec -> Updated(NodeKind.ScrollArea(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -1020,7 +1019,7 @@ let private updateScrollArea (field: string) (v: obj) (spec: ScrollAreaSpec<'Msg
 let private updateChartTop (field: string) (v: obj) (spec: ChartSpec<'Msg>) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Chart( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Chart(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -1051,7 +1050,7 @@ let private updateChartTop (field: string) (v: obj) (spec: ChartSpec<'Msg>) : Up
 let private updateGridTop (field: string) (v: obj) (spec: GridSpec<'Msg>) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.DataGrid( newSpec))
+        | Ok newSpec -> Updated(NodeKind.DataGrid(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -1075,7 +1074,7 @@ let private updateGridTop (field: string) (v: obj) (spec: GridSpec<'Msg>) : Upda
 let private updateMapTop (field: string) (v: obj) (spec: MapSpec<'Msg>) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
-        | Ok newSpec -> Updated(NodeKind.Map( newSpec))
+        | Ok newSpec -> Updated(NodeKind.Map(newSpec))
         | Error msg -> TypeMismatch msg
 
     match field with
@@ -1315,8 +1314,8 @@ let private updateNestedGrid (segs: PathSeg list) (v: obj) (spec: GridSpec<'Msg>
 
         let rebuild c =
             NodeKind.DataGrid(
-                    { spec with
-                        Columns = replaceAt i c spec.Columns }
+                { spec with
+                    Columns = replaceAt i c spec.Columns }
             )
 
         match leaf with
@@ -1337,8 +1336,7 @@ let private updateNestedGrid (segs: PathSeg list) (v: obj) (spec: GridSpec<'Msg>
         | "Kind" -> NestedNotSupported
         | _ -> NestedFieldNotFound(leaf, [ "Label"; "Format"; "Width" ])
     | { Field = "Columns"; Index = Some _ } :: _ -> NestedNotSupported
-    | { Field = f; Index = _ } :: _ ->
-        NestedFieldNotFound(f, availableFields (NodeKind.DataGrid( spec)))
+    | { Field = f; Index = _ } :: _ -> NestedFieldNotFound(f, availableFields (NodeKind.DataGrid(spec)))
     | [] -> NestedNotSupported
 
 let private updateNestedChart (segs: PathSeg list) (v: obj) (spec: ChartSpec<'Msg>) : NestedUpdate<'Msg> =
@@ -1352,14 +1350,13 @@ let private updateNestedChart (segs: PathSeg list) (v: obj) (spec: ChartSpec<'Ms
         | Ok x ->
             NestedUpdated(
                 NodeKind.Chart(
-                        { spec with
-                            YFields = replaceAt i x spec.YFields }
+                    { spec with
+                        YFields = replaceAt i x spec.YFields }
                 )
             )
         | Error msg -> NestedTypeMismatch msg
     | { Field = "YFields"; Index = Some _ } :: _ -> NestedNotSupported
-    | { Field = f; Index = _ } :: _ ->
-        NestedFieldNotFound(f, availableFields (NodeKind.Chart( spec)))
+    | { Field = f; Index = _ } :: _ -> NestedFieldNotFound(f, availableFields (NodeKind.Chart(spec)))
     | [] -> NestedNotSupported
 
 let private updateNestedTabs (segs: PathSeg list) (v: obj) (spec: TabsSpec<'Msg>) : NestedUpdate<'Msg> =
@@ -1376,8 +1373,8 @@ let private updateNestedTabs (segs: PathSeg list) (v: obj) (spec: TabsSpec<'Msg>
 
         let rebuild h =
             NodeKind.Tabs(
-                    { spec with
-                        TabHeaders = Some(replaceAt i h headers) }
+                { spec with
+                    TabHeaders = Some(replaceAt i h headers) }
             )
 
         match leaf with
@@ -1397,7 +1394,7 @@ let private updateNestedTabs (segs: PathSeg list) (v: obj) (spec: TabsSpec<'Msg>
             | Error msg -> NestedTypeMismatch msg
         | _ -> NestedFieldNotFound(leaf, [ "Label"; "Icon"; "Disabled" ])
     | { Field = "TabHeaders"; Index = Some _ } :: _ -> NestedNotSupported
-    | { Field = f; Index = _ } :: _ -> NestedFieldNotFound(f, availableFields (NodeKind.Tabs( spec)))
+    | { Field = f; Index = _ } :: _ -> NestedFieldNotFound(f, availableFields (NodeKind.Tabs(spec)))
     | [] -> NestedNotSupported
 
 let private updateNestedForm (segs: PathSeg list) (v: obj) (spec: FormSpec<'Msg>) : NestedUpdate<'Msg> =
@@ -1410,8 +1407,8 @@ let private updateNestedForm (segs: PathSeg list) (v: obj) (spec: FormSpec<'Msg>
 
         let rebuild f =
             NodeKind.Form(
-                    { spec with
-                        Fields = replaceAt i f spec.Fields }
+                { spec with
+                    Fields = replaceAt i f spec.Fields }
             )
 
         match leaf with
@@ -1433,15 +1430,15 @@ let private updateNestedForm (segs: PathSeg list) (v: obj) (spec: FormSpec<'Msg>
         | "Kind" -> NestedNotSupported
         | _ -> NestedFieldNotFound(leaf, [ "Label"; "Required"; "Help" ])
     | { Field = "Fields"; Index = Some _ } :: _ -> NestedNotSupported
-    | { Field = f; Index = _ } :: _ -> NestedFieldNotFound(f, availableFields (NodeKind.Form( spec)))
+    | { Field = f; Index = _ } :: _ -> NestedFieldNotFound(f, availableFields (NodeKind.Form(spec)))
     | [] -> NestedNotSupported
 
 let private dispatchNestedUpdate (segs: PathSeg list) (v: obj) (kind: NodeKind<'Msg>) : NestedUpdate<'Msg> =
     match kind with
-    | NodeKind.DataGrid( spec) -> updateNestedGrid segs v spec
-    | NodeKind.Chart( spec) -> updateNestedChart segs v spec
-    | NodeKind.Tabs( spec) -> updateNestedTabs segs v spec
-    | NodeKind.Form( spec) -> updateNestedForm segs v spec
+    | NodeKind.DataGrid(spec) -> updateNestedGrid segs v spec
+    | NodeKind.Chart(spec) -> updateNestedChart segs v spec
+    | NodeKind.Tabs(spec) -> updateNestedTabs segs v spec
+    | NodeKind.Form(spec) -> updateNestedForm segs v spec
     | _ -> NestedNotSupported
 
 // ─── ReplaceBinding dispatch — per spec-record Binding-typed slots ─────────
@@ -1456,18 +1453,18 @@ let private replaceBindingMetric
         | "Value" ->
             Ok(
                 NodeKind.Metric(
-                        { spec with
-                            Value = castBinding<float> b }
+                    { spec with
+                        Value = castBinding<float> b }
                 )
             )
         | "Trend" ->
             Ok(
                 NodeKind.Metric(
-                        { spec with
-                            Trend = Some(castBinding<float> b) }
+                    { spec with
+                        Trend = Some(castBinding<float> b) }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.Metric( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.Metric(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1487,11 +1484,11 @@ let private replaceBindingSparkline
         | "Source" ->
             Ok(
                 NodeKind.Sparkline(
-                        { spec with
-                            Source = castBinding<float seq> b }
+                    { spec with
+                        Source = castBinding<float seq> b }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.Sparkline( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.Sparkline(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1511,11 +1508,11 @@ let private replaceBindingLabelValueRow
         | "Value" ->
             Ok(
                 NodeKind.LabelValueRow(
-                        { spec with
-                            Value = castBinding<float> b }
+                    { spec with
+                        Value = castBinding<float> b }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.LabelValueRow( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.LabelValueRow(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1535,11 +1532,11 @@ let private replaceBindingProgress
         | "Fraction" ->
             Ok(
                 NodeKind.Progress(
-                        { spec with
-                            Fraction = castBinding<float> b }
+                    { spec with
+                        Fraction = castBinding<float> b }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.Progress( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.Progress(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1559,11 +1556,11 @@ let private replaceBindingStepper
         | "ActiveStep" ->
             Ok(
                 NodeKind.Stepper(
-                        { spec with
-                            ActiveStep = castBinding<int> b }
+                    { spec with
+                        ActiveStep = castBinding<int> b }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.Stepper( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.Stepper(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1583,11 +1580,11 @@ let private replaceBindingGrid
         | "Source" ->
             Ok(
                 NodeKind.DataGrid(
-                        { spec with
-                            Source = castBinding<obj seq> b }
+                    { spec with
+                        Source = castBinding<obj seq> b }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.DataGrid( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.DataGrid(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1607,11 +1604,11 @@ let private replaceBindingChart
         | "Source" ->
             Ok(
                 NodeKind.Chart(
-                        { spec with
-                            Source = castBinding<obj seq> b }
+                    { spec with
+                        Source = castBinding<obj seq> b }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.Chart( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.Chart(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1631,11 +1628,11 @@ let private replaceBindingMap
         | "Source" ->
             Ok(
                 NodeKind.Map(
-                        { spec with
-                            Source = castBinding<MapMarker seq> b }
+                    { spec with
+                        Source = castBinding<MapMarker seq> b }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.Map( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.Map(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1657,11 +1654,11 @@ let private replaceBindingButton
         | "Disabled" ->
             Ok(
                 NodeKind.Button(
-                        { spec with
-                            Disabled = Some(castBinding<bool> b) }
+                    { spec with
+                        Disabled = Some(castBinding<bool> b) }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.Button( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.Button(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1681,15 +1678,15 @@ let private replaceBindingSelect
         | "Source" ->
             Ok(
                 NodeKind.Select(
-                        { spec with
-                            Source = castBinding<SelectOption list> b }
+                    { spec with
+                        Source = castBinding<SelectOption list> b }
                 )
             )
         | "Value" ->
             Ok(
                 NodeKind.Select(
-                        { spec with
-                            Value = castBinding<string option> b }
+                    { spec with
+                        Value = castBinding<string option> b }
                 )
             )
         // Phase 130: optional bound disabled-state; replacing it installs
@@ -1697,11 +1694,11 @@ let private replaceBindingSelect
         | "Disabled" ->
             Ok(
                 NodeKind.Select(
-                        { spec with
-                            Disabled = Some(castBinding<bool> b) }
+                    { spec with
+                        Disabled = Some(castBinding<bool> b) }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.Select( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.Select(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1723,11 +1720,11 @@ let private replaceBindingForm
         | "Disabled" ->
             Ok(
                 NodeKind.Form(
-                        { spec with
-                            Disabled = Some(castBinding<bool> b) }
+                    { spec with
+                        Disabled = Some(castBinding<bool> b) }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.Form( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.Form(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1749,11 +1746,11 @@ let private replaceBindingFileUpload
         | "Disabled" ->
             Ok(
                 NodeKind.FileUpload(
-                        { spec with
-                            Disabled = Some(castBinding<bool> b) }
+                    { spec with
+                        Disabled = Some(castBinding<bool> b) }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.FileUpload( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.FileUpload(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1773,8 +1770,8 @@ let private replaceBindingTabs
         | "ActiveIndex" ->
             Ok(
                 NodeKind.Tabs(
-                        { spec with
-                            ActiveIndex = castBinding<int> b }
+                    { spec with
+                        ActiveIndex = castBinding<int> b }
                 )
             )
         // ActiveTag is an optional typed-tag overlay binding; replacing it
@@ -1782,11 +1779,11 @@ let private replaceBindingTabs
         | "ActiveTag" ->
             Ok(
                 NodeKind.Tabs(
-                        { spec with
-                            ActiveTag = Some(castBinding<string> b) }
+                    { spec with
+                        ActiveTag = Some(castBinding<string> b) }
                 )
             )
-        | _ -> Error(slotNotFound (NodeKind.Tabs( spec)) (NodeId "_") slot)
+        | _ -> Error(slotNotFound (NodeKind.Tabs(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1806,8 +1803,8 @@ let private replaceBindingDisclosure
         // `Open` is dual-surface (also an UpdateProp field via
         // `updateDisclosure`); ReplaceBinding is the semantically-correct
         // path for swapping the controlled-open binding.
-        | "Open" -> Ok(NodeKind.Disclosure( { spec with Open = castBinding<bool> b }))
-        | _ -> Error(slotNotFound (NodeKind.Disclosure( spec)) (NodeId "_") slot)
+        | "Open" -> Ok(NodeKind.Disclosure({ spec with Open = castBinding<bool> b }))
+        | _ -> Error(slotNotFound (NodeKind.Disclosure(spec)) (NodeId "_") slot)
     with ex when isCastMismatch ex ->
         Error(
             kindMismatch
@@ -1823,20 +1820,20 @@ let private dispatchReplaceBinding
     (kind: NodeKind<'Msg>)
     : Result<NodeKind<'Msg>, ApplyError> =
     match kind with
-    | NodeKind.Metric( spec) -> replaceBindingMetric slot b spec
-    | NodeKind.Sparkline( spec) -> replaceBindingSparkline slot b spec
-    | NodeKind.Progress( spec) -> replaceBindingProgress slot b spec
-    | NodeKind.LabelValueRow( spec) -> replaceBindingLabelValueRow slot b spec
-    | NodeKind.Stepper( spec) -> replaceBindingStepper slot b spec
-    | NodeKind.Tabs( spec) -> replaceBindingTabs slot b spec
-    | NodeKind.Disclosure( spec) -> replaceBindingDisclosure slot b spec
-    | NodeKind.Button( spec) -> replaceBindingButton slot b spec
-    | NodeKind.Select( spec) -> replaceBindingSelect slot b spec
-    | NodeKind.Form( spec) -> replaceBindingForm slot b spec
-    | NodeKind.FileUpload( spec) -> replaceBindingFileUpload slot b spec
-    | NodeKind.DataGrid( spec) -> replaceBindingGrid slot b spec
-    | NodeKind.Chart( spec) -> replaceBindingChart slot b spec
-    | NodeKind.Map( spec) -> replaceBindingMap slot b spec
+    | NodeKind.Metric(spec) -> replaceBindingMetric slot b spec
+    | NodeKind.Sparkline(spec) -> replaceBindingSparkline slot b spec
+    | NodeKind.Progress(spec) -> replaceBindingProgress slot b spec
+    | NodeKind.LabelValueRow(spec) -> replaceBindingLabelValueRow slot b spec
+    | NodeKind.Stepper(spec) -> replaceBindingStepper slot b spec
+    | NodeKind.Tabs(spec) -> replaceBindingTabs slot b spec
+    | NodeKind.Disclosure(spec) -> replaceBindingDisclosure slot b spec
+    | NodeKind.Button(spec) -> replaceBindingButton slot b spec
+    | NodeKind.Select(spec) -> replaceBindingSelect slot b spec
+    | NodeKind.Form(spec) -> replaceBindingForm slot b spec
+    | NodeKind.FileUpload(spec) -> replaceBindingFileUpload slot b spec
+    | NodeKind.DataGrid(spec) -> replaceBindingGrid slot b spec
+    | NodeKind.Chart(spec) -> replaceBindingChart slot b spec
+    | NodeKind.Map(spec) -> replaceBindingMap slot b spec
     | _ -> Error(slotNotFound kind (NodeId "_") slot)
 
 // ─── Core.Ops delegation (Phase 379) ───────────────────────────────────────
