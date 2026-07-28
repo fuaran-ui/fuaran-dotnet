@@ -167,8 +167,7 @@ let private fuaranChipStrip () : Node<unit> =
                 [ for label in [ "Search"; "Display"; "TV"; "OOH"; "Radio" ] ->
                       { Id = NodeId("chip-" + label)
                         Kind =
-                          NodeKind.Display(
-                              DisplayKind.Badge
+                          NodeKind.Badge(
                                   { Label = TextSource.Literal label
                                     Variant = BadgeVariant.Neutral }
                           )

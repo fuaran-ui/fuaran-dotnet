@@ -77,17 +77,22 @@ let private idw: Fuaran.Core.IdWitness<NodeId> =
 /// A coarse, top-level kind tag — stable under `ReplaceChildren` (a Stack stays a Layout), which
 /// is all the conformance envelopes / addressing need.
 let private kindTag (k: NodeKind<obj>) : string =
+    // Phase 692 — the category is derived now, not a wrapper case; the six
+    // structural kinds keep their case names, exactly as before.
     match k with
-    | NodeKind.Layout _ -> "Layout"
-    | NodeKind.Display _ -> "Display"
-    | NodeKind.Input _ -> "Input"
-    | NodeKind.Visualisation _ -> "Visualisation"
     | NodeKind.Custom _ -> "Custom"
     | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
     | NodeKind.Switch _ -> "Switch"
     | NodeKind.FragmentDecl _ -> "FragmentDecl"
     | NodeKind.FragmentRef _ -> "FragmentRef"
     | NodeKind.Mount _ -> "Mount"
+    | k ->
+        match Kind.category k with
+        | NodeCategory.Layout -> "Layout"
+        | NodeCategory.Display -> "Display"
+        | NodeCategory.Input -> "Input"
+        | NodeCategory.Visualisation -> "Visualisation"
+        | NodeCategory.Structural -> "Structural"
 
 let private nodew: Fuaran.Core.NodeWitness<EqNode, NodeId> =
     { Id = fun e -> e.Node.Id

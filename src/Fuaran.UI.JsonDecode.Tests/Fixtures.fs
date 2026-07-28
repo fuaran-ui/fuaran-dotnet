@@ -1958,7 +1958,7 @@ let queryDependsOn: Node<obj> =
 let table: Node<obj> =
     node
         "table-1"
-        (NodeKind.Visualisation(
+        (
             // Phase 393 — the static read-only table is now the `StaticRows` mode of `DataGrid`.
             NodeKind.DataGrid
                 { Source = Binding.Static Seq.empty
@@ -1973,7 +1973,7 @@ let table: Node<obj> =
                         [ [ TextSource.Literal "MVU"; TextSource.Literal "Model-View-Update" ]
                           [ TextSource.Literal "DSL"; TextSource.Literal "Domain-specific language" ] ]
                     ) }
-        ))
+        )
         None
 
 let mapVis: Node<obj> =

@@ -117,8 +117,7 @@ let private demoBadge (tone, weight, emphasis) : Node<unit> =
 
     { Id = NodeId(idFor "badge" tone weight emphasis)
       Kind =
-        NodeKind.Display(
-            DisplayKind.Badge
+        NodeKind.Badge(
                 { Label = TextSource.Literal(toneLabel tone)
                   Variant = variant }
         )
@@ -176,7 +175,7 @@ let private demoSparkline (tone, weight, emphasis) : Node<unit> =
 
     { Id = NodeId id
       Kind =
-        NodeKind.Display(DisplayKind.Sparkline { Source = Binding.Static [ 1.0; 4.0; 2.0; 6.0; 3.0; 8.0; 5.0; 9.0 ] })
+        NodeKind.Sparkline( { Source = Binding.Static [ 1.0; 4.0; 2.0; 6.0; 3.0; 8.0; 5.0; 9.0 ] })
       State = Defaults.stateBehaviour<unit>
       Style =
         { Tone = tone

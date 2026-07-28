@@ -96,26 +96,21 @@ type ValidatedEvent<'Msg> =
 /// or `Markdown` node accepts no events).
 let legitimateEvents (node: Node<'Msg>) : Set<string> =
     match node.Kind with
-    | NodeKind.Input inp ->
-        match inp with
-        | NodeKind.Button _ -> set [ "click" ]
-        | NodeKind.Select _ -> set [ "change" ]
-        // A Form node receives its submit, plus field-level change/input that
-        // bubble to the form (per-field addressing is the driver's form policy).
-        | NodeKind.Form _ -> set [ "submit"; "change"; "input" ]
-        // Field-level change/input bubble to the Filters node; a segmented
-        // filter's horizontal shape is per-option buttons, so its selection
-        // arrives as a bubbled click (mirrors the tab-header path).
-        | NodeKind.Filters _ -> set [ "change"; "input"; "click" ]
-        | NodeKind.FileUpload _ -> set [ "change"; "file-read" ]
-    | NodeKind.Layout lay ->
-        match lay with
-        // Tab headers + step headers + disclosure summaries arrive as
-        // bubbled clicks.
-        | NodeKind.Tabs _ -> set [ "click"; "change" ]
-        | NodeKind.Stepper _ -> set [ "click"; "change" ]
-        | NodeKind.Disclosure _ -> set [ "click"; "change"; "toggle" ]
-        | _ -> Set.empty
+    | NodeKind.Button _ -> set [ "click" ]
+    | NodeKind.Select _ -> set [ "change" ]
+    // A Form node receives its submit, plus field-level change/input that
+    // bubble to the form (per-field addressing is the driver's form policy).
+    | NodeKind.Form _ -> set [ "submit"; "change"; "input" ]
+    // Field-level change/input bubble to the Filters node; a segmented
+    // filter's horizontal shape is per-option buttons, so its selection
+    // arrives as a bubbled click (mirrors the tab-header path).
+    | NodeKind.Filters _ -> set [ "change"; "input"; "click" ]
+    | NodeKind.FileUpload _ -> set [ "change"; "file-read" ]
+    // Tab headers + step headers + disclosure summaries arrive as
+    // bubbled clicks.
+    | NodeKind.Tabs _ -> set [ "click"; "change" ]
+    | NodeKind.Stepper _ -> set [ "click"; "change" ]
+    | NodeKind.Disclosure _ -> set [ "click"; "change"; "toggle" ]
     | _ -> Set.empty
 
 // ─── payload accessors ──────────────────────────────────────────────────────

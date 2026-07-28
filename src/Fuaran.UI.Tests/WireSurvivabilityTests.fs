@@ -18,12 +18,10 @@ open Fuaran.UI.Types
 /// The DUs whose cases the survivability table must cover. Concrete `obj`
 /// instantiations of the generic kinds (reflection needs a closed type).
 let private classifiedDus: (string * System.Type) list =
+    // Phase 692 — `NodeKind` is flat; the four category DUs are gone, and
+    // their 33 cases enumerate under `NodeKind` itself.
     [ "NodeKind", typeof<NodeKind<obj>>
-      "LayoutKind", typeof<LayoutKind<obj>>
-      "DisplayKind", typeof<DisplayKind<obj>>
-      "InputKind", typeof<InputKind<obj>>
       "FormFieldKind", typeof<FormFieldKind<obj>>
-      "VisKind", typeof<VisKind<obj>>
       "CellKindErased", typeof<CellKindErased<obj>>
       "CellFormat", typeof<CellFormat>
       "Binding", typeof<Binding<obj>>

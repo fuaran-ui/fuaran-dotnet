@@ -74,11 +74,8 @@ let private writeBack =
 /// The whole-vocabulary classification. One row per author-facing DU case.
 let all: Classification list =
     [
-      // ── NodeKind ─────────────────────────────────────────────────────────
-      sv "NodeKind.Layout"
-      sv "NodeKind.Display"
-      sv "NodeKind.Input"
-      sv "NodeKind.Visualisation"
+      // ── NodeKind (structural cases; Phase 692 — the four category wrappers
+      // are gone, their kinds are the flat rows below) ─────────────────────
       sv "NodeKind.Custom" // structural: props (Map<string,JVal>) round-trip; the rendered body is a host registry reference
       sv "NodeKind.ErrorBoundary"
       sv "NodeKind.Switch"
@@ -86,7 +83,7 @@ let all: Classification list =
       sv "NodeKind.FragmentRef"
       pt "NodeKind.Mount" None // scopeId/inputs/channel/capabilities survive; OnBubble closure + guest interior are host composition (§4o)
 
-      // ── LayoutKind ───────────────────────────────────────────────────────
+      // ── Layout kinds ─────────────────────────────────────────────────────
       sv "NodeKind.Box"
       sv "NodeKind.SplitPanel"
       pt "NodeKind.Tabs" writeBack // OnSelect / OnSelectTag closures erase
@@ -96,7 +93,7 @@ let all: Classification list =
       sv "NodeKind.Modal" // OnDismiss is an Action (wire-survivable), not a closure
       sv "NodeKind.ScrollArea"
 
-      // ── DisplayKind (pure presentation — all survivable) ─────────────────
+      // ── Display kinds (pure presentation — all survivable) ───────────────
       sv "NodeKind.Heading"
       sv "NodeKind.Markdown"
       sv "NodeKind.Metric"
@@ -115,7 +112,7 @@ let all: Classification list =
       sv "NodeKind.Math"
       sv "NodeKind.Drawing" // closed/typed Shape DU; geometry static, colours are survivable Bindings (Phase 524)
 
-      // ── InputKind ────────────────────────────────────────────────────────
+      // ── Input kinds ──────────────────────────────────────────────────────
       sv "NodeKind.Form" // OnSubmit is an Action (wire-survivable)
       sv "NodeKind.Filters"
       sv "NodeKind.Button" // OnClick is an Action (wire-survivable)
@@ -136,7 +133,7 @@ let all: Classification list =
       // FormFieldKind rows above cover them; Range is the absorbed range chip.
       pt "FormFieldKind.Range" writeBack
 
-      // ── VisKind ──────────────────────────────────────────────────────────
+      // ── Visualisation kinds ──────────────────────────────────────────────
       pt
           "NodeKind.DataGrid"
           (Some

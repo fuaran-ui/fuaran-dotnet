@@ -458,7 +458,7 @@ let private genLabelValueRowSpec: Gen<LabelValueRowSpec> =
               Help = help }
     }
 
-let private genDisplayKind: Gen<DisplayKind<obj>> =
+let private genDisplayKind: Gen<NodeKind<obj>> =
     Gen.oneof
         [ Gen.map NodeKind.Heading genHeadingSpec
           Gen.map (fun t -> NodeKind.Markdown { Text = t }) genTextSource
@@ -671,7 +671,7 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
                      Option.None) }
     }
 
-let private genInputKind: Gen<InputKind<obj>> =
+let private genInputKind: Gen<NodeKind<obj>> =
     Gen.oneof
         [ Gen.map NodeKind.Form genFormSpec
           Gen.map NodeKind.Filters genFilters
@@ -773,7 +773,7 @@ let private genMapSpec: Gen<MapSpec<obj>> =
               OnMarkerClick = None }
     }
 
-let private genVisKind: Gen<VisKind<obj>> =
+let private genVisKind: Gen<NodeKind<obj>> =
     Gen.oneof
         [ Gen.map NodeKind.DataGrid genGridSpec
           Gen.map NodeKind.Chart genChartSpec
@@ -856,7 +856,7 @@ let private genChildren (sub: Gen<Node<obj>>) : Gen<Node<obj> list> =
         return! Gen.listOfLength n sub
     }
 
-let rec private genLayoutKind (size: int) : Gen<LayoutKind<obj>> =
+let rec private genLayoutKind (size: int) : Gen<NodeKind<obj>> =
     let sub = genNodeSized (size - 1)
 
     Gen.oneof
@@ -964,15 +964,15 @@ let rec private genLayoutKind (size: int) : Gen<LayoutKind<obj>> =
 
 and private genNodeKind (size: int) : Gen<NodeKind<obj>> =
     let leaves =
-        [ Gen.map NodeKind.Display genDisplayKind
-          Gen.map NodeKind.Input genInputKind
-          Gen.map NodeKind.Visualisation genVisKind
+        [ genDisplayKind
+          genInputKind
+          genVisKind
           genCustom
           genFragmentRef ]
 
     let branches =
         if size > 0 then
-            [ Gen.map NodeKind.Layout (genLayoutKind size)
+            [ genLayoutKind size
               gen {
                   let! child = genNodeSized (size - 1)
                   let! fallback = genNodeSized (size - 1)
@@ -1124,16 +1124,14 @@ let rec shrinkNode (n: Node<obj>) : Node<obj> seq =
     // converging on the minimal failing subtree.
     let childrenOf (k: NodeKind<obj>) : Node<obj> list =
         match k with
-        | NodeKind.Layout layout ->
-            match layout with
-            | NodeKind.Box s -> s.Children
-            | NodeKind.SplitPanel s -> s.Children
-            | NodeKind.Tabs s -> s.Children
-            | NodeKind.Stepper s -> s.Children
-            | NodeKind.SummaryList s -> s.Children
-            | NodeKind.Disclosure s -> s.Children
-            | NodeKind.Modal s -> s.Children
-            | NodeKind.ScrollArea s -> s.Children
+        | NodeKind.Box s -> s.Children
+        | NodeKind.SplitPanel s -> s.Children
+        | NodeKind.Tabs s -> s.Children
+        | NodeKind.Stepper s -> s.Children
+        | NodeKind.SummaryList s -> s.Children
+        | NodeKind.Disclosure s -> s.Children
+        | NodeKind.Modal s -> s.Children
+        | NodeKind.ScrollArea s -> s.Children
         | NodeKind.ErrorBoundary s -> [ s.Child; s.Fallback ]
         | NodeKind.FragmentDecl s -> [ s.Body ]
         | _ -> []

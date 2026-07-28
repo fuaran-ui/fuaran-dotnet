@@ -268,139 +268,7 @@ and private renderKind
     (kind: NodeKind<obj>)
     : ReactElement =
     match kind with
-    | NodeKind.Layout layout -> renderLayout ctx parentNodeId layout
-    | NodeKind.Display display -> renderDisplay ctx state display
-    | NodeKind.Input input -> renderInput ctx input
-    | NodeKind.Visualisation vis -> renderVis ctx vis
-    | NodeKind.ErrorBoundary spec ->
-        // Server has no throws to catch — render the protected child subtree
-        // directly. The Fallback is the client-runtime degradation path.
-        renderNode ctx spec.Child
-    | NodeKind.Switch spec ->
-        // State-bound conditional child (Phase 392). SSR resolves the initial
-        // state value from `ctx.Sources.State` (host pre-populated) and renders
-        // the matching case — else the Default. The client's first render reads
-        // the same initial state (the StateStore seeded identically), so server
-        // and client emit the same tree shape → hydration is mismatch-free
-        // (docs/SSR.md); after hydration a client `SetState` re-selects a case.
-        let currentValue = Map.tryFind spec.StateKey ctx.Sources.State
-
-        let matched =
-            match currentValue with
-            | Some v ->
-                let valueStr = if isNull v then "" else string v
-
-                spec.Cases
-                |> List.tryPick (fun (m, child) -> if m = valueStr then Some child else None)
-            | None -> None
-
-        match matched with
-        | Some child -> renderNode ctx child
-        | None -> renderNode ctx spec.Default
-    | NodeKind.FragmentDecl _ ->
-        // Zero-paint: the decl is a template, not visible output.
-        Html.none
-    | NodeKind.FragmentRef spec ->
-        match Map.tryFind spec.Name ctx.Fragments with
-        | Some body -> renderNode ctx body
-        | None ->
-            let (FragmentId raw) = spec.Name
-
-            Html.div
-                [ prop.className "fuaran-fragment-unresolved-placeholder"
-                  prop.custom ("data-fuaran-fragment-unresolved", raw)
-                  prop.text (sprintf "[fuaran:fragment unresolved '%s']" raw) ]
-    | NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds) ->
-        renderCustom ctx moduleId componentId props contentHash exposedNodeIds
-    | NodeKind.Mount spec ->
-        // Isolation/embedding boundary (Phase 265, §4o). SSR renders the same
-        // declared empty state + `data-fuaran-mount-scope` boundary attribute
-        // as the client renderer, so server and client emit byte-identical
-        // structure across the boundary (no hydration mismatch); the guest
-        // loader attaches client-side (Phase 266).
-        Html.div
-            [ prop.className "fuaran-mount-boundary"
-              prop.custom ("data-fuaran-mount-scope", spec.ScopeId)
-              prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-mount-placeholder"
-                          prop.text (sprintf "[fuaran:mount '%s' — guest loader not attached]" spec.ScopeId) ] ] ]
-
-// ─── Custom escape hatch (Phase 141 — server registry seam) ─────────────────
-
-and private renderCustom
-    (ctx: ServerRenderContext)
-    (moduleId: string)
-    (componentId: string)
-    (props: Map<string, Fuaran.Core.JVal>)
-    (contentHash: ContentHash option)
-    (exposedNodeIds: NodeId list)
-    : ReactElement =
-    // Unregistered placeholder — identical labelled shape to the client's
-    // unregistered Custom path (parity).
-    let placeholder () =
-        Html.div
-            [ prop.className (sprintf "fuaran-kind-custom-placeholder fuaran-custom-%s-%s" moduleId componentId)
-              prop.custom ("data-fuaran-custom-module", moduleId)
-              prop.custom ("data-fuaran-custom-component", componentId)
-              prop.text (sprintf "[fuaran:custom %s.%s]" moduleId componentId) ]
-
-    match Registry.tryRender moduleId componentId ctx.Customs with
-    | None -> placeholder ()
-    | Some renderer ->
-        // Bounded-escape hash check (Phase 70). When the node declares a
-        // ContentHash AND the registry recorded the renderer's hash, compare per
-        // strictness: StrictReplay / Enforced route a hard mismatch to a labelled
-        // error placeholder; AdvisoryWarning renders the body + a drift marker.
-        let mismatch =
-            match contentHash, Registry.tryHash moduleId componentId ctx.Customs with
-            | Some declared, Some registered when declared.Hash <> registered -> Some declared.Strictness
-            | _ -> None
-
-        match mismatch with
-        | Some HashStrictness.StrictReplay
-        | Some HashStrictness.Enforced ->
-            Html.div
-                [ prop.className (sprintf "fuaran-custom-hash-mismatch fuaran-custom-%s-%s" moduleId componentId)
-                  prop.custom ("data-fuaran-custom-hash-mismatch", "strict")
-                  prop.text (
-                      sprintf "[fuaran:custom %s.%s — content-hash mismatch (StrictReplay)]" moduleId componentId
-                  ) ]
-        | advisory ->
-            // The registered closure is a host trust boundary — it escapes its
-            // own output; the server does not sanitize it (same posture as the
-            // client RegisterCustomRenderer). See SANITIZATION.md.
-            let body = renderer props
-
-            // Emit the declared exposed-node-ids as an addressable data attribute
-            // so the layout observer / hydration can locate interior nodes. Only
-            // wraps when ids are declared (zero structural change otherwise).
-            let exposedAttr =
-                match exposedNodeIds with
-                | [] -> []
-                | ids ->
-                    let joined = ids |> List.map (fun (NodeId s) -> s) |> String.concat " "
-                    [ prop.custom ("data-fuaran-exposed-node-ids", joined) ]
-
-            let advisoryAttr =
-                match advisory with
-                | Some HashStrictness.AdvisoryWarning ->
-                    [ prop.custom ("data-fuaran-custom-hash-mismatch", "advisory") ]
-                | _ -> []
-
-            match exposedAttr @ advisoryAttr with
-            | [] -> body
-            | attrs ->
-                Html.div (
-                    [ prop.className (sprintf "fuaran-custom-wrapper fuaran-custom-%s-%s" moduleId componentId) ]
-                    @ attrs
-                    @ [ prop.children [ body ] ]
-                )
-
-// ─── Layouts ────────────────────────────────────────────────────────────────
-
-and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layout: LayoutKind<obj>) : ReactElement =
-    match layout with
+    // -- Layout --
     // Phase 390 — the unified container; role + layout drive the emitted
     // element + classes so SSR output stays byte-identical to the pre-merge
     // per-kind emission (and to the client renderer — SSR parity corpus).
@@ -723,15 +591,7 @@ and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layo
             @ (if styleProps.IsEmpty then [] else [ prop.style styleProps ])
             @ [ prop.children (spec.Children |> List.map (renderNode ctx)) ]
         )
-
-// ─── Displays ────────────────────────────────────────────────────────────────
-
-and private renderDisplay
-    (ctx: ServerRenderContext)
-    (state: StateBehaviour<obj>)
-    (display: DisplayKind<obj>)
-    : ReactElement =
-    match display with
+    // -- Display --
     | NodeKind.Heading spec ->
         let variantSuffix =
             match spec.Variant with
@@ -1062,11 +922,7 @@ and private renderDisplay
             Html.div (containerProps @ content)
         else
             Html.span (containerProps @ content)
-
-// ─── Inputs (rendered inert — no dispatch server-side) ──────────────────────
-
-and private renderInput (ctx: ServerRenderContext) (input: InputKind<obj>) : ReactElement =
-    match input with
+    // -- Input --
     | NodeKind.Button spec ->
         let variantClass = buttonVariantClass spec.Variant
 
@@ -1170,6 +1026,212 @@ and private renderInput (ctx: ServerRenderContext) (input: InputKind<obj>) : Rea
                         [ prop.className "fuaran-file-upload-label"
                           prop.text (renderText ctx spec.Label) ]
                     Html.input [ prop.className "fuaran-file-upload-control"; prop.custom ("type", "file") ] ] ]
+    // -- Vis --
+    | NodeKind.DataGrid spec ->
+        match spec.StaticRows with
+        | Some(headers, rows) ->
+            // Phase 393 — static read-only mode: SSR renders the full semantic <table> statically
+            // (byte-identical to the retired Table), NOT a hydration placeholder.
+            let headerCells =
+                [ for h in headers -> Html.th [ prop.className "fuaran-table-header"; prop.text (renderText ctx h) ] ]
+
+            let bodyRows =
+                [ for row in rows ->
+                      Html.tr
+                          [ prop.className "fuaran-table-row"
+                            prop.children
+                                [ for cell in row ->
+                                      Html.td [ prop.className "fuaran-table-cell"; prop.text (renderText ctx cell) ] ] ] ]
+
+            Html.table
+                [ prop.className "fuaran-table"
+                  prop.children [ Html.thead [ Html.tr headerCells ]; Html.tbody bodyRows ] ]
+        | None ->
+            // Client-library grid. SSR emits a deterministic placeholder carrying a
+            // row-count data attribute for later hydration (never a blank).
+            let rowCount =
+                BindingResolver.tryResolve ctx.Sources spec.Source
+                |> Option.map Seq.length
+                |> Option.defaultValue 0
+
+            Html.div
+                [ prop.className "fuaran-grid fuaran-grid-ssr-placeholder"
+                  prop.custom ("data-fuaran-ssr-placeholder", "DataGrid")
+                  prop.custom ("data-fuaran-row-count", string rowCount)
+                  prop.text (sprintf "[Grid: %d rows — hydrates client-side]" rowCount) ]
+    | NodeKind.Chart spec ->
+        match BindingResolver.resolve<obj seq> ctx.Sources spec.Source, spec.Kind with
+        | BindingResolver.Resolved rows, kind when Fuaran.UI.Charts.isLowered kind ->
+            // Phase 526 — the SSR renders the SAME first-party lowered Drawing
+            // SVG the client does (static geometry ⇒ no client-hydration
+            // placeholder for a lowered kind; SSR ↔ CSR byte-parity via the
+            // shared lowering + Drawing builder). The lowered-kind set is
+            // `Charts.isLowered` — one source of truth with the client branch.
+            Html.div
+                [ prop.dangerouslySetInnerHTML (
+                      DrawingSvg.render ctx.Sources (renderText ctx) (Fuaran.UI.Charts.lower spec rows)
+                  ) ]
+        | resolution, _ ->
+            // Unresolved data, or a not-yet-lowered kind (Heatmap): the
+            // client-hydration placeholder.
+            let rowCount =
+                match resolution with
+                | BindingResolver.Resolved seq -> Seq.length seq
+                | _ -> 0
+
+            Html.div
+                [ prop.className "fuaran-chart fuaran-chart-ssr-placeholder"
+                  prop.custom ("data-fuaran-ssr-placeholder", "Chart")
+                  prop.custom ("data-fuaran-row-count", string rowCount)
+                  prop.children
+                      [ match spec.Title with
+                        | Some title ->
+                            Html.div [ prop.className "fuaran-chart-title"; prop.text (renderText ctx title) ]
+                        | None -> Html.none
+                        Html.div
+                            [ prop.className "fuaran-chart-placeholder"
+                              prop.text (sprintf "[Chart: %d rows — hydrates client-side]" rowCount) ] ] ]
+    | NodeKind.Map spec ->
+        let markerCount =
+            BindingResolver.tryResolve ctx.Sources spec.Source
+            |> Option.map Seq.length
+            |> Option.defaultValue 0
+
+        Html.div
+            [ prop.className "fuaran-map fuaran-map-ssr-placeholder"
+              prop.custom ("data-fuaran-ssr-placeholder", "Map")
+              prop.custom ("data-fuaran-marker-count", string markerCount)
+              prop.text (sprintf "[Map: %d markers — hydrates client-side]" markerCount) ]
+    | NodeKind.ErrorBoundary spec ->
+        // Server has no throws to catch — render the protected child subtree
+        // directly. The Fallback is the client-runtime degradation path.
+        renderNode ctx spec.Child
+    | NodeKind.Switch spec ->
+        // State-bound conditional child (Phase 392). SSR resolves the initial
+        // state value from `ctx.Sources.State` (host pre-populated) and renders
+        // the matching case — else the Default. The client's first render reads
+        // the same initial state (the StateStore seeded identically), so server
+        // and client emit the same tree shape → hydration is mismatch-free
+        // (docs/SSR.md); after hydration a client `SetState` re-selects a case.
+        let currentValue = Map.tryFind spec.StateKey ctx.Sources.State
+
+        let matched =
+            match currentValue with
+            | Some v ->
+                let valueStr = if isNull v then "" else string v
+
+                spec.Cases
+                |> List.tryPick (fun (m, child) -> if m = valueStr then Some child else None)
+            | None -> None
+
+        match matched with
+        | Some child -> renderNode ctx child
+        | None -> renderNode ctx spec.Default
+    | NodeKind.FragmentDecl _ ->
+        // Zero-paint: the decl is a template, not visible output.
+        Html.none
+    | NodeKind.FragmentRef spec ->
+        match Map.tryFind spec.Name ctx.Fragments with
+        | Some body -> renderNode ctx body
+        | None ->
+            let (FragmentId raw) = spec.Name
+
+            Html.div
+                [ prop.className "fuaran-fragment-unresolved-placeholder"
+                  prop.custom ("data-fuaran-fragment-unresolved", raw)
+                  prop.text (sprintf "[fuaran:fragment unresolved '%s']" raw) ]
+    | NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds) ->
+        renderCustom ctx moduleId componentId props contentHash exposedNodeIds
+    | NodeKind.Mount spec ->
+        // Isolation/embedding boundary (Phase 265, §4o). SSR renders the same
+        // declared empty state + `data-fuaran-mount-scope` boundary attribute
+        // as the client renderer, so server and client emit byte-identical
+        // structure across the boundary (no hydration mismatch); the guest
+        // loader attaches client-side (Phase 266).
+        Html.div
+            [ prop.className "fuaran-mount-boundary"
+              prop.custom ("data-fuaran-mount-scope", spec.ScopeId)
+              prop.children
+                  [ Html.div
+                        [ prop.className "fuaran-mount-placeholder"
+                          prop.text (sprintf "[fuaran:mount '%s' — guest loader not attached]" spec.ScopeId) ] ] ]
+
+// ─── Custom escape hatch (Phase 141 — server registry seam) ─────────────────
+
+and private renderCustom
+    (ctx: ServerRenderContext)
+    (moduleId: string)
+    (componentId: string)
+    (props: Map<string, Fuaran.Core.JVal>)
+    (contentHash: ContentHash option)
+    (exposedNodeIds: NodeId list)
+    : ReactElement =
+    // Unregistered placeholder — identical labelled shape to the client's
+    // unregistered Custom path (parity).
+    let placeholder () =
+        Html.div
+            [ prop.className (sprintf "fuaran-kind-custom-placeholder fuaran-custom-%s-%s" moduleId componentId)
+              prop.custom ("data-fuaran-custom-module", moduleId)
+              prop.custom ("data-fuaran-custom-component", componentId)
+              prop.text (sprintf "[fuaran:custom %s.%s]" moduleId componentId) ]
+
+    match Registry.tryRender moduleId componentId ctx.Customs with
+    | None -> placeholder ()
+    | Some renderer ->
+        // Bounded-escape hash check (Phase 70). When the node declares a
+        // ContentHash AND the registry recorded the renderer's hash, compare per
+        // strictness: StrictReplay / Enforced route a hard mismatch to a labelled
+        // error placeholder; AdvisoryWarning renders the body + a drift marker.
+        let mismatch =
+            match contentHash, Registry.tryHash moduleId componentId ctx.Customs with
+            | Some declared, Some registered when declared.Hash <> registered -> Some declared.Strictness
+            | _ -> None
+
+        match mismatch with
+        | Some HashStrictness.StrictReplay
+        | Some HashStrictness.Enforced ->
+            Html.div
+                [ prop.className (sprintf "fuaran-custom-hash-mismatch fuaran-custom-%s-%s" moduleId componentId)
+                  prop.custom ("data-fuaran-custom-hash-mismatch", "strict")
+                  prop.text (
+                      sprintf "[fuaran:custom %s.%s — content-hash mismatch (StrictReplay)]" moduleId componentId
+                  ) ]
+        | advisory ->
+            // The registered closure is a host trust boundary — it escapes its
+            // own output; the server does not sanitize it (same posture as the
+            // client RegisterCustomRenderer). See SANITIZATION.md.
+            let body = renderer props
+
+            // Emit the declared exposed-node-ids as an addressable data attribute
+            // so the layout observer / hydration can locate interior nodes. Only
+            // wraps when ids are declared (zero structural change otherwise).
+            let exposedAttr =
+                match exposedNodeIds with
+                | [] -> []
+                | ids ->
+                    let joined = ids |> List.map (fun (NodeId s) -> s) |> String.concat " "
+                    [ prop.custom ("data-fuaran-exposed-node-ids", joined) ]
+
+            let advisoryAttr =
+                match advisory with
+                | Some HashStrictness.AdvisoryWarning ->
+                    [ prop.custom ("data-fuaran-custom-hash-mismatch", "advisory") ]
+                | _ -> []
+
+            match exposedAttr @ advisoryAttr with
+            | [] -> body
+            | attrs ->
+                Html.div (
+                    [ prop.className (sprintf "fuaran-custom-wrapper fuaran-custom-%s-%s" moduleId componentId) ]
+                    @ attrs
+                    @ [ prop.children [ body ] ]
+                )
+
+// ─── Layouts ────────────────────────────────────────────────────────────────
+
+// ─── Displays ────────────────────────────────────────────────────────────────
+
+// ─── Inputs (rendered inert — no dispatch server-side) ──────────────────────
 
 /// A form field rendered inert: the labelled control with the correct class
 /// vocabulary. Interactive binding (onChange) is a client-hydration concern.
@@ -1408,84 +1470,6 @@ and private renderSegmentedFilter
               ) ]
 
 // ─── Visualisations ──────────────────────────────────────────────────────────
-
-and private renderVis (ctx: ServerRenderContext) (vis: VisKind<obj>) : ReactElement =
-    match vis with
-    | NodeKind.DataGrid spec ->
-        match spec.StaticRows with
-        | Some(headers, rows) ->
-            // Phase 393 — static read-only mode: SSR renders the full semantic <table> statically
-            // (byte-identical to the retired Table), NOT a hydration placeholder.
-            let headerCells =
-                [ for h in headers -> Html.th [ prop.className "fuaran-table-header"; prop.text (renderText ctx h) ] ]
-
-            let bodyRows =
-                [ for row in rows ->
-                      Html.tr
-                          [ prop.className "fuaran-table-row"
-                            prop.children
-                                [ for cell in row ->
-                                      Html.td [ prop.className "fuaran-table-cell"; prop.text (renderText ctx cell) ] ] ] ]
-
-            Html.table
-                [ prop.className "fuaran-table"
-                  prop.children [ Html.thead [ Html.tr headerCells ]; Html.tbody bodyRows ] ]
-        | None ->
-            // Client-library grid. SSR emits a deterministic placeholder carrying a
-            // row-count data attribute for later hydration (never a blank).
-            let rowCount =
-                BindingResolver.tryResolve ctx.Sources spec.Source
-                |> Option.map Seq.length
-                |> Option.defaultValue 0
-
-            Html.div
-                [ prop.className "fuaran-grid fuaran-grid-ssr-placeholder"
-                  prop.custom ("data-fuaran-ssr-placeholder", "DataGrid")
-                  prop.custom ("data-fuaran-row-count", string rowCount)
-                  prop.text (sprintf "[Grid: %d rows — hydrates client-side]" rowCount) ]
-    | NodeKind.Chart spec ->
-        match BindingResolver.resolve<obj seq> ctx.Sources spec.Source, spec.Kind with
-        | BindingResolver.Resolved rows, kind when Fuaran.UI.Charts.isLowered kind ->
-            // Phase 526 — the SSR renders the SAME first-party lowered Drawing
-            // SVG the client does (static geometry ⇒ no client-hydration
-            // placeholder for a lowered kind; SSR ↔ CSR byte-parity via the
-            // shared lowering + Drawing builder). The lowered-kind set is
-            // `Charts.isLowered` — one source of truth with the client branch.
-            Html.div
-                [ prop.dangerouslySetInnerHTML (
-                      DrawingSvg.render ctx.Sources (renderText ctx) (Fuaran.UI.Charts.lower spec rows)
-                  ) ]
-        | resolution, _ ->
-            // Unresolved data, or a not-yet-lowered kind (Heatmap): the
-            // client-hydration placeholder.
-            let rowCount =
-                match resolution with
-                | BindingResolver.Resolved seq -> Seq.length seq
-                | _ -> 0
-
-            Html.div
-                [ prop.className "fuaran-chart fuaran-chart-ssr-placeholder"
-                  prop.custom ("data-fuaran-ssr-placeholder", "Chart")
-                  prop.custom ("data-fuaran-row-count", string rowCount)
-                  prop.children
-                      [ match spec.Title with
-                        | Some title ->
-                            Html.div [ prop.className "fuaran-chart-title"; prop.text (renderText ctx title) ]
-                        | None -> Html.none
-                        Html.div
-                            [ prop.className "fuaran-chart-placeholder"
-                              prop.text (sprintf "[Chart: %d rows — hydrates client-side]" rowCount) ] ] ]
-    | NodeKind.Map spec ->
-        let markerCount =
-            BindingResolver.tryResolve ctx.Sources spec.Source
-            |> Option.map Seq.length
-            |> Option.defaultValue 0
-
-        Html.div
-            [ prop.className "fuaran-map fuaran-map-ssr-placeholder"
-              prop.custom ("data-fuaran-ssr-placeholder", "Map")
-              prop.custom ("data-fuaran-marker-count", string markerCount)
-              prop.text (sprintf "[Map: %d markers — hydrates client-side]" markerCount) ]
 
 // ─── Public entry points ─────────────────────────────────────────────────────
 
