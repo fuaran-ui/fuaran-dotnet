@@ -60,7 +60,7 @@ let private decodeFixture (name: string) : Node<obj> =
 /// Find a node by id. The corpus fixtures under test are Box-rooted with
 /// Box-nested children, so the Box arm is the only recursion these walks need.
 let rec private tryFindNode (id: string) (node: Node<obj>) : Node<obj> option =
-    if node.Id = NodeId id then
+    if node.Id = id then
         Some node
     else
         let children =

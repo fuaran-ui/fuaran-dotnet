@@ -70,7 +70,7 @@ let rec mapAction (f: 'a -> 'b) (action: Action<'a>) : Action<'b> =
 let rec mapMsg (f: 'a -> 'b) (node: Node<'a>) : Node<'b> =
     { Id = node.Id
       Kind = mapKind f node.Kind
-      State = mapState f node.State
+      State = node.State |> Option.map (mapState f)
       Style = node.Style
       Accessibility = node.Accessibility
       Motion = node.Motion
@@ -102,19 +102,19 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
         // `OnSelect` is optional (Phase 426) — map through the Option, so a
         // `None` (declarative / write-back) shape stays `None`.
         NodeKind.Tabs
-            { Orientation = spec.Orientation
-              Children = mapChildren spec.Children
+            { Children = mapChildren spec.Children
               ActiveIndex = spec.ActiveIndex
               OnSelect = spec.OnSelect |> Option.map (fun g -> g >> mapAction f)
               TabHeaders = spec.TabHeaders
               TabTags = spec.TabTags
               ActiveTag = spec.ActiveTag
-              OnSelectTag = spec.OnSelectTag |> Option.map (fun g -> g >> mapAction f) }
+              OnSelectTag = spec.OnSelectTag |> Option.map (fun g -> g >> mapAction f)
+              Orientation = spec.Orientation }
     | NodeKind.Stepper spec ->
         NodeKind.Stepper
             { ActiveStep = spec.ActiveStep
               Children = mapChildren spec.Children
-              OnSelect = spec.OnSelect >> mapAction f }
+              OnSelect = spec.OnSelect |> Option.map (fun g -> g >> mapAction f) }
     | NodeKind.SummaryList spec ->
         NodeKind.SummaryList
             { Heading = spec.Heading
@@ -159,7 +159,7 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
     | NodeKind.Drawing spec -> NodeKind.Drawing spec
     // ── Input ──
     | NodeKind.Form spec -> NodeKind.Form(mapFormSpec f spec)
-    | NodeKind.Filters filters -> NodeKind.Filters(filters |> List.map (mapFilterSpec f))
+    | NodeKind.Filters spec -> NodeKind.Filters { Items = spec.Items |> List.map (mapFilterSpec f) }
     | NodeKind.Button spec -> NodeKind.Button(mapButtonSpec f spec)
     | NodeKind.FileUpload spec -> NodeKind.FileUpload(mapFileUploadSpec f spec)
     | NodeKind.Select spec -> NodeKind.Select(mapSelectSpec f spec)
@@ -167,8 +167,9 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
     | NodeKind.DataGrid spec -> NodeKind.DataGrid(mapGridSpec f spec)
     | NodeKind.Chart spec -> NodeKind.Chart(mapChartSpec f spec)
     | NodeKind.Map spec -> NodeKind.Map(mapMapSpec f spec)
-    | NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds) ->
-        NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds)
+    | NodeKind.Custom spec ->
+        // `CustomSpec` is non-generic since the swap — no `'Msg` to relabel.
+        NodeKind.Custom spec
     | NodeKind.ErrorBoundary spec ->
         NodeKind.ErrorBoundary
             { Child = mapMsg f spec.Child
@@ -176,7 +177,11 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
     | NodeKind.Switch spec ->
         NodeKind.Switch
             { StateKey = spec.StateKey
-              Cases = spec.Cases |> List.map (fun (m, child) -> m, mapMsg f child)
+              Cases =
+                spec.Cases
+                |> List.map (fun c ->
+                    { Match = c.Match
+                      Child = mapMsg f c.Child })
               Default = mapMsg f spec.Default }
     | NodeKind.FragmentDecl spec ->
         NodeKind.FragmentDecl
@@ -187,19 +192,22 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
     | NodeKind.FragmentRef spec ->
         NodeKind.FragmentRef
             { Name = spec.Name
-              Args = spec.Args |> Map.map (fun _ arg -> mapFragmentArg f arg) }
+              Args = spec.Args |> Option.map (Map.map (fun _ arg -> mapFragmentArg f arg)) }
     | NodeKind.Mount spec ->
         NodeKind.Mount
             { ScopeId = spec.ScopeId
-              Inputs = spec.Inputs |> Map.map (fun _ arg -> mapFragmentArg f arg)
+              Inputs = spec.Inputs |> Option.map (Map.map (fun _ arg -> mapFragmentArg f arg))
               Channel = spec.Channel
-              OnBubble = spec.OnBubble >> mapAction f
+              OnBubble = spec.OnBubble |> Option.map (fun g -> g >> mapAction f)
               Capabilities = spec.Capabilities }
 
 and mapFragmentArg (f: 'a -> 'b) (arg: FragmentArg<'a>) : FragmentArg<'b> =
     match arg with
-    | FragmentArg.Value v -> FragmentArg.Value v
-    | FragmentArg.Slot node -> FragmentArg.Slot(mapMsg f node)
+    | FragmentArg.Int v -> FragmentArg.Int v
+    | FragmentArg.Float v -> FragmentArg.Float v
+    | FragmentArg.Bool v -> FragmentArg.Bool v
+    | FragmentArg.Str v -> FragmentArg.Str v
+    | FragmentArg.SlotArg node -> FragmentArg.SlotArg(mapMsg f node)
 
 // ─── Layouts — every case carries `Children`; some carry Action handlers ────
 
@@ -297,11 +305,18 @@ and mapCellKindErased (f: 'a -> 'b) (kind: CellKindErased<'a>) : CellKindErased<
     | CellKindErased.Text -> CellKindErased.Text
     | CellKindErased.Numeric -> CellKindErased.Numeric
     | CellKindErased.Date -> CellKindErased.Date
-    | CellKindErased.Editable onEdit -> CellKindErased.Editable(onEdit >> mapAction f)
-    | CellKindErased.Checkbox(get, onToggle) -> CellKindErased.Checkbox(get, onToggle >> mapAction f)
-    | CellKindErased.Button(label, onClick) -> CellKindErased.Button(label, onClick >> mapAction f)
+    | CellKindErased.Editable onEdit -> CellKindErased.Editable(onEdit |> Option.map (fun g -> g >> mapAction f))
+    | CellKindErased.Checkbox(get, onToggle) ->
+        CellKindErased.Checkbox(get, onToggle |> Option.map (fun g -> g >> mapAction f))
+    | CellKindErased.Button(label, onClick) ->
+        CellKindErased.Button(label, onClick |> Option.map (fun g -> g >> mapAction f))
     | CellKindErased.ButtonGroup items ->
-        CellKindErased.ButtonGroup(items |> List.map (fun (label, onClick) -> label, onClick >> mapAction f))
+        CellKindErased.ButtonGroup(
+            items
+            |> List.map (fun item ->
+                { Label = item.Label
+                  OnClick = item.OnClick |> Option.map (fun g -> g >> mapAction f) })
+        )
     | CellKindErased.Link(href, label) -> CellKindErased.Link(href, label)
     | CellKindErased.Pill(label, tone) -> CellKindErased.Pill(label, tone)
     | CellKindErased.Progress(fraction, label) -> CellKindErased.Progress(fraction, label)

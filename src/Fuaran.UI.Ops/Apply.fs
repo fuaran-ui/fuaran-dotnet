@@ -545,41 +545,41 @@ let private updateBox (field: string) (v: obj) (spec: BoxSpec<'Msg>) : UpdateRes
     let updated (s: BoxSpec<'Msg>) = Updated(NodeKind.Box(s))
 
     match field, spec.Layout with
-    | "Orientation", BoxLayout.Flex f ->
+    | "Orientation", LayoutMode.Flex(_, wrap, gap) ->
         match coerceField JsonDecode.Coerce.tryOrientation v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = BoxLayout.Flex { f with Direction = x } }
+                    Layout = LayoutMode.Flex(x, wrap, gap) }
         | Error msg -> TypeMismatch msg
-    | "Wrap", BoxLayout.Flex f ->
+    | "Wrap", LayoutMode.Flex(direction, _, gap) ->
         match coerceField JsonDecode.Coerce.tryBool v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = BoxLayout.Flex { f with Wrap = x } }
+                    Layout = LayoutMode.Flex(direction, x, gap) }
         | Error msg -> TypeMismatch msg
-    | "Cols", BoxLayout.Grid g ->
+    | "Cols", LayoutMode.Grid(_, templateColumns, gap) ->
         match coerceField JsonDecode.Coerce.tryInt v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = BoxLayout.Grid { g with Cols = x } }
+                    Layout = LayoutMode.Grid(x, templateColumns, gap) }
         | Error msg -> TypeMismatch msg
-    | "TemplateColumns", BoxLayout.Grid g ->
+    | "TemplateColumns", LayoutMode.Grid(cols, _, gap) ->
         // Additive optional `string option` field. Accepts either a raw string
         // (sugar — wraps in `Some`) or an explicit `string option` payload.
         match coerceField JsonDecode.Coerce.tryStringOption v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = BoxLayout.Grid { g with TemplateColumns = x } }
+                    Layout = LayoutMode.Grid(cols, x, gap) }
         | Error _ ->
             match coerceField JsonDecode.Coerce.tryString v with
             | Ok x ->
                 updated
                     { spec with
-                        Layout = BoxLayout.Grid { g with TemplateColumns = Some x } }
+                        Layout = LayoutMode.Grid(cols, Some x, gap) }
             | Error msg -> TypeMismatch msg
     | "Heading", _ ->
         match coerceField JsonDecode.Coerce.tryTextSourceOption v with
@@ -718,7 +718,7 @@ let private updateFragmentDecl (field: string) (v: obj) (spec: FragmentDeclSpec<
     match field with
     | "Name" ->
         match coerceField JsonDecode.Coerce.tryString v with
-        | Ok name -> Updated(NodeKind.FragmentDecl { spec with Name = FragmentId name })
+        | Ok name -> Updated(NodeKind.FragmentDecl { spec with Name = name })
         | Error msg -> TypeMismatch msg
     | _ -> UnknownField
 
@@ -730,7 +730,7 @@ let private updateFragmentRef (field: string) (v: obj) (spec: FragmentRefSpec<'M
     match field with
     | "Name" ->
         match coerceField JsonDecode.Coerce.tryString v with
-        | Ok name -> Updated(NodeKind.FragmentRef { spec with Name = FragmentId name })
+        | Ok name -> Updated(NodeKind.FragmentRef { spec with Name = name })
         | Error msg -> TypeMismatch msg
     | _ -> UnknownField
 
@@ -1871,7 +1871,9 @@ let private coreIdw: Fuaran.Core.IdWitness<NodeId> =
 
 let private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
     let nodew: Fuaran.Core.NodeWitness<Node<'Msg>, NodeId> =
-        { Id = fun n -> n.Id
+        // `Node.Id` is a bare string since the swap; the op layer's addressing
+        // stays `NodeId`-typed, wrapped at this witness boundary.
+        { Id = fun n -> NodeId n.Id
           KindTag = fun n -> kindName n.Kind
           Children = fun n -> getChildren n.Kind |> Option.defaultValue []
           ReplaceChildren =
@@ -2070,12 +2072,30 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
                 | _ -> Error err
 
     | TreeOp.UpdateStyle(target, style) ->
-        match mapNode target (fun n -> { n with Style = style }) root with
+        // `Node.Style` is an option since the swap; `None` is the canonical
+        // default form (the encoder omits the key on `None`, where a
+        // `Some Defaults.style` would emit an empty `"style":{}`), so a
+        // default-valued payload normalises to `None` here.
+        let normalised =
+            if style = Fuaran.UI.Defaults.style then
+                None
+            else
+                Some style
+
+        match mapNode target (fun n -> { n with Style = normalised }) root with
         | Some updated -> Ok updated
         | None -> Error(nodeNotFound target)
 
     | TreeOp.UpdateState(target, state) ->
-        match mapNode target (fun n -> { n with State = state }) root with
+        // Same normalisation as UpdateStyle — an all-`None` StateBehaviour is
+        // the canonical `None` envelope slot.
+        let normalised =
+            if state.OnLoading.IsNone && state.OnEmpty.IsNone && state.OnError.IsNone then
+                None
+            else
+                Some state
+
+        match mapNode target (fun n -> { n with State = normalised }) root with
         | Some updated -> Ok updated
         | None -> Error(nodeNotFound target)
 

@@ -130,7 +130,7 @@ let private fragmentDecl (id: string) (name: string) (body: Node<Msg>) : Node<Ms
     Fuaran.fragmentDecl
         id
         { Defaults.fragmentDecl with
-            Name = FragmentId name
+            Name = name
             Body = body }
 
 // ─── Demonstration trees ──────────────────────────────────────────────────

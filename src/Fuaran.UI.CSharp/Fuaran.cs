@@ -3,7 +3,7 @@ using System.Linq;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
 using FsGen = Fuaran.UI.Generated;
-using FsNode = Fuaran.UI.Types.Node<object>;
+using FsNode = Fuaran.UI.Generated.Node<object>;
 
 namespace Fuaran.UI.CSharp;
 
@@ -38,25 +38,19 @@ public static partial class Fuaran
     // Accessibility=None (their smart-ctor default would be `none` anyway), so the
     // output is byte-identical to what a smart ctor would produce (and to the bare
     // corpus). Every other kind couples to its smart ctor.
-    internal static FuaranNode BuildBare(string id, FsTypes.NodeKind<object> kind) =>
+    // Generated Node ctor is Generated.fs declaration order (Id, Kind,
+    // Accessibility, ExtraAttributes, Motion, State, Style); `Id` is a bare
+    // string, and `State = None` / `Style = None` are the canonical
+    // empty-state / default-style shapes since the swap.
+    internal static FuaranNode BuildBare(string id, FsGen.NodeKind<object> kind) =>
         new(new FsNode(
-            FsTypes.NodeId.NewNodeId(id),
+            id,
             kind,
-            new FsTypes.StateBehaviour<object>(
-                Fs.None<FsNode>(),
-                Fs.None<FsNode>(),
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<global::Fuaran.UI.HostPrelude.ErrorPayload, FsNode>>()),
-            // Generated SemanticStyle declares (Emphasis, Role, Tone, Voice, Weight) —
-            // ctor is declaration order (Generated.fs), not the old hand order.
-            new FsGen.SemanticStyle(
-                FsGen.Emphasis.Normal,
-                FsGen.StyleRole.None,
-                FsGen.ToneVariant.Default,
-                FsGen.FontVoice.Default,
-                FsGen.StyleWeight.Standard),
             Fs.None<FsGen.Accessibility>(),
+            Fs.None<Microsoft.FSharp.Collections.FSharpMap<string, string>>(),
             Fs.None<FsGen.Motion>(),
-            Fs.None<Microsoft.FSharp.Collections.FSharpMap<string, string>>()));
+            Fs.None<FsGen.StateBehaviour<object>>(),
+            Fs.None<FsGen.SemanticStyle>()));
 
     // ─── Layout ─────────────────────────────────────────────────────────────
 
@@ -65,12 +59,14 @@ public static partial class Fuaran
     /// <see cref="Card"/> are Box-emitting conveniences over this.</summary>
     public static FuaranNode Box(BoxOptions options)
     {
-        FsTypes.BoxLayout layout = options.Layout switch
+        // LayoutMode cases are positional since the swap: Flex(direction, wrap, gap)
+        // / Grid(cols, templateColumns, gap) — the FlexLayout / GridTemplate
+        // payload records are retired.
+        FsGen.LayoutMode layout = options.Layout switch
         {
-            BoxLayoutMode.Grid =>
-                FsTypes.BoxLayout.NewGrid(new FsTypes.GridTemplate(options.Cols, Fs.None<string>(), Fs.None<int>())),
-            BoxLayoutMode.Auto => FsTypes.BoxLayout.Auto,
-            _ => FsTypes.BoxLayout.NewFlex(new FsTypes.FlexLayout(options.Orientation.ToFs(), options.Wrap, Fs.None<int>())),
+            BoxLayoutMode.Grid => FsGen.LayoutMode.NewGrid(options.Cols, Fs.None<string>(), Fs.None<int>()),
+            BoxLayoutMode.Auto => FsGen.LayoutMode.Auto,
+            _ => FsGen.LayoutMode.NewFlex(options.Orientation.ToFs(), options.Wrap, Fs.None<int>()),
         };
 
         FsGen.BoxRole role = options.Role switch
@@ -83,9 +79,11 @@ public static partial class Fuaran
 
         var heading = options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>();
 
+        // Generated BoxSpec ctor is Generated.fs declaration order (Children,
+        // Heading, Layout, Role).
         return new(FsFactory.box<object>(
             options.Id,
-            new FsTypes.BoxSpec<object>(layout, role, heading, Kids(options.Children))));
+            new FsGen.BoxSpec<object>(Kids(options.Children), heading, layout, role)));
     }
 
     /// <summary>A dashboard — the page's primary content region.</summary>

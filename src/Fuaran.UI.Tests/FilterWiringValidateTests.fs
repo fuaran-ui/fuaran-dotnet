@@ -46,7 +46,7 @@ let private paramPipeline: Fuaran.Core.Transform list =
     [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "dept")) ]
 
 let private gridWithEditable (editable: bool) (source: Binding<obj seq>) : Node<Msg> =
-    { Id = NodeId "grid"
+    { Id = "grid"
       Kind =
         NodeKind.DataGrid(
             { Source = source
@@ -63,8 +63,8 @@ let private gridWithEditable (editable: bool) (source: Binding<obj seq>) : Node<
               Editable = editable
               StaticRows = None }
         )
-      State = Defaults.stateBehaviour<Msg>
-      Style = Defaults.style
+      State = None
+      Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
       ExtraAttributes = None }
@@ -190,7 +190,7 @@ let tests =
 
           test "FUARAN077 / FUARAN078: a blank column and a keyless grid are flagged" {
               let bareGrid: Node<Msg> =
-                  { Id = NodeId "bare-grid"
+                  { Id = "bare-grid"
                     Kind =
                       NodeKind.DataGrid(
                           { Source = Binding.Static(Some Seq.empty)
@@ -207,8 +207,8 @@ let tests =
                             Editable = false
                             StaticRows = None }
                       )
-                    State = Defaults.stateBehaviour<Msg>
-                    Style = Defaults.style
+                    State = None
+                    Style = None
                     Accessibility = None
                     Motion = Defaults.Motion.none
                     ExtraAttributes = None }

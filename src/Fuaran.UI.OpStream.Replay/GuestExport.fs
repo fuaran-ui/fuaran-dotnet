@@ -480,9 +480,9 @@ module GuestImport =
                 | None -> node.Kind
             | None -> node.Kind
 
-        { node with
-            Id = f node.Id
-            Kind = kind }
+        let (NodeId mapped) = f (NodeId node.Id)
+
+        { node with Id = mapped; Kind = kind }
 
     /// Rewrite a kind's interior ids by walking its children shape (used for
     /// the subtree an `EditNode` carries).

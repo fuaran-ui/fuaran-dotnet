@@ -17,14 +17,15 @@ let private bx (v: 'a) : obj = box v |> Unchecked.nonNull
 let private body: Node<unit> = Fuaran.markdown "tpl" "template body"
 
 let private pf: ParamFragment<unit> =
-    { Name = FragmentId "card"
+    { Name = "card"
       Holes =
-        [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-          HoleDecl.Value("tone", HoleValueSpace.Enum [ "info"; "warn" ], Some(Scalar.Str "info"))
-          HoleDecl.Slot("content", None)
-          HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 10)) ]
+        Some
+            [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
+              HoleDecl.Value("tone", HoleValueSpace.Enum [ "info"; "warn" ], Some(Scalar.Str "info"))
+              HoleDecl.Slot("content", None)
+              HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 10)) ]
       Body = body
-      Effect = EffectClass.pureDeterministic }
+      Effect = None }
 
 [<Tests>]
 let tests =
@@ -82,7 +83,7 @@ let tests =
 
               let bad =
                   { pf with
-                      Holes = [ HoleDecl.Repeat("rows", HoleValueSpace.AnyString) ] }
+                      Holes = Some [ HoleDecl.Repeat("rows", HoleValueSpace.AnyString) ] }
 
               Expect.isFalse (Fragment.isTotal bad) "AnyString repeat count is unbounded -> not total"
           }
@@ -104,7 +105,7 @@ let tests =
           }
 
           test "a zero-hole fragment is the degenerate fixed-body case" {
-              let fixedBody = { pf with Holes = [] }
+              let fixedBody = { pf with Holes = None }
               Expect.isEmpty (Fragment.requiredHoles fixedBody) "no holes -> no required args"
               Expect.isTrue (Fragment.isTotal fixedBody) "trivially total"
           } ]

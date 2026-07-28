@@ -62,7 +62,7 @@ let private tree: Node<Msg> =
                   Fuaran.stepper
                       "stp"
                       { Defaults.stepper<Msg> with
-                          OnSelect = (fun i -> Action.Dispatch(StepChosen i)) }
+                          OnSelect = Some(fun i -> Action.Dispatch(StepChosen i)) }
                   Fuaran.filters
                       "flt"
                       [ { Name = "region"

@@ -181,7 +181,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             calls.Add c
 
     let rec walk (n: Node<'Msg>) =
-        let (NodeId readerId) = n.Id
+        let readerId = n.Id
 
         let isProducer =
             match Kind.category n.Kind with
@@ -307,12 +307,12 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                     usesOfText f.SubmitLabel @ usesOfBindingOpt f.Disabled @ fieldUses
 
                 uses, []
-            | NodeKind.Filters filters ->
+            | NodeKind.Filters spec ->
                 let uses =
-                    for fs in filters do
+                    for fs in spec.Items do
                         declaredFilters.Add(readerId, fs.Name)
 
-                    filters
+                    spec.Items
                     |> List.collect (fun (fs: FilterSpec<_>) -> usesOfText fs.Label @ usesOfFormFieldKind fs.Kind)
 
                 uses, []
@@ -323,9 +323,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                     // in `StaticRows`; a data-bound grid carries a `Source` binding.
                     usesOfBinding g.Source
                     @ (match g.StaticRows with
-                       | Some(headers, rows) ->
-                           (headers |> List.collect usesOfText)
-                           @ (rows |> List.collect (List.collect usesOfText))
+                       | Some sr ->
+                           (sr.Headers |> List.collect usesOfText)
+                           @ (sr.Rows |> List.collect (List.collect usesOfText))
                        | None -> [])
 
                 uses, []
@@ -336,7 +336,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             // The StateKey is a literal string (not a Binding), so it records no
             // filter/query use here; the case children + default are walked so their
             // own bindings are captured.
-            | NodeKind.Switch spec -> [], (spec.Cases |> List.map snd) @ [ spec.Default ]
+            | NodeKind.Switch spec -> [], (spec.Cases |> List.map _.Child) @ [ spec.Default ]
             | NodeKind.FragmentDecl spec -> [], [ spec.Body ]
             // Custom props are JVal literals, not bindings; a FragmentRef carries
             // no body; a Mount guest owns its own scoped stores.

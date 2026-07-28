@@ -50,7 +50,7 @@ let private view (m: Model) : Node<Msg> =
             Children = [ Fuaran.form "f" formSpec; Fuaran.markdown "status" (string m) ] }
 
 let private stubRender (n: Node<Msg>) : string =
-    let (NodeId s) = n.Id
+    let s = n.Id
     $"<f id='{s}'/>"
 
 let private submission (values: (string * LiveValue) list) : FormSubmission<Msg> =

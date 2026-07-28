@@ -93,7 +93,7 @@ let nodeKindName<'Msg> (kind: NodeKind<'Msg>) : string =
             | BoxRole.Group, BoxLayout.Flex _ -> "Stack"
 
         "Layout." + inner
-    | NodeKind.Custom(moduleId, componentId, _, _, _) -> sprintf "Custom.%s.%s" moduleId componentId
+    | NodeKind.Custom spec -> sprintf "Custom.%s.%s" spec.ModuleId spec.ComponentId
     | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
     | NodeKind.Switch _ -> "Switch"
     | NodeKind.FragmentDecl _ -> "FragmentDecl"
@@ -676,7 +676,7 @@ let private formatHashMismatchPayload
 /// is the host's concern via the `Warn` channel.
 let private scheduleExposedNodeIdsVerification
     (parentNodeId: string)
-    (expectedIds: NodeId list)
+    (expectedIds: string list)
     (runtime: Runtime.IFuaranRuntime)
     : unit =
     Browser.Dom.window.setTimeout (
@@ -699,7 +699,7 @@ let private scheduleExposedNodeIdsVerification
                         |> List.filter (fun s -> s <> parentNodeId && not (isNull s))
                         |> Set.ofList
 
-                    for NodeId expected in expectedIds do
+                    for expected in expectedIds do
                         if not (Set.contains expected presentIds) then
                             runtime.Warn(
                                 sprintf
@@ -718,7 +718,7 @@ let private scheduleExposedNodeIdsVerification
 /// invariant.
 let private scheduleExposedNodeIdsVerification
     (_parentNodeId: string)
-    (_expectedIds: NodeId list)
+    (_expectedIds: string list)
     (_runtime: Runtime.IFuaranRuntime)
     : unit =
     ()
@@ -760,7 +760,10 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
         // structurally identical for valid trees and only diverges for
         // already-broken trees. We pick the last-seen path because it's the
         // shorter code.
-        let acc' = Map.add spec.Name spec.Body acc
+        // `FragmentDeclSpec.Name` erased to a bare string in the generated
+        // record; the context registry stays keyed by `FragmentId`, so wrap at
+        // this boundary.
+        let acc' = Map.add (FragmentId spec.Name) spec.Body acc
         collectFragments acc' spec.Body
     | NodeKind.Box s -> s.Children |> List.fold collectFragments acc
     | NodeKind.SplitPanel s -> s.Children |> List.fold collectFragments acc
@@ -776,8 +779,7 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
     | NodeKind.Switch spec ->
         // Collect fragment decls reachable through the case children + default
         // so a FragmentRef inside any switch branch resolves at render time.
-        let acc' =
-            spec.Cases |> List.fold (fun a (_, child) -> collectFragments a child) acc
+        let acc' = spec.Cases |> List.fold (fun a c -> collectFragments a c.Child) acc
 
         collectFragments acc' spec.Default
     | NodeKind.Heading _
@@ -1067,7 +1069,7 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
         __v, []
     | NodeKind.Filters filters ->
         let __v =
-            filters
+            filters.Items
             |> List.collect (fun (fs: FilterSpec<'Msg>) ->
                 keysOfText channel fs.Label
                 @ keysOfFormFieldKind channel (ValueAutoBind.FilterChip fs.Name) fs.Kind)
@@ -1078,9 +1080,9 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
         let __v =
             keysOfBinding channel g.Source
             @ (match g.StaticRows with
-               | Some(headers, rows) ->
-                   (headers |> List.collect (keysOfText channel))
-                   @ (rows |> List.collect (List.collect (keysOfText channel)))
+               | Some sr ->
+                   (sr.Headers |> List.collect (keysOfText channel))
+                   @ (sr.Rows |> List.collect (List.collect (keysOfText channel)))
                | None -> [])
 
         __v, []
@@ -1098,7 +1100,7 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
             | StateChannel -> [ spec.StateKey ]
             | _ -> []
 
-        ownKeys, (spec.Cases |> List.map snd) @ [ spec.Default ]
+        ownKeys, (spec.Cases |> List.map _.Child) @ [ spec.Default ]
     | NodeKind.FragmentDecl spec -> [], [ spec.Body ]
     | NodeKind.FragmentRef _ -> [], []
     // Custom props are JVal literals, not bindings — no reactive keys.
@@ -1168,8 +1170,9 @@ let collectQueryKeys<'Msg> (node: Node<'Msg>) : Set<string> = collectKeys QueryC
 /// build-time validator follow-up if cross-prop id references become a
 /// real authoring pattern inside fragment bodies.
 let rec private namespaceNode<'Msg> (prefix: string) (node: Node<'Msg>) : Node<'Msg> =
-    let (NodeId raw) = node.Id
-    let newId = NodeId(prefix + raw)
+    // `Node.Id` is a bare string in the generated envelope (the `NodeId`
+    // wrapper erased) — prefix it directly.
+    let newId = prefix + node.Id
     let newKind = namespaceKind prefix node.Kind
     { node with Id = newId; Kind = newKind }
 
@@ -1224,7 +1227,11 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
         // inside an expanded fragment gets DOM-unique namespaced ids (Phase 392).
         NodeKind.Switch
             { spec with
-                Cases = spec.Cases |> List.map (fun (m, child) -> m, namespaceNode prefix child)
+                Cases =
+                    spec.Cases
+                    |> List.map (fun c ->
+                        { c with
+                            Child = namespaceNode prefix c.Child })
                 Default = namespaceNode prefix spec.Default }
     | NodeKind.FragmentDecl spec ->
         // Nested declaration: rewrite the body's ids by the outer prefix.
@@ -1324,24 +1331,24 @@ let rec private renderKind
                 [ prop.className "fuaran-layout-dashboard"
                   prop.children (spec.Children |> List.map (render ctx)) ]
         | BoxRole.Separator, _ -> Html.hr [ prop.className "fuaran-layout-separator" ]
-        | BoxRole.Group, BoxLayout.Grid g ->
+        | BoxRole.Group, BoxLayout.Grid(cols, gridTemplateColumns, gridGap) ->
             // Column count rides on inline style (not a `-cols-N` class suffix)
             // so CSS hosts don't have to pre-declare / Tailwind-safelist every N.
-            // The additive `TemplateColumns` field short-circuits the
-            // `Cols`-based `repeat(N, 1fr)` emission when `Some` — the verbatim
+            // The additive `templateColumns` field short-circuits the
+            // `cols`-based `repeat(N, 1fr)` emission when `Some` — the verbatim
             // string is emitted so irregular-column grids can be authored
             // without escaping to Feliz. `None` preserves the prior emission
             // shape byte-identical.
             let templateColumns =
-                match g.TemplateColumns with
+                match gridTemplateColumns with
                 | Some custom -> custom
-                | None -> sprintf "repeat(%d, 1fr)" g.Cols
+                | None -> sprintf "repeat(%d, 1fr)" cols
 
             // `gap` (Phase 459 — the Spacer replacement) emits only when set, so
             // gap-free grids stay byte-identical to the pre-459 emission.
             let gridStyle =
                 [ style.custom ("gridTemplateColumns", templateColumns) ]
-                @ (match g.Gap with
+                @ (match gridGap with
                    | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
                    | None -> [])
 
@@ -1349,19 +1356,19 @@ let rec private renderKind
                 [ prop.className "fuaran-layout-grid"
                   prop.style gridStyle
                   prop.children (spec.Children |> List.map (render ctx)) ]
-        | BoxRole.Group, BoxLayout.Flex f ->
+        | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
             let dir =
-                match f.Direction with
+                match direction with
                 | Orientation.Vertical -> "fuaran-stack-vertical"
                 | Orientation.Horizontal -> "fuaran-stack-horizontal"
 
-            let wrap = if f.Wrap then " fuaran-stack-wrap" else ""
+            let wrap = if flexWrap then " fuaran-stack-wrap" else ""
 
             // `gap` emits only when set (Phase 459) — a gap-free stack carries no
             // `style` attribute, byte-identical to the pre-459 emission.
             Html.div (
                 [ prop.className (sprintf "fuaran-layout-stack %s%s" dir wrap) ]
-                @ (match f.Gap with
+                @ (match flexGap with
                    | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
                    | None -> [])
                 @ [ prop.children (spec.Children |> List.map (render ctx)) ]
@@ -1413,9 +1420,7 @@ let rec private renderKind
             match child.Kind with
             | NodeKind.Box { Role = BoxRole.Card
                              Heading = Some h } -> renderText ctx h
-            | _ ->
-                match child.Id with
-                | NodeId s -> s
+            | _ -> child.Id
 
         // Resolved per-tab label + disabled state + optional icon.
         // When `TabHeaders = Some hs`, use the explicit declarations; when
@@ -1709,7 +1714,8 @@ let rec private renderKind
         // Each child becomes a numbered step; the active step is read from
         // `spec.ActiveStep` (a Binding<int>). Renderer marks the active
         // step with a class so CSS can style it. A step-header click fires
-        // `spec.OnSelect i` (default no-op `Chain []`), mirroring tabs.
+        // `spec.OnSelect i` when wired (an omitted handler is inert — the
+        // generated `None` is the old default no-op `Chain []`), mirroring tabs.
         let activeIndex =
             BindingResolver.tryResolve ctx.Sources spec.ActiveStep |> Option.defaultValue 0
 
@@ -1729,7 +1735,10 @@ let rec private renderKind
                                               else
                                                   "fuaran-stepper-step"
                                           )
-                                          prop.onClick (fun _ -> runAction ctx (spec.OnSelect i))
+                                          prop.onClick (fun _ ->
+                                              match spec.OnSelect with
+                                              | Some onSelect -> runAction ctx (onSelect i)
+                                              | None -> ())
                                           prop.text (sprintf "%d" (i + 1)) ] ] ]
                     Html.div
                         [ prop.className "fuaran-stepper-body"
@@ -2045,19 +2054,22 @@ let rec private renderKind
     | NodeKind.Button spec -> renderButton ctx spec
     | NodeKind.Select spec -> renderSelect ctx spec
     | NodeKind.Form spec -> renderForm ctx spec
-    | NodeKind.Filters specs -> renderFilters ctx specs
+    | NodeKind.Filters spec -> renderFilters ctx spec.Items
     | NodeKind.FileUpload spec -> renderFileUpload ctx spec
     // -- Vis --
     | NodeKind.DataGrid spec ->
         // Phase 393 — a static read-only grid renders the semantic <table> leg (byte-identical to the
         // retired Table); a data-bound grid takes the ordinary grid path.
         match spec.StaticRows with
-        | Some(headers, rows) ->
-            renderTable
-                ctx
-                { Headers = headers
-                  Rows = rows
+        | Some sr ->
+            // Annotated: `Headers` / `Rows` also label the generated
+            // `StaticRows` record, so the literal needs the target type pinned.
+            let tableSpec: TableSpec<'Msg> =
+                { Headers = sr.Headers
+                  Rows = sr.Rows
                   OnRowClick = None }
+
+            renderTable ctx tableSpec
         | None -> renderGrid ctx parentNodeId state spec
     | NodeKind.Chart spec -> renderChart ctx parentNodeId state spec
     | NodeKind.Map spec -> renderMap ctx parentNodeId state spec
@@ -2138,13 +2150,19 @@ let rec private renderKind
                 let valueStr = if isNull v then "" else string v
 
                 spec.Cases
-                |> List.tryPick (fun (m, child) -> if m = valueStr then Some child else None)
+                |> List.tryPick (fun c -> if c.Match = valueStr then Some c.Child else None)
             | None -> None
 
         match matched with
         | Some child -> render ctx child
         | None -> render ctx spec.Default
-    | NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds) ->
+    | NodeKind.Custom customSpec ->
+        // The generated `CustomSpec` record replaces the old 5 inline case
+        // fields — rebind them locally so the dispatch body reads unchanged.
+        let moduleId = customSpec.ModuleId
+        let componentId = customSpec.ComponentId
+        let props = customSpec.Props
+        let contentHash = customSpec.ContentHash
         // Dispatch through the runtime's Custom-renderer surface.
         // Bounded-escape verification:
         //   1. Hash check (pre-dispatch) via TryGetCustomRenderer.
@@ -2209,10 +2227,13 @@ let rec private renderKind
                 | None -> renderPlaceholder ()
 
         // Exposed-NodeIds post-mount DOM walk. Skip the syscall
-        // entirely when the tree doesn't declare any (the common case).
-        match exposedNodeIds with
-        | [] -> ()
-        | _ -> scheduleExposedNodeIdsVerification parentNodeId exposedNodeIds ctx.Runtime
+        // entirely when the tree doesn't declare any (the common case) —
+        // the generated `ExposedNodeIds: string list option` encodes the old
+        // empty list as `None` (and a decoded `Some []` is the same no-op).
+        match customSpec.ExposedNodeIds with
+        | None
+        | Some [] -> ()
+        | Some exposedNodeIds -> scheduleExposedNodeIdsVerification parentNodeId exposedNodeIds ctx.Runtime
 
         renderedElement
     | NodeKind.FragmentDecl _ ->
@@ -2232,9 +2253,13 @@ let rec private renderKind
         // placeholder rather than throwing — the renderer guard would
         // catch a throw, but the labelled placeholder is friendlier in
         // dev tools and threads through `Warn` for observability.
-        let (FragmentId rawName) = spec.Name
+        // `FragmentRefSpec.Name` erased to a bare string in the generated
+        // record; the context registry / expansion set stay keyed by
+        // `FragmentId`, so wrap at this boundary.
+        let rawName = spec.Name
+        let fragmentKey = FragmentId rawName
 
-        if Set.contains spec.Name ctx.ExpandingFragments then
+        if Set.contains fragmentKey ctx.ExpandingFragments then
             ctx.Runtime.Warn(
                 sprintf
                     "[fuaran:fragment] cycle detected expanding ref '%s' → fragment '%s'; rendering placeholder. Validator FUARAN058 catches this at build time."
@@ -2247,7 +2272,7 @@ let rec private renderKind
                   prop.custom ("data-fuaran-fragment-cycle", rawName)
                   prop.text (sprintf "[fuaran:fragment cycle '%s']" rawName) ]
         else
-            match Map.tryFind spec.Name ctx.Fragments with
+            match Map.tryFind fragmentKey ctx.Fragments with
             | None ->
                 ctx.Runtime.Warn(
                     sprintf
@@ -2273,7 +2298,7 @@ let rec private renderKind
 
                 let expandedCtx =
                     { ctx with
-                        ExpandingFragments = Set.add spec.Name ctx.ExpandingFragments }
+                        ExpandingFragments = Set.add fragmentKey ctx.ExpandingFragments }
 
                 render expandedCtx namespaced
     | NodeKind.Mount spec ->
@@ -2302,7 +2327,14 @@ let rec private renderKind
                     { Sources = { ctx.Sources with State = scopedState }
                       Runtime = ctx.Runtime
                       VisAdapter = VisAdapter.noOp<obj>
-                      Dispatch = (fun (o: obj) -> runAction ctx (spec.OnBubble o))
+                      // `MountSpec.OnBubble` is optional in the generated
+                      // record — an unwired bubble channel swallows guest
+                      // dispatches (inert, exactly like the old no-op).
+                      Dispatch =
+                        (fun (o: obj) ->
+                            match spec.OnBubble with
+                            | Some onBubble -> runAction ctx (onBubble o)
+                            | None -> ())
                       TelemetrySink = ctx.TelemetrySink
                       InErrorBoundary = false
                       Fragments = collectFragments Map.empty guestTree
@@ -3662,19 +3694,27 @@ and private renderGridCell
                       prop.onChange (fun (v: string) -> commitCell (CellValue.Text v)) ]
         | None -> Html.span [ prop.text (renderCellValue col.Format value) ]
     | CellKindErased.Editable onEdit ->
+        // The generated `onEdit` handler is optional — a `None` handler keeps
+        // the identical input DOM but commits nothing (inert, exactly like the
+        // old decoded no-op action).
+        let runEdit (edited: CellValue) =
+            match onEdit with
+            | Some f -> runAction ctx (f (row, edited))
+            | None -> ()
+
         match value with
         | CellValue.Numeric n ->
             Html.input
                 [ prop.className "fuaran-grid-cell-editable"
                   prop.type'.number
                   prop.value n
-                  prop.onChange (fun (v: float) -> runAction ctx (onEdit (row, CellValue.Numeric v))) ]
+                  prop.onChange (fun (v: float) -> runEdit (CellValue.Numeric v)) ]
         | CellValue.Text s ->
             Html.input
                 [ prop.className "fuaran-grid-cell-editable"
                   prop.type'.text
                   prop.value s
-                  prop.onChange (fun (v: string) -> runAction ctx (onEdit (row, CellValue.Text v))) ]
+                  prop.onChange (fun (v: string) -> runEdit (CellValue.Text v)) ]
         | _ -> Html.span [ prop.text (renderCellValue col.Format value) ]
     | CellKindErased.Checkbox(getValue, onToggle) ->
         let current = getValue row
@@ -3682,25 +3722,34 @@ and private renderGridCell
         Html.input
             [ prop.type'.checkbox
               prop.isChecked current
-              prop.onChange (fun (b: bool) -> runAction ctx (onToggle (row, b))) ]
+              prop.onChange (fun (b: bool) ->
+                  match onToggle with
+                  | Some f -> runAction ctx (f (row, b))
+                  | None -> ()) ]
     | CellKindErased.Button(label, onClick) ->
         Html.button
             [ prop.className "fuaran-grid-cell-button"
               prop.text (renderText ctx label)
               prop.onClick (fun e ->
                   e.stopPropagation () // don't trigger row-click handler
-                  runAction ctx (onClick row)) ]
+
+                  match onClick with
+                  | Some f -> runAction ctx (f row)
+                  | None -> ()) ]
     | CellKindErased.ButtonGroup buttons ->
         Html.span
             [ prop.className "fuaran-grid-cell-button-group"
               prop.children
-                  [ for (label, onClick) in buttons ->
+                  [ for item in buttons ->
                         Html.button
                             [ prop.className "fuaran-grid-cell-button"
-                              prop.text (renderText ctx label)
+                              prop.text (renderText ctx item.Label)
                               prop.onClick (fun e ->
                                   e.stopPropagation ()
-                                  runAction ctx (onClick row)) ] ] ]
+
+                                  match item.OnClick with
+                                  | Some f -> runAction ctx (f row)
+                                  | None -> ()) ] ] ]
     | CellKindErased.Link(href, label) ->
         // Pass through `Sanitize.sanitizeUrlOrBlank` so a
         // `javascript:` / `vbscript:` / unknown-scheme href emitted from
@@ -3949,9 +3998,9 @@ and private buttonVariantClass (variant: ButtonVariant) : string =
 /// Render a Fuaran `Node<'Msg>` to a Feliz `ReactElement` against an
 /// explicit context (sources + runtime + dispatch).
 and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
-    let id =
-        match node.Id with
-        | NodeId s -> s
+    // `Node.Id` is a bare string in the generated envelope (the `NodeId`
+    // wrapper erased at the tree level).
+    let id = node.Id
 
     // Project Node.Accessibility into HTML aria-* / role
     // attributes via the shared `accessibilityAttributes` helper (testable
@@ -3966,7 +4015,11 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // when `Node.Motion` is `Some token`. Defaults to no class (the
     // original shape) when `None`. The reference CSS supplies four
     // keyframe rules; the remaining four tokens are no-op class hooks.
-    let baseClassName = Theme.nodeClassName node.Kind node.Style
+    // `Node.Style` is optional in the generated envelope — `None` is the old
+    // default record, so materialise `Defaults.style` for the class projection
+    // (identical class emission for decoded trees).
+    let baseClassName =
+        Theme.nodeClassName node.Kind (node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
 
     let className =
         match node.Motion with
@@ -4007,7 +4060,11 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // throws before the boundary saw them.
     let kindBody: ReactElement =
         try
-            renderKind ctx id node.State node.Kind
+            // `Node.State` is optional in the generated envelope — `None` is
+            // the old all-`None` slots record, so materialise
+            // `Defaults.stateBehaviour` for the per-Kind dispatch (identical
+            // slot behaviour for decoded trees).
+            renderKind ctx id (node.State |> Option.defaultValue Fuaran.UI.Defaults.stateBehaviour) node.Kind
         with ex when not ctx.InErrorBoundary ->
             let corrId =
                 emitRenderFailureWithContext

@@ -134,7 +134,7 @@ let private fixtures: Fixture list =
               "sw"
               { Defaults.switch<obj> with
                   StateKey = "view"
-                  Cases = [ "details", leaf "d" ]
+                  Cases = [ { Match = "details"; Child = leaf "d" } ]
                   Default =
                       Fuaran.heading
                           "sw-def"
@@ -414,7 +414,9 @@ let ssrParityTests =
           test "every fixture's outer wrapper uses the shared Theme.nodeClassName" {
               for f in fixtures do
                   let html = Render.render BindingResolver.empty f.Node
-                  let expectedOuter = Theme.nodeClassName f.Node.Kind f.Node.Style
+
+                  let expectedOuter =
+                      Theme.nodeClassName f.Node.Kind (f.Node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
 
                   Expect.isTrue
                       (contains (sprintf "class=\"%s\"" expectedOuter) html)

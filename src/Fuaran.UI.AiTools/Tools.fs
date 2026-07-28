@@ -249,11 +249,11 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
         // retired Stack/GridLayout/Card surfaces) plus the optional Heading.
         let layoutEntries =
             match spec.Layout with
-            | BoxLayout.Flex f -> [ valueEntry "Orientation" f.Direction; valueEntry "Wrap" f.Wrap ]
-            | BoxLayout.Grid g ->
-                let baseEntries = [ valueEntry "Cols" g.Cols ]
+            | BoxLayout.Flex(direction, wrap, _) -> [ valueEntry "Orientation" direction; valueEntry "Wrap" wrap ]
+            | BoxLayout.Grid(cols, templateColumns, _) ->
+                let baseEntries = [ valueEntry "Cols" cols ]
 
-                match g.TemplateColumns with
+                match templateColumns with
                 | Some t -> baseEntries @ [ valueEntry "TemplateColumns" t ]
                 | None -> baseEntries @ [ entry "TemplateColumns" None (Some "string option") ]
             | BoxLayout.Auto -> []
@@ -411,8 +411,8 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
         [ valueEntry "SubmitLabel" spec.SubmitLabel
           opaqueFn "OnSubmit" "Action<'Msg>"
           entry "Fields" (Some(boxNN (List.length spec.Fields))) (Some "FormField list (count)") ]
-    | NodeKind.Filters(specs) ->
-        [ entry "FilterCount" (Some(boxNN (List.length specs))) (Some "FilterSpec list (count)") ]
+    | NodeKind.Filters(spec) ->
+        [ entry "FilterCount" (Some(boxNN (List.length spec.Items))) (Some "FilterSpec list (count)") ]
     | NodeKind.Button(spec) ->
         [ valueEntry "Label" spec.Label
           valueEntry "Variant" spec.Variant
@@ -440,9 +440,9 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
           // Phase 393 — a static read-only grid reports its TextSource matrix dimensions.
           yield!
               (match spec.StaticRows with
-               | Some(headers, rows) ->
-                   [ entry "HeaderCount" (Some(boxNN (List.length headers))) (Some "TextSource list (count)")
-                     entry "RowCount" (Some(boxNN (List.length rows))) (Some "TextSource list list (count)") ]
+               | Some sr ->
+                   [ entry "HeaderCount" (Some(boxNN (List.length sr.Headers))) (Some "TextSource list (count)")
+                     entry "RowCount" (Some(boxNN (List.length sr.Rows))) (Some "TextSource list list (count)") ]
                | None -> []) ]
     | NodeKind.Chart(spec) ->
         [ valueEntry "Kind" spec.Kind
@@ -464,7 +464,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
           (match spec.OnMarkerClick with
            | Some _ -> opaqueFn "OnMarkerClick" "MapMarker -> Action<'Msg>"
            | None -> entry "OnMarkerClick" None (Some "(MapMarker -> Action<'Msg>) option")) ]
-    | NodeKind.Custom(moduleId, componentId, _, contentHash, exposedNodeIds) ->
+    | NodeKind.Custom spec ->
         // Expose the bounded-escape declarations through the AI
         // introspection surface so `fuaran.getNodeState` shows whether a
         // Custom node has opted into hash verification / exposed-NodeIds
@@ -472,54 +472,52 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
         // to address an exposed interior id with structural ops or to
         // treat the Custom body as opaque.
         let hashEntry =
-            match contentHash with
+            match spec.ContentHash with
             | Some h ->
                 [ valueEntry "ContentHashAlgorithm" h.Algorithm
                   valueEntry "ContentHash" h.Hash
                   valueEntry "ContentHashStrictness" (sprintf "%A" h.Strictness) ]
             | None -> [ entry "ContentHash" None (Some "ContentHash option") ]
 
-        let exposedIdStrings = exposedNodeIds |> List.map (fun (NodeId s) -> s)
+        // `ExposedNodeIds` is `string list option` since the swap — `None` ≡
+        // the old empty list, so the introspection output is unchanged.
+        let exposedIdStrings = spec.ExposedNodeIds |> Option.defaultValue []
 
-        [ valueEntry "ModuleId" moduleId
-          valueEntry "ComponentId" componentId
+        [ valueEntry "ModuleId" spec.ModuleId
+          valueEntry "ComponentId" spec.ComponentId
           yield! hashEntry
           valueEntry "ExposedNodeIds" (String.concat ", " exposedIdStrings)
-          valueEntry "ExposedNodeIdCount" (List.length exposedNodeIds) ]
+          valueEntry "ExposedNodeIdCount" (List.length exposedIdStrings) ]
     | NodeKind.ErrorBoundary spec ->
         // Surface the boundary's child + fallback
         // NodeIds so the AI introspection consumer can address them
         // structurally (e.g. `fuaran.getNodeState` on the fallback for
         // post-mortem inspection). No further scalar surface — both
         // halves are Node subtrees rather than typed-spec scalars.
-        let (NodeId childId) = spec.Child.Id
-        let (NodeId fallbackId) = spec.Fallback.Id
-        [ valueEntry "ChildNodeId" childId; valueEntry "FallbackNodeId" fallbackId ]
+        // `Node.Id` is a bare string since the swap — no unwrap needed.
+        [ valueEntry "ChildNodeId" spec.Child.Id
+          valueEntry "FallbackNodeId" spec.Fallback.Id ]
     | NodeKind.Switch spec ->
         // State-bound conditional child (Phase 392). Surface the state key that
         // selects the case, the ordered match values, and the default child's
         // NodeId so AI introspection can read "what does this switch key off,
         // and what can it show?". The case/default subtrees are addressable via
         // the console tree-walker; these entries are the scalar peek.
-        let (NodeId defaultId) = spec.Default.Id
-
         [ valueEntry "StateKey" spec.StateKey
-          valueEntry "MatchValues" (spec.Cases |> List.map fst |> String.concat ", ")
-          valueEntry "DefaultNodeId" defaultId ]
+          valueEntry "MatchValues" (spec.Cases |> List.map _.Match |> String.concat ", ")
+          valueEntry "DefaultNodeId" spec.Default.Id ]
     | NodeKind.FragmentDecl spec ->
         // Expose the decl's fragment name + the
         // body root NodeId so AI introspection can address either. The
         // body itself is reachable via the standard tree-walker getChildren
         // arm; this entry is the "what's this decl called?" peek.
-        let (FragmentId rawName) = spec.Name
-        let (NodeId bodyId) = spec.Body.Id
-        [ valueEntry "FragmentName" rawName; valueEntry "BodyNodeId" bodyId ]
+        // `FragmentDeclSpec.Name` is a bare string since the swap.
+        [ valueEntry "FragmentName" spec.Name; valueEntry "BodyNodeId" spec.Body.Id ]
     | NodeKind.FragmentRef spec ->
         // The ref carries only its target name —
         // the body lives at the decl site. Surface as a single scalar so
         // `fuaran.getNodeState` shows "this ref points at fragment X".
-        let (FragmentId rawName) = spec.Name
-        [ valueEntry "FragmentName" rawName ]
+        [ valueEntry "FragmentName" spec.Name ]
     | NodeKind.Mount spec ->
         // Isolation/embedding boundary (§4o). Surface the guest scope id, the
         // declared channel direction + optional message shape, and the
@@ -531,7 +529,9 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
             | ChannelDirection.OutOnly -> "OutOnly"
             | ChannelDirection.TwoWay -> "TwoWay"
 
-        let capabilityTags = spec.Capabilities |> List.map (fun (CapabilityTag t) -> t)
+        // `Capabilities` is a bare `string list` since the swap (the
+        // `CapabilityTag` wrapper survives only at ops/store boundaries).
+        let capabilityTags = spec.Capabilities
 
         [ valueEntry "ScopeId" spec.ScopeId
           valueEntry "ChannelDirection" directionStr
@@ -606,7 +606,9 @@ let getNodeState
                 None
 
         Ok
-            { Id = node.Id
+            // `Node.Id` is a bare string since the swap; `NodeState.Id` keeps
+            // the `NodeId` boundary type — wrap at the envelope.
+            { Id = NodeId node.Id
               Kind = kindName node.Kind
               Props = props
               Bindings = bindings
@@ -647,9 +649,11 @@ let rec private geometryFor (ctx: IntrospectionContext) (node: Node<'Msg>) : Geo
         | None -> []
         | Some kids -> kids |> List.map (geometryFor ctx)
 
-    { Id = node.Id
+    // `Node.Id` is a bare string since the swap; the geometry tree + probe
+    // keep the `NodeId` boundary type — wrap at the seam.
+    { Id = NodeId node.Id
       Kind = kindName node.Kind
-      Geometry = ctx.Geometry.TryGetGeometry node.Id
+      Geometry = ctx.Geometry.TryGetGeometry(NodeId node.Id)
       Children = children }
 
 let getRenderedDom

@@ -1,5 +1,5 @@
 using FsCanonicalJson = Fuaran.UI.OpStream.Abstractions.CanonicalJson;
-using FsNode = Fuaran.UI.Types.Node<object>;
+using FsNode = Fuaran.UI.Generated.Node<object>;
 
 namespace Fuaran.UI.CSharp;
 
@@ -22,7 +22,7 @@ public sealed class FuaranNode
     internal FuaranNode(FsNode inner) => Inner = inner;
 
     /// <summary>The node's id.</summary>
-    public string Id => Inner.Id.Item;
+    public string Id => Inner.Id;
 
     /// <summary>
     /// Encode this node to its canonical wire JSON, via the shared F# encoder

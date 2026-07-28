@@ -152,7 +152,7 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
         // Dynamic option source, or a clear-to-none change: accept (bounds
         // enforced at interpret time against live binding sources).
         | _ -> Ok()
-    | NodeKind.Filters(specs) ->
+    | NodeKind.Filters(spec) ->
         // A name-addressed filter event must name a filter the node declares
         // (a forged / stale name is attack surface, same as a forged nodeId),
         // and a choice-shaped filter with statically-resolved options must
@@ -161,7 +161,7 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
         match tryStr "name" ev.Payload with
         | None -> Ok()
         | Some name ->
-            match specs |> List.tryFind (fun f -> f.Name = name) with
+            match spec.Items |> List.tryFind (fun f -> f.Name = name) with
             | None ->
                 Error(RejectReason.PayloadOutOfBounds(ev.NodeId, sprintf "'%s' not among the node's filters" name))
             | Some f ->
@@ -201,7 +201,7 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
     | NodeKind.Select(spec) when ev.Event = "change" ->
         spec.OnChange |> Option.map (fun oc -> oc (selectValue ev.Payload))
     | NodeKind.Form(spec) when ev.Event = "submit" -> Some spec.OnSubmit
-    | NodeKind.Filters(specs) ->
+    | NodeKind.Filters(spec) ->
         // Name-addressed: the shim bridges the changed control's filter name
         // across as `payload.name` (`data-filter-name`); boundsCheck already
         // verified it names a declared filter and the value is in-bounds.
@@ -210,7 +210,7 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
         match tryStr "name" ev.Payload with
         | None -> None
         | Some name ->
-            specs
+            spec.Items
             |> List.tryFind (fun f -> f.Name = name)
             |> Option.bind (fun f ->
                 let chosen =
@@ -252,9 +252,10 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
     | NodeKind.Stepper(spec) ->
         // A step-header click: the shim bridges the clicked step's index
         // across as `payload.index` (`data-step-index`), mirroring tabs.
-        match tryNum "index" ev.Payload with
-        | Some i -> Some(spec.OnSelect(int i))
-        | None -> None
+        // `OnSelect` is optional since the swap — same no-op posture as Tabs.
+        match tryNum "index" ev.Payload, spec.OnSelect with
+        | Some i, Some onSelect -> Some(onSelect (int i))
+        | _ -> None
     | _ -> None
 
 // ─── the gate ───────────────────────────────────────────────────────────────

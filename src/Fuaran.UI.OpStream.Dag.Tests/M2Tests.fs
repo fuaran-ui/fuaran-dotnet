@@ -67,8 +67,8 @@ let tests =
                       match tree.Kind with
                       | NodeKind.Box(spec) ->
                           spec.Children
-                          |> List.tryFind (fun c -> c.Id = leftChildId)
-                          |> Option.map _.Style
+                          |> List.tryFind (fun c -> NodeId c.Id = leftChildId)
+                          |> Option.bind _.Style
                       | _ -> None
 
                   match leftStyle with

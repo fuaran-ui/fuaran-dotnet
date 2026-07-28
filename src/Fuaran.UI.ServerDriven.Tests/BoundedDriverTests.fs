@@ -60,7 +60,7 @@ let private mkTreeNode (onClick: Action<obj>) : Node<obj> =
 let private mkTree (onClick: Action<obj>) : WireTree = WireTree.ofDecoded (mkTreeNode onClick)
 
 let private stubRender (n: Node<obj>) : string =
-    let (NodeId s) = n.Id
+    let s = n.Id
     $"<f id='{s}'/>"
 
 let private clickEv (nodeId: string) : LiveEvent =

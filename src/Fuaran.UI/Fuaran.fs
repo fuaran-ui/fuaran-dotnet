@@ -26,35 +26,68 @@ open Fuaran.UI.Types
 // ─── Per-Node postfix-pipe modifiers ───────────────────────────────────────
 
 module Node =
+    // Since the swap the Node envelope carries `State` / `Style` as OPTIONS —
+    // `None` is the canonical empty-state / default-style shape (the encoder
+    // omits both). The helpers below materialise the default locally, apply
+    // the change, and NORMALISE back to `None` when the result is the empty /
+    // default record, so the wire stays byte-identical with the pre-swap
+    // always-present-record behaviour.
+
+    let private stateOf (node: Node<'Msg>) : StateBehaviour<'Msg> =
+        node.State |> Option.defaultValue Defaults.stateBehaviour<'Msg>
+
+    let private normaliseState (s: StateBehaviour<'Msg>) : StateBehaviour<'Msg> option =
+        match s.OnLoading, s.OnEmpty, s.OnError with
+        | Option.None, Option.None, Option.None -> Option.None
+        | _ -> Some s
+
+    let private styleOf (node: Node<'Msg>) : SemanticStyle =
+        node.Style |> Option.defaultValue Defaults.style
+
+    let private normaliseStyle (s: SemanticStyle) : SemanticStyle option =
+        // Enum-only record — structural equality is safe here.
+        if s = Defaults.style then Option.None else Some s
+
+    /// The node's id as the ops/API-boundary `NodeId` wrapper. The generated
+    /// envelope carries `Id` as a bare `string`; wrap at the boundary where a
+    /// `NodeId` value is needed (NodeMap keys, TreeOp args, stores).
+    let nodeId (node: Node<'Msg>) : NodeId = NodeId node.Id
+
     let onLoading (placeholder: Node<'Msg>) (node: Node<'Msg>) : Node<'Msg> =
         { node with
             State =
-                { node.State with
-                    OnLoading = Some placeholder } }
+                Some
+                    { stateOf node with
+                        OnLoading = Some placeholder } }
 
     let onEmpty (placeholder: Node<'Msg>) (node: Node<'Msg>) : Node<'Msg> =
         { node with
             State =
-                { node.State with
-                    OnEmpty = Some placeholder } }
+                Some
+                    { stateOf node with
+                        OnEmpty = Some placeholder } }
 
     let onError (render: ErrorPayload -> Node<'Msg>) (node: Node<'Msg>) : Node<'Msg> =
         { node with
             State =
-                { node.State with
-                    OnError = Some render } }
+                Some
+                    { stateOf node with
+                        OnError = Some render } }
 
     let withTone (tone: ToneVariant) (node: Node<'Msg>) : Node<'Msg> =
         { node with
-            Style = { node.Style with Tone = tone } }
+            Style = normaliseStyle { styleOf node with Tone = tone } }
 
     let withWeight (weight: StyleWeight) (node: Node<'Msg>) : Node<'Msg> =
         { node with
-            Style = { node.Style with Weight = weight } }
+            Style = normaliseStyle { styleOf node with Weight = weight } }
 
     let withEmphasis (emphasis: Emphasis) (node: Node<'Msg>) : Node<'Msg> =
         { node with
-            Style = { node.Style with Emphasis = emphasis } }
+            Style =
+                normaliseStyle
+                    { styleOf node with
+                        Emphasis = emphasis } }
 
     /// Tag the node with a semantic content role (Phase 147) — emits a
     /// `fuaran-role-{role}` class the host CSS owns. `StyleRole.None` clears
@@ -62,14 +95,14 @@ module Node =
     /// `HeadingVariant.Eyebrow` / `Caption` over the matching `StyleRole`.
     let withRole (role: StyleRole) (node: Node<'Msg>) : Node<'Msg> =
         { node with
-            Style = { node.Style with Role = role } }
+            Style = normaliseStyle { styleOf node with Role = role } }
 
     /// Tag the node's font voice (Phase 147) — the display-vs-structural
     /// split. Emits a `fuaran-voice-{voice}` class; `FontVoice.Default`
     /// clears it.
     let withVoice (voice: FontVoice) (node: Node<'Msg>) : Node<'Msg> =
         { node with
-            Style = { node.Style with Voice = voice } }
+            Style = normaliseStyle { styleOf node with Voice = voice } }
 
     /// Replace the Node's `Accessibility` trait with the supplied
     /// value. Use `Some Defaults.Accessibility.empty` to start from an empty
@@ -585,7 +618,8 @@ module Column =
     let erase (col: Column<'row, 'Msg>) : ColumnErased<'Msg> =
         { Label = col.Label
           // Phase 425 — the typed closure is the override (`Some`); a field-named erased column
-          // (`Field = Some …`, `Value = None`) is produced on the decoded path.
+          // (`Field = Some …`, `Value = None`) is produced on the decoded path. The slot's
+          // return is the typed `CellValue` (host-prelude DU, stage 4b) — only the row erases.
           Value = Some(fun (o: obj) -> col.Value(unbox<'row> o))
           Field = None
           Format = col.Format
@@ -594,15 +628,24 @@ module Column =
             | CellKind.Text -> CellKindErased.Text
             | CellKind.Numeric -> CellKindErased.Numeric
             | CellKind.Date -> CellKindErased.Date
-            | CellKind.Editable f -> CellKindErased.Editable(fun (o, v) -> f (unbox<'row> o, v))
+            | CellKind.Editable f ->
+                // The generated `onEdit` is optional; its `CellValue` argument
+                // stays typed (host-prelude DU) — only the row erases.
+                CellKindErased.Editable(Some(fun (o, v) -> f (unbox<'row> o, v)))
             | CellKind.Checkbox(get, onToggle) ->
                 CellKindErased.Checkbox(
                     (fun (o: obj) -> get (unbox<'row> o)),
-                    (fun (o, b) -> onToggle (unbox<'row> o, b))
+                    Some(fun (o, b) -> onToggle (unbox<'row> o, b))
                 )
-            | CellKind.Button(label, onClick) -> CellKindErased.Button(label, (fun (o: obj) -> onClick (unbox<'row> o)))
+            | CellKind.Button(label, onClick) ->
+                CellKindErased.Button(label, Some(fun (o: obj) -> onClick (unbox<'row> o)))
             | CellKind.ButtonGroup btns ->
-                CellKindErased.ButtonGroup(btns |> List.map (fun (l, f) -> l, (fun (o: obj) -> f (unbox<'row> o))))
+                CellKindErased.ButtonGroup(
+                    btns
+                    |> List.map (fun (l, f) ->
+                        { Label = l
+                          OnClick = Some(fun (o: obj) -> f (unbox<'row> o)) })
+                )
             | CellKind.Link(href, label) ->
                 CellKindErased.Link((fun (o: obj) -> href (unbox<'row> o)), (fun (o: obj) -> label (unbox<'row> o)))
             | CellKind.Pill(label, tone) ->
@@ -678,10 +721,13 @@ module Column =
 
 module Fuaran =
     let private buildNode (id: string) (kind: NodeKind<'Msg>) (accessibility: Accessibility option) : Node<'Msg> =
-        { Id = NodeId id
+        // `State = None` / `Style = None` since the swap — the canonical
+        // empty-state / default-style envelope (the encoder omits both, exactly
+        // as it omitted the old always-present empty/default records).
+        { Id = id
           Kind = kind
-          State = Defaults.stateBehaviour<'Msg>
-          Style = Defaults.style
+          State = Option.None
+          Style = Option.None
           Accessibility = accessibility
           Motion = Defaults.Motion.none
           ExtraAttributes = Option.None }
@@ -708,11 +754,7 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                { Layout =
-                    BoxLayout.Flex
-                        { Direction = spec.Orientation
-                          Wrap = spec.Wrap
-                          Gap = Option.None }
+                { Layout = BoxLayout.Flex(spec.Orientation, spec.Wrap, Option.None)
                   Role = BoxRole.Group
                   Heading = Option.None
                   Children = spec.Children }
@@ -723,11 +765,7 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                { Layout =
-                    BoxLayout.Grid
-                        { Cols = spec.Cols
-                          TemplateColumns = spec.TemplateColumns
-                          Gap = Option.None }
+                { Layout = BoxLayout.Grid(spec.Cols, spec.TemplateColumns, Option.None)
                   Role = BoxRole.Group
                   Heading = Option.None
                   Children = spec.Children }
@@ -748,11 +786,7 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                { Layout =
-                    BoxLayout.Grid
-                        { Cols = spec.Cols
-                          TemplateColumns = Some templateColumns
-                          Gap = Option.None }
+                { Layout = BoxLayout.Grid(spec.Cols, Some templateColumns, Option.None)
                   Role = BoxRole.Group
                   Heading = Option.None
                   Children = spec.Children }
@@ -782,11 +816,7 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                { Layout =
-                    BoxLayout.Flex
-                        { Direction = Orientation.Vertical
-                          Wrap = false
-                          Gap = Option.None }
+                { Layout = BoxLayout.Flex(Orientation.Vertical, false, Option.None)
                   Role = BoxRole.Card
                   Heading = spec.Heading
                   Children = spec.Children }
@@ -928,11 +958,7 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                { Layout =
-                    BoxLayout.Flex
-                        { Direction = Orientation.Horizontal
-                          Wrap = false
-                          Gap = Option.None }
+                { Layout = BoxLayout.Flex(Orientation.Horizontal, false, Option.None)
                   Role = BoxRole.Separator
                   Heading = Option.None
                   Children = [] }
@@ -1054,7 +1080,9 @@ module Fuaran =
         buildNode id (NodeKind.Form(spec)) Defaults.Accessibility.form
 
     let filters (id: string) (specs: FilterSpec<'Msg> list) : Node<'Msg> =
-        buildNode id (NodeKind.Filters(specs)) Defaults.Accessibility.none
+        // The generated case carries a `FiltersSpec` record — the public
+        // list-taking signature is unchanged; the list is wrapped here.
+        buildNode id (NodeKind.Filters({ Items = specs })) Defaults.Accessibility.none
 
     let fileUpload (id: string) (spec: FileUploadSpec<'Msg>) : Node<'Msg> =
         buildNode id (NodeKind.FileUpload(spec)) Defaults.Accessibility.fileUpload
@@ -1069,6 +1097,9 @@ module Fuaran =
     /// markup from the `TextSource` cells. `OnRowClick` on the retired `TableSpec`
     /// was host-only and is not carried (the mode is non-interactive).
     let table (id: string) (spec: TableSpec<'Msg>) : Node<'Msg> =
+        // `StaticRows` cells are `TextSource` (stage 4b closed the transient
+        // string-narrowing at the IDL seam) — `Bound` / `I18n` cells ride
+        // through unchanged, exactly as the retired hand shape carried them.
         let staticGrid: GridSpec<'Msg> =
             { Source = Binding.Static None
               RowKey = None
@@ -1076,7 +1107,10 @@ module Fuaran =
               Columns = []
               OnRowClick = None
               Editable = false
-              StaticRows = Some(spec.Headers, spec.Rows) }
+              StaticRows =
+                Some
+                    { Headers = spec.Headers
+                      Rows = spec.Rows } }
 
         buildNode id (NodeKind.DataGrid(staticGrid)) Defaults.Accessibility.table
 
@@ -1161,9 +1195,22 @@ module Fuaran =
         (contentHash: ContentHash option)
         (exposedNodeIds: NodeId list)
         : Node<'Msg> =
+        // The generated case carries a `CustomSpec` record; the public
+        // signature is unchanged. `ExposedNodeIds` is `string list option`
+        // since the swap — `[]` maps to `None` (the wire-omitted shape) and
+        // the `NodeId` wrappers unwrap at this boundary.
         buildNode
             id
-            (NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds))
+            (NodeKind.Custom(
+                { ModuleId = moduleId
+                  ComponentId = componentId
+                  Props = props
+                  ContentHash = contentHash
+                  ExposedNodeIds =
+                    match exposedNodeIds with
+                    | [] -> Option.None
+                    | ids -> Some(ids |> List.map (fun (NodeId s) -> s)) }
+            ))
             Defaults.Accessibility.none
 
     // ─── ErrorBoundary — render-time graceful-degradation ───────────────
@@ -1213,12 +1260,9 @@ module Fuaran =
         buildNode id (NodeKind.FragmentDecl spec) Defaults.Accessibility.none
 
     let fragmentRef (id: string) (name: string) : Node<'Msg> =
-        buildNode
-            id
-            (NodeKind.FragmentRef
-                { Name = FragmentId name
-                  Args = Map.empty })
-            Defaults.Accessibility.none
+        // `Name` is a bare string on the generated spec; `Args = None` is the
+        // name-only degenerate ref (≡ the old empty map, omitted on the wire).
+        buildNode id (NodeKind.FragmentRef { Name = name; Args = Option.None }) Defaults.Accessibility.none
 
     // ─── Mount — isolation/embedding boundary (Phase 265, §4o) ──────────
     //

@@ -18,14 +18,17 @@ public static partial class Fuaran
     public static FuaranNode Chart(ChartOptions options) =>
         new(FsFactory.chart<object>(
             options.Id,
-            new FsTypes.ChartSpec<object>(
-                (options.Source ?? Binding.Static(Enumerable.Empty<object>())).Inner,
+            // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
+            // Source, Stacked, XField, YFields, Title, OnPointClick), not the old
+            // Source-first hand order.
+            new FsGen.ChartSpec<object>(
                 options.Kind.ToFs(),
+                (options.Source ?? Binding.Static(Enumerable.Empty<object>())).Inner,
+                options.Stacked,
                 options.XField,
                 Fs.List(options.YFields ?? Enumerable.Empty<string>()),
                 options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsGen.TextSource>(),
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<object, FsAction>>(),
-                options.Stacked)));
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<object, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>
     public static FuaranNode Table(TableOptions options) =>

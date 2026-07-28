@@ -41,16 +41,14 @@ let private defaultStyle: SemanticStyle =
       Role = StyleRole.None
       Voice = FontVoice.Default }
 
-let private emptyState: StateBehaviour<obj> =
-    { OnLoading = None
-      OnEmpty = None
-      OnError = None }
-
 let private node (id: string) (kind: NodeKind<obj>) (accessibility: Accessibility option) : Node<obj> =
-    { Id = NodeId id
+    // `State = None` / `Style = None` (Phase 692–694 swap): the pre-swap
+    // required empty-state / default-style records were omitted by the encoder,
+    // and omission is the `None` shape post-swap — byte-identical corpus.
+    { Id = id
       Kind = kind
-      State = emptyState
-      Style = defaultStyle
+      State = None
+      Style = None
       Accessibility = accessibility
       Motion = None
       ExtraAttributes = None }
@@ -121,9 +119,10 @@ let heading: Node<obj> =
 let styleRoleVoice: Node<obj> =
     { node "style-role-voice-1" (NodeKind.Markdown({ Text = TextSource.Literal "Q3 revenue" })) None with
         Style =
-            { defaultStyle with
-                Role = StyleRole.Data
-                Voice = FontVoice.Display } }
+            Some
+                { defaultStyle with
+                    Role = StyleRole.Data
+                    Voice = FontVoice.Display } }
 
 let markdown: Node<obj> =
     node "markdown-1" (NodeKind.Markdown({ Text = TextSource.Literal "Updated hourly." })) None
@@ -369,11 +368,7 @@ let stack: Node<obj> =
     node
         "stack-1"
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Flex
-                    { Direction = Orientation.Vertical
-                      Wrap = false
-                      Gap = None }
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
               Children = [ metric; markdown ] }
@@ -384,11 +379,7 @@ let gridLayout: Node<obj> =
     node
         "glayout-1"
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Grid
-                    { Cols = 12
-                      TemplateColumns = None
-                      Gap = None }
+            { Layout = BoxLayout.Grid(12, None, None)
               Role = BoxRole.Group
               Heading = None
               Children = [ metric ] }
@@ -404,11 +395,7 @@ let gridLayoutTemplatedRatio: Node<obj> =
     node
         "glayout-tpl-ratio"
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Grid
-                    { Cols = 2
-                      TemplateColumns = Some "1fr 2fr"
-                      Gap = None }
+            { Layout = BoxLayout.Grid(2, Some "1fr 2fr", None)
               Role = BoxRole.Group
               Heading = None
               Children = [ metric ] }
@@ -419,11 +406,7 @@ let gridLayoutTemplatedFixedPlusFlex: Node<obj> =
     node
         "glayout-tpl-fixed"
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Grid
-                    { Cols = 4
-                      TemplateColumns = Some "100px repeat(3, minmax(30px, 1fr))"
-                      Gap = None }
+            { Layout = BoxLayout.Grid(4, Some "100px repeat(3, minmax(30px, 1fr))", None)
               Role = BoxRole.Group
               Heading = None
               Children = [ metric ] }
@@ -434,11 +417,7 @@ let gridLayoutTemplatedAutoFit: Node<obj> =
     node
         "glayout-tpl-autofit"
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Grid
-                    { Cols = 1
-                      TemplateColumns = Some "repeat(auto-fit, minmax(150px, 1fr))"
-                      Gap = None }
+            { Layout = BoxLayout.Grid(1, Some "repeat(auto-fit, minmax(150px, 1fr))", None)
               Role = BoxRole.Group
               Heading = None
               Children = [ metric ] }
@@ -505,11 +484,7 @@ let card: Node<obj> =
     node
         "card-1"
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Flex
-                    { Direction = Orientation.Vertical
-                      Wrap = false
-                      Gap = None }
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Card
               Heading = Some(TextSource.Literal "Insights")
               Children = [ metric ] }
@@ -522,7 +497,9 @@ let stepper: Node<obj> =
         (NodeKind.Stepper(
             { ActiveStep = Binding.Static(Some 1)
               Children = [ markdown; markdown ]
-              OnSelect = (fun _ -> Action.Chain []) }
+              // `Some` (Phase 692–694 swap) — the slot is optional now; Some
+              // keeps the `"onSelect":"<closure>"` sentinel on the wire.
+              OnSelect = Some(fun _ -> Action.Chain []) }
         ))
         None
 
@@ -714,7 +691,7 @@ let filtersBoth: Node<obj> =
                 Some(fun _ -> placeholderChain)
             ) }
 
-    node "filters-1" (NodeKind.Filters([ textFilter; choiceFilter ])) None
+    node "filters-1" (NodeKind.Filters { Items = [ textFilter; choiceFilter ] }) None
 
 /// Declarative chips (Phase 423): every `FilterKind` case with `onChange = None` — the AI-authored
 /// shape whose `onChange` field is omitted on the wire, `value` self-reads its own `$filters.<name>`,
@@ -740,7 +717,7 @@ let filtersDeclarative: Node<obj> =
           Label = TextSource.Literal "Age"
           Kind = FormFieldKind.Range(Some(Binding.Static(Some { Min = 0.0; Max = 100.0 })), None, None, None, None) }
 
-    node "filters-declarative" (NodeKind.Filters([ textFilter; choiceFilter; rangeFilter ])) None
+    node "filters-declarative" (NodeKind.Filters { Items = [ textFilter; choiceFilter; rangeFilter ] }) None
 
 /// Round-trip cover for the parallel-additive
 /// `FormFieldKind.SegmentedChoice` + `FilterKind.SegmentedFilter` cases.
@@ -806,7 +783,7 @@ let filtersSegmented: Node<obj> =
                 Orientation.Horizontal
             ) }
 
-    node "filters-segmented" (NodeKind.Filters([ segmentedFilter ])) None
+    node "filters-segmented" (NodeKind.Filters { Items = [ segmentedFilter ] }) None
 
 /// Round-trip cover for the additive `FormFieldKind.Date` case (Phase 288).
 /// Exercises all three variants (Date / Time / DateTime) and every
@@ -1043,11 +1020,7 @@ let callInto: Node<obj> =
     node
         "call-into"
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Flex
-                    { Direction = Orientation.Vertical
-                      Wrap = false
-                      Gap = None }
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
               Children = [ closureButton; intoStateButton; stateReader; intoQueryButton; queryReader ] }
@@ -1328,11 +1301,7 @@ let controlsDeclarative: Node<obj> =
     node
         "controls-declarative"
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Flex
-                    { Direction = Orientation.Vertical
-                      Wrap = false
-                      Gap = None }
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
               Children = [ tabsNode; modalNode; disclosureNode; selectNode ] }
@@ -1391,11 +1360,7 @@ let multiSelectClosure: Node<obj> =
     node
         "controls-closure"
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Flex
-                    { Direction = Orientation.Vertical
-                      Wrap = false
-                      Gap = None }
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
               Children = [ tabsNode; disclosureNode; multiNode ] }
@@ -1609,11 +1574,7 @@ let masterDetailPreselected: Node<obj> =
                   node
                       "ticket-detail"
                       (NodeKind.Box(
-                          { Layout =
-                              BoxLayout.Flex
-                                  { Direction = Orientation.Vertical
-                                    Wrap = false
-                                    Gap = None }
+                          { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
                             Role = BoxRole.Card
                             Heading = Some(TextSource.Literal "Ticket detail")
                             Children =
@@ -1892,8 +1853,9 @@ let filterableStaticDashboard: Node<obj> =
                 [ node
                       "content-filters"
                       (NodeKind.Filters(
-                          [ choice "region" "Region" [ "emea", "EMEA"; "amer", "Americas" ]
-                            choice "genre" "Genre" [ "drama", "Drama"; "docs", "Documentary" ] ]
+                          { Items =
+                              [ choice "region" "Region" [ "emea", "EMEA"; "amer", "Americas" ]
+                                choice "genre" "Genre" [ "drama", "Drama"; "docs", "Documentary" ] ] }
                       ))
                       None
                   node
@@ -1950,11 +1912,11 @@ let table: Node<obj> =
               OnRowClick = None
               Editable = false
               StaticRows =
-                Some(
-                    [ TextSource.Literal "Term"; TextSource.Literal "Definition" ],
-                    [ [ TextSource.Literal "MVU"; TextSource.Literal "Model-View-Update" ]
-                      [ TextSource.Literal "DSL"; TextSource.Literal "Domain-specific language" ] ]
-                ) })
+                Some
+                    { Headers = [ TextSource.Literal "Term"; TextSource.Literal "Definition" ]
+                      Rows =
+                        [ [ TextSource.Literal "MVU"; TextSource.Literal "Model-View-Update" ]
+                          [ TextSource.Literal "DSL"; TextSource.Literal "Domain-specific language" ] ] } })
         None
 
 let mapVis: Node<obj> =
@@ -1980,7 +1942,17 @@ let mapVis: Node<obj> =
 // ─── Custom + composite ─────────────────────────────────────────────────
 
 let custom: Node<obj> =
-    node "custom-1" (NodeKind.Custom("analytics", "trend-card", Map.empty, None, [])) None
+    node
+        "custom-1"
+        (NodeKind.Custom(
+            { ModuleId = "analytics"
+              ComponentId = "trend-card"
+              Props = Map.empty
+              ContentHash = None
+              // `None` ≡ the old `[]` — the key stays off the wire.
+              ExposedNodeIds = None }
+        ))
+        None
 
 // Custom with the bounded-escape additive
 // fields populated. Exercises the wire-shape lock: contentHash + exposed-
@@ -1989,14 +1961,15 @@ let customBounded: Node<obj> =
     node
         "custom-bounded-1"
         (NodeKind.Custom(
-            "deal-flow",
-            "QualityRing",
-            Map.empty,
-            Some
-                { Algorithm = "SHA256"
-                  Hash = "abc123def456"
-                  Strictness = HashStrictness.StrictReplay },
-            [ NodeId "quality-ring-segment-1"; NodeId "quality-ring-segment-2" ]
+            { ModuleId = "deal-flow"
+              ComponentId = "QualityRing"
+              Props = Map.empty
+              ContentHash =
+                Some
+                    { Algorithm = "SHA256"
+                      Hash = "abc123def456"
+                      Strictness = HashStrictness.StrictReplay }
+              ExposedNodeIds = Some [ "quality-ring-segment-1"; "quality-ring-segment-2" ] }
         ))
         None
 
@@ -2004,14 +1977,16 @@ let customBoundedAdvisory: Node<obj> =
     node
         "custom-bounded-advisory"
         (NodeKind.Custom(
-            "deal-flow",
-            "TrendCard",
-            Map.empty,
-            Some
-                { Algorithm = "SHA256"
-                  Hash = "fedcba654321"
-                  Strictness = HashStrictness.AdvisoryWarning },
-            []
+            { ModuleId = "deal-flow"
+              ComponentId = "TrendCard"
+              Props = Map.empty
+              ContentHash =
+                Some
+                    { Algorithm = "SHA256"
+                      Hash = "fedcba654321"
+                      Strictness = HashStrictness.AdvisoryWarning }
+              // `None` ≡ the old `[]` — the key stays off the wire.
+              ExposedNodeIds = None }
         ))
         None
 
@@ -2048,10 +2023,10 @@ let switchBasic: Node<obj> =
         (NodeKind.Switch
             { StateKey = "view"
               Cases =
-                [ "details",
-                  node "switch-details" (NodeKind.Markdown({ Text = TextSource.Literal "Details view" })) None
-                  "summary",
-                  node "switch-summary" (NodeKind.Markdown({ Text = TextSource.Literal "Summary view" })) None ]
+                [ { Match = "details"
+                    Child = node "switch-details" (NodeKind.Markdown({ Text = TextSource.Literal "Details view" })) None }
+                  { Match = "summary"
+                    Child = node "switch-summary" (NodeKind.Markdown({ Text = TextSource.Literal "Summary view" })) None } ]
               Default =
                 node
                     "switch-default"
@@ -2073,18 +2048,21 @@ let fragmentDecl: Node<obj> =
     node
         "frag-decl-1"
         (NodeKind.FragmentDecl
-            { Name = FragmentId "card-template"
+            { Name = "card-template"
               Body = node "frag-body" (NodeKind.Markdown({ Text = TextSource.Literal "Template body" })) None
-              Holes = []
-              Effect = EffectClass.pureDeterministic })
+              // `None` ≡ the old zero-holes / pure-deterministic defaults —
+              // both keys stay off the wire.
+              Holes = None
+              Effect = None })
         None
 
 let fragmentRef: Node<obj> =
     node
         "frag-ref-1"
         (NodeKind.FragmentRef
-            { Name = FragmentId "card-template"
-              Args = Map.empty })
+            { Name = "card-template"
+              // `None` ≡ the old empty Map — the key stays off the wire.
+              Args = None })
         None
 
 // Parameterised-fragment fixtures (Phase 180). The decl exercises every hole
@@ -2096,30 +2074,34 @@ let fragmentDeclParam: Node<obj> =
     node
         "frag-decl-param"
         (NodeKind.FragmentDecl
-            { Name = FragmentId "stat-card"
+            { Name = "stat-card"
               Body = node "param-body" (NodeKind.Markdown({ Text = TextSource.Literal "Parameterised body" })) None
               Holes =
-                [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), Some(Scalar.Str "Untitled"))
-                  HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), None)
-                  HoleDecl.Slot("content", Some "Display")
-                  HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 12)) ]
+                Some
+                    [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), Some(Scalar.Str "Untitled"))
+                      HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), None)
+                      HoleDecl.Slot("content", Some "Display")
+                      HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 12)) ]
               Effect =
-                { HostEffect = HostEffect.ReadsHost
-                  Determinism = DeterminismSource.Clock } })
+                Some
+                    { HostEffect = HostEffect.ReadsHost
+                      Determinism = DeterminismSource.Clock } })
         None
 
 let fragmentRefArgs: Node<obj> =
     node
         "frag-ref-args"
         (NodeKind.FragmentRef
-            { Name = FragmentId "stat-card"
+            { Name = "stat-card"
               Args =
-                Map.ofList
-                    [ "count", FragmentArg.Value(box 7)
-                      "content",
-                      FragmentArg.Slot(
-                          node "slot-tree" (NodeKind.Markdown({ Text = TextSource.Literal "Bound slot" })) None
-                      ) ] })
+                Some(
+                    Map.ofList
+                        [ "count", FragmentArg.Int 7
+                          "content",
+                          FragmentArg.SlotArg(
+                              node "slot-tree" (NodeKind.Markdown({ Text = TextSource.Literal "Bound slot" })) None
+                          ) ]
+                ) })
         None
 
 // Mount fixtures (Phase 265, §4o — the isolation/embedding boundary).
@@ -2135,11 +2117,13 @@ let mountMinimal: Node<obj> =
         "mount-1"
         (NodeKind.Mount
             { ScopeId = "guest-sidebar"
-              Inputs = Map.empty
+              // `None` ≡ the old empty Map — the key stays off the wire.
+              Inputs = None
               Channel =
                 { Direction = ChannelDirection.OutOnly
                   MessageShape = None }
-              OnBubble = (fun _ -> Action.Chain [])
+              // `Some` — keeps the `"onBubble":"<closure>"` sentinel on the wire.
+              OnBubble = Some(fun _ -> Action.Chain [])
               Capabilities = [] })
         None
 
@@ -2149,17 +2133,22 @@ let mountFull: Node<obj> =
         (NodeKind.Mount
             { ScopeId = "guest-metrics"
               Inputs =
-                Map.ofList
-                    [ "title", FragmentArg.Value(box "Metrics")
-                      "seed",
-                      FragmentArg.Slot(
-                          node "seed-tree" (NodeKind.Markdown({ Text = TextSource.Literal "Initial guest state" })) None
-                      ) ]
+                Some(
+                    Map.ofList
+                        [ "title", FragmentArg.Str "Metrics"
+                          "seed",
+                          FragmentArg.SlotArg(
+                              node
+                                  "seed-tree"
+                                  (NodeKind.Markdown({ Text = TextSource.Literal "Initial guest state" }))
+                                  None
+                          ) ]
+                )
               Channel =
                 { Direction = ChannelDirection.TwoWay
                   MessageShape = Some "MetricsMsg" }
-              OnBubble = (fun _ -> Action.Chain [])
-              Capabilities = [ CapabilityTag "notify"; CapabilityTag "call:reports.*" ] })
+              OnBubble = Some(fun _ -> Action.Chain [])
+              Capabilities = [ "notify"; "call:reports.*" ] })
         None
 
 let composite: Node<obj> =
@@ -2173,11 +2162,7 @@ let composite: Node<obj> =
                 [ node
                       "composite-card"
                       (NodeKind.Box(
-                          { Layout =
-                              BoxLayout.Flex
-                                  { Direction = Orientation.Vertical
-                                    Wrap = false
-                                    Gap = None }
+                          { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
                             Role = BoxRole.Card
                             Heading = Some(TextSource.Literal "Composite")
                             Children = [ metric; labelValueRow ] }
@@ -2388,11 +2373,7 @@ let formatBindings: Node<obj> =
     node
         "format-bindings"
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Flex
-                    { Direction = Orientation.Vertical
-                      Wrap = false
-                      Gap = None }
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
               Children =

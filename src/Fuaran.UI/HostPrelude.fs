@@ -44,6 +44,17 @@ type FileSelection =
       MimeType: string
       Ref: FileRef }
 
+/// What a single cell of grid data is, after a column's `Value` projection runs
+/// (closure interior — never serialises, so no codec). Pre-formatted strings
+/// break numeric sort; use `Numeric` + a `CellFormat` instead.
+[<RequireQualifiedAccess>]
+type CellValue =
+    | Numeric of float
+    | Text of string
+    | Bool of bool
+    | Date of System.DateTimeOffset
+    | Empty
+
 /// ARIA role — a closed convenience list plus `Custom` verbatim passthrough
 /// (the wire position admits any string; canonical cases emit lower-case).
 [<RequireQualifiedAccess>]

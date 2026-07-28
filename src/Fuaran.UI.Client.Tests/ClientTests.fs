@@ -282,7 +282,7 @@ let miscTests =
               let produced = TurnResult.Produced(validTreeJson, [], "1.4.0")
 
               match Render.decodeProduced produced with
-              | Some(Ok node) -> Expect.equal node.Id (NodeId "badge-1") "decoded the node id"
+              | Some(Ok node) -> Expect.equal node.Id "badge-1" "decoded the node id"
               | Some(Error e) -> failtestf "expected Ok decode, got error %s" e.Message
               | None -> failtest "expected Some for a Produced result"
 

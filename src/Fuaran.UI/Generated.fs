@@ -196,7 +196,7 @@ and [<RequireQualifiedAccess>] CellFormat =
     | Percent of decimals: int option
     | SignificantDigits of digits: int
     | Date of format: string
-    | Custom of fn: (obj -> string)
+    | Custom of fn: (Fuaran.UI.HostPrelude.CellValue -> string)
 
 and [<RequireQualifiedAccess>] Action<'Msg> =
     | Chain of ops: Action<'Msg> list
@@ -257,13 +257,13 @@ and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
     | Text
     | Numeric
     | Date
-    | Editable of onEdit: (obj * obj -> Action<'Msg>) option
+    | Editable of onEdit: (obj * Fuaran.UI.HostPrelude.CellValue -> Action<'Msg>) option
     | Checkbox of get: (obj -> bool) * onToggle: (obj * bool -> Action<'Msg>) option
     | Button of label: TextSource * onClick: (obj -> Action<'Msg>) option
     | ButtonGroup of buttons: ButtonGroupItem<'Msg> list
     | Link of hrefFn: (obj -> string) * labelFn: (obj -> TextSource)
     | Pill of labelFn: (obj -> TextSource) * toneFn: (obj -> ToneVariant)
-    | Progress of fractionFn: (obj -> float) * labelFn: (obj -> TextSource)
+    | Progress of fractionFn: (obj -> float) * labelFn: (obj -> TextSource) option
     | Custom of fn: ((obj -> JVal) -> Node<'Msg>)
 
 and [<RequireQualifiedAccess>] HoleValueSpace =
@@ -395,8 +395,8 @@ and MapMarker =
 
 and StaticRows =
     {
-      Headers: string list
-      Rows: string list list
+      Headers: TextSource list
+      Rows: TextSource list list
     }
 
 and FormField<'Msg> =
@@ -440,7 +440,7 @@ and ColumnErased<'Msg> =
       Format: CellFormat
       Kind: CellKindErased<'Msg>
       Label: string
-      Value: (obj -> obj) option
+      Value: (obj -> Fuaran.UI.HostPrelude.CellValue) option
       Width: ColumnWidth
     }
 
@@ -670,6 +670,7 @@ and TabsSpec<'Msg> =
     {
       ActiveIndex: Binding<int>
       Children: Node<'Msg> list
+      Orientation: Orientation
       OnSelect: (int -> Action<'Msg>) option
       OnSelectTag: (string -> Action<'Msg>) option
       TabHeaders: TabHeader list option
@@ -1188,7 +1189,7 @@ and private encCellKindErased<'Msg> (v: CellKindErased<'Msg>) : JVal =
     | CellKindErased.ButtonGroup buttons -> Canon.typed "ButtonGroup" [ "buttons", JArr(List.map encButtonGroupItem buttons) ]
     | CellKindErased.Link (hrefFn, labelFn) -> Canon.typed "Link" [ "hrefFn", JStr "<closure>"; "labelFn", JStr "<closure>" ]
     | CellKindErased.Pill (labelFn, toneFn) -> Canon.typed "Pill" [ "labelFn", JStr "<closure>"; "toneFn", JStr "<closure>" ]
-    | CellKindErased.Progress (fractionFn, labelFn) -> Canon.typed "Progress" [ "fractionFn", JStr "<closure>"; "labelFn", JStr "<closure>" ]
+    | CellKindErased.Progress (fractionFn, labelFn) -> Canon.typed "Progress" ([ Some("fractionFn", JStr "<closure>"); (labelFn |> Option.map (fun v -> "labelFn", JStr "<closure>")) ] |> List.choose id)
     | CellKindErased.Custom fn -> Canon.typed "Custom" [ "fn", JStr "<closure>" ]
 
 and private encHoleValueSpace (v: HoleValueSpace) : JVal =
@@ -1274,7 +1275,7 @@ and private encMapMarker (s: MapMarker) : JVal =
     JObj([ Some("label", JStr s.Label); Some("latitude", JFloat s.Latitude); Some("longitude", JFloat s.Longitude) ] |> List.choose id)
 
 and private encStaticRows (s: StaticRows) : JVal =
-    JObj([ Some("headers", JArr(List.map JStr s.Headers)); Some("rows", JArr(List.map (fun __xs -> JArr(List.map JStr __xs)) s.Rows)) ] |> List.choose id)
+    JObj([ Some("headers", JArr(List.map encTextSource s.Headers)); Some("rows", JArr(List.map (fun __xs -> JArr(List.map encTextSource __xs)) s.Rows)) ] |> List.choose id)
 
 and private encFormField<'Msg> (s: FormField<'Msg>) : JVal =
     JObj([ Some("id", JStr s.Id); Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("required", JBool s.Required); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
@@ -1373,7 +1374,7 @@ and private encScrollAreaSpec<'Msg> (s: ScrollAreaSpec<'Msg>) : JVal =
     Canon.typed "ScrollArea" ([ Some("children", JArr(List.map encNode s.Children)); Some("orientation", encScrollOrientation s.Orientation); (s.MaxHeight |> Option.map (fun v -> "maxHeight", JInt v)); (s.MaxWidth |> Option.map (fun v -> "maxWidth", JInt v)) ] |> List.choose id)
 
 and private encTabsSpec<'Msg> (s: TabsSpec<'Msg>) : JVal =
-    Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.OnSelectTag |> Option.map (fun v -> "onSelectTag", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
+    Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (if s.Orientation = Orientation.Horizontal then None else Some("orientation", encOrientation s.Orientation)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.OnSelectTag |> Option.map (fun v -> "onSelectTag", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
 
 and private encStepperSpec<'Msg> (s: StepperSpec<'Msg>) : JVal =
     Canon.typed "Stepper" ([ Some("activeStep", (encBinding JInt) s.ActiveStep); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")) ] |> List.choose id)
@@ -2067,7 +2068,7 @@ and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, string> =
         | "Numeric" -> Ok CellKindErased.Numeric
         | "Date" -> Ok CellKindErased.Date
         | "Editable" ->
-            (dPresent "onEdit" __fs |> Result.map (Option.map (fun () -> (fun (_: obj * obj) -> Action.Chain [])))) |> Result.bind (fun onEdit ->
+            (dPresent "onEdit" __fs |> Result.map (Option.map (fun () -> (fun (_: obj * Fuaran.UI.HostPrelude.CellValue) -> Action.Chain [])))) |> Result.bind (fun onEdit ->
             Ok(CellKindErased.Editable(onEdit)))
         | "Checkbox" ->
             Ok ((fun _ -> false)) |> Result.bind (fun get ->
@@ -2090,7 +2091,7 @@ and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, string> =
             Ok(CellKindErased.Pill(labelFn, toneFn))))
         | "Progress" ->
             Ok ((fun _ -> 0.0)) |> Result.bind (fun fractionFn ->
-            Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
+            (dPresent "labelFn" __fs |> Result.map (Option.map (fun () -> (fun _ -> TextSource.Literal "")))) |> Result.bind (fun labelFn ->
             Ok(CellKindErased.Progress(fractionFn, labelFn))))
         | "Custom" ->
             Ok ((fun _ -> Unchecked.defaultof<Node<obj>>)) |> Result.bind (fun fn ->
@@ -2354,8 +2355,8 @@ and private decMapMarker (j: JVal) : Result<MapMarker, string> =
 
 and private decStaticRows (j: JVal) : Result<StaticRows, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "headers" __fs (dList dStr) |> Result.bind (fun headers ->
-    dReq "rows" __fs (dList (dList dStr)) |> Result.bind (fun rows ->
+    dReq "headers" __fs (dList decTextSource) |> Result.bind (fun headers ->
+    dReq "rows" __fs (dList (dList decTextSource)) |> Result.bind (fun rows ->
     Ok { Headers = headers; Rows = rows })))
 
 and private decFormField (j: JVal) : Result<FormField<obj>, string> =
@@ -2399,7 +2400,7 @@ and private decColumnErased (j: JVal) : Result<ColumnErased<obj>, string> =
     dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
     dReq "kind" __fs decCellKindErased |> Result.bind (fun kind ->
     dReq "label" __fs dStr |> Result.bind (fun label ->
-    (dPresent "value" __fs |> Result.map (Option.map (fun () -> (fun _ -> ("<closure>" :> obj))))) |> Result.bind (fun value ->
+    (dPresent "value" __fs |> Result.map (Option.map (fun () -> (fun _ -> Fuaran.UI.HostPrelude.CellValue.Empty)))) |> Result.bind (fun value ->
     dDef "width" __fs decColumnWidth (ColumnWidth.Auto) |> Result.bind (fun width ->
     Ok { Field = field; Format = format; Kind = kind; Label = label; Value = value; Width = width })))))))
 
@@ -2605,12 +2606,13 @@ and private decTabsSpec (j: JVal) : Result<TabsSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "activeIndex" __fs (decBinding dInt) |> Result.bind (fun activeIndex ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
+    dDef "orientation" __fs decOrientation (Orientation.Horizontal) |> Result.bind (fun orientation ->
     (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: int) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
     (dPresent "onSelectTag" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onSelectTag ->
     dOpt "tabHeaders" __fs (dList decTabHeader) |> Result.bind (fun tabHeaders ->
     dOpt "tabTags" __fs (dList dStr) |> Result.bind (fun tabTags ->
     dOpt "activeTag" __fs (decBinding dStr) |> Result.bind (fun activeTag ->
-    Ok { ActiveIndex = activeIndex; Children = children; OnSelect = onSelect; OnSelectTag = onSelectTag; TabHeaders = tabHeaders; TabTags = tabTags; ActiveTag = activeTag }))))))))
+    Ok { ActiveIndex = activeIndex; Children = children; Orientation = orientation; OnSelect = onSelect; OnSelectTag = onSelectTag; TabHeaders = tabHeaders; TabTags = tabTags; ActiveTag = activeTag })))))))))
 
 and private decStepperSpec (j: JVal) : Result<StepperSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -2900,7 +2902,7 @@ let mkScrollArea (id: string) (children: Node<'Msg> list) (orientation: ScrollOr
     { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; Orientation = Orientation.Horizontal; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkStepper (id: string) (activeStep: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

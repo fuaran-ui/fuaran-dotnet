@@ -95,7 +95,7 @@ let private kindTag (k: NodeKind<obj>) : string =
         | NodeCategory.Structural -> "Structural"
 
 let private nodew: Fuaran.Core.NodeWitness<EqNode, NodeId> =
-    { Id = fun e -> e.Node.Id
+    { Id = fun e -> NodeId e.Node.Id
       KindTag = fun e -> kindTag e.Node.Kind
       Children = fun e -> Introspect.getChildren e.Node.Kind |> Option.defaultValue [] |> List.map wrap
       ReplaceChildren =
@@ -116,32 +116,28 @@ let private canHold (e: EqNode) =
 
 let private mkStack (id: string) (kids: EqNode list) : EqNode =
     wrap
-        { Id = NodeId id
+        { Id = id
           Kind =
             NodeKind.Box(
-                { Layout =
-                    BoxLayout.Flex
-                        { Direction = Orientation.Vertical
-                          Wrap = false
-                          Gap = None }
+                { Layout = LayoutMode.Flex(Orientation.Vertical, false, None)
                   Role = BoxRole.Group
                   Heading = None
                   Children = kids |> List.map unwrap }
             )
-          State = Defaults.stateBehaviour
-          Style = Defaults.style
+          State = None
+          Style = None
           Accessibility = Option.None
           Motion = Option.None
           ExtraAttributes = Option.None }
 
 let private mkSpacer (id: string) : EqNode =
     wrap
-        { Id = NodeId id
+        { Id = id
           // Phase 459 — Spacer retired; a childless Markdown leaf serves the
           // same "leaf with no bindings/handlers" role this op-stream test needs.
           Kind = NodeKind.Markdown({ Text = TextSource.Literal "" })
-          State = Defaults.stateBehaviour
-          Style = Defaults.style
+          State = None
+          Style = None
           Accessibility = Option.None
           Motion = Option.None
           ExtraAttributes = Option.None }
@@ -252,10 +248,7 @@ let tests =
               match Fuaran.Core.Ops.apply nodew idw op tree with
               | Ok post ->
                   Expect.equal
-                      (nodew.Children post
-                       |> List.map (fun e ->
-                           match e.Node.Id with
-                           | NodeId s -> s))
+                      (nodew.Children post |> List.map (fun e -> e.Node.Id))
                       [ "a"; "b" ]
                       "child inserted via Core op"
 

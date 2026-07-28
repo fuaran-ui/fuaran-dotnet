@@ -261,7 +261,11 @@ let tests =
                       "sw"
                       { Defaults.switch<Msg> with
                           StateKey = "view"
-                          Cases = [ "a", markdown "c1" "one"; "a", markdown "c2" "two" ]
+                          Cases =
+                              [ { Match = "a"
+                                  Child = markdown "c1" "one" }
+                                { Match = "a"
+                                  Child = markdown "c2" "two" } ]
                           Default = markdown "def" "none" }
 
               let tree = dashboard "root" [ switchNode ]
@@ -280,7 +284,9 @@ let tests =
                   Fuaran.switch
                       "sw"
                       { Defaults.switch<Msg> with
-                          Cases = [ "details", markdown "c1" "one" ]
+                          Cases =
+                              [ { Match = "details"
+                                  Child = markdown "c1" "one" } ]
                           Default = markdown "def" "none" }
 
               let tree = dashboard "root" [ switchNode ]
@@ -300,7 +306,11 @@ let tests =
                       "sw"
                       { Defaults.switch<Msg> with
                           StateKey = "view"
-                          Cases = [ "details", markdown "c1" "one"; "summary", markdown "c2" "two" ]
+                          Cases =
+                              [ { Match = "details"
+                                  Child = markdown "c1" "one" }
+                                { Match = "summary"
+                                  Child = markdown "c2" "two" } ]
                           Default = markdown "def" "none" }
 
               let tree = dashboard "root" [ switchNode ]
@@ -429,7 +439,7 @@ let tests =
 
           test "validate passes a master-detail pair (Selection over a DataGrid node)" {
               let grid: Node<Msg> =
-                  { Id = NodeId "orders-grid"
+                  { Id = "orders-grid"
                     Kind =
                       NodeKind.DataGrid(
                           { Source = Binding.Static(Some Seq.empty)
@@ -440,8 +450,8 @@ let tests =
                             Editable = false
                             StaticRows = None }
                       )
-                    State = Defaults.stateBehaviour<Msg>
-                    Style = Defaults.style
+                    State = None
+                    Style = None
                     Accessibility = None
                     Motion = Defaults.Motion.none
                     ExtraAttributes = None }

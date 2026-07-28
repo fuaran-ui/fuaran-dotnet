@@ -194,7 +194,7 @@ let childNodes (node: Node<'Msg>) : Node<'Msg> list =
     | NodeKind.Modal s -> s.Children
     | NodeKind.ScrollArea s -> s.Children
     | NodeKind.ErrorBoundary spec -> [ spec.Child; spec.Fallback ]
-    | NodeKind.Switch spec -> (spec.Cases |> List.map snd) @ [ spec.Default ]
+    | NodeKind.Switch spec -> (spec.Cases |> List.map _.Child) @ [ spec.Default ]
     | NodeKind.FragmentDecl spec -> [ spec.Body ]
     | NodeKind.Heading _
     | NodeKind.Markdown _
@@ -233,18 +233,11 @@ let rec walkNodes (tree: Node<'Msg>) : Node<'Msg> list =
 
 /// The first node with `id` (depth-first), or `None`.
 let findNode (id: string) (tree: Node<'Msg>) : Node<'Msg> option =
-    walkNodes tree
-    |> List.tryFind (fun n ->
-        let (NodeId raw) = n.Id
-        raw = id)
+    walkNodes tree |> List.tryFind (fun n -> n.Id = id)
 
 /// Ids of every node whose wire kind discriminator equals `kind`.
 let findNodesByKind (kind: string) (tree: Node<'Msg>) : string list =
-    walkNodes tree
-    |> List.filter (fun n -> kindName n.Kind = kind)
-    |> List.map (fun n ->
-        let (NodeId raw) = n.Id
-        raw)
+    walkNodes tree |> List.filter (fun n -> kindName n.Kind = kind) |> List.map _.Id
 
 // ─── Structural introspection envelope (getNodeState / inspectTree) ─────────
 
@@ -265,16 +258,10 @@ type TreeIntrospection =
       Children: TreeIntrospection list }
 
 let introspectNode (node: Node<'Msg>) : NodeIntrospection =
-    let (NodeId raw) = node.Id
-
-    { Id = raw
+    { Id = node.Id
       Kind = kindName node.Kind
       Bindings = extractBindingSlots node.Kind
-      ChildIds =
-        childNodes node
-        |> List.map (fun c ->
-            let (NodeId cid) = c.Id
-            cid) }
+      ChildIds = childNodes node |> List.map _.Id }
 
 let rec inspectTree (node: Node<'Msg>) : TreeIntrospection =
     let n = introspectNode node

@@ -33,7 +33,7 @@ open Fuaran.UI.Ops
 /// `'Msg` parameter explicitly resolves to `obj` — matching the
 /// `Node<obj>` shape `JsonDecode.decodeOp` produces.
 let private revenueMetric: Node<obj> =
-    { Id = NodeId "revenue"
+    { Id = "revenue"
       Kind =
         NodeKind.Metric(
             { Label = TextSource.Literal "Revenue"
@@ -47,16 +47,9 @@ let private revenueMetric: Node<obj> =
               Icon = None
               Subtext = None }
         )
-      State =
-        { OnLoading = None
-          OnEmpty = None
-          OnError = None }
-      Style =
-        { Tone = ToneVariant.Default
-          Weight = StyleWeight.Standard
-          Emphasis = Emphasis.Normal
-          Role = StyleRole.None
-          Voice = FontVoice.Default }
+      // `None` is the canonical empty-state / default-style shape since the swap.
+      State = None
+      Style = None
       Accessibility = None
       Motion = None
       ExtraAttributes = None }
@@ -186,7 +179,7 @@ let tests =
               // Map<string,obj> → typed-value coercion on the nested leg.
               let grid: Node<obj> =
                   { revenueMetric with
-                      Id = NodeId "channel-grid"
+                      Id = "channel-grid"
                       Kind =
                           NodeKind.DataGrid(
                               { Source = Binding.Static(Some Seq.empty)
@@ -224,7 +217,7 @@ let tests =
           test "UpdateProp { path=\"Columns[0].Width\", value=ColumnWidth.Fixed } applies via wire decode" {
               let grid: Node<obj> =
                   { revenueMetric with
-                      Id = NodeId "channel-grid"
+                      Id = "channel-grid"
                       Kind =
                           NodeKind.DataGrid(
                               { Source = Binding.Static(Some Seq.empty)

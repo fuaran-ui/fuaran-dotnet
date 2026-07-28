@@ -16,13 +16,15 @@ public static partial class Fuaran
         BuildBare(
             options.Id,
             // Phase 692 — the category wrapper is gone; the kind factories are flat.
-            FsTypes.NodeKind<object>.NewBadge(new FsGen.BadgeSpec(options.Label.Inner, options.Variant.ToFs())));
+            // NodeKind's declaring type is Fuaran.UI.Generated since the 4b swap
+            // (the Types.fs name is an erased abbreviation, invisible to C#).
+            FsGen.NodeKind<object>.NewBadge(new FsGen.BadgeSpec(options.Label.Inner, options.Variant.ToFs())));
 
     /// <summary>A sparkline. (Built bare — no F# smart ctor.)</summary>
     public static FuaranNode Sparkline(SparklineOptions options) =>
         BuildBare(
             options.Id,
-            FsTypes.NodeKind<object>.NewSparkline(
+            FsGen.NodeKind<object>.NewSparkline(
                 new FsGen.SparklineSpec(
                     // Generated SparklineSpec.Source binds an F# `float list` — re-type the
                     // facade's IEnumerable binding at the seam.

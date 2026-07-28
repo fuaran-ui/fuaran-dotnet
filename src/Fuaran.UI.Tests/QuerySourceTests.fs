@@ -54,7 +54,7 @@ let private gateTests =
 
               match run (resolveAndCheck src aRequest false dashboard) with
               | Ok(tree, resolution) ->
-                  Expect.equal tree.Id (NodeId "m1") "the validated tree is returned for render"
+                  Expect.equal tree.Id "m1" "the validated tree is returned for render"
                   Expect.isSome (QueryResolution.rows resolution) "full fetch carries the rows"
               | Error e -> failtestf "expected Ok, got %A" e
 

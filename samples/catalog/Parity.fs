@@ -165,14 +165,14 @@ let private fuaranChipStrip () : Node<unit> =
             Wrap = true
             Children =
                 [ for label in [ "Search"; "Display"; "TV"; "OOH"; "Radio" ] ->
-                      { Id = NodeId("chip-" + label)
+                      { Id = "chip-" + label
                         Kind =
                           NodeKind.Badge(
                               { Label = TextSource.Literal label
                                 Variant = BadgeVariant.Neutral }
                           )
-                        State = Defaults.stateBehaviour<unit>
-                        Style = Defaults.style
+                        State = None
+                        Style = None
                         Accessibility = Defaults.Accessibility.none
                         Motion = Defaults.Motion.none
                         ExtraAttributes = None } ] }

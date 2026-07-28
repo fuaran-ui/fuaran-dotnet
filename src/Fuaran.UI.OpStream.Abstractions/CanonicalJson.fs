@@ -1496,29 +1496,60 @@ let private encodeFileUploadSpec<'Msg> (s: FileUploadSpec<'Msg>) : Appender =
 let private encodeCellKindErased<'Msg> (k: CellKindErased<'Msg>) : Appender =
     fun sb ->
         match k with
+        // Since the swap, the interactive closure slots are OPTIONS — a `Some`
+        // rides as the `"<closure>"` sentinel exactly as before (byte-identical
+        // for every previously-expressible value), a `None` omits the key
+        // (matching the generated encoder's omit-when-None form).
         | CellKindErased.Text -> appendObject sb (case "Text" [])
         | CellKindErased.Numeric -> appendObject sb (case "Numeric" [])
         | CellKindErased.Date -> appendObject sb (case "Date" [])
-        | CellKindErased.Editable _ -> appendObject sb (case "Editable" [ "onEdit", sentinel closureSentinel ])
-        | CellKindErased.Checkbox(_, _) ->
-            appendObject sb (case "Checkbox" [ "get", sentinel closureSentinel; "onToggle", sentinel closureSentinel ])
-        | CellKindErased.Button(label, _) ->
-            appendObject sb (case "Button" [ "label", encodeTextSource label; "onClick", sentinel closureSentinel ])
+        | CellKindErased.Editable onEdit ->
+            appendObject
+                sb
+                (case
+                    "Editable"
+                    ([ onEdit |> Option.map (fun _ -> "onEdit", sentinel closureSentinel) ]
+                     |> List.choose id))
+        | CellKindErased.Checkbox(_, onToggle) ->
+            appendObject
+                sb
+                (case
+                    "Checkbox"
+                    ([ Some("get", sentinel closureSentinel)
+                       onToggle |> Option.map (fun _ -> "onToggle", sentinel closureSentinel) ]
+                     |> List.choose id))
+        | CellKindErased.Button(label, onClick) ->
+            appendObject
+                sb
+                (case
+                    "Button"
+                    ([ Some("label", encodeTextSource label)
+                       onClick |> Option.map (fun _ -> "onClick", sentinel closureSentinel) ]
+                     |> List.choose id))
         | CellKindErased.ButtonGroup items ->
             let buttons =
                 items
-                |> List.map (fun (label, _) ->
-                    fun sb -> appendObject sb [ "label", encodeTextSource label; "onClick", sentinel closureSentinel ])
+                |> List.map (fun item ->
+                    fun sb ->
+                        appendObject
+                            sb
+                            ([ Some("label", encodeTextSource item.Label)
+                               item.OnClick |> Option.map (fun _ -> "onClick", sentinel closureSentinel) ]
+                             |> List.choose id))
 
             appendObject sb (case "ButtonGroup" [ "buttons", (fun sb -> appendArrayWith sb buttons) ])
         | CellKindErased.Link(_, _) ->
             appendObject sb (case "Link" [ "hrefFn", sentinel closureSentinel; "labelFn", sentinel closureSentinel ])
         | CellKindErased.Pill(_, _) ->
             appendObject sb (case "Pill" [ "labelFn", sentinel closureSentinel; "toneFn", sentinel closureSentinel ])
-        | CellKindErased.Progress(_, _) ->
+        | CellKindErased.Progress(_, labelFn) ->
             appendObject
                 sb
-                (case "Progress" [ "fractionFn", sentinel closureSentinel; "labelFn", sentinel closureSentinel ])
+                (case
+                    "Progress"
+                    ([ Some("fractionFn", sentinel closureSentinel)
+                       labelFn |> Option.map (fun _ -> "labelFn", sentinel closureSentinel) ]
+                     |> List.choose id))
         | CellKindErased.Custom _ -> appendObject sb (case "Custom" [ "fn", sentinel closureSentinel ])
 
 let private encodeColumnErased<'Msg> (c: ColumnErased<'Msg>) : Appender =
@@ -1553,16 +1584,16 @@ let private encodeGridSpec<'Msg> (s: GridSpec<'Msg>) : Appender =
               s.RowKey |> Option.map (fun _ -> "rowKey", sentinel closureSentinel)
               s.RowKeyField |> Option.map (fun fld -> "rowKeyField", str fld)
               s.StaticRows
-              |> Option.map (fun (headers, rows) ->
+              |> Option.map (fun sr ->
                   "staticRows",
                   (fun sb ->
                       appendObject
                           sb
-                          [ "headers", (fun sb -> appendArrayWith sb (headers |> List.map encodeTextSource))
+                          [ "headers", (fun sb -> appendArrayWith sb (sr.Headers |> List.map encodeTextSource))
                             "rows",
                             (fun sb ->
                                 let rowAppenders =
-                                    rows
+                                    sr.Rows
                                     |> List.map (fun row ->
                                         fun sb -> appendArrayWith sb (row |> List.map encodeTextSource))
 
@@ -1708,24 +1739,24 @@ let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
             // emitted only when Some, preserving byte-identical encoding.
             let layoutAppender: Appender =
                 match spec.Layout with
-                | BoxLayout.Flex f ->
+                | LayoutMode.Flex(direction, wrap, gap) ->
                     hoistSpec "Flex" (fun sb ->
                         // direction < gap < wrap
-                        let required = [ "direction", encodeOrientation f.Direction ]
-                        let optionals = [ f.Gap |> Option.map (fun g -> "gap", int_ g) ] |> List.choose id
-                        appendObject sb (required @ optionals @ [ "wrap", bool_ f.Wrap ]))
-                | BoxLayout.Grid g ->
+                        let required = [ "direction", encodeOrientation direction ]
+                        let optionals = [ gap |> Option.map (fun g -> "gap", int_ g) ] |> List.choose id
+                        appendObject sb (required @ optionals @ [ "wrap", bool_ wrap ]))
+                | LayoutMode.Grid(cols, templateColumns, gap) ->
                     hoistSpec "Grid" (fun sb ->
                         // cols < gap < templateColumns
-                        let required = [ "cols", int_ g.Cols ]
+                        let required = [ "cols", int_ cols ]
 
                         let optionals =
-                            [ g.Gap |> Option.map (fun n -> "gap", int_ n)
-                              g.TemplateColumns |> Option.map (fun t -> "templateColumns", str t) ]
+                            [ gap |> Option.map (fun n -> "gap", int_ n)
+                              templateColumns |> Option.map (fun t -> "templateColumns", str t) ]
                             |> List.choose id
 
                         appendObject sb (required @ optionals))
-                | BoxLayout.Auto -> hoistSpec "Auto" (fun sb -> appendObject sb [])
+                | LayoutMode.Auto -> hoistSpec "Auto" (fun sb -> appendObject sb [])
 
             let roleStr =
                 match spec.Role with
@@ -1805,17 +1836,19 @@ let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
 
             hoistSpec "Tabs" (inner) sb
         | NodeKind.Stepper spec ->
-            // `onSelect` is a closure → the `"<closure>"` sentinel (decodes to
-            // a no-op, re-encodes to the same sentinel; byte-stable) — same
-            // treatment as Tabs `onSelect` (Phase 126).
+            // `onSelect` is an optional closure since the swap → a `Some` rides
+            // as the `"<closure>"` sentinel (decodes to a no-op, re-encodes to
+            // the same sentinel; byte-stable), a `None` omits the key — same
+            // treatment as Tabs `onSelect` (Phase 126 / 426).
             hoistSpec
                 "Stepper"
                 (fun sb ->
                     appendObject
                         sb
-                        [ "activeStep", encodeBinding<int> spec.ActiveStep
-                          "children", (fun sb -> appendArrayWith sb (spec.Children |> List.map nodeAppender))
-                          "onSelect", sentinel closureSentinel ])
+                        ([ Some("activeStep", encodeBinding<int> spec.ActiveStep)
+                           Some("children", (fun sb -> appendArrayWith sb (spec.Children |> List.map nodeAppender)))
+                           spec.OnSelect |> Option.map (fun _ -> "onSelect", sentinel closureSentinel) ]
+                         |> List.choose id))
                 sb
         | NodeKind.SummaryList spec ->
             // SummaryList — Heading is optional + appended
@@ -1914,10 +1947,10 @@ let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
         | NodeKind.Drawing s -> hoistSpec "Drawing" (encodeDrawingSpec s) sb
         // -- Input --
         | NodeKind.Form s -> hoistSpec "Form" (encodeFormSpec s) sb
-        | NodeKind.Filters items ->
+        | NodeKind.Filters spec ->
             appendObject
                 sb
-                (case "Filters" [ "items", (fun sb -> appendArrayWith sb (items |> List.map encodeFilterSpec)) ])
+                (case "Filters" [ "items", (fun sb -> appendArrayWith sb (spec.Items |> List.map encodeFilterSpec)) ])
         | NodeKind.Button s -> hoistSpec "Button" (encodeButtonSpec s) sb
         | NodeKind.FileUpload s -> hoistSpec "FileUpload" (encodeFileUploadSpec s) sb
         | NodeKind.Select s -> hoistSpec "Select" (encodeSelectSpec s) sb
@@ -1950,14 +1983,13 @@ let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
                           appendArrayWith
                               sb
                               (spec.Cases
-                               |> List.map (fun (matchValue, child) ->
-                                   (fun sb ->
-                                       appendObject sb [ "child", nodeAppender child; "match", str matchValue ]))))
+                               |> List.map (fun c ->
+                                   (fun sb -> appendObject sb [ "child", nodeAppender c.Child; "match", str c.Match ]))))
                       "default", nodeAppender spec.Default
                       "stateKey", str spec.StateKey ])
-        | NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds) ->
+        | NodeKind.Custom spec ->
             // Emit `contentHash` + `exposedNodeIds`
-            // when populated; omit when default (None / []). Canonical
+            // when populated; omit when default (None / empty). Canonical
             // lexicographic field order is enforced by `appendObject`'s
             // pre-sort, so we just yield the populated entries. The wire
             // shape is the stable structural-decoder surface — JsonDecode
@@ -1970,7 +2002,7 @@ let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
                 | HashStrictness.Enforced -> "Enforced"
 
             let hashField =
-                contentHash
+                spec.ContentHash
                 |> Option.map (fun h ->
                     "contentHash",
                     (fun sb ->
@@ -1981,15 +2013,15 @@ let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
                               "strictness", str (strictnessStr h.Strictness) ]))
 
             let exposedField =
-                match exposedNodeIds with
-                | [] -> None
-                | ids ->
-                    Some("exposedNodeIds", (fun sb -> appendArrayWith sb (ids |> List.map (fun (NodeId s) -> str s))))
+                match spec.ExposedNodeIds with
+                | None
+                | Some [] -> None
+                | Some ids -> Some("exposedNodeIds", (fun sb -> appendArrayWith sb (ids |> List.map str)))
 
             let fields =
-                [ "componentId", str componentId
-                  "moduleId", str moduleId
-                  "props", encodeMap props ]
+                [ "componentId", str spec.ComponentId
+                  "moduleId", str spec.ModuleId
+                  "props", encodeMap spec.Props ]
                 @ (Option.toList hashField)
                 @ (Option.toList exposedField)
 
@@ -2002,27 +2034,28 @@ let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
             // structural-decoder surface — JsonDecode breakage on either
             // field is a major-version bump (per the stability
             // impact note).
-            // Phase 180 — `holes` + `effect` are additive. A zero-hole decl with
-            // a pure-deterministic effect omits both (algorithm rule 4), so the
-            // Phase 61 fixed-body shape stays byte-identical.
-            let (FragmentId rawName) = spec.Name
-
+            // Phase 180 — `holes` + `effect` are additive (OPTIONS since the
+            // swap). A zero-hole decl with a pure-deterministic effect omits
+            // both (algorithm rule 4), so the Phase 61 fixed-body shape stays
+            // byte-identical; `None` and the explicit degenerate values encode
+            // the same omission.
             let holesField =
                 match spec.Holes with
-                | [] -> []
-                | hs -> [ "holes", (fun sb -> appendArrayWith sb (hs |> List.map encodeHoleDecl)) ]
+                | None
+                | Some [] -> []
+                | Some hs -> [ "holes", (fun sb -> appendArrayWith sb (hs |> List.map encodeHoleDecl)) ]
 
             let effectField =
-                if spec.Effect = EffectClass.pureDeterministic then
-                    []
-                else
-                    [ "effect", encodeEffectClass spec.Effect ]
+                match spec.Effect with
+                | None -> []
+                | Some e when e = EffectClass.pureDeterministic -> []
+                | Some e -> [ "effect", encodeEffectClass e ]
 
             appendObject
                 sb
                 (case
                     "FragmentDecl"
-                    ([ "body", nodeAppender spec.Body; "name", str rawName ]
+                    ([ "body", nodeAppender spec.Body; "name", str spec.Name ]
                      @ holesField
                      @ effectField))
         | NodeKind.FragmentRef spec ->
@@ -2030,24 +2063,28 @@ let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
             // reference half. Emit `name` (the ref points at a decl by
             // name; the body lives at the decl site, not duplicated
             // here — that's the entire emission-economy win of fragments).
-            // Phase 180 — `args` is additive: a zero-arg ref omits it, so the
-            // Phase 61 name-only shape stays byte-identical.
-            let (FragmentId rawName) = spec.Name
-
+            // Phase 180 — `args` is additive (an OPTION since the swap): a
+            // zero-arg / absent bag omits it, so the Phase 61 name-only shape
+            // stays byte-identical. The FragmentArg cases are typed — same
+            // wire shape `encodeScalar`'s boxed sniffing produced.
             let argsField =
-                if Map.isEmpty spec.Args then
-                    []
-                else
+                match spec.Args with
+                | None -> []
+                | Some args when Map.isEmpty args -> []
+                | Some args ->
                     let argAppender (a: FragmentArg<'Msg>) : Appender =
                         fun sb ->
                             match a with
-                            | FragmentArg.Value v -> encodeScalar v sb
-                            | FragmentArg.Slot tree -> appendObject sb (case "SlotArg" [ "tree", nodeAppender tree ])
+                            | FragmentArg.Int v -> appendObject sb (case "Int" [ "value", int_ v ])
+                            | FragmentArg.Float v -> appendObject sb (case "Float" [ "value", float_ v ])
+                            | FragmentArg.Bool v -> appendObject sb (case "Bool" [ "value", bool_ v ])
+                            | FragmentArg.Str v -> appendObject sb (case "Str" [ "value", str v ])
+                            | FragmentArg.SlotArg tree -> appendObject sb (case "SlotArg" [ "tree", nodeAppender tree ])
 
                     [ "args",
-                      (fun sb -> appendObject sb (spec.Args |> Map.toList |> List.map (fun (k, a) -> k, argAppender a))) ]
+                      (fun sb -> appendObject sb (args |> Map.toList |> List.map (fun (k, a) -> k, argAppender a))) ]
 
-            appendObject sb (case "FragmentRef" ([ "name", str rawName ] @ argsField))
+            appendObject sb (case "FragmentRef" ([ "name", str spec.Name ] @ argsField))
         | NodeKind.Mount spec ->
             // Isolation/embedding boundary (Phase 265, §4o). The guest
             // interior is a scope *reference*, not an inlined Node, so the
@@ -2074,31 +2111,37 @@ let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
             // explicit empty list is the visible default-deny posture, so the
             // security-relevant field is never silently absent from the wire.
             let capabilitiesField =
-                "capabilities",
-                (fun sb -> appendArrayWith sb (spec.Capabilities |> List.map (fun (CapabilityTag t) -> str t)))
+                "capabilities", (fun sb -> appendArrayWith sb (spec.Capabilities |> List.map str))
 
             let inputsField =
-                if Map.isEmpty spec.Inputs then
-                    []
-                else
+                match spec.Inputs with
+                | None -> []
+                | Some inputs when Map.isEmpty inputs -> []
+                | Some inputs ->
                     let argAppender (a: FragmentArg<'Msg>) : Appender =
                         fun sb ->
                             match a with
-                            | FragmentArg.Value v -> encodeScalar v sb
-                            | FragmentArg.Slot tree -> appendObject sb (case "SlotArg" [ "tree", nodeAppender tree ])
+                            | FragmentArg.Int v -> appendObject sb (case "Int" [ "value", int_ v ])
+                            | FragmentArg.Float v -> appendObject sb (case "Float" [ "value", float_ v ])
+                            | FragmentArg.Bool v -> appendObject sb (case "Bool" [ "value", bool_ v ])
+                            | FragmentArg.Str v -> appendObject sb (case "Str" [ "value", str v ])
+                            | FragmentArg.SlotArg tree -> appendObject sb (case "SlotArg" [ "tree", nodeAppender tree ])
 
                     [ "inputs",
-                      (fun sb ->
-                          appendObject sb (spec.Inputs |> Map.toList |> List.map (fun (k, a) -> k, argAppender a))) ]
+                      (fun sb -> appendObject sb (inputs |> Map.toList |> List.map (fun (k, a) -> k, argAppender a))) ]
 
+            // `onBubble` is an optional closure since the swap — `Some` rides
+            // as the sentinel (byte-identical to the previously-required slot),
+            // `None` omits the key.
             appendObject
                 sb
                 (case
                     "Mount"
-                    ([ "scopeId", str spec.ScopeId
-                       channelField
-                       capabilitiesField
-                       "onBubble", sentinel closureSentinel ]
+                    (([ Some("scopeId", str spec.ScopeId)
+                        Some channelField
+                        Some capabilitiesField
+                        spec.OnBubble |> Option.map (fun _ -> "onBubble", sentinel closureSentinel) ]
+                      |> List.choose id)
                      @ inputsField))
 
 and private stateBehaviourAppender<'Msg> (s: StateBehaviour<'Msg>) : Appender =
@@ -2195,21 +2238,20 @@ and private isDefaultStyle (s: SemanticStyle) : bool =
 
 and private nodeAppender<'Msg> (n: Node<'Msg>) : Appender =
     fun sb ->
-        let required = [ "id", str (nodeIdStr n.Id); "kind", nodeKindAppender n.Kind ]
+        let required = [ "id", str n.Id; "kind", nodeKindAppender n.Kind ]
 
-        // `state` and `style` are omitted when empty / all-default — the common
-        // case, so most nodes carry neither. The decoder restores the default on
-        // absence (WIRE_FORMAT §3.1). Accessibility is likewise optional (omitted
-        // when None).
+        // `state` and `style` are OPTIONS since the swap; `None` is the
+        // canonical absent form. A `Some` that is empty / all-default is still
+        // omitted, so both spellings of the default encode identically — the
+        // decoder restores `None` on absence (WIRE_FORMAT §3.1). Accessibility
+        // is likewise optional (omitted when None).
         let optionals =
-            [ (if isEmptyState n.State then
-                   None
-               else
-                   Some("state", stateBehaviourAppender n.State))
-              (if isDefaultStyle n.Style then
-                   None
-               else
-                   Some("style", semanticStyleAppender n.Style))
+            [ (match n.State with
+               | Some s when not (isEmptyState s) -> Some("state", stateBehaviourAppender s)
+               | _ -> None)
+              (match n.Style with
+               | Some s when not (isDefaultStyle s) -> Some("style", semanticStyleAppender s)
+               | _ -> None)
               n.Accessibility |> Option.map (fun a -> "accessibility", encodeAccessibility a) ]
             |> List.choose id
 

@@ -47,8 +47,8 @@ module ReassertPin =
     let private kindOnly<'Msg> (n: Node<'Msg>) : Node<'Msg> =
         { n with
             Kind = childlessKind n
-            Style = Defaults.style
-            State = Defaults.stateBehaviour
+            Style = None
+            State = None
             Accessibility = None }
 
     /// Re-stamp the primary side's pinned kind-own field values onto the

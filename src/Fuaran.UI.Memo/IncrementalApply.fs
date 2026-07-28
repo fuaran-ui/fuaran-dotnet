@@ -156,7 +156,7 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, sink: IFuaranTelemetrySink, ?cach
         : Result<Derivation<'Msg>, string> =
         let sk = FragmentKey.structural pf refId slotArgs
 
-        if not (isCacheable pf.Effect) then
+        if not (isCacheable (pf.Effect |> Option.defaultValue EffectClass.pureDeterministic)) then
             // Effecting / non-deterministic — never consult or populate the store.
             match FragmentApply.apply pf refId valueArgs slotArgs with
             | Ok app ->
@@ -207,7 +207,7 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, sink: IFuaranTelemetrySink, ?cach
             newValueArgs: Map<string, obj>,
             newSlotArgs: Map<string, Node<'Msg>>
         ) : Result<Derivation<'Msg>, string> =
-        if not (isCacheable pf.Effect) then
+        if not (isCacheable (pf.Effect |> Option.defaultValue EffectClass.pureDeterministic)) then
             this.Apply(pf, refId, newValueArgs, newSlotArgs)
         else
             let sk = FragmentKey.structural pf refId newSlotArgs

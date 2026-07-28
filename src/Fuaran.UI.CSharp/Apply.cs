@@ -4,7 +4,7 @@ using System.Linq;
 using FsApply = Fuaran.UI.Ops.Apply;
 using FsApplyError = Fuaran.UI.Ops.Types.ApplyError;
 using FsApplyErrorCode = Fuaran.UI.Ops.Types.ApplyErrorCode;
-using FsNode = Fuaran.UI.Types.Node<object>;
+using FsNode = Fuaran.UI.Generated.Node<object>;
 using FsNodeId = Fuaran.UI.Types.NodeId;
 using FsOp = Fuaran.UI.Ops.Types.TreeOp<object>;
 

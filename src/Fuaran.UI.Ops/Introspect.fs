@@ -139,7 +139,7 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     | NodeKind.DataGrid _ -> [ "Source"; "Columns"; "Editable"; "RowKeyField" ]
     | NodeKind.Chart _ -> [ "Source"; "Kind"; "XField"; "YFields"; "Title"; "Stacked" ]
     | NodeKind.Map _ -> [ "Source"; "CentreLatitude"; "CentreLongitude"; "Zoom" ]
-    | NodeKind.Custom(_, _, _, _, _) -> []
+    | NodeKind.Custom _ -> []
     // ErrorBoundary carries `Child` + `Fallback`
     // as Node subtrees; the AI should swap them via EditNode rather
     // than edit individual fields through this engine. Keep the surface
@@ -310,16 +310,21 @@ let withChildren (kind: NodeKind<'Msg>) (children: Node<'Msg> list) : NodeKind<'
 // so there is no node to enumerate until it is applied.
 
 let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg> list -> Node<'Msg>) =
+    // `Node.State` is an option since the swap — an absent envelope has no
+    // slots to enumerate, and the rebuild writes back through the same option.
+    let onLoading = node.State |> Option.bind _.OnLoading
+    let onEmpty = node.State |> Option.bind _.OnEmpty
+
     let stateSlots =
-        [ match node.State.OnLoading with
+        [ match onLoading with
           | Some n -> n
           | None -> ()
-          match node.State.OnEmpty with
+          match onEmpty with
           | Some n -> n
           | None -> () ]
 
-    let hasLoading = node.State.OnLoading.IsSome
-    let hasEmpty = node.State.OnEmpty.IsSome
+    let hasLoading = onLoading.IsSome
+    let hasEmpty = onEmpty.IsSome
 
     let putState (replacements: Node<'Msg> list) (rest: Node<'Msg> list) =
         let loading, afterLoading =
@@ -336,22 +341,24 @@ let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg
 
         { node with
             State =
-                { node.State with
-                    OnLoading = loading
-                    OnEmpty = empty } },
+                node.State
+                |> Option.map (fun s ->
+                    { s with
+                        OnLoading = loading
+                        OnEmpty = empty }) },
         rest
 
     // Kind-held nodes, in a fixed order the rebuild mirrors exactly.
     let kindSlots, putKind =
         match node.Kind with
         | NodeKind.Switch spec ->
-            let caseNodes = spec.Cases |> List.map snd
+            let caseNodes = spec.Cases |> List.map _.Child
 
             caseNodes @ [ spec.Default ],
             fun (rs: Node<'Msg> list) ->
                 let cases =
                     List.zip spec.Cases (List.truncate spec.Cases.Length rs)
-                    |> List.map (fun ((m, _), replaced) -> m, replaced)
+                    |> List.map (fun (c, replaced) -> { c with Child = replaced })
 
                 NodeKind.Switch
                     { spec with
@@ -365,37 +372,47 @@ let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg
                         Child = rs[0]
                         Fallback = rs[1] }
         | NodeKind.FragmentRef spec ->
+            let argMap = spec.Args |> Option.defaultValue Map.empty
+
             let keyed =
-                spec.Args
+                argMap
                 |> Map.toList
                 |> List.choose (fun (k, v) ->
                     match v with
-                    | FragmentArg.Slot n -> Some(k, n)
+                    | FragmentArg.SlotArg n -> Some(k, n)
                     | _ -> None)
 
             keyed |> List.map snd,
             fun (rs: Node<'Msg> list) ->
                 let args =
                     List.zip keyed rs
-                    |> List.fold (fun acc ((k, _), replaced) -> Map.add k (FragmentArg.Slot replaced) acc) spec.Args
+                    |> List.fold (fun acc ((k, _), replaced) -> Map.add k (FragmentArg.SlotArg replaced) acc) argMap
 
-                NodeKind.FragmentRef { spec with Args = args }
+                // An absent/empty arg bag stays `None` (omitted on the wire).
+                NodeKind.FragmentRef
+                    { spec with
+                        Args = (if Map.isEmpty args then None else Some args) }
         | NodeKind.Mount spec ->
+            let inputMap = spec.Inputs |> Option.defaultValue Map.empty
+
             let keyed =
-                spec.Inputs
+                inputMap
                 |> Map.toList
                 |> List.choose (fun (k, v) ->
                     match v with
-                    | FragmentArg.Slot n -> Some(k, n)
+                    | FragmentArg.SlotArg n -> Some(k, n)
                     | _ -> None)
 
             keyed |> List.map snd,
             fun (rs: Node<'Msg> list) ->
                 let inputs =
                     List.zip keyed rs
-                    |> List.fold (fun acc ((k, _), replaced) -> Map.add k (FragmentArg.Slot replaced) acc) spec.Inputs
+                    |> List.fold (fun acc ((k, _), replaced) -> Map.add k (FragmentArg.SlotArg replaced) acc) inputMap
 
-                NodeKind.Mount { spec with Inputs = inputs }
+                // An absent/empty input bag stays `None` (omitted on the wire).
+                NodeKind.Mount
+                    { spec with
+                        Inputs = (if Map.isEmpty inputs then None else Some inputs) }
         | _ -> [], (fun _ -> node.Kind)
 
     let all = stateSlots @ kindSlots
@@ -423,7 +440,11 @@ let descendantNodes (node: Node<'Msg>) : Node<'Msg> list =
     structural @ nonStructural
 
 let rec findNode (target: NodeId) (node: Node<'Msg>) : Node<'Msg> option =
-    if node.Id = target then
+    // The op layer addresses by `NodeId`; `Node.Id` is a bare string since the
+    // swap — unwrap at the comparison.
+    let (NodeId targetRaw) = target
+
+    if node.Id = targetRaw then
         Some node
     else
         descendantNodes node |> List.tryPick (findNode target)
@@ -432,11 +453,13 @@ let rec findNode (target: NodeId) (node: Node<'Msg>) : Node<'Msg> option =
 /// reachable from `root`. Returns `None` for the root itself, or for a target
 /// not present in the tree.
 let findParent (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
+    let (NodeId targetRaw) = target
+
     let rec walk (node: Node<'Msg>) =
         match getChildren node.Kind with
         | None -> None
         | Some children ->
-            match children |> List.tryFindIndex (fun c -> c.Id = target) with
+            match children |> List.tryFindIndex (fun c -> c.Id = targetRaw) with
             | Some idx -> Some(node, idx)
             | None -> children |> List.tryPick walk
 
@@ -445,13 +468,13 @@ let findParent (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
 let rec allNodeIds (node: Node<'Msg>) : NodeId list =
     // `descendantNodes`, not `getChildren`: id enumeration must see the WHOLE
     // tree, including nodes held in positions the structural ops cannot edit.
-    node.Id :: (descendantNodes node |> List.collect allNodeIds)
+    NodeId node.Id :: (descendantNodes node |> List.collect allNodeIds)
 
 /// DFS-add every NodeId in `node`'s subtree to `acc`. No intermediate list —
 /// the membership-probe path (firstSharedId) wants a HashSet, not a list it
 /// would immediately fold into a Set.
 let rec collectNodeIdsInto (acc: HashSet<NodeId>) (node: Node<'Msg>) : unit =
-    acc.Add node.Id |> ignore
+    acc.Add(NodeId node.Id) |> ignore
 
     for c in descendantNodes node do
         collectNodeIdsInto acc c
@@ -468,8 +491,8 @@ let firstSharedId (root: Node<'Msg>) (incoming: Node<'Msg>) : NodeId option =
     collectNodeIdsInto existing root
 
     let rec findIn (node: Node<'Msg>) : NodeId option =
-        if existing.Contains node.Id then
-            Some node.Id
+        if existing.Contains(NodeId node.Id) then
+            Some(NodeId node.Id)
         else
             match getChildren node.Kind with
             | None -> None
@@ -485,7 +508,7 @@ let nodesWithField (field: string) (root: Node<'Msg>) : NodeId list =
     let rec walk (node: Node<'Msg>) =
         let here =
             if availableFields node.Kind |> List.contains field then
-                [ node.Id ]
+                [ NodeId node.Id ]
             else
                 []
 
@@ -506,7 +529,7 @@ let nodesWithField (field: string) (root: Node<'Msg>) : NodeId list =
 /// place (EditNode / UpdateProp / ReplaceBinding / UpdateStyle /
 /// UpdateState).
 let rec mapNode (target: NodeId) (replace: Node<'Msg> -> Node<'Msg>) (node: Node<'Msg>) : Node<'Msg> option =
-    if node.Id = target then
+    if NodeId node.Id = target then
         Some(replace node)
     else
         // Structural children first, then the non-list positions. Both are
@@ -562,7 +585,7 @@ let mapParentOf
         match getChildren node.Kind with
         | None -> None
         | Some children ->
-            if children |> List.exists (fun c -> c.Id = target) then
+            if children |> List.exists (fun c -> NodeId c.Id = target) then
                 match withChildren node.Kind (replaceChildren children) with
                 | Some newKind -> Some { node with Kind = newKind }
                 | None -> None
@@ -596,7 +619,7 @@ let isAncestorOf (ancestorId: NodeId) (descendantId: NodeId) (root: Node<'Msg>) 
     match findNode ancestorId root with
     | None -> false
     | Some ancestor ->
-        if ancestor.Id = descendantId then
+        if NodeId ancestor.Id = descendantId then
             true
         else
             allNodeIds ancestor |> List.contains descendantId

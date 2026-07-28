@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using FsDecode = Fuaran.UI.Ops.JsonDecode;
 using FsCanon = Fuaran.UI.OpStream.Abstractions.CanonicalJson;
 using FsDecodeError = Fuaran.UI.Ops.JsonDecode.DecodeError;
-using FsNode = Fuaran.UI.Types.Node<object>;
+using FsNode = Fuaran.UI.Generated.Node<object>;
 using FsOp = Fuaran.UI.Ops.Types.TreeOp<object>;
 
 namespace Fuaran.UI.CSharp;

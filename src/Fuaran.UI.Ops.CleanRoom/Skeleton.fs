@@ -246,7 +246,7 @@ let projectWith (classify: Classify<'Msg>) (root: Node<'Msg>) : Skeleton =
             | Some kids -> kids |> List.map go
             | None -> []
 
-        { Id = node.Id
+        { Id = NodeId node.Id
           Kind = kindName node.Kind
           Descriptor = classify node
           Children = children }

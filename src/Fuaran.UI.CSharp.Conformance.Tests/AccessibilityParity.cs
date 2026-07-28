@@ -3,7 +3,7 @@ using Fuaran.UI.CSharp;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsDefaults = global::Fuaran.UI.Defaults;
 using FsCanon = Fuaran.UI.OpStream.Abstractions.CanonicalJson;
-using FsNode = Fuaran.UI.Types.Node<object>;
+using FsNode = Fuaran.UI.Generated.Node<object>;
 
 namespace Fuaran.UI.CSharp.Conformance.Tests;
 

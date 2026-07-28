@@ -93,17 +93,22 @@ let tests =
           //     attribute applies uniformly. Pin via the typed Node ────────
           test "NodeKind.Custom node carries Id field — outer-wrapper data-fuaran-node-id applies" {
               let node: Node<Msg> =
-                  { Id = NodeId "custom-host"
-                    Kind = NodeKind.Custom("hostmod", "tooltipcard", Map.empty, None, [])
-                    State = Defaults.stateBehaviour<Msg>
-                    Style = Defaults.style
+                  { Id = "custom-host"
+                    Kind =
+                      NodeKind.Custom(
+                          { ModuleId = "hostmod"
+                            ComponentId = "tooltipcard"
+                            Props = Map.empty
+                            ContentHash = None
+                            ExposedNodeIds = None }
+                      )
+                    State = None
+                    Style = None
                     Accessibility = Defaults.Accessibility.none
                     Motion = Defaults.Motion.none
                     ExtraAttributes = None }
 
-              match node.Id with
-              | NodeId s ->
-                  Expect.equal s "custom-host" "Custom Node Id is preserved (outer wrapper emits data-fuaran-node-id)"
+              Expect.equal node.Id "custom-host" "Custom Node Id is preserved (outer wrapper emits data-fuaran-node-id)"
           }
 
           // ── (6) ExtraAttributes validator — data-* / aria-* accepted ─────
@@ -206,11 +211,11 @@ let tests =
                   Fuaran.custom "be70-id" "my-mod" "MyComp" Map.empty hash exposed
 
               match node.Kind with
-              | NodeKind.Custom(moduleId, componentId, _, h, ids) ->
-                  Expect.equal moduleId "my-mod" "moduleId carried"
-                  Expect.equal componentId "MyComp" "componentId carried"
-                  Expect.equal h hash "contentHash carried"
-                  Expect.equal ids exposed "exposedNodeIds carried"
+              | NodeKind.Custom spec ->
+                  Expect.equal spec.ModuleId "my-mod" "moduleId carried"
+                  Expect.equal spec.ComponentId "MyComp" "componentId carried"
+                  Expect.equal spec.ContentHash hash "contentHash carried"
+                  Expect.equal spec.ExposedNodeIds (Some [ "interior-a"; "interior-b" ]) "exposedNodeIds carried"
               | _ -> failtest "Expected NodeKind.Custom"
           }
 

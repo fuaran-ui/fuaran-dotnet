@@ -50,7 +50,7 @@ open Fuaran.UI.Renderer
 type ServerRenderContext =
     {
         Sources: BindingResolver.BindingSources
-        Fragments: Map<FragmentId, Node<obj>>
+        Fragments: Map<string, Node<obj>>
         /// Host-supplied server Custom-renderer registry (Phase 141). Empty by
         /// default — every `Custom` node then falls back to the labelled
         /// placeholder, matching the client's unregistered path.
@@ -163,7 +163,7 @@ let private buttonVariantClass (variant: ButtonVariant) : string =
 
 // ─── Fragment registry (mirrors the client `collectFragments`) ──────────────
 
-let rec private collectFragments (acc: Map<FragmentId, Node<obj>>) (node: Node<obj>) : Map<FragmentId, Node<obj>> =
+let rec private collectFragments (acc: Map<string, Node<obj>>) (node: Node<obj>) : Map<string, Node<obj>> =
     let acc =
         match node.Kind with
         | NodeKind.FragmentDecl spec -> Map.add spec.Name spec.Body acc
@@ -180,7 +180,7 @@ let rec private collectFragments (acc: Map<FragmentId, Node<obj>>) (node: Node<o
         | NodeKind.Modal(s) -> s.Children
         | NodeKind.ScrollArea(s) -> s.Children
         | NodeKind.ErrorBoundary s -> [ s.Child ]
-        | NodeKind.Switch s -> (s.Cases |> List.map snd) @ [ s.Default ]
+        | NodeKind.Switch s -> (s.Cases |> List.map _.Child) @ [ s.Default ]
         | NodeKind.FragmentDecl s -> [ s.Body ]
         | _ -> []
 
@@ -207,11 +207,10 @@ let private extraAttrProps (node: Node<obj>) : IReactProperty list =
 // ─── The renderer ───────────────────────────────────────────────────────────
 
 let rec private renderNode (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
-    let id =
-        match node.Id with
-        | NodeId s -> s
+    let id = node.Id
 
-    let baseClassName = Theme.nodeClassName node.Kind node.Style
+    let baseClassName =
+        Theme.nodeClassName node.Kind (node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
 
     let className =
         match node.Motion with
@@ -263,7 +262,7 @@ let rec private renderNode (ctx: ServerRenderContext) (node: Node<obj>) : ReactE
 and private renderKind
     (ctx: ServerRenderContext)
     (parentNodeId: string)
-    (state: StateBehaviour<obj>)
+    (state: StateBehaviour<obj> option)
     (kind: NodeKind<obj>)
     : ReactElement =
     match kind with
@@ -290,17 +289,17 @@ and private renderKind
                 [ prop.className "fuaran-layout-dashboard"
                   prop.children (spec.Children |> List.map (renderNode ctx)) ]
         | BoxRole.Separator, _ -> Html.hr [ prop.className "fuaran-layout-separator" ]
-        | BoxRole.Group, BoxLayout.Grid g ->
+        | BoxRole.Group, BoxLayout.Grid(cols, gridTemplateColumns, gridGap) ->
             let templateColumns =
-                match g.TemplateColumns with
+                match gridTemplateColumns with
                 | Some custom -> custom
-                | None -> sprintf "repeat(%d, 1fr)" g.Cols
+                | None -> sprintf "repeat(%d, 1fr)" cols
 
             // `gap` (Phase 459) emits only when set — gap-free grids stay
             // byte-identical to the pre-459 emission (SSR parity with the client).
             let gridStyle =
                 [ style.custom ("gridTemplateColumns", templateColumns) ]
-                @ (match g.Gap with
+                @ (match gridGap with
                    | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
                    | None -> [])
 
@@ -308,17 +307,17 @@ and private renderKind
                 [ prop.className "fuaran-layout-grid"
                   prop.style gridStyle
                   prop.children (spec.Children |> List.map (renderNode ctx)) ]
-        | BoxRole.Group, BoxLayout.Flex f ->
+        | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
             let dir =
-                match f.Direction with
+                match direction with
                 | Orientation.Vertical -> "fuaran-stack-vertical"
                 | Orientation.Horizontal -> "fuaran-stack-horizontal"
 
-            let wrap = if f.Wrap then " fuaran-stack-wrap" else ""
+            let wrap = if flexWrap then " fuaran-stack-wrap" else ""
 
             Html.div (
                 [ prop.className (sprintf "fuaran-layout-stack %s%s" dir wrap) ]
-                @ (match f.Gap with
+                @ (match flexGap with
                    | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
                    | None -> [])
                 @ [ prop.children (spec.Children |> List.map (renderNode ctx)) ]
@@ -354,9 +353,7 @@ and private renderKind
             match child.Kind with
             | NodeKind.Box { Role = BoxRole.Card
                              Heading = Some h } -> renderText ctx h
-            | _ ->
-                match child.Id with
-                | NodeId s -> s
+            | _ -> child.Id
 
         let perTab
             : {| label: string
@@ -622,7 +619,7 @@ and private renderKind
         // lookup), the same dispatch as the client's `renderMetric`.
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
 
-        match resolution, state.OnLoading with
+        match resolution, (state |> Option.bind _.OnLoading) with
         | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
         | _ ->
             Html.div
@@ -679,7 +676,7 @@ and private renderKind
     | NodeKind.Progress spec ->
         let resolution = BindingResolver.resolve ctx.Sources spec.Fraction
 
-        match resolution, state.OnLoading with
+        match resolution, (state |> Option.bind _.OnLoading) with
         | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
         | _ ->
             let fraction =
@@ -723,7 +720,7 @@ and private renderKind
         // `renderLabelValueRow` value projection.
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
 
-        match resolution, state.OnLoading with
+        match resolution, (state |> Option.bind _.OnLoading) with
         | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
         | _ ->
             let emphasisSuffix =
@@ -1021,7 +1018,7 @@ and private renderKind
     | NodeKind.Filters specs ->
         Html.div
             [ prop.className "fuaran-filters"
-              prop.children [ for spec in specs -> renderFilterSpec ctx spec ] ]
+              prop.children [ for spec in specs.Items -> renderFilterSpec ctx spec ] ]
     | NodeKind.FileUpload spec ->
         Html.label
             [ prop.className "fuaran-file-upload"
@@ -1033,7 +1030,7 @@ and private renderKind
     // -- Vis --
     | NodeKind.DataGrid spec ->
         match spec.StaticRows with
-        | Some(headers, rows) ->
+        | Some { Headers = headers; Rows = rows } ->
             // Phase 393 — static read-only mode: SSR renders the full semantic <table> statically
             // (byte-identical to the retired Table), NOT a hydration placeholder.
             let headerCells =
@@ -1125,7 +1122,7 @@ and private renderKind
                 let valueStr = if isNull v then "" else string v
 
                 spec.Cases
-                |> List.tryPick (fun (m, child) -> if m = valueStr then Some child else None)
+                |> List.tryPick (fun c -> if c.Match = valueStr then Some c.Child else None)
             | None -> None
 
         match matched with
@@ -1138,14 +1135,20 @@ and private renderKind
         match Map.tryFind spec.Name ctx.Fragments with
         | Some body -> renderNode ctx body
         | None ->
-            let (FragmentId raw) = spec.Name
+            let raw = spec.Name
 
             Html.div
                 [ prop.className "fuaran-fragment-unresolved-placeholder"
                   prop.custom ("data-fuaran-fragment-unresolved", raw)
                   prop.text (sprintf "[fuaran:fragment unresolved '%s']" raw) ]
-    | NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds) ->
-        renderCustom ctx moduleId componentId props contentHash exposedNodeIds
+    | NodeKind.Custom spec ->
+        renderCustom
+            ctx
+            spec.ModuleId
+            spec.ComponentId
+            spec.Props
+            spec.ContentHash
+            (spec.ExposedNodeIds |> Option.defaultValue [])
     | NodeKind.Mount spec ->
         // Isolation/embedding boundary (Phase 265, §4o). SSR renders the same
         // declared empty state + `data-fuaran-mount-scope` boundary attribute
@@ -1168,7 +1171,7 @@ and private renderCustom
     (componentId: string)
     (props: Map<string, Fuaran.Core.JVal>)
     (contentHash: ContentHash option)
-    (exposedNodeIds: NodeId list)
+    (exposedNodeIds: string list)
     : ReactElement =
     // Unregistered placeholder — identical labelled shape to the client's
     // unregistered Custom path (parity).
@@ -1213,7 +1216,7 @@ and private renderCustom
                 match exposedNodeIds with
                 | [] -> []
                 | ids ->
-                    let joined = ids |> List.map (fun (NodeId s) -> s) |> String.concat " "
+                    let joined = ids |> String.concat " "
                     [ prop.custom ("data-fuaran-exposed-node-ids", joined) ]
 
             let advisoryAttr =

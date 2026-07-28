@@ -4,6 +4,12 @@ using Microsoft.FSharp.Collections;
 using Microsoft.FSharp.Core;
 using static Fuaran.UI.Types;
 
+// Stage-4b swap: the tree envelope (Node / NodeKind / the Spec records /
+// StateBehaviour / LayoutMode) is IDL-generated too — the Types names are
+// abbreviations, erased in metadata, so import the generated declarations
+// directly alongside the surviving Types imports.
+using static Fuaran.UI.Generated;
+
 // The F# `Action<'Msg>` clashes by name with `System.Action<T>`; alias the
 // closed `Action<object>` we always use so the builder surface stays unambiguous
 // without dropping the convenient `using static`. (A friction point recorded in
@@ -106,14 +112,9 @@ internal static class Act
 
 internal static class Defaults
 {
-    public static readonly StateBehaviour<object> EmptyState =
-        new(Fs.None<Node<object>>(), Fs.None<Node<object>>(), Fs.None<FSharpFunc<global::Fuaran.UI.HostPrelude.ErrorPayload, Node<object>>>());
-
-    // Generated SemanticStyle declares (Emphasis, Role, Tone, Voice, Weight) —
-    // ctor is declaration order (Generated.fs), not the old hand order.
-    public static readonly SemanticStyle Style =
-        new(Emphasis.Normal, StyleRole.None, ToneVariant.Default, FontVoice.Default, StyleWeight.Standard);
-
+    // Stage-4b swap: `State = None` / `Style = None` are the canonical
+    // empty-state / default-style shapes — the old always-present empty
+    // StateBehaviour / default SemanticStyle fragments are retired.
     public static readonly FsAction PlaceholderChain = Act.Chain();
 }
 
@@ -130,15 +131,18 @@ internal abstract class NodeBuilder
 
     protected abstract NodeKind<object> BuildKind();
 
+    // Generated Node ctor is Generated.fs declaration order (Id, Kind,
+    // Accessibility, ExtraAttributes, Motion, State, Style); `Id` is a bare
+    // string since the swap.
     public Node<object> Build() =>
         new(
-            NodeId.NewNodeId(Id),
+            Id,
             BuildKind(),
-            Defaults.EmptyState,
-            Defaults.Style,
             Fs.None<Accessibility>(),
+            Fs.None<FSharpMap<string, string>>(),
             Fs.None<Motion>(),
-            Fs.None<FSharpMap<string, string>>());
+            Fs.None<StateBehaviour<object>>(),
+            Fs.None<SemanticStyle>());
 }
 
 // ─── Layout builders ────────────────────────────────────────────────────────
@@ -153,13 +157,15 @@ internal sealed class CardBuilder : NodeBuilder
     public CardBuilder Heading(string text) { _heading = Fs.Some(Txt.Literal(text)); return this; }
     public CardBuilder Children(params NodeBuilder[] kids) { _children.AddRange(kids); return this; }
 
+    // Generated BoxSpec ctor is Generated.fs declaration order (Children,
+    // Heading, Layout, Role); LayoutMode cases are positional since the swap.
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewBox(
             new BoxSpec<object>(
-                BoxLayout.NewFlex(new FlexLayout(Orientation.Vertical, false, Fs.None<int>())),
-                BoxRole.Card,
+                Fs.List(_children.Select(c => c.Build()).ToArray()),
                 _heading,
-                Fs.List(_children.Select(c => c.Build()).ToArray())));
+                LayoutMode.NewFlex(Orientation.Vertical, false, Fs.None<int>()),
+                BoxRole.Card));
 }
 
 internal sealed class StackBuilder : NodeBuilder
@@ -177,10 +183,10 @@ internal sealed class StackBuilder : NodeBuilder
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewBox(
             new BoxSpec<object>(
-                BoxLayout.NewFlex(new FlexLayout(_orientation, _wrap, Fs.None<int>())),
-                BoxRole.Group,
+                Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
-                Fs.List(_children.Select(c => c.Build()).ToArray())));
+                LayoutMode.NewFlex(_orientation, _wrap, Fs.None<int>()),
+                BoxRole.Group));
 }
 
 internal sealed class GridBuilder : NodeBuilder
@@ -196,10 +202,10 @@ internal sealed class GridBuilder : NodeBuilder
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewBox(
             new BoxSpec<object>(
-                BoxLayout.NewGrid(new GridTemplate(_cols, Fs.None<string>(), Fs.None<int>())),
-                BoxRole.Group,
+                Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
-                Fs.List(_children.Select(c => c.Build()).ToArray())));
+                LayoutMode.NewGrid(_cols, Fs.None<string>(), Fs.None<int>()),
+                BoxRole.Group));
 }
 
 internal sealed class DashboardBuilder : NodeBuilder
@@ -213,10 +219,10 @@ internal sealed class DashboardBuilder : NodeBuilder
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewBox(
             new BoxSpec<object>(
-                BoxLayout.Auto,
-                BoxRole.Dashboard,
+                Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
-                Fs.List(_children.Select(c => c.Build()).ToArray())));
+                LayoutMode.Auto,
+                BoxRole.Dashboard));
 }
 
 // ─── Display builders ───────────────────────────────────────────────────────
@@ -426,15 +432,17 @@ internal sealed class ChartBuilder : NodeBuilder
         // encoder ("<opaque>"), matching the corpus chart fixture. A real chart
         // binds a row sequence via a query/state binding.
         var source = Bind.Static<IEnumerable<object>>(Enumerable.Empty<object>());
+        // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
+        // Source, Stacked, XField, YFields, Title, OnPointClick).
         return NodeKind<object>.NewChart(
             new ChartSpec<object>(
-                source,
                 _kind,
+                source,
+                _stacked,
                 _xField,
                 _yFields,
                 _title,
-                Fs.None<FSharpFunc<object, FsAction>>(),
-                _stacked));
+                Fs.None<FSharpFunc<object, FsAction>>()));
     }
 }
 

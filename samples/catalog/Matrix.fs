@@ -115,19 +115,20 @@ let private demoBadge (tone, weight, emphasis) : Node<unit> =
         | ToneVariant.Subdued
         | ToneVariant.Default -> BadgeVariant.Neutral
 
-    { Id = NodeId(idFor "badge" tone weight emphasis)
+    { Id = idFor "badge" tone weight emphasis
       Kind =
         NodeKind.Badge(
             { Label = TextSource.Literal(toneLabel tone)
               Variant = variant }
         )
-      State = Defaults.stateBehaviour<unit>
+      State = None
       Style =
-        { Tone = tone
-          Weight = weight
-          Emphasis = emphasis
-          Role = StyleRole.None
-          Voice = FontVoice.Default }
+        Some
+            { Tone = tone
+              Weight = weight
+              Emphasis = emphasis
+              Role = StyleRole.None
+              Voice = FontVoice.Default }
       Accessibility = Defaults.Accessibility.none
       Motion = Defaults.Motion.none
       ExtraAttributes = None }
@@ -173,15 +174,16 @@ let private demoProgress (tone, weight, emphasis) : Node<unit> =
 let private demoSparkline (tone, weight, emphasis) : Node<unit> =
     let id = idFor "sparkline" tone weight emphasis
 
-    { Id = NodeId id
+    { Id = id
       Kind = NodeKind.Sparkline({ Source = Binding.Static(Some [ 1.0; 4.0; 2.0; 6.0; 3.0; 8.0; 5.0; 9.0 ]) })
-      State = Defaults.stateBehaviour<unit>
+      State = None
       Style =
-        { Tone = tone
-          Weight = weight
-          Emphasis = emphasis
-          Role = StyleRole.None
-          Voice = FontVoice.Default }
+        Some
+            { Tone = tone
+              Weight = weight
+              Emphasis = emphasis
+              Role = StyleRole.None
+              Voice = FontVoice.Default }
       Accessibility = Defaults.Accessibility.none
       Motion = Defaults.Motion.none
       ExtraAttributes = None }
@@ -575,22 +577,23 @@ let private demoDisclosure (tone, weight, emphasis) : Node<unit> =
 let private demoCustom (tone, weight, emphasis) : Node<unit> =
     let id = idFor "custom" tone weight emphasis
 
-    { Id = NodeId id
+    { Id = id
       Kind =
         NodeKind.Custom(
-            moduleId = "catalog-sample",
-            componentId = "PlaceholderWidget",
-            props = Map.ofList [ "label", JStr "Custom component sample" ],
-            contentHash = None,
-            exposedNodeIds = []
+            { ModuleId = "catalog-sample"
+              ComponentId = "PlaceholderWidget"
+              Props = Map.ofList [ "label", JStr "Custom component sample" ]
+              ContentHash = None
+              ExposedNodeIds = None }
         )
-      State = Defaults.stateBehaviour<unit>
+      State = None
       Style =
-        { Tone = tone
-          Weight = weight
-          Emphasis = emphasis
-          Role = StyleRole.None
-          Voice = FontVoice.Default }
+        Some
+            { Tone = tone
+              Weight = weight
+              Emphasis = emphasis
+              Role = StyleRole.None
+              Voice = FontVoice.Default }
       Accessibility = Defaults.Accessibility.none
       Motion = Defaults.Motion.none
       ExtraAttributes = None }

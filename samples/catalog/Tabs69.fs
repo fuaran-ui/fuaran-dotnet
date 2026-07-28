@@ -92,10 +92,17 @@ let private detailTab: Node<Msg> =
     // NodeKind.Custom — the runtime resolves (`tabs-69`, `DetailPane`) to
     // detailPaneRenderer at render time. Mirrors the buildNode shape used by
     // Fuaran.UI/Fuaran.fs's smart constructors.
-    { Id = NodeId "tabs-69-detail-body"
-      Kind = NodeKind.Custom("tabs-69", "DetailPane", Map.empty, None, [])
-      State = Defaults.stateBehaviour<Msg>
-      Style = Defaults.style
+    { Id = "tabs-69-detail-body"
+      Kind =
+        NodeKind.Custom(
+            { ModuleId = "tabs-69"
+              ComponentId = "DetailPane"
+              Props = Map.empty
+              ContentHash = None
+              ExposedNodeIds = None }
+        )
+      State = Option.None
+      Style = Option.None
       Accessibility = Option.None
       Motion = Defaults.Motion.none
       ExtraAttributes = Option.None }

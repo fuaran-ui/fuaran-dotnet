@@ -47,7 +47,7 @@ let private fastPathTests =
               | Ok(refined, tree) ->
                   Expect.equal refined.Schema salesTable.Schema "schema unchanged by a sort"
                   Expect.equal (Table.rowCount refined) 3 "all rows retained"
-                  Expect.equal tree.Id (NodeId "m1") "dashboard still valid → render it"
+                  Expect.equal tree.Id "m1" "dashboard still valid → render it"
               | Error e -> failtestf "expected Ok, got %s" (RefineError.message e)
 
           testCase "filter refines locally to fewer rows, dashboard still types"

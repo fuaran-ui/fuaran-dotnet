@@ -44,7 +44,7 @@ let private view (m: Model) : Node<Msg> =
                   Fuaran.markdown "count" (string m) ] }
 
 let private stubRender (n: Node<Msg>) : string =
-    let (NodeId s) = n.Id
+    let s = n.Id
     $"<f id='{s}'/>"
 
 // A fixed clock so the hash chain (which folds the timestamp) is deterministic.

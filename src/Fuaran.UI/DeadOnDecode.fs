@@ -94,7 +94,8 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
             findings.Add(deadEvent node slot writable hint)
 
     let rec walk (n: Node<'Msg>) =
-        let (NodeId nodeId) = n.Id
+        // `Node.Id` is a bare string since the swap.
+        let nodeId = n.Id
 
         // Phase 692 — one flat match, where this was three nested under the
         // category envelope. Every arm yields the children to descend into.
@@ -166,8 +167,8 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                     "$state (values)"
 
                 []
-            | NodeKind.Filters filters ->
-                for fs in filters do
+            | NodeKind.Filters spec ->
+                for fs in spec.Items do
                     // A chip's write-back needs no writable value binding —
                     // it writes its own `$filters.<name>` (423); a present
                     // sentinel still suppresses that, so it is always dead.
@@ -235,7 +236,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                 // Switch has no closure-bearing slots (StateKey is a string; the
                 // cases/default are Nodes) — nothing dead-on-decode of its own, so
                 // just descend into the case children + default.
-                (spec.Cases |> List.map snd) @ [ spec.Default ]
+                (spec.Cases |> List.map _.Child) @ [ spec.Default ]
             | NodeKind.FragmentDecl spec -> [ spec.Body ]
             // -- Display --
             // Leaves, with no closure-bearing slot this check can call dead.

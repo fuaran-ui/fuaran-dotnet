@@ -20,10 +20,10 @@ open Fuaran.UI.Types
 type private Msg = NoOp
 
 let private node (id: string) (kind: NodeKind<Msg>) : Node<Msg> =
-    { Id = NodeId id
+    { Id = id
       Kind = kind
-      State = Defaults.stateBehaviour<Msg>
-      Style = Defaults.style
+      State = None
+      Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
       ExtraAttributes = None }
@@ -32,11 +32,7 @@ let private stack (id: string) (children: Node<Msg> list) : Node<Msg> =
     node
         id
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Flex
-                    { Direction = Orientation.Vertical
-                      Wrap = false
-                      Gap = None }
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
               Children = children }

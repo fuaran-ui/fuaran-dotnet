@@ -426,293 +426,58 @@ module EffectClass =
 
 // ─── The tree ───────────────────────────────────────────────────────
 
-type Node<'Msg> =
-    {
-        Id: NodeId
-        Kind: NodeKind<'Msg>
-        State: StateBehaviour<'Msg>
-        Style: SemanticStyle
-        /// Per-Node ARIA metadata. `None` (the default) emits no
-        /// `aria-*` attributes; `Some` populates the matching `aria-label` /
-        /// `aria-labelledby` / `role` / `aria-live` / `aria-hidden` per the
-        /// renderer's emission rules. Smart constructors (`Fuaran.button`,
-        /// `Fuaran.callout`, etc.) populate sensible defaults from
-        /// `Defaults.Accessibility.X` so authors don't have to author this trait
-        /// for the common cases.
-        Accessibility: Accessibility option
-        /// Per-Node animation token. `None` (the default) emits no
-        /// `fuaran-motion-*` class. Set to `Some Motion.X` to opt into one of the
-        /// 8 canonical motion tokens; the renderer projects to a
-        /// `fuaran-motion-{token}` class on the outer wrapper and the reference
-        /// CSS supplies keyframes for the four most common cases.
-        Motion: Motion option
-        /// AI-opaque consumer-side hatch for
-        /// `data-*` / `aria-*` attributes (test hooks, analytics tags). `None`
-        /// (the default) emits no extra attributes; `Some map` emits each
-        /// entry as a DOM attribute via `prop.custom (key, value)` on the
-        /// outer wrapper. The AI authoring guide explicitly forbids the AI
-        /// populating this; the §4d JSON wire shape omits it on emit. Use
-        /// `Node.withExtraAttribute` for validator-checked authoring.
-        ExtraAttributes: Map<string, string> option
-    }
+/// Stage 4b of the 692-694 swap: the Node envelope IS the generated record.
+/// Deltas vs the pre-swap hand record: `Id` is a bare `string` (the `NodeId`
+/// wrapper survives above as the ops/API-boundary type — wrap with
+/// `NodeId n.Id` where a wrapped value is needed); `State` / `Style` are
+/// OPTIONS — `None` is the canonical empty-state / default-style shape (the
+/// encoder omitted an empty `StateBehaviour` / default `SemanticStyle` and
+/// the decoder restored the defaults, so absence-as-`None` is byte-identical
+/// on the wire). `Accessibility` (per-Node ARIA metadata), `Motion` (the
+/// 8-token animation vocabulary) and `ExtraAttributes` (the AI-opaque
+/// consumer-side `data-*` hatch) carry their prior semantics unchanged.
+type Node<'Msg> = Generated.Node<'Msg>
 
 and Accessibility = Generated.Accessibility
 
-and [<RequireQualifiedAccess>] NodeKind<'Msg> =
-    // ─── Phase 692: the vocabulary is FLAT ─────────────────────────────
-    //
-    // The four behavioural categories (Layout / Display / Input / Visualisation)
-    // were a host-side envelope over these cases. `WIRE_FORMAT.md` §3.2 already
-    // called them "a host-side classification recovered on decode" — the wire has
-    // never had them, and the decoder rebuilt them from the flat `$type`. Keeping
-    // them cost a level of nesting at every construction and match site, and put
-    // the host tree one shape away from the IDL-generated one.
-    //
-    // The categories are not lost, only unnested: each is still recoverable from
-    // the case (see `NodeKind.category`), which is all the renderer and AiTools
-    // ever used them for.
+// Phase 692: the vocabulary is FLAT — the four behavioural categories
+// (Layout / Display / Input / Visualisation) were a host-side envelope over
+// these cases; `WIRE_FORMAT.md` §3.2 already called them "a host-side
+// classification recovered on decode". Each is still recoverable from the
+// case (see `Kind.category`), which is all the renderer and AiTools ever
+// used them for.
+//
+// Stage 4b of the 692-694 swap: NodeKind IS the generated union. Case-payload
+// deltas vs the pre-swap hand DU (per-case semantics live on the spec types
+// below and in the IDL):
+//   - `Filters of FiltersSpec<'Msg>` (was a bare `FilterSpec<'Msg> list`) —
+//     the list is the record's `Items` field.
+//   - `Custom of CustomSpec` (was 5 inline fields) — `ExposedNodeIds` is
+//     `string list option` (`None` ≡ the old `[]`; the `NodeId` wrapper
+//     erases inside the record).
+//   - `DataGrid of DataGridSpec<'Msg>` (`GridSpec` survives as an alias).
+and [<RequireQualifiedAccess>] NodeKind<'Msg> = Generated.NodeKind<'Msg>
 
-    // ── Layout ──
-    /// Phase 390 — the unified container primitive; absorbs the retired
-    /// `Stack` / `GridLayout` / `Dashboard` / `Card` near-synonyms. Layout mode
-    /// = how children arrange; Role = what the container means (emitted element
-    /// + ARIA landmark + `fuaran-*` chrome). The author-facing `StackSpec` /
-    /// `GridLayoutSpec` / `DashboardSpec` / `CardSpec` records survive as
-    /// smart-ctor inputs that translate into `Box` — the wire consolidates, the
-    /// authoring surface does not. See `docs/BOX-CONTAINER-UNIFICATION.md`.
-    | Box of BoxSpec<'Msg>
-    | SplitPanel of SplitPanelSpec<'Msg>
-    | Tabs of TabsSpec<'Msg>
-    | Stepper of StepperSpec<'Msg>
-    /// Feliz-parity additive: single-card container
-    /// of label/value rows (typically `NodeKind.LabelValueRow` children).
-    /// Distinct shape from `Card` — no internal per-child padding, divider
-    /// rules between children, optional section heading. Closes the
-    /// "list-of-stats-in-one-card" gap that Feliz expresses
-    /// as a hand-rolled `<div class="flex justify-between">` per row.
-    | SummaryList of SummaryListSpec<'Msg>
-    /// Typed accordion / collapsible primitive.
-    /// Renders as HTML-native `<details>` / `<summary>` so the open/closed
-    /// toggle works without React state; the `Open` binding overlays
-    /// controlled-mode semantics for hosts that need model-driven state.
-    /// Closes the "long itemised disclosure list" Feliz
-    /// escape — see `DisclosureSpec` for the field-level rationale.
-    | Disclosure of DisclosureSpec<'Msg>
-    /// Out-of-flow overlay container (Phase 289) — the
-    /// single most-missed primitive. Carries an `Open` `Binding<bool>`, an
-    /// optional heading, a `Dismissable` flag, an `OnDismiss` action, and a
-    /// child subtree. Renders inline (no React portal) with `role="dialog"` +
-    /// `aria-modal`, positioned + z-indexed by CSS so SSR and CSR emit
-    /// byte-identical structure (no hydration mismatch). Focus management is an
-    /// additive client-only enhancement that does not alter the hydrated DOM —
-    /// see the overlay render-fidelity contract in docs/SSR.md.
-    | Modal of ModalSpec<'Msg>
-    /// Overflow / scroll container (Phase 289) — the
-    /// in-flow container the fidelity check still lacked. `Orientation` selects
-    /// the scroll axis; optional `MaxHeight` / `MaxWidth` (pixels) bound the
-    /// viewport. Overflow clipping + scrollbar are a genuine cross-host
-    /// divergence point pinned by the SSR-parity corpus.
-    | ScrollArea of ScrollAreaSpec<'Msg>
-
-
-    // ── Display ──
-    | Heading of HeadingSpec
-    | Markdown of MarkdownSpec
-    | Metric of MetricSpec
-    | Badge of BadgeSpec
-    | Sparkline of SparklineSpec
-    | Callout of CalloutSpec
-    | Progress of ProgressSpec
-    // Skeleton is a renderer-emitted state placeholder; authors compose it
-    // via `Fuaran.skeleton` for the OnLoading slot. §4c lines 504–542.
-    | Skeleton of SkeletonSpec
-    /// A single
-    /// label-left / value-right row, baseline-aligned. The primitive
-    /// `SummaryList` consumes; can stand alone too. Honours `StateBehaviour`
-    /// `OnLoading` / `OnError` slots the same way `Metric` does (the resolver
-    /// runs against `Source`).
-    | LabelValueRow of LabelValueRowSpec
-    /// A labeled TEXT fact — "Patient: Alice Smith", "Policy: POL-99382-X".
-    /// The complementary kind to `Metric` (numeric-only, trendable) and
-    /// `LabelValueRow` (numeric row): `Fact` is where a text-valued fact
-    /// lives. Added 2026-07-17 after the launch eval showed every frontier
-    /// model forcing text facts into `Metric.Source: Binding<float>`
-    /// (~130 cells, 6 tasks at 0%): the type error was correct — the missing
-    /// kind was the defect. `Value` is a `TextSource`, so static text,
-    /// host-bound values (`Bound`), and i18n all ride the vocabulary models
-    /// already use for labels; no new binding surface.
-    | Fact of FactSpec
-    /// A crawlable hyperlink primitive (Phase 139). Renders a real
-    /// `<a href>` in both the client and server renderers — followable
-    /// with JavaScript disabled and visible to search-engine crawlers,
-    /// unlike `NodeKind.Button` + `Action.Navigate` (which is the SPA
-    /// client-routing gesture, wired as an onClick through the runtime).
-    /// Reach for `Link` for real destinations (SEO, no-JS); reach for
-    /// `Button` + `Action.Navigate` for stateful in-app routing.
-    | Link of LinkSpec
-    /// A standalone image primitive (Phase 287). `IconSource`
-    /// is a *field* on other specs, but there was no image *node* — embedding
-    /// one meant a Markdown escape or a Custom. Renders a real `<img>` in both
-    /// renderers with `src` routed through `Sanitize.sanitizeUrlOrBlank` and a
-    /// mandatory `Alt` text (accessibility floor). The `Variant` covers the
-    /// Avatar (circular) case the audit flagged.
-    | Image of ImageSpec
-    /// A structured item list (Phase 287) — distinct
-    /// from `Table` (tabular), `SummaryList` (label/value rows), and Markdown
-    /// bullets (free text). Renders `<ul>` / `<ol>` of `<li>` per item.
-    | List of ListSpec
-    /// A transient overlay notification surface (Phase
-    /// 289). The DECLARATIVE, in-tree, SSR-rendered counterpart to the
-    /// imperative `Action.Notify` (which a host maps to ephemeral chrome with no
-    /// tree node). Reach for `Toast` when the notification is model-driven +
-    /// bound to an `Open` state that hydrates cleanly; reach for `Action.Notify`
-    /// for fire-and-forget host chrome. Renders inline (no portal) with
-    /// `role="status"` / `aria-live`, positioned by CSS — see the overlay
-    /// render-fidelity contract in docs/SSR.md.
-    | Toast of ToastSpec
-    /// A first-class code-display primitive (Phase 290).
-    /// Owns a DETERMINISTIC `<pre><code>` structure (HTML-escaped, no markdown
-    /// library) byte-identical across all hosts + SSR. Syntax highlighting is a
-    /// client-only post-hydration enhancement (targets the `language-{x}`
-    /// class), explicitly OUTSIDE the parity byte-diff. Carries a `Language`
-    /// tag, optional line numbers + highlight ranges, and a copy affordance.
-    | CodeBlock of CodeBlockSpec
-    /// A LaTeX math primitive (Phase 293). `Source` is
-    /// deterministic + parity-clean as data; the parity-checked render is the
-    /// raw escaped source in a known container. KaTeX upgrades it client-only
-    /// post-hydration, OUTSIDE the byte-diff — the no-JS / SSR reader sees the
-    /// source fallback, the JS reader sees rendered math, no parity hazard.
-    | Math of MathSpec
-    /// A bounded, typed vector-graphics primitive (Phase 524) — the shared
-    /// render target every `Chart` lowers to (Phase 526) and the reusable
-    /// substrate for maps/diagrams. Carries a closed, typed `Shape` DU (no raw
-    /// SVG markup, no `Path`/`d` escape hatch — the opposite of `Custom`), a
-    /// `ViewBox` coordinate space, and style bindings. Naming is chosen for the
-    /// data-science audience: `Drawing` (not `Vector`, a numeric array), and
-    /// its shapes spell out `Rectangle` (not `Rect`) / `Label` (not `Text`).
-    /// The first-party inline-SVG renderer arrives in Phase 525; 524 is the
-    /// wire vocabulary + codec + corpus only. See
-    /// docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md (D1, §3, §5).
-    | Drawing of DrawingSpec
-
-
-    // ── Input ──
-    | Form of FormSpec<'Msg>
-    | Filters of FilterSpec<'Msg> list
-    | Button of ButtonSpec<'Msg>
-    | FileUpload of FileUploadSpec<'Msg>
-    | Select of SelectSpec<'Msg>
-
-    // ── Vis ──
-    | DataGrid of GridSpec<'Msg>
-    | Chart of ChartSpec<'Msg>
-    // Phase 393 — the `Table` case is retired; static read-only tables are the
-    // `GridSpec.StaticRows` mode of `DataGrid`. A legacy `Table` wire tag
-    // decode-upgrades into a read-only `DataGrid` (never re-encodes as `Table`).
-    | Map of MapSpec<'Msg>
-
-    /// The existing escape gains two additive
-    /// optional safety surfaces. `contentHash` lets op-stream replay +
-    /// renderer verify the body's identity hasn't drifted from its
-    /// registered renderer; `exposedNodeIds` declares which interior
-    /// NodeIds the Custom body exposes so the layout observer / AiTools
-    /// introspection / structural ops can still address them. Callers that
-    /// opt out pass `None` + `[]` — see `Fuaran.custom` smart-ctor.
-    | Custom of
-        moduleId: string *
-        componentId: string *
-        props: Map<string, JVal> *
-        contentHash: ContentHash option *
-        exposedNodeIds: NodeId list
-    /// Render-time error boundary. Wraps a child
-    /// subtree and renders the `Fallback` subtree when the child throws
-    /// during render. Pairs with the per-node render guard (`Render.fs`)
-    /// that catches throws inside individual leaves — the boundary is the
-    /// explicit, AI-emittable shape for "if this subtree breaks, render
-    /// this other thing instead", while the per-node guard is the always-on
-    /// floor that keeps one bad leaf from blanking the page. Nested
-    /// boundaries are permitted (inner boundaries swallow their own subtree
-    /// failures; outer boundaries see the failure only if the inner
-    /// boundary's fallback itself throws). See `Fuaran.errorBoundary`
-    /// smart-ctor.
-    | ErrorBoundary of ErrorBoundarySpec<'Msg>
-    /// State-bound conditional-child primitive (Phase 392). Holds a
-    /// `StateKey` (a reactive StateStore key — the Phase 106 substrate), an
-    /// ordered list of `(matchValue, child)` `Cases`, and a `Default` child.
-    /// At render time the renderer resolves the state value at `StateKey`,
-    /// compares its string form against each case's `matchValue` in order
-    /// (first match wins — the `FragmentDecl` name-collision precedent), and
-    /// renders that case's child; if none match it renders `Default`. State
-    /// transitions arrive as ordinary typed `Action.SetState` actions through
-    /// the existing default-deny policy gate (FGP 3 — no new dispatch path);
-    /// the client re-renders the matching case when the key changes, the
-    /// server/SSR renders the initial match. This is the kernel-power piece
-    /// that completes the expressive floor — conditional regions, wizard
-    /// panes, empty-state alternatives, mode toggles — and the minimalist
-    /// path's own inflation control: many "a container that shows X or Y"
-    /// requests are `Switch` compositions rather than new vocabulary (see
-    /// `docs/VOCABULARY.md` §1.2). See `Fuaran.switch` smart-ctor.
-    | Switch of SwitchSpec<'Msg>
-    /// Named reusable-subtree primitive — the
-    /// declaration half. Registers `Body` under the fragment name `Name`
-    /// for any `FragmentRef` reachable in the same tree to expand. The
-    /// decl itself renders nothing (`Body` is the *template*; visible
-    /// output happens at the ref site, not the decl site). Choose this
-    /// over re-emitting a 200-node subtree when the same shape appears
-    /// in two or more places — emission cost is one decl + N short refs
-    /// instead of N full bodies. See `Fuaran.fragmentDecl` smart-ctor.
-    ///
-    /// Scoping: the resolver walks the whole tree once before render,
-    /// collecting `FragmentDecl` Bodies into a `Map<FragmentId, _>`.
-    /// First-declaration-wins on name collision; the validator
-    /// (FUARAN056) flags repeated names. Refs resolve against the same
-    /// map; unresolved refs render a labelled placeholder and FUARAN057
-    /// flags them at build time. Cyclic references — fragment A's body
-    /// transitively references A — render a labelled placeholder and
-    /// FUARAN058 flags them.
-    | FragmentDecl of FragmentDeclSpec<'Msg>
-    /// Named reusable-subtree primitive — the
-    /// reference half. At render time, the resolver substitutes the
-    /// referenced fragment's Body with interior `data-fuaran-node-id`
-    /// values namespaced by the ref's own NodeId (so multiple refs to
-    /// the same fragment produce DOM-unique addressable ids:
-    /// `ref1.btn` / `ref2.btn` rather than the bare `btn`).
-    | FragmentRef of FragmentRefSpec<'Msg>
-    /// Isolation/embedding boundary (Phase 265, §4o) — mounts an
-    /// isolated guest subtree at this point with its own message space,
-    /// scoped state + runtime, op-stream, and per-mount default-deny policy
-    /// gate (iframe-like composition). The guest's `'GuestMsg` lives *behind*
-    /// the mount (resolved by the orchestration tier) so the host `'Msg` stays
-    /// monomorphic; the guest reaches the host as an `Action<obj>` via
-    /// `MountSpec.OnBubble`. The canonical mechanism is the scope tier — NOT a
-    /// `Node<'Host,'Guest>` generics change. The guest's own render tree is not
-    /// carried here (opaque interior, like `Custom`); the guest `Node<obj>` is
-    /// produced host-side by the orchestration guest loader from the scope.
-    /// `Fuaran.embed` is the typed same-`'Msg` same-process convenience that
-    /// lowers to a `Mount`. See `Fuaran.mount` smart-ctor.
-    | Mount of MountSpec<'Msg>
-
-and ErrorBoundarySpec<'Msg> =
-    { Child: Node<'Msg>
-      Fallback: Node<'Msg> }
+and ErrorBoundarySpec<'Msg> = Generated.ErrorBoundarySpec<'Msg>
 
 /// See `NodeKind.Switch` (Phase 392). The state-bound conditional-child spec.
 /// `StateKey` names the reactive StateStore key whose value selects the case;
-/// `Cases` is an ordered list of `(matchValue, child)` pairs — the renderer
+/// `Cases` is an ordered list of `SwitchCase` records — the renderer
 /// resolves the state value's string form and renders the first case whose
-/// `matchValue` equals it (first-match-wins, mirroring `FragmentDecl`'s
+/// `Match` equals it (first-match-wins, mirroring `FragmentDecl`'s
 /// first-declaration-wins on name collision); `Default` renders when no case
 /// matches (and is the SSR/first-paint surface before any `SetState`). Each
 /// case encodes on the wire as a `{ "child": <Node>, "match": <string> }`
-/// object; the whole kind is `{ "$type":"Switch", "cases":[…], "default":<Node>,
-/// "stateKey":<string> }`. Duplicate `matchValue`s are a validator error
-/// (FUARAN082) — the decoder accepts them (first-match-wins keeps decode
-/// structural), the validator flags them. See `docs/VOCABULARY.md` for why
-/// conditional regions compose over `Switch` rather than growing new kinds.
-and SwitchSpec<'Msg> =
-    { StateKey: string
-      Cases: (string * Node<'Msg>) list
-      Default: Node<'Msg> }
+/// object (the generated `SwitchCase` record IS that wire object — the old
+/// `(matchValue, child)` tuple shape); the whole kind is `{ "$type":"Switch",
+/// "cases":[…], "default":<Node>, "stateKey":<string> }`. Duplicate `Match`es
+/// are a validator error (FUARAN082) — the decoder accepts them
+/// (first-match-wins keeps decode structural), the validator flags them.
+and SwitchSpec<'Msg> = Generated.SwitchSpec<'Msg>
+
+/// One `Switch` case — `{ Child; Match }` (generated; the old
+/// `(matchValue, child)` tuple).
+and SwitchCase<'Msg> = Generated.SwitchCase<'Msg>
 
 /// The stable wire-shaped name a fragment is
 /// addressed by. The string is opaque to the renderer + apply engine —
@@ -727,25 +492,25 @@ and FragmentId = FragmentId of string
 /// `Effect` is exactly the Phase 61 fixed-body fragment (the degenerate case) —
 /// both fields are omitted on the wire so that shape stays byte-identical. The
 /// `ParamFragment<'Msg>` alias in `Fuaran.UI.Fragment` names this same record.
-and FragmentDeclSpec<'Msg> =
-    { Name: FragmentId
-      Body: Node<'Msg>
-      Holes: HoleDecl list
-      Effect: EffectClass }
+/// Generated deltas: `Name` is a bare `string` (the `FragmentId` wrapper
+/// survives above — wrap/unwrap at boundaries); `Holes` / `Effect` are OPTIONS
+/// (`None` ≡ the old `[]` / pure-deterministic degenerate shape, matching the
+/// wire omission).
+and FragmentDeclSpec<'Msg> = Generated.FragmentDeclSpec<'Msg>
 
-/// One bound argument at a `FragmentRef` (Phase 180). A `Value` binds a typed
-/// scalar (validated against its hole's value-space at apply time); a `Slot`
-/// binds a subtree the resolver substitutes hygienically.
-and [<RequireQualifiedAccess>] FragmentArg<'Msg> =
-    | Value of obj
-    | Slot of Node<'Msg>
+/// One bound argument at a `FragmentRef` / `Mount` (generated): a typed scalar
+/// (`Int` / `Float` / `Bool` / `Str` — validated against its hole's value-space
+/// at apply time) or a `SlotArg` subtree the resolver substitutes hygienically.
+/// (The pre-swap hand DU carried `Value of obj | Slot`; the generated union
+/// types the scalar cases and names the subtree case `SlotArg`.)
+and FragmentArg<'Msg> = Generated.FragmentArg<'Msg>
 
 /// See `NodeKind.FragmentRef`. Phase 180 — `Args` binds holes by name (value
 /// scalars + slot subtrees). An empty `Args` is the Phase 61 name-only ref (the
 /// degenerate case), omitted on the wire so that shape stays byte-identical.
-and FragmentRefSpec<'Msg> =
-    { Name: FragmentId
-      Args: Map<string, FragmentArg<'Msg>> }
+/// Generated deltas: `Name` is a bare `string`; `Args` is an OPTION (`None` ≡
+/// the old empty map, matching the wire omission).
+and FragmentRefSpec<'Msg> = Generated.FragmentRefSpec<'Msg>
 
 /// See `NodeKind.Mount`. Phase 265 — the isolation/embedding boundary carrier (§4o). The runtime,
 /// *stateful*, *scoped* counterpart to `FragmentRefSpec`: `Inputs` reuses the parameterised-fragment
@@ -756,12 +521,10 @@ and FragmentRefSpec<'Msg> =
 /// per-mount default-deny policy tags the boundary's gate consults. The guest's own render tree is
 /// NOT carried here — only a scope reference + serialised hole bindings (opaque interior, like
 /// `Custom`); the guest `Node<obj>` is produced host-side by the orchestration guest loader.
-and MountSpec<'Msg> =
-    { ScopeId: string
-      Inputs: Map<string, FragmentArg<'Msg>>
-      Channel: GuestChannel
-      OnBubble: obj -> Action<'Msg>
-      Capabilities: CapabilityTag list }
+/// Generated deltas: `Inputs` / `OnBubble` are OPTIONS (`None` ≡ the old empty
+/// map / no-op decoded closure); `Capabilities` is a bare `string list` (the
+/// `CapabilityTag` wrapper survives below — wrap/unwrap at boundaries).
+and MountSpec<'Msg> = Generated.MountSpec<'Msg>
 
 /// The declared out-channel of a `Mount` (§4o.4). `Direction` bounds host↔guest coupling; the optional
 /// `MessageShape` names the guest's message shape for validation + the capability gate.
@@ -784,38 +547,22 @@ and CapabilityTag = CapabilityTag of string
 /// arrange; `Role` names what the container means (drives the emitted element,
 /// ARIA landmark, and `fuaran-*` chrome). `Heading` carries the retired `Card`
 /// heading (emitted only when `Some`). See `docs/BOX-CONTAINER-UNIFICATION.md`.
-and BoxSpec<'Msg> =
-    { Layout: BoxLayout
-      Role: BoxRole
-      Heading: TextSource option
-      Children: Node<'Msg> list }
+and BoxSpec<'Msg> = Generated.BoxSpec<'Msg>
 
-/// How a `Box` arranges its children.
-and [<RequireQualifiedAccess>] BoxLayout =
-    /// Flex flow — the retired `Stack`. `Direction` = main axis; `Wrap` allows
-    /// children to wrap at narrow widths. `Gap` is the canonical inter-child
-    /// spacing control (`None` ⇒ omitted on the wire ⇒ byte-identical for
-    /// existing trees); it is the mechanism that obsoleted the retired `Spacer`
-    /// node (Phase 459).
-    | Flex of FlexLayout
-    /// Explicit grid — the retired `GridLayout`. `Cols` fixed count, or
-    /// `TemplateColumns` verbatim `grid-template-columns` (`Some` ⇒ `Cols`
-    /// ignored).
-    | Grid of GridTemplate
-    /// Responsive auto-tile — the retired `Dashboard`'s defining behaviour. The
-    /// renderer owns the tiling via the `fuaran-dashboard` class; no
-    /// author-supplied column count.
-    | Auto
+/// How a `Box` arranges its children (generated — `LayoutMode`; `BoxLayout`
+/// survives as the established host name for the same union). Cases are
+/// POSITIONAL since the swap (the hand `FlexLayout` / `GridTemplate` payload
+/// records are retired):
+///  - `Flex(direction, wrap, gap)` — flex flow, the retired `Stack`. `gap`
+///    (`None` ⇒ omitted on the wire ⇒ byte-identical for existing trees) is
+///    the mechanism that obsoleted the retired `Spacer` node (Phase 459).
+///  - `Grid(cols, templateColumns, gap)` — explicit grid, the retired
+///    `GridLayout`. `Some templateColumns` emits verbatim and `cols` is ignored.
+///  - `Auto` — responsive auto-tile, the retired `Dashboard` behaviour.
+and BoxLayout = Generated.LayoutMode
 
-and FlexLayout =
-    { Direction: Orientation
-      Wrap: bool
-      Gap: int option }
-
-and GridTemplate =
-    { Cols: int
-      TemplateColumns: string option
-      Gap: int option }
+/// The generated name for `BoxLayout` (both names are the same union).
+and LayoutMode = Generated.LayoutMode
 
 /// What a `Box` means — drives the emitted element, ARIA landmark, and chrome.
 and BoxRole = Generated.BoxRole
@@ -856,60 +603,21 @@ and GridLayoutSpec<'Msg> =
         TemplateColumns: string option
     }
 
-and SplitPanelSpec<'Msg> =
-    { Weight: float
-      Children: Node<'Msg> list }
+and SplitPanelSpec<'Msg> = Generated.SplitPanelSpec<'Msg>
 
-and TabsSpec<'Msg> =
-    {
-        Orientation: Orientation
-        Children: Node<'Msg> list
-        /// The index of the currently-active tab. Driven via a `Binding<int>`
-        /// (typically `binding.state "tabIndex" 0` for model-driven URL deep-
-        /// linkable tabs, or `Binding.Static 0` for renderer-side-only state).
-        /// Mirrors `StepperSpec.ActiveStep`'s shape.
-        ActiveIndex: Binding<int>
-        /// Optional dispatch when the user clicks a tab (Phase 426 — the
-        /// control write-back default). `Some f` is called with the clicked
-        /// index; the host typically dispatches a `SetActiveTab i` message and
-        /// the model-driven `ActiveIndex` binding picks up the new value on
-        /// the next render. `None` (the default, and the decoded / AI-authored
-        /// shape) arms the write-back default: an `ActiveIndex` bound directly
-        /// to `Binding.State`/`Binding.Filter` has the clicked index written
-        /// to that slot, so decoded tabs switch panes with zero host code. A
-        /// static `ActiveIndex` with no handler renders but never switches.
-        OnSelect: (int -> Action<'Msg>) option
-        /// Explicit per-tab header declarations. When
-        /// `Some headers`, the renderer uses these for tab-label / icon /
-        /// disabled emission and the header list must align 1:1 with
-        /// `Children` by index (FUARAN047). When `None`, the
-        /// Card-heading-inference path runs unchanged — back-compat preserved
-        /// for authors who wrapped tab bodies in `Fuaran.card` with a
-        /// `Heading`. New authoring should populate this field.
-        TabHeaders: TabHeader list option
-        /// Typed tab-tag overlay (parallel to
-        /// `Children` by index). When `Some tags` AND `ActiveTag = Some _`,
-        /// the renderer resolves the tag binding to a string, finds its
-        /// position in `tags`, and uses that as the active index. The
-        /// integer-indexed shape (`ActiveIndex` / `OnSelect`) stays the
-        /// canonical wire form; the tag overlay is consumer ergonomics for
-        /// model-side DU-typed active-tab state. FUARAN048 enforces
-        /// `TabTags.Length = Children.Length`.
-        TabTags: string list option
-        /// Typed tab-tag overlay binding. Resolves to
-        /// the currently-active tag string; the renderer maps it back to an
-        /// integer index against `TabTags`. FUARAN049 warns when `Some` but
-        /// `TabTags` is `None` (tag-binding has nothing to resolve against).
-        ActiveTag: Binding<string> option
-        /// Tag-overlay click dispatch. When `Some f`,
-        /// the renderer fires `f tag` on tab click instead of (or in addition
-        /// to) `OnSelect i`. Pairs with `TabTags` + `ActiveTag`. Since Phase
-        /// 426 a `Some` closure rides the wire as an `"onSelectTag":"<closure>"`
-        /// sentinel; when `None` and the tag overlay is populated, a writable
-        /// `ActiveTag` binding has the clicked tag written to its slot (the
-        /// tag-channel write-back default).
-        OnSelectTag: (string -> Action<'Msg>) option
-    }
+/// Tabbed container spec (generated). `ActiveIndex` is the currently-active
+/// tab binding (typically `binding.state "tabIndex" 0` for model-driven
+/// deep-linkable tabs). `OnSelect` is the optional click dispatch (Phase 426
+/// — `None`, the decoded / AI-authored shape, arms the write-back default:
+/// an `ActiveIndex` bound directly to `Binding.State`/`Binding.Filter` has
+/// the clicked index written to that slot). `TabHeaders` (optional,
+/// FUARAN047 1:1 with `Children`) drives label / icon / disabled emission;
+/// when `None` the Card-heading-inference path runs. `TabTags` / `ActiveTag`
+/// / `OnSelectTag` are the typed tag overlay (FUARAN048 / FUARAN049; the
+/// tag-channel write-back default when `OnSelectTag` is `None`). Generated
+/// delta: the hand record's `Orientation` field is gone — the wire never
+/// carried it, and the generated record follows the wire.
+and TabsSpec<'Msg> = Generated.TabsSpec<'Msg>
 
 /// Per-tab header declaration consumed by the tabs
 /// renderer when `TabsSpec.TabHeaders` is populated. `Label` is the visible
@@ -924,24 +632,15 @@ and CardSpec<'Msg> =
     { Heading: TextSource option
       Children: Node<'Msg> list }
 
-and StepperSpec<'Msg> =
-    {
-        ActiveStep: Binding<int>
-        Children: Node<'Msg> list
-        /// Dispatch when the user clicks a step header. The renderer calls
-        /// this with the clicked step index; the host typically dispatches a
-        /// `SelectStep i` message and the model-driven `ActiveStep` binding
-        /// picks up the new value on the next render. Defaults to a no-op
-        /// `Action.Chain []` — steps render and the active styling tracks
-        /// `ActiveStep`, but no dispatch fires on click. Mirrors
-        /// `TabsSpec.OnSelect`.
-        OnSelect: int -> Action<'Msg>
-    }
+/// Step-sequence container spec (generated). `ActiveStep` is the
+/// model-driven active-step binding; `OnSelect` fires with the clicked step
+/// index. Generated delta: `OnSelect` is an OPTION — `None` (≡ the old no-op
+/// `Action.Chain []` default) renders steps whose active styling tracks
+/// `ActiveStep` with no dispatch on click. Mirrors `TabsSpec.OnSelect`.
+and StepperSpec<'Msg> = Generated.StepperSpec<'Msg>
 
 /// See `NodeKind.SummaryList`.
-and SummaryListSpec<'Msg> =
-    { Heading: TextSource option
-      Children: Node<'Msg> list }
+and SummaryListSpec<'Msg> = Generated.SummaryListSpec<'Msg>
 
 /// See `NodeKind.Disclosure`.
 ///
@@ -968,12 +667,7 @@ and SummaryListSpec<'Msg> =
 /// renderer uses this only for the initial mount before the binding
 /// resolves — it maps to the `<details>` element's `defaultOpen` React
 /// prop, which controls the uncontrolled-mode initial state.
-and DisclosureSpec<'Msg> =
-    { Heading: TextSource
-      Open: Binding<bool>
-      OnToggle: (bool -> Action<'Msg>) option
-      Children: Node<'Msg> list
-      DefaultOpen: bool }
+and DisclosureSpec<'Msg> = Generated.DisclosureSpec<'Msg>
 
 /// See `NodeKind.Modal` (Phase 289). `Open` is the controlled visibility
 /// binding; `OnDismiss` is the action fired when the user dismisses (backdrop
@@ -985,22 +679,13 @@ and DisclosureSpec<'Msg> =
 /// has `false` written to that slot on dismiss (a decoded dismissable modal
 /// closes itself with zero host code). `Heading` is an optional dialog
 /// title; `Dismissable` toggles the close affordance.
-and ModalSpec<'Msg> =
-    { Open: Binding<bool>
-      Heading: TextSource option
-      Dismissable: bool
-      Children: Node<'Msg> list
-      OnDismiss: Action<'Msg> option }
+and ModalSpec<'Msg> = Generated.ModalSpec<'Msg>
 
 /// See `NodeKind.ScrollArea` (Phase 289). `Orientation` selects the scroll
 /// axis; `MaxHeight` / `MaxWidth` (pixels, optional) bound the scroll viewport
 /// — the renderer emits the matching `max-height` / `max-width` inline style
 /// when set.
-and ScrollAreaSpec<'Msg> =
-    { Orientation: ScrollOrientation
-      Children: Node<'Msg> list
-      MaxHeight: int option
-      MaxWidth: int option }
+and ScrollAreaSpec<'Msg> = Generated.ScrollAreaSpec<'Msg>
 
 // ─── Display — pure presentation, no Msg ────────────────────────────
 
@@ -1238,23 +923,7 @@ and FileSelection = HostPrelude.FileSelection
 /// and `YFields` name the row's property keys to plot. AG Charts adapter
 /// (session 3b) feeds typed `Action<'Msg>` callbacks back; falling back to
 /// plain `<canvas>` rendering for the demo when no adapter is wired.
-and ChartSpec<'Msg> =
-    {
-        Source: Binding<obj seq>
-        Kind: ChartKind
-        XField: string
-        YFields: string list
-        Title: TextSource option
-        OnPointClick: (obj -> Action<'Msg>) option
-        /// When `true` and `Kind` is `Bar` or `Area`, the renderer's AG
-        /// Charts adapter sets `series[i].stacked = true` so multiple
-        /// `YFields` stack on top of each other (a single shared `xKey`
-        /// stack group). Defaults to `false` (the renderer ships unstacked
-        /// bars / areas if the field is omitted). For chart kinds that
-        /// don't have a meaningful stacked notion (Line / Pie / Scatter /
-        /// Heatmap), the adapter ignores the field.
-        Stacked: bool
-    }
+and ChartSpec<'Msg> = Generated.ChartSpec<'Msg>
 
 and ChartKind = Generated.ChartKind
 
@@ -1284,22 +953,32 @@ and MapMarker = Generated.MapMarker
 /// tree level. Authors construct a typed `GridSpecOf<'row,'Msg>` facade
 /// (below) and `Fuaran.grid` boxes it into this shape. The renderer trusts
 /// the per-Kind type-tag invariant.
-and GridSpec<'Msg> =
-    { Source: Binding<obj seq>
-      // `RowKey` is optional (Phase 425) — the closure is an *override*, not the floor. `RowKeyField`
-      // names a row property to project as the key; a decoded grid (no closure rides the wire) uses
-      // it for stable row identity with zero host code. Closure wins when both present.
-      RowKey: (obj -> string) option
-      RowKeyField: string option
-      Columns: ColumnErased<'Msg> list
-      OnRowClick: (obj -> Action<'Msg>) option
-      Editable: bool
-      // Phase 393 — the static read-only mode. `Some (headers, rows)` marks this grid
-      // as a static text table folded in from the retired `NodeKind.Table`: the
-      // renderer emits semantic `<table>` markup from these `TextSource` cells and
-      // ignores `Source` / `Columns`. `None` is the ordinary data-bound grid. A
-      // legacy `Table` document decode-upgrades into a grid with this field set.
-      StaticRows: (TextSource list * TextSource list list) option }
+///
+/// Generated (the IDL name is `DataGridSpec`; `GridSpec` survives as the
+/// established host alias). `RowKey` is the optional closure *override*
+/// (Phase 425); `RowKeyField` names the row property a decoded grid projects
+/// as the key. `StaticRows` (Phase 393 — the static read-only mode folded in
+/// from the retired `NodeKind.Table`) is the generated `StaticRows` record
+/// (`{ Headers: TextSource list; Rows: TextSource list list }` — full
+/// `TextSource` cells, same fidelity as the old tuple shape).
+and GridSpec<'Msg> = Generated.DataGridSpec<'Msg>
+
+/// The generated name for `GridSpec` (both names are the same record).
+and DataGridSpec<'Msg> = Generated.DataGridSpec<'Msg>
+
+/// `NodeKind.Filters`' payload record (generated) — `Items` carries what was
+/// the case's bare `FilterSpec<'Msg> list`.
+and FiltersSpec<'Msg> = Generated.FiltersSpec<'Msg>
+
+/// `NodeKind.Custom`'s payload record (generated) — the old 5 inline case
+/// fields. `ExposedNodeIds` is `string list option` (`None` ≡ the old `[]`;
+/// the `NodeId` wrapper erases inside the record — wrap at consumers).
+and CustomSpec = Generated.CustomSpec
+
+/// The static read-only rows of a `DataGrid` (generated — Phase 393's folded
+/// `Table`): `TextSource` header / cell text (the old `(headers, rows)` tuple
+/// as a record).
+and StaticRows = Generated.StaticRows
 
 /// Typed author-facing facade for GridSpec. Smart-ctor `Fuaran.grid` boxes
 /// the row accessors and stores a `GridSpec<'Msg>` in the tree.
@@ -1318,29 +997,20 @@ and Column<'row, 'Msg> =
       Kind: CellKind<'row, 'Msg>
       Width: ColumnWidth }
 
-/// Tree-level row-erased Column. `Fuaran.grid` boxes a `Column<'row,'Msg>`
-/// into this shape via `Column.erase`.
-and ColumnErased<'Msg> =
-    { Label: string
-      // `Value` is optional (Phase 425) — the closure is an *override*, not the floor. `Field` names
-      // a row property projected to the cell (via the row-field projection contract); a decoded grid
-      // (no closure rides the wire) renders its cells from `Field` with zero host code. Closure wins
-      // when both present.
-      Value: (obj -> CellValue) option
-      Field: string option
-      Format: CellFormat
-      Kind: CellKindErased<'Msg>
-      Width: ColumnWidth }
+/// Tree-level row-erased Column (generated). `Fuaran.grid` boxes a
+/// `Column<'row,'Msg>` into this shape via `Column.erase`. `Value` is the
+/// optional closure *override* (Phase 425); `Field` names the row property a
+/// decoded grid projects to the cell. `Value` returns the typed `CellValue`
+/// (a host-prelude DU since stage 4b — no box/unbox ceremony survives).
+and ColumnErased<'Msg> = Generated.ColumnErased<'Msg>
 
 /// What a single cell of data is, after the `Value` projection runs.
 /// Pre-formatted strings break AG Grid's numeric sort (§4c idiom 3) — use
 /// `Numeric` + a `CellFormat.Percent` / `Currency` / `Number` instead.
-and [<RequireQualifiedAccess>] CellValue =
-    | Numeric of float
-    | Text of string
-    | Bool of bool
-    | Date of System.DateTimeOffset
-    | Empty
+/// Declared in the host prelude (stage 4b) so the generated closure slots
+/// (`ColumnErased.Value`, `CellKindErased.Editable`, `CellFormat.Custom`)
+/// keep the typed surface; this alias is the author-facing name.
+and CellValue = HostPrelude.CellValue
 
 /// §4k Q3.2 — typed cell-shape enum. Non-interactive kinds (Text / Numeric /
 /// Date) have no action surface; `Custom` is the last-resort escape for
@@ -1358,30 +1028,36 @@ and [<RequireQualifiedAccess>] CellKind<'row, 'Msg> =
     | Progress of fraction: ('row -> float) * label: (('row -> TextSource) option)
     | Custom of (('row -> JVal) -> Node<'Msg>)
 
-/// Row-erased twin of CellKind. Smart-ctor `Column.erase` boxes the row
-/// accessors before placing into the tree.
-and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
-    | Text
-    | Numeric
-    | Date
-    | Editable of ((obj * CellValue) -> Action<'Msg>)
-    | Checkbox of get: (obj -> bool) * onToggle: (obj * bool -> Action<'Msg>)
-    | Button of label: TextSource * onClick: (obj -> Action<'Msg>)
-    | ButtonGroup of (TextSource * (obj -> Action<'Msg>)) list
-    | Link of href: (obj -> string) * label: (obj -> TextSource)
-    | Pill of label: (obj -> TextSource) * tone: (obj -> ToneVariant)
-    | Progress of fraction: (obj -> float) * label: ((obj -> TextSource) option)
-    | Custom of ((obj -> JVal) -> Node<'Msg>)
+/// Row-erased twin of CellKind (generated). Smart-ctor `Column.erase` boxes
+/// the row accessors before placing into the tree. Generated deltas vs the
+/// pre-swap hand DU:
+///  - `Editable of onEdit: (obj * CellValue -> Action<'Msg>) option` — the
+///    closure is optional; its `CellValue` argument stays typed (the
+///    host-prelude DU, stage 4b);
+///  - `Checkbox` / `Button` carry OPTIONAL `onToggle` / `onClick`;
+///  - `ButtonGroup of ButtonGroupItem<'Msg> list` — the old
+///    `(TextSource * (obj -> Action<'Msg>)) list` tuples are
+///    `{ Label; OnClick: option }` records;
+///  - `Pill` / `Link` / `Progress` unchanged apart from field-name spelling
+///    (`Progress.labelFn` keeps its option).
+and CellKindErased<'Msg> = Generated.CellKindErased<'Msg>
+
+/// One `CellKindErased.ButtonGroup` button (generated) — the old
+/// `(TextSource * (obj -> Action<'Msg>))` tuple as a `{ Label; OnClick }`
+/// record with an optional handler.
+and ButtonGroupItem<'Msg> = Generated.ButtonGroupItem<'Msg>
 
 /// §4k Q3.3 — typed formatters; compound / derived strings stay in
 /// `Column.Value`. Keeps numeric sort intact when a column displays numbers.
 and CellFormat = Generated.CellFormat
-// ─── State behaviours — required slots, AI can't forget ──────────────
+// ─── State behaviours ────────────────────────────────────────────────
+//
+// Generated. Since the swap the Node envelope carries `State` as an OPTION —
+// `None` is the canonical empty shape (all three slots absent; the encoder
+// omitted an empty record and the decoder restored it, so `None` is the
+// byte-identical successor of the old always-present empty record).
 
-and StateBehaviour<'Msg> =
-    { OnLoading: Node<'Msg> option
-      OnEmpty: Node<'Msg> option
-      OnError: (ErrorPayload -> Node<'Msg>) option }
+and StateBehaviour<'Msg> = Generated.StateBehaviour<'Msg>
 
 and ErrorPayload = HostPrelude.ErrorPayload
 
@@ -1810,7 +1486,7 @@ module Kind =
         | NodeKind.DataGrid _ -> "Grid"
         | NodeKind.Chart _ -> "Chart"
         | NodeKind.Map _ -> "Map"
-        | NodeKind.Custom(_, _, _, _, _) -> "Custom"
+        | NodeKind.Custom _ -> "Custom"
         | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
         | NodeKind.Switch _ -> "Switch"
         | NodeKind.FragmentDecl _ -> "FragmentDecl"

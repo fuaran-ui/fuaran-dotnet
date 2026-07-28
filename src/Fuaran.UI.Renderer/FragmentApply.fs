@@ -34,8 +34,6 @@ type FragmentApplication<'Msg> =
 
 module FragmentApply =
 
-    let private rawId (NodeId s) : string = s
-
     // ── generic children lens (the only place the Layout arms are enumerated) ─
 
     let private getChildren<'Msg> (node: Node<'Msg>) : Node<'Msg> list option =
@@ -69,9 +67,7 @@ module FragmentApply =
     /// when it is one.
     let private slotMarker<'Msg> (node: Node<'Msg>) : string option =
         match node.Kind with
-        | NodeKind.FragmentRef spec ->
-            let (FragmentId n) = spec.Name
-            Some n
+        | NodeKind.FragmentRef spec -> Some spec.Name
         | _ -> None
 
     /// `true` when `node`'s subtree references `fragmentName` (a totality
@@ -92,9 +88,7 @@ module FragmentApply =
     /// Rewrite every interior NodeId by `prefix` (hygienic namespacing of an
     /// inserted slot subtree).
     let rec private namespaceIds<'Msg> (prefix: string) (node: Node<'Msg>) : Node<'Msg> =
-        let renamed =
-            { node with
-                Id = NodeId(prefix + rawId node.Id) }
+        let renamed = { node with Id = prefix + node.Id }
 
         match getChildren renamed with
         | Some kids -> setChildren (kids |> List.map (namespaceIds prefix)) renamed
@@ -144,7 +138,7 @@ module FragmentApply =
         (valueArgs: Map<string, obj>)
         (slotArgs: Map<string, Node<'Msg>>)
         : Result<FragmentApplication<'Msg>, string> =
-        let (FragmentId fragName) = pf.Name
+        let fragName = pf.Name
 
         // 1. Validate value args against their hole spaces.
         let valueErr =
@@ -184,7 +178,11 @@ module FragmentApply =
             slotArgs
             |> Map.toList
             |> List.tryPick (fun (n, sub) ->
-                match pf.Holes |> List.tryFind (fun h -> HoleDecl.name h = n) with
+                match
+                    pf.Holes
+                    |> Option.defaultValue []
+                    |> List.tryFind (fun h -> HoleDecl.name h = n)
+                with
                 | Some(HoleDecl.Slot(_, Some c)) ->
                     let actual = Kind.name sub.Kind
 

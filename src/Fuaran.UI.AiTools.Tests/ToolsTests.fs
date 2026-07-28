@@ -393,10 +393,10 @@ let tests =
 /// Construct a bare Node directly (no smart-ctor) so kinds without a public
 /// constructor — Sparkline — can still be exercised. Mirrors `Fuaran.buildNode`.
 let private bareNode (id: string) (kind: NodeKind<Msg>) : Node<Msg> =
-    { Id = NodeId id
+    { Id = id
       Kind = kind
-      State = Defaults.stateBehaviour<Msg>
-      Style = Defaults.style
+      State = None
+      Style = None
       Accessibility = Option.None
       Motion = Defaults.Motion.none
       ExtraAttributes = Option.None }
@@ -448,7 +448,7 @@ let bindingSlotConsistencyTests =
                   for slot in slots do
                       match
                           Fuaran.UI.Ops.Apply.apply
-                              (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(fixture.Id, slot, probeBinding))
+                              (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(NodeId fixture.Id, slot, probeBinding))
                               fixture
                       with
                       | Ok _ -> ()
@@ -461,7 +461,7 @@ let bindingSlotConsistencyTests =
                                   kindLabel
                                   slot)
 
-                      match Tools.getBindingValue ctx fixture fixture.Id slot with
+                      match Tools.getBindingValue ctx fixture (NodeId fixture.Id) slot with
                       | Ok _ -> ()
                       | Error e ->
                           Expect.notEqual
@@ -482,7 +482,7 @@ let bindingSlotConsistencyTests =
 
                   match
                       Fuaran.UI.Ops.Apply.apply
-                          (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(fixture.Id, bogus, probeBinding))
+                          (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(NodeId fixture.Id, bogus, probeBinding))
                           fixture
                   with
                   | Ok _ -> failtestf "%s accepted a ReplaceBinding against the bogus slot %s" kindLabel bogus
@@ -492,7 +492,7 @@ let bindingSlotConsistencyTests =
                           Fuaran.UI.Ops.Types.ApplyErrorCode.SlotNotFound
                           (sprintf "%s bogus ReplaceBinding -> SlotNotFound" kindLabel)
 
-                  match Tools.getBindingValue ctx fixture fixture.Id bogus with
+                  match Tools.getBindingValue ctx fixture (NodeId fixture.Id) bogus with
                   | Ok _ -> failtestf "%s resolved getBindingValue against the bogus slot %s" kindLabel bogus
                   | Error e ->
                       Expect.equal
@@ -510,14 +510,14 @@ let bindingSlotConsistencyTests =
               let expectReplaceable (node: Node<Msg>) (slot: string) =
                   match
                       Fuaran.UI.Ops.Apply.apply
-                          (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(node.Id, slot, probeBinding))
+                          (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(NodeId node.Id, slot, probeBinding))
                           node
                   with
                   | Ok _ -> ()
                   | Error e -> failtestf "ReplaceBinding %A.%s failed: %A" node.Id slot e
 
               let expectResolvable (node: Node<Msg>) (slot: string) =
-                  match Tools.getBindingValue ctx node node.Id slot with
+                  match Tools.getBindingValue ctx node (NodeId node.Id) slot with
                   | Ok _ -> ()
                   | Error e -> failtestf "getBindingValue %A.%s failed: %A" node.Id slot e
 
@@ -546,13 +546,17 @@ let bindingSlotConsistencyTests =
 
               match
                   Fuaran.UI.Ops.Apply.apply
-                      (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(button.Id, "Disabled", Binding.Filter("probe", None)))
+                      (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(
+                          NodeId button.Id,
+                          "Disabled",
+                          Binding.Filter("probe", None)
+                      ))
                       button
               with
               | Ok _ -> ()
               | Error e -> failtestf "ReplaceBinding Button.Disabled failed: %A" e
 
-              match Tools.getBindingValue ctx button button.Id "Disabled" with
+              match Tools.getBindingValue ctx button (NodeId button.Id) "Disabled" with
               | Ok _ -> ()
               | Error e -> failtestf "getBindingValue Button.Disabled failed: %A" e
           }
@@ -603,7 +607,7 @@ let bindingSlotConsistencyTests =
                       // (2) ReplaceBinding honours it.
                       match
                           Fuaran.UI.Ops.Apply.apply
-                              (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(fixture.Id, slot, probeBinding))
+                              (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(NodeId fixture.Id, slot, probeBinding))
                               fixture
                       with
                       | Ok _ -> ()
@@ -617,7 +621,7 @@ let bindingSlotConsistencyTests =
                                   slot)
 
                       // (3) getBindingValue resolves it (synthetic-None when absent).
-                      match Tools.getBindingValue ctx fixture fixture.Id slot with
+                      match Tools.getBindingValue ctx fixture (NodeId fixture.Id) slot with
                       | Ok _ -> ()
                       | Error e ->
                           Expect.notEqual
@@ -635,14 +639,14 @@ let bindingSlotConsistencyTests =
               let expectReplaceable (node: Node<Msg>) (slot: string) =
                   match
                       Fuaran.UI.Ops.Apply.apply
-                          (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(node.Id, slot, probeBinding))
+                          (Fuaran.UI.Ops.Types.TreeOp.ReplaceBinding(NodeId node.Id, slot, probeBinding))
                           node
                   with
                   | Ok _ -> ()
                   | Error e -> failtestf "ReplaceBinding %A.%s failed: %A" node.Id slot e
 
               let expectResolvable (node: Node<Msg>) (slot: string) =
-                  match Tools.getBindingValue ctx node node.Id slot with
+                  match Tools.getBindingValue ctx node (NodeId node.Id) slot with
                   | Ok _ -> ()
                   | Error e -> failtestf "getBindingValue %A.%s failed: %A" node.Id slot e
 

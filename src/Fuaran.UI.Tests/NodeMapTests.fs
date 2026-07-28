@@ -112,14 +112,15 @@ let nodeMapTests =
 
               let mapped = Node.mapMsg string root
 
-              Expect.equal mapped.Id (NodeId "root") "root Id preserved"
-              Expect.equal mapped.Style.Tone ToneVariant.Brand "Style trait preserved"
+              Expect.equal mapped.Id "root" "root Id preserved"
+
+              Expect.equal (mapped.Style |> Option.map _.Tone) (Some ToneVariant.Brand) "Style trait preserved"
 
               match mapped.Kind with
               | NodeKind.Box(spec) ->
                   match spec.Children with
                   | [ mappedChild ] ->
-                      Expect.equal mappedChild.Id (NodeId "child") "child Id preserved"
+                      Expect.equal mappedChild.Id "child" "child Id preserved"
 
                       match mappedChild.Kind with
                       | NodeKind.Button(b) ->
@@ -172,9 +173,9 @@ let nodeMapTests =
                   Fuaran.mount
                       "m"
                       { ScopeId = "guest-1"
-                        Inputs = Map.empty
+                        Inputs = None
                         Channel = Fuaran.guestOutChannel
-                        OnBubble = (fun (o: obj) -> Action.Dispatch(unbox<int> o))
+                        OnBubble = Some(fun (o: obj) -> Action.Dispatch(unbox<int> o))
                         Capabilities = [] }
 
               let mapped = Node.mapMsg string node
@@ -183,8 +184,8 @@ let nodeMapTests =
               | NodeKind.Mount spec ->
                   Expect.equal spec.ScopeId "guest-1" "ScopeId preserved"
 
-                  match spec.OnBubble(box 5) with
-                  | Action.Dispatch s -> Expect.equal s "5" "OnBubble output is f-applied"
+                  match spec.OnBubble |> Option.map (fun f -> f (box 5)) with
+                  | Some(Action.Dispatch s) -> Expect.equal s "5" "OnBubble output is f-applied"
                   | other -> failtestf "expected Dispatch from OnBubble, got %A" other
               | other -> failtestf "expected a Mount, got %A" other
           }

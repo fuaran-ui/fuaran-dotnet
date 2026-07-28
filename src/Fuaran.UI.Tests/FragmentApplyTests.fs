@@ -19,29 +19,27 @@ let private cardFragment: ParamFragment<unit> =
             { Defaults.dashboard<unit> with
                 Children =
                     [ Fuaran.markdown "card-title" "Title"
-                      { Id = NodeId "content"
-                        Kind =
-                          NodeKind.FragmentRef
-                              { Name = FragmentId "content"
-                                Args = Map.empty }
-                        State = Defaults.stateBehaviour
-                        Style = Defaults.style
+                      { Id = "content"
+                        Kind = NodeKind.FragmentRef { Name = "content"; Args = None }
+                        State = None
+                        Style = None
                         Accessibility = None
                         Motion = None
                         ExtraAttributes = None } ] }
 
-    { Name = FragmentId "card"
+    { Name = "card"
       Holes =
-        [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-          HoleDecl.Slot("content", None) ]
+        Some
+            [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
+              HoleDecl.Slot("content", None) ]
       Body = body
-      Effect = EffectClass.pureDeterministic }
+      Effect = None }
 
 let private slotArg: Node<unit> = Fuaran.markdown "body" "slot content"
 
 let private childIds (n: Node<unit>) : string list =
     match n.Kind with
-    | NodeKind.Box(s) -> s.Children |> List.map (fun c -> let (NodeId i) = c.Id in i)
+    | NodeKind.Box(s) -> s.Children |> List.map _.Id
     | _ -> []
 
 [<Tests>]
@@ -104,13 +102,10 @@ let tests =
           test "totality: a slot argument referencing the fragment itself is refused" {
               // The slot arg is itself a FragmentRef back to "card" — unbounded.
               let recursiveArg: Node<unit> =
-                  { Id = NodeId "loop"
-                    Kind =
-                      NodeKind.FragmentRef
-                          { Name = FragmentId "card"
-                            Args = Map.empty }
-                    State = Defaults.stateBehaviour
-                    Style = Defaults.style
+                  { Id = "loop"
+                    Kind = NodeKind.FragmentRef { Name = "card"; Args = None }
+                    State = None
+                    Style = None
                     Accessibility = None
                     Motion = None
                     ExtraAttributes = None }
@@ -156,8 +151,9 @@ let tests =
           let constrainedCard (constraintKind: string option) : ParamFragment<unit> =
               { cardFragment with
                   Holes =
-                      [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-                        HoleDecl.Slot("content", constraintKind) ] }
+                      Some
+                          [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
+                            HoleDecl.Slot("content", constraintKind) ] }
 
           test "a slot arg whose kind matches the constraint binds" {
               let r =

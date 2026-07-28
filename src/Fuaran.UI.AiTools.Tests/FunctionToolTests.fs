@@ -93,10 +93,10 @@ let private dashboardFragment (declId: string) (fragName: string) (slotName: str
 
     Fuaran.fragmentDecl
         declId
-        { Name = FragmentId fragName
+        { Name = fragName
           Body = body
-          Holes = [ HoleDecl.Slot(slotName, None) ]
-          Effect = EffectClass.pureDeterministic }
+          Holes = Some [ HoleDecl.Slot(slotName, None) ]
+          Effect = Some EffectClass.pureDeterministic }
 
 let private enc (n: Node<unit>) : string = CanonicalJson.encodeNode n
 
@@ -132,7 +132,7 @@ let tests =
               let manual =
                   let embedded = embed queryOut
                   // hygienic namespacing: <slotAddr>.<innerId>
-                  let namespacedId = NodeId(addr + "." + "q1")
+                  let namespacedId = addr + "." + "q1"
 
                   let embeddedNs = { embedded with Id = namespacedId }
 
@@ -149,10 +149,10 @@ let tests =
 
                   Fuaran.fragmentDecl
                       declId
-                      { Name = FragmentId fragName
+                      { Name = fragName
                         Body = body
-                        Holes = []
-                        Effect = EffectClass.pureDeterministic }
+                        Holes = None
+                        Effect = Some EffectClass.pureDeterministic }
 
               Expect.equal (enc composed) (enc manual) "composed tree encodes identically to the manual wiring"
 
@@ -196,10 +196,10 @@ let tests =
 
                   Fuaran.fragmentDecl
                       declId
-                      { Name = FragmentId "twin"
+                      { Name = "twin"
                         Body = body
-                        Holes = [ HoleDecl.Slot(slotL, None); HoleDecl.Slot(slotR, None) ]
-                        Effect = EffectClass.pureDeterministic }
+                        Holes = Some [ HoleDecl.Slot(slotL, None); HoleDecl.Slot(slotR, None) ]
+                        Effect = Some EffectClass.pureDeterministic }
 
               let queryOut = { QId = "q"; Label = "x"; Kids = [] }
               let addrL = FunctionTool.holeAddr declId slotL
@@ -217,7 +217,7 @@ let tests =
 
               // Collect every interior node id — no collision means hygiene held.
               let rec ids (n: Node<unit>) : string list =
-                  let (NodeId s) = n.Id
+                  let s = n.Id
 
                   let kids =
                       match Fuaran.UI.Ops.Introspect.getChildren n.Kind with
@@ -296,10 +296,10 @@ let tests =
               let decl =
                   Fuaran.fragmentDecl
                       "outer-pure"
-                      { Name = FragmentId "outer-pure"
+                      { Name = "outer-pure"
                         Body = body
-                        Holes = []
-                        Effect = EffectClass.pureDeterministic }
+                        Holes = None
+                        Effect = Some EffectClass.pureDeterministic }
 
               Expect.isOk (FunctionTool.auditFragmentEffect decl) "a pure body under a pure declaration is honest"
 
@@ -312,10 +312,10 @@ let tests =
               let networkSub =
                   Fuaran.fragmentDecl
                       "netsub-understated"
-                      { Name = FragmentId "netsub-understated"
+                      { Name = "netsub-understated"
                         Body = Fuaran.markdown "n-understated" "live query"
-                        Holes = []
-                        Effect = uiNetwork }
+                        Holes = None
+                        Effect = Some uiNetwork }
 
               let body =
                   Fuaran.dashboard
@@ -326,10 +326,10 @@ let tests =
               let decl =
                   Fuaran.fragmentDecl
                       "outer-understated"
-                      { Name = FragmentId "outer-understated"
+                      { Name = "outer-understated"
                         Body = body
-                        Holes = []
-                        Effect = EffectClass.pureDeterministic }
+                        Holes = None
+                        Effect = Some EffectClass.pureDeterministic }
 
               match FunctionTool.auditFragmentEffect decl with
               | Error(declared, observed) ->
@@ -350,10 +350,10 @@ let tests =
               let networkSub =
                   Fuaran.fragmentDecl
                       "netsub-honest"
-                      { Name = FragmentId "netsub-honest"
+                      { Name = "netsub-honest"
                         Body = Fuaran.markdown "n-honest" "live query"
-                        Holes = []
-                        Effect = uiNetwork }
+                        Holes = None
+                        Effect = Some uiNetwork }
 
               let body =
                   Fuaran.dashboard
@@ -364,10 +364,10 @@ let tests =
               let decl =
                   Fuaran.fragmentDecl
                       "outer-honest"
-                      { Name = FragmentId "outer-honest"
+                      { Name = "outer-honest"
                         Body = body
-                        Holes = []
-                        Effect = uiNetwork }
+                        Holes = None
+                        Effect = Some uiNetwork }
 
               Expect.isOk
                   (FunctionTool.auditFragmentEffect decl)

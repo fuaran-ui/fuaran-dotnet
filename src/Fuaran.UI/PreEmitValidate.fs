@@ -419,7 +419,7 @@ let private validateCore
     let writeBackKeys = ResizeArray<string * string * string>()
     let nodeIdCounts = System.Collections.Generic.Dictionary<string, int>()
 
-    let recordNodeId (NodeId raw) =
+    let recordNodeId (raw: string) =
         if raw = "" then
             defects.Add PreEmitDefect.EmptyNodeId
         else
@@ -442,7 +442,7 @@ let private validateCore
             // is a semantic mistake (the tag binding has nowhere to
             // resolve to). The `NodeId raw` extraction matches the
             // existing `recordNodeId` pattern.
-            let (NodeId nodeIdStr) = n.Id
+            let nodeIdStr = n.Id
             let childrenCount = spec.Children.Length
 
             match spec.TabHeaders with
@@ -480,7 +480,7 @@ let private validateCore
         | NodeKind.Disclosure spec ->
             // FUARAN069 (Phase 426): no toggle handler and no writable
             // `Open` slot — the model never hears the native toggle.
-            let (NodeId nodeIdStr) = n.Id
+            let nodeIdStr = n.Id
 
             if spec.OnToggle.IsNone && not (isWriteBackTarget spec.Open) then
                 defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Disclosure"))
@@ -489,7 +489,7 @@ let private validateCore
         | NodeKind.Modal spec ->
             // FUARAN069 (Phase 426): a dismissable modal with no dismiss
             // action and no writable `Open` slot can never close.
-            let (NodeId nodeIdStr) = n.Id
+            let nodeIdStr = n.Id
 
             if spec.Dismissable && spec.OnDismiss.IsNone && not (isWriteBackTarget spec.Open) then
                 defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Modal"))
@@ -501,7 +501,7 @@ let private validateCore
             // display floor — every column needs a Value closure or a Field,
             // and the grid needs a RowKey closure or a RowKeyField for stable
             // row identity (the 427 selected-row state keys off it).
-            let (NodeId nodeIdStr) = n.Id
+            let nodeIdStr = n.Id
 
             for col in spec.Columns do
                 if col.Value.IsNone && col.Field.IsNone then
@@ -546,7 +546,7 @@ let private validateCore
         // chips are exempt — a handler-free chip always writes its own
         // `$filters.<name>` (Phase 423), so it can never be inert.
         | NodeKind.Form spec ->
-            let (NodeId nodeIdStr) = n.Id
+            let nodeIdStr = n.Id
 
             let checkField (field: FormField<'Msg>) =
                 // Phase 596 (FUARAN085): a handler-free field whose value is
@@ -597,7 +597,7 @@ let private validateCore
 
             spec.Fields |> List.iter checkField
         | NodeKind.Select spec ->
-            let (NodeId nodeIdStr) = n.Id
+            let nodeIdStr = n.Id
 
             if spec.Multiple = Some true then
                 let valuesLive =
@@ -617,7 +617,7 @@ let private validateCore
             // ungrounded field reference is the LANGUAGE's defect to catch
             // before lowering — a wrong field name otherwise lowers to a
             // silently flat/empty chart.
-            let (NodeId nodeIdStr) = n.Id
+            let nodeIdStr = n.Id
 
             let kindName =
                 match spec.Kind with
@@ -678,12 +678,12 @@ let private validateCore
         // The other visualisations are leaves with no pre-emit invariants yet.
         | NodeKind.Chart _
         | NodeKind.Map _ -> ()
-        | NodeKind.Custom(moduleId, componentId, props, _, _) ->
-            if moduleId = "" || componentId = "" then
-                defects.Add(PreEmitDefect.EmptyCustomKindIdentifier(moduleId, componentId))
+        | NodeKind.Custom spec ->
+            if spec.ModuleId = "" || spec.ComponentId = "" then
+                defects.Add(PreEmitDefect.EmptyCustomKindIdentifier(spec.ModuleId, spec.ComponentId))
 
-            let (NodeId rawId) = n.Id
-            customCheck rawId moduleId componentId props |> Option.iter defects.Add
+            customCheck n.Id spec.ModuleId spec.ComponentId spec.Props
+            |> Option.iter defects.Add
         | NodeKind.ErrorBoundary spec ->
             // The boundary's `Child` + `Fallback`
             // subtrees both participate in the tree-wide NodeId uniqueness
@@ -695,7 +695,7 @@ let private validateCore
             walk spec.Child
             walk spec.Fallback
         | NodeKind.Switch spec ->
-            let (NodeId nodeIdStr) = n.Id
+            let nodeIdStr = n.Id
 
             // FUARAN083 (Phase 392): an empty state key is ungrounded — the
             // switch can never resolve a case, so it is stuck on `default`.
@@ -707,13 +707,13 @@ let private validateCore
             let seen = System.Collections.Generic.HashSet<string>()
             let reported = System.Collections.Generic.HashSet<string>()
 
-            for (matchValue, _) in spec.Cases do
-                if not (seen.Add matchValue) && reported.Add matchValue then
-                    defects.Add(PreEmitDefect.DuplicateSwitchMatch(nodeIdStr, matchValue))
+            for c in spec.Cases do
+                if not (seen.Add c.Match) && reported.Add c.Match then
+                    defects.Add(PreEmitDefect.DuplicateSwitchMatch(nodeIdStr, c.Match))
 
             // The case children + default participate in the tree-wide NodeId
             // uniqueness + empty-id surface, so walk them all.
-            spec.Cases |> List.iter (fun (_, child) -> walk child)
+            spec.Cases |> List.iter (fun c -> walk c.Child)
             walk spec.Default
         | NodeKind.FragmentDecl spec ->
             // The decl's `Body` participates in the

@@ -92,7 +92,7 @@ let private writeOpFields (jw: Utf8JsonWriter) (op: TreeOp<'Msg>) =
     | TreeOp.UpdateState(target, _) -> writeNodeId jw "id" target
     | TreeOp.InsertChild(parentId, child) ->
         writeNodeId jw "parent_id" parentId
-        writeNodeId jw "child_id" child.Id
+        writeNodeId jw "child_id" (NodeId child.Id)
     | TreeOp.RemoveNode target -> writeNodeId jw "id" target
     | TreeOp.MoveNode(target, newParentId) ->
         writeNodeId jw "id" target
@@ -105,7 +105,7 @@ let private writeOpFields (jw: Utf8JsonWriter) (op: TreeOp<'Msg>) =
             jw.WriteStringValue rawId
 
         jw.WriteEndArray()
-    | TreeOp.ReplaceRoot node -> writeNodeId jw "id" node.Id
+    | TreeOp.ReplaceRoot node -> writeNodeId jw "id" (NodeId node.Id)
     | TreeOp.Batch inner -> jw.WriteNumber("inner_count", inner.Length)
 
 let private writeHint (jw: Utf8JsonWriter) (failingField: string option) (hint: ApplyHint) =
@@ -222,15 +222,14 @@ let private opFields (op: TreeOp<'Msg>) : string list =
         | TreeOp.ReplaceBinding(target, slot, _) -> [ fieldStr "id" (rawId target); fieldStr "slot" slot ]
         | TreeOp.UpdateStyle(target, _) -> [ fieldStr "id" (rawId target) ]
         | TreeOp.UpdateState(target, _) -> [ fieldStr "id" (rawId target) ]
-        | TreeOp.InsertChild(parentId, child) ->
-            [ fieldStr "parent_id" (rawId parentId); fieldStr "child_id" (rawId child.Id) ]
+        | TreeOp.InsertChild(parentId, child) -> [ fieldStr "parent_id" (rawId parentId); fieldStr "child_id" child.Id ]
         | TreeOp.RemoveNode target -> [ fieldStr "id" (rawId target) ]
         | TreeOp.MoveNode(target, newParentId) ->
             [ fieldStr "id" (rawId target); fieldStr "new_parent_id" (rawId newParentId) ]
         | TreeOp.ReorderChildren(parentId, newOrder) ->
             [ fieldStr "parent_id" (rawId parentId)
               fieldRaw "new_order" (jsonArr (newOrder |> List.map (rawId >> jsonString))) ]
-        | TreeOp.ReplaceRoot node -> [ fieldStr "id" (rawId node.Id) ]
+        | TreeOp.ReplaceRoot node -> [ fieldStr "id" node.Id ]
         | TreeOp.Batch inner -> [ fieldNum "inner_count" inner.Length ]
 
     kind :: rest

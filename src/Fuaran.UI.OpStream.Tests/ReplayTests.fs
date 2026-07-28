@@ -16,11 +16,7 @@ open Fuaran.UI.OpStream.Tests.TestSupport
 
 let private childIds (root: Node<TestMsg>) : string list =
     match root.Kind with
-    | NodeKind.Box(spec) ->
-        spec.Children
-        |> List.map (fun n ->
-            match n.Id with
-            | NodeId raw -> raw)
+    | NodeKind.Box(spec) -> spec.Children |> List.map _.Id
     | _ -> failwithf "Expected dashboard, got %A" root.Kind
 
 [<Tests>]

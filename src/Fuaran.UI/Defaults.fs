@@ -108,14 +108,14 @@ let tabs<'Msg> : TabsSpec<'Msg> =
     // `ActiveIndex` gets the clicked index written back by the renderer; the
     // static default renders but never switches (same dead behaviour as the
     // pre-426 no-op closure, minus the sentinel on the wire).
-    { Orientation = Orientation.Horizontal
-      Children = []
+    { Children = []
       ActiveIndex = Binding.Static(Some 0)
       OnSelect = Option.None
       TabHeaders = Option.None
       TabTags = Option.None
       ActiveTag = Option.None
-      OnSelectTag = Option.None }
+      OnSelectTag = Option.None
+      Orientation = Orientation.Horizontal }
 
 /// Empty header — Literal "" label, no icon, no
 /// disabled binding. Pair with `Fuaran.tabsTagged` or the with-syntax record
@@ -128,9 +128,12 @@ let tabHeader: TabHeader =
 let card<'Msg> : CardSpec<'Msg> = { Heading = Option.None; Children = [] }
 
 let stepper<'Msg> : StepperSpec<'Msg> =
+    // `OnSelect = None` since the swap (the generated record's handler is an
+    // option) — ≡ the old no-op `Action.Chain []` closure: steps render and
+    // active styling tracks `ActiveStep`, no dispatch on click.
     { ActiveStep = Binding.Static(Some 0)
       Children = []
-      OnSelect = (fun _ -> Action.Chain []) }
+      OnSelect = Option.None }
 
 let summaryList<'Msg> : SummaryListSpec<'Msg> =
     { Heading = Option.None; Children = [] }
@@ -408,10 +411,12 @@ let customExposedNodeIds: NodeId list = []
 // boundary; an unspecified child is structurally a no-op.
 
 let private errorBoundaryPlaceholder<'Msg> : Node<'Msg> =
-    { Id = NodeId "fuaran-error-boundary-placeholder"
+    // `State = None` / `Style = None` since the swap — the canonical empty /
+    // default envelope shape (the encoder omitted the old empty records).
+    { Id = "fuaran-error-boundary-placeholder"
       Kind = NodeKind.Skeleton({ Rows = 1 })
-      State = stateBehaviour<'Msg>
-      Style = style
+      State = Option.None
+      Style = Option.None
       Accessibility = Option.None
       Motion = Option.None
       ExtraAttributes = Option.None }
@@ -442,23 +447,25 @@ let switch<'Msg> : SwitchSpec<'Msg> =
 // reference at validate time.
 
 let private fragmentPlaceholder<'Msg> : Node<'Msg> =
-    { Id = NodeId "fuaran-fragment-placeholder"
+    { Id = "fuaran-fragment-placeholder"
       Kind = NodeKind.Skeleton({ Rows = 1 })
-      State = stateBehaviour<'Msg>
-      Style = style
+      State = Option.None
+      Style = Option.None
       Accessibility = Option.None
       Motion = Option.None
       ExtraAttributes = Option.None }
 
 let fragmentDecl<'Msg> : FragmentDeclSpec<'Msg> =
-    { Name = FragmentId ""
+    // `Holes = None` / `Effect = None` since the swap — ≡ the old `[]` /
+    // pure-deterministic degenerate shape (both omitted on the wire).
+    { Name = ""
       Body = fragmentPlaceholder<'Msg>
-      Holes = []
-      Effect = EffectClass.pureDeterministic }
+      Holes = Option.None
+      Effect = Option.None }
 
 let fragmentRef<'Msg> : FragmentRefSpec<'Msg> =
-    { Name = FragmentId ""
-      Args = Map.empty }
+    // `Args = None` since the swap — ≡ the old empty map (omitted on the wire).
+    { Name = ""; Args = Option.None }
 
 // ─── Accessibility defaults ──────────────────────────────────────────────────
 //

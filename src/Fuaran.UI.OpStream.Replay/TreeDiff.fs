@@ -163,7 +163,7 @@ module TreeDiff =
             (position: int)
             (node: Node<'Msg>)
             : Map<string, NodeLocation<'Msg>> =
-            let (NodeId raw) = node.Id
+            let raw = node.Id
 
             let acc' =
                 acc
@@ -178,7 +178,7 @@ module TreeDiff =
             | Some children ->
                 children
                 |> List.indexed
-                |> List.fold (fun a (i, child) -> walk a (Some node.Id) i child) acc'
+                |> List.fold (fun a (i, child) -> walk a (Some(NodeId node.Id)) i child) acc'
 
         walk Map.empty None 0 root
 

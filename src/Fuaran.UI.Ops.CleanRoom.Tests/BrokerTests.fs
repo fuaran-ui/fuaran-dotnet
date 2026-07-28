@@ -101,7 +101,11 @@ let tests =
                   "InsertChild"
           }
           test "UpdateState is withheld (carries content subtrees)" {
-              Expect.isTrue (isWithheld (TreeOp.UpdateState(NodeId "recital", donor.State))) "UpdateState"
+              Expect.isTrue
+                  (isWithheld (
+                      TreeOp.UpdateState(NodeId "recital", donor.State |> Option.defaultValue Defaults.stateBehaviour)
+                  ))
+                  "UpdateState"
           }
           test "ReplaceRoot is withheld (replaces the whole tree)" {
               Expect.isTrue (isWithheld (TreeOp.ReplaceRoot donor)) "ReplaceRoot"
@@ -109,7 +113,9 @@ let tests =
 
           // ── Withheld: off the structural allowlist (default-deny) ──
           test "UpdateStyle is withheld (not a move/reorder/reparent/delete)" {
-              Expect.isTrue (isWithheld (TreeOp.UpdateStyle(NodeId "recital", donor.Style))) "UpdateStyle"
+              Expect.isTrue
+                  (isWithheld (TreeOp.UpdateStyle(NodeId "recital", donor.Style |> Option.defaultValue Defaults.style)))
+                  "UpdateStyle"
           }
 
           // ── Batch withholds if ANY inner op is withheld ──

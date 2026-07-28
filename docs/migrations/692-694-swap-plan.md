@@ -128,7 +128,39 @@ conformance), Fable demo + catalog, corpus untouched. **The constraint that shap
 generated spec carrying `Node<'Msg>` cannot alias before the envelope itself swaps** — which is what
 stage 4b is.
 
-### Stage 4b — layout/meta specs + `NodeKind` + `Node` (the 692 switch proper)
+### Stage 4b — layout/meta specs + `NodeKind` + `Node` (the 692 switch proper) — **IN PROGRESS**
+
+Four IDL findings surfaced by the 4b sweep, all resolved IDL-side (never absorbed tier-side),
+regenerated + re-synced before the tier switch continued:
+
+1. **`StaticRows` cells are `TextSource`, not `string`.** The planned "fidelity narrowing
+   (literals only)" was checked against the codec: the hand encoder renders each cell via
+   `encodeTextSource` (a `Literal` IS the bare wire string — 0.2.0) and the decoder accepts
+   `Bound` / `I18n` objects per cell, so `TStr` would have made stage 5's decoder reject or
+   stringify documents that decode today. Table-1 bytes unchanged (all-literal cells).
+2. **`CellValue` moved to the host prelude** (`Fuaran.UI.HostPrelude.CellValue`, stub mirrored
+   in Core's `UiHostPrelude.fs`; `Types.CellValue` aliases it). The closure slots
+   (`ColumnErased.Value`, `CellKindErased.Editable`, `CellFormat.Custom.fn`) keep the typed
+   surface — the stage-3 obj-erasure of `CellFormat.Custom` is un-erased, and the planned
+   box/unbox ceremony at `Column.erase` is gone. `FileSelection` precedent: closure-interior,
+   never serialises, no codec.
+3. **`Progress.labelFn` keeps its option** (the generated `req` dropped a real tier state — a
+   progress cell with no label). Wire: sentinel-when-Some, omit-when-None; no fixture pins the
+   None-label emission.
+4. **`Tabs.orientation` exists** — the IDL comment "0.2.x dropped Tabs.orientation" was wrong;
+   the hand encoder emits it omit-when-Horizontal and the decoder restores the default. No
+   corpus fixture is Vertical, which is how the byte gate missed it (the stage-3b
+   `BoxRole.Separator` class). Modelled `omit … (VEnum "Horizontal")`.
+
+Encoder/decoder alignment for newly-optional closure slots (Editable.onEdit, Checkbox.onToggle,
+Button.onClick, ButtonGroupItem.onClick, Progress.labelFn, Mount.onBubble, Stepper.onSelect):
+the hand codec now emits sentinel-when-Some / omits-when-None and decodes presence→`Some` no-op /
+absence→`None` — byte-identical for every previously-expressible value (the slots were required
+pre-swap, so every existing document has the key), and aligned with the generated codec's form.
+`TreeOp.UpdateStyle` / `UpdateState` normalise a default-valued payload to the `None` envelope
+slot (a `Some Defaults.style` would emit `"style":{}` where omission is canonical).
+
+#### Original 4b scope (for reference)
 
 - Remaining after 4a: the Node-carrying layout/meta specs (Box, SplitPanel, Tabs, Stepper,
   SummaryList, Disclosure, Modal, ScrollArea, ErrorBoundary, Switch, Mount, FragmentDecl,

@@ -632,18 +632,10 @@ let private decodeInvokeArgs (path: string) (j: Json) : Result<(string * string)
 // ─── Placeholder Node for OnError slot (encoder emits sentinel only) ────
 
 let private placeholderClosureNode: Node<obj> =
-    { Id = NodeId closureSentinel
+    { Id = closureSentinel
       Kind = NodeKind.Markdown({ Text = TextSource.Literal closureSentinel })
-      State =
-        { OnLoading = None
-          OnEmpty = None
-          OnError = None }
-      Style =
-        { Tone = ToneVariant.Default
-          Weight = StyleWeight.Standard
-          Emphasis = Emphasis.Normal
-          Role = StyleRole.None
-          Voice = FontVoice.Default }
+      State = None
+      Style = None
       Accessibility = None
       Motion = None
       ExtraAttributes = None }
@@ -3374,7 +3366,7 @@ let private decodeInputKind (path: string) (j: Json) : Result<NodeKind<obj>, Dec
             |> Result.bind (fun v -> requireArray (path + ".items") v)
             |> Result.bind (fun xs ->
                 traverseIndexed (fun i item -> decodeFilterSpec (sprintf "%s.items[%d]" path i) item) xs)
-            |> Result.map NodeKind.Filters
+            |> Result.map (fun items -> NodeKind.Filters { Items = items })
         | Ok "Button" -> decodeButtonSpec path j |> Result.map NodeKind.Button
         | Ok "FileUpload" -> decodeFileUploadSpec path j |> Result.map NodeKind.FileUpload
         | Ok "Select" -> decodeSelectSpec path j |> Result.map NodeKind.Select
@@ -3391,12 +3383,26 @@ let private decodeCellKindErased (path: string) (j: Json) : Result<CellKindErase
         | Ok "Text" -> Ok CellKindErased.Text
         | Ok "Numeric" -> Ok CellKindErased.Numeric
         | Ok "Date" -> Ok CellKindErased.Date
-        | Ok "Editable" -> Ok(CellKindErased.Editable(fun _ -> Action.Chain []))
-        | Ok "Checkbox" -> Ok(CellKindErased.Checkbox((fun _ -> false), (fun _ -> Action.Chain [])))
+        // The interactive closure slots are OPTIONS since the swap — decode
+        // maps wire presence (the `"<closure>"` sentinel) to `Some` no-op so
+        // re-encode stays byte-identical, and absence to `None`.
+        | Ok "Editable" ->
+            Ok(CellKindErased.Editable(tryField fields "onEdit" |> Option.map (fun _ -> fun _ -> Action.Chain [])))
+        | Ok "Checkbox" ->
+            Ok(
+                CellKindErased.Checkbox(
+                    (fun _ -> false),
+                    tryField fields "onToggle" |> Option.map (fun _ -> fun _ -> Action.Chain [])
+                )
+            )
         | Ok "Button" ->
             requireField path fields "label" "button TextSource label"
             |> Result.bind (decodeTextSource (path + ".label"))
-            |> Result.map (fun label -> CellKindErased.Button(label, (fun _ -> Action.Chain [])))
+            |> Result.map (fun label ->
+                CellKindErased.Button(
+                    label,
+                    tryField fields "onClick" |> Option.map (fun _ -> fun _ -> Action.Chain [])
+                ))
         | Ok "ButtonGroup" ->
             requireField path fields "buttons" "button-group list"
             |> Result.bind (fun v -> requireArray (path + ".buttons") v)
@@ -3410,14 +3416,25 @@ let private decodeCellKindErased (path: string) (j: Json) : Result<CellKindErase
                         | Ok bf ->
                             requireField p bf "label" "button TextSource label"
                             |> Result.bind (decodeTextSource (p + ".label"))
-                            |> Result.map (fun label -> label, (fun (_: obj) -> Action.Chain [])))
+                            |> Result.map (fun label ->
+                                { Label = label
+                                  OnClick =
+                                    tryField bf "onClick" |> Option.map (fun _ -> fun (_: obj) -> Action.Chain []) }
+                                : ButtonGroupItem<obj>))
                     xs)
             |> Result.map CellKindErased.ButtonGroup
         | Ok "Link" ->
             Ok(CellKindErased.Link((fun _ -> closureSentinel), (fun _ -> TextSource.Literal closureSentinel)))
         | Ok "Pill" ->
             Ok(CellKindErased.Pill((fun _ -> TextSource.Literal closureSentinel), (fun _ -> ToneVariant.Default)))
-        | Ok "Progress" -> Ok(CellKindErased.Progress((fun _ -> 0.0), None))
+        | Ok "Progress" ->
+            Ok(
+                CellKindErased.Progress(
+                    (fun _ -> 0.0),
+                    tryField fields "labelFn"
+                    |> Option.map (fun _ -> fun _ -> TextSource.Literal closureSentinel)
+                )
+            )
         | Ok "Custom" -> Ok(CellKindErased.Custom(fun _ -> placeholderClosureNode))
         | Ok s ->
             unknownDuCase
@@ -3559,10 +3576,12 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
         // data-bound grid so existing fixtures stay byte-identical) carries the retired
         // `Table`'s `TextSource` header/row matrix; when present the renderer emits static
         // `<table>` markup from it. `decodeStaticRows` reads the `{headers, rows}` object.
-        let staticRowsR: Result<(TextSource list * TextSource list list) option, DecodeError> =
+        let staticRowsR: Result<StaticRows option, DecodeError> =
             match tryField fields "staticRows" with
             | None -> Ok None
-            | Some sJ -> decodeStaticRows (path + ".staticRows") sJ |> Result.map Some
+            | Some sJ ->
+                decodeStaticRows (path + ".staticRows") sJ
+                |> Result.map (fun (headers, rows) -> Some { Headers = headers; Rows = rows })
 
         match columnsR, editableR, sourceR, onRowClickR, rowKeyFieldR, staticRowsR with
         | Ok columns, Ok editable, Ok source, Ok onRowClick, Ok rowKeyField, Ok staticRows ->
@@ -3952,7 +3971,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                                         | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
 
                                     match dirR, wrapR, gapR with
-                                    | Ok d, Ok w, Ok g -> Ok(BoxLayout.Flex { Direction = d; Wrap = w; Gap = g })
+                                    | Ok d, Ok w, Ok g -> Ok(LayoutMode.Flex(d, w, g))
                                     | Error e, _, _
                                     | _, Error e, _
                                     | _, _, Error e -> Error e
@@ -3990,13 +4009,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                                         | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
 
                                     match colsR, tcR, gapR with
-                                    | Ok c, Ok tc, Ok g ->
-                                        Ok(
-                                            BoxLayout.Grid
-                                                { Cols = c
-                                                  TemplateColumns = tc
-                                                  Gap = g }
-                                        )
+                                    | Ok c, Ok tc, Ok g -> Ok(LayoutMode.Grid(c, tc, g))
                                     | Error e, _, _
                                     | _, Error e, _
                                     | _, _, Error e -> Error e
@@ -4153,16 +4166,20 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                         requireField specPath specFields "activeStep" "Binding<int> activeStep"
                         |> Result.bind (decodeBindingInt (specPath + ".activeStep"))
 
-                    // `onSelect` is a closure → the sentinel is consumed and
-                    // reconstructs a no-op `Action` (re-encodes to the same
-                    // sentinel; behaviour can't round-trip) — mirrors Tabs.
+                    // `onSelect` is a closure → a present sentinel reconstructs
+                    // a no-op `Some` (re-encodes to the same sentinel; behaviour
+                    // can't round-trip); an absent key decodes `None` — mirrors
+                    // Tabs. The slot is an option since the swap.
                     match childrenR, activeR with
                     | Ok children, Ok active ->
                         Ok(
                             NodeKind.Stepper
                                 { ActiveStep = active
                                   Children = children
-                                  OnSelect = (fun _ -> Action.Chain []) }
+                                  OnSelect =
+                                    (match tryField specFields "onSelect" with
+                                     | Some _ -> Some(fun _ -> Action.Chain [])
+                                     | None -> Option.None) }
                         )
                     | Error e, _
                     | _, Error e -> Error e
@@ -4404,8 +4421,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                     requireArray (path + ".exposedNodeIds") j
                     |> Result.bind (fun items ->
                         items
-                        |> List.mapi (fun i item ->
-                            requireString (sprintf "%s.exposedNodeIds[%d]" path i) item |> Result.map NodeId)
+                        |> List.mapi (fun i item -> requireString (sprintf "%s.exposedNodeIds[%d]" path i) item)
                         |> List.fold
                             (fun acc r ->
                                 match acc, r with
@@ -4416,7 +4432,15 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
 
             match moduleIdR, componentIdR, propsR, contentHashR, exposedNodeIdsR with
             | Ok moduleId, Ok componentId, Ok props, Ok hash, Ok exposedIds ->
-                Ok(NodeKind.Custom(moduleId, componentId, props, hash, exposedIds))
+                Ok(
+                    NodeKind.Custom
+                        { ModuleId = moduleId
+                          ComponentId = componentId
+                          Props = props
+                          ContentHash = hash
+                          // An absent/empty list stays `None` (omitted on the wire).
+                          ExposedNodeIds = (if List.isEmpty exposedIds then None else Some exposedIds) }
+                )
             | Error e, _, _, _, _
             | _, Error e, _, _, _
             | _, _, Error e, _, _
@@ -4473,7 +4497,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                                     |> Result.bind (decodeNodeAst (casePath + ".child"))
 
                                 match matchR, childR with
-                                | Ok m, Ok child -> Ok(m, child)
+                                | Ok m, Ok child -> Ok({ Match = m; Child = child }: SwitchCase<obj>)
                                 | Error e, _
                                 | _, Error e -> Error e)
 
@@ -4501,25 +4525,26 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
             let nameR =
                 requireField path fields "name" "FragmentDecl name string"
                 |> Result.bind (requireString (path + ".name"))
-                |> Result.map FragmentId
 
             let bodyR =
                 requireField path fields "body" "FragmentDecl body Node"
                 |> Result.bind (decodeNodeAst (path + ".body"))
 
             // Phase 180 — `holes` + `effect` are additive; absent ⇒ degenerate
-            // fixed-body (zero holes, pure-deterministic).
+            // fixed-body (zero holes, pure-deterministic — `None` since the
+            // swap, so the omitted wire form round-trips as omission).
             let holesR =
                 match tryField fields "holes" with
-                | None -> Ok []
+                | None -> Ok None
                 | Some h ->
                     requireArray (path + ".holes") h
                     |> Result.bind (traverse (decodeHoleDecl (path + ".holes[]")))
+                    |> Result.map Some
 
             let effectR =
                 match tryField fields "effect" with
-                | None -> Ok EffectClass.pureDeterministic
-                | Some e -> decodeEffectClass (path + ".effect") e
+                | None -> Ok None
+                | Some e -> decodeEffectClass (path + ".effect") e |> Result.map Some
 
             match nameR, bodyR, holesR, effectR with
             | Ok name, Ok body, Ok holes, Ok effect ->
@@ -4541,7 +4566,6 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
             let nameR =
                 requireField path fields "name" "FragmentRef name string"
                 |> Result.bind (requireString (path + ".name"))
-                |> Result.map FragmentId
 
             let argR (argPath: string) (j: Json) : Result<FragmentArg<obj>, DecodeError> =
                 match requireObject argPath j with
@@ -4552,14 +4576,21 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                     | Ok "SlotArg" ->
                         requireField argPath argFields "tree" "SlotArg tree Node"
                         |> Result.bind (decodeNodeAst (argPath + ".tree"))
-                        |> Result.map FragmentArg.Slot
+                        |> Result.map FragmentArg.SlotArg
                     | Ok _ ->
-                        // Int | Float | Bool | Str — a value argument.
-                        decodeScalar argPath j |> Result.map FragmentArg.Value
+                        // Int | Float | Bool | Str — a value argument (the
+                        // FragmentArg cases are typed since the swap).
+                        decodeScalarTyped argPath j
+                        |> Result.map (fun s ->
+                            match s with
+                            | Scalar.Int v -> FragmentArg.Int v
+                            | Scalar.Float v -> FragmentArg.Float v
+                            | Scalar.Bool v -> FragmentArg.Bool v
+                            | Scalar.Str v -> FragmentArg.Str v)
 
             let argsR =
                 match tryField fields "args" with
-                | None -> Ok Map.empty
+                | None -> Ok None
                 | Some a ->
                     match requireObject (path + ".args") a with
                     | Error e -> Error e
@@ -4568,7 +4599,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                         |> Map.toList
                         |> traverse (fun (k, v) ->
                             argR (path + ".args." + k) v |> Result.map (fun decoded -> k, decoded))
-                        |> Result.map Map.ofList
+                        |> Result.map (Map.ofList >> Some)
 
             match nameR, argsR with
             | Ok name, Ok args -> Ok(NodeKind.FragmentRef { Name = name; Args = args })
@@ -4626,13 +4657,11 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                 | Error e -> Error e
                 | Ok capsJson ->
                     requireArray (path + ".capabilities") capsJson
-                    |> Result.bind (
-                        traverse (fun j -> requireString (path + ".capabilities[]") j |> Result.map CapabilityTag)
-                    )
+                    |> Result.bind (traverse (fun j -> requireString (path + ".capabilities[]") j))
 
             let inputsR =
                 match tryField fields "inputs" with
-                | None -> Ok Map.empty
+                | None -> Ok None
                 | Some a ->
                     match requireObject (path + ".inputs") a with
                     | Error e -> Error e
@@ -4650,10 +4679,17 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                                  | Ok "SlotArg" ->
                                      requireField argPath af "tree" "SlotArg tree Node"
                                      |> Result.bind (decodeNodeAst (argPath + ".tree"))
-                                     |> Result.map FragmentArg.Slot
-                                 | Ok _ -> decodeScalar argPath v |> Result.map FragmentArg.Value)
+                                     |> Result.map FragmentArg.SlotArg
+                                 | Ok _ ->
+                                     decodeScalarTyped argPath v
+                                     |> Result.map (fun s ->
+                                         match s with
+                                         | Scalar.Int sv -> FragmentArg.Int sv
+                                         | Scalar.Float sv -> FragmentArg.Float sv
+                                         | Scalar.Bool sv -> FragmentArg.Bool sv
+                                         | Scalar.Str sv -> FragmentArg.Str sv))
                             |> Result.map (fun decoded -> k, decoded))
-                        |> Result.map Map.ofList
+                        |> Result.map (Map.ofList >> Some)
 
             match scopeIdR, channelR, capabilitiesR, inputsR with
             | Ok scopeId, Ok channel, Ok capabilities, Ok inputs ->
@@ -4662,7 +4698,12 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                         { ScopeId = scopeId
                           Inputs = inputs
                           Channel = channel
-                          OnBubble = (fun _ -> Action.Chain [])
+                          // Wire `onBubble` is a sentinel; presence decodes to a
+                          // no-op `Some` so re-encode stays byte-identical.
+                          OnBubble =
+                            (match tryField fields "onBubble" with
+                             | Some _ -> Some(fun _ -> Action.Chain [])
+                             | None -> Option.None)
                           Capabilities = capabilities }
                 )
             | Error e, _, _, _
@@ -4822,37 +4863,25 @@ and private decodeNodeAst (path: string) (j: Json) : Result<Node<obj>, DecodeErr
                 | Error e -> Error e
                 | Ok s when s = "" ->
                     err DecodeErrorCode.EMPTY_NODE_ID (path + ".id") "Node id is empty" (Some "non-empty string")
-                | Ok s -> Ok(NodeId s)
+                | Ok s -> Ok s
 
         let kindR =
             requireField path fields "kind" "NodeKind discriminator object"
             |> Result.bind (decodeNodeKind (path + ".kind"))
 
         // `state` and `style` are optional on the flat wire (omitted when empty
-        // / all-default, WIRE_FORMAT §3.1) — restore the default on absence.
-        let stateR =
+        // / all-default, WIRE_FORMAT §3.1). The envelope slots are OPTIONS since
+        // the swap — absence decodes to `None` (the canonical default form),
+        // presence to `Some`, so re-encode reproduces the incoming shape.
+        let stateR: Result<StateBehaviour<obj> option, DecodeError> =
             match tryField fields "state" with
-            | None ->
-                Ok(
-                    { OnLoading = None
-                      OnEmpty = None
-                      OnError = None }
-                    : StateBehaviour<obj>
-                )
-            | Some v -> decodeStateBehaviour (path + ".state") v
+            | None -> Ok None
+            | Some v -> decodeStateBehaviour (path + ".state") v |> Result.map Some
 
-        let styleR =
+        let styleR: Result<SemanticStyle option, DecodeError> =
             match tryField fields "style" with
-            | None ->
-                Ok(
-                    { Emphasis = Emphasis.Normal
-                      Tone = ToneVariant.Default
-                      Weight = StyleWeight.Standard
-                      Role = StyleRole.None
-                      Voice = FontVoice.Default }
-                    : SemanticStyle
-                )
-            | Some v -> decodeSemanticStyle (path + ".style") v
+            | None -> Ok None
+            | Some v -> decodeSemanticStyle (path + ".style") v |> Result.map Some
 
         let accessibilityR =
             match tryField fields "accessibility" with

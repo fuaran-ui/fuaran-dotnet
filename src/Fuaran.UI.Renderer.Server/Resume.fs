@@ -204,7 +204,7 @@ let private actionOf (node: Node<obj>) : Action<obj> option =
 /// DFS collect every `(nodeId, Action)` for event-bearing nodes, in document
 /// order — the resume envelope's payload.
 let rec private collectActions (node: Node<obj>) : (string * Action<obj>) list =
-    let (NodeId id) = node.Id
+    let id = node.Id
 
     let here =
         match actionOf node with
@@ -320,7 +320,7 @@ let envelopeElement
     (initEffects: (string * InitEffectInput) list)
     (node: Node<obj>)
     : ReactElement =
-    let (NodeId rootId) = node.Id
+    let rootId = node.Id
     let json = encodeEnvelope moduleId modelJson initEffects node
 
     Html.script

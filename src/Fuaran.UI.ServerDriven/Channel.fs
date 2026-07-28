@@ -356,7 +356,7 @@ type LiveConnection<'Model, 'Msg>
         durHead <- headHash
         durOpSeq <- sequence
         durSinceCheckpoint <- 0
-        let (NodeId rootId) = tree.Id
+        let rootId = tree.Id
         let html = session.Services.RenderFragment tree
         seq <- seq + 1
 

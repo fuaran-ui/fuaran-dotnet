@@ -23,7 +23,9 @@ type Msg =
 
 type Row = { RowId: int; Channel: string }
 
-let private idOf (NodeId rawId) = rawId
+// `Node.Id` is a bare string since the 692-694 swap; `idOf` survives as the
+// naming seam the assertions read through.
+let private idOf (rawId: string) = rawId
 
 // F# 10 nullness types `box _` as `obj | null`. `PropValue.Native` and `Binding<obj>`
 // payloads here are always non-null (we control the test input), so wrap the
@@ -188,8 +190,8 @@ let tests =
               | Ok updated ->
                   match Introspect.findNode (NodeId "revenue-metric") updated with
                   | Some node ->
-                      Expect.equal node.Style.Tone ToneVariant.Warning "Tone updated"
-                      Expect.equal node.Style.Emphasis Emphasis.Loud "Emphasis updated"
+                      Expect.equal (node.Style |> Option.map _.Tone) (Some ToneVariant.Warning) "Tone updated"
+                      Expect.equal (node.Style |> Option.map _.Emphasis) (Some Emphasis.Loud) "Emphasis updated"
                   | None -> failtest "Metric vanished"
               | Error err -> failtestf "Expected Ok, got Error %A" err
           }
@@ -206,8 +208,8 @@ let tests =
               | Ok updated ->
                   match Introspect.findNode (NodeId "revenue-metric") updated with
                   | Some node ->
-                      Expect.isSome node.State.OnEmpty "OnEmpty wired"
-                      Expect.isNone node.State.OnLoading "OnLoading still none"
+                      Expect.isSome (node.State |> Option.bind _.OnEmpty) "OnEmpty wired"
+                      Expect.isNone (node.State |> Option.bind _.OnLoading) "OnLoading still none"
                   | None -> failtest "Metric vanished"
               | Error err -> failtestf "Expected Ok, got Error %A" err
           }
@@ -647,11 +649,11 @@ let tests =
               match Apply.apply (TreeOp.Batch ops) dashboard with
               | Ok updated ->
                   match Introspect.findNode (NodeId "revenue-metric") updated with
-                  | Some n -> Expect.equal n.Style.Tone ToneVariant.Brand "Metric tone updated"
+                  | Some n -> Expect.equal (n.Style |> Option.map _.Tone) (Some ToneVariant.Brand) "Metric tone updated"
                   | None -> failtest "Metric vanished"
 
                   match Introspect.findNode (NodeId "channel-grid") updated with
-                  | Some n -> Expect.equal n.Style.Tone ToneVariant.Subdued "Grid tone updated"
+                  | Some n -> Expect.equal (n.Style |> Option.map _.Tone) (Some ToneVariant.Subdued) "Grid tone updated"
                   | None -> failtest "Grid vanished"
               | Error err -> failtestf "Expected Ok, got Error %A" err
           }
@@ -680,7 +682,11 @@ let tests =
                   // The caller still holds the original `dashboard` reference;
                   // verify it was not mutated through any side channel.
                   match Introspect.findNode (NodeId "revenue-metric") dashboard with
-                  | Some n -> Expect.equal n.Style.Tone ToneVariant.Default "Metric tone unchanged after batch failure"
+                  | Some n ->
+                      Expect.equal
+                          (n.Style |> Option.map _.Tone |> Option.defaultValue ToneVariant.Default)
+                          ToneVariant.Default
+                          "Metric tone unchanged after batch failure"
                   | None -> failtest "Metric vanished from original"
           }
 
@@ -701,7 +707,7 @@ let tests =
                   match updated.Kind with
                   | NodeKind.Box(spec) ->
                       match spec.Layout with
-                      | BoxLayout.Flex f -> Expect.equal f.Wrap true "Wrap flipped to true"
+                      | BoxLayout.Flex(_, wrap, _) -> Expect.equal wrap true "Wrap flipped to true"
                       | other -> failtestf "Expected BoxLayout.Flex, got %A" other
                   | other -> failtestf "Expected Box, got %A" other
               | Error err -> failtestf "Expected Ok, got Error %A" err

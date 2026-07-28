@@ -728,7 +728,7 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
 let private genInputKind: Gen<NodeKind<obj>> =
     Gen.oneof
         [ Gen.map NodeKind.Form genFormSpec
-          Gen.map NodeKind.Filters genFilters
+          Gen.map (fun items -> NodeKind.Filters { Items = items }) genFilters
           Gen.map NodeKind.Button genButtonSpec
           Gen.map NodeKind.FileUpload genFileUploadSpec
           Gen.map NodeKind.Select genSelectSpec ]
@@ -745,26 +745,22 @@ let private genGridColumns: Gen<ColumnErased<obj> list> =
             [ CellKindErased.Text
               CellKindErased.Numeric
               CellKindErased.Date
-              CellKindErased.Editable(fun _ -> Action.Chain [])
-              CellKindErased.Checkbox((fun _ -> false), (fun _ -> Action.Chain []))
-              CellKindErased.Button(buttonLabel, (fun _ -> Action.Chain []))
-              CellKindErased.ButtonGroup [ (buttonLabel, (fun _ -> Action.Chain [])) ]
+              // `Some` closures (Phase 692–694 swap — the handler slots are
+              // optional now); Some keeps the `"<closure>"` sentinel bytes.
+              CellKindErased.Editable(Some(fun _ -> Action.Chain []))
+              CellKindErased.Checkbox((fun _ -> false), Some(fun _ -> Action.Chain []))
+              CellKindErased.Button(buttonLabel, Some(fun _ -> Action.Chain []))
+              CellKindErased.ButtonGroup
+                  [ { Label = buttonLabel
+                      OnClick = Some(fun _ -> Action.Chain []) } ]
               CellKindErased.Link((fun _ -> "/href"), (fun _ -> TextSource.Literal "link"))
               CellKindErased.Pill((fun _ -> TextSource.Literal "pill"), (fun _ -> ToneVariant.Brand))
               CellKindErased.Progress((fun _ -> 0.5), Some(fun _ -> TextSource.Literal "p"))
               CellKindErased.Custom(fun _ ->
-                  { Id = NodeId "cell-custom"
+                  { Id = "cell-custom"
                     Kind = NodeKind.Markdown({ Text = TextSource.Literal "x" })
-                    State =
-                      { OnLoading = None
-                        OnEmpty = None
-                        OnError = None }
-                    Style =
-                      { Tone = ToneVariant.Default
-                        Weight = StyleWeight.Standard
-                        Emphasis = Emphasis.Normal
-                        Role = StyleRole.None
-                        Voice = FontVoice.Default }
+                    State = None
+                    Style = None
                     Accessibility = None
                     Motion = None
                     ExtraAttributes = None }) ]
@@ -852,8 +848,18 @@ let private genCustom: Gen<NodeKind<obj>> =
         let! componentId = genNonEmptyString
         let! props = genJValMap
         let! contentHash = genOption genContentHash
-        let! exposed = genSmallList (Gen.map NodeId genNonEmptyString)
-        return NodeKind.Custom(moduleId, componentId, props, contentHash, exposed)
+        // `None` ≡ the old `[]` — an empty list would encode differently
+        // (`"exposedNodeIds":[]`), so the omitted-key shape maps to None.
+        let! exposed = genSmallList genNonEmptyString
+
+        return
+            NodeKind.Custom(
+                { ModuleId = moduleId
+                  ComponentId = componentId
+                  Props = props
+                  ContentHash = contentHash
+                  ExposedNodeIds = (if List.isEmpty exposed then None else Some exposed) }
+            )
     }
 
 let private genFragmentRef: Gen<NodeKind<obj>> =
@@ -862,8 +868,9 @@ let private genFragmentRef: Gen<NodeKind<obj>> =
     Gen.map
         (fun n ->
             NodeKind.FragmentRef
-                { Name = FragmentId n
-                  Args = Map.empty })
+                { Name = n
+                  // `None` ≡ the old empty Map — the zero-arg wire shape.
+                  Args = None })
         genNonEmptyString
 
 // ─── Style / accessibility ───────────────────────────────────────────────────
@@ -883,6 +890,26 @@ let private genSemanticStyle: Gen<SemanticStyle> =
               Role = role
               Voice = voice }
     }
+
+/// Node.State / Node.Style are `option` post-swap (Phase 692–694). The pre-swap
+/// encoder omitted an empty state / default style, and omission is the `None`
+/// shape now — mapping the degenerate records to `None` keeps the generated
+/// bytes in the same round-trip-faithful subspace as before.
+let private someState (s: StateBehaviour<obj>) : StateBehaviour<obj> option =
+    if s.OnLoading.IsNone && s.OnEmpty.IsNone && s.OnError.IsNone then
+        None
+    else
+        Some s
+
+let private someStyle (s: SemanticStyle) : SemanticStyle option =
+    let isDefault =
+        s.Tone = ToneVariant.Default
+        && s.Weight = StyleWeight.Standard
+        && s.Emphasis = Emphasis.Normal
+        && s.Role = StyleRole.None
+        && s.Voice = FontVoice.Default
+
+    if isDefault then None else Some s
 
 let private genAccessibility: Gen<Accessibility> =
     gen {
@@ -926,22 +953,12 @@ let rec private genLayoutKind (size: int) : Gen<NodeKind<obj>> =
                       [ gen {
                             let! direction = genOrientation
                             let! wrap = genBool
-
-                            return
-                                BoxLayout.Flex
-                                    { Direction = direction
-                                      Wrap = wrap
-                                      Gap = None }
+                            return BoxLayout.Flex(direction, wrap, None)
                         }
                         gen {
                             let! cols = Gen.choose (1, 12)
                             let! template = genOption genNonEmptyString
-
-                            return
-                                BoxLayout.Grid
-                                    { Cols = cols
-                                      TemplateColumns = template
-                                      Gap = None }
+                            return BoxLayout.Grid(cols, template, None)
                         }
                         Gen.constant BoxLayout.Auto ]
 
@@ -988,7 +1005,9 @@ let rec private genLayoutKind (size: int) : Gen<NodeKind<obj>> =
                   NodeKind.Stepper
                       { ActiveStep = active
                         Children = children
-                        OnSelect = (fun _ -> Action.Chain []) }
+                        // `Some` — keeps the `"onSelect":"<closure>"` sentinel
+                        // on the wire (the pre-swap required-closure bytes).
+                        OnSelect = Some(fun _ -> Action.Chain []) }
           }
           gen {
               let! heading = genOption genTextSource
@@ -1033,10 +1052,12 @@ and private genNodeKind (size: int) : Gen<NodeKind<obj>> =
 
                   return
                       NodeKind.FragmentDecl
-                          { Name = FragmentId name
+                          { Name = name
                             Body = body
-                            Holes = []
-                            Effect = EffectClass.pureDeterministic }
+                            // `None` ≡ the old zero-holes / pure-deterministic
+                            // defaults — both keys stay off the wire.
+                            Holes = None
+                            Effect = None }
               } ]
         else
             []
@@ -1074,18 +1095,10 @@ and private genStateBehaviour (size: int) : Gen<StateBehaviour<obj>> =
         }
 
 and private placeholderErrorNode: Node<obj> =
-    { Id = NodeId "err"
+    { Id = "err"
       Kind = NodeKind.Markdown({ Text = TextSource.Literal "err" })
-      State =
-        { OnLoading = None
-          OnEmpty = None
-          OnError = None }
-      Style =
-        { Tone = ToneVariant.Default
-          Weight = StyleWeight.Standard
-          Emphasis = Emphasis.Normal
-          Role = StyleRole.None
-          Voice = FontVoice.Default }
+      State = None
+      Style = None
       Accessibility = None
       Motion = None
       ExtraAttributes = None }
@@ -1099,10 +1112,10 @@ and private genNodeSized (size: int) : Gen<Node<obj>> =
         let! accessibility = genOption genAccessibility
 
         return
-            { Id = NodeId id
+            { Id = id
               Kind = kind
-              State = state
-              Style = style
+              State = someState state
+              Style = someStyle style
               Accessibility = accessibility
               Motion = None
               ExtraAttributes = None }
@@ -1185,7 +1198,10 @@ let rec shrinkNode (n: Node<obj>) : Node<obj> seq =
         | NodeKind.FragmentDecl s -> [ s.Body ]
         | _ -> []
 
-    let stateChildren = [ n.State.OnLoading; n.State.OnEmpty ] |> List.choose id
+    let stateChildren =
+        match n.State with
+        | Some s -> [ s.OnLoading; s.OnEmpty ] |> List.choose id
+        | None -> []
 
     Seq.append (childrenOf n.Kind) stateChildren
 

@@ -175,11 +175,7 @@ let tests =
           }
 
           test "childNodes / walkNodes / findNode / findNodesByKind traverse the tree" {
-              let childIds =
-                  DebugGlobal.childNodes tree
-                  |> List.map (fun n ->
-                      let (NodeId raw) = n.Id
-                      raw)
+              let childIds = DebugGlobal.childNodes tree |> List.map _.Id
 
               Expect.equal childIds [ "m-no-trend"; "m-with-trend"; "sel"; "md" ] "dashboard children"
 
@@ -205,11 +201,7 @@ let tests =
                           Child = child
                           Fallback = fallback }
 
-              let ids =
-                  DebugGlobal.childNodes eb
-                  |> List.map (fun n ->
-                      let (NodeId raw) = n.Id
-                      raw)
+              let ids = DebugGlobal.childNodes eb |> List.map _.Id
 
               Expect.equal ids [ "eb-child"; "eb-fallback" ] "ErrorBoundary → [child; fallback]"
           }

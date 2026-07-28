@@ -107,7 +107,7 @@ let private view (m: Model) : Node<Msg> =
                   Fuaran.markdown "status" (sprintf "%s/%g/%b" m.Name m.Age m.Greeted) ] }
 
 let private stubRender (n: Node<Msg>) : string =
-    let (NodeId s) = n.Id
+    let s = n.Id
     $"<n id='{s}'/>"
 
 let private session () =

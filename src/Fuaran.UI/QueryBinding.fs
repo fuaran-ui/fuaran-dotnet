@@ -176,7 +176,8 @@ let private queryRef (b: Binding<'T>) : string option =
     | _ -> None
 
 let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
-    let (NodeId nid) = n.Id
+    // `Node.Id` is a bare string since the swap.
+    let nid = n.Id
     let acc = ResizeArray<QueryBoundRef>()
 
     let add (sink: BindingSinkClass) (b: Binding<'T>) =
@@ -262,7 +263,7 @@ let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list =
             walk spec.Child
             walk spec.Fallback
         | NodeKind.Switch spec ->
-            spec.Cases |> List.iter (fun (_, child) -> walk child)
+            spec.Cases |> List.iter (fun c -> walk c.Child)
             walk spec.Default
         | NodeKind.FragmentDecl spec -> walk spec.Body
         // Every childless kind — Display / Input / Visualisation leaves.

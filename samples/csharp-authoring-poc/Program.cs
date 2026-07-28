@@ -3,7 +3,10 @@ using System.IO;
 using Fuaran.UI.Ops;
 using Fuaran.UI.OpStream.Abstractions;
 using static Fuaran.UI.CSharp.Poc.Fui;
-using static Fuaran.UI.Types;
+// Stage-4b swap: the Node envelope is IDL-generated — the Types name is an
+// abbreviation, erased in metadata, so import the generated declaration
+// directly (same pattern as Builders.cs).
+using static Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp.Poc;
 

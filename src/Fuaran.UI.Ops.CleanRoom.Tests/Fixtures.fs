@@ -91,7 +91,7 @@ let applyOk (op: Fuaran.UI.Ops.Types.TreeOp<Msg>) (tree: Node<Msg>) : Node<Msg> 
 // ─── Determinism-proof helpers (generic over kind via Introspect) ───────────
 
 /// Map every node in `node`'s subtree by its id.
-let rec nodesById (node: Node<Msg>) : Map<NodeId, Node<Msg>> =
+let rec nodesById (node: Node<Msg>) : Map<string, Node<Msg>> =
     let here = Map.add node.Id node Map.empty
 
     match Introspect.getChildren node.Kind with
@@ -104,7 +104,7 @@ let rec nodesById (node: Node<Msg>) : Map<NodeId, Node<Msg>> =
 /// `real` (keyed by id), keeping `tmpl`'s child arrangement. This is the
 /// "re-attach real content by NodeId onto the structurally-rearranged
 /// stand-in" operation the determinism proof checks against the real apply.
-let rec reattach (real: Map<NodeId, Node<Msg>>) (tmpl: Node<Msg>) : Node<Msg> =
+let rec reattach (real: Map<string, Node<Msg>>) (tmpl: Node<Msg>) : Node<Msg> =
     let realNode = Map.find tmpl.Id real
 
     match Introspect.getChildren tmpl.Kind with

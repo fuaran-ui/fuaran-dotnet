@@ -50,7 +50,7 @@ let private fragmentDecl (id: string) (name: string) (body: Node<Msg>) : Node<Ms
     Fuaran.fragmentDecl
         id
         { Defaults.fragmentDecl with
-            Name = FragmentId name
+            Name = name
             Body = body }
 
 let private fragmentRef (id: string) (name: string) : Node<Msg> = Fuaran.fragmentRef id name
@@ -67,8 +67,8 @@ let tests =
 
               match node.Kind with
               | NodeKind.FragmentDecl spec ->
-                  Expect.equal spec.Name (FragmentId "card-template") "Name preserved"
-                  Expect.equal spec.Body.Id (NodeId "body-metric") "Body preserved"
+                  Expect.equal spec.Name "card-template" "Name preserved"
+                  Expect.equal spec.Body.Id "body-metric" "Body preserved"
               | other -> failtestf "expected NodeKind.FragmentDecl, got %A" other
           }
 
@@ -76,7 +76,7 @@ let tests =
               let node = fragmentRef "ref-1" "card-template"
 
               match node.Kind with
-              | NodeKind.FragmentRef spec -> Expect.equal spec.Name (FragmentId "card-template") "Name preserved"
+              | NodeKind.FragmentRef spec -> Expect.equal spec.Name "card-template" "Name preserved"
               | other -> failtestf "expected NodeKind.FragmentRef, got %A" other
           }
 
@@ -107,14 +107,14 @@ let tests =
               // Walk the tree and assert the decl is reachable from the root
               // via the standard tree-walker getChildren contract that
               // collectFragments uses.
-              let rec findFragmentDecls (node: Node<Msg>) : FragmentId list =
+              let rec findFragmentDecls (node: Node<Msg>) : string list =
                   match node.Kind with
                   | NodeKind.FragmentDecl spec -> [ spec.Name ] @ findFragmentDecls spec.Body
                   | NodeKind.Box(s) -> s.Children |> List.collect findFragmentDecls
                   | _ -> []
 
               let names = findFragmentDecls tree
-              Expect.contains names (FragmentId "card") "the decl is reachable from the root"
+              Expect.contains names "card" "the decl is reachable from the root"
               Expect.equal (List.length names) 1 "exactly one decl visible"
           }
 
@@ -129,25 +129,25 @@ let tests =
               // This is the entire emission-economy win — N refs of the
               // same fragment do NOT carry N copies of the body.
               match ref1.Kind with
-              | NodeKind.FragmentRef spec -> Expect.equal spec.Name (FragmentId "frag") "ref1 names frag"
+              | NodeKind.FragmentRef spec -> Expect.equal spec.Name "frag" "ref1 names frag"
               | _ -> failtest "ref1 is not a FragmentRef"
 
               match ref2.Kind with
-              | NodeKind.FragmentRef spec -> Expect.equal spec.Name (FragmentId "frag") "ref2 names frag"
+              | NodeKind.FragmentRef spec -> Expect.equal spec.Name "frag" "ref2 names frag"
               | _ -> failtest "ref2 is not a FragmentRef"
 
               match decl.Kind with
-              | NodeKind.FragmentDecl spec -> Expect.equal spec.Body.Id (NodeId "body") "decl carries the body"
+              | NodeKind.FragmentDecl spec -> Expect.equal spec.Body.Id "body" "decl carries the body"
               | _ -> failtest "decl is not a FragmentDecl"
           }
 
           // ── PreEmitValidate FragmentDecl traversal ────────────────────
           test "PreEmitValidate.validate flags an empty NodeId inside a FragmentDecl body" {
               let badBody: Node<Msg> =
-                  { Id = NodeId ""
+                  { Id = ""
                     Kind = NodeKind.Skeleton({ Rows = 1 })
-                    State = Defaults.stateBehaviour<Msg>
-                    Style = Defaults.style
+                    State = Option.None
+                    Style = Option.None
                     Accessibility = Option.None
                     Motion = Option.None
                     ExtraAttributes = Option.None }
@@ -201,7 +201,7 @@ let tests =
                           | NodeKind.FragmentRef s -> Some s.Name
                           | _ -> None)
 
-                  Expect.equal refSpec (Some(FragmentId "second")) "ref's Name is rebound to 'second'"
+                  Expect.equal refSpec (Some "second") "ref's Name is rebound to 'second'"
               | Error err -> failtestf "UpdateProp failed: %A" err
           }
 
@@ -220,6 +220,6 @@ let tests =
                           | NodeKind.FragmentDecl s -> Some s.Name
                           | _ -> None)
 
-                  Expect.equal declName (Some(FragmentId "new-name")) "decl's Name is updated"
+                  Expect.equal declName (Some "new-name") "decl's Name is updated"
               | Error err -> failtestf "UpdateProp failed: %A" err
           } ]
