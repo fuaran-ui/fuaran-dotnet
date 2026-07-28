@@ -306,7 +306,7 @@ and [<RequireQualifiedAccess>] Shape =
     | Curve of commands: CurveCommand list * style: DrawStyle
     | Circle of cx: float * cy: float * r: float * style: DrawStyle
     | Ellipse of cx: float * cy: float * rx: float * ry: float * style: DrawStyle
-    | Label of style: DrawStyle * text: TextSource * x: float * y: float
+    | Label of x: float * y: float * text: TextSource * style: DrawStyle
 
 and SemanticStyle =
     {
@@ -1236,7 +1236,7 @@ and private encShape (v: Shape) : JVal =
     | Shape.Curve (commands, style) -> Canon.typed "Curve" [ "commands", JArr(List.map encCurveCommand commands); "style", encDrawStyle style ]
     | Shape.Circle (cx, cy, r, style) -> Canon.typed "Circle" [ "cx", JFloat cx; "cy", JFloat cy; "r", JFloat r; "style", encDrawStyle style ]
     | Shape.Ellipse (cx, cy, rx, ry, style) -> Canon.typed "Ellipse" [ "cx", JFloat cx; "cy", JFloat cy; "rx", JFloat rx; "ry", JFloat ry; "style", encDrawStyle style ]
-    | Shape.Label (style, text, x, y) -> Canon.typed "Label" [ "style", encDrawStyle style; "text", encTextSource text; "x", JFloat x; "y", JFloat y ]
+    | Shape.Label (x, y, text, style) -> Canon.typed "Label" [ "x", JFloat x; "y", JFloat y; "text", encTextSource text; "style", encDrawStyle style ]
 
 and private encSemanticStyle (s: SemanticStyle) : JVal =
     JObj([ (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (if s.Role = StyleRole.None then None else Some("role", encStyleRole s.Role)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Voice = FontVoice.Default then None else Some("voice", encFontVoice s.Voice)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)) ] |> List.choose id)
@@ -2255,11 +2255,11 @@ and private decShape (j: JVal) : Result<Shape, string> =
             dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
             Ok(Shape.Ellipse(cx, cy, rx, ry, style)))))))
         | "Label" ->
-            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
-            dReq "text" __fs decTextSource |> Result.bind (fun text ->
             dReq "x" __fs dFloat |> Result.bind (fun x ->
             dReq "y" __fs dFloat |> Result.bind (fun y ->
-            Ok(Shape.Label(style, text, x, y))))))
+            dReq "text" __fs decTextSource |> Result.bind (fun text ->
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            Ok(Shape.Label(x, y, text, style))))))
         | __other -> Error ("unknown Shape case: " + __other))
     | _ -> Error "expected a Shape object"
 
