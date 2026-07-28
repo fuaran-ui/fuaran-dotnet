@@ -128,7 +128,22 @@ conformance), Fable demo + catalog, corpus untouched. **The constraint that shap
 generated spec carrying `Node<'Msg>` cannot alias before the envelope itself swaps** — which is what
 stage 4b is.
 
-### Stage 4b — layout/meta specs + `NodeKind` + `Node` (the 692 switch proper) — **IN PROGRESS**
+### Stage 4b — layout/meta specs + `NodeKind` + `Node` — **DONE (branch commit `5966953`, all gates green)**
+
+Landed 2026-07-28: 122 files, the swap's largest slice, coordinated across concurrent sessions in one
+tree. NodeKind + the Node envelope + every remaining spec alias `Generated.*`; `Node.Id` is a bare
+string (NodeId survives as the ops/store/tool wrapper); `State`/`Style` are typed absence with
+boundary normalisation keeping DOM/HTML/TreeOp-sequence outputs unchanged; LayoutMode/FiltersSpec/
+CustomSpec/DataGridSpec/StaticRows/SwitchCase/typed-FragmentArg reshapes absorbed tier-wide. Three
+fidelity narrowings were closed IDL-side mid-stage rather than absorbed (typed CellValue via
+THosted, TextSource StaticRows, TabsSpec orientation — Core `456dd2e`), plus the hosted obj-seq row
+feeds (`7410a66`) and the JVal Custom prop bag (`c86a904`). Gates: full FAKE Test (352 C# + 338 VB
+conformance, JsonDecode 510/510), Fable demo + catalog, C# POC wire-identity 12/12, corpus
+untouched. Remaining 692 work: task 3's mk<Kind>-vs-smart-ctor reconciliation (the authoring
+surface kept the hand smart ctors; the generated mk* helpers are unused) — fold into 694's
+deletion pass.
+
+#### The original stage-4b scope (as planned) — **IN PROGRESS**
 
 Four IDL findings surfaced by the 4b sweep, all resolved IDL-side (never absorbed tier-side),
 regenerated + re-synced before the tier switch continued:
