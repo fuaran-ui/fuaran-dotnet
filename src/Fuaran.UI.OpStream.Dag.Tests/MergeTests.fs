@@ -152,7 +152,7 @@ let tests =
                   // sorted by NodeId bytes [aaa,zzz].
                   let ids =
                       match tree1.Kind with
-                      | NodeKind.Layout(LayoutKind.Box spec) ->
+                      | NodeKind.Box( spec) ->
                           spec.Children |> List.map (fun c -> let (NodeId s) = c.Id in s)
                       | _ -> []
 

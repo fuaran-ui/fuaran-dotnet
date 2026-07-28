@@ -194,14 +194,14 @@ let private getChildren<'Msg> (node: Node<'Msg>) : Node<'Msg> list option =
     match node.Kind with
     | NodeKind.Layout layout ->
         match layout with
-        | LayoutKind.Box s -> Some s.Children
-        | LayoutKind.SplitPanel s -> Some s.Children
-        | LayoutKind.Tabs s -> Some s.Children
-        | LayoutKind.Stepper s -> Some s.Children
-        | LayoutKind.SummaryList s -> Some s.Children
-        | LayoutKind.Disclosure s -> Some s.Children
-        | LayoutKind.Modal s -> Some s.Children
-        | LayoutKind.ScrollArea s -> Some s.Children
+        | NodeKind.Box s -> Some s.Children
+        | NodeKind.SplitPanel s -> Some s.Children
+        | NodeKind.Tabs s -> Some s.Children
+        | NodeKind.Stepper s -> Some s.Children
+        | NodeKind.SummaryList s -> Some s.Children
+        | NodeKind.Disclosure s -> Some s.Children
+        | NodeKind.Modal s -> Some s.Children
+        | NodeKind.ScrollArea s -> Some s.Children
     | _ -> None
 
 let private kindTag<'Msg> (node: Node<'Msg>) : string =

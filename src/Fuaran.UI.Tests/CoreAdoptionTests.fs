@@ -113,8 +113,7 @@ let private mkStack (id: string) (kids: EqNode list) : EqNode =
     wrap
         { Id = NodeId id
           Kind =
-            NodeKind.Layout(
-                LayoutKind.Box
+            NodeKind.Box(
                     { Layout =
                         BoxLayout.Flex
                             { Direction = Vertical
@@ -135,7 +134,7 @@ let private mkSpacer (id: string) : EqNode =
         { Id = NodeId id
           // Phase 459 — Spacer retired; a childless Markdown leaf serves the
           // same "leaf with no bindings/handlers" role this op-stream test needs.
-          Kind = NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "" })
+          Kind = NodeKind.Markdown( { Text = TextSource.Literal "" })
           State = Defaults.stateBehaviour
           Style = Defaults.style
           Accessibility = Option.None

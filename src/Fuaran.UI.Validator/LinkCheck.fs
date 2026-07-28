@@ -3,7 +3,7 @@ module Fuaran.UI.Validator.LinkCheck
 // ============================================================================
 //  Link href check (Phase 139).
 //
-//  A `DisplayKind.Link` renders a real `<a href>`. A blank href (`""` or
+//  A `NodeKind.Link` renders a real `<a href>`. A blank href (`""` or
 //  whitespace) renders an anchor that navigates to the *current* page — almost
 //  always an authoring mistake (a forgotten URL, or a stateful gesture that
 //  should be a `Button` + `Action.Navigate` rather than a crawlable link).
@@ -38,7 +38,7 @@ let check (calls: FuaranCall list) : Finding list =
                     Warning
                     "FUARAN063"
                     c.Location
-                    "DisplayKind.Link has a blank Href. A link with an empty href renders an <a> that navigates to the current page — provide a real destination URL. If you meant an in-app routing gesture (no crawlable URL), use a Button + Action.Navigate instead."
+                    "NodeKind.Link has a blank Href. A link with an empty href renders an <a> that navigates to the current page — provide a real destination URL. If you meant an in-app routing gesture (no crawlable URL), use a Button + Action.Navigate instead."
 
             Some(
                 withRecovery

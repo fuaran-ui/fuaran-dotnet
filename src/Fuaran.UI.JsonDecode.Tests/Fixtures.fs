@@ -70,7 +70,7 @@ let private metricSpec: MetricSpec =
       Subtext = Some(TextSource.Literal "vs last month") }
 
 let metric: Node<obj> =
-    node "metric-1" (NodeKind.Display(DisplayKind.Metric metricSpec)) None
+    node "metric-1" (NodeKind.Metric( metricSpec)) None
 
 // ─── Numeric divergence-zone fixtures (Phase 117) ────────────────────────
 //
@@ -88,8 +88,7 @@ let metric: Node<obj> =
 let private metricFloat (id: string) (value: float) : Node<obj> =
     node
         id
-        (NodeKind.Display(
-            DisplayKind.Metric
+        (NodeKind.Metric(
                 { metricSpec with
                     Value = Binding.Static value
                     Trend = None
@@ -109,8 +108,7 @@ let metricFloatBigInt: Node<obj> =
 let heading: Node<obj> =
     node
         "heading-1"
-        (NodeKind.Display(
-            DisplayKind.Heading
+        (NodeKind.Heading(
                 { Level = 2
                   Text = TextSource.Literal "Channel performance"
                   Variant = HeadingVariant.Standard }
@@ -122,20 +120,19 @@ let heading: Node<obj> =
 /// `role` / `voice` keys appear on the `style` object only because they
 /// differ from `StyleRole.None` / `FontVoice.Default`.
 let styleRoleVoice: Node<obj> =
-    { node "style-role-voice-1" (NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "Q3 revenue" })) None with
+    { node "style-role-voice-1" (NodeKind.Markdown( { Text = TextSource.Literal "Q3 revenue" })) None with
         Style =
             { defaultStyle with
                 Role = StyleRole.Data
                 Voice = FontVoice.Display } }
 
 let markdown: Node<obj> =
-    node "markdown-1" (NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "Updated hourly." })) None
+    node "markdown-1" (NodeKind.Markdown( { Text = TextSource.Literal "Updated hourly." })) None
 
 let badge: Node<obj> =
     node
         "badge-1"
-        (NodeKind.Display(
-            DisplayKind.Badge
+        (NodeKind.Badge(
                 { Label = TextSource.Literal "Beta"
                   Variant = BadgeVariant.Info }
         ))
@@ -144,8 +141,7 @@ let badge: Node<obj> =
 let link: Node<obj> =
     node
         "link-1"
-        (NodeKind.Display(
-            DisplayKind.Link
+        (NodeKind.Link(
                 { Href = Binding.Static "/about"
                   Label = TextSource.Literal "About us"
                   Rel = Some "noopener"
@@ -159,8 +155,7 @@ let image: Node<obj> =
     // Binding<string> (sanitised at render, not at wire).
     node
         "image-1"
-        (NodeKind.Display(
-            DisplayKind.Image
+        (NodeKind.Image(
                 { Src = Binding.Static "/avatar.png"
                   Alt = TextSource.Literal "User avatar"
                   Variant = ImageVariant.Avatar }
@@ -171,8 +166,7 @@ let listDisplay: Node<obj> =
     // Phase 287 — ordered list with two items.
     node
         "list-1"
-        (NodeKind.Display(
-            DisplayKind.List
+        (NodeKind.List(
                 { Items = [ TextSource.Literal "First"; TextSource.Literal "Second" ]
                   Ordered = true }
         ))
@@ -183,8 +177,7 @@ let toast: Node<obj> =
     // Binding<bool>.
     node
         "toast-1"
-        (NodeKind.Display(
-            DisplayKind.Toast
+        (NodeKind.Toast(
                 { Message = TextSource.Literal "Saved"
                   Tone = ToneVariant.Success
                   Open = Binding.Static true
@@ -197,8 +190,7 @@ let codeBlock: Node<obj> =
     // int-array `highlightLines` field.
     node
         "code-1"
-        (NodeKind.Display(
-            DisplayKind.CodeBlock
+        (NodeKind.CodeBlock(
                 { Code = "let x = 1\nlet y = 2"
                   Language = "fsharp"
                   LineNumbers = true
@@ -211,8 +203,7 @@ let math: Node<obj> =
     // Phase 293 — block display LaTeX.
     node
         "math-1"
-        (NodeKind.Display(
-            DisplayKind.Math
+        (NodeKind.Math(
                 { Source = "x^2 + y^2 = z^2"
                   Display = MathDisplay.Block }
         ))
@@ -221,7 +212,7 @@ let math: Node<obj> =
 let sparkline: Node<obj> =
     node
         "spark-1"
-        (NodeKind.Display(DisplayKind.Sparkline { Source = Binding.Static(seq [ 1.0; 2.0; 3.0; 2.0; 4.0 ]) }))
+        (NodeKind.Sparkline( { Source = Binding.Static(seq [ 1.0; 2.0; 3.0; 2.0; 4.0 ]) }))
         None
 
 let private bareDrawStyle: DrawStyle =
@@ -257,8 +248,7 @@ let drawing: Node<obj> =
     // variants + typed DrawStyle Bindings (Static colours/widths) + Title/Desc.
     node
         "drawing-1"
-        (NodeKind.Display(
-            DisplayKind.Drawing
+        (NodeKind.Drawing(
                 { ViewBox =
                     { MinX = 0.0
                       MinY = 0.0
@@ -302,8 +292,7 @@ let drawingMinimal: Node<obj> =
     // title/description (the byte-minimal Drawing wire shape).
     node
         "drawing-empty"
-        (NodeKind.Display(
-            DisplayKind.Drawing
+        (NodeKind.Drawing(
                 { ViewBox =
                     { MinX = 0.0
                       MinY = 0.0
@@ -318,13 +307,12 @@ let drawingMinimal: Node<obj> =
 
 
 let skeleton: Node<obj> =
-    node "skel-1" (NodeKind.Display(DisplayKind.Skeleton { Rows = 3 })) None
+    node "skel-1" (NodeKind.Skeleton( { Rows = 3 })) None
 
 let callout: Node<obj> =
     node
         "callout-1"
-        (NodeKind.Display(
-            DisplayKind.Callout
+        (NodeKind.Callout(
                 { Tone = ToneVariant.Warning
                   Heading = Some(TextSource.Literal "Heads up")
                   Body = TextSource.Literal "Live data is delayed."
@@ -336,8 +324,7 @@ let callout: Node<obj> =
 let progress: Node<obj> =
     node
         "progress-1"
-        (NodeKind.Display(
-            DisplayKind.Progress
+        (NodeKind.Progress(
                 { Fraction = Binding.Static 0.42
                   Label = Some(TextSource.Literal "Loading...")
                   Caveat = None
@@ -349,8 +336,7 @@ let progress: Node<obj> =
 let labelValueRow: Node<obj> =
     node
         "lvr-1"
-        (NodeKind.Display(
-            DisplayKind.LabelValueRow
+        (NodeKind.LabelValueRow(
                 { Label = TextSource.Literal "Total"
                   Value = Binding.Static 42.0
                   Format = CellFormat.Number(Some 2)
@@ -364,8 +350,7 @@ let fact: Node<obj> =
     // the minimal {label,value} form is pinned by the lenient fixture family.
     node
         "fact-1"
-        (NodeKind.Display(
-            DisplayKind.Fact
+        (NodeKind.Fact(
                 { Label = TextSource.Literal "Patient"
                   Value = TextSource.Literal "Alice Smith"
                   Icon = Some(IconSource "user")
@@ -380,8 +365,7 @@ let fact: Node<obj> =
 let dashboardEmpty: Node<obj> =
     node
         "dash-empty"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout = BoxLayout.Auto
                   Role = BoxRole.Dashboard
                   Heading = None
@@ -392,8 +376,7 @@ let dashboardEmpty: Node<obj> =
 let stack: Node<obj> =
     node
         "stack-1"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout =
                     BoxLayout.Flex
                         { Direction = Vertical
@@ -408,8 +391,7 @@ let stack: Node<obj> =
 let gridLayout: Node<obj> =
     node
         "glayout-1"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout =
                     BoxLayout.Grid
                         { Cols = 12
@@ -429,8 +411,7 @@ let gridLayout: Node<obj> =
 let gridLayoutTemplatedRatio: Node<obj> =
     node
         "glayout-tpl-ratio"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout =
                     BoxLayout.Grid
                         { Cols = 2
@@ -445,8 +426,7 @@ let gridLayoutTemplatedRatio: Node<obj> =
 let gridLayoutTemplatedFixedPlusFlex: Node<obj> =
     node
         "glayout-tpl-fixed"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout =
                     BoxLayout.Grid
                         { Cols = 4
@@ -461,8 +441,7 @@ let gridLayoutTemplatedFixedPlusFlex: Node<obj> =
 let gridLayoutTemplatedAutoFit: Node<obj> =
     node
         "glayout-tpl-autofit"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout =
                     BoxLayout.Grid
                         { Cols = 1
@@ -477,8 +456,7 @@ let gridLayoutTemplatedAutoFit: Node<obj> =
 let splitPanel: Node<obj> =
     node
         "split-1"
-        (NodeKind.Layout(
-            LayoutKind.SplitPanel
+        (NodeKind.SplitPanel(
                 { Weight = 0.6
                   Children = [ metric; markdown ] }
         ))
@@ -487,8 +465,7 @@ let splitPanel: Node<obj> =
 let tabs: Node<obj> =
     node
         "tabs-1"
-        (NodeKind.Layout(
-            LayoutKind.Tabs
+        (NodeKind.Tabs(
                 { Orientation = Horizontal
                   Children = [ metric ]
                   ActiveIndex = Binding.Static 0
@@ -510,8 +487,7 @@ let tabs: Node<obj> =
 let tabsExplicitHeaders: Node<obj> =
     node
         "tabs-explicit-1"
-        (NodeKind.Layout(
-            LayoutKind.Tabs
+        (NodeKind.Tabs(
                 { Orientation = Horizontal
                   Children = [ markdown; sparkline ]
                   // Non-zero ActiveIndex (Phase 126) — exercises the
@@ -536,8 +512,7 @@ let tabsExplicitHeaders: Node<obj> =
 let card: Node<obj> =
     node
         "card-1"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout =
                     BoxLayout.Flex
                         { Direction = Vertical
@@ -552,8 +527,7 @@ let card: Node<obj> =
 let stepper: Node<obj> =
     node
         "step-1"
-        (NodeKind.Layout(
-            LayoutKind.Stepper
+        (NodeKind.Stepper(
                 { ActiveStep = Binding.Static 1
                   Children = [ markdown; markdown ]
                   OnSelect = (fun _ -> Action.Chain []) }
@@ -563,8 +537,7 @@ let stepper: Node<obj> =
 let summaryList: Node<obj> =
     node
         "summary-1"
-        (NodeKind.Layout(
-            LayoutKind.SummaryList
+        (NodeKind.SummaryList(
                 { Heading = Some(TextSource.Literal "Stats")
                   Children = [ labelValueRow ] }
         ))
@@ -578,8 +551,7 @@ let disclosure: Node<obj> =
     // would now add the `"onToggle":"<closure>"` sentinel).
     node
         "discl-1"
-        (NodeKind.Layout(
-            LayoutKind.Disclosure
+        (NodeKind.Disclosure(
                 { Heading = TextSource.Literal "Additional entitlements"
                   Open = Binding.Static false
                   OnToggle = Option.None
@@ -595,8 +567,7 @@ let modal: Node<obj> =
     // (Phase 426) keeps the encoded action on the wire, byte-identical.
     node
         "modal-1"
-        (NodeKind.Layout(
-            LayoutKind.Modal
+        (NodeKind.Modal(
                 { Open = Binding.Static false
                   Heading = Some(TextSource.Literal "Confirm")
                   Dismissable = true
@@ -610,8 +581,7 @@ let scrollArea: Node<obj> =
     // maxWidth absent (exercises the omit-when-None path).
     node
         "scroll-1"
-        (NodeKind.Layout(
-            LayoutKind.ScrollArea
+        (NodeKind.ScrollArea(
                 { Orientation = ScrollOrientation.Vertical
                   Children = [ markdown ]
                   MaxHeight = Some 320
@@ -670,8 +640,7 @@ let formAllFields: Node<obj> =
 
     node
         "form-1"
-        (NodeKind.Input(
-            InputKind.Form
+        (NodeKind.Form(
                 { Fields = [ textField; numberField; checkboxField; choiceField; textareaField ]
                   OnSubmit = placeholderChain
                   SubmitLabel = TextSource.Literal "Save"
@@ -730,8 +699,7 @@ let formRangedNumber: Node<obj> =
 
     node
         "form-ranged"
-        (NodeKind.Input(
-            InputKind.Form
+        (NodeKind.Form(
                 { Fields = [ allBoundsField; minOnlyField; noBoundsField ]
                   OnSubmit = placeholderChain
                   SubmitLabel = TextSource.Literal "Save"
@@ -758,7 +726,7 @@ let filtersBoth: Node<obj> =
                 Some(fun _ -> placeholderChain)
             ) }
 
-    node "filters-1" (NodeKind.Input(InputKind.Filters [ textFilter; choiceFilter ])) None
+    node "filters-1" (NodeKind.Filters( [ textFilter; choiceFilter ])) None
 
 /// Declarative chips (Phase 423): every `FilterKind` case with `onChange = None` — the AI-authored
 /// shape whose `onChange` field is omitted on the wire, `value` self-reads its own `$filters.<name>`,
@@ -786,7 +754,7 @@ let filtersDeclarative: Node<obj> =
           Label = TextSource.Literal "Age"
           Field = FormFieldKind.Range(Binding.Static(0.0, 100.0), None, None) }
 
-    node "filters-declarative" (NodeKind.Input(InputKind.Filters [ textFilter; choiceFilter; rangeFilter ])) None
+    node "filters-declarative" (NodeKind.Filters( [ textFilter; choiceFilter; rangeFilter ])) None
 
 /// Round-trip cover for the parallel-additive
 /// `FormFieldKind.SegmentedChoice` + `FilterKind.SegmentedFilter` cases.
@@ -834,8 +802,7 @@ let formSegmentedChoice: Node<obj> =
 
     node
         "form-segmented"
-        (NodeKind.Input(
-            InputKind.Form
+        (NodeKind.Form(
                 { Fields = [ horizontalField; verticalField ]
                   OnSubmit = placeholderChain
                   SubmitLabel = TextSource.Literal "Save"
@@ -861,7 +828,7 @@ let filtersSegmented: Node<obj> =
                 Horizontal
             ) }
 
-    node "filters-segmented" (NodeKind.Input(InputKind.Filters [ segmentedFilter ])) None
+    node "filters-segmented" (NodeKind.Filters( [ segmentedFilter ])) None
 
 /// Round-trip cover for the additive `FormFieldKind.Date` case (Phase 288).
 /// Exercises all three variants (Date / Time / DateTime) and every
@@ -914,8 +881,7 @@ let formDate: Node<obj> =
 
     node
         "form-date"
-        (NodeKind.Input(
-            InputKind.Form
+        (NodeKind.Form(
                 { Fields = [ dateField; timeField; dateTimeField ]
                   OnSubmit = placeholderChain
                   SubmitLabel = TextSource.Literal "Book"
@@ -926,8 +892,7 @@ let formDate: Node<obj> =
 let button: Node<obj> =
     node
         "btn-1"
-        (NodeKind.Input(
-            InputKind.Button
+        (NodeKind.Button(
                 { Label = TextSource.Literal "Refresh"
                   OnClick = placeholderChain
                   Variant = ButtonVariant.Primary
@@ -948,8 +913,7 @@ let button: Node<obj> =
 let buttonClipboard: Node<obj> =
     node
         "btn-copy-link"
-        (NodeKind.Input(
-            InputKind.Button
+        (NodeKind.Button(
                 { Label = TextSource.Literal "Copy share link"
                   OnClick =
                     Action.Chain
@@ -991,8 +955,7 @@ let buttonJsonPayloads: Node<obj> =
 
     node
         "btn-json-payloads"
-        (NodeKind.Input(
-            InputKind.Button
+        (NodeKind.Button(
                 { Label = TextSource.Literal "Fire the JSON-payload actions"
                   OnClick =
                     Action.Chain
@@ -1016,8 +979,7 @@ let buttonJsonPayloads: Node<obj> =
 let buttonReadFile: Node<obj> =
     node
         "btn-read-workbook"
-        (NodeKind.Input(
-            InputKind.Button
+        (NodeKind.Button(
                 { Label = TextSource.Literal "Load workbook"
                   OnClick =
                     Action.ReadFileBody(
@@ -1042,8 +1004,7 @@ let callInto: Node<obj> =
     let closureButton =
         node
             "btn-call-closure"
-            (NodeKind.Input(
-                InputKind.Button
+            (NodeKind.Button(
                     { Label = TextSource.Literal "Refresh (closure)"
                       OnClick = Action.Call(ApiEndpoint "/api/refresh", Some(fun _ -> placeholderChain), None)
                       Variant = ButtonVariant.Secondary
@@ -1056,8 +1017,7 @@ let callInto: Node<obj> =
     let intoStateButton =
         node
             "btn-fetch-total"
-            (NodeKind.Input(
-                InputKind.Button
+            (NodeKind.Button(
                     { Label = TextSource.Literal "Fetch total"
                       OnClick = Action.Call(ApiEndpoint "/api/total", None, Some(CallResultTarget.IntoState "total"))
                       Variant = ButtonVariant.Primary
@@ -1070,8 +1030,7 @@ let callInto: Node<obj> =
     let stateReader =
         node
             "total-metric"
-            (NodeKind.Display(
-                DisplayKind.Metric
+            (NodeKind.Metric(
                     { Fuaran.UI.Defaults.metric with
                         Label = TextSource.Literal "Total"
                         Value = Binding.State("total", 0.0) }
@@ -1081,8 +1040,7 @@ let callInto: Node<obj> =
     let intoQueryButton =
         node
             "btn-fetch-orders"
-            (NodeKind.Input(
-                InputKind.Button
+            (NodeKind.Button(
                     { Label = TextSource.Literal "Fetch orders"
                       OnClick = Action.Call(ApiEndpoint "/api/orders", None, Some(CallResultTarget.IntoQuery "orders"))
                       Variant = ButtonVariant.Primary
@@ -1095,8 +1053,7 @@ let callInto: Node<obj> =
     let queryReader =
         node
             "orders-metric"
-            (NodeKind.Display(
-                DisplayKind.Metric
+            (NodeKind.Metric(
                     { Fuaran.UI.Defaults.metric with
                         Label = TextSource.Literal "Orders"
                         Value = Binding.Query("orders", (fun (raw: obj) -> unbox raw), []) }
@@ -1105,8 +1062,7 @@ let callInto: Node<obj> =
 
     node
         "call-into"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout =
                     BoxLayout.Flex
                         { Direction = Vertical
@@ -1126,8 +1082,7 @@ let callInto: Node<obj> =
 let metricInvoke: Node<obj> =
     node
         "metric-invoke"
-        (NodeKind.Display(
-            DisplayKind.Metric
+        (NodeKind.Metric(
                 { metricSpec with
                     Value = Binding.Invoke("forecast.revenue", [ "horizon", "12"; "scenario", "base" ])
                     Trend = None
@@ -1138,8 +1093,7 @@ let metricInvoke: Node<obj> =
 let buttonInvoke: Node<obj> =
     node
         "btn-invoke"
-        (NodeKind.Input(
-            InputKind.Button
+        (NodeKind.Button(
                 { Label = TextSource.Literal "Run model"
                   // qualified — `Action.Invoke` alone resolves to `System.Action.Invoke`.
                   OnClick = Fuaran.UI.Types.Action.Invoke("model.score", [ "rows", "all" ])
@@ -1153,8 +1107,7 @@ let buttonInvoke: Node<obj> =
 let fileUpload: Node<obj> =
     node
         "upload-1"
-        (NodeKind.Input(
-            InputKind.FileUpload
+        (NodeKind.FileUpload(
                 { Label = TextSource.Literal "Upload CSV"
                   Accept = [ ".csv"; "text/csv" ]
                   Multiple = false
@@ -1167,8 +1120,7 @@ let fileUpload: Node<obj> =
 let select: Node<obj> =
     node
         "select-1"
-        (NodeKind.Input(
-            InputKind.Select
+        (NodeKind.Select(
                 { Label = TextSource.Literal "Region"
                   Source =
                     Binding.Static
@@ -1198,8 +1150,7 @@ let select: Node<obj> =
 let multiSelect: Node<obj> =
     node
         "multiselect-1"
-        (NodeKind.Input(
-            InputKind.Select
+        (NodeKind.Select(
                 { Label = TextSource.Literal "Tags"
                   Source =
                     Binding.Static
@@ -1263,8 +1214,7 @@ let formDeclarative: Node<obj> =
 
     node
         "form-declarative"
-        (NodeKind.Input(
-            InputKind.Form
+        (NodeKind.Form(
                 { Fields = [ textField; numberField; checkboxField; choiceField ]
                   OnSubmit = placeholderChain
                   SubmitLabel = TextSource.Literal "Save"
@@ -1328,8 +1278,7 @@ let formDeclarativeMinimal: Node<obj> =
 
     node
         "form-declarative-minimal"
-        (NodeKind.Input(
-            InputKind.Form
+        (NodeKind.Form(
                 { Fields = [ textField; numberField; choiceField; dateField ]
                   OnSubmit = placeholderChain
                   SubmitLabel = TextSource.Literal "Book"
@@ -1347,8 +1296,7 @@ let controlsDeclarative: Node<obj> =
     let tabsNode =
         node
             "decl-tabs"
-            (NodeKind.Layout(
-                LayoutKind.Tabs
+            (NodeKind.Tabs(
                     { Orientation = Horizontal
                       Children = [ markdown ]
                       ActiveIndex = Binding.State("activePane", 0)
@@ -1363,8 +1311,7 @@ let controlsDeclarative: Node<obj> =
     let modalNode =
         node
             "decl-modal"
-            (NodeKind.Layout(
-                LayoutKind.Modal
+            (NodeKind.Modal(
                     { Open = Binding.State("modalOpen", false)
                       Heading = Some(TextSource.Literal "Confirm")
                       Dismissable = true
@@ -1376,8 +1323,7 @@ let controlsDeclarative: Node<obj> =
     let disclosureNode =
         node
             "decl-disclosure"
-            (NodeKind.Layout(
-                LayoutKind.Disclosure
+            (NodeKind.Disclosure(
                     { Heading = TextSource.Literal "Advanced"
                       Open = Binding.State("advancedOpen", false)
                       OnToggle = Option.None
@@ -1389,8 +1335,7 @@ let controlsDeclarative: Node<obj> =
     let selectNode =
         node
             "decl-select"
-            (NodeKind.Input(
-                InputKind.Select
+            (NodeKind.Select(
                     { Label = TextSource.Literal "Region"
                       Source =
                         Binding.Static
@@ -1408,8 +1353,7 @@ let controlsDeclarative: Node<obj> =
 
     node
         "controls-declarative"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout =
                     BoxLayout.Flex
                         { Direction = Vertical
@@ -1430,8 +1374,7 @@ let multiSelectClosure: Node<obj> =
     let tabsNode =
         node
             "closure-tabs"
-            (NodeKind.Layout(
-                LayoutKind.Tabs
+            (NodeKind.Tabs(
                     { Orientation = Horizontal
                       Children = [ markdown; sparkline ]
                       ActiveIndex = Binding.Static 0
@@ -1446,8 +1389,7 @@ let multiSelectClosure: Node<obj> =
     let disclosureNode =
         node
             "closure-disclosure"
-            (NodeKind.Layout(
-                LayoutKind.Disclosure
+            (NodeKind.Disclosure(
                     { Heading = TextSource.Literal "Advanced"
                       Open = Binding.Static false
                       OnToggle = Some(fun _ -> placeholderChain)
@@ -1459,8 +1401,7 @@ let multiSelectClosure: Node<obj> =
     let multiNode =
         node
             "closure-multiselect"
-            (NodeKind.Input(
-                InputKind.Select
+            (NodeKind.Select(
                     { Label = TextSource.Literal "Tags"
                       Source =
                         Binding.Static
@@ -1478,8 +1419,7 @@ let multiSelectClosure: Node<obj> =
 
     node
         "controls-closure"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout =
                     BoxLayout.Flex
                         { Direction = Vertical
@@ -1504,8 +1444,7 @@ let gridVis: Node<obj> =
 
     node
         "grid-1"
-        (NodeKind.Visualisation(
-            VisKind.DataGrid
+        (NodeKind.DataGrid(
                 { Source = Binding.Static Seq.empty
                   RowKey = Some(fun _ -> "<closure>")
                   RowKeyField = None
@@ -1519,8 +1458,7 @@ let gridVis: Node<obj> =
 let chart: Node<obj> =
     node
         "chart-1"
-        (NodeKind.Visualisation(
-            VisKind.Chart
+        (NodeKind.Chart(
                 { Source = Binding.Static Seq.empty
                   Kind = ChartKind.Line
                   XField = "month"
@@ -1567,8 +1505,7 @@ let gridTransform: Node<obj> =
 
     node
         "grid-transform"
-        (NodeKind.Visualisation(
-            VisKind.DataGrid
+        (NodeKind.DataGrid(
                 { Source = Binding.Transform(source, pipeline, [])
                   RowKey = Some(fun _ -> "<closure>")
                   RowKeyField = None
@@ -1598,8 +1535,7 @@ let gridTransformParam: Node<obj> =
 
     node
         "grid-transform-param"
-        (NodeKind.Visualisation(
-            VisKind.DataGrid
+        (NodeKind.DataGrid(
                 { Source = Binding.Transform(source, pipeline, [ "dept", Binding.Filter("dept", None) ])
                   RowKey = Some(fun _ -> "<closure>")
                   RowKeyField = None
@@ -1631,8 +1567,7 @@ let gridFieldNamed: Node<obj> =
 
     node
         "grid-field-named"
-        (NodeKind.Visualisation(
-            VisKind.DataGrid
+        (NodeKind.DataGrid(
                 { Source = Binding.Transform(source, [], [])
                   RowKey = None
                   RowKeyField = Some "dept"
@@ -1676,16 +1611,14 @@ let masterDetailPreselected: Node<obj> =
 
     node
         "master-detail-preselected"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout = BoxLayout.Auto
                   Role = BoxRole.Dashboard
                   Heading = None
                   Children =
                     [ node
                           "ticket-grid"
-                          (NodeKind.Visualisation(
-                              VisKind.DataGrid
+                          (NodeKind.DataGrid(
                                   { Source = Binding.Transform(source, [], [])
                                     RowKey = None
                                     RowKeyField = Some "id"
@@ -1697,8 +1630,7 @@ let masterDetailPreselected: Node<obj> =
                           None
                       node
                           "ticket-detail"
-                          (NodeKind.Layout(
-                              LayoutKind.Box
+                          (NodeKind.Box(
                                   { Layout =
                                       BoxLayout.Flex
                                           { Direction = Vertical
@@ -1709,8 +1641,7 @@ let masterDetailPreselected: Node<obj> =
                                     Children =
                                       [ node
                                             "detail-ticket"
-                                            (NodeKind.Display(
-                                                DisplayKind.Fact
+                                            (NodeKind.Fact(
                                                     { Label = TextSource.Literal "Selected ticket"
                                                       // 0.2.9 (Phase 629): the defaulted-Selection form —
                                                       // the composition models emit naturally, now
@@ -1742,8 +1673,7 @@ let masterDetailPreselected: Node<obj> =
                       // param `from` slot accepts any Binding, Selection included.
                       node
                           "related-grid"
-                          (NodeKind.Visualisation(
-                              VisKind.DataGrid
+                          (NodeKind.DataGrid(
                                   { Source =
                                       Binding.Transform(
                                           source,
@@ -1815,16 +1745,14 @@ let scalarTransformComposition: Node<obj> =
 
     node
         "scalar-transform-composition"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout = BoxLayout.Auto
                   Role = BoxRole.Dashboard
                   Heading = None
                   Children =
                     [ node
                           "scalar-ticket-grid"
-                          (NodeKind.Visualisation(
-                              VisKind.DataGrid
+                          (NodeKind.DataGrid(
                                   { Source = Binding.Transform(source, [], [])
                                     RowKey = None
                                     RowKeyField = Some "id"
@@ -1848,8 +1776,7 @@ let scalarTransformComposition: Node<obj> =
                           None
                       node
                           "critical-count-badge"
-                          (NodeKind.Display(
-                              DisplayKind.Badge
+                          (NodeKind.Badge(
                                   { Label =
                                       TextSource.Bound(
                                           Binding.Transform(
@@ -1875,8 +1802,7 @@ let scalarTransformComposition: Node<obj> =
                           None
                       node
                           "sla-warning"
-                          (NodeKind.Display(
-                              DisplayKind.Callout
+                          (NodeKind.Callout(
                                   { Tone = ToneVariant.Warning
                                     Heading = Some(TextSource.Literal "SLA breach imminent")
                                     Body =
@@ -1976,24 +1902,21 @@ let filterableStaticDashboard: Node<obj> =
 
     node
         "filterable-static-dashboard"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout = BoxLayout.Auto
                   Role = BoxRole.Dashboard
                   Heading = Some(TextSource.Literal "Content performance")
                   Children =
                     [ node
                           "content-filters"
-                          (NodeKind.Input(
-                              InputKind.Filters
+                          (NodeKind.Filters(
                                   [ choice "region" "Region" [ "emea", "EMEA"; "amer", "Americas" ]
                                     choice "genre" "Genre" [ "drama", "Drama"; "docs", "Documentary" ] ]
                           ))
                           None
                       node
                           "retention-chart"
-                          (NodeKind.Visualisation(
-                              VisKind.Chart
+                          (NodeKind.Chart(
                                   { Source = filteredSource ()
                                     Kind = ChartKind.Line
                                     XField = "month"
@@ -2005,8 +1928,7 @@ let filterableStaticDashboard: Node<obj> =
                           None
                       node
                           "episode-grid"
-                          (NodeKind.Visualisation(
-                              VisKind.DataGrid
+                          (NodeKind.DataGrid(
                                   { Source = filteredSource ()
                                     RowKey = None
                                     RowKeyField = Some "month"
@@ -2025,8 +1947,7 @@ let filterableStaticDashboard: Node<obj> =
 let queryDependsOn: Node<obj> =
     node
         "query-dependson"
-        (NodeKind.Display(
-            DisplayKind.Metric
+        (NodeKind.Metric(
                 { metricSpec with
                     Value = Binding.Query("orders", (fun _ -> 0.0), [ "status"; "region" ])
                     Trend = None
@@ -2039,7 +1960,7 @@ let table: Node<obj> =
         "table-1"
         (NodeKind.Visualisation(
             // Phase 393 — the static read-only table is now the `StaticRows` mode of `DataGrid`.
-            VisKind.DataGrid
+            NodeKind.DataGrid
                 { Source = Binding.Static Seq.empty
                   RowKey = None
                   RowKeyField = None
@@ -2058,8 +1979,7 @@ let table: Node<obj> =
 let mapVis: Node<obj> =
     node
         "map-1"
-        (NodeKind.Visualisation(
-            VisKind.Map
+        (NodeKind.Map(
                 { Source =
                     Binding.Static(
                         seq
@@ -2123,13 +2043,12 @@ let errorBoundary: Node<obj> =
             { Child =
                 node
                     "boundary-child"
-                    (NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "Child body" }))
+                    (NodeKind.Markdown( { Text = TextSource.Literal "Child body" }))
                     None
               Fallback =
                 node
                     "boundary-fallback"
-                    (NodeKind.Display(
-                        DisplayKind.Callout
+                    (NodeKind.Callout(
                             { Tone = ToneVariant.Warning
                               Heading = Some(TextSource.Literal "Couldn't render")
                               Body = TextSource.Literal "Fallback rendered"
@@ -2153,18 +2072,17 @@ let switchBasic: Node<obj> =
                 [ "details",
                   node
                       "switch-details"
-                      (NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "Details view" }))
+                      (NodeKind.Markdown( { Text = TextSource.Literal "Details view" }))
                       None
                   "summary",
                   node
                       "switch-summary"
-                      (NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "Summary view" }))
+                      (NodeKind.Markdown( { Text = TextSource.Literal "Summary view" }))
                       None ]
               Default =
                 node
                     "switch-default"
-                    (NodeKind.Display(
-                        DisplayKind.Callout
+                    (NodeKind.Callout(
                             { Tone = ToneVariant.Info
                               Heading = Some(TextSource.Literal "Pick a view")
                               Body = TextSource.Literal "No view selected"
@@ -2186,7 +2104,7 @@ let fragmentDecl: Node<obj> =
               Body =
                 node
                     "frag-body"
-                    (NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "Template body" }))
+                    (NodeKind.Markdown( { Text = TextSource.Literal "Template body" }))
                     None
               Holes = []
               Effect = EffectClass.pureDeterministic })
@@ -2213,7 +2131,7 @@ let fragmentDeclParam: Node<obj> =
               Body =
                 node
                     "param-body"
-                    (NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "Parameterised body" }))
+                    (NodeKind.Markdown( { Text = TextSource.Literal "Parameterised body" }))
                     None
               Holes =
                 [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), Some(box "Untitled"))
@@ -2237,7 +2155,7 @@ let fragmentRefArgs: Node<obj> =
                       FragmentArg.Slot(
                           node
                               "slot-tree"
-                              (NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "Bound slot" }))
+                              (NodeKind.Markdown( { Text = TextSource.Literal "Bound slot" }))
                               None
                       ) ] })
         None
@@ -2275,8 +2193,7 @@ let mountFull: Node<obj> =
                       FragmentArg.Slot(
                           node
                               "seed-tree"
-                              (NodeKind.Display(
-                                  DisplayKind.Markdown { Text = TextSource.Literal "Initial guest state" }
+                              (NodeKind.Markdown( { Text = TextSource.Literal "Initial guest state" }
                               ))
                               None
                       ) ]
@@ -2290,16 +2207,14 @@ let mountFull: Node<obj> =
 let composite: Node<obj> =
     node
         "composite-root"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout = BoxLayout.Auto
                   Role = BoxRole.Dashboard
                   Heading = None
                   Children =
                     [ node
                           "composite-card"
-                          (NodeKind.Layout(
-                              LayoutKind.Box
+                          (NodeKind.Box(
                                   { Layout =
                                       BoxLayout.Flex
                                           { Direction = Vertical
@@ -2317,7 +2232,7 @@ let composite: Node<obj> =
 // ─── TreeOp fixtures (10 cases) ─────────────────────────────────────────
 
 let opEditNode: TreeOp<obj> =
-    TreeOp.EditNode(NodeId "metric-1", NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "Edited" }))
+    TreeOp.EditNode(NodeId "metric-1", NodeKind.Markdown( { Text = TextSource.Literal "Edited" }))
 
 let opUpdateProp: TreeOp<obj> =
     TreeOp.UpdateProp(NodeId "metric-1", "Label", PropValue.Wire(JStr "Updated revenue"))
@@ -2448,8 +2363,7 @@ let formLocalText: Node<obj> =
 
     node
         "form-local-1"
-        (NodeKind.Input(
-            InputKind.Form
+        (NodeKind.Form(
                 { Fields = [ textField ]
                   OnSubmit = placeholderChain
                   SubmitLabel = TextSource.Literal "Save"
@@ -2476,8 +2390,7 @@ let formLocalDebounce: Node<obj> =
 
     node
         "form-local-debounce"
-        (NodeKind.Input(
-            InputKind.Form
+        (NodeKind.Form(
                 { Fields = [ textField ]
                   OnSubmit = placeholderChain
                   SubmitLabel = TextSource.Literal "Save"
@@ -2508,12 +2421,11 @@ let opUpdatePropCommitLocal: TreeOp<obj> =
 // `Binding.Static` so the round-trip is fully faithful.
 let formatBindings: Node<obj> =
     let md (id: string) (b: Binding<string>) : Node<obj> =
-        node id (NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Bound b })) None
+        node id (NodeKind.Markdown( { Text = TextSource.Bound b })) None
 
     node
         "format-bindings"
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout =
                     BoxLayout.Flex
                         { Direction = Vertical

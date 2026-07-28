@@ -35,8 +35,7 @@ open Fuaran.UI.Ops
 let private revenueMetric: Node<obj> =
     { Id = NodeId "revenue"
       Kind =
-        NodeKind.Display(
-            DisplayKind.Metric
+        NodeKind.Metric(
                 { Label = TextSource.Literal "Revenue"
                   Value = Binding.Static 0.0
                   Format = CellFormat.Currency "USD"
@@ -64,7 +63,7 @@ let private revenueMetric: Node<obj> =
 
 let private metricOf (node: Node<obj>) : MetricSpec =
     match node.Kind with
-    | NodeKind.Display(DisplayKind.Metric spec) -> spec
+    | NodeKind.Metric( spec) -> spec
     | other -> failtestf "Expected Metric, got %A" other
 
 [<Tests>]
@@ -189,8 +188,7 @@ let tests =
                   { revenueMetric with
                       Id = NodeId "channel-grid"
                       Kind =
-                          NodeKind.Visualisation(
-                              VisKind.DataGrid
+                          NodeKind.DataGrid(
                                   { Source = Binding.Static Seq.empty
                                     RowKey = Some(fun _ -> "")
                                     RowKeyField = None
@@ -216,7 +214,7 @@ let tests =
                   | Error err -> failtestf "Apply.apply failed: %A" err
                   | Ok updated ->
                       match updated.Kind with
-                      | NodeKind.Visualisation(VisKind.DataGrid spec) ->
+                      | NodeKind.DataGrid( spec) ->
                           match spec.Columns[0].Format with
                           | CellFormat.Percent(Some 1) -> ()
                           | other -> failtestf "Expected Percent (Some 1), got %A" other
@@ -228,8 +226,7 @@ let tests =
                   { revenueMetric with
                       Id = NodeId "channel-grid"
                       Kind =
-                          NodeKind.Visualisation(
-                              VisKind.DataGrid
+                          NodeKind.DataGrid(
                                   { Source = Binding.Static Seq.empty
                                     RowKey = Some(fun _ -> "")
                                     RowKeyField = None
@@ -255,7 +252,7 @@ let tests =
                   | Error err -> failtestf "Apply.apply failed: %A" err
                   | Ok updated ->
                       match updated.Kind with
-                      | NodeKind.Visualisation(VisKind.DataGrid spec) ->
+                      | NodeKind.DataGrid( spec) ->
                           Expect.equal spec.Columns[0].Width (ColumnWidth.Fixed 120) "Width applied from wire"
                       | other -> failtestf "Expected DataGrid, got %A" other
           } ]

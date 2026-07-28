@@ -284,8 +284,7 @@ let mountScopeTests =
               let guest =
                   mkNode
                       "guest-root"
-                      (NodeKind.Layout(
-                          LayoutKind.Box
+                      (NodeKind.Box(
                               { Layout = BoxLayout.Auto
                                 Role = BoxRole.Dashboard
                                 Heading = None

@@ -407,7 +407,7 @@ let customExposedNodeIds: NodeId list = []
 
 let private errorBoundaryPlaceholder<'Msg> : Node<'Msg> =
     { Id = NodeId "fuaran-error-boundary-placeholder"
-      Kind = NodeKind.Display(DisplayKind.Skeleton { Rows = 1 })
+      Kind = NodeKind.Skeleton( { Rows = 1 })
       State = stateBehaviour<'Msg>
       Style = style
       Accessibility = Option.None
@@ -441,7 +441,7 @@ let switch<'Msg> : SwitchSpec<'Msg> =
 
 let private fragmentPlaceholder<'Msg> : Node<'Msg> =
     { Id = NodeId "fuaran-fragment-placeholder"
-      Kind = NodeKind.Display(DisplayKind.Skeleton { Rows = 1 })
+      Kind = NodeKind.Skeleton( { Rows = 1 })
       State = stateBehaviour<'Msg>
       Style = style
       Accessibility = Option.None

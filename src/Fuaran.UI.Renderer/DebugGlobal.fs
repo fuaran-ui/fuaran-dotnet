@@ -137,43 +137,43 @@ let private slotInfo (name: string) (binding: Binding<'T>) : BindingSlotInfo =
 
 let extractBindingSlots (kind: NodeKind<'Msg>) : BindingSlotInfo list =
     match kind with
-    | NodeKind.Display(DisplayKind.Metric spec) ->
+    | NodeKind.Metric( spec) ->
         [ slotInfo "Value" spec.Value
           match spec.Trend with
           | Some trend -> slotInfo "Trend" trend
           | None -> () ]
-    | NodeKind.Display(DisplayKind.Sparkline spec) -> [ slotInfo "Source" spec.Source ]
-    | NodeKind.Display(DisplayKind.Progress spec) -> [ slotInfo "Fraction" spec.Fraction ]
-    | NodeKind.Display(DisplayKind.LabelValueRow spec) -> [ slotInfo "Value" spec.Value ]
-    | NodeKind.Display(DisplayKind.Link spec) -> [ slotInfo "Href" spec.Href ]
-    | NodeKind.Layout(LayoutKind.Stepper spec) -> [ slotInfo "ActiveStep" spec.ActiveStep ]
-    | NodeKind.Layout(LayoutKind.Tabs spec) ->
+    | NodeKind.Sparkline( spec) -> [ slotInfo "Source" spec.Source ]
+    | NodeKind.Progress( spec) -> [ slotInfo "Fraction" spec.Fraction ]
+    | NodeKind.LabelValueRow( spec) -> [ slotInfo "Value" spec.Value ]
+    | NodeKind.Link( spec) -> [ slotInfo "Href" spec.Href ]
+    | NodeKind.Stepper( spec) -> [ slotInfo "ActiveStep" spec.ActiveStep ]
+    | NodeKind.Tabs( spec) ->
         [ slotInfo "ActiveIndex" spec.ActiveIndex
           match spec.ActiveTag with
           | Some tag -> slotInfo "ActiveTag" tag
           | None -> () ]
-    | NodeKind.Layout(LayoutKind.Disclosure spec) -> [ slotInfo "Open" spec.Open ]
-    | NodeKind.Input(InputKind.Button spec) ->
+    | NodeKind.Disclosure( spec) -> [ slotInfo "Open" spec.Open ]
+    | NodeKind.Button( spec) ->
         match spec.Disabled with
         | Some disabled -> [ slotInfo "Disabled" disabled ]
         | None -> []
-    | NodeKind.Input(InputKind.Select spec) ->
+    | NodeKind.Select( spec) ->
         [ slotInfo "Source" spec.Source
           slotInfo "Value" spec.Value
           match spec.Disabled with
           | Some disabled -> slotInfo "Disabled" disabled
           | None -> () ]
-    | NodeKind.Input(InputKind.Form spec) ->
+    | NodeKind.Form( spec) ->
         match spec.Disabled with
         | Some disabled -> [ slotInfo "Disabled" disabled ]
         | None -> []
-    | NodeKind.Input(InputKind.FileUpload spec) ->
+    | NodeKind.FileUpload( spec) ->
         match spec.Disabled with
         | Some disabled -> [ slotInfo "Disabled" disabled ]
         | None -> []
-    | NodeKind.Visualisation(VisKind.DataGrid spec) -> [ slotInfo "Source" spec.Source ]
-    | NodeKind.Visualisation(VisKind.Chart spec) -> [ slotInfo "Source" spec.Source ]
-    | NodeKind.Visualisation(VisKind.Map spec) -> [ slotInfo "Source" spec.Source ]
+    | NodeKind.DataGrid( spec) -> [ slotInfo "Source" spec.Source ]
+    | NodeKind.Chart( spec) -> [ slotInfo "Source" spec.Source ]
+    | NodeKind.Map( spec) -> [ slotInfo "Source" spec.Source ]
     | _ -> []
 
 // ─── Structural traversal (mirror of TS childNodes / walkNodes / findNode) ──
@@ -187,14 +187,14 @@ let childNodes (node: Node<'Msg>) : Node<'Msg> list =
     match node.Kind with
     | NodeKind.Layout layout ->
         match layout with
-        | LayoutKind.Box s -> s.Children
-        | LayoutKind.SplitPanel s -> s.Children
-        | LayoutKind.Tabs s -> s.Children
-        | LayoutKind.Stepper s -> s.Children
-        | LayoutKind.SummaryList s -> s.Children
-        | LayoutKind.Disclosure s -> s.Children
-        | LayoutKind.Modal s -> s.Children
-        | LayoutKind.ScrollArea s -> s.Children
+        | NodeKind.Box s -> s.Children
+        | NodeKind.SplitPanel s -> s.Children
+        | NodeKind.Tabs s -> s.Children
+        | NodeKind.Stepper s -> s.Children
+        | NodeKind.SummaryList s -> s.Children
+        | NodeKind.Disclosure s -> s.Children
+        | NodeKind.Modal s -> s.Children
+        | NodeKind.ScrollArea s -> s.Children
     | NodeKind.ErrorBoundary spec -> [ spec.Child; spec.Fallback ]
     | NodeKind.Switch spec -> (spec.Cases |> List.map snd) @ [ spec.Default ]
     | NodeKind.FragmentDecl spec -> [ spec.Body ]
@@ -307,43 +307,43 @@ let private resolveTo (sources: BindingResolver.BindingSources) (binding: Bindin
 /// when an optional slot is absent.
 let resolveSlot (sources: BindingResolver.BindingSources) (kind: NodeKind<'Msg>) (slot: string) : SlotResolution =
     match kind, slot with
-    | NodeKind.Display(DisplayKind.Metric spec), "Value" -> resolveTo sources spec.Value
-    | NodeKind.Display(DisplayKind.Metric spec), "Trend" ->
+    | NodeKind.Metric( spec), "Value" -> resolveTo sources spec.Value
+    | NodeKind.Metric( spec), "Trend" ->
         match spec.Trend with
         | Some trend -> resolveTo sources trend
         | None -> SlotResolution.NoOverride
-    | NodeKind.Display(DisplayKind.Sparkline spec), "Source" -> resolveTo sources spec.Source
-    | NodeKind.Display(DisplayKind.Progress spec), "Fraction" -> resolveTo sources spec.Fraction
-    | NodeKind.Display(DisplayKind.LabelValueRow spec), "Value" -> resolveTo sources spec.Value
-    | NodeKind.Display(DisplayKind.Link spec), "Href" -> resolveTo sources spec.Href
-    | NodeKind.Layout(LayoutKind.Stepper spec), "ActiveStep" -> resolveTo sources spec.ActiveStep
-    | NodeKind.Layout(LayoutKind.Tabs spec), "ActiveIndex" -> resolveTo sources spec.ActiveIndex
-    | NodeKind.Layout(LayoutKind.Tabs spec), "ActiveTag" ->
+    | NodeKind.Sparkline( spec), "Source" -> resolveTo sources spec.Source
+    | NodeKind.Progress( spec), "Fraction" -> resolveTo sources spec.Fraction
+    | NodeKind.LabelValueRow( spec), "Value" -> resolveTo sources spec.Value
+    | NodeKind.Link( spec), "Href" -> resolveTo sources spec.Href
+    | NodeKind.Stepper( spec), "ActiveStep" -> resolveTo sources spec.ActiveStep
+    | NodeKind.Tabs( spec), "ActiveIndex" -> resolveTo sources spec.ActiveIndex
+    | NodeKind.Tabs( spec), "ActiveTag" ->
         match spec.ActiveTag with
         | Some tag -> resolveTo sources tag
         | None -> SlotResolution.NoOverride
-    | NodeKind.Layout(LayoutKind.Disclosure spec), "Open" -> resolveTo sources spec.Open
-    | NodeKind.Input(InputKind.Button spec), "Disabled" ->
+    | NodeKind.Disclosure( spec), "Open" -> resolveTo sources spec.Open
+    | NodeKind.Button( spec), "Disabled" ->
         match spec.Disabled with
         | Some disabled -> resolveTo sources disabled
         | None -> SlotResolution.NoOverride
-    | NodeKind.Input(InputKind.Select spec), "Source" -> resolveTo sources spec.Source
-    | NodeKind.Input(InputKind.Select spec), "Value" -> resolveTo sources spec.Value
-    | NodeKind.Input(InputKind.Select spec), "Disabled" ->
+    | NodeKind.Select( spec), "Source" -> resolveTo sources spec.Source
+    | NodeKind.Select( spec), "Value" -> resolveTo sources spec.Value
+    | NodeKind.Select( spec), "Disabled" ->
         match spec.Disabled with
         | Some disabled -> resolveTo sources disabled
         | None -> SlotResolution.NoOverride
-    | NodeKind.Input(InputKind.Form spec), "Disabled" ->
+    | NodeKind.Form( spec), "Disabled" ->
         match spec.Disabled with
         | Some disabled -> resolveTo sources disabled
         | None -> SlotResolution.NoOverride
-    | NodeKind.Input(InputKind.FileUpload spec), "Disabled" ->
+    | NodeKind.FileUpload( spec), "Disabled" ->
         match spec.Disabled with
         | Some disabled -> resolveTo sources disabled
         | None -> SlotResolution.NoOverride
-    | NodeKind.Visualisation(VisKind.DataGrid spec), "Source" -> resolveTo sources spec.Source
-    | NodeKind.Visualisation(VisKind.Chart spec), "Source" -> resolveTo sources spec.Source
-    | NodeKind.Visualisation(VisKind.Map spec), "Source" -> resolveTo sources spec.Source
+    | NodeKind.DataGrid( spec), "Source" -> resolveTo sources spec.Source
+    | NodeKind.Chart( spec), "Source" -> resolveTo sources spec.Source
+    | NodeKind.Map( spec), "Source" -> resolveTo sources spec.Source
     | _ -> SlotResolution.NotDeclared
 
 // ─── Policy-gated apply(op) (FGP 3) ─────────────────────────────────────────

@@ -285,7 +285,7 @@ let unitCases =
                   Expect.equal spec.Child.Motion (Some Motion.PulseDuringLoad) "the loading child pulses while filling"
 
                   match spec.Child.Kind with
-                  | NodeKind.Display(DisplayKind.Skeleton _) -> ()
+                  | NodeKind.Skeleton( _) -> ()
                   | other -> failtestf "expected a Skeleton loading child, got %A" other
               | other -> failtestf "expected an ErrorBoundary placeholder, got %A" other)
 

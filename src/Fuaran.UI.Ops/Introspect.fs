@@ -37,7 +37,7 @@ open Fuaran.UI.Types
 // fragment applier and the base fragment surface — can name a kind without a
 // dependency on this Ops package. This is a thin re-export preserving the
 // historical `Introspect.kindName` name + behaviour byte-for-byte (e.g.
-// `VisKind.DataGrid → "Grid"`); callers already on `Introspect.kindName` need no
+// `NodeKind.DataGrid → "Grid"`); callers already on `Introspect.kindName` need no
 // change. The wire discriminator carries the kind name directly
 // (`"kind":{"$type":"Heading",…}`), so this surface and the wire vocabulary stay
 // identical.
@@ -73,7 +73,7 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     match kind with
     | NodeKind.Layout layout ->
         match layout with
-        | LayoutKind.Box spec ->
+        | NodeKind.Box spec ->
             // Field surface is layout-mode-dependent, preserving the retired
             // kinds' updatable fields: Flex → Orientation/Wrap (Stack), Grid →
             // Cols/TemplateColumns (GridLayout), plus Heading (Card) always.
@@ -84,21 +84,21 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
                 | BoxLayout.Auto -> []
 
             layoutFields @ [ "Heading"; "Children" ]
-        | LayoutKind.SplitPanel _ -> [ "Weight"; "Children" ]
-        | LayoutKind.Tabs _ -> [ "Orientation"; "Children" ]
-        | LayoutKind.Stepper _ -> [ "ActiveStep"; "Children" ]
-        | LayoutKind.SummaryList _ -> [ "Heading"; "Children" ]
-        | LayoutKind.Disclosure _ -> [ "Heading"; "Open"; "DefaultOpen"; "Children" ]
+        | NodeKind.SplitPanel _ -> [ "Weight"; "Children" ]
+        | NodeKind.Tabs _ -> [ "Orientation"; "Children" ]
+        | NodeKind.Stepper _ -> [ "ActiveStep"; "Children" ]
+        | NodeKind.SummaryList _ -> [ "Heading"; "Children" ]
+        | NodeKind.Disclosure _ -> [ "Heading"; "Open"; "DefaultOpen"; "Children" ]
         // `Children` is advertised but not UpdateProp-settable anywhere: it is
         // the structural ops' surface (getChildren / withChildren below), and
         // the NotSupportedYet hint names them. That is a signpost, not a lie.
-        | LayoutKind.Modal _ -> [ "Heading"; "Dismissable"; "Children" ]
-        | LayoutKind.ScrollArea _ -> [ "Orientation"; "MaxHeight"; "MaxWidth"; "Children" ]
+        | NodeKind.Modal _ -> [ "Heading"; "Dismissable"; "Children" ]
+        | NodeKind.ScrollArea _ -> [ "Orientation"; "MaxHeight"; "MaxWidth"; "Children" ]
     | NodeKind.Display display ->
         match display with
-        | DisplayKind.Heading _ -> [ "Level"; "Text"; "Variant" ]
-        | DisplayKind.Markdown _ -> [ "Text" ]
-        | DisplayKind.Metric _ ->
+        | NodeKind.Heading _ -> [ "Level"; "Text"; "Variant" ]
+        | NodeKind.Markdown _ -> [ "Text" ]
+        | NodeKind.Metric _ ->
             [ "Label"
               "Value"
               "Format"
@@ -109,40 +109,40 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
               "TrendFormat"
               "Icon"
               "Subtext" ]
-        | DisplayKind.Badge _ -> [ "Label"; "Variant" ]
-        | DisplayKind.Sparkline _ -> [ "Source" ]
-        | DisplayKind.Callout _ -> [ "Tone"; "Heading"; "Body"; "Icon"; "Dismissable" ]
-        | DisplayKind.Progress _ -> [ "Fraction"; "Label"; "Caveat"; "Indeterminate"; "Tone" ]
-        | DisplayKind.Skeleton _ -> [ "Rows" ]
-        | DisplayKind.LabelValueRow _ -> [ "Label"; "Value"; "Format"; "Emphasis"; "Help" ]
-        | DisplayKind.Fact _ -> [ "Label"; "Value"; "Icon"; "Tone"; "Emphasis"; "Help" ]
-        | DisplayKind.Link _ -> [ "Href"; "Label"; "Rel"; "Target"; "Download" ]
-        | DisplayKind.Image _ -> [ "Alt"; "Variant" ]
-        | DisplayKind.List _ -> [ "Items"; "Ordered" ]
-        | DisplayKind.Toast _ -> [ "Message"; "Tone"; "Dismissable" ]
-        | DisplayKind.CodeBlock _ -> [ "Code"; "Language"; "LineNumbers"; "HighlightLines"; "Copyable" ]
-        | DisplayKind.Math _ -> [ "Source"; "Display" ]
+        | NodeKind.Badge _ -> [ "Label"; "Variant" ]
+        | NodeKind.Sparkline _ -> [ "Source" ]
+        | NodeKind.Callout _ -> [ "Tone"; "Heading"; "Body"; "Icon"; "Dismissable" ]
+        | NodeKind.Progress _ -> [ "Fraction"; "Label"; "Caveat"; "Indeterminate"; "Tone" ]
+        | NodeKind.Skeleton _ -> [ "Rows" ]
+        | NodeKind.LabelValueRow _ -> [ "Label"; "Value"; "Format"; "Emphasis"; "Help" ]
+        | NodeKind.Fact _ -> [ "Label"; "Value"; "Icon"; "Tone"; "Emphasis"; "Help" ]
+        | NodeKind.Link _ -> [ "Href"; "Label"; "Rel"; "Target"; "Download" ]
+        | NodeKind.Image _ -> [ "Alt"; "Variant" ]
+        | NodeKind.List _ -> [ "Items"; "Ordered" ]
+        | NodeKind.Toast _ -> [ "Message"; "Tone"; "Dismissable" ]
+        | NodeKind.CodeBlock _ -> [ "Code"; "Language"; "LineNumbers"; "HighlightLines"; "Copyable" ]
+        | NodeKind.Math _ -> [ "Source"; "Display" ]
         // Drawing stays a whole-artefact swap via EditNode: `Shapes` is a
         // geometry list with no per-item identity, so there is nothing here a
         // field-level path could address today. Empty, therefore honest.
-        | DisplayKind.Drawing _ -> []
+        | NodeKind.Drawing _ -> []
     | NodeKind.Input input ->
         match input with
-        | InputKind.Form _ -> [ "Fields"; "SubmitLabel" ]
-        // InputKind.Filters carries a bare list, not a record; no
+        | NodeKind.Form _ -> [ "Fields"; "SubmitLabel" ]
+        // NodeKind.Filters carries a bare list, not a record; no
         // top-level field surface for v1 UpdateProp.
-        | InputKind.Filters _ -> []
+        | NodeKind.Filters _ -> []
         // `Tooltip` joined the list when the Input family gained field-level
         // UpdateProp: it is addressable, so advertising it is now accurate
         // rather than aspirational.
-        | InputKind.Button _ -> [ "Label"; "Variant"; "Icon"; "Tooltip" ]
-        | InputKind.FileUpload _ -> [ "Label"; "Accept"; "Multiple" ]
-        | InputKind.Select _ -> [ "Label"; "Source"; "Value"; "Placeholder" ]
+        | NodeKind.Button _ -> [ "Label"; "Variant"; "Icon"; "Tooltip" ]
+        | NodeKind.FileUpload _ -> [ "Label"; "Accept"; "Multiple" ]
+        | NodeKind.Select _ -> [ "Label"; "Source"; "Value"; "Placeholder" ]
     | NodeKind.Visualisation vis ->
         match vis with
-        | VisKind.DataGrid _ -> [ "Source"; "Columns"; "Editable"; "RowKeyField" ]
-        | VisKind.Chart _ -> [ "Source"; "Kind"; "XField"; "YFields"; "Title"; "Stacked" ]
-        | VisKind.Map _ -> [ "Source"; "CentreLatitude"; "CentreLongitude"; "Zoom" ]
+        | NodeKind.DataGrid _ -> [ "Source"; "Columns"; "Editable"; "RowKeyField" ]
+        | NodeKind.Chart _ -> [ "Source"; "Kind"; "XField"; "YFields"; "Title"; "Stacked" ]
+        | NodeKind.Map _ -> [ "Source"; "CentreLatitude"; "CentreLongitude"; "Zoom" ]
     // Custom is an open prop bag; the AI should swap it wholesale via
     // EditNode rather than edit individual props through this engine.
     | NodeKind.Custom(_, _, _, _, _) -> []
@@ -180,37 +180,37 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
 
 let availableBindingSlots (kind: NodeKind<'Msg>) : string list =
     match kind with
-    | NodeKind.Display(DisplayKind.Metric _) -> [ "Value"; "Trend" ]
-    | NodeKind.Display(DisplayKind.Sparkline _) -> [ "Source" ]
-    | NodeKind.Display(DisplayKind.Progress _) -> [ "Fraction" ]
-    | NodeKind.Display(DisplayKind.LabelValueRow _) -> [ "Value" ]
-    | NodeKind.Layout(LayoutKind.Stepper _) -> [ "ActiveStep" ]
+    | NodeKind.Metric( _) -> [ "Value"; "Trend" ]
+    | NodeKind.Sparkline( _) -> [ "Source" ]
+    | NodeKind.Progress( _) -> [ "Fraction" ]
+    | NodeKind.LabelValueRow( _) -> [ "Value" ]
+    | NodeKind.Stepper( _) -> [ "ActiveStep" ]
     // Tabs' active-tab state: the integer `ActiveIndex` (canonical wire shape,
     // mirrors Stepper.ActiveStep) plus the optional typed-tag overlay
     // `ActiveTag` (mirrors Metric.Trend — always listed; resolves to a
     // synthetic-None when the option is absent).
-    | NodeKind.Layout(LayoutKind.Tabs _) -> [ "ActiveIndex"; "ActiveTag" ]
+    | NodeKind.Tabs( _) -> [ "ActiveIndex"; "ActiveTag" ]
     // Disclosure's controlled open-state binding. Note `Open` is *also* an
     // UpdateProp field (`availableFields` above) — it is dual-surface, so
     // both representations must stay in sync (Phase 118 consistency test).
-    | NodeKind.Layout(LayoutKind.Disclosure _) -> [ "Open" ]
+    | NodeKind.Disclosure( _) -> [ "Open" ]
     // Button's optional bound disabled-state. `Disabled` is always listed
     // (mirrors Metric.Trend / Tabs.ActiveTag) — it resolves to a
     // synthetic-None when the option is absent, and ReplaceBinding installs
     // `Some`.
-    | NodeKind.Input(InputKind.Button _) -> [ "Disabled" ]
+    | NodeKind.Button( _) -> [ "Disabled" ]
     // Select's bound source / value plus the Phase 130 optional bound
     // disabled-state (always listed; synthetic-None when absent, mirroring
     // Button.Disabled / Metric.Trend).
-    | NodeKind.Input(InputKind.Select _) -> [ "Source"; "Value"; "Disabled" ]
+    | NodeKind.Select( _) -> [ "Source"; "Value"; "Disabled" ]
     // Form / FileUpload gain a single optional bound disabled-state slot
     // (Phase 130 — the interactive-state class-fix). Form had no binding slot
     // before; FileUpload neither. Both are always listed.
-    | NodeKind.Input(InputKind.Form _) -> [ "Disabled" ]
-    | NodeKind.Input(InputKind.FileUpload _) -> [ "Disabled" ]
-    | NodeKind.Visualisation(VisKind.DataGrid _) -> [ "Source" ]
-    | NodeKind.Visualisation(VisKind.Chart _) -> [ "Source" ]
-    | NodeKind.Visualisation(VisKind.Map _) -> [ "Source" ]
+    | NodeKind.Form( _) -> [ "Disabled" ]
+    | NodeKind.FileUpload( _) -> [ "Disabled" ]
+    | NodeKind.DataGrid( _) -> [ "Source" ]
+    | NodeKind.Chart( _) -> [ "Source" ]
+    | NodeKind.Map( _) -> [ "Source" ]
     | _ -> []
 
 // ─── Available nested paths per kind (Phase 364 — UpdateProp nested surface) ─
@@ -224,10 +224,10 @@ let availableBindingSlots (kind: NodeKind<'Msg>) : string list =
 
 let availableNestedPaths (kind: NodeKind<'Msg>) : string list =
     match kind with
-    | NodeKind.Visualisation(VisKind.DataGrid _) -> [ "Columns[i].Label"; "Columns[i].Format"; "Columns[i].Width" ]
-    | NodeKind.Visualisation(VisKind.Chart _) -> [ "YFields[i]" ]
-    | NodeKind.Layout(LayoutKind.Tabs _) -> [ "TabHeaders[i].Label"; "TabHeaders[i].Icon"; "TabHeaders[i].Disabled" ]
-    | NodeKind.Input(InputKind.Form _) -> [ "Fields[i].Label"; "Fields[i].Required"; "Fields[i].Help" ]
+    | NodeKind.DataGrid( _) -> [ "Columns[i].Label"; "Columns[i].Format"; "Columns[i].Width" ]
+    | NodeKind.Chart( _) -> [ "YFields[i]" ]
+    | NodeKind.Tabs( _) -> [ "TabHeaders[i].Label"; "TabHeaders[i].Icon"; "TabHeaders[i].Disabled" ]
+    | NodeKind.Form( _) -> [ "Fields[i].Label"; "Fields[i].Required"; "Fields[i].Help" ]
     | _ -> []
 
 // ─── Interactive runtime-state slots (Phase 130) ───────────────────────────
@@ -250,10 +250,10 @@ let availableNestedPaths (kind: NodeKind<'Msg>) : string list =
 // empty `availableBindingSlots`).
 let interactiveStateSlots (kind: NodeKind<'Msg>) : string list =
     match kind with
-    | NodeKind.Input(InputKind.Button _) -> [ "Disabled" ]
-    | NodeKind.Input(InputKind.Select _) -> [ "Disabled" ]
-    | NodeKind.Input(InputKind.Form _) -> [ "Disabled" ]
-    | NodeKind.Input(InputKind.FileUpload _) -> [ "Disabled" ]
+    | NodeKind.Button( _) -> [ "Disabled" ]
+    | NodeKind.Select( _) -> [ "Disabled" ]
+    | NodeKind.Form( _) -> [ "Disabled" ]
+    | NodeKind.FileUpload( _) -> [ "Disabled" ]
     | _ -> []
 
 // ─── Children getter / setter ─────────────────────────────────────────────
@@ -262,14 +262,14 @@ let getChildren (kind: NodeKind<'Msg>) : Node<'Msg> list option =
     match kind with
     | NodeKind.Layout layout ->
         match layout with
-        | LayoutKind.Box spec -> Some spec.Children
-        | LayoutKind.SplitPanel spec -> Some spec.Children
-        | LayoutKind.Tabs spec -> Some spec.Children
-        | LayoutKind.Stepper spec -> Some spec.Children
-        | LayoutKind.SummaryList spec -> Some spec.Children
-        | LayoutKind.Disclosure spec -> Some spec.Children
-        | LayoutKind.Modal spec -> Some spec.Children
-        | LayoutKind.ScrollArea spec -> Some spec.Children
+        | NodeKind.Box spec -> Some spec.Children
+        | NodeKind.SplitPanel spec -> Some spec.Children
+        | NodeKind.Tabs spec -> Some spec.Children
+        | NodeKind.Stepper spec -> Some spec.Children
+        | NodeKind.SummaryList spec -> Some spec.Children
+        | NodeKind.Disclosure spec -> Some spec.Children
+        | NodeKind.Modal spec -> Some spec.Children
+        | NodeKind.ScrollArea spec -> Some spec.Children
     // FragmentDecl exposes its `Body` as a
     // single-element children list so the standard tree walkers
     // (`findNode` / `mapNode` / `allNodeIds` / `nodesWithField`) traverse
@@ -291,14 +291,14 @@ let withChildren (kind: NodeKind<'Msg>) (children: Node<'Msg> list) : NodeKind<'
     match kind with
     | NodeKind.Layout layout ->
         match layout with
-        | LayoutKind.Box spec -> Some(NodeKind.Layout(LayoutKind.Box { spec with Children = children }))
-        | LayoutKind.SplitPanel spec -> Some(NodeKind.Layout(LayoutKind.SplitPanel { spec with Children = children }))
-        | LayoutKind.Tabs spec -> Some(NodeKind.Layout(LayoutKind.Tabs { spec with Children = children }))
-        | LayoutKind.Stepper spec -> Some(NodeKind.Layout(LayoutKind.Stepper { spec with Children = children }))
-        | LayoutKind.SummaryList spec -> Some(NodeKind.Layout(LayoutKind.SummaryList { spec with Children = children }))
-        | LayoutKind.Disclosure spec -> Some(NodeKind.Layout(LayoutKind.Disclosure { spec with Children = children }))
-        | LayoutKind.Modal spec -> Some(NodeKind.Layout(LayoutKind.Modal { spec with Children = children }))
-        | LayoutKind.ScrollArea spec -> Some(NodeKind.Layout(LayoutKind.ScrollArea { spec with Children = children }))
+        | NodeKind.Box spec -> Some(NodeKind.Box( { spec with Children = children }))
+        | NodeKind.SplitPanel spec -> Some(NodeKind.SplitPanel( { spec with Children = children }))
+        | NodeKind.Tabs spec -> Some(NodeKind.Tabs( { spec with Children = children }))
+        | NodeKind.Stepper spec -> Some(NodeKind.Stepper( { spec with Children = children }))
+        | NodeKind.SummaryList spec -> Some(NodeKind.SummaryList( { spec with Children = children }))
+        | NodeKind.Disclosure spec -> Some(NodeKind.Disclosure( { spec with Children = children }))
+        | NodeKind.Modal spec -> Some(NodeKind.Modal( { spec with Children = children }))
+        | NodeKind.ScrollArea spec -> Some(NodeKind.ScrollArea( { spec with Children = children }))
     // Re-pack the single-element children list back into the
     // decl's `Body`. Pass-through of a length-1 list happens during the
     // normal `mapNode` traversal (one child was mapped, one comes back).

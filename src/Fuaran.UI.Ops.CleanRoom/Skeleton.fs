@@ -171,25 +171,25 @@ let private ownContentLength (kind: NodeKind<'Msg>) : int =
     match kind with
     | NodeKind.Display display ->
         match display with
-        | DisplayKind.Heading s -> textSourceLength s.Text
-        | DisplayKind.Markdown s -> textSourceLength s.Text
-        | DisplayKind.Badge s -> textSourceLength s.Label
-        | DisplayKind.Metric s -> textSourceLength s.Label + textSourceOptLength s.Subtext
-        | DisplayKind.Callout s -> textSourceLength s.Body + textSourceOptLength s.Heading
-        | DisplayKind.LabelValueRow s -> textSourceLength s.Label
-        | DisplayKind.Link s -> textSourceLength s.Label
-        | DisplayKind.Image s -> textSourceLength s.Alt
-        | DisplayKind.List s -> s.Items |> List.sumBy textSourceLength
-        | DisplayKind.Toast s -> textSourceLength s.Message
-        | DisplayKind.CodeBlock s -> String.length s.Code
-        | DisplayKind.Math s -> String.length s.Source
+        | NodeKind.Heading s -> textSourceLength s.Text
+        | NodeKind.Markdown s -> textSourceLength s.Text
+        | NodeKind.Badge s -> textSourceLength s.Label
+        | NodeKind.Metric s -> textSourceLength s.Label + textSourceOptLength s.Subtext
+        | NodeKind.Callout s -> textSourceLength s.Body + textSourceOptLength s.Heading
+        | NodeKind.LabelValueRow s -> textSourceLength s.Label
+        | NodeKind.Link s -> textSourceLength s.Label
+        | NodeKind.Image s -> textSourceLength s.Alt
+        | NodeKind.List s -> s.Items |> List.sumBy textSourceLength
+        | NodeKind.Toast s -> textSourceLength s.Message
+        | NodeKind.CodeBlock s -> String.length s.Code
+        | NodeKind.Math s -> String.length s.Source
         | _ -> 0
     | NodeKind.Layout layout ->
         match layout with
-        | LayoutKind.Box s -> textSourceOptLength s.Heading
-        | LayoutKind.SummaryList s -> textSourceOptLength s.Heading
-        | LayoutKind.Disclosure s -> textSourceLength s.Heading
-        | LayoutKind.Modal s -> textSourceOptLength s.Heading
+        | NodeKind.Box s -> textSourceOptLength s.Heading
+        | NodeKind.SummaryList s -> textSourceOptLength s.Heading
+        | NodeKind.Disclosure s -> textSourceLength s.Heading
+        | NodeKind.Modal s -> textSourceOptLength s.Heading
         | _ -> 0
     | _ -> 0
 
@@ -202,10 +202,10 @@ let roleOf (kind: NodeKind<'Msg>) : StructuralRole =
     | NodeKind.Layout _ -> StructuralRole.Container
     | NodeKind.Display display ->
         match display with
-        | DisplayKind.Heading _ -> StructuralRole.Heading
-        | DisplayKind.Metric _
-        | DisplayKind.Sparkline _ -> StructuralRole.DataView
-        | DisplayKind.Image _ -> StructuralRole.Media
+        | NodeKind.Heading _ -> StructuralRole.Heading
+        | NodeKind.Metric _
+        | NodeKind.Sparkline _ -> StructuralRole.DataView
+        | NodeKind.Image _ -> StructuralRole.Media
         | _ -> StructuralRole.TextBlock
     | NodeKind.Input _ -> StructuralRole.Interactive
     | NodeKind.Visualisation _ -> StructuralRole.DataView

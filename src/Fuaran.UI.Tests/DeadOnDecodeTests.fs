@@ -31,8 +31,7 @@ let private node (id: string) (kind: NodeKind<Msg>) : Node<Msg> =
 let private stack (id: string) (children: Node<Msg> list) : Node<Msg> =
     node
         id
-        (NodeKind.Layout(
-            LayoutKind.Box
+        (NodeKind.Box(
                 { Layout =
                     BoxLayout.Flex
                         { Direction = Vertical
@@ -74,8 +73,7 @@ let tests =
               let deadForm =
                   node
                       "frm"
-                      (NodeKind.Input(
-                          InputKind.Form
+                      (NodeKind.Form(
                               { Fields =
                                   [ { Id = "name"
                                       Label = TextSource.Literal "Name"
@@ -90,8 +88,7 @@ let tests =
               let closureGrid =
                   node
                       "grid"
-                      (NodeKind.Visualisation(
-                          VisKind.DataGrid
+                      (NodeKind.DataGrid(
                               { Source = Binding.Static Seq.empty
                                 RowKey = Some(fun _ -> "<closure>")
                                 RowKeyField = None
@@ -110,8 +107,7 @@ let tests =
               let closureCall =
                   node
                       "fetch"
-                      (NodeKind.Input(
-                          InputKind.Button
+                      (NodeKind.Button(
                               { Defaults.button<Msg> with
                                   Label = TextSource.Literal "Fetch"
                                   OnClick = Action.Call(ApiEndpoint "/api/x", Some(fun (_: obj) -> NoOp), None) }
@@ -151,8 +147,7 @@ let tests =
               let declarativeForm =
                   node
                       "frm"
-                      (NodeKind.Input(
-                          InputKind.Form
+                      (NodeKind.Form(
                               { Fields =
                                   [ { Id = "name"
                                       Label = TextSource.Literal "Name"
@@ -167,8 +162,7 @@ let tests =
               let fieldGrid =
                   node
                       "grid"
-                      (NodeKind.Visualisation(
-                          VisKind.DataGrid
+                      (NodeKind.DataGrid(
                               { Source = Binding.Static Seq.empty
                                 RowKey = None
                                 RowKeyField = Some "id"
@@ -187,8 +181,7 @@ let tests =
               let declarativeFetch =
                   node
                       "fetch"
-                      (NodeKind.Input(
-                          InputKind.Button
+                      (NodeKind.Button(
                               { Defaults.button<Msg> with
                                   Label = TextSource.Literal "Fetch"
                                   OnClick =
@@ -199,8 +192,7 @@ let tests =
               let upload =
                   node
                       "up"
-                      (NodeKind.Input(
-                          InputKind.FileUpload
+                      (NodeKind.FileUpload(
                               { Label = TextSource.Literal "Upload"
                                 Accept = []
                                 Multiple = false

@@ -79,7 +79,7 @@ let nodeKindName<'Msg> (kind: NodeKind<'Msg>) : string =
     | NodeKind.Layout layout ->
         let inner =
             match layout with
-            | LayoutKind.Box spec ->
+            | NodeKind.Box spec ->
                 match spec.Role, spec.Layout with
                 | BoxRole.Card, _ -> "Card"
                 | (BoxRole.Dashboard, _)
@@ -87,53 +87,53 @@ let nodeKindName<'Msg> (kind: NodeKind<'Msg>) : string =
                 | BoxRole.Separator, _ -> "Separator"
                 | BoxRole.Group, BoxLayout.Grid _ -> "Grid"
                 | BoxRole.Group, BoxLayout.Flex _ -> "Stack"
-            | LayoutKind.SplitPanel _ -> "SplitPanel"
-            | LayoutKind.Tabs _ -> "Tabs"
-            | LayoutKind.Stepper _ -> "Stepper"
-            | LayoutKind.SummaryList _ -> "SummaryList"
-            | LayoutKind.Disclosure _ -> "Disclosure"
-            | LayoutKind.Modal _ -> "Modal"
-            | LayoutKind.ScrollArea _ -> "ScrollArea"
+            | NodeKind.SplitPanel _ -> "SplitPanel"
+            | NodeKind.Tabs _ -> "Tabs"
+            | NodeKind.Stepper _ -> "Stepper"
+            | NodeKind.SummaryList _ -> "SummaryList"
+            | NodeKind.Disclosure _ -> "Disclosure"
+            | NodeKind.Modal _ -> "Modal"
+            | NodeKind.ScrollArea _ -> "ScrollArea"
 
         "Layout." + inner
     | NodeKind.Display display ->
         let inner =
             match display with
-            | DisplayKind.Heading _ -> "Heading"
-            | DisplayKind.Markdown _ -> "Markdown"
-            | DisplayKind.Metric _ -> "Metric"
-            | DisplayKind.Badge _ -> "Badge"
-            | DisplayKind.Sparkline _ -> "Sparkline"
-            | DisplayKind.Callout _ -> "Callout"
-            | DisplayKind.Progress _ -> "Progress"
-            | DisplayKind.Skeleton _ -> "Skeleton"
-            | DisplayKind.LabelValueRow _ -> "LabelValueRow"
-            | DisplayKind.Fact _ -> "Fact"
-            | DisplayKind.Link _ -> "Link"
-            | DisplayKind.Image _ -> "Image"
-            | DisplayKind.List _ -> "List"
-            | DisplayKind.Toast _ -> "Toast"
-            | DisplayKind.CodeBlock _ -> "CodeBlock"
-            | DisplayKind.Math _ -> "Math"
-            | DisplayKind.Drawing _ -> "Drawing"
+            | NodeKind.Heading _ -> "Heading"
+            | NodeKind.Markdown _ -> "Markdown"
+            | NodeKind.Metric _ -> "Metric"
+            | NodeKind.Badge _ -> "Badge"
+            | NodeKind.Sparkline _ -> "Sparkline"
+            | NodeKind.Callout _ -> "Callout"
+            | NodeKind.Progress _ -> "Progress"
+            | NodeKind.Skeleton _ -> "Skeleton"
+            | NodeKind.LabelValueRow _ -> "LabelValueRow"
+            | NodeKind.Fact _ -> "Fact"
+            | NodeKind.Link _ -> "Link"
+            | NodeKind.Image _ -> "Image"
+            | NodeKind.List _ -> "List"
+            | NodeKind.Toast _ -> "Toast"
+            | NodeKind.CodeBlock _ -> "CodeBlock"
+            | NodeKind.Math _ -> "Math"
+            | NodeKind.Drawing _ -> "Drawing"
 
         "Display." + inner
     | NodeKind.Input input ->
         let inner =
             match input with
-            | InputKind.Form _ -> "Form"
-            | InputKind.Filters _ -> "Filters"
-            | InputKind.Button _ -> "Button"
-            | InputKind.FileUpload _ -> "FileUpload"
-            | InputKind.Select _ -> "Select"
+            | NodeKind.Form _ -> "Form"
+            | NodeKind.Filters _ -> "Filters"
+            | NodeKind.Button _ -> "Button"
+            | NodeKind.FileUpload _ -> "FileUpload"
+            | NodeKind.Select _ -> "Select"
 
         "Input." + inner
     | NodeKind.Visualisation vis ->
         let inner =
             match vis with
-            | VisKind.DataGrid _ -> "Grid"
-            | VisKind.Chart _ -> "Chart"
-            | VisKind.Map _ -> "Map"
+            | NodeKind.DataGrid _ -> "Grid"
+            | NodeKind.Chart _ -> "Chart"
+            | NodeKind.Map _ -> "Map"
 
         "Visualisation." + inner
     | NodeKind.Custom(moduleId, componentId, _, _, _) -> sprintf "Custom.%s.%s" moduleId componentId
@@ -785,14 +785,14 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
     | NodeKind.Layout layout ->
         let children =
             match layout with
-            | LayoutKind.Box s -> s.Children
-            | LayoutKind.SplitPanel s -> s.Children
-            | LayoutKind.Tabs s -> s.Children
-            | LayoutKind.Stepper s -> s.Children
-            | LayoutKind.SummaryList s -> s.Children
-            | LayoutKind.Disclosure s -> s.Children
-            | LayoutKind.Modal s -> s.Children
-            | LayoutKind.ScrollArea s -> s.Children
+            | NodeKind.Box s -> s.Children
+            | NodeKind.SplitPanel s -> s.Children
+            | NodeKind.Tabs s -> s.Children
+            | NodeKind.Stepper s -> s.Children
+            | NodeKind.SummaryList s -> s.Children
+            | NodeKind.Disclosure s -> s.Children
+            | NodeKind.Modal s -> s.Children
+            | NodeKind.ScrollArea s -> s.Children
 
         children |> List.fold collectFragments acc
     | NodeKind.ErrorBoundary spec ->
@@ -965,12 +965,12 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
 
 and private layoutKeys<'Msg> (channel: KeyChannel) (layout: LayoutKind<'Msg>) : string list * Node<'Msg> list =
     match layout with
-    | LayoutKind.Box s -> keysOfTextOpt channel s.Heading, s.Children
-    | LayoutKind.SplitPanel s -> [], s.Children
-    | LayoutKind.SummaryList s -> keysOfTextOpt channel s.Heading, s.Children
-    | LayoutKind.Stepper s -> keysOfBinding channel s.ActiveStep, s.Children
-    | LayoutKind.Disclosure s -> (keysOfText channel s.Heading @ keysOfBinding channel s.Open), s.Children
-    | LayoutKind.Tabs s ->
+    | NodeKind.Box s -> keysOfTextOpt channel s.Heading, s.Children
+    | NodeKind.SplitPanel s -> [], s.Children
+    | NodeKind.SummaryList s -> keysOfTextOpt channel s.Heading, s.Children
+    | NodeKind.Stepper s -> keysOfBinding channel s.ActiveStep, s.Children
+    | NodeKind.Disclosure s -> (keysOfText channel s.Heading @ keysOfBinding channel s.Open), s.Children
+    | NodeKind.Tabs s ->
         let headerKeys =
             match s.TabHeaders with
             | Some headers ->
@@ -982,53 +982,53 @@ and private layoutKeys<'Msg> (channel: KeyChannel) (layout: LayoutKind<'Msg>) : 
          @ keysOfBindingOpt channel s.ActiveTag
          @ headerKeys),
         s.Children
-    | LayoutKind.Modal s -> (keysOfTextOpt channel s.Heading @ keysOfBinding channel s.Open), s.Children
-    | LayoutKind.ScrollArea s -> [], s.Children
+    | NodeKind.Modal s -> (keysOfTextOpt channel s.Heading @ keysOfBinding channel s.Open), s.Children
+    | NodeKind.ScrollArea s -> [], s.Children
 
 and private displayKeys<'Msg> (channel: KeyChannel) (display: DisplayKind<'Msg>) : string list =
     match display with
-    | DisplayKind.Heading h -> keysOfText channel h.Text
-    | DisplayKind.Markdown m -> keysOfText channel m.Text
-    | DisplayKind.Metric k ->
+    | NodeKind.Heading h -> keysOfText channel h.Text
+    | NodeKind.Markdown m -> keysOfText channel m.Text
+    | NodeKind.Metric k ->
         keysOfText channel k.Label
         @ keysOfBinding channel k.Value
         @ keysOfBindingOpt channel k.Trend
         @ keysOfTextOpt channel k.Subtext
-    | DisplayKind.Badge b -> keysOfText channel b.Label
-    | DisplayKind.Sparkline s -> keysOfBinding channel s.Source
-    | DisplayKind.Callout c -> keysOfTextOpt channel c.Heading @ keysOfText channel c.Body
-    | DisplayKind.Progress p ->
+    | NodeKind.Badge b -> keysOfText channel b.Label
+    | NodeKind.Sparkline s -> keysOfBinding channel s.Source
+    | NodeKind.Callout c -> keysOfTextOpt channel c.Heading @ keysOfText channel c.Body
+    | NodeKind.Progress p ->
         keysOfBinding channel p.Fraction
         @ keysOfTextOpt channel p.Label
         @ keysOfTextOpt channel p.Caveat
-    | DisplayKind.Skeleton _ -> []
-    | DisplayKind.LabelValueRow r ->
+    | NodeKind.Skeleton _ -> []
+    | NodeKind.LabelValueRow r ->
         keysOfText channel r.Label
         @ keysOfBinding channel r.Value
         @ keysOfTextOpt channel r.Help
-    | DisplayKind.Fact fa ->
+    | NodeKind.Fact fa ->
         keysOfText channel fa.Label
         @ keysOfText channel fa.Value
         @ keysOfTextOpt channel fa.Help
-    | DisplayKind.Link l -> keysOfBinding channel l.Href @ keysOfText channel l.Label
-    | DisplayKind.Image i -> keysOfBinding channel i.Src @ keysOfText channel i.Alt
-    | DisplayKind.List l -> l.Items |> List.collect (keysOfText channel)
-    | DisplayKind.Toast t -> keysOfText channel t.Message @ keysOfBinding channel t.Open
+    | NodeKind.Link l -> keysOfBinding channel l.Href @ keysOfText channel l.Label
+    | NodeKind.Image i -> keysOfBinding channel i.Src @ keysOfText channel i.Alt
+    | NodeKind.List l -> l.Items |> List.collect (keysOfText channel)
+    | NodeKind.Toast t -> keysOfText channel t.Message @ keysOfBinding channel t.Open
     // CodeBlock + Math carry plain strings, not bindings — no reactive keys.
-    | DisplayKind.CodeBlock _ -> []
-    | DisplayKind.Math _ -> []
+    | NodeKind.CodeBlock _ -> []
+    | NodeKind.Math _ -> []
     // Phase 524 ships a placeholder render; the reactive DrawStyle-colour keys
     // are wired with the real SVG renderer in Phase 525.
-    | DisplayKind.Drawing _ -> []
+    | NodeKind.Drawing _ -> []
 
 and private inputKeys<'Msg> (channel: KeyChannel) (input: InputKind<'Msg>) : string list =
     match input with
-    | InputKind.Button b ->
+    | NodeKind.Button b ->
         keysOfText channel b.Label
         @ keysOfTextOpt channel b.Tooltip
         @ keysOfBindingOpt channel b.Disabled
-    | InputKind.FileUpload fu -> keysOfText channel fu.Label @ keysOfBindingOpt channel fu.Disabled
-    | InputKind.Select s ->
+    | NodeKind.FileUpload fu -> keysOfText channel fu.Label @ keysOfBindingOpt channel fu.Disabled
+    | NodeKind.Select s ->
         keysOfText channel s.Label
         @ keysOfBinding channel s.Source
         @ keysOfBinding channel s.Value
@@ -1036,7 +1036,7 @@ and private inputKeys<'Msg> (channel: KeyChannel) (input: InputKind<'Msg>) : str
         @ keysOfBindingOpt channel s.Values
         @ keysOfTextOpt channel s.Placeholder
         @ keysOfBindingOpt channel s.Disabled
-    | InputKind.Form f ->
+    | NodeKind.Form f ->
         let fieldKeys =
             f.Fields
             |> List.collect (fun field ->
@@ -1047,21 +1047,21 @@ and private inputKeys<'Msg> (channel: KeyChannel) (input: InputKind<'Msg>) : str
         keysOfText channel f.SubmitLabel
         @ keysOfBindingOpt channel f.Disabled
         @ fieldKeys
-    | InputKind.Filters filters ->
+    | NodeKind.Filters filters ->
         filters
         |> List.collect (fun fs -> keysOfText channel fs.Label @ keysOfFormFieldKind channel fs.Field)
 
 and private visKeys<'Msg> (channel: KeyChannel) (vis: VisKind<'Msg>) : string list =
     match vis with
-    | VisKind.DataGrid g ->
+    | NodeKind.DataGrid g ->
         keysOfBinding channel g.Source
         @ (match g.StaticRows with
            | Some(headers, rows) ->
                (headers |> List.collect (keysOfText channel))
                @ (rows |> List.collect (List.collect (keysOfText channel)))
            | None -> [])
-    | VisKind.Chart c -> keysOfBinding channel c.Source @ keysOfTextOpt channel c.Title
-    | VisKind.Map m -> keysOfBinding channel m.Source
+    | NodeKind.Chart c -> keysOfBinding channel c.Source @ keysOfTextOpt channel c.Title
+    | NodeKind.Map m -> keysOfBinding channel m.Source
 
 // ── Public channel aliases ──────────────────────────────────────────────────
 //  The State-channel names are the Phase 106 public surface (the .NET test runner + reactive host
@@ -1134,51 +1134,43 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
         let recur = namespaceNode prefix
 
         match layout with
-        | LayoutKind.Box s ->
-            NodeKind.Layout(
-                LayoutKind.Box
+        | NodeKind.Box s ->
+            NodeKind.Box(
                     { s with
                         Children = List.map recur s.Children }
             )
-        | LayoutKind.SplitPanel s ->
-            NodeKind.Layout(
-                LayoutKind.SplitPanel
+        | NodeKind.SplitPanel s ->
+            NodeKind.SplitPanel(
                     { s with
                         Children = List.map recur s.Children }
             )
-        | LayoutKind.Tabs s ->
-            NodeKind.Layout(
-                LayoutKind.Tabs
+        | NodeKind.Tabs s ->
+            NodeKind.Tabs(
                     { s with
                         Children = List.map recur s.Children }
             )
-        | LayoutKind.Stepper s ->
-            NodeKind.Layout(
-                LayoutKind.Stepper
+        | NodeKind.Stepper s ->
+            NodeKind.Stepper(
                     { s with
                         Children = List.map recur s.Children }
             )
-        | LayoutKind.SummaryList s ->
-            NodeKind.Layout(
-                LayoutKind.SummaryList
+        | NodeKind.SummaryList s ->
+            NodeKind.SummaryList(
                     { s with
                         Children = List.map recur s.Children }
             )
-        | LayoutKind.Disclosure s ->
-            NodeKind.Layout(
-                LayoutKind.Disclosure
+        | NodeKind.Disclosure s ->
+            NodeKind.Disclosure(
                     { s with
                         Children = List.map recur s.Children }
             )
-        | LayoutKind.Modal s ->
-            NodeKind.Layout(
-                LayoutKind.Modal
+        | NodeKind.Modal s ->
+            NodeKind.Modal(
                     { s with
                         Children = List.map recur s.Children }
             )
-        | LayoutKind.ScrollArea s ->
-            NodeKind.Layout(
-                LayoutKind.ScrollArea
+        | NodeKind.ScrollArea s ->
+            NodeKind.ScrollArea(
                     { s with
                         Children = List.map recur s.Children }
             )
@@ -1524,7 +1516,7 @@ and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layo
     // <div class="fuaran-layout-dashboard">; Group+Grid → grid div; Group+Flex
     // → stack div; Separator role → <hr class="fuaran-layout-separator"> (the
     // retired `Divider`, Phase 459).
-    | LayoutKind.Box spec ->
+    | NodeKind.Box spec ->
         match spec.Role, spec.Layout with
         | BoxRole.Card, _ ->
             Html.section
@@ -1585,7 +1577,7 @@ and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layo
                    | None -> [])
                 @ [ prop.children (spec.Children |> List.map (render ctx)) ]
             )
-    | LayoutKind.SplitPanel spec ->
+    | NodeKind.SplitPanel spec ->
         // Two-child shape — the first child takes `Weight` of the row, the
         // second child takes `1 - Weight`. Renders both even when the child
         // count is more than 2 (extras land in the second pane); render
@@ -1614,7 +1606,7 @@ and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layo
                         [ prop.className "fuaran-split-pane fuaran-split-pane-right"
                           prop.style [ style.custom ("flex", sprintf "%f 1 0" weightRight) ]
                           prop.children rightChildren ] ] ]
-    | LayoutKind.Tabs spec ->
+    | NodeKind.Tabs spec ->
         // Worked-example follow-on:
         // TabsSpec extends with `ActiveIndex: Binding<int>` and
         // `OnSelect: int -> Action<'Msg>`. The renderer extends
@@ -1630,7 +1622,7 @@ and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layo
         // when TabHeaders is None — legacy authoring shape.
         let tabsLabelFromChild (child: Node<'Msg>) : string =
             match child.Kind with
-            | NodeKind.Layout(LayoutKind.Box { Role = BoxRole.Card
+            | NodeKind.Box( { Role = BoxRole.Card
                                                Heading = Some h }) -> renderText ctx h
             | _ ->
                 match child.Id with
@@ -1856,7 +1848,7 @@ and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layo
                                           prop.children [ render ctx childNode ] ] ]
                               | None -> []
                           ) ] ] ]
-    | LayoutKind.SummaryList spec ->
+    | NodeKind.SummaryList spec ->
         // Feliz-parity additive: single-card-of-rows
         // shape — typically wraps LabelValueRow children with divider rules
         // between them (rendered via CSS, not per-child wrappers). Optional
@@ -1873,7 +1865,7 @@ and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layo
                     Html.div
                         [ prop.className "fuaran-summary-list-body"
                           prop.children (spec.Children |> List.map (render ctx)) ] ] ]
-    | LayoutKind.Disclosure spec ->
+    | NodeKind.Disclosure spec ->
         // Additive: HTML-native `<details>` / `<summary>`
         // accordion. The `Open` binding overlays controlled-mode semantics
         // via React's `open` prop (`prop.isOpen`); when the binding resolves
@@ -1922,7 +1914,7 @@ and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layo
                     Html.div
                         [ prop.className "fuaran-disclosure-body"
                           prop.children (spec.Children |> List.map (render ctx)) ] ] ]
-    | LayoutKind.Stepper spec ->
+    | NodeKind.Stepper spec ->
         // Each child becomes a numbered step; the active step is read from
         // `spec.ActiveStep` (a Binding<int>). Renderer marks the active
         // step with a class so CSS can style it. A step-header click fires
@@ -1955,7 +1947,7 @@ and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layo
                               | Some node -> [ render ctx node ]
                               | None -> []
                           ) ] ] ]
-    | LayoutKind.Modal spec ->
+    | NodeKind.Modal spec ->
         // Phase 289 overlay render-fidelity contract: the overlay is ALWAYS in
         // the DOM (no React portal), positioned + z-indexed by CSS; closed =
         // the `hidden` attribute, not an absent node — so SSR and CSR emit the
@@ -2010,7 +2002,7 @@ and private renderLayout (ctx: RenderContext<'Msg>) (parentNodeId: string) (layo
                                       [ prop.className "fuaran-modal-body"
                                         prop.children (spec.Children |> List.map (render ctx)) ] ]
                           ) ] ] ]
-    | LayoutKind.ScrollArea spec ->
+    | NodeKind.ScrollArea spec ->
         // Phase 289 — overflow/scroll container. The scroll axis is a class
         // (CSS owns `overflow`); optional pixel bounds are inline max-height /
         // max-width via the shared Feliz `style` DSL (identical SSR↔CSR).
@@ -2044,7 +2036,7 @@ and private renderDisplay
     (display: DisplayKind<'Msg>)
     : ReactElement =
     match display with
-    | DisplayKind.Heading spec ->
+    | NodeKind.Heading spec ->
         // Feliz-parity additive: Heading.Variant
         // appends `fuaran-heading-{variant}` so eyebrow / caption / lead
         // styling can pick out the shape without overriding `<h{Level}>`
@@ -2069,7 +2061,7 @@ and private renderDisplay
         | 4 -> Html.h4 props
         | 5 -> Html.h5 props
         | _ -> Html.h6 props
-    | DisplayKind.Markdown spec ->
+    | NodeKind.Markdown spec ->
         // Phase 292: one deterministic GFM renderer in Renderer.Core. The same
         // `Markdown.toHtml` runs on Fable (client) and .NET (Renderer.Server),
         // so SSR↔CSR output is byte-identical by construction (was: npm `marked`
@@ -2077,27 +2069,27 @@ and private renderDisplay
         let html = Markdown.toHtml (renderText ctx spec.Text)
 
         Html.div [ prop.className "fuaran-markdown"; prop.dangerouslySetInnerHTML html ]
-    | DisplayKind.Metric spec -> renderMetric ctx parentNodeId state spec
-    | DisplayKind.Badge spec ->
+    | NodeKind.Metric spec -> renderMetric ctx parentNodeId state spec
+    | NodeKind.Badge spec ->
         Html.span
             [ prop.className (sprintf "fuaran-badge fuaran-badge-%s" (badgeVariantClass spec.Variant))
               prop.text (renderText ctx spec.Label) ]
-    | DisplayKind.Skeleton spec ->
+    | NodeKind.Skeleton spec ->
         Html.div
             [ prop.className "fuaran-skeleton"
               prop.children [ for _ in 1 .. spec.Rows -> Html.div [ prop.className "fuaran-skeleton-row" ] ] ]
-    | DisplayKind.Callout spec -> renderCallout ctx spec
-    | DisplayKind.Progress spec -> renderProgress ctx parentNodeId state spec
-    | DisplayKind.Sparkline spec -> renderSparkline ctx spec
-    | DisplayKind.Drawing spec ->
+    | NodeKind.Callout spec -> renderCallout ctx spec
+    | NodeKind.Progress spec -> renderProgress ctx parentNodeId state spec
+    | NodeKind.Sparkline spec -> renderSparkline ctx spec
+    | NodeKind.Drawing spec ->
         // Phase 525 — first-party inline SVG from the canonical Core builder
         // (the ONE serialisation the SSR + TS + Python legs also emit, so the
         // client / server are parity by construction). Rides
         // `dangerouslySetInnerHTML` like Markdown/Math — an inert display node.
         Html.div [ prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) spec) ]
-    | DisplayKind.LabelValueRow spec -> renderLabelValueRow ctx parentNodeId state spec
-    | DisplayKind.Fact spec -> renderFact ctx spec
-    | DisplayKind.Link spec ->
+    | NodeKind.LabelValueRow spec -> renderLabelValueRow ctx parentNodeId state spec
+    | NodeKind.Fact spec -> renderFact ctx spec
+    | NodeKind.Link spec ->
         // A real `<a href>` — crawlable + works with JS disabled. `href`
         // resolves the binding then passes through `Sanitize.sanitizeUrlOrBlank`
         // (blocks javascript:/vbscript:/raw data:; rejected URLs collapse to
@@ -2123,7 +2115,7 @@ and private renderDisplay
             @ optionalAttrs
             @ [ prop.text (renderText ctx spec.Label) ]
         )
-    | DisplayKind.Image spec ->
+    | NodeKind.Image spec ->
         // Phase 287 — real `<img>`; `src` resolves then passes through
         // `Sanitize.sanitizeUrlOrBlank` (blocks javascript:/vbscript:/file:);
         // `alt` is mandatory; `variant` appends an Avatar / Rounded class.
@@ -2142,7 +2134,7 @@ and private renderDisplay
             [ prop.className variantClass
               prop.src safeSrc
               prop.alt (renderText ctx spec.Alt) ]
-    | DisplayKind.List spec ->
+    | NodeKind.List spec ->
         // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
         let items =
             spec.Items
@@ -2152,7 +2144,7 @@ and private renderDisplay
             Html.ol [ prop.className "fuaran-list fuaran-list-ordered"; prop.children items ]
         else
             Html.ul [ prop.className "fuaran-list fuaran-list-unordered"; prop.children items ]
-    | DisplayKind.Toast spec ->
+    | NodeKind.Toast spec ->
         // Phase 289 overlay render-fidelity contract: ALWAYS in the DOM (no
         // portal); closed = the `hidden` attribute. `role="status"` +
         // `aria-live="polite"` announce the message without interrupting.
@@ -2191,7 +2183,7 @@ and private renderDisplay
                           prop.text (renderText ctx spec.Message) ] ]
                   @ dismissEls
               ) ]
-    | DisplayKind.CodeBlock spec ->
+    | NodeKind.CodeBlock spec ->
         // Phase 290 — DETERMINISTIC `<pre><code>` (HTML-escaped via `prop.text`,
         // NO markdown library), byte-identical across all hosts + SSR. Syntax
         // highlighting is a client-only post-hydration enhancement that targets
@@ -2232,7 +2224,7 @@ and private renderDisplay
                                           prop.text spec.Code ] ] ] ]
                 ) ]
         )
-    | DisplayKind.Math spec ->
+    | NodeKind.Math spec ->
         // Phase 658 — DETERMINISTIC native MathML for the closed subset (real
         // superscripts / fractions with NO JavaScript); the raw escaped LaTeX
         // source span for out-of-subset input (today's fallback, unchanged).
@@ -2503,11 +2495,11 @@ and private renderSparkline (ctx: RenderContext<'Msg>) (spec: SparklineSpec) : R
 
 and private renderInput (ctx: RenderContext<'Msg>) (input: InputKind<'Msg>) : ReactElement =
     match input with
-    | InputKind.Button spec -> renderButton ctx spec
-    | InputKind.Select spec -> renderSelect ctx spec
-    | InputKind.Form spec -> renderForm ctx spec
-    | InputKind.Filters specs -> renderFilters ctx specs
-    | InputKind.FileUpload spec -> renderFileUpload ctx spec
+    | NodeKind.Button spec -> renderButton ctx spec
+    | NodeKind.Select spec -> renderSelect ctx spec
+    | NodeKind.Form spec -> renderForm ctx spec
+    | NodeKind.Filters specs -> renderFilters ctx specs
+    | NodeKind.FileUpload spec -> renderFileUpload ctx spec
 
 and private renderButton (ctx: RenderContext<'Msg>) (spec: ButtonSpec<'Msg>) : ReactElement =
     let unwired = containsUnwiredAction spec.OnClick
@@ -3298,7 +3290,7 @@ and private renderVis
     (vis: VisKind<'Msg>)
     : ReactElement =
     match vis with
-    | VisKind.DataGrid spec ->
+    | NodeKind.DataGrid spec ->
         // Phase 393 — a static read-only grid renders the semantic <table> leg (byte-identical to the
         // retired Table); a data-bound grid takes the ordinary grid path.
         match spec.StaticRows with
@@ -3309,8 +3301,8 @@ and private renderVis
                   Rows = rows
                   OnRowClick = None }
         | None -> renderGrid ctx parentNodeId state spec
-    | VisKind.Chart spec -> renderChart ctx parentNodeId state spec
-    | VisKind.Map spec -> renderMap ctx parentNodeId state spec
+    | NodeKind.Chart spec -> renderChart ctx parentNodeId state spec
+    | NodeKind.Map spec -> renderMap ctx parentNodeId state spec
 
 and private renderGrid
     (ctx: RenderContext<'Msg>)

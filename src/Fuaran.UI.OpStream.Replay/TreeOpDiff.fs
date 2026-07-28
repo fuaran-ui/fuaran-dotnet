@@ -345,40 +345,40 @@ module TreeOpDiff =
                 []
 
         match a.Kind, b.Kind with
-        | NodeKind.Display(DisplayKind.Heading sa), NodeKind.Display(DisplayKind.Heading sb) ->
+        | NodeKind.Heading( sa), NodeKind.Heading( sb) ->
             prop
                 "Level"
                 (pvInt sb.Level)
                 { a with
-                    Kind = disp (DisplayKind.Heading { sa with Level = sb.Level }) }
+                    Kind = disp (NodeKind.Heading { sa with Level = sb.Level }) }
             @ prop
                 "Text"
                 (pvText sb.Text)
                 { a with
-                    Kind = disp (DisplayKind.Heading { sa with Text = sb.Text }) }
+                    Kind = disp (NodeKind.Heading { sa with Text = sb.Text }) }
             @ prop
                 "Variant"
                 (pvHeadingVariant sb.Variant)
                 { a with
-                    Kind = disp (DisplayKind.Heading { sa with Variant = sb.Variant }) }
-        | NodeKind.Display(DisplayKind.Markdown sa), NodeKind.Display(DisplayKind.Markdown sb) ->
+                    Kind = disp (NodeKind.Heading { sa with Variant = sb.Variant }) }
+        | NodeKind.Markdown( sa), NodeKind.Markdown( sb) ->
             prop
                 "Text"
                 (pvText sb.Text)
                 { a with
-                    Kind = disp (DisplayKind.Markdown { sa with Text = sb.Text }) }
-        | NodeKind.Display(DisplayKind.Badge sa), NodeKind.Display(DisplayKind.Badge sb) ->
+                    Kind = disp (NodeKind.Markdown { sa with Text = sb.Text }) }
+        | NodeKind.Badge( sa), NodeKind.Badge( sb) ->
             prop
                 "Label"
                 (pvText sb.Label)
                 { a with
-                    Kind = disp (DisplayKind.Badge { sa with Label = sb.Label }) }
+                    Kind = disp (NodeKind.Badge { sa with Label = sb.Label }) }
             @ prop
                 "Variant"
                 (pvBadgeVariant sb.Variant)
                 { a with
-                    Kind = disp (DisplayKind.Badge { sa with Variant = sb.Variant }) }
-        | NodeKind.Display(DisplayKind.Metric sa), NodeKind.Display(DisplayKind.Metric sb) ->
+                    Kind = disp (NodeKind.Badge { sa with Variant = sb.Variant }) }
+        | NodeKind.Metric( sa), NodeKind.Metric( sb) ->
             // Scalar fields + the Source binding slot. The optional Trend slot
             // (Binding option) falls to the EditNode floor (ReplaceBinding only
             // sets Some).
@@ -386,76 +386,76 @@ module TreeOpDiff =
                 "Label"
                 (pvText sb.Label)
                 { a with
-                    Kind = disp (DisplayKind.Metric { sa with Label = sb.Label }) }
+                    Kind = disp (NodeKind.Metric { sa with Label = sb.Label }) }
             @ prop
                 "Format"
                 (pvCellFormat sb.Format)
                 { a with
-                    Kind = disp (DisplayKind.Metric { sa with Format = sb.Format }) }
+                    Kind = disp (NodeKind.Metric { sa with Format = sb.Format }) }
             @ prop
                 "Tone"
                 (pvTone sb.Tone)
                 { a with
-                    Kind = disp (DisplayKind.Metric { sa with Tone = sb.Tone }) }
+                    Kind = disp (NodeKind.Metric { sa with Tone = sb.Tone }) }
             @ prop
                 "Weight"
                 (pvWeight sb.Weight)
                 { a with
-                    Kind = disp (DisplayKind.Metric { sa with Weight = sb.Weight }) }
+                    Kind = disp (NodeKind.Metric { sa with Weight = sb.Weight }) }
             @ prop
                 "Emphasis"
                 (pvEmphasis sb.Emphasis)
                 { a with
-                    Kind = disp (DisplayKind.Metric { sa with Emphasis = sb.Emphasis }) }
+                    Kind = disp (NodeKind.Metric { sa with Emphasis = sb.Emphasis }) }
             @ bind
                 "Value"
                 (toObjBinding sb.Value)
                 { a with
-                    Kind = disp (DisplayKind.Metric { sa with Value = sb.Value }) }
-        | NodeKind.Display(DisplayKind.Callout sa), NodeKind.Display(DisplayKind.Callout sb) ->
+                    Kind = disp (NodeKind.Metric { sa with Value = sb.Value }) }
+        | NodeKind.Callout( sa), NodeKind.Callout( sb) ->
             prop
                 "Tone"
                 (pvTone sb.Tone)
                 { a with
-                    Kind = disp (DisplayKind.Callout { sa with Tone = sb.Tone }) }
+                    Kind = disp (NodeKind.Callout { sa with Tone = sb.Tone }) }
             @ propOpt
                 "Heading"
                 (pvTextOpt sb.Heading)
                 { a with
-                    Kind = disp (DisplayKind.Callout { sa with Heading = sb.Heading }) }
+                    Kind = disp (NodeKind.Callout { sa with Heading = sb.Heading }) }
             @ prop
                 "Body"
                 (pvText sb.Body)
                 { a with
-                    Kind = disp (DisplayKind.Callout { sa with Body = sb.Body }) }
+                    Kind = disp (NodeKind.Callout { sa with Body = sb.Body }) }
             @ propOpt
                 "Icon"
                 (pvIconOpt sb.Icon)
                 { a with
-                    Kind = disp (DisplayKind.Callout { sa with Icon = sb.Icon }) }
+                    Kind = disp (NodeKind.Callout { sa with Icon = sb.Icon }) }
             @ prop
                 "Dismissable"
                 (pvBool sb.Dismissable)
                 { a with
-                    Kind = disp (DisplayKind.Callout { sa with Dismissable = sb.Dismissable }) }
-        | NodeKind.Display(DisplayKind.Progress sa), NodeKind.Display(DisplayKind.Progress sb) ->
+                    Kind = disp (NodeKind.Callout { sa with Dismissable = sb.Dismissable }) }
+        | NodeKind.Progress( sa), NodeKind.Progress( sb) ->
             propOpt
                 "Label"
                 (pvTextOpt sb.Label)
                 { a with
-                    Kind = disp (DisplayKind.Progress { sa with Label = sb.Label }) }
+                    Kind = disp (NodeKind.Progress { sa with Label = sb.Label }) }
             @ propOpt
                 "Caveat"
                 (pvTextOpt sb.Caveat)
                 { a with
-                    Kind = disp (DisplayKind.Progress { sa with Caveat = sb.Caveat }) }
+                    Kind = disp (NodeKind.Progress { sa with Caveat = sb.Caveat }) }
             @ prop
                 "Indeterminate"
                 (pvBool sb.Indeterminate)
                 { a with
                     Kind =
                         disp (
-                            DisplayKind.Progress
+                            NodeKind.Progress
                                 { sa with
                                     Indeterminate = sb.Indeterminate }
                         ) }
@@ -463,77 +463,77 @@ module TreeOpDiff =
                 "Tone"
                 (pvTone sb.Tone)
                 { a with
-                    Kind = disp (DisplayKind.Progress { sa with Tone = sb.Tone }) }
+                    Kind = disp (NodeKind.Progress { sa with Tone = sb.Tone }) }
             @ bind
                 "Fraction"
                 (toObjBinding sb.Fraction)
                 { a with
-                    Kind = disp (DisplayKind.Progress { sa with Fraction = sb.Fraction }) }
-        | NodeKind.Display(DisplayKind.LabelValueRow sa), NodeKind.Display(DisplayKind.LabelValueRow sb) ->
+                    Kind = disp (NodeKind.Progress { sa with Fraction = sb.Fraction }) }
+        | NodeKind.LabelValueRow( sa), NodeKind.LabelValueRow( sb) ->
             prop
                 "Label"
                 (pvText sb.Label)
                 { a with
-                    Kind = disp (DisplayKind.LabelValueRow { sa with Label = sb.Label }) }
+                    Kind = disp (NodeKind.LabelValueRow { sa with Label = sb.Label }) }
             @ prop
                 "Format"
                 (pvCellFormat sb.Format)
                 { a with
-                    Kind = disp (DisplayKind.LabelValueRow { sa with Format = sb.Format }) }
+                    Kind = disp (NodeKind.LabelValueRow { sa with Format = sb.Format }) }
             @ prop
                 "Emphasis"
                 (pvBool sb.Emphasis)
                 { a with
-                    Kind = disp (DisplayKind.LabelValueRow { sa with Emphasis = sb.Emphasis }) }
+                    Kind = disp (NodeKind.LabelValueRow { sa with Emphasis = sb.Emphasis }) }
             @ propOpt
                 "Help"
                 (pvTextOpt sb.Help)
                 { a with
-                    Kind = disp (DisplayKind.LabelValueRow { sa with Help = sb.Help }) }
+                    Kind = disp (NodeKind.LabelValueRow { sa with Help = sb.Help }) }
             @ bind
                 "Value"
                 (toObjBinding sb.Value)
                 { a with
-                    Kind = disp (DisplayKind.LabelValueRow { sa with Value = sb.Value }) }
-        | NodeKind.Display(DisplayKind.Link sa), NodeKind.Display(DisplayKind.Link sb) ->
+                    Kind = disp (NodeKind.LabelValueRow { sa with Value = sb.Value }) }
+        | NodeKind.Link( sa), NodeKind.Link( sb) ->
             prop
                 "Label"
                 (pvText sb.Label)
                 { a with
-                    Kind = disp (DisplayKind.Link { sa with Label = sb.Label }) }
+                    Kind = disp (NodeKind.Link { sa with Label = sb.Label }) }
             @ propOpt
                 "Rel"
                 (pvStrOpt sb.Rel)
                 { a with
-                    Kind = disp (DisplayKind.Link { sa with Rel = sb.Rel }) }
+                    Kind = disp (NodeKind.Link { sa with Rel = sb.Rel }) }
             @ propOpt
                 "Target"
                 (pvStrOpt sb.Target)
                 { a with
-                    Kind = disp (DisplayKind.Link { sa with Target = sb.Target }) }
+                    Kind = disp (NodeKind.Link { sa with Target = sb.Target }) }
             @ prop
                 "Download"
                 (pvBool sb.Download)
                 { a with
-                    Kind = disp (DisplayKind.Link { sa with Download = sb.Download }) }
+                    Kind = disp (NodeKind.Link { sa with Download = sb.Download }) }
             @ bind
                 "Href"
                 (toObjBinding sb.Href)
                 { a with
-                    Kind = disp (DisplayKind.Link { sa with Href = sb.Href }) }
-        | NodeKind.Display(DisplayKind.Sparkline sa), NodeKind.Display(DisplayKind.Sparkline sb) ->
+                    Kind = disp (NodeKind.Link { sa with Href = sb.Href }) }
+        | NodeKind.Sparkline( sa), NodeKind.Sparkline( sb) ->
             bind
                 "Source"
                 (toObjBinding sb.Source)
                 { a with
-                    Kind = disp (DisplayKind.Sparkline { sa with Source = sb.Source }) }
-        | NodeKind.Display(DisplayKind.Skeleton sa), NodeKind.Display(DisplayKind.Skeleton sb) ->
+                    Kind = disp (NodeKind.Sparkline { sa with Source = sb.Source }) }
+        | NodeKind.Skeleton( sa), NodeKind.Skeleton( sb) ->
             prop
                 "Rows"
                 (pvInt sb.Rows)
                 { a with
-                    Kind = disp (DisplayKind.Skeleton { sa with Rows = sb.Rows }) }
-        | NodeKind.Layout(LayoutKind.Box sa), NodeKind.Layout(LayoutKind.Box sb) ->
+                    Kind = disp (NodeKind.Skeleton { sa with Rows = sb.Rows }) }
+        | NodeKind.Box( sa), NodeKind.Box( sb) ->
             // Phase 390 — diff the layout-mode fields (mirroring the retired
             // Stack/GridLayout diffs) + Heading. Propose-then-verify (below)
             // makes this safe: a mode or role change these granular ops can't
@@ -547,7 +547,7 @@ module TreeOpDiff =
                         { a with
                             Kind =
                                 lay (
-                                    LayoutKind.Box
+                                    NodeKind.Box
                                         { sa with
                                             Layout = BoxLayout.Flex { fa with Direction = fb.Direction } }
                                 ) }
@@ -557,7 +557,7 @@ module TreeOpDiff =
                         { a with
                             Kind =
                                 lay (
-                                    LayoutKind.Box
+                                    NodeKind.Box
                                         { sa with
                                             Layout = BoxLayout.Flex { fa with Wrap = fb.Wrap } }
                                 ) }
@@ -568,7 +568,7 @@ module TreeOpDiff =
                         { a with
                             Kind =
                                 lay (
-                                    LayoutKind.Box
+                                    NodeKind.Box
                                         { sa with
                                             Layout = BoxLayout.Grid { ga with Cols = gb.Cols } }
                                 ) }
@@ -578,7 +578,7 @@ module TreeOpDiff =
                         { a with
                             Kind =
                                 lay (
-                                    LayoutKind.Box
+                                    NodeKind.Box
                                         { sa with
                                             Layout =
                                                 BoxLayout.Grid
@@ -592,47 +592,47 @@ module TreeOpDiff =
                 "Heading"
                 (pvTextOpt sb.Heading)
                 { a with
-                    Kind = lay (LayoutKind.Box { sa with Heading = sb.Heading }) }
-        | NodeKind.Layout(LayoutKind.SplitPanel sa), NodeKind.Layout(LayoutKind.SplitPanel sb) ->
+                    Kind = lay (NodeKind.Box { sa with Heading = sb.Heading }) }
+        | NodeKind.SplitPanel( sa), NodeKind.SplitPanel( sb) ->
             prop
                 "Weight"
                 (pvFloat sb.Weight)
                 { a with
-                    Kind = lay (LayoutKind.SplitPanel { sa with Weight = sb.Weight }) }
-        | NodeKind.Layout(LayoutKind.Tabs sa), NodeKind.Layout(LayoutKind.Tabs sb) ->
+                    Kind = lay (NodeKind.SplitPanel { sa with Weight = sb.Weight }) }
+        | NodeKind.Tabs( sa), NodeKind.Tabs( sb) ->
             prop
                 "Orientation"
                 (pvOrientation sb.Orientation)
                 { a with
-                    Kind = lay (LayoutKind.Tabs { sa with Orientation = sb.Orientation }) }
-        | NodeKind.Layout(LayoutKind.SummaryList sa), NodeKind.Layout(LayoutKind.SummaryList sb) ->
+                    Kind = lay (NodeKind.Tabs { sa with Orientation = sb.Orientation }) }
+        | NodeKind.SummaryList( sa), NodeKind.SummaryList( sb) ->
             propOpt
                 "Heading"
                 (pvTextOpt sb.Heading)
                 { a with
-                    Kind = lay (LayoutKind.SummaryList { sa with Heading = sb.Heading }) }
-        | NodeKind.Layout(LayoutKind.Disclosure sa), NodeKind.Layout(LayoutKind.Disclosure sb) ->
+                    Kind = lay (NodeKind.SummaryList { sa with Heading = sb.Heading }) }
+        | NodeKind.Disclosure( sa), NodeKind.Disclosure( sb) ->
             prop
                 "Heading"
                 (pvText sb.Heading)
                 { a with
-                    Kind = lay (LayoutKind.Disclosure { sa with Heading = sb.Heading }) }
+                    Kind = lay (NodeKind.Disclosure { sa with Heading = sb.Heading }) }
             @ prop
                 "DefaultOpen"
                 (pvBool sb.DefaultOpen)
                 { a with
-                    Kind = lay (LayoutKind.Disclosure { sa with DefaultOpen = sb.DefaultOpen }) }
+                    Kind = lay (NodeKind.Disclosure { sa with DefaultOpen = sb.DefaultOpen }) }
             @ bind
                 "Open"
                 (toObjBinding sb.Open)
                 { a with
-                    Kind = lay (LayoutKind.Disclosure { sa with Open = sb.Open }) }
-        | NodeKind.Layout(LayoutKind.Stepper sa), NodeKind.Layout(LayoutKind.Stepper sb) ->
+                    Kind = lay (NodeKind.Disclosure { sa with Open = sb.Open }) }
+        | NodeKind.Stepper( sa), NodeKind.Stepper( sb) ->
             bind
                 "ActiveStep"
                 (toObjBinding sb.ActiveStep)
                 { a with
-                    Kind = lay (LayoutKind.Stepper { sa with ActiveStep = sb.ActiveStep }) }
+                    Kind = lay (NodeKind.Stepper { sa with ActiveStep = sb.ActiveStep }) }
         // Visualisation (Grid/Chart/Map), Input (Button/Select/Form/FileUpload),
         // Custom / ErrorBoundary / Fragment*, and Dashboard fall through to the
         // EditNode floor (still correct via the verify in `tryFieldLevel`).

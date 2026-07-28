@@ -81,11 +81,91 @@ and mapState (f: 'a -> 'b) (state: StateBehaviour<'a>) : StateBehaviour<'b> =
       OnError = state.OnError |> Option.map (fun render -> render >> mapMsg f) }
 
 and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
+    let mapChildren = List.map (mapMsg f)
+    // Every `DisplayKind` case is `'Msg`-free (pure presentation); `_f` is
+    // unused — each case is reconstructed only to change the phantom `'Msg`.
+
     match kind with
-    | NodeKind.Layout layout -> NodeKind.Layout(mapLayout f layout)
-    | NodeKind.Display display -> NodeKind.Display(mapDisplay f display)
-    | NodeKind.Input input -> NodeKind.Input(mapInput f input)
-    | NodeKind.Visualisation vis -> NodeKind.Visualisation(mapVis f vis)
+    // ── Layout ──
+    | NodeKind.Box spec ->
+        NodeKind.Box
+            { Layout = spec.Layout
+              Role = spec.Role
+              Heading = spec.Heading
+              Children = mapChildren spec.Children }
+    | NodeKind.SplitPanel spec ->
+        NodeKind.SplitPanel
+            { Weight = spec.Weight
+              Children = mapChildren spec.Children }
+    | NodeKind.Tabs spec ->
+        // `OnSelect` is optional (Phase 426) — map through the Option, so a
+        // `None` (declarative / write-back) shape stays `None`.
+        NodeKind.Tabs
+            { Orientation = spec.Orientation
+              Children = mapChildren spec.Children
+              ActiveIndex = spec.ActiveIndex
+              OnSelect = spec.OnSelect |> Option.map (fun g -> g >> mapAction f)
+              TabHeaders = spec.TabHeaders
+              TabTags = spec.TabTags
+              ActiveTag = spec.ActiveTag
+              OnSelectTag = spec.OnSelectTag |> Option.map (fun g -> g >> mapAction f) }
+    | NodeKind.Stepper spec ->
+        NodeKind.Stepper
+            { ActiveStep = spec.ActiveStep
+              Children = mapChildren spec.Children
+              OnSelect = spec.OnSelect >> mapAction f }
+    | NodeKind.SummaryList spec ->
+        NodeKind.SummaryList
+            { Heading = spec.Heading
+              Children = mapChildren spec.Children }
+    | NodeKind.Disclosure spec ->
+        NodeKind.Disclosure
+            { Heading = spec.Heading
+              Open = spec.Open
+              OnToggle = spec.OnToggle |> Option.map (fun g -> g >> mapAction f)
+              Children = mapChildren spec.Children
+              DefaultOpen = spec.DefaultOpen }
+    | NodeKind.Modal spec ->
+        NodeKind.Modal
+            { Open = spec.Open
+              Heading = spec.Heading
+              Dismissable = spec.Dismissable
+              Children = mapChildren spec.Children
+              OnDismiss = spec.OnDismiss |> Option.map (mapAction f) }
+    | NodeKind.ScrollArea spec ->
+        NodeKind.ScrollArea
+            { Orientation = spec.Orientation
+              Children = mapChildren spec.Children
+              MaxHeight = spec.MaxHeight
+              MaxWidth = spec.MaxWidth }
+    // ── Display ──
+    | NodeKind.Heading spec -> NodeKind.Heading spec
+    | NodeKind.Markdown spec -> NodeKind.Markdown spec
+    | NodeKind.Metric spec -> NodeKind.Metric spec
+    | NodeKind.Badge spec -> NodeKind.Badge spec
+    | NodeKind.Sparkline spec -> NodeKind.Sparkline spec
+    | NodeKind.Callout spec -> NodeKind.Callout spec
+    | NodeKind.Progress spec -> NodeKind.Progress spec
+    | NodeKind.Skeleton spec -> NodeKind.Skeleton spec
+    | NodeKind.LabelValueRow spec -> NodeKind.LabelValueRow spec
+    | NodeKind.Fact spec -> NodeKind.Fact spec
+    | NodeKind.Link spec -> NodeKind.Link spec
+    | NodeKind.Image spec -> NodeKind.Image spec
+    | NodeKind.List spec -> NodeKind.List spec
+    | NodeKind.Toast spec -> NodeKind.Toast spec
+    | NodeKind.CodeBlock spec -> NodeKind.CodeBlock spec
+    | NodeKind.Math spec -> NodeKind.Math spec
+    | NodeKind.Drawing spec -> NodeKind.Drawing spec
+    // ── Input ──
+    | NodeKind.Form spec -> NodeKind.Form(mapFormSpec f spec)
+    | NodeKind.Filters filters -> NodeKind.Filters(filters |> List.map (mapFilterSpec f))
+    | NodeKind.Button spec -> NodeKind.Button(mapButtonSpec f spec)
+    | NodeKind.FileUpload spec -> NodeKind.FileUpload(mapFileUploadSpec f spec)
+    | NodeKind.Select spec -> NodeKind.Select(mapSelectSpec f spec)
+    // ── Visualisation ──
+    | NodeKind.DataGrid spec -> NodeKind.DataGrid(mapGridSpec f spec)
+    | NodeKind.Chart spec -> NodeKind.Chart(mapChartSpec f spec)
+    | NodeKind.Map spec -> NodeKind.Map(mapMapSpec f spec)
     | NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds) ->
         NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds)
     | NodeKind.ErrorBoundary spec ->
@@ -122,96 +202,8 @@ and mapFragmentArg (f: 'a -> 'b) (arg: FragmentArg<'a>) : FragmentArg<'b> =
 
 // ─── Layouts — every case carries `Children`; some carry Action handlers ────
 
-and mapLayout (f: 'a -> 'b) (layout: LayoutKind<'a>) : LayoutKind<'b> =
-    let mapChildren = List.map (mapMsg f)
-
-    match layout with
-    | LayoutKind.Box spec ->
-        LayoutKind.Box
-            { Layout = spec.Layout
-              Role = spec.Role
-              Heading = spec.Heading
-              Children = mapChildren spec.Children }
-    | LayoutKind.SplitPanel spec ->
-        LayoutKind.SplitPanel
-            { Weight = spec.Weight
-              Children = mapChildren spec.Children }
-    | LayoutKind.Tabs spec ->
-        // `OnSelect` is optional (Phase 426) — map through the Option, so a
-        // `None` (declarative / write-back) shape stays `None`.
-        LayoutKind.Tabs
-            { Orientation = spec.Orientation
-              Children = mapChildren spec.Children
-              ActiveIndex = spec.ActiveIndex
-              OnSelect = spec.OnSelect |> Option.map (fun g -> g >> mapAction f)
-              TabHeaders = spec.TabHeaders
-              TabTags = spec.TabTags
-              ActiveTag = spec.ActiveTag
-              OnSelectTag = spec.OnSelectTag |> Option.map (fun g -> g >> mapAction f) }
-    | LayoutKind.Stepper spec ->
-        LayoutKind.Stepper
-            { ActiveStep = spec.ActiveStep
-              Children = mapChildren spec.Children
-              OnSelect = spec.OnSelect >> mapAction f }
-    | LayoutKind.SummaryList spec ->
-        LayoutKind.SummaryList
-            { Heading = spec.Heading
-              Children = mapChildren spec.Children }
-    | LayoutKind.Disclosure spec ->
-        LayoutKind.Disclosure
-            { Heading = spec.Heading
-              Open = spec.Open
-              OnToggle = spec.OnToggle |> Option.map (fun g -> g >> mapAction f)
-              Children = mapChildren spec.Children
-              DefaultOpen = spec.DefaultOpen }
-    | LayoutKind.Modal spec ->
-        LayoutKind.Modal
-            { Open = spec.Open
-              Heading = spec.Heading
-              Dismissable = spec.Dismissable
-              Children = mapChildren spec.Children
-              OnDismiss = spec.OnDismiss |> Option.map (mapAction f) }
-    | LayoutKind.ScrollArea spec ->
-        LayoutKind.ScrollArea
-            { Orientation = spec.Orientation
-              Children = mapChildren spec.Children
-              MaxHeight = spec.MaxHeight
-              MaxWidth = spec.MaxWidth }
 
 // ─── Display — every case is `'Msg`-free; reconstructed to change the phantom ─
-
-and mapDisplay (_f: 'a -> 'b) (display: DisplayKind<'a>) : DisplayKind<'b> =
-    // Every `DisplayKind` case is `'Msg`-free (pure presentation); `_f` is
-    // unused — each case is reconstructed only to change the phantom `'Msg`.
-    match display with
-    | DisplayKind.Heading spec -> DisplayKind.Heading spec
-    | DisplayKind.Markdown spec -> DisplayKind.Markdown spec
-    | DisplayKind.Metric spec -> DisplayKind.Metric spec
-    | DisplayKind.Badge spec -> DisplayKind.Badge spec
-    | DisplayKind.Sparkline spec -> DisplayKind.Sparkline spec
-    | DisplayKind.Callout spec -> DisplayKind.Callout spec
-    | DisplayKind.Progress spec -> DisplayKind.Progress spec
-    | DisplayKind.Skeleton spec -> DisplayKind.Skeleton spec
-    | DisplayKind.LabelValueRow spec -> DisplayKind.LabelValueRow spec
-    | DisplayKind.Fact spec -> DisplayKind.Fact spec
-    | DisplayKind.Link spec -> DisplayKind.Link spec
-    | DisplayKind.Image spec -> DisplayKind.Image spec
-    | DisplayKind.List spec -> DisplayKind.List spec
-    | DisplayKind.Toast spec -> DisplayKind.Toast spec
-    | DisplayKind.CodeBlock spec -> DisplayKind.CodeBlock spec
-    | DisplayKind.Math spec -> DisplayKind.Math spec
-    | DisplayKind.Drawing spec -> DisplayKind.Drawing spec
-
-// ─── Inputs — the action-heavy tier ────────────────────────────────────────
-
-and mapInput (f: 'a -> 'b) (input: InputKind<'a>) : InputKind<'b> =
-    match input with
-    | InputKind.Form spec -> InputKind.Form(mapFormSpec f spec)
-    | InputKind.Filters filters -> InputKind.Filters(filters |> List.map (mapFilterSpec f))
-    | InputKind.Button spec -> InputKind.Button(mapButtonSpec f spec)
-    | InputKind.FileUpload spec -> InputKind.FileUpload(mapFileUploadSpec f spec)
-    | InputKind.Select spec -> InputKind.Select(mapSelectSpec f spec)
-
 and mapButtonSpec (f: 'a -> 'b) (spec: ButtonSpec<'a>) : ButtonSpec<'b> =
     { Label = spec.Label
       OnClick = mapAction f spec.OnClick
@@ -280,12 +272,6 @@ and mapFileUploadSpec (f: 'a -> 'b) (spec: FileUploadSpec<'a>) : FileUploadSpec<
       Disabled = spec.Disabled }
 
 // ─── Visualisations — data-bound; the tree stores the erased grid shapes ────
-
-and mapVis (f: 'a -> 'b) (vis: VisKind<'a>) : VisKind<'b> =
-    match vis with
-    | VisKind.DataGrid spec -> VisKind.DataGrid(mapGridSpec f spec)
-    | VisKind.Chart spec -> VisKind.Chart(mapChartSpec f spec)
-    | VisKind.Map spec -> VisKind.Map(mapMapSpec f spec)
 
 and mapGridSpec (f: 'a -> 'b) (spec: GridSpec<'a>) : GridSpec<'b> =
     { Source = spec.Source

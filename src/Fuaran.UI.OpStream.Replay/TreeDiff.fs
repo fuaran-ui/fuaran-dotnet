@@ -215,8 +215,8 @@ module TreeDiff =
     let private textChange<'Msg> (oldNode: Node<'Msg>) (newNode: Node<'Msg>) : (string * string) option =
         let extract (n: Node<'Msg>) : string option =
             match n.Kind with
-            | NodeKind.Display(DisplayKind.Heading s) -> literalText s.Text
-            | NodeKind.Display(DisplayKind.Markdown s) -> literalText s.Text
+            | NodeKind.Heading( s) -> literalText s.Text
+            | NodeKind.Markdown( s) -> literalText s.Text
             | _ -> None
 
         match extract oldNode, extract newNode with

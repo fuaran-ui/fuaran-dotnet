@@ -433,8 +433,7 @@ let tests =
               let grid: Node<Msg> =
                   { Id = NodeId "orders-grid"
                     Kind =
-                      NodeKind.Visualisation(
-                          VisKind.DataGrid
+                      NodeKind.DataGrid(
                               { Source = Binding.Static Seq.empty
                                 RowKey = None
                                 RowKeyField = Some "id"

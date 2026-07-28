@@ -172,14 +172,14 @@ let rec private collectFragments (acc: Map<FragmentId, Node<obj>>) (node: Node<o
 
     let children =
         match node.Kind with
-        | NodeKind.Layout(LayoutKind.Box s) -> s.Children
-        | NodeKind.Layout(LayoutKind.SplitPanel s) -> s.Children
-        | NodeKind.Layout(LayoutKind.Tabs s) -> s.Children
-        | NodeKind.Layout(LayoutKind.Stepper s) -> s.Children
-        | NodeKind.Layout(LayoutKind.SummaryList s) -> s.Children
-        | NodeKind.Layout(LayoutKind.Disclosure s) -> s.Children
-        | NodeKind.Layout(LayoutKind.Modal s) -> s.Children
-        | NodeKind.Layout(LayoutKind.ScrollArea s) -> s.Children
+        | NodeKind.Box( s) -> s.Children
+        | NodeKind.SplitPanel( s) -> s.Children
+        | NodeKind.Tabs( s) -> s.Children
+        | NodeKind.Stepper( s) -> s.Children
+        | NodeKind.SummaryList( s) -> s.Children
+        | NodeKind.Disclosure( s) -> s.Children
+        | NodeKind.Modal( s) -> s.Children
+        | NodeKind.ScrollArea( s) -> s.Children
         | NodeKind.ErrorBoundary s -> [ s.Child ]
         | NodeKind.Switch s -> (s.Cases |> List.map snd) @ [ s.Default ]
         | NodeKind.FragmentDecl s -> [ s.Body ]
@@ -404,7 +404,7 @@ and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layo
     // Phase 390 — the unified container; role + layout drive the emitted
     // element + classes so SSR output stays byte-identical to the pre-merge
     // per-kind emission (and to the client renderer — SSR parity corpus).
-    | LayoutKind.Box spec ->
+    | NodeKind.Box spec ->
         match spec.Role, spec.Layout with
         | BoxRole.Card, _ ->
             Html.section
@@ -456,7 +456,7 @@ and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layo
                    | None -> [])
                 @ [ prop.children (spec.Children |> List.map (renderNode ctx)) ]
             )
-    | LayoutKind.SplitPanel spec ->
+    | NodeKind.SplitPanel spec ->
         let weightLeft = max 0.0 (min 1.0 spec.Weight)
         let weightRight = 1.0 - weightLeft
         let renderedChildren = spec.Children |> List.map (renderNode ctx)
@@ -478,14 +478,14 @@ and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layo
                         [ prop.className "fuaran-split-pane fuaran-split-pane-right"
                           prop.style [ style.custom ("flex", sprintf "%f 1 0" weightRight) ]
                           prop.children rightChildren ] ] ]
-    | LayoutKind.Tabs spec ->
+    | NodeKind.Tabs spec ->
         // Static tablist + the active panel. Keyboard nav + click dispatch are
         // client-only (hydration); the server emits the ARIA structure inert.
         let parentNodeIdStr = parentNodeId
 
         let tabsLabelFromChild (child: Node<obj>) : string =
             match child.Kind with
-            | NodeKind.Layout(LayoutKind.Box { Role = BoxRole.Card
+            | NodeKind.Box( { Role = BoxRole.Card
                                                Heading = Some h }) -> renderText ctx h
             | _ ->
                 match child.Id with
@@ -597,7 +597,7 @@ and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layo
                                           prop.children [ renderNode ctx childNode ] ] ]
                               | None -> []
                           ) ] ] ]
-    | LayoutKind.SummaryList spec ->
+    | NodeKind.SummaryList spec ->
         Html.section
             [ prop.className "fuaran-layout-summary-list"
               prop.children
@@ -610,7 +610,7 @@ and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layo
                     Html.div
                         [ prop.className "fuaran-summary-list-body"
                           prop.children (spec.Children |> List.map (renderNode ctx)) ] ] ]
-    | LayoutKind.Disclosure spec ->
+    | NodeKind.Disclosure spec ->
         let resolvedOpen =
             BindingResolver.tryResolve ctx.Sources spec.Open
             |> Option.defaultValue spec.DefaultOpen
@@ -626,7 +626,7 @@ and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layo
                           [ prop.className "fuaran-disclosure-body"
                             prop.children (spec.Children |> List.map (renderNode ctx)) ] ] ]
         )
-    | LayoutKind.Stepper spec ->
+    | NodeKind.Stepper spec ->
         let activeIndex =
             BindingResolver.tryResolve ctx.Sources spec.ActiveStep |> Option.defaultValue 0
 
@@ -659,7 +659,7 @@ and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layo
                               | Some node -> [ renderNode ctx node ]
                               | None -> []
                           ) ] ] ]
-    | LayoutKind.Modal spec ->
+    | NodeKind.Modal spec ->
         // Phase 289 overlay render-fidelity contract (server half): the overlay
         // is ALWAYS emitted (no portal), positioned + z-indexed by CSS; closed =
         // the `hidden` attribute. Structure is byte-identical to the client
@@ -700,7 +700,7 @@ and private renderLayout (ctx: ServerRenderContext) (parentNodeId: string) (layo
                                           prop.children (spec.Children |> List.map (renderNode ctx)) ] ]
                             ) ] ] ]
         )
-    | LayoutKind.ScrollArea spec ->
+    | NodeKind.ScrollArea spec ->
         let axisClass =
             match spec.Orientation with
             | ScrollOrientation.Vertical -> "fuaran-scrollarea fuaran-scrollarea-vertical"
@@ -733,7 +733,7 @@ and private renderDisplay
     (display: DisplayKind<obj>)
     : ReactElement =
     match display with
-    | DisplayKind.Heading spec ->
+    | NodeKind.Heading spec ->
         let variantSuffix =
             match spec.Variant with
             | HeadingVariant.Standard -> ""
@@ -752,11 +752,11 @@ and private renderDisplay
         | 4 -> Html.h4 props
         | 5 -> Html.h5 props
         | _ -> Html.h6 props
-    | DisplayKind.Markdown spec ->
+    | NodeKind.Markdown spec ->
         Html.div
             [ prop.className "fuaran-markdown"
               prop.dangerouslySetInnerHTML (Markdown.toHtml (renderText ctx spec.Text)) ]
-    | DisplayKind.Metric spec ->
+    | NodeKind.Metric spec ->
         // Phase 632 — the Metric value is a scalar slot: a `Binding.Transform`
         // resolves to its 1×1 result cell (a global aggregate / row-field
         // lookup), the same dispatch as the client's `renderMetric`.
@@ -796,15 +796,15 @@ and private renderDisplay
                         | Some subtext ->
                             Html.div [ prop.className "fuaran-metric-subtext"; prop.text (renderText ctx subtext) ]
                         | None -> Html.none ] ]
-    | DisplayKind.Badge spec ->
+    | NodeKind.Badge spec ->
         Html.span
             [ prop.className (sprintf "fuaran-badge fuaran-badge-%s" (badgeVariantClass spec.Variant))
               prop.text (renderText ctx spec.Label) ]
-    | DisplayKind.Skeleton spec ->
+    | NodeKind.Skeleton spec ->
         Html.div
             [ prop.className "fuaran-skeleton"
               prop.children [ for _ in 1 .. spec.Rows -> Html.div [ prop.className "fuaran-skeleton-row" ] ] ]
-    | DisplayKind.Callout spec ->
+    | NodeKind.Callout spec ->
         Html.div
             [ prop.className (sprintf "fuaran-callout fuaran-callout-%s" (Theme.toneVar spec.Tone))
               prop.children
@@ -816,7 +816,7 @@ and private renderDisplay
                         Html.div [ prop.className "fuaran-callout-heading"; prop.text (renderText ctx heading) ]
                     | None -> Html.none
                     Html.div [ prop.className "fuaran-callout-body"; prop.text (renderText ctx spec.Body) ] ] ]
-    | DisplayKind.Progress spec ->
+    | NodeKind.Progress spec ->
         let resolution = BindingResolver.resolve ctx.Sources spec.Fraction
 
         match resolution, state.OnLoading with
@@ -848,16 +848,16 @@ and private renderDisplay
                                   [ Html.div
                                         [ prop.className "fuaran-progress-fill"
                                           prop.style [ style.custom ("width", sprintf "%f%%" (fraction * 100.0)) ] ] ] ] ] ]
-    | DisplayKind.Sparkline _ ->
+    | NodeKind.Sparkline _ ->
         // The client emits an inline SVG polyline; SSR emits the same hook +
         // an em-dash placeholder (the data renders client-side on hydration).
         Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
-    | DisplayKind.Drawing spec ->
+    | NodeKind.Drawing spec ->
         // Phase 525 — the SAME canonical Core SVG string the client emits (so
         // SSR ↔ CSR are byte-identical for this static-geometry node); resolved
         // + rendered on the server, headless included (D4).
         Html.div [ prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) spec) ]
-    | DisplayKind.LabelValueRow spec ->
+    | NodeKind.LabelValueRow spec ->
         // Phase 632 — a scalar slot: Transform resolves to its 1×1 result cell,
         // and an ambiguous (>1×1) result stays loud, matching the client's
         // `renderLabelValueRow` value projection.
@@ -887,7 +887,7 @@ and private renderDisplay
                                   | BindingResolver.Errored msg -> sprintf "(error: %s)" msg
                                   | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
                               ) ] ] ]
-    | DisplayKind.Fact spec ->
+    | NodeKind.Fact spec ->
         // Server-side Fact mirrors the client tile; `renderText` resolves the
         // TextSource value identically on both sides (see the module doc's
         // SSR<->CSR parity note).
@@ -907,7 +907,7 @@ and private renderDisplay
                     match spec.Help with
                     | Some help -> Html.div [ prop.className "fuaran-fact-help"; prop.text (renderText ctx help) ]
                     | None -> Html.none ] ]
-    | DisplayKind.Link spec ->
+    | NodeKind.Link spec ->
         let resolvedHref =
             BindingResolver.tryResolve ctx.Sources spec.Href |> Option.defaultValue ""
 
@@ -927,7 +927,7 @@ and private renderDisplay
                    [])
             @ [ prop.text (renderText ctx spec.Label) ]
         )
-    | DisplayKind.Image spec ->
+    | NodeKind.Image spec ->
         let resolvedSrc =
             BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
 
@@ -943,7 +943,7 @@ and private renderDisplay
             [ prop.className variantClass
               prop.src safeSrc
               prop.alt (renderText ctx spec.Alt) ]
-    | DisplayKind.List spec ->
+    | NodeKind.List spec ->
         let items =
             spec.Items
             |> List.map (fun item -> Html.li [ prop.className "fuaran-list-item"; prop.text (renderText ctx item) ])
@@ -952,7 +952,7 @@ and private renderDisplay
             Html.ol [ prop.className "fuaran-list fuaran-list-ordered"; prop.children items ]
         else
             Html.ul [ prop.className "fuaran-list fuaran-list-unordered"; prop.children items ]
-    | DisplayKind.Toast spec ->
+    | NodeKind.Toast spec ->
         // Phase 289 overlay render-fidelity contract (server half): ALWAYS
         // emitted; closed = the `hidden` attribute. `role="status"` +
         // `aria-live="polite"` — byte-identical to the client renderer.
@@ -991,7 +991,7 @@ and private renderDisplay
                     @ dismissEls
                 ) ]
         )
-    | DisplayKind.CodeBlock spec ->
+    | NodeKind.CodeBlock spec ->
         // Phase 290 — DETERMINISTIC `<pre><code>` (HTML-escaped via `prop.text`,
         // no markdown library), byte-identical to the client renderer. Syntax
         // highlighting is a client-only post-hydration enhancement (targets
@@ -1030,7 +1030,7 @@ and private renderDisplay
                                           prop.text spec.Code ] ] ] ]
                 ) ]
         )
-    | DisplayKind.Math spec ->
+    | NodeKind.Math spec ->
         // Phase 658 — DETERMINISTIC native MathML for the closed subset (real
         // superscripts with NO JavaScript); the raw escaped-source span for
         // out-of-subset input. Byte-identical to the client renderer via the
@@ -1068,7 +1068,7 @@ and private renderDisplay
 
 and private renderInput (ctx: ServerRenderContext) (input: InputKind<obj>) : ReactElement =
     match input with
-    | InputKind.Button spec ->
+    | NodeKind.Button spec ->
         let variantClass = buttonVariantClass spec.Variant
 
         let isDisabled =
@@ -1101,7 +1101,7 @@ and private renderInput (ctx: ServerRenderContext) (input: InputKind<obj>) : Rea
             @ commitProps
             @ (if isDisabled then [ prop.disabled true ] else [])
         )
-    | InputKind.Select spec ->
+    | NodeKind.Select spec ->
         let options = resolveOptions ctx spec.Source
         let selected = BindingResolver.tryResolve ctx.Sources spec.Value |> Option.flatten
 
@@ -1134,7 +1134,7 @@ and private renderInput (ctx: ServerRenderContext) (input: InputKind<obj>) : Rea
                         @ (if isDisabled then [ prop.disabled true ] else [])
                         @ [ prop.children (placeholderItem @ optionItems) ]
                     ) ] ]
-    | InputKind.Form spec ->
+    | NodeKind.Form spec ->
         let fieldNodes = spec.Fields |> List.map (renderFormField ctx)
 
         let submitNode =
@@ -1159,11 +1159,11 @@ and private renderInput (ctx: ServerRenderContext) (input: InputKind<obj>) : Rea
             | None -> body
 
         Html.form [ prop.className "fuaran-form"; prop.children formChildren ]
-    | InputKind.Filters specs ->
+    | NodeKind.Filters specs ->
         Html.div
             [ prop.className "fuaran-filters"
               prop.children [ for spec in specs -> renderFilterSpec ctx spec ] ]
-    | InputKind.FileUpload spec ->
+    | NodeKind.FileUpload spec ->
         Html.label
             [ prop.className "fuaran-file-upload"
               prop.children
@@ -1412,7 +1412,7 @@ and private renderSegmentedFilter
 
 and private renderVis (ctx: ServerRenderContext) (vis: VisKind<obj>) : ReactElement =
     match vis with
-    | VisKind.DataGrid spec ->
+    | NodeKind.DataGrid spec ->
         match spec.StaticRows with
         | Some(headers, rows) ->
             // Phase 393 — static read-only mode: SSR renders the full semantic <table> statically
@@ -1444,7 +1444,7 @@ and private renderVis (ctx: ServerRenderContext) (vis: VisKind<obj>) : ReactElem
                   prop.custom ("data-fuaran-ssr-placeholder", "DataGrid")
                   prop.custom ("data-fuaran-row-count", string rowCount)
                   prop.text (sprintf "[Grid: %d rows — hydrates client-side]" rowCount) ]
-    | VisKind.Chart spec ->
+    | NodeKind.Chart spec ->
         match BindingResolver.resolve<obj seq> ctx.Sources spec.Source, spec.Kind with
         | BindingResolver.Resolved rows, kind when Fuaran.UI.Charts.isLowered kind ->
             // Phase 526 — the SSR renders the SAME first-party lowered Drawing
@@ -1476,7 +1476,7 @@ and private renderVis (ctx: ServerRenderContext) (vis: VisKind<obj>) : ReactElem
                         Html.div
                             [ prop.className "fuaran-chart-placeholder"
                               prop.text (sprintf "[Chart: %d rows — hydrates client-side]" rowCount) ] ] ]
-    | VisKind.Map spec ->
+    | NodeKind.Map spec ->
         let markerCount =
             BindingResolver.tryResolve ctx.Sources spec.Source
             |> Option.map Seq.length

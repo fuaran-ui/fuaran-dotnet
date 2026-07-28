@@ -29,7 +29,7 @@ let private rawId (NodeId s) : string = s
 let private brandSiblingValidator: MergeValidator<TestMsg> =
     fun tree ->
         match tree.Kind with
-        | NodeKind.Layout(LayoutKind.Box spec) ->
+        | NodeKind.Box( spec) ->
             let brandKids =
                 spec.Children |> List.filter (fun c -> c.Style.Tone = ToneVariant.Brand)
 

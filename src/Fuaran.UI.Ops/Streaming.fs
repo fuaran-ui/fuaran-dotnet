@@ -238,7 +238,7 @@ let applyFold (ops: TreeOp<'Msg> list) (initial: Node<'Msg>) : Result<Node<'Msg>
 // ─── Skeleton placeholders for pending subtrees (Task 4) ─────────────────────
 //
 // While a subtree is in flight, the renderer shows a skeleton placeholder in
-// its slot. The placeholder reuses the canonical `DisplayKind.Skeleton` loading
+// its slot. The placeholder reuses the canonical `NodeKind.Skeleton` loading
 // primitive under a render-time `ErrorBoundary` (Phase 60 graceful
 // degradation), with the `Motion.PulseDuringLoad` hook (Phase 12.F) signalling
 // "filling". Placeholders are a PURE RENDER concern: they never enter the op

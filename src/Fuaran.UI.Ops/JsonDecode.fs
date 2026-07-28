@@ -633,7 +633,7 @@ let private decodeInvokeArgs (path: string) (j: Json) : Result<(string * string)
 
 let private placeholderClosureNode: Node<obj> =
     { Id = NodeId closureSentinel
-      Kind = NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal closureSentinel })
+      Kind = NodeKind.Markdown( { Text = TextSource.Literal closureSentinel })
       State =
         { OnLoading = None
           OnEmpty = None
@@ -2771,71 +2771,71 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<DisplayKind<obj>
             | "Heading" ->
                 getSpec ()
                 |> Result.bind (decodeHeadingSpec specPath)
-                |> Result.map DisplayKind.Heading
+                |> Result.map NodeKind.Heading
             | "Markdown" ->
                 getSpec ()
                 |> Result.bind (decodeMarkdownSpec specPath)
-                |> Result.map DisplayKind.Markdown
+                |> Result.map NodeKind.Markdown
             | "Metric" ->
                 getSpec ()
                 |> Result.bind (decodeMetricSpec specPath)
-                |> Result.map DisplayKind.Metric
+                |> Result.map NodeKind.Metric
             | "Badge" ->
                 getSpec ()
                 |> Result.bind (decodeBadgeSpec specPath)
-                |> Result.map DisplayKind.Badge
+                |> Result.map NodeKind.Badge
             | "Sparkline" ->
                 getSpec ()
                 |> Result.bind (decodeSparklineSpec specPath)
-                |> Result.map DisplayKind.Sparkline
+                |> Result.map NodeKind.Sparkline
             | "Callout" ->
                 getSpec ()
                 |> Result.bind (decodeCalloutSpec specPath)
-                |> Result.map DisplayKind.Callout
+                |> Result.map NodeKind.Callout
             | "Progress" ->
                 getSpec ()
                 |> Result.bind (decodeProgressSpec specPath)
-                |> Result.map DisplayKind.Progress
+                |> Result.map NodeKind.Progress
             | "Skeleton" ->
                 getSpec ()
                 |> Result.bind (decodeSkeletonSpec specPath)
-                |> Result.map DisplayKind.Skeleton
+                |> Result.map NodeKind.Skeleton
             | "LabelValueRow" ->
                 getSpec ()
                 |> Result.bind (decodeLabelValueRowSpec specPath)
-                |> Result.map DisplayKind.LabelValueRow
+                |> Result.map NodeKind.LabelValueRow
             | "Fact" ->
                 getSpec ()
                 |> Result.bind (decodeFactSpec specPath)
-                |> Result.map DisplayKind.Fact
+                |> Result.map NodeKind.Fact
             | "Link" ->
                 getSpec ()
                 |> Result.bind (decodeLinkSpec specPath)
-                |> Result.map DisplayKind.Link
+                |> Result.map NodeKind.Link
             | "Image" ->
                 getSpec ()
                 |> Result.bind (decodeImageSpec specPath)
-                |> Result.map DisplayKind.Image
+                |> Result.map NodeKind.Image
             | "List" ->
                 getSpec ()
                 |> Result.bind (decodeListSpec specPath)
-                |> Result.map DisplayKind.List
+                |> Result.map NodeKind.List
             | "Toast" ->
                 getSpec ()
                 |> Result.bind (decodeToastSpec specPath)
-                |> Result.map DisplayKind.Toast
+                |> Result.map NodeKind.Toast
             | "CodeBlock" ->
                 getSpec ()
                 |> Result.bind (decodeCodeBlockSpec specPath)
-                |> Result.map DisplayKind.CodeBlock
+                |> Result.map NodeKind.CodeBlock
             | "Math" ->
                 getSpec ()
                 |> Result.bind (decodeMathSpec specPath)
-                |> Result.map DisplayKind.Math
+                |> Result.map NodeKind.Math
             | "Drawing" ->
                 getSpec ()
                 |> Result.bind (decodeDrawingSpec specPath)
-                |> Result.map DisplayKind.Drawing
+                |> Result.map NodeKind.Drawing
             | s ->
                 unknownDuCase
                     path
@@ -3305,16 +3305,16 @@ let private decodeInputKind (path: string) (j: Json) : Result<InputKind<obj>, De
     | Ok fields ->
         match requireDiscriminator path fields with
         | Error e -> Error e
-        | Ok "Form" -> decodeFormSpec path j |> Result.map InputKind.Form
+        | Ok "Form" -> decodeFormSpec path j |> Result.map NodeKind.Form
         | Ok "Filters" ->
             requireField path fields "items" "FilterSpec list"
             |> Result.bind (fun v -> requireArray (path + ".items") v)
             |> Result.bind (fun xs ->
                 traverseIndexed (fun i item -> decodeFilterSpec (sprintf "%s.items[%d]" path i) item) xs)
-            |> Result.map InputKind.Filters
-        | Ok "Button" -> decodeButtonSpec path j |> Result.map InputKind.Button
-        | Ok "FileUpload" -> decodeFileUploadSpec path j |> Result.map InputKind.FileUpload
-        | Ok "Select" -> decodeSelectSpec path j |> Result.map InputKind.Select
+            |> Result.map NodeKind.Filters
+        | Ok "Button" -> decodeButtonSpec path j |> Result.map NodeKind.Button
+        | Ok "FileUpload" -> decodeFileUploadSpec path j |> Result.map NodeKind.FileUpload
+        | Ok "Select" -> decodeSelectSpec path j |> Result.map NodeKind.Select
         | Ok s -> unknownDuCase path s "Form | Filters | Button | FileUpload | Select"
 
 // ─── Visualisation ──────────────────────────────────────────────────────
@@ -3622,9 +3622,9 @@ let private decodeVisKind (path: string) (j: Json) : Result<VisKind<obj>, Decode
     | Ok fields ->
         match requireDiscriminator path fields with
         | Error e -> Error e
-        | Ok "DataGrid" -> decodeGridSpec path j |> Result.map VisKind.DataGrid
-        | Ok "Chart" -> decodeChartSpec path j |> Result.map VisKind.Chart
-        | Ok "Map" -> decodeMapSpec path j |> Result.map VisKind.Map
+        | Ok "DataGrid" -> decodeGridSpec path j |> Result.map NodeKind.DataGrid
+        | Ok "Chart" -> decodeChartSpec path j |> Result.map NodeKind.Chart
+        | Ok "Map" -> decodeMapSpec path j |> Result.map NodeKind.Map
         | Ok s -> unknownDuCase path s "DataGrid | Chart | Table | Map"
 
 // ─── Parameterised-fragment hole / effect / scalar decoders (Phase 180) ─────
@@ -3918,7 +3918,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, 
                     match childrenR, headingR, roleR, layoutR with
                     | Ok children, Ok heading, Ok role, Ok layout ->
                         Ok(
-                            LayoutKind.Box
+                            NodeKind.Box
                                 { Layout = layout
                                   Role = role
                                   Heading = heading
@@ -3939,7 +3939,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, 
                         |> Result.bind (requireFloat (specPath + ".weight"))
 
                     match childrenR, weightR with
-                    | Ok children, Ok weight -> Ok(LayoutKind.SplitPanel { Weight = weight; Children = children })
+                    | Ok children, Ok weight -> Ok(NodeKind.SplitPanel { Weight = weight; Children = children })
                     | Error e, _
                     | _, Error e -> Error e
             | "Tabs" ->
@@ -4027,7 +4027,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, 
                     match childrenR, orientationR, tabHeadersR, tabTagsR, activeTagR, activeIndexR with
                     | Ok children, Ok orientation, Ok tabHeaders, Ok tabTags, Ok activeTag, Ok activeIndex ->
                         Ok(
-                            LayoutKind.Tabs
+                            NodeKind.Tabs
                                 { Orientation = orientation
                                   Children = children
                                   ActiveIndex = activeIndex
@@ -4065,7 +4065,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, 
                     match childrenR, activeR with
                     | Ok children, Ok active ->
                         Ok(
-                            LayoutKind.Stepper
+                            NodeKind.Stepper
                                 { ActiveStep = active
                                   Children = children
                                   OnSelect = (fun _ -> Action.Chain []) }
@@ -4086,7 +4086,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, 
                     match childrenR, headingR with
                     | Ok children, Ok heading ->
                         Ok(
-                            LayoutKind.SummaryList
+                            NodeKind.SummaryList
                                 { Heading = heading
                                   Children = children }
                         )
@@ -4123,7 +4123,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, 
                     match childrenR, headingR, openR, defaultOpenR with
                     | Ok children, Ok heading, Ok openB, Ok defOpen ->
                         Ok(
-                            LayoutKind.Disclosure
+                            NodeKind.Disclosure
                                 { Heading = heading
                                   Open = openB
                                   OnToggle =
@@ -4169,7 +4169,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, 
                     match childrenR, openR, dismissableR, onDismissR, headingR with
                     | Ok children, Ok openB, Ok dismissable, Ok onDismiss, Ok heading ->
                         Ok(
-                            LayoutKind.Modal
+                            NodeKind.Modal
                                 { Open = openB
                                   Heading = heading
                                   Dismissable = dismissable
@@ -4207,7 +4207,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<LayoutKind<obj>, 
                     match childrenR, orientationR, maxHeightR, maxWidthR with
                     | Ok children, Ok orientation, Ok maxHeight, Ok maxWidth ->
                         Ok(
-                            LayoutKind.ScrollArea
+                            NodeKind.ScrollArea
                                 { Orientation = orientation
                                   Children = children
                                   MaxHeight = maxHeight

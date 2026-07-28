@@ -134,7 +134,7 @@ let tests =
 
               let toneOf (id: NodeId) =
                   match tree.Kind with
-                  | NodeKind.Layout(LayoutKind.Box spec) ->
+                  | NodeKind.Box( spec) ->
                       spec.Children
                       |> List.tryFind (fun c -> c.Id = id)
                       |> Option.map (fun n -> n.Style.Tone)

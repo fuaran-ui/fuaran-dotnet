@@ -46,8 +46,7 @@ let tests =
               let sink = InMemorySink()
 
               let newKind =
-                  NodeKind.Display(
-                      DisplayKind.Heading
+                  NodeKind.Heading(
                           { Defaults.heading with
                               Text = TextSource.Literal "Renamed" }
                   )

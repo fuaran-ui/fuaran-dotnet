@@ -48,8 +48,7 @@ let private paramPipeline: Fuaran.Core.Transform list =
 let private gridWithEditable (editable: bool) (source: Binding<obj seq>) : Node<Msg> =
     { Id = NodeId "grid"
       Kind =
-        NodeKind.Visualisation(
-            VisKind.DataGrid
+        NodeKind.DataGrid(
                 { Source = source
                   RowKey = None
                   RowKeyField = Some "dept"
@@ -174,8 +173,7 @@ let tests =
               let bareGrid: Node<Msg> =
                   { Id = NodeId "bare-grid"
                     Kind =
-                      NodeKind.Visualisation(
-                          VisKind.DataGrid
+                      NodeKind.DataGrid(
                               { Source = Binding.Static Seq.empty
                                 RowKey = None
                                 RowKeyField = None

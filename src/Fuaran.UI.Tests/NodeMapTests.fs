@@ -36,7 +36,7 @@ let nodeMapTests =
               let mapped = Node.mapMsg string (buttonWith "b" (Action.Dispatch 42))
 
               match mapped.Kind with
-              | NodeKind.Input(InputKind.Button spec) ->
+              | NodeKind.Button( spec) ->
                   match spec.OnClick with
                   | Action.Dispatch s -> Expect.equal s "42" "Dispatch payload is f-applied"
                   | other -> failtestf "expected Dispatch, got %A" other
@@ -48,7 +48,7 @@ let nodeMapTests =
               let mapped = Node.mapMsg string (buttonWith "b" onClick)
 
               match mapped.Kind with
-              | NodeKind.Input(InputKind.Button spec) ->
+              | NodeKind.Button( spec) ->
                   match spec.OnClick with
                   | Action.Chain [ Action.Dispatch a; Action.Dispatch b ] ->
                       Expect.equal (a, b) ("1", "2") "each Chain member is remapped"
@@ -63,7 +63,7 @@ let nodeMapTests =
               let mapped = Node.mapMsg string (buttonWith "b" onClick)
 
               match mapped.Kind with
-              | NodeKind.Input(InputKind.Button spec) ->
+              | NodeKind.Button( spec) ->
                   match spec.OnClick with
                   | Action.Call(ApiEndpoint ep, Some onResult, None) ->
                       Expect.equal ep "ep" "endpoint preserved"
@@ -81,7 +81,7 @@ let nodeMapTests =
               let mapped = Node.mapMsg string (buttonWith "b" onClick)
 
               match mapped.Kind with
-              | NodeKind.Input(InputKind.Button spec) ->
+              | NodeKind.Button( spec) ->
                   match spec.OnClick with
                   | Action.ReadFileBody(file, FileReadEncoding.Text, onRead') ->
                       Expect.equal file.Id "f1" "file ref preserved"
@@ -94,7 +94,7 @@ let nodeMapTests =
               let mapped = Node.mapMsg string (buttonWith "b" (Action.Navigate "/home"))
 
               match mapped.Kind with
-              | NodeKind.Input(InputKind.Button spec) ->
+              | NodeKind.Button( spec) ->
                   match spec.OnClick with
                   | Action.Navigate route -> Expect.equal route "/home" "Navigate route preserved"
                   | other -> failtestf "expected Navigate, got %A" other
@@ -118,13 +118,13 @@ let nodeMapTests =
               Expect.equal mapped.Style.Tone ToneVariant.Brand "Style trait preserved"
 
               match mapped.Kind with
-              | NodeKind.Layout(LayoutKind.Box spec) ->
+              | NodeKind.Box( spec) ->
                   match spec.Children with
                   | [ mappedChild ] ->
                       Expect.equal mappedChild.Id (NodeId "child") "child Id preserved"
 
                       match mappedChild.Kind with
-                      | NodeKind.Input(InputKind.Button b) ->
+                      | NodeKind.Button( b) ->
                           match b.OnClick with
                           | Action.Dispatch s -> Expect.equal s "9" "child Dispatch remapped in place"
                           | other -> failtestf "expected child Dispatch, got %A" other
@@ -152,7 +152,7 @@ let nodeMapTests =
               let mapped = Node.mapMsg string node
 
               match mapped.Kind with
-              | NodeKind.Input(InputKind.Form spec) ->
+              | NodeKind.Form( spec) ->
                   match spec.Fields with
                   | [ f ] ->
                       match f.Kind with
@@ -195,7 +195,7 @@ let nodeMapTests =
                   |> Node.mapMsg int
 
               match mapped.Kind with
-              | NodeKind.Input(InputKind.Button spec) ->
+              | NodeKind.Button( spec) ->
                   match spec.OnClick with
                   | Action.Dispatch n -> Expect.equal n 42 "chained maps compose (41 -> 42 -> \"42\" -> 42)"
                   | other -> failtestf "expected Dispatch, got %A" other

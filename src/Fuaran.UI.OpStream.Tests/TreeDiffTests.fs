@@ -186,8 +186,7 @@ let tests =
               let before = buildDashboard ()
 
               let newKind: NodeKind<TestMsg> =
-                  NodeKind.Display(
-                      DisplayKind.Badge
+                  NodeKind.Badge(
                           { Label = TextSource.Literal "STATUS"
                             Variant = BadgeVariant.Brand }
                   )

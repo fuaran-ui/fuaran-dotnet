@@ -1,7 +1,7 @@
 module Fuaran.UI.Renderer.MathMl
 
 // ============================================================================
-//  Phase 658 — the deterministic LaTeX→MathML translator for `DisplayKind.Math`.
+//  Phase 658 — the deterministic LaTeX→MathML translator for `NodeKind.Math`.
 //
 //  A pure, Fable-safe, total function shared by BOTH F# renderers (the Feliz
 //  client renderer and the Feliz.ViewEngine server renderer emit byte-identical

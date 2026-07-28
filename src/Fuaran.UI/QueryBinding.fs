@@ -28,7 +28,7 @@ module Fuaran.UI.QueryBinding
 //     binding's `name` is resolved as the column key in `schema` (the typed
 //     accessor `obj -> 'T` is an opaque closure the runtime cannot introspect,
 //     so the *named* query/column is the addressable handle the schema keys on);
-//   - a `VisKind.Chart` whose `Source` is itself a `Binding.Query` — its
+//   - a `NodeKind.Chart` whose `Source` is itself a `Binding.Query` — its
 //     `XField` (axis) and each `YField` (series) name columns of that query's
 //     result, checked directly as column strings.
 //  A multi-query dashboard calls `check` once per (query-scoped subtree, schema).
@@ -196,16 +196,16 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
     match n.Kind with
     | NodeKind.Display display ->
         match display with
-        | DisplayKind.Metric spec ->
+        | NodeKind.Metric spec ->
             add BindingSinkClass.Numeric spec.Value
             addOpt BindingSinkClass.Numeric spec.Trend
-        | DisplayKind.LabelValueRow spec -> add BindingSinkClass.Numeric spec.Value
-        | DisplayKind.Progress spec -> add BindingSinkClass.Numeric spec.Fraction
-        | DisplayKind.Sparkline spec -> add BindingSinkClass.Numeric spec.Source
+        | NodeKind.LabelValueRow spec -> add BindingSinkClass.Numeric spec.Value
+        | NodeKind.Progress spec -> add BindingSinkClass.Numeric spec.Fraction
+        | NodeKind.Sparkline spec -> add BindingSinkClass.Numeric spec.Source
         | _ -> ()
     | NodeKind.Visualisation vis ->
         match vis with
-        | VisKind.Chart spec ->
+        | NodeKind.Chart spec ->
             // The axis/series field names resolve against the schema only when
             // the chart's data IS the resolved query (Source = Binding.Query).
             // A static / transform-sourced chart names columns of a different
@@ -226,7 +226,7 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
         | _ -> ()
     | NodeKind.Input input ->
         match input with
-        | InputKind.Form spec ->
+        | NodeKind.Form spec ->
             for field in spec.Fields do
                 match field.Kind with
                 | FormFieldKind.Number(value, _) -> add BindingSinkClass.Numeric value
@@ -255,14 +255,14 @@ let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list =
         match n.Kind with
         | NodeKind.Layout layout ->
             match layout with
-            | LayoutKind.Box spec -> spec.Children |> List.iter walk
-            | LayoutKind.SplitPanel spec -> spec.Children |> List.iter walk
-            | LayoutKind.Tabs spec -> spec.Children |> List.iter walk
-            | LayoutKind.Stepper spec -> spec.Children |> List.iter walk
-            | LayoutKind.SummaryList spec -> spec.Children |> List.iter walk
-            | LayoutKind.Disclosure spec -> spec.Children |> List.iter walk
-            | LayoutKind.Modal spec -> spec.Children |> List.iter walk
-            | LayoutKind.ScrollArea spec -> spec.Children |> List.iter walk
+            | NodeKind.Box spec -> spec.Children |> List.iter walk
+            | NodeKind.SplitPanel spec -> spec.Children |> List.iter walk
+            | NodeKind.Tabs spec -> spec.Children |> List.iter walk
+            | NodeKind.Stepper spec -> spec.Children |> List.iter walk
+            | NodeKind.SummaryList spec -> spec.Children |> List.iter walk
+            | NodeKind.Disclosure spec -> spec.Children |> List.iter walk
+            | NodeKind.Modal spec -> spec.Children |> List.iter walk
+            | NodeKind.ScrollArea spec -> spec.Children |> List.iter walk
         | NodeKind.ErrorBoundary spec ->
             walk spec.Child
             walk spec.Fallback

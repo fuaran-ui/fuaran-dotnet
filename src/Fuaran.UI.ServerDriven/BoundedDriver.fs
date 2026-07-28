@@ -107,49 +107,49 @@ let private resolveOwnFields (sources: BindingSources) (node: Node<obj>) : Node<
         | NodeKind.Display d ->
             let d' =
                 match d with
-                | DisplayKind.Heading s ->
-                    DisplayKind.Heading
+                | NodeKind.Heading s ->
+                    NodeKind.Heading
                         { s with
                             Text = resolveText sources s.Text }
-                | DisplayKind.Markdown s ->
-                    DisplayKind.Markdown
+                | NodeKind.Markdown s ->
+                    NodeKind.Markdown
                         { s with
                             Text = resolveText sources s.Text }
-                | DisplayKind.Badge s ->
-                    DisplayKind.Badge
+                | NodeKind.Badge s ->
+                    NodeKind.Badge
                         { s with
                             Label = resolveText sources s.Label }
-                | DisplayKind.Metric s ->
-                    DisplayKind.Metric
+                | NodeKind.Metric s ->
+                    NodeKind.Metric
                         { s with
                             Label = resolveText sources s.Label
                             Value = substB sources s.Value
                             Trend = substBOpt sources s.Trend
                             Subtext = resolveTextOpt sources s.Subtext }
-                | DisplayKind.Callout s ->
-                    DisplayKind.Callout
+                | NodeKind.Callout s ->
+                    NodeKind.Callout
                         { s with
                             Heading = resolveTextOpt sources s.Heading
                             Body = resolveText sources s.Body }
-                | DisplayKind.Progress s ->
-                    DisplayKind.Progress
+                | NodeKind.Progress s ->
+                    NodeKind.Progress
                         { s with
                             Fraction = substB sources s.Fraction
                             Label = resolveTextOpt sources s.Label
                             Caveat = resolveTextOpt sources s.Caveat }
-                | DisplayKind.LabelValueRow s ->
-                    DisplayKind.LabelValueRow
+                | NodeKind.LabelValueRow s ->
+                    NodeKind.LabelValueRow
                         { s with
                             Label = resolveText sources s.Label
                             Value = substB sources s.Value
                             Help = resolveTextOpt sources s.Help }
-                | DisplayKind.Link s ->
-                    DisplayKind.Link
+                | NodeKind.Link s ->
+                    NodeKind.Link
                         { s with
                             Href = substB sources s.Href
                             Label = resolveText sources s.Label }
-                | DisplayKind.Sparkline s ->
-                    DisplayKind.Sparkline
+                | NodeKind.Sparkline s ->
+                    NodeKind.Sparkline
                         { s with
                             Source = substB sources s.Source }
                 | other -> other
@@ -158,14 +158,14 @@ let private resolveOwnFields (sources: BindingSources) (node: Node<obj>) : Node<
         | NodeKind.Input i ->
             let i' =
                 match i with
-                | InputKind.Button s ->
-                    InputKind.Button
+                | NodeKind.Button s ->
+                    NodeKind.Button
                         { s with
                             Label = resolveText sources s.Label
                             Tooltip = resolveTextOpt sources s.Tooltip
                             Disabled = substBOpt sources s.Disabled }
-                | InputKind.Select s ->
-                    InputKind.Select
+                | NodeKind.Select s ->
+                    NodeKind.Select
                         { s with
                             Label = resolveText sources s.Label
                             Source = substB sources s.Source
@@ -177,26 +177,26 @@ let private resolveOwnFields (sources: BindingSources) (node: Node<obj>) : Node<
         | NodeKind.Layout l ->
             let l' =
                 match l with
-                | LayoutKind.Tabs s ->
-                    LayoutKind.Tabs
+                | NodeKind.Tabs s ->
+                    NodeKind.Tabs
                         { s with
                             ActiveIndex = substB sources s.ActiveIndex
                             ActiveTag = substBOpt sources s.ActiveTag }
-                | LayoutKind.Stepper s ->
-                    LayoutKind.Stepper
+                | NodeKind.Stepper s ->
+                    NodeKind.Stepper
                         { s with
                             ActiveStep = substB sources s.ActiveStep }
-                | LayoutKind.Disclosure s ->
-                    LayoutKind.Disclosure
+                | NodeKind.Disclosure s ->
+                    NodeKind.Disclosure
                         { s with
                             Open = substB sources s.Open
                             Heading = resolveText sources s.Heading }
-                | LayoutKind.Box s ->
-                    LayoutKind.Box
+                | NodeKind.Box s ->
+                    NodeKind.Box
                         { s with
                             Heading = resolveTextOpt sources s.Heading }
-                | LayoutKind.SummaryList s ->
-                    LayoutKind.SummaryList
+                | NodeKind.SummaryList s ->
+                    NodeKind.SummaryList
                         { s with
                             Heading = resolveTextOpt sources s.Heading }
                 | other -> other

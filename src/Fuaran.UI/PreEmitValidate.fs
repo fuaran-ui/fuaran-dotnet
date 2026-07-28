@@ -433,9 +433,9 @@ let private validateCore
         match n.Kind with
         | NodeKind.Layout layout ->
             match layout with
-            | LayoutKind.Box spec -> spec.Children |> List.iter walk
-            | LayoutKind.SplitPanel spec -> spec.Children |> List.iter walk
-            | LayoutKind.Tabs spec ->
+            | NodeKind.Box spec -> spec.Children |> List.iter walk
+            | NodeKind.SplitPanel spec -> spec.Children |> List.iter walk
+            | NodeKind.Tabs spec ->
                 // FUARAN047 / FUARAN048 / FUARAN049
                 // tabs-shape invariants. Length mismatches are construction
                 // defects (the renderer would silently drop headers or tags
@@ -476,9 +476,9 @@ let private validateCore
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Tabs"))
 
                 spec.Children |> List.iter walk
-            | LayoutKind.Stepper spec -> spec.Children |> List.iter walk
-            | LayoutKind.SummaryList spec -> spec.Children |> List.iter walk
-            | LayoutKind.Disclosure spec ->
+            | NodeKind.Stepper spec -> spec.Children |> List.iter walk
+            | NodeKind.SummaryList spec -> spec.Children |> List.iter walk
+            | NodeKind.Disclosure spec ->
                 // FUARAN069 (Phase 426): no toggle handler and no writable
                 // `Open` slot — the model never hears the native toggle.
                 let (NodeId nodeIdStr) = n.Id
@@ -487,7 +487,7 @@ let private validateCore
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Disclosure"))
 
                 spec.Children |> List.iter walk
-            | LayoutKind.Modal spec ->
+            | NodeKind.Modal spec ->
                 // FUARAN069 (Phase 426): a dismissable modal with no dismiss
                 // action and no writable `Open` slot can never close.
                 let (NodeId nodeIdStr) = n.Id
@@ -496,8 +496,8 @@ let private validateCore
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Modal"))
 
                 spec.Children |> List.iter walk
-            | LayoutKind.ScrollArea spec -> spec.Children |> List.iter walk
-        | NodeKind.Visualisation(VisKind.DataGrid spec) ->
+            | NodeKind.ScrollArea spec -> spec.Children |> List.iter walk
+        | NodeKind.DataGrid( spec) ->
             // FUARAN077 / FUARAN078 (Phase 425 follow-up): the declarative grid
             // display floor — every column needs a Value closure or a Field,
             // and the grid needs a RowKey closure or a RowKeyField for stable
@@ -567,8 +567,8 @@ let private validateCore
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, sprintf "FormField(%s)" field.Id))
 
             match input with
-            | InputKind.Form spec -> spec.Fields |> List.iter checkField
-            | InputKind.Select spec ->
+            | NodeKind.Form spec -> spec.Fields |> List.iter checkField
+            | NodeKind.Select spec ->
                 if spec.Multiple then
                     let valuesLive =
                         match spec.Values with
@@ -579,10 +579,10 @@ let private validateCore
                         defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select(multiple)"))
                 elif spec.OnChange.IsNone && not (isWriteBackTarget spec.Value) then
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Select"))
-            | InputKind.Filters _
-            | InputKind.Button _
-            | InputKind.FileUpload _ -> ()
-        | NodeKind.Visualisation(VisKind.Chart spec) ->
+            | NodeKind.Filters _
+            | NodeKind.Button _
+            | NodeKind.FileUpload _ -> ()
+        | NodeKind.Chart( spec) ->
             // FUARAN086–089 (Phase 640): schema-grounded chart validation. An
             // ungrounded field reference is the LANGUAGE's defect to catch
             // before lowering — a wrong field name otherwise lowers to a

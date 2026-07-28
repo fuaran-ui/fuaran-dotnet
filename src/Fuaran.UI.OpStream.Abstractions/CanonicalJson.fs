@@ -1196,23 +1196,23 @@ let private encodeDrawingSpec (s: DrawingSpec) : Appender =
 let private encodeDisplayKind<'Msg> (d: DisplayKind<'Msg>) : Appender =
     fun sb ->
         match d with
-        | DisplayKind.Heading s -> hoistSpec "Heading" (encodeHeadingSpec s) sb
-        | DisplayKind.Markdown s -> hoistSpec "Markdown" (encodeMarkdownSpec s) sb
-        | DisplayKind.Metric s -> hoistSpec "Metric" (encodeMetricSpec s) sb
-        | DisplayKind.Badge s -> hoistSpec "Badge" (encodeBadgeSpec s) sb
-        | DisplayKind.Sparkline s -> hoistSpec "Sparkline" (encodeSparklineSpec s) sb
-        | DisplayKind.Callout s -> hoistSpec "Callout" (encodeCalloutSpec s) sb
-        | DisplayKind.Progress s -> hoistSpec "Progress" (encodeProgressSpec s) sb
-        | DisplayKind.Skeleton s -> hoistSpec "Skeleton" (encodeSkeletonSpec s) sb
-        | DisplayKind.LabelValueRow s -> hoistSpec "LabelValueRow" (encodeLabelValueRowSpec s) sb
-        | DisplayKind.Fact s -> hoistSpec "Fact" (encodeFactSpec s) sb
-        | DisplayKind.Link s -> hoistSpec "Link" (encodeLinkSpec s) sb
-        | DisplayKind.Image s -> hoistSpec "Image" (encodeImageSpec s) sb
-        | DisplayKind.List s -> hoistSpec "List" (encodeListSpec s) sb
-        | DisplayKind.Toast s -> hoistSpec "Toast" (encodeToastSpec s) sb
-        | DisplayKind.CodeBlock s -> hoistSpec "CodeBlock" (encodeCodeBlockSpec s) sb
-        | DisplayKind.Math s -> hoistSpec "Math" (encodeMathSpec s) sb
-        | DisplayKind.Drawing s -> hoistSpec "Drawing" (encodeDrawingSpec s) sb
+        | NodeKind.Heading s -> hoistSpec "Heading" (encodeHeadingSpec s) sb
+        | NodeKind.Markdown s -> hoistSpec "Markdown" (encodeMarkdownSpec s) sb
+        | NodeKind.Metric s -> hoistSpec "Metric" (encodeMetricSpec s) sb
+        | NodeKind.Badge s -> hoistSpec "Badge" (encodeBadgeSpec s) sb
+        | NodeKind.Sparkline s -> hoistSpec "Sparkline" (encodeSparklineSpec s) sb
+        | NodeKind.Callout s -> hoistSpec "Callout" (encodeCalloutSpec s) sb
+        | NodeKind.Progress s -> hoistSpec "Progress" (encodeProgressSpec s) sb
+        | NodeKind.Skeleton s -> hoistSpec "Skeleton" (encodeSkeletonSpec s) sb
+        | NodeKind.LabelValueRow s -> hoistSpec "LabelValueRow" (encodeLabelValueRowSpec s) sb
+        | NodeKind.Fact s -> hoistSpec "Fact" (encodeFactSpec s) sb
+        | NodeKind.Link s -> hoistSpec "Link" (encodeLinkSpec s) sb
+        | NodeKind.Image s -> hoistSpec "Image" (encodeImageSpec s) sb
+        | NodeKind.List s -> hoistSpec "List" (encodeListSpec s) sb
+        | NodeKind.Toast s -> hoistSpec "Toast" (encodeToastSpec s) sb
+        | NodeKind.CodeBlock s -> hoistSpec "CodeBlock" (encodeCodeBlockSpec s) sb
+        | NodeKind.Math s -> hoistSpec "Math" (encodeMathSpec s) sb
+        | NodeKind.Drawing s -> hoistSpec "Drawing" (encodeDrawingSpec s) sb
 
 /// Phase 596 — the auto-bind context for a control's `value` slot, mirroring
 /// the decoder's synthesis exactly. A `value` that is the context's exact
@@ -1484,14 +1484,14 @@ let private encodeFileUploadSpec<'Msg> (s: FileUploadSpec<'Msg>) : Appender =
 let private encodeInputKind<'Msg> (i: InputKind<'Msg>) : Appender =
     fun sb ->
         match i with
-        | InputKind.Form s -> hoistSpec "Form" (encodeFormSpec s) sb
-        | InputKind.Filters items ->
+        | NodeKind.Form s -> hoistSpec "Form" (encodeFormSpec s) sb
+        | NodeKind.Filters items ->
             appendObject
                 sb
                 (case "Filters" [ "items", (fun sb -> appendArrayWith sb (items |> List.map encodeFilterSpec)) ])
-        | InputKind.Button s -> hoistSpec "Button" (encodeButtonSpec s) sb
-        | InputKind.FileUpload s -> hoistSpec "FileUpload" (encodeFileUploadSpec s) sb
-        | InputKind.Select s -> hoistSpec "Select" (encodeSelectSpec s) sb
+        | NodeKind.Button s -> hoistSpec "Button" (encodeButtonSpec s) sb
+        | NodeKind.FileUpload s -> hoistSpec "FileUpload" (encodeFileUploadSpec s) sb
+        | NodeKind.Select s -> hoistSpec "Select" (encodeSelectSpec s) sb
 
 let private encodeCellKindErased<'Msg> (k: CellKindErased<'Msg>) : Appender =
     fun sb ->
@@ -1607,9 +1607,9 @@ let private encodeMapSpec<'Msg> (s: MapSpec<'Msg>) : Appender =
 let private encodeVisKind<'Msg> (v: VisKind<'Msg>) : Appender =
     fun sb ->
         match v with
-        | VisKind.DataGrid s -> hoistSpec "DataGrid" (encodeGridSpec s) sb
-        | VisKind.Chart s -> hoistSpec "Chart" (encodeChartSpec s) sb
-        | VisKind.Map s -> hoistSpec "Map" (encodeMapSpec s) sb
+        | NodeKind.DataGrid s -> hoistSpec "DataGrid" (encodeGridSpec s) sb
+        | NodeKind.Chart s -> hoistSpec "Chart" (encodeChartSpec s) sb
+        | NodeKind.Map s -> hoistSpec "Map" (encodeMapSpec s) sb
 
 // ─── Parameterised-fragment hole / effect / scalar encoders (Phase 180) ─────
 //
@@ -1690,7 +1690,7 @@ let private encodeEffectClass (e: EffectClass) : Appender =
 let rec private layoutKindAppender<'Msg> (l: LayoutKind<'Msg>) : Appender =
     fun sb ->
         match l with
-        | LayoutKind.Box spec ->
+        | NodeKind.Box spec ->
             // Phase 390 — the unified container. Ordinal key order:
             // children < heading < layout < role. `layout` is a discriminated
             // object (Flex | Grid | Auto), `role` a string; `heading` emits
@@ -1737,7 +1737,7 @@ let rec private layoutKindAppender<'Msg> (l: LayoutKind<'Msg>) : Appender =
                     appendObject sb (head @ headingOpt @ tail)
 
             hoistSpec "Box" (inner) sb
-        | LayoutKind.SplitPanel spec ->
+        | NodeKind.SplitPanel spec ->
             hoistSpec
                 "SplitPanel"
                 (fun sb ->
@@ -1746,7 +1746,7 @@ let rec private layoutKindAppender<'Msg> (l: LayoutKind<'Msg>) : Appender =
                         [ "children", (fun sb -> appendArrayWith sb (spec.Children |> List.map nodeAppender))
                           "weight", float_ spec.Weight ])
                 sb
-        | LayoutKind.Tabs spec ->
+        | NodeKind.Tabs spec ->
             let inner: Appender =
                 fun sb ->
                     // Canonical fields (children + orientation)
@@ -1794,7 +1794,7 @@ let rec private layoutKindAppender<'Msg> (l: LayoutKind<'Msg>) : Appender =
                     appendObject sb (requiredFields @ optionals)
 
             hoistSpec "Tabs" (inner) sb
-        | LayoutKind.Stepper spec ->
+        | NodeKind.Stepper spec ->
             // `onSelect` is a closure → the `"<closure>"` sentinel (decodes to
             // a no-op, re-encodes to the same sentinel; byte-stable) — same
             // treatment as Tabs `onSelect` (Phase 126).
@@ -1807,7 +1807,7 @@ let rec private layoutKindAppender<'Msg> (l: LayoutKind<'Msg>) : Appender =
                           "children", (fun sb -> appendArrayWith sb (spec.Children |> List.map nodeAppender))
                           "onSelect", sentinel closureSentinel ])
                 sb
-        | LayoutKind.SummaryList spec ->
+        | NodeKind.SummaryList spec ->
             // SummaryList — Heading is optional + appended
             // after Children, matching Card's encoding pattern.
             let inner =
@@ -1822,7 +1822,7 @@ let rec private layoutKindAppender<'Msg> (l: LayoutKind<'Msg>) : Appender =
                     appendObject sb (fields @ optionals)
 
             hoistSpec "SummaryList" (inner) sb
-        | LayoutKind.Disclosure spec ->
+        | NodeKind.Disclosure spec ->
             // Disclosure — required heading +
             // open binding + defaultOpen bool + children. `OnToggle` (Phase
             // 426): rides the wire only when present — a `Some` closure → the
@@ -1844,7 +1844,7 @@ let rec private layoutKindAppender<'Msg> (l: LayoutKind<'Msg>) : Appender =
 
                     appendObject sb (fields @ optionals))
                 sb
-        | LayoutKind.Modal spec ->
+        | NodeKind.Modal spec ->
             // Phase 289 — overlay dialog. `onDismiss` is a wire-survivable
             // Action (like Form.OnSubmit), encoded as the action value; `open`
             // is the visibility binding; `heading` optional. Since Phase 426
@@ -1866,7 +1866,7 @@ let rec private layoutKindAppender<'Msg> (l: LayoutKind<'Msg>) : Appender =
                     appendObject sb (fields @ optionals)
 
             hoistSpec "Modal" inner sb
-        | LayoutKind.ScrollArea spec ->
+        | NodeKind.ScrollArea spec ->
             // Phase 289 — overflow/scroll container. Optional maxHeight/maxWidth
             // (pixels) omitted when absent (rule 4); `orientation` always
             // emitted (scroll-axis DU).

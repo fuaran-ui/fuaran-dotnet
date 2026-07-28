@@ -92,7 +92,7 @@ let rec tryFindFormField (fieldId: string) (node: Node<'Msg>) : FormField<'Msg> 
         |> List.tryPick (tryFindFormField fieldId)
 
     match node.Kind with
-    | NodeKind.Input(InputKind.Form form) ->
+    | NodeKind.Form( form) ->
         match form.Fields |> List.tryFind (fun f -> f.Id = fieldId) with
         | Some _ as found -> found
         | None -> inChildren ()
@@ -134,7 +134,7 @@ let step
     match findNode (NodeId ev.NodeId) session.Tree with
     | Some node ->
         match node.Kind with
-        | NodeKind.Input(InputKind.Form form) when ev.Event = "submit" ->
+        | NodeKind.Form( form) when ev.Event = "submit" ->
             // G1 first — node exists, submit legitimate, payload in bounds, and
             // the resolved `OnSubmit` passes the dispatch policy gate.
             match validate session.Services.CanDispatch session.Tree ev with

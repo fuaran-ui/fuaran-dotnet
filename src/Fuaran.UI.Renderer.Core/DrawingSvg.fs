@@ -1,7 +1,7 @@
 module Fuaran.UI.Renderer.DrawingSvg
 
 // ============================================================================
-//  Phase 525 — the canonical inline-SVG string for a `DisplayKind.Drawing`.
+//  Phase 525 — the canonical inline-SVG string for a `NodeKind.Drawing`.
 //
 //  A `Drawing` is resolved static geometry (Phase 524), so — unlike `Sparkline`,
 //  whose data is client-resolved — it renders IDENTICALLY on the client and the

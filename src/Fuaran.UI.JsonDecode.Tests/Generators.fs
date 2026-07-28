@@ -460,21 +460,21 @@ let private genLabelValueRowSpec: Gen<LabelValueRowSpec> =
 
 let private genDisplayKind: Gen<DisplayKind<obj>> =
     Gen.oneof
-        [ Gen.map DisplayKind.Heading genHeadingSpec
-          Gen.map (fun t -> DisplayKind.Markdown { Text = t }) genTextSource
-          Gen.map DisplayKind.Metric genMetricSpec
+        [ Gen.map NodeKind.Heading genHeadingSpec
+          Gen.map (fun t -> NodeKind.Markdown { Text = t }) genTextSource
+          Gen.map NodeKind.Metric genMetricSpec
           gen {
               let! label = genTextSource
               let! variant = genBadgeVariant
-              return DisplayKind.Badge { Label = label; Variant = variant }
+              return NodeKind.Badge { Label = label; Variant = variant }
           }
           Gen.map
-              (fun b -> DisplayKind.Sparkline { Source = b })
+              (fun b -> NodeKind.Sparkline { Source = b })
               (Gen.map Binding.Static (Gen.nonEmptyListOf genFiniteFloat |> Gen.map Seq.ofList))
-          Gen.map DisplayKind.Callout genCalloutSpec
-          Gen.map DisplayKind.Progress genProgressSpec
-          Gen.map (fun r -> DisplayKind.Skeleton { Rows = r }) (Gen.choose (0, 12))
-          Gen.map DisplayKind.LabelValueRow genLabelValueRowSpec ]
+          Gen.map NodeKind.Callout genCalloutSpec
+          Gen.map NodeKind.Progress genProgressSpec
+          Gen.map (fun r -> NodeKind.Skeleton { Rows = r }) (Gen.choose (0, 12))
+          Gen.map NodeKind.LabelValueRow genLabelValueRowSpec ]
 
 // ─── Action ─────────────────────────────────────────────────────────────────
 
@@ -673,11 +673,11 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
 
 let private genInputKind: Gen<InputKind<obj>> =
     Gen.oneof
-        [ Gen.map InputKind.Form genFormSpec
-          Gen.map InputKind.Filters genFilters
-          Gen.map InputKind.Button genButtonSpec
-          Gen.map InputKind.FileUpload genFileUploadSpec
-          Gen.map InputKind.Select genSelectSpec ]
+        [ Gen.map NodeKind.Form genFormSpec
+          Gen.map NodeKind.Filters genFilters
+          Gen.map NodeKind.Button genButtonSpec
+          Gen.map NodeKind.FileUpload genFileUploadSpec
+          Gen.map NodeKind.Select genSelectSpec ]
 
 // ─── Visualisation specs ─────────────────────────────────────────────────────
 
@@ -700,7 +700,7 @@ let private genGridColumns: Gen<ColumnErased<obj> list> =
               CellKindErased.Progress((fun _ -> 0.5), Some(fun _ -> TextSource.Literal "p"))
               CellKindErased.Custom(fun _ ->
                   { Id = NodeId "cell-custom"
-                    Kind = NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "x" })
+                    Kind = NodeKind.Markdown( { Text = TextSource.Literal "x" })
                     State =
                       { OnLoading = None
                         OnEmpty = None
@@ -775,9 +775,9 @@ let private genMapSpec: Gen<MapSpec<obj>> =
 
 let private genVisKind: Gen<VisKind<obj>> =
     Gen.oneof
-        [ Gen.map VisKind.DataGrid genGridSpec
-          Gen.map VisKind.Chart genChartSpec
-          Gen.map VisKind.Map genMapSpec ]
+        [ Gen.map NodeKind.DataGrid genGridSpec
+          Gen.map NodeKind.Chart genChartSpec
+          Gen.map NodeKind.Map genMapSpec ]
 
 // ─── Custom / fragments ──────────────────────────────────────────────────────
 
@@ -896,7 +896,7 @@ let rec private genLayoutKind (size: int) : Gen<LayoutKind<obj>> =
               let! children = genChildren sub
 
               return
-                  LayoutKind.Box
+                  NodeKind.Box
                       { Layout = layout
                         Role = role
                         Heading = heading
@@ -905,7 +905,7 @@ let rec private genLayoutKind (size: int) : Gen<LayoutKind<obj>> =
           gen {
               let! weight = genFiniteFloat
               let! children = genChildren sub
-              return LayoutKind.SplitPanel { Weight = weight; Children = children }
+              return NodeKind.SplitPanel { Weight = weight; Children = children }
           }
           gen {
               let! orientation = genOrientation
@@ -916,7 +916,7 @@ let rec private genLayoutKind (size: int) : Gen<LayoutKind<obj>> =
               let! withHandler = genBool
 
               return
-                  LayoutKind.Tabs
+                  NodeKind.Tabs
                       { Orientation = orientation
                         Children = children
                         ActiveIndex = active
@@ -931,7 +931,7 @@ let rec private genLayoutKind (size: int) : Gen<LayoutKind<obj>> =
               let! children = genChildren sub
 
               return
-                  LayoutKind.Stepper
+                  NodeKind.Stepper
                       { ActiveStep = active
                         Children = children
                         OnSelect = (fun _ -> Action.Chain []) }
@@ -941,7 +941,7 @@ let rec private genLayoutKind (size: int) : Gen<LayoutKind<obj>> =
               let! children = genChildren sub
 
               return
-                  LayoutKind.SummaryList
+                  NodeKind.SummaryList
                       { Heading = heading
                         Children = children }
           }
@@ -954,7 +954,7 @@ let rec private genLayoutKind (size: int) : Gen<LayoutKind<obj>> =
               let! withHandler = genBool
 
               return
-                  LayoutKind.Disclosure
+                  NodeKind.Disclosure
                       { Heading = heading
                         Open = isOpen
                         OnToggle = (if withHandler then Some(fun _ -> Action.Chain []) else None)
@@ -1026,7 +1026,7 @@ and private genStateBehaviour (size: int) : Gen<StateBehaviour<obj>> =
 
 and private placeholderErrorNode: Node<obj> =
     { Id = NodeId "err"
-      Kind = NodeKind.Display(DisplayKind.Markdown { Text = TextSource.Literal "err" })
+      Kind = NodeKind.Markdown( { Text = TextSource.Literal "err" })
       State =
         { OnLoading = None
           OnEmpty = None
@@ -1126,14 +1126,14 @@ let rec shrinkNode (n: Node<obj>) : Node<obj> seq =
         match k with
         | NodeKind.Layout layout ->
             match layout with
-            | LayoutKind.Box s -> s.Children
-            | LayoutKind.SplitPanel s -> s.Children
-            | LayoutKind.Tabs s -> s.Children
-            | LayoutKind.Stepper s -> s.Children
-            | LayoutKind.SummaryList s -> s.Children
-            | LayoutKind.Disclosure s -> s.Children
-            | LayoutKind.Modal s -> s.Children
-            | LayoutKind.ScrollArea s -> s.Children
+            | NodeKind.Box s -> s.Children
+            | NodeKind.SplitPanel s -> s.Children
+            | NodeKind.Tabs s -> s.Children
+            | NodeKind.Stepper s -> s.Children
+            | NodeKind.SummaryList s -> s.Children
+            | NodeKind.Disclosure s -> s.Children
+            | NodeKind.Modal s -> s.Children
+            | NodeKind.ScrollArea s -> s.Children
         | NodeKind.ErrorBoundary s -> [ s.Child; s.Fallback ]
         | NodeKind.FragmentDecl s -> [ s.Body ]
         | _ -> []
