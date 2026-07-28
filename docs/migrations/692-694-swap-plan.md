@@ -104,8 +104,38 @@ Fable demo AND catalog clean, zero corpus byte changes. As planned, plus:
   to the same class; the catalog Fable leg is the gate that sees it.
 - `ColumnErased` / `CellKindErased` stayed hand-written this stage (they reference `Node` — stage 4).
 
-### Stage 4 — specs + `NodeKind` + `Node` (the 692 switch proper)
+### Stage 4-prep — HostPrelude + THosted typed host surface — **DONE (branch `f5b00ae`; Core `d0639d8`/`6d24e4c`)**
 
+The IDL's documented `TStr` gap on `Accessibility.role`/`liveRegion` closed via `THosted`: the tier's
+new `src/Fuaran.UI/HostPrelude.fs` (compiled ahead of `Generated.fs`) hosts `AriaRole` /
+`LiveRegionKind` / `ErrorKind` / `ErrorPayload` / `FileRef` / `FileSelection` + wire codecs
+(lower-case mapping, `Custom` passthrough); a byte-identical stub in Fuaran-Core's test assembly
+(`UiHostPrelude.fs`) lets the generated snapshot compile there. `StateBehaviour.OnError` takes
+`ErrorPayload` (not `obj`), `FileUpload.onSelect` takes `FileSelection list`, Sparkline's source
+widened to `float list` (whole floats render integer-form — bytes unchanged). **The pattern:** a
+THosted slot keeps the tier's typed surface wherever erasure would eat a real DU; pure-naming
+wrappers still erase.
+
+### Stage 4a — Node-free specs + `SemanticStyle` + `Accessibility` — **DONE (branch commit `af7afaa`, all gates green)**
+
+Landed 2026-07-28: 35 files. The 17 display specs, Button/Select/FileUpload/Form/Map specs,
+`SemanticStyle`, `Accessibility` alias `Generated.*`; `FileRef`/`FileSelection` alias the prelude.
+Deltas: Icon fields → `string option`; Sparkline/Map sources → list-typed bindings;
+`SelectSpec.Value` → `Binding<string>` (Static-None no-selection, the stage-3 choice collapse);
+`SelectSpec.Multiple` → `bool option`; `FileUploadSpec.OnSelect` optional + FileSelection-typed;
+Accessibility ids → bare strings, Role/LiveRegion typed via THosted. Full FAKE Test (352 C# + 338 VB
+conformance), Fable demo + catalog, corpus untouched. **The constraint that shaped the split: a
+generated spec carrying `Node<'Msg>` cannot alias before the envelope itself swaps** — which is what
+stage 4b is.
+
+### Stage 4b — layout/meta specs + `NodeKind` + `Node` (the 692 switch proper)
+
+- Remaining after 4a: the Node-carrying layout/meta specs (Box, SplitPanel, Tabs, Stepper,
+  SummaryList, Disclosure, Modal, ScrollArea, ErrorBoundary, Switch, Mount, FragmentDecl,
+  FragmentRef), `StateBehaviour`, `ChartSpec` (its `Binding<unit>` source needs an IDL THosted
+  round first — `Binding<obj seq>` is the tier truth), `CustomSpec` / `FiltersSpec` /
+  `DataGridSpec` (NodeKind case-payload changes), then `NodeKind` + `Node` + the `NodeId` erasure
+  (1345 refs / 192 files at last count).
 - `Fuaran.fs` / `Defaults.fs` construct the generated specs (692 tasks 1–2); reconcile `mk<Kind>`
   constructors vs hand-written smart constructors (692 task 3 — delete the loser).
 - Node envelope: hand-written `State` / `Style` non-option records (omit-when-empty) become
