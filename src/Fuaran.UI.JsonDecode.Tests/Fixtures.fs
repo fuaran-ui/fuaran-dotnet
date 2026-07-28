@@ -2500,7 +2500,7 @@ let allNodes: (string * Node<obj>) list =
       "Display/Metric (Phase 283 — Binding.Invoke capability source)", metricInvoke
       "Input/Button (Phase 283 — Action.Invoke capability effect)", buttonInvoke
       "Visualisation/Chart", chart
-      "Visualisation/Table", table
+      "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Map", mapVis
       "Custom", custom
       "Custom (bounded escape, StrictReplay hash + exposed-ids)", customBounded
