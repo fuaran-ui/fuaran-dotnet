@@ -207,14 +207,39 @@ across 165 files all denote the generated types; 38 hand-written types remain in
 bucket (ops-boundary `NodeId`; author-surface facades; D3 host/runtime surface); `CapabilityTag`
 found dead (one comment reference) — a 694 deletion item.
 
-### Stage 6 (694) — deletion + measurement
+### Stage 6 (694) — deletion + measurement — **DONE (branch `29b0293`; Core `b93e81b`/`cef80c2`; all gates green)**
 
-Delete the hand-written structural definitions that remain, delete `CanonicalJson.encodeNode` in
-favour of `Generated.encodeNode` (the TreeOp codec re-points at it), then run the add-a-kind
-mirror-count measurement the phase mandates. Named deletion items from the earlier stages: the
-dead `CapabilityTag` DU (stage 5's finding), the unused `mk<Kind>` emission question (stage 4b's
-task-3 fold), and the retired author specs (`DashboardSpec` / `StackSpec` / `CardSpec` /
-`GridLayoutSpec`) if the verify-dead check agrees.
+Landed 2026-07-28. `CanonicalJson` 2,351 → 632 lines: the per-kind node encoder mirror is deleted;
+the op codec splices the generated renderings through new emitter-exposed JVal accessors
+(`encodeNodeJson` / `encodeNodeKindJson` / `encodeStateBehaviourJson` / `encodeSemanticStyleJson`,
+with `encNodeKind` factored out of `encNode`). Deleted with it: 20 first-wave + 4 second-wave dead
+private helpers, and the dead `CapabilityTag` DU. The verify-dead check on the "retired" author
+specs said NOT dead (all are live smart-ctor inputs) — kept, recorded. The `mk<Kind>` emission
+stays (the byte gates consume it; 692 task 3's reconciliation stands).
+
+**Where the deleted policy went** — the load-bearing design outcome of this stage:
+
+- **Encode-side**: `Introspect.canonicalForm` (+ `canonicalFormKind` routed through it on a scratch
+  envelope — ONE traversal, reusing the module's kind-complete lens, never a second per-kind walk).
+  An explicit context auto-binding value, an all-default `SemanticStyle`, an all-`None`
+  `StateBehaviour` each re-encode as canonical ABSENCE — the collapses the hand encoder performed
+  inline. Applied by the op-codec splices above the structural encoder; identity on
+  already-canonical (i.e. all decoded) trees.
+- **Decode-side**: `JsonDecode` no longer synthesises the auto-binding into the tree — absence stays
+  structural (`None`), tree-convergent with the generated decoder; the renderers' stage-3
+  render-time mirror is the single synthesis point. `BindingWalk` contributes the implicit
+  auto-bind use for a `None` value slot (State(field id) in a form, Filter(name) on a chip) so the
+  wiring lint + teleport-resume analysis keep their pre-collapse meaning.
+- The Phase 101 generative idempotence fuzz forced both placements (a decode-only collapse breaks
+  encode∘decode byte-stability for authored trees) and caught a live spec violation the corpus
+  could not see: the IDL modelled **`Button.tooltip`** as wire vocabulary where `WIRE_FORMAT.md`
+  §10.1 forbids it — now a host-only slot (Core `cef80c2`).
+
+Measurements (the phase's headline claims, in its body): add-a-kind = **1 IDL entry + 13
+compiler-forced tier files** (was those 13 + the encoder mirror + the hand type definition);
+line delta = **net −1,530 hand-maintained lines** (−2,396 / +866, itemised). `WIRE_FORMAT.md` §11
+step 1 now names the IDL as the single source (public-repo commit); Phase 671 retired with a
+pointer.
 
 ## Open questions (decide at the stage, not silently)
 
