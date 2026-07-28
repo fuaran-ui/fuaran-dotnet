@@ -266,9 +266,9 @@ and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
     | Custom of fn: ((obj -> JVal) -> Node<'Msg>)
 
 and [<RequireQualifiedAccess>] HoleValueSpace =
-    | IntRange of max: int * min: int
-    | FloatRange of max: float * min: float
-    | StringLen of maxLen: int * minLen: int
+    | IntRange of min: int * max: int
+    | FloatRange of min: float * max: float
+    | StringLen of minLen: int * maxLen: int
     | Enum of choices: string list
     | AnyString
 
@@ -279,9 +279,9 @@ and [<RequireQualifiedAccess>] Scalar =
     | Str of value: string
 
 and [<RequireQualifiedAccess>] HoleDecl =
-    | Value of ``default``: Scalar option * name: string * space: HoleValueSpace
-    | Slot of kindConstraint: string option * name: string
-    | Repeat of countSpace: HoleValueSpace * name: string
+    | Value of name: string * space: HoleValueSpace * ``default``: Scalar option
+    | Slot of name: string * kindConstraint: string option
+    | Repeat of name: string * countSpace: HoleValueSpace
 
 and [<RequireQualifiedAccess>] FragmentArg<'Msg> =
     | Int of value: int
@@ -299,8 +299,8 @@ and [<RequireQualifiedAccess>] CurveCommand =
 
 and [<RequireQualifiedAccess>] Shape =
     | Group of children: Shape list * style: DrawStyle
-    | Rectangle of cornerRadius: float option * height: float * style: DrawStyle * width: float * x: float * y: float
-    | Line of style: DrawStyle * x1: float * x2: float * y1: float * y2: float
+    | Rectangle of x: float * y: float * width: float * height: float * cornerRadius: float option * style: DrawStyle
+    | Line of x1: float * y1: float * x2: float * y2: float * style: DrawStyle
     | Polyline of points: DrawPoint list * style: DrawStyle
     | Polygon of points: DrawPoint list * style: DrawStyle
     | Curve of commands: CurveCommand list * style: DrawStyle
@@ -366,6 +366,7 @@ and DrawStyle =
       Fill: Binding<string> option
       FontFamily: string option
       FontSize: float option
+      MarkId: string option
       Opacity: Binding<float> option
       Stroke: Binding<string> option
       StrokeWidth: Binding<float> option
@@ -1190,9 +1191,9 @@ and private encCellKindErased<'Msg> (v: CellKindErased<'Msg>) : JVal =
 
 and private encHoleValueSpace (v: HoleValueSpace) : JVal =
     match v with
-    | HoleValueSpace.IntRange (max, min) -> Canon.typed "IntRange" [ "max", JInt max; "min", JInt min ]
-    | HoleValueSpace.FloatRange (max, min) -> Canon.typed "FloatRange" [ "max", JFloat max; "min", JFloat min ]
-    | HoleValueSpace.StringLen (maxLen, minLen) -> Canon.typed "StringLen" [ "maxLen", JInt maxLen; "minLen", JInt minLen ]
+    | HoleValueSpace.IntRange (min, max) -> Canon.typed "IntRange" [ "min", JInt min; "max", JInt max ]
+    | HoleValueSpace.FloatRange (min, max) -> Canon.typed "FloatRange" [ "min", JFloat min; "max", JFloat max ]
+    | HoleValueSpace.StringLen (minLen, maxLen) -> Canon.typed "StringLen" [ "minLen", JInt minLen; "maxLen", JInt maxLen ]
     | HoleValueSpace.Enum choices -> Canon.typed "Enum" [ "choices", JArr(List.map JStr choices) ]
     | HoleValueSpace.AnyString -> Canon.typed "AnyString" [  ]
 
@@ -1205,9 +1206,9 @@ and private encScalar (v: Scalar) : JVal =
 
 and private encHoleDecl (v: HoleDecl) : JVal =
     match v with
-    | HoleDecl.Value (``default``, name, space) -> Canon.typed "Value" ([ (``default`` |> Option.map (fun v -> "default", encScalar v)); Some("name", JStr name); Some("space", encHoleValueSpace space) ] |> List.choose id)
-    | HoleDecl.Slot (kindConstraint, name) -> Canon.typed "Slot" ([ (kindConstraint |> Option.map (fun v -> "kindConstraint", JStr v)); Some("name", JStr name) ] |> List.choose id)
-    | HoleDecl.Repeat (countSpace, name) -> Canon.typed "Repeat" [ "countSpace", encHoleValueSpace countSpace; "name", JStr name ]
+    | HoleDecl.Value (name, space, ``default``) -> Canon.typed "Value" ([ Some("name", JStr name); Some("space", encHoleValueSpace space); (``default`` |> Option.map (fun v -> "default", encScalar v)) ] |> List.choose id)
+    | HoleDecl.Slot (name, kindConstraint) -> Canon.typed "Slot" ([ Some("name", JStr name); (kindConstraint |> Option.map (fun v -> "kindConstraint", JStr v)) ] |> List.choose id)
+    | HoleDecl.Repeat (name, countSpace) -> Canon.typed "Repeat" [ "name", JStr name; "countSpace", encHoleValueSpace countSpace ]
 
 and private encFragmentArg<'Msg> (v: FragmentArg<'Msg>) : JVal =
     match v with
@@ -1228,8 +1229,8 @@ and private encCurveCommand (v: CurveCommand) : JVal =
 and private encShape (v: Shape) : JVal =
     match v with
     | Shape.Group (children, style) -> Canon.typed "Group" [ "children", JArr(List.map encShape children); "style", encDrawStyle style ]
-    | Shape.Rectangle (cornerRadius, height, style, width, x, y) -> Canon.typed "Rectangle" ([ (cornerRadius |> Option.map (fun v -> "cornerRadius", JFloat v)); Some("height", JFloat height); Some("style", encDrawStyle style); Some("width", JFloat width); Some("x", JFloat x); Some("y", JFloat y) ] |> List.choose id)
-    | Shape.Line (style, x1, x2, y1, y2) -> Canon.typed "Line" [ "style", encDrawStyle style; "x1", JFloat x1; "x2", JFloat x2; "y1", JFloat y1; "y2", JFloat y2 ]
+    | Shape.Rectangle (x, y, width, height, cornerRadius, style) -> Canon.typed "Rectangle" ([ Some("x", JFloat x); Some("y", JFloat y); Some("width", JFloat width); Some("height", JFloat height); (cornerRadius |> Option.map (fun v -> "cornerRadius", JFloat v)); Some("style", encDrawStyle style) ] |> List.choose id)
+    | Shape.Line (x1, y1, x2, y2, style) -> Canon.typed "Line" [ "x1", JFloat x1; "y1", JFloat y1; "x2", JFloat x2; "y2", JFloat y2; "style", encDrawStyle style ]
     | Shape.Polyline (points, style) -> Canon.typed "Polyline" [ "points", JArr(List.map encDrawPoint points); "style", encDrawStyle style ]
     | Shape.Polygon (points, style) -> Canon.typed "Polygon" [ "points", JArr(List.map encDrawPoint points); "style", encDrawStyle style ]
     | Shape.Curve (commands, style) -> Canon.typed "Curve" [ "commands", JArr(List.map encCurveCommand commands); "style", encDrawStyle style ]
@@ -1259,7 +1260,7 @@ and private encViewBox (s: ViewBox) : JVal =
     JObj([ Some("height", JFloat s.Height); Some("minX", JFloat s.MinX); Some("minY", JFloat s.MinY); Some("width", JFloat s.Width) ] |> List.choose id)
 
 and private encDrawStyle (s: DrawStyle) : JVal =
-    JObj([ (s.Emphasis |> Option.map (fun v -> "emphasis", encEmphasis v)); (s.Fill |> Option.map (fun v -> "fill", (encBinding JStr) v)); (s.FontFamily |> Option.map (fun v -> "fontFamily", JStr v)); (s.FontSize |> Option.map (fun v -> "fontSize", JFloat v)); (s.Opacity |> Option.map (fun v -> "opacity", (encBinding JFloat) v)); (s.Stroke |> Option.map (fun v -> "stroke", (encBinding JStr) v)); (s.StrokeWidth |> Option.map (fun v -> "strokeWidth", (encBinding JFloat) v)); (s.TextAnchor |> Option.map (fun v -> "textAnchor", encTextAnchor v)) ] |> List.choose id)
+    JObj([ (s.Emphasis |> Option.map (fun v -> "emphasis", encEmphasis v)); (s.Fill |> Option.map (fun v -> "fill", (encBinding JStr) v)); (s.FontFamily |> Option.map (fun v -> "fontFamily", JStr v)); (s.FontSize |> Option.map (fun v -> "fontSize", JFloat v)); (s.MarkId |> Option.map (fun v -> "markId", JStr v)); (s.Opacity |> Option.map (fun v -> "opacity", (encBinding JFloat) v)); (s.Stroke |> Option.map (fun v -> "stroke", (encBinding JStr) v)); (s.StrokeWidth |> Option.map (fun v -> "strokeWidth", (encBinding JFloat) v)); (s.TextAnchor |> Option.map (fun v -> "textAnchor", encTextAnchor v)) ] |> List.choose id)
 
 and private encInvokeArg (s: InvokeArg) : JVal =
     JObj([ Some("addr", JStr s.Addr); Some("value", JStr s.Value) ] |> List.choose id)
@@ -2098,17 +2099,17 @@ and private decHoleValueSpace (j: JVal) : Result<HoleValueSpace, string> =
         dTag __fs |> Result.bind (fun __t ->
         match __t with
         | "IntRange" ->
-            dReq "max" __fs dInt |> Result.bind (fun max ->
             dReq "min" __fs dInt |> Result.bind (fun min ->
-            Ok(HoleValueSpace.IntRange(max, min))))
+            dReq "max" __fs dInt |> Result.bind (fun max ->
+            Ok(HoleValueSpace.IntRange(min, max))))
         | "FloatRange" ->
-            dReq "max" __fs dFloat |> Result.bind (fun max ->
             dReq "min" __fs dFloat |> Result.bind (fun min ->
-            Ok(HoleValueSpace.FloatRange(max, min))))
+            dReq "max" __fs dFloat |> Result.bind (fun max ->
+            Ok(HoleValueSpace.FloatRange(min, max))))
         | "StringLen" ->
-            dReq "maxLen" __fs dInt |> Result.bind (fun maxLen ->
             dReq "minLen" __fs dInt |> Result.bind (fun minLen ->
-            Ok(HoleValueSpace.StringLen(maxLen, minLen))))
+            dReq "maxLen" __fs dInt |> Result.bind (fun maxLen ->
+            Ok(HoleValueSpace.StringLen(minLen, maxLen))))
         | "Enum" ->
             dReq "choices" __fs (dList dStr) |> Result.bind (fun choices ->
             Ok(HoleValueSpace.Enum(choices)))
@@ -2142,18 +2143,18 @@ and private decHoleDecl (j: JVal) : Result<HoleDecl, string> =
         dTag __fs |> Result.bind (fun __t ->
         match __t with
         | "Value" ->
-            dOpt "default" __fs decScalar |> Result.bind (fun ``default`` ->
             dReq "name" __fs dStr |> Result.bind (fun name ->
             dReq "space" __fs decHoleValueSpace |> Result.bind (fun space ->
-            Ok(HoleDecl.Value(``default``, name, space)))))
+            dOpt "default" __fs decScalar |> Result.bind (fun ``default`` ->
+            Ok(HoleDecl.Value(name, space, ``default``)))))
         | "Slot" ->
+            dReq "name" __fs dStr |> Result.bind (fun name ->
             dOpt "kindConstraint" __fs dStr |> Result.bind (fun kindConstraint ->
-            dReq "name" __fs dStr |> Result.bind (fun name ->
-            Ok(HoleDecl.Slot(kindConstraint, name))))
+            Ok(HoleDecl.Slot(name, kindConstraint))))
         | "Repeat" ->
-            dReq "countSpace" __fs decHoleValueSpace |> Result.bind (fun countSpace ->
             dReq "name" __fs dStr |> Result.bind (fun name ->
-            Ok(HoleDecl.Repeat(countSpace, name))))
+            dReq "countSpace" __fs decHoleValueSpace |> Result.bind (fun countSpace ->
+            Ok(HoleDecl.Repeat(name, countSpace))))
         | __other -> Error ("unknown HoleDecl case: " + __other))
     | _ -> Error "expected a HoleDecl object"
 
@@ -2214,20 +2215,20 @@ and private decShape (j: JVal) : Result<Shape, string> =
             dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
             Ok(Shape.Group(children, style))))
         | "Rectangle" ->
-            dOpt "cornerRadius" __fs dFloat |> Result.bind (fun cornerRadius ->
-            dReq "height" __fs dFloat |> Result.bind (fun height ->
-            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
-            dReq "width" __fs dFloat |> Result.bind (fun width ->
             dReq "x" __fs dFloat |> Result.bind (fun x ->
             dReq "y" __fs dFloat |> Result.bind (fun y ->
-            Ok(Shape.Rectangle(cornerRadius, height, style, width, x, y))))))))
-        | "Line" ->
+            dReq "width" __fs dFloat |> Result.bind (fun width ->
+            dReq "height" __fs dFloat |> Result.bind (fun height ->
+            dOpt "cornerRadius" __fs dFloat |> Result.bind (fun cornerRadius ->
             dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            Ok(Shape.Rectangle(x, y, width, height, cornerRadius, style))))))))
+        | "Line" ->
             dReq "x1" __fs dFloat |> Result.bind (fun x1 ->
-            dReq "x2" __fs dFloat |> Result.bind (fun x2 ->
             dReq "y1" __fs dFloat |> Result.bind (fun y1 ->
+            dReq "x2" __fs dFloat |> Result.bind (fun x2 ->
             dReq "y2" __fs dFloat |> Result.bind (fun y2 ->
-            Ok(Shape.Line(style, x1, x2, y1, y2)))))))
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            Ok(Shape.Line(x1, y1, x2, y2, style)))))))
         | "Polyline" ->
             dReq "points" __fs (dList decDrawPoint) |> Result.bind (fun points ->
             dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
@@ -2320,11 +2321,12 @@ and private decDrawStyle (j: JVal) : Result<DrawStyle, string> =
     dOpt "fill" __fs (decBinding dStr) |> Result.bind (fun fill ->
     dOpt "fontFamily" __fs dStr |> Result.bind (fun fontFamily ->
     dOpt "fontSize" __fs dFloat |> Result.bind (fun fontSize ->
+    dOpt "markId" __fs dStr |> Result.bind (fun markId ->
     dOpt "opacity" __fs (decBinding dFloat) |> Result.bind (fun opacity ->
     dOpt "stroke" __fs (decBinding dStr) |> Result.bind (fun stroke ->
     dOpt "strokeWidth" __fs (decBinding dFloat) |> Result.bind (fun strokeWidth ->
     dOpt "textAnchor" __fs decTextAnchor |> Result.bind (fun textAnchor ->
-    Ok { Emphasis = emphasis; Fill = fill; FontFamily = fontFamily; FontSize = fontSize; Opacity = opacity; Stroke = stroke; StrokeWidth = strokeWidth; TextAnchor = textAnchor })))))))))
+    Ok { Emphasis = emphasis; Fill = fill; FontFamily = fontFamily; FontSize = fontSize; MarkId = markId; Opacity = opacity; Stroke = stroke; StrokeWidth = strokeWidth; TextAnchor = textAnchor }))))))))))
 
 and private decInvokeArg (j: JVal) : Result<InvokeArg, string> =
     dObj j |> Result.bind (fun __fs ->
