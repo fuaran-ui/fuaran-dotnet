@@ -7,11 +7,12 @@ module Fuaran.UI.Validator.AccessibilityCheck
 //  `Fuaran.button` and `Fuaran.callout` calls:
 //
 //  - FUARAN040 (Error): a button with `Accessibility = None` explicit AND no
-//    derivable Label. Triggers when the author opted out of the renderer's
-//    fallback (which derives `aria-label` from `ButtonSpec.Label` when
-//    `Accessibility.Label` is None) and also left the structural Label empty.
-//    Surfaces as a build-failing finding so the button doesn't ship as an
-//    unannounced screen-reader trap.
+//    derivable Label. With `Accessibility = None` nothing emits an
+//    `aria-label`; the button's accessible name then comes from its text
+//    content, which is where the renderer puts `ButtonSpec.Label`. An empty
+//    structural Label on top leaves no accessible name at all. Surfaces as a
+//    build-failing finding so the button doesn't ship as an unannounced
+//    screen-reader trap.
 //
 //  - FUARAN041 (Warning): a callout with `Tone = ToneVariant.Warning` or
 //    `ToneVariant.Critical` AND `Accessibility = None` explicit. The default
@@ -32,16 +33,17 @@ open Fuaran.UI.Validator.Findings
 let private hasDerivableLabel (detail: A11yDetail) : bool =
     if not detail.HasLabelField then
         // No Label field set ⇒ structural label is the defaults' empty literal.
-        // The renderer renders the button as an empty `<button>` — no aria-label.
+        // The renderer renders the button as an empty `<button>` — no text
+        // content, so no accessible name.
         false
     else
         match detail.LabelLiteralValue with
         | Some literal -> literal <> ""
         // Non-literal Label (e.g. `Label = binding.query ...`) — trust the
         // binding to produce a non-empty string at runtime. FUARAN040 does not
-        // fire; if the binding resolves empty, the renderer's empty-aria-label
-        // omission still applies but that's a runtime concern, not a build-time
-        // one. Validator stays conservative.
+        // fire; if the binding resolves empty the button renders with empty
+        // text content and so no accessible name, but that's a runtime
+        // concern, not a build-time one. Validator stays conservative.
         | None -> true
 
 let private isHighTone (tone: string) : bool = tone = "Warning" || tone = "Critical"
@@ -55,7 +57,7 @@ let check (calls: FuaranCall list) : Finding list =
                   Error
                   "FUARAN040"
                   call.Location
-                  "Interactive Fuaran.button has Accessibility = None explicit AND no derivable Label — the rendered button will have no aria-label, leaving it unannounced to screen readers. Provide an Accessibility.Label, an Accessibility.LabelledBy referencing a labelling node, or a non-empty ButtonSpec.Label." ]
+                  "Interactive Fuaran.button has Accessibility = None explicit AND no derivable Label — the rendered button will have no accessible name (no aria-label, no labelling node, and empty text content), leaving it unannounced to screen readers. Provide an Accessibility.Label, an Accessibility.LabelledBy referencing a labelling node, or a non-empty ButtonSpec.Label (it renders as the button's text content, which names it)." ]
         | "callout", Some detail when
             detail.AccessibilityExplicitNone
             && (detail.ToneCaseName |> Option.map isHighTone |> Option.defaultValue false)

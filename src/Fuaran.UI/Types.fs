@@ -621,9 +621,10 @@ type Node<'Msg> =
 
 and Accessibility =
     {
-        /// Human-readable label for screen readers (`aria-label`). When `None`
-        /// AND the Node's structural label field (e.g. `ButtonSpec.Label`) is
-        /// non-empty, the renderer's per-Kind fallback uses the structural label.
+        /// Human-readable label for screen readers (`aria-label`). When `None`,
+        /// no `aria-label` is emitted; the element's accessible name then comes
+        /// from its text content — which is where the renderer puts the Node's
+        /// structural label field (e.g. `ButtonSpec.Label`).
         Label: Binding<string> option
         /// Reference to another Node whose text labels this one (`aria-labelledby`).
         /// Mutually exclusive with `Label` in practice — set one OR the other.

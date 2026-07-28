@@ -155,7 +155,7 @@ let tests =
 
               Expect.isFalse
                   (attrs |> List.exists (fun (k, _) -> k = "aria-label"))
-                  "Empty Label does NOT emit aria-label (renderer falls back to structural label)"
+                  "Empty Label does NOT emit aria-label (the element's text content supplies its accessible name instead)"
           }
 
           test "accessibilityAttributes resolves LabelledBy/DescribedBy NodeIds to their string id" {

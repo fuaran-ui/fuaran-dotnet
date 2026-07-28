@@ -468,9 +468,9 @@ let fragmentRef<'Msg> : FragmentRefSpec<'Msg> =
 //
 // Design rules:
 //   - Defaults stay generic (Role + LiveRegion where applicable); they do
-//     NOT bake i18n keys into `Label`. The renderer's per-Kind fallback
-//     derives `aria-label` from the spec's structural Label when no
-//     `Accessibility.Label` is set.
+//     NOT bake i18n keys into `Label`. When no `Accessibility.Label` is set
+//     the renderer emits no `aria-label` — the spec's structural Label becomes
+//     the element's text content, which supplies its accessible name.
 //   - Decorative / structural Nodes (Spacer, Skeleton, Heading, Stack)
 //     default to `None` — no aria-* emission. Adding ARIA metadata for
 //     every Node pollutes the type contract without screen-reader benefit.
@@ -499,8 +499,9 @@ module Accessibility =
 
     // ─── Interactive defaults (validator-enforced via FUARAN040) ────────────
 
-    /// Button: `Role = Button`. The renderer derives `aria-label` from
-    /// `ButtonSpec.Label` when `Accessibility.Label` is `None`.
+    /// Button: `Role = Button`. When `Accessibility.Label` is `None` no
+    /// `aria-label` is emitted — `ButtonSpec.Label` renders as the button's
+    /// text content, which supplies its accessible name.
     let button: Accessibility option =
         Some
             { empty with
@@ -514,9 +515,10 @@ module Accessibility =
             { empty with
                 Role = Some(AriaRole.Custom "combobox") }
 
-    /// Form: `Role = Form`. The renderer derives `aria-label` from
-    /// `FormSpec.SubmitLabel` when `Accessibility.Label` is `None` (rough,
-    /// but better than nothing). Authors typically supply a real label.
+    /// Form: `Role = Form`. When `Accessibility.Label` is `None` no
+    /// `aria-label` is emitted — `FormSpec.SubmitLabel` names only the submit
+    /// button (as its text content), not the form itself. Authors typically
+    /// supply a real label for the form.
     let form: Accessibility option = Some { empty with Role = Some AriaRole.Form }
 
     /// FileUpload: `Role = Button` — file inputs render as a styled button
