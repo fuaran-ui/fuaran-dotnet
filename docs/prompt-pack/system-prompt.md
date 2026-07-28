@@ -1447,6 +1447,12 @@ Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` 
 | `Tabs.tabHeaders[]` | `label` | `disabled`, `icon` |
 <!-- /fuaran:enum-vocab -->
 
+**There is no `-Filter` control family.** The older names `ChoiceFilter` ·
+`SegmentedFilter` · `TextFilter` · `RangeFilter` · `SearchFilter` are **retired** and
+reject with `UNKNOWN_DU_CASE`. A filter chip's control IS a `FormFieldKind` case — one
+control vocabulary for forms and filter strips: a choice chip is `Choice`, a segmented
+chip is `SegmentedChoice`, a search/text chip is `Text`, a numeric range chip is `Range`.
+
 ## Style vocabularies — density & prominence, not font styling
 
 Four style fields carry a **small closed vocabulary**, and every one is now **omittable**
