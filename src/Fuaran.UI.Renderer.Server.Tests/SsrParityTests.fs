@@ -215,7 +215,7 @@ let private fixtures: Fixture list =
             "fuaran-icon fuaran-button-icon"
             "data-icon=\"go-glyph\"" ] }
 
-      { Name = "Visualisation/Table"
+      { Name = "Visualisation/Grid (static-table mode — staticRows via Fuaran.table)"
         Node =
           Fuaran.table
               "tbl"
