@@ -60,7 +60,8 @@ let rec mapAction (f: 'a -> 'b) (action: Action<'a>) : Action<'b> =
     | Action.Chain actions -> Action.Chain(actions |> List.map (mapAction f))
     | Action.CommitLocal nodeId -> Action.CommitLocal nodeId
     | Action.WriteToClipboard text -> Action.WriteToClipboard text
-    | Action.ReadFileBody(file, encoding, onRead) -> Action.ReadFileBody(file, encoding, onRead >> f)
+    | Action.ReadFileBody(fileRef, fileHandle, encoding, onRead) ->
+        Action.ReadFileBody(fileRef, fileHandle, encoding, onRead |> Option.map (fun r -> r >> f))
     | Action.Invoke(capabilityId, args) -> Action.Invoke(capabilityId, args)
 
 /// Relabel a whole `Node<'a>` to `Node<'b>`. The `'Msg`-free traits (`Style`,

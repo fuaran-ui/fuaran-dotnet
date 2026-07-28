@@ -124,7 +124,7 @@ let rec private interpret
     // Inherently-browser arms → ClientEffect (no server form).
     | Action.Navigate route -> [], [ ClientEffect.Navigate route ]
     | Action.WriteToClipboard text -> [], [ ClientEffect.WriteToClipboard text ]
-    | Action.ReadFileBody(_, encoding, _) ->
+    | Action.ReadFileBody(_, _, encoding, _) ->
         let enc =
             match encoding with
             | FileReadEncoding.Text -> "Text"

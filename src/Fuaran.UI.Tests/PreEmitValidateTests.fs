@@ -373,8 +373,7 @@ let tests =
                       "fetch"
                       { Defaults.button<Msg> with
                           Label = TextSource.Literal "Fetch"
-                          OnClick =
-                              Action.Call(ApiEndpoint "/api/orders", None, Some(CallResultTarget.IntoQuery "orders")) }
+                          OnClick = Action.Call("/api/orders", None, Some(CallResultTarget.Query "orders")) }
 
               let tree = dashboard "root" [ fetchButton ]
 
@@ -393,8 +392,7 @@ let tests =
                       "fetch"
                       { Defaults.button<Msg> with
                           Label = TextSource.Literal "Fetch"
-                          OnClick =
-                              Action.Call(ApiEndpoint "/api/orders", None, Some(CallResultTarget.IntoQuery "orders")) }
+                          OnClick = Action.Call("/api/orders", None, Some(CallResultTarget.Query "orders")) }
 
               let reader =
                   Fuaran.metric
@@ -416,7 +414,7 @@ let tests =
                       "fire"
                       { Defaults.button<Msg> with
                           Label = TextSource.Literal "Ping"
-                          OnClick = Action.Call(ApiEndpoint "/api/ping", None, None) }
+                          OnClick = Action.Call("/api/ping", None, None) }
 
               let tree = dashboard "root" [ fireButton ]
 

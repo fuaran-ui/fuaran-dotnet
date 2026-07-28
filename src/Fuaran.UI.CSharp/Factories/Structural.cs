@@ -56,8 +56,8 @@ public static partial class Fuaran
                 new FsTypes.GuestChannel(
                     options.TwoWay ? FsTypes.ChannelDirection.TwoWay : FsTypes.ChannelDirection.OutOnly,
                     Fs.OptStr(options.MessageShape)),
-                Fs.Func<object, FsTypes.Action<object>>(_ =>
-                    FsTypes.Action<object>.NewChain(Fs.Empty<FsTypes.Action<object>>())),
+                Fs.Func<object, global::Fuaran.UI.Generated.Action<object>>(_ =>
+                    global::Fuaran.UI.Generated.Action<object>.NewChain(Fs.Empty<global::Fuaran.UI.Generated.Action<object>>())),
                 Fs.List((options.Capabilities ?? Enumerable.Empty<string>())
                     .Select(FsTypes.CapabilityTag.NewCapabilityTag)))));
 

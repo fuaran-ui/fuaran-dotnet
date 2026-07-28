@@ -90,10 +90,7 @@ let resumeTests =
               Expect.equal (disposition (Action.Navigate "/x")) ResumeDisposition.Interpret "Navigate"
               Expect.equal (disposition (Action.Dispatch(box "m"))) ResumeDisposition.Boot "Dispatch"
 
-              Expect.equal
-                  (disposition (Action.Call(ApiEndpoint "/api", Some id, None)))
-                  ResumeDisposition.Fallback
-                  "Call"
+              Expect.equal (disposition (Action.Call("/api", Some id, None))) ResumeDisposition.Fallback "Call"
 
               Expect.equal
                   (disposition (Action.Chain [ Action.Navigate "/x"; Action.Notify("c", JStr "p") ]))
@@ -106,7 +103,7 @@ let resumeTests =
                   "a Dispatch in the Chain forces boot"
 
               Expect.equal
-                  (disposition (Action.Chain [ Action.Navigate "/x"; Action.Call(ApiEndpoint "/api", Some id, None) ]))
+                  (disposition (Action.Chain [ Action.Navigate "/x"; Action.Call("/api", Some id, None) ]))
                   ResumeDisposition.Fallback
                   "a Call in the Chain forces fallback"
           }
@@ -199,7 +196,7 @@ let resumeTests =
                   Fuaran.button
                       "btn"
                       { Defaults.button<obj> with
-                          OnClick = Action.Call(ApiEndpoint "/api/save", Some id, None) }
+                          OnClick = Action.Call("/api/save", Some id, None) }
 
               let json = Resume.encodeEnvelope "m" "" [] withCall
               use doc = System.Text.Json.JsonDocument.Parse json

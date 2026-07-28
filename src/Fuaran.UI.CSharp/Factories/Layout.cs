@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
-using FsAction = Fuaran.UI.Types.Action<object>;
+using FsAction = Fuaran.UI.Generated.Action<object>;
 
 namespace Fuaran.UI.CSharp;
 

@@ -1797,14 +1797,14 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                                     | Ok "State" ->
                                         requireField (path + ".into") intoFields "key" "state key string"
                                         |> Result.bind (requireString (path + ".into.key"))
-                                        |> Result.map (fun k -> Some(CallResultTarget.IntoState k))
+                                        |> Result.map (fun k -> Some(CallResultTarget.State k))
                                     | Ok "Query" ->
                                         requireField (path + ".into") intoFields "name" "query name string"
                                         |> Result.bind (requireString (path + ".into.name"))
-                                        |> Result.map (fun n -> Some(CallResultTarget.IntoQuery n))
+                                        |> Result.map (fun n -> Some(CallResultTarget.Query n))
                                     | Ok s -> unknownDuCase (path + ".into") s "State | Query"
 
-                        intoR |> Result.map (fun into -> Action.Call(ApiEndpoint ep, onResult, into))
+                        intoR |> Result.map (fun into -> Action.Call(ep, onResult, into))
             | Ok "Notify" ->
                 match requireField path fields "channel" "notification channel string" with
                 | Error e -> Error e
@@ -1881,11 +1881,10 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                         | Ok encJ ->
                             decodeFileReadEncoding (path + ".encoding") encJ
                             |> Result.map (fun encoding ->
-                                Action.ReadFileBody(
-                                    { Id = fileId; Handle = None },
-                                    encoding,
-                                    (fun _ -> box closureSentinel)
-                                ))
+                                // Positional since the swap: wire id + host-only
+                                // handle (always None on a decoded tree) + the
+                                // sentinel-restored onRead.
+                                Action.ReadFileBody(fileId, None, encoding, Some(fun _ -> box closureSentinel)))
             | Ok "Invoke" ->
                 // Phase 283 — invoke a host-registered capability as an effect. `capabilityId` + scalar
                 // `(addr, value)` args; the body is never on the wire.
@@ -1900,7 +1899,11 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                         | Ok argsJ ->
                             decodeInvokeArgs (path + ".args") argsJ
                             // qualified — `Action.Invoke` alone resolves to `System.Action.Invoke` (a method).
-                            |> Result.map (fun args -> Fuaran.UI.Types.Action.Invoke(capabilityId, args))
+                            |> Result.map (fun args ->
+                                Fuaran.UI.Types.Action.Invoke(
+                                    capabilityId,
+                                    args |> List.map (fun (addr, v) -> ({ Addr = addr; Value = v }: InvokeArg))
+                                ))
             | Ok s ->
                 unknownDuCase
                     path

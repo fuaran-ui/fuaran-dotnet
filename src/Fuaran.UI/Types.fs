@@ -1622,21 +1622,11 @@ and FilterSpec<'Msg> =
       Label: TextSource
       Field: FormFieldKind<'Msg> }
 
-/// Requested encoding for `Action.ReadFileBody` (Phase 136). The renderer's
-/// default browser impl maps each case to a `FileReader` projection; a
-/// non-browser host maps to whatever byte→string projection it supports.
-/// Encodes as a bare-string enum on the wire (§3.5).
-and [<RequireQualifiedAccess>] FileReadEncoding =
-    /// `FileReader.readAsText` — the file decoded as a UTF-8 / text string.
-    /// Use for CSV / JSON / plain-text ingestion.
-    | Text
-    /// The file's bytes, base64-encoded with **no** data-URL prefix (the
-    /// leading `data:<mime>;base64,` header is stripped). The shape an
-    /// upload-bytes-to-an-API flow wants.
-    | Base64
-    /// `FileReader.readAsDataURL` — the full `data:<mime>;base64,<payload>`
-    /// string. The shape an inline-preview (`<img src=…>`) flow wants.
-    | DataUrl
+/// Requested encoding for `Action.ReadFileBody` (Phase 136; generated). The
+/// renderer's default browser impl maps `Text` → `readAsText`, `Base64` → the
+/// data-URL payload with the header stripped, `DataUrl` → the full
+/// `data:<mime>;base64,…` string. Encodes as a bare-string enum on the wire (§3.5).
+and FileReadEncoding = Generated.FileReadEncoding
 
 /// An opaque, host-held reference to a user-selected file's blob (Phase 136).
 /// `Id` is a renderer-assigned stable token — the **only** part that
@@ -2000,74 +1990,24 @@ and InvokeArg = Generated.InvokeArg
 // Per Defect (2) resolution: `Call`'s onResult payload stays obj-erased
 // at the tree level; typed `Action.call` in Fuaran.fs wraps `'a -> 'Msg`
 // in an obj-erasing closure.
+//
+// Stage 2 of the 692-694 swap: `Action<'Msg>` IS the IDL-generated union now.
+// Deltas against the pre-swap type (D3 + the swap plan): `Call` carries a bare
+// `endpoint: string` (the `ApiEndpoint` wrapper erases at this seam);
+// `ReadFileBody` splits the old `FileRef` record into the wire `fileRef: string`
+// + a HOST-ONLY `fileHandle: obj option` (never encoded — the boxed browser
+// `File` blob the runtime reads), and `onRead` is an option; `Invoke` args are
+// `InvokeArg` records; `CallResultTarget`'s case names are the WIRE tags
+// (`State` / `Query`, the old `IntoState` / `IntoQuery`).
 
-and [<RequireQualifiedAccess>] Action<'Msg> =
-    | Dispatch of 'Msg
-    /// Call a host-registered endpoint. `onResult` (a closure, `"<closure>"`
-    /// on the wire) wins when `Some` — exactly the pre-Phase-428 behaviour.
-    /// `into` (Phase 428) is the declarative result target the AI-authored /
-    /// decoded shape uses: on completion the renderer writes the response to
-    /// the named `$state` key or `queryResults` slot and the existing
-    /// reactivity re-renders readers. Both `None` is a fire-and-forget
-    /// command call (FUARAN073 warns — legitimate for command endpoints).
-    /// The endpoint set + the default-deny dispatch gate are unchanged —
-    /// `into` adds no new capability, only a destination.
-    | Call of ApiEndpoint * onResult: (obj -> 'Msg) option * into: CallResultTarget option
-    | Notify of channel: string * payload: JVal
-    | Navigate of route: string
-    | SetState of key: string * value: JVal
-    | AiTool of toolName: string * args: JVal
-    | Chain of Action<'Msg> list
-    /// Explicit-commit boundary for `Binding<'T>.Local` whose
-    /// `FlushOn = OnCommitAction`. The renderer matches on `nodeId` against
-    /// the form-field NodeIds whose Local binding's flush trigger is
-    /// `OnCommitAction`; firing the action drains the per-NodeId useState
-    /// slot through the binding's `OnCommit`. Consumers typically wire this
-    /// to an inline "Apply" button's `OnClick`.
-    | CommitLocal of nodeId: string
-    /// Typed clipboard-write intent. The renderer dispatches via
-    /// `IFuaranRuntime.WriteToClipboard`; the default browser impl calls
-    /// `navigator.clipboard.writeText`, the diagnostic runtime emits a
-    /// warning. Closes the cross-app "consumer hand-rolls navigator.clipboard
-    /// inside update" gap (a share-link copy button is the canonical
-    /// case) — clipboard intent is now AI-emittable, sits on the same side-
-    /// effect substrate as `Notify` / `Navigate` / `SetState`, and hosts can
-    /// override the channel (electron / server / mock) without touching call
-    /// sites. Payload is a literal string; a future binding-aware variant
-    /// can carry a `Binding<string>` if the bound-payload demand materialises.
-    | WriteToClipboard of text: string
-    /// Typed file-read intent (Phase 136). Reads the body of a previously-
-    /// selected file (`FileUploadSpec.OnSelect` hands the author a
-    /// `FileSelection` carrying the opaque `Ref`) in the requested
-    /// `encoding`, then dispatches `onRead body`. Mirrors `Call`'s return-
-    /// channel shape: the renderer pre-wraps `onRead: string -> 'Msg` with
-    /// `dispatch`, so the runtime stays 'Msg-generic and the read can be
-    /// async at the host level while the typed surface stays dispatch-shaped.
-    /// Closes the cross-app "consumer hand-rolls `Browser.Dom.FileReader`
-    /// inside `OnSelect`" gap — file ingestion is now AI-emittable and rides
-    /// the same `IFuaranRuntime` substrate as clipboard / navigate, so hosts
-    /// can override the read channel (electron file IPC, server, mock)
-    /// without touching call sites. Only `file.Id` + `encoding` serialise;
-    /// the blob is browser-held (`file.Handle`) and the continuation is a
-    /// `"<closure>"` sentinel on the wire (§4).
-    | ReadFileBody of file: FileRef * encoding: FileReadEncoding * onRead: (string -> 'Msg)
-    /// Invoke a host-registered compute capability as an effect (Phase 283) — the effectful
-    /// sibling of `Binding.Invoke` / `Action.Call` / `Action.AiTool`. `capabilityId` references a
-    /// `Fuaran.Core.Capability` in the host registry; `args` are typed `(addr, value)` scalars
-    /// validated against its `Signature` before dispatch. The body is host-registered, never on
-    /// the wire; a non-`Deterministic` invocation replays through the determinism-capture seam.
-    | Invoke of capabilityId: string * args: (string * string) list
+and Action<'Msg> = Generated.Action<'Msg>
 
 /// `Action.Call`'s declarative result target (Phase 428): where the endpoint
-/// response lands so consumers can read it. `IntoState` writes the reactive
-/// `$state.<key>` slot (`Binding.State` readers); `IntoQuery` writes the
-/// `queryResults` slot `<name>` (`Binding.Query` readers — data-preserving on
-/// the decoded path since the Phase 421 identity-accessor fix). Wire:
-/// `"into":{"$type":"State","key":…}` / `{"$type":"Query","name":…}`,
-/// omitted when `None`.
-and [<RequireQualifiedAccess>] CallResultTarget =
-    | IntoState of key: string
-    | IntoQuery of name: string
+/// response lands so consumers can read it (generated — case names are the
+/// wire tags `State` / `Query`). `State` writes the reactive `$state.<key>`
+/// slot (`Binding.State` readers); `Query` writes the `queryResults` slot
+/// `<name>` (`Binding.Query` readers). Omitted from the wire when `None`.
+and CallResultTarget = Generated.CallResultTarget
 
 // ─── Text sources — bindable, i18n-aware ────────────────────────────
 

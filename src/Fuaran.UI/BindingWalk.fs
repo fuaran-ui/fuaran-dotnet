@@ -142,7 +142,7 @@ let private usesOfFormFieldKind<'Msg> (kind: FormFieldKind<'Msg>) : BindingUse l
 /// recursing `Chain` (Phase 428). Non-Call arms carry no fetch.
 let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse list =
     match action with
-    | Action.Call(ApiEndpoint endpoint, onResult, into) ->
+    | Action.Call(endpoint, onResult, into) ->
         [ { Reader = readerId
             Endpoint = endpoint
             HasOnResult = onResult.IsSome

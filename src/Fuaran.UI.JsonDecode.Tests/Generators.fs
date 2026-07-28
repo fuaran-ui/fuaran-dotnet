@@ -482,7 +482,7 @@ let private genDisplayKind: Gen<NodeKind<obj>> =
 let rec private genAction: Gen<Action<obj>> =
     Gen.oneof
         [ Gen.constant (Action.Dispatch(box "<msg>"))
-          Gen.map (fun ep -> Action.Call(ApiEndpoint ep, Some(fun _ -> box "<r>"), None)) genNonEmptyString
+          Gen.map (fun ep -> Action.Call(ep, Some(fun _ -> box "<r>"), None)) genNonEmptyString
           Gen.map2 (fun c p -> Action.Notify(c, p)) genNonEmptyString genJVal
           Gen.map Action.Navigate genNonEmptyString
           Gen.map2 (fun k v -> Action.SetState(k, v)) genNonEmptyString genJVal
@@ -490,7 +490,7 @@ let rec private genAction: Gen<Action<obj>> =
           Gen.map Action.CommitLocal genNonEmptyString
           Gen.map Action.WriteToClipboard genString
           Gen.map
-              (fun id -> Action.ReadFileBody({ Id = id; Handle = None }, FileReadEncoding.Base64, (fun _ -> box "<r>")))
+              (fun id -> Action.ReadFileBody(id, None, FileReadEncoding.Base64, Some(fun _ -> box "<r>")))
               genNonEmptyString
           Gen.map Action.Chain (genSmallList (Gen.map Action.Navigate genNonEmptyString)) ]
 
@@ -499,7 +499,7 @@ let rec private genAction: Gen<Action<obj>> =
 let private allActionsChain: Action<obj> =
     Action.Chain
         [ Action.Dispatch(box "<msg>")
-          Action.Call(ApiEndpoint "/api", Some(fun _ -> box "<r>"), None)
+          Action.Call("/api", Some(fun _ -> box "<r>"), None)
           Action.Notify("ch", JStr "p")
           Action.Navigate "/route"
           Action.SetState("k", JStr "v")
@@ -507,7 +507,7 @@ let private allActionsChain: Action<obj> =
           Action.Chain []
           Action.CommitLocal "node"
           Action.WriteToClipboard "text"
-          Action.ReadFileBody({ Id = "file:0"; Handle = None }, FileReadEncoding.Base64, (fun _ -> box "<r>")) ]
+          Action.ReadFileBody("file:0", None, FileReadEncoding.Base64, Some(fun _ -> box "<r>")) ]
 
 // ─── Input specs ─────────────────────────────────────────────────────────────
 

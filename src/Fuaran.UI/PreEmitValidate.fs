@@ -759,7 +759,7 @@ let private validateCore
     for c in facts.Calls do
         match c.HasOnResult, c.Into with
         | false, None -> defects.Add(PreEmitDefect.CallResultDropped(c.Reader, c.Endpoint))
-        | _, Some(CallResultTarget.IntoQuery name) when not (Set.contains name readQueryNames) ->
+        | _, Some(CallResultTarget.Query name) when not (Set.contains name readQueryNames) ->
             defects.Add(PreEmitDefect.OrphanQueryFetch(c.Reader, name))
         | _ -> ()
 

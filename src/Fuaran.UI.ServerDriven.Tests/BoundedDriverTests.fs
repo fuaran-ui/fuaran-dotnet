@@ -244,8 +244,7 @@ let tests =
               // and the bounded driver no-ops the Call — the authored closure is
               // unreachable end-to-end (decode → drive), the invariant Phase 154
               // multi-tenant hosting rests on.
-              let authored =
-                  mkTreeNode (Action.Call(ApiEndpoint "https://x", Some throwing, None))
+              let authored = mkTreeNode (Action.Call("https://x", Some throwing, None))
 
               let json = CanonicalJson.encodeNode authored
 

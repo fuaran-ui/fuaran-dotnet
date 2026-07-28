@@ -312,22 +312,24 @@ module Action =
     let dispatch (msg: 'Msg) : Action<'Msg> = Action.Dispatch msg
 
     /// Per Defect (2) resolution: typed `'a -> 'Msg` is boxed to
-    /// `obj -> 'Msg` at the tree level.
-    let call (endpoint: ApiEndpoint) (onResult: 'a -> 'Msg) : Action<'Msg> =
+    /// `obj -> 'Msg` at the tree level. The builder keeps the `ApiEndpoint`
+    /// wrapper at the author surface; the generated case carries the bare
+    /// endpoint string (stage 2 of the swap).
+    let call (ApiEndpoint endpoint) (onResult: 'a -> 'Msg) : Action<'Msg> =
         Action.Call(endpoint, Some(fun (o: obj) -> onResult (unbox<'a> o)), None)
 
     /// Declarative fetch (Phase 428): call the endpoint and write the response
     /// to the reactive `$state.<key>` slot — every `Binding.State key` reader
     /// re-renders on completion. The closure-free shape an AI author emits.
-    let callIntoState (endpoint: ApiEndpoint) (key: string) : Action<'Msg> =
-        Action.Call(endpoint, None, Some(CallResultTarget.IntoState key))
+    let callIntoState (ApiEndpoint endpoint) (key: string) : Action<'Msg> =
+        Action.Call(endpoint, None, Some(CallResultTarget.State key))
 
     /// Declarative fetch (Phase 428): call the endpoint and write the response
     /// to the `queryResults` slot `<name>` — every `Binding.Query name` reader
     /// re-renders on completion (data-preserving on the decoded path per the
     /// Phase 421 identity accessor).
-    let callIntoQuery (endpoint: ApiEndpoint) (name: string) : Action<'Msg> =
-        Action.Call(endpoint, None, Some(CallResultTarget.IntoQuery name))
+    let callIntoQuery (ApiEndpoint endpoint) (name: string) : Action<'Msg> =
+        Action.Call(endpoint, None, Some(CallResultTarget.Query name))
 
     let notify (channel: string) (payload: JVal) : Action<'Msg> = Action.Notify(channel, payload)
 
@@ -346,13 +348,16 @@ module Action =
     /// `IFuaranRuntime.ReadFileBody` and dispatches `onRead body` when the
     /// read completes — no consumer-side `FileReader` interop.
     let readFileBody (file: FileRef) (encoding: FileReadEncoding) (onRead: string -> 'Msg) : Action<'Msg> =
-        Action.ReadFileBody(file, encoding, onRead)
+        // The author-surface FileRef record splits at the generated seam:
+        // the wire id + the host-only handle ride as separate slots.
+        Action.ReadFileBody(file.Id, file.Handle, encoding, Some onRead)
 
     /// Invoke a host-registered compute capability as an effect (Phase 283 — the effectful sibling
     /// of `binding.invoke` / `action.call` / `action.aiTool`). `capabilityId` references a
     /// `Fuaran.Core.Capability`; `args` are scalar `(addr, value)` pairs validated against its
     /// `Signature` before dispatch. The body is host-registered, never on the wire.
-    let invoke (capabilityId: string) (args: (string * string) list) : Action<'Msg> = Action.Invoke(capabilityId, args)
+    let invoke (capabilityId: string) (args: (string * string) list) : Action<'Msg> =
+        Action.Invoke(capabilityId, args |> List.map (fun (addr, v) -> ({ Addr = addr; Value = v }: InvokeArg)))
 
 // ─── Typed format entry points (§4c lines 513, 528) ───────────────────────
 

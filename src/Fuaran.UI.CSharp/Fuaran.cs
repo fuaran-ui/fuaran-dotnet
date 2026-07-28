@@ -146,7 +146,7 @@ public static partial class Fuaran
             options.Id,
             new FsTypes.ButtonSpec<object>(
                 options.Label.Inner,
-                FsTypes.Action<object>.NewChain(Fs.Empty<FsTypes.Action<object>>()),
+                global::Fuaran.UI.Generated.Action<object>.NewChain(Fs.Empty<global::Fuaran.UI.Generated.Action<object>>()),
                 options.Variant.ToFs(),
                 Icon(options.Icon),
                 Fs.None<FsTypes.TextSource>(),

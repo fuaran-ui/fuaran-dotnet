@@ -8,7 +8,7 @@ using static Fuaran.UI.Types;
 // closed `Action<object>` we always use so the builder surface stays unambiguous
 // without dropping the convenient `using static`. (A friction point recorded in
 // the findings note.)
-using FsAction = Fuaran.UI.Types.Action<object>;
+using FsAction = Fuaran.UI.Generated.Action<object>;
 
 namespace Fuaran.UI.CSharp.Poc;
 

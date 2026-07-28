@@ -985,10 +985,10 @@ let buttonReadFile: Node<obj> =
             { Label = TextSource.Literal "Load workbook"
               OnClick =
                 Action.ReadFileBody(
-                    { Id = "workbook-upload:0"
-                      Handle = None },
+                    "workbook-upload:0",
+                    None,
                     FileReadEncoding.Base64,
-                    (fun _ -> box "WorkbookLoaded")
+                    Some(fun _ -> box "WorkbookLoaded")
                 )
               Variant = ButtonVariant.Primary
               Icon = None
@@ -1008,7 +1008,7 @@ let callInto: Node<obj> =
             "btn-call-closure"
             (NodeKind.Button(
                 { Label = TextSource.Literal "Refresh (closure)"
-                  OnClick = Action.Call(ApiEndpoint "/api/refresh", Some(fun _ -> placeholderChain), None)
+                  OnClick = Action.Call("/api/refresh", Some(fun _ -> placeholderChain), None)
                   Variant = ButtonVariant.Secondary
                   Icon = None
                   Tooltip = None
@@ -1021,7 +1021,7 @@ let callInto: Node<obj> =
             "btn-fetch-total"
             (NodeKind.Button(
                 { Label = TextSource.Literal "Fetch total"
-                  OnClick = Action.Call(ApiEndpoint "/api/total", None, Some(CallResultTarget.IntoState "total"))
+                  OnClick = Action.Call("/api/total", None, Some(CallResultTarget.State "total"))
                   Variant = ButtonVariant.Primary
                   Icon = None
                   Tooltip = None
@@ -1044,7 +1044,7 @@ let callInto: Node<obj> =
             "btn-fetch-orders"
             (NodeKind.Button(
                 { Label = TextSource.Literal "Fetch orders"
-                  OnClick = Action.Call(ApiEndpoint "/api/orders", None, Some(CallResultTarget.IntoQuery "orders"))
+                  OnClick = Action.Call("/api/orders", None, Some(CallResultTarget.Query "orders"))
                   Variant = ButtonVariant.Primary
                   Icon = None
                   Tooltip = None
@@ -1102,7 +1102,7 @@ let buttonInvoke: Node<obj> =
         (NodeKind.Button(
             { Label = TextSource.Literal "Run model"
               // qualified — `Action.Invoke` alone resolves to `System.Action.Invoke`.
-              OnClick = Fuaran.UI.Types.Action.Invoke("model.score", [ "rows", "all" ])
+              OnClick = Fuaran.UI.Types.Action.Invoke("model.score", [ { Addr = "rows"; Value = "all" } ])
               Variant = ButtonVariant.Primary
               Icon = None
               Tooltip = None

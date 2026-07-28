@@ -264,7 +264,7 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
 let describeAction (a: Action<'Msg>) : string =
     match a with
     | Action.Dispatch _ -> "Dispatch"
-    | Action.Call(ApiEndpoint ep, _, _) -> sprintf "Call(%s)" ep
+    | Action.Call(ep, _, _) -> sprintf "Call(%s)" ep
     | Action.Notify(ch, _) -> sprintf "Notify(%s)" ch
     | Action.Navigate r -> sprintf "Navigate(%s)" r
     | Action.SetState(k, _) -> sprintf "SetState(%s)" k
@@ -272,7 +272,7 @@ let describeAction (a: Action<'Msg>) : string =
     | Action.Chain _ -> "Chain"
     | Action.CommitLocal id -> sprintf "CommitLocal(%s)" id
     | Action.WriteToClipboard _ -> "WriteToClipboard"
-    | Action.ReadFileBody(_, _, _) -> "ReadFileBody"
+    | Action.ReadFileBody(_, _, _, _) -> "ReadFileBody"
     | Action.Invoke(c, _) -> sprintf "Invoke(%s)" c
 
 /// Validate one untrusted inbound event against the current tree + the host

@@ -470,8 +470,10 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
     | Action.Chain actions ->
         for a in actions do
             runAction ctx a
-    | Action.Call(endpoint, onResult, into) ->
-        let (ApiEndpoint ep) = endpoint
+    | Action.Call(ep, onResult, into) ->
+        // Bare endpoint string since the swap; the `IFuaranRuntime` seam keeps
+        // its `ApiEndpoint` wrapper, so re-wrap at the boundary.
+        let endpoint = ApiEndpoint ep
 
         // Phase 428: a `Some` closure wins (exactly the pre-428 behaviour); the
         // declarative `into` target writes the response to its store slot and
@@ -489,12 +491,12 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
                     endpoint,
                     fun raw ->
                         match target with
-                        | CallResultTarget.IntoState key ->
+                        | CallResultTarget.State key ->
                             // Scope-aware routing mirrors `Action.SetState` (Phase 266).
                             match ctx.Scope with
                             | Some scopeId -> (StateStore.forScope scopeId).Set(key, raw)
                             | None -> StateStore.set key raw
-                        | CallResultTarget.IntoQuery name -> QueryStore.set name raw
+                        | CallResultTarget.Query name -> QueryStore.set name raw
                 )
             | None, None -> ctx.Runtime.Call(endpoint, ignore))
     | Action.Notify(channel, payload) -> ctx.Runtime.Notify(channel, payload)
@@ -526,13 +528,24 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
         evt.initEvent (eventName, false, true)
         Browser.Dom.window.dispatchEvent (evt) |> ignore
     | Action.WriteToClipboard text -> ctx.Runtime.WriteToClipboard(text)
-    | Action.ReadFileBody(file, encoding, onRead) ->
+    | Action.ReadFileBody(fileRef, fileHandle, encoding, onRead) ->
         // Default-deny by shape (FGP 3): consult the policy gate before the
         // host reads the file. On allow, the runtime reads the blob (async at
         // the host level) and we dispatch `onRead body` from the callback —
         // mirroring how `Call`'s `onResult` is pre-wrapped with `dispatch`.
-        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.ReadFileBody file.Id) (fun () ->
-            ctx.Runtime.ReadFileBody(file, encoding, (fun body -> ctx.Dispatch(onRead body))))
+        // The generated case splits the id and the host-only handle; the
+        // `IFuaranRuntime` seam keeps its `FileRef` record, so rebuild it at
+        // the boundary. An absent `onRead` still reads (host effects fire) but
+        // dispatches nothing.
+        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.ReadFileBody fileRef) (fun () ->
+            let file: FileRef = { Id = fileRef; Handle = fileHandle }
+
+            let dispatchRead =
+                match onRead with
+                | Some f -> fun (body: string) -> ctx.Dispatch(f body)
+                | None -> ignore
+
+            ctx.Runtime.ReadFileBody(file, encoding, dispatchRead))
     | Action.Invoke(capabilityId, _args) ->
         // Phase 283 — invoke a host-registered capability as an effect. Default-deny by shape
         // (FGP 3): consult the policy gate before dispatch (reusing the AiTool descriptor — the

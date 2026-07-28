@@ -110,7 +110,7 @@ let tests =
                       (NodeKind.Button(
                           { Defaults.button<Msg> with
                               Label = TextSource.Literal "Fetch"
-                              OnClick = Action.Call(ApiEndpoint "/api/x", Some(fun (_: obj) -> NoOp), None) }
+                              OnClick = Action.Call("/api/x", Some(fun (_: obj) -> NoOp), None) }
                       ))
 
               let findings =
@@ -184,7 +184,7 @@ let tests =
                       (NodeKind.Button(
                           { Defaults.button<Msg> with
                               Label = TextSource.Literal "Fetch"
-                              OnClick = Action.Call(ApiEndpoint "/api/x", None, Some(CallResultTarget.IntoState "x")) }
+                              OnClick = Action.Call("/api/x", None, Some(CallResultTarget.State "x")) }
                       ))
 
               // A FileUpload's onSelect is HostOnlyByDesign — silent.

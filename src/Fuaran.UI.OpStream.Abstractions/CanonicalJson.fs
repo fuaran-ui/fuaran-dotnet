@@ -763,7 +763,7 @@ and private encodeAction<'Msg> (a: Action<'Msg>) : Appender =
             // The 'Msg payload is opaque from the encoder's perspective;
             // render as a closure sentinel — see v1 limitation in migration doc.
             appendObject sb (case "Dispatch" ([]: Field list))
-        | Action.Call(ApiEndpoint endpoint, onResult, into) ->
+        | Action.Call(endpoint, onResult, into) ->
             // Phase 428: `onResult` rides the wire only when present (a `Some`
             // closure → the `"<closure>"` sentinel, byte-identical to before);
             // `into` is the declarative result target, a `$type`-discriminated
@@ -775,8 +775,8 @@ and private encodeAction<'Msg> (a: Action<'Msg>) : Appender =
                       "into",
                       (fun sb ->
                           match target with
-                          | CallResultTarget.IntoState key -> appendObject sb (case "State" [ "key", str key ])
-                          | CallResultTarget.IntoQuery name -> appendObject sb (case "Query" [ "name", str name ]))) ]
+                          | CallResultTarget.State key -> appendObject sb (case "State" [ "key", str key ])
+                          | CallResultTarget.Query name -> appendObject sb (case "Query" [ "name", str name ]))) ]
                 |> List.choose id
 
             appendObject sb (case "Call" ([ "endpoint", str endpoint ] @ optionals))
@@ -797,22 +797,33 @@ and private encodeAction<'Msg> (a: Action<'Msg>) : Appender =
             // Literal-string clipboard intent. Renderer routes
             // through `IFuaranRuntime.WriteToClipboard`.
             appendObject sb (case "WriteToClipboard" [ "text", str text ])
-        | Action.ReadFileBody(file, encoding, _onRead) ->
-            // Phase 136 — file-read intent. Only the opaque `file.Id` token
-            // + the requested `encoding` cross the wire; the blob is browser-
-            // held (`file.Handle`) and `onRead` is unobservable (closure
-            // sentinel, §4). Fields sort to encoding < fileRef < onRead.
+        | Action.ReadFileBody(fileRef, _fileHandle, encoding, onRead) ->
+            // Phase 136 — file-read intent. Only the wire `fileRef` token
+            // + the requested `encoding` cross the wire; the blob is host-held
+            // (the host-only `fileHandle` slot since the swap, never encoded)
+            // and `onRead` is unobservable (closure sentinel, §4; emitted when
+            // present — decode always restores `Some`, so the wire is stable).
+            // Fields sort to encoding < fileRef < onRead.
+            let onReadField =
+                match onRead with
+                | Some _ -> [ "onRead", sentinel closureSentinel ]
+                | None -> []
+
             appendObject
                 sb
                 (case
                     "ReadFileBody"
-                    [ "encoding", encodeFileReadEncoding encoding
-                      "fileRef", str file.Id
-                      "onRead", sentinel closureSentinel ])
+                    ([ "encoding", encodeFileReadEncoding encoding; "fileRef", str fileRef ]
+                     @ onReadField))
         | Action.Invoke(capabilityId, args) ->
             // Phase 283 — invoke a host-registered capability as an effect. Same wire shape as
-            // `Binding.Invoke`: scalar `(addr, value)` args, the body never on the wire.
-            appendObject sb (case "Invoke" [ "args", invokeArgsAppender args; "capabilityId", str capabilityId ])
+            // `Binding.Invoke`: scalar `InvokeArg` records, the body never on the wire.
+            appendObject
+                sb
+                (case
+                    "Invoke"
+                    [ "args", invokeArgsAppender (args |> List.map (fun (a: InvokeArg) -> a.Addr, a.Value))
+                      "capabilityId", str capabilityId ])
 
 // ─── Typed Static payload encoders (Phase 429) ────────────────────────────
 //

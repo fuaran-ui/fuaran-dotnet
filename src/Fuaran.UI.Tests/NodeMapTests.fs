@@ -57,15 +57,14 @@ let nodeMapTests =
           }
 
           test "Call.onResult is post-composed with f (obj -> 'a -> 'b)" {
-              let onClick =
-                  Action.Call(ApiEndpoint "ep", Some(fun (o: obj) -> unbox<int> o), None)
+              let onClick = Action.Call("ep", Some(fun (o: obj) -> unbox<int> o), None)
 
               let mapped = Node.mapMsg string (buttonWith "b" onClick)
 
               match mapped.Kind with
               | NodeKind.Button(spec) ->
                   match spec.OnClick with
-                  | Action.Call(ApiEndpoint ep, Some onResult, None) ->
+                  | Action.Call(ep, Some onResult, None) ->
                       Expect.equal ep "ep" "endpoint preserved"
                       Expect.equal (onResult (box 7)) "7" "onResult result is f-applied"
                   | other -> failtestf "expected Call, got %A" other
@@ -75,16 +74,15 @@ let nodeMapTests =
           test "ReadFileBody.onRead is post-composed with f (string -> 'a -> 'b)" {
               let onRead (s: string) = s.Length
 
-              let onClick =
-                  Action.ReadFileBody({ Id = "f1"; Handle = None }, FileReadEncoding.Text, onRead)
+              let onClick = Action.ReadFileBody("f1", None, FileReadEncoding.Text, Some onRead)
 
               let mapped = Node.mapMsg string (buttonWith "b" onClick)
 
               match mapped.Kind with
               | NodeKind.Button(spec) ->
                   match spec.OnClick with
-                  | Action.ReadFileBody(file, FileReadEncoding.Text, onRead') ->
-                      Expect.equal file.Id "f1" "file ref preserved"
+                  | Action.ReadFileBody(fileRef, _, FileReadEncoding.Text, Some onRead') ->
+                      Expect.equal fileRef "f1" "file ref preserved"
                       Expect.equal (onRead' "abcd") "4" "onRead result is f-applied"
                   | other -> failtestf "expected ReadFileBody, got %A" other
               | other -> failtestf "expected a Button, got %A" other
