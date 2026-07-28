@@ -107,7 +107,7 @@ let private fixtures: Fixture list =
                   TabHeaders =
                       Some
                           [ { Label = TextSource.Literal "One"
-                              Icon = Some(IconSource "one-glyph")
+                              Icon = Some "one-glyph"
                               Disabled = Option.None }
                             { Label = TextSource.Literal "Two"
                               Icon = Option.None

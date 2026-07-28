@@ -168,7 +168,7 @@ let tests =
           test "Register(...,?contentHash) round-trips through TryGet" {
               let runtime = MutableRuntime()
 
-              let hash =
+              let hash: ContentHash =
                   { Algorithm = "SHA256"
                     Hash = "abc123"
                     Strictness = HashStrictness.StrictReplay }
@@ -194,7 +194,7 @@ let tests =
           // ─── Fuaran.custom smart-ctor populates the additive
           //     fields verbatim ────────────────────────────────────────────
           test "Fuaran.custom populates Custom case with declared contentHash + exposedNodeIds" {
-              let hash =
+              let hash: ContentHash option =
                   Some
                       { Algorithm = "SHA256"
                         Hash = "abc"

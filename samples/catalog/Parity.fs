@@ -161,7 +161,7 @@ let private fuaranChipStrip () : Node<unit> =
     Fuaran.stack
         "parity-chip-strip"
         { Defaults.stack<unit> with
-            Orientation = Horizontal
+            Orientation = Orientation.Horizontal
             Wrap = true
             Children =
                 [ for label in [ "Search"; "Display"; "TV"; "OOH"; "Radio" ] ->
@@ -227,11 +227,11 @@ let private fuaranForm () : Node<unit> =
                 [ { Defaults.formField<unit> with
                       Id = "cohort-name"
                       Label = TextSource.Literal "Cohort name"
-                      Kind = FormFieldKind.Text(Binding.Static(Some ""), Some(fun _ -> Action.Chain [])) }
+                      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some(fun _ -> Action.Chain [])) }
                   { Defaults.formField<unit> with
                       Id = "sample-size"
                       Label = TextSource.Literal "Sample size"
-                      Kind = FormFieldKind.Number(Binding.Static(Some 0.0), Some(fun _ -> Action.Chain [])) } ] }
+                      Kind = FormFieldKind.Number(Some(Binding.Static(Some 0.0)), Some(fun _ -> Action.Chain [])) } ] }
 
 let private fuaranTabbedCard () : Node<unit> =
     Fuaran.tabs
@@ -254,7 +254,7 @@ let private fuaranCalloutStack () : Node<unit> =
     Fuaran.stack
         "parity-callout-stack"
         { Defaults.stack<unit> with
-            Orientation = Vertical
+            Orientation = Orientation.Vertical
             Children =
                 [ for tone, headline, body in
                       [ ToneVariant.Info, "Heads up", "Informational callout body."

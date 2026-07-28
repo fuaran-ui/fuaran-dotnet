@@ -4,6 +4,7 @@ using System.Linq;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsColumn = global::Fuaran.UI.Column;
 using FsTypes = Fuaran.UI.Types;
+using FsGen = Fuaran.UI.Generated;
 using FsAction = Fuaran.UI.Generated.Action<object>;
 
 namespace Fuaran.UI.CSharp;
@@ -22,7 +23,7 @@ public static partial class Fuaran
                 options.Kind.ToFs(),
                 options.XField,
                 Fs.List(options.YFields ?? Enumerable.Empty<string>()),
-                options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsTypes.TextSource>(),
+                options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsGen.TextSource>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<object, FsAction>>(),
                 options.Stacked)));
 
@@ -41,14 +42,15 @@ public static partial class Fuaran
         new(FsFactory.map<object>(
             options.Id,
             new FsTypes.MapSpec<object>(
-                global::Fuaran.UI.Generated.Binding<IEnumerable<FsTypes.MapMarker>>.NewStatic(
-                    Fs.Some<IEnumerable<FsTypes.MapMarker>>(
+                global::Fuaran.UI.Generated.Binding<IEnumerable<FsGen.MapMarker>>.NewStatic(
+                    Fs.Some<IEnumerable<FsGen.MapMarker>>(
                         (options.Markers ?? Enumerable.Empty<(double, double, string)>())
-                            .Select(m => new FsTypes.MapMarker(m.Item1, m.Item2, FsTypes.TextSource.NewLiteral(m.Item3))))),
+                            // Generated MapMarker declares (Label, Latitude, Longitude); Label is a bare string.
+                            .Select(m => new FsGen.MapMarker(m.Item3, m.Item1, m.Item2)))),
                 options.CentreLatitude,
                 options.CentreLongitude,
                 options.Zoom,
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsTypes.MapMarker, FsAction>>())));
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsGen.MapMarker, FsAction>>())));
 
     /// <summary>A data-bound grid over rows of type <typeparamref name="TRow"/>.</summary>
     public static FuaranNode DataGrid<TRow>(DataGridOptions<TRow> options) =>

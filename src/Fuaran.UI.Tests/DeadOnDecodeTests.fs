@@ -34,7 +34,7 @@ let private stack (id: string) (children: Node<Msg> list) : Node<Msg> =
         (NodeKind.Box(
             { Layout =
                 BoxLayout.Flex
-                    { Direction = Vertical
+                    { Direction = Orientation.Vertical
                       Wrap = false
                       Gap = None }
               Role = BoxRole.Group
@@ -77,7 +77,7 @@ let tests =
                           { Fields =
                               [ { Id = "name"
                                   Label = TextSource.Literal "Name"
-                                  Kind = FormFieldKind.Text(Binding.Static(Some ""), Some placeholder)
+                                  Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some placeholder)
                                   Required = false
                                   Help = None } ]
                             OnSubmit = Action.Chain []
@@ -151,7 +151,7 @@ let tests =
                           { Fields =
                               [ { Id = "name"
                                   Label = TextSource.Literal "Name"
-                                  Kind = FormFieldKind.Text(Binding.State("name", Some ""), None)
+                                  Kind = FormFieldKind.Text(Some(Binding.State("name", Some "")), None)
                                   Required = false
                                   Help = None } ]
                             OnSubmit = Action.Chain []

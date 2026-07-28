@@ -250,20 +250,20 @@ and mapFormFieldKind (f: 'a -> 'b) (kind: FormFieldKind<'a>) : FormFieldKind<'b>
     | FormFieldKind.Checkbox(value, onToggle) -> FormFieldKind.Checkbox(value, mapHandler onToggle)
     | FormFieldKind.Choice(options, value, onChange) -> FormFieldKind.Choice(options, value, mapHandler onChange)
     | FormFieldKind.TextArea(value, onChange, rows) -> FormFieldKind.TextArea(value, mapHandler onChange, rows)
-    | FormFieldKind.RangedNumber(value, onChange, constraints) ->
-        FormFieldKind.RangedNumber(value, mapHandler onChange, constraints)
-    | FormFieldKind.Range(value, onChange, constraints) -> FormFieldKind.Range(value, mapHandler onChange, constraints)
+    | FormFieldKind.RangedNumber(value, onChange, mn, mx, st) ->
+        FormFieldKind.RangedNumber(value, mapHandler onChange, mn, mx, st)
+    | FormFieldKind.Range(value, onChange, mn, mx, st) -> FormFieldKind.Range(value, mapHandler onChange, mn, mx, st)
     | FormFieldKind.SegmentedChoice(options, value, onChange, orientation) ->
         FormFieldKind.SegmentedChoice(options, value, mapHandler onChange, orientation)
-    | FormFieldKind.Date(value, onChange, variant, constraints) ->
-        FormFieldKind.Date(value, mapHandler onChange, variant, constraints)
+    | FormFieldKind.Date(value, onChange, variant, mn, mx, st) ->
+        FormFieldKind.Date(value, mapHandler onChange, variant, mn, mx, st)
 
 and mapFilterSpec (f: 'a -> 'b) (spec: FilterSpec<'a>) : FilterSpec<'b> =
     // 0.2.0 filters-unification: the chip's control is an ordinary
     // FormFieldKind — one mapper serves both forms and filter strips.
     { Name = spec.Name
       Label = spec.Label
-      Field = mapFormFieldKind f spec.Field }
+      Kind = mapFormFieldKind f spec.Kind }
 
 and mapFileUploadSpec (f: 'a -> 'b) (spec: FileUploadSpec<'a>) : FileUploadSpec<'b> =
     { Label = spec.Label

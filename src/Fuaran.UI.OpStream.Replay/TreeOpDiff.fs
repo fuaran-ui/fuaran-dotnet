@@ -236,8 +236,8 @@ module TreeOpDiff =
         PropValue.Wire(
             JStr(
                 match o with
-                | Vertical -> "Vertical"
-                | Horizontal -> "Horizontal"
+                | Orientation.Vertical -> "Vertical"
+                | Orientation.Horizontal -> "Horizontal"
             )
         )
 
@@ -269,13 +269,13 @@ module TreeOpDiff =
         PropValue.Wire(
             JStr(
                 match t with
-                | Default -> "Default"
-                | Subdued -> "Subdued"
-                | Brand -> "Brand"
-                | Success -> "Success"
-                | Warning -> "Warning"
-                | Critical -> "Critical"
-                | Info -> "Info"
+                | ToneVariant.Default -> "Default"
+                | ToneVariant.Subdued -> "Subdued"
+                | ToneVariant.Brand -> "Brand"
+                | ToneVariant.Success -> "Success"
+                | ToneVariant.Warning -> "Warning"
+                | ToneVariant.Critical -> "Critical"
+                | ToneVariant.Info -> "Info"
             )
         )
 
@@ -283,9 +283,9 @@ module TreeOpDiff =
         PropValue.Wire(
             JStr(
                 match w with
-                | Compact -> "Compact"
-                | Standard -> "Standard"
-                | Spacious -> "Spacious"
+                | StyleWeight.Compact -> "Compact"
+                | StyleWeight.Standard -> "Standard"
+                | StyleWeight.Spacious -> "Spacious"
             )
         )
 
@@ -293,9 +293,9 @@ module TreeOpDiff =
         PropValue.Wire(
             JStr(
                 match e with
-                | Quiet -> "Quiet"
-                | Normal -> "Normal"
-                | Loud -> "Loud"
+                | Emphasis.Quiet -> "Quiet"
+                | Emphasis.Normal -> "Normal"
+                | Emphasis.Loud -> "Loud"
             )
         )
 

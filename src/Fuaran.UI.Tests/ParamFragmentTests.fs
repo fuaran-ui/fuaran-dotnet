@@ -20,7 +20,7 @@ let private pf: ParamFragment<unit> =
     { Name = FragmentId "card"
       Holes =
         [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-          HoleDecl.Value("tone", HoleValueSpace.Enum [ "info"; "warn" ], Some(bx "info"))
+          HoleDecl.Value("tone", HoleValueSpace.Enum [ "info"; "warn" ], Some(Scalar.Str "info"))
           HoleDecl.Slot("content", None)
           HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 10)) ]
       Body = body
@@ -31,7 +31,7 @@ let tests =
     testList
         "Fragment.ArtifactFunction"
         [ test "effect-class join is the componentwise widest (pure ∘ impure = impure)" {
-              let impure =
+              let impure: EffectClass =
                   { HostEffect = HostEffect.WritesHost
                     Determinism = DeterminismSource.Clock }
 
@@ -43,7 +43,7 @@ let tests =
           }
 
           test "effect-class covers: a declared class narrower than actual is flagged" {
-              let actual =
+              let actual: EffectClass =
                   { HostEffect = HostEffect.ReadsHost
                     Determinism = DeterminismSource.Deterministic }
 

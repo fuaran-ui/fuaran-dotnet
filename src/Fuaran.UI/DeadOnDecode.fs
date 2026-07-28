@@ -62,6 +62,14 @@ let private isWritable (binding: Binding<'T>) : bool =
     | Binding.Filter(_, _) -> true
     | _ -> false
 
+/// The optional-value-slot form (Phase 596): an OMITTED slot (`None`) is
+/// writable by construction — the symmetric auto-bind gives the write-back
+/// default `$state.<field id>` (or the chip's `$filters.<name>`) to write to.
+let private isWritableOpt (binding: Binding<'T> option) : bool =
+    match binding with
+    | None -> true
+    | Some b -> isWritable b
+
 let rec private callFindings (node: string) (action: Action<'Msg>) : LintFinding list =
     match action with
     | Action.Call(_, Some _, into) ->
@@ -128,22 +136,23 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                     let slot kind = sprintf "FormFieldKind.%s" kind
 
                     match field.Kind with
-                    | FormFieldKind.Text(v, oc) -> handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
-                    | FormFieldKind.Number(v, oc) -> handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
-                    | FormFieldKind.Range(v, oc, _) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
+                    | FormFieldKind.Text(v, oc) -> handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                    | FormFieldKind.Number(v, oc) ->
+                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                    | FormFieldKind.Range(v, oc, _, _, _) ->
+                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.Checkbox(v, ot) ->
-                        handler nodeId (slot "onToggle") ot.IsSome (isWritable v) "$state"
+                        handler nodeId (slot "onToggle") ot.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.Choice(_, v, oc) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
+                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.TextArea(v, oc, _) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
-                    | FormFieldKind.RangedNumber(v, oc, _) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
+                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                    | FormFieldKind.RangedNumber(v, oc, _, _, _) ->
+                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.SegmentedChoice(_, v, oc, _) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
-                    | FormFieldKind.Date(v, oc, _, _) ->
-                        handler nodeId (slot "onChange") oc.IsSome (isWritable v) "$state"
+                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                    | FormFieldKind.Date(v, oc, _, _, _, _) ->
+                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
 
                 []
             | NodeKind.Select s ->
@@ -165,16 +174,16 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                     // 0.2.0 filters-unification: the chip's control is a
                     // FormFieldKind; the same handler-presence probe applies.
                     let present =
-                        match fs.Field with
+                        match fs.Kind with
                         | FormFieldKind.Text(_, oc) -> oc.IsSome
                         | FormFieldKind.Number(_, oc) -> oc.IsSome
                         | FormFieldKind.Checkbox(_, ot) -> ot.IsSome
                         | FormFieldKind.Choice(_, _, oc) -> oc.IsSome
                         | FormFieldKind.TextArea(_, oc, _) -> oc.IsSome
-                        | FormFieldKind.RangedNumber(_, oc, _) -> oc.IsSome
-                        | FormFieldKind.Range(_, oc, _) -> oc.IsSome
+                        | FormFieldKind.RangedNumber(_, oc, _, _, _) -> oc.IsSome
+                        | FormFieldKind.Range(_, oc, _, _, _) -> oc.IsSome
                         | FormFieldKind.SegmentedChoice(_, _, oc, _) -> oc.IsSome
-                        | FormFieldKind.Date(_, oc, _, _) -> oc.IsSome
+                        | FormFieldKind.Date(_, oc, _, _, _, _) -> oc.IsSome
 
                     if present then
                         findings.Add(

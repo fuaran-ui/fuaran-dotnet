@@ -1,6 +1,13 @@
 using static Fuaran.UI.CSharp.Poc.Fui;
 using static Fuaran.UI.Types;
 
+// Stage-3 swap: these vocabulary DUs are IDL-generated now; the Types re-exports
+// are erased abbreviations C# cannot see (same aliasing as Builders.cs).
+using ToneVariant = Fuaran.UI.Generated.ToneVariant;
+using BadgeVariant = Fuaran.UI.Generated.BadgeVariant;
+using ButtonVariant = Fuaran.UI.Generated.ButtonVariant;
+using ChartKind = Fuaran.UI.Generated.ChartKind;
+
 namespace Fuaran.UI.CSharp.Poc;
 
 // ============================================================================

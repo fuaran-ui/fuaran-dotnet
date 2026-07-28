@@ -1385,7 +1385,14 @@ let private updateNestedTabs (segs: PathSeg list) (v: obj) (spec: TabsSpec<'Msg>
             | Error msg -> NestedTypeMismatch msg
         | "Icon" ->
             match coerceField JsonDecode.Coerce.tryIconSourceOption v with
-            | Ok x -> NestedUpdated(rebuild { hdr with Icon = x })
+            | Ok x ->
+                // The TabHeader icon slot is a bare string since the swap; the
+                // coercer's IconSource wrapper unwraps at this boundary.
+                NestedUpdated(
+                    rebuild
+                        { hdr with
+                            Icon = x |> Option.map (fun (IconSource s) -> s) }
+                )
             | Error msg -> NestedTypeMismatch msg
         | "Disabled" ->
             // Optional typed binding; replacing it installs `Some`, mirroring

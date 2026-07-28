@@ -551,11 +551,16 @@ let private validateCore
             let checkField (field: FormField<'Msg>) =
                 // Phase 596 (FUARAN085): a handler-free field whose value is
                 // directly `State(key, _)` WRITES that key — record it so
-                // post-walk we can flag two writers on one key.
-                let recordWriteBack (value: Binding<'v>) (handlerAbsent: bool) =
-                    match value with
-                    | Binding.State(key, _) when handlerAbsent -> writeBackKeys.Add(key, nodeIdStr, field.Id)
-                    | _ -> ()
+                // post-walk we can flag two writers on one key. An OMITTED
+                // value slot (`None`) is the Phase 596 symmetric auto-bind and
+                // writes `$state.<field id>` — record the field id as the key
+                // (this is the shape a decoded / AI-authored field takes).
+                let recordWriteBack (value: Binding<'v> option) (handlerAbsent: bool) =
+                    if handlerAbsent then
+                        match value with
+                        | Some(Binding.State(key, _)) -> writeBackKeys.Add(key, nodeIdStr, field.Id)
+                        | None -> writeBackKeys.Add(field.Id, nodeIdStr, field.Id)
+                        | Some _ -> ()
 
                 (match field.Kind with
                  | FormFieldKind.Text(value, oc) -> recordWriteBack value oc.IsNone
@@ -563,22 +568,29 @@ let private validateCore
                  | FormFieldKind.Checkbox(value, ot) -> recordWriteBack value ot.IsNone
                  | FormFieldKind.Choice(_, value, oc) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.TextArea(value, oc, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.RangedNumber(value, oc, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Range(value, oc, _) -> recordWriteBack value oc.IsNone
+                 | FormFieldKind.RangedNumber(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
+                 | FormFieldKind.Range(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.SegmentedChoice(_, value, oc, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Date(value, oc, _, _) -> recordWriteBack value oc.IsNone)
+                 | FormFieldKind.Date(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone)
+
+                // An OMITTED value slot is always live: the Phase 596 auto-bind
+                // gives the write-back default `$state.<field id>` to write to.
+                let valueLive (value: Binding<'v> option) =
+                    match value with
+                    | None -> true
+                    | Some b -> isWriteBackTarget b
 
                 let inert =
                     match field.Kind with
-                    | FormFieldKind.Text(value, oc) -> oc.IsNone && not (isWriteBackTarget value)
-                    | FormFieldKind.Number(value, oc) -> oc.IsNone && not (isWriteBackTarget value)
-                    | FormFieldKind.Checkbox(value, ot) -> ot.IsNone && not (isWriteBackTarget value)
-                    | FormFieldKind.Choice(_, value, oc) -> oc.IsNone && not (isWriteBackTarget value)
-                    | FormFieldKind.TextArea(value, oc, _) -> oc.IsNone && not (isWriteBackTarget value)
-                    | FormFieldKind.RangedNumber(value, oc, _) -> oc.IsNone && not (isWriteBackTarget value)
-                    | FormFieldKind.Range(value, oc, _) -> oc.IsNone && not (isWriteBackTarget value)
-                    | FormFieldKind.SegmentedChoice(_, value, oc, _) -> oc.IsNone && not (isWriteBackTarget value)
-                    | FormFieldKind.Date(value, oc, _, _) -> oc.IsNone && not (isWriteBackTarget value)
+                    | FormFieldKind.Text(value, oc) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.Number(value, oc) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.Checkbox(value, ot) -> ot.IsNone && not (valueLive value)
+                    | FormFieldKind.Choice(_, value, oc) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.TextArea(value, oc, _) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.RangedNumber(value, oc, _, _, _) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.Range(value, oc, _, _, _) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.SegmentedChoice(_, value, oc, _) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.Date(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
 
                 if inert then
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, sprintf "FormField(%s)" field.Id))

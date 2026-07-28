@@ -126,7 +126,19 @@ module Fragment =
                 match h with
                 | HoleDecl.Value(n, space, _) when Map.containsKey n boundValues ->
                     match HoleValueSpace.validate space (Map.find n boundValues) with
-                    | Ok v -> go rest (HoleDecl.Value(n, space, Some v) :: acc)
+                    | Ok v ->
+                        // The default slot is a typed `Scalar` since the swap; the
+                        // validated arg is one of the scalar shapes `validate`
+                        // admits (int/float/string — bool for completeness).
+                        let scalar =
+                            match v with
+                            | :? int as i -> Some(Scalar.Int i)
+                            | :? float as fl -> Some(Scalar.Float fl)
+                            | :? bool as b -> Some(Scalar.Bool b)
+                            | :? string as s -> Some(Scalar.Str s)
+                            | _ -> None
+
+                        go rest (HoleDecl.Value(n, space, scalar) :: acc)
                     | Error e -> Error(sprintf "binding '%s': %s" n e)
                 | _ -> go rest (h :: acc)
 

@@ -60,77 +60,36 @@ open Fuaran.Core
 // value payload is NOT a JVal — it is the two-case `Fuaran.UI.Ops.Types.PropValue`
 // (in-process `Native` vs canonical `Wire`); see the op contract.
 
-type Orientation =
-    | Vertical
-    | Horizontal
-
+type Orientation = Generated.Orientation
 type IconSource = IconSource of string
 
 
-[<RequireQualifiedAccess>]
-type BadgeVariant =
-    | Neutral
-    | Brand
-    | Success
-    | Warning
-    | Critical
-    | Info
-
-[<RequireQualifiedAccess>]
-type ButtonVariant =
-    | Primary
-    | Secondary
-    | Tertiary
-    | Destructive
-
+type BadgeVariant = Generated.BadgeVariant
+type ButtonVariant = Generated.ButtonVariant
 /// Presentation shape for `NodeKind.Image` (Phase 287). `Default` is a
 /// plain in-flow `<img>`; `Avatar` is a circular crop (the "user picture"
 /// shape that was previously impossible without a Custom escape); `Rounded`
 /// is a soft-cornered rectangle. Bounded by design — the renderer maps each
 /// to a `fuaran-image-{variant}` class; no free-form CSS escape.
-[<RequireQualifiedAccess>]
-type ImageVariant =
-    | Default
-    | Avatar
-    | Rounded
-
+type ImageVariant = Generated.ImageVariant
 /// Scroll axis for `NodeKind.ScrollArea` (Phase 289). Selects which
 /// overflow axis the container clips + scrolls: `Vertical` → `overflow-y`,
 /// `Horizontal` → `overflow-x`, `Both` → both. The renderer maps each to a
 /// `fuaran-scrollarea-{axis}` class.
-[<RequireQualifiedAccess>]
-type ScrollOrientation =
-    | Vertical
-    | Horizontal
-    | Both
-
+type ScrollOrientation = Generated.ScrollOrientation
 /// Temporal breadth for `FormFieldKind.Date` (Phase 288). Selects the native
 /// HTML control the renderer emits: `Date` → `<input type=date>`, `Time` →
 /// `<input type=time>`, `DateTime` → `<input type=datetime-local>`. The bound
 /// value is always an ISO-8601 string on the wire (`YYYY-MM-DD` /
 /// `HH:MM` / `YYYY-MM-DDTHH:MM`) regardless of variant.
-[<RequireQualifiedAccess>]
-type DateVariant =
-    | Date
-    | Time
-    | DateTime
-
+type DateVariant = Generated.DateVariant
 /// Presentation mode for `NodeKind.Math` (Phase 293). `Inline` flows the
 /// equation within surrounding text (a `<span>`); `Block` is a centred display
 /// equation on its own line (a `<div>`). The renderer's deterministic fallback
 /// emits the raw LaTeX source in the matching container; KaTeX upgrades it
 /// client-side post-hydration (outside the parity output).
-[<RequireQualifiedAccess>]
-type MathDisplay =
-    | Inline
-    | Block
-
-[<RequireQualifiedAccess>]
-type ColumnWidth =
-    | Auto
-    | Fixed of pixels: int
-    | Flex of weight: float
-
+type MathDisplay = Generated.MathDisplay
+type ColumnWidth = Generated.ColumnWidth
 // ─── Locale-aware formatting vocabulary (Phase 102) ─────────────────────
 //
 // `Binding.Format` (below) projects a numeric source to a localised display
@@ -252,35 +211,12 @@ type NodeId = NodeId of string
 // `Strictness` governs what happens on mismatch (anti-pattern: don't
 // conflate the two).
 
-[<RequireQualifiedAccess>]
-type HashStrictness =
-    /// Op-stream replay raises on hash mismatch; the renderer routes
-    /// through `OnError` and writes a `FuaranCustomHashMismatch`
-    /// structured payload via `IFuaranRuntime.Warn`.
-    | StrictReplay
-    /// Replay + renderer log through `IFuaranRuntime.Warn` and continue.
-    /// Use when hash drift is informative but not fatal.
-    | AdvisoryWarning
-    /// Build-time enforcement (Phase 134). The validator computes a
-    /// deterministic SHA-256 over the Custom body's *declared shape*
-    /// (props schema + exposedNodeIds + moduleId / componentId — never
-    /// runtime values) and surfaces FUARAN062 as an *Error* when the
-    /// hand-set `Hash` disagrees, failing the build. This is the
-    /// mechanical upgrade from the `AdvisoryWarning` posture — flip to
-    /// `Enforced` once the body shape has stabilised. At render / replay
-    /// time `Enforced` behaves like `StrictReplay` (the build gate is the
-    /// primary enforcement; the runtime arm is the defensive floor).
-    | Enforced
-
+type HashStrictness = Generated.HashStrictness
 /// Content-identity envelope for a `NodeKind.Custom` body. `Algorithm`
 /// is `"SHA256"` for v1 (forward-compatible — a future `"BLAKE3"` etc.
 /// is additive); `Hash` is the hex-encoded digest of the renderer's
 /// source. Callers that opt out leave the Custom field `None`.
-type ContentHash =
-    { Algorithm: string
-      Hash: string
-      Strictness: HashStrictness }
-
+type ContentHash = Generated.ContentHash
 // ─── First-class extension registry: the declared prop schema ─────────────────
 //
 // A `NodeKind.Custom` component's props are a `Map<string, JVal>`. A `PropSchema`
@@ -379,17 +315,7 @@ type II18nResolver =
 // `RotateOnRefresh` / `SlideInFromRight`. This DU is authoritative —
 // §4h should be reconciled to match before public release.
 
-[<RequireQualifiedAccess>]
-type Motion =
-    | None
-    | PulseDuringLoad
-    | FadeInOnMount
-    | SlideInFromBelow
-    | ShakeOnError
-    | RotateOnRefresh
-    | SlideInFromRight
-    | ExpandCollapse
-
+type Motion = Generated.Motion
 // ─── Parameterised-fragment hole + effect surface (Phase 180) ────────
 //
 // The wire-coupled `FragmentDeclSpec` / `FragmentRefSpec` carry these so a
@@ -403,13 +329,7 @@ type Motion =
 /// A hole's value-space — the type domain of a value argument, validated at
 /// bind time. A small bounded vocabulary (the Phase 53 `Bounded` kit projected
 /// onto holes); `AnyString` is the unconstrained escape.
-[<RequireQualifiedAccess>]
-type HoleValueSpace =
-    | IntRange of min: int * max: int
-    | FloatRange of min: float * max: float
-    | StringLen of minLen: int * maxLen: int
-    | Enum of choices: string list
-    | AnyString
+type HoleValueSpace = Generated.HoleValueSpace
 
 module HoleValueSpace =
     /// Validate a boxed argument against a value-space. Returns the validated
@@ -447,11 +367,11 @@ module HoleValueSpace =
 /// value; a `Slot` hole binds a subtree (a tree-typed parameter); a `Repeat`
 /// slot binds a subtree expanded a bounded number of times — the count
 /// value-space MUST be bounded (totality, invariant 1).
-[<RequireQualifiedAccess>]
-type HoleDecl =
-    | Value of name: string * space: HoleValueSpace * defaultValue: obj option
-    | Slot of name: string * kindConstraint: string option
-    | Repeat of name: string * countSpace: HoleValueSpace
+/// A boxed-scalar hole default / fragment value arg (generated; typed `Scalar`,
+/// the old `obj option` default payload).
+type Scalar = Generated.Scalar
+
+type HoleDecl = Generated.HoleDecl
 
 module HoleDecl =
     let name (h: HoleDecl) : string =
@@ -480,29 +400,16 @@ module HoleDecl =
 // ─── Effect / determinism signature (invariant 3) ──────────────────────────
 
 /// The host-effect axis: does the fragment read or write host state?
-[<RequireQualifiedAccess>]
-type HostEffect =
-    | Pure
-    | ReadsHost
-    | WritesHost
-
+type HostEffect = Generated.HostEffect
 /// The determinism-source axis (mirrors Calc's `Volatility`): is the output a
 /// pure function of its inputs, or does it depend on a clock / randomness / the
 /// network?
-[<RequireQualifiedAccess>]
-type DeterminismSource =
-    | Deterministic
-    | Clock
-    | Random
-    | Network
-
+type DeterminismSource = Generated.DeterminismSource
 /// A total two-axis effect class. Defaults to pure-deterministic for a
 /// value-only fragment. Joined componentwise through composition: the wider
 /// (more-effecting / less-deterministic) value wins on each axis (pure ∘ impure
 /// = impure; deterministic ∘ clock = clock).
-type EffectClass =
-    { HostEffect: HostEffect
-      Determinism: DeterminismSource }
+type EffectClass = Generated.EffectClass
 
 module EffectClass =
     let private hostRank =
@@ -905,17 +812,11 @@ and MountSpec<'Msg> =
 
 /// The declared out-channel of a `Mount` (§4o.4). `Direction` bounds host↔guest coupling; the optional
 /// `MessageShape` names the guest's message shape for validation + the capability gate.
-and GuestChannel =
-    { Direction: ChannelDirection
-      MessageShape: string option }
-
+and GuestChannel = Generated.GuestChannel
 /// `OutOnly` (the default, safe for untrusted guests) lets the guest bubble to the host but forbids the
 /// host pushing messages into the guest; `TwoWay` additionally permits host→guest push (which couples
 /// the two lifecycles — memo open Q2, resolved: OutOnly default, TwoWay opt-in per-mount).
-and [<RequireQualifiedAccess>] ChannelDirection =
-    | OutOnly
-    | TwoWay
-
+and ChannelDirection = Generated.ChannelDirection
 /// A per-`Mount` capability tag (§4o.4) — e.g. `CapabilityTag "notify"`, `CapabilityTag "call:reports.*"`.
 /// The boundary's policy gate consults these before letting a guest `Action<obj>` reach the host tree; an
 /// empty list is default-deny of every host-affecting action.
@@ -964,21 +865,7 @@ and GridTemplate =
       Gap: int option }
 
 /// What a `Box` means — drives the emitted element, ARIA landmark, and chrome.
-and [<RequireQualifiedAccess>] BoxRole =
-    /// Plain grouping container — a bare `<div>`, no landmark. The retired
-    /// `Stack` / `GridLayout` default.
-    | Group
-    /// Card chrome — `<section class="fuaran-card">` with optional heading. The
-    /// retired `Card`.
-    | Card
-    /// Dashboard region — landmark `<section>`/`role="region"` with the
-    /// auto-tiling `fuaran-dashboard` class. The retired `Dashboard`.
-    | Dashboard
-    /// Separator — the renderer emits `<hr class="fuaran-layout-separator">`
-    /// with an implicit `role="separator"`. The canonical successor to the
-    /// retired `Divider` node (Phase 459).
-    | Separator
-
+and BoxRole = Generated.BoxRole
 and DashboardSpec<'Msg> = { Children: Node<'Msg> list }
 
 and StackSpec<'Msg> =
@@ -1078,10 +965,7 @@ and TabsSpec<'Msg> =
 /// per-tab disabled binding (the renderer emits `aria-disabled` + skips
 /// keyboard activation when resolved to `true`). Non-generic — the disabled
 /// binding's resolution path does not need to flow `'Msg` through.
-and TabHeader =
-    { Label: TextSource
-      Icon: IconSource option
-      Disabled: Binding<bool> option }
+and TabHeader = Generated.TabHeader
 
 and CardSpec<'Msg> =
     { Heading: TextSource option
@@ -1192,11 +1076,7 @@ and FactSpec =
 /// add a `fuaran-heading-{variant}` class so the consumer's design tokens
 /// can pick out eyebrow / caption / lead text without overriding the
 /// `<h1..h6>` semantics.
-and [<RequireQualifiedAccess>] HeadingVariant =
-    | Standard
-    | Eyebrow
-    | Caption
-    | Lead
+and HeadingVariant = Generated.HeadingVariant
 
 and HeadingSpec =
     {
@@ -1284,14 +1164,9 @@ and SparklineSpec = { Source: Binding<float seq> }
 /// (Phase 525) maps it to the rendered `<svg viewBox>`. Plain floats — a
 /// `Drawing` is a *resolved* geometric artefact (a chart lowers to concrete
 /// coordinates), so geometry is static; only `DrawStyle` carries bindings.
-and ViewBox =
-    { MinX: float
-      MinY: float
-      Width: float
-      Height: float }
-
+and ViewBox = Generated.ViewBox
 /// A point in a `Drawing`'s user-space coordinate system (Phase 524).
-and DrawPoint = { X: float; Y: float }
+and DrawPoint = Generated.DrawPoint
 
 /// A typed drawing command for `Shape.Curve` (Phase 524) — the closed, typed
 /// replacement for a raw SVG `d` path string. There is deliberately NO `Path`
@@ -1299,13 +1174,7 @@ and DrawPoint = { X: float; Y: float }
 /// path-addressing and with binding paths, and a raw `d` string would
 /// reintroduce an untyped escape hatch. A curve is an ordered list of these
 /// typed commands instead. See docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md §3.
-and [<RequireQualifiedAccess>] CurveCommand =
-    | MoveTo of DrawPoint
-    | LineTo of DrawPoint
-    | CubicTo of control1: DrawPoint * control2: DrawPoint * endpoint: DrawPoint
-    | QuadraticTo of control: DrawPoint * endpoint: DrawPoint
-    | Close
-
+and CurveCommand = Generated.CurveCommand
 /// §4b — the fill/stroke style bindings shared by every `Shape` (Phase 524).
 /// Each field is optional and omitted from the wire when `None` (rule 4), so a
 /// shape emits only what differs from the renderer's inherited default. `Fill`
@@ -1317,11 +1186,7 @@ and [<RequireQualifiedAccess>] CurveCommand =
 /// `text-anchor`: `Start` (left) / `Middle` (centred) / `End` (right). Chosen
 /// for real chart labels — right-aligned y-tick columns, centred x-categories,
 /// left-aligned titles. Bare-string enum on the wire.
-and [<RequireQualifiedAccess>] TextAnchor =
-    | Start
-    | Middle
-    | End
-
+and TextAnchor = Generated.TextAnchor
 /// §4b — the fill/stroke (+ text) style shared by every `Shape` (Phase 524; text
 /// fields Phase 528.1). Each field is optional and omitted from the wire when
 /// `None` (rule 4), so a shape emits only what differs from the renderer's
@@ -1334,25 +1199,7 @@ and [<RequireQualifiedAccess>] TextAnchor =
 /// chart carries its own font — self-contained, no host CSS needed). Bindings
 /// (colour) are the one place a `Drawing` stays reactive — geometry + text
 /// metrics are static.
-and DrawStyle =
-    {
-        Fill: Binding<string> option
-        Stroke: Binding<string> option
-        StrokeWidth: Binding<float> option
-        Opacity: Binding<float> option
-        TextAnchor: TextAnchor option
-        FontSize: float option
-        Emphasis: Emphasis option
-        FontFamily: string option
-        /// Phase 642 — a derivation-based mark identity for a data-bearing shape
-        /// (object constancy): the chart lowering stamps `series-field|category-key`
-        /// so a mark's identity survives row reorder, data refresh, and the wire —
-        /// the anchor every future attachment addresses, never an ordinal index.
-        /// Renderers emit it as `data-fuaran-mark`. Omitted-when-None (rule 4):
-        /// chrome shapes and hand-authored drawings are byte-unchanged.
-        MarkId: string option
-    }
-
+and DrawStyle = Generated.DrawStyle
 /// §4b — the closed, typed vector-graphics shape vocabulary for
 /// `NodeKind.Drawing` (Phase 524). Every case is wire-survivable and
 /// introspectable — the opposite of `NodeKind.Custom`: no raw SVG markup, no
@@ -1361,16 +1208,7 @@ and DrawStyle =
 /// shapes under a shared style. Naming is chosen for the data-science
 /// audience: `Rectangle` (not the abbreviated `Rect`), `Label` (not `Text`,
 /// which overloads `FormFieldKind.Text` / `TextSource`).
-and [<RequireQualifiedAccess>] Shape =
-    | Group of children: Shape list * style: DrawStyle
-    | Rectangle of x: float * y: float * width: float * height: float * cornerRadius: float option * style: DrawStyle
-    | Line of x1: float * y1: float * x2: float * y2: float * style: DrawStyle
-    | Polyline of points: DrawPoint list * style: DrawStyle
-    | Polygon of points: DrawPoint list * style: DrawStyle
-    | Curve of commands: CurveCommand list * style: DrawStyle
-    | Circle of cx: float * cy: float * r: float * style: DrawStyle
-    | Ellipse of cx: float * cy: float * rx: float * ry: float * style: DrawStyle
-    | Label of x: float * y: float * text: TextSource * style: DrawStyle
+and Shape = Generated.Shape
 
 /// §4b — `NodeKind.Drawing`'s typed spec (Phase 524). `ViewBox` is the
 /// user-space coordinate box; `Shapes` is the ordered draw list (painter's
@@ -1497,7 +1335,7 @@ and SelectSpec<'Msg> =
 
 /// A single Select option. `Value` is the wire id (stable, ASCII-safe);
 /// `Label` is the displayed text.
-and SelectOption = { Value: string; Label: TextSource }
+and SelectOption = Generated.SelectOption
 
 /// Minimal viable FormSpec for session 3b. Per the §4k worked example: a
 /// Form is an ordered list of fields + a submit Action. `FormField` carries
@@ -1521,13 +1359,7 @@ and FormSpec<'Msg> =
         Disabled: Binding<bool> option
     }
 
-and FormField<'Msg> =
-    { Id: string
-      Label: TextSource
-      Kind: FormFieldKind<'Msg>
-      Required: bool
-      Help: TextSource option }
-
+and FormField<'Msg> = Generated.FormField<'Msg>
 // Every value-carrying event handler is optional (Phase 426 — the control write-back
 // default, generalising `FilterKind.onChange`'s Phase 423 mechanics). A `Some` closure
 // dispatches on change exactly as before (F#-authored apps unchanged; `"<closure>"`
@@ -1538,57 +1370,7 @@ and FormField<'Msg> =
 // (`Binding.Filter(name, None)` ⇒ `FilterStore`); any other binding shape means no write (the
 // FUARAN069 inert-control check covers it). Wire: `Some` → `"onChange":"<closure>"`
 // (byte-stable); `None` → the field is omitted.
-and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
-    | Text of value: Binding<string> * onChange: (string -> Action<'Msg>) option
-    | Number of value: Binding<float> * onChange: (float -> Action<'Msg>) option
-    | Checkbox of value: Binding<bool> * onToggle: (bool -> Action<'Msg>) option
-    | Choice of
-        options: Binding<SelectOption list> *
-        value: Binding<string option> *
-        onChange: (string option -> Action<'Msg>) option
-    | TextArea of value: Binding<string> * onChange: (string -> Action<'Msg>) option * rows: int
-    /// Parallel-additive Number case carrying optional `Min` /
-    /// `Max` / `Step` constraints projected to HTML `min` / `max` / `step`
-    /// attributes by the renderer (and consumed by the FUARAN051 validator
-    /// rule to range-check a `Binding.Static` literal value). The existing
-    /// `Number` case stays as-is so pattern matches and
-    /// authors see no behavioural change.
-    | RangedNumber of
-        value: Binding<float> *
-        onChange: (float -> Action<'Msg>) option *
-        constraints: NumberFieldConstraints
-    /// Parallel-additive Choice case rendering as a
-    /// segmented control (Horizontal) or a vertical radio-button list
-    /// (Vertical). Same `options` / `value` / `onChange` triple as
-    /// `Choice`; the orientation field chooses the visual surface. The
-    /// existing `Choice` case stays as-is — it remains the dropdown shape.
-    /// Use `SegmentedChoice` when ≤5 options should be visible at once;
-    /// reach for `Choice` otherwise. FUARAN045 warns on a static
-    /// SegmentedChoice with > 7 options.
-    | SegmentedChoice of
-        options: Binding<SelectOption list> *
-        value: Binding<string option> *
-        onChange: (string option -> Action<'Msg>) option *
-        orientation: Orientation
-    /// Dual-thumb numeric range (0.2.0 — absorbs the retired
-    /// `FilterKind.RangeFilter` in the filters-unification: one control
-    /// vocabulary for forms and filter strips). Value is the (min, max) pair.
-    | Range of
-        value: Binding<float * float> *
-        onChange: (float * float -> Action<'Msg>) option *
-        constraints: NumberFieldConstraints option
-    /// Date / time / datetime field (Phase 288) — the
-    /// conspicuous hole in the Form vocabulary before Wave 43. The bound value
-    /// is an ISO-8601 string (`YYYY-MM-DD` for `Date`, `HH:MM` for `Time`,
-    /// `YYYY-MM-DDTHH:MM` for `DateTime`); `variant` chooses the native control;
-    /// optional `Min` / `Max` (ISO strings) + `Step` (seconds) constraints
-    /// mirror `RangedNumber` and project to the HTML `min` / `max` / `step`
-    /// attributes.
-    | Date of
-        value: Binding<string> *
-        onChange: (string -> Action<'Msg>) option *
-        variant: DateVariant *
-        constraints: DateFieldConstraints
+and FormFieldKind<'Msg> = Generated.FormFieldKind<'Msg>
 
 /// Optional date/time-field bounds (Phase 288). `Min` / `Max` are ISO-8601
 /// strings (matching the field's bound value); `Step` is in seconds. All
@@ -1617,11 +1399,7 @@ and NumberFieldConstraints =
 /// declared `Name` IS the filter-store key, so control, store and every
 /// `dependsOn` edge agree by construction (the old dual-write of the name
 /// could silently diverge). An explicit binding is still honoured.
-and FilterSpec<'Msg> =
-    { Name: string
-      Label: TextSource
-      Field: FormFieldKind<'Msg> }
-
+and FilterSpec<'Msg> = Generated.FilterSpec<'Msg>
 /// Requested encoding for `Action.ReadFileBody` (Phase 136; generated). The
 /// renderer's default browser impl maps `Text` → `readAsText`, `Base64` → the
 /// data-URL payload with the header stripped, `DataUrl` → the full
@@ -1695,22 +1473,7 @@ and ChartSpec<'Msg> =
         Stacked: bool
     }
 
-and [<RequireQualifiedAccess>] ChartKind =
-    | Line
-    | Bar
-    | Area
-    | Pie
-    | Scatter
-    /// First-class heatmap chart kind. `XField` maps to the X-axis
-    /// category (e.g. "Year"), `YFields` to the Y-axis category (one
-    /// field, the row-key dimension); cell colour is derived from the
-    /// remaining numeric field by the adapter's gradient logic. The
-    /// AG Charts community-tier doesn't ship a native heatmap series;
-    /// the renderer's adapter falls back to AG Charts Enterprise when
-    /// available (declared as an `optionalDependency` in the consumer's
-    /// package.json), else renders a labelled placeholder so the missing
-    /// dependency is visible rather than silently broken.
-    | Heatmap
+and ChartKind = Generated.ChartKind
 
 /// Author-facing carrier for a **static read-only table** (Phase 393). No longer a
 /// `VisKind` case of its own — `Fuaran.table` lowers it into the read-only mode of
@@ -1736,11 +1499,7 @@ and MapSpec<'Msg> =
       Zoom: int
       OnMarkerClick: (MapMarker -> Action<'Msg>) option }
 
-and MapMarker =
-    { Latitude: float
-      Longitude: float
-      Label: TextSource }
-
+and MapMarker = Generated.MapMarker
 // ─── Visualisation — data-bound, complex ─────────────────────────────
 
 /// Per Defect (1) resolution: row-typed fields are `obj`-erased at the
@@ -1838,15 +1597,7 @@ and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
 
 /// §4k Q3.3 — typed formatters; compound / derived strings stay in
 /// `Column.Value`. Keeps numeric sort intact when a column displays numbers.
-and [<RequireQualifiedAccess>] CellFormat =
-    | None
-    | Number of decimals: int option
-    | Currency of code: string
-    | Percent of decimals: int option
-    | SignificantDigits of digits: int
-    | Date of format: string
-    | Custom of (CellValue -> string)
-
+and CellFormat = Generated.CellFormat
 // ─── State behaviours — required slots, AI can't forget ──────────────
 
 and StateBehaviour<'Msg> =
@@ -1891,50 +1642,14 @@ and SemanticStyle =
 /// **Additive-only post-ship** (like `LayoutFlag`/`StyleFlag`): adding a case
 /// is a minor bump (existing matches gain an `FS0025` warning); redefining a
 /// case breaks every prompt cache that pattern-matched it.
-and [<RequireQualifiedAccess>] StyleRole =
-    /// No declared role — the default; emits no class fragment.
-    | None
-    /// Small kicker / overline label (the named-scale `eyebrow` role) on a
-    /// non-heading node. On a `Heading`, prefer `HeadingVariant.Eyebrow`.
-    | Eyebrow
-    /// Tabular / numeric data voice — figures, metrics, monospaced data.
-    | Data
-    /// Lead paragraph / standfirst — the intro voice above body copy.
-    | Lede
-    /// Small supporting caption / footnote on a non-heading node. On a
-    /// `Heading`, prefer `HeadingVariant.Caption`.
-    | Caption
-
+and StyleRole = Generated.StyleRole
 /// §4b (Phase 147) — the bounded, additive-only font-voice vocabulary: the
 /// display-vs-structural split. Projects a `fuaran-voice-{voice}` class.
 /// Additive-only post-ship, same discipline as `StyleRole`.
-and [<RequireQualifiedAccess>] FontVoice =
-    /// No declared voice — the default; emits no class fragment.
-    | Default
-    /// Display voice — large, expressive headline / cover / hero type.
-    | Display
-    /// Structural voice — body copy + UI chrome (the workhorse voice).
-    | Structural
-
-and ToneVariant =
-    | Default
-    | Subdued
-    | Brand
-    | Success
-    | Warning
-    | Critical
-    | Info
-
-and StyleWeight =
-    | Compact
-    | Standard
-    | Spacious
-
-and Emphasis =
-    | Quiet
-    | Normal
-    | Loud
-
+and FontVoice = Generated.FontVoice
+and ToneVariant = Generated.ToneVariant
+and StyleWeight = Generated.StyleWeight
+and Emphasis = Generated.Emphasis
 // ─── Bindings — typed at author, stringly-typed at wire ──────────────
 //
 // §4k Q3.1 — `Binding.Query` names are MODULE-SCOPED (unqualified name
@@ -1985,6 +1700,10 @@ and TransformParam = Generated.TransformParam
 /// A capability-invoke argument (generated; `Addr`/`Value` — was `(string * string)`).
 and InvokeArg = Generated.InvokeArg
 
+/// The `{max, min}` payload of a `Range` control's value (generated; the old
+/// `float * float` pair — the record IS the wire object).
+and RangePair = Generated.RangePair
+
 // ─── Actions — effect-typed ──────────────────────────────────────────
 //
 // Per Defect (2) resolution: `Call`'s onResult payload stays obj-erased
@@ -2011,11 +1730,7 @@ and CallResultTarget = Generated.CallResultTarget
 
 // ─── Text sources — bindable, i18n-aware ────────────────────────────
 
-and [<RequireQualifiedAccess>] TextSource =
-    | Literal of string
-    | Bound of Binding<string>
-    | I18n of key: string * args: Map<string, JVal>
-
+and TextSource = Generated.TextSource
 // ─── Theme ──────────────────────────────────────────────────────────
 //
 // `Theme` is the typed F# record consumers compose to drive the

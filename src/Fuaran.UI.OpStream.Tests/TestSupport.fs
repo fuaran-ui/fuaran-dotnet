@@ -77,25 +77,25 @@ module private SimpleSinkJson =
 
     let private toneOf (s: string) : ToneVariant =
         match s with
-        | "Subdued" -> Subdued
-        | "Brand" -> Brand
-        | "Success" -> Success
-        | "Warning" -> Warning
-        | "Critical" -> Critical
-        | "Info" -> Info
-        | _ -> Default
+        | "Subdued" -> ToneVariant.Subdued
+        | "Brand" -> ToneVariant.Brand
+        | "Success" -> ToneVariant.Success
+        | "Warning" -> ToneVariant.Warning
+        | "Critical" -> ToneVariant.Critical
+        | "Info" -> ToneVariant.Info
+        | _ -> ToneVariant.Default
 
     let private weightOf (s: string) : StyleWeight =
         match s with
-        | "Compact" -> Compact
-        | "Spacious" -> Spacious
-        | _ -> Standard
+        | "Compact" -> StyleWeight.Compact
+        | "Spacious" -> StyleWeight.Spacious
+        | _ -> StyleWeight.Standard
 
     let private emphasisOf (s: string) : Emphasis =
         match s with
-        | "Quiet" -> Quiet
-        | "Loud" -> Loud
-        | _ -> Normal
+        | "Quiet" -> Emphasis.Quiet
+        | "Loud" -> Emphasis.Loud
+        | _ -> Emphasis.Normal
 
     // Hand-encoded compact format keyed on a single-letter discriminator.
     // RemoveNode:        R|<id>

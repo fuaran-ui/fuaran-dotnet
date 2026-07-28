@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
+using FsGen = Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp;
 
@@ -18,7 +19,7 @@ public static partial class Fuaran
             options.ComponentId,
             Fs.Map((options.Props ?? new Dictionary<string, string>())
                 .Select(kv => new KeyValuePair<string, global::Fuaran.Core.JVal>(kv.Key, global::Fuaran.Core.JVal.NewJStr(kv.Value)))),
-            Fs.None<FsTypes.ContentHash>(),
+            Fs.None<FsGen.ContentHash>(),
             Fs.List((options.ExposedNodeIds ?? Enumerable.Empty<string>()).Select(FsTypes.NodeId.NewNodeId))));
 
     /// <summary>A render-time error boundary — renders <c>Fallback</c> if <c>Child</c> throws.</summary>
@@ -34,8 +35,9 @@ public static partial class Fuaran
             new FsTypes.FragmentDeclSpec<object>(
                 FsTypes.FragmentId.NewFragmentId(options.Name),
                 options.Body.Inner,
-                Fs.Empty<FsTypes.HoleDecl>(),
-                new FsTypes.EffectClass(FsTypes.HostEffect.Pure, FsTypes.DeterminismSource.Deterministic))));
+                Fs.Empty<FsGen.HoleDecl>(),
+                // Generated EffectClass declares (Determinism, HostEffect) — ctor is declaration order.
+                new FsGen.EffectClass(FsGen.DeterminismSource.Deterministic, FsGen.HostEffect.Pure))));
 
     /// <summary>A reference that expands the named fragment.</summary>
     public static FuaranNode FragmentRef(FragmentRefOptions options) =>
@@ -53,8 +55,8 @@ public static partial class Fuaran
             new FsTypes.MountSpec<object>(
                 options.ScopeId,
                 Fs.EmptyMap<string, FsTypes.FragmentArg<object>>(),
-                new FsTypes.GuestChannel(
-                    options.TwoWay ? FsTypes.ChannelDirection.TwoWay : FsTypes.ChannelDirection.OutOnly,
+                new FsGen.GuestChannel(
+                    options.TwoWay ? FsGen.ChannelDirection.TwoWay : FsGen.ChannelDirection.OutOnly,
                     Fs.OptStr(options.MessageShape)),
                 Fs.Func<object, global::Fuaran.UI.Generated.Action<object>>(_ =>
                     global::Fuaran.UI.Generated.Action<object>.NewChain(Fs.Empty<global::Fuaran.UI.Generated.Action<object>>())),

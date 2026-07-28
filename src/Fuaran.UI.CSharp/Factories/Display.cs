@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
+using FsGen = Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp;
 
@@ -34,7 +35,7 @@ public static partial class Fuaran
             options.Id,
             new FsTypes.CalloutSpec(
                 options.Tone.ToFs(),
-                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>(),
+                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
                 options.Body.Inner,
                 Icon(options.Icon),
                 options.Dismissable)));
@@ -45,8 +46,8 @@ public static partial class Fuaran
             options.Id,
             new FsTypes.ProgressSpec(
                 (options.Fraction ?? 0.0).Inner,
-                options.Label is { } l ? Fs.Some(l.Inner) : Fs.None<FsTypes.TextSource>(),
-                options.Caveat is { } c ? Fs.Some(c.Inner) : Fs.None<FsTypes.TextSource>(),
+                options.Label is { } l ? Fs.Some(l.Inner) : Fs.None<FsGen.TextSource>(),
+                options.Caveat is { } c ? Fs.Some(c.Inner) : Fs.None<FsGen.TextSource>(),
                 options.Indeterminate,
                 options.Tone.ToFs())));
 
@@ -63,7 +64,7 @@ public static partial class Fuaran
                 options.Value.Inner,
                 options.Format.Inner,
                 options.Emphasis,
-                options.Help is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>())));
+                options.Help is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>A labeled TEXT fact tile — the complementary kind to the numeric
     /// <see cref="Fuaran.Metric"/> (0.2.0 wave: text values belong in Fact, not a
@@ -77,7 +78,7 @@ public static partial class Fuaran
                 Icon(options.Icon),
                 options.Tone.ToFs(),
                 options.Emphasis,
-                options.Help is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>())));
+                options.Help is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>A crawlable hyperlink (a real <c>&lt;a href&gt;</c>).</summary>
     public static FuaranNode Link(LinkOptions options) =>
@@ -141,20 +142,23 @@ public static partial class Fuaran
         new(FsFactory.drawingSpec<object>(
             options.Id,
             new FsTypes.DrawingSpec(
-                new FsTypes.ViewBox(options.MinX, options.MinY, options.Width, options.Height),
-                Fs.List(options.Shapes ?? Enumerable.Empty<FsTypes.Shape>()),
-                new FsTypes.DrawStyle(
+                // Generated ViewBox declares (Height, MinX, MinY, Width) — ctor is declaration order.
+                new FsGen.ViewBox(options.Height, options.MinX, options.MinY, options.Width),
+                Fs.List(options.Shapes ?? Enumerable.Empty<FsGen.Shape>()),
+                // Generated DrawStyle declaration order: Emphasis, Fill, FontFamily, FontSize,
+                // MarkId (Phase 642 — inherited default: none), Opacity, Stroke, StrokeWidth, TextAnchor.
+                new FsGen.DrawStyle(
+                    Fs.None<FsGen.Emphasis>(),
                     Fs.None<global::Fuaran.UI.Generated.Binding<string>>(),
-                    Fs.None<global::Fuaran.UI.Generated.Binding<string>>(),
-                    Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
-                    Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
-                    Fs.None<FsTypes.TextAnchor>(),
-                    Fs.None<double>(),
-                    Fs.None<FsTypes.Emphasis>(),
                     Fs.None<string>(),
-                    Fs.None<string>()), // markId (Phase 642) — inherited default: none
-                options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsTypes.TextSource>(),
-                options.Description is { } dsc ? Fs.Some(dsc.Inner) : Fs.None<FsTypes.TextSource>())));
+                    Fs.None<double>(),
+                    Fs.None<string>(),
+                    Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
+                    Fs.None<global::Fuaran.UI.Generated.Binding<string>>(),
+                    Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
+                    Fs.None<FsGen.TextAnchor>()),
+                options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsGen.TextSource>(),
+                options.Description is { } dsc ? Fs.Some(dsc.Inner) : Fs.None<FsGen.TextSource>())));
 }
 
 /// <summary>Options for <see cref="Fuaran.Badge"/>.</summary>
@@ -418,7 +422,7 @@ public sealed record DrawingOptions
     public double Height { get; init; } = 100.0;
 
     /// <summary>The ordered draw list (F# <c>Shape</c> DU values); empty when null.</summary>
-    public IEnumerable<FsTypes.Shape>? Shapes { get; init; }
+    public IEnumerable<FsGen.Shape>? Shapes { get; init; }
 
     /// <summary>Optional accessible name (rendered as <c>&lt;title&gt;</c> in Phase 525).</summary>
     public Text? Title { get; init; }

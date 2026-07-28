@@ -173,21 +173,21 @@ let private canonicalSection (model: Model) : Node<Msg> =
 
 // ─── Showcase of session-3b components ────────────────────────────────────
 
-let private contributorOptions =
+let private contributorOptions: SelectOption list =
     [ { Value = "buyer-peer"
-        Label = TextSource.Literal "Buyer peer" }
+        Label = "Buyer peer" }
       { Value = "seller-peer"
-        Label = TextSource.Literal "Seller peer" }
+        Label = "Seller peer" }
       { Value = "portal-peer"
-        Label = TextSource.Literal "Portal peer" } ]
+        Label = "Portal peer" } ]
 
-let private categoryOptions =
+let private categoryOptions: SelectOption list =
     [ { Value = "audience"
-        Label = TextSource.Literal "Audience" }
+        Label = "Audience" }
       { Value = "performance"
-        Label = TextSource.Literal "Performance" }
+        Label = "Performance" }
       { Value = "attribution"
-        Label = TextSource.Literal "Attribution" } ]
+        Label = "Attribution" } ]
 
 let private session3bShowcase (model: Model) : Node<Msg> =
     Fuaran.dashboard
@@ -204,9 +204,9 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                       [ { Defaults.filter<Msg> with
                             Name = "text-filter"
                             Label = TextSource.Literal "Search channels"
-                            Field =
+                            Kind =
                                 FormFieldKind.Text(
-                                    binding.state "textFilter" "",
+                                    Some(binding.state "textFilter" ""),
                                     Some(fun v -> Action.dispatch (SetTextFilter v))
                                 ) } ]
 
@@ -238,7 +238,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                                                   Required = true
                                                   Kind =
                                                       FormFieldKind.Text(
-                                                          binding.state "formText" "",
+                                                          Some(binding.state "formText" ""),
                                                           Some(fun v -> Action.dispatch (SetFormText v))
                                                       ) }
                                               { Defaults.formField<Msg> with
@@ -247,7 +247,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                                                   Kind =
                                                       FormFieldKind.Choice(
                                                           Binding.Static(Some categoryOptions),
-                                                          binding.state "formChoice" None,
+                                                          Some(binding.stateNoDefault "formChoice"),
                                                           Some(fun v -> Action.dispatch (SetFormChoice v))
                                                       )
                                                   Help = Some(TextSource.Literal "Pick the dominant cohort dimension.") } ] }
@@ -292,7 +292,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                   Fuaran.tabs
                       "showcase-tabs"
                       { Defaults.tabs<Msg> with
-                          Orientation = Horizontal
+                          Orientation = Orientation.Horizontal
                           Children =
                               [ Fuaran.card
                                     "tab-overview"
@@ -357,21 +357,18 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                                   TextSource.Literal "Beta" ] ] }
 
                   // Map placeholder
+                  let mapMarkers: MapMarker list =
+                      [ { Latitude = 51.5074
+                          Longitude = -0.1278
+                          Label = "London" }
+                        { Latitude = 40.7128
+                          Longitude = -74.006
+                          Label = "New York" } ]
+
                   Fuaran.map
                       "showcase-map"
                       { Defaults.map<Msg> with
-                          Source =
-                              Binding.Static(
-                                  Some(
-                                      [ { Latitude = 51.5074
-                                          Longitude = -0.1278
-                                          Label = TextSource.Literal "London" }
-                                        { Latitude = 40.7128
-                                          Longitude = -74.006
-                                          Label = TextSource.Literal "New York" } ]
-                                      :> MapMarker seq
-                                  )
-                              )
+                          Source = Binding.Static(Some(mapMarkers :> MapMarker seq))
                           CentreLatitude = 30.0
                           CentreLongitude = -30.0
                           Zoom = 3 } ] }

@@ -127,16 +127,19 @@ let private usesOfBindingOpt (binding: Binding<'T> option) : BindingUse list =
     | None -> []
 
 let private usesOfFormFieldKind<'Msg> (kind: FormFieldKind<'Msg>) : BindingUse list =
+    // Value slots are `option` since the swap (Phase 596 auto-bind — absence
+    // is legal wire); constraints ride flat (min/max/step) rather than as the
+    // retired constraint records.
     match kind with
-    | FormFieldKind.Text(v, _) -> usesOfBinding v
-    | FormFieldKind.Number(v, _) -> usesOfBinding v
-    | FormFieldKind.Checkbox(v, _) -> usesOfBinding v
-    | FormFieldKind.TextArea(v, _, _) -> usesOfBinding v
-    | FormFieldKind.RangedNumber(v, _, _) -> usesOfBinding v
-    | FormFieldKind.Range(v, _, _) -> usesOfBinding v
-    | FormFieldKind.Choice(opts, value, _) -> usesOfBinding opts @ usesOfBinding value
-    | FormFieldKind.SegmentedChoice(opts, value, _, _) -> usesOfBinding opts @ usesOfBinding value
-    | FormFieldKind.Date(v, _, _, _) -> usesOfBinding v
+    | FormFieldKind.Text(v, _) -> usesOfBindingOpt v
+    | FormFieldKind.Number(v, _) -> usesOfBindingOpt v
+    | FormFieldKind.Checkbox(v, _) -> usesOfBindingOpt v
+    | FormFieldKind.TextArea(v, _, _) -> usesOfBindingOpt v
+    | FormFieldKind.RangedNumber(v, _, _, _, _) -> usesOfBindingOpt v
+    | FormFieldKind.Range(v, _, _, _, _) -> usesOfBindingOpt v
+    | FormFieldKind.Choice(opts, value, _) -> usesOfBinding opts @ usesOfBindingOpt value
+    | FormFieldKind.SegmentedChoice(opts, value, _, _) -> usesOfBinding opts @ usesOfBindingOpt value
+    | FormFieldKind.Date(v, _, _, _, _, _) -> usesOfBindingOpt v
 
 /// The `Action.Call`s reachable from a wire-survivable action value,
 /// recursing `Chain` (Phase 428). Non-Call arms carry no fetch.
@@ -310,7 +313,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                         declaredFilters.Add(readerId, fs.Name)
 
                     filters
-                    |> List.collect (fun fs -> usesOfText fs.Label @ usesOfFormFieldKind fs.Field)
+                    |> List.collect (fun (fs: FilterSpec<_>) -> usesOfText fs.Label @ usesOfFormFieldKind fs.Kind)
 
                 uses, []
             // ── Visualisation ──

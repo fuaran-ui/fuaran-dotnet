@@ -56,12 +56,14 @@ let private nameField: FormField<Msg> =
         Required = true
         Kind =
             FormFieldKind.Text(
-                binding.local
-                    (Binding.Static(Some ""))
-                    LocalFlushTrigger.OnCommitAction
-                    (fun n -> Action.Dispatch(SetName n))
-                    None
-                    (fun s -> Ok s),
+                Some(
+                    binding.local
+                        (Binding.Static(Some ""))
+                        LocalFlushTrigger.OnCommitAction
+                        (fun n -> Action.Dispatch(SetName n))
+                        None
+                        (fun s -> Ok s)
+                ),
                 Some(fun _ -> Action.Chain [])
             ) }
 
@@ -70,19 +72,21 @@ let private ageField: FormField<Msg> =
         Id = "age"
         Kind =
             FormFieldKind.RangedNumber(
-                binding.local
-                    (Binding.Static(Some 0.0))
-                    LocalFlushTrigger.OnSubmit
-                    (fun a -> Action.Dispatch(SetAge a))
-                    None
-                    (fun s ->
-                        match System.Double.TryParse s with
-                        | true, v -> Ok v
-                        | _ -> Error "nan"),
+                Some(
+                    binding.local
+                        (Binding.Static(Some 0.0))
+                        LocalFlushTrigger.OnSubmit
+                        (fun a -> Action.Dispatch(SetAge a))
+                        None
+                        (fun s ->
+                            match System.Double.TryParse s with
+                            | true, v -> Ok v
+                            | _ -> Error "nan")
+                ),
                 Some(fun _ -> Action.Chain []),
-                { Defaults.numberFieldConstraints with
-                    Min = Some 0.0
-                    Max = Some 120.0 }
+                Some 0.0,
+                Some 120.0,
+                None
             ) }
 
 let private formSpec: FormSpec<Msg> =
@@ -149,7 +153,7 @@ let tests =
               let plain =
                   { Defaults.formField<Msg> with
                       Id = "p"
-                      Kind = FormFieldKind.Text(Binding.Static(Some ""), Some(fun _ -> Action.Chain [])) }
+                      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some(fun _ -> Action.Chain [])) }
 
               Expect.isNone (fieldFlushAction plain (LiveValue.Str "z")) "a non-Local field is not buffered here"
           }

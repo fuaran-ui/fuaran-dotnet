@@ -285,8 +285,8 @@ let private appendObj (sb: StringBuilder) (v: obj | null) : unit =
 let private encodeOrientation (o: Orientation) : Appender =
     fun sb ->
         match o with
-        | Vertical -> appendRawString sb "Vertical"
-        | Horizontal -> appendRawString sb "Horizontal"
+        | Orientation.Vertical -> appendRawString sb "Vertical"
+        | Orientation.Horizontal -> appendRawString sb "Horizontal"
 
 let private encodeFileReadEncoding (e: FileReadEncoding) : Appender =
     fun sb ->
@@ -354,27 +354,27 @@ let private encodeHeadingVariant (v: HeadingVariant) : Appender =
 let private encodeTone (t: ToneVariant) : Appender =
     fun sb ->
         match t with
-        | Default -> appendRawString sb "Default"
-        | Subdued -> appendRawString sb "Subdued"
-        | Brand -> appendRawString sb "Brand"
-        | Success -> appendRawString sb "Success"
-        | Warning -> appendRawString sb "Warning"
-        | Critical -> appendRawString sb "Critical"
-        | Info -> appendRawString sb "Info"
+        | ToneVariant.Default -> appendRawString sb "Default"
+        | ToneVariant.Subdued -> appendRawString sb "Subdued"
+        | ToneVariant.Brand -> appendRawString sb "Brand"
+        | ToneVariant.Success -> appendRawString sb "Success"
+        | ToneVariant.Warning -> appendRawString sb "Warning"
+        | ToneVariant.Critical -> appendRawString sb "Critical"
+        | ToneVariant.Info -> appendRawString sb "Info"
 
 let private encodeWeight (w: StyleWeight) : Appender =
     fun sb ->
         match w with
-        | Compact -> appendRawString sb "Compact"
-        | Standard -> appendRawString sb "Standard"
-        | Spacious -> appendRawString sb "Spacious"
+        | StyleWeight.Compact -> appendRawString sb "Compact"
+        | StyleWeight.Standard -> appendRawString sb "Standard"
+        | StyleWeight.Spacious -> appendRawString sb "Spacious"
 
 let private encodeEmphasis (e: Emphasis) : Appender =
     fun sb ->
         match e with
-        | Quiet -> appendRawString sb "Quiet"
-        | Normal -> appendRawString sb "Normal"
-        | Loud -> appendRawString sb "Loud"
+        | Emphasis.Quiet -> appendRawString sb "Quiet"
+        | Emphasis.Normal -> appendRawString sb "Normal"
+        | Emphasis.Loud -> appendRawString sb "Loud"
 
 // Phase 147 — the additive style-role / font-voice DUs.  PascalCase-matched
 // to the F# cases (same discipline as `encodeTone`).  Emitted on the style
@@ -839,7 +839,7 @@ and private encodeAction<'Msg> (a: Action<'Msg>) : Appender =
 // boundary is by design (WIRE_FORMAT.md §"Typed Static payloads").
 
 let private encodeSelectOption (o: SelectOption) : Appender =
-    fun sb -> appendObject sb [ "label", encodeTextSource o.Label; "value", str o.Value ]
+    fun sb -> appendObject sb [ "label", str o.Label; "value", str o.Value ]
 
 let private staticSelectOptions (options: SelectOption list) : Appender =
     fun sb -> appendArrayWith sb (options |> List.map encodeSelectOption)
@@ -863,7 +863,7 @@ let private encodeMapMarker (m: MapMarker) : Appender =
     fun sb ->
         appendObject
             sb
-            [ "label", encodeTextSource m.Label
+            [ "label", str m.Label
               "latitude", float_ m.Latitude
               "longitude", float_ m.Longitude ]
 
@@ -1243,11 +1243,17 @@ type private ControlAutoBind =
 
 let private encodeFormFieldKind<'Msg> (autoBind: ControlAutoBind) (k: FormFieldKind<'Msg>) : Appender =
     fun sb ->
-        let valueField (enc: Binding<'v> -> Appender) (autoDefault: 'v) (v: Binding<'v>) : Field list =
+        // The slot is `Binding<'v> option` since the swap; a `None` slot IS the
+        // auto-bind form and always omits. The synthesised shape omits too
+        // (`autoDefault` is option-typed: `Some placeholder` for the scalar
+        // controls, `None` for the choice family whose synthesis is a
+        // default-less State).
+        let valueField (enc: Binding<'v> -> Appender) (autoDefault: 'v option) (v: Binding<'v> option) : Field list =
             match autoBind, v with
-            | FilterChip n, Binding.Filter(fn, None) when fn = n -> []
-            | FormFieldId fieldId, Binding.State(key, Some d) when key = fieldId && d = autoDefault -> []
-            | _ -> [ "value", enc v ]
+            | _, None -> []
+            | FilterChip n, Some(Binding.Filter(fn, None)) when fn = n -> []
+            | FormFieldId fieldId, Some(Binding.State(key, d)) when key = fieldId && d = autoDefault -> []
+            | _, Some b -> [ "value", enc b ]
 
         // Handlers ride the wire only when present (Phase 426, generalising the
         // Phase 423 `FilterKind.onChange` mechanics): a `Some` closure → the
@@ -1267,21 +1273,21 @@ let private encodeFormFieldKind<'Msg> (autoBind: ControlAutoBind) (k: FormFieldK
                 (case
                     "Text"
                     (handlerField "onChange" oc
-                     @ valueField encodeBinding<string> Fuaran.UI.Defaults.ControlValueDefaults.text value))
+                     @ valueField encodeBinding<string> (Some Fuaran.UI.Defaults.ControlValueDefaults.text) value))
         | FormFieldKind.Number(value, oc) ->
             appendObject
                 sb
                 (case
                     "Number"
                     (handlerField "onChange" oc
-                     @ valueField encodeBinding<float> Fuaran.UI.Defaults.ControlValueDefaults.number value))
+                     @ valueField encodeBinding<float> (Some Fuaran.UI.Defaults.ControlValueDefaults.number) value))
         | FormFieldKind.Checkbox(value, ot) ->
             appendObject
                 sb
                 (case
                     "Checkbox"
                     (handlerField "onToggle" ot
-                     @ valueField encodeBinding<bool> Fuaran.UI.Defaults.ControlValueDefaults.checkbox value))
+                     @ valueField encodeBinding<bool> (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) value))
         | FormFieldKind.Choice(options, value, oc) ->
             appendObject
                 sb
@@ -1289,23 +1295,18 @@ let private encodeFormFieldKind<'Msg> (autoBind: ControlAutoBind) (k: FormFieldK
                     "Choice"
                     (handlerField "onChange" oc
                      @ [ "options", encodeBindingWith staticSelectOptions options ]
-                     @ valueField
-                         (encodeBindingWith staticStringOpt)
-                         Fuaran.UI.Defaults.ControlValueDefaults.choice
-                         value))
-        | FormFieldKind.RangedNumber(value, oc, constraints) ->
-            // Parallel-additive arm. Omit absent constraint
-            // fields per algorithm rule 4 so the hash output for
-            // an authored-equivalent `Number` payload differs only by the
-            // discriminator + any present bound.
+                     @ valueField encodeBinding<string> Fuaran.UI.Defaults.ControlValueDefaults.choice value))
+        | FormFieldKind.RangedNumber(value, oc, mn, mx, st) ->
+            // Parallel-additive arm; the constraint trio rides FLAT since the
+            // swap (min/max/step options), omitted per rule 4.
             let constraintFields =
-                [ match constraints.Min with
+                [ match mn with
                   | Some m -> "min", float_ m
                   | None -> ()
-                  match constraints.Max with
+                  match mx with
                   | Some m -> "max", float_ m
                   | None -> ()
-                  match constraints.Step with
+                  match st with
                   | Some s -> "step", float_ s
                   | None -> () ]
 
@@ -1314,7 +1315,7 @@ let private encodeFormFieldKind<'Msg> (autoBind: ControlAutoBind) (k: FormFieldK
                 (case
                     "RangedNumber"
                     (handlerField "onChange" oc
-                     @ valueField encodeBinding<float> Fuaran.UI.Defaults.ControlValueDefaults.number value
+                     @ valueField encodeBinding<float> (Some Fuaran.UI.Defaults.ControlValueDefaults.number) value
                      @ constraintFields))
         | FormFieldKind.SegmentedChoice(options, value, oc, orientation) ->
             // Parallel-additive Choice case with an orientation
@@ -1328,10 +1329,7 @@ let private encodeFormFieldKind<'Msg> (autoBind: ControlAutoBind) (k: FormFieldK
                     (handlerField "onChange" oc
                      @ [ "options", encodeBindingWith staticSelectOptions options
                          "orientation", encodeOrientation orientation ]
-                     @ valueField
-                         (encodeBindingWith staticStringOpt)
-                         Fuaran.UI.Defaults.ControlValueDefaults.choice
-                         value))
+                     @ valueField encodeBinding<string> Fuaran.UI.Defaults.ControlValueDefaults.choice value))
         | FormFieldKind.TextArea(value, oc, rows) ->
             appendObject
                 sb
@@ -1339,57 +1337,54 @@ let private encodeFormFieldKind<'Msg> (autoBind: ControlAutoBind) (k: FormFieldK
                     "TextArea"
                     (handlerField "onChange" oc
                      @ [ "rows", int_ rows ]
-                     @ valueField encodeBinding<string> Fuaran.UI.Defaults.ControlValueDefaults.text value))
-        | FormFieldKind.Range(value, oc, constraints) ->
+                     @ valueField encodeBinding<string> (Some Fuaran.UI.Defaults.ControlValueDefaults.text) value))
+        | FormFieldKind.Range(value, oc, mn, mx, st) ->
             // 0.2.0 — dual-thumb range (absorbed FilterKind.RangeFilter). The
-            // Static pair rides as the typed {min, max} object; constraints
-            // omitted when absent (rule 4).
-            let rangeValue (v: Binding<float * float>) : Appender =
+            // Static payload is the `RangePair` record since the swap, riding
+            // as the bare transparent {max, min} object; the constraint trio
+            // rides FLAT (min/max/step options), omitted per rule 4.
+            let rangeValue (v: Binding<RangePair>) : Appender =
                 match v with
-                | Binding.Static(Some(minV, maxV)) ->
-                    fun sb2 -> appendObject sb2 [ "max", float_ maxV; "min", float_ minV ]
+                | Binding.Static(Some p) -> fun sb2 -> appendObject sb2 [ "max", float_ p.Max; "min", float_ p.Min ]
                 | other ->
                     encodeBindingWith
-                        (fun (a, b) -> fun sb2 -> appendObject sb2 [ "max", float_ b; "min", float_ a ])
+                        (fun (p: RangePair) -> fun sb2 -> appendObject sb2 [ "max", float_ p.Max; "min", float_ p.Min ])
                         other
 
             let constraintFields =
-                match constraints with
-                | Some c ->
-                    [ match c.Min with
-                      | Some m -> "min", float_ m
-                      | None -> ()
-                      match c.Max with
-                      | Some m -> "max", float_ m
-                      | None -> ()
-                      match c.Step with
-                      | Some st -> "step", float_ st
-                      | None -> () ]
-                | None -> []
+                [ match mn with
+                  | Some m -> "min", float_ m
+                  | None -> ()
+                  match mx with
+                  | Some m -> "max", float_ m
+                  | None -> ()
+                  match st with
+                  | Some s2 -> "step", float_ s2
+                  | None -> () ]
 
             let vField =
                 match autoBind, value with
-                | FilterChip n, Binding.Filter(fn, None) when fn = n -> []
-                | FormFieldId fieldId, Binding.State(key, Some d) when
+                | _, None -> []
+                | FilterChip n, Some(Binding.Filter(fn, None)) when fn = n -> []
+                | FormFieldId fieldId, Some(Binding.State(key, Some d)) when
                     key = fieldId && d = Fuaran.UI.Defaults.ControlValueDefaults.range
                     ->
                     []
-                | _ -> [ "value", rangeValue value ]
+                | _, Some b -> [ "value", rangeValue b ]
 
             appendObject sb (case "Range" (handlerField "onChange" oc @ vField @ constraintFields))
-        | FormFieldKind.Date(value, oc, variant, constraints) ->
-            // Phase 288 — date/time field. Optional min/max (ISO strings) +
-            // step (seconds) omitted when absent (rule 4). `variant` is always
-            // emitted (bare-string DU); `value` is a Binding<string> ISO value.
+        | FormFieldKind.Date(value, oc, variant, mn, mx, st) ->
+            // Phase 288 — date/time field. The constraint trio rides FLAT since
+            // the swap (ISO min/max strings + step seconds), omitted per rule 4.
             let constraintFields =
-                [ match constraints.Min with
+                [ match mn with
                   | Some m -> "min", str m
                   | None -> ()
-                  match constraints.Max with
+                  match mx with
                   | Some m -> "max", str m
                   | None -> ()
-                  match constraints.Step with
-                  | Some s -> "step", float_ s
+                  match st with
+                  | Some s2 -> "step", float_ s2
                   | None -> () ]
 
             appendObject
@@ -1397,7 +1392,7 @@ let private encodeFormFieldKind<'Msg> (autoBind: ControlAutoBind) (k: FormFieldK
                 (case
                     "Date"
                     (handlerField "onChange" oc
-                     @ valueField encodeBinding<string> Fuaran.UI.Defaults.ControlValueDefaults.date value
+                     @ valueField encodeBinding<string> (Some Fuaran.UI.Defaults.ControlValueDefaults.date) value
                      @ [ "variant", encodeDateVariant variant ]
                      @ constraintFields))
 
@@ -1433,7 +1428,7 @@ let private encodeFilterSpec<'Msg> (s: FilterSpec<'Msg>) : Appender =
     fun sb ->
         appendObject
             sb
-            [ "kind", encodeFormFieldKind (FilterChip s.Name) s.Field
+            [ "kind", encodeFormFieldKind (FilterChip s.Name) s.Kind
               "label", encodeTextSource s.Label
               "name", str s.Name ]
 
@@ -1640,6 +1635,16 @@ let private encodeScalar (v: obj) : Appender =
         | :? string as s -> appendObject sb (case "Str" [ "value", str s ])
         | _ -> appendObject sb (case "Str" [ "value", sentinel opaqueSentinel ])
 
+/// The typed `Scalar` twin (a `HoleDecl.Value` default since the swap) — same
+/// wire shape as `encodeScalar`, no boxed-type sniffing.
+let private encodeScalarTyped (v: Scalar) : Appender =
+    fun sb ->
+        match v with
+        | Scalar.Int n -> appendObject sb (case "Int" [ "value", int_ n ])
+        | Scalar.Float f -> appendObject sb (case "Float" [ "value", float_ f ])
+        | Scalar.Bool b -> appendObject sb (case "Bool" [ "value", bool_ b ])
+        | Scalar.Str s -> appendObject sb (case "Str" [ "value", str s ])
+
 let private encodeHoleDecl (h: HoleDecl) : Appender =
     fun sb ->
         match h with
@@ -1647,7 +1652,7 @@ let private encodeHoleDecl (h: HoleDecl) : Appender =
             let fields =
                 [ "name", str name; "space", encodeHoleValueSpace space ]
                 @ (match def with
-                   | Some d -> [ "default", encodeScalar d ]
+                   | Some d -> [ "default", encodeScalarTyped d ]
                    | None -> [])
 
             appendObject sb (case "Value" fields)
@@ -1768,7 +1773,7 @@ let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
                     let requiredFields =
                         [ yield "children", (fun sb -> appendArrayWith sb (spec.Children |> List.map nodeAppender))
                           // 0.2.0 — omitted-when-Horizontal (the universal default).
-                          if spec.Orientation <> Horizontal then
+                          if spec.Orientation <> Orientation.Horizontal then
                               yield "orientation", encodeOrientation spec.Orientation
                           yield "activeIndex", encodeBinding<int> spec.ActiveIndex ]
 
@@ -1777,7 +1782,7 @@ let rec private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
                             let fields = [ "label", encodeTextSource h.Label ]
 
                             let optionals =
-                                [ h.Icon |> Option.map (fun ic -> "icon", encodeIconSource ic)
+                                [ h.Icon |> Option.map (fun ic -> "icon", str ic)
                                   h.Disabled |> Option.map (fun b -> "disabled", encodeBinding<bool> b) ]
                                 |> List.choose id
 

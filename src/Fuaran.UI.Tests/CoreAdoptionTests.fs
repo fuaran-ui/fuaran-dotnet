@@ -121,7 +121,7 @@ let private mkStack (id: string) (kids: EqNode list) : EqNode =
             NodeKind.Box(
                 { Layout =
                     BoxLayout.Flex
-                        { Direction = Vertical
+                        { Direction = Orientation.Vertical
                           Wrap = false
                           Gap = None }
                   Role = BoxRole.Group

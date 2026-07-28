@@ -108,7 +108,7 @@ type BindingSources =
         /// dispatch/replay loop — replaces this to validate args against the capability's
         /// `Signature`, run the host body, and journal non-deterministic results through the
         /// determinism-capture seam.
-        CapabilityInvoker: string -> (string * string) list -> Deferred<obj>
+        CapabilityInvoker: string -> (string * string) list -> Fuaran.UI.Types.Deferred<obj>
     }
 
 /// The empty `BindingSources` — useful for tests and for the renderer
@@ -122,7 +122,7 @@ let empty: BindingSources =
       I18n = Map.empty
       I18nResolver = passthroughI18nResolver
       Locale = ""
-      CapabilityInvoker = (fun _ _ -> Deferred.Pending) }
+      CapabilityInvoker = (fun _ _ -> Fuaran.UI.Types.Deferred.Pending) }
 
 /// Resolution result.  Renderer code treats `NotResolved` as the trigger for
 /// the `OnLoading` state behaviour; `Resolved` flows into the component body;
@@ -460,9 +460,9 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
         // `StateBehaviour` surface, no new node. The default invoker is `Pending` until a host
         // (the AiTools registry) wires real dispatch + Phase-27 replay.
         match sources.CapabilityInvoker capabilityId (args |> List.map (fun (a: InvokeArg) -> a.Addr, a.Value)) with
-        | Deferred.Pending -> NotResolved
-        | Deferred.Error m -> Errored m
-        | Deferred.Ready v ->
+        | Fuaran.UI.Types.Deferred.Pending -> NotResolved
+        | Fuaran.UI.Types.Deferred.Error m -> Errored m
+        | Fuaran.UI.Types.Deferred.Ready v ->
             try
                 Resolved(unbox<'T> v)
             with ex ->

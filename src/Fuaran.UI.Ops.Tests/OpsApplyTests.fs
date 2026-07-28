@@ -691,7 +691,7 @@ let tests =
                   Fuaran.stack
                       "chip-strip"
                       { Defaults.stack<Msg> with
-                          Orientation = Horizontal
+                          Orientation = Orientation.Horizontal
                           Children = [] }
 
               let op = TreeOp.UpdateProp(NodeId "chip-strip", "Wrap", PropValue.Native(nn true))

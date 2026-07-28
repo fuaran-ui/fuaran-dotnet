@@ -105,7 +105,7 @@ let nodeMapTests =
               let root: Node<int> =
                   Fuaran.stack
                       "root"
-                      { Orientation = Vertical
+                      { Orientation = Orientation.Vertical
                         Children = [ child ]
                         Wrap = false }
                   |> Node.withTone ToneVariant.Brand
@@ -136,7 +136,10 @@ let nodeMapTests =
                   { Id = "name"
                     Label = TextSource.Literal "Name"
                     Kind =
-                      FormFieldKind.Text(Binding.Static(Some ""), Some(fun (s: string) -> Action.Dispatch s.Length))
+                      FormFieldKind.Text(
+                          Some(Binding.Static(Some "")),
+                          Some(fun (s: string) -> Action.Dispatch s.Length)
+                      )
                     Required = false
                     Help = None }
 

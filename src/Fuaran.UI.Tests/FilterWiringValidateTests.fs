@@ -35,7 +35,7 @@ let private declarativeChip (name: string) : Node<Msg> =
         "chips"
         [ { Name = name
             Label = TextSource.Literal name
-            Field = FormFieldKind.Text(Binding.Filter(name, None), None) } ]
+            Kind = FormFieldKind.Text(Some(Binding.Filter(name, None)), None) } ]
 
 let private embeddedSource =
     Fuaran.Core.Embedded

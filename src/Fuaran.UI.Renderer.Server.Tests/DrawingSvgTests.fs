@@ -117,7 +117,7 @@ let drawingSvgTests =
           }
 
           test "Polyline defaults fill=none; Polygon does not" {
-              let pts = [ { X = 0.0; Y = 0.0 }; { X = 10.0; Y = 20.0 } ]
+              let pts: DrawPoint list = [ { X = 0.0; Y = 0.0 }; { X = 10.0; Y = 20.0 } ]
               let poly = render (drawing [ Shape.Polyline(pts, noStyle) ] None)
               let pgon = render (drawing [ Shape.Polygon(pts, noStyle) ] None)
 

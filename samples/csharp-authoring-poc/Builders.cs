@@ -10,6 +10,29 @@ using static Fuaran.UI.Types;
 // the findings note.)
 using FsAction = Fuaran.UI.Generated.Action<object>;
 
+// Stage-3 swap (Phase 692 family): these vocabulary types are now IDL-generated
+// (`Fuaran.UI.Generated.*`). The F# tier re-exports them as type ABBREVIATIONS,
+// which are erased in metadata — C# cannot see them through `using static Types`,
+// so alias each moved name at the generated declaration directly. (Aliases take
+// precedence over `using static` imports, so the surviving Types imports — Node,
+// NodeKind, the Spec records — keep resolving as before.)
+using FsGen = Fuaran.UI.Generated;
+using TextSource = Fuaran.UI.Generated.TextSource;
+using CellFormat = Fuaran.UI.Generated.CellFormat;
+using ToneVariant = Fuaran.UI.Generated.ToneVariant;
+using StyleWeight = Fuaran.UI.Generated.StyleWeight;
+using Emphasis = Fuaran.UI.Generated.Emphasis;
+using StyleRole = Fuaran.UI.Generated.StyleRole;
+using FontVoice = Fuaran.UI.Generated.FontVoice;
+using Orientation = Fuaran.UI.Generated.Orientation;
+using BoxRole = Fuaran.UI.Generated.BoxRole;
+using BadgeVariant = Fuaran.UI.Generated.BadgeVariant;
+using ButtonVariant = Fuaran.UI.Generated.ButtonVariant;
+using HeadingVariant = Fuaran.UI.Generated.HeadingVariant;
+using ChartKind = Fuaran.UI.Generated.ChartKind;
+using SelectOption = Fuaran.UI.Generated.SelectOption;
+using Motion = Fuaran.UI.Generated.Motion;
+
 namespace Fuaran.UI.CSharp.Poc;
 
 // ============================================================================
@@ -294,11 +317,11 @@ internal sealed class FieldBuilder
 {
     private readonly string _id;
     private TextSource _label;
-    private FormFieldKind<object> _kind;
+    private FsGen.FormFieldKind<object> _kind;
     private bool _required;
     private FSharpOption<TextSource> _help = Fs.None<TextSource>();
 
-    private FieldBuilder(string id, string label, FormFieldKind<object> kind)
+    private FieldBuilder(string id, string label, FsGen.FormFieldKind<object> kind)
     {
         _id = id;
         _label = Txt.Literal(label);
@@ -308,32 +331,38 @@ internal sealed class FieldBuilder
     public FieldBuilder Required(bool required = true) { _required = required; return this; }
     public FieldBuilder Help(string text) { _help = Fs.Some(Txt.Literal(text)); return this; }
 
-    public FormField<object> Build() => new(_id, _label, _kind, _required, _help);
+    // Generated FormField declares (Id, Kind, Label, Required, Help) — ctor is declaration order.
+    public FsGen.FormField<object> Build() => new(_id, _kind, _label, _required, _help);
 
     private static FSharpFunc<TArg, FsAction> NoOp<TArg>() => Fs.Func<TArg, FsAction>(_ => Defaults.PlaceholderChain);
 
+    // Stage-3 field-kind shape: value slots are `Binding<T> option` (Some-wrap) and the
+    // change handlers are optional — keep the explicit no-op handlers so the wire shape
+    // (the "<closure>" sentinel) matches the pre-swap fixtures.
     public static FieldBuilder Text(string id, string label, string initial = "") =>
-        new(id, label, FormFieldKind<object>.NewText(Bind.Static(initial), NoOp<string>()));
+        new(id, label, FsGen.FormFieldKind<object>.NewText(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<string>())));
 
     public static FieldBuilder Number(string id, string label, double initial = 0.0) =>
-        new(id, label, FormFieldKind<object>.NewNumber(Bind.Static(initial), NoOp<double>()));
+        new(id, label, FsGen.FormFieldKind<object>.NewNumber(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<double>())));
 
     public static FieldBuilder Checkbox(string id, string label, bool initial = false) =>
-        new(id, label, FormFieldKind<object>.NewCheckbox(Bind.Static(initial), NoOp<bool>()));
+        new(id, label, FsGen.FormFieldKind<object>.NewCheckbox(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<bool>())));
 
     public static FieldBuilder TextArea(string id, string label, int rows, string initial = "") =>
-        new(id, label, FormFieldKind<object>.NewTextArea(Bind.Static(initial), NoOp<string>(), rows));
+        new(id, label, FsGen.FormFieldKind<object>.NewTextArea(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<string>()), rows));
 
     public static FieldBuilder Choice(string id, string label, string selected, params (string Value, string Label)[] options)
     {
-        var opts = Fs.List(options.Select(o => new SelectOption(o.Value, Txt.Literal(o.Label))).ToArray());
+        // Generated SelectOption declares (Label, Value); Label is a bare string now.
+        var opts = Fs.List(options.Select(o => new SelectOption(o.Label, o.Value)).ToArray());
         return new FieldBuilder(
             id,
             label,
-            FormFieldKind<object>.NewChoice(
+            FsGen.FormFieldKind<object>.NewChoice(
                 Bind.Static(opts),
-                Bind.Static(Fs.Some(selected)),
-                NoOp<FSharpOption<string>>()));
+                // The value slot is `Binding<string> option` (the old double-option flattened).
+                Fs.Some(Bind.Static(selected)),
+                Fs.Some(NoOp<FSharpOption<string>>())));
     }
 }
 

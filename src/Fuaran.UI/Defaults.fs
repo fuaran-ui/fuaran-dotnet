@@ -87,7 +87,7 @@ let localBinding<'T> : Binding<'T> =
 let dashboard<'Msg> : DashboardSpec<'Msg> = { Children = [] }
 
 let stack<'Msg> : StackSpec<'Msg> =
-    { Orientation = Vertical
+    { Orientation = Orientation.Vertical
       Children = []
       Wrap = false }
 
@@ -108,7 +108,7 @@ let tabs<'Msg> : TabsSpec<'Msg> =
     // `ActiveIndex` gets the clicked index written back by the renderer; the
     // static default renders but never switches (same dead behaviour as the
     // pre-426 no-op closure, minus the sentinel on the wire).
-    { Orientation = Horizontal
+    { Orientation = Orientation.Horizontal
       Children = []
       ActiveIndex = Binding.Static(Some 0)
       OnSelect = Option.None
@@ -310,7 +310,7 @@ let formField<'Msg> : FormField<'Msg> =
     // State/Filter-bound `value` gets the typed string written back.
     { Id = ""
       Label = emptyLiteral
-      Kind = FormFieldKind.Text(Binding.Static(Some ""), Option.None)
+      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Option.None)
       Required = false
       Help = Option.None }
 
@@ -334,7 +334,7 @@ let dateFieldConstraints: DateFieldConstraints =
 let filter<'Msg> : FilterSpec<'Msg> =
     { Name = ""
       Label = emptyLiteral
-      Field = FormFieldKind.Text(Binding.Static(Some ""), Option.None) }
+      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Option.None) }
 
 let fileUpload<'Msg> : FileUploadSpec<'Msg> =
     { Label = emptyLiteral
@@ -908,6 +908,6 @@ module ControlValueDefaults =
     let number: float = 0.0
     let checkbox: bool = false
     let choice: string option = None
-    let range: float * float = (0.0, 0.0)
+    let range: RangePair = { Max = 0.0; Min = 0.0 }
     /// ISO-empty — the Date control's value is an ISO-8601 string.
     let date: string = ""

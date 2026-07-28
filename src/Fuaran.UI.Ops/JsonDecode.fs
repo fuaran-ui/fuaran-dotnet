@@ -652,14 +652,14 @@ let private placeholderClosureNode: Node<obj> =
 
 let private decodeOrientation (path: string) (j: Json) : Result<Orientation, DecodeError> =
     match j with
-    | JString "Vertical" -> Ok Vertical
-    | JString "Horizontal" -> Ok Horizontal
+    | JString "Vertical" -> Ok Orientation.Vertical
+    | JString "Horizontal" -> Ok Orientation.Horizontal
     // Lenient-ingest aliases (decode-only) — the CSS flex-direction prior:
     // a row lays out horizontally, a column vertically. Same-concept mapping.
     | JString "Row"
-    | JString "row" -> Ok Horizontal
+    | JString "row" -> Ok Orientation.Horizontal
     | JString "Column"
-    | JString "column" -> Ok Vertical
+    | JString "column" -> Ok Orientation.Vertical
     | JString s -> unknownDuCase path s "Vertical | Horizontal"
     | _ -> wrongType path "JSON string (Orientation)"
 
@@ -745,52 +745,52 @@ let private decodeHeadingVariant (path: string) (j: Json) : Result<HeadingVarian
 
 let private decodeTone (path: string) (j: Json) : Result<ToneVariant, DecodeError> =
     match j with
-    | JString "Default" -> Ok Default
-    | JString "Subdued" -> Ok Subdued
-    | JString "Brand" -> Ok Brand
-    | JString "Success" -> Ok Success
-    | JString "Warning" -> Ok Warning
-    | JString "Critical" -> Ok Critical
-    | JString "Info" -> Ok Info
+    | JString "Default" -> Ok ToneVariant.Default
+    | JString "Subdued" -> Ok ToneVariant.Subdued
+    | JString "Brand" -> Ok ToneVariant.Brand
+    | JString "Success" -> Ok ToneVariant.Success
+    | JString "Warning" -> Ok ToneVariant.Warning
+    | JString "Critical" -> Ok ToneVariant.Critical
+    | JString "Info" -> Ok ToneVariant.Info
     // Phase 460 — lenient-ingest aliases (decode-only; never encoded — canonical
     // re-encode normalises to the DU case names). Faithful semantic mappings only:
     // Positive→Success, Danger/Negative→Critical, Neutral→Default. Documented in
     // WIRE_FORMAT.md's lenient-ingest table; `SchemaGen` stays strict-canonical.
-    | JString "Positive" -> Ok Success
+    | JString "Positive" -> Ok ToneVariant.Success
     | JString "Danger"
-    | JString "Negative" -> Ok Critical
-    | JString "Neutral" -> Ok Default
+    | JString "Negative" -> Ok ToneVariant.Critical
+    | JString "Neutral" -> Ok ToneVariant.Default
     | JString s -> unknownDuCase path s "Default | Subdued | Brand | Success | Warning | Critical | Info"
     | _ -> wrongType path "JSON string (ToneVariant)"
 
 let private decodeWeight (path: string) (j: Json) : Result<StyleWeight, DecodeError> =
     match j with
-    | JString "Compact" -> Ok Compact
-    | JString "Standard" -> Ok Standard
-    | JString "Spacious" -> Ok Spacious
+    | JString "Compact" -> Ok StyleWeight.Compact
+    | JString "Standard" -> Ok StyleWeight.Standard
+    | JString "Spacious" -> Ok StyleWeight.Spacious
     | JString s -> unknownDuCase path s "Compact | Standard | Spacious"
     | _ -> wrongType path "JSON string (StyleWeight)"
 
 let private decodeEmphasis (path: string) (j: Json) : Result<Emphasis, DecodeError> =
     match j with
-    | JString "Quiet" -> Ok Quiet
-    | JString "Normal" -> Ok Normal
-    | JString "Loud" -> Ok Loud
+    | JString "Quiet" -> Ok Emphasis.Quiet
+    | JString "Normal" -> Ok Emphasis.Normal
+    | JString "Loud" -> Ok Emphasis.Loud
     // Phase 460 — lenient-ingest aliases (decode-only; never encoded). Prominence
     // intent survives: Strong/Bold→Loud, Subtle/Muted→Quiet. `StyleWeight` is
     // deliberately NOT aliased (Bold/Heavy is font-weight intent, but the language
     // means density Compact|Standard|Spacious — a mapping would misread the author).
     | JString "Strong"
-    | JString "Bold" -> Ok Loud
+    | JString "Bold" -> Ok Emphasis.Loud
     | JString "Subtle"
-    | JString "Muted" -> Ok Quiet
+    | JString "Muted" -> Ok Emphasis.Quiet
     // 2026-07-19 collision sweep — `emphasis` is a same-name cross-vocabulary
     // collision (style ENUM here vs behavioural BOOL on Fact/LabelValueRow);
     // models cross it in both directions. A bool in the enum slot projects
     // one-to-one: true ⇒ Loud, false ⇒ Normal. The bool sites' direction
     // lives in `decodeEmphasisFlag`.
-    | JBool true -> Ok Loud
-    | JBool false -> Ok Normal
+    | JBool true -> Ok Emphasis.Loud
+    | JBool false -> Ok Emphasis.Normal
     | JString s -> unknownDuCase path s "Quiet | Normal | Loud"
     | _ -> wrongType path "JSON string (Emphasis)"
 
@@ -1495,6 +1495,29 @@ let private decodeBindingInt (path: string) (j: Json) : Result<Binding<int>, Dec
 let private decodeBindingString (path: string) (j: Json) : Result<Binding<string>, DecodeError> =
     bindingGeneric<string> path requireString "" j
 
+/// A Choice/SegmentedChoice value slot — `Binding<string>` where "no
+/// selection" is the ABSENT `Static` payload (`{"$type":"Static"}`, or the
+/// legacy `"value": null` §16 shorthand), decoded to `Static None` directly.
+/// A scalar string slot rejects that shape (Phase 677 routing); a choice slot
+/// is where the generated `Static of 'T option` makes absence first-class.
+let private decodeBindingChoiceValue (path: string) (j: Json) : Result<Binding<string>, DecodeError> =
+    let isAbsentStatic =
+        match j with
+        | JObject fields ->
+            (match tryField fields "$type" with
+             | Some(JString "Static") ->
+                 match tryField fields "value" with
+                 | None
+                 | Some JNull -> true
+                 | Some _ -> false
+             | _ -> false)
+        | _ -> false
+
+    if isAbsentStatic then
+        Ok(Binding.Static None)
+    else
+        decodeBindingString path j
+
 let private decodeBindingBool (path: string) (j: Json) : Result<Binding<bool>, DecodeError> =
     bindingGeneric<bool> path requireBool false j
 
@@ -1508,10 +1531,7 @@ let rec private decodeSelectOption (path: string) (j: Json) : Result<SelectOptio
     // object form. The value→label map form (`{"A":"A"}`) is deliberately NOT
     // coerced — JSON object key order is not contractual, so coercing it
     // could silently reorder visible options.
-    | JString s ->
-        Ok
-            { Value = s
-              Label = TextSource.Literal s }
+    | JString s -> Ok { Value = s; Label = s }
     | _ ->
 
         match requireObject path j with
@@ -1523,11 +1543,21 @@ let rec private decodeSelectOption (path: string) (j: Json) : Result<SelectOptio
                 match requireString (path + ".value") vJ with
                 | Error e -> Error e
                 | Ok value ->
-                    match requireField path fields "label" "option label TextSource" with
+                    match requireField path fields "label" "option label string" with
                     | Error e -> Error e
                     | Ok lJ ->
+                        // The label is a bare string since the swap (the wire's
+                        // literal form). The Literal ENVELOPE (`{"$type":
+                        // "Literal","text":…}`) stays decode-accepted through
+                        // the TextSource shorthand path and projects to its
+                        // text; a Bound/I18n label has no string projection and
+                        // is refused (it was never wire-expressible here — the
+                        // encoder always emitted the literal form).
                         decodeTextSource (path + ".label") lJ
-                        |> Result.map (fun label -> { Value = value; Label = label })
+                        |> Result.bind (fun label ->
+                            match label with
+                            | TextSource.Literal s -> Ok { Value = value; Label = s }
+                            | _ -> wrongType (path + ".label") "literal option label")
 
 and private decodeTextSource (path: string) (j: Json) : Result<TextSource, DecodeError> =
     match j with
@@ -1596,7 +1626,7 @@ let private decodeBindingSelectOptions (path: string) (j: Json) : Result<Binding
         | JString s when s = opaqueSentinel ->
             Ok
                 [ { Value = opaqueSentinel
-                    Label = TextSource.Literal opaqueSentinel } ]
+                    Label = opaqueSentinel } ]
         | _ ->
             match requireArray p v with
             | Error e -> Error e
@@ -1606,7 +1636,7 @@ let private decodeBindingSelectOptions (path: string) (j: Json) : Result<Binding
         path
         parseStatic
         [ { Value = opaqueSentinel
-            Label = TextSource.Literal opaqueSentinel } ]
+            Label = opaqueSentinel } ]
         j
 
 let private decodeBindingStringOpt (path: string) (j: Json) : Result<Binding<string option>, DecodeError> =
@@ -1653,22 +1683,23 @@ let private decodeBindingFloatSeq (path: string) (j: Json) : Result<Binding<floa
 
     bindingGeneric<float seq> path parseStatic Seq.empty j
 
-let private decodeBindingFloatPair (path: string) (j: Json) : Result<Binding<float * float>, DecodeError> =
-    // 0.2.0 — the dual-thumb Range control's (min, max) pair. Static forms:
-    // the object `{min, max}` (canonical) or a two-element array (lenient).
-    let parseStatic (p: string) (v: Json) : Result<float * float, DecodeError> =
+let private decodeBindingRangePair (path: string) (j: Json) : Result<Binding<RangePair>, DecodeError> =
+    // 0.2.0 — the dual-thumb Range control's (min, max) pair, the `RangePair`
+    // record since the swap. Static forms: the object `{min, max}` (canonical)
+    // or a two-element array (lenient).
+    let parseStatic (p: string) (v: Json) : Result<RangePair, DecodeError> =
         match v with
         | JObject pf ->
             match tryField pf "min", tryField pf "max" with
             | Some mn, Some mx ->
                 match requireFloat (p + ".min") mn, requireFloat (p + ".max") mx with
-                | Ok a, Ok b -> Ok(a, b)
+                | Ok a, Ok b -> Ok { Min = a; Max = b }
                 | Error e, _
                 | _, Error e -> Error e
             | _ -> wrongType p "object with min and max numbers"
         | JArray [ a; b ] ->
             match requireFloat (p + "[0]") a, requireFloat (p + "[1]") b with
-            | Ok x, Ok y -> Ok(x, y)
+            | Ok x, Ok y -> Ok { Min = x; Max = y }
             | Error e, _
             | _, Error e -> Error e
         | _ -> wrongType p "range pair ({min, max} object or [min, max] array)"
@@ -1683,7 +1714,7 @@ let private decodeBindingFloatPair (path: string) (j: Json) : Result<Binding<flo
         && (tryField pf "max").IsSome
         ->
         parseStatic path j |> Result.map (Some >> Binding.Static)
-    | _ -> bindingGeneric<float * float> path parseStatic (0.0, 0.0) j
+    | _ -> bindingGeneric<RangePair> path parseStatic { Min = 0.0; Max = 0.0 } j
 
 let private decodeBindingObjSeq (path: string) (j: Json) : Result<Binding<obj seq>, DecodeError> =
     let parseStatic (p: string) (v: Json) : Result<obj seq, DecodeError> =
@@ -1702,9 +1733,17 @@ let private decodeMapMarker (path: string) (j: Json) : Result<MapMarker, DecodeE
     | Error e -> Error e
     | Ok fields ->
         let labelR =
-            match requireField path fields "label" "marker label TextSource" with
+            // A bare string since the swap; the Literal envelope stays
+            // decode-accepted and projects to its text (same rule as the
+            // SelectOption label).
+            match requireField path fields "label" "marker label string" with
             | Error e -> Error e
-            | Ok v -> decodeTextSource (path + ".label") v
+            | Ok v ->
+                decodeTextSource (path + ".label") v
+                |> Result.bind (fun label ->
+                    match label with
+                    | TextSource.Literal s -> Ok s
+                    | _ -> wrongType (path + ".label") "literal marker label")
 
         let latR =
             match requireField path fields "latitude" "marker latitude float" with
@@ -2893,29 +2932,31 @@ let private decodeFormFieldKind
         // placeholder) on a form field (Phase 596) — else MISSING_FIELD.
         let valueOr
             (dec: string -> Json -> Result<Binding<'v>, DecodeError>)
-            (autoDefault: 'v)
+            (autoDefault: 'v option)
             (expected: string)
-            : Result<Binding<'v>, DecodeError> =
+            : Result<Binding<'v> option, DecodeError> =
+            // The slot is `Binding<'v> option` since the swap. Present decodes
+            // `Some`; absent synthesises the context auto-binding (the encoder
+            // omission mirrors the exact shape); a NoAutoBind context still
+            // requires the key (the pre-596 contract).
             match tryField fields "value" with
-            | Some v -> dec (path + ".value") v
+            | Some v -> dec (path + ".value") v |> Result.map Some
             | None ->
                 match autoBind with
-                | FilterChip n -> Ok(Binding.Filter(n, None))
-                // The typed placeholder wraps into the generated `defaultValue: 'T option`;
-                // the encoder's auto-bind omission matches on exactly this shape.
-                | FormFieldId id -> Ok(Binding.State(id, Some autoDefault))
+                | FilterChip n -> Ok(Some(Binding.Filter(n, None)))
+                | FormFieldId id -> Ok(Some(Binding.State(id, autoDefault)))
                 | NoAutoBind -> missingField path "value" expected
 
         match requireDiscriminator path fields with
         | Error e -> Error e
         | Ok "Text" ->
-            valueOr decodeBindingString Fuaran.UI.Defaults.ControlValueDefaults.text "Binding<string> value"
+            valueOr decodeBindingString (Some Fuaran.UI.Defaults.ControlValueDefaults.text) "Binding<string> value"
             |> Result.map (fun value -> FormFieldKind.Text(value, handlerOpt "onChange"))
         | Ok "Number" ->
-            valueOr decodeBindingFloat Fuaran.UI.Defaults.ControlValueDefaults.number "Binding<float> value"
+            valueOr decodeBindingFloat (Some Fuaran.UI.Defaults.ControlValueDefaults.number) "Binding<float> value"
             |> Result.map (fun value -> FormFieldKind.Number(value, handlerOpt "onChange"))
         | Ok "Checkbox" ->
-            valueOr decodeBindingBool Fuaran.UI.Defaults.ControlValueDefaults.checkbox "Binding<bool> value"
+            valueOr decodeBindingBool (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) "Binding<bool> value"
             |> Result.map (fun value -> FormFieldKind.Checkbox(value, handlerOpt "onToggle"))
         | Ok "Choice" ->
             let optionsR =
@@ -2923,7 +2964,10 @@ let private decodeFormFieldKind
                 |> Result.bind (decodeBindingSelectOptions (path + ".options"))
 
             let valueR =
-                valueOr decodeBindingStringOpt Fuaran.UI.Defaults.ControlValueDefaults.choice "Binding<string option>"
+                // The choice value is `Binding<string>` since the swap ("no
+                // selection" is the absent Static payload); the auto-bind
+                // synthesis is a default-less State (choice = None).
+                valueOr decodeBindingChoiceValue Fuaran.UI.Defaults.ControlValueDefaults.choice "Binding<string> value"
 
             match optionsR, valueR with
             | Ok options, Ok value -> Ok(FormFieldKind.Choice(options, value, handlerOpt "onChange"))
@@ -2933,15 +2977,15 @@ let private decodeFormFieldKind
             // 0.2.0 — dual-thumb numeric range (absorbed FilterKind.RangeFilter).
             let valueR =
                 match tryField fields "value" with
-                | Some v -> decodeBindingFloatPair (path + ".value") v
+                | Some v -> decodeBindingRangePair (path + ".value") v |> Result.map Some
                 | None ->
                     match autoBind with
-                    | FilterChip n -> Ok(Binding.Filter(n, None))
-                    | FormFieldId id -> Ok(Binding.State(id, Some Fuaran.UI.Defaults.ControlValueDefaults.range))
-                    | NoAutoBind -> missingField path "value" "Binding<float * float> value"
+                    | FilterChip n -> Ok(Some(Binding.Filter(n, None)))
+                    | FormFieldId id -> Ok(Some(Binding.State(id, Some Fuaran.UI.Defaults.ControlValueDefaults.range)))
+                    | NoAutoBind -> missingField path "value" "Binding<RangePair> value"
 
             valueR
-            |> Result.map (fun value -> FormFieldKind.Range(value, handlerOpt "onChange", None))
+            |> Result.map (fun value -> FormFieldKind.Range(value, handlerOpt "onChange", None, None, None))
         | Ok "RangedNumber" ->
             // Parallel-additive Number case carrying optional
             // Min / Max / Step bounds at the field level. Absent keys
@@ -2951,7 +2995,7 @@ let private decodeFormFieldKind
             //     "<closure>", "min": <float|absent>, "max": <float|absent>,
             //     "step": <float|absent> }
             let valueR =
-                valueOr decodeBindingFloat Fuaran.UI.Defaults.ControlValueDefaults.number "Binding<float> value"
+                valueOr decodeBindingFloat (Some Fuaran.UI.Defaults.ControlValueDefaults.number) "Binding<float> value"
 
             let minR =
                 match tryField fields "min" with
@@ -2970,14 +3014,14 @@ let private decodeFormFieldKind
 
             match valueR, minR, maxR, stepR with
             | Ok value, Ok min, Ok max, Ok step ->
-                Ok(FormFieldKind.RangedNumber(value, handlerOpt "onChange", { Min = min; Max = max; Step = step }))
+                Ok(FormFieldKind.RangedNumber(value, handlerOpt "onChange", min, max, step))
             | Error e, _, _, _
             | _, Error e, _, _
             | _, _, Error e, _
             | _, _, _, Error e -> Error e
         | Ok "TextArea" ->
             let valueR =
-                valueOr decodeBindingString Fuaran.UI.Defaults.ControlValueDefaults.text "Binding<string> value"
+                valueOr decodeBindingString (Some Fuaran.UI.Defaults.ControlValueDefaults.text) "Binding<string> value"
 
             let rowsR =
                 requireField path fields "rows" "rows integer"
@@ -2997,7 +3041,10 @@ let private decodeFormFieldKind
                 |> Result.bind (decodeBindingSelectOptions (path + ".options"))
 
             let valueR =
-                valueOr decodeBindingStringOpt Fuaran.UI.Defaults.ControlValueDefaults.choice "Binding<string option>"
+                // The choice value is `Binding<string>` since the swap ("no
+                // selection" is the absent Static payload); the auto-bind
+                // synthesis is a default-less State (choice = None).
+                valueOr decodeBindingChoiceValue Fuaran.UI.Defaults.ControlValueDefaults.choice "Binding<string> value"
 
             let orientationR =
                 // Lenient AI-ingest omitted-when-default (WIRE_FORMAT.md §3.6
@@ -3006,7 +3053,7 @@ let private decodeFormFieldKind
                 // prior; observed omitted in eval emission data. Decode-only:
                 // the encoder still always emits it.
                 match tryField fields "orientation" with
-                | None -> Ok Horizontal
+                | None -> Ok Orientation.Horizontal
                 | Some oJ -> decodeOrientation (path + ".orientation") oJ
 
             match optionsR, valueR, orientationR with
@@ -3020,7 +3067,7 @@ let private decodeFormFieldKind
             // value; `variant` selects the control; optional min/max (ISO
             // strings) + step (seconds) decode to None when absent.
             let valueR =
-                valueOr decodeBindingString Fuaran.UI.Defaults.ControlValueDefaults.date "Binding<string> value"
+                valueOr decodeBindingString (Some Fuaran.UI.Defaults.ControlValueDefaults.date) "Binding<string> value"
 
             let variantR =
                 requireField path fields "variant" "DateVariant"
@@ -3043,7 +3090,7 @@ let private decodeFormFieldKind
 
             match valueR, variantR, minR, maxR, stepR with
             | Ok value, Ok variant, Ok min, Ok max, Ok step ->
-                Ok(FormFieldKind.Date(value, handlerOpt "onChange", variant, { Min = min; Max = max; Step = step }))
+                Ok(FormFieldKind.Date(value, handlerOpt "onChange", variant, min, max, step))
             | Error e, _, _, _, _
             | _, Error e, _, _, _
             | _, _, Error e, _, _
@@ -3161,7 +3208,7 @@ let private decodeFilterSpec (path: string) (j: Json) : Result<FilterSpec<obj>, 
             Ok
                 { Name = name
                   Label = label
-                  Field = field }
+                  Kind = field }
         | Error e, _, _
         | _, Error e, _
         | _, _, Error e -> Error e
@@ -3698,6 +3745,31 @@ let private decodeHoleValueSpace (path: string) (j: Json) : Result<HoleValueSpac
 
 /// A self-describing boxed scalar (a value default or value argument). The
 /// `$type` tag pins the CLR shape so no hole value-space is consulted.
+/// The typed `Scalar` twin (a `HoleDecl.Value` default since the swap).
+let private decodeScalarTyped (path: string) (j: Json) : Result<Scalar, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        match requireDiscriminator path fields with
+        | Error e -> Error e
+        | Ok "Int" ->
+            requireField path fields "value" "Int value"
+            |> Result.bind (requireInt (path + ".value"))
+            |> Result.map Scalar.Int
+        | Ok "Float" ->
+            requireField path fields "value" "Float value"
+            |> Result.bind (requireFloat (path + ".value"))
+            |> Result.map Scalar.Float
+        | Ok "Bool" ->
+            requireField path fields "value" "Bool value"
+            |> Result.bind (requireBool (path + ".value"))
+            |> Result.map Scalar.Bool
+        | Ok "Str" ->
+            requireField path fields "value" "Str value"
+            |> Result.bind (requireString (path + ".value"))
+            |> Result.map Scalar.Str
+        | Ok s -> unknownDuCase path s "Int | Float | Bool | Str"
+
 let private decodeScalar (path: string) (j: Json) : Result<obj, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -3744,7 +3816,7 @@ let private decodeHoleDecl (path: string) (j: Json) : Result<HoleDecl, DecodeErr
                 let defR =
                     match tryField fields "default" with
                     | None -> Ok None
-                    | Some d -> decodeScalar (path + ".default") d |> Result.map Some
+                    | Some d -> decodeScalarTyped (path + ".default") d |> Result.map Some
 
                 match nameR, spaceR, defR with
                 | Ok name, Ok space, Ok def -> Ok(HoleDecl.Value(name, space, def))
@@ -3968,7 +4040,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                     let orientationR =
                         // 0.2.0 — omitted-when-Horizontal on both boundaries.
                         match tryField specFields "orientation" with
-                        | None -> Ok Horizontal
+                        | None -> Ok Orientation.Horizontal
                         | Some v -> decodeOrientation (specPath + ".orientation") v
 
                     // Additive optional decoders.
@@ -3990,9 +4062,13 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                                 | Error e -> Error e
                                 | Ok label ->
                                     let iconR =
+                                        // Bare string since the swap (the IconSource wrapper
+                                        // unwraps at this boundary).
                                         match tryField hFields "icon" with
                                         | None -> Ok Option.None
-                                        | Some v -> decodeIconSource (path + ".icon") v |> Result.map Some
+                                        | Some v ->
+                                            decodeIconSource (path + ".icon") v
+                                            |> Result.map (fun (IconSource s) -> Some s)
 
                                     let disabledR =
                                         match tryField hFields "disabled" with
@@ -4001,10 +4077,12 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
 
                                     match iconR, disabledR with
                                     | Ok icon, Ok disabled ->
-                                        Ok
+                                        Ok(
                                             { Label = label
                                               Icon = icon
                                               Disabled = disabled }
+                                            : TabHeader
+                                        )
                                     | Error e, _
                                     | _, Error e -> Error e
 
@@ -4309,10 +4387,12 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                         match algR, hashR, strictR with
                         | Ok alg, Ok h, Ok strict ->
                             Ok(
-                                Some
+                                Some(
                                     { Algorithm = alg
                                       Hash = h
                                       Strictness = strict }
+                                    : ContentHash
+                                )
                             )
                         | Error e, _, _
                         | _, Error e, _
@@ -4534,9 +4614,11 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
 
                         match directionR, messageShapeR with
                         | Ok direction, Ok messageShape ->
-                            Ok
+                            Ok(
                                 { Direction = direction
                                   MessageShape = messageShape }
+                                : GuestChannel
+                            )
                         | Error e, _
                         | _, Error e -> Error e
 

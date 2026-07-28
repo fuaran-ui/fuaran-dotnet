@@ -199,7 +199,7 @@ let tests =
               let field: FormField<Msg> =
                   { Defaults.formField<Msg> with
                       Id = "inert-name"
-                      Kind = FormFieldKind.Text(Binding.Static(Some ""), None) }
+                      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), None) }
 
               let formNode =
                   Fuaran.form
@@ -222,7 +222,7 @@ let tests =
               let field: FormField<Msg> =
                   { Defaults.formField<Msg> with
                       Id = "profile-name"
-                      Kind = FormFieldKind.Text(Binding.State("profileName", Some ""), None) }
+                      Kind = FormFieldKind.Text(Some(Binding.State("profileName", Some "")), None) }
 
               let formNode =
                   Fuaran.form

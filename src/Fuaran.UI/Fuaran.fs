@@ -436,26 +436,14 @@ module FormFieldKind =
         (max: float option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(
-            value,
-            Some onChange,
-            { Defaults.numberFieldConstraints with
-                Min = min
-                Max = max
-                Step = step }
-        )
+        FormFieldKind.RangedNumber(Some value, Some onChange, min, max, step)
 
     /// `RangedNumber` shorthand for the common "stepped only"
     /// shape (e.g. a percentage field that allows any value but advances
     /// by 0.5 on the spinner). Equivalent to `rangedNumber value onChange
     /// ?step=step` — distinct name for grep-ability at the call site.
     let numberStepped (value: Binding<float>) (onChange: float -> Action<'Msg>) (step: float) : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(
-            value,
-            Some onChange,
-            { Defaults.numberFieldConstraints with
-                Step = Some step }
-        )
+        FormFieldKind.RangedNumber(Some value, Some onChange, None, None, Some step)
 
     /// `SegmentedChoice` with the same triple `Choice` takes plus
     /// an optional orientation defaulting to `Horizontal` (segmented row).
@@ -469,11 +457,14 @@ module FormFieldKind =
     ///       Orientation.Horizontal
     let segmentedChoice
         (options: Binding<SelectOption list>)
-        (value: Binding<string option>)
+        (value: Binding<string>)
         (onChange: string option -> Action<'Msg>)
         (orientation: Orientation)
         : FormFieldKind<'Msg> =
-        FormFieldKind.SegmentedChoice(options, value, Some onChange, orientation)
+        // "No selection" is `Binding.Static None` since the swap (the slot is
+        // `Binding<string> option`; the old `Binding<string option>` payload
+        // option moved into the generated Static payload).
+        FormFieldKind.SegmentedChoice(options, Some value, Some onChange, orientation)
 
     /// `Date` / `Time` / `DateTime` field (Phase 288) with the optional
     /// ISO-8601 `min` / `max` + numeric `step` (seconds) constraints as named
@@ -494,15 +485,10 @@ module FormFieldKind =
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Date(
-            value,
-            Some onChange,
-            variant,
-            { Defaults.dateFieldConstraints with
-                Min = min
-                Max = max
-                Step = step }
-        )
+        // The generated Date handler receives `string option` (a clearable
+        // control); the typed builder keeps its plain-string signature and
+        // maps a cleared value to "".
+        FormFieldKind.Date(Some value, Some(fun v -> onChange (defaultArg v "")), variant, min, max, step)
 
     // ── Handler-free (declarative) ctors — Phase 426, the control write-back
     //    default. Each emits `onChange = None`, the shape an AI author uses: the
@@ -513,22 +499,23 @@ module FormFieldKind =
 
     /// Handler-free `Text` — the renderer writes the typed string to the
     /// `value` binding's own State/Filter slot on change.
-    let textDeclarative (value: Binding<string>) : FormFieldKind<'Msg> = FormFieldKind.Text(value, None)
+    let textDeclarative (value: Binding<string>) : FormFieldKind<'Msg> = FormFieldKind.Text(Some value, None)
 
     /// Handler-free `Number` — writes the typed float back to the value slot.
-    let numberDeclarative (value: Binding<float>) : FormFieldKind<'Msg> = FormFieldKind.Number(value, None)
+    let numberDeclarative (value: Binding<float>) : FormFieldKind<'Msg> = FormFieldKind.Number(Some value, None)
 
     /// Handler-free `Checkbox` — writes the toggled bool back to the value slot.
-    let checkboxDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> = FormFieldKind.Checkbox(value, None)
+    let checkboxDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> =
+        FormFieldKind.Checkbox(Some value, None)
 
     /// Handler-free `Choice` — writes the chosen option (string option) back to
     /// the value slot; a cleared choice clears the slot.
-    let choiceDeclarative (options: Binding<SelectOption list>) (value: Binding<string option>) : FormFieldKind<'Msg> =
-        FormFieldKind.Choice(options, value, None)
+    let choiceDeclarative (options: Binding<SelectOption list>) (value: Binding<string>) : FormFieldKind<'Msg> =
+        FormFieldKind.Choice(options, Some value, None)
 
     /// Handler-free `TextArea` — writes the typed string back to the value slot.
     let textAreaDeclarative (value: Binding<string>) (rows: int) : FormFieldKind<'Msg> =
-        FormFieldKind.TextArea(value, None, rows)
+        FormFieldKind.TextArea(Some value, None, rows)
 
     /// Handler-free `RangedNumber` — writes the typed float back to the value slot.
     let rangedNumberDeclarative
@@ -537,22 +524,15 @@ module FormFieldKind =
         (max: float option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(
-            value,
-            None,
-            { Defaults.numberFieldConstraints with
-                Min = min
-                Max = max
-                Step = step }
-        )
+        FormFieldKind.RangedNumber(Some value, None, min, max, step)
 
     /// Handler-free `SegmentedChoice` — writes the chosen option back to the value slot.
     let segmentedChoiceDeclarative
         (options: Binding<SelectOption list>)
-        (value: Binding<string option>)
+        (value: Binding<string>)
         (orientation: Orientation)
         : FormFieldKind<'Msg> =
-        FormFieldKind.SegmentedChoice(options, value, None, orientation)
+        FormFieldKind.SegmentedChoice(options, Some value, None, orientation)
 
     /// Handler-free `Date` — writes the ISO-8601 string back to the value slot.
     let dateDeclarative
@@ -562,15 +542,7 @@ module FormFieldKind =
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Date(
-            value,
-            None,
-            variant,
-            { Defaults.dateFieldConstraints with
-                Min = min
-                Max = max
-                Step = step }
-        )
+        FormFieldKind.Date(Some value, None, variant, min, max, step)
 
 /// Smart-ctors for filter strips. Closure-bearing ctors (`Some onChange`) preserve the
 /// F#-authored dispatch behaviour byte-for-byte; the closure-free ctors (Phase 423) emit
@@ -585,11 +557,11 @@ module FormFieldKind =
 module FilterField =
     /// Text chip bound to its own filter key.
     let text (name: string) : FormFieldKind<'Msg> =
-        FormFieldKind.Text(Binding.Filter(name, None), None)
+        FormFieldKind.Text(Some(Binding.Filter(name, None)), None)
 
     /// Dropdown choice chip bound to its own filter key.
     let choice (name: string) (options: Binding<SelectOption list>) : FormFieldKind<'Msg> =
-        FormFieldKind.Choice(options, Binding.Filter(name, None), None)
+        FormFieldKind.Choice(options, Some(Binding.Filter(name, None)), None)
 
     /// Segmented choice chip bound to its own filter key.
     let segmented
@@ -597,11 +569,11 @@ module FilterField =
         (options: Binding<SelectOption list>)
         (orientation: Orientation)
         : FormFieldKind<'Msg> =
-        FormFieldKind.SegmentedChoice(options, Binding.Filter(name, None), None, orientation)
+        FormFieldKind.SegmentedChoice(options, Some(Binding.Filter(name, None)), None, orientation)
 
     /// Dual-thumb range chip bound to its own filter key.
     let range (name: string) : FormFieldKind<'Msg> =
-        FormFieldKind.Range(Binding.Filter(name, None), None, None)
+        FormFieldKind.Range(Some(Binding.Filter(name, None)), None, None, None, None)
 
 // ─── Column helpers (§4c lines 523–529) ───────────────────────────────────
 
@@ -812,7 +784,7 @@ module Fuaran =
             (NodeKind.Box(
                 { Layout =
                     BoxLayout.Flex
-                        { Direction = Vertical
+                        { Direction = Orientation.Vertical
                           Wrap = false
                           Gap = Option.None }
                   Role = BoxRole.Card
@@ -958,7 +930,7 @@ module Fuaran =
             (NodeKind.Box(
                 { Layout =
                     BoxLayout.Flex
-                        { Direction = Horizontal
+                        { Direction = Orientation.Horizontal
                           Wrap = false
                           Gap = Option.None }
                   Role = BoxRole.Separator

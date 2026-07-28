@@ -49,7 +49,7 @@ module SeedCatalogue =
             id
             { Layout =
                 BoxLayout.Flex
-                    { Direction = Vertical
+                    { Direction = Orientation.Vertical
                       Wrap = false
                       Gap = Some 12 }
               Role = role
@@ -61,7 +61,7 @@ module SeedCatalogue =
             id
             { Layout =
                 BoxLayout.Flex
-                    { Direction = Horizontal
+                    { Direction = Orientation.Horizontal
                       Wrap = true
                       Gap = Some 12 }
               Role = BoxRole.Group

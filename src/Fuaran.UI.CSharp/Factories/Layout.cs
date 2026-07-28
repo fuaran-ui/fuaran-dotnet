@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
+using FsGen = Fuaran.UI.Generated;
 using FsAction = Fuaran.UI.Generated.Action<object>;
 
 namespace Fuaran.UI.CSharp;
@@ -32,7 +33,7 @@ public static partial class Fuaran
                 Kids(options.Children),
                 (options.ActiveIndex ?? 0).Inner,
                 NoHandler<int>(),
-                Fs.None<Microsoft.FSharp.Collections.FSharpList<FsTypes.TabHeader>>(),
+                Fs.None<Microsoft.FSharp.Collections.FSharpList<FsGen.TabHeader>>(),
                 Fs.None<Microsoft.FSharp.Collections.FSharpList<string>>(),
                 Fs.None<global::Fuaran.UI.Generated.Binding<string>>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<string, FsAction>>())));
@@ -48,7 +49,7 @@ public static partial class Fuaran
         new(FsFactory.summaryList<object>(
             options.Id,
             new FsTypes.SummaryListSpec<object>(
-                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>(),
+                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
                 Kids(options.Children))));
 
     /// <summary>A collapsible disclosure (<c>&lt;details&gt;</c>).</summary>
@@ -68,7 +69,7 @@ public static partial class Fuaran
             options.Id,
             new FsTypes.ModalSpec<object>(
                 (options.Open ?? false).Inner,
-                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>(),
+                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
                 options.Dismissable,
                 Kids(options.Children),
                 NoAction)));

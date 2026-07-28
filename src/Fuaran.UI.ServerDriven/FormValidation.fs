@@ -85,10 +85,10 @@ let private checkField (values: Map<string, LiveValue>) (field: FormField<'Msg>)
               Message = "This field is required." }
     else
         match field.Kind with
-        | FormFieldKind.RangedNumber(_, _, constraints) ->
+        | FormFieldKind.RangedNumber(_, _, cMin, cMax, _) ->
             match asNumber value with
             | Some n ->
-                match constraints.Min, constraints.Max with
+                match cMin, cMax with
                 | Some lo, _ when n < lo ->
                     Some
                         { FieldId = field.Id

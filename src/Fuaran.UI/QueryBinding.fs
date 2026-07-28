@@ -221,17 +221,20 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
                       NodeId = nid }
         | _ -> ()
     | NodeKind.Form spec ->
+        // Value slots are OPTIONS since Phase 596 (the symmetric auto-bind):
+        // an omitted slot binds `$state.<field id>` — never a query column —
+        // so an absent value contributes no query-bound ref to the walk.
         for field in spec.Fields do
             match field.Kind with
-            | FormFieldKind.Number(value, _) -> add BindingSinkClass.Numeric value
-            | FormFieldKind.RangedNumber(value, _, _) -> add BindingSinkClass.Numeric value
-            | FormFieldKind.Range(value, _, _) -> add BindingSinkClass.Numeric value
-            | FormFieldKind.Checkbox(value, _) -> add BindingSinkClass.Boolean value
-            | FormFieldKind.Date(value, _, _, _) -> add BindingSinkClass.Temporal value
-            | FormFieldKind.Text(value, _) -> add BindingSinkClass.Categorical value
-            | FormFieldKind.TextArea(value, _, _) -> add BindingSinkClass.Categorical value
-            | FormFieldKind.Choice(_, value, _) -> add BindingSinkClass.Categorical value
-            | FormFieldKind.SegmentedChoice(_, value, _, _) -> add BindingSinkClass.Categorical value
+            | FormFieldKind.Number(value, _) -> addOpt BindingSinkClass.Numeric value
+            | FormFieldKind.RangedNumber(value, _, _, _, _) -> addOpt BindingSinkClass.Numeric value
+            | FormFieldKind.Range(value, _, _, _, _) -> addOpt BindingSinkClass.Numeric value
+            | FormFieldKind.Checkbox(value, _) -> addOpt BindingSinkClass.Boolean value
+            | FormFieldKind.Date(value, _, _, _, _, _) -> addOpt BindingSinkClass.Temporal value
+            | FormFieldKind.Text(value, _) -> addOpt BindingSinkClass.Categorical value
+            | FormFieldKind.TextArea(value, _, _) -> addOpt BindingSinkClass.Categorical value
+            | FormFieldKind.Choice(_, value, _) -> addOpt BindingSinkClass.Categorical value
+            | FormFieldKind.SegmentedChoice(_, value, _, _) -> addOpt BindingSinkClass.Categorical value
     | _ -> ()
 
     List.ofSeq acc

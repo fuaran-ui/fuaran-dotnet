@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
+using FsGen = Fuaran.UI.Generated;
 using FsNode = Fuaran.UI.Types.Node<object>;
 
 namespace Fuaran.UI.CSharp;
@@ -44,13 +45,13 @@ public static partial class Fuaran
                 Fs.None<FsNode>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsTypes.ErrorPayload, FsNode>>()),
             new FsTypes.SemanticStyle(
-                FsTypes.ToneVariant.Default,
-                FsTypes.StyleWeight.Standard,
-                FsTypes.Emphasis.Normal,
-                FsTypes.StyleRole.None,
-                FsTypes.FontVoice.Default),
+                FsGen.ToneVariant.Default,
+                FsGen.StyleWeight.Standard,
+                FsGen.Emphasis.Normal,
+                FsGen.StyleRole.None,
+                FsGen.FontVoice.Default),
             Fs.None<FsTypes.Accessibility>(),
-            Fs.None<FsTypes.Motion>(),
+            Fs.None<FsGen.Motion>(),
             Fs.None<Microsoft.FSharp.Collections.FSharpMap<string, string>>()));
 
     // ─── Layout ─────────────────────────────────────────────────────────────
@@ -68,15 +69,15 @@ public static partial class Fuaran
             _ => FsTypes.BoxLayout.NewFlex(new FsTypes.FlexLayout(options.Orientation.ToFs(), options.Wrap, Fs.None<int>())),
         };
 
-        FsTypes.BoxRole role = options.Role switch
+        FsGen.BoxRole role = options.Role switch
         {
-            BoxRoleKind.Card => FsTypes.BoxRole.Card,
-            BoxRoleKind.Dashboard => FsTypes.BoxRole.Dashboard,
-            BoxRoleKind.Separator => FsTypes.BoxRole.Separator,
-            _ => FsTypes.BoxRole.Group,
+            BoxRoleKind.Card => FsGen.BoxRole.Card,
+            BoxRoleKind.Dashboard => FsGen.BoxRole.Dashboard,
+            BoxRoleKind.Separator => FsGen.BoxRole.Separator,
+            _ => FsGen.BoxRole.Group,
         };
 
-        var heading = options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>();
+        var heading = options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>();
 
         return new(FsFactory.box<object>(
             options.Id,
@@ -107,7 +108,7 @@ public static partial class Fuaran
         new(FsFactory.card<object>(
             options.Id,
             new FsTypes.CardSpec<object>(
-                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>(),
+                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
                 Kids(options.Children))));
 
     // ─── Display ──────────────────────────────────────────────────────────────
@@ -124,9 +125,9 @@ public static partial class Fuaran
                 options.Weight.ToFs(),
                 options.Emphasis.ToFs(),
                 options.Trend is { } t ? Fs.Some(t.Inner) : Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
-                options.TrendFormat is { } tf ? Fs.Some(tf.Inner) : Fs.None<FsTypes.CellFormat>(),
+                options.TrendFormat is { } tf ? Fs.Some(tf.Inner) : Fs.None<FsGen.CellFormat>(),
                 Icon(options.Icon),
-                options.Subtext is { } s ? Fs.Some(s.Inner) : Fs.None<FsTypes.TextSource>())));
+                options.Subtext is { } s ? Fs.Some(s.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>A heading (<c>&lt;h1&gt;</c>…<c>&lt;h6&gt;</c>).</summary>
     public static FuaranNode Heading(HeadingOptions options) =>
@@ -149,6 +150,6 @@ public static partial class Fuaran
                 global::Fuaran.UI.Generated.Action<object>.NewChain(Fs.Empty<global::Fuaran.UI.Generated.Action<object>>()),
                 options.Variant.ToFs(),
                 Icon(options.Icon),
-                Fs.None<FsTypes.TextSource>(),
+                Fs.None<FsGen.TextSource>(),
                 Fs.None<global::Fuaran.UI.Generated.Binding<bool>>())));
 }

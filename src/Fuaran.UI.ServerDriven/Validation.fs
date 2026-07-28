@@ -180,7 +180,7 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
                     // Dynamic option source, or a clear-to-none change: accept.
                     | _ -> Ok()
 
-                match f.Field with
+                match f.Kind with
                 | FormFieldKind.Choice(options, _, _) -> checkOptions options
                 | FormFieldKind.SegmentedChoice(options, _, _, _) -> checkOptions options
                 | _ -> Ok()
@@ -221,7 +221,7 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                 // `onChange` is optional (Phase 423) — a `None` (declarative) chip has no server-side
                 // action to dispatch (its write is the client-side FilterStore path), so the driver
                 // no-ops it just as it does the range filter.
-                match f.Field with
+                match f.Kind with
                 | FormFieldKind.Text(_, onChange)
                 | FormFieldKind.TextArea(_, onChange, _) ->
                     onChange |> Option.map (fun oc -> oc (chosen |> Option.defaultValue ""))

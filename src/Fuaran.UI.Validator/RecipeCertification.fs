@@ -224,14 +224,13 @@ let private kindTag<'Msg> (node: Node<'Msg>) : string =
 /// hole binds (mirrors `HoleValueSpace.validate`'s expected boxings) — the
 /// witness receives Core `ValueArg` strings and must reconstitute the typed
 /// binding the materialiser reads.
-let private parseArg (space: HoleValueSpace) (raw: string) : obj =
-    let asObj (x: objnull) : obj = Unchecked.nonNull x
-
+let private parseArg (space: HoleValueSpace) (raw: string) : Scalar =
+    // Typed `Scalar` since the swap (the HoleDecl default payload).
     match space with
     | HoleValueSpace.IntRange _ ->
         match System.Int32.TryParse raw with
-        | true, n -> asObj (box n)
-        | _ -> asObj (box raw)
+        | true, n -> Scalar.Int n
+        | _ -> Scalar.Str raw
     | HoleValueSpace.FloatRange _ ->
         match
             System.Double.TryParse(
@@ -240,11 +239,11 @@ let private parseArg (space: HoleValueSpace) (raw: string) : obj =
                 System.Globalization.CultureInfo.InvariantCulture
             )
         with
-        | true, f -> asObj (box f)
-        | _ -> asObj (box raw)
+        | true, f -> Scalar.Float f
+        | _ -> Scalar.Str raw
     | HoleValueSpace.StringLen _
     | HoleValueSpace.Enum _
-    | HoleValueSpace.AnyString -> asObj (box raw)
+    | HoleValueSpace.AnyString -> Scalar.Str raw
 
 /// The absolute lexical address of a fragment-decl hole: `<declId>.<holeName>`.
 let private holeAddr (declId: string) (holeName: string) : string = declId + "." + holeName
@@ -349,12 +348,21 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
 /// Collect the value / repeat holes' current bound defaults off a fully-bound
 /// decl, keyed by hole NAME — the binding the `materialize` closure reads.
 let private boundValues<'Msg> (node: Node<'Msg>) : Map<string, obj> =
+    // The bound-value bag stays obj-typed (the materialise seam reads it);
+    // the typed Scalar default unboxes at this boundary.
+    let scalarObj (s: Scalar) : obj =
+        match s with
+        | Scalar.Int i -> box i |> Unchecked.nonNull
+        | Scalar.Float f -> box f |> Unchecked.nonNull
+        | Scalar.Bool b -> box b |> Unchecked.nonNull
+        | Scalar.Str st -> box st |> Unchecked.nonNull
+
     match node.Kind with
     | NodeKind.FragmentDecl spec ->
         spec.Holes
         |> List.choose (fun h ->
             match h with
-            | HoleDecl.Value(n, _, Some v) -> Some(n, v)
+            | HoleDecl.Value(n, _, Some v) -> Some(n, scalarObj v)
             | _ -> None)
         |> Map.ofList
     | _ -> Map.empty

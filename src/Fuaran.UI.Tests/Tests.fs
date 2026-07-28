@@ -382,7 +382,7 @@ let tests =
                   Fuaran.stack
                       "chip-strip"
                       { Defaults.stack<Msg> with
-                          Orientation = Horizontal
+                          Orientation = Orientation.Horizontal
                           Wrap = true }
 
               match node.Kind with

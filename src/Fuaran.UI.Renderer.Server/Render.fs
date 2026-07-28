@@ -114,9 +114,8 @@ let private formatNumber (format: CellFormat) (value: float) : string =
 let private opaqueOptionsSentinel = "<opaque>"
 
 let private isOpaqueOptionPlaceholder (option: SelectOption) : bool =
-    match option.Label with
-    | TextSource.Literal label -> option.Value = opaqueOptionsSentinel && label = opaqueOptionsSentinel
-    | _ -> false
+    // `SelectOption.Label` is a bare string since the swap — no TextSource unwrap.
+    option.Value = opaqueOptionsSentinel && option.Label = opaqueOptionsSentinel
 
 let private resolveOptions (ctx: ServerRenderContext) (binding: Binding<SelectOption list>) : SelectOption list =
     BindingResolver.tryResolve ctx.Sources binding
@@ -312,8 +311,8 @@ and private renderKind
         | BoxRole.Group, BoxLayout.Flex f ->
             let dir =
                 match f.Direction with
-                | Vertical -> "fuaran-stack-vertical"
-                | Horizontal -> "fuaran-stack-horizontal"
+                | Orientation.Vertical -> "fuaran-stack-vertical"
+                | Orientation.Horizontal -> "fuaran-stack-horizontal"
 
             let wrap = if f.Wrap then " fuaran-stack-wrap" else ""
 
@@ -372,7 +371,8 @@ and private renderKind
                         |> Option.bind (BindingResolver.tryResolve ctx.Sources)
                         |> Option.defaultValue false
 
-                    let icon = h.Icon |> Option.map (fun (IconSource s) -> s)
+                    // `TabHeader.Icon` is a bare `string option` since the swap.
+                    let icon = h.Icon
 
                     {| label = renderText ctx h.Label
                        icon = icon
@@ -386,10 +386,10 @@ and private renderKind
 
         let orientationClass =
             match spec.Orientation with
-            | Horizontal -> "fuaran-tabs-horizontal"
-            | Vertical -> "fuaran-tabs-vertical"
+            | Orientation.Horizontal -> "fuaran-tabs-horizontal"
+            | Orientation.Vertical -> "fuaran-tabs-vertical"
 
-        let isVertical = spec.Orientation = Vertical
+        let isVertical = spec.Orientation = Orientation.Vertical
 
         let resolvedFromTag: int option =
             match spec.TabTags, spec.ActiveTag with
@@ -821,13 +821,13 @@ and private renderKind
 
         let toneClass =
             match spec.Tone with
-            | Default -> "default"
-            | Subdued -> "subdued"
-            | Brand -> "brand"
-            | Success -> "success"
-            | Warning -> "warning"
-            | Critical -> "critical"
-            | Info -> "info"
+            | ToneVariant.Default -> "default"
+            | ToneVariant.Subdued -> "subdued"
+            | ToneVariant.Brand -> "brand"
+            | ToneVariant.Success -> "success"
+            | ToneVariant.Warning -> "warning"
+            | ToneVariant.Critical -> "critical"
+            | ToneVariant.Info -> "info"
 
         let dismissEls =
             if spec.Dismissable then
@@ -972,7 +972,7 @@ and private renderKind
             | None -> []
 
         let optionItems =
-            [ for option in options -> Html.option [ prop.value option.Value; prop.text (renderText ctx option.Label) ] ]
+            [ for option in options -> Html.option [ prop.value option.Value; prop.text option.Label ] ]
 
         Html.label
             [ prop.className "fuaran-select"
@@ -1237,15 +1237,33 @@ and private renderCustom
 /// A form field rendered inert: the labelled control with the correct class
 /// vocabulary. Interactive binding (onChange) is a client-hydration concern.
 and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) : ReactElement =
+    // Phase 596 — the value slots are `Binding<_> option` since the swap. An
+    // absent (`None`) slot is the auto-bind form: substitute exactly the
+    // binding the decoder used to synthesise — `Binding.State(field.Id,
+    // <typed placeholder from Defaults.ControlValueDefaults>)` — so SSR
+    // resolution behaves identically to the pre-swap decoded shape.
     let controlType, valueText =
         match field.Kind with
-        | FormFieldKind.Text(v, _) -> "text", (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
+        | FormFieldKind.Text(v, _) ->
+            let v =
+                v
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))
+
+            "text", (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
         | FormFieldKind.Number(v, _) ->
+            let v =
+                v
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.number))
+
             "number",
             (BindingResolver.tryResolve ctx.Sources v
              |> Option.map string
              |> Option.defaultValue "")
-        | FormFieldKind.RangedNumber(v, _, _) ->
+        | FormFieldKind.RangedNumber(v, _, _, _, _) ->
+            let v =
+                v
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.number))
+
             "number",
             (BindingResolver.tryResolve ctx.Sources v
              |> Option.map string
@@ -1253,10 +1271,18 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
         | FormFieldKind.Range _ -> "range", ""
         | FormFieldKind.Checkbox _ -> "checkbox", ""
         | FormFieldKind.TextArea(v, _, _) ->
+            let v =
+                v
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))
+
             "textarea", (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
         | FormFieldKind.Choice _ -> "choice", ""
         | FormFieldKind.SegmentedChoice _ -> "segmented-choice", ""
-        | FormFieldKind.Date(v, _, variant, _) ->
+        | FormFieldKind.Date(v, _, variant, _, _, _) ->
+            let v =
+                v
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.date))
+
             let t =
                 match variant with
                 | DateVariant.Date -> "date"
@@ -1302,7 +1328,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
     // FormFieldKind; class vocabulary keeps the four legacy filter families
     // for the shapes that map onto them, with sensible classes for the rest.
     let kindClass =
-        match spec.Field with
+        match spec.Kind with
         | FormFieldKind.Text _
         | FormFieldKind.TextArea _ -> "text"
         | FormFieldKind.Range _ -> "range"
@@ -1315,10 +1341,15 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
 
     let labelText = renderText ctx spec.Label
 
+    // Phase 596 — the value slots are `Binding<_> option` since the swap. An
+    // absent (`None`) slot on a filter chip is the auto-bind form: substitute
+    // exactly the binding the decoder used to synthesise —
+    // `Binding.Filter(spec.Name, None)` — so SSR resolution is unchanged.
     let control =
-        match spec.Field with
+        match spec.Kind with
         | FormFieldKind.Text(value, _)
         | FormFieldKind.TextArea(value, _, _) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
             Html.input
@@ -1328,7 +1359,9 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.value current
                   prop.custom ("data-filter-name", spec.Name) ]
         | FormFieldKind.Number(value, _)
-        | FormFieldKind.RangedNumber(value, _, _) ->
+        | FormFieldKind.RangedNumber(value, _, _, _, _) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
             let current =
                 BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue 0.0
 
@@ -1338,6 +1371,8 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.value (string current)
                   prop.custom ("data-filter-name", spec.Name) ]
         | FormFieldKind.Checkbox(value, _) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
             let current =
                 BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
 
@@ -1347,7 +1382,8 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.custom ("data-filter-name", spec.Name)
                   if current then
                       prop.custom ("checked", "checked") ]
-        | FormFieldKind.Date(value, _, _, _) ->
+        | FormFieldKind.Date(value, _, _, _, _, _) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
             Html.input
@@ -1356,22 +1392,35 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                   prop.value current
                   prop.custom ("data-filter-name", spec.Name) ]
         | FormFieldKind.Choice(options, value, _) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let opts = resolveOptions ctx options
-            let current = BindingResolver.tryResolve ctx.Sources value |> Option.flatten
+
+            // The choice value is `Binding<string>` since the swap ("no
+            // selection" was `Binding<string option>`): a null/empty
+            // resolution is no-selection, so the placeholder still renders.
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
 
             let optionItems =
                 Html.option [ prop.value ""; prop.text "—" ]
-                :: [ for option in opts ->
-                         Html.option [ prop.value option.Value; prop.text (renderText ctx option.Label) ] ]
+                :: [ for option in opts -> Html.option [ prop.value option.Value; prop.text option.Label ] ]
 
             Html.select
                 [ prop.className "fuaran-filter-select"
                   prop.value (current |> Option.defaultValue "")
                   prop.custom ("data-filter-name", spec.Name)
                   prop.children optionItems ]
-        | FormFieldKind.Range(value, _, _) ->
-            let minV, maxV =
-                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue (0.0, 0.0)
+        | FormFieldKind.Range(value, _, _, _, _) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
+            // The range value is the `RangePair` record since the swap (was a
+            // `(min, max)` tuple); same defaults, same emitted markup.
+            let current: RangePair =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.defaultValue { Min = 0.0; Max = 0.0 }
+
+            let minV, maxV = current.Min, current.Max
 
             Html.span
                 [ prop.className "fuaran-filter-range"
@@ -1387,6 +1436,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                               prop.custom ("type", "number")
                               prop.value (string maxV) ] ] ]
         | FormFieldKind.SegmentedChoice(options, value, _, orientation) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             renderSegmentedFilter ctx spec.Name options value orientation
 
     Html.label
@@ -1405,16 +1455,21 @@ and private renderSegmentedFilter
     (ctx: ServerRenderContext)
     (idNamespace: string)
     (options: Binding<SelectOption list>)
-    (value: Binding<string option>)
+    (value: Binding<string>)
     (orientation: Orientation)
     : ReactElement =
     let opts = resolveOptions ctx options
-    let current = BindingResolver.tryResolve ctx.Sources value |> Option.flatten
+
+    // The choice value is `Binding<string>` since the swap — a null/empty
+    // resolution is no-selection.
+    let current =
+        BindingResolver.tryResolve ctx.Sources value
+        |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
 
     let optionId (index: int) : string = sprintf "%s-opt-%d" idNamespace index
 
     match orientation with
-    | Horizontal ->
+    | Orientation.Horizontal ->
         let activeIndex =
             match current with
             | Some v -> opts |> List.tryFindIndex (fun o -> o.Value = v) |> Option.defaultValue -1
@@ -1435,7 +1490,7 @@ and private renderSegmentedFilter
                       else -1
                   )
                   prop.custom ("data-filter-value", option.Value)
-                  prop.text (renderText ctx option.Label) ]
+                  prop.text option.Label ]
 
         Html.div
             [ prop.className "fuaran-segmented-horizontal"
@@ -1444,7 +1499,7 @@ and private renderSegmentedFilter
               prop.custom ("aria-orientation", "horizontal")
               prop.custom ("data-filter-name", idNamespace)
               prop.children [ for index, option in List.indexed opts -> optionButton index option ] ]
-    | Vertical ->
+    | Orientation.Vertical ->
         let optionRow (index: int) (option: SelectOption) : ReactElement =
             let inputId = optionId index
             let isChecked = current = Some option.Value
@@ -1459,7 +1514,7 @@ and private renderSegmentedFilter
                               prop.value option.Value ]
                             @ (if isChecked then [ prop.custom ("checked", "") ] else [])
                         )
-                        Html.label [ prop.htmlFor inputId; prop.text (renderText ctx option.Label) ] ] ]
+                        Html.label [ prop.htmlFor inputId; prop.text option.Label ] ] ]
 
         Html.fieldSet
             [ prop.className "fuaran-segmented-vertical"

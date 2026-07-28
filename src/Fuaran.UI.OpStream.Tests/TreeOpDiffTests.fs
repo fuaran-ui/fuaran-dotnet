@@ -330,7 +330,9 @@ let tests =
 
               let toned =
                   { baseMd with
-                      Style = { baseMd.Style with Tone = Brand } }
+                      Style =
+                          { baseMd.Style with
+                              Tone = ToneVariant.Brand } }
 
               let a = dash [ baseMd ]
               let b = dash [ toned ]

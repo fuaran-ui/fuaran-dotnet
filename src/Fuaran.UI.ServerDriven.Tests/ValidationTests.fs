@@ -31,9 +31,7 @@ let private deny: Action<Msg> -> bool = fun _ -> false
 /// A tree: a dashboard holding a button, a static-option select, a form,
 /// a disclosure and a tabs node — one of each interactive kind, plus a
 /// non-interactive markdown leaf.
-let private opt v =
-    { Value = v
-      Label = TextSource.Literal v }
+let private opt v : SelectOption = { Value = v; Label = v }
 
 let private tree: Node<Msg> =
     Fuaran.dashboard
@@ -69,17 +67,20 @@ let private tree: Node<Msg> =
                       "flt"
                       [ { Name = "region"
                           Label = TextSource.Literal "Region"
-                          Field =
+                          Kind =
                             FormFieldKind.SegmentedChoice(
                                 Binding.Static(Some [ opt "north"; opt "south" ]),
-                                Binding.Static None,
+                                Some(Binding.Static None),
                                 Some(fun v -> Action.Dispatch(RegionFiltered v)),
-                                Horizontal
+                                Orientation.Horizontal
                             ) }
                         { Name = "name"
                           Label = TextSource.Literal "Name"
-                          Field =
-                            FormFieldKind.Text(Binding.Static(Some ""), Some(fun v -> Action.Dispatch(NameFiltered v))) } ]
+                          Kind =
+                            FormFieldKind.Text(
+                                Some(Binding.Static(Some "")),
+                                Some(fun v -> Action.Dispatch(NameFiltered v))
+                            ) } ]
                   Fuaran.markdown "md" "just text" ] }
 
 let private ev nodeId event payload =

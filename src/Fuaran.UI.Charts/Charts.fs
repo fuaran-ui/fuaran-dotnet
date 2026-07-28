@@ -26,6 +26,10 @@ module Fuaran.UI.Charts
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 
+// Record labels do not flow through the Types.fs abbreviations (stage 3 of the
+// 692-694 swap), so DrawPoint literals build through this annotated helper.
+let inline private dp (x: float) (y: float) : DrawPoint = { X = x; Y = y }
+
 // ─── Layout constants (the fixed canonical drawing space) ────────────────────
 
 [<Literal>]
@@ -451,15 +455,9 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
                       let colour = colourFor j
                       let yf = List.item j spec.YFields
 
-                      let upper =
-                          [ for i in 0 .. n - 1 ->
-                                { X = centreX i
-                                  Y = yScale cums.[i].[j + 1] } ]
+                      let upper = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale cums.[i].[j + 1]) ]
 
-                      let lower =
-                          [ for i in n - 1 .. -1 .. 0 ->
-                                { X = centreX i
-                                  Y = yScale cums.[i].[j] } ]
+                      let lower = [ for i in n - 1 .. -1 .. 0 -> dp (centreX i) (yScale cums.[i].[j]) ]
 
                       yield Shape.Polygon(upper @ lower, styleFillOpacity colour areaFillOpacity |> withSeriesMark yf)
                       yield Shape.Polyline(upper, styleStroke colour 2.0 |> withSeriesMark yf) ]
@@ -477,11 +475,9 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
                       let values = series.[j]
                       let yf = List.item j spec.YFields
 
-                      let points = [ for i in 0 .. n - 1 -> { X = centreX i; Y = yScale values.[i] } ]
+                      let points = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale values.[i]) ]
 
-                      let band =
-                          ({ X = centreX 0; Y = baseY } :: points)
-                          @ [ { X = centreX (n - 1); Y = baseY } ]
+                      let band = (dp (centreX 0) baseY :: points) @ [ dp (centreX (n - 1)) baseY ]
 
                       yield Shape.Polygon(band, styleFillOpacity colour areaFillOpacity |> withSeriesMark yf)
                       yield Shape.Polyline(points, styleStroke colour 2.0 |> withSeriesMark yf) ]
@@ -490,7 +486,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
                   let colour = colourFor j
                   let values = series.[j]
 
-                  let points = [ for i in 0 .. n - 1 -> { X = centreX i; Y = yScale values.[i] } ]
+                  let points = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale values.[i]) ]
 
                   Shape.Polyline(points, styleStroke colour 2.0 |> withSeriesMark (List.item j spec.YFields)) ]
         | ChartKind.Scatter ->
@@ -565,8 +561,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
             let radius = 130.0
 
             let pt (a: float) : DrawPoint =
-                { X = r2 (cx + radius * cos a)
-                  Y = r2 (cy + radius * sin a) }
+                dp (r2 (cx + radius * cos a)) (r2 (cy + radius * sin a))
 
             let arcCubics (a0: float) (a1: float) : CurveCommand list =
                 let segments = max 1 (int (ceil ((a1 - a0) / (System.Math.PI / 2.0) - 1e-9)))
@@ -577,12 +572,10 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
                       let k = 4.0 / 3.0 * tan ((t1 - t0) / 4.0)
 
                       let c1 =
-                          { X = r2 (cx + radius * (cos t0 - k * sin t0))
-                            Y = r2 (cy + radius * (sin t0 + k * cos t0)) }
+                          dp (r2 (cx + radius * (cos t0 - k * sin t0))) (r2 (cy + radius * (sin t0 + k * cos t0)))
 
                       let c2 =
-                          { X = r2 (cx + radius * (cos t1 + k * sin t1))
-                            Y = r2 (cy + radius * (sin t1 - k * cos t1)) }
+                          dp (r2 (cx + radius * (cos t1 + k * sin t1))) (r2 (cy + radius * (sin t1 - k * cos t1)))
 
                       CurveCommand.CubicTo(c1, c2, pt t1) ]
 
@@ -607,7 +600,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
                               let a1 = top + 2.0 * System.Math.PI * starts.[i + 1]
 
                               let cmds =
-                                  [ CurveCommand.MoveTo { X = cx; Y = cy }; CurveCommand.LineTo(pt a0) ]
+                                  [ CurveCommand.MoveTo(dp cx cy); CurveCommand.LineTo(pt a0) ]
                                   @ arcCubics a0 a1
                                   @ [ CurveCommand.Close ]
 

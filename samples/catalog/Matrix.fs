@@ -225,11 +225,11 @@ let private demoSelect (tone, weight, emphasis) : Node<unit> =
                 Binding.Static(
                     Some
                         [ { Value = "buyer-peer"
-                            Label = TextSource.Literal "Buyer peer" }
+                            Label = "Buyer peer" }
                           { Value = "seller-peer"
-                            Label = TextSource.Literal "Seller peer" }
+                            Label = "Seller peer" }
                           { Value = "portal-peer"
-                            Label = TextSource.Literal "Portal peer" } ]
+                            Label = "Portal peer" } ]
                 )
             Value = Binding.Static None
             OnChange = Some(fun _ -> Action.Chain [])
@@ -245,11 +245,11 @@ let private demoForm (tone, weight, emphasis) : Node<unit> =
                       Id = "form-text"
                       Label = TextSource.Literal "Cohort name"
                       Required = true
-                      Kind = FormFieldKind.Text(Binding.Static(Some ""), Some(fun _ -> Action.Chain [])) }
+                      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some(fun _ -> Action.Chain [])) }
                   { Defaults.formField<unit> with
                       Id = "form-number"
                       Label = TextSource.Literal "Sample size"
-                      Kind = FormFieldKind.Number(Binding.Static(Some 100.0), Some(fun _ -> Action.Chain [])) } ] }
+                      Kind = FormFieldKind.Number(Some(Binding.Static(Some 100.0)), Some(fun _ -> Action.Chain [])) } ] }
 
 let private demoFormRangedNumber (tone, weight, emphasis) : Node<unit> =
     // Catalog axis. Each field exercises one of the eight
@@ -299,7 +299,7 @@ let private demoFilters (tone, weight, emphasis) : Node<unit> =
         [ { Defaults.filter<unit> with
               Name = "text-filter"
               Label = TextSource.Literal "Search"
-              Field = FormFieldKind.Text(Binding.Static(Some ""), Some(fun _ -> Action.Chain [])) } ]
+              Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some(fun _ -> Action.Chain [])) } ]
 
 let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
     // Catalog axis. Three exclusive-choice surfaces:
@@ -312,19 +312,16 @@ let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
     //      `--fuaran-segmented-active-*` tokens.
     let metricOpts: SelectOption list =
         [ { Value = "effective"
-            Label = TextSource.Literal "Effective rate" }
+            Label = "Effective rate" }
           { Value = "marginal"
-            Label = TextSource.Literal "Marginal rate" }
+            Label = "Marginal rate" }
           { Value = "takeHome"
-            Label = TextSource.Literal "Take-home %" } ]
+            Label = "Take-home %" } ]
 
     let tierOpts: SelectOption list =
-        [ { Value = "free"
-            Label = TextSource.Literal "Free" }
-          { Value = "pro"
-            Label = TextSource.Literal "Pro" }
-          { Value = "team"
-            Label = TextSource.Literal "Team" } ]
+        [ { Value = "free"; Label = "Free" }
+          { Value = "pro"; Label = "Pro" }
+          { Value = "team"; Label = "Team" } ]
 
     Fuaran.form
         (idFor "formSegmentedChoice" tone weight emphasis)
@@ -338,9 +335,9 @@ let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
                       Kind =
                           FormFieldKind.SegmentedChoice(
                               Binding.Static(Some metricOpts),
-                              Binding.Static None,
+                              Some(Binding.Static None),
                               Some(fun _ -> Action.Chain []),
-                              Horizontal
+                              Orientation.Horizontal
                           ) }
                   { Defaults.formField<unit> with
                       Id = "tier-vertical"
@@ -349,9 +346,9 @@ let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
                       Kind =
                           FormFieldKind.SegmentedChoice(
                               Binding.Static(Some tierOpts),
-                              Binding.Static None,
+                              Some(Binding.Static None),
                               Some(fun _ -> Action.Chain []),
-                              Vertical
+                              Orientation.Vertical
                           ) }
                   { Defaults.formField<unit> with
                       Id = "metric-active"
@@ -360,9 +357,9 @@ let private demoFormSegmentedChoice (tone, weight, emphasis) : Node<unit> =
                       Kind =
                           FormFieldKind.SegmentedChoice(
                               Binding.Static(Some metricOpts),
-                              Binding.Static(Some(Some "marginal")),
+                              Some(Binding.Static(Some "marginal")),
                               Some(fun _ -> Action.Chain []),
-                              Horizontal
+                              Orientation.Horizontal
                           ) } ] }
 
 let private demoFileUpload (tone, weight, emphasis) : Node<unit> =
@@ -391,21 +388,18 @@ let private demoTable (tone, weight, emphasis) : Node<unit> =
                     TextSource.Literal "Available" ] ] }
 
 let private demoMap (tone, weight, emphasis) : Node<unit> =
+    let markers: MapMarker list =
+        [ { Latitude = 51.5074
+            Longitude = -0.1278
+            Label = "London" }
+          { Latitude = 40.7128
+            Longitude = -74.006
+            Label = "New York" } ]
+
     Fuaran.map
         (idFor "map" tone weight emphasis)
         { Defaults.map<unit> with
-            Source =
-                Binding.Static(
-                    Some(
-                        [ { Latitude = 51.5074
-                            Longitude = -0.1278
-                            Label = TextSource.Literal "London" }
-                          { Latitude = 40.7128
-                            Longitude = -74.006
-                            Label = TextSource.Literal "New York" } ]
-                        :> MapMarker seq
-                    )
-                )
+            Source = Binding.Static(Some(markers :> MapMarker seq))
             CentreLatitude = 30.0
             CentreLongitude = -30.0
             Zoom = 3 }
@@ -471,7 +465,7 @@ let private demoStack (tone, weight, emphasis) : Node<unit> =
     Fuaran.stack
         (idFor "stack" tone weight emphasis)
         { Defaults.stack<unit> with
-            Orientation = Horizontal
+            Orientation = Orientation.Horizontal
             Children = layoutKids
             Wrap = (emphasis = Emphasis.Loud) }
 
