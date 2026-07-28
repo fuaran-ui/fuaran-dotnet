@@ -77,14 +77,32 @@ its `FileRef` record, rebuilt at the render boundary. The wrapper-erasure open q
 answer pattern now: erase when the wrapper is pure naming (`ApiEndpoint`, `NodeId`), add a host-only
 slot when it carries runtime state (`FileRef.Handle`).
 
-### Stage 3 — `TextSource`, enums, `CellFormat`, `ColumnWidth`, `CellKindErased`, records, `FormFieldKind`
+### Stage 3 — `TextSource`, enums, `CellFormat`, `ColumnWidth`, records, `FormFieldKind` — **DONE (branch commit `f5d2a70`, all gates green)**
 
-- `TextSource.I18n` args match exactly (`Map<string, JVal>`) — alias is clean.
-- `FormFieldKind`: every `value` slot `option`-wraps (absence = auto-bind, newly authorable);
-  `NumberFieldConstraints` / `DateFieldConstraints` records flatten to positional `min`/`max`/`step`
-  options; `Range`'s `(float * float)` pair becomes the `RangePair` record; `FilterKind` is already
-  gone (FilterSpec holds FormFieldKind).
-- `ColumnErased.Value` is `option` (sibling of `Field`), `CellFormat.Custom` fn arg erases to `obj`.
+Landed 2026-07-28: 59 files, full FAKE Test (352 C# + 338 VB conformance, JsonDecode 510/510),
+Fable demo AND catalog clean, zero corpus byte changes. As planned, plus:
+
+- `FilterSpec.Field` → `.Kind` rode along (the generated record's field name); `SelectOption` /
+  `MapMarker` labels are bare strings; `TabHeader.Icon` is `string option`.
+- **Absence became a codec concern twice** (both caught by the 510-test byte gate, neither by the
+  compiler): `HoleDecl`'s newly-typed `Scalar` default needs its own `encodeScalarTyped` (the boxed
+  `obj` sniffing path collapsed it to `"<opaque>"`), and a Choice/SegmentedChoice
+  `{"$type":"Static"}` with absent payload is a first-class `Static None` (no selection) — a
+  dedicated `decodeBindingChoiceValue` bypasses the scalar-string parser that finding (2) above
+  otherwise mandates. The stage-1 "keep the slot's parser in the loop" rule stands; the choice slot
+  is the one place the generated `Static of 'T option` makes absence itself the value.
+- **Renderers mirror the decode-time auto-bind at render time**: a `None` value slot substitutes
+  exactly the binding `valueOr` synthesises (typed-default `State`, default-less `State` for choice,
+  `Filter(name, None)` on chips) before the pre-existing arm body, and `keysOfFormFieldKind`
+  contributes the auto-binding's keys — decoded-tree DOM/HTML and reactive subscriptions unchanged,
+  hand-built `None` trees correct.
+- **Fable-vs-.NET name-resolution hazard**: `Fuaran.Core`'s source distribution now ships its own
+  `Deferred` (Pending/Ready/**Failed**); `open Fuaran.Core` after `open Fuaran.UI.Types` made the
+  catalog Fable leg resolve `Deferred<obj>` to Core's while `Deferred.Error` stayed the UI's —
+  incomplete-match + unification errors under Fable only. `BindingResolver` now fully qualifies
+  `Fuaran.UI.Types.Deferred`. Any file opening both namespaces around a shared type name is exposed
+  to the same class; the catalog Fable leg is the gate that sees it.
+- `ColumnErased` / `CellKindErased` stayed hand-written this stage (they reference `Node` — stage 4).
 
 ### Stage 4 — specs + `NodeKind` + `Node` (the 692 switch proper)
 
