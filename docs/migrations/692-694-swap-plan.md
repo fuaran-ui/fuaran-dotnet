@@ -64,11 +64,18 @@ later stages must respect:
 this stage (they keep existing — policy layer — but construct/consume the new type). The corpus is
 the byte gate.
 
-### Stage 2 — `Action<'Msg>` + `CallResultTarget`
+### Stage 2 — `Action<'Msg>` + `CallResultTarget` — **DONE (branch commit `2bb836f`, all gates green)**
 
-Deltas: `Call`'s `ApiEndpoint` unwraps to `string`; `ReadFileBody.file: FileRef` → `fileRef: string`
-and `onRead` becomes `option`; `CallResultTarget` case NAMES change (`IntoState`/`IntoQuery` →
-`State`/`Query` — the wire tags; few sites).
+Landed 2026-07-28: 27 files, full FAKE Test + Fable demo, zero corpus byte changes. As planned:
+`Call` carries a bare endpoint string (`ApiEndpoint` survives at the author surface + the
+`IFuaranRuntime` seam, re-wrapped at boundaries); `CallResultTarget` case names are the wire tags;
+`Invoke` args are `InvokeArg` records. One addition over the plan: `ReadFileBody` did NOT erase
+`FileRef` to a bare string — the record's `Handle` (the boxed browser `File` blob) is what the
+runtime reads, so the generated case gained a **host-only `fileHandle: obj option` slot**
+(Fuaran-Core `399ce96`, wire-invisible) beside the wire `fileRef` id, and the runtime seam keeps
+its `FileRef` record, rebuilt at the render boundary. The wrapper-erasure open question (1) has its
+answer pattern now: erase when the wrapper is pure naming (`ApiEndpoint`, `NodeId`), add a host-only
+slot when it carries runtime state (`FileRef.Handle`).
 
 ### Stage 3 — `TextSource`, enums, `CellFormat`, `ColumnWidth`, `CellKindErased`, records, `FormFieldKind`
 
