@@ -61,13 +61,13 @@ let build<'Msg> (count: int) (onBoot: Action<'Msg>) : Node<'Msg> =
                                     "r1"
                                     { Defaults.labelValueRow with
                                         Label = TextSource.Literal "Framework JS executed at load"
-                                        Source = Binding.Static 0.0
+                                        Value = Binding.Static(Some 0.0)
                                         Format = CellFormat.Number(Some 0) }
                                 Fuaran.labelValueRow
                                     "r2"
                                     { Defaults.labelValueRow with
                                         Label = TextSource.Literal "Boot count"
-                                        Source = Binding.Static(float count)
+                                        Value = Binding.Static(Some(float count))
                                         Format = CellFormat.Number(Some 0) } ] }
 
                   // The Navigate row — every button `interpret`s directly.
@@ -98,7 +98,7 @@ let build<'Msg> (count: int) (onBoot: Action<'Msg>) : Node<'Msg> =
                       "dsc"
                       { Defaults.disclosure<'Msg> with
                           Heading = TextSource.Literal "How it works"
-                          Open = Binding.Static true
+                          Open = Binding.Static(Some true)
                           Children =
                               [ Fuaran.markdown
                                     "how"

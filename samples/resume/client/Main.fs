@@ -49,6 +49,7 @@ let private runtime: Runtime.IFuaranRuntime =
         member _.LayoutObserver = None
         member _.TryRenderCustom(_, _, _) = None
         member _.TryGetCustomRenderer(_, _) = None
+        member _.TryLoadGuest(_) = None
         member _.CanDispatch(_) = true }
 
 let private bootSubtree (nodeId: string) : unit =

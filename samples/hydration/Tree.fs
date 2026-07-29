@@ -48,15 +48,15 @@ let build<'Msg> (activeTab: int) (onTab: int -> Action<'Msg>) : Node<'Msg> =
                                     "r1"
                                     { Defaults.labelValueRow with
                                         Label = TextSource.Literal "Pipelines"
-                                        Source = Binding.Static 2.0
+                                        Value = Binding.Static(Some 2.0)
                                         Format = CellFormat.Number(Some 0) } ] }
 
                   Fuaran.tabs
                       "tabs"
                       { Defaults.tabs<'Msg> with
-                          Orientation = Horizontal
-                          ActiveIndex = Binding.Static activeTab
-                          OnSelect = onTab
+                          Orientation = Orientation.Horizontal
+                          ActiveIndex = Binding.Static(Some activeTab)
+                          OnSelect = Some onTab
                           TabHeaders =
                               Some
                                   [ { Label = TextSource.Literal "Overview"
@@ -77,6 +77,6 @@ let build<'Msg> (activeTab: int) (onTab: int -> Action<'Msg>) : Node<'Msg> =
                       "dsc"
                       { Defaults.disclosure<'Msg> with
                           Heading = TextSource.Literal "How it works"
-                          Open = Binding.Static true
+                          Open = Binding.Static(Some true)
                           Children =
                               [ Fuaran.markdown "how" "The server emits HTML; the client attaches with `hydrateRoot`." ] } ] }
