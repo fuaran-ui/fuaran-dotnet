@@ -447,6 +447,11 @@ let structuralNodeKinds =
 /// The vocabulary as labelled groups — the single enumeration `knownNodeKinds`
 /// flattens and `wrongNodeKindHint` is projected from. `Structural` is the one
 /// group the hint lists bare; every other group is a named primitive family.
+///
+/// Each family decoder's own `unknownDuCase` fallback is projected from its list
+/// too, rather than re-typed: the hand-written copies drifted (the Visualisation
+/// fallback still advertised the retired `Table` kind long after it was removed),
+/// and an error message that names a kind the decoder rejects is worse than none.
 let nodeKindGroups =
     [ "Layout", layoutNodeKinds
       "Display", displayNodeKinds
@@ -3027,11 +3032,7 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 getSpec ()
                 |> Result.bind (decodeDrawingSpec specPath)
                 |> Result.map NodeKind.Drawing
-            | s ->
-                unknownDuCase
-                    path
-                    s
-                    "Heading | Markdown | Metric | Badge | Link | Image | List | Toast | CodeBlock | Math | Drawing | Sparkline | Callout | Progress | Skeleton | LabelValueRow | Fact"
+            | s -> unknownDuCase path s (String.concat " | " displayNodeKinds)
 
 // ─── Input ───────────────────────────────────────────────────────────────
 
@@ -3571,7 +3572,7 @@ let private decodeInputKind (path: string) (j: Json) : Result<NodeKind<obj>, Dec
         | Ok "Button" -> decodeButtonSpec path j |> Result.map NodeKind.Button
         | Ok "FileUpload" -> decodeFileUploadSpec path j |> Result.map NodeKind.FileUpload
         | Ok "Select" -> decodeSelectSpec path j |> Result.map NodeKind.Select
-        | Ok s -> unknownDuCase path s "Form | Filters | Button | FileUpload | Select"
+        | Ok s -> unknownDuCase path s (String.concat " | " inputNodeKinds)
 
 // ─── Visualisation ──────────────────────────────────────────────────────
 
@@ -3908,7 +3909,7 @@ let private decodeVisKind (path: string) (j: Json) : Result<NodeKind<obj>, Decod
         | Ok "DataGrid" -> decodeGridSpec path j |> Result.map NodeKind.DataGrid
         | Ok "Chart" -> decodeChartSpec path j |> Result.map NodeKind.Chart
         | Ok "Map" -> decodeMapSpec path j |> Result.map NodeKind.Map
-        | Ok s -> unknownDuCase path s "DataGrid | Chart | Table | Map"
+        | Ok s -> unknownDuCase path s (String.concat " | " visNodeKinds)
 
 // ─── Parameterised-fragment hole / effect / scalar decoders (Phase 180) ─────
 //
@@ -4529,8 +4530,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                     | _, Error e, _, _
                     | _, _, Error e, _
                     | _, _, _, Error e -> Error e
-            | s ->
-                unknownDuCase path s "Box | SplitPanel | Tabs | Stepper | SummaryList | Disclosure | Modal | ScrollArea"
+            | s -> unknownDuCase path s (String.concat " | " layoutNodeKinds)
 
 and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with
