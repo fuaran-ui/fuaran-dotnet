@@ -742,5 +742,8 @@ Fable-free vibe-coding emission cites).
 - `src/Fuaran.UI.ServerDriven/README.md` – the package API + Track status.
 - `src/Fuaran.UI.ServerDriven/content/fuaran-live-patch.js` – the generic shim.
 - `docs/SSR.md` – server-side rendering (the first paint this tier patches onto).
+- `docs/devtools-relay-server-driven.md` – why the DevTools relay does not reach
+  this tier yet: the page holds no tree, relay `apply` is coherent only on the
+  bounded driver, and that driver has no channel connection (`BoundedConnection`).
 - `SANITIZATION.md` – the string→DOM injection-safety contract every rendered
   fragment (including the lowering's re-rendered nodes) routes through.
