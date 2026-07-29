@@ -63,6 +63,15 @@ module Fuaran.UI.Renderer.Markdown
 open System
 open System.Text
 
+// `escapeHtml` / `toHtml` open with an `isNull` test on their `string` input —
+// the same defence-in-depth floor `Sanitize.fs` documents (a hand-built or
+// wire-decoded record can carry a null the type says cannot exist), which F# 10's
+// nullness checker rejects on a non-nullable `string` (FS3261). The project-wide
+// `<Nullable>disable</Nullable>` does not travel under Fable — there the ENTRY
+// project's setting governs the whole source graph — so the suppression is
+// file-scoped here. See the note in `Sanitize.fs`.
+#nowarn "3261"
+
 // ─── Fable-safe primitives ──────────────────────────────────────────────────
 // (Avoid BCL surface Fable doesn't reliably cover — `String(char,int)` and
 //  `Char.ConvertFromUtf32` — so the renderer transpiles cleanly to JS.)

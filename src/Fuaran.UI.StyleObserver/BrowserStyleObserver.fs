@@ -44,6 +44,15 @@ open Fable.Core.JsInterop
 open System
 open System.Collections.Generic
 
+// This whole leg is untyped browser interop: every DOM handle arrives through
+// `?` / `jsNative` as a bare `obj` that genuinely can be JS `null` (an absent
+// element, an empty NodeList), so the `isNull` guards below are load-bearing.
+// F# 10's nullness checker rejects them on a non-nullable `obj` (FS3261).
+// Scoped to the `#if FABLE_COMPILER` branch — the .NET leg below the `#else`
+// delegates to `InMemoryStyleObserver` and keeps nullness on — per the
+// obj-erasure `#nowarn` precedents in Fuaran.UI/Types.fs and Fuaran.fs.
+#nowarn "3261"
+
 [<AutoOpen>]
 module private Internals =
 

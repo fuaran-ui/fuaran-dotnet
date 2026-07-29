@@ -71,6 +71,45 @@ module Rgba =
         && roundCh a.G = roundCh b.G
         && roundCh a.B = roundCh b.B
 
+    /// `Int32.TryParse(s, NumberStyles.HexNumber, InvariantCulture)` hand-rolled.
+    ///
+    /// Fable cannot honour the `IFormatProvider` overload and says so
+    /// (`System.Int32.TryParse(): provider argument is ignored`), which under
+    /// this repo's `TreatWarningsAsErrors` stops the transpile of every Fable
+    /// consumer of this package. The provider is semantically inert for hex —
+    /// there is no culture-varying digit, sign, or separator in
+    /// `NumberStyles.HexNumber` — so the contract reproduced here is the BCL's:
+    /// `AllowLeadingWhite ||| AllowTrailingWhite` (hence the `Trim()`), then one
+    /// or more case-insensitive hex digits and nothing else. Callers pass 1- or
+    /// 2-char slices, so the accumulator cannot overflow.
+    ///
+    /// Differentially tested against the BCL overload across every 1- and 2-char
+    /// ASCII input and a 4-char hex/whitespace/sign alphabet. **One divergence
+    /// class exists and is deliberate:** the BCL silently accepts a single
+    /// TRAILING NUL (`"f\000"` -> 15, a legacy quirk of the number parser); this
+    /// rejects it. A NUL cannot occur in a CSS hex token, and rejecting is the
+    /// stricter reading. Nothing else differs.
+    let private tryParseHexDigits (raw: string) : int option =
+        let s = raw.Trim()
+
+        if s.Length = 0 then
+            None
+        else
+            let mutable acc = 0
+            let mutable ok = true
+
+            for c in s do
+                if c >= '0' && c <= '9' then
+                    acc <- acc * 16 + (int c - int '0')
+                elif c >= 'a' && c <= 'f' then
+                    acc <- acc * 16 + (int c - int 'a' + 10)
+                elif c >= 'A' && c <= 'F' then
+                    acc <- acc * 16 + (int c - int 'A' + 10)
+                else
+                    ok <- false
+
+            if ok then Some acc else None
+
     /// Parse a CSS hex colour (`#rgb`, `#rrggbb`, `#rrggbbaa`) to an
     /// `Rgba`. Returns `None` for anything malformed. Used to compare a
     /// manifest palette's declared hex tokens against resolved fills.
@@ -81,26 +120,10 @@ module Rgba =
             let s = raw.Trim().TrimStart('#')
 
             let hex2 (i: int) =
-                match
-                    System.Int32.TryParse(
-                        s.Substring(i, 2),
-                        System.Globalization.NumberStyles.HexNumber,
-                        System.Globalization.CultureInfo.InvariantCulture
-                    )
-                with
-                | true, v -> Some(float v)
-                | _ -> None
+                tryParseHexDigits (s.Substring(i, 2)) |> Option.map float
 
             let hex1 (i: int) =
-                match
-                    System.Int32.TryParse(
-                        string s[i],
-                        System.Globalization.NumberStyles.HexNumber,
-                        System.Globalization.CultureInfo.InvariantCulture
-                    )
-                with
-                | true, v -> Some(float (v * 16 + v))
-                | _ -> None
+                tryParseHexDigits (string s[i]) |> Option.map (fun v -> float (v * 16 + v))
 
             match s.Length with
             | 3 ->

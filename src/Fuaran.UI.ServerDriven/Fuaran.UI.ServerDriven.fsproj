@@ -50,9 +50,20 @@
     <!-- Phase 153 (bounded-tree driver): the binding resolver + BindingSources
          store value the bounded driver re-resolves a generated tree against.
          Renderer.Core is the FSharp.Core-only render SPINE (not the Feliz/
-         Feliz.ViewEngine renderers) — Fable-clean, no React/Feliz/Server dep —
-         so referencing it keeps the "no renderer-emission dep leaks into this
-         core" posture above intact (HTML production stays injected). -->
+         Feliz.ViewEngine renderers) — no React/Feliz/Server dep — so
+         referencing it keeps the "no renderer-emission dep leaks into this
+         core" posture above intact (HTML production stays injected).
+
+         It is Fable-portable, but read that claim with its qualification: until
+         2026-07-29 Renderer.Core's null posture lived only in its own
+         `<Nullable>disable</Nullable>` property, and under Fable it is the ENTRY
+         project's properties that govern the whole source graph. So Renderer.Core
+         transpiled clean via Fuaran.UI.Renderer (nullness off) and failed with 31
+         FS3261s via THIS project (nullness on, per Directory.Build.props) — i.e.
+         "Fable-clean" was true of one entry point, not of the sources. The
+         posture now travels with the source as file-scoped `#nowarn "3261"` in
+         Sanitize.fs / Markdown.fs / BindingResolver.fs; do not remove those on
+         the grounds that the project property already covers it. -->
     <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
   </ItemGroup>
   <ItemGroup>

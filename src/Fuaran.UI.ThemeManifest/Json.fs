@@ -98,12 +98,39 @@ module Json =
             if i + 4 > n then
                 fail "truncated \\u escape"
 
-            let h = input.Substring(i, 4)
+            let h = (input.Substring(i, 4)).Trim()
             i <- i + 4
 
-            match System.Int32.TryParse(h, NumberStyles.HexNumber, inv) with
-            | true, v -> v
-            | _ -> fail "bad \\u escape"
+            // Hand-rolled `Int32.TryParse(h, NumberStyles.HexNumber, inv)`:
+            // Fable cannot honour the `IFormatProvider` overload and says so,
+            // which under this repo's `TreatWarningsAsErrors` stops the
+            // transpile of every Fable consumer. The provider is semantically
+            // inert for hex, and the BCL contract reproduced here is
+            // `AllowLeadingWhite ||| AllowTrailingWhite` (the `Trim()` above)
+            // then one or more case-insensitive hex digits — so this stays
+            // byte-identical on both pipelines, which is the whole point of
+            // this parser (see the module header).
+            //
+            // Differentially tested against the BCL overload over every 1- and
+            // 2-char ASCII input and a 4-char hex/whitespace/sign alphabet. ONE
+            // divergence class exists and is deliberate: the BCL silently
+            // accepts a single trailing NUL (`"f\000"` -> 15, a legacy quirk of
+            // the number parser); this rejects it. A NUL inside a `\uXXXX`
+            // escape is malformed input either way.
+            let mutable acc = 0
+            let mutable ok = h.Length > 0
+
+            for c in h do
+                if c >= '0' && c <= '9' then
+                    acc <- acc * 16 + (int c - int '0')
+                elif c >= 'a' && c <= 'f' then
+                    acc <- acc * 16 + (int c - int 'a' + 10)
+                elif c >= 'A' && c <= 'F' then
+                    acc <- acc * 16 + (int c - int 'A' + 10)
+                else
+                    ok <- false
+
+            if ok then acc else fail "bad \\u escape"
 
         let parseString () : string =
             expect '"'
@@ -160,7 +187,25 @@ module Json =
 
             let tok = input.Substring(start, i - start)
 
-            match System.Double.TryParse(tok, NumberStyles.Float, inv) with
+            // Fable's `Double.tryParse` is JS `+str` — culture-invariant by
+            // construction — and it IGNORES both the `NumberStyles` and the
+            // `IFormatProvider` argument, saying so loudly enough to fail the
+            // transpile under this repo's `TreatWarningsAsErrors`. Over the
+            // alphabet this tokeniser can emit (`[-+0-9.eE]`) the two forms agree
+            // exactly: same sign / decimal-point / exponent grammar, same IEEE-754
+            // rounding, same rejection of `--5` / `1e` / `1.2.3` / the empty token.
+            // The .NET leg keeps the explicit invariant overload, because the
+            // single-argument BCL overload reads CurrentCulture and would misread
+            // `1.5` under a comma-decimal locale — which is precisely the
+            // byte-identical-on-both-pipelines property this module exists for.
+            let parsed =
+#if FABLE_COMPILER
+                System.Double.TryParse tok
+#else
+                System.Double.TryParse(tok, NumberStyles.Float, inv)
+#endif
+
+            match parsed with
             | true, v -> JNum v
             | _ -> fail (sprintf "bad number '%s'" tok)
 

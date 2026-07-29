@@ -42,6 +42,18 @@ module Fuaran.UI.Renderer.Sanitize
 
 open System
 
+// Every public entry here `isNull`-tests a `string` parameter as its first act —
+// the defence-in-depth floor documented above, since a hand-built or
+// wire-decoded record can carry a null the type says cannot exist. F# 10's
+// nullness checker rejects that test on a non-nullable `string` (FS3261). This
+// project already declares the posture project-wide via `<Nullable>disable</Nullable>`,
+// but that property is the ENTRY project's under Fable — a nullable-enabled entry
+// (e.g. Fuaran.UI.ServerDriven) transpiles these sources with nullness ON and the
+// file stops compiling. The file-scoped suppression makes the posture travel with
+// the source, per the obj-erasure `#nowarn` precedents in Fuaran.UI/Types.fs +
+// Fuaran.fs. Do NOT drop the `isNull` guards — they are the contract.
+#nowarn "3261"
+
 // ─── ExtraAttributes key/value sanitization ────────────────────────────────
 
 /// Allowlist predicate for an ExtraAttributes key. The same data-* / aria-*

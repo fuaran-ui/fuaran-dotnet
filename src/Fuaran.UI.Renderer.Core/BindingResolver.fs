@@ -23,6 +23,17 @@ module Fuaran.UI.Renderer.BindingResolver
 open Fuaran.UI.Types
 open Fuaran.Core
 
+// This module lives at the typed-tree's obj-erasure boundary: a `Binding<'T>`
+// resolves through boxed `obj` cells, and `null` is a first-class value there
+// (an absent query result, a `Cell.Null`, a JSON null). The `isNull` tests and
+// `null` match arms below are therefore load-bearing, and F# 10's nullness
+// checker rejects them on a bare `obj` (FS3261). The project-wide
+// `<Nullable>disable</Nullable>` does not travel under Fable — there the ENTRY
+// project's setting governs the whole source graph — so the suppression is
+// file-scoped here, per the obj-erasure `#nowarn` precedents in
+// Fuaran.UI/Types.fs (`module Binding`) and Fuaran.fs. See `Sanitize.fs`.
+#nowarn "3261"
+
 /// The default `II18nResolver`. Pass-through identity:
 /// returns the debug placeholder `[i18n:<key>]` for every key so missing
 /// translations stay visually loud in dev. Apps wire a real resolver
