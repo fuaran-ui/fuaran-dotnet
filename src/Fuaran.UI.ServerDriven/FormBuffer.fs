@@ -61,16 +61,22 @@ let private asStr (v: LiveValue) : string option =
 /// protocol — see the module header) or the buffer fails to parse (a malformed
 /// value flushes to nothing rather than mutating).
 let fieldFlushAction (field: FormField<'Msg>) (value: LiveValue) : Action<'Msg> option =
-    let commitOf (lb: LocalBinding<'T>) (s: string) : Action<'Msg> option =
-        match lb.Parse s with
-        | Ok t -> Some(unbox<Action<'Msg>> (lb.OnCommit t))
+    // Positional Local since the swap; an absent `onCommit` flushes to nothing.
+    let commitOf
+        (parse: string -> Result<'T, string>)
+        (onCommit: ('T -> obj) option)
+        (s: string)
+        : Action<'Msg> option =
+        match parse s with
+        | Ok t -> onCommit |> Option.map (fun oc -> unbox<Action<'Msg>> (oc t))
         | Error _ -> None
 
     match field.Kind with
-    | FormFieldKind.Text(Binding.Local lb, _)
-    | FormFieldKind.TextArea(Binding.Local lb, _, _) -> asStr value |> Option.bind (commitOf lb)
-    | FormFieldKind.Number(Binding.Local lb, _)
-    | FormFieldKind.RangedNumber(Binding.Local lb, _, _) -> asStr value |> Option.bind (commitOf lb)
+    | FormFieldKind.Text(Some(Binding.Local(_, _, _, oc, p)), _)
+    | FormFieldKind.TextArea(Some(Binding.Local(_, _, _, oc, p)), _, _) -> asStr value |> Option.bind (commitOf p oc)
+    | FormFieldKind.Number(Some(Binding.Local(_, _, _, oc, p)), _)
+    | FormFieldKind.RangedNumber(Some(Binding.Local(_, _, _, oc, p)), _, _, _, _) ->
+        asStr value |> Option.bind (commitOf p oc)
     // Non-`Local` fields are not buffered by this protocol; other field shapes
     // (Checkbox / Choice / Segmented) carry no `Local` value binding.
     | _ -> None

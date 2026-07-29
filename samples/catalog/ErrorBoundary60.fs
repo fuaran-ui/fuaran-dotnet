@@ -118,7 +118,7 @@ let private healthyMetric (id: string) (label: string) (value: float) : Node<Msg
         id
         { Defaults.metric with
             Label = TextSource.Literal label
-            Value = Binding.Static value }
+            Value = Binding.Static(Some value) }
 
 let private heading (id: string) (level: int) (text: string) : Node<Msg> =
     Fuaran.heading
@@ -154,7 +154,7 @@ let private friendlyFallback: Node<Msg> =
             Body =
                 TextSource.Literal
                     "The author-supplied fallback subtree rendered instead. Real consumers would offer a retry, link to docs, or surface a captured error id."
-            Icon = Some(IconSource "alert")
+            Icon = Some "alert"
             Dismissable = false }
 
 let private boundaryCaughtCard: Node<Msg> =

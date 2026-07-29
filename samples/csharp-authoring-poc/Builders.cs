@@ -4,11 +4,46 @@ using Microsoft.FSharp.Collections;
 using Microsoft.FSharp.Core;
 using static Fuaran.UI.Types;
 
+// Stage-4b swap: the tree envelope (Node / NodeKind / the Spec records /
+// StateBehaviour / LayoutMode) is IDL-generated too — the Types names are
+// abbreviations, erased in metadata, so import the generated declarations
+// directly alongside the surviving Types imports.
+using static Fuaran.UI.Generated;
+
 // The F# `Action<'Msg>` clashes by name with `System.Action<T>`; alias the
 // closed `Action<object>` we always use so the builder surface stays unambiguous
 // without dropping the convenient `using static`. (A friction point recorded in
 // the findings note.)
-using FsAction = Fuaran.UI.Types.Action<object>;
+using FsAction = Fuaran.UI.Generated.Action<object>;
+
+// Stage-3 swap (Phase 692 family): these vocabulary types are now IDL-generated
+// (`Fuaran.UI.Generated.*`). The F# tier re-exports them as type ABBREVIATIONS,
+// which are erased in metadata — C# cannot see them through `using static Types`,
+// so alias each moved name at the generated declaration directly. (Aliases take
+// precedence over `using static` imports, so the surviving Types imports — Node,
+// NodeKind, the Spec records — keep resolving as before.)
+using FsGen = Fuaran.UI.Generated;
+using TextSource = Fuaran.UI.Generated.TextSource;
+using CellFormat = Fuaran.UI.Generated.CellFormat;
+using ToneVariant = Fuaran.UI.Generated.ToneVariant;
+using StyleWeight = Fuaran.UI.Generated.StyleWeight;
+using Emphasis = Fuaran.UI.Generated.Emphasis;
+using StyleRole = Fuaran.UI.Generated.StyleRole;
+using FontVoice = Fuaran.UI.Generated.FontVoice;
+using Orientation = Fuaran.UI.Generated.Orientation;
+using BoxRole = Fuaran.UI.Generated.BoxRole;
+using BadgeVariant = Fuaran.UI.Generated.BadgeVariant;
+using ButtonVariant = Fuaran.UI.Generated.ButtonVariant;
+using HeadingVariant = Fuaran.UI.Generated.HeadingVariant;
+using ChartKind = Fuaran.UI.Generated.ChartKind;
+using SelectOption = Fuaran.UI.Generated.SelectOption;
+using Motion = Fuaran.UI.Generated.Motion;
+using SemanticStyle = Fuaran.UI.Generated.SemanticStyle;
+using Accessibility = Fuaran.UI.Generated.Accessibility;
+using MetricSpec = Fuaran.UI.Generated.MetricSpec;
+using HeadingSpec = Fuaran.UI.Generated.HeadingSpec;
+using BadgeSpec = Fuaran.UI.Generated.BadgeSpec;
+using MarkdownSpec = Fuaran.UI.Generated.MarkdownSpec;
 
 namespace Fuaran.UI.CSharp.Poc;
 
@@ -47,13 +82,15 @@ namespace Fuaran.UI.CSharp.Poc;
 internal static class Txt
 {
     public static TextSource Literal(string s) => TextSource.NewLiteral(s);
-    public static TextSource Bound(Binding<string> b) => TextSource.NewBound(b);
+    public static TextSource Bound(global::Fuaran.UI.Generated.Binding<string> b) => TextSource.NewBound(b);
 }
 
 internal static class Bind
 {
-    public static Binding<T> Static<T>(T v) => Binding<T>.NewStatic(v);
-    public static Binding<T> State<T>(string key, T def) => Binding<T>.NewState(key, def);
+    public static global::Fuaran.UI.Generated.Binding<T> Static<T>(T v) =>
+        global::Fuaran.UI.Generated.Binding<T>.NewStatic(FSharpOption<T>.Some(v));
+    public static global::Fuaran.UI.Generated.Binding<T> State<T>(string key, T def) =>
+        global::Fuaran.UI.Generated.Binding<T>.NewState(key, FSharpOption<T>.Some(def));
 }
 
 internal static class Fmt
@@ -75,12 +112,9 @@ internal static class Act
 
 internal static class Defaults
 {
-    public static readonly StateBehaviour<object> EmptyState =
-        new(Fs.None<Node<object>>(), Fs.None<Node<object>>(), Fs.None<FSharpFunc<ErrorPayload, Node<object>>>());
-
-    public static readonly SemanticStyle Style =
-        new(ToneVariant.Default, StyleWeight.Standard, Emphasis.Normal, StyleRole.None, FontVoice.Default);
-
+    // Stage-4b swap: `State = None` / `Style = None` are the canonical
+    // empty-state / default-style shapes — the old always-present empty
+    // StateBehaviour / default SemanticStyle fragments are retired.
     public static readonly FsAction PlaceholderChain = Act.Chain();
 }
 
@@ -97,15 +131,18 @@ internal abstract class NodeBuilder
 
     protected abstract NodeKind<object> BuildKind();
 
+    // Generated Node ctor is Generated.fs declaration order (Id, Kind,
+    // Accessibility, ExtraAttributes, Motion, State, Style); `Id` is a bare
+    // string since the swap.
     public Node<object> Build() =>
         new(
-            NodeId.NewNodeId(Id),
+            Id,
             BuildKind(),
-            Defaults.EmptyState,
-            Defaults.Style,
             Fs.None<Accessibility>(),
+            Fs.None<FSharpMap<string, string>>(),
             Fs.None<Motion>(),
-            Fs.None<FSharpMap<string, string>>());
+            Fs.None<StateBehaviour<object>>(),
+            Fs.None<SemanticStyle>());
 }
 
 // ─── Layout builders ────────────────────────────────────────────────────────
@@ -120,13 +157,15 @@ internal sealed class CardBuilder : NodeBuilder
     public CardBuilder Heading(string text) { _heading = Fs.Some(Txt.Literal(text)); return this; }
     public CardBuilder Children(params NodeBuilder[] kids) { _children.AddRange(kids); return this; }
 
+    // Generated BoxSpec ctor is Generated.fs declaration order (Children,
+    // Heading, Layout, Role); LayoutMode cases are positional since the swap.
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewBox(
             new BoxSpec<object>(
-                BoxLayout.NewFlex(new FlexLayout(Orientation.Vertical, false, Fs.None<int>())),
-                BoxRole.Card,
+                Fs.List(_children.Select(c => c.Build()).ToArray()),
                 _heading,
-                Fs.List(_children.Select(c => c.Build()).ToArray())));
+                LayoutMode.NewFlex(Orientation.Vertical, false, Fs.None<int>()),
+                BoxRole.Card));
 }
 
 internal sealed class StackBuilder : NodeBuilder
@@ -144,10 +183,10 @@ internal sealed class StackBuilder : NodeBuilder
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewBox(
             new BoxSpec<object>(
-                BoxLayout.NewFlex(new FlexLayout(_orientation, _wrap, Fs.None<int>())),
-                BoxRole.Group,
+                Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
-                Fs.List(_children.Select(c => c.Build()).ToArray())));
+                LayoutMode.NewFlex(_orientation, _wrap, Fs.None<int>()),
+                BoxRole.Group));
 }
 
 internal sealed class GridBuilder : NodeBuilder
@@ -163,10 +202,10 @@ internal sealed class GridBuilder : NodeBuilder
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewBox(
             new BoxSpec<object>(
-                BoxLayout.NewGrid(new GridTemplate(_cols, Fs.None<string>(), Fs.None<int>())),
-                BoxRole.Group,
+                Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
-                Fs.List(_children.Select(c => c.Build()).ToArray())));
+                LayoutMode.NewGrid(_cols, Fs.None<string>(), Fs.None<int>()),
+                BoxRole.Group));
 }
 
 internal sealed class DashboardBuilder : NodeBuilder
@@ -180,10 +219,10 @@ internal sealed class DashboardBuilder : NodeBuilder
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewBox(
             new BoxSpec<object>(
-                BoxLayout.Auto,
-                BoxRole.Dashboard,
+                Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
-                Fs.List(_children.Select(c => c.Build()).ToArray())));
+                LayoutMode.Auto,
+                BoxRole.Dashboard));
 }
 
 // ─── Display builders ───────────────────────────────────────────────────────
@@ -191,14 +230,16 @@ internal sealed class DashboardBuilder : NodeBuilder
 internal sealed class MetricBuilder : NodeBuilder
 {
     private TextSource _label = Txt.Literal("");
-    private Binding<double> _source = Bind.Static(0.0);
+    private global::Fuaran.UI.Generated.Binding<double> _source = Bind.Static(0.0);
     private CellFormat _format = Fmt.None;
     private ToneVariant _tone = ToneVariant.Default;
     private StyleWeight _weight = StyleWeight.Standard;
     private Emphasis _emphasis = Emphasis.Normal;
-    private FSharpOption<Binding<double>> _trend = Fs.None<Binding<double>>();
+    private FSharpOption<global::Fuaran.UI.Generated.Binding<double>> _trend =
+        Fs.None<global::Fuaran.UI.Generated.Binding<double>>();
     private FSharpOption<CellFormat> _trendFormat = Fs.None<CellFormat>();
-    private FSharpOption<IconSource> _icon = Fs.None<IconSource>();
+    // Generated MetricSpec.Icon is a bare `string option` (no IconSource wrap).
+    private FSharpOption<string> _icon = Fs.None<string>();
     private FSharpOption<TextSource> _subtext = Fs.None<TextSource>();
 
     public MetricBuilder(string id) : base(id) { }
@@ -209,7 +250,7 @@ internal sealed class MetricBuilder : NodeBuilder
     public MetricBuilder Tone(ToneVariant t) { _tone = t; return this; }
     public MetricBuilder Trend(double value) { _trend = Fs.Some(Bind.Static(value)); return this; }
     public MetricBuilder TrendFormat(CellFormat f) { _trendFormat = Fs.Some(f); return this; }
-    public MetricBuilder Icon(string icon) { _icon = Fs.Some(IconSource.NewIconSource(icon)); return this; }
+    public MetricBuilder Icon(string icon) { _icon = Fs.Some(icon); return this; }
     public MetricBuilder Subtext(string text) { _subtext = Fs.Some(Txt.Literal(text)); return this; }
 
     protected override NodeKind<object> BuildKind() =>
@@ -265,22 +306,24 @@ internal sealed class ButtonBuilder : NodeBuilder
     private TextSource _label = Txt.Literal("");
     private FsAction _onClick = Act.Chain();
     private ButtonVariant _variant = ButtonVariant.Primary;
-    private FSharpOption<IconSource> _icon = Fs.None<IconSource>();
+    // Generated ButtonSpec.Icon is a bare `string option` (no IconSource wrap).
+    private FSharpOption<string> _icon = Fs.None<string>();
     private FSharpOption<TextSource> _tooltip = Fs.None<TextSource>();
-    private FSharpOption<Binding<bool>> _disabled = Fs.None<Binding<bool>>();
+    private FSharpOption<global::Fuaran.UI.Generated.Binding<bool>> _disabled =
+        Fs.None<global::Fuaran.UI.Generated.Binding<bool>>();
 
     public ButtonBuilder(string id) : base(id) { }
 
     public ButtonBuilder Label(string text) { _label = Txt.Literal(text); return this; }
     public ButtonBuilder OnClick(FsAction action) { _onClick = action; return this; }
     public ButtonBuilder Variant(ButtonVariant v) { _variant = v; return this; }
-    public ButtonBuilder Icon(string icon) { _icon = Fs.Some(IconSource.NewIconSource(icon)); return this; }
+    public ButtonBuilder Icon(string icon) { _icon = Fs.Some(icon); return this; }
     public ButtonBuilder DisabledWhen(string stateKey, bool defaultValue = false)
     { _disabled = Fs.Some(Bind.State(stateKey, defaultValue)); return this; }
 
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewButton(
-            new ButtonSpec<object>(_label, _onClick, _variant, _icon, _tooltip, _disabled));
+            new FsGen.ButtonSpec<object>(_label, _onClick, _variant, _icon, _tooltip, _disabled));
 }
 
 /// <summary>A single form field. DU field-kinds surface as factory methods
@@ -290,11 +333,11 @@ internal sealed class FieldBuilder
 {
     private readonly string _id;
     private TextSource _label;
-    private FormFieldKind<object> _kind;
+    private FsGen.FormFieldKind<object> _kind;
     private bool _required;
     private FSharpOption<TextSource> _help = Fs.None<TextSource>();
 
-    private FieldBuilder(string id, string label, FormFieldKind<object> kind)
+    private FieldBuilder(string id, string label, FsGen.FormFieldKind<object> kind)
     {
         _id = id;
         _label = Txt.Literal(label);
@@ -304,32 +347,38 @@ internal sealed class FieldBuilder
     public FieldBuilder Required(bool required = true) { _required = required; return this; }
     public FieldBuilder Help(string text) { _help = Fs.Some(Txt.Literal(text)); return this; }
 
-    public FormField<object> Build() => new(_id, _label, _kind, _required, _help);
+    // Generated FormField declares (Id, Kind, Label, Required, Help) — ctor is declaration order.
+    public FsGen.FormField<object> Build() => new(_id, _kind, _label, _required, _help);
 
     private static FSharpFunc<TArg, FsAction> NoOp<TArg>() => Fs.Func<TArg, FsAction>(_ => Defaults.PlaceholderChain);
 
+    // Stage-3 field-kind shape: value slots are `Binding<T> option` (Some-wrap) and the
+    // change handlers are optional — keep the explicit no-op handlers so the wire shape
+    // (the "<closure>" sentinel) matches the pre-swap fixtures.
     public static FieldBuilder Text(string id, string label, string initial = "") =>
-        new(id, label, FormFieldKind<object>.NewText(Bind.Static(initial), NoOp<string>()));
+        new(id, label, FsGen.FormFieldKind<object>.NewText(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<string>())));
 
     public static FieldBuilder Number(string id, string label, double initial = 0.0) =>
-        new(id, label, FormFieldKind<object>.NewNumber(Bind.Static(initial), NoOp<double>()));
+        new(id, label, FsGen.FormFieldKind<object>.NewNumber(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<double>())));
 
     public static FieldBuilder Checkbox(string id, string label, bool initial = false) =>
-        new(id, label, FormFieldKind<object>.NewCheckbox(Bind.Static(initial), NoOp<bool>()));
+        new(id, label, FsGen.FormFieldKind<object>.NewCheckbox(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<bool>())));
 
     public static FieldBuilder TextArea(string id, string label, int rows, string initial = "") =>
-        new(id, label, FormFieldKind<object>.NewTextArea(Bind.Static(initial), NoOp<string>(), rows));
+        new(id, label, FsGen.FormFieldKind<object>.NewTextArea(Fs.Some(Bind.Static(initial)), Fs.Some(NoOp<string>()), rows));
 
     public static FieldBuilder Choice(string id, string label, string selected, params (string Value, string Label)[] options)
     {
-        var opts = Fs.List(options.Select(o => new SelectOption(o.Value, Txt.Literal(o.Label))).ToArray());
+        // Generated SelectOption declares (Label, Value); Label is a bare string now.
+        var opts = Fs.List(options.Select(o => new SelectOption(o.Label, o.Value)).ToArray());
         return new FieldBuilder(
             id,
             label,
-            FormFieldKind<object>.NewChoice(
+            FsGen.FormFieldKind<object>.NewChoice(
                 Bind.Static(opts),
-                Bind.Static(Fs.Some(selected)),
-                NoOp<FSharpOption<string>>()));
+                // The value slot is `Binding<string> option` (the old double-option flattened).
+                Fs.Some(Bind.Static(selected)),
+                Fs.Some(NoOp<FSharpOption<string>>())));
     }
 }
 
@@ -338,7 +387,8 @@ internal sealed class FormBuilder : NodeBuilder
     private readonly List<FieldBuilder> _fields = new();
     private FsAction _onSubmit = Act.Chain();
     private TextSource _submitLabel = Txt.Literal("Submit");
-    private FSharpOption<Binding<bool>> _disabled = Fs.None<Binding<bool>>();
+    private FSharpOption<global::Fuaran.UI.Generated.Binding<bool>> _disabled =
+        Fs.None<global::Fuaran.UI.Generated.Binding<bool>>();
 
     public FormBuilder(string id) : base(id) { }
 
@@ -349,7 +399,9 @@ internal sealed class FormBuilder : NodeBuilder
 
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewForm(
-            new FormSpec<object>(
+            // Generated FormSpec ctor is Generated.fs declaration order (Fields,
+            // OnSubmit, SubmitLabel, Disabled).
+            new FsGen.FormSpec<object>(
                 Fs.List(_fields.Select(f => f.Build()).ToArray()),
                 _onSubmit,
                 _submitLabel,
@@ -380,15 +432,17 @@ internal sealed class ChartBuilder : NodeBuilder
         // encoder ("<opaque>"), matching the corpus chart fixture. A real chart
         // binds a row sequence via a query/state binding.
         var source = Bind.Static<IEnumerable<object>>(Enumerable.Empty<object>());
+        // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
+        // Source, Stacked, XField, YFields, Title, OnPointClick).
         return NodeKind<object>.NewChart(
             new ChartSpec<object>(
-                source,
                 _kind,
+                source,
+                _stacked,
                 _xField,
                 _yFields,
                 _title,
-                Fs.None<FSharpFunc<object, FsAction>>(),
-                _stacked));
+                Fs.None<FSharpFunc<object, FsAction>>()));
     }
 }
 

@@ -1,4 +1,4 @@
-using FsTypes = Fuaran.UI.Types;
+using FsGen = Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp;
 
@@ -110,125 +110,125 @@ public enum ChartKind
 /// <summary>The single translation seam between the C# enums and the F# DUs.</summary>
 internal static class EnumMap
 {
-    internal static FsTypes.ImageVariant ToFs(this ImageVariant v) =>
+    internal static FsGen.ImageVariant ToFs(this ImageVariant v) =>
         v switch
         {
-            ImageVariant.Default => FsTypes.ImageVariant.Default,
-            ImageVariant.Avatar => FsTypes.ImageVariant.Avatar,
-            ImageVariant.Rounded => FsTypes.ImageVariant.Rounded,
-            _ => FsTypes.ImageVariant.Default,
+            ImageVariant.Default => FsGen.ImageVariant.Default,
+            ImageVariant.Avatar => FsGen.ImageVariant.Avatar,
+            ImageVariant.Rounded => FsGen.ImageVariant.Rounded,
+            _ => FsGen.ImageVariant.Default,
         };
 
-    internal static FsTypes.ScrollOrientation ToFs(this ScrollOrientation o) =>
+    internal static FsGen.ScrollOrientation ToFs(this ScrollOrientation o) =>
         o switch
         {
-            ScrollOrientation.Vertical => FsTypes.ScrollOrientation.Vertical,
-            ScrollOrientation.Horizontal => FsTypes.ScrollOrientation.Horizontal,
-            ScrollOrientation.Both => FsTypes.ScrollOrientation.Both,
-            _ => FsTypes.ScrollOrientation.Vertical,
+            ScrollOrientation.Vertical => FsGen.ScrollOrientation.Vertical,
+            ScrollOrientation.Horizontal => FsGen.ScrollOrientation.Horizontal,
+            ScrollOrientation.Both => FsGen.ScrollOrientation.Both,
+            _ => FsGen.ScrollOrientation.Vertical,
         };
 
-    internal static FsTypes.MathDisplay ToFs(this MathDisplay d) =>
-        d == MathDisplay.Inline ? FsTypes.MathDisplay.Inline : FsTypes.MathDisplay.Block;
+    internal static FsGen.MathDisplay ToFs(this MathDisplay d) =>
+        d == MathDisplay.Inline ? FsGen.MathDisplay.Inline : FsGen.MathDisplay.Block;
 
-    internal static FsTypes.DateStyle ToFs(this DateStyle d) =>
+    internal static FsGen.DateStyle ToFs(this DateStyle d) =>
         d switch
         {
-            DateStyle.Short => FsTypes.DateStyle.Short,
-            DateStyle.Medium => FsTypes.DateStyle.Medium,
-            DateStyle.Long => FsTypes.DateStyle.Long,
-            DateStyle.Full => FsTypes.DateStyle.Full,
-            _ => FsTypes.DateStyle.Medium,
+            DateStyle.Short => FsGen.DateStyle.Short,
+            DateStyle.Medium => FsGen.DateStyle.Medium,
+            DateStyle.Long => FsGen.DateStyle.Long,
+            DateStyle.Full => FsGen.DateStyle.Full,
+            _ => FsGen.DateStyle.Medium,
         };
 
-    internal static FsTypes.RelativeTimeUnit ToFs(this RelativeTimeUnit u) =>
+    internal static FsGen.RelativeTimeUnit ToFs(this RelativeTimeUnit u) =>
         u switch
         {
-            RelativeTimeUnit.Second => FsTypes.RelativeTimeUnit.Second,
-            RelativeTimeUnit.Minute => FsTypes.RelativeTimeUnit.Minute,
-            RelativeTimeUnit.Hour => FsTypes.RelativeTimeUnit.Hour,
-            RelativeTimeUnit.Day => FsTypes.RelativeTimeUnit.Day,
-            RelativeTimeUnit.Week => FsTypes.RelativeTimeUnit.Week,
-            RelativeTimeUnit.Month => FsTypes.RelativeTimeUnit.Month,
-            RelativeTimeUnit.Year => FsTypes.RelativeTimeUnit.Year,
-            _ => FsTypes.RelativeTimeUnit.Day,
+            RelativeTimeUnit.Second => FsGen.RelativeTimeUnit.Second,
+            RelativeTimeUnit.Minute => FsGen.RelativeTimeUnit.Minute,
+            RelativeTimeUnit.Hour => FsGen.RelativeTimeUnit.Hour,
+            RelativeTimeUnit.Day => FsGen.RelativeTimeUnit.Day,
+            RelativeTimeUnit.Week => FsGen.RelativeTimeUnit.Week,
+            RelativeTimeUnit.Month => FsGen.RelativeTimeUnit.Month,
+            RelativeTimeUnit.Year => FsGen.RelativeTimeUnit.Year,
+            _ => FsGen.RelativeTimeUnit.Day,
         };
 
-    internal static FsTypes.ChartKind ToFs(this ChartKind k) =>
+    internal static FsGen.ChartKind ToFs(this ChartKind k) =>
         k switch
         {
-            ChartKind.Line => FsTypes.ChartKind.Line,
-            ChartKind.Bar => FsTypes.ChartKind.Bar,
-            ChartKind.Area => FsTypes.ChartKind.Area,
-            ChartKind.Pie => FsTypes.ChartKind.Pie,
-            ChartKind.Scatter => FsTypes.ChartKind.Scatter,
-            ChartKind.Heatmap => FsTypes.ChartKind.Heatmap,
-            _ => FsTypes.ChartKind.Line,
+            ChartKind.Line => FsGen.ChartKind.Line,
+            ChartKind.Bar => FsGen.ChartKind.Bar,
+            ChartKind.Area => FsGen.ChartKind.Area,
+            ChartKind.Pie => FsGen.ChartKind.Pie,
+            ChartKind.Scatter => FsGen.ChartKind.Scatter,
+            ChartKind.Heatmap => FsGen.ChartKind.Heatmap,
+            _ => FsGen.ChartKind.Line,
         };
 
-    internal static FsTypes.ToneVariant ToFs(this Tone t) =>
+    internal static FsGen.ToneVariant ToFs(this Tone t) =>
         t switch
         {
-            Tone.Default => FsTypes.ToneVariant.Default,
-            Tone.Subdued => FsTypes.ToneVariant.Subdued,
-            Tone.Brand => FsTypes.ToneVariant.Brand,
-            Tone.Success => FsTypes.ToneVariant.Success,
-            Tone.Warning => FsTypes.ToneVariant.Warning,
-            Tone.Critical => FsTypes.ToneVariant.Critical,
-            Tone.Info => FsTypes.ToneVariant.Info,
-            _ => FsTypes.ToneVariant.Default,
+            Tone.Default => FsGen.ToneVariant.Default,
+            Tone.Subdued => FsGen.ToneVariant.Subdued,
+            Tone.Brand => FsGen.ToneVariant.Brand,
+            Tone.Success => FsGen.ToneVariant.Success,
+            Tone.Warning => FsGen.ToneVariant.Warning,
+            Tone.Critical => FsGen.ToneVariant.Critical,
+            Tone.Info => FsGen.ToneVariant.Info,
+            _ => FsGen.ToneVariant.Default,
         };
 
-    internal static FsTypes.StyleWeight ToFs(this Weight w) =>
+    internal static FsGen.StyleWeight ToFs(this Weight w) =>
         w switch
         {
-            Weight.Compact => FsTypes.StyleWeight.Compact,
-            Weight.Standard => FsTypes.StyleWeight.Standard,
-            Weight.Spacious => FsTypes.StyleWeight.Spacious,
-            _ => FsTypes.StyleWeight.Standard,
+            Weight.Compact => FsGen.StyleWeight.Compact,
+            Weight.Standard => FsGen.StyleWeight.Standard,
+            Weight.Spacious => FsGen.StyleWeight.Spacious,
+            _ => FsGen.StyleWeight.Standard,
         };
 
-    internal static FsTypes.Emphasis ToFs(this Emphasis e) =>
+    internal static FsGen.Emphasis ToFs(this Emphasis e) =>
         e switch
         {
-            Emphasis.Quiet => FsTypes.Emphasis.Quiet,
-            Emphasis.Normal => FsTypes.Emphasis.Normal,
-            Emphasis.Loud => FsTypes.Emphasis.Loud,
-            _ => FsTypes.Emphasis.Normal,
+            Emphasis.Quiet => FsGen.Emphasis.Quiet,
+            Emphasis.Normal => FsGen.Emphasis.Normal,
+            Emphasis.Loud => FsGen.Emphasis.Loud,
+            _ => FsGen.Emphasis.Normal,
         };
 
-    internal static FsTypes.ButtonVariant ToFs(this ButtonVariant v) =>
+    internal static FsGen.ButtonVariant ToFs(this ButtonVariant v) =>
         v switch
         {
-            ButtonVariant.Primary => FsTypes.ButtonVariant.Primary,
-            ButtonVariant.Secondary => FsTypes.ButtonVariant.Secondary,
-            ButtonVariant.Tertiary => FsTypes.ButtonVariant.Tertiary,
-            ButtonVariant.Destructive => FsTypes.ButtonVariant.Destructive,
-            _ => FsTypes.ButtonVariant.Secondary,
+            ButtonVariant.Primary => FsGen.ButtonVariant.Primary,
+            ButtonVariant.Secondary => FsGen.ButtonVariant.Secondary,
+            ButtonVariant.Tertiary => FsGen.ButtonVariant.Tertiary,
+            ButtonVariant.Destructive => FsGen.ButtonVariant.Destructive,
+            _ => FsGen.ButtonVariant.Secondary,
         };
 
-    internal static FsTypes.BadgeVariant ToFs(this BadgeVariant v) =>
+    internal static FsGen.BadgeVariant ToFs(this BadgeVariant v) =>
         v switch
         {
-            BadgeVariant.Neutral => FsTypes.BadgeVariant.Neutral,
-            BadgeVariant.Brand => FsTypes.BadgeVariant.Brand,
-            BadgeVariant.Success => FsTypes.BadgeVariant.Success,
-            BadgeVariant.Warning => FsTypes.BadgeVariant.Warning,
-            BadgeVariant.Critical => FsTypes.BadgeVariant.Critical,
-            BadgeVariant.Info => FsTypes.BadgeVariant.Info,
-            _ => FsTypes.BadgeVariant.Neutral,
+            BadgeVariant.Neutral => FsGen.BadgeVariant.Neutral,
+            BadgeVariant.Brand => FsGen.BadgeVariant.Brand,
+            BadgeVariant.Success => FsGen.BadgeVariant.Success,
+            BadgeVariant.Warning => FsGen.BadgeVariant.Warning,
+            BadgeVariant.Critical => FsGen.BadgeVariant.Critical,
+            BadgeVariant.Info => FsGen.BadgeVariant.Info,
+            _ => FsGen.BadgeVariant.Neutral,
         };
 
-    internal static FsTypes.Orientation ToFs(this Orientation o) =>
-        o == Orientation.Horizontal ? FsTypes.Orientation.Horizontal : FsTypes.Orientation.Vertical;
+    internal static FsGen.Orientation ToFs(this Orientation o) =>
+        o == Orientation.Horizontal ? FsGen.Orientation.Horizontal : FsGen.Orientation.Vertical;
 
-    internal static FsTypes.HeadingVariant ToFs(this HeadingVariant v) =>
+    internal static FsGen.HeadingVariant ToFs(this HeadingVariant v) =>
         v switch
         {
-            HeadingVariant.Standard => FsTypes.HeadingVariant.Standard,
-            HeadingVariant.Eyebrow => FsTypes.HeadingVariant.Eyebrow,
-            HeadingVariant.Caption => FsTypes.HeadingVariant.Caption,
-            HeadingVariant.Lead => FsTypes.HeadingVariant.Lead,
-            _ => FsTypes.HeadingVariant.Standard,
+            HeadingVariant.Standard => FsGen.HeadingVariant.Standard,
+            HeadingVariant.Eyebrow => FsGen.HeadingVariant.Eyebrow,
+            HeadingVariant.Caption => FsGen.HeadingVariant.Caption,
+            HeadingVariant.Lead => FsGen.HeadingVariant.Lead,
+            _ => FsGen.HeadingVariant.Standard,
         };
 }

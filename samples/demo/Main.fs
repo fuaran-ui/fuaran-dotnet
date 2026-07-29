@@ -173,21 +173,21 @@ let private canonicalSection (model: Model) : Node<Msg> =
 
 // ─── Showcase of session-3b components ────────────────────────────────────
 
-let private contributorOptions =
+let private contributorOptions: SelectOption list =
     [ { Value = "buyer-peer"
-        Label = TextSource.Literal "Buyer peer" }
+        Label = "Buyer peer" }
       { Value = "seller-peer"
-        Label = TextSource.Literal "Seller peer" }
+        Label = "Seller peer" }
       { Value = "portal-peer"
-        Label = TextSource.Literal "Portal peer" } ]
+        Label = "Portal peer" } ]
 
-let private categoryOptions =
+let private categoryOptions: SelectOption list =
     [ { Value = "audience"
-        Label = TextSource.Literal "Audience" }
+        Label = "Audience" }
       { Value = "performance"
-        Label = TextSource.Literal "Performance" }
+        Label = "Performance" }
       { Value = "attribution"
-        Label = TextSource.Literal "Attribution" } ]
+        Label = "Attribution" } ]
 
 let private session3bShowcase (model: Model) : Node<Msg> =
     Fuaran.dashboard
@@ -204,9 +204,9 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                       [ { Defaults.filter<Msg> with
                             Name = "text-filter"
                             Label = TextSource.Literal "Search channels"
-                            Field =
+                            Kind =
                                 FormFieldKind.Text(
-                                    binding.state "textFilter" "",
+                                    Some(binding.state "textFilter" ""),
                                     Some(fun v -> Action.dispatch (SetTextFilter v))
                                 ) } ]
 
@@ -214,8 +214,8 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                       "contributor-peer"
                       { Defaults.select<Msg> with
                           Label = TextSource.Literal "Contributor peer"
-                          Source = Binding.Static contributorOptions
-                          Value = binding.state "contributorPick" None
+                          Source = Binding.Static(Some contributorOptions)
+                          Value = binding.stateNoDefault "contributorPick"
                           OnChange = Some(fun v -> Action.dispatch (PickContributor v))
                           Placeholder = Some(TextSource.Literal "Choose a peer…") }
                   |> Node.onEmpty (Fuaran.markdown "no-contributors" "No Contributor peers configured.")
@@ -238,7 +238,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                                                   Required = true
                                                   Kind =
                                                       FormFieldKind.Text(
-                                                          binding.state "formText" "",
+                                                          Some(binding.state "formText" ""),
                                                           Some(fun v -> Action.dispatch (SetFormText v))
                                                       ) }
                                               { Defaults.formField<Msg> with
@@ -246,8 +246,8 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                                                   Label = TextSource.Literal "Category"
                                                   Kind =
                                                       FormFieldKind.Choice(
-                                                          Binding.Static categoryOptions,
-                                                          binding.state "formChoice" None,
+                                                          Binding.Static(Some categoryOptions),
+                                                          Some(binding.stateNoDefault "formChoice"),
                                                           Some(fun v -> Action.dispatch (SetFormChoice v))
                                                       )
                                                   Help = Some(TextSource.Literal "Pick the dominant cohort dimension.") } ] }
@@ -292,7 +292,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                   Fuaran.tabs
                       "showcase-tabs"
                       { Defaults.tabs<Msg> with
-                          Orientation = Horizontal
+                          Orientation = Orientation.Horizontal
                           Children =
                               [ Fuaran.card
                                     "tab-overview"
@@ -325,7 +325,7 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                           Label = TextSource.Literal "Upload fitted-parameters file"
                           Accept = [ ".csv"; ".json" ]
                           Multiple = false
-                          OnSelect = (fun files -> Action.dispatch (FilesSelected files)) }
+                          OnSelect = Some(fun files -> Action.dispatch (FilesSelected files)) }
 
                   // Chart (falls back to labelled placeholder — no AG Charts adapter wired)
                   Fuaran.chart
@@ -357,19 +357,18 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                                   TextSource.Literal "Beta" ] ] }
 
                   // Map placeholder
+                  let mapMarkers: MapMarker list =
+                      [ { Latitude = 51.5074
+                          Longitude = -0.1278
+                          Label = "London" }
+                        { Latitude = 40.7128
+                          Longitude = -74.006
+                          Label = "New York" } ]
+
                   Fuaran.map
                       "showcase-map"
                       { Defaults.map<Msg> with
-                          Source =
-                              Binding.Static(
-                                  [ { Latitude = 51.5074
-                                      Longitude = -0.1278
-                                      Label = TextSource.Literal "London" }
-                                    { Latitude = 40.7128
-                                      Longitude = -74.006
-                                      Label = TextSource.Literal "New York" } ]
-                                  :> MapMarker seq
-                              )
+                          Source = Binding.Static(Some mapMarkers)
                           CentreLatitude = 30.0
                           CentreLongitude = -30.0
                           Zoom = 3 } ] }

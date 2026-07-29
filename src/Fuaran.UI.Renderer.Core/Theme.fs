@@ -206,11 +206,11 @@ let kindClass (kind: NodeKind<'Msg>) : string =
     | NodeKind.DataGrid(_) -> "fuaran-kind-grid"
     | NodeKind.Chart(_) -> "fuaran-kind-chart"
     | NodeKind.Map(_) -> "fuaran-kind-map"
-    | NodeKind.Custom(moduleId, componentId, _, _, _) ->
+    | NodeKind.Custom(spec) ->
         sprintf
             "fuaran-kind-custom fuaran-custom-%s-%s"
-            (sanitiseClassFragment moduleId)
-            (sanitiseClassFragment componentId)
+            (sanitiseClassFragment spec.ModuleId)
+            (sanitiseClassFragment spec.ComponentId)
     | NodeKind.FragmentDecl _ ->
         // The decl itself renders nothing visible
         // (the body is the *template*); the class hook lets consumers

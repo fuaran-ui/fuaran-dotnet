@@ -67,7 +67,12 @@ type FragmentSignature =
       Effect: EffectClass }
 
 module Fragment =
-    let private rawName (FragmentId s) : string = s
+    // Since the swap the generated `FragmentDeclSpec` carries `Holes` /
+    // `Effect` as OPTIONS (`None` ≡ the old `[]` / pure-deterministic
+    // degenerate shape) and `Name` as a bare string — the laws below
+    // materialise the degenerate defaults locally so their surface types are
+    // unchanged.
+    let private holesOf (pf: ParamFragment<'Msg>) : HoleDecl list = pf.Holes |> Option.defaultValue []
 
     let private entryOf (h: HoleDecl) : HoleSignatureEntry =
         match h with
@@ -89,24 +94,24 @@ module Fragment =
 
     /// Derive the signature (Phase 182 projects this into the tool catalogue).
     let signature (pf: ParamFragment<'Msg>) : FragmentSignature =
-        { Name = rawName pf.Name
-          Holes = pf.Holes |> List.map entryOf
-          Effect = pf.Effect }
+        { Name = pf.Name
+          Holes = holesOf pf |> List.map entryOf
+          Effect = pf.Effect |> Option.defaultValue EffectClass.pureDeterministic }
 
     /// TOTALITY (invariant 1) over the whole fragment: every `Repeat` hole's
     /// count value-space is bounded.
     let isTotal (pf: ParamFragment<'Msg>) : bool =
-        pf.Holes |> List.forall HoleDecl.isTotal
+        holesOf pf |> List.forall HoleDecl.isTotal
 
     /// The required (no-default) holes that a COMPLETE application must bind.
     let requiredHoles (pf: ParamFragment<'Msg>) : string list =
-        pf.Holes |> List.filter HoleDecl.isRequired |> List.map HoleDecl.name
+        holesOf pf |> List.filter HoleDecl.isRequired |> List.map HoleDecl.name
 
     /// Validate a value argument against the named hole's value-space. A slot /
     /// repeat hole is not value-validatable here (the renderer-side apply binds
     /// its subtree); an unknown hole is a defect.
     let validateValueArg (pf: ParamFragment<'Msg>) (holeName: string) (arg: obj) : Result<obj, string> =
-        match pf.Holes |> List.tryFind (fun h -> HoleDecl.name h = holeName) with
+        match holesOf pf |> List.tryFind (fun h -> HoleDecl.name h = holeName) with
         | Some(HoleDecl.Value(_, space, _)) -> HoleValueSpace.validate space arg
         | Some(HoleDecl.Repeat(_, space)) -> HoleValueSpace.validate space arg
         | Some(HoleDecl.Slot _) -> Error(sprintf "hole '%s' is a tree slot, not a value" holeName)
@@ -126,7 +131,19 @@ module Fragment =
                 match h with
                 | HoleDecl.Value(n, space, _) when Map.containsKey n boundValues ->
                     match HoleValueSpace.validate space (Map.find n boundValues) with
-                    | Ok v -> go rest (HoleDecl.Value(n, space, Some v) :: acc)
+                    | Ok v ->
+                        // The default slot is a typed `Scalar` since the swap; the
+                        // validated arg is one of the scalar shapes `validate`
+                        // admits (int/float/string — bool for completeness).
+                        let scalar =
+                            match v with
+                            | :? int as i -> Some(Scalar.Int i)
+                            | :? float as fl -> Some(Scalar.Float fl)
+                            | :? bool as b -> Some(Scalar.Bool b)
+                            | :? string as s -> Some(Scalar.Str s)
+                            | _ -> None
+
+                        go rest (HoleDecl.Value(n, space, scalar) :: acc)
                     | Error e -> Error(sprintf "binding '%s': %s" n e)
                 | _ -> go rest (h :: acc)
 
@@ -135,10 +152,16 @@ module Fragment =
             boundValues
             |> Map.toList
             |> List.tryFind (fun (n, _) ->
-                match pf.Holes |> List.tryFind (fun h -> HoleDecl.name h = n) with
+                match holesOf pf |> List.tryFind (fun h -> HoleDecl.name h = n) with
                 | Some(HoleDecl.Value _) -> false
                 | _ -> true)
 
         match badName with
         | Some(n, _) -> Error(sprintf "'%s' is not a value hole" n)
-        | None -> go pf.Holes [] |> Result.map (fun holes -> { pf with Holes = holes })
+        | None ->
+            go (holesOf pf) []
+            |> Result.map (fun holes ->
+                { pf with
+                    // Preserve the degenerate wire shape: an empty hole list
+                    // stays `None` (omitted), never `Some []`.
+                    Holes = (if List.isEmpty holes then Option.None else Some holes) })

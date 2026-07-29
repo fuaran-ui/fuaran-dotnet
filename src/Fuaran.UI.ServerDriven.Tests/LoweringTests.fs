@@ -18,7 +18,7 @@ open Fuaran.UI.ServerDriven
 /// Stub renderer — emits a marker carrying the node id so tests can assert
 /// "the right node was rendered" without a real HTML renderer.
 let private stubRender (n: Node<obj>) : string =
-    let (NodeId s) = n.Id
+    let s = n.Id
     $"<f id='{s}'/>"
 
 let private dash (children: Node<obj> list) : Node<obj> =

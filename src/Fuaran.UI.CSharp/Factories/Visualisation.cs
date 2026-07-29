@@ -4,7 +4,8 @@ using System.Linq;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsColumn = global::Fuaran.UI.Column;
 using FsTypes = Fuaran.UI.Types;
-using FsAction = Fuaran.UI.Types.Action<object>;
+using FsGen = Fuaran.UI.Generated;
+using FsAction = Fuaran.UI.Generated.Action<object>;
 
 namespace Fuaran.UI.CSharp;
 
@@ -17,14 +18,17 @@ public static partial class Fuaran
     public static FuaranNode Chart(ChartOptions options) =>
         new(FsFactory.chart<object>(
             options.Id,
-            new FsTypes.ChartSpec<object>(
-                (options.Source ?? Binding.Static(Enumerable.Empty<object>())).Inner,
+            // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
+            // Source, Stacked, XField, YFields, Title, OnPointClick), not the old
+            // Source-first hand order.
+            new FsGen.ChartSpec<object>(
                 options.Kind.ToFs(),
+                (options.Source ?? Binding.Static(Enumerable.Empty<object>())).Inner,
+                options.Stacked,
                 options.XField,
                 Fs.List(options.YFields ?? Enumerable.Empty<string>()),
-                options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsTypes.TextSource>(),
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<object, FsAction>>(),
-                options.Stacked)));
+                options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsGen.TextSource>(),
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<object, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>
     public static FuaranNode Table(TableOptions options) =>
@@ -40,14 +44,20 @@ public static partial class Fuaran
     public static FuaranNode Map(MapOptions options) =>
         new(FsFactory.map<object>(
             options.Id,
-            new FsTypes.MapSpec<object>(
-                FsTypes.Binding<IEnumerable<FsTypes.MapMarker>>.NewStatic(
-                    (options.Markers ?? Enumerable.Empty<(double, double, string)>())
-                        .Select(m => new FsTypes.MapMarker(m.Item1, m.Item2, FsTypes.TextSource.NewLiteral(m.Item3)))),
+            // Generated MapSpec ctor is Generated.fs declaration order (CentreLatitude,
+            // CentreLongitude, Source, Zoom, OnMarkerClick), not the old Source-first
+            // hand order; Source now binds an F# `MapMarker list`.
+            new FsGen.MapSpec<object>(
                 options.CentreLatitude,
                 options.CentreLongitude,
+                global::Fuaran.UI.Generated.Binding<Microsoft.FSharp.Collections.FSharpList<FsGen.MapMarker>>.NewStatic(
+                    Fs.Some(
+                        Fs.List(
+                            (options.Markers ?? Enumerable.Empty<(double, double, string)>())
+                                // Generated MapMarker declares (Label, Latitude, Longitude); Label is a bare string.
+                                .Select(m => new FsGen.MapMarker(m.Item3, m.Item1, m.Item2))))),
                 options.Zoom,
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsTypes.MapMarker, FsAction>>())));
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsGen.MapMarker, FsAction>>())));
 
     /// <summary>A data-bound grid over rows of type <typeparamref name="TRow"/>.</summary>
     public static FuaranNode DataGrid<TRow>(DataGridOptions<TRow> options) =>

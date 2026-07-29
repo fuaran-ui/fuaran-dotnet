@@ -1,7 +1,8 @@
 using System.Collections.Generic;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
-using FsAction = Fuaran.UI.Types.Action<object>;
+using FsGen = Fuaran.UI.Generated;
+using FsAction = Fuaran.UI.Generated.Action<object>;
 
 namespace Fuaran.UI.CSharp;
 
@@ -21,65 +22,91 @@ public static partial class Fuaran
     public static FuaranNode SplitPanel(SplitPanelOptions options) =>
         new(FsFactory.splitPanel<object>(
             options.Id,
-            new FsTypes.SplitPanelSpec<object>(options.Weight, Kids(options.Children))));
+            // Generated SplitPanelSpec ctor is Generated.fs declaration order
+            // (Children, Weight), not the old Weight-first hand order.
+            new FsGen.SplitPanelSpec<object>(Kids(options.Children), options.Weight)));
 
     /// <summary>A tab group. The active tab is driven by <c>ActiveIndex</c> (a bound value that rides the wire).</summary>
     public static FuaranNode Tabs(TabsOptions options) =>
         new(FsFactory.tabs<object>(
             options.Id,
-            new FsTypes.TabsSpec<object>(
-                options.Orientation.ToFs(),
-                Kids(options.Children),
+            // Generated TabsSpec ctor is Generated.fs declaration order (ActiveIndex,
+            // Children, Orientation, OnSelect, OnSelectTag, TabHeaders, TabTags,
+            // ActiveTag), not the old hand order. `OnSelect = None` since the swap —
+            // ≡ the old no-op handler (Phase 426: a bound ActiveIndex gets the
+            // clicked index written back by the renderer).
+            new FsGen.TabsSpec<object>(
                 (options.ActiveIndex ?? 0).Inner,
-                NoHandler<int>(),
-                Fs.None<Microsoft.FSharp.Collections.FSharpList<FsTypes.TabHeader>>(),
+                Kids(options.Children),
+                options.Orientation.ToFs(),
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<int, FsAction>>(),
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<string, FsAction>>(),
+                Fs.None<Microsoft.FSharp.Collections.FSharpList<FsGen.TabHeader>>(),
                 Fs.None<Microsoft.FSharp.Collections.FSharpList<string>>(),
-                Fs.None<FsTypes.Binding<string>>(),
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<string, FsAction>>())));
+                Fs.None<global::Fuaran.UI.Generated.Binding<string>>())));
 
     /// <summary>A stepper. The active step is driven by <c>ActiveStep</c>.</summary>
     public static FuaranNode Stepper(StepperOptions options) =>
         new(FsFactory.stepper<object>(
             options.Id,
-            new FsTypes.StepperSpec<object>((options.ActiveStep ?? 0).Inner, Kids(options.Children), NoHandler<int>())));
+            // Generated StepperSpec ctor order (ActiveStep, Children, OnSelect)
+            // matches the old hand order; OnSelect is newly optional (None ≡ the
+            // old no-op handler).
+            new FsGen.StepperSpec<object>(
+                (options.ActiveStep ?? 0).Inner,
+                Kids(options.Children),
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<int, FsAction>>())));
 
     /// <summary>A single-card list of label/value rows.</summary>
     public static FuaranNode SummaryList(SummaryListOptions options) =>
         new(FsFactory.summaryList<object>(
             options.Id,
-            new FsTypes.SummaryListSpec<object>(
-                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>(),
-                Kids(options.Children))));
+            // Generated SummaryListSpec ctor is Generated.fs declaration order
+            // (Children, Heading), not the old Heading-first hand order.
+            new FsGen.SummaryListSpec<object>(
+                Kids(options.Children),
+                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>A collapsible disclosure (<c>&lt;details&gt;</c>).</summary>
     public static FuaranNode Disclosure(DisclosureOptions options) =>
         new(FsFactory.disclosure<object>(
             options.Id,
-            new FsTypes.DisclosureSpec<object>(
-                options.Heading.Inner,
-                (options.Open ?? false).Inner,
-                Fs.Func<bool, FsAction>(_ => NoAction),
+            // Generated DisclosureSpec ctor is Generated.fs declaration order
+            // (Children, DefaultOpen, Heading, OnToggle, Open), not the old hand
+            // order. `OnToggle = None` since the swap — ≡ the old no-op handler
+            // (Phase 426: a bound Open gets the new value written back).
+            new FsGen.DisclosureSpec<object>(
                 Kids(options.Children),
-                options.DefaultOpen)));
+                options.DefaultOpen,
+                options.Heading.Inner,
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<bool, FsAction>>(),
+                (options.Open ?? false).Inner)));
 
     /// <summary>An out-of-flow modal dialog.</summary>
     public static FuaranNode Modal(ModalOptions options) =>
         new(FsFactory.modal<object>(
             options.Id,
-            new FsTypes.ModalSpec<object>(
-                (options.Open ?? false).Inner,
-                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>(),
-                options.Dismissable,
+            // Generated ModalSpec ctor is Generated.fs declaration order (Children,
+            // Dismissable, OnDismiss, Open, Heading), not the old hand order.
+            // `OnDismiss = None` since the swap — ≡ the old no-op action (Phase 426:
+            // a bound Open gets false written back on dismiss).
+            new FsGen.ModalSpec<object>(
                 Kids(options.Children),
-                NoAction)));
+                options.Dismissable,
+                Fs.None<FsAction>(),
+                (options.Open ?? false).Inner,
+                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>An overflow / scroll container.</summary>
     public static FuaranNode ScrollArea(ScrollAreaOptions options) =>
         new(FsFactory.scrollArea<object>(
             options.Id,
-            new FsTypes.ScrollAreaSpec<object>(
-                options.Orientation.ToFs(),
+            // Generated ScrollAreaSpec ctor is Generated.fs declaration order
+            // (Children, Orientation, MaxHeight, MaxWidth), not the old
+            // Orientation-first hand order.
+            new FsGen.ScrollAreaSpec<object>(
                 Kids(options.Children),
+                options.Orientation.ToFs(),
                 Fs.OfNullable(options.MaxHeight),
                 Fs.OfNullable(options.MaxWidth))));
 }

@@ -34,7 +34,13 @@ let private pipeline: Fuaran.Core.Transform list =
     [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "dept")) ]
 
 let private transformBinding: Binding<obj seq> =
-    Binding.Transform(table, pipeline, [ "dept", Binding.Filter("dept", None) ])
+    Binding.Transform(
+        table,
+        pipeline,
+        Some
+            [ { From = Binding.Filter("dept", None)
+                Name = "dept" } ]
+    )
 
 let private rowCount (sources: BindingResolver.BindingSources) : int =
     match BindingResolver.resolve sources transformBinding with

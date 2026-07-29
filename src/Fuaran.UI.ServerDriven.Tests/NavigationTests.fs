@@ -57,7 +57,7 @@ let private resolver: RouteResolver<Msg> =
 let private view (_: Model) : Node<Msg> = homeTree
 
 let private stubRender (n: Node<Msg>) : string =
-    let (NodeId s) = n.Id
+    let s = n.Id
     $"<f id='{s}'/>"
 
 let private canon (n: Node<Msg>) : string = CanonicalJson.encodeNode n

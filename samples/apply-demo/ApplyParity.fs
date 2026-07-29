@@ -59,10 +59,10 @@ let baseTree: Node<obj> =
                                     "metric-1"
                                     { Defaults.metric with
                                         Label = TextSource.Literal "Revenue"
-                                        Value = Binding.Static 1234.5
+                                        Value = Binding.Static(Some 1234.5)
                                         Format = format.currency "GBP"
                                         Tone = ToneVariant.Brand
-                                        Trend = Some(Binding.Static 0.07)
+                                        Trend = Some(Binding.Static(Some 0.07))
                                         TrendFormat = Some(format.percent (Some 1)) }
                                 Fuaran.markdown "markdown-1" "hello" ] }
                   Fuaran.card "card-1" { Defaults.card with Children = [] }

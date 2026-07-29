@@ -139,7 +139,7 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     | NodeKind.DataGrid _ -> [ "Source"; "Columns"; "Editable"; "RowKeyField" ]
     | NodeKind.Chart _ -> [ "Source"; "Kind"; "XField"; "YFields"; "Title"; "Stacked" ]
     | NodeKind.Map _ -> [ "Source"; "CentreLatitude"; "CentreLongitude"; "Zoom" ]
-    | NodeKind.Custom(_, _, _, _, _) -> []
+    | NodeKind.Custom _ -> []
     // ErrorBoundary carries `Child` + `Fallback`
     // as Node subtrees; the AI should swap them via EditNode rather
     // than edit individual fields through this engine. Keep the surface
@@ -310,16 +310,21 @@ let withChildren (kind: NodeKind<'Msg>) (children: Node<'Msg> list) : NodeKind<'
 // so there is no node to enumerate until it is applied.
 
 let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg> list -> Node<'Msg>) =
+    // `Node.State` is an option since the swap — an absent envelope has no
+    // slots to enumerate, and the rebuild writes back through the same option.
+    let onLoading = node.State |> Option.bind _.OnLoading
+    let onEmpty = node.State |> Option.bind _.OnEmpty
+
     let stateSlots =
-        [ match node.State.OnLoading with
+        [ match onLoading with
           | Some n -> n
           | None -> ()
-          match node.State.OnEmpty with
+          match onEmpty with
           | Some n -> n
           | None -> () ]
 
-    let hasLoading = node.State.OnLoading.IsSome
-    let hasEmpty = node.State.OnEmpty.IsSome
+    let hasLoading = onLoading.IsSome
+    let hasEmpty = onEmpty.IsSome
 
     let putState (replacements: Node<'Msg> list) (rest: Node<'Msg> list) =
         let loading, afterLoading =
@@ -336,22 +341,24 @@ let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg
 
         { node with
             State =
-                { node.State with
-                    OnLoading = loading
-                    OnEmpty = empty } },
+                node.State
+                |> Option.map (fun s ->
+                    { s with
+                        OnLoading = loading
+                        OnEmpty = empty }) },
         rest
 
     // Kind-held nodes, in a fixed order the rebuild mirrors exactly.
     let kindSlots, putKind =
         match node.Kind with
         | NodeKind.Switch spec ->
-            let caseNodes = spec.Cases |> List.map snd
+            let caseNodes = spec.Cases |> List.map _.Child
 
             caseNodes @ [ spec.Default ],
             fun (rs: Node<'Msg> list) ->
                 let cases =
                     List.zip spec.Cases (List.truncate spec.Cases.Length rs)
-                    |> List.map (fun ((m, _), replaced) -> m, replaced)
+                    |> List.map (fun (c, replaced) -> { c with Child = replaced })
 
                 NodeKind.Switch
                     { spec with
@@ -365,37 +372,47 @@ let private nonStructuralSlots (node: Node<'Msg>) : Node<'Msg> list * (Node<'Msg
                         Child = rs[0]
                         Fallback = rs[1] }
         | NodeKind.FragmentRef spec ->
+            let argMap = spec.Args |> Option.defaultValue Map.empty
+
             let keyed =
-                spec.Args
+                argMap
                 |> Map.toList
                 |> List.choose (fun (k, v) ->
                     match v with
-                    | FragmentArg.Slot n -> Some(k, n)
+                    | FragmentArg.SlotArg n -> Some(k, n)
                     | _ -> None)
 
             keyed |> List.map snd,
             fun (rs: Node<'Msg> list) ->
                 let args =
                     List.zip keyed rs
-                    |> List.fold (fun acc ((k, _), replaced) -> Map.add k (FragmentArg.Slot replaced) acc) spec.Args
+                    |> List.fold (fun acc ((k, _), replaced) -> Map.add k (FragmentArg.SlotArg replaced) acc) argMap
 
-                NodeKind.FragmentRef { spec with Args = args }
+                // An absent/empty arg bag stays `None` (omitted on the wire).
+                NodeKind.FragmentRef
+                    { spec with
+                        Args = (if Map.isEmpty args then None else Some args) }
         | NodeKind.Mount spec ->
+            let inputMap = spec.Inputs |> Option.defaultValue Map.empty
+
             let keyed =
-                spec.Inputs
+                inputMap
                 |> Map.toList
                 |> List.choose (fun (k, v) ->
                     match v with
-                    | FragmentArg.Slot n -> Some(k, n)
+                    | FragmentArg.SlotArg n -> Some(k, n)
                     | _ -> None)
 
             keyed |> List.map snd,
             fun (rs: Node<'Msg> list) ->
                 let inputs =
                     List.zip keyed rs
-                    |> List.fold (fun acc ((k, _), replaced) -> Map.add k (FragmentArg.Slot replaced) acc) spec.Inputs
+                    |> List.fold (fun acc ((k, _), replaced) -> Map.add k (FragmentArg.SlotArg replaced) acc) inputMap
 
-                NodeKind.Mount { spec with Inputs = inputs }
+                // An absent/empty input bag stays `None` (omitted on the wire).
+                NodeKind.Mount
+                    { spec with
+                        Inputs = (if Map.isEmpty inputs then None else Some inputs) }
         | _ -> [], (fun _ -> node.Kind)
 
     let all = stateSlots @ kindSlots
@@ -423,7 +440,11 @@ let descendantNodes (node: Node<'Msg>) : Node<'Msg> list =
     structural @ nonStructural
 
 let rec findNode (target: NodeId) (node: Node<'Msg>) : Node<'Msg> option =
-    if node.Id = target then
+    // The op layer addresses by `NodeId`; `Node.Id` is a bare string since the
+    // swap — unwrap at the comparison.
+    let (NodeId targetRaw) = target
+
+    if node.Id = targetRaw then
         Some node
     else
         descendantNodes node |> List.tryPick (findNode target)
@@ -432,11 +453,13 @@ let rec findNode (target: NodeId) (node: Node<'Msg>) : Node<'Msg> option =
 /// reachable from `root`. Returns `None` for the root itself, or for a target
 /// not present in the tree.
 let findParent (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
+    let (NodeId targetRaw) = target
+
     let rec walk (node: Node<'Msg>) =
         match getChildren node.Kind with
         | None -> None
         | Some children ->
-            match children |> List.tryFindIndex (fun c -> c.Id = target) with
+            match children |> List.tryFindIndex (fun c -> c.Id = targetRaw) with
             | Some idx -> Some(node, idx)
             | None -> children |> List.tryPick walk
 
@@ -445,13 +468,13 @@ let findParent (target: NodeId) (root: Node<'Msg>) : (Node<'Msg> * int) option =
 let rec allNodeIds (node: Node<'Msg>) : NodeId list =
     // `descendantNodes`, not `getChildren`: id enumeration must see the WHOLE
     // tree, including nodes held in positions the structural ops cannot edit.
-    node.Id :: (descendantNodes node |> List.collect allNodeIds)
+    NodeId node.Id :: (descendantNodes node |> List.collect allNodeIds)
 
 /// DFS-add every NodeId in `node`'s subtree to `acc`. No intermediate list —
 /// the membership-probe path (firstSharedId) wants a HashSet, not a list it
 /// would immediately fold into a Set.
 let rec collectNodeIdsInto (acc: HashSet<NodeId>) (node: Node<'Msg>) : unit =
-    acc.Add node.Id |> ignore
+    acc.Add(NodeId node.Id) |> ignore
 
     for c in descendantNodes node do
         collectNodeIdsInto acc c
@@ -468,8 +491,8 @@ let firstSharedId (root: Node<'Msg>) (incoming: Node<'Msg>) : NodeId option =
     collectNodeIdsInto existing root
 
     let rec findIn (node: Node<'Msg>) : NodeId option =
-        if existing.Contains node.Id then
-            Some node.Id
+        if existing.Contains(NodeId node.Id) then
+            Some(NodeId node.Id)
         else
             match getChildren node.Kind with
             | None -> None
@@ -485,7 +508,7 @@ let nodesWithField (field: string) (root: Node<'Msg>) : NodeId list =
     let rec walk (node: Node<'Msg>) =
         let here =
             if availableFields node.Kind |> List.contains field then
-                [ node.Id ]
+                [ NodeId node.Id ]
             else
                 []
 
@@ -506,7 +529,7 @@ let nodesWithField (field: string) (root: Node<'Msg>) : NodeId list =
 /// place (EditNode / UpdateProp / ReplaceBinding / UpdateStyle /
 /// UpdateState).
 let rec mapNode (target: NodeId) (replace: Node<'Msg> -> Node<'Msg>) (node: Node<'Msg>) : Node<'Msg> option =
-    if node.Id = target then
+    if NodeId node.Id = target then
         Some(replace node)
     else
         // Structural children first, then the non-list positions. Both are
@@ -562,7 +585,7 @@ let mapParentOf
         match getChildren node.Kind with
         | None -> None
         | Some children ->
-            if children |> List.exists (fun c -> c.Id = target) then
+            if children |> List.exists (fun c -> NodeId c.Id = target) then
                 match withChildren node.Kind (replaceChildren children) with
                 | Some newKind -> Some { node with Kind = newKind }
                 | None -> None
@@ -596,7 +619,168 @@ let isAncestorOf (ancestorId: NodeId) (descendantId: NodeId) (root: Node<'Msg>) 
     match findNode ancestorId root with
     | None -> false
     | Some ancestor ->
-        if ancestor.Id = descendantId then
+        if NodeId ancestor.Id = descendantId then
             true
         else
             allNodeIds ancestor |> List.contains descendantId
+
+// ─── §16 canonical-form projection (Phase 694) ─────────────────────────────
+//
+// The policy half the retired hand-written encoder carried inline: the
+// canonical wire spells three things as ABSENCE that the type system can also
+// spell explicitly — a control value that is exactly its context's Phase 596
+// auto-binding (`State(field id, typed placeholder)` on a form field,
+// `Filter(name, None)` on a chip), an all-default `SemanticStyle`, and an
+// all-`None` `StateBehaviour`. `canonicalForm` rewrites a tree into that
+// canonical shape so the structural (generated) encoder emits canonical bytes;
+// the tier's policy encoder (`CanonicalJson.encodeNode`) applies it, and
+// `JsonDecode`'s decode-side collapses mirror it. It lives HERE because the
+// traversal reuses this module's kind-complete lens — no second per-kind walk.
+
+let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
+    // A value slot that spells the field's exact auto-binding collapses to
+    // `None` (the canonical omitted form). Any other value passes through.
+    let collapse (expected: 'v option) (value: Binding<'v> option) : Binding<'v> option =
+        match value with
+        | Some(Binding.State(key, dv)) when key = field.Id && dv = expected -> None
+        | v -> v
+
+    let kind =
+        match field.Kind with
+        | FormFieldKind.Text(value, oc) ->
+            FormFieldKind.Text(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.text) value, oc)
+        | FormFieldKind.Number(value, oc) ->
+            FormFieldKind.Number(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.number) value, oc)
+        | FormFieldKind.Checkbox(value, ot) ->
+            FormFieldKind.Checkbox(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) value, ot)
+        | FormFieldKind.Choice(options, value, oc) ->
+            FormFieldKind.Choice(options, collapse Fuaran.UI.Defaults.ControlValueDefaults.choice value, oc)
+        | FormFieldKind.TextArea(value, oc, rows) ->
+            FormFieldKind.TextArea(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.text) value, oc, rows)
+        | FormFieldKind.RangedNumber(value, oc, mn, mx, st) ->
+            FormFieldKind.RangedNumber(
+                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.number) value,
+                oc,
+                mn,
+                mx,
+                st
+            )
+        | FormFieldKind.Range(value, oc, mn, mx, st) ->
+            FormFieldKind.Range(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.range) value, oc, mn, mx, st)
+        | FormFieldKind.SegmentedChoice(options, value, oc, orientation) ->
+            FormFieldKind.SegmentedChoice(
+                options,
+                collapse Fuaran.UI.Defaults.ControlValueDefaults.choice value,
+                oc,
+                orientation
+            )
+        | FormFieldKind.Date(value, oc, variant, mn, mx, st) ->
+            FormFieldKind.Date(
+                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.date) value,
+                oc,
+                variant,
+                mn,
+                mx,
+                st
+            )
+        | FormFieldKind.DateRange(value, oc, variant, mn, mx, st) ->
+            FormFieldKind.DateRange(
+                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.dateRange) value,
+                oc,
+                variant,
+                mn,
+                mx,
+                st
+            )
+
+    { field with Kind = kind }
+
+and private canonicalFilterItem (item: FilterSpec<'Msg>) : FilterSpec<'Msg> =
+    // A chip value that spells the chip's own auto-binding collapses to `None`.
+    let collapse (value: Binding<'v> option) : Binding<'v> option =
+        match value with
+        | Some(Binding.Filter(name, None)) when name = item.Name -> None
+        | v -> v
+
+    let kind =
+        match item.Kind with
+        | FormFieldKind.Text(value, oc) -> FormFieldKind.Text(collapse value, oc)
+        | FormFieldKind.Number(value, oc) -> FormFieldKind.Number(collapse value, oc)
+        | FormFieldKind.Checkbox(value, ot) -> FormFieldKind.Checkbox(collapse value, ot)
+        | FormFieldKind.Choice(options, value, oc) -> FormFieldKind.Choice(options, collapse value, oc)
+        | FormFieldKind.TextArea(value, oc, rows) -> FormFieldKind.TextArea(collapse value, oc, rows)
+        | FormFieldKind.RangedNumber(value, oc, mn, mx, st) ->
+            FormFieldKind.RangedNumber(collapse value, oc, mn, mx, st)
+        | FormFieldKind.Range(value, oc, mn, mx, st) -> FormFieldKind.Range(collapse value, oc, mn, mx, st)
+        | FormFieldKind.SegmentedChoice(options, value, oc, orientation) ->
+            FormFieldKind.SegmentedChoice(options, collapse value, oc, orientation)
+        | FormFieldKind.Date(value, oc, variant, mn, mx, st) ->
+            FormFieldKind.Date(collapse value, oc, variant, mn, mx, st)
+        | FormFieldKind.DateRange(value, oc, variant, mn, mx, st) ->
+            FormFieldKind.DateRange(collapse value, oc, variant, mn, mx, st)
+
+    { item with Kind = kind }
+
+/// Rewrite a whole tree into §16 canonical form. Identity on trees that are
+/// already canonical (every decoded tree is, since the decode-side collapses).
+and canonicalForm (node: Node<'Msg>) : Node<'Msg> =
+    // Kind-level value-slot collapses.
+    let kind =
+        match node.Kind with
+        | NodeKind.Form spec ->
+            NodeKind.Form
+                { spec with
+                    Fields = spec.Fields |> List.map canonicalFormField }
+        | NodeKind.Filters spec ->
+            NodeKind.Filters
+                { spec with
+                    Items = spec.Items |> List.map canonicalFilterItem }
+        | k -> k
+
+    // Structural children.
+    let kind =
+        match getChildren kind with
+        | Some children ->
+            match withChildren kind (children |> List.map canonicalForm) with
+            | Some rewritten -> rewritten
+            | None -> kind
+        | None -> kind
+
+    let node = { node with Kind = kind }
+
+    // Non-structural slots (state OnLoading/OnEmpty + kind-held nodes the
+    // structural-children walk cannot reach) recurse through the shared lens.
+    let slots, put = nonStructuralSlots node
+
+    let node =
+        if List.isEmpty slots then
+            node
+        else
+            put (slots |> List.map canonicalForm)
+
+    { node with
+        State =
+            node.State
+            |> Option.bind (fun s ->
+                if s.OnLoading.IsNone && s.OnEmpty.IsNone && s.OnError.IsNone then
+                    None
+                else
+                    Some s)
+        Style =
+            node.Style
+            |> Option.bind (fun s -> if s = Fuaran.UI.Defaults.style then None else Some s) }
+
+/// Rewrite a bare `NodeKind` into §16 canonical form (the op codec's
+/// `EditNode.newKind` splice). Routed through `canonicalForm` on a scratch
+/// envelope so there is exactly ONE canonicalising traversal — never a second
+/// per-kind walk to keep in step.
+let canonicalFormKind (kind: NodeKind<'Msg>) : NodeKind<'Msg> =
+    (canonicalForm
+        { Id = "«canonical-form-scratch»"
+          Kind = kind
+          State = None
+          Style = None
+          Accessibility = None
+          Motion = None
+          ExtraAttributes = None })
+        .Kind

@@ -24,6 +24,7 @@ module Fuaran.UI.BindingWalk
 // ============================================================================
 
 open Fuaran.UI.Types
+open Fuaran.Core
 
 /// One observed binding usage — the validation-oriented projection of a
 /// `Binding<'T>` read. `Query` carries its `dependsOn` filter names so the
@@ -79,10 +80,10 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     match binding with
     | Binding.State(key, _) -> [ BindingUse.State key ]
     | Binding.Filter(name, _) -> [ BindingUse.Filter name ]
-    | Binding.Selection(NodeId nodeId, _, _, _) -> [ BindingUse.Selection nodeId ]
-    | Binding.Query(name, _, dependsOn) -> [ BindingUse.Query(name, dependsOn) ]
-    | Binding.Local local -> usesOfBinding local.InitialFrom
-    | Binding.I18n(_, Some args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<obj> ab)
+    | Binding.Selection(nodeId, _, _, _) -> [ BindingUse.Selection nodeId ]
+    | Binding.Query(name, _, dependsOn) -> [ BindingUse.Query(name, defaultArg dependsOn []) ]
+    | Binding.Local(_, _, initialFrom, _, _) -> usesOfBinding initialFrom
+    | Binding.I18n(_, Some args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<JVal> ab)
     | Binding.I18n(_, None) -> []
     | Binding.Format(source, _, _) -> usesOfBinding source
     | Binding.Transform(_, pipeline, parameters) ->
@@ -91,10 +92,10 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
         // outside it is dead weight (FUARAN076).
         let referenced = Fuaran.Core.Transform.paramsOf pipeline |> Set.ofList
 
-        parameters
-        |> List.collect (fun (name, fromB) ->
+        defaultArg parameters []
+        |> List.collect (fun (p: TransformParam) ->
             let sourceUses =
-                usesOfBinding fromB
+                usesOfBinding p.From
                 |> List.map (function
                     // A param's Filter source is the DECLARED filter→consumer
                     // edge (the 424 construct) — distinct from a plain value
@@ -102,7 +103,7 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
                     | BindingUse.Filter filterName -> BindingUse.TransformParamFilter filterName
                     | other -> other)
 
-            BindingUse.TransformParam(name, Set.contains name referenced) :: sourceUses)
+            BindingUse.TransformParam(p.Name, Set.contains p.Name referenced) :: sourceUses)
     | Binding.Invoke _
     | Binding.Static _
     | Binding.Computed _ -> []
@@ -125,24 +126,39 @@ let private usesOfBindingOpt (binding: Binding<'T> option) : BindingUse list =
     | Some b -> usesOfBinding b
     | None -> []
 
-let private usesOfFormFieldKind<'Msg> (kind: FormFieldKind<'Msg>) : BindingUse list =
+let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: FormFieldKind<'Msg>) : BindingUse list =
+    // Value slots are `option` since the swap (Phase 596 auto-bind — absence
+    // is legal wire); constraints ride flat (min/max/step) rather than as the
+    // retired constraint records.
+    //
+    // Phase 694 — a `None` value slot IS a read: the renderer substitutes the
+    // context's auto-binding at render time (decode no longer synthesises it
+    // into the tree), so the walker contributes `implicitUse` for absence —
+    // `State(field id)` in a form, `Filter(name)` on a chip — keeping the
+    // wiring lint and resume analysis semantically identical to the old
+    // decode-synthesised shape.
+    let usesOfValueSlot (v: Binding<'x> option) : BindingUse list =
+        match v with
+        | Some b -> usesOfBinding b
+        | None -> Option.toList implicitUse
+
     match kind with
-    | FormFieldKind.Text(v, _) -> usesOfBinding v
-    | FormFieldKind.Number(v, _) -> usesOfBinding v
-    | FormFieldKind.Checkbox(v, _) -> usesOfBinding v
-    | FormFieldKind.TextArea(v, _, _) -> usesOfBinding v
-    | FormFieldKind.RangedNumber(v, _, _) -> usesOfBinding v
-    | FormFieldKind.Range(v, _, _) -> usesOfBinding v
-    | FormFieldKind.Choice(opts, value, _) -> usesOfBinding opts @ usesOfBinding value
-    | FormFieldKind.SegmentedChoice(opts, value, _, _) -> usesOfBinding opts @ usesOfBinding value
-    | FormFieldKind.Date(v, _, _, _) -> usesOfBinding v
-    | FormFieldKind.DateRange(v, _, _, _) -> usesOfBinding v
+    | FormFieldKind.Text(v, _) -> usesOfValueSlot v
+    | FormFieldKind.Number(v, _) -> usesOfValueSlot v
+    | FormFieldKind.Checkbox(v, _) -> usesOfValueSlot v
+    | FormFieldKind.TextArea(v, _, _) -> usesOfValueSlot v
+    | FormFieldKind.RangedNumber(v, _, _, _, _) -> usesOfValueSlot v
+    | FormFieldKind.Range(v, _, _, _, _) -> usesOfValueSlot v
+    | FormFieldKind.Choice(opts, value, _) -> usesOfBinding opts @ usesOfValueSlot value
+    | FormFieldKind.SegmentedChoice(opts, value, _, _) -> usesOfBinding opts @ usesOfValueSlot value
+    | FormFieldKind.Date(v, _, _, _, _, _) -> usesOfValueSlot v
+    | FormFieldKind.DateRange(v, _, _, _, _, _) -> usesOfValueSlot v
 
 /// The `Action.Call`s reachable from a wire-survivable action value,
 /// recursing `Chain` (Phase 428). Non-Call arms carry no fetch.
 let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse list =
     match action with
-    | Action.Call(ApiEndpoint endpoint, onResult, into) ->
+    | Action.Call(endpoint, onResult, into) ->
         [ { Reader = readerId
             Endpoint = endpoint
             HasOnResult = onResult.IsSome
@@ -178,7 +194,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             calls.Add c
 
     let rec walk (n: Node<'Msg>) =
-        let (NodeId readerId) = n.Id
+        let readerId = n.Id
 
         let isProducer =
             match Kind.category n.Kind with
@@ -299,18 +315,20 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                         |> List.collect (fun field ->
                             usesOfText field.Label
                             @ usesOfTextOpt field.Help
-                            @ usesOfFormFieldKind field.Kind)
+                            @ usesOfFormFieldKind (Some(BindingUse.State field.Id)) field.Kind)
 
                     usesOfText f.SubmitLabel @ usesOfBindingOpt f.Disabled @ fieldUses
 
                 uses, []
-            | NodeKind.Filters filters ->
+            | NodeKind.Filters spec ->
                 let uses =
-                    for fs in filters do
+                    for fs in spec.Items do
                         declaredFilters.Add(readerId, fs.Name)
 
-                    filters
-                    |> List.collect (fun fs -> usesOfText fs.Label @ usesOfFormFieldKind fs.Field)
+                    spec.Items
+                    |> List.collect (fun (fs: FilterSpec<_>) ->
+                        usesOfText fs.Label
+                        @ usesOfFormFieldKind (Some(BindingUse.Filter fs.Name)) fs.Kind)
 
                 uses, []
             // ── Visualisation ──
@@ -320,9 +338,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                     // in `StaticRows`; a data-bound grid carries a `Source` binding.
                     usesOfBinding g.Source
                     @ (match g.StaticRows with
-                       | Some(headers, rows) ->
-                           (headers |> List.collect usesOfText)
-                           @ (rows |> List.collect (List.collect usesOfText))
+                       | Some sr ->
+                           (sr.Headers |> List.collect usesOfText)
+                           @ (sr.Rows |> List.collect (List.collect usesOfText))
                        | None -> [])
 
                 uses, []
@@ -333,7 +351,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             // The StateKey is a literal string (not a Binding), so it records no
             // filter/query use here; the case children + default are walked so their
             // own bindings are captured.
-            | NodeKind.Switch spec -> [], (spec.Cases |> List.map snd) @ [ spec.Default ]
+            | NodeKind.Switch spec -> [], (spec.Cases |> List.map _.Child) @ [ spec.Default ]
             | NodeKind.FragmentDecl spec -> [], [ spec.Body ]
             // Custom props are JVal literals, not bindings; a FragmentRef carries
             // no body; a Mount guest owns its own scoped stores.

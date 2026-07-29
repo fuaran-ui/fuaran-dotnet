@@ -253,27 +253,28 @@ let inline private isCastMismatch (ex: exn) : bool =
 /// runtime type; the apply engine catches and surfaces as KindMismatch.
 let rec private castBinding<'T> (b: Binding<obj>) : Binding<'T> =
     match b with
-    | Binding.Static v -> Binding.Static(unbox<'T> v)
+    | Binding.Static v -> Binding.Static(v |> Option.map unbox<'T>)
     | Binding.Query(name, accessor, dependsOn) -> Binding.Query(name, accessor >> unbox<'T>, dependsOn)
     | Binding.Filter(name, dv) -> Binding.Filter(name, dv |> Option.map unbox<'T>)
     | Binding.Selection(id, accessor, dv, fld) ->
         Binding.Selection(id, accessor >> unbox<'T>, dv |> Option.map unbox<'T>, fld)
-    | Binding.State(key, defaultValue) -> Binding.State(key, unbox<'T> defaultValue)
+    | Binding.State(key, defaultValue) -> Binding.State(key, defaultValue |> Option.map unbox<'T>)
     | Binding.Computed f -> Binding.Computed(f >> unbox<'T>)
-    // i18n bindings carry only string key + obj-typed args, no
+    // i18n bindings carry only string key + JVal-typed args, no
     // 'T payload to cast. Pass through; the resolver enforces 'T = string at
     // resolution time.
     | Binding.I18n(key, args) -> Binding.I18n(key, args)
-    // Local bindings carry an InitialFrom of the same 'T plus
-    // obj-erased OnCommit / Format / Parse. Recurse InitialFrom; box-wrap
+    // Local bindings carry an initialFrom of the same 'T plus
+    // obj-erased onCommit / format / parse. Recurse initialFrom; box-wrap
     // 'T → obj on the obj-typed projections so the typed payload matches.
-    | Binding.Local local ->
-        Binding.Local
-            { InitialFrom = castBinding<'T> local.InitialFrom
-              FlushOn = local.FlushOn
-              OnCommit = (fun (t: 'T) -> local.OnCommit(box t))
-              Format = local.Format |> Option.map (fun f -> fun (t: 'T) -> f (box t))
-              Parse = (fun s -> local.Parse s |> Result.map unbox<'T>) }
+    | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+        Binding.Local(
+            flushOn,
+            (fun (t: 'T) -> format (box t)),
+            castBinding<'T> initialFrom,
+            onCommit |> Option.map (fun oc -> fun (t: 'T) -> oc (box t)),
+            (fun s -> parse s |> Result.map unbox<'T>)
+        )
     // Format bindings carry a `Binding<float>` source + bounded
     // Format / LocaleSource — no 'T payload to cast (the formatter always
     // produces a string). Pass through; the resolver enforces 'T = string
@@ -385,7 +386,7 @@ let private updateMetric (field: string) (v: obj) (spec: MetricSpec) : UpdateRes
             |> Result.map (fun x -> { spec with TrendFormat = x }))
     | "Icon" ->
         wrap (fun v ->
-            coerceField JsonDecode.Coerce.tryIconSourceOption v
+            coerceField JsonDecode.Coerce.tryStringOption v
             |> Result.map (fun x -> { spec with Icon = x }))
     | "Subtext" ->
         wrap (fun v ->
@@ -498,7 +499,7 @@ let private updateCallout (field: string) (v: obj) (spec: CalloutSpec) : UpdateR
             |> Result.map (fun x -> { spec with Body = x }))
     | "Icon" ->
         wrap (fun v ->
-            coerceField JsonDecode.Coerce.tryIconSourceOption v
+            coerceField JsonDecode.Coerce.tryStringOption v
             |> Result.map (fun x -> { spec with Icon = x }))
     | "Dismissable" ->
         wrap (fun v ->
@@ -544,41 +545,41 @@ let private updateBox (field: string) (v: obj) (spec: BoxSpec<'Msg>) : UpdateRes
     let updated (s: BoxSpec<'Msg>) = Updated(NodeKind.Box(s))
 
     match field, spec.Layout with
-    | "Orientation", BoxLayout.Flex f ->
+    | "Orientation", LayoutMode.Flex(_, wrap, gap) ->
         match coerceField JsonDecode.Coerce.tryOrientation v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = BoxLayout.Flex { f with Direction = x } }
+                    Layout = LayoutMode.Flex(x, wrap, gap) }
         | Error msg -> TypeMismatch msg
-    | "Wrap", BoxLayout.Flex f ->
+    | "Wrap", LayoutMode.Flex(direction, _, gap) ->
         match coerceField JsonDecode.Coerce.tryBool v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = BoxLayout.Flex { f with Wrap = x } }
+                    Layout = LayoutMode.Flex(direction, x, gap) }
         | Error msg -> TypeMismatch msg
-    | "Cols", BoxLayout.Grid g ->
+    | "Cols", LayoutMode.Grid(_, templateColumns, gap) ->
         match coerceField JsonDecode.Coerce.tryInt v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = BoxLayout.Grid { g with Cols = x } }
+                    Layout = LayoutMode.Grid(x, templateColumns, gap) }
         | Error msg -> TypeMismatch msg
-    | "TemplateColumns", BoxLayout.Grid g ->
+    | "TemplateColumns", LayoutMode.Grid(cols, _, gap) ->
         // Additive optional `string option` field. Accepts either a raw string
         // (sugar — wraps in `Some`) or an explicit `string option` payload.
         match coerceField JsonDecode.Coerce.tryStringOption v with
         | Ok x ->
             updated
                 { spec with
-                    Layout = BoxLayout.Grid { g with TemplateColumns = x } }
+                    Layout = LayoutMode.Grid(cols, x, gap) }
         | Error _ ->
             match coerceField JsonDecode.Coerce.tryString v with
             | Ok x ->
                 updated
                     { spec with
-                        Layout = BoxLayout.Grid { g with TemplateColumns = Some x } }
+                        Layout = LayoutMode.Grid(cols, Some x, gap) }
             | Error msg -> TypeMismatch msg
     | "Heading", _ ->
         match coerceField JsonDecode.Coerce.tryTextSourceOption v with
@@ -704,7 +705,7 @@ let private updateFact (field: string) (v: obj) (spec: FactSpec) : UpdateResult<
             |> Result.map (fun x -> { spec with Help = x }))
     | "Icon" ->
         wrap (fun v ->
-            coerceField JsonDecode.Coerce.tryIconSourceOption v
+            coerceField JsonDecode.Coerce.tryStringOption v
             |> Result.map (fun x -> { spec with Icon = x }))
     | _ -> UnknownField
 
@@ -717,7 +718,7 @@ let private updateFragmentDecl (field: string) (v: obj) (spec: FragmentDeclSpec<
     match field with
     | "Name" ->
         match coerceField JsonDecode.Coerce.tryString v with
-        | Ok name -> Updated(NodeKind.FragmentDecl { spec with Name = FragmentId name })
+        | Ok name -> Updated(NodeKind.FragmentDecl { spec with Name = name })
         | Error msg -> TypeMismatch msg
     | _ -> UnknownField
 
@@ -729,7 +730,7 @@ let private updateFragmentRef (field: string) (v: obj) (spec: FragmentRefSpec<'M
     match field with
     | "Name" ->
         match coerceField JsonDecode.Coerce.tryString v with
-        | Ok name -> Updated(NodeKind.FragmentRef { spec with Name = FragmentId name })
+        | Ok name -> Updated(NodeKind.FragmentRef { spec with Name = name })
         | Error msg -> TypeMismatch msg
     | _ -> UnknownField
 
@@ -777,7 +778,7 @@ let private updateButton (field: string) (v: obj) (spec: ButtonSpec<'Msg>) : Upd
             |> Result.map (fun x -> { spec with Variant = x }))
     | "Icon" ->
         wrap (fun v ->
-            coerceField JsonDecode.Coerce.tryIconSourceOption v
+            coerceField JsonDecode.Coerce.tryStringOption v
             |> Result.map (fun x -> { spec with Icon = x }))
     | "Tooltip" ->
         wrap (fun v ->
@@ -1384,7 +1385,14 @@ let private updateNestedTabs (segs: PathSeg list) (v: obj) (spec: TabsSpec<'Msg>
             | Error msg -> NestedTypeMismatch msg
         | "Icon" ->
             match coerceField JsonDecode.Coerce.tryIconSourceOption v with
-            | Ok x -> NestedUpdated(rebuild { hdr with Icon = x })
+            | Ok x ->
+                // The TabHeader icon slot is a bare string since the swap; the
+                // coercer's IconSource wrapper unwraps at this boundary.
+                NestedUpdated(
+                    rebuild
+                        { hdr with
+                            Icon = x |> Option.map (fun (IconSource s) -> s) }
+                )
             | Error msg -> NestedTypeMismatch msg
         | "Disabled" ->
             // Optional typed binding; replacing it installs `Some`, mirroring
@@ -1485,7 +1493,7 @@ let private replaceBindingSparkline
             Ok(
                 NodeKind.Sparkline(
                     { spec with
-                        Source = castBinding<float seq> b }
+                        Source = castBinding<float list> b }
                 )
             )
         | _ -> Error(slotNotFound (NodeKind.Sparkline(spec)) (NodeId "_") slot)
@@ -1629,7 +1637,7 @@ let private replaceBindingMap
             Ok(
                 NodeKind.Map(
                     { spec with
-                        Source = castBinding<MapMarker seq> b }
+                        Source = castBinding<MapMarker list> b }
                 )
             )
         | _ -> Error(slotNotFound (NodeKind.Map(spec)) (NodeId "_") slot)
@@ -1686,7 +1694,7 @@ let private replaceBindingSelect
             Ok(
                 NodeKind.Select(
                     { spec with
-                        Value = castBinding<string option> b }
+                        Value = castBinding<string> b }
                 )
             )
         // Phase 130: optional bound disabled-state; replacing it installs
@@ -1863,7 +1871,9 @@ let private coreIdw: Fuaran.Core.IdWitness<NodeId> =
 
 let private applyStructural (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
     let nodew: Fuaran.Core.NodeWitness<Node<'Msg>, NodeId> =
-        { Id = fun n -> n.Id
+        // `Node.Id` is a bare string since the swap; the op layer's addressing
+        // stays `NodeId`-typed, wrapped at this witness boundary.
+        { Id = fun n -> NodeId n.Id
           KindTag = fun n -> kindName n.Kind
           Children = fun n -> getChildren n.Kind |> Option.defaultValue []
           ReplaceChildren =
@@ -2062,12 +2072,30 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
                 | _ -> Error err
 
     | TreeOp.UpdateStyle(target, style) ->
-        match mapNode target (fun n -> { n with Style = style }) root with
+        // `Node.Style` is an option since the swap; `None` is the canonical
+        // default form (the encoder omits the key on `None`, where a
+        // `Some Defaults.style` would emit an empty `"style":{}`), so a
+        // default-valued payload normalises to `None` here.
+        let normalised =
+            if style = Fuaran.UI.Defaults.style then
+                None
+            else
+                Some style
+
+        match mapNode target (fun n -> { n with Style = normalised }) root with
         | Some updated -> Ok updated
         | None -> Error(nodeNotFound target)
 
     | TreeOp.UpdateState(target, state) ->
-        match mapNode target (fun n -> { n with State = state }) root with
+        // Same normalisation as UpdateStyle — an all-`None` StateBehaviour is
+        // the canonical `None` envelope slot.
+        let normalised =
+            if state.OnLoading.IsNone && state.OnEmpty.IsNone && state.OnError.IsNone then
+                None
+            else
+                Some state
+
+        match mapNode target (fun n -> { n with State = normalised }) root with
         | Some updated -> Ok updated
         | None -> Error(nodeNotFound target)
 

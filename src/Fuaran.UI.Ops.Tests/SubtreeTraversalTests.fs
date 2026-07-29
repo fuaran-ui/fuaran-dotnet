@@ -55,7 +55,9 @@ let private switchNode: Node<Msg> =
     Fuaran.switch
         "mode-switch"
         { StateKey = "mode"
-          Cases = [ "compact", inSwitchCase ]
+          Cases =
+            [ { Match = "compact"
+                Child = inSwitchCase } ]
           Default = inSwitchDefault }
 
 let private boundaryNode: Node<Msg> =
@@ -70,8 +72,10 @@ let private nodeWithStateSlot: Node<Msg> =
 
     { n with
         State =
-            { n.State with
-                OnEmpty = Some inStateSlot } }
+            Some
+                { OnLoading = None
+                  OnEmpty = Some inStateSlot
+                  OnError = None } }
 
 let private root: Node<Msg> =
     Fuaran.dashboard

@@ -30,9 +30,9 @@ let private initialTree: Node<obj> =
             Children = [ Fuaran.markdown "g-left" "Left pane"; Fuaran.markdown "g-right" "Right pane" ] }
 
 let private style: SemanticStyle =
-    { Tone = Success
-      Weight = Standard
-      Emphasis = Normal
+    { Tone = ToneVariant.Success
+      Weight = StyleWeight.Standard
+      Emphasis = Emphasis.Normal
       Role = StyleRole.None
       Voice = FontVoice.Default }
 

@@ -20,7 +20,7 @@ open Fuaran.UI.Ops.Types
 open Fuaran.UI.ServerDriven
 
 let private stubRender (n: Node<obj>) : string =
-    let (NodeId s) = n.Id
+    let s = n.Id
     $"<f id='{s}'/>"
 
 let private dash (children: Node<obj> list) : Node<obj> =

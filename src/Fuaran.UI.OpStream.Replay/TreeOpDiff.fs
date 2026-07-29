@@ -69,7 +69,17 @@ open Fuaran.UI.OpStream.Abstractions
 
 module TreeOpDiff =
 
-    let private rawId (NodeId s) : string = s
+    // Stage 4b of the 692-694 swap: `Node.State` / `Node.Style` are OPTIONS
+    // (`None` ≡ the old empty-state / default-style records — the canonical
+    // encoder omits both spellings identically). The diff must not see the two
+    // spellings as different, and the `UpdateState` / `UpdateStyle` ops still
+    // carry the MATERIALISED records — so normalise at the boundary and the
+    // emitted op sequence for any (a, b) pair is unchanged from pre-swap.
+    let private styleOf<'Msg> (n: Node<'Msg>) : SemanticStyle =
+        n.Style |> Option.defaultValue Fuaran.UI.Defaults.style
+
+    let private stateOf<'Msg> (n: Node<'Msg>) : StateBehaviour<'Msg> =
+        n.State |> Option.defaultValue Fuaran.UI.Defaults.stateBehaviour
 
     let private childrenOf<'Msg> (node: Node<'Msg>) : Node<'Msg> list =
         getChildren node.Kind |> Option.defaultValue []
@@ -84,11 +94,11 @@ module TreeOpDiff =
     /// recursive diff can't see a node reappear under a different parent).
     let private indexParents<'Msg> (root: Node<'Msg>) : Map<string, string option> =
         let rec walk (acc: Map<string, string option>) (parent: string option) (node: Node<'Msg>) =
-            let acc = Map.add (rawId node.Id) parent acc
+            let acc = Map.add node.Id parent acc
 
             match getChildren node.Kind with
             | None -> acc
-            | Some kids -> kids |> List.fold (fun a c -> walk a (Some(rawId node.Id)) c) acc
+            | Some kids -> kids |> List.fold (fun a c -> walk a (Some node.Id) c) acc
 
         walk Map.empty None root
 
@@ -160,21 +170,22 @@ module TreeOpDiff =
     /// closures round-trip via the `"<closure>"` canonical sentinel.
     let rec private toObjBinding<'T> (b: Binding<'T>) : Binding<obj> =
         match b with
-        | Binding.Static v -> Binding.Static(boxNN v)
+        | Binding.Static v -> Binding.Static(v |> Option.map boxNN)
         | Binding.Query(name, accessor, dependsOn) -> Binding.Query(name, accessor >> boxNN, dependsOn)
         | Binding.Filter(name, dv) -> Binding.Filter(name, dv |> Option.map boxNN)
         | Binding.Selection(id, accessor, dv, fld) ->
             Binding.Selection(id, accessor >> boxNN, dv |> Option.map boxNN, fld)
-        | Binding.State(key, defaultValue) -> Binding.State(key, boxNN defaultValue)
+        | Binding.State(key, defaultValue) -> Binding.State(key, defaultValue |> Option.map boxNN)
         | Binding.Computed f -> Binding.Computed(f >> boxNN)
         | Binding.I18n(key, args) -> Binding.I18n(key, args)
-        | Binding.Local local ->
-            Binding.Local
-                { InitialFrom = toObjBinding local.InitialFrom
-                  FlushOn = local.FlushOn
-                  OnCommit = (fun (o: obj) -> local.OnCommit(unbox<'T> o))
-                  Format = local.Format |> Option.map (fun f -> (fun (o: obj) -> f (unbox<'T> o)))
-                  Parse = (fun s -> local.Parse s |> Result.map boxNN) }
+        | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+            Binding.Local(
+                flushOn,
+                (fun (o: obj) -> format (unbox<'T> o)),
+                toObjBinding initialFrom,
+                onCommit |> Option.map (fun oc -> fun (o: obj) -> oc (unbox<'T> o)),
+                (fun s -> parse s |> Result.map boxNN)
+            )
         | Binding.Format(source, format, locale) -> Binding.Format(source, format, locale)
         | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)
         | Binding.Invoke(capabilityId, args) -> Binding.Invoke(capabilityId, args)
@@ -226,17 +237,17 @@ module TreeOpDiff =
         | Some v -> Some(PropValue.Wire(JStr v))
         | None -> None
 
-    let private pvIconOpt (i: IconSource option) : PropValue option =
+    let private pvIconOpt (i: string option) : PropValue option =
         match i with
-        | Some(IconSource raw) -> Some(PropValue.Wire(JStr raw))
+        | Some raw -> Some(PropValue.Wire(JStr raw))
         | None -> None
 
     let private pvOrientation (o: Orientation) : PropValue =
         PropValue.Wire(
             JStr(
                 match o with
-                | Vertical -> "Vertical"
-                | Horizontal -> "Horizontal"
+                | Orientation.Vertical -> "Vertical"
+                | Orientation.Horizontal -> "Horizontal"
             )
         )
 
@@ -268,13 +279,13 @@ module TreeOpDiff =
         PropValue.Wire(
             JStr(
                 match t with
-                | Default -> "Default"
-                | Subdued -> "Subdued"
-                | Brand -> "Brand"
-                | Success -> "Success"
-                | Warning -> "Warning"
-                | Critical -> "Critical"
-                | Info -> "Info"
+                | ToneVariant.Default -> "Default"
+                | ToneVariant.Subdued -> "Subdued"
+                | ToneVariant.Brand -> "Brand"
+                | ToneVariant.Success -> "Success"
+                | ToneVariant.Warning -> "Warning"
+                | ToneVariant.Critical -> "Critical"
+                | ToneVariant.Info -> "Info"
             )
         )
 
@@ -282,9 +293,9 @@ module TreeOpDiff =
         PropValue.Wire(
             JStr(
                 match w with
-                | Compact -> "Compact"
-                | Standard -> "Standard"
-                | Spacious -> "Spacious"
+                | StyleWeight.Compact -> "Compact"
+                | StyleWeight.Standard -> "Standard"
+                | StyleWeight.Spacious -> "Spacious"
             )
         )
 
@@ -292,9 +303,9 @@ module TreeOpDiff =
         PropValue.Wire(
             JStr(
                 match e with
-                | Quiet -> "Quiet"
-                | Normal -> "Normal"
-                | Loud -> "Loud"
+                | Emphasis.Quiet -> "Quiet"
+                | Emphasis.Normal -> "Normal"
+                | Emphasis.Loud -> "Loud"
             )
         )
 
@@ -326,7 +337,7 @@ module TreeOpDiff =
         // the round-trip regardless of the population chosen.
         let prop (field: string) (pv: PropValue) (aSwapped: Node<'Msg>) : TreeOp<'Msg> list =
             if CanonicalJson.encodeNode a <> CanonicalJson.encodeNode aSwapped then
-                [ TreeOp.UpdateProp(a.Id, field, pv) ]
+                [ TreeOp.UpdateProp(NodeId a.Id, field, pv) ]
             else
                 []
 
@@ -343,7 +354,7 @@ module TreeOpDiff =
         // slot to b's binding actually changes a's canonical shell.
         let bind (slot: string) (bObj: Binding<obj>) (aSwapped: Node<'Msg>) : TreeOp<'Msg> list =
             if CanonicalJson.encodeNode a <> CanonicalJson.encodeNode aSwapped then
-                [ TreeOp.ReplaceBinding(a.Id, slot, bObj) ]
+                [ TreeOp.ReplaceBinding(NodeId a.Id, slot, bObj) ]
             else
                 []
 
@@ -541,52 +552,55 @@ module TreeOpDiff =
             // Stack/GridLayout diffs) + Heading. Propose-then-verify (below)
             // makes this safe: a mode or role change these granular ops can't
             // reproduce falls back to the EditNode floor, so replay stays exact.
+            // `LayoutMode` cases are POSITIONAL since the swap —
+            // `Flex(direction, wrap, gap)` / `Grid(cols, templateColumns, gap)`.
+            // Field coverage is unchanged (Direction→"Orientation", Wrap, Cols,
+            // TemplateColumns); a `gap` drift is uncovered here, so it fails the
+            // propose-then-verify in `tryFieldLevel` and takes the EditNode
+            // floor — exactly the pre-swap behaviour for an uncovered field.
             let layoutOps =
                 match sa.Layout, sb.Layout with
-                | BoxLayout.Flex fa, BoxLayout.Flex fb ->
+                | BoxLayout.Flex(dirA, wrapA, gapA), BoxLayout.Flex(dirB, wrapB, _) ->
                     prop
                         "Orientation"
-                        (pvOrientation fb.Direction)
+                        (pvOrientation dirB)
                         { a with
                             Kind =
                                 lay (
                                     NodeKind.Box
                                         { sa with
-                                            Layout = BoxLayout.Flex { fa with Direction = fb.Direction } }
+                                            Layout = BoxLayout.Flex(dirB, wrapA, gapA) }
                                 ) }
                     @ prop
                         "Wrap"
-                        (pvBool fb.Wrap)
+                        (pvBool wrapB)
                         { a with
                             Kind =
                                 lay (
                                     NodeKind.Box
                                         { sa with
-                                            Layout = BoxLayout.Flex { fa with Wrap = fb.Wrap } }
+                                            Layout = BoxLayout.Flex(dirA, wrapB, gapA) }
                                 ) }
-                | BoxLayout.Grid ga, BoxLayout.Grid gb ->
+                | BoxLayout.Grid(colsA, tmplA, gapA), BoxLayout.Grid(colsB, tmplB, _) ->
                     prop
                         "Cols"
-                        (pvInt gb.Cols)
+                        (pvInt colsB)
                         { a with
                             Kind =
                                 lay (
                                     NodeKind.Box
                                         { sa with
-                                            Layout = BoxLayout.Grid { ga with Cols = gb.Cols } }
+                                            Layout = BoxLayout.Grid(colsB, tmplA, gapA) }
                                 ) }
                     @ propOpt
                         "TemplateColumns"
-                        (pvStrOpt gb.TemplateColumns)
+                        (pvStrOpt tmplB)
                         { a with
                             Kind =
                                 lay (
                                     NodeKind.Box
                                         { sa with
-                                            Layout =
-                                                BoxLayout.Grid
-                                                    { ga with
-                                                        TemplateColumns = gb.TemplateColumns } }
+                                            Layout = BoxLayout.Grid(colsA, tmplB, gapA) }
                                 ) }
                 | _ -> []
 
@@ -669,37 +683,39 @@ module TreeOpDiff =
     /// Diff two nodes known to share a NodeId (the root, or a child matched by
     /// id during recursion).
     let rec private diffNode<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
-        let id = a.Id
+        let id = NodeId a.Id
 
         if kindChanged a b then
             match tryFieldLevel a b with
             | Some fieldOps ->
                 // Granular field-level patch reproduced the kind own-fields — no
                 // wholesale EditNode. State / style + children are handled
-                // separately (UpdateProp brings neither).
+                // separately (UpdateProp brings neither). Style compares via the
+                // materialised records so `None` ≡ the default record (the two
+                // spellings canonical-encode identically — no spurious op).
                 [ yield! fieldOps
-                  if a.Style <> b.Style then
-                      TreeOp.UpdateStyle(id, b.Style)
+                  if styleOf a <> styleOf b then
+                      TreeOp.UpdateStyle(id, styleOf b)
                   if stateChanged a b then
-                      TreeOp.UpdateState(id, b.State)
+                      TreeOp.UpdateState(id, stateOf b)
                   yield! childrenDiff id (childrenOf a) (childrenOf b) ]
             | None ->
                 // Floor: wholesale node replace — EditNode brings b's kind incl.
                 // its whole subtree; UpdateState / UpdateStyle bring b's
                 // state·style (EditNode preserves the old ones).
                 [ TreeOp.EditNode(id, b.Kind)
-                  TreeOp.UpdateState(id, b.State)
-                  TreeOp.UpdateStyle(id, b.Style) ]
+                  TreeOp.UpdateState(id, stateOf b)
+                  TreeOp.UpdateStyle(id, styleOf b) ]
         else
             // Kind shape identical → no wholesale swap. Emit granular state /
             // style ops only when they actually drifted, and recurse into
             // children (a no-op for a leaf or identical children). This keeps a
             // style-toggle / loading-state change / deep child edit to a
             // minimal patch instead of re-sending the kind + subtree.
-            [ if a.Style <> b.Style then
-                  TreeOp.UpdateStyle(id, b.Style)
+            [ if styleOf a <> styleOf b then
+                  TreeOp.UpdateStyle(id, styleOf b)
               if stateChanged a b then
-                  TreeOp.UpdateState(id, b.State)
+                  TreeOp.UpdateState(id, stateOf b)
               yield! childrenDiff id (childrenOf a) (childrenOf b) ]
 
     /// Diff a parent's children lists (the parent already matched by id, own
@@ -712,33 +728,31 @@ module TreeOpDiff =
         (aKids: Node<'Msg> list)
         (bKids: Node<'Msg> list)
         : TreeOp<'Msg> list =
-        let aIdSet = aKids |> List.map (fun n -> rawId n.Id) |> Set.ofList
-        let bIdSet = bKids |> List.map (fun n -> rawId n.Id) |> Set.ofList
+        let aIdSet = aKids |> List.map _.Id |> Set.ofList
+        let bIdSet = bKids |> List.map _.Id |> Set.ofList
 
         // 1. Remove children whose id is gone in b.
         let removes =
             aKids
-            |> List.filter (fun n -> not (bIdSet.Contains(rawId n.Id)))
-            |> List.map (fun n -> TreeOp.RemoveNode n.Id)
+            |> List.filter (fun n -> not (bIdSet.Contains n.Id))
+            |> List.map (fun n -> TreeOp.RemoveNode(NodeId n.Id))
 
         // After removals, the surviving children are the common ids in a-order.
         let commonAOrder =
-            aKids
-            |> List.filter (fun n -> bIdSet.Contains(rawId n.Id))
-            |> List.map (fun n -> rawId n.Id)
+            aKids |> List.filter (fun n -> bIdSet.Contains n.Id) |> List.map _.Id
 
         // 2. Insert b-only subtrees, appended at the growing tail.
-        let bOnly = bKids |> List.filter (fun n -> not (aIdSet.Contains(rawId n.Id)))
+        let bOnly = bKids |> List.filter (fun n -> not (aIdSet.Contains n.Id))
 
         let inserts = bOnly |> List.map (fun child -> TreeOp.InsertChild(parentId, child))
 
         // 3. Reorder to b's exact order, if the post-insert order differs.
-        let resultingOrder = commonAOrder @ (bOnly |> List.map (fun n -> rawId n.Id))
-        let targetOrder = bKids |> List.map (fun n -> rawId n.Id)
+        let resultingOrder = commonAOrder @ (bOnly |> List.map _.Id)
+        let targetOrder = bKids |> List.map _.Id
 
         let reorders =
             if resultingOrder <> targetOrder then
-                [ TreeOp.ReorderChildren(parentId, bKids |> List.map _.Id) ]
+                [ TreeOp.ReorderChildren(parentId, bKids |> List.map (fun n -> NodeId n.Id)) ]
             else
                 []
 
@@ -747,7 +761,7 @@ module TreeOpDiff =
         let recurse =
             bKids
             |> List.collect (fun bChild ->
-                match aKids |> List.tryFind (fun aChild -> rawId aChild.Id = rawId bChild.Id) with
+                match aKids |> List.tryFind (fun aChild -> aChild.Id = bChild.Id) with
                 | Some aChild -> diffNode aChild bChild
                 | None -> [])
 
@@ -765,13 +779,13 @@ module TreeOpDiff =
     /// existing move-free diff
     /// runs `intermediate → b`. Both segments round-trip, so the whole does.
     let diff<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : TreeOp<'Msg> list =
-        if rawId a.Id <> rawId b.Id then
+        if a.Id <> b.Id then
             // No TreeOp changes a node's Id — different roots are not
             // expressible. Best-effort wholesale replace at a's id (the
             // precondition is the caller's to honour).
-            [ TreeOp.EditNode(a.Id, b.Kind)
-              TreeOp.UpdateState(a.Id, b.State)
-              TreeOp.UpdateStyle(a.Id, b.Style) ]
+            [ TreeOp.EditNode(NodeId a.Id, b.Kind)
+              TreeOp.UpdateState(NodeId a.Id, stateOf b)
+              TreeOp.UpdateStyle(NodeId a.Id, styleOf b) ]
         else
             match detectMoves a b with
             | [] -> diffNode a b

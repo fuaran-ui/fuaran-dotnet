@@ -36,7 +36,7 @@ module SeedCatalogue =
             id
             { Defaults.metric with
                 Label = TextSource.Literal label
-                Value = Binding.Static value
+                Value = Binding.Static(Some value)
                 Tone = tone }
 
     let private vbox
@@ -47,11 +47,7 @@ module SeedCatalogue =
         : Node<unit> =
         Fuaran.box
             id
-            { Layout =
-                BoxLayout.Flex
-                    { Direction = Vertical
-                      Wrap = false
-                      Gap = Some 12 }
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, Some 12)
               Role = role
               Heading = heading
               Children = children }
@@ -59,11 +55,7 @@ module SeedCatalogue =
     let private hbox (id: string) (children: Node<unit> list) : Node<unit> =
         Fuaran.box
             id
-            { Layout =
-                BoxLayout.Flex
-                    { Direction = Horizontal
-                      Wrap = true
-                      Gap = Some 12 }
+            { Layout = BoxLayout.Flex(Orientation.Horizontal, true, Some 12)
               Role = BoxRole.Group
               Heading = None
               Children = children }
@@ -118,7 +110,7 @@ module SeedCatalogue =
     /// A data binding computed from the embedded table by the transform pipeline —
     /// no server, no hard-coded number.
     let private computedRevenue: Binding<float> =
-        Binding.Transform(DataSource.Embedded salesTable, revenueByRegion, [])
+        Binding.Transform(DataSource.Embedded salesTable, revenueByRegion, None)
 
     // ── the patterns ─────────────────────────────────────────────────────────
 

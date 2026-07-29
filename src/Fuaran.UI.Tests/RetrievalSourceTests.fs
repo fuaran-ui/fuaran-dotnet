@@ -90,7 +90,7 @@ let private oneContractTests =
           <| fun _ ->
               // checkDashboard is the SAME function the relational portal uses.
               match checkDashboard hitSchema caseHistoryDashboard with
-              | Ok tree -> Expect.equal tree.Id (NodeId "cases") "retrieval dashboard types clean → render it"
+              | Ok tree -> Expect.equal tree.Id "cases" "retrieval dashboard types clean → render it"
               | Error defects -> failtestf "expected clean, got %A" defects
 
           testCase "binding a string hit column into a numeric sink is the identical FUARAN066"

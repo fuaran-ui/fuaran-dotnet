@@ -43,7 +43,7 @@ let private scalarToken (v: obj) : string =
 /// of them). Slots are sorted by name so binding order is irrelevant. This is
 /// the key the substituted-tree cache is keyed on.
 let structural (pf: ParamFragment<'Msg>) (refId: string) (slotArgs: Map<string, Node<'Msg>>) : string =
-    let (FragmentId name) = pf.Name
+    let name = pf.Name
     let body = CanonicalJson.encodeNode pf.Body
 
     let slots =

@@ -20,10 +20,10 @@ open Fuaran.UI.Types
 type private Msg = NoOp
 
 let private node (id: string) (kind: NodeKind<Msg>) : Node<Msg> =
-    { Id = NodeId id
+    { Id = id
       Kind = kind
-      State = Defaults.stateBehaviour<Msg>
-      Style = Defaults.style
+      State = None
+      Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
       ExtraAttributes = None }
@@ -32,11 +32,7 @@ let private stack (id: string) (children: Node<Msg> list) : Node<Msg> =
     node
         id
         (NodeKind.Box(
-            { Layout =
-                BoxLayout.Flex
-                    { Direction = Vertical
-                      Wrap = false
-                      Gap = None }
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
               Children = children }
@@ -77,7 +73,7 @@ let tests =
                           { Fields =
                               [ { Id = "name"
                                   Label = TextSource.Literal "Name"
-                                  Kind = FormFieldKind.Text(Binding.Static "", Some placeholder)
+                                  Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some placeholder)
                                   Required = false
                                   Help = None } ]
                             OnSubmit = Action.Chain []
@@ -89,7 +85,7 @@ let tests =
                   node
                       "grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Static Seq.empty
+                          { Source = Binding.Static(Some Seq.empty)
                             RowKey = Some(fun _ -> "<closure>")
                             RowKeyField = None
                             Columns =
@@ -110,7 +106,7 @@ let tests =
                       (NodeKind.Button(
                           { Defaults.button<Msg> with
                               Label = TextSource.Literal "Fetch"
-                              OnClick = Action.Call(ApiEndpoint "/api/x", Some(fun (_: obj) -> NoOp), None) }
+                              OnClick = Action.Call("/api/x", Some(fun (_: obj) -> NoOp), None) }
                       ))
 
               let findings =
@@ -151,7 +147,7 @@ let tests =
                           { Fields =
                               [ { Id = "name"
                                   Label = TextSource.Literal "Name"
-                                  Kind = FormFieldKind.Text(Binding.State("name", ""), None)
+                                  Kind = FormFieldKind.Text(Some(Binding.State("name", Some "")), None)
                                   Required = false
                                   Help = None } ]
                             OnSubmit = Action.Chain []
@@ -163,7 +159,7 @@ let tests =
                   node
                       "grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Static Seq.empty
+                          { Source = Binding.Static(Some Seq.empty)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns =
@@ -184,7 +180,7 @@ let tests =
                       (NodeKind.Button(
                           { Defaults.button<Msg> with
                               Label = TextSource.Literal "Fetch"
-                              OnClick = Action.Call(ApiEndpoint "/api/x", None, Some(CallResultTarget.IntoState "x")) }
+                              OnClick = Action.Call("/api/x", None, Some(CallResultTarget.State "x")) }
                       ))
 
               // A FileUpload's onSelect is HostOnlyByDesign — silent.
@@ -195,7 +191,7 @@ let tests =
                           { Label = TextSource.Literal "Upload"
                             Accept = []
                             Multiple = false
-                            OnSelect = (fun _ -> Action.Chain [])
+                            OnSelect = Some(fun _ -> Action.Chain [])
                             Disabled = None }
                       ))
 

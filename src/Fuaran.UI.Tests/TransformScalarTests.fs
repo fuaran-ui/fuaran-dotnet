@@ -56,13 +56,15 @@ let private r42Binding: Binding<string> =
         [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "id", Fuaran.Core.Param "ticketId"))
           Fuaran.Core.Project [ "alert", "alert" ]
           Fuaran.Core.Limit(1, 0) ],
-        [ "ticketId",
-          Binding.Selection(
-              NodeId "ticket-grid",
-              Binding.projectSelectionField<obj> "id",
-              Some(nn "TCK-2041"),
-              Some "id"
-          ) ]
+        Some
+            [ { From =
+                  Binding.Selection(
+                      "ticket-grid",
+                      (fun raw -> Fuaran.Core.JStr(Binding.projectSelectionField<string> "id" raw)),
+                      Some(Fuaran.Core.JStr "TCK-2041"),
+                      Some "id"
+                  )
+                Name = "ticketId" } ]
     )
 
 let private countBinding<'T> (severity: string) : Binding<'T> =
@@ -77,7 +79,7 @@ let private countBinding<'T> (severity: string) : Binding<'T> =
                   Fn = Fuaran.Core.AggFn.Count
                   Of = "id" } ]
           ) ],
-        []
+        None
     )
 
 /// A clicked row in the grid's write shape (a `Map<string, obj>`, cells boxed).
@@ -125,7 +127,7 @@ let tests =
           }
 
           test "an N×M result is a LOUD didactic, never a silent first cell" {
-              let bare: Binding<string> = Binding.Transform(table, [], [])
+              let bare: Binding<string> = Binding.Transform(table, [], None)
 
               match BindingResolver.resolveScalarText BindingResolver.empty bare with
               | BindingResolver.Errored m ->
@@ -147,7 +149,7 @@ let tests =
                         )
                         Fuaran.Core.Project [ "alert", "alert" ]
                         Fuaran.Core.Limit(1, 0) ],
-                      []
+                      None
                   )
 
               match BindingResolver.resolveScalarText BindingResolver.empty emptyLookup with
@@ -156,7 +158,7 @@ let tests =
           }
 
           test "non-Transform bindings pass through the scalar path unchanged" {
-              match BindingResolver.resolveScalarText BindingResolver.empty (Binding.Static "plain") with
+              match BindingResolver.resolveScalarText BindingResolver.empty (Binding.Static(Some "plain")) with
               | BindingResolver.Resolved v -> Expect.equal v "plain" "Static delegates to resolve"
               | other -> failtestf "expected Resolved, got %A" other
           }
@@ -164,7 +166,7 @@ let tests =
           test "a direct Selection.field read projects the clicked row's field" {
               let direct: Binding<string> =
                   Binding.Selection(
-                      NodeId "ticket-grid",
+                      "ticket-grid",
                       Binding.projectSelectionField<string> "id",
                       Some "TCK-2041",
                       Some "id"
@@ -186,7 +188,7 @@ let tests =
           test "a missing field on the clicked row is a loud accessor error" {
               let direct: Binding<string> =
                   Binding.Selection(
-                      NodeId "ticket-grid",
+                      "ticket-grid",
                       Binding.projectSelectionField<string> "no-such-field",
                       None,
                       Some "no-such-field"

@@ -64,7 +64,7 @@ let private exemplarTree () : Node<TestMsg> =
                               Disabled = None }
                         Fuaran.markdown "step-review" "All done — review and finish." ]
                     // Closure-carrying: encodes as the "<closure>" sentinel.
-                    OnSelect = fun i -> Action.Dispatch(Selected i) }
+                    OnSelect = Some(fun i -> Action.Dispatch(Selected i)) }
               Fuaran.button
                   "wiz-share"
                   { Label = TextSource.Literal "Share this session"

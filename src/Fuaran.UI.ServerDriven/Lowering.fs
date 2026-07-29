@@ -54,7 +54,7 @@ let rec lowerOp<'Msg> (renderFragment: Node<'Msg> -> string) (newTree: Node<'Msg
             match getChildren parent.Kind with
             | Some kids ->
                 kids
-                |> List.tryFindIndex (fun c -> c.Id = childId)
+                |> List.tryFindIndex (fun c -> NodeId c.Id = childId)
                 |> Option.defaultValue (max 0 (List.length kids - 1))
             | None -> 0
         | None -> 0
@@ -70,14 +70,14 @@ let rec lowerOp<'Msg> (renderFragment: Node<'Msg> -> string) (newTree: Node<'Msg
         [ DomPatch.ReorderChildren(raw parentId, orderedIds |> List.map raw) ]
     | TreeOp.MoveNode(id, newParentId) -> [ DomPatch.MoveNode(raw id, raw newParentId, landedIndex newParentId id) ]
     | TreeOp.InsertChild(parentId, child) ->
-        [ DomPatch.InsertFragment(raw parentId, landedIndex parentId child.Id, renderFragment child) ]
+        [ DomPatch.InsertFragment(raw parentId, landedIndex parentId (NodeId child.Id), renderFragment child) ]
     | TreeOp.EditNode(id, _)
     | TreeOp.UpdateProp(id, _, _)
     | TreeOp.UpdateStyle(id, _)
     | TreeOp.UpdateState(id, _)
     | TreeOp.ReplaceBinding(id, _, _) -> reRender id
     // Whole-tree swap: re-render the new root fragment (= replace all content).
-    | TreeOp.ReplaceRoot node -> reRender node.Id
+    | TreeOp.ReplaceRoot node -> reRender (NodeId node.Id)
     | TreeOp.Batch ops -> ops |> List.collect (lowerOp renderFragment newTree)
 
 /// Lower a `TreeOp` list (e.g. a `TreeOpDiff.diff` result) to the `DomPatch`

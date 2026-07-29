@@ -16,6 +16,7 @@ module Fuaran.UI.Tests.I18n
 // ============================================================================
 
 open Expecto
+open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
@@ -95,14 +96,10 @@ let tests =
                   { BindingResolver.empty with
                       I18nResolver = BindingResolver.makeI18nResolver catalog }
 
-              // F# 10 nullness: `box _` types as `obj | null`; Binding.Static
-              // expects non-null `obj` for the typed payload. Launder via
-              // Unchecked.nonNull (same pattern Tests.fs uses for its `nn`
-              // helper).
-              let args: Map<string, Binding<obj>> =
+              let args: Map<string, Binding<JVal>> =
                   Map.ofList
-                      [ "name", Binding.Static(box "Anna" |> Unchecked.nonNull)
-                        "count", Binding.Static(box 3 |> Unchecked.nonNull) ]
+                      [ "name", Binding.Static(Some(JStr "Anna"))
+                        "count", Binding.Static(Some(JInt 3)) ]
 
               let binding: Binding<string> = Binding.I18n("welcome", Some args)
               let resolution = BindingResolver.resolve sources binding
@@ -119,10 +116,12 @@ let tests =
               let sources =
                   { BindingResolver.empty with
                       I18nResolver = BindingResolver.makeI18nResolver catalog
+                      // The arg pipeline resolves `Binding<JVal>` since the swap, so
+                      // the state slot carries the boxed `JVal` the arg reads.
                       State = Map.ofList [ "currentTab", box 7 |> Unchecked.nonNull ] }
 
-              let args: Map<string, Binding<obj>> =
-                  Map.ofList [ "n", Binding.State("currentTab", box 0 |> Unchecked.nonNull) ]
+              let args: Map<string, Binding<JVal>> =
+                  Map.ofList [ "n", Binding.State("currentTab", Some(JInt 0)) ]
 
               let binding: Binding<string> = Binding.I18n("tab", Some args)
               let resolution = BindingResolver.resolve sources binding

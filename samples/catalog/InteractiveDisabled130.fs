@@ -70,11 +70,7 @@ let private readerPane: Node<Msg> =
                       { Defaults.select<Msg> with
                           Label = TextSource.Literal "Region"
                           Source =
-                              Binding.Static
-                                  [ { Value = "uk"
-                                      Label = TextSource.Literal "UK" }
-                                    { Value = "us"
-                                      Label = TextSource.Literal "US" } ]
+                              Binding.Static(Some [ { Value = "uk"; Label = "UK" }; { Value = "us"; Label = "US" } ])
                           Value = Binding.Static(Some "uk")
                           Disabled = Some busyBinding }
                   Fuaran.form
@@ -86,7 +82,11 @@ let private readerPane: Node<Msg> =
                               [ { Defaults.formField<Msg> with
                                     Id = "idp-form-name"
                                     Label = TextSource.Literal "Name"
-                                    Kind = FormFieldKind.Text(Binding.Static "", Some(fun _ -> Action.Chain [])) } ] }
+                                    Kind =
+                                        FormFieldKind.Text(
+                                            Some(Binding.Static(Some "")),
+                                            Some(fun _ -> Action.Chain [])
+                                        ) } ] }
                   Fuaran.fileUpload
                       "idp-upload"
                       { Defaults.fileUpload<Msg> with

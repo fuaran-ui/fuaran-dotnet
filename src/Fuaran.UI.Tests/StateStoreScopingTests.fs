@@ -216,21 +216,11 @@ let scopeIsolationTests =
 //  is browser-triggered (render on .NET does not fire event handlers) and is
 //  exercised by the scope-isolation tests above at the `StateStore` level.
 // ============================================================================
-let private emptyStyle: SemanticStyle =
-    { Tone = ToneVariant.Default
-      Weight = StyleWeight.Standard
-      Emphasis = Emphasis.Normal
-      Role = StyleRole.None
-      Voice = FontVoice.Default }
-
 let private mkNode (id: string) (kind: NodeKind<obj>) : Node<obj> =
-    { Id = NodeId id
+    { Id = id
       Kind = kind
-      State =
-        { OnLoading = None
-          OnEmpty = None
-          OnError = None }
-      Style = emptyStyle
+      State = None
+      Style = None
       Accessibility = None
       Motion = None
       ExtraAttributes = None }
@@ -266,11 +256,11 @@ let private mountNode (mountId: string) (scopeId: string) : Node<obj> =
         mountId
         (NodeKind.Mount
             { ScopeId = scopeId
-              Inputs = Map.empty
+              Inputs = None
               Channel =
                 { Direction = ChannelDirection.OutOnly
                   MessageShape = None }
-              OnBubble = (fun _ -> Action.Chain [])
+              OnBubble = Some(fun _ -> Action.Chain [])
               Capabilities = [] })
 
 [<Tests>]

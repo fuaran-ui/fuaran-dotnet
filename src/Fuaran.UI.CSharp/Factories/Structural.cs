@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
+using FsGen = Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp;
 
@@ -18,24 +19,32 @@ public static partial class Fuaran
             options.ComponentId,
             Fs.Map((options.Props ?? new Dictionary<string, string>())
                 .Select(kv => new KeyValuePair<string, global::Fuaran.Core.JVal>(kv.Key, global::Fuaran.Core.JVal.NewJStr(kv.Value)))),
-            Fs.None<FsTypes.ContentHash>(),
+            Fs.None<FsGen.ContentHash>(),
             Fs.List((options.ExposedNodeIds ?? Enumerable.Empty<string>()).Select(FsTypes.NodeId.NewNodeId))));
 
     /// <summary>A render-time error boundary — renders <c>Fallback</c> if <c>Child</c> throws.</summary>
     public static FuaranNode ErrorBoundary(ErrorBoundaryOptions options) =>
         new(FsFactory.errorBoundary<object>(
             options.Id,
-            new FsTypes.ErrorBoundarySpec<object>(options.Child.Inner, options.Fallback.Inner)));
+            // Generated ErrorBoundarySpec ctor order (Child, Fallback) matches the
+            // old hand order; only the declaring type moved to Fuaran.UI.Generated.
+            new FsGen.ErrorBoundarySpec<object>(options.Child.Inner, options.Fallback.Inner)));
 
     /// <summary>A named reusable-subtree declaration (renders nothing at the decl site).</summary>
     public static FuaranNode FragmentDecl(FragmentDeclOptions options) =>
         new(FsFactory.fragmentDecl<object>(
             options.Id,
-            new FsTypes.FragmentDeclSpec<object>(
-                FsTypes.FragmentId.NewFragmentId(options.Name),
+            // Generated FragmentDeclSpec ctor is Generated.fs declaration order
+            // (Body, Name, Holes, Effect), not the old Name-first hand order.
+            // `Name` is a bare string since the swap (the FragmentId wrapper
+            // unwraps at this boundary); `Holes = None` / `Effect = None` ≡ the
+            // old empty-hole-list / pure-deterministic degenerate shape (both
+            // omitted on the wire).
+            new FsGen.FragmentDeclSpec<object>(
                 options.Body.Inner,
-                Fs.Empty<FsTypes.HoleDecl>(),
-                new FsTypes.EffectClass(FsTypes.HostEffect.Pure, FsTypes.DeterminismSource.Deterministic))));
+                options.Name,
+                Fs.None<Microsoft.FSharp.Collections.FSharpList<FsGen.HoleDecl>>(),
+                Fs.None<FsGen.EffectClass>())));
 
     /// <summary>A reference that expands the named fragment.</summary>
     public static FuaranNode FragmentRef(FragmentRefOptions options) =>
@@ -50,16 +59,20 @@ public static partial class Fuaran
     public static FuaranNode Mount(MountOptions options) =>
         new(FsFactory.mount<object>(
             options.Id,
-            new FsTypes.MountSpec<object>(
-                options.ScopeId,
-                Fs.EmptyMap<string, FsTypes.FragmentArg<object>>(),
-                new FsTypes.GuestChannel(
-                    options.TwoWay ? FsTypes.ChannelDirection.TwoWay : FsTypes.ChannelDirection.OutOnly,
+            // Generated MountSpec ctor is Generated.fs declaration order
+            // (Capabilities, Channel, Inputs, OnBubble, ScopeId), not the old
+            // ScopeId-first hand order. `Capabilities` is a bare string list since
+            // the swap (the CapabilityTag wrapper unwraps at this boundary);
+            // `Inputs = None` ≡ the old empty map, and `OnBubble = None` ≡ the old
+            // no-op handler (both omitted on the wire).
+            new FsGen.MountSpec<object>(
+                Fs.List(options.Capabilities ?? Enumerable.Empty<string>()),
+                new FsGen.GuestChannel(
+                    options.TwoWay ? FsGen.ChannelDirection.TwoWay : FsGen.ChannelDirection.OutOnly,
                     Fs.OptStr(options.MessageShape)),
-                Fs.Func<object, FsTypes.Action<object>>(_ =>
-                    FsTypes.Action<object>.NewChain(Fs.Empty<FsTypes.Action<object>>())),
-                Fs.List((options.Capabilities ?? Enumerable.Empty<string>())
-                    .Select(FsTypes.CapabilityTag.NewCapabilityTag)))));
+                Fs.None<Microsoft.FSharp.Collections.FSharpMap<string, FsGen.FragmentArg<object>>>(),
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<object, global::Fuaran.UI.Generated.Action<object>>>(),
+                options.ScopeId)));
 
     /// <summary>A state-bound conditional-child primitive (Phase 392) — renders the first
     /// <c>Cases</c> child whose <c>Match</c> equals the string form of the reactive StateStore
@@ -70,11 +83,15 @@ public static partial class Fuaran
     public static FuaranNode Switch(SwitchOptions options) =>
         new(FsFactory.@switch<object>(
             options.Id,
-            new FsTypes.SwitchSpec<object>(
-                options.StateKey,
+            // Generated SwitchSpec ctor is Generated.fs declaration order (Cases,
+            // Default, StateKey), not the old StateKey-first hand order. Each case
+            // is now a generated SwitchCase record — its ctor is declaration order
+            // (Child, Match), i.e. child-first, the reverse of the old tuple.
+            new FsGen.SwitchSpec<object>(
                 Fs.List((options.Cases ?? Enumerable.Empty<SwitchCase>())
-                    .Select(c => System.Tuple.Create(c.Match, c.Child.Inner))),
-                options.Default.Inner)));
+                    .Select(c => new FsGen.SwitchCase<object>(c.Child.Inner, c.Match))),
+                options.Default.Inner,
+                options.StateKey)));
 }
 
 /// <summary>Options for <see cref="Fuaran.Custom"/>.</summary>

@@ -87,9 +87,10 @@ let holeAddr (declId: string) (holeName: string) : string = declId + "." + holeN
 let private declHoles (node: Node<'Msg>) : Fuaran.Core.HoleDecl list =
     match node.Kind with
     | NodeKind.FragmentDecl spec ->
-        let (NodeId declId) = node.Id
+        let declId = node.Id
 
         spec.Holes
+        |> Option.defaultValue []
         |> List.map (fun h ->
             let name = HoleDecl.name h
 
@@ -108,7 +109,10 @@ let private declHoles (node: Node<'Msg>) : Fuaran.Core.HoleDecl list =
 /// non-decl node — it declares no effect surface).
 let private declEffect (node: Node<'Msg>) : Fuaran.Core.EffectClass =
     match node.Kind with
-    | NodeKind.FragmentDecl spec -> toCoreEffect spec.Effect
+    | NodeKind.FragmentDecl spec ->
+        spec.Effect
+        |> Option.map toCoreEffect
+        |> Option.defaultValue Fuaran.Core.Effect.pureDeterministic
     | _ -> Fuaran.Core.Effect.pureDeterministic
 
 // ── the hygienic slot substitution (the renderer's FragmentApply logic,
@@ -118,18 +122,14 @@ let private declEffect (node: Node<'Msg>) : Fuaran.Core.EffectClass =
 /// is one.
 let private slotMarker (node: Node<'Msg>) : string option =
     match node.Kind with
-    | NodeKind.FragmentRef spec ->
-        let (FragmentId n) = spec.Name
-        Some n
+    | NodeKind.FragmentRef spec -> Some spec.Name
     | _ -> None
 
 /// Rewrite every interior NodeId by `prefix` — hygienic namespacing of an
 /// inserted slot subtree (`<slotAddr>.<innerId>`), so two cross-witness
 /// compositions into distinct slots cannot capture one another (Fork 2).
 let rec private namespaceIds (prefix: string) (node: Node<'Msg>) : Node<'Msg> =
-    let renamed =
-        { node with
-            Id = NodeId(prefix + rawId node.Id) }
+    let renamed = { node with Id = prefix + node.Id }
 
     match Introspect.getChildren renamed.Kind with
     | Some kids ->
@@ -192,7 +192,7 @@ let rec private substituteSlot
 let private declBind (addr: string) (arg: Fuaran.Core.Arg<Node<'Msg>>) (node: Node<'Msg>) : Result<Node<'Msg>, string> =
     match node.Kind with
     | NodeKind.FragmentDecl spec ->
-        let (NodeId declId) = node.Id
+        let declId = node.Id
 
         // The addr is `<declId>.<slotName>`; recover the slot name.
         let prefix = declId + "."
@@ -212,7 +212,12 @@ let private declBind (addr: string) (arg: Fuaran.Core.Arg<Node<'Msg>>) (node: No
                     // The bound slot is no longer an open hole — drop it from the
                     // decl's declared holes so the composed function's signature
                     // reports only the residual (unbound) holes.
-                    let residualHoles = spec.Holes |> List.filter (fun h -> HoleDecl.name h <> slotName)
+                    let residualHoles =
+                        spec.Holes
+                        |> Option.map (List.filter (fun h -> HoleDecl.name h <> slotName))
+                        |> Option.bind (function
+                            | [] -> None
+                            | hs -> Some hs)
 
                     Ok
                         { node with
@@ -232,7 +237,7 @@ let private declBind (addr: string) (arg: Fuaran.Core.Arg<Node<'Msg>>) (node: No
 /// the `Ops.Introspect` container lens.
 let uiWitness<'Msg> : Fuaran.Core.ArtifactWitness<Node<'Msg>, NodeId> =
     { Tree =
-        { Id = fun n -> n.Id
+        { Id = fun n -> NodeId n.Id
           KindTag = fun n -> Introspect.kindName n.Kind
           Children = fun n -> Introspect.getChildren n.Kind |> Option.defaultValue []
           ReplaceChildren =

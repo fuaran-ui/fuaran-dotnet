@@ -48,11 +48,13 @@ module TreeMerge =
         | Some k -> k
         | None -> node.Kind
 
-    let private childIds<'Msg> (node: Node<'Msg>) : string list =
-        childrenOf node |> List.map (fun c -> rawId c.Id)
+    let private childIds<'Msg> (node: Node<'Msg>) : string list = childrenOf node |> List.map _.Id
 
     let private byId<'Msg> (nodes: Node<'Msg> list) : Map<string, Node<'Msg>> =
-        nodes |> List.map (fun n -> rawId n.Id, n) |> Map.ofList
+        nodes |> List.map (fun n -> n.Id, n) |> Map.ofList
+
+    let private styleOf<'Msg> (n: Node<'Msg>) : SemanticStyle =
+        n.Style |> Option.defaultValue Defaults.style
 
     // ── facet isolation probes (closure-safe canonical bytes) ───────────────
     //
@@ -64,8 +66,8 @@ module TreeMerge =
         CanonicalJson.encodeNode
             { n with
                 Kind = childlessKind n
-                Style = Defaults.style
-                State = Defaults.stateBehaviour
+                Style = None
+                State = None
                 Accessibility = None }
 
     /// State canonical (kind/style/accessibility neutralised to a fixed shell).
@@ -73,7 +75,7 @@ module TreeMerge =
         CanonicalJson.encodeNode
             { n with
                 Kind = shellKind
-                Style = Defaults.style
+                Style = None
                 Accessibility = None }
 
     /// Accessibility canonical (kind/style/state neutralised to a fixed shell).
@@ -81,8 +83,8 @@ module TreeMerge =
         CanonicalJson.encodeNode
             { n with
                 Kind = shellKind
-                Style = Defaults.style
-                State = Defaults.stateBehaviour }
+                Style = None
+                State = None }
 
     /// `true` when `headIds` is `baseIds` with zero removals and zero reorders.
     let private isPureAddition (baseIds: string list) (headIds: string list) : bool =
@@ -215,7 +217,7 @@ module TreeMerge =
         (a: Node<'Msg>)
         (b: Node<'Msg>)
         : Node<'Msg> =
-        let id = rawId baseN.Id
+        let id = baseN.Id
         let baseKC = kindCanonical baseN
         let aKC = kindCanonical a
         let bKC = kindCanonical b
@@ -290,29 +292,23 @@ module TreeMerge =
         : Node<'Msg> =
         let a = Option.defaultValue baseN aOpt
         let b = Option.defaultValue baseN bOpt
-        let id = rawId baseN.Id
+        let id = baseN.Id
         let shellKind = childlessKind baseN
 
         // kind facet (KindSwapOrphansPin-aware — the F1-drift defence)
         let kindSource = mergeKindFacet conflicts cellAuthor baseN a b
 
-        // style sub-fields (independent)
+        // style sub-fields (independent) — read default-through (`None` = all-default)
+        let baseS = styleOf baseN
+        let aS = styleOf a
+        let bS = styleOf b
+
         let mergedStyle: SemanticStyle =
-            { Tone = mergeStyleField conflicts id "style.tone" cellAuthor baseN.Style.Tone a.Style.Tone b.Style.Tone
-              Weight =
-                mergeStyleField conflicts id "style.weight" cellAuthor baseN.Style.Weight a.Style.Weight b.Style.Weight
-              Emphasis =
-                mergeStyleField
-                    conflicts
-                    id
-                    "style.emphasis"
-                    cellAuthor
-                    baseN.Style.Emphasis
-                    a.Style.Emphasis
-                    b.Style.Emphasis
-              Role = mergeStyleField conflicts id "style.role" cellAuthor baseN.Style.Role a.Style.Role b.Style.Role
-              Voice =
-                mergeStyleField conflicts id "style.voice" cellAuthor baseN.Style.Voice a.Style.Voice b.Style.Voice }
+            { Tone = mergeStyleField conflicts id "style.tone" cellAuthor baseS.Tone aS.Tone bS.Tone
+              Weight = mergeStyleField conflicts id "style.weight" cellAuthor baseS.Weight aS.Weight bS.Weight
+              Emphasis = mergeStyleField conflicts id "style.emphasis" cellAuthor baseS.Emphasis aS.Emphasis bS.Emphasis
+              Role = mergeStyleField conflicts id "style.role" cellAuthor baseS.Role aS.Role bS.Role
+              Voice = mergeStyleField conflicts id "style.voice" cellAuthor baseS.Voice aS.Voice bS.Voice }
 
         // state facet
         let statePick =
@@ -419,7 +415,11 @@ module TreeMerge =
 
         { baseN with
             Kind = mergedKind
-            Style = mergedStyle
+            Style =
+                (if mergedStyle = Defaults.style then
+                     None
+                 else
+                     Some mergedStyle)
             State = mergedState
             Accessibility = mergedAcc }
 

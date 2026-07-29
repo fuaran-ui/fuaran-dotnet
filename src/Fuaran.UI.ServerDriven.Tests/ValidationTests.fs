@@ -31,9 +31,7 @@ let private deny: Action<Msg> -> bool = fun _ -> false
 /// A tree: a dashboard holding a button, a static-option select, a form,
 /// a disclosure and a tabs node — one of each interactive kind, plus a
 /// non-interactive markdown leaf.
-let private opt v =
-    { Value = v
-      Label = TextSource.Literal v }
+let private opt v : SelectOption = { Value = v; Label = v }
 
 let private tree: Node<Msg> =
     Fuaran.dashboard
@@ -47,7 +45,7 @@ let private tree: Node<Msg> =
                   Fuaran.select
                       "sel"
                       { Defaults.select<Msg> with
-                          Source = Binding.Static [ opt "a"; opt "b" ]
+                          Source = Binding.Static(Some [ opt "a"; opt "b" ])
                           OnChange = Some(fun v -> Action.Dispatch(Picked v)) }
                   Fuaran.form
                       "frm"
@@ -64,21 +62,25 @@ let private tree: Node<Msg> =
                   Fuaran.stepper
                       "stp"
                       { Defaults.stepper<Msg> with
-                          OnSelect = (fun i -> Action.Dispatch(StepChosen i)) }
+                          OnSelect = Some(fun i -> Action.Dispatch(StepChosen i)) }
                   Fuaran.filters
                       "flt"
                       [ { Name = "region"
                           Label = TextSource.Literal "Region"
-                          Field =
+                          Kind =
                             FormFieldKind.SegmentedChoice(
-                                Binding.Static [ opt "north"; opt "south" ],
-                                Binding.Static None,
+                                Binding.Static(Some [ opt "north"; opt "south" ]),
+                                Some(Binding.Static None),
                                 Some(fun v -> Action.Dispatch(RegionFiltered v)),
-                                Horizontal
+                                Orientation.Horizontal
                             ) }
                         { Name = "name"
                           Label = TextSource.Literal "Name"
-                          Field = FormFieldKind.Text(Binding.Static "", Some(fun v -> Action.Dispatch(NameFiltered v))) } ]
+                          Kind =
+                            FormFieldKind.Text(
+                                Some(Binding.Static(Some "")),
+                                Some(fun v -> Action.Dispatch(NameFiltered v))
+                            ) } ]
                   Fuaran.markdown "md" "just text" ] }
 
 let private ev nodeId event payload =

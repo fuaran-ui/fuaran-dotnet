@@ -38,7 +38,7 @@ let private boundMarkdown (id: string) (key: string) (dflt: string) : Node<obj> 
     let n = Fuaran.markdown id "placeholder"
 
     { n with
-        Kind = NodeKind.Markdown({ Text = TextSource.Bound(Binding.State(key, dflt)) }) }
+        Kind = NodeKind.Markdown({ Text = TextSource.Bound(Binding.State(key, Some dflt)) }) }
 
 /// A dashboard: a button (OnClick supplied) + the reactive Markdown bound to
 /// state key "msg" (default "init").
@@ -60,7 +60,7 @@ let private mkTreeNode (onClick: Action<obj>) : Node<obj> =
 let private mkTree (onClick: Action<obj>) : WireTree = WireTree.ofDecoded (mkTreeNode onClick)
 
 let private stubRender (n: Node<obj>) : string =
-    let (NodeId s) = n.Id
+    let s = n.Id
     $"<f id='{s}'/>"
 
 let private clickEv (nodeId: string) : LiveEvent =
@@ -244,8 +244,7 @@ let tests =
               // and the bounded driver no-ops the Call — the authored closure is
               // unreachable end-to-end (decode → drive), the invariant Phase 154
               // multi-tenant hosting rests on.
-              let authored =
-                  mkTreeNode (Action.Call(ApiEndpoint "https://x", Some throwing, None))
+              let authored = mkTreeNode (Action.Call("https://x", Some throwing, None))
 
               let json = CanonicalJson.encodeNode authored
 

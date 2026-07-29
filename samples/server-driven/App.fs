@@ -85,14 +85,14 @@ let view (model: Model) : Node<obj> =
                   Fuaran.tabs
                       "tabs"
                       { Defaults.tabs<obj> with
-                          ActiveIndex = Binding.Static model.Tab
+                          ActiveIndex = Binding.Static(Some model.Tab)
                           OnSelect = Some(fun i -> dispatch (SelectTab i))
                           Children = [ counterTab model; aboutTab ] }
                   Fuaran.disclosure
                       "advanced"
                       { Defaults.disclosure<obj> with
                           Heading = TextSource.Literal "Advanced"
-                          Open = Binding.Static model.Advanced
+                          Open = Binding.Static(Some model.Advanced)
                           DefaultOpen = model.Advanced
                           OnToggle = Some(fun isOpen -> dispatch (ToggleAdvanced isOpen))
                           Children =

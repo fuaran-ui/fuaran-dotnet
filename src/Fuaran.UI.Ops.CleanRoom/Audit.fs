@@ -114,7 +114,7 @@ let rec referencedIds (op: TreeOp<'Msg>) : NodeId list =
     | TreeOp.RemoveNode id -> [ id ]
     | TreeOp.MoveNode(id, newParentId) -> [ id; newParentId ]
     | TreeOp.ReorderChildren(parentId, newOrder) -> parentId :: newOrder
-    | TreeOp.ReplaceRoot node -> [ node.Id ]
+    | TreeOp.ReplaceRoot node -> [ NodeId node.Id ]
     | TreeOp.Batch inner -> inner |> List.collect referencedIds
 
 // ─── Audited orchestration ──────────────────────────────────────────────────

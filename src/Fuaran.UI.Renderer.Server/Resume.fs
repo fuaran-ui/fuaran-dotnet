@@ -144,15 +144,14 @@ let rec encodeAction (action: Action<'Msg>) : string =
         let ops = inner |> List.map encodeAction |> String.concat ","
         sprintf "{\"$type\":\"Chain\",\"ops\":[%s]}" ops
     | Action.Dispatch _ -> "{\"$type\":\"Dispatch\",\"msg\":\"<closure>\"}"
-    | Action.Call(ApiEndpoint ep, onResult, into) ->
+    | Action.Call(ep, onResult, into) ->
         // Phase 428 — mirror the canonical codec: `onResult` only when Some
         // (the closure sentinel), `into` only when Some. Ordinal field order:
         // $type < endpoint < into < onResult.
         let intoJson =
             match into with
-            | Some(CallResultTarget.IntoState key) ->
-                sprintf ",\"into\":{\"$type\":\"State\",\"key\":%s}" (jsonString key)
-            | Some(CallResultTarget.IntoQuery name) ->
+            | Some(CallResultTarget.State key) -> sprintf ",\"into\":{\"$type\":\"State\",\"key\":%s}" (jsonString key)
+            | Some(CallResultTarget.Query name) ->
                 sprintf ",\"into\":{\"$type\":\"Query\",\"name\":%s}" (jsonString name)
             | None -> ""
 
@@ -168,7 +167,8 @@ let rec encodeAction (action: Action<'Msg>) : string =
         // capabilityId; each arg {addr < value}).
         let argsJson =
             args
-            |> List.map (fun (a, v) -> sprintf "{\"addr\":%s,\"value\":%s}" (jsonString a) (jsonString v))
+            |> List.map (fun (a: InvokeArg) ->
+                sprintf "{\"addr\":%s,\"value\":%s}" (jsonString a.Addr) (jsonString a.Value))
             |> String.concat ","
 
         sprintf "{\"$type\":\"Invoke\",\"args\":[%s],\"capabilityId\":%s}" argsJson (jsonString capabilityId)
@@ -204,7 +204,7 @@ let private actionOf (node: Node<obj>) : Action<obj> option =
 /// DFS collect every `(nodeId, Action)` for event-bearing nodes, in document
 /// order — the resume envelope's payload.
 let rec private collectActions (node: Node<obj>) : (string * Action<obj>) list =
-    let (NodeId id) = node.Id
+    let id = node.Id
 
     let here =
         match actionOf node with
@@ -320,7 +320,7 @@ let envelopeElement
     (initEffects: (string * InitEffectInput) list)
     (node: Node<obj>)
     : ReactElement =
-    let (NodeId rootId) = node.Id
+    let rootId = node.Id
     let json = encodeEnvelope moduleId modelJson initEffects node
 
     Html.script

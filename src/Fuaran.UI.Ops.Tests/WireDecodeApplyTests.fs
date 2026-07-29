@@ -33,11 +33,11 @@ open Fuaran.UI.Ops
 /// `'Msg` parameter explicitly resolves to `obj` — matching the
 /// `Node<obj>` shape `JsonDecode.decodeOp` produces.
 let private revenueMetric: Node<obj> =
-    { Id = NodeId "revenue"
+    { Id = "revenue"
       Kind =
         NodeKind.Metric(
             { Label = TextSource.Literal "Revenue"
-              Value = Binding.Static 0.0
+              Value = Binding.Static(Some 0.0)
               Format = CellFormat.Currency "USD"
               Tone = ToneVariant.Brand
               Weight = StyleWeight.Standard
@@ -47,16 +47,9 @@ let private revenueMetric: Node<obj> =
               Icon = None
               Subtext = None }
         )
-      State =
-        { OnLoading = None
-          OnEmpty = None
-          OnError = None }
-      Style =
-        { Tone = ToneVariant.Default
-          Weight = StyleWeight.Standard
-          Emphasis = Emphasis.Normal
-          Role = StyleRole.None
-          Voice = FontVoice.Default }
+      // `None` is the canonical empty-state / default-style shape since the swap.
+      State = None
+      Style = None
       Accessibility = None
       Motion = None
       ExtraAttributes = None }
@@ -102,7 +95,7 @@ let tests =
                       let spec = metricOf updated
 
                       match spec.Trend with
-                      | Some(Binding.Static v) -> Expect.equal v -125.0 "Trend Static value"
+                      | Some(Binding.Static(Some v)) -> Expect.equal v -125.0 "Trend Static value"
                       | other -> failtestf "Expected Some (Binding.Static -125.0), got %A" other
           }
 
@@ -127,7 +120,7 @@ let tests =
                       let spec = metricOf updated
 
                       match spec.Value with
-                      | Binding.Static v -> Expect.equal v 42000.0 "Source Static value"
+                      | Binding.Static(Some v) -> Expect.equal v 42000.0 "Source Static value"
                       | other -> failtestf "Expected Binding.Static 42000.0, got %A" other
           }
 
@@ -186,10 +179,10 @@ let tests =
               // Map<string,obj> → typed-value coercion on the nested leg.
               let grid: Node<obj> =
                   { revenueMetric with
-                      Id = NodeId "channel-grid"
+                      Id = "channel-grid"
                       Kind =
                           NodeKind.DataGrid(
-                              { Source = Binding.Static Seq.empty
+                              { Source = Binding.Static(Some Seq.empty)
                                 RowKey = Some(fun _ -> "")
                                 RowKeyField = None
                                 Columns =
@@ -224,10 +217,10 @@ let tests =
           test "UpdateProp { path=\"Columns[0].Width\", value=ColumnWidth.Fixed } applies via wire decode" {
               let grid: Node<obj> =
                   { revenueMetric with
-                      Id = NodeId "channel-grid"
+                      Id = "channel-grid"
                       Kind =
                           NodeKind.DataGrid(
-                              { Source = Binding.Static Seq.empty
+                              { Source = Binding.Static(Some Seq.empty)
                                 RowKey = Some(fun _ -> "")
                                 RowKeyField = None
                                 Columns =

@@ -49,10 +49,10 @@ let private tabsFragment (declId: string) (effect: EffectClass) : Node<unit> =
 
     Fuaran.fragmentDecl
         declId
-        { Name = FragmentId declId
+        { Name = declId
           Body = placeholderBody
-          Holes = [ HoleDecl.Repeat("count", HoleValueSpace.IntRange(1, 7)) ]
-          Effect = effect }
+          Holes = Some [ HoleDecl.Repeat("count", HoleValueSpace.IntRange(1, 7)) ]
+          Effect = Some effect }
 
 /// Read the bound `count` off the binding map (defaulting to 1 when the harness
 /// has not bound it — never happens for a required repeat hole, but total).

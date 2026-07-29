@@ -92,14 +92,14 @@ let tests =
 
           test "Binding.Format resolves a Static numeric source to the formatted string" {
               let b: Binding<string> =
-                  Binding.Format(Binding.Static 1234.5, Format.Currency "GBP", LocaleSource.Explicit "en-GB")
+                  Binding.Format(Binding.Static(Some 1234.5), Format.Currency "GBP", LocaleSource.Explicit "en-GB")
 
               Expect.equal (resolvesTo BindingResolver.empty b) "£1,234.50" "explicit-locale currency"
           }
 
           test "LocaleSource.Ambient defers to BindingSources.Locale" {
               let b: Binding<string> =
-                  Binding.Format(Binding.Static 1234.5, Format.Number(Some 1), LocaleSource.Ambient)
+                  Binding.Format(Binding.Static(Some 1234.5), Format.Number(Some 1), LocaleSource.Ambient)
 
               let sources =
                   { BindingResolver.empty with

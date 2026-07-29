@@ -1,7 +1,9 @@
 Imports System.Linq
 Imports Microsoft.FSharp.Reflection
 Imports Fuaran.UI.VisualBasic
-Imports FsTypes = Fuaran.UI.Types
+' `Fuaran.UI.Types.NodeKind` is a type ABBREVIATION since the 692 swap — erased
+' in metadata, so VB reflects the generated declaration directly.
+Imports FsTypes = Fuaran.UI.Generated
 
 ' Phase 311 mapping-completeness guard — the §11 forward-coupling reminder for the VB
 ' translator: enumerate every shipped NodeKind/spec case by reflecting the F# DUs and

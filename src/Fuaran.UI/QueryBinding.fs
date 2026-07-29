@@ -176,7 +176,8 @@ let private queryRef (b: Binding<'T>) : string option =
     | _ -> None
 
 let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
-    let (NodeId nid) = n.Id
+    // `Node.Id` is a bare string since the swap.
+    let nid = n.Id
     let acc = ResizeArray<QueryBoundRef>()
 
     let add (sink: BindingSinkClass) (b: Binding<'T>) =
@@ -221,18 +222,21 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
                       NodeId = nid }
         | _ -> ()
     | NodeKind.Form spec ->
+        // Value slots are OPTIONS since Phase 596 (the symmetric auto-bind):
+        // an omitted slot binds `$state.<field id>` — never a query column —
+        // so an absent value contributes no query-bound ref to the walk.
         for field in spec.Fields do
             match field.Kind with
-            | FormFieldKind.Number(value, _) -> add BindingSinkClass.Numeric value
-            | FormFieldKind.RangedNumber(value, _, _) -> add BindingSinkClass.Numeric value
-            | FormFieldKind.Range(value, _, _) -> add BindingSinkClass.Numeric value
-            | FormFieldKind.Checkbox(value, _) -> add BindingSinkClass.Boolean value
-            | FormFieldKind.Date(value, _, _, _) -> add BindingSinkClass.Temporal value
-            | FormFieldKind.DateRange(value, _, _, _) -> add BindingSinkClass.Temporal value
-            | FormFieldKind.Text(value, _) -> add BindingSinkClass.Categorical value
-            | FormFieldKind.TextArea(value, _, _) -> add BindingSinkClass.Categorical value
-            | FormFieldKind.Choice(_, value, _) -> add BindingSinkClass.Categorical value
-            | FormFieldKind.SegmentedChoice(_, value, _, _) -> add BindingSinkClass.Categorical value
+            | FormFieldKind.Number(value, _) -> addOpt BindingSinkClass.Numeric value
+            | FormFieldKind.RangedNumber(value, _, _, _, _) -> addOpt BindingSinkClass.Numeric value
+            | FormFieldKind.Range(value, _, _, _, _) -> addOpt BindingSinkClass.Numeric value
+            | FormFieldKind.Checkbox(value, _) -> addOpt BindingSinkClass.Boolean value
+            | FormFieldKind.Date(value, _, _, _, _, _) -> addOpt BindingSinkClass.Temporal value
+            | FormFieldKind.DateRange(value, _, _, _, _, _) -> addOpt BindingSinkClass.Temporal value
+            | FormFieldKind.Text(value, _) -> addOpt BindingSinkClass.Categorical value
+            | FormFieldKind.TextArea(value, _, _) -> addOpt BindingSinkClass.Categorical value
+            | FormFieldKind.Choice(_, value, _) -> addOpt BindingSinkClass.Categorical value
+            | FormFieldKind.SegmentedChoice(_, value, _, _) -> addOpt BindingSinkClass.Categorical value
     | _ -> ()
 
     List.ofSeq acc
@@ -260,7 +264,7 @@ let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list =
             walk spec.Child
             walk spec.Fallback
         | NodeKind.Switch spec ->
-            spec.Cases |> List.iter (fun (_, child) -> walk child)
+            spec.Cases |> List.iter (fun c -> walk c.Child)
             walk spec.Default
         | NodeKind.FragmentDecl spec -> walk spec.Body
         // Every childless kind — Display / Input / Visualisation leaves.

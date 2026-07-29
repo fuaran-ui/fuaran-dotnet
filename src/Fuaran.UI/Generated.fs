@@ -29,6 +29,7 @@ type BoxRole =
     | Dashboard
     | Card
     | Group
+    | Separator
 
 [<RequireQualifiedAccess>]
 type MathDisplay =
@@ -195,7 +196,7 @@ and [<RequireQualifiedAccess>] CellFormat =
     | Percent of decimals: int option
     | SignificantDigits of digits: int
     | Date of format: string
-    | Custom of fn: (obj -> string)
+    | Custom of fn: (Fuaran.UI.HostPrelude.CellValue -> string)
 
 and [<RequireQualifiedAccess>] Action<'Msg> =
     | Chain of ops: Action<'Msg> list
@@ -233,8 +234,8 @@ and [<RequireQualifiedAccess>] LocalFlushTrigger =
 
 and [<RequireQualifiedAccess>] LayoutMode =
     | Auto
-    | Flex of direction: Orientation * wrap: bool
-    | Grid of cols: int * templateColumns: string option
+    | Flex of direction: Orientation * wrap: bool * gap: int option
+    | Grid of cols: int * templateColumns: string option * gap: int option
 
 and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | Text of value: Binding<string> option * onChange: (string -> Action<'Msg>) option
@@ -246,6 +247,7 @@ and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | Range of value: Binding<RangePair> option * onChange: (float * float -> Action<'Msg>) option * min: float option * max: float option * step: float option
     | SegmentedChoice of options: Binding<SelectOption list> * value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * orientation: Orientation
     | Date of value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
+    | DateRange of value: Binding<DateRangePair> option * onChange: (string * string -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
 
 and [<RequireQualifiedAccess>] ColumnWidth =
     | Auto
@@ -256,13 +258,13 @@ and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
     | Text
     | Numeric
     | Date
-    | Editable of onEdit: (obj * obj -> Action<'Msg>) option
+    | Editable of onEdit: (obj * Fuaran.UI.HostPrelude.CellValue -> Action<'Msg>) option
     | Checkbox of get: (obj -> bool) * onToggle: (obj * bool -> Action<'Msg>) option
     | Button of label: TextSource * onClick: (obj -> Action<'Msg>) option
     | ButtonGroup of buttons: ButtonGroupItem<'Msg> list
     | Link of hrefFn: (obj -> string) * labelFn: (obj -> TextSource)
     | Pill of labelFn: (obj -> TextSource) * toneFn: (obj -> ToneVariant)
-    | Progress of fractionFn: (obj -> float) * labelFn: (obj -> TextSource)
+    | Progress of fractionFn: (obj -> float) * labelFn: (obj -> TextSource) option
     | Custom of fn: ((obj -> JVal) -> Node<'Msg>)
 
 and [<RequireQualifiedAccess>] HoleValueSpace =
@@ -306,7 +308,7 @@ and [<RequireQualifiedAccess>] Shape =
     | Curve of commands: CurveCommand list * style: DrawStyle
     | Circle of cx: float * cy: float * r: float * style: DrawStyle
     | Ellipse of cx: float * cy: float * rx: float * ry: float * style: DrawStyle
-    | Label of style: DrawStyle * text: TextSource * x: float * y: float
+    | Label of x: float * y: float * text: TextSource * style: DrawStyle
 
 and SemanticStyle =
     {
@@ -320,7 +322,7 @@ and SemanticStyle =
 and StateBehaviour<'Msg> =
     {
       OnEmpty: Node<'Msg> option
-      OnError: (obj -> Node<'Msg>) option
+      OnError: (Fuaran.UI.HostPrelude.ErrorPayload -> Node<'Msg>) option
       OnLoading: Node<'Msg> option
     }
 
@@ -330,8 +332,8 @@ and Accessibility =
       Hidden: Binding<bool> option
       Label: Binding<string> option
       LabelledBy: string option
-      LiveRegion: string option
-      Role: string option
+      LiveRegion: Fuaran.UI.HostPrelude.LiveRegionKind option
+      Role: Fuaran.UI.HostPrelude.AriaRole option
     }
 
 and SwitchCase<'Msg> =
@@ -394,8 +396,8 @@ and MapMarker =
 
 and StaticRows =
     {
-      Headers: string list
-      Rows: string list list
+      Headers: TextSource list
+      Rows: TextSource list list
     }
 
 and FormField<'Msg> =
@@ -426,6 +428,12 @@ and RangePair =
       Min: float
     }
 
+and DateRangePair =
+    {
+      From: string
+      To: string
+    }
+
 and TabHeader =
     {
       Label: TextSource
@@ -439,7 +447,7 @@ and ColumnErased<'Msg> =
       Format: CellFormat
       Kind: CellKindErased<'Msg>
       Label: string
-      Value: (obj -> obj) option
+      Value: (obj -> Fuaran.UI.HostPrelude.CellValue) option
       Width: ColumnWidth
     }
 
@@ -580,7 +588,7 @@ and FactSpec =
 // Display
 and SparklineSpec =
     {
-      Source: Binding<int list>
+      Source: Binding<float list>
     }
 
 // Display
@@ -669,6 +677,7 @@ and TabsSpec<'Msg> =
     {
       ActiveIndex: Binding<int>
       Children: Node<'Msg> list
+      Orientation: Orientation
       OnSelect: (int -> Action<'Msg>) option
       OnSelectTag: (string -> Action<'Msg>) option
       TabHeaders: TabHeader list option
@@ -691,7 +700,7 @@ and ButtonSpec<'Msg> =
       OnClick: Action<'Msg>
       Variant: ButtonVariant
       Icon: string option
-      Tooltip: TextSource option
+      Tooltip: (TextSource option)
       Disabled: Binding<bool> option
     }
 
@@ -715,7 +724,7 @@ and FileUploadSpec<'Msg> =
       Accept: string list
       Label: TextSource
       Multiple: bool
-      OnSelect: (obj list -> Action<'Msg>) option
+      OnSelect: (Fuaran.UI.HostPrelude.FileSelection list -> Action<'Msg>) option
       Disabled: Binding<bool> option
     }
 
@@ -741,7 +750,7 @@ and DataGridSpec<'Msg> =
       Editable: bool
       RowKey: (obj -> string) option
       RowKeyField: string option
-      Source: Binding<unit>
+      Source: Binding<obj seq>
       StaticRows: StaticRows option
       OnRowClick: (obj -> Action<'Msg>) option
     }
@@ -750,7 +759,7 @@ and DataGridSpec<'Msg> =
 and ChartSpec<'Msg> =
     {
       Kind: ChartKind
-      Source: Binding<unit>
+      Source: Binding<obj seq>
       Stacked: bool
       XField: string
       YFields: string list
@@ -773,7 +782,7 @@ and CustomSpec =
     {
       ModuleId: string
       ComponentId: string
-      Props: Map<string, unit>
+      Props: Map<string, JVal>
       ContentHash: ContentHash option
       ExposedNodeIds: string list option
     }
@@ -897,6 +906,7 @@ let private encBoxRole (v: BoxRole) : JVal =
     | BoxRole.Dashboard -> JStr "Dashboard"
     | BoxRole.Card -> JStr "Card"
     | BoxRole.Group -> JStr "Group"
+    | BoxRole.Separator -> JStr "Separator"
 
 let private encMathDisplay (v: MathDisplay) : JVal =
     match v with
@@ -1037,48 +1047,50 @@ let private encMotion (v: Motion) : JVal =
     | Motion.SlideInFromRight -> JStr "SlideInFromRight"
     | Motion.ExpandCollapse -> JStr "ExpandCollapse"
 
-let rec private encNode (n: Node<'Msg>) : JVal =
-    let kind =
-        match n.Kind with
-        | NodeKind.Heading s -> encHeadingSpec s
-        | NodeKind.Badge s -> encBadgeSpec s
-        | NodeKind.Markdown s -> encMarkdownSpec s
-        | NodeKind.Math s -> encMathSpec s
-        | NodeKind.Skeleton s -> encSkeletonSpec s
-        | NodeKind.List s -> encListSpec s
-        | NodeKind.Image s -> encImageSpec s
-        | NodeKind.Link s -> encLinkSpec s
-        | NodeKind.Callout s -> encCalloutSpec s
-        | NodeKind.Progress s -> encProgressSpec s
-        | NodeKind.Metric s -> encMetricSpec s
-        | NodeKind.LabelValueRow s -> encLabelValueRowSpec s
-        | NodeKind.Fact s -> encFactSpec s
-        | NodeKind.Sparkline s -> encSparklineSpec s
-        | NodeKind.CodeBlock s -> encCodeBlockSpec s
-        | NodeKind.Toast s -> encToastSpec s
-        | NodeKind.Drawing s -> encDrawingSpec s
-        | NodeKind.Box s -> encBoxSpec s
-        | NodeKind.SplitPanel s -> encSplitPanelSpec s
-        | NodeKind.SummaryList s -> encSummaryListSpec s
-        | NodeKind.Disclosure s -> encDisclosureSpec s
-        | NodeKind.Modal s -> encModalSpec s
-        | NodeKind.ScrollArea s -> encScrollAreaSpec s
-        | NodeKind.Tabs s -> encTabsSpec s
-        | NodeKind.Stepper s -> encStepperSpec s
-        | NodeKind.Button s -> encButtonSpec s
-        | NodeKind.Select s -> encSelectSpec s
-        | NodeKind.FileUpload s -> encFileUploadSpec s
-        | NodeKind.Form s -> encFormSpec s
-        | NodeKind.Filters s -> encFiltersSpec s
-        | NodeKind.DataGrid s -> encDataGridSpec s
-        | NodeKind.Chart s -> encChartSpec s
-        | NodeKind.Map s -> encMapSpec s
-        | NodeKind.Custom s -> encCustomSpec s
-        | NodeKind.ErrorBoundary s -> encErrorBoundarySpec s
-        | NodeKind.FragmentDecl s -> encFragmentDeclSpec s
-        | NodeKind.FragmentRef s -> encFragmentRefSpec s
-        | NodeKind.Switch s -> encSwitchSpec s
-        | NodeKind.Mount s -> encMountSpec s
+let rec private encNodeKind (k: NodeKind<'Msg>) : JVal =
+    match k with
+    | NodeKind.Heading s -> encHeadingSpec s
+    | NodeKind.Badge s -> encBadgeSpec s
+    | NodeKind.Markdown s -> encMarkdownSpec s
+    | NodeKind.Math s -> encMathSpec s
+    | NodeKind.Skeleton s -> encSkeletonSpec s
+    | NodeKind.List s -> encListSpec s
+    | NodeKind.Image s -> encImageSpec s
+    | NodeKind.Link s -> encLinkSpec s
+    | NodeKind.Callout s -> encCalloutSpec s
+    | NodeKind.Progress s -> encProgressSpec s
+    | NodeKind.Metric s -> encMetricSpec s
+    | NodeKind.LabelValueRow s -> encLabelValueRowSpec s
+    | NodeKind.Fact s -> encFactSpec s
+    | NodeKind.Sparkline s -> encSparklineSpec s
+    | NodeKind.CodeBlock s -> encCodeBlockSpec s
+    | NodeKind.Toast s -> encToastSpec s
+    | NodeKind.Drawing s -> encDrawingSpec s
+    | NodeKind.Box s -> encBoxSpec s
+    | NodeKind.SplitPanel s -> encSplitPanelSpec s
+    | NodeKind.SummaryList s -> encSummaryListSpec s
+    | NodeKind.Disclosure s -> encDisclosureSpec s
+    | NodeKind.Modal s -> encModalSpec s
+    | NodeKind.ScrollArea s -> encScrollAreaSpec s
+    | NodeKind.Tabs s -> encTabsSpec s
+    | NodeKind.Stepper s -> encStepperSpec s
+    | NodeKind.Button s -> encButtonSpec s
+    | NodeKind.Select s -> encSelectSpec s
+    | NodeKind.FileUpload s -> encFileUploadSpec s
+    | NodeKind.Form s -> encFormSpec s
+    | NodeKind.Filters s -> encFiltersSpec s
+    | NodeKind.DataGrid s -> encDataGridSpec s
+    | NodeKind.Chart s -> encChartSpec s
+    | NodeKind.Map s -> encMapSpec s
+    | NodeKind.Custom s -> encCustomSpec s
+    | NodeKind.ErrorBoundary s -> encErrorBoundarySpec s
+    | NodeKind.FragmentDecl s -> encFragmentDeclSpec s
+    | NodeKind.FragmentRef s -> encFragmentRefSpec s
+    | NodeKind.Switch s -> encSwitchSpec s
+    | NodeKind.Mount s -> encMountSpec s
+
+and private encNode (n: Node<'Msg>) : JVal =
+    let kind = encNodeKind n.Kind
 
     JObj([ Some("id", JStr n.Id); Some("kind", kind); (n.Accessibility |> Option.map (fun v -> "accessibility", encAccessibility v)); None; None; (n.State |> Option.map (fun v -> "state", encStateBehaviour v)); (n.Style |> Option.map (fun v -> "style", encSemanticStyle v)) ] |> List.choose id)
 
@@ -1154,8 +1166,8 @@ and private encLocalFlushTrigger (v: LocalFlushTrigger) : JVal =
 and private encLayoutMode (v: LayoutMode) : JVal =
     match v with
     | LayoutMode.Auto -> Canon.typed "Auto" [  ]
-    | LayoutMode.Flex (direction, wrap) -> Canon.typed "Flex" [ "direction", encOrientation direction; "wrap", JBool wrap ]
-    | LayoutMode.Grid (cols, templateColumns) -> Canon.typed "Grid" ([ Some("cols", JInt cols); (templateColumns |> Option.map (fun v -> "templateColumns", JStr v)) ] |> List.choose id)
+    | LayoutMode.Flex (direction, wrap, gap) -> Canon.typed "Flex" ([ Some("direction", encOrientation direction); Some("wrap", JBool wrap); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
+    | LayoutMode.Grid (cols, templateColumns, gap) -> Canon.typed "Grid" ([ Some("cols", JInt cols); (templateColumns |> Option.map (fun v -> "templateColumns", JStr v)); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
 
 and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     match v with
@@ -1168,6 +1180,7 @@ and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     | FormFieldKind.Range (value, onChange, min, max, step) -> Canon.typed "Range" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", JFloat v)); (max |> Option.map (fun v -> "max", JFloat v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
     | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("orientation", encOrientation orientation) ] |> List.choose id)
     | FormFieldKind.Date (value, onChange, variant, min, max, step) -> Canon.typed "Date" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
+    | FormFieldKind.DateRange (value, onChange, variant, min, max, step) -> Canon.typed "DateRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<DateRangePair>) -> match v with | Binding.Static(Some p) -> encDateRangePair p | __other -> encBinding encDateRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
 
 and private encColumnWidth (v: ColumnWidth) : JVal =
     match v with
@@ -1186,7 +1199,7 @@ and private encCellKindErased<'Msg> (v: CellKindErased<'Msg>) : JVal =
     | CellKindErased.ButtonGroup buttons -> Canon.typed "ButtonGroup" [ "buttons", JArr(List.map encButtonGroupItem buttons) ]
     | CellKindErased.Link (hrefFn, labelFn) -> Canon.typed "Link" [ "hrefFn", JStr "<closure>"; "labelFn", JStr "<closure>" ]
     | CellKindErased.Pill (labelFn, toneFn) -> Canon.typed "Pill" [ "labelFn", JStr "<closure>"; "toneFn", JStr "<closure>" ]
-    | CellKindErased.Progress (fractionFn, labelFn) -> Canon.typed "Progress" [ "fractionFn", JStr "<closure>"; "labelFn", JStr "<closure>" ]
+    | CellKindErased.Progress (fractionFn, labelFn) -> Canon.typed "Progress" ([ Some("fractionFn", JStr "<closure>"); (labelFn |> Option.map (fun v -> "labelFn", JStr "<closure>")) ] |> List.choose id)
     | CellKindErased.Custom fn -> Canon.typed "Custom" [ "fn", JStr "<closure>" ]
 
 and private encHoleValueSpace (v: HoleValueSpace) : JVal =
@@ -1236,7 +1249,7 @@ and private encShape (v: Shape) : JVal =
     | Shape.Curve (commands, style) -> Canon.typed "Curve" [ "commands", JArr(List.map encCurveCommand commands); "style", encDrawStyle style ]
     | Shape.Circle (cx, cy, r, style) -> Canon.typed "Circle" [ "cx", JFloat cx; "cy", JFloat cy; "r", JFloat r; "style", encDrawStyle style ]
     | Shape.Ellipse (cx, cy, rx, ry, style) -> Canon.typed "Ellipse" [ "cx", JFloat cx; "cy", JFloat cy; "rx", JFloat rx; "ry", JFloat ry; "style", encDrawStyle style ]
-    | Shape.Label (style, text, x, y) -> Canon.typed "Label" [ "style", encDrawStyle style; "text", encTextSource text; "x", JFloat x; "y", JFloat y ]
+    | Shape.Label (x, y, text, style) -> Canon.typed "Label" [ "x", JFloat x; "y", JFloat y; "text", encTextSource text; "style", encDrawStyle style ]
 
 and private encSemanticStyle (s: SemanticStyle) : JVal =
     JObj([ (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (if s.Role = StyleRole.None then None else Some("role", encStyleRole s.Role)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Voice = FontVoice.Default then None else Some("voice", encFontVoice s.Voice)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)) ] |> List.choose id)
@@ -1245,7 +1258,7 @@ and private encStateBehaviour<'Msg> (s: StateBehaviour<'Msg>) : JVal =
     JObj([ (s.OnEmpty |> Option.map (fun v -> "onEmpty", encNode v)); (s.OnError |> Option.map (fun v -> "onError", JStr "<closure>")); (s.OnLoading |> Option.map (fun v -> "onLoading", encNode v)) ] |> List.choose id)
 
 and private encAccessibility (s: Accessibility) : JVal =
-    JObj([ (s.DescribedBy |> Option.map (fun v -> "describedBy", JStr v)); (s.Hidden |> Option.map (fun v -> "hidden", (encBinding JBool) v)); (s.Label |> Option.map (fun v -> "label", (encBinding JStr) v)); (s.LabelledBy |> Option.map (fun v -> "labelledBy", JStr v)); (s.LiveRegion |> Option.map (fun v -> "liveRegion", JStr v)); (s.Role |> Option.map (fun v -> "role", JStr v)) ] |> List.choose id)
+    JObj([ (s.DescribedBy |> Option.map (fun v -> "describedBy", JStr v)); (s.Hidden |> Option.map (fun v -> "hidden", (encBinding JBool) v)); (s.Label |> Option.map (fun v -> "label", (encBinding JStr) v)); (s.LabelledBy |> Option.map (fun v -> "labelledBy", JStr v)); (s.LiveRegion |> Option.map (fun v -> "liveRegion", Fuaran.UI.HostPrelude.encLiveRegionKind v)); (s.Role |> Option.map (fun v -> "role", Fuaran.UI.HostPrelude.encAriaRole v)) ] |> List.choose id)
 
 and private encSwitchCase<'Msg> (s: SwitchCase<'Msg>) : JVal =
     JObj([ Some("child", encNode s.Child); Some("match", JStr s.Match) ] |> List.choose id)
@@ -1272,7 +1285,7 @@ and private encMapMarker (s: MapMarker) : JVal =
     JObj([ Some("label", JStr s.Label); Some("latitude", JFloat s.Latitude); Some("longitude", JFloat s.Longitude) ] |> List.choose id)
 
 and private encStaticRows (s: StaticRows) : JVal =
-    JObj([ Some("headers", JArr(List.map JStr s.Headers)); Some("rows", JArr(List.map (fun __xs -> JArr(List.map JStr __xs)) s.Rows)) ] |> List.choose id)
+    JObj([ Some("headers", JArr(List.map encTextSource s.Headers)); Some("rows", JArr(List.map (fun __xs -> JArr(List.map encTextSource __xs)) s.Rows)) ] |> List.choose id)
 
 and private encFormField<'Msg> (s: FormField<'Msg>) : JVal =
     JObj([ Some("id", JStr s.Id); Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("required", JBool s.Required); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
@@ -1285,6 +1298,9 @@ and private encTransformParam (s: TransformParam) : JVal =
 
 and private encRangePair (s: RangePair) : JVal =
     JObj([ Some("max", JFloat s.Max); Some("min", JFloat s.Min) ] |> List.choose id)
+
+and private encDateRangePair (s: DateRangePair) : JVal =
+    JObj([ Some("from", JStr s.From); Some("to", JStr s.To) ] |> List.choose id)
 
 and private encTabHeader (s: TabHeader) : JVal =
     JObj([ Some("label", encTextSource s.Label); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
@@ -1341,7 +1357,7 @@ and private encFactSpec (s: FactSpec) : JVal =
     Canon.typed "Fact" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); Some("label", encTextSource s.Label); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); Some("value", encTextSource s.Value) ] |> List.choose id)
 
 and private encSparklineSpec (s: SparklineSpec) : JVal =
-    Canon.typed "Sparkline" ([ Some("source", (encBinding (fun __xs -> JArr(List.map JInt __xs))) s.Source) ] |> List.choose id)
+    Canon.typed "Sparkline" ([ Some("source", (encBinding (fun __xs -> JArr(List.map JFloat __xs))) s.Source) ] |> List.choose id)
 
 and private encCodeBlockSpec (s: CodeBlockSpec) : JVal =
     Canon.typed "CodeBlock" ([ Some("code", JStr s.Code); Some("copyable", JBool s.Copyable); Some("highlightLines", JArr(List.map JInt s.HighlightLines)); Some("language", JStr s.Language); Some("lineNumbers", JBool s.LineNumbers) ] |> List.choose id)
@@ -1371,13 +1387,13 @@ and private encScrollAreaSpec<'Msg> (s: ScrollAreaSpec<'Msg>) : JVal =
     Canon.typed "ScrollArea" ([ Some("children", JArr(List.map encNode s.Children)); Some("orientation", encScrollOrientation s.Orientation); (s.MaxHeight |> Option.map (fun v -> "maxHeight", JInt v)); (s.MaxWidth |> Option.map (fun v -> "maxWidth", JInt v)) ] |> List.choose id)
 
 and private encTabsSpec<'Msg> (s: TabsSpec<'Msg>) : JVal =
-    Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.OnSelectTag |> Option.map (fun v -> "onSelectTag", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
+    Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (if s.Orientation = Orientation.Horizontal then None else Some("orientation", encOrientation s.Orientation)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.OnSelectTag |> Option.map (fun v -> "onSelectTag", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
 
 and private encStepperSpec<'Msg> (s: StepperSpec<'Msg>) : JVal =
     Canon.typed "Stepper" ([ Some("activeStep", (encBinding JInt) s.ActiveStep); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")) ] |> List.choose id)
 
 and private encButtonSpec<'Msg> (s: ButtonSpec<'Msg>) : JVal =
-    Canon.typed "Button" ([ Some("label", encTextSource s.Label); Some("onClick", encAction s.OnClick); Some("variant", encButtonVariant s.Variant); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Tooltip |> Option.map (fun v -> "tooltip", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
+    Canon.typed "Button" ([ Some("label", encTextSource s.Label); Some("onClick", encAction s.OnClick); Some("variant", encButtonVariant s.Variant); (s.Icon |> Option.map (fun v -> "icon", JStr v)); None; (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
 and private encSelectSpec<'Msg> (s: SelectSpec<'Msg>) : JVal =
     Canon.typed "Select" ([ Some("label", encTextSource s.Label); (s.OnChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (s.OnChangeMulti |> Option.map (fun v -> "onChangeMulti", JStr "<closure>")); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); Some("value", (encBinding JStr) s.Value); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
@@ -1392,16 +1408,16 @@ and private encFiltersSpec<'Msg> (s: FiltersSpec<'Msg>) : JVal =
     Canon.typed "Filters" ([ Some("items", JArr(List.map encFilterSpec s.Items)) ] |> List.choose id)
 
 and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
-    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); Some("source", (encBinding (fun _ -> JStr "<opaque>")) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); Some("source", (encBinding (fun (_: obj seq) -> JStr "<opaque>")) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encChartSpec<'Msg> (s: ChartSpec<'Msg>) : JVal =
-    Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding (fun _ -> JStr "<opaque>")) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding (fun (_: obj seq) -> JStr "<opaque>")) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encMapSpec<'Msg> (s: MapSpec<'Msg>) : JVal =
     Canon.typed "Map" ([ Some("centreLatitude", JFloat s.CentreLatitude); Some("centreLongitude", JFloat s.CentreLongitude); Some("source", (encBinding (fun __xs -> JArr(List.map encMapMarker __xs))) s.Source); Some("zoom", JInt s.Zoom); (s.OnMarkerClick |> Option.map (fun v -> "onMarkerClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encCustomSpec (s: CustomSpec) : JVal =
-    Canon.typed "Custom" ([ Some("moduleId", JStr s.ModuleId); Some("componentId", JStr s.ComponentId); Some("props", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (fun _ -> JStr "<opaque>") v))) s.Props); (s.ContentHash |> Option.map (fun v -> "contentHash", encContentHash v)); (s.ExposedNodeIds |> Option.map (fun v -> "exposedNodeIds", JArr(List.map JStr v))) ] |> List.choose id)
+    Canon.typed "Custom" ([ Some("moduleId", JStr s.ModuleId); Some("componentId", JStr s.ComponentId); Some("props", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, id v))) s.Props); (s.ContentHash |> Option.map (fun v -> "contentHash", encContentHash v)); (s.ExposedNodeIds |> Option.map (fun v -> "exposedNodeIds", JArr(List.map JStr v))) ] |> List.choose id)
 
 and private encErrorBoundarySpec<'Msg> (s: ErrorBoundarySpec<'Msg>) : JVal =
     Canon.typed "ErrorBoundary" ([ Some("child", encNode s.Child); Some("fallback", encNode s.Fallback) ] |> List.choose id)
@@ -1419,6 +1435,16 @@ and private encMountSpec<'Msg> (s: MountSpec<'Msg>) : JVal =
     Canon.typed "Mount" ([ Some("capabilities", JArr(List.map JStr s.Capabilities)); Some("channel", encGuestChannel s.Channel); (s.Inputs |> Option.map (fun v -> "inputs", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)); (s.OnBubble |> Option.map (fun v -> "onBubble", JStr "<closure>")); Some("scopeId", JStr s.ScopeId) ] |> List.choose id)
 
 let encodeNode (n: Node<'Msg>) : string = Canon.render (encNode n)
+
+/// JVal-level accessors (Phase 694) — for host codecs that splice generated
+/// encodings into a larger canonical document (e.g. a TreeOp codec).
+let encodeNodeJson (n: Node<'Msg>) : JVal = encNode n
+
+let encodeNodeKindJson (k: NodeKind<'Msg>) : JVal = encNodeKind k
+
+let encodeStateBehaviourJson (s: StateBehaviour<'Msg>) : JVal = encStateBehaviour s
+
+let encodeSemanticStyleJson (s: SemanticStyle) : JVal = encSemanticStyle s
 
 let private dObj (j: JVal) : Result<(string * JVal) list, string> =
     match j with
@@ -1529,6 +1555,7 @@ let private decBoxRole (j: JVal) : Result<BoxRole, string> =
     | JStr "Dashboard" -> Ok BoxRole.Dashboard
     | JStr "Card" -> Ok BoxRole.Card
     | JStr "Group" -> Ok BoxRole.Group
+    | JStr "Separator" -> Ok BoxRole.Separator
     | _ -> Error "not a BoxRole"
 
 let private decMathDisplay (j: JVal) : Result<MathDisplay, string> =
@@ -1972,11 +1999,13 @@ and private decLayoutMode (j: JVal) : Result<LayoutMode, string> =
         | "Flex" ->
             dReq "direction" __fs decOrientation |> Result.bind (fun direction ->
             dReq "wrap" __fs dBool |> Result.bind (fun wrap ->
-            Ok(LayoutMode.Flex(direction, wrap))))
+            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
+            Ok(LayoutMode.Flex(direction, wrap, gap)))))
         | "Grid" ->
             dReq "cols" __fs dInt |> Result.bind (fun cols ->
             dOpt "templateColumns" __fs dStr |> Result.bind (fun templateColumns ->
-            Ok(LayoutMode.Grid(cols, templateColumns))))
+            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
+            Ok(LayoutMode.Grid(cols, templateColumns, gap)))))
         | __other -> Error ("unknown LayoutMode case: " + __other))
     | _ -> Error "expected a LayoutMode object"
 
@@ -2035,6 +2064,14 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, string> =
             dOpt "max" __fs dStr |> Result.bind (fun max ->
             dOpt "step" __fs dFloat |> Result.bind (fun step ->
             Ok(FormFieldKind.Date(value, onChange, variant, min, max, step))))))))
+        | "DateRange" ->
+            dOpt "value" __fs (fun (j: JVal) -> match j with | JObj __rf when not (__rf |> List.exists (fun (k, _) -> k = "$type")) -> decDateRangePair j |> Result.map (fun p -> Binding.Static(Some p)) | __other -> decBinding decDateRangePair __other) |> Result.bind (fun value ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string * string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dReq "variant" __fs decDateVariant |> Result.bind (fun variant ->
+            dOpt "min" __fs dStr |> Result.bind (fun min ->
+            dOpt "max" __fs dStr |> Result.bind (fun max ->
+            dOpt "step" __fs dFloat |> Result.bind (fun step ->
+            Ok(FormFieldKind.DateRange(value, onChange, variant, min, max, step))))))))
         | __other -> Error ("unknown FormFieldKind case: " + __other))
     | _ -> Error "expected a FormFieldKind object"
 
@@ -2062,7 +2099,7 @@ and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, string> =
         | "Numeric" -> Ok CellKindErased.Numeric
         | "Date" -> Ok CellKindErased.Date
         | "Editable" ->
-            (dPresent "onEdit" __fs |> Result.map (Option.map (fun () -> (fun (_: obj * obj) -> Action.Chain [])))) |> Result.bind (fun onEdit ->
+            (dPresent "onEdit" __fs |> Result.map (Option.map (fun () -> (fun (_: obj * Fuaran.UI.HostPrelude.CellValue) -> Action.Chain [])))) |> Result.bind (fun onEdit ->
             Ok(CellKindErased.Editable(onEdit)))
         | "Checkbox" ->
             Ok ((fun _ -> false)) |> Result.bind (fun get ->
@@ -2085,7 +2122,7 @@ and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, string> =
             Ok(CellKindErased.Pill(labelFn, toneFn))))
         | "Progress" ->
             Ok ((fun _ -> 0.0)) |> Result.bind (fun fractionFn ->
-            Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
+            (dPresent "labelFn" __fs |> Result.map (Option.map (fun () -> (fun _ -> TextSource.Literal "")))) |> Result.bind (fun labelFn ->
             Ok(CellKindErased.Progress(fractionFn, labelFn))))
         | "Custom" ->
             Ok ((fun _ -> Unchecked.defaultof<Node<obj>>)) |> Result.bind (fun fn ->
@@ -2255,11 +2292,11 @@ and private decShape (j: JVal) : Result<Shape, string> =
             dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
             Ok(Shape.Ellipse(cx, cy, rx, ry, style)))))))
         | "Label" ->
-            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
-            dReq "text" __fs decTextSource |> Result.bind (fun text ->
             dReq "x" __fs dFloat |> Result.bind (fun x ->
             dReq "y" __fs dFloat |> Result.bind (fun y ->
-            Ok(Shape.Label(style, text, x, y))))))
+            dReq "text" __fs decTextSource |> Result.bind (fun text ->
+            dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+            Ok(Shape.Label(x, y, text, style))))))
         | __other -> Error ("unknown Shape case: " + __other))
     | _ -> Error "expected a Shape object"
 
@@ -2285,8 +2322,8 @@ and private decAccessibility (j: JVal) : Result<Accessibility, string> =
     dOpt "hidden" __fs (decBinding dBool) |> Result.bind (fun hidden ->
     dOpt "label" __fs (decBinding dStr) |> Result.bind (fun label ->
     dOpt "labelledBy" __fs dStr |> Result.bind (fun labelledBy ->
-    dOpt "liveRegion" __fs dStr |> Result.bind (fun liveRegion ->
-    dOpt "role" __fs dStr |> Result.bind (fun role ->
+    dOpt "liveRegion" __fs Fuaran.UI.HostPrelude.decLiveRegionKind |> Result.bind (fun liveRegion ->
+    dOpt "role" __fs Fuaran.UI.HostPrelude.decAriaRole |> Result.bind (fun role ->
     Ok { DescribedBy = describedBy; Hidden = hidden; Label = label; LabelledBy = labelledBy; LiveRegion = liveRegion; Role = role })))))))
 
 and private decSwitchCase (j: JVal) : Result<SwitchCase<obj>, string> =
@@ -2349,8 +2386,8 @@ and private decMapMarker (j: JVal) : Result<MapMarker, string> =
 
 and private decStaticRows (j: JVal) : Result<StaticRows, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "headers" __fs (dList dStr) |> Result.bind (fun headers ->
-    dReq "rows" __fs (dList (dList dStr)) |> Result.bind (fun rows ->
+    dReq "headers" __fs (dList decTextSource) |> Result.bind (fun headers ->
+    dReq "rows" __fs (dList (dList decTextSource)) |> Result.bind (fun rows ->
     Ok { Headers = headers; Rows = rows })))
 
 and private decFormField (j: JVal) : Result<FormField<obj>, string> =
@@ -2381,6 +2418,12 @@ and private decRangePair (j: JVal) : Result<RangePair, string> =
     dReq "min" __fs dFloat |> Result.bind (fun min ->
     Ok { Max = max; Min = min })))
 
+and private decDateRangePair (j: JVal) : Result<DateRangePair, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "from" __fs dStr |> Result.bind (fun from ->
+    dReq "to" __fs dStr |> Result.bind (fun ``to`` ->
+    Ok { From = from; To = ``to`` })))
+
 and private decTabHeader (j: JVal) : Result<TabHeader, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
@@ -2394,7 +2437,7 @@ and private decColumnErased (j: JVal) : Result<ColumnErased<obj>, string> =
     dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
     dReq "kind" __fs decCellKindErased |> Result.bind (fun kind ->
     dReq "label" __fs dStr |> Result.bind (fun label ->
-    (dPresent "value" __fs |> Result.map (Option.map (fun () -> (fun _ -> ("<closure>" :> obj))))) |> Result.bind (fun value ->
+    (dPresent "value" __fs |> Result.map (Option.map (fun () -> (fun _ -> Fuaran.UI.HostPrelude.CellValue.Empty)))) |> Result.bind (fun value ->
     dDef "width" __fs decColumnWidth (ColumnWidth.Auto) |> Result.bind (fun width ->
     Ok { Field = field; Format = format; Kind = kind; Label = label; Value = value; Width = width })))))))
 
@@ -2521,7 +2564,7 @@ and private decFactSpec (j: JVal) : Result<FactSpec, string> =
 
 and private decSparklineSpec (j: JVal) : Result<SparklineSpec, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "source" __fs (decBinding (dList dInt)) |> Result.bind (fun source ->
+    dReq "source" __fs (decBinding (dList dFloat)) |> Result.bind (fun source ->
     Ok { Source = source }))
 
 and private decCodeBlockSpec (j: JVal) : Result<CodeBlockSpec, string> =
@@ -2600,12 +2643,13 @@ and private decTabsSpec (j: JVal) : Result<TabsSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "activeIndex" __fs (decBinding dInt) |> Result.bind (fun activeIndex ->
     dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
+    dDef "orientation" __fs decOrientation (Orientation.Horizontal) |> Result.bind (fun orientation ->
     (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: int) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
     (dPresent "onSelectTag" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onSelectTag ->
     dOpt "tabHeaders" __fs (dList decTabHeader) |> Result.bind (fun tabHeaders ->
     dOpt "tabTags" __fs (dList dStr) |> Result.bind (fun tabTags ->
     dOpt "activeTag" __fs (decBinding dStr) |> Result.bind (fun activeTag ->
-    Ok { ActiveIndex = activeIndex; Children = children; OnSelect = onSelect; OnSelectTag = onSelectTag; TabHeaders = tabHeaders; TabTags = tabTags; ActiveTag = activeTag }))))))))
+    Ok { ActiveIndex = activeIndex; Children = children; Orientation = orientation; OnSelect = onSelect; OnSelectTag = onSelectTag; TabHeaders = tabHeaders; TabTags = tabTags; ActiveTag = activeTag })))))))))
 
 and private decStepperSpec (j: JVal) : Result<StepperSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -2620,7 +2664,7 @@ and private decButtonSpec (j: JVal) : Result<ButtonSpec<obj>, string> =
     dReq "onClick" __fs decAction |> Result.bind (fun onClick ->
     dReq "variant" __fs decButtonVariant |> Result.bind (fun variant ->
     dOpt "icon" __fs dStr |> Result.bind (fun icon ->
-    dOpt "tooltip" __fs decTextSource |> Result.bind (fun tooltip ->
+    Ok (None) |> Result.bind (fun tooltip ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     Ok { Label = label; OnClick = onClick; Variant = variant; Icon = icon; Tooltip = tooltip; Disabled = disabled })))))))
 
@@ -2642,7 +2686,7 @@ and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec<obj>, string> =
     dReq "accept" __fs (dList dStr) |> Result.bind (fun accept ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
     dReq "multiple" __fs dBool |> Result.bind (fun multiple ->
-    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: obj list) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
+    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.UI.HostPrelude.FileSelection list) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     Ok { Accept = accept; Label = label; Multiple = multiple; OnSelect = onSelect; Disabled = disabled }))))))
 
@@ -2665,7 +2709,7 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, string> =
     dDef "editable" __fs dBool (false) |> Result.bind (fun editable ->
     (dPresent "rowKey" __fs |> Result.map (Option.map (fun () -> (fun _ -> "")))) |> Result.bind (fun rowKey ->
     dOpt "rowKeyField" __fs dStr |> Result.bind (fun rowKeyField ->
-    dReq "source" __fs (decBinding dUnit) |> Result.bind (fun source ->
+    dReq "source" __fs (decBinding (fun _ -> Ok(Seq.empty: obj seq))) |> Result.bind (fun source ->
     dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
     (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
     Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; Source = source; StaticRows = staticRows; OnRowClick = onRowClick }))))))))
@@ -2673,7 +2717,7 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, string> =
 and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "kind" __fs decChartKind |> Result.bind (fun kind ->
-    dReq "source" __fs (decBinding dUnit) |> Result.bind (fun source ->
+    dReq "source" __fs (decBinding (fun _ -> Ok(Seq.empty: obj seq))) |> Result.bind (fun source ->
     dReq "stacked" __fs dBool |> Result.bind (fun stacked ->
     dReq "xField" __fs dStr |> Result.bind (fun xField ->
     dReq "yFields" __fs (dList dStr) |> Result.bind (fun yFields ->
@@ -2694,7 +2738,7 @@ and private decCustomSpec (j: JVal) : Result<CustomSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "moduleId" __fs dStr |> Result.bind (fun moduleId ->
     dReq "componentId" __fs dStr |> Result.bind (fun componentId ->
-    dReq "props" __fs (dMap dUnit) |> Result.bind (fun props ->
+    dReq "props" __fs (dMap dJson) |> Result.bind (fun props ->
     dOpt "contentHash" __fs decContentHash |> Result.bind (fun contentHash ->
     dOpt "exposedNodeIds" __fs (dList dStr) |> Result.bind (fun exposedNodeIds ->
     Ok { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = contentHash; ExposedNodeIds = exposedNodeIds }))))))
@@ -2864,7 +2908,7 @@ let mkLabelValueRow (id: string) (label: TextSource) (value: Binding<float>) : N
 let mkFact (id: string) (label: TextSource) (value: TextSource) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkSparkline (id: string) (source: Binding<int list>) : Node<'Msg> =
+let mkSparkline (id: string) (source: Binding<float list>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Sparkline { Source = source }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: int list) (language: string) (lineNumbers: bool) : Node<'Msg> =
@@ -2895,7 +2939,7 @@ let mkScrollArea (id: string) (children: Node<'Msg> list) (orientation: ScrollOr
     { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; Orientation = Orientation.Horizontal; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkStepper (id: string) (activeStep: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
@@ -2915,16 +2959,16 @@ let mkForm (id: string) (fields: FormField<'Msg> list) (onSubmit: Action<'Msg>) 
 let mkFilters (id: string) (items: FilterSpec<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<unit>) : Node<'Msg> =
+let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<obj seq>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkChart (id: string) (kind: ChartKind) (source: Binding<unit>) (stacked: bool) (xField: string) (yFields: string list) : Node<'Msg> =
+let mkChart (id: string) (kind: ChartKind) (source: Binding<obj seq>) (stacked: bool) (xField: string) (yFields: string list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<string, unit>) : Node<'Msg> =
+let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<string, JVal>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkErrorBoundary (id: string) (child: Node<'Msg>) (fallback: Node<'Msg>) : Node<'Msg> =

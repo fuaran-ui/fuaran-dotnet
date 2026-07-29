@@ -214,7 +214,7 @@ let private walkTests =
                   Fuaran.metric
                       "m1"
                       { Defaults.metric with
-                          Value = Binding.Static 42.0 }
+                          Value = Binding.Static(Some 42.0) }
 
               Expect.isEmpty (queryBoundRefs tree) "Static binding is not a query ref"
 
@@ -224,7 +224,7 @@ let private walkTests =
                   Fuaran.chart
                       "c1"
                       { Defaults.chart with
-                          Source = Binding.Static Seq.empty
+                          Source = Binding.Static(Some Seq.empty)
                           XField = "month"
                           YFields = [ "revenue" ] }
 

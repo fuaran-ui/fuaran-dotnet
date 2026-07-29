@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
+using FsGen = Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp;
 
@@ -15,15 +16,21 @@ public static partial class Fuaran
         BuildBare(
             options.Id,
             // Phase 692 — the category wrapper is gone; the kind factories are flat.
-            FsTypes.NodeKind<object>.NewBadge(new FsTypes.BadgeSpec(options.Label.Inner, options.Variant.ToFs())));
+            // NodeKind's declaring type is Fuaran.UI.Generated since the 4b swap
+            // (the Types.fs name is an erased abbreviation, invisible to C#).
+            FsGen.NodeKind<object>.NewBadge(new FsGen.BadgeSpec(options.Label.Inner, options.Variant.ToFs())));
 
     /// <summary>A sparkline. (Built bare — no F# smart ctor.)</summary>
     public static FuaranNode Sparkline(SparklineOptions options) =>
         BuildBare(
             options.Id,
-            FsTypes.NodeKind<object>.NewSparkline(
-                new FsTypes.SparklineSpec(
-                    (options.Source ?? Binding.Static(Enumerable.Empty<double>())).Inner)));
+            FsGen.NodeKind<object>.NewSparkline(
+                new FsGen.SparklineSpec(
+                    // Generated SparklineSpec.Source binds an F# `float list` — re-type the
+                    // facade's IEnumerable binding at the seam.
+                    Fs.MapBinding(
+                        (options.Source ?? Binding.Static(Enumerable.Empty<double>())).Inner,
+                        xs => Fs.List(xs)))));
 
     // Phase 459 — Spacer retired: inter-child space is now a Box layout `Gap`
     // (see BoxOptions), not a node.
@@ -32,23 +39,27 @@ public static partial class Fuaran
     public static FuaranNode Callout(CalloutOptions options) =>
         new(FsFactory.callout<object>(
             options.Id,
-            new FsTypes.CalloutSpec(
-                options.Tone.ToFs(),
-                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>(),
+            // Generated CalloutSpec ctor is Generated.fs declaration order (Body,
+            // Dismissable, Tone, Heading, Icon), not the old hand order.
+            new FsGen.CalloutSpec(
                 options.Body.Inner,
-                Icon(options.Icon),
-                options.Dismissable)));
+                options.Dismissable,
+                options.Tone.ToFs(),
+                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
+                Icon(options.Icon))));
 
     /// <summary>A progress indicator.</summary>
     public static FuaranNode Progress(ProgressOptions options) =>
         new(FsFactory.progress<object>(
             options.Id,
-            new FsTypes.ProgressSpec(
+            // Generated ProgressSpec ctor is Generated.fs declaration order (Fraction,
+            // Indeterminate, Tone, Label, Caveat), not the old hand order.
+            new FsGen.ProgressSpec(
                 (options.Fraction ?? 0.0).Inner,
-                options.Label is { } l ? Fs.Some(l.Inner) : Fs.None<FsTypes.TextSource>(),
-                options.Caveat is { } c ? Fs.Some(c.Inner) : Fs.None<FsTypes.TextSource>(),
                 options.Indeterminate,
-                options.Tone.ToFs())));
+                options.Tone.ToFs(),
+                options.Label is { } l ? Fs.Some(l.Inner) : Fs.None<FsGen.TextSource>(),
+                options.Caveat is { } c ? Fs.Some(c.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>A loading-skeleton placeholder of <c>Rows</c> rows.</summary>
     public static FuaranNode Skeleton(SkeletonOptions options) =>
@@ -58,12 +69,14 @@ public static partial class Fuaran
     public static FuaranNode LabelValueRow(LabelValueRowOptions options) =>
         new(FsFactory.labelValueRow<object>(
             options.Id,
-            new FsTypes.LabelValueRowSpec(
+            // Generated LabelValueRowSpec ctor is Generated.fs declaration order
+            // (Emphasis, Format, Label, Value, Help) — Emphasis leads, not Label.
+            new FsGen.LabelValueRowSpec(
+                options.Emphasis,
+                options.Format.Inner,
                 options.Label.Inner,
                 options.Value.Inner,
-                options.Format.Inner,
-                options.Emphasis,
-                options.Help is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>())));
+                options.Help is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>A labeled TEXT fact tile — the complementary kind to the numeric
     /// <see cref="Fuaran.Metric"/> (0.2.0 wave: text values belong in Fact, not a
@@ -71,36 +84,42 @@ public static partial class Fuaran
     public static FuaranNode Fact(FactOptions options) =>
         new(FsFactory.factSpec<object>(
             options.Id,
-            new FsTypes.FactSpec(
-                options.Label.Inner,
-                options.Value.Inner,
-                Icon(options.Icon),
-                options.Tone.ToFs(),
+            // Generated FactSpec ctor is Generated.fs declaration order (Emphasis, Help,
+            // Icon, Label, Tone, Value), not the old hand order.
+            new FsGen.FactSpec(
                 options.Emphasis,
-                options.Help is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>())));
+                options.Help is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
+                Icon(options.Icon),
+                options.Label.Inner,
+                options.Tone.ToFs(),
+                options.Value.Inner)));
 
     /// <summary>A crawlable hyperlink (a real <c>&lt;a href&gt;</c>).</summary>
     public static FuaranNode Link(LinkOptions options) =>
         new(FsFactory.linkSpec<object>(
             options.Id,
-            new FsTypes.LinkSpec(
+            // Generated LinkSpec ctor is Generated.fs declaration order (Href, Label,
+            // Download, Rel, Target) — Download moved ahead of Rel/Target.
+            new FsGen.LinkSpec(
                 options.Href.Inner,
                 options.Label.Inner,
+                options.Download,
                 Fs.OptStr(options.Rel),
-                Fs.OptStr(options.Target),
-                options.Download)));
+                Fs.OptStr(options.Target))));
 
     /// <summary>A standalone image.</summary>
     public static FuaranNode Image(ImageOptions options) =>
         new(FsFactory.imageSpec<object>(
             options.Id,
-            new FsTypes.ImageSpec(options.Src.Inner, options.Alt.Inner, options.Variant.ToFs())));
+            // Generated ImageSpec ctor is Generated.fs declaration order (Alt, Src,
+            // Variant) — Alt leads, the old hand order led with Src.
+            new FsGen.ImageSpec(options.Alt.Inner, options.Src.Inner, options.Variant.ToFs())));
 
     /// <summary>A structured item list.</summary>
     public static FuaranNode List(ListOptions options) =>
         new(FsFactory.listSpec<object>(
             options.Id,
-            new FsTypes.ListSpec(
+            new FsGen.ListSpec(
                 Fs.List((options.Items ?? Enumerable.Empty<Text>()).Select(t => t.Inner)),
                 options.Ordered)));
 
@@ -114,24 +133,28 @@ public static partial class Fuaran
     public static FuaranNode Toast(ToastOptions options) =>
         new(FsFactory.toast<object>(
             options.Id,
-            new FsTypes.ToastSpec(options.Message.Inner, options.Tone.ToFs(), (options.Open ?? false).Inner, options.Dismissable)));
+            // Generated ToastSpec ctor is Generated.fs declaration order (Dismissable,
+            // Message, Open, Tone), not the old hand order.
+            new FsGen.ToastSpec(options.Dismissable, options.Message.Inner, (options.Open ?? false).Inner, options.Tone.ToFs())));
 
     /// <summary>A deterministic code block.</summary>
     public static FuaranNode CodeBlock(CodeBlockOptions options) =>
         new(FsFactory.codeBlockSpec<object>(
             options.Id,
-            new FsTypes.CodeBlockSpec(
+            // Generated CodeBlockSpec ctor is Generated.fs declaration order (Code,
+            // Copyable, HighlightLines, Language, LineNumbers), not the old hand order.
+            new FsGen.CodeBlockSpec(
                 options.Code,
-                options.Language,
-                options.LineNumbers,
+                options.Copyable,
                 Fs.List(options.HighlightLines ?? Enumerable.Empty<int>()),
-                options.Copyable)));
+                options.Language,
+                options.LineNumbers)));
 
     /// <summary>A LaTeX math block.</summary>
     public static FuaranNode Math(MathOptions options) =>
         new(FsFactory.mathSpec<object>(
             options.Id,
-            new FsTypes.MathSpec(options.Source, options.Display.ToFs())));
+            new FsGen.MathSpec(options.Source, options.Display.ToFs())));
 
     /// <summary>A bounded, typed vector-graphics drawing (Phase 524) — the shared
     /// render target charts lower to and the substrate for maps/diagrams. The
@@ -140,21 +163,26 @@ public static partial class Fuaran
     public static FuaranNode Drawing(DrawingOptions options) =>
         new(FsFactory.drawingSpec<object>(
             options.Id,
-            new FsTypes.DrawingSpec(
-                new FsTypes.ViewBox(options.MinX, options.MinY, options.Width, options.Height),
-                Fs.List(options.Shapes ?? Enumerable.Empty<FsTypes.Shape>()),
-                new FsTypes.DrawStyle(
-                    Fs.None<FsTypes.Binding<string>>(),
-                    Fs.None<FsTypes.Binding<string>>(),
-                    Fs.None<FsTypes.Binding<double>>(),
-                    Fs.None<FsTypes.Binding<double>>(),
-                    Fs.None<FsTypes.TextAnchor>(),
-                    Fs.None<double>(),
-                    Fs.None<FsTypes.Emphasis>(),
+            // Generated DrawingSpec ctor is Generated.fs declaration order (Description,
+            // Shapes, Style, Title, ViewBox), not the old hand order (ViewBox-first).
+            new FsGen.DrawingSpec(
+                options.Description is { } dsc ? Fs.Some(dsc.Inner) : Fs.None<FsGen.TextSource>(),
+                Fs.List(options.Shapes ?? Enumerable.Empty<FsGen.Shape>()),
+                // Generated DrawStyle declaration order: Emphasis, Fill, FontFamily, FontSize,
+                // MarkId (Phase 642 — inherited default: none), Opacity, Stroke, StrokeWidth, TextAnchor.
+                new FsGen.DrawStyle(
+                    Fs.None<FsGen.Emphasis>(),
+                    Fs.None<global::Fuaran.UI.Generated.Binding<string>>(),
                     Fs.None<string>(),
-                    Fs.None<string>()), // markId (Phase 642) — inherited default: none
-                options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsTypes.TextSource>(),
-                options.Description is { } dsc ? Fs.Some(dsc.Inner) : Fs.None<FsTypes.TextSource>())));
+                    Fs.None<double>(),
+                    Fs.None<string>(),
+                    Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
+                    Fs.None<global::Fuaran.UI.Generated.Binding<string>>(),
+                    Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
+                    Fs.None<FsGen.TextAnchor>()),
+                options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsGen.TextSource>(),
+                // Generated ViewBox declares (Height, MinX, MinY, Width) — ctor is declaration order.
+                new FsGen.ViewBox(options.Height, options.MinX, options.MinY, options.Width))));
 }
 
 /// <summary>Options for <see cref="Fuaran.Badge"/>.</summary>
@@ -418,7 +446,7 @@ public sealed record DrawingOptions
     public double Height { get; init; } = 100.0;
 
     /// <summary>The ordered draw list (F# <c>Shape</c> DU values); empty when null.</summary>
-    public IEnumerable<FsTypes.Shape>? Shapes { get; init; }
+    public IEnumerable<FsGen.Shape>? Shapes { get; init; }
 
     /// <summary>Optional accessible name (rendered as <c>&lt;title&gt;</c> in Phase 525).</summary>
     public Text? Title { get; init; }

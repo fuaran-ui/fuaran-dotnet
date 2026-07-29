@@ -61,7 +61,7 @@ module DagPrimacy =
         // The affected parent is not in the op — fall back to the tip author.
         | TreeOp.RemoveNode _ -> []
         // ReplaceRoot swaps the whole tree at the new root — like EditNode on the root.
-        | TreeOp.ReplaceRoot node -> [ rawId node.Id, "kind"; rawId node.Id, "children" ]
+        | TreeOp.ReplaceRoot node -> [ node.Id, "kind"; node.Id, "children" ]
         | TreeOp.Batch ops -> ops |> List.collect cellsOf
 
     /// Walk back from `head` along the PRIMARY-parent spine, stopping at `stopAt`

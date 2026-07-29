@@ -45,7 +45,7 @@ let private view (m: Model) : Node<Msg> =
                           OnClick = Action.Navigate "/next" } ] }
 
 let private stubRender (n: Node<Msg>) : string =
-    let (NodeId s) = n.Id
+    let s = n.Id
     $"<f id='{s}'/>"
 
 let private ev nodeId event =

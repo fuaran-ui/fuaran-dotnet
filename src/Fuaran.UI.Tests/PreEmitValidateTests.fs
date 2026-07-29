@@ -156,7 +156,7 @@ let tests =
                       "results-tabs"
                       { Defaults.tabs<Msg> with
                           Children = [ markdown "overview" "Overview" ]
-                          ActiveTag = Some(Binding.Static "overview") }
+                          ActiveTag = Some(Binding.Static(Some "overview")) }
 
               let tree = dashboard "root" [ tabsNode ]
 
@@ -184,7 +184,7 @@ let tests =
                           TabTags = Some [ "overview"; "detail" ]
                           // State-bound so the tag write-back default keeps the
                           // handler-free tabs live (FUARAN069 stays silent).
-                          ActiveTag = Some(Binding.State("activeTab", "overview")) }
+                          ActiveTag = Some(Binding.State("activeTab", Some "overview")) }
 
               let tree = dashboard "root" [ tabsNode ]
 
@@ -199,7 +199,7 @@ let tests =
               let field: FormField<Msg> =
                   { Defaults.formField<Msg> with
                       Id = "inert-name"
-                      Kind = FormFieldKind.Text(Binding.Static "", None) }
+                      Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), None) }
 
               let formNode =
                   Fuaran.form
@@ -222,7 +222,7 @@ let tests =
               let field: FormField<Msg> =
                   { Defaults.formField<Msg> with
                       Id = "profile-name"
-                      Kind = FormFieldKind.Text(Binding.State("profileName", ""), None) }
+                      Kind = FormFieldKind.Text(Some(Binding.State("profileName", Some "")), None) }
 
               let formNode =
                   Fuaran.form
@@ -261,7 +261,11 @@ let tests =
                       "sw"
                       { Defaults.switch<Msg> with
                           StateKey = "view"
-                          Cases = [ "a", markdown "c1" "one"; "a", markdown "c2" "two" ]
+                          Cases =
+                              [ { Match = "a"
+                                  Child = markdown "c1" "one" }
+                                { Match = "a"
+                                  Child = markdown "c2" "two" } ]
                           Default = markdown "def" "none" }
 
               let tree = dashboard "root" [ switchNode ]
@@ -280,7 +284,9 @@ let tests =
                   Fuaran.switch
                       "sw"
                       { Defaults.switch<Msg> with
-                          Cases = [ "details", markdown "c1" "one" ]
+                          Cases =
+                              [ { Match = "details"
+                                  Child = markdown "c1" "one" } ]
                           Default = markdown "def" "none" }
 
               let tree = dashboard "root" [ switchNode ]
@@ -300,7 +306,11 @@ let tests =
                       "sw"
                       { Defaults.switch<Msg> with
                           StateKey = "view"
-                          Cases = [ "details", markdown "c1" "one"; "summary", markdown "c2" "two" ]
+                          Cases =
+                              [ { Match = "details"
+                                  Child = markdown "c1" "one" }
+                                { Match = "summary"
+                                  Child = markdown "c2" "two" } ]
                           Default = markdown "def" "none" }
 
               let tree = dashboard "root" [ switchNode ]
@@ -316,7 +326,7 @@ let tests =
                       "panes"
                       { Defaults.tabs<Msg> with
                           Children = [ markdown "overview" "Overview" ]
-                          ActiveIndex = Binding.State("activePane", 0) }
+                          ActiveIndex = Binding.State("activePane", Some 0) }
 
               let tree = dashboard "root" [ tabsNode ]
 
@@ -333,7 +343,7 @@ let tests =
                       "detail"
                       { Defaults.metric with
                           Label = TextSource.Literal "Selected"
-                          Value = Binding.Selection(NodeId "no-such-grid", (fun (raw: obj) -> unbox raw), None, None) }
+                          Value = Binding.Selection("no-such-grid", (fun (raw: obj) -> unbox raw), None, None) }
 
               let tree = dashboard "root" [ detail ]
 
@@ -352,7 +362,7 @@ let tests =
                       "detail"
                       { Defaults.metric with
                           Label = TextSource.Literal "Selected"
-                          Value = Binding.Selection(NodeId "summary", (fun (raw: obj) -> unbox raw), None, None) }
+                          Value = Binding.Selection("summary", (fun (raw: obj) -> unbox raw), None, None) }
 
               let tree = dashboard "root" [ markdown "summary" "Not a grid"; detail ]
 
@@ -373,8 +383,7 @@ let tests =
                       "fetch"
                       { Defaults.button<Msg> with
                           Label = TextSource.Literal "Fetch"
-                          OnClick =
-                              Action.Call(ApiEndpoint "/api/orders", None, Some(CallResultTarget.IntoQuery "orders")) }
+                          OnClick = Action.Call("/api/orders", None, Some(CallResultTarget.Query "orders")) }
 
               let tree = dashboard "root" [ fetchButton ]
 
@@ -393,15 +402,14 @@ let tests =
                       "fetch"
                       { Defaults.button<Msg> with
                           Label = TextSource.Literal "Fetch"
-                          OnClick =
-                              Action.Call(ApiEndpoint "/api/orders", None, Some(CallResultTarget.IntoQuery "orders")) }
+                          OnClick = Action.Call("/api/orders", None, Some(CallResultTarget.Query "orders")) }
 
               let reader =
                   Fuaran.metric
                       "orders-metric"
                       { Defaults.metric with
                           Label = TextSource.Literal "Orders"
-                          Value = Binding.Query("orders", (fun (raw: obj) -> unbox raw), []) }
+                          Value = Binding.Query("orders", (fun (raw: obj) -> unbox raw), None) }
 
               let tree = dashboard "root" [ fetchButton; reader ]
 
@@ -416,7 +424,7 @@ let tests =
                       "fire"
                       { Defaults.button<Msg> with
                           Label = TextSource.Literal "Ping"
-                          OnClick = Action.Call(ApiEndpoint "/api/ping", None, None) }
+                          OnClick = Action.Call("/api/ping", None, None) }
 
               let tree = dashboard "root" [ fireButton ]
 
@@ -431,10 +439,10 @@ let tests =
 
           test "validate passes a master-detail pair (Selection over a DataGrid node)" {
               let grid: Node<Msg> =
-                  { Id = NodeId "orders-grid"
+                  { Id = "orders-grid"
                     Kind =
                       NodeKind.DataGrid(
-                          { Source = Binding.Static Seq.empty
+                          { Source = Binding.Static(Some Seq.empty)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns = []
@@ -442,8 +450,8 @@ let tests =
                             Editable = false
                             StaticRows = None }
                       )
-                    State = Defaults.stateBehaviour<Msg>
-                    Style = Defaults.style
+                    State = None
+                    Style = None
                     Accessibility = None
                     Motion = Defaults.Motion.none
                     ExtraAttributes = None }
@@ -453,7 +461,7 @@ let tests =
                       "detail"
                       { Defaults.metric with
                           Label = TextSource.Literal "Selected"
-                          Value = Binding.Selection(NodeId "orders-grid", (fun (raw: obj) -> unbox raw), None, None) }
+                          Value = Binding.Selection("orders-grid", (fun (raw: obj) -> unbox raw), None, None) }
 
               let tree = dashboard "root" [ grid; detail ]
 
@@ -476,7 +484,7 @@ let tests =
                       "cht"
                       { Defaults.chart<Msg> with
                           Kind = ChartKind.Bar
-                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], [])
+                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], None)
                           XField = "quarter"
                           YFields = [ "revenu" ] } // typo — absent from the schema
 
@@ -501,7 +509,7 @@ let tests =
                       "cht"
                       { Defaults.chart<Msg> with
                           Kind = ChartKind.Bar
-                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], [])
+                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], None)
                           XField = "quarter"
                           YFields = [ "revenue" ] }
 
@@ -520,7 +528,7 @@ let tests =
                               Binding.Transform(
                                   Fuaran.Core.DataSource.Embedded table,
                                   [ Fuaran.Core.Transform.Derive("variance", Fuaran.Core.ColExpr.Col "revenue") ],
-                                  []
+                                  None
                               )
                           XField = "quarter"
                           YFields = [ "variance" ] }
@@ -542,7 +550,7 @@ let tests =
                       "cht"
                       { Defaults.chart<Msg> with
                           Kind = ChartKind.Bar
-                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], [])
+                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], None)
                           XField = "name"
                           YFields = [ "name" ] } // string column as a value series
 
@@ -559,7 +567,7 @@ let tests =
                       "cht2"
                       { Defaults.chart<Msg> with
                           Kind = ChartKind.Scatter
-                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], [])
+                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], None)
                           XField = "name" // scatter x must be numeric
                           YFields = [ "score" ] }
 

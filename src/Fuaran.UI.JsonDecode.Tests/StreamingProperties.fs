@@ -142,7 +142,7 @@ let private uniquifyIds (root: Node<obj>) : Node<obj> =
     let mutable counter = 0
 
     let rec go (node: Node<obj>) =
-        let id = NodeId(sprintf "n%d" counter)
+        let id = sprintf "n%d" counter
         counter <- counter + 1
 
         match Introspect.getChildren node.Kind with
@@ -275,10 +275,7 @@ let unitCases =
           testCase "pendingPlaceholder is an ErrorBoundary with a PulseDuringLoad skeleton, keeping the id" (fun () ->
               let placeholder = Streaming.pendingPlaceholder<obj> (NodeId "target")
 
-              Expect.equal
-                  placeholder.Id
-                  (NodeId "target")
-                  "the placeholder keeps the pending node's id for substitution"
+              Expect.equal placeholder.Id "target" "the placeholder keeps the pending node's id for substitution"
 
               match placeholder.Kind with
               | NodeKind.ErrorBoundary spec ->

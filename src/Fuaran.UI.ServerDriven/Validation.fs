@@ -144,7 +144,7 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
     match node.Kind with
     | NodeKind.Select(spec) when ev.Event = "change" ->
         match spec.Source, selectValue ev.Payload with
-        | Binding.Static options, Some chosen ->
+        | Binding.Static(Some options), Some chosen ->
             if options |> List.exists (fun o -> o.Value = chosen) then
                 Ok()
             else
@@ -152,7 +152,7 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
         // Dynamic option source, or a clear-to-none change: accept (bounds
         // enforced at interpret time against live binding sources).
         | _ -> Ok()
-    | NodeKind.Filters(specs) ->
+    | NodeKind.Filters(spec) ->
         // A name-addressed filter event must name a filter the node declares
         // (a forged / stale name is attack surface, same as a forged nodeId),
         // and a choice-shaped filter with statically-resolved options must
@@ -161,13 +161,13 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
         match tryStr "name" ev.Payload with
         | None -> Ok()
         | Some name ->
-            match specs |> List.tryFind (fun f -> f.Name = name) with
+            match spec.Items |> List.tryFind (fun f -> f.Name = name) with
             | None ->
                 Error(RejectReason.PayloadOutOfBounds(ev.NodeId, sprintf "'%s' not among the node's filters" name))
             | Some f ->
                 let checkOptions (options: Binding<SelectOption list>) =
                     match options, selectValue ev.Payload with
-                    | Binding.Static opts, Some chosen when chosen <> "" ->
+                    | Binding.Static(Some opts), Some chosen when chosen <> "" ->
                         if opts |> List.exists (fun o -> o.Value = chosen) then
                             Ok()
                         else
@@ -180,7 +180,7 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
                     // Dynamic option source, or a clear-to-none change: accept.
                     | _ -> Ok()
 
-                match f.Field with
+                match f.Kind with
                 | FormFieldKind.Choice(options, _, _) -> checkOptions options
                 | FormFieldKind.SegmentedChoice(options, _, _, _) -> checkOptions options
                 | _ -> Ok()
@@ -201,7 +201,7 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
     | NodeKind.Select(spec) when ev.Event = "change" ->
         spec.OnChange |> Option.map (fun oc -> oc (selectValue ev.Payload))
     | NodeKind.Form(spec) when ev.Event = "submit" -> Some spec.OnSubmit
-    | NodeKind.Filters(specs) ->
+    | NodeKind.Filters(spec) ->
         // Name-addressed: the shim bridges the changed control's filter name
         // across as `payload.name` (`data-filter-name`); boundsCheck already
         // verified it names a declared filter and the value is in-bounds.
@@ -210,7 +210,7 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
         match tryStr "name" ev.Payload with
         | None -> None
         | Some name ->
-            specs
+            spec.Items
             |> List.tryFind (fun f -> f.Name = name)
             |> Option.bind (fun f ->
                 let chosen =
@@ -221,7 +221,7 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                 // `onChange` is optional (Phase 423) — a `None` (declarative) chip has no server-side
                 // action to dispatch (its write is the client-side FilterStore path), so the driver
                 // no-ops it just as it does the range filter.
-                match f.Field with
+                match f.Kind with
                 | FormFieldKind.Text(_, onChange)
                 | FormFieldKind.TextArea(_, onChange, _) ->
                     onChange |> Option.map (fun oc -> oc (chosen |> Option.defaultValue ""))
@@ -255,9 +255,10 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
     | NodeKind.Stepper(spec) ->
         // A step-header click: the shim bridges the clicked step's index
         // across as `payload.index` (`data-step-index`), mirroring tabs.
-        match tryNum "index" ev.Payload with
-        | Some i -> Some(spec.OnSelect(int i))
-        | None -> None
+        // `OnSelect` is optional since the swap — same no-op posture as Tabs.
+        match tryNum "index" ev.Payload, spec.OnSelect with
+        | Some i, Some onSelect -> Some(onSelect (int i))
+        | _ -> None
     | _ -> None
 
 // ─── the gate ───────────────────────────────────────────────────────────────
@@ -267,7 +268,7 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
 let describeAction (a: Action<'Msg>) : string =
     match a with
     | Action.Dispatch _ -> "Dispatch"
-    | Action.Call(ApiEndpoint ep, _, _) -> sprintf "Call(%s)" ep
+    | Action.Call(ep, _, _) -> sprintf "Call(%s)" ep
     | Action.Notify(ch, _) -> sprintf "Notify(%s)" ch
     | Action.Navigate r -> sprintf "Navigate(%s)" r
     | Action.SetState(k, _) -> sprintf "SetState(%s)" k
@@ -275,7 +276,7 @@ let describeAction (a: Action<'Msg>) : string =
     | Action.Chain _ -> "Chain"
     | Action.CommitLocal id -> sprintf "CommitLocal(%s)" id
     | Action.WriteToClipboard _ -> "WriteToClipboard"
-    | Action.ReadFileBody(_, _, _) -> "ReadFileBody"
+    | Action.ReadFileBody(_, _, _, _) -> "ReadFileBody"
     | Action.Invoke(c, _) -> sprintf "Invoke(%s)" c
 
 /// Validate one untrusted inbound event against the current tree + the host

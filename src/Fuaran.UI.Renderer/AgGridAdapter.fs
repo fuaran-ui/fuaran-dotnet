@@ -205,7 +205,10 @@ let private buildColumnDef<'Msg>
                         | _ -> CellValue.Text(string newVal)
                     | _ -> CellValue.Text(string newVal)
 
-                runAction (onEdit (row, coerced))
+                match onEdit with
+                | Some onEdit -> runAction (onEdit (row, coerced))
+                | None -> () // no handler — inert edit, same as the old no-op action
+
                 false
 
             [ "editable", box true; "valueSetter", box valueSetter ]
@@ -218,7 +221,10 @@ let private buildColumnDef<'Msg>
                 Html.input
                     [ prop.type'.checkbox
                       prop.isChecked current
-                      prop.onChange (fun (b: bool) -> runAction (onToggle (row, b))) ]
+                      prop.onChange (fun (b: bool) ->
+                          match onToggle with
+                          | Some onToggle -> runAction (onToggle (row, b))
+                          | None -> ()) ]
 
             [ "cellRenderer", box cellRenderer ]
 
@@ -233,7 +239,10 @@ let private buildColumnDef<'Msg>
                       prop.text labelText
                       prop.onClick (fun e ->
                           e.stopPropagation ()
-                          runAction (onClick row)) ]
+
+                          match onClick with
+                          | Some onClick -> runAction (onClick row)
+                          | None -> ()) ]
 
             [ "cellRenderer", box cellRenderer ]
 
@@ -244,13 +253,16 @@ let private buildColumnDef<'Msg>
                 Html.span
                     [ prop.className "fuaran-grid-cell-button-group"
                       prop.children
-                          [ for (label, onClick) in buttons ->
+                          [ for item in buttons ->
                                 Html.button
                                     [ prop.className "fuaran-grid-cell-button"
-                                      prop.text (textOf label)
+                                      prop.text (textOf item.Label)
                                       prop.onClick (fun e ->
                                           e.stopPropagation ()
-                                          runAction (onClick row)) ] ] ]
+
+                                          match item.OnClick with
+                                          | Some onClick -> runAction (onClick row)
+                                          | None -> ()) ] ] ]
 
             [ "cellRenderer", box cellRenderer ]
 

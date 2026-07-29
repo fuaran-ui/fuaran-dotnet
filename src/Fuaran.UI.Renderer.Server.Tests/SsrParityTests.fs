@@ -107,7 +107,7 @@ let private fixtures: Fixture list =
                   TabHeaders =
                       Some
                           [ { Label = TextSource.Literal "One"
-                              Icon = Some(IconSource "one-glyph")
+                              Icon = Some "one-glyph"
                               Disabled = Option.None }
                             { Label = TextSource.Literal "Two"
                               Icon = Option.None
@@ -134,7 +134,7 @@ let private fixtures: Fixture list =
               "sw"
               { Defaults.switch<obj> with
                   StateKey = "view"
-                  Cases = [ "details", leaf "d" ]
+                  Cases = [ { Match = "details"; Child = leaf "d" } ]
                   Default =
                       Fuaran.heading
                           "sw-def"
@@ -158,8 +158,8 @@ let private fixtures: Fixture list =
               "mt"
               { Defaults.metric with
                   Label = TextSource.Literal "Rev"
-                  Value = Binding.Static 9.0
-                  Icon = Some(IconSource "trend-glyph") }
+                  Value = Binding.Static(Some 9.0)
+                  Icon = Some "trend-glyph" }
         Expected =
           [ "fuaran-metric"
             "fuaran-metric-label"
@@ -174,7 +174,7 @@ let private fixtures: Fixture list =
               { Defaults.fact with
                   Label = TextSource.Literal "Patient"
                   Value = TextSource.Literal "Alice"
-                  Icon = Some(IconSource "user-glyph") }
+                  Icon = Some "user-glyph" }
         Expected =
           [ "fuaran-fact"
             "fuaran-fact-label"
@@ -193,7 +193,7 @@ let private fixtures: Fixture list =
               "cl"
               { Defaults.callout with
                   Body = TextSource.Literal "B"
-                  Icon = Some(IconSource "info-glyph") }
+                  Icon = Some "info-glyph" }
         Expected =
           [ "fuaran-callout"
             "fuaran-callout-body"
@@ -207,7 +207,7 @@ let private fixtures: Fixture list =
               { Defaults.button<obj> with
                   Label = TextSource.Literal "Go"
                   Variant = ButtonVariant.Primary
-                  Icon = Some(IconSource "go-glyph") }
+                  Icon = Some "go-glyph" }
         Expected =
           [ "fuaran-button"
             "fuaran-button-primary"
@@ -236,7 +236,7 @@ let private fixtures: Fixture list =
               "cht"
               { Defaults.chart<obj> with
                   Kind = ChartKind.Bar
-                  Source = Binding.Static(Seq.ofList [ box (Map.ofList [ "x", box "Q1"; "y", box 10.0 ]) ])
+                  Source = Binding.Static(Some(Seq.ofList [ box (Map.ofList [ "x", box "Q1"; "y", box 10.0 ]) ]))
                   XField = "x"
                   YFields = [ "y" ] }
         Expected = [ "fuaran-drawing"; "fuaran-drawing-rect"; "role=\"img\""; "<svg" ] }
@@ -249,7 +249,7 @@ let private fixtures: Fixture list =
               "cht2"
               { Defaults.chart<obj> with
                   Kind = ChartKind.Heatmap
-                  Source = Binding.Static(Seq.ofList [ box 1 ])
+                  Source = Binding.Static(Some(Seq.ofList [ box 1 ]))
                   XField = "x"
                   YFields = [ "y" ] }
         Expected = [ "fuaran-chart-ssr-placeholder"; "data-fuaran-ssr-placeholder=\"Chart\"" ] }
@@ -264,7 +264,7 @@ let private fixtures: Fixture list =
           Fuaran.imageSpec
               "img"
               { Defaults.image with
-                  Src = Binding.Static "/a.png"
+                  Src = Binding.Static(Some "/a.png")
                   Alt = TextSource.Literal "Alt"
                   Variant = ImageVariant.Avatar }
         Expected =
@@ -296,7 +296,7 @@ let private fixtures: Fixture list =
               "ts"
               { Defaults.toast with
                   Message = TextSource.Literal "Saved"
-                  Open = Binding.Static true }
+                  Open = Binding.Static(Some true) }
         Expected =
           [ "fuaran-toast"
             "fuaran-toast-info"
@@ -311,7 +311,7 @@ let private fixtures: Fixture list =
               "md"
               { Defaults.modal<obj> with
                   Heading = Some(TextSource.Literal "Confirm")
-                  Open = Binding.Static true
+                  Open = Binding.Static(Some true)
                   Children = [ leaf "a" ] }
         Expected =
           [ "fuaran-modal-overlay"
@@ -414,7 +414,9 @@ let ssrParityTests =
           test "every fixture's outer wrapper uses the shared Theme.nodeClassName" {
               for f in fixtures do
                   let html = Render.render BindingResolver.empty f.Node
-                  let expectedOuter = Theme.nodeClassName f.Node.Kind f.Node.Style
+
+                  let expectedOuter =
+                      Theme.nodeClassName f.Node.Kind (f.Node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
 
                   Expect.isTrue
                       (contains (sprintf "class=\"%s\"" expectedOuter) html)

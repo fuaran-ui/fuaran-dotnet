@@ -632,18 +632,10 @@ let private decodeInvokeArgs (path: string) (j: Json) : Result<(string * string)
 // ─── Placeholder Node for OnError slot (encoder emits sentinel only) ────
 
 let private placeholderClosureNode: Node<obj> =
-    { Id = NodeId closureSentinel
+    { Id = closureSentinel
       Kind = NodeKind.Markdown({ Text = TextSource.Literal closureSentinel })
-      State =
-        { OnLoading = None
-          OnEmpty = None
-          OnError = None }
-      Style =
-        { Tone = ToneVariant.Default
-          Weight = StyleWeight.Standard
-          Emphasis = Emphasis.Normal
-          Role = StyleRole.None
-          Voice = FontVoice.Default }
+      State = None
+      Style = None
       Accessibility = None
       Motion = None
       ExtraAttributes = None }
@@ -652,14 +644,14 @@ let private placeholderClosureNode: Node<obj> =
 
 let private decodeOrientation (path: string) (j: Json) : Result<Orientation, DecodeError> =
     match j with
-    | JString "Vertical" -> Ok Vertical
-    | JString "Horizontal" -> Ok Horizontal
+    | JString "Vertical" -> Ok Orientation.Vertical
+    | JString "Horizontal" -> Ok Orientation.Horizontal
     // Lenient-ingest aliases (decode-only) — the CSS flex-direction prior:
     // a row lays out horizontally, a column vertically. Same-concept mapping.
     | JString "Row"
-    | JString "row" -> Ok Horizontal
+    | JString "row" -> Ok Orientation.Horizontal
     | JString "Column"
-    | JString "column" -> Ok Vertical
+    | JString "column" -> Ok Orientation.Vertical
     | JString s -> unknownDuCase path s "Vertical | Horizontal"
     | _ -> wrongType path "JSON string (Orientation)"
 
@@ -745,52 +737,52 @@ let private decodeHeadingVariant (path: string) (j: Json) : Result<HeadingVarian
 
 let private decodeTone (path: string) (j: Json) : Result<ToneVariant, DecodeError> =
     match j with
-    | JString "Default" -> Ok Default
-    | JString "Subdued" -> Ok Subdued
-    | JString "Brand" -> Ok Brand
-    | JString "Success" -> Ok Success
-    | JString "Warning" -> Ok Warning
-    | JString "Critical" -> Ok Critical
-    | JString "Info" -> Ok Info
+    | JString "Default" -> Ok ToneVariant.Default
+    | JString "Subdued" -> Ok ToneVariant.Subdued
+    | JString "Brand" -> Ok ToneVariant.Brand
+    | JString "Success" -> Ok ToneVariant.Success
+    | JString "Warning" -> Ok ToneVariant.Warning
+    | JString "Critical" -> Ok ToneVariant.Critical
+    | JString "Info" -> Ok ToneVariant.Info
     // Phase 460 — lenient-ingest aliases (decode-only; never encoded — canonical
     // re-encode normalises to the DU case names). Faithful semantic mappings only:
     // Positive→Success, Danger/Negative→Critical, Neutral→Default. Documented in
     // WIRE_FORMAT.md's lenient-ingest table; `SchemaGen` stays strict-canonical.
-    | JString "Positive" -> Ok Success
+    | JString "Positive" -> Ok ToneVariant.Success
     | JString "Danger"
-    | JString "Negative" -> Ok Critical
-    | JString "Neutral" -> Ok Default
+    | JString "Negative" -> Ok ToneVariant.Critical
+    | JString "Neutral" -> Ok ToneVariant.Default
     | JString s -> unknownDuCase path s "Default | Subdued | Brand | Success | Warning | Critical | Info"
     | _ -> wrongType path "JSON string (ToneVariant)"
 
 let private decodeWeight (path: string) (j: Json) : Result<StyleWeight, DecodeError> =
     match j with
-    | JString "Compact" -> Ok Compact
-    | JString "Standard" -> Ok Standard
-    | JString "Spacious" -> Ok Spacious
+    | JString "Compact" -> Ok StyleWeight.Compact
+    | JString "Standard" -> Ok StyleWeight.Standard
+    | JString "Spacious" -> Ok StyleWeight.Spacious
     | JString s -> unknownDuCase path s "Compact | Standard | Spacious"
     | _ -> wrongType path "JSON string (StyleWeight)"
 
 let private decodeEmphasis (path: string) (j: Json) : Result<Emphasis, DecodeError> =
     match j with
-    | JString "Quiet" -> Ok Quiet
-    | JString "Normal" -> Ok Normal
-    | JString "Loud" -> Ok Loud
+    | JString "Quiet" -> Ok Emphasis.Quiet
+    | JString "Normal" -> Ok Emphasis.Normal
+    | JString "Loud" -> Ok Emphasis.Loud
     // Phase 460 — lenient-ingest aliases (decode-only; never encoded). Prominence
     // intent survives: Strong/Bold→Loud, Subtle/Muted→Quiet. `StyleWeight` is
     // deliberately NOT aliased (Bold/Heavy is font-weight intent, but the language
     // means density Compact|Standard|Spacious — a mapping would misread the author).
     | JString "Strong"
-    | JString "Bold" -> Ok Loud
+    | JString "Bold" -> Ok Emphasis.Loud
     | JString "Subtle"
-    | JString "Muted" -> Ok Quiet
+    | JString "Muted" -> Ok Emphasis.Quiet
     // 2026-07-19 collision sweep — `emphasis` is a same-name cross-vocabulary
     // collision (style ENUM here vs behavioural BOOL on Fact/LabelValueRow);
     // models cross it in both directions. A bool in the enum slot projects
     // one-to-one: true ⇒ Loud, false ⇒ Normal. The bool sites' direction
     // lives in `decodeEmphasisFlag`.
-    | JBool true -> Ok Loud
-    | JBool false -> Ok Normal
+    | JBool true -> Ok Emphasis.Loud
+    | JBool false -> Ok Emphasis.Normal
     | JString s -> unknownDuCase path s "Quiet | Normal | Loud"
     | _ -> wrongType path "JSON string (Emphasis)"
 
@@ -1100,6 +1092,11 @@ let private decodeIconSource (path: string) (j: Json) : Result<IconSource, Decod
 let rec private decodeBindingObj (path: string) (j: Json) : Result<Binding<obj>, DecodeError> =
     bindingGeneric<obj> path (fun _ v -> Ok(decodeObj v)) (box closureSentinel) j
 
+/// The `Binding<JVal>` flavour (the swap's typed verbatim carrier, D3) —
+/// `Binding.I18n` args and `Binding.Transform` param sources since the swap.
+and private decodeBindingJVal (path: string) (j: Json) : Result<Binding<JVal>, DecodeError> =
+    bindingGeneric<JVal> path (fun _ v -> Ok(jsonToJVal v)) (JStr closureSentinel) j
+
 and private decodeLocalFlushTrigger (path: string) (j: Json) : Result<LocalFlushTrigger, DecodeError> =
     // 4-case DU; one carries a `milliseconds: int` payload.
     match requireObject path j with
@@ -1139,7 +1136,7 @@ and private bindingGeneric<'T>
     | JArray _
     | JString _
     | JNumber _
-    | JBool _ -> parseStatic path j |> Result.map Binding.Static
+    | JBool _ -> parseStatic path j |> Result.map (Some >> Binding.Static)
     | _ ->
 
         match requireObject path j with
@@ -1148,31 +1145,38 @@ and private bindingGeneric<'T>
             match requireDiscriminator path fields with
             | Error e -> Error e
             | Ok "Static" ->
-                // Phase 677 — absence is structural: a MISSING `value` means the
-                // binding carries none. The legacy `"value": null` form still
-                // decodes (§16 shorthand, since models emit null naturally) by
-                // routing to the very same per-slot absent handling, so the two
-                // spellings cannot disagree.
+                // Phase 677 — absence is structural: a MISSING `value` (and the
+                // legacy `"value": null` §16 shorthand) routes through the SLOT'S
+                // own parser exactly as before the swap — the slot decides what
+                // null means (an options slot normalises to `[]`, an option-typed
+                // slot to its inner `None`, a scalar slot rejects). The parsed
+                // payload wraps in the generated `Some`; a null-ish parsed
+                // representation still omits its key at encode (the encoder's
+                // inner `isAbsentPayload` check), so the two spellings cannot
+                // disagree on the wire.
                 let v =
                     match tryField fields "value" with
                     | Some v -> v
                     | None -> JNull
 
-                parseStatic (path + ".value") v |> Result.map Binding.Static
+                parseStatic (path + ".value") v |> Result.map (Some >> Binding.Static)
             | Ok "Query" ->
                 match requireField path fields "name" "query name string" with
                 | Error e -> Error e
                 | Ok v ->
                     requireString (path + ".name") v
                     |> Result.bind (fun name ->
-                        // Phase 421 — optional `dependsOn` string array (the declared filter edge); absent → [].
+                        // Phase 421 — optional `dependsOn` string array (the declared filter
+                        // edge); absent → `None` (the swap's typed absence; an explicit empty
+                        // array normalises to `None` so re-encode stays canonical-minimal).
                         let dependsOnR =
                             // Field aliases: deps/dependencies — the React-hooks prior.
                             match optFieldAliased fields "dependsOn" [ "deps"; "dependencies" ] with
-                            | None -> Ok []
+                            | None -> Ok None
                             | Some dJ ->
                                 requireArray (path + ".dependsOn") dJ
                                 |> Result.bind (traverse (requireString (path + ".dependsOn[]")))
+                                |> Result.map (fun l -> if List.isEmpty l then None else Some l)
 
                         dependsOnR
                         |> Result.map (fun dependsOn ->
@@ -1242,7 +1246,7 @@ and private bindingGeneric<'T>
                             | Some f -> Fuaran.UI.Types.Binding.projectSelectionField<'T> f
                             | None -> fun (raw: obj) -> unbox raw
 
-                        Binding.Selection(NodeId id, accessor, defaultV, fieldV))
+                        Binding.Selection(id, accessor, defaultV, fieldV))
             | Ok "State" ->
                 match requireField path fields "key" "state key string" with
                 | Error e -> Error e
@@ -1252,26 +1256,20 @@ and private bindingGeneric<'T>
                         // Decode the carried `defaultValue` through the typed
                         // static parser when it parses (Phase 426 — the write-back
                         // default reads a decoded field's own State default, and
-                        // the TS decoder already carries it); an absent /
-                        // unparseable default falls back to the typed placeholder
-                        // (read-compat with the pre-426 behaviour).
+                        // the TS decoder already carries it). Since the swap an
+                        // absent / null / unparseable default is the OUTER `None`
+                        // of the generated `defaultValue: 'T option` — the typed
+                        // absence the encoder omits, so the round-trip is exact
+                        // without a placeholder standing in.
                         let defaultV =
                             // Field aliases: initialValue/default — the React useState prior.
                             match optFieldAliased fields "defaultValue" [ "initialValue"; "default" ] with
+                            | Some JNull
+                            | None -> None
                             | Some dv ->
                                 match parseStatic (path + ".defaultValue") dv with
-                                | Ok parsed -> parsed
-                                | Error _ -> placeholder
-                            // Phase 677 — an ABSENT default now means the binding
-                            // carries none, and must decode to the same value the
-                            // legacy `"defaultValue": null` did, or the encoder
-                            // re-emits a placeholder and the round-trip breaks
-                            // (caught by `form-declarative`'s Choice slot). Route
-                            // through the identical per-slot absent handling.
-                            | None ->
-                                match parseStatic (path + ".defaultValue") JNull with
-                                | Ok parsed -> parsed
-                                | Error _ -> placeholder
+                                | Ok parsed -> Some parsed
+                                | Error _ -> None
 
                         Binding.State(key, defaultV))
             | Ok "Computed" ->
@@ -1317,13 +1315,19 @@ and private bindingGeneric<'T>
                         match flushR with
                         | Error e -> Error e
                         | Ok flushOn ->
+                            // Positional since the swap (flushOn, format, initialFrom,
+                            // onCommit, parse). The decoded stand-ins are unchanged in
+                            // meaning: `format` is the renderer's old `None`-default
+                            // (`string<'T>`) baked into the required slot, `onCommit` /
+                            // `parse` the sentinel placeholders a host re-attaches over.
                             Ok(
-                                Binding.Local
-                                    { InitialFrom = initialFrom
-                                      FlushOn = flushOn
-                                      OnCommit = (fun _ -> box closureSentinel)
-                                      Format = None
-                                      Parse = (fun _ -> Error closureSentinel) }
+                                Binding.Local(
+                                    flushOn,
+                                    (fun (v: 'T) -> string (box v)),
+                                    initialFrom,
+                                    Some(fun _ -> box closureSentinel),
+                                    (fun _ -> Error closureSentinel)
+                                )
                             )
             | Ok "Format" ->
                 // Locale-aware formatted binding (Phase 102). `source`
@@ -1372,7 +1376,7 @@ and private bindingGeneric<'T>
                                 // Phase 424 — optional `params`: [{ "from": <Binding>, "name": <string> }, …]
                                 // binding each `ColExpr.Param` name to a scalar `Binding<obj>` source.
                                 // Absent → `[]` (byte-identical to the Phase 282 shape).
-                                let decodeParam (el: Json) : Result<string * Binding<obj>, DecodeError> =
+                                let decodeParam (el: Json) : Result<string * Binding<JVal>, DecodeError> =
                                     match requireObject (path + ".params[]") el with
                                     | Error e -> Error e
                                     | Ok pf ->
@@ -1391,7 +1395,7 @@ and private bindingGeneric<'T>
                                                 "from"
                                                 [ "value" ]
                                                 "param source Binding"
-                                            |> Result.bind (decodeBindingObj (path + ".params." + name + ".from"))
+                                            |> Result.bind (decodeBindingJVal (path + ".params." + name + ".from"))
                                             |> Result.map (fun fromB -> name, fromB)
 
                                 let paramsR =
@@ -1412,13 +1416,21 @@ and private bindingGeneric<'T>
                                             pf
                                             |> Map.toList
                                             |> traverse (fun (name, v) ->
-                                                decodeBindingObj (path + ".params." + name + ".from") v
+                                                decodeBindingJVal (path + ".params." + name + ".from") v
                                                 |> Result.map (fun b -> name, b))
                                     | Some pJ ->
                                         requireArray (path + ".params") pJ |> Result.bind (traverse decodeParam)
 
                                 paramsR
-                                |> Result.map (fun parameters -> Binding.Transform(source, pipeline, parameters))
+                                |> Result.map (fun parameters ->
+                                    // Since the swap: `TransformParam` records, omitted-when-empty
+                                    // as the typed outer `None`.
+                                    let ps =
+                                        parameters
+                                        |> List.map (fun (name, fromB) ->
+                                            ({ From = fromB; Name = name }: TransformParam))
+
+                                    Binding.Transform(source, pipeline, (if List.isEmpty ps then None else Some ps)))
             | Ok "Invoke" ->
                 // Phase 283 — invoke a host-registered capability for a value. `capabilityId` + scalar
                 // `(addr, value)` args; the body is never on the wire. Types as `Binding<'T>` for any
@@ -1433,7 +1445,11 @@ and private bindingGeneric<'T>
                         | Error e -> Error e
                         | Ok argsJ ->
                             decodeInvokeArgs (path + ".args") argsJ
-                            |> Result.map (fun args -> Binding.Invoke(capabilityId, args))
+                            |> Result.map (fun args ->
+                                Binding.Invoke(
+                                    capabilityId,
+                                    args |> List.map (fun (addr, v) -> ({ Addr = addr; Value = v }: InvokeArg))
+                                ))
             // Pilot-5 lenient wave 2 — the `TextSource.Bound` wrapper convention
             // transferred to a bare-Binding slot: models emit
             // {"$type":"Bound","binding":X} in Metric.value / LabelValueRow etc.
@@ -1451,14 +1467,14 @@ and private bindingGeneric<'T>
                     s
                     "Static | Query | Filter | Selection | State | Computed | I18n | Local | Format | Transform | Invoke"
 
-and private decodeBindingObjArgs (path: string) (j: Json) : Result<Map<string, Binding<obj>>, DecodeError> =
+and private decodeBindingObjArgs (path: string) (j: Json) : Result<Map<string, Binding<JVal>>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
         let entries = fields |> Map.toList
 
         let mapped =
-            traverse (fun (k, v) -> decodeBindingObj (path + "." + k) v |> Result.map (fun b -> k, b)) entries
+            traverse (fun (k, v) -> decodeBindingJVal (path + "." + k) v |> Result.map (fun b -> k, b)) entries
 
         mapped |> Result.map Map.ofList
 
@@ -1470,6 +1486,29 @@ let private decodeBindingInt (path: string) (j: Json) : Result<Binding<int>, Dec
 
 let private decodeBindingString (path: string) (j: Json) : Result<Binding<string>, DecodeError> =
     bindingGeneric<string> path requireString "" j
+
+/// A Choice/SegmentedChoice value slot — `Binding<string>` where "no
+/// selection" is the ABSENT `Static` payload (`{"$type":"Static"}`, or the
+/// legacy `"value": null` §16 shorthand), decoded to `Static None` directly.
+/// A scalar string slot rejects that shape (Phase 677 routing); a choice slot
+/// is where the generated `Static of 'T option` makes absence first-class.
+let private decodeBindingChoiceValue (path: string) (j: Json) : Result<Binding<string>, DecodeError> =
+    let isAbsentStatic =
+        match j with
+        | JObject fields ->
+            (match tryField fields "$type" with
+             | Some(JString "Static") ->
+                 match tryField fields "value" with
+                 | None
+                 | Some JNull -> true
+                 | Some _ -> false
+             | _ -> false)
+        | _ -> false
+
+    if isAbsentStatic then
+        Ok(Binding.Static None)
+    else
+        decodeBindingString path j
 
 let private decodeBindingBool (path: string) (j: Json) : Result<Binding<bool>, DecodeError> =
     bindingGeneric<bool> path requireBool false j
@@ -1484,10 +1523,7 @@ let rec private decodeSelectOption (path: string) (j: Json) : Result<SelectOptio
     // object form. The value→label map form (`{"A":"A"}`) is deliberately NOT
     // coerced — JSON object key order is not contractual, so coercing it
     // could silently reorder visible options.
-    | JString s ->
-        Ok
-            { Value = s
-              Label = TextSource.Literal s }
+    | JString s -> Ok { Value = s; Label = s }
     | _ ->
 
         match requireObject path j with
@@ -1499,11 +1535,21 @@ let rec private decodeSelectOption (path: string) (j: Json) : Result<SelectOptio
                 match requireString (path + ".value") vJ with
                 | Error e -> Error e
                 | Ok value ->
-                    match requireField path fields "label" "option label TextSource" with
+                    match requireField path fields "label" "option label string" with
                     | Error e -> Error e
                     | Ok lJ ->
+                        // The label is a bare string since the swap (the wire's
+                        // literal form). The Literal ENVELOPE (`{"$type":
+                        // "Literal","text":…}`) stays decode-accepted through
+                        // the TextSource shorthand path and projects to its
+                        // text; a Bound/I18n label has no string projection and
+                        // is refused (it was never wire-expressible here — the
+                        // encoder always emitted the literal form).
                         decodeTextSource (path + ".label") lJ
-                        |> Result.map (fun label -> { Value = value; Label = label })
+                        |> Result.bind (fun label ->
+                            match label with
+                            | TextSource.Literal s -> Ok { Value = value; Label = s }
+                            | _ -> wrongType (path + ".label") "literal option label")
 
 and private decodeTextSource (path: string) (j: Json) : Result<TextSource, DecodeError> =
     match j with
@@ -1572,7 +1618,7 @@ let private decodeBindingSelectOptions (path: string) (j: Json) : Result<Binding
         | JString s when s = opaqueSentinel ->
             Ok
                 [ { Value = opaqueSentinel
-                    Label = TextSource.Literal opaqueSentinel } ]
+                    Label = opaqueSentinel } ]
         | _ ->
             match requireArray p v with
             | Error e -> Error e
@@ -1582,7 +1628,7 @@ let private decodeBindingSelectOptions (path: string) (j: Json) : Result<Binding
         path
         parseStatic
         [ { Value = opaqueSentinel
-            Label = TextSource.Literal opaqueSentinel } ]
+            Label = opaqueSentinel } ]
         j
 
 let private decodeBindingStringOpt (path: string) (j: Json) : Result<Binding<string option>, DecodeError> =
@@ -1615,36 +1661,35 @@ let private decodeBindingStringList (path: string) (j: Json) : Result<Binding<st
 
     bindingGeneric<string list> path parseStatic [ opaqueSentinel ] j
 
-let private decodeBindingFloatSeq (path: string) (j: Json) : Result<Binding<float seq>, DecodeError> =
-    let parseStatic (p: string) (v: Json) : Result<float seq, DecodeError> =
+let private decodeBindingFloatSeq (path: string) (j: Json) : Result<Binding<float list>, DecodeError> =
+    let parseStatic (p: string) (v: Json) : Result<float list, DecodeError> =
         match v with
-        | JNull -> Ok Seq.empty // pre-429 read-compat: an empty-list-backed seq boxed to `null`
-        | JString s when s = opaqueSentinel -> Ok Seq.empty
+        | JNull -> Ok [] // pre-429 read-compat: an empty-list-backed seq boxed to `null`
+        | JString s when s = opaqueSentinel -> Ok []
         | _ ->
             match requireArray p v with
             | Error e -> Error e
-            | Ok xs ->
-                traverseIndexed (fun i item -> requireFloat (sprintf "%s[%d]" p i) item) xs
-                |> Result.map (fun ns -> ns :> float seq)
+            | Ok xs -> traverseIndexed (fun i item -> requireFloat (sprintf "%s[%d]" p i) item) xs
 
-    bindingGeneric<float seq> path parseStatic Seq.empty j
+    bindingGeneric<float list> path parseStatic [] j
 
-let private decodeBindingFloatPair (path: string) (j: Json) : Result<Binding<float * float>, DecodeError> =
-    // 0.2.0 — the dual-thumb Range control's (min, max) pair. Static forms:
-    // the object `{min, max}` (canonical) or a two-element array (lenient).
-    let parseStatic (p: string) (v: Json) : Result<float * float, DecodeError> =
+let private decodeBindingRangePair (path: string) (j: Json) : Result<Binding<RangePair>, DecodeError> =
+    // 0.2.0 — the dual-thumb Range control's (min, max) pair, the `RangePair`
+    // record since the swap. Static forms: the object `{min, max}` (canonical)
+    // or a two-element array (lenient).
+    let parseStatic (p: string) (v: Json) : Result<RangePair, DecodeError> =
         match v with
         | JObject pf ->
             match tryField pf "min", tryField pf "max" with
             | Some mn, Some mx ->
                 match requireFloat (p + ".min") mn, requireFloat (p + ".max") mx with
-                | Ok a, Ok b -> Ok(a, b)
+                | Ok a, Ok b -> Ok { Min = a; Max = b }
                 | Error e, _
                 | _, Error e -> Error e
             | _ -> wrongType p "object with min and max numbers"
         | JArray [ a; b ] ->
             match requireFloat (p + "[0]") a, requireFloat (p + "[1]") b with
-            | Ok x, Ok y -> Ok(x, y)
+            | Ok x, Ok y -> Ok { Min = x; Max = y }
             | Error e, _
             | _, Error e -> Error e
         | _ -> wrongType p "range pair ({min, max} object or [min, max] array)"
@@ -1658,15 +1703,15 @@ let private decodeBindingFloatPair (path: string) (j: Json) : Result<Binding<flo
         && (tryField pf "min").IsSome
         && (tryField pf "max").IsSome
         ->
-        parseStatic path j |> Result.map Binding.Static
-    | _ -> bindingGeneric<float * float> path parseStatic (0.0, 0.0) j
+        parseStatic path j |> Result.map (Some >> Binding.Static)
+    | _ -> bindingGeneric<RangePair> path parseStatic { Min = 0.0; Max = 0.0 } j
 
-let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<string * string>, DecodeError> =
+let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<DateRangePair>, DecodeError> =
     // Phase 725 — the DateRange control's (from, to) ISO-8601 pair. Mirrors
     // `decodeBindingFloatPair`: the bare `{from, to}` object is canonical, a
     // two-element `[from, to]` array is the lenient coercion, and the
     // `Static`-enveloped form stays accepted through the generic dispatch.
-    let ordered (p: string) (a: string, b: string) : Result<string * string, DecodeError> =
+    let ordered (p: string) (a: string, b: string) : Result<DateRangePair, DecodeError> =
         // Didactic domain rule: a LITERAL pair must be ordered. Same-variant
         // ISO-8601 strings sort lexicographically in chronological order, so an
         // ordinal compare is total here — no date parsing, no locale. Only a
@@ -1681,9 +1726,9 @@ let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<st
                     b)
                 (Some "ordered ISO-8601 pair ({\"from\": <iso>, \"to\": <iso>} with from <= to)")
         else
-            Ok(a, b)
+            Ok { From = a; To = b }
 
-    let parseStatic (p: string) (v: Json) : Result<string * string, DecodeError> =
+    let parseStatic (p: string) (v: Json) : Result<DateRangePair, DecodeError> =
         match v with
         | JObject pf ->
             match tryField pf "from", tryField pf "to" with
@@ -1709,8 +1754,8 @@ let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<st
         && (tryField pf "from").IsSome
         && (tryField pf "to").IsSome
         ->
-        parseStatic path j |> Result.map Binding.Static
-    | _ -> bindingGeneric<string * string> path parseStatic ("", "") j
+        parseStatic path j |> Result.map (Some >> Binding.Static)
+    | _ -> bindingGeneric<DateRangePair> path parseStatic { From = ""; To = "" } j
 
 let private decodeBindingObjSeq (path: string) (j: Json) : Result<Binding<obj seq>, DecodeError> =
     let parseStatic (p: string) (v: Json) : Result<obj seq, DecodeError> =
@@ -1729,9 +1774,17 @@ let private decodeMapMarker (path: string) (j: Json) : Result<MapMarker, DecodeE
     | Error e -> Error e
     | Ok fields ->
         let labelR =
-            match requireField path fields "label" "marker label TextSource" with
+            // A bare string since the swap; the Literal envelope stays
+            // decode-accepted and projects to its text (same rule as the
+            // SelectOption label).
+            match requireField path fields "label" "marker label string" with
             | Error e -> Error e
-            | Ok v -> decodeTextSource (path + ".label") v
+            | Ok v ->
+                decodeTextSource (path + ".label") v
+                |> Result.bind (fun label ->
+                    match label with
+                    | TextSource.Literal s -> Ok s
+                    | _ -> wrongType (path + ".label") "literal marker label")
 
         let latR =
             match requireField path fields "latitude" "marker latitude float" with
@@ -1753,19 +1806,17 @@ let private decodeMapMarker (path: string) (j: Json) : Result<MapMarker, DecodeE
         | _, Error e, _
         | _, _, Error e -> Error e
 
-let private decodeBindingMarkerSeq (path: string) (j: Json) : Result<Binding<MapMarker seq>, DecodeError> =
-    let parseStatic (p: string) (v: Json) : Result<MapMarker seq, DecodeError> =
+let private decodeBindingMarkerSeq (path: string) (j: Json) : Result<Binding<MapMarker list>, DecodeError> =
+    let parseStatic (p: string) (v: Json) : Result<MapMarker list, DecodeError> =
         match v with
-        | JNull -> Ok Seq.empty // pre-429 read-compat: an empty-list-backed seq boxed to `null`
-        | JString s when s = opaqueSentinel -> Ok Seq.empty
+        | JNull -> Ok [] // pre-429 read-compat: an empty-list-backed seq boxed to `null`
+        | JString s when s = opaqueSentinel -> Ok []
         | _ ->
             match requireArray p v with
             | Error e -> Error e
-            | Ok xs ->
-                traverseIndexed (fun i m -> decodeMapMarker (sprintf "%s[%d]" p i) m) xs
-                |> Result.map (fun ms -> ms :> MapMarker seq)
+            | Ok xs -> traverseIndexed (fun i m -> decodeMapMarker (sprintf "%s[%d]" p i) m) xs
 
-    bindingGeneric<MapMarker seq> path parseStatic Seq.empty j
+    bindingGeneric<MapMarker list> path parseStatic [] j
 
 // ─── Action<obj> decoder ────────────────────────────────────────────────
 //
@@ -1824,14 +1875,14 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                                     | Ok "State" ->
                                         requireField (path + ".into") intoFields "key" "state key string"
                                         |> Result.bind (requireString (path + ".into.key"))
-                                        |> Result.map (fun k -> Some(CallResultTarget.IntoState k))
+                                        |> Result.map (fun k -> Some(CallResultTarget.State k))
                                     | Ok "Query" ->
                                         requireField (path + ".into") intoFields "name" "query name string"
                                         |> Result.bind (requireString (path + ".into.name"))
-                                        |> Result.map (fun n -> Some(CallResultTarget.IntoQuery n))
+                                        |> Result.map (fun n -> Some(CallResultTarget.Query n))
                                     | Ok s -> unknownDuCase (path + ".into") s "State | Query"
 
-                        intoR |> Result.map (fun into -> Action.Call(ApiEndpoint ep, onResult, into))
+                        intoR |> Result.map (fun into -> Action.Call(ep, onResult, into))
             | Ok "Notify" ->
                 match requireField path fields "channel" "notification channel string" with
                 | Error e -> Error e
@@ -1908,11 +1959,10 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                         | Ok encJ ->
                             decodeFileReadEncoding (path + ".encoding") encJ
                             |> Result.map (fun encoding ->
-                                Action.ReadFileBody(
-                                    { Id = fileId; Handle = None },
-                                    encoding,
-                                    (fun _ -> box closureSentinel)
-                                ))
+                                // Positional since the swap: wire id + host-only
+                                // handle (always None on a decoded tree) + the
+                                // sentinel-restored onRead.
+                                Action.ReadFileBody(fileId, None, encoding, Some(fun _ -> box closureSentinel)))
             | Ok "Invoke" ->
                 // Phase 283 — invoke a host-registered capability as an effect. `capabilityId` + scalar
                 // `(addr, value)` args; the body is never on the wire.
@@ -1927,7 +1977,11 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                         | Ok argsJ ->
                             decodeInvokeArgs (path + ".args") argsJ
                             // qualified — `Action.Invoke` alone resolves to `System.Action.Invoke` (a method).
-                            |> Result.map (fun args -> Fuaran.UI.Types.Action.Invoke(capabilityId, args))
+                            |> Result.map (fun args ->
+                                Fuaran.UI.Types.Action.Invoke(
+                                    capabilityId,
+                                    args |> List.map (fun (addr, v) -> ({ Addr = addr; Value = v }: InvokeArg))
+                                ))
             | Ok s ->
                 unknownDuCase
                     path
@@ -2002,7 +2056,7 @@ let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, Decod
         let iconR =
             match tryField fields "icon" with
             | None -> Ok None
-            | Some v -> decodeIconSource (path + ".icon") v |> Result.map Some
+            | Some v -> requireString (path + ".icon") v |> Result.map Some
 
         let subtextR =
             match tryField fields "subtext" with
@@ -2094,7 +2148,7 @@ let private decodeFactSpec (path: string) (j: Json) : Result<FactSpec, DecodeErr
         let iconR =
             match tryField fields "icon" with
             | None -> Ok None
-            | Some v -> decodeIconSource (path + ".icon") v |> Result.map Some
+            | Some v -> requireString (path + ".icon") v |> Result.map Some
 
         match labelR, valueR, toneR, emphasisR, helpR, iconR with
         | Ok label, Ok value, Ok tone, Ok emphasis, Ok help, Ok icon ->
@@ -2410,7 +2464,7 @@ let private decodeCalloutSpec (path: string) (j: Json) : Result<CalloutSpec, Dec
         let iconR =
             match tryField fields "icon" with
             | None -> Ok None
-            | Some v -> decodeIconSource (path + ".icon") v |> Result.map Some
+            | Some v -> requireString (path + ".icon") v |> Result.map Some
 
         match toneR, bodyR, dismissableR, headingR, iconR with
         | Ok tone, Ok body, Ok dismissable, Ok heading, Ok icon ->
@@ -2912,32 +2966,42 @@ let private decodeFormFieldKind
             | Some _ -> Some(fun _ -> Action.Chain [])
             | None -> None
 
-        // Value slot: present ⇒ typed decode; absent ⇒ the context's
-        // auto-binding — Filter(name) on a chip, State(field id, typed
-        // placeholder) on a form field (Phase 596) — else MISSING_FIELD.
+        // Value slot: present ⇒ typed decode; absent ⇒ `None` in an auto-bind
+        // context (Phase 596) — else MISSING_FIELD.
+        //
+        // Phase 694: absence stays STRUCTURAL. Decode no longer synthesises the
+        // auto-binding into the tree — `None` IS the canonical decoded shape
+        // (matching the generated decoder), and the renderers substitute the
+        // exact synthesised binding at render time (the stage-3 mirror). An
+        // EXPLICIT value decodes as written — the §16 collapse to the omitted
+        // canonical form happens at encode time (`Introspect.canonicalForm`,
+        // where the retired hand encoder used to perform it), keeping the hand
+        // and generated decoders tree-convergent. `autoBind` still gates
+        // required-vs-optional: a NoAutoBind (erased/unknown) context keeps the
+        // pre-596 contract.
         let valueOr
             (dec: string -> Json -> Result<Binding<'v>, DecodeError>)
-            (autoDefault: 'v)
+            (_autoDefault: 'v option)
             (expected: string)
-            : Result<Binding<'v>, DecodeError> =
+            : Result<Binding<'v> option, DecodeError> =
             match tryField fields "value" with
-            | Some v -> dec (path + ".value") v
+            | Some v -> dec (path + ".value") v |> Result.map Some
             | None ->
                 match autoBind with
-                | FilterChip n -> Ok(Binding.Filter(n, None))
-                | FormFieldId id -> Ok(Binding.State(id, autoDefault))
+                | FilterChip _
+                | FormFieldId _ -> Ok None
                 | NoAutoBind -> missingField path "value" expected
 
         match requireDiscriminator path fields with
         | Error e -> Error e
         | Ok "Text" ->
-            valueOr decodeBindingString Fuaran.UI.Defaults.ControlValueDefaults.text "Binding<string> value"
+            valueOr decodeBindingString (Some Fuaran.UI.Defaults.ControlValueDefaults.text) "Binding<string> value"
             |> Result.map (fun value -> FormFieldKind.Text(value, handlerOpt "onChange"))
         | Ok "Number" ->
-            valueOr decodeBindingFloat Fuaran.UI.Defaults.ControlValueDefaults.number "Binding<float> value"
+            valueOr decodeBindingFloat (Some Fuaran.UI.Defaults.ControlValueDefaults.number) "Binding<float> value"
             |> Result.map (fun value -> FormFieldKind.Number(value, handlerOpt "onChange"))
         | Ok "Checkbox" ->
-            valueOr decodeBindingBool Fuaran.UI.Defaults.ControlValueDefaults.checkbox "Binding<bool> value"
+            valueOr decodeBindingBool (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) "Binding<bool> value"
             |> Result.map (fun value -> FormFieldKind.Checkbox(value, handlerOpt "onToggle"))
         | Ok "Choice" ->
             let optionsR =
@@ -2945,7 +3009,10 @@ let private decodeFormFieldKind
                 |> Result.bind (decodeBindingSelectOptions (path + ".options"))
 
             let valueR =
-                valueOr decodeBindingStringOpt Fuaran.UI.Defaults.ControlValueDefaults.choice "Binding<string option>"
+                // The choice value is `Binding<string>` since the swap ("no
+                // selection" is the absent Static payload); the auto-bind
+                // synthesis is a default-less State (choice = None).
+                valueOr decodeBindingChoiceValue Fuaran.UI.Defaults.ControlValueDefaults.choice "Binding<string> value"
 
             match optionsR, valueR with
             | Ok options, Ok value -> Ok(FormFieldKind.Choice(options, value, handlerOpt "onChange"))
@@ -2954,16 +3021,17 @@ let private decodeFormFieldKind
         | Ok "Range" ->
             // 0.2.0 — dual-thumb numeric range (absorbed FilterKind.RangeFilter).
             let valueR =
+                // Phase 694 — absence stays structural (`None`); see `valueOr`.
                 match tryField fields "value" with
-                | Some v -> decodeBindingFloatPair (path + ".value") v
+                | Some v -> decodeBindingRangePair (path + ".value") v |> Result.map Some
                 | None ->
                     match autoBind with
-                    | FilterChip n -> Ok(Binding.Filter(n, None))
-                    | FormFieldId id -> Ok(Binding.State(id, Fuaran.UI.Defaults.ControlValueDefaults.range))
-                    | NoAutoBind -> missingField path "value" "Binding<float * float> value"
+                    | FilterChip _
+                    | FormFieldId _ -> Ok None
+                    | NoAutoBind -> missingField path "value" "Binding<RangePair> value"
 
             valueR
-            |> Result.map (fun value -> FormFieldKind.Range(value, handlerOpt "onChange", None))
+            |> Result.map (fun value -> FormFieldKind.Range(value, handlerOpt "onChange", None, None, None))
         | Ok "RangedNumber" ->
             // Parallel-additive Number case carrying optional
             // Min / Max / Step bounds at the field level. Absent keys
@@ -2973,7 +3041,7 @@ let private decodeFormFieldKind
             //     "<closure>", "min": <float|absent>, "max": <float|absent>,
             //     "step": <float|absent> }
             let valueR =
-                valueOr decodeBindingFloat Fuaran.UI.Defaults.ControlValueDefaults.number "Binding<float> value"
+                valueOr decodeBindingFloat (Some Fuaran.UI.Defaults.ControlValueDefaults.number) "Binding<float> value"
 
             let minR =
                 match tryField fields "min" with
@@ -2992,14 +3060,14 @@ let private decodeFormFieldKind
 
             match valueR, minR, maxR, stepR with
             | Ok value, Ok min, Ok max, Ok step ->
-                Ok(FormFieldKind.RangedNumber(value, handlerOpt "onChange", { Min = min; Max = max; Step = step }))
+                Ok(FormFieldKind.RangedNumber(value, handlerOpt "onChange", min, max, step))
             | Error e, _, _, _
             | _, Error e, _, _
             | _, _, Error e, _
             | _, _, _, Error e -> Error e
         | Ok "TextArea" ->
             let valueR =
-                valueOr decodeBindingString Fuaran.UI.Defaults.ControlValueDefaults.text "Binding<string> value"
+                valueOr decodeBindingString (Some Fuaran.UI.Defaults.ControlValueDefaults.text) "Binding<string> value"
 
             let rowsR =
                 requireField path fields "rows" "rows integer"
@@ -3019,7 +3087,10 @@ let private decodeFormFieldKind
                 |> Result.bind (decodeBindingSelectOptions (path + ".options"))
 
             let valueR =
-                valueOr decodeBindingStringOpt Fuaran.UI.Defaults.ControlValueDefaults.choice "Binding<string option>"
+                // The choice value is `Binding<string>` since the swap ("no
+                // selection" is the absent Static payload); the auto-bind
+                // synthesis is a default-less State (choice = None).
+                valueOr decodeBindingChoiceValue Fuaran.UI.Defaults.ControlValueDefaults.choice "Binding<string> value"
 
             let orientationR =
                 // Lenient AI-ingest omitted-when-default (WIRE_FORMAT.md §3.6
@@ -3028,7 +3099,7 @@ let private decodeFormFieldKind
                 // prior; observed omitted in eval emission data. Decode-only:
                 // the encoder still always emits it.
                 match tryField fields "orientation" with
-                | None -> Ok Horizontal
+                | None -> Ok Orientation.Horizontal
                 | Some oJ -> decodeOrientation (path + ".orientation") oJ
 
             match optionsR, valueR, orientationR with
@@ -3042,7 +3113,7 @@ let private decodeFormFieldKind
             // value; `variant` selects the control; optional min/max (ISO
             // strings) + step (seconds) decode to None when absent.
             let valueR =
-                valueOr decodeBindingString Fuaran.UI.Defaults.ControlValueDefaults.date "Binding<string> value"
+                valueOr decodeBindingString (Some Fuaran.UI.Defaults.ControlValueDefaults.date) "Binding<string> value"
 
             let variantR =
                 requireField path fields "variant" "DateVariant"
@@ -3065,7 +3136,7 @@ let private decodeFormFieldKind
 
             match valueR, variantR, minR, maxR, stepR with
             | Ok value, Ok variant, Ok min, Ok max, Ok step ->
-                Ok(FormFieldKind.Date(value, handlerOpt "onChange", variant, { Min = min; Max = max; Step = step }))
+                Ok(FormFieldKind.Date(value, handlerOpt "onChange", variant, min, max, step))
             | Error e, _, _, _, _
             | _, Error e, _, _, _
             | _, _, Error e, _, _
@@ -3077,16 +3148,14 @@ let private decodeFormFieldKind
             // (canonically the bare `{from, to}` object); `variant` selects the
             // control for both ends; optional min/max (ISO strings) + step
             // (seconds) bound both ends and decode to None when absent.
+            // Phase 694 — absence stays structural (`None`); the ONE filter
+            // param that carries the whole pair (the case's reason to exist)
+            // is synthesised at render time, never here. See `valueOr`.
             let valueR =
-                match tryField fields "value" with
-                | Some v -> decodeBindingStringPair (path + ".value") v
-                | None ->
-                    match autoBind with
-                    // ONE filter param carries the whole pair (the case's
-                    // reason to exist) — never two.
-                    | FilterChip n -> Ok(Binding.Filter(n, None))
-                    | FormFieldId id -> Ok(Binding.State(id, Fuaran.UI.Defaults.ControlValueDefaults.dateRange))
-                    | NoAutoBind -> missingField path "value" "Binding<string * string> value"
+                valueOr
+                    decodeBindingStringPair
+                    (Some Fuaran.UI.Defaults.ControlValueDefaults.dateRange)
+                    "Binding<DateRangePair> value"
 
             let variantR =
                 requireField path fields "variant" "DateVariant"
@@ -3109,14 +3178,7 @@ let private decodeFormFieldKind
 
             match valueR, variantR, minR, maxR, stepR with
             | Ok value, Ok variant, Ok min, Ok max, Ok step ->
-                Ok(
-                    FormFieldKind.DateRange(
-                        value,
-                        handlerOpt "onChange",
-                        variant,
-                        { Min = min; Max = max; Step = step }
-                    )
-                )
+                Ok(FormFieldKind.DateRange(value, handlerOpt "onChange", variant, min, max, step))
             | Error e, _, _, _, _
             | _, Error e, _, _, _
             | _, _, Error e, _, _
@@ -3237,7 +3299,7 @@ let private decodeFilterSpec (path: string) (j: Json) : Result<FilterSpec<obj>, 
             Ok
                 { Name = name
                   Label = label
-                  Field = field }
+                  Kind = field }
         | Error e, _, _
         | _, Error e, _
         | _, _, Error e -> Error e
@@ -3261,7 +3323,7 @@ let private decodeButtonSpec (path: string) (j: Json) : Result<ButtonSpec<obj>, 
         let iconR =
             match tryField fields "icon" with
             | None -> Ok None
-            | Some v -> decodeIconSource (path + ".icon") v |> Result.map Some
+            | Some v -> requireString (path + ".icon") v |> Result.map Some
 
         let disabledR =
             match tryField fields "disabled" with
@@ -3299,8 +3361,8 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
             |> Result.bind (decodeBindingSelectOptions (path + ".source"))
 
         let valueR =
-            requireField path fields "value" "Binding<string option>"
-            |> Result.bind (decodeBindingStringOpt (path + ".value"))
+            requireField path fields "value" "Binding<string>"
+            |> Result.bind (decodeBindingChoiceValue (path + ".value"))
 
         let placeholderR =
             match tryField fields "placeholder" with
@@ -3316,8 +3378,8 @@ let private decodeSelectSpec (path: string) (j: Json) : Result<SelectSpec<obj>, 
         // `values` absent ⇒ None.
         let multipleR =
             match tryField fields "multiple" with
-            | None -> Ok false
-            | Some v -> requireBool (path + ".multiple") v
+            | None -> Ok Option.None
+            | Some v -> requireBool (path + ".multiple") v |> Result.map Some
 
         let valuesR =
             match tryField fields "values" with
@@ -3385,7 +3447,10 @@ let private decodeFileUploadSpec (path: string) (j: Json) : Result<FileUploadSpe
                 { Label = label
                   Accept = accept
                   Multiple = multiple
-                  OnSelect = (fun _ -> Action.Chain [])
+                  OnSelect =
+                    (match tryField fields "onSelect" with
+                     | Some _ -> Some(fun _ -> Action.Chain [])
+                     | None -> Option.None)
                   Disabled = disabled }
         | Error e, _, _, _
         | _, Error e, _, _
@@ -3404,7 +3469,7 @@ let private decodeInputKind (path: string) (j: Json) : Result<NodeKind<obj>, Dec
             |> Result.bind (fun v -> requireArray (path + ".items") v)
             |> Result.bind (fun xs ->
                 traverseIndexed (fun i item -> decodeFilterSpec (sprintf "%s.items[%d]" path i) item) xs)
-            |> Result.map NodeKind.Filters
+            |> Result.map (fun items -> NodeKind.Filters { Items = items })
         | Ok "Button" -> decodeButtonSpec path j |> Result.map NodeKind.Button
         | Ok "FileUpload" -> decodeFileUploadSpec path j |> Result.map NodeKind.FileUpload
         | Ok "Select" -> decodeSelectSpec path j |> Result.map NodeKind.Select
@@ -3421,12 +3486,26 @@ let private decodeCellKindErased (path: string) (j: Json) : Result<CellKindErase
         | Ok "Text" -> Ok CellKindErased.Text
         | Ok "Numeric" -> Ok CellKindErased.Numeric
         | Ok "Date" -> Ok CellKindErased.Date
-        | Ok "Editable" -> Ok(CellKindErased.Editable(fun _ -> Action.Chain []))
-        | Ok "Checkbox" -> Ok(CellKindErased.Checkbox((fun _ -> false), (fun _ -> Action.Chain [])))
+        // The interactive closure slots are OPTIONS since the swap — decode
+        // maps wire presence (the `"<closure>"` sentinel) to `Some` no-op so
+        // re-encode stays byte-identical, and absence to `None`.
+        | Ok "Editable" ->
+            Ok(CellKindErased.Editable(tryField fields "onEdit" |> Option.map (fun _ -> fun _ -> Action.Chain [])))
+        | Ok "Checkbox" ->
+            Ok(
+                CellKindErased.Checkbox(
+                    (fun _ -> false),
+                    tryField fields "onToggle" |> Option.map (fun _ -> fun _ -> Action.Chain [])
+                )
+            )
         | Ok "Button" ->
             requireField path fields "label" "button TextSource label"
             |> Result.bind (decodeTextSource (path + ".label"))
-            |> Result.map (fun label -> CellKindErased.Button(label, (fun _ -> Action.Chain [])))
+            |> Result.map (fun label ->
+                CellKindErased.Button(
+                    label,
+                    tryField fields "onClick" |> Option.map (fun _ -> fun _ -> Action.Chain [])
+                ))
         | Ok "ButtonGroup" ->
             requireField path fields "buttons" "button-group list"
             |> Result.bind (fun v -> requireArray (path + ".buttons") v)
@@ -3440,14 +3519,25 @@ let private decodeCellKindErased (path: string) (j: Json) : Result<CellKindErase
                         | Ok bf ->
                             requireField p bf "label" "button TextSource label"
                             |> Result.bind (decodeTextSource (p + ".label"))
-                            |> Result.map (fun label -> label, (fun (_: obj) -> Action.Chain [])))
+                            |> Result.map (fun label ->
+                                { Label = label
+                                  OnClick =
+                                    tryField bf "onClick" |> Option.map (fun _ -> fun (_: obj) -> Action.Chain []) }
+                                : ButtonGroupItem<obj>))
                     xs)
             |> Result.map CellKindErased.ButtonGroup
         | Ok "Link" ->
             Ok(CellKindErased.Link((fun _ -> closureSentinel), (fun _ -> TextSource.Literal closureSentinel)))
         | Ok "Pill" ->
             Ok(CellKindErased.Pill((fun _ -> TextSource.Literal closureSentinel), (fun _ -> ToneVariant.Default)))
-        | Ok "Progress" -> Ok(CellKindErased.Progress((fun _ -> 0.0), None))
+        | Ok "Progress" ->
+            Ok(
+                CellKindErased.Progress(
+                    (fun _ -> 0.0),
+                    tryField fields "labelFn"
+                    |> Option.map (fun _ -> fun _ -> TextSource.Literal closureSentinel)
+                )
+            )
         | Ok "Custom" -> Ok(CellKindErased.Custom(fun _ -> placeholderClosureNode))
         | Ok s ->
             unknownDuCase
@@ -3589,10 +3679,12 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
         // data-bound grid so existing fixtures stay byte-identical) carries the retired
         // `Table`'s `TextSource` header/row matrix; when present the renderer emits static
         // `<table>` markup from it. `decodeStaticRows` reads the `{headers, rows}` object.
-        let staticRowsR: Result<(TextSource list * TextSource list list) option, DecodeError> =
+        let staticRowsR: Result<StaticRows option, DecodeError> =
             match tryField fields "staticRows" with
             | None -> Ok None
-            | Some sJ -> decodeStaticRows (path + ".staticRows") sJ |> Result.map Some
+            | Some sJ ->
+                decodeStaticRows (path + ".staticRows") sJ
+                |> Result.map (fun (headers, rows) -> Some { Headers = headers; Rows = rows })
 
         match columnsR, editableR, sourceR, onRowClickR, rowKeyFieldR, staticRowsR with
         | Ok columns, Ok editable, Ok source, Ok onRowClick, Ok rowKeyField, Ok staticRows ->
@@ -3774,6 +3866,31 @@ let private decodeHoleValueSpace (path: string) (j: Json) : Result<HoleValueSpac
 
 /// A self-describing boxed scalar (a value default or value argument). The
 /// `$type` tag pins the CLR shape so no hole value-space is consulted.
+/// The typed `Scalar` twin (a `HoleDecl.Value` default since the swap).
+let private decodeScalarTyped (path: string) (j: Json) : Result<Scalar, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        match requireDiscriminator path fields with
+        | Error e -> Error e
+        | Ok "Int" ->
+            requireField path fields "value" "Int value"
+            |> Result.bind (requireInt (path + ".value"))
+            |> Result.map Scalar.Int
+        | Ok "Float" ->
+            requireField path fields "value" "Float value"
+            |> Result.bind (requireFloat (path + ".value"))
+            |> Result.map Scalar.Float
+        | Ok "Bool" ->
+            requireField path fields "value" "Bool value"
+            |> Result.bind (requireBool (path + ".value"))
+            |> Result.map Scalar.Bool
+        | Ok "Str" ->
+            requireField path fields "value" "Str value"
+            |> Result.bind (requireString (path + ".value"))
+            |> Result.map Scalar.Str
+        | Ok s -> unknownDuCase path s "Int | Float | Bool | Str"
+
 let private decodeScalar (path: string) (j: Json) : Result<obj, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -3820,7 +3937,7 @@ let private decodeHoleDecl (path: string) (j: Json) : Result<HoleDecl, DecodeErr
                 let defR =
                     match tryField fields "default" with
                     | None -> Ok None
-                    | Some d -> decodeScalar (path + ".default") d |> Result.map Some
+                    | Some d -> decodeScalarTyped (path + ".default") d |> Result.map Some
 
                 match nameR, spaceR, defR with
                 | Ok name, Ok space, Ok def -> Ok(HoleDecl.Value(name, space, def))
@@ -3957,7 +4074,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                                         | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
 
                                     match dirR, wrapR, gapR with
-                                    | Ok d, Ok w, Ok g -> Ok(BoxLayout.Flex { Direction = d; Wrap = w; Gap = g })
+                                    | Ok d, Ok w, Ok g -> Ok(LayoutMode.Flex(d, w, g))
                                     | Error e, _, _
                                     | _, Error e, _
                                     | _, _, Error e -> Error e
@@ -3995,13 +4112,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                                         | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
 
                                     match colsR, tcR, gapR with
-                                    | Ok c, Ok tc, Ok g ->
-                                        Ok(
-                                            BoxLayout.Grid
-                                                { Cols = c
-                                                  TemplateColumns = tc
-                                                  Gap = g }
-                                        )
+                                    | Ok c, Ok tc, Ok g -> Ok(LayoutMode.Grid(c, tc, g))
                                     | Error e, _, _
                                     | _, Error e, _
                                     | _, _, Error e -> Error e
@@ -4044,7 +4155,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                     let orientationR =
                         // 0.2.0 — omitted-when-Horizontal on both boundaries.
                         match tryField specFields "orientation" with
-                        | None -> Ok Horizontal
+                        | None -> Ok Orientation.Horizontal
                         | Some v -> decodeOrientation (specPath + ".orientation") v
 
                     // Additive optional decoders.
@@ -4066,9 +4177,13 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                                 | Error e -> Error e
                                 | Ok label ->
                                     let iconR =
+                                        // Bare string since the swap (the IconSource wrapper
+                                        // unwraps at this boundary).
                                         match tryField hFields "icon" with
                                         | None -> Ok Option.None
-                                        | Some v -> decodeIconSource (path + ".icon") v |> Result.map Some
+                                        | Some v ->
+                                            decodeIconSource (path + ".icon") v
+                                            |> Result.map (fun (IconSource s) -> Some s)
 
                                     let disabledR =
                                         match tryField hFields "disabled" with
@@ -4077,10 +4192,12 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
 
                                     match iconR, disabledR with
                                     | Ok icon, Ok disabled ->
-                                        Ok
+                                        Ok(
                                             { Label = label
                                               Icon = icon
                                               Disabled = disabled }
+                                            : TabHeader
+                                        )
                                     | Error e, _
                                     | _, Error e -> Error e
 
@@ -4114,7 +4231,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
 
                     let activeIndexR =
                         match tryField specFields "activeIndex" with
-                        | None -> Ok(Binding.Static 0)
+                        | None -> Ok(Binding.Static(Some 0))
                         | Some v -> decodeBindingInt (specPath + ".activeIndex") v
 
                     match childrenR, orientationR, tabHeadersR, tabTagsR, activeTagR, activeIndexR with
@@ -4152,16 +4269,20 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                         requireField specPath specFields "activeStep" "Binding<int> activeStep"
                         |> Result.bind (decodeBindingInt (specPath + ".activeStep"))
 
-                    // `onSelect` is a closure → the sentinel is consumed and
-                    // reconstructs a no-op `Action` (re-encodes to the same
-                    // sentinel; behaviour can't round-trip) — mirrors Tabs.
+                    // `onSelect` is a closure → a present sentinel reconstructs
+                    // a no-op `Some` (re-encodes to the same sentinel; behaviour
+                    // can't round-trip); an absent key decodes `None` — mirrors
+                    // Tabs. The slot is an option since the swap.
                     match childrenR, activeR with
                     | Ok children, Ok active ->
                         Ok(
                             NodeKind.Stepper
                                 { ActiveStep = active
                                   Children = children
-                                  OnSelect = (fun _ -> Action.Chain []) }
+                                  OnSelect =
+                                    (match tryField specFields "onSelect" with
+                                     | Some _ -> Some(fun _ -> Action.Chain [])
+                                     | None -> Option.None) }
                         )
                     | Error e, _
                     | _, Error e -> Error e
@@ -4205,7 +4326,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
 
                     let openR =
                         match tryField specFields "open" with
-                        | None -> Ok(Binding.Static false)
+                        | None -> Ok(Binding.Static(Some false))
                         | Some v -> decodeBindingBool (specPath + ".open") v
 
                     let defaultOpenR =
@@ -4385,10 +4506,12 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                         match algR, hashR, strictR with
                         | Ok alg, Ok h, Ok strict ->
                             Ok(
-                                Some
+                                Some(
                                     { Algorithm = alg
                                       Hash = h
                                       Strictness = strict }
+                                    : ContentHash
+                                )
                             )
                         | Error e, _, _
                         | _, Error e, _
@@ -4401,8 +4524,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                     requireArray (path + ".exposedNodeIds") j
                     |> Result.bind (fun items ->
                         items
-                        |> List.mapi (fun i item ->
-                            requireString (sprintf "%s.exposedNodeIds[%d]" path i) item |> Result.map NodeId)
+                        |> List.mapi (fun i item -> requireString (sprintf "%s.exposedNodeIds[%d]" path i) item)
                         |> List.fold
                             (fun acc r ->
                                 match acc, r with
@@ -4413,7 +4535,15 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
 
             match moduleIdR, componentIdR, propsR, contentHashR, exposedNodeIdsR with
             | Ok moduleId, Ok componentId, Ok props, Ok hash, Ok exposedIds ->
-                Ok(NodeKind.Custom(moduleId, componentId, props, hash, exposedIds))
+                Ok(
+                    NodeKind.Custom
+                        { ModuleId = moduleId
+                          ComponentId = componentId
+                          Props = props
+                          ContentHash = hash
+                          // An absent/empty list stays `None` (omitted on the wire).
+                          ExposedNodeIds = (if List.isEmpty exposedIds then None else Some exposedIds) }
+                )
             | Error e, _, _, _, _
             | _, Error e, _, _, _
             | _, _, Error e, _, _
@@ -4470,7 +4600,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                                     |> Result.bind (decodeNodeAst (casePath + ".child"))
 
                                 match matchR, childR with
-                                | Ok m, Ok child -> Ok(m, child)
+                                | Ok m, Ok child -> Ok({ Match = m; Child = child }: SwitchCase<obj>)
                                 | Error e, _
                                 | _, Error e -> Error e)
 
@@ -4498,25 +4628,26 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
             let nameR =
                 requireField path fields "name" "FragmentDecl name string"
                 |> Result.bind (requireString (path + ".name"))
-                |> Result.map FragmentId
 
             let bodyR =
                 requireField path fields "body" "FragmentDecl body Node"
                 |> Result.bind (decodeNodeAst (path + ".body"))
 
             // Phase 180 — `holes` + `effect` are additive; absent ⇒ degenerate
-            // fixed-body (zero holes, pure-deterministic).
+            // fixed-body (zero holes, pure-deterministic — `None` since the
+            // swap, so the omitted wire form round-trips as omission).
             let holesR =
                 match tryField fields "holes" with
-                | None -> Ok []
+                | None -> Ok None
                 | Some h ->
                     requireArray (path + ".holes") h
                     |> Result.bind (traverse (decodeHoleDecl (path + ".holes[]")))
+                    |> Result.map Some
 
             let effectR =
                 match tryField fields "effect" with
-                | None -> Ok EffectClass.pureDeterministic
-                | Some e -> decodeEffectClass (path + ".effect") e
+                | None -> Ok None
+                | Some e -> decodeEffectClass (path + ".effect") e |> Result.map Some
 
             match nameR, bodyR, holesR, effectR with
             | Ok name, Ok body, Ok holes, Ok effect ->
@@ -4538,7 +4669,6 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
             let nameR =
                 requireField path fields "name" "FragmentRef name string"
                 |> Result.bind (requireString (path + ".name"))
-                |> Result.map FragmentId
 
             let argR (argPath: string) (j: Json) : Result<FragmentArg<obj>, DecodeError> =
                 match requireObject argPath j with
@@ -4549,14 +4679,21 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                     | Ok "SlotArg" ->
                         requireField argPath argFields "tree" "SlotArg tree Node"
                         |> Result.bind (decodeNodeAst (argPath + ".tree"))
-                        |> Result.map FragmentArg.Slot
+                        |> Result.map FragmentArg.SlotArg
                     | Ok _ ->
-                        // Int | Float | Bool | Str — a value argument.
-                        decodeScalar argPath j |> Result.map FragmentArg.Value
+                        // Int | Float | Bool | Str — a value argument (the
+                        // FragmentArg cases are typed since the swap).
+                        decodeScalarTyped argPath j
+                        |> Result.map (fun s ->
+                            match s with
+                            | Scalar.Int v -> FragmentArg.Int v
+                            | Scalar.Float v -> FragmentArg.Float v
+                            | Scalar.Bool v -> FragmentArg.Bool v
+                            | Scalar.Str v -> FragmentArg.Str v)
 
             let argsR =
                 match tryField fields "args" with
-                | None -> Ok Map.empty
+                | None -> Ok None
                 | Some a ->
                     match requireObject (path + ".args") a with
                     | Error e -> Error e
@@ -4565,7 +4702,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                         |> Map.toList
                         |> traverse (fun (k, v) ->
                             argR (path + ".args." + k) v |> Result.map (fun decoded -> k, decoded))
-                        |> Result.map Map.ofList
+                        |> Result.map (Map.ofList >> Some)
 
             match nameR, argsR with
             | Ok name, Ok args -> Ok(NodeKind.FragmentRef { Name = name; Args = args })
@@ -4610,9 +4747,11 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
 
                         match directionR, messageShapeR with
                         | Ok direction, Ok messageShape ->
-                            Ok
+                            Ok(
                                 { Direction = direction
                                   MessageShape = messageShape }
+                                : GuestChannel
+                            )
                         | Error e, _
                         | _, Error e -> Error e
 
@@ -4621,13 +4760,11 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                 | Error e -> Error e
                 | Ok capsJson ->
                     requireArray (path + ".capabilities") capsJson
-                    |> Result.bind (
-                        traverse (fun j -> requireString (path + ".capabilities[]") j |> Result.map CapabilityTag)
-                    )
+                    |> Result.bind (traverse (fun j -> requireString (path + ".capabilities[]") j))
 
             let inputsR =
                 match tryField fields "inputs" with
-                | None -> Ok Map.empty
+                | None -> Ok None
                 | Some a ->
                     match requireObject (path + ".inputs") a with
                     | Error e -> Error e
@@ -4645,10 +4782,17 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                                  | Ok "SlotArg" ->
                                      requireField argPath af "tree" "SlotArg tree Node"
                                      |> Result.bind (decodeNodeAst (argPath + ".tree"))
-                                     |> Result.map FragmentArg.Slot
-                                 | Ok _ -> decodeScalar argPath v |> Result.map FragmentArg.Value)
+                                     |> Result.map FragmentArg.SlotArg
+                                 | Ok _ ->
+                                     decodeScalarTyped argPath v
+                                     |> Result.map (fun s ->
+                                         match s with
+                                         | Scalar.Int sv -> FragmentArg.Int sv
+                                         | Scalar.Float sv -> FragmentArg.Float sv
+                                         | Scalar.Bool sv -> FragmentArg.Bool sv
+                                         | Scalar.Str sv -> FragmentArg.Str sv))
                             |> Result.map (fun decoded -> k, decoded))
-                        |> Result.map Map.ofList
+                        |> Result.map (Map.ofList >> Some)
 
             match scopeIdR, channelR, capabilitiesR, inputsR with
             | Ok scopeId, Ok channel, Ok capabilities, Ok inputs ->
@@ -4657,7 +4801,12 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                         { ScopeId = scopeId
                           Inputs = inputs
                           Channel = channel
-                          OnBubble = (fun _ -> Action.Chain [])
+                          // Wire `onBubble` is a sentinel; presence decodes to a
+                          // no-op `Some` so re-encode stays byte-identical.
+                          OnBubble =
+                            (match tryField fields "onBubble" with
+                             | Some _ -> Some(fun _ -> Action.Chain [])
+                             | None -> Option.None)
                           Capabilities = capabilities }
                 )
             | Error e, _, _, _
@@ -4684,12 +4833,12 @@ and private decodeAccessibility (path: string) (j: Json) : Result<Accessibility,
         let labelledByR =
             match tryField fields "labelledBy" with
             | None -> Ok None
-            | Some v -> requireString (path + ".labelledBy") v |> Result.map (fun s -> Some(NodeId s))
+            | Some v -> requireString (path + ".labelledBy") v |> Result.map Some
 
         let describedByR =
             match tryField fields "describedBy" with
             | None -> Ok None
-            | Some v -> requireString (path + ".describedBy") v |> Result.map (fun s -> Some(NodeId s))
+            | Some v -> requireString (path + ".describedBy") v |> Result.map Some
 
         let roleR =
             match tryField fields "role" with
@@ -4817,35 +4966,25 @@ and private decodeNodeAst (path: string) (j: Json) : Result<Node<obj>, DecodeErr
                 | Error e -> Error e
                 | Ok s when s = "" ->
                     err DecodeErrorCode.EMPTY_NODE_ID (path + ".id") "Node id is empty" (Some "non-empty string")
-                | Ok s -> Ok(NodeId s)
+                | Ok s -> Ok s
 
         let kindR =
             requireField path fields "kind" "NodeKind discriminator object"
             |> Result.bind (decodeNodeKind (path + ".kind"))
 
         // `state` and `style` are optional on the flat wire (omitted when empty
-        // / all-default, WIRE_FORMAT §3.1) — restore the default on absence.
-        let stateR =
+        // / all-default, WIRE_FORMAT §3.1). The envelope slots are OPTIONS since
+        // the swap — absence decodes to `None` (the canonical default form),
+        // presence to `Some`, so re-encode reproduces the incoming shape.
+        let stateR: Result<StateBehaviour<obj> option, DecodeError> =
             match tryField fields "state" with
-            | None ->
-                Ok(
-                    { OnLoading = None
-                      OnEmpty = None
-                      OnError = None }
-                    : StateBehaviour<obj>
-                )
-            | Some v -> decodeStateBehaviour (path + ".state") v
+            | None -> Ok None
+            | Some v -> decodeStateBehaviour (path + ".state") v |> Result.map Some
 
-        let styleR =
+        let styleR: Result<SemanticStyle option, DecodeError> =
             match tryField fields "style" with
-            | None ->
-                Ok
-                    { Emphasis = Emphasis.Normal
-                      Tone = ToneVariant.Default
-                      Weight = StyleWeight.Standard
-                      Role = StyleRole.None
-                      Voice = FontVoice.Default }
-            | Some v -> decodeSemanticStyle (path + ".style") v
+            | None -> Ok None
+            | Some v -> decodeSemanticStyle (path + ".style") v |> Result.map Some
 
         let accessibilityR =
             match tryField fields "accessibility" with

@@ -21,6 +21,7 @@ module Fuaran.UI.Renderer.BindingResolver
 // ============================================================================
 
 open Fuaran.UI.Types
+open Fuaran.Core
 
 /// The default `II18nResolver`. Pass-through identity:
 /// returns the debug placeholder `[i18n:<key>]` for every key so missing
@@ -107,7 +108,7 @@ type BindingSources =
         /// dispatch/replay loop — replaces this to validate args against the capability's
         /// `Signature`, run the host body, and journal non-deterministic results through the
         /// determinism-capture seam.
-        CapabilityInvoker: string -> (string * string) list -> Deferred<obj>
+        CapabilityInvoker: string -> (string * string) list -> Fuaran.UI.Types.Deferred<obj>
     }
 
 /// The empty `BindingSources` — useful for tests and for the renderer
@@ -121,7 +122,7 @@ let empty: BindingSources =
       I18n = Map.empty
       I18nResolver = passthroughI18nResolver
       Locale = ""
-      CapabilityInvoker = (fun _ _ -> Deferred.Pending) }
+      CapabilityInvoker = (fun _ _ -> Fuaran.UI.Types.Deferred.Pending) }
 
 /// Resolution result.  Renderer code treats `NotResolved` as the trigger for
 /// the `OnLoading` state behaviour; `Resolved` flows into the component body;
@@ -163,6 +164,78 @@ let private objToCell (v: obj) : Fuaran.Core.Cell option =
     | null -> Some Fuaran.Core.Null
     | _ -> None
 
+/// The `JVal` twin of [[objToCell]] — a Transform param's `from` source is
+/// `Binding<JVal>` since the swap. Same numeric policy (every number yields
+/// `Float`); an array / object is non-scalar (`None`).
+let private jvalToCell (v: JVal) : Fuaran.Core.Cell option =
+    // `JVal` has no null case (D1 — absence is structural, never a value).
+    match v with
+    | JStr s -> Some(Fuaran.Core.Str s)
+    | JBool b -> Some(Fuaran.Core.Bool b)
+    | JFloat f -> Some(Fuaran.Core.Float f)
+    | JInt i -> Some(Fuaran.Core.Float(float i))
+    | JArr _
+    | JObj _ -> None
+
+/// Project a resolved i18n arg's `JVal` to the `obj` shape the
+/// `II18nResolver` contract carries (scalars box; structures stringify
+/// canonically — the resolver's template substitution stringifies anyway).
+let private jvalToArgObj (v: JVal) : obj =
+    match v with
+    | JStr s -> box s
+    | JBool b -> box b
+    | JFloat f -> box f
+    | JInt i -> box i
+    | other -> box (Fuaran.Core.Canon.render other)
+
+// ─── The Binding<JVal> → Binding<obj> erasure for STORE-READING sources ──────
+//
+// A `Transform` param / `I18n` arg source is `Binding<JVal>` since the swap
+// (the typed verbatim carrier, D3) — but the Filter / State / Selection stores
+// hold RAW host values (a chip write stores `box "eng"`, a grid click the raw
+// row), exactly as before the swap. Resolving such a source AT `JVal` would
+// unbox-cast a raw primitive to a union — a throw on .NET and, worse, a silent
+// mis-match under Fable erasure. So these paths resolve at `obj` through this
+// erasure and COERCE afterwards: a genuine `JVal` payload (an authored Static,
+// a decoded defaultValue) passes through as itself; a raw store value stays raw.
+let rec private objOfJValBinding (b: Binding<JVal>) : Binding<obj> =
+    match b with
+    | Binding.Static v -> Binding.Static(v |> Option.map box)
+    | Binding.Query(name, accessor, dependsOn) -> Binding.Query(name, accessor >> box, dependsOn)
+    | Binding.Filter(name, dv) -> Binding.Filter(name, dv |> Option.map box)
+    | Binding.Selection(nodeId, _, dv, fld) ->
+        // The JVal-typed accessor is bypassed on this path: project the RAW
+        // row field (the store holds raw cells), matching the pre-swap
+        // `Binding<obj>` param behaviour byte-for-byte at resolution time.
+        let accessor: obj -> obj =
+            match fld with
+            | Some f -> Binding.projectSelectionField<obj> f
+            | None -> id
+
+        Binding.Selection(nodeId, accessor, dv |> Option.map box, fld)
+    | Binding.State(key, dv) -> Binding.State(key, dv |> Option.map box)
+    | Binding.Computed f -> Binding.Computed(f >> box)
+    | Binding.I18n(key, args) -> Binding.I18n(key, args)
+    | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
+        Binding.Local(
+            flushOn,
+            (fun (o: obj) -> format (unbox<JVal> o)),
+            objOfJValBinding initialFrom,
+            onCommit |> Option.map (fun oc -> fun (o: obj) -> oc (unbox<JVal> o)),
+            (fun s -> parse s |> Result.map box)
+        )
+    | Binding.Format(source, format, locale) -> Binding.Format(source, format, locale)
+    | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)
+    | Binding.Invoke(capabilityId, args) -> Binding.Invoke(capabilityId, args)
+
+/// Coerce a param source's resolved `obj` to a `Cell`: a genuine `JVal`
+/// (authored/decoded payload) via [[jvalToCell]]; anything else raw via
+/// [[objToCell]].
+let private resolvedToCell (v: obj) : Fuaran.Core.Cell option =
+    match v with
+    | :? JVal as jv -> jvalToCell jv
+    | other -> objToCell other
+
 /// Resolve a typed `Binding<'T>` against the supplied sources.
 ///
 /// Per-Defect (2) note: `Query` / `Selection` accessors are obj-typed at the
@@ -171,7 +244,12 @@ let private objToCell (v: obj) : Fuaran.Core.Cell option =
 /// `binding.selection` and knows how to unbox internally.  No reflection.
 let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolution<'T> =
     match binding with
-    | Binding.Static value -> Resolved value
+    // Since the swap the payload is `'T option`; the absent form resolves to
+    // the slot's default representation — exactly the value the pre-swap
+    // `Static` carried in the absent case (`null` / inner `None`), so an
+    // option-typed slot still reads "no selection" and renders its placeholder.
+    | Binding.Static(Some value) -> Resolved value
+    | Binding.Static None -> Resolved Unchecked.defaultof<'T>
     | Binding.Query(name, _, _) when name = Fuaran.UI.Defaults.NotProvidedSentinel ->
         // `Defaults.noBinding<'T>` encodes "Source = is mandatory but the
         // author hasn't overridden the default yet" as a Query against this
@@ -206,7 +284,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
             | Some d -> Resolved d
             | None -> NotResolved
     | Binding.Selection(nodeId, accessor, defaultValue, _) ->
-        match Map.tryFind nodeId sources.Selections with
+        match Map.tryFind (NodeId nodeId) sources.Selections with
         | Some raw ->
             try
                 Resolved(accessor raw)
@@ -231,8 +309,12 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
         | None ->
             // `Binding.State` declares its own default, so absence is not
             // a NotResolved condition — it's the "no override yet" steady
-            // state and resolves to the default.
-            Resolved defaultValue
+            // state and resolves to the default. A default-less binding
+            // (`None` since the swap) resolves to the slot's default
+            // representation, matching the pre-swap decode placeholder.
+            match defaultValue with
+            | Some d -> Resolved d
+            | None -> Resolved Unchecked.defaultof<'T>
     | Binding.Computed f ->
         // Phase 137: hand the closure a context with typed read access to the
         // live module-state bag. `sources.State` is authoritative (the same map
@@ -254,7 +336,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
             Resolved(f ctx)
         with ex ->
             Errored(sprintf "Computed binding threw: %s" ex.Message)
-    | Binding.Local local ->
+    | Binding.Local(_, _, initialFrom, _, _) ->
         // A `Binding.Local` is structurally a re-sync source +
         // local-buffer overlay. Pure resolution returns the InitialFrom-
         // side value — the per-NodeId React.useState slot is mounted by
@@ -264,7 +346,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
         // the underlying source, which is the principled behaviour: the
         // validator's FUARAN044 catches the misplacement at build time,
         // but if it slips to runtime the read is still meaningful.
-        resolve<'T> sources local.InitialFrom
+        resolve<'T> sources initialFrom
     | Binding.I18n(key, argsOpt) ->
         // Resolve args (each `Binding<obj>`) into a `Map<string, obj>`
         // for the resolver. Failed arg resolutions substitute an empty string;
@@ -276,8 +358,14 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
             |> Option.map (fun args ->
                 args
                 |> Map.map (fun _ b ->
-                    match resolve<obj> sources b with
-                    | Resolved v -> v
+                    // Resolve at obj through the store-reading erasure (see
+                    // objOfJValBinding); a genuine JVal payload projects to the
+                    // resolver-contract obj shape, a raw store value stays raw.
+                    match resolve<obj> sources (objOfJValBinding b) with
+                    | Resolved v ->
+                        (match v with
+                         | :? JVal as jv -> jvalToArgObj jv
+                         | other -> other)
                     | NotResolved
                     | Errored _
                     | I18nUnresolved _ -> box ""))
@@ -338,7 +426,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
         // `Binding<obj seq>` use at a data-bearing node (same 'T-constraint posture as
         // `Binding.Format` / `Binding.I18n`); a SCALAR slot (TextSource, Metric/LabelValueRow
         // values) resolves through `resolveScalarWith` instead (Phase 632).
-        match evalTransformFrame sources source pipeline parameters with
+        match evalTransformFrame sources source pipeline (defaultArg parameters []) with
         | Error m -> Errored m
         | Ok result ->
             let names = Fuaran.Core.Table.columnNames result
@@ -371,10 +459,10 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
         // `onLoading`), `Ready` → `Resolved`, `Error` → `Errored` (its `onError`) — reusing the
         // `StateBehaviour` surface, no new node. The default invoker is `Pending` until a host
         // (the AiTools registry) wires real dispatch + Phase-27 replay.
-        match sources.CapabilityInvoker capabilityId args with
-        | Deferred.Pending -> NotResolved
-        | Deferred.Error m -> Errored m
-        | Deferred.Ready v ->
+        match sources.CapabilityInvoker capabilityId (args |> List.map (fun (a: InvokeArg) -> a.Addr, a.Value)) with
+        | Fuaran.UI.Types.Deferred.Pending -> NotResolved
+        | Fuaran.UI.Types.Deferred.Error m -> Errored m
+        | Fuaran.UI.Types.Deferred.Ready v ->
             try
                 Resolved(unbox<'T> v)
             with ex ->
@@ -392,15 +480,17 @@ and private evalTransformFrame
     (sources: BindingSources)
     (source: Fuaran.Core.DataSource)
     (pipeline: Fuaran.Core.Transform list)
-    (parameters: (string * Binding<obj>) list)
+    (parameters: TransformParam list)
     : Result<Fuaran.Core.Table, string> =
     let rec resolveParams (env: Map<string, Fuaran.Core.Cell>) (unbound: Set<string>) remaining =
         match remaining with
         | [] -> Ok(env, unbound)
-        | (name, fromB) :: rest ->
-            match resolve sources fromB with
+        | (p: TransformParam) :: rest ->
+            let name = p.Name
+
+            match resolve<obj> sources (objOfJValBinding p.From) with
             | Resolved v ->
-                match objToCell v with
+                match resolvedToCell v with
                 | Some cell -> resolveParams (Map.add name cell env) unbound rest
                 | None -> Error(sprintf "Transform param '%s' resolved to a non-scalar value" name)
             | NotResolved -> resolveParams env (Set.add name unbound) rest
@@ -504,7 +594,7 @@ let resolveScalarWith<'T>
     : Resolution<'T> =
     match binding with
     | Binding.Transform(source, pipeline, parameters) ->
-        match evalTransformFrame sources source pipeline parameters with
+        match evalTransformFrame sources source pipeline (defaultArg parameters []) with
         | Error m -> Errored m
         | Ok result ->
             let names = Fuaran.Core.Table.columnNames result

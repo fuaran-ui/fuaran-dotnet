@@ -59,12 +59,14 @@ let private nameField: FormField<obj> =
         Required = true
         Kind =
             FormFieldKind.Text(
-                binding.local
-                    (Binding.Static "")
-                    LocalFlushTrigger.OnCommitAction
-                    (fun n -> dispatch (SetName n))
-                    None
-                    (fun s -> Ok s),
+                Some(
+                    binding.local
+                        (Binding.Static(Some ""))
+                        LocalFlushTrigger.OnCommitAction
+                        (fun n -> dispatch (SetName n))
+                        None
+                        (fun s -> Ok s)
+                ),
                 Some(fun _ -> Action.Chain [])
             ) }
 
@@ -76,19 +78,21 @@ let private ageField: FormField<obj> =
         Label = TextSource.Literal "Age"
         Kind =
             FormFieldKind.RangedNumber(
-                binding.local
-                    (Binding.Static 30.0)
-                    LocalFlushTrigger.OnSubmit
-                    (fun a -> dispatch (SetAge a))
-                    None
-                    (fun s ->
-                        match System.Double.TryParse s with
-                        | true, v -> Ok v
-                        | _ -> Error "Enter a number"),
+                Some(
+                    binding.local
+                        (Binding.Static(Some 30.0))
+                        LocalFlushTrigger.OnSubmit
+                        (fun a -> dispatch (SetAge a))
+                        None
+                        (fun s ->
+                            match System.Double.TryParse s with
+                            | true, v -> Ok v
+                            | _ -> Error "Enter a number")
+                ),
                 Some(fun _ -> Action.Chain []),
-                { Defaults.numberFieldConstraints with
-                    Min = Some 0.0
-                    Max = Some 120.0 }
+                Some 0.0,
+                Some 120.0,
+                None
             ) }
 
 let private profileForm: Node<obj> =

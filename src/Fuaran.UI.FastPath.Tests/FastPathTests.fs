@@ -20,9 +20,7 @@ module FastPathTests =
         | Binding.Transform _ -> true
         | _ -> false
 
-    let private nodeId (n: Node<unit>) : string =
-        match n.Id with
-        | NodeId s -> s
+    let private nodeId (n: Node<unit>) : string = n.Id
 
     [<Tests>]
     let tests =
@@ -125,7 +123,7 @@ module FastPathTests =
                           Build =
                               fun values ->
                                   { FastPath.instantiate sample values with
-                                      Id = NodeId "" } }
+                                      Id = "" } }
 
                   match FastPath.tryInstantiate broken Map.empty with
                   | Error defects -> Expect.isNonEmpty defects "the empty-node-id tree is rejected with defects"

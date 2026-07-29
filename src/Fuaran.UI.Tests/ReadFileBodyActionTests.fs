@@ -29,7 +29,7 @@ open Fuaran.UI.Renderer.Runtime
 
 type private Msg = WorkbookLoaded of string
 
-let private aRef =
+let private aRef: FileRef =
     { Id = "workbook-upload:0"
       Handle = None }
 
@@ -39,12 +39,12 @@ let tests =
         "Fuaran.UI.Action.ReadFileBody"
         [ test "Action.ReadFileBody carries its FileRef + encoding" {
               let action: Action<Msg> =
-                  Action.ReadFileBody(aRef, FileReadEncoding.Base64, WorkbookLoaded)
+                  Action.ReadFileBody(aRef.Id, aRef.Handle, FileReadEncoding.Base64, Some WorkbookLoaded)
 
               match action with
-              | Action.ReadFileBody(file, encoding, onRead) ->
-                  Expect.equal file.Id "workbook-upload:0" "FileRef id preserved"
-                  Expect.equal file.Handle None "Handle is None on a hand-built ref"
+              | Action.ReadFileBody(fileRef, fileHandle, encoding, Some onRead) ->
+                  Expect.equal fileRef "workbook-upload:0" "FileRef id preserved"
+                  Expect.equal fileHandle None "Handle is None on a hand-built ref"
                   Expect.equal encoding FileReadEncoding.Base64 "Encoding preserved"
                   Expect.equal (onRead "abc==") (WorkbookLoaded "abc==") "Continuation maps the body into a msg"
               | other -> failtestf "Expected Action.ReadFileBody, got %A" other
@@ -55,19 +55,19 @@ let tests =
                   Action.readFileBody aRef FileReadEncoding.Text WorkbookLoaded
 
               match action with
-              | Action.ReadFileBody(file, FileReadEncoding.Text, _) ->
-                  Expect.equal file.Id "workbook-upload:0" "Smart ctor preserves the ref id"
+              | Action.ReadFileBody(fileRef, _, FileReadEncoding.Text, _) ->
+                  Expect.equal fileRef "workbook-upload:0" "Smart ctor preserves the ref id"
               | other -> failtestf "Expected Action.ReadFileBody (Text), got %A" other
           }
 
           test "Action.Chain composes ReadFileBody with a follow-on Dispatch" {
               let action: Action<Msg> =
                   Action.Chain
-                      [ Action.ReadFileBody(aRef, FileReadEncoding.DataUrl, WorkbookLoaded)
+                      [ Action.ReadFileBody(aRef.Id, aRef.Handle, FileReadEncoding.DataUrl, Some WorkbookLoaded)
                         Action.dispatch (WorkbookLoaded "sentinel") ]
 
               match action with
-              | Action.Chain [ Action.ReadFileBody(_, FileReadEncoding.DataUrl, _); Action.Dispatch(WorkbookLoaded _) ] ->
+              | Action.Chain [ Action.ReadFileBody(_, _, FileReadEncoding.DataUrl, _); Action.Dispatch(WorkbookLoaded _) ] ->
                   ()
               | other -> failtestf "Expected 2-step chain, got %A" other
           }

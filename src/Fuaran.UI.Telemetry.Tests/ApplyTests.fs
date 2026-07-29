@@ -24,7 +24,7 @@ let private revenueMetric: Node<Msg> =
         "revenue-metric"
         { Defaults.metric with
             Label = TextSource.Literal "Revenue"
-            Value = Binding.Static 1.0 }
+            Value = Binding.Static(Some 1.0) }
 
 let private dashboard: Node<Msg> =
     Fuaran.dashboard

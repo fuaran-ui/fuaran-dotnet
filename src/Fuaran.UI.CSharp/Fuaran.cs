@@ -2,7 +2,8 @@ using System.Collections.Generic;
 using System.Linq;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
-using FsNode = Fuaran.UI.Types.Node<object>;
+using FsGen = Fuaran.UI.Generated;
+using FsNode = Fuaran.UI.Generated.Node<object>;
 
 namespace Fuaran.UI.CSharp;
 
@@ -25,33 +26,31 @@ public static partial class Fuaran
     internal static Microsoft.FSharp.Collections.FSharpList<FsNode> Kids(IEnumerable<FuaranNode>? children) =>
         Fs.List((children ?? Enumerable.Empty<FuaranNode>()).Select(c => c.Inner));
 
-    internal static Microsoft.FSharp.Core.FSharpOption<FsTypes.IconSource> Icon(string? icon) =>
+    // Phase 692/694 swap: the generated spec records carry `Icon: string option`
+    // directly (no `IconSource` wrap).
+    internal static Microsoft.FSharp.Core.FSharpOption<string> Icon(string? icon) =>
         icon is null
-            ? Microsoft.FSharp.Core.FSharpOption<FsTypes.IconSource>.None
-            : Microsoft.FSharp.Core.FSharpOption<FsTypes.IconSource>.Some(FsTypes.IconSource.NewIconSource(icon));
+            ? Microsoft.FSharp.Core.FSharpOption<string>.None
+            : Microsoft.FSharp.Core.FSharpOption<string>.Some(icon);
 
     // The three display kinds without an F# smart constructor (Badge / Sparkline /
     // Spacer) are built directly here with the same defaults `buildNode` applies —
     // Accessibility=None (their smart-ctor default would be `none` anyway), so the
     // output is byte-identical to what a smart ctor would produce (and to the bare
     // corpus). Every other kind couples to its smart ctor.
-    internal static FuaranNode BuildBare(string id, FsTypes.NodeKind<object> kind) =>
+    // Generated Node ctor is Generated.fs declaration order (Id, Kind,
+    // Accessibility, ExtraAttributes, Motion, State, Style); `Id` is a bare
+    // string, and `State = None` / `Style = None` are the canonical
+    // empty-state / default-style shapes since the swap.
+    internal static FuaranNode BuildBare(string id, FsGen.NodeKind<object> kind) =>
         new(new FsNode(
-            FsTypes.NodeId.NewNodeId(id),
+            id,
             kind,
-            new FsTypes.StateBehaviour<object>(
-                Fs.None<FsNode>(),
-                Fs.None<FsNode>(),
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsTypes.ErrorPayload, FsNode>>()),
-            new FsTypes.SemanticStyle(
-                FsTypes.ToneVariant.Default,
-                FsTypes.StyleWeight.Standard,
-                FsTypes.Emphasis.Normal,
-                FsTypes.StyleRole.None,
-                FsTypes.FontVoice.Default),
-            Fs.None<FsTypes.Accessibility>(),
-            Fs.None<FsTypes.Motion>(),
-            Fs.None<Microsoft.FSharp.Collections.FSharpMap<string, string>>()));
+            Fs.None<FsGen.Accessibility>(),
+            Fs.None<Microsoft.FSharp.Collections.FSharpMap<string, string>>(),
+            Fs.None<FsGen.Motion>(),
+            Fs.None<FsGen.StateBehaviour<object>>(),
+            Fs.None<FsGen.SemanticStyle>()));
 
     // ─── Layout ─────────────────────────────────────────────────────────────
 
@@ -60,27 +59,31 @@ public static partial class Fuaran
     /// <see cref="Card"/> are Box-emitting conveniences over this.</summary>
     public static FuaranNode Box(BoxOptions options)
     {
-        FsTypes.BoxLayout layout = options.Layout switch
+        // LayoutMode cases are positional since the swap: Flex(direction, wrap, gap)
+        // / Grid(cols, templateColumns, gap) — the FlexLayout / GridTemplate
+        // payload records are retired.
+        FsGen.LayoutMode layout = options.Layout switch
         {
-            BoxLayoutMode.Grid =>
-                FsTypes.BoxLayout.NewGrid(new FsTypes.GridTemplate(options.Cols, Fs.None<string>(), Fs.None<int>())),
-            BoxLayoutMode.Auto => FsTypes.BoxLayout.Auto,
-            _ => FsTypes.BoxLayout.NewFlex(new FsTypes.FlexLayout(options.Orientation.ToFs(), options.Wrap, Fs.None<int>())),
+            BoxLayoutMode.Grid => FsGen.LayoutMode.NewGrid(options.Cols, Fs.None<string>(), Fs.None<int>()),
+            BoxLayoutMode.Auto => FsGen.LayoutMode.Auto,
+            _ => FsGen.LayoutMode.NewFlex(options.Orientation.ToFs(), options.Wrap, Fs.None<int>()),
         };
 
-        FsTypes.BoxRole role = options.Role switch
+        FsGen.BoxRole role = options.Role switch
         {
-            BoxRoleKind.Card => FsTypes.BoxRole.Card,
-            BoxRoleKind.Dashboard => FsTypes.BoxRole.Dashboard,
-            BoxRoleKind.Separator => FsTypes.BoxRole.Separator,
-            _ => FsTypes.BoxRole.Group,
+            BoxRoleKind.Card => FsGen.BoxRole.Card,
+            BoxRoleKind.Dashboard => FsGen.BoxRole.Dashboard,
+            BoxRoleKind.Separator => FsGen.BoxRole.Separator,
+            _ => FsGen.BoxRole.Group,
         };
 
-        var heading = options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>();
+        var heading = options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>();
 
+        // Generated BoxSpec ctor is Generated.fs declaration order (Children,
+        // Heading, Layout, Role).
         return new(FsFactory.box<object>(
             options.Id,
-            new FsTypes.BoxSpec<object>(layout, role, heading, Kids(options.Children))));
+            new FsGen.BoxSpec<object>(Kids(options.Children), heading, layout, role)));
     }
 
     /// <summary>A dashboard — the page's primary content region.</summary>
@@ -107,7 +110,7 @@ public static partial class Fuaran
         new(FsFactory.card<object>(
             options.Id,
             new FsTypes.CardSpec<object>(
-                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsTypes.TextSource>(),
+                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
                 Kids(options.Children))));
 
     // ─── Display ──────────────────────────────────────────────────────────────
@@ -116,27 +119,29 @@ public static partial class Fuaran
     public static FuaranNode Metric(MetricOptions options) =>
         new(FsFactory.metric<object>(
             options.Id,
-            new FsTypes.MetricSpec(
+            // Generated MetricSpec ctor is Generated.fs declaration order (Label, Value,
+            // Format, Tone, Weight, Emphasis, Trend, TrendFormat, Icon, Subtext).
+            new FsGen.MetricSpec(
                 options.Label.Inner,
                 options.Value.Inner,
                 options.Format.Inner,
                 options.Tone.ToFs(),
                 options.Weight.ToFs(),
                 options.Emphasis.ToFs(),
-                options.Trend is { } t ? Fs.Some(t.Inner) : Fs.None<FsTypes.Binding<double>>(),
-                options.TrendFormat is { } tf ? Fs.Some(tf.Inner) : Fs.None<FsTypes.CellFormat>(),
+                options.Trend is { } t ? Fs.Some(t.Inner) : Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
+                options.TrendFormat is { } tf ? Fs.Some(tf.Inner) : Fs.None<FsGen.CellFormat>(),
                 Icon(options.Icon),
-                options.Subtext is { } s ? Fs.Some(s.Inner) : Fs.None<FsTypes.TextSource>())));
+                options.Subtext is { } s ? Fs.Some(s.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>A heading (<c>&lt;h1&gt;</c>…<c>&lt;h6&gt;</c>).</summary>
     public static FuaranNode Heading(HeadingOptions options) =>
         new(FsFactory.heading<object>(
             options.Id,
-            new FsTypes.HeadingSpec(options.Level, options.Text.Inner, options.Variant.ToFs())));
+            new FsGen.HeadingSpec(options.Level, options.Text.Inner, options.Variant.ToFs())));
 
     /// <summary>A markdown block.</summary>
     public static FuaranNode Markdown(MarkdownOptions options) =>
-        new(FsFactory.markdownSpec<object>(options.Id, new FsTypes.MarkdownSpec(options.Text.Inner)));
+        new(FsFactory.markdownSpec<object>(options.Id, new FsGen.MarkdownSpec(options.Text.Inner)));
 
     // ─── Input ────────────────────────────────────────────────────────────────
 
@@ -144,11 +149,13 @@ public static partial class Fuaran
     public static FuaranNode Button(ButtonOptions options) =>
         new(FsFactory.button<object>(
             options.Id,
-            new FsTypes.ButtonSpec<object>(
+            // Generated ButtonSpec ctor is Generated.fs declaration order (Label,
+            // OnClick, Variant, Icon, Tooltip, Disabled).
+            new FsGen.ButtonSpec<object>(
                 options.Label.Inner,
-                FsTypes.Action<object>.NewChain(Fs.Empty<FsTypes.Action<object>>()),
+                global::Fuaran.UI.Generated.Action<object>.NewChain(Fs.Empty<global::Fuaran.UI.Generated.Action<object>>()),
                 options.Variant.ToFs(),
                 Icon(options.Icon),
-                Fs.None<FsTypes.TextSource>(),
-                Fs.None<FsTypes.Binding<bool>>())));
+                Fs.None<FsGen.TextSource>(),
+                Fs.None<global::Fuaran.UI.Generated.Binding<bool>>())));
 }

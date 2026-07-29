@@ -55,9 +55,7 @@ type FixtureEntry =
         Description: string
     }
 
-let private nodeIdStr (n: Node<obj>) : string =
-    let (NodeId s) = n.Id
-    s
+let private nodeIdStr (n: Node<obj>) : string = n.Id
 
 let private opId (name: string) : string = "op-" + name.ToLowerInvariant()
 

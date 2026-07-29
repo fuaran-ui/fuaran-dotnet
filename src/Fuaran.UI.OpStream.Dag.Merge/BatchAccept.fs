@@ -39,11 +39,11 @@ module BatchAccept =
         | TreeOp.ReplaceBinding(t, _, _) -> Set.singleton (rawId t)
         | TreeOp.UpdateStyle(t, _) -> Set.singleton (rawId t)
         | TreeOp.UpdateState(t, _) -> Set.singleton (rawId t)
-        | TreeOp.InsertChild(p, child) -> Set.ofList [ rawId p; rawId child.Id ]
+        | TreeOp.InsertChild(p, child) -> Set.ofList [ rawId p; child.Id ]
         | TreeOp.RemoveNode t -> Set.singleton (rawId t)
         | TreeOp.MoveNode(t, np) -> Set.ofList [ rawId t; rawId np ]
         | TreeOp.ReorderChildren(p, order) -> Set.ofList (rawId p :: (order |> List.map rawId))
-        | TreeOp.ReplaceRoot node -> Set.singleton (rawId node.Id)
+        | TreeOp.ReplaceRoot node -> Set.singleton node.Id
         | TreeOp.Batch ops -> ops |> List.map opNodeIds |> Set.unionMany
 
     /// The dependency-closed superset of `selected` indices: an op depends on an

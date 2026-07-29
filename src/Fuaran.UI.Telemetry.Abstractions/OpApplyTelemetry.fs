@@ -121,5 +121,5 @@ module OpApplyTelemetry =
         | TreeOp.RemoveNode(NodeId id) -> Some id
         | TreeOp.MoveNode(NodeId id, _) -> Some id
         | TreeOp.ReorderChildren(NodeId parentId, _) -> Some parentId
-        | TreeOp.ReplaceRoot node -> let (NodeId rawId) = node.Id in Some rawId
+        | TreeOp.ReplaceRoot node -> Some node.Id
         | TreeOp.Batch _ -> None

@@ -139,7 +139,7 @@ module BoundedActions =
             { Store = s
               Effects = [ ClientEffect.WriteToClipboard text ]
               Diagnostics = [] }
-        | Action.ReadFileBody(_, encoding, _) ->
+        | Action.ReadFileBody(_, _, encoding, _) ->
             // The `onRead` closure (3rd field) is the inert decode sentinel — NOT
             // invoked here. The shim reads the browser-held blob and round-trips
             // the body back as a fresh `file-read` LiveEvent.

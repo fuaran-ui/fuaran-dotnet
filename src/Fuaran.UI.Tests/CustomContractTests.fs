@@ -181,15 +181,15 @@ let tests =
           // ── Typed node constructor ──────────────────────────────────────────
           test "Custom.node encodes props + stamps the derived hash + exposed ids" {
               let node: Node<obj> = Custom.node "spark-1" contract sample
-              Expect.equal node.Id (NodeId "spark-1") "node id"
+              Expect.equal node.Id "spark-1" "node id"
 
               match node.Kind with
-              | NodeKind.Custom(m, c, props, hash, exposed) ->
-                  Expect.equal m "sample" "module id"
-                  Expect.equal c "sparkline" "component id"
-                  Expect.equal props (encode sample) "encoded prop bag (can never be malformed)"
-                  Expect.equal hash (Some contract.Hash) "stamps the contract's derived hash"
-                  Expect.equal exposed [ NodeId "spark-line" ] "stamps the contract's exposed ids"
+              | NodeKind.Custom spec ->
+                  Expect.equal spec.ModuleId "sample" "module id"
+                  Expect.equal spec.ComponentId "sparkline" "component id"
+                  Expect.equal spec.Props (encode sample) "encoded prop bag (can never be malformed)"
+                  Expect.equal spec.ContentHash (Some contract.Hash) "stamps the contract's derived hash"
+                  Expect.equal spec.ExposedNodeIds (Some [ "spark-line" ]) "stamps the contract's exposed ids"
               | other -> failtestf "expected NodeKind.Custom, got %A" other
           }
 

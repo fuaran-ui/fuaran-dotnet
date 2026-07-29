@@ -43,7 +43,7 @@ let private escapeForScript (json: string) : string =
 /// The embedded-tree `<script type="application/json">` element carrying the
 /// canonical wire-format JSON, keyed to the render root's stable id.
 let embeddedTreeElement (node: Node<obj>) : ReactElement =
-    let (NodeId rootId) = node.Id
+    let rootId = node.Id
     let json = CanonicalJson.encodeNode node |> escapeForScript
 
     Html.script

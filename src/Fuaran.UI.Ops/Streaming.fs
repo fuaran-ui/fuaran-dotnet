@@ -110,7 +110,9 @@ let lowerTree (root: Node<'Msg>) : TreeOp<'Msg> list =
         | None -> []
         | Some children ->
             children
-            |> List.map (fun child -> TreeOp.InsertChild(node.Id, shellOf child) :: fill child)
+            // `Node.Id` is a bare string since the swap; the op layer still
+            // addresses parents by the `NodeId` wrapper.
+            |> List.map (fun child -> TreeOp.InsertChild(NodeId node.Id, shellOf child) :: fill child)
             |> List.concat
 
     fill root
@@ -263,8 +265,8 @@ let pendingPlaceholder<'Msg> (nodeId: NodeId) : Node<'Msg> =
 /// substituted tree; once a subtree's frame lands, its id leaves the set and
 /// the real node renders. This never touches the op stream.
 let rec withSkeletons (pending: Set<NodeId>) (node: Node<'Msg>) : Node<'Msg> =
-    if Set.contains node.Id pending then
-        pendingPlaceholder node.Id
+    if Set.contains (NodeId node.Id) pending then
+        pendingPlaceholder (NodeId node.Id)
     else
         match Introspect.getChildren node.Kind with
         | Some children ->

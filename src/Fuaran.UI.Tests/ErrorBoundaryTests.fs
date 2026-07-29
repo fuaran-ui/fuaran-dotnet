@@ -93,12 +93,12 @@ let tests =
               let boundary: Node<Msg> =
                   Fuaran.errorBoundary "boundary-id" { Child = child; Fallback = fallback }
 
-              Expect.equal boundary.Id (NodeId "boundary-id") "smart-ctor wires the supplied NodeId"
+              Expect.equal boundary.Id "boundary-id" "smart-ctor wires the supplied NodeId"
 
               match boundary.Kind with
               | NodeKind.ErrorBoundary spec ->
-                  Expect.equal spec.Child.Id (NodeId "child-id") "child field threaded through"
-                  Expect.equal spec.Fallback.Id (NodeId "fallback-id") "fallback field threaded through"
+                  Expect.equal spec.Child.Id "child-id" "child field threaded through"
+                  Expect.equal spec.Fallback.Id "fallback-id" "fallback field threaded through"
               | other -> failtestf "expected NodeKind.ErrorBoundary, got %A" other
           }
 

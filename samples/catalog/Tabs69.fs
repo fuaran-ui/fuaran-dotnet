@@ -92,10 +92,17 @@ let private detailTab: Node<Msg> =
     // NodeKind.Custom — the runtime resolves (`tabs-69`, `DetailPane`) to
     // detailPaneRenderer at render time. Mirrors the buildNode shape used by
     // Fuaran.UI/Fuaran.fs's smart constructors.
-    { Id = NodeId "tabs-69-detail-body"
-      Kind = NodeKind.Custom("tabs-69", "DetailPane", Map.empty, None, [])
-      State = Defaults.stateBehaviour<Msg>
-      Style = Defaults.style
+    { Id = "tabs-69-detail-body"
+      Kind =
+        NodeKind.Custom(
+            { ModuleId = "tabs-69"
+              ComponentId = "DetailPane"
+              Props = Map.empty
+              ContentHash = None
+              ExposedNodeIds = None }
+        )
+      State = Option.None
+      Style = Option.None
       Accessibility = Option.None
       Motion = Defaults.Motion.none
       ExtraAttributes = Option.None }
@@ -118,9 +125,9 @@ let private tabsNode (model: Model) : Node<Msg> =
                           Label = TextSource.Literal "Detail" }
                       { Defaults.tabHeader with
                           Label = TextSource.Literal "Audit"
-                          Disabled = Some(Binding.Static true) } ]
+                          Disabled = Some(Binding.Static(Some true)) } ]
             TabTags = Some [ "overview"; "detail"; "audit" ]
-            ActiveTag = Some(Binding.Static(tagOf model.Active))
+            ActiveTag = Some(Binding.Static(Some(tagOf model.Active)))
             OnSelectTag = Some(fun tag -> Action.Dispatch(SetActive(tabOf tag))) }
 
 // ─── Runtime wiring — register the Custom renderer ─────────────────────────

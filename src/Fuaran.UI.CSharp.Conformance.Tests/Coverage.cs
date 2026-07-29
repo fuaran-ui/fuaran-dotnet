@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Microsoft.FSharp.Reflection;
-using FsTypes = Fuaran.UI.Types;
+// `Fuaran.UI.Types.NodeKind` is a type ABBREVIATION since the 692 swap — erased
+// in metadata, so C# reflects the generated declaration directly.
+using FsTypes = Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp.Conformance.Tests;
 

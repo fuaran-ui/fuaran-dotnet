@@ -224,14 +224,13 @@ let private kindTag<'Msg> (node: Node<'Msg>) : string =
 /// hole binds (mirrors `HoleValueSpace.validate`'s expected boxings) — the
 /// witness receives Core `ValueArg` strings and must reconstitute the typed
 /// binding the materialiser reads.
-let private parseArg (space: HoleValueSpace) (raw: string) : obj =
-    let asObj (x: objnull) : obj = Unchecked.nonNull x
-
+let private parseArg (space: HoleValueSpace) (raw: string) : Scalar =
+    // Typed `Scalar` since the swap (the HoleDecl default payload).
     match space with
     | HoleValueSpace.IntRange _ ->
         match System.Int32.TryParse raw with
-        | true, n -> asObj (box n)
-        | _ -> asObj (box raw)
+        | true, n -> Scalar.Int n
+        | _ -> Scalar.Str raw
     | HoleValueSpace.FloatRange _ ->
         match
             System.Double.TryParse(
@@ -240,11 +239,11 @@ let private parseArg (space: HoleValueSpace) (raw: string) : obj =
                 System.Globalization.CultureInfo.InvariantCulture
             )
         with
-        | true, f -> asObj (box f)
-        | _ -> asObj (box raw)
+        | true, f -> Scalar.Float f
+        | _ -> Scalar.Str raw
     | HoleValueSpace.StringLen _
     | HoleValueSpace.Enum _
-    | HoleValueSpace.AnyString -> asObj (box raw)
+    | HoleValueSpace.AnyString -> Scalar.Str raw
 
 /// The absolute lexical address of a fragment-decl hole: `<declId>.<holeName>`.
 let private holeAddr (declId: string) (holeName: string) : string = declId + "." + holeName
@@ -261,9 +260,10 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
     let holesOf (node: Node<'Msg>) : Fuaran.Core.HoleDecl list =
         match node.Kind with
         | NodeKind.FragmentDecl spec ->
-            let (NodeId declId) = node.Id
+            let declId = node.Id
 
             spec.Holes
+            |> Option.defaultValue []
             |> List.choose (fun h ->
                 match h with
                 | HoleDecl.Value(n, space, _) ->
@@ -281,14 +281,17 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
 
     let effectOf (node: Node<'Msg>) : Fuaran.Core.EffectClass =
         match node.Kind with
-        | NodeKind.FragmentDecl spec -> toCoreEffect spec.Effect
+        | NodeKind.FragmentDecl spec ->
+            spec.Effect
+            |> Option.map toCoreEffect
+            |> Option.defaultValue Fuaran.Core.Effect.pureDeterministic
         | _ -> Fuaran.Core.Effect.pureDeterministic
 
     // Record hole@addr := value into the decl's matching hole default.
     let bind (addr: string) (arg: Fuaran.Core.Arg<Node<'Msg>>) (node: Node<'Msg>) : Result<Node<'Msg>, string> =
         match node.Kind with
         | NodeKind.FragmentDecl spec ->
-            let (NodeId declId) = node.Id
+            let declId = node.Id
             let prefix = declId + "."
 
             if not (addr.StartsWith prefix) then
@@ -298,10 +301,12 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
 
                 match arg with
                 | Fuaran.Core.ValueArg raw ->
-                    match spec.Holes |> List.tryFind (fun h -> HoleDecl.name h = holeName) with
+                    let holes = spec.Holes |> Option.defaultValue []
+
+                    match holes |> List.tryFind (fun h -> HoleDecl.name h = holeName) with
                     | Some(HoleDecl.Value(n, space, _)) ->
                         let holes' =
-                            spec.Holes
+                            holes
                             |> List.map (fun h ->
                                 if HoleDecl.name h = holeName then
                                     HoleDecl.Value(n, space, Some(parseArg space raw))
@@ -310,12 +315,12 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
 
                         Ok
                             { node with
-                                Kind = NodeKind.FragmentDecl { spec with Holes = holes' } }
+                                Kind = NodeKind.FragmentDecl { spec with Holes = Some holes' } }
                     | Some(HoleDecl.Repeat(n, space)) ->
                         // A repeat count is recorded the same way — as a bound default the
                         // materialiser reads (there is no in-tree Repeat marker to expand here).
                         let holes' =
-                            spec.Holes
+                            holes
                             |> List.map (fun h ->
                                 if HoleDecl.name h = holeName then
                                     HoleDecl.Value(n, space, Some(parseArg space raw))
@@ -324,7 +329,7 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
 
                         Ok
                             { node with
-                                Kind = NodeKind.FragmentDecl { spec with Holes = holes' } }
+                                Kind = NodeKind.FragmentDecl { spec with Holes = Some holes' } }
                     | Some(HoleDecl.Slot _) -> Error(sprintf "hole '%s' is a slot, not a value/repeat hole" holeName)
                     | None -> Error(sprintf "no hole named '%s' in fragment decl '%s'" holeName declId)
                 | Fuaran.Core.SlotArg _ ->
@@ -332,7 +337,7 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
         | _ -> Error "certification binding targets a FragmentDecl node"
 
     { Tree =
-        { Id = fun n -> n.Id
+        { Id = fun n -> NodeId n.Id
           KindTag = kindTag
           Children = fun n -> getChildren n |> Option.defaultValue []
           ReplaceChildren = fun n _ -> n } // certification does not rewrite children structurally
@@ -349,12 +354,22 @@ let private certifyWitness<'Msg> (materialize: Materialize<'Msg>) : Fuaran.Core.
 /// Collect the value / repeat holes' current bound defaults off a fully-bound
 /// decl, keyed by hole NAME — the binding the `materialize` closure reads.
 let private boundValues<'Msg> (node: Node<'Msg>) : Map<string, obj> =
+    // The bound-value bag stays obj-typed (the materialise seam reads it);
+    // the typed Scalar default unboxes at this boundary.
+    let scalarObj (s: Scalar) : obj =
+        match s with
+        | Scalar.Int i -> box i |> Unchecked.nonNull
+        | Scalar.Float f -> box f |> Unchecked.nonNull
+        | Scalar.Bool b -> box b |> Unchecked.nonNull
+        | Scalar.Str st -> box st |> Unchecked.nonNull
+
     match node.Kind with
     | NodeKind.FragmentDecl spec ->
         spec.Holes
+        |> Option.defaultValue []
         |> List.choose (fun h ->
             match h with
-            | HoleDecl.Value(n, _, Some v) -> Some(n, v)
+            | HoleDecl.Value(n, _, Some v) -> Some(n, scalarObj v)
             | _ -> None)
         |> Map.ofList
     | _ -> Map.empty
@@ -366,7 +381,7 @@ let private toCounterexample<'Msg>
     (fragment: Node<'Msg>)
     (cx: Conf.VerifyCounterexample<Node<'Msg>, NodeId>)
     : Counterexample =
-    let (NodeId declId) = fragment.Id
+    let declId = fragment.Id
     let prefix = declId + "."
 
     let binding =
@@ -451,12 +466,13 @@ let certifyFragment<'Msg>
     let structureOnly =
         match fragment.Kind with
         | NodeKind.FragmentDecl spec ->
-            let e = spec.Effect
-
-            not (
-                e.HostEffect = HostEffect.Pure
-                && e.Determinism = DeterminismSource.Deterministic
-            )
+            match spec.Effect with
+            | Some e ->
+                not (
+                    e.HostEffect = HostEffect.Pure
+                    && e.Determinism = DeterminismSource.Deterministic
+                )
+            | None -> false
         | _ -> false
 
     { RecipeName = recipeName

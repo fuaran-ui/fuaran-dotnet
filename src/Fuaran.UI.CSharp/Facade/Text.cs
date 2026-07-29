@@ -1,4 +1,4 @@
-using FsTypes = Fuaran.UI.Types;
+using FsGen = Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp;
 
@@ -10,17 +10,17 @@ namespace Fuaran.UI.CSharp;
 /// </summary>
 public readonly struct Text
 {
-    internal FsTypes.TextSource Inner { get; }
+    internal FsGen.TextSource Inner { get; }
 
-    private Text(FsTypes.TextSource fs) => Inner = fs;
+    private Text(FsGen.TextSource fs) => Inner = fs;
 
     /// <summary>A literal string.</summary>
     public static implicit operator Text(string literal) =>
-        new(FsTypes.TextSource.NewLiteral(literal));
+        new(FsGen.TextSource.NewLiteral(literal));
 
     /// <summary>A bound string value.</summary>
     public static implicit operator Text(Binding<string> bound) =>
-        new(FsTypes.TextSource.NewBound(bound.Inner));
+        new(FsGen.TextSource.NewBound(bound.Inner));
 
     /// <summary>An explicit literal (identical to the implicit <see cref="string"/> conversion).</summary>
     public static Text Literal(string value) => value;
@@ -30,5 +30,5 @@ public readonly struct Text
 
     /// <summary>An i18n-key text source (no placeholder arguments).</summary>
     public static Text I18n(string key) =>
-        new(FsTypes.TextSource.NewI18n(key, Fs.EmptyMap<string, global::Fuaran.Core.JVal>()));
+        new(FsGen.TextSource.NewI18n(key, Fs.EmptyMap<string, global::Fuaran.Core.JVal>()));
 }

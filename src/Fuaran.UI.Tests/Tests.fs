@@ -24,9 +24,7 @@ type Msg =
     | SelectRow of int
     | UpdateRefGRP of int * float
 
-let private idOf (node: Node<'Msg>) : string =
-    match node.Id with
-    | NodeId s -> s
+let private idOf (node: Node<'Msg>) : string = node.Id
 
 let private literalOf (text: TextSource) : string =
     match text with
@@ -281,7 +279,9 @@ let tests =
               // `Binding.State` slot into derived label text. The resolver must
               // hand the closure a context populated from the live `State` bag.
               let computed: Binding<string> =
-                  Binding.Computed(fun ctx ->
+                  Binding.Computed(fun (o: obj) ->
+                      let ctx = unbox<BindingContext> o
+
                       if ctx.TryGetState<bool> "busy" = Some true then
                           "Working…"
                       else
@@ -299,7 +299,9 @@ let tests =
 
           test "Binding.Computed sees the State default branch when the key is absent" {
               let computed: Binding<string> =
-                  Binding.Computed(fun ctx ->
+                  Binding.Computed(fun (o: obj) ->
+                      let ctx = unbox<BindingContext> o
+
                       if ctx.TryGetState<bool> "busy" = Some true then
                           "Working…"
                       else
@@ -335,7 +337,9 @@ let tests =
               // under the .NET runner; TryGetState swallows it to None rather
               // than letting the Computed closure throw.
               let computed: Binding<string> =
-                  Binding.Computed(fun ctx ->
+                  Binding.Computed(fun (o: obj) ->
+                      let ctx = unbox<BindingContext> o
+
                       match ctx.TryGetState<bool> "busy" with
                       | Some true -> "on"
                       | Some false -> "off"
@@ -360,9 +364,9 @@ let tests =
                   |> Node.onLoading (Fuaran.skeleton "loading" 5)
                   |> Node.onEmpty (Fuaran.markdown "no-data" "No revenue data yet.")
 
-              Expect.isSome node.State.OnLoading "OnLoading wired"
-              Expect.isSome node.State.OnEmpty "OnEmpty wired"
-              Expect.isNone node.State.OnError "OnError stays default"
+              Expect.isSome (node.State |> Option.bind _.OnLoading) "OnLoading wired"
+              Expect.isSome (node.State |> Option.bind _.OnEmpty) "OnEmpty wired"
+              Expect.isNone (node.State |> Option.bind _.OnError) "OnError stays default"
           }
 
           // ─── Feliz-parity additive shapes ───────────────────────
@@ -376,14 +380,14 @@ let tests =
                   Fuaran.stack
                       "chip-strip"
                       { Defaults.stack<Msg> with
-                          Orientation = Horizontal
+                          Orientation = Orientation.Horizontal
                           Wrap = true }
 
               match node.Kind with
               | NodeKind.Box(spec) ->
                   match spec.Layout with
-                  | BoxLayout.Flex f -> Expect.equal f.Wrap true "Wrap = true propagated"
-                  | other -> failtestf "Expected BoxLayout.Flex, got %A" other
+                  | LayoutMode.Flex(_, wrap, _) -> Expect.equal wrap true "Wrap = true propagated"
+                  | other -> failtestf "Expected LayoutMode.Flex, got %A" other
               | other -> failtestf "Expected NodeKind.Box, got %A" other
           }
 
@@ -480,10 +484,10 @@ let tests =
               match node.Kind with
               | NodeKind.Box(spec) ->
                   match spec.Layout with
-                  | BoxLayout.Grid g ->
-                      Expect.equal g.Cols 3 "Cols overridden"
-                      Expect.equal g.TemplateColumns None "TemplateColumns defaults to None"
-                  | other -> failtestf "Expected BoxLayout.Grid, got %A" other
+                  | LayoutMode.Grid(cols, templateColumns, _) ->
+                      Expect.equal cols 3 "Cols overridden"
+                      Expect.equal templateColumns None "TemplateColumns defaults to None"
+                  | other -> failtestf "Expected LayoutMode.Grid, got %A" other
               | other -> failtestf "Expected NodeKind.Box, got %A" other
           }
 
@@ -502,12 +506,12 @@ let tests =
               match node.Kind with
               | NodeKind.Box(spec) ->
                   match spec.Layout with
-                  | BoxLayout.Grid g ->
+                  | LayoutMode.Grid(_, templateColumns, _) ->
                       Expect.equal
-                          g.TemplateColumns
+                          templateColumns
                           (Some "100px repeat(3, minmax(30px, 1fr))")
                           "TemplateColumns wired verbatim"
-                  | other -> failtestf "Expected BoxLayout.Grid, got %A" other
+                  | other -> failtestf "Expected LayoutMode.Grid, got %A" other
               | other -> failtestf "Expected NodeKind.Box, got %A" other
           }
 
@@ -526,8 +530,8 @@ let tests =
               match node.Kind with
               | NodeKind.Box(spec) ->
                   match spec.Layout with
-                  | BoxLayout.Grid g ->
-                      Expect.equal g.TemplateColumns (Some "1fr 2fr") "Explicit smart-ctor arg overrides the spec field"
-                  | other -> failtestf "Expected BoxLayout.Grid, got %A" other
+                  | LayoutMode.Grid(_, templateColumns, _) ->
+                      Expect.equal templateColumns (Some "1fr 2fr") "Explicit smart-ctor arg overrides the spec field"
+                  | other -> failtestf "Expected LayoutMode.Grid, got %A" other
               | other -> failtestf "Expected NodeKind.Box, got %A" other
           } ]

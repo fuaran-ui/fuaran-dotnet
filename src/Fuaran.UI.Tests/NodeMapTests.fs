@@ -57,15 +57,14 @@ let nodeMapTests =
           }
 
           test "Call.onResult is post-composed with f (obj -> 'a -> 'b)" {
-              let onClick =
-                  Action.Call(ApiEndpoint "ep", Some(fun (o: obj) -> unbox<int> o), None)
+              let onClick = Action.Call("ep", Some(fun (o: obj) -> unbox<int> o), None)
 
               let mapped = Node.mapMsg string (buttonWith "b" onClick)
 
               match mapped.Kind with
               | NodeKind.Button(spec) ->
                   match spec.OnClick with
-                  | Action.Call(ApiEndpoint ep, Some onResult, None) ->
+                  | Action.Call(ep, Some onResult, None) ->
                       Expect.equal ep "ep" "endpoint preserved"
                       Expect.equal (onResult (box 7)) "7" "onResult result is f-applied"
                   | other -> failtestf "expected Call, got %A" other
@@ -75,16 +74,15 @@ let nodeMapTests =
           test "ReadFileBody.onRead is post-composed with f (string -> 'a -> 'b)" {
               let onRead (s: string) = s.Length
 
-              let onClick =
-                  Action.ReadFileBody({ Id = "f1"; Handle = None }, FileReadEncoding.Text, onRead)
+              let onClick = Action.ReadFileBody("f1", None, FileReadEncoding.Text, Some onRead)
 
               let mapped = Node.mapMsg string (buttonWith "b" onClick)
 
               match mapped.Kind with
               | NodeKind.Button(spec) ->
                   match spec.OnClick with
-                  | Action.ReadFileBody(file, FileReadEncoding.Text, onRead') ->
-                      Expect.equal file.Id "f1" "file ref preserved"
+                  | Action.ReadFileBody(fileRef, _, FileReadEncoding.Text, Some onRead') ->
+                      Expect.equal fileRef "f1" "file ref preserved"
                       Expect.equal (onRead' "abcd") "4" "onRead result is f-applied"
                   | other -> failtestf "expected ReadFileBody, got %A" other
               | other -> failtestf "expected a Button, got %A" other
@@ -107,21 +105,22 @@ let nodeMapTests =
               let root: Node<int> =
                   Fuaran.stack
                       "root"
-                      { Orientation = Vertical
+                      { Orientation = Orientation.Vertical
                         Children = [ child ]
                         Wrap = false }
                   |> Node.withTone ToneVariant.Brand
 
               let mapped = Node.mapMsg string root
 
-              Expect.equal mapped.Id (NodeId "root") "root Id preserved"
-              Expect.equal mapped.Style.Tone ToneVariant.Brand "Style trait preserved"
+              Expect.equal mapped.Id "root" "root Id preserved"
+
+              Expect.equal (mapped.Style |> Option.map _.Tone) (Some ToneVariant.Brand) "Style trait preserved"
 
               match mapped.Kind with
               | NodeKind.Box(spec) ->
                   match spec.Children with
                   | [ mappedChild ] ->
-                      Expect.equal mappedChild.Id (NodeId "child") "child Id preserved"
+                      Expect.equal mappedChild.Id "child" "child Id preserved"
 
                       match mappedChild.Kind with
                       | NodeKind.Button(b) ->
@@ -137,7 +136,11 @@ let nodeMapTests =
               let field: FormField<int> =
                   { Id = "name"
                     Label = TextSource.Literal "Name"
-                    Kind = FormFieldKind.Text(Binding.Static "", Some(fun (s: string) -> Action.Dispatch s.Length))
+                    Kind =
+                      FormFieldKind.Text(
+                          Some(Binding.Static(Some "")),
+                          Some(fun (s: string) -> Action.Dispatch s.Length)
+                      )
                     Required = false
                     Help = None }
 
@@ -170,9 +173,9 @@ let nodeMapTests =
                   Fuaran.mount
                       "m"
                       { ScopeId = "guest-1"
-                        Inputs = Map.empty
+                        Inputs = None
                         Channel = Fuaran.guestOutChannel
-                        OnBubble = (fun (o: obj) -> Action.Dispatch(unbox<int> o))
+                        OnBubble = Some(fun (o: obj) -> Action.Dispatch(unbox<int> o))
                         Capabilities = [] }
 
               let mapped = Node.mapMsg string node
@@ -181,8 +184,8 @@ let nodeMapTests =
               | NodeKind.Mount spec ->
                   Expect.equal spec.ScopeId "guest-1" "ScopeId preserved"
 
-                  match spec.OnBubble(box 5) with
-                  | Action.Dispatch s -> Expect.equal s "5" "OnBubble output is f-applied"
+                  match spec.OnBubble |> Option.map (fun f -> f (box 5)) with
+                  | Some(Action.Dispatch s) -> Expect.equal s "5" "OnBubble output is f-applied"
                   | other -> failtestf "expected Dispatch from OnBubble, got %A" other
               | other -> failtestf "expected a Mount, got %A" other
           }

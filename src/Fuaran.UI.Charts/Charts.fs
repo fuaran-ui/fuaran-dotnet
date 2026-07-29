@@ -26,6 +26,10 @@ module Fuaran.UI.Charts
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 
+// Record labels do not flow through the Types.fs abbreviations (stage 3 of the
+// 692-694 swap), so DrawPoint literals build through this annotated helper.
+let inline private dp (x: float) (y: float) : DrawPoint = { X = x; Y = y }
+
 // ─── Layout constants (the fixed canonical drawing space) ────────────────────
 
 [<Literal>]
@@ -159,12 +163,12 @@ let private withSeriesMark (seriesField: string) (style: DrawStyle) : DrawStyle 
 
 let private styleFill (fill: string) : DrawStyle =
     { baseStyle with
-        Fill = Some(Binding.Static fill) }
+        Fill = Some(Binding.Static(Some fill)) }
 
 let private styleStroke (stroke: string) (width: float) : DrawStyle =
     { baseStyle with
-        Stroke = Some(Binding.Static stroke)
-        StrokeWidth = Some(Binding.Static width) }
+        Stroke = Some(Binding.Static(Some stroke))
+        StrokeWidth = Some(Binding.Static(Some width)) }
 
 /// A translucent categorical fill (Phase 637 — area bands). The gridlines stay
 /// legible through the band; the series' full-strength Polyline edge on top
@@ -174,17 +178,17 @@ let private areaFillOpacity = 0.35
 
 let private styleFillOpacity (fill: string) (opacity: float) : DrawStyle =
     { baseStyle with
-        Fill = Some(Binding.Static fill)
-        Opacity = Some(Binding.Static opacity) }
+        Fill = Some(Binding.Static(Some fill))
+        Opacity = Some(Binding.Static(Some opacity)) }
 
 /// A surface-relative structural stroke (Phase 536): `currentColor` at a per-role
 /// opacity, so axis + gridlines ink from the surface's own text colour. Used for
 /// the chrome (axes, gridlines) — series lines keep their categorical hex.
 let private styleStrokeInk (opacity: float) (width: float) : DrawStyle =
     { baseStyle with
-        Stroke = Some(Binding.Static ink)
-        StrokeWidth = Some(Binding.Static width)
-        Opacity = Some(Binding.Static opacity) }
+        Stroke = Some(Binding.Static(Some ink))
+        StrokeWidth = Some(Binding.Static(Some width))
+        Opacity = Some(Binding.Static(Some opacity)) }
 
 let private emptyStyle: DrawStyle = baseStyle
 
@@ -193,8 +197,8 @@ let private emptyStyle: DrawStyle = baseStyle
 /// size + weight + the chart font.
 let private textStyle (opacity: float option) (anchor: TextAnchor) (size: float) (emphasis: Emphasis) : DrawStyle =
     { baseStyle with
-        Fill = Some(Binding.Static ink)
-        Opacity = opacity |> Option.map Binding.Static
+        Fill = Some(Binding.Static(Some ink))
+        Opacity = opacity |> Option.map (Some >> Binding.Static)
         TextAnchor = Some anchor
         FontSize = Some size
         Emphasis = Some emphasis
@@ -451,15 +455,9 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
                       let colour = colourFor j
                       let yf = List.item j spec.YFields
 
-                      let upper =
-                          [ for i in 0 .. n - 1 ->
-                                { X = centreX i
-                                  Y = yScale cums.[i].[j + 1] } ]
+                      let upper = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale cums.[i].[j + 1]) ]
 
-                      let lower =
-                          [ for i in n - 1 .. -1 .. 0 ->
-                                { X = centreX i
-                                  Y = yScale cums.[i].[j] } ]
+                      let lower = [ for i in n - 1 .. -1 .. 0 -> dp (centreX i) (yScale cums.[i].[j]) ]
 
                       yield Shape.Polygon(upper @ lower, styleFillOpacity colour areaFillOpacity |> withSeriesMark yf)
                       yield Shape.Polyline(upper, styleStroke colour 2.0 |> withSeriesMark yf) ]
@@ -477,11 +475,9 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
                       let values = series.[j]
                       let yf = List.item j spec.YFields
 
-                      let points = [ for i in 0 .. n - 1 -> { X = centreX i; Y = yScale values.[i] } ]
+                      let points = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale values.[i]) ]
 
-                      let band =
-                          ({ X = centreX 0; Y = baseY } :: points)
-                          @ [ { X = centreX (n - 1); Y = baseY } ]
+                      let band = (dp (centreX 0) baseY :: points) @ [ dp (centreX (n - 1)) baseY ]
 
                       yield Shape.Polygon(band, styleFillOpacity colour areaFillOpacity |> withSeriesMark yf)
                       yield Shape.Polyline(points, styleStroke colour 2.0 |> withSeriesMark yf) ]
@@ -490,7 +486,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
                   let colour = colourFor j
                   let values = series.[j]
 
-                  let points = [ for i in 0 .. n - 1 -> { X = centreX i; Y = yScale values.[i] } ]
+                  let points = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale values.[i]) ]
 
                   Shape.Polyline(points, styleStroke colour 2.0 |> withSeriesMark (List.item j spec.YFields)) ]
         | ChartKind.Scatter ->
@@ -565,8 +561,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
             let radius = 130.0
 
             let pt (a: float) : DrawPoint =
-                { X = r2 (cx + radius * cos a)
-                  Y = r2 (cy + radius * sin a) }
+                dp (r2 (cx + radius * cos a)) (r2 (cy + radius * sin a))
 
             let arcCubics (a0: float) (a1: float) : CurveCommand list =
                 let segments = max 1 (int (ceil ((a1 - a0) / (System.Math.PI / 2.0) - 1e-9)))
@@ -577,12 +572,10 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
                       let k = 4.0 / 3.0 * tan ((t1 - t0) / 4.0)
 
                       let c1 =
-                          { X = r2 (cx + radius * (cos t0 - k * sin t0))
-                            Y = r2 (cy + radius * (sin t0 + k * cos t0)) }
+                          dp (r2 (cx + radius * (cos t0 - k * sin t0))) (r2 (cy + radius * (sin t0 + k * cos t0)))
 
                       let c2 =
-                          { X = r2 (cx + radius * (cos t1 + k * sin t1))
-                            Y = r2 (cy + radius * (sin t1 - k * cos t1)) }
+                          dp (r2 (cx + radius * (cos t1 + k * sin t1))) (r2 (cy + radius * (sin t1 - k * cos t1)))
 
                       CurveCommand.CubicTo(c1, c2, pt t1) ]
 
@@ -607,7 +600,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
                               let a1 = top + 2.0 * System.Math.PI * starts.[i + 1]
 
                               let cmds =
-                                  [ CurveCommand.MoveTo { X = cx; Y = cy }; CurveCommand.LineTo(pt a0) ]
+                                  [ CurveCommand.MoveTo(dp cx cy); CurveCommand.LineTo(pt a0) ]
                                   @ arcCubics a0 a1
                                   @ [ CurveCommand.Close ]
 

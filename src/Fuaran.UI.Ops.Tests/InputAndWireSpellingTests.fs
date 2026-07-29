@@ -55,7 +55,7 @@ let private revenueMetric: Node<Msg> =
         "revenue-metric"
         { Defaults.metric with
             Label = TextSource.Literal "Revenue"
-            Value = Binding.Static 142500.0
+            Value = Binding.Static(Some 142500.0)
             Format = CellFormat.Currency "GBP"
             Tone = ToneVariant.Brand
             Subtext = Some(TextSource.Literal "vs last quarter") }

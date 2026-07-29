@@ -153,7 +153,8 @@ type Skeleton = { Root: SkeletonNode }
 let private textSourceLength (t: TextSource) : int =
     match t with
     | TextSource.Literal s -> String.length s
-    | TextSource.Bound(Binding.Static s) -> String.length s
+    | TextSource.Bound(Binding.Static(Some s)) -> String.length s
+    | TextSource.Bound(Binding.Static None) -> 0
     | TextSource.Bound _ -> 0
     | TextSource.I18n(key, _) -> String.length key
 
@@ -245,7 +246,7 @@ let projectWith (classify: Classify<'Msg>) (root: Node<'Msg>) : Skeleton =
             | Some kids -> kids |> List.map go
             | None -> []
 
-        { Id = node.Id
+        { Id = NodeId node.Id
           Kind = kindName node.Kind
           Descriptor = classify node
           Children = children }

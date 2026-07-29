@@ -106,7 +106,8 @@ let private genSmallList (g: Gen<'a>) : Gen<'a list> =
 
 // ─── Bare-string enums ───────────────────────────────────────────────────
 
-let private genOrientation = Gen.elements [ Vertical; Horizontal ]
+let private genOrientation =
+    Gen.elements [ Orientation.Vertical; Orientation.Horizontal ]
 
 let private genBadgeVariant =
     Gen.elements
@@ -132,10 +133,20 @@ let private genHeadingVariant =
           HeadingVariant.Lead ]
 
 let private genTone =
-    Gen.elements [ Default; Subdued; Brand; Success; Warning; Critical; Info ]
+    Gen.elements
+        [ ToneVariant.Default
+          ToneVariant.Subdued
+          ToneVariant.Brand
+          ToneVariant.Success
+          ToneVariant.Warning
+          ToneVariant.Critical
+          ToneVariant.Info ]
 
-let private genWeight = Gen.elements [ Compact; Standard; Spacious ]
-let private genEmphasis = Gen.elements [ Quiet; Normal; Loud ]
+let private genWeight =
+    Gen.elements [ StyleWeight.Compact; StyleWeight.Standard; StyleWeight.Spacious ]
+
+let private genEmphasis =
+    Gen.elements [ Emphasis.Quiet; Emphasis.Normal; Emphasis.Loud ]
 
 // Phase 147 — vary role/voice so the property-based round-trip exercises the
 // optional-emit wire path (omitted at default, present otherwise).
@@ -288,30 +299,31 @@ let private genLocaleSource: Gen<LocaleSource> =
 
 let rec private genBindingWith (genStatic: Gen<'T>) (placeholder: 'T) : Gen<Binding<'T>> =
     Gen.oneof
-        [ Gen.map Binding.Static genStatic
-          Gen.map (fun n -> Binding.Query(n, (fun _ -> placeholder), [])) genNonEmptyString
+        [ Gen.map (fun v -> Binding.Static(Some v)) genStatic
+          Gen.map (fun n -> Binding.Query(n, (fun _ -> placeholder), None)) genNonEmptyString
           Gen.map (fun n -> Binding.Filter(n, None)) genNonEmptyString
-          Gen.map (fun n -> Binding.Selection(NodeId n, (fun _ -> placeholder), None, None)) genNonEmptyString
-          Gen.map (fun k -> Binding.State(k, placeholder)) genNonEmptyString
+          Gen.map (fun n -> Binding.Selection(n, (fun _ -> placeholder), None, None)) genNonEmptyString
+          Gen.map (fun k -> Binding.State(k, Some placeholder)) genNonEmptyString
           Gen.constant (Binding.Computed(fun _ -> placeholder))
           Gen.map (fun k -> Binding.I18n(k, None)) genNonEmptyString
           gen {
               let! fmt = genFormat
               let! loc = genLocaleSource
               let! v = genFiniteFloat
-              return Binding.Format(Binding.Static v, fmt, loc)
+              return Binding.Format(Binding.Static(Some v), fmt, loc)
           }
           gen {
               let! init = genStatic
               let! flush = genFlushTrigger
 
               return
-                  Binding.Local
-                      { InitialFrom = Binding.Static init
-                        FlushOn = flush
-                        OnCommit = (fun _ -> box "<commit>")
-                        Format = None
-                        Parse = (fun _ -> Ok placeholder) }
+                  Binding.Local(
+                      flush,
+                      (fun v -> string (box v)),
+                      Binding.Static(Some init),
+                      Some(fun _ -> box "<commit>"),
+                      (fun _ -> Ok placeholder)
+                  )
           } ]
 
 let private genBindingFloat: Gen<Binding<float>> = genBindingWith genFloat 0.0
@@ -324,12 +336,12 @@ let private genBindingBool: Gen<Binding<bool>> = genBindingWith genBool false
 /// arbitrary default).
 let private genBindingObj: Gen<Binding<obj>> =
     Gen.oneof
-        [ Gen.map (fun (s: string) -> Binding.Static(box s)) genString
-          Gen.map (fun (f: float) -> Binding.Static(box f)) genFiniteFloat
-          Gen.map (fun (b: bool) -> Binding.Static(box b)) genBool
-          Gen.map (fun n -> Binding.Query(n, (fun _ -> box "<q>"), [])) genNonEmptyString
+        [ Gen.map (fun (s: string) -> Binding.Static(Some(box s))) genString
+          Gen.map (fun (f: float) -> Binding.Static(Some(box f))) genFiniteFloat
+          Gen.map (fun (b: bool) -> Binding.Static(Some(box b))) genBool
+          Gen.map (fun n -> Binding.Query(n, (fun _ -> box "<q>"), None)) genNonEmptyString
           Gen.map (fun n -> Binding.Filter(n, None)) genNonEmptyString
-          Gen.map (fun n -> Binding.Selection(NodeId n, (fun _ -> box "<s>"), None, None)) genNonEmptyString
+          Gen.map (fun n -> Binding.Selection(n, (fun _ -> box "<s>"), None, None)) genNonEmptyString
           Gen.constant (Binding.Computed(fun _ -> box "<c>"))
           Gen.map (fun k -> Binding.I18n(k, None)) genNonEmptyString ]
 
@@ -348,7 +360,7 @@ let rec private genTextSource: Gen<TextSource> =
 let private genSelectOption: Gen<SelectOption> =
     gen {
         let! v = genString
-        let! label = genTextSource
+        let! label = genString
         return { Value = v; Label = label }
     }
 
@@ -356,19 +368,37 @@ let private genSelectOption: Gen<SelectOption> =
 /// real reference → `"<opaque>"`), plus the non-collection arms.
 let private genBindingSelectOptions: Gen<Binding<SelectOption list>> =
     Gen.oneof
-        [ Gen.map Binding.Static (Gen.nonEmptyListOf genSelectOption)
+        [ Gen.map (fun opts -> Binding.Static(Some opts)) (Gen.nonEmptyListOf genSelectOption)
           Gen.map (fun n -> Binding.Filter(n, None)) genNonEmptyString
           Gen.constant (
               Binding.Computed(fun _ ->
                   [ { Value = "<opaque>"
-                      Label = TextSource.Literal "<opaque>" } ])
+                      Label = "<opaque>" } ])
           ) ]
 
-let private genBindingStringOpt: Gen<Binding<string option>> =
+/// Select value slot (stage-4a type swap): the slot is now a REQUIRED
+/// `Binding<string>` — the old inner-option shapes map one-to-one
+/// (`Static(Some(Some s))` → `Static(Some s)`; the inner-None "no selection"
+/// → `Static None`; the chip self-read stays `Filter(n, None)`). Mirrors the
+/// old `genBindingStringOpt` arms at the new type.
+let private genSelectValue: Gen<Binding<string>> =
     Gen.oneof
         [ Gen.map (fun s -> Binding.Static(Some s)) genString
           Gen.constant (Binding.Static None)
           Gen.map (fun n -> Binding.Filter(n, None)) genNonEmptyString ]
+
+/// Choice / SegmentedChoice value slot (stage-3 type swap): the slot is now
+/// `Binding<string> option` — the old inner-option shapes map one-to-one
+/// (`Static(Some(Some s))` → `Some(Static(Some s))`; the inner-None
+/// "no selection" → `Some(Static None)`; the chip self-read stays
+/// `Some(Filter(n, None))`). Mirrors the old `genBindingStringOpt` intent
+/// at the new shape — no omitted-slot arm, so the generated bytes stay in
+/// the round-trip-faithful subspace outside auto-bind contexts too.
+let private genChoiceValue: Gen<Binding<string> option> =
+    Gen.oneof
+        [ Gen.map (fun s -> Some(Binding.Static(Some s))) genString
+          Gen.constant (Some(Binding.Static None))
+          Gen.map (fun n -> Some(Binding.Filter(n, None))) genNonEmptyString ]
 
 // ─── Display specs ──────────────────────────────────────────────────────────
 
@@ -394,7 +424,7 @@ let private genMetricSpec: Gen<MetricSpec> =
         let! emphasis = genEmphasis
         let! trend = genOption genBindingFloat
         let! trendFormat = genOption genCellFormat
-        let! icon = genOption (Gen.map IconSource genNonEmptyString)
+        let! icon = genOption genNonEmptyString
         let! subtext = genOption genTextSource
 
         return
@@ -415,7 +445,7 @@ let private genCalloutSpec: Gen<CalloutSpec> =
         let! tone = genTone
         let! heading = genOption genTextSource
         let! body = genTextSource
-        let! icon = genOption (Gen.map IconSource genNonEmptyString)
+        let! icon = genOption genNonEmptyString
         let! dismissable = genBool
 
         return
@@ -470,7 +500,7 @@ let private genDisplayKind: Gen<NodeKind<obj>> =
           }
           Gen.map
               (fun b -> NodeKind.Sparkline { Source = b })
-              (Gen.map Binding.Static (Gen.nonEmptyListOf genFiniteFloat |> Gen.map Seq.ofList))
+              (Gen.map (fun s -> Binding.Static(Some s)) (Gen.nonEmptyListOf genFiniteFloat))
           Gen.map NodeKind.Callout genCalloutSpec
           Gen.map NodeKind.Progress genProgressSpec
           Gen.map (fun r -> NodeKind.Skeleton { Rows = r }) (Gen.choose (0, 12))
@@ -481,7 +511,7 @@ let private genDisplayKind: Gen<NodeKind<obj>> =
 let rec private genAction: Gen<Action<obj>> =
     Gen.oneof
         [ Gen.constant (Action.Dispatch(box "<msg>"))
-          Gen.map (fun ep -> Action.Call(ApiEndpoint ep, Some(fun _ -> box "<r>"), None)) genNonEmptyString
+          Gen.map (fun ep -> Action.Call(ep, Some(fun _ -> box "<r>"), None)) genNonEmptyString
           Gen.map2 (fun c p -> Action.Notify(c, p)) genNonEmptyString genJVal
           Gen.map Action.Navigate genNonEmptyString
           Gen.map2 (fun k v -> Action.SetState(k, v)) genNonEmptyString genJVal
@@ -489,7 +519,7 @@ let rec private genAction: Gen<Action<obj>> =
           Gen.map Action.CommitLocal genNonEmptyString
           Gen.map Action.WriteToClipboard genString
           Gen.map
-              (fun id -> Action.ReadFileBody({ Id = id; Handle = None }, FileReadEncoding.Base64, (fun _ -> box "<r>")))
+              (fun id -> Action.ReadFileBody(id, None, FileReadEncoding.Base64, Some(fun _ -> box "<r>")))
               genNonEmptyString
           Gen.map Action.Chain (genSmallList (Gen.map Action.Navigate genNonEmptyString)) ]
 
@@ -498,7 +528,7 @@ let rec private genAction: Gen<Action<obj>> =
 let private allActionsChain: Action<obj> =
     Action.Chain
         [ Action.Dispatch(box "<msg>")
-          Action.Call(ApiEndpoint "/api", Some(fun _ -> box "<r>"), None)
+          Action.Call("/api", Some(fun _ -> box "<r>"), None)
           Action.Notify("ch", JStr "p")
           Action.Navigate "/route"
           Action.SetState("k", JStr "v")
@@ -506,7 +536,7 @@ let private allActionsChain: Action<obj> =
           Action.Chain []
           Action.CommitLocal "node"
           Action.WriteToClipboard "text"
-          Action.ReadFileBody({ Id = "file:0"; Handle = None }, FileReadEncoding.Base64, (fun _ -> box "<r>")) ]
+          Action.ReadFileBody("file:0", None, FileReadEncoding.Base64, Some(fun _ -> box "<r>")) ]
 
 // ─── Input specs ─────────────────────────────────────────────────────────────
 
@@ -527,7 +557,7 @@ let private genFormFields: Gen<FormField<obj> list> =
         let! sNum = genBindingFloat
         let! sBool = genBindingBool
         let! sOpts = genBindingSelectOptions
-        let! sVal = genBindingStringOpt
+        let! sVal = genChoiceValue
         let! constraints = genNumberConstraints
         let! rows = Gen.choose (1, 8)
         let! orientation = genOrientation
@@ -542,19 +572,29 @@ let private genFormFields: Gen<FormField<obj> list> =
         return
             // Phase 426: cover both the `Some` closure (byte-stable `"<closure>"`) and the `None`
             // declarative (handler-free / write-back) shape for the covered handlers.
-            [ mk "f-text" (FormFieldKind.Text(sText, Some(fun _ -> Action.Chain [])))
-              mk "f-number" (FormFieldKind.Number(sNum, Some(fun _ -> Action.Chain [])))
-              mk "f-checkbox" (FormFieldKind.Checkbox(sBool, Some(fun _ -> Action.Chain [])))
+            [ mk "f-text" (FormFieldKind.Text(Some sText, Some(fun _ -> Action.Chain [])))
+              mk "f-number" (FormFieldKind.Number(Some sNum, Some(fun _ -> Action.Chain [])))
+              mk "f-checkbox" (FormFieldKind.Checkbox(Some sBool, Some(fun _ -> Action.Chain [])))
               mk "f-choice" (FormFieldKind.Choice(sOpts, sVal, Some(fun _ -> Action.Chain [])))
-              mk "f-textarea" (FormFieldKind.TextArea(sText, Some(fun _ -> Action.Chain []), rows))
-              mk "f-ranged" (FormFieldKind.RangedNumber(sNum, Some(fun _ -> Action.Chain []), constraints))
+              mk "f-textarea" (FormFieldKind.TextArea(Some sText, Some(fun _ -> Action.Chain []), rows))
+              mk
+                  "f-ranged"
+                  (FormFieldKind.RangedNumber(
+                      Some sNum,
+                      Some(fun _ -> Action.Chain []),
+                      constraints.Min,
+                      constraints.Max,
+                      constraints.Step
+                  ))
               mk "f-segmented" (FormFieldKind.SegmentedChoice(sOpts, sVal, Some(fun _ -> Action.Chain []), orientation))
-              mk "f-text-decl" (FormFieldKind.Text(sText, None))
-              mk "f-number-decl" (FormFieldKind.Number(sNum, None))
-              mk "f-checkbox-decl" (FormFieldKind.Checkbox(sBool, None))
+              mk "f-text-decl" (FormFieldKind.Text(Some sText, None))
+              mk "f-number-decl" (FormFieldKind.Number(Some sNum, None))
+              mk "f-checkbox-decl" (FormFieldKind.Checkbox(Some sBool, None))
               mk "f-choice-decl" (FormFieldKind.Choice(sOpts, sVal, None))
-              mk "f-textarea-decl" (FormFieldKind.TextArea(sText, None, rows))
-              mk "f-ranged-decl" (FormFieldKind.RangedNumber(sNum, None, constraints))
+              mk "f-textarea-decl" (FormFieldKind.TextArea(Some sText, None, rows))
+              mk
+                  "f-ranged-decl"
+                  (FormFieldKind.RangedNumber(Some sNum, None, constraints.Min, constraints.Max, constraints.Step))
               mk "f-segmented-decl" (FormFieldKind.SegmentedChoice(sOpts, sVal, None, orientation)) ]
     }
 
@@ -577,27 +617,37 @@ let private genFilters: Gen<FilterSpec<obj> list> =
         let! label = genTextSource
         let! sText = genBindingString
         let! sOpts = genBindingSelectOptions
-        let! sVal = genBindingStringOpt
+        let! sVal = genChoiceValue
         let! orientation = genOrientation
 
-        let mk name field : FilterSpec<obj> =
+        let mk name kind : FilterSpec<obj> =
             { Name = name
               Label = label
-              Field = field }
+              Kind = kind }
 
         return
             // 0.2.0 filters-unification: chips carry FormFieldKind controls.
             // Cover Some-closure + None-declarative shapes; `ft-auto` covers
             // the auto Filter(name) binding the minimal wire synthesizes;
             // `ft-range-typed` carries authorable {min,max} bounds.
-            [ mk "ft-text" (FormFieldKind.Text(sText, Some(fun _ -> Action.Chain [])))
+            [ mk "ft-text" (FormFieldKind.Text(Some sText, Some(fun _ -> Action.Chain [])))
               mk "ft-choice" (FormFieldKind.Choice(sOpts, sVal, Some(fun _ -> Action.Chain [])))
-              mk "ft-range" (FormFieldKind.Range(Binding.Static(0.0, 0.0), Some(fun _ -> Action.Chain []), None))
+              mk
+                  "ft-range"
+                  (FormFieldKind.Range(
+                      Some(Binding.Static(Some { Min = 0.0; Max = 0.0 })),
+                      Some(fun _ -> Action.Chain []),
+                      None,
+                      None,
+                      None
+                  ))
               mk "ft-seg" (FormFieldKind.SegmentedChoice(sOpts, sVal, Some(fun _ -> Action.Chain []), orientation))
-              mk "ft-auto" (FormFieldKind.Text(Binding.Filter("ft-auto", None), None))
-              mk "ft-text-decl" (FormFieldKind.Text(Binding.Filter("q", None), None))
+              mk "ft-auto" (FormFieldKind.Text(Some(Binding.Filter("ft-auto", None)), None))
+              mk "ft-text-decl" (FormFieldKind.Text(Some(Binding.Filter("q", None)), None))
               mk "ft-choice-decl" (FormFieldKind.Choice(sOpts, sVal, None))
-              mk "ft-range-typed" (FormFieldKind.Range(Binding.Static(1.0, 9.0), None, None))
+              mk
+                  "ft-range-typed"
+                  (FormFieldKind.Range(Some(Binding.Static(Some { Min = 1.0; Max = 9.0 })), None, None, None, None))
               mk "ft-seg-decl" (FormFieldKind.SegmentedChoice(sOpts, sVal, None, orientation)) ]
     }
 
@@ -606,7 +656,7 @@ let private genButtonSpec: Gen<ButtonSpec<obj>> =
         let! label = genTextSource
         let! onClick = genAction
         let! variant = genButtonVariant
-        let! icon = genOption (Gen.map IconSource genNonEmptyString)
+        let! icon = genOption genNonEmptyString
         let! tooltip = genOption genTextSource
         let! disabled = genOption genBindingBool
 
@@ -630,7 +680,7 @@ let private genFileUploadSpec: Gen<FileUploadSpec<obj>> =
             { Label = label
               Accept = accept
               Multiple = multiple
-              OnSelect = (fun _ -> Action.Chain [])
+              OnSelect = Some(fun _ -> Action.Chain [])
               Disabled = disabled }
     }
 
@@ -638,7 +688,7 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
     gen {
         let! label = genTextSource
         let! source = genBindingSelectOptions
-        let! value = genBindingStringOpt
+        let! value = genSelectValue
         let! placeholder = genOption genTextSource
         let! disabled = genOption genBindingBool
         // Phase 291 — exercise both single- and multi-select. `Multiple = true`
@@ -662,8 +712,12 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
                      Option.None)
               Placeholder = placeholder
               Disabled = disabled
-              Multiple = multiple
-              Values = (if multiple then Some(Binding.Static vlist) else Option.None)
+              Multiple = (if multiple then Some true else Option.None)
+              Values =
+                (if multiple then
+                     Some(Binding.Static(Some vlist))
+                 else
+                     Option.None)
               OnChangeMulti =
                 (if multiple && withHandlers then
                      Some(fun _ -> Action.Chain [])
@@ -674,7 +728,7 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
 let private genInputKind: Gen<NodeKind<obj>> =
     Gen.oneof
         [ Gen.map NodeKind.Form genFormSpec
-          Gen.map NodeKind.Filters genFilters
+          Gen.map (fun items -> NodeKind.Filters { Items = items }) genFilters
           Gen.map NodeKind.Button genButtonSpec
           Gen.map NodeKind.FileUpload genFileUploadSpec
           Gen.map NodeKind.Select genSelectSpec ]
@@ -691,26 +745,22 @@ let private genGridColumns: Gen<ColumnErased<obj> list> =
             [ CellKindErased.Text
               CellKindErased.Numeric
               CellKindErased.Date
-              CellKindErased.Editable(fun _ -> Action.Chain [])
-              CellKindErased.Checkbox((fun _ -> false), (fun _ -> Action.Chain []))
-              CellKindErased.Button(buttonLabel, (fun _ -> Action.Chain []))
-              CellKindErased.ButtonGroup [ (buttonLabel, (fun _ -> Action.Chain [])) ]
+              // `Some` closures (Phase 692–694 swap — the handler slots are
+              // optional now); Some keeps the `"<closure>"` sentinel bytes.
+              CellKindErased.Editable(Some(fun _ -> Action.Chain []))
+              CellKindErased.Checkbox((fun _ -> false), Some(fun _ -> Action.Chain []))
+              CellKindErased.Button(buttonLabel, Some(fun _ -> Action.Chain []))
+              CellKindErased.ButtonGroup
+                  [ { Label = buttonLabel
+                      OnClick = Some(fun _ -> Action.Chain []) } ]
               CellKindErased.Link((fun _ -> "/href"), (fun _ -> TextSource.Literal "link"))
-              CellKindErased.Pill((fun _ -> TextSource.Literal "pill"), (fun _ -> Brand))
+              CellKindErased.Pill((fun _ -> TextSource.Literal "pill"), (fun _ -> ToneVariant.Brand))
               CellKindErased.Progress((fun _ -> 0.5), Some(fun _ -> TextSource.Literal "p"))
               CellKindErased.Custom(fun _ ->
-                  { Id = NodeId "cell-custom"
+                  { Id = "cell-custom"
                     Kind = NodeKind.Markdown({ Text = TextSource.Literal "x" })
-                    State =
-                      { OnLoading = None
-                        OnEmpty = None
-                        OnError = None }
-                    Style =
-                      { Tone = Default
-                        Weight = Standard
-                        Emphasis = Normal
-                        Role = StyleRole.None
-                        Voice = FontVoice.Default }
+                    State = None
+                    Style = None
                     Accessibility = None
                     Motion = None
                     ExtraAttributes = None }) ]
@@ -732,7 +782,7 @@ let private genGridSpec: Gen<GridSpec<obj>> =
         let! editable = genBool
 
         return
-            { Source = Binding.Static Seq.empty
+            { Source = Binding.Static(Some Seq.empty)
               RowKey = Some(fun _ -> "<rowkey>")
               RowKeyField = None
               Columns = columns
@@ -750,7 +800,7 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         let! stacked = genBool
 
         return
-            { Source = Binding.Static Seq.empty
+            { Source = Binding.Static(Some Seq.empty)
               Kind = kind
               XField = xField
               YFields = yFields
@@ -766,7 +816,7 @@ let private genMapSpec: Gen<MapSpec<obj>> =
         let! zoom = Gen.choose (0, 20)
 
         return
-            { Source = Binding.Static Seq.empty
+            { Source = Binding.Static(Some([]: MapMarker list))
               CentreLatitude = lat
               CentreLongitude = lon
               Zoom = zoom
@@ -798,8 +848,18 @@ let private genCustom: Gen<NodeKind<obj>> =
         let! componentId = genNonEmptyString
         let! props = genJValMap
         let! contentHash = genOption genContentHash
-        let! exposed = genSmallList (Gen.map NodeId genNonEmptyString)
-        return NodeKind.Custom(moduleId, componentId, props, contentHash, exposed)
+        // `None` ≡ the old `[]` — an empty list would encode differently
+        // (`"exposedNodeIds":[]`), so the omitted-key shape maps to None.
+        let! exposed = genSmallList genNonEmptyString
+
+        return
+            NodeKind.Custom(
+                { ModuleId = moduleId
+                  ComponentId = componentId
+                  Props = props
+                  ContentHash = contentHash
+                  ExposedNodeIds = (if List.isEmpty exposed then None else Some exposed) }
+            )
     }
 
 let private genFragmentRef: Gen<NodeKind<obj>> =
@@ -808,8 +868,9 @@ let private genFragmentRef: Gen<NodeKind<obj>> =
     Gen.map
         (fun n ->
             NodeKind.FragmentRef
-                { Name = FragmentId n
-                  Args = Map.empty })
+                { Name = n
+                  // `None` ≡ the old empty Map — the zero-arg wire shape.
+                  Args = None })
         genNonEmptyString
 
 // ─── Style / accessibility ───────────────────────────────────────────────────
@@ -830,11 +891,31 @@ let private genSemanticStyle: Gen<SemanticStyle> =
               Voice = voice }
     }
 
+/// Node.State / Node.Style are `option` post-swap (Phase 692–694). The pre-swap
+/// encoder omitted an empty state / default style, and omission is the `None`
+/// shape now — mapping the degenerate records to `None` keeps the generated
+/// bytes in the same round-trip-faithful subspace as before.
+let private someState (s: StateBehaviour<obj>) : StateBehaviour<obj> option =
+    if s.OnLoading.IsNone && s.OnEmpty.IsNone && s.OnError.IsNone then
+        None
+    else
+        Some s
+
+let private someStyle (s: SemanticStyle) : SemanticStyle option =
+    let isDefault =
+        s.Tone = ToneVariant.Default
+        && s.Weight = StyleWeight.Standard
+        && s.Emphasis = Emphasis.Normal
+        && s.Role = StyleRole.None
+        && s.Voice = FontVoice.Default
+
+    if isDefault then None else Some s
+
 let private genAccessibility: Gen<Accessibility> =
     gen {
         let! label = genOption genBindingString
-        let! labelledBy = genOption (Gen.map NodeId genNonEmptyString)
-        let! describedBy = genOption (Gen.map NodeId genNonEmptyString)
+        let! labelledBy = genOption genNonEmptyString
+        let! describedBy = genOption genNonEmptyString
         let! role = genOption genAriaRole
         let! live = genOption genLiveRegion
         let! hidden = genOption genBindingBool
@@ -872,22 +953,12 @@ let rec private genLayoutKind (size: int) : Gen<NodeKind<obj>> =
                       [ gen {
                             let! direction = genOrientation
                             let! wrap = genBool
-
-                            return
-                                BoxLayout.Flex
-                                    { Direction = direction
-                                      Wrap = wrap
-                                      Gap = None }
+                            return BoxLayout.Flex(direction, wrap, None)
                         }
                         gen {
                             let! cols = Gen.choose (1, 12)
                             let! template = genOption genNonEmptyString
-
-                            return
-                                BoxLayout.Grid
-                                    { Cols = cols
-                                      TemplateColumns = template
-                                      Gap = None }
+                            return BoxLayout.Grid(cols, template, None)
                         }
                         Gen.constant BoxLayout.Auto ]
 
@@ -934,7 +1005,9 @@ let rec private genLayoutKind (size: int) : Gen<NodeKind<obj>> =
                   NodeKind.Stepper
                       { ActiveStep = active
                         Children = children
-                        OnSelect = (fun _ -> Action.Chain []) }
+                        // `Some` — keeps the `"onSelect":"<closure>"` sentinel
+                        // on the wire (the pre-swap required-closure bytes).
+                        OnSelect = Some(fun _ -> Action.Chain []) }
           }
           gen {
               let! heading = genOption genTextSource
@@ -979,10 +1052,12 @@ and private genNodeKind (size: int) : Gen<NodeKind<obj>> =
 
                   return
                       NodeKind.FragmentDecl
-                          { Name = FragmentId name
+                          { Name = name
                             Body = body
-                            Holes = []
-                            Effect = EffectClass.pureDeterministic }
+                            // `None` ≡ the old zero-holes / pure-deterministic
+                            // defaults — both keys stay off the wire.
+                            Holes = None
+                            Effect = None }
               } ]
         else
             []
@@ -1020,18 +1095,10 @@ and private genStateBehaviour (size: int) : Gen<StateBehaviour<obj>> =
         }
 
 and private placeholderErrorNode: Node<obj> =
-    { Id = NodeId "err"
+    { Id = "err"
       Kind = NodeKind.Markdown({ Text = TextSource.Literal "err" })
-      State =
-        { OnLoading = None
-          OnEmpty = None
-          OnError = None }
-      Style =
-        { Tone = Default
-          Weight = Standard
-          Emphasis = Normal
-          Role = StyleRole.None
-          Voice = FontVoice.Default }
+      State = None
+      Style = None
       Accessibility = None
       Motion = None
       ExtraAttributes = None }
@@ -1045,10 +1112,10 @@ and private genNodeSized (size: int) : Gen<Node<obj>> =
         let! accessibility = genOption genAccessibility
 
         return
-            { Id = NodeId id
+            { Id = id
               Kind = kind
-              State = state
-              Style = style
+              State = someState state
+              Style = someStyle style
               Accessibility = accessibility
               Motion = None
               ExtraAttributes = None }
@@ -1131,7 +1198,10 @@ let rec shrinkNode (n: Node<obj>) : Node<obj> seq =
         | NodeKind.FragmentDecl s -> [ s.Body ]
         | _ -> []
 
-    let stateChildren = [ n.State.OnLoading; n.State.OnEmpty ] |> List.choose id
+    let stateChildren =
+        match n.State with
+        | Some s -> [ s.OnLoading; s.OnEmpty ] |> List.choose id
+        | None -> []
 
     Seq.append (childrenOf n.Kind) stateChildren
 

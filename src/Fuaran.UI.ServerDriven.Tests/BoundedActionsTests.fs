@@ -80,8 +80,7 @@ let tests =
                   invoked <- true
                   o "<closure>"
 
-              let action =
-                  Action.ReadFileBody({ Id = "f1"; Handle = None }, FileReadEncoding.Text, onRead)
+              let action = Action.ReadFileBody("f1", None, FileReadEncoding.Text, Some onRead)
 
               let out = BoundedActions.runBoundedAction "upload" action store0
               Expect.equal out.Effects [ ClientEffect.ReadFileBody("upload", "Text") ] "node-addressed read effect"
@@ -144,10 +143,7 @@ let tests =
                   o "<closure>"
 
               let out =
-                  BoundedActions.runBoundedAction
-                      "n"
-                      (Action.Call(ApiEndpoint "https://evil", Some onResult, None))
-                      store0
+                  BoundedActions.runBoundedAction "n" (Action.Call("https://evil", Some onResult, None)) store0
 
               Expect.isFalse invoked "the Call onResult closure must NEVER execute on the bounded path"
               Expect.equal out.Store.State store0.State "Call is a store-level no-op"
@@ -168,8 +164,8 @@ let tests =
               let action =
                   Action.Chain
                       [ Action.SetState("ok", jv 1)
-                        Action.Call(ApiEndpoint "e", Some throwing, None)
-                        Action.ReadFileBody({ Id = "f"; Handle = None }, FileReadEncoding.Base64, throwingRead) ]
+                        Action.Call("e", Some throwing, None)
+                        Action.ReadFileBody("f", None, FileReadEncoding.Base64, Some throwingRead) ]
 
               // The whole interpretation must complete without invoking any closure.
               let out = BoundedActions.runBoundedAction "up" action store0

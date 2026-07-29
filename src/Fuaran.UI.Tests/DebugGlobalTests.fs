@@ -56,8 +56,8 @@ let private selectNode: Node<unit> =
     Fuaran.select
         "sel"
         { Defaults.select<unit> with
-            Source = Binding.Static []
-            Value = binding.state "pick" Option.None }
+            Source = Binding.Static(Some [])
+            Value = binding.stateNoDefault "pick" }
 
 let private markdownNode: Node<unit> = Fuaran.markdown "md" "hello"
 
@@ -163,7 +163,7 @@ let tests =
           }
 
           test "bindingExpression mirrors BindingProbe.identify" {
-              Expect.equal (DebugGlobal.bindingExpression (Binding.Static 1.0)) ("Static", "$static") "Static"
+              Expect.equal (DebugGlobal.bindingExpression (Binding.Static(Some 1.0))) ("Static", "$static") "Static"
               Expect.equal (DebugGlobal.bindingExpression (binding.state "k" 0.0)) ("State", "$state.k") "State"
 
               Expect.equal
@@ -175,11 +175,7 @@ let tests =
           }
 
           test "childNodes / walkNodes / findNode / findNodesByKind traverse the tree" {
-              let childIds =
-                  DebugGlobal.childNodes tree
-                  |> List.map (fun n ->
-                      let (NodeId raw) = n.Id
-                      raw)
+              let childIds = DebugGlobal.childNodes tree |> List.map _.Id
 
               Expect.equal childIds [ "m-no-trend"; "m-with-trend"; "sel"; "md" ] "dashboard children"
 
@@ -205,11 +201,7 @@ let tests =
                           Child = child
                           Fallback = fallback }
 
-              let ids =
-                  DebugGlobal.childNodes eb
-                  |> List.map (fun n ->
-                      let (NodeId raw) = n.Id
-                      raw)
+              let ids = DebugGlobal.childNodes eb |> List.map _.Id
 
               Expect.equal ids [ "eb-child"; "eb-fallback" ] "ErrorBoundary → [child; fallback]"
           }

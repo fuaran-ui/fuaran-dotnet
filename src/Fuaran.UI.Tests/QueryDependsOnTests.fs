@@ -18,7 +18,7 @@ let private nn (v: 'T) : obj = box v |> Unchecked.nonNull
 
 // The shape `JsonDecode` produces for a decoded `Query` (Phase 421): an identity accessor.
 let private decodedQuery: Binding<obj> =
-    Binding.Query("orders", (fun (raw: obj) -> raw), [ "status"; "region" ])
+    Binding.Query("orders", (fun (raw: obj) -> raw), Some [ "status"; "region" ])
 
 [<Tests>]
 let tests =

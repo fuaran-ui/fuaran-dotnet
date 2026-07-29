@@ -132,21 +132,22 @@ internal static class Oracle
 {
     internal static string MetricFsHost()
     {
-        var spec = new global::Fuaran.UI.Types.MetricSpec(
-            global::Fuaran.UI.Types.TextSource.NewLiteral("Revenue"),
-            global::Fuaran.UI.Types.Binding<double>.NewStatic(1234.5),
-            global::Fuaran.UI.Types.CellFormat.NewCurrency("GBP"),
-            global::Fuaran.UI.Types.ToneVariant.Brand,
-            global::Fuaran.UI.Types.StyleWeight.Standard,
-            global::Fuaran.UI.Types.Emphasis.Normal,
-            Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Types.Binding<double>>.Some(
-                global::Fuaran.UI.Types.Binding<double>.NewStatic(0.07)),
-            Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Types.CellFormat>.Some(
-                global::Fuaran.UI.Types.CellFormat.NewPercent(Microsoft.FSharp.Core.FSharpOption<int>.Some(1))),
-            Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Types.IconSource>.Some(
-                global::Fuaran.UI.Types.IconSource.NewIconSource("trending-up")),
-            Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Types.TextSource>.Some(
-                global::Fuaran.UI.Types.TextSource.NewLiteral("vs last month")));
+        // Ctor arg order = Generated.fs MetricSpec declaration order (Label, Value, Format,
+        // Tone, Weight, Emphasis, Trend, TrendFormat, Icon, Subtext).
+        var spec = new global::Fuaran.UI.Generated.MetricSpec(
+            global::Fuaran.UI.Generated.TextSource.NewLiteral("Revenue"),
+            global::Fuaran.UI.Generated.Binding<double>.NewStatic(Microsoft.FSharp.Core.FSharpOption<double>.Some(1234.5)),
+            global::Fuaran.UI.Generated.CellFormat.NewCurrency("GBP"),
+            global::Fuaran.UI.Generated.ToneVariant.Brand,
+            global::Fuaran.UI.Generated.StyleWeight.Standard,
+            global::Fuaran.UI.Generated.Emphasis.Normal,
+            Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<double>>.Some(
+                global::Fuaran.UI.Generated.Binding<double>.NewStatic(Microsoft.FSharp.Core.FSharpOption<double>.Some(0.07))),
+            Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.CellFormat>.Some(
+                global::Fuaran.UI.Generated.CellFormat.NewPercent(Microsoft.FSharp.Core.FSharpOption<int>.Some(1))),
+            Microsoft.FSharp.Core.FSharpOption<string>.Some("trending-up"),
+            Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.TextSource>.Some(
+                global::Fuaran.UI.Generated.TextSource.NewLiteral("vs last month")));
 
         var node = global::Fuaran.UI.Fuaran.metric<object>("metric-1", spec);
         return FsCanon.encodeNode(node);

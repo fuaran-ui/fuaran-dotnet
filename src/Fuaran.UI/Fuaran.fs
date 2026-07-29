@@ -26,35 +26,68 @@ open Fuaran.UI.Types
 // ─── Per-Node postfix-pipe modifiers ───────────────────────────────────────
 
 module Node =
+    // Since the swap the Node envelope carries `State` / `Style` as OPTIONS —
+    // `None` is the canonical empty-state / default-style shape (the encoder
+    // omits both). The helpers below materialise the default locally, apply
+    // the change, and NORMALISE back to `None` when the result is the empty /
+    // default record, so the wire stays byte-identical with the pre-swap
+    // always-present-record behaviour.
+
+    let private stateOf (node: Node<'Msg>) : StateBehaviour<'Msg> =
+        node.State |> Option.defaultValue Defaults.stateBehaviour<'Msg>
+
+    let private normaliseState (s: StateBehaviour<'Msg>) : StateBehaviour<'Msg> option =
+        match s.OnLoading, s.OnEmpty, s.OnError with
+        | Option.None, Option.None, Option.None -> Option.None
+        | _ -> Some s
+
+    let private styleOf (node: Node<'Msg>) : SemanticStyle =
+        node.Style |> Option.defaultValue Defaults.style
+
+    let private normaliseStyle (s: SemanticStyle) : SemanticStyle option =
+        // Enum-only record — structural equality is safe here.
+        if s = Defaults.style then Option.None else Some s
+
+    /// The node's id as the ops/API-boundary `NodeId` wrapper. The generated
+    /// envelope carries `Id` as a bare `string`; wrap at the boundary where a
+    /// `NodeId` value is needed (NodeMap keys, TreeOp args, stores).
+    let nodeId (node: Node<'Msg>) : NodeId = NodeId node.Id
+
     let onLoading (placeholder: Node<'Msg>) (node: Node<'Msg>) : Node<'Msg> =
         { node with
             State =
-                { node.State with
-                    OnLoading = Some placeholder } }
+                Some
+                    { stateOf node with
+                        OnLoading = Some placeholder } }
 
     let onEmpty (placeholder: Node<'Msg>) (node: Node<'Msg>) : Node<'Msg> =
         { node with
             State =
-                { node.State with
-                    OnEmpty = Some placeholder } }
+                Some
+                    { stateOf node with
+                        OnEmpty = Some placeholder } }
 
     let onError (render: ErrorPayload -> Node<'Msg>) (node: Node<'Msg>) : Node<'Msg> =
         { node with
             State =
-                { node.State with
-                    OnError = Some render } }
+                Some
+                    { stateOf node with
+                        OnError = Some render } }
 
     let withTone (tone: ToneVariant) (node: Node<'Msg>) : Node<'Msg> =
         { node with
-            Style = { node.Style with Tone = tone } }
+            Style = normaliseStyle { styleOf node with Tone = tone } }
 
     let withWeight (weight: StyleWeight) (node: Node<'Msg>) : Node<'Msg> =
         { node with
-            Style = { node.Style with Weight = weight } }
+            Style = normaliseStyle { styleOf node with Weight = weight } }
 
     let withEmphasis (emphasis: Emphasis) (node: Node<'Msg>) : Node<'Msg> =
         { node with
-            Style = { node.Style with Emphasis = emphasis } }
+            Style =
+                normaliseStyle
+                    { styleOf node with
+                        Emphasis = emphasis } }
 
     /// Tag the node with a semantic content role (Phase 147) — emits a
     /// `fuaran-role-{role}` class the host CSS owns. `StyleRole.None` clears
@@ -62,14 +95,14 @@ module Node =
     /// `HeadingVariant.Eyebrow` / `Caption` over the matching `StyleRole`.
     let withRole (role: StyleRole) (node: Node<'Msg>) : Node<'Msg> =
         { node with
-            Style = { node.Style with Role = role } }
+            Style = normaliseStyle { styleOf node with Role = role } }
 
     /// Tag the node's font voice (Phase 147) — the display-vs-structural
     /// split. Emits a `fuaran-voice-{voice}` class; `FontVoice.Default`
     /// clears it.
     let withVoice (voice: FontVoice) (node: Node<'Msg>) : Node<'Msg> =
         { node with
-            Style = { node.Style with Voice = voice } }
+            Style = normaliseStyle { styleOf node with Voice = voice } }
 
     /// Replace the Node's `Accessibility` trait with the supplied
     /// value. Use `Some Defaults.Accessibility.empty` to start from an empty
@@ -168,44 +201,58 @@ module Node =
 
 [<RequireQualifiedAccess>]
 module binding =
-    let none<'T> : Binding<'T> = Binding.Static Unchecked.defaultof<'T>
+    // Stage 1 of the 692-694 swap: these builders construct the GENERATED
+    // `Binding<'T>` (Types.fs aliases it). Signatures are unchanged — the
+    // shape deltas (option payloads, bare-string nodeId, record params) are
+    // absorbed here, which is what keeps author code stable.
 
-    let ``static`` (value: 'T) : Binding<'T> = Binding.Static value
+    let none<'T> : Binding<'T> = Binding.Static None
+
+    let ``static`` (value: 'T) : Binding<'T> = Binding.Static(Some value)
 
     /// Per Defect (2) resolution: typed accessor `'result -> 'T` is boxed
     /// to `obj -> 'T` at the tree level. The author writes
     /// `binding.query "totalRevenue" _.amount` — `'result` is inferred from
     /// the schema-registered query result type at the typed-API surface.
     let query (name: string) (accessor: 'result -> 'T) : Binding<'T> =
-        Binding.Query(name, (fun (o: obj) -> accessor (unbox<'result> o)), [])
+        Binding.Query(name, (fun (o: obj) -> accessor (unbox<'result> o)), None)
 
     /// A host-computed query that declares its filter dependency edge (Phase 421). `dependsOn` names
     /// the filters that scope this consumer — the tree owns the edge (AI-authorable, validator-visible,
     /// op-stream-replayable), the accessor closure still owns the predicate. A filter-store change
-    /// re-resolves the query.
+    /// re-resolves the query. An empty list is "no edge" and stays off the wire (`None`).
     let queryDependsOn (name: string) (dependsOn: string list) (accessor: 'result -> 'T) : Binding<'T> =
-        Binding.Query(name, (fun (o: obj) -> accessor (unbox<'result> o)), dependsOn)
+        Binding.Query(
+            name,
+            (fun (o: obj) -> accessor (unbox<'result> o)),
+            (if List.isEmpty dependsOn then None else Some dependsOn)
+        )
 
     let filter (name: string) : Binding<'T> = Binding.Filter(name, None)
 
     let selection (nodeId: string) (accessor: 'row -> 'T) : Binding<'T> =
-        Binding.Selection(NodeId nodeId, (fun (o: obj) -> accessor (unbox<'row> o)), None, None)
+        Binding.Selection(nodeId, (fun (o: obj) -> accessor (unbox<'row> o)), None, None)
 
     /// A selection read with a default (Phase 629): yields `defaultValue`
     /// until the user first selects a row on `nodeId`.
     let selectionWithDefault (nodeId: string) (accessor: 'row -> 'T) (defaultValue: 'T) : Binding<'T> =
-        Binding.Selection(NodeId nodeId, (fun (o: obj) -> accessor (unbox<'row> o)), Some defaultValue, None)
+        Binding.Selection(nodeId, (fun (o: obj) -> accessor (unbox<'row> o)), Some defaultValue, None)
 
     /// A declarative row-field selection read (Phase 632): projects `field`
     /// off the clicked row — the wire-expressible twin of a typed accessor.
     /// `defaultValue` (the projected scalar, not a row) yields until the user
     /// first selects a row on `nodeId`.
     let selectionField (nodeId: string) (field: string) (defaultValue: 'T option) : Binding<'T> =
-        Binding.Selection(NodeId nodeId, Binding.projectSelectionField<'T> field, defaultValue, Some field)
+        Binding.Selection(nodeId, Binding.projectSelectionField<'T> field, defaultValue, Some field)
 
-    let state (key: string) (defaultValue: 'T) : Binding<'T> = Binding.State(key, defaultValue)
+    let state (key: string) (defaultValue: 'T) : Binding<'T> = Binding.State(key, Some defaultValue)
 
-    let computed (f: BindingContext -> 'T) : Binding<'T> = Binding.Computed f
+    /// A state read whose slot carries NO default — resolves to nothing until
+    /// the key is first written (the wire's `{"$type":"State","key":…}` form).
+    let stateNoDefault (key: string) : Binding<'T> = Binding.State(key, None)
+
+    let computed (f: BindingContext -> 'T) : Binding<'T> =
+        Binding.Computed(fun (o: obj) -> f (unbox<BindingContext> o))
 
     /// Locale-aware formatted value (Phase 102). Wraps a numeric `source`
     /// binding and projects it to a localised display *string* via the
@@ -226,26 +273,32 @@ module binding =
     /// `Table` / `Metric`); the `Fuaran.UI.Ops` evaluator runs it via the `Fuaran.Core.DataFrame`
     /// reference evaluator. Authored idiomatically with the `Fuaran.Core.DataFrame` algebra ctors.
     let transform (source: Fuaran.Core.DataSource) (pipeline: Fuaran.Core.Transform list) : Binding<obj seq> =
-        Binding.Transform(source, pipeline, [])
+        Binding.Transform(source, pipeline, None)
 
     /// A parameterised declarative dataframe transform (Phase 424). `parameters` binds each
-    /// `ColExpr.Param` name the pipeline references to a scalar `Binding<obj>` source (author a
+    /// `ColExpr.Param` name the pipeline references to a scalar `Binding<JVal>` source (author a
     /// `binding.filter`/`binding.state`/`binding.static`), so a `filter` step comparing a `col`
     /// against a `param` scopes the rows by a live filter/state value with zero host code. The
     /// filter→consumer edge is derived from `Transform.paramsOf` — never separately declared.
+    /// (`Binding<JVal>` since the swap — the typed verbatim carrier for the obj-erased position, D3.)
     let transformWith
         (source: Fuaran.Core.DataSource)
         (pipeline: Fuaran.Core.Transform list)
-        (parameters: (string * Binding<obj>) list)
+        (parameters: (string * Binding<JVal>) list)
         : Binding<obj seq> =
-        Binding.Transform(source, pipeline, parameters)
+        let ps =
+            parameters
+            |> List.map (fun (name, fromB) -> ({ From = fromB; Name = name }: TransformParam))
+
+        Binding.Transform(source, pipeline, (if List.isEmpty ps then None else Some ps))
 
     /// Invoke a host-registered compute capability for a value (Phase 283 — the Compute layer's
     /// hard-stuff seam). `capabilityId` references a `Fuaran.Core.Capability` in the host registry;
     /// `args` are scalar `(addr, value)` pairs validated against its `Signature` before dispatch.
     /// Resolves to a `Deferred<'T>` rendered through the node's `StateBehaviour` (`Pending` →
     /// `onLoading`, `Error` → `onError`). The body is host-provided, never on the wire.
-    let invoke (capabilityId: string) (args: (string * string) list) : Binding<'T> = Binding.Invoke(capabilityId, args)
+    let invoke (capabilityId: string) (args: (string * string) list) : Binding<'T> =
+        Binding.Invoke(capabilityId, args |> List.map (fun (addr, v) -> ({ Addr = addr; Value = v }: InvokeArg)))
 
     /// Component-scoped local buffer for controlled text/number
     /// inputs. `initialFrom` re-sync source (typically another binding like
@@ -268,16 +321,20 @@ module binding =
         (format: ('T -> string) option)
         (parse: string -> Result<'T, string>)
         : Binding<'T> =
-        Binding.Local
-            { InitialFrom = initialFrom
-              FlushOn = flushOn
-              // Obj-erase the Action<'Msg> at the tree level the same way
-              // Action.Call's `onResult: obj -> 'Msg` is erased — the
-              // renderer recovers it by unboxing at dispatch time. See the
-              // Defect (2) resolution in Types.fs for the wider rationale.
-              OnCommit = (fun (t: 'T) -> box (onCommit t))
-              Format = format
-              Parse = parse }
+        // Positional since the swap (flushOn, format, initialFrom, onCommit, parse).
+        // `format` is a required slot on the generated case — a `None` here bakes
+        // the renderer's old default (`string<'T>`) into the closure itself.
+        // The Action<'Msg> obj-erasure is unchanged (the Defect (2) resolution):
+        // the renderer recovers it by unboxing at dispatch time.
+        Binding.Local(
+            flushOn,
+            (match format with
+             | Some f -> f
+             | None -> fun (v: 'T) -> string (box v)),
+            initialFrom,
+            Some(fun (t: 'T) -> box (onCommit t)),
+            parse
+        )
 
     #warnon "3261"
 
@@ -288,22 +345,24 @@ module Action =
     let dispatch (msg: 'Msg) : Action<'Msg> = Action.Dispatch msg
 
     /// Per Defect (2) resolution: typed `'a -> 'Msg` is boxed to
-    /// `obj -> 'Msg` at the tree level.
-    let call (endpoint: ApiEndpoint) (onResult: 'a -> 'Msg) : Action<'Msg> =
+    /// `obj -> 'Msg` at the tree level. The builder keeps the `ApiEndpoint`
+    /// wrapper at the author surface; the generated case carries the bare
+    /// endpoint string (stage 2 of the swap).
+    let call (ApiEndpoint endpoint) (onResult: 'a -> 'Msg) : Action<'Msg> =
         Action.Call(endpoint, Some(fun (o: obj) -> onResult (unbox<'a> o)), None)
 
     /// Declarative fetch (Phase 428): call the endpoint and write the response
     /// to the reactive `$state.<key>` slot — every `Binding.State key` reader
     /// re-renders on completion. The closure-free shape an AI author emits.
-    let callIntoState (endpoint: ApiEndpoint) (key: string) : Action<'Msg> =
-        Action.Call(endpoint, None, Some(CallResultTarget.IntoState key))
+    let callIntoState (ApiEndpoint endpoint) (key: string) : Action<'Msg> =
+        Action.Call(endpoint, None, Some(CallResultTarget.State key))
 
     /// Declarative fetch (Phase 428): call the endpoint and write the response
     /// to the `queryResults` slot `<name>` — every `Binding.Query name` reader
     /// re-renders on completion (data-preserving on the decoded path per the
     /// Phase 421 identity accessor).
-    let callIntoQuery (endpoint: ApiEndpoint) (name: string) : Action<'Msg> =
-        Action.Call(endpoint, None, Some(CallResultTarget.IntoQuery name))
+    let callIntoQuery (ApiEndpoint endpoint) (name: string) : Action<'Msg> =
+        Action.Call(endpoint, None, Some(CallResultTarget.Query name))
 
     let notify (channel: string) (payload: JVal) : Action<'Msg> = Action.Notify(channel, payload)
 
@@ -322,13 +381,16 @@ module Action =
     /// `IFuaranRuntime.ReadFileBody` and dispatches `onRead body` when the
     /// read completes — no consumer-side `FileReader` interop.
     let readFileBody (file: FileRef) (encoding: FileReadEncoding) (onRead: string -> 'Msg) : Action<'Msg> =
-        Action.ReadFileBody(file, encoding, onRead)
+        // The author-surface FileRef record splits at the generated seam:
+        // the wire id + the host-only handle ride as separate slots.
+        Action.ReadFileBody(file.Id, file.Handle, encoding, Some onRead)
 
     /// Invoke a host-registered compute capability as an effect (Phase 283 — the effectful sibling
     /// of `binding.invoke` / `action.call` / `action.aiTool`). `capabilityId` references a
     /// `Fuaran.Core.Capability`; `args` are scalar `(addr, value)` pairs validated against its
     /// `Signature` before dispatch. The body is host-registered, never on the wire.
-    let invoke (capabilityId: string) (args: (string * string) list) : Action<'Msg> = Action.Invoke(capabilityId, args)
+    let invoke (capabilityId: string) (args: (string * string) list) : Action<'Msg> =
+        Action.Invoke(capabilityId, args |> List.map (fun (addr, v) -> ({ Addr = addr; Value = v }: InvokeArg)))
 
 // ─── Typed format entry points (§4c lines 513, 528) ───────────────────────
 
@@ -407,26 +469,14 @@ module FormFieldKind =
         (max: float option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(
-            value,
-            Some onChange,
-            { Defaults.numberFieldConstraints with
-                Min = min
-                Max = max
-                Step = step }
-        )
+        FormFieldKind.RangedNumber(Some value, Some onChange, min, max, step)
 
     /// `RangedNumber` shorthand for the common "stepped only"
     /// shape (e.g. a percentage field that allows any value but advances
     /// by 0.5 on the spinner). Equivalent to `rangedNumber value onChange
     /// ?step=step` — distinct name for grep-ability at the call site.
     let numberStepped (value: Binding<float>) (onChange: float -> Action<'Msg>) (step: float) : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(
-            value,
-            Some onChange,
-            { Defaults.numberFieldConstraints with
-                Step = Some step }
-        )
+        FormFieldKind.RangedNumber(Some value, Some onChange, None, None, Some step)
 
     /// `SegmentedChoice` with the same triple `Choice` takes plus
     /// an optional orientation defaulting to `Horizontal` (segmented row).
@@ -440,11 +490,14 @@ module FormFieldKind =
     ///       Orientation.Horizontal
     let segmentedChoice
         (options: Binding<SelectOption list>)
-        (value: Binding<string option>)
+        (value: Binding<string>)
         (onChange: string option -> Action<'Msg>)
         (orientation: Orientation)
         : FormFieldKind<'Msg> =
-        FormFieldKind.SegmentedChoice(options, value, Some onChange, orientation)
+        // "No selection" is `Binding.Static None` since the swap (the slot is
+        // `Binding<string> option`; the old `Binding<string option>` payload
+        // option moved into the generated Static payload).
+        FormFieldKind.SegmentedChoice(options, Some value, Some onChange, orientation)
 
     /// `Date` / `Time` / `DateTime` field (Phase 288) with the optional
     /// ISO-8601 `min` / `max` + numeric `step` (seconds) constraints as named
@@ -465,45 +518,33 @@ module FormFieldKind =
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Date(
-            value,
-            Some onChange,
-            variant,
-            { Defaults.dateFieldConstraints with
-                Min = min
-                Max = max
-                Step = step }
-        )
+        // The generated Date handler receives `string option` (a clearable
+        // control); the typed builder keeps its plain-string signature and
+        // maps a cleared value to "".
+        FormFieldKind.Date(Some value, Some(fun v -> onChange (defaultArg v "")), variant, min, max, step)
 
     /// Single-control date range (Phase 725) — the pair-valued sibling of
-    /// `date`. `value` is a `Binding<string * string>` carrying the ordered
-    /// `(from, to)` ISO-8601 pair; `variant` selects the native control for
-    /// both ends; `min` / `max` (ISO strings) + `step` (seconds) bound BOTH
-    /// ends. Author example:
+    /// `date`. `value` is a `Binding<DateRangePair>` carrying the ordered
+    /// `{From; To}` ISO-8601 pair (the generated record IS the wire object,
+    /// exactly as `RangePair` is for `Range`); `variant` selects the native
+    /// control for both ends; `min` / `max` (ISO strings) + `step` (seconds)
+    /// bound BOTH ends. Author example:
     ///
     ///   FormFieldKind.dateRange
-    ///       (value = binding.state "stay" ("", ""))
+    ///       (value = binding.state "stay" { From = ""; To = "" })
     ///       (onChange = SetStay >> Action.dispatch)
     ///       DateVariant.Date
     ///       (Some "2026-01-01")
     ///       None None
     let dateRange
-        (value: Binding<string * string>)
+        (value: Binding<DateRangePair>)
         (onChange: string * string -> Action<'Msg>)
         (variant: DateVariant)
         (min: string option)
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.DateRange(
-            value,
-            Some onChange,
-            variant,
-            { Defaults.dateFieldConstraints with
-                Min = min
-                Max = max
-                Step = step }
-        )
+        FormFieldKind.DateRange(Some value, Some onChange, variant, min, max, step)
 
     // ── Handler-free (declarative) ctors — Phase 426, the control write-back
     //    default. Each emits `onChange = None`, the shape an AI author uses: the
@@ -514,22 +555,23 @@ module FormFieldKind =
 
     /// Handler-free `Text` — the renderer writes the typed string to the
     /// `value` binding's own State/Filter slot on change.
-    let textDeclarative (value: Binding<string>) : FormFieldKind<'Msg> = FormFieldKind.Text(value, None)
+    let textDeclarative (value: Binding<string>) : FormFieldKind<'Msg> = FormFieldKind.Text(Some value, None)
 
     /// Handler-free `Number` — writes the typed float back to the value slot.
-    let numberDeclarative (value: Binding<float>) : FormFieldKind<'Msg> = FormFieldKind.Number(value, None)
+    let numberDeclarative (value: Binding<float>) : FormFieldKind<'Msg> = FormFieldKind.Number(Some value, None)
 
     /// Handler-free `Checkbox` — writes the toggled bool back to the value slot.
-    let checkboxDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> = FormFieldKind.Checkbox(value, None)
+    let checkboxDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> =
+        FormFieldKind.Checkbox(Some value, None)
 
     /// Handler-free `Choice` — writes the chosen option (string option) back to
     /// the value slot; a cleared choice clears the slot.
-    let choiceDeclarative (options: Binding<SelectOption list>) (value: Binding<string option>) : FormFieldKind<'Msg> =
-        FormFieldKind.Choice(options, value, None)
+    let choiceDeclarative (options: Binding<SelectOption list>) (value: Binding<string>) : FormFieldKind<'Msg> =
+        FormFieldKind.Choice(options, Some value, None)
 
     /// Handler-free `TextArea` — writes the typed string back to the value slot.
     let textAreaDeclarative (value: Binding<string>) (rows: int) : FormFieldKind<'Msg> =
-        FormFieldKind.TextArea(value, None, rows)
+        FormFieldKind.TextArea(Some value, None, rows)
 
     /// Handler-free `RangedNumber` — writes the typed float back to the value slot.
     let rangedNumberDeclarative
@@ -538,22 +580,15 @@ module FormFieldKind =
         (max: float option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.RangedNumber(
-            value,
-            None,
-            { Defaults.numberFieldConstraints with
-                Min = min
-                Max = max
-                Step = step }
-        )
+        FormFieldKind.RangedNumber(Some value, None, min, max, step)
 
     /// Handler-free `SegmentedChoice` — writes the chosen option back to the value slot.
     let segmentedChoiceDeclarative
         (options: Binding<SelectOption list>)
-        (value: Binding<string option>)
+        (value: Binding<string>)
         (orientation: Orientation)
         : FormFieldKind<'Msg> =
-        FormFieldKind.SegmentedChoice(options, value, None, orientation)
+        FormFieldKind.SegmentedChoice(options, Some value, None, orientation)
 
     /// Handler-free `Date` — writes the ISO-8601 string back to the value slot.
     let dateDeclarative
@@ -563,34 +598,18 @@ module FormFieldKind =
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.Date(
-            value,
-            None,
-            variant,
-            { Defaults.dateFieldConstraints with
-                Min = min
-                Max = max
-                Step = step }
-        )
+        FormFieldKind.Date(Some value, None, variant, min, max, step)
 
     /// Handler-free `DateRange` — writes the changed `(from, to)` ISO-8601
     /// pair back to the value slot.
     let dateRangeDeclarative
-        (value: Binding<string * string>)
+        (value: Binding<DateRangePair>)
         (variant: DateVariant)
         (min: string option)
         (max: string option)
         (step: float option)
         : FormFieldKind<'Msg> =
-        FormFieldKind.DateRange(
-            value,
-            None,
-            variant,
-            { Defaults.dateFieldConstraints with
-                Min = min
-                Max = max
-                Step = step }
-        )
+        FormFieldKind.DateRange(Some value, None, variant, min, max, step)
 
 /// Smart-ctors for filter strips. Closure-bearing ctors (`Some onChange`) preserve the
 /// F#-authored dispatch behaviour byte-for-byte; the closure-free ctors (Phase 423) emit
@@ -605,11 +624,11 @@ module FormFieldKind =
 module FilterField =
     /// Text chip bound to its own filter key.
     let text (name: string) : FormFieldKind<'Msg> =
-        FormFieldKind.Text(Binding.Filter(name, None), None)
+        FormFieldKind.Text(Some(Binding.Filter(name, None)), None)
 
     /// Dropdown choice chip bound to its own filter key.
     let choice (name: string) (options: Binding<SelectOption list>) : FormFieldKind<'Msg> =
-        FormFieldKind.Choice(options, Binding.Filter(name, None), None)
+        FormFieldKind.Choice(options, Some(Binding.Filter(name, None)), None)
 
     /// Segmented choice chip bound to its own filter key.
     let segmented
@@ -617,16 +636,16 @@ module FilterField =
         (options: Binding<SelectOption list>)
         (orientation: Orientation)
         : FormFieldKind<'Msg> =
-        FormFieldKind.SegmentedChoice(options, Binding.Filter(name, None), None, orientation)
+        FormFieldKind.SegmentedChoice(options, Some(Binding.Filter(name, None)), None, orientation)
 
     /// Dual-thumb range chip bound to its own filter key.
     let range (name: string) : FormFieldKind<'Msg> =
-        FormFieldKind.Range(Binding.Filter(name, None), None, None)
+        FormFieldKind.Range(Some(Binding.Filter(name, None)), None, None, None, None)
 
     /// Date-range chip bound to its own filter key (Phase 725). ONE filter
     /// param carries the whole `(from, to)` pair — the reason the case exists.
     let dateRange (name: string) (variant: DateVariant) : FormFieldKind<'Msg> =
-        FormFieldKind.DateRange(Binding.Filter(name, None), None, variant, Defaults.dateFieldConstraints)
+        FormFieldKind.DateRange(Some(Binding.Filter(name, None)), None, variant, None, None, None)
 
 // ─── Column helpers (§4c lines 523–529) ───────────────────────────────────
 
@@ -638,7 +657,8 @@ module Column =
     let erase (col: Column<'row, 'Msg>) : ColumnErased<'Msg> =
         { Label = col.Label
           // Phase 425 — the typed closure is the override (`Some`); a field-named erased column
-          // (`Field = Some …`, `Value = None`) is produced on the decoded path.
+          // (`Field = Some …`, `Value = None`) is produced on the decoded path. The slot's
+          // return is the typed `CellValue` (host-prelude DU, stage 4b) — only the row erases.
           Value = Some(fun (o: obj) -> col.Value(unbox<'row> o))
           Field = None
           Format = col.Format
@@ -647,15 +667,24 @@ module Column =
             | CellKind.Text -> CellKindErased.Text
             | CellKind.Numeric -> CellKindErased.Numeric
             | CellKind.Date -> CellKindErased.Date
-            | CellKind.Editable f -> CellKindErased.Editable(fun (o, v) -> f (unbox<'row> o, v))
+            | CellKind.Editable f ->
+                // The generated `onEdit` is optional; its `CellValue` argument
+                // stays typed (host-prelude DU) — only the row erases.
+                CellKindErased.Editable(Some(fun (o, v) -> f (unbox<'row> o, v)))
             | CellKind.Checkbox(get, onToggle) ->
                 CellKindErased.Checkbox(
                     (fun (o: obj) -> get (unbox<'row> o)),
-                    (fun (o, b) -> onToggle (unbox<'row> o, b))
+                    Some(fun (o, b) -> onToggle (unbox<'row> o, b))
                 )
-            | CellKind.Button(label, onClick) -> CellKindErased.Button(label, (fun (o: obj) -> onClick (unbox<'row> o)))
+            | CellKind.Button(label, onClick) ->
+                CellKindErased.Button(label, Some(fun (o: obj) -> onClick (unbox<'row> o)))
             | CellKind.ButtonGroup btns ->
-                CellKindErased.ButtonGroup(btns |> List.map (fun (l, f) -> l, (fun (o: obj) -> f (unbox<'row> o))))
+                CellKindErased.ButtonGroup(
+                    btns
+                    |> List.map (fun (l, f) ->
+                        { Label = l
+                          OnClick = Some(fun (o: obj) -> f (unbox<'row> o)) })
+                )
             | CellKind.Link(href, label) ->
                 CellKindErased.Link((fun (o: obj) -> href (unbox<'row> o)), (fun (o: obj) -> label (unbox<'row> o)))
             | CellKind.Pill(label, tone) ->
@@ -731,10 +760,13 @@ module Column =
 
 module Fuaran =
     let private buildNode (id: string) (kind: NodeKind<'Msg>) (accessibility: Accessibility option) : Node<'Msg> =
-        { Id = NodeId id
+        // `State = None` / `Style = None` since the swap — the canonical
+        // empty-state / default-style envelope (the encoder omits both, exactly
+        // as it omitted the old always-present empty/default records).
+        { Id = id
           Kind = kind
-          State = Defaults.stateBehaviour<'Msg>
-          Style = Defaults.style
+          State = Option.None
+          Style = Option.None
           Accessibility = accessibility
           Motion = Defaults.Motion.none
           ExtraAttributes = Option.None }
@@ -761,11 +793,7 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                { Layout =
-                    BoxLayout.Flex
-                        { Direction = spec.Orientation
-                          Wrap = spec.Wrap
-                          Gap = Option.None }
+                { Layout = BoxLayout.Flex(spec.Orientation, spec.Wrap, Option.None)
                   Role = BoxRole.Group
                   Heading = Option.None
                   Children = spec.Children }
@@ -776,11 +804,7 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                { Layout =
-                    BoxLayout.Grid
-                        { Cols = spec.Cols
-                          TemplateColumns = spec.TemplateColumns
-                          Gap = Option.None }
+                { Layout = BoxLayout.Grid(spec.Cols, spec.TemplateColumns, Option.None)
                   Role = BoxRole.Group
                   Heading = Option.None
                   Children = spec.Children }
@@ -801,11 +825,7 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                { Layout =
-                    BoxLayout.Grid
-                        { Cols = spec.Cols
-                          TemplateColumns = Some templateColumns
-                          Gap = Option.None }
+                { Layout = BoxLayout.Grid(spec.Cols, Some templateColumns, Option.None)
                   Role = BoxRole.Group
                   Heading = Option.None
                   Children = spec.Children }
@@ -835,11 +855,7 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                { Layout =
-                    BoxLayout.Flex
-                        { Direction = Vertical
-                          Wrap = false
-                          Gap = Option.None }
+                { Layout = BoxLayout.Flex(Orientation.Vertical, false, Option.None)
                   Role = BoxRole.Card
                   Heading = spec.Heading
                   Children = spec.Children }
@@ -931,7 +947,7 @@ module Fuaran =
             id
             (NodeKind.Link(
                 { Defaults.link with
-                    Href = Binding.Static href
+                    Href = Binding.Static(Some href)
                     Label = TextSource.Literal label }
             ))
             Defaults.Accessibility.none
@@ -949,7 +965,7 @@ module Fuaran =
             id
             (NodeKind.Image(
                 { Defaults.image with
-                    Src = Binding.Static src
+                    Src = Binding.Static(Some src)
                     Alt = TextSource.Literal alt }
             ))
             Defaults.Accessibility.none
@@ -981,11 +997,7 @@ module Fuaran =
         buildNode
             id
             (NodeKind.Box(
-                { Layout =
-                    BoxLayout.Flex
-                        { Direction = Horizontal
-                          Wrap = false
-                          Gap = Option.None }
+                { Layout = BoxLayout.Flex(Orientation.Horizontal, false, Option.None)
                   Role = BoxRole.Separator
                   Heading = Option.None
                   Children = [] }
@@ -1097,7 +1109,7 @@ module Fuaran =
                 { Defaults.select with
                     Label = label
                     Source = source
-                    Multiple = true
+                    Multiple = Some true
                     Values = Some values
                     OnChangeMulti = Some onChange }
             ))
@@ -1107,7 +1119,9 @@ module Fuaran =
         buildNode id (NodeKind.Form(spec)) Defaults.Accessibility.form
 
     let filters (id: string) (specs: FilterSpec<'Msg> list) : Node<'Msg> =
-        buildNode id (NodeKind.Filters(specs)) Defaults.Accessibility.none
+        // The generated case carries a `FiltersSpec` record — the public
+        // list-taking signature is unchanged; the list is wrapped here.
+        buildNode id (NodeKind.Filters({ Items = specs })) Defaults.Accessibility.none
 
     let fileUpload (id: string) (spec: FileUploadSpec<'Msg>) : Node<'Msg> =
         buildNode id (NodeKind.FileUpload(spec)) Defaults.Accessibility.fileUpload
@@ -1122,14 +1136,20 @@ module Fuaran =
     /// markup from the `TextSource` cells. `OnRowClick` on the retired `TableSpec`
     /// was host-only and is not carried (the mode is non-interactive).
     let table (id: string) (spec: TableSpec<'Msg>) : Node<'Msg> =
+        // `StaticRows` cells are `TextSource` (stage 4b closed the transient
+        // string-narrowing at the IDL seam) — `Bound` / `I18n` cells ride
+        // through unchanged, exactly as the retired hand shape carried them.
         let staticGrid: GridSpec<'Msg> =
-            { Source = Binding.Static Seq.empty
+            { Source = Binding.Static None
               RowKey = None
               RowKeyField = None
               Columns = []
               OnRowClick = None
               Editable = false
-              StaticRows = Some(spec.Headers, spec.Rows) }
+              StaticRows =
+                Some
+                    { Headers = spec.Headers
+                      Rows = spec.Rows } }
 
         buildNode id (NodeKind.DataGrid(staticGrid)) Defaults.Accessibility.table
 
@@ -1145,13 +1165,13 @@ module Fuaran =
         let erased: GridSpec<'Msg> =
             { Source =
                 match spec.Source with
-                | Binding.Static rows -> Binding.Static(rows |> Seq.cast<obj>)
+                | Binding.Static rows -> Binding.Static(rows |> Option.map Seq.cast<obj>)
                 | Binding.Query(name, acc, dependsOn) ->
                     Binding.Query(name, (fun o -> acc o |> Seq.cast<obj>), dependsOn)
                 | Binding.Filter(name, _) -> Binding.Filter(name, None)
                 | Binding.Selection(nodeId, acc, dv, fld) ->
-                    Binding.Selection(nodeId, (fun o -> acc o |> Seq.cast<obj>), dv |> Option.map (Seq.cast<obj>), fld)
-                | Binding.State(key, dv) -> Binding.State(key, dv |> Seq.cast<obj>)
+                    Binding.Selection(nodeId, (fun o -> acc o |> Seq.cast<obj>), dv |> Option.map Seq.cast<obj>, fld)
+                | Binding.State(key, dv) -> Binding.State(key, dv |> Option.map Seq.cast<obj>)
                 | Binding.Computed f -> Binding.Computed(fun ctx -> f ctx |> Seq.cast<obj>)
                 // `Binding.I18n` is semantically for `Binding<string>`
                 // bindings, but the DU is parameterised on 'T so the typechecker
@@ -1165,7 +1185,7 @@ module Fuaran =
                 // seq>` Source at the type level; resolution falls through to the
                 // InitialFrom binding, surfacing the mis-use as the underlying
                 // source rather than swallowing it silently.
-                | Binding.Local _ -> Binding.Static Seq.empty
+                | Binding.Local _ -> Binding.Static None
                 // `Binding.Format` is semantically for `Binding<string>`
                 // (the formatter returns a string). The DU is parameterised on
                 // 'T so it type-checks on a grid's `Binding<'row seq>` Source;
@@ -1214,9 +1234,22 @@ module Fuaran =
         (contentHash: ContentHash option)
         (exposedNodeIds: NodeId list)
         : Node<'Msg> =
+        // The generated case carries a `CustomSpec` record; the public
+        // signature is unchanged. `ExposedNodeIds` is `string list option`
+        // since the swap — `[]` maps to `None` (the wire-omitted shape) and
+        // the `NodeId` wrappers unwrap at this boundary.
         buildNode
             id
-            (NodeKind.Custom(moduleId, componentId, props, contentHash, exposedNodeIds))
+            (NodeKind.Custom(
+                { ModuleId = moduleId
+                  ComponentId = componentId
+                  Props = props
+                  ContentHash = contentHash
+                  ExposedNodeIds =
+                    match exposedNodeIds with
+                    | [] -> Option.None
+                    | ids -> Some(ids |> List.map (fun (NodeId s) -> s)) }
+            ))
             Defaults.Accessibility.none
 
     // ─── ErrorBoundary — render-time graceful-degradation ───────────────
@@ -1266,12 +1299,9 @@ module Fuaran =
         buildNode id (NodeKind.FragmentDecl spec) Defaults.Accessibility.none
 
     let fragmentRef (id: string) (name: string) : Node<'Msg> =
-        buildNode
-            id
-            (NodeKind.FragmentRef
-                { Name = FragmentId name
-                  Args = Map.empty })
-            Defaults.Accessibility.none
+        // `Name` is a bare string on the generated spec; `Args = None` is the
+        // name-only degenerate ref (≡ the old empty map, omitted on the wire).
+        buildNode id (NodeKind.FragmentRef { Name = name; Args = Option.None }) Defaults.Accessibility.none
 
     // ─── Mount — isolation/embedding boundary (Phase 265, §4o) ──────────
     //

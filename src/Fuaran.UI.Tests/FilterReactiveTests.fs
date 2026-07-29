@@ -22,6 +22,7 @@ module Fuaran.UI.Tests.FilterReactive
 // ============================================================================
 
 open Expecto
+open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
@@ -74,23 +75,22 @@ let tests =
           }
 
           test "filterKeysOfBinding recurses through I18n `{arg}` sub-bindings" {
-              let args = Map.ofList [ "n", (binding.filter "count": Binding<obj>) ]
+              let args = Map.ofList [ "n", (binding.filter "count": Binding<JVal>) ]
               let b: Binding<string> = Binding.I18n("items.count", Some args)
               Expect.equal (Render.filterKeysOfBinding b) [ "count" ] "an I18n arg filter is collected"
           }
 
           test "filterKeysOfBinding recurses through a Local binding's InitialFrom" {
-              let local: LocalBinding<string> =
-                  { InitialFrom = binding.filter "draft"
-                    FlushOn = LocalFlushTrigger.OnBlur
-                    OnCommit = (fun s -> nn s)
-                    Format = None
-                    Parse = Ok }
+              let local: Binding<string> =
+                  Binding.Local(
+                      LocalFlushTrigger.OnBlur,
+                      (fun v -> string (box v)),
+                      binding.filter "draft",
+                      Some(fun s -> nn s),
+                      Ok
+                  )
 
-              Expect.equal
-                  (Render.filterKeysOfBinding (Binding.Local local))
-                  [ "draft" ]
-                  "Local reads its re-sync source"
+              Expect.equal (Render.filterKeysOfBinding local) [ "draft" ] "Local reads its re-sync source"
           }
 
           // ── collectFilterKeys (the tree walk) ─────────────────────────────
@@ -101,7 +101,7 @@ let tests =
                       "m0"
                       { Defaults.metric with
                           Label = TextSource.Literal "X"
-                          Value = Binding.Static 0.0 }
+                          Value = Binding.Static(Some 0.0) }
 
               Expect.isEmpty (Render.collectFilterKeys (stack "s0" [ staticMetric ]) |> Set.toList) "no Filter readers"
           }

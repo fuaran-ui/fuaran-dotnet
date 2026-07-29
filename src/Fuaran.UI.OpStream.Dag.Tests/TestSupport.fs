@@ -105,17 +105,17 @@ let replaySpine
 module private DagTestOpJson =
     let private toneStr (t: ToneVariant) =
         match t with
-        | Brand -> "Brand"
-        | Success -> "Success"
-        | Critical -> "Critical"
+        | ToneVariant.Brand -> "Brand"
+        | ToneVariant.Success -> "Success"
+        | ToneVariant.Critical -> "Critical"
         | _ -> "Default"
 
     let private toneOf (s: string) =
         match s with
-        | "Brand" -> Brand
-        | "Success" -> Success
-        | "Critical" -> Critical
-        | _ -> Default
+        | "Brand" -> ToneVariant.Brand
+        | "Success" -> ToneVariant.Success
+        | "Critical" -> ToneVariant.Critical
+        | _ -> ToneVariant.Default
 
     let encode (op: TreeOp<TestMsg>) : string =
         match op with

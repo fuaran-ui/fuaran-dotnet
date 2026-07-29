@@ -136,8 +136,8 @@ let tests =
                   match tree.Kind with
                   | NodeKind.Box(spec) ->
                       spec.Children
-                      |> List.tryFind (fun c -> c.Id = id)
-                      |> Option.map (fun n -> n.Style.Tone)
+                      |> List.tryFind (fun c -> NodeId c.Id = id)
+                      |> Option.map (fun n -> (n.Style |> Option.defaultValue Defaults.style).Tone)
                   | _ -> None
 
               Expect.equal (toneOf leftChildId) (Some ToneVariant.Brand) "agent X's edit retained"

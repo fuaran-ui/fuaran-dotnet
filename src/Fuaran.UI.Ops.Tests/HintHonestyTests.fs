@@ -102,7 +102,7 @@ let private routeFor (root: Node<obj>) (node: Node<obj>) (field: string) : Resul
     let bindingSlots = Introspect.availableBindingSlots node.Kind
     let nestedPaths = Introspect.availableNestedPaths node.Kind
 
-    let op = TreeOp.UpdateProp(node.Id, field, PropValue.Native(nn "probe"))
+    let op = TreeOp.UpdateProp(NodeId node.Id, field, PropValue.Native(nn "probe"))
 
     match Apply.apply op root with
     | Ok _ -> Ok "UpdateProp"
@@ -166,7 +166,8 @@ let hintHonestyTests =
                   |> List.collect (fun (kindName, node, root) ->
                       Introspect.availableBindingSlots node.Kind
                       |> List.choose (fun slot ->
-                          let op = TreeOp.ReplaceBinding(node.Id, slot, Binding.Static(nn "probe"))
+                          let op =
+                              TreeOp.ReplaceBinding(NodeId node.Id, slot, Binding.Static(Some(nn "probe")))
 
                           match Apply.apply op root with
                           | Ok _ -> None

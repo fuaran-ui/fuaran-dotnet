@@ -82,25 +82,24 @@ let mergedOf (baseT: Node<TestMsg>) (a: Node<TestMsg>) (b: Node<TestMsg>) : Node
 /// `Brand`-toned pane per dashboard". Each offending child is a defect on its
 /// `style.tone` cell. A host MUST port this exact invariant to reproduce the
 /// verdict.
-let private rawId (NodeId s) : string = s
-
 let gatedValidator: MergeValidator<TestMsg> =
     fun tree ->
         match tree.Kind with
         | NodeKind.Box(spec) ->
             let brandKids =
-                spec.Children |> List.filter (fun c -> c.Style.Tone = ToneVariant.Brand)
+                spec.Children
+                |> List.filter (fun c -> (c.Style |> Option.defaultValue Defaults.style).Tone = ToneVariant.Brand)
 
             if List.length brandKids > 1 then
                 brandKids
                 |> List.map (fun c ->
                     { Code = "TESTBRAND001"
-                      NodeId = rawId c.Id
+                      NodeId = c.Id
                       Facet = "style.tone"
                       Message =
                         sprintf
                             "Pane '%s' shares Brand tone with a sibling — at most one Brand pane per dashboard."
-                            (rawId c.Id) })
+                            c.Id })
             else
                 []
         | _ -> []

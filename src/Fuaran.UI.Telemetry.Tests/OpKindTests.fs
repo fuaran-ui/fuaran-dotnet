@@ -28,7 +28,7 @@ let private metric =
         "k"
         { Defaults.metric with
             Label = TextSource.Literal "x"
-            Value = Binding.Static 1.0 }
+            Value = Binding.Static(Some 1.0) }
 
 let private leafChild = metric
 
@@ -40,7 +40,7 @@ let tests =
               let cases: (TreeOp<Msg> * OpKind) list =
                   [ TreeOp.EditNode(NodeId "k", metric.Kind), OpKind.EditNode
                     TreeOp.UpdateProp(NodeId "k", "Label", PropValue.Native(nn "y")), OpKind.UpdateProp
-                    TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(nn 2.0)), OpKind.ReplaceBinding
+                    TreeOp.ReplaceBinding(NodeId "k", "Source", Binding.Static(Some(nn 2.0))), OpKind.ReplaceBinding
                     TreeOp.UpdateStyle(NodeId "k", Defaults.style), OpKind.UpdateStyle
                     TreeOp.UpdateState(NodeId "k", Defaults.stateBehaviour<Msg>), OpKind.UpdateState
                     TreeOp.InsertChild(NodeId "p", leafChild), OpKind.InsertChild
