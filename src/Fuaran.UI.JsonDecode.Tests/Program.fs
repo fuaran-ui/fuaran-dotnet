@@ -13,7 +13,10 @@ let main argv =
         0
     // Phase 101 cross-host fuzz-sample exchange. `--emit-fuzz-samples <dir>
     // <count>` writes F#-canonical generated samples; `--check-fuzz-samples
-    // <dir>` validates the TS-canonical samples the cross-host runner wrote.
+    // <dir> [host]` validates the <host>-canonical samples that host's emitter
+    // wrote to <dir>/<host>/. `host` defaults to `typescript` (the Phase 101
+    // leg the cross-host runner drives); `python` is the Phase 236 exchange.
     | "--emit-fuzz-samples" :: dir :: countStr :: _ -> FuzzSamples.emit dir (int countStr)
-    | "--check-fuzz-samples" :: dir :: _ -> FuzzSamples.check dir
+    | "--check-fuzz-samples" :: dir :: host :: _ -> FuzzSamples.check dir host
+    | "--check-fuzz-samples" :: dir :: _ -> FuzzSamples.check dir "typescript"
     | _ -> runTestsInAssemblyWithCLIArgs [] argv

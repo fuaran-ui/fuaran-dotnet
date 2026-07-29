@@ -248,4 +248,98 @@ let tests =
                       | NodeKind.DataGrid(spec) ->
                           Expect.equal spec.Columns[0].Width (ColumnWidth.Fixed 120) "Width applied from wire"
                       | other -> failtestf "Expected DataGrid, got %A" other
+          }
+
+          // ─── The lenient value-coercion sugar, on the UpdateProp leg ───────
+          //
+          //  Every test above sends the VERBOSE `$type` form. These pin the
+          //  SHORTHAND, because the coercion posture is a cross-host contract
+          //  and it was previously believed to diverge (the claim: F#/TS demand
+          //  the envelope while Python accepts raw primitives as sugar).
+          //
+          //  It does not diverge, and the spec settles which way: WIRE_FORMAT
+          //  §16 is NORMATIVE and says a conformant decoder **MUST** accept the
+          //  shorthands and **MUST NOT** invent private ones — so the posture is
+          //  accept-everywhere, and a reject-everywhere host would be the
+          //  non-conformant one. For a `TextSource` the bare string is not even
+          //  shorthand: since the 0.2.0 direction-flip it IS canonical, and the
+          //  `{"$type":"Literal"}` envelope is the lenient side of the pair.
+          //
+          //  `Coerce.*` reaches this for free — each helper is `viaJson` over
+          //  the SAME per-type decoder a fresh decode uses, so the UpdateProp
+          //  leg inherits §16 rather than re-implementing it. That is exactly
+          //  what makes it worth pinning: the sugar here is a consequence of a
+          //  shared code path, so a future refactor that gave UpdateProp its own
+          //  narrower coercer would regress it silently and only the corpus
+          //  fixture `ops/op-updateprop.json` would notice.
+
+          test "§16 sugar: UpdateProp { path=\"Label\", value=<bare string> } coerces to TextSource.Literal" {
+              // The corpus fixture `ops/op-updateprop.json` verbatim.
+              let wire =
+                  """{"$type":"UpdateProp","path":"Label","target":"revenue","value":"Updated revenue"}"""
+
+              match JsonDecode.decodeOp wire with
+              | Error e -> failtestf "decodeOp failed: %A" e
+              | Ok op ->
+                  match Apply.apply op revenueMetric with
+                  | Error err -> failtestf "Apply.apply failed: %A" err
+                  | Ok updated ->
+                      match (metricOf updated).Label with
+                      | TextSource.Literal "Updated revenue" -> ()
+                      | other -> failtestf "Expected Literal 'Updated revenue', got %A" other
+          }
+
+          test "§16 sugar: UpdateProp { path=\"Subtext\", value=<bare string> } coerces into the OPTION slot" {
+              // `viaJsonOpt` — the optional flavour must admit the shorthand on
+              // the same terms, or the sugar would depend on slot optionality.
+              let wire =
+                  """{"$type":"UpdateProp","target":"revenue","path":"Subtext","value":"vs last quarter"}"""
+
+              match JsonDecode.decodeOp wire with
+              | Error e -> failtestf "decodeOp failed: %A" e
+              | Ok op ->
+                  match Apply.apply op revenueMetric with
+                  | Error err -> failtestf "Apply.apply failed: %A" err
+                  | Ok updated ->
+                      match (metricOf updated).Subtext with
+                      | Some(TextSource.Literal "vs last quarter") -> ()
+                      | other -> failtestf "Expected Some (Literal 'vs last quarter'), got %A" other
+          }
+
+          test "§3.6 sugar: UpdateProp { path=\"Value\", value=<bare number> } coerces to Binding.Static" {
+              // The bare-SCALAR shape coercion (§3.6, 2026-07-17 second wave) on
+              // a `Binding<float>` slot — `bindingGeneric`'s JNumber arm.
+              let wire =
+                  """{"$type":"UpdateProp","target":"revenue","path":"Value","value":42000.0}"""
+
+              match JsonDecode.decodeOp wire with
+              | Error e -> failtestf "decodeOp failed: %A" e
+              | Ok op ->
+                  match Apply.apply op revenueMetric with
+                  | Error err -> failtestf "Apply.apply failed: %A" err
+                  | Ok updated ->
+                      match (metricOf updated).Value with
+                      | Binding.Static(Some 42000.0) -> ()
+                      | other -> failtestf "Expected Static (Some 42000.0), got %A" other
+          }
+
+          test "§3.6 sugar refusal: a Binding slot still REJECTS a bare object without $type" {
+              // The negative half — the profile is a closed list, and an object
+              // without a discriminator is "more plausibly a mistyped binding
+              // than a Static value" (WIRE_FORMAT §3.6, Refused). Without this
+              // the three tests above would also pass under a decoder that had
+              // simply gone permissive, which is the failure §16's MUST-NOT
+              // extend clause guards against.
+              let wire =
+                  """{"$type":"UpdateProp","target":"revenue","path":"Value","value":{"amount":42000.0}}"""
+
+              match JsonDecode.decodeOp wire with
+              | Error _ -> () // rejected at decode — equally conformant
+              | Ok op ->
+                  match Apply.apply op revenueMetric with
+                  | Error _ -> () // rejected at apply — the Coerce leg refused it
+                  | Ok updated ->
+                      failtestf
+                          "Expected a bare object in a Binding slot to be refused, got %A"
+                          (metricOf updated).Value
           } ]

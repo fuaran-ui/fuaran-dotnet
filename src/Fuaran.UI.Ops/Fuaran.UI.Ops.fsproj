@@ -51,10 +51,16 @@
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
     <!-- The TreeOp / ErrorPayload / ApplyHint type contract moved to
-         Fuaran.UI.Ops.Abstractions (Fable-portable) so Fable consumers can
-         reference the types without the non-Fable-portable apply engine +
-         JSON decoder here. The `Fuaran.UI.Ops.Types` module name is preserved,
-         so every consumer's `open Fuaran.UI.Ops.Types` is unchanged. -->
+         Fuaran.UI.Ops.Abstractions so Fable consumers can reference the types
+         without pulling in the apply engine + JSON decoder here. That split is
+         a LAYERING boundary, not a portability one: this package has been
+         Fable-portable since Phase 191
+         (`docs/migrations/191-fable-portable-ops.md`), so a Fable consumer MAY
+         reference it whole when it genuinely needs decode + apply — it simply
+         need not, and the decode/apply seam belongs at the host rather than in
+         every consumer's graph. The `Fuaran.UI.Ops.Types` module name is
+         preserved, so every consumer's `open Fuaran.UI.Ops.Types` is
+         unchanged. -->
     <ProjectReference Include="..\Fuaran.UI.Ops.Abstractions\Fuaran.UI.Ops.Abstractions.fsproj" />
   </ItemGroup>
   <ItemGroup>

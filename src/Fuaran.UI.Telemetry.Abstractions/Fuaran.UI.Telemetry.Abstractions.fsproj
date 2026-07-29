@@ -35,11 +35,15 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
-    <!-- References only the portable TreeOp type contract (Ops.Abstractions),
-         NOT the full Fuaran.UI.Ops package — the apply engine + JSON decoder
-         there use .NET-only reflection patterns and are not Fable-portable, and
-         the Fable client renderer references this telemetry contract, so pulling
-         full Ops broke the renderer's `dotnet fable` graph. -->
+    <!-- References only the TreeOp type contract (Ops.Abstractions), NOT the
+         full Fuaran.UI.Ops package. The Fable client renderer references this
+         telemetry contract, so referencing full Ops here would put the apply
+         engine + JSON decoder in the renderer's `dotnet fable` graph — which is
+         a LAYERING objection, not a portability one: Fuaran.UI.Ops has been
+         Fable-portable since Phase 191
+         (`docs/migrations/191-fable-portable-ops.md`).
+         The type contract is all a telemetry sink needs; decode + apply belong
+         at the host seam. -->
     <ProjectReference Include="..\Fuaran.UI.Ops.Abstractions\Fuaran.UI.Ops.Abstractions.fsproj" />
   </ItemGroup>
   <ItemGroup>

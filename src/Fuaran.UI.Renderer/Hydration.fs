@@ -16,9 +16,28 @@ module Fuaran.UI.Renderer.Hydration
 //     tree. The Elmish update loop then drives interactivity via `render` (React
 //     reuses the same root; subsequent renders are normal client updates).
 //   - decode-the-embedded-JSON: reading the server's embedded wire tree and
-//     decoding it in-browser needs a Fable-portable decoder — the F# `Ops`
-//     `JsonDecode` is not Fable-portable, so that path is a TS-tier capability
-//     (`@fuaran-ui/ops`). See `docs/SSR.md` "Isomorphic hydration".
+//     decoding it in-browser is a TS-tier capability (`@fuaran-ui/ops`'s
+//     `hydrateEmbedded`). See `docs/SSR.md` "Isomorphic hydration".
+//
+//     NOT because F# cannot: `Fuaran.UI.Ops` has been Fable-portable since
+//     Phase 191 (`docs/migrations/191-fable-portable-ops.md`), and the older
+//     wording here — "the F# `Ops` `JsonDecode` is not Fable-portable" — was
+//     retracted with it. The routing stands on three other grounds, which is
+//     why it is unchanged:
+//       1. LAYERING. This renderer's Fable graph deliberately carries only the
+//          `Ops.Abstractions` type contract, not the decode + apply engine
+//          (see `Render.fs`'s #nowarn "67" note). Decoding here would pull the
+//          engine back into every Fable renderer consumer's graph — reversing
+//          that decision for a path most consumers never take.
+//       2. MODEL-B DOES NOT NEED IT. The primary F# client path reconstructs
+//          the tree from the same authoring code the server ran, so there is no
+//          in-browser decode to perform.
+//       3. THE TS TIER ALREADY SHIPS IT, browser-verified end-to-end. A second
+//          F# implementation of the same seam would be a parity liability, not
+//          a capability gain.
+//     So a Fable host that genuinely wants F#-side decode MAY reference
+//     `Fuaran.UI.Ops` directly at its own seam; that is a host choice, not
+//     something this module should force on every renderer consumer.
 //
 //  Parity (Phase 142) makes hydration mismatch-free: the server (ViewEngine)
 //  and client (Feliz) renderers emit the same class + ARIA markup for the same

@@ -233,3 +233,134 @@ let wireTreeMarker =
               | Ok wire ->
                   Expect.equal (CanonicalJson.encodeNode (WireTree.reify wire)) sample "reify preserves the wire bytes"
               | Error e -> failtestf "decode failed: %A" e) ]
+
+// ── The non-first-row Selection fixture — INTENT guard ──────────────────────
+//
+//  `master-detail-preselected-second-row` exists to make a prune-vs-seed
+//  divergence OBSERVABLE, and every property that makes it observable is a
+//  value someone could "tidy" away without breaking a single round-trip: the
+//  round-trip suite above asserts the bytes are stable, never that the bytes
+//  still say anything interesting.
+//
+//  Concretely, the fixture is worthless — while staying perfectly green — if
+//  the default drifts back to the first row (masking returns: an unfiltered
+//  pipeline surfaces row 1 anyway, so a pruning host looks correct), or if the
+//  `note` column stops being per-row-distinct (the scalar leg then diverges
+//  only by row COUNT, and a count divergence reads as a fixture-shape
+//  difference rather than a wrong answer), or if the `filter -> project ->
+//  limit 1` pipeline loses a stage (that exact shape is what a first-row
+//  default hides).
+//
+//  So this pins the intent, not the encoding. It reads the committed fixture —
+//  not the F# fixture VALUES — so it is the same artefact every other host
+//  certifies against.
+//
+//  NOTE — scope. These are STRUCTURAL assertions. The behavioural expectations
+//  (`related-grid` yields 1 row; `detail-note` reads "Search index stale", not
+//  "Payment gateway timeout"; `detail-ticket` resolves rather than NotResolved)
+//  need a Transform EVALUATOR, which lives in `Fuaran.UI.Renderer.Core`
+//  (`BindingResolver.evalTransformFrame`) — a tier this codec-level test
+//  project deliberately does not reference. That evaluation leg belongs in a
+//  suite that already depends on Renderer.Core.
+[<Tests>]
+let nonFirstRowSelectionIntent =
+    let fixtureId = "master-detail-preselected-second-row"
+
+    let payload () =
+        match corpusEntries |> List.tryFind (fun e -> e.Id = fixtureId) with
+        | Some e -> Corpus.readPayload corpusRoot e.InputFile
+        | None -> failtestf "fixture '%s' is not in the corpus manifest (regenerate with --emit-corpus)" fixtureId
+
+    /// Every `defaultValue` string anywhere in the fixture, at any depth.
+    let rec defaultValues (el: System.Text.Json.JsonElement) : string list =
+        match el.ValueKind with
+        | System.Text.Json.JsonValueKind.Object ->
+            [ for p in el.EnumerateObject() do
+                  if
+                      p.Name = "defaultValue"
+                      && p.Value.ValueKind = System.Text.Json.JsonValueKind.String
+                  then
+                      yield! (p.Value.GetString() |> Option.ofObj |> Option.toList)
+
+                  yield! defaultValues p.Value ]
+        | System.Text.Json.JsonValueKind.Array ->
+            [ for item in el.EnumerateArray() -> defaultValues item ] |> List.concat
+        | _ -> []
+
+    /// Every pipeline step discriminator, in order, per pipeline found.
+    let rec pipelines (el: System.Text.Json.JsonElement) : string list list =
+        match el.ValueKind with
+        | System.Text.Json.JsonValueKind.Object ->
+            [ for p in el.EnumerateObject() do
+                  if p.Name = "pipeline" && p.Value.ValueKind = System.Text.Json.JsonValueKind.Array then
+                      let steps =
+                          [ for step in p.Value.EnumerateArray() do
+                                match step.TryGetProperty "$type" with
+                                | true, t -> yield! (t.GetString() |> Option.ofObj |> Option.toList)
+                                | _ -> () ]
+
+                      if not steps.IsEmpty then
+                          yield steps
+
+                  yield! pipelines p.Value ]
+        | System.Text.Json.JsonValueKind.Array -> [ for item in el.EnumerateArray() -> pipelines item ] |> List.concat
+        | _ -> []
+
+    testList
+        "Fuaran.UI.Ops.JsonDecode — non-first-row Selection fixture (intent)"
+        [ testCase "every Selection defaultValue names the SECOND row — not the first, not the last" (fun () ->
+              use doc = System.Text.Json.JsonDocument.Parse(payload ())
+              let defaults = defaultValues doc.RootElement
+
+              Expect.isNonEmpty defaults "the fixture must carry at least one Selection defaultValue"
+
+              // TCK-2042 is index 1 of 3. Pinning the exact value catches BOTH
+              // a drift to the first row (masking returns) and to the last.
+              Expect.all
+                  defaults
+                  (fun d -> d = "TCK-2042")
+                  (sprintf
+                      "a defaultValue drifted off the non-first row — prune-vs-seed stops being observable. Got: %A"
+                      defaults))
+
+          testCase "the `note` column is per-row-DISTINCT — so the scalar leg diverges by VALUE" (fun () ->
+              use doc = System.Text.Json.JsonDocument.Parse(payload ())
+
+              let noteValues =
+                  let rec find (el: System.Text.Json.JsonElement) =
+                      match el.ValueKind with
+                      | System.Text.Json.JsonValueKind.Object ->
+                          [ for p in el.EnumerateObject() do
+                                if p.Name = "note" then
+                                    match p.Value.TryGetProperty "values" with
+                                    | true, vs when vs.ValueKind = System.Text.Json.JsonValueKind.Array ->
+                                        yield [ for v in vs.EnumerateArray() -> v.GetString() ]
+                                    | _ -> ()
+
+                                yield! find p.Value ]
+                      | System.Text.Json.JsonValueKind.Array ->
+                          [ for i in el.EnumerateArray() -> find i ] |> List.concat
+                      | _ -> []
+
+                  find doc.RootElement
+
+              Expect.isNonEmpty noteValues "the fixture must carry a `note` column"
+
+              for values in noteValues do
+                  Expect.equal
+                      (List.length (List.distinct values))
+                      (List.length values)
+                      (sprintf
+                          "`note` must be per-row-distinct or a wrong row shows a RIGHT value — the masking this fixture exists to break. Got: %A"
+                          values))
+
+          testCase "the scalar leg keeps the `filter -> project -> limit` shape a first-row default hides" (fun () ->
+              use doc = System.Text.Json.JsonDocument.Parse(payload ())
+              let found = pipelines doc.RootElement
+
+              Expect.contains
+                  found
+                  [ "filter"; "project"; "limit" ]
+                  (sprintf
+                      "the masking-killer pipeline (filter -> project -> limit 1) is gone; remaining pipelines: %A"
+                      found)) ]

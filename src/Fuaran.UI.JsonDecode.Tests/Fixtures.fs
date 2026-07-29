@@ -1735,6 +1735,165 @@ let masterDetailPreselected: Node<obj> =
         ))
         None
 
+// The NON-FIRST-ROW twin of `masterDetailPreselected`, and a deliberate
+// near-clone of it: same composition, one different default. Every existing
+// Selection fixture defaults to the FIRST row, which makes prune-vs-seed
+// UNOBSERVABLE — a host that *prunes* an unbound-param filter (the "unset
+// choice filter ⇒ no constraint" rule, WIRE_FORMAT §"Binding.Transform params")
+// instead of *seeding* the param from `defaultValue` still shows row 1's data,
+// because row 1 is what an unfiltered pipeline surfaces first. Defaulting to
+// `TCK-2042` — index 1 of 3, neither first nor last, so a wrong-FIRST and a
+// wrong-LAST are both caught — makes the two behaviours diverge visibly.
+//
+// The third column is per-row-DISTINCT (`note`) so the scalar leg diverges by
+// VALUE, not merely by row count: a pruning host renders "Payment gateway
+// timeout" where a seeding host renders "Search index stale". A count-only
+// divergence can be mistaken for a fixture-shape difference; a wrong string
+// cannot.
+//
+// Four nodes, three of them observing the SAME default through different
+// machinery, so a host that gets one leg right and another wrong is caught:
+//   - `ticket-grid`   — the master and the Selection's `nodeId` target. The
+//                       control: unaffected by the default either way.
+//   - `detail-ticket` — the plain-Selection SCALAR leg, no Transform at all.
+//                       A pruning host has no filter to prune here, so this
+//                       isolates `defaultValue` resolution itself (NotResolved
+//                       when the default is ignored).
+//   - `related-grid`  — the ROW-CONTEXT leg: Selection feeding a Transform
+//                       param. 1 row when seeded, all 3 when pruned.
+//   - `detail-note`   — the MASKING-KILLER: the exact `filter -> project ->
+//                       limit 1` shape a first-row default hides, terminating
+//                       in a scalar Callout body. This is the leg that reports
+//                       a wrong VALUE rather than a wrong count.
+let masterDetailPreselectedSecondRow: Node<obj> =
+    let source =
+        Fuaran.Core.Embedded
+            { Schema =
+                [ "id", Fuaran.Core.StringType
+                  "priority", Fuaran.Core.StringType
+                  "note", Fuaran.Core.StringType ]
+              Columns =
+                [ Fuaran.Core.Column.create
+                      "id"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "TCK-2041"
+                        Fuaran.Core.Str "TCK-2042"
+                        Fuaran.Core.Str "TCK-2043" ]
+                  Fuaran.Core.Column.create
+                      "priority"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "high"; Fuaran.Core.Str "medium"; Fuaran.Core.Str "low" ]
+                  Fuaran.Core.Column.create
+                      "note"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "Payment gateway timeout"
+                        Fuaran.Core.Str "Search index stale"
+                        Fuaran.Core.Str "Avatar upload fails" ] ] }
+
+    let fieldCol (label: string) (field: string) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    /// The one `Transform.params` entry every non-control leg shares: the
+    /// ticket-grid's selection, defaulted to the SECOND row, projected through
+    /// `field` so the param stays scalar after a real click (Phase 632).
+    let ticketIdParam: TransformParam =
+        { From =
+            Binding.Selection("ticket-grid", Binding.projectSelectionField<JVal> "id", Some(JStr "TCK-2042"), Some "id")
+          Name = "ticketId" }
+
+    let filterById =
+        Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "id", Fuaran.Core.Param "ticketId"))
+
+    node
+        "master-detail-preselected-second-row"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = None
+              Children =
+                [ node
+                      "ticket-grid"
+                      (NodeKind.DataGrid(
+                          { Source = Binding.Transform(source, [], None)
+                            RowKey = None
+                            RowKeyField = Some "id"
+                            Columns =
+                              [ fieldCol "Ticket" "id"
+                                fieldCol "Priority" "priority"
+                                fieldCol "Note" "note" ]
+                            OnRowClick = None
+                            Editable = false
+                            StaticRows = None }
+                      ))
+                      None
+                  node
+                      "ticket-detail"
+                      (NodeKind.Box(
+                          { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+                            Role = BoxRole.Card
+                            Heading = Some(TextSource.Literal "Ticket detail")
+                            Children =
+                              [ node
+                                    "detail-ticket"
+                                    (NodeKind.Fact(
+                                        { Label = TextSource.Literal "Selected ticket"
+                                          Value =
+                                            TextSource.Bound(
+                                                Binding.Selection(
+                                                    "ticket-grid",
+                                                    Binding.projectSelectionField<string> "id",
+                                                    Some "TCK-2042",
+                                                    Some "id"
+                                                )
+                                            )
+                                          Icon = None
+                                          Tone = ToneVariant.Default
+                                          Emphasis = true
+                                          Help = None }
+                                    ))
+                                    None ] }
+                      ))
+                      None
+                  node
+                      "related-grid"
+                      (NodeKind.DataGrid(
+                          { Source = Binding.Transform(source, [ filterById ], Some [ ticketIdParam ])
+                            RowKey = None
+                            RowKeyField = Some "id"
+                            Columns =
+                              [ fieldCol "Ticket" "id"
+                                fieldCol "Priority" "priority"
+                                fieldCol "Note" "note" ]
+                            OnRowClick = None
+                            Editable = false
+                            StaticRows = None }
+                      ))
+                      None
+                  node
+                      "detail-note"
+                      (NodeKind.Callout(
+                          { Tone = ToneVariant.Info
+                            Heading = Some(TextSource.Literal "Ticket note")
+                            Body =
+                              TextSource.Bound(
+                                  Binding.Transform(
+                                      source,
+                                      [ filterById; Fuaran.Core.Project [ "note", "note" ]; Fuaran.Core.Limit(1, 0) ],
+                                      Some [ ticketIdParam ]
+                                  )
+                              )
+                            Icon = None
+                            Dismissable = false }
+                      ))
+                      None ] }
+        ))
+        None
+
 // The SCALAR-TRANSFORM composition (0.2.10, Phase 632): Transform in SCALAR
 // slots — the strongest 2026-07-20 demand cluster, emitted unprompted by the
 // tier-a-040 sol r42 cell and scored 1.000 by the judge while the language
@@ -2565,6 +2724,8 @@ let allNodes: (string * Node<obj>) list =
       filterableStaticDashboard
       "Layout/Box (master-detail — grid + detail card State-bound with a pre-selected defaultValue)",
       masterDetailPreselected
+      "Layout/Box (master-detail — Selection defaultValue naming a NON-FIRST row: prune-vs-seed is observable)",
+      masterDetailPreselectedSecondRow
       "Layout/Box (Phase 632 — Transform in scalar slots: selected-row Callout body + Badge count)",
       scalarTransformComposition
       "Display/Metric (Phase 283 — Binding.Invoke capability source)", metricInvoke

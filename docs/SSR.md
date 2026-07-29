@@ -364,15 +364,18 @@ hydration-mismatch warning. The runnable worked example is
 > `samples/hydration/` worked example are browser-verified (Vite + Fable 5 +
 > Claude Preview): the page is fully visible pre-JS, React hydrates with **zero
 > hydration-mismatch warnings**, and the Details-tab click switches the panel via
-> the hydrated root. (Getting here required unblocking the renderer's Fable graph:
-> it had transitively pulled the non-Fable-portable `Fuaran.UI.Ops` via
-> `Telemetry.Abstractions → Ops`; fixed by splitting the portable `TreeOp` type
-> contract into `Fuaran.UI.Ops.Abstractions`.)
+> the hydrated root. (Getting here required trimming the renderer's Fable graph:
+> it had transitively pulled the whole of `Fuaran.UI.Ops` via
+> `Telemetry.Abstractions → Ops`; fixed by splitting the `TreeOp` type contract
+> into `Fuaran.UI.Ops.Abstractions`, so the graph carries the contract rather
+> than the apply engine.)
 >
 > **The in-browser-decode path is TS-tier – and shipped.** Decoding the
 > *embedded JSON* in the browser (rather than reconstructing the tree in F#)
-> needs a Fable-portable decoder; the full F# `Ops` `JsonDecode` is not
-> Fable-portable, so this path lives in the (browser-native) TS tier:
+> needs a decoder in the browser. `Fuaran.UI.Ops` has been Fable-portable since
+> Phase 191 (`docs/migrations/191-fable-portable-ops.md`), so this is a
+> **layering** choice rather than a portability constraint — the path lives in
+> the (browser-native) TS tier:
 > **`@fuaran-ui/renderer`'s `hydrateEmbedded`** reads the server-emitted
 > `<script type="application/json">` (id `fuaran-hydrate-<rootId>`, the shared
 > contract with the F# `Renderer.Server` `scriptId`), **decodes it via
