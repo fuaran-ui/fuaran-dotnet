@@ -1409,6 +1409,13 @@ module Binding =
     /// coerces the projected cell to `'T` via invariant `Convert.ChangeType`
     /// when the boxed representation differs (an `int` cell read into a
     /// `Binding<float>` slot, a numeric field shown in a text slot).
+    ///
+    /// The Fable leg's `isNull raw` is an obj-erasure null test the F# 10
+    /// nullness checker rejects on a bare `obj` (FS3261) — and it sits inside
+    /// `#if FABLE_COMPILER`, so no .NET build ever reaches it. Scoped to this
+    /// module, per the `Fuaran.fs` obj-erasure precedents.
+    #nowarn "3261"
+
     let projectSelectionField<'T> (field: string) : obj -> 'T =
         fun (raw: obj) ->
 #if FABLE_COMPILER
