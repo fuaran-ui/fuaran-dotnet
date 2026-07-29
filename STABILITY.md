@@ -503,6 +503,87 @@ concrete `IFuaranTelemetrySink` object expression through `renderWithSourcesAndS
 It was never a documented constraint of this package and is not one now. The
 authoritative hosting story is `docs/RENDER-ENTRIES.md`.
 
+## Recorded change — 0.10.0, DAG checkpoint verification + the op-stream decode leg
+
+**Minor.** Four changes across `Fuaran.UI.OpStream.*`, two of which read as major at a glance. The
+axis is argued against the policy text below rather than assumed, because the argument is the
+useful part.
+
+**The canonical wire did not move.** `StreamEntry.encode` is untouched and `chainFormatVersion`
+stays `2`, so every record `Hash` is byte-identical; the `DagOpRecord` pre-image is untouched; no
+`wire-format-fixtures/` fixture changed, and the corpus-backed JsonDecode conformance suite is
+green. None of the [Wire format](#wire-format) major events applies.
+
+### 1. `Fuaran.UI.OpStream.Abstractions` gains three functions — additive
+
+`StreamEntry.decode` (the inverse of the pinned provenance envelope, previously an explicit
+`Error "…"` placeholder, so the `StreamWitness` contract was only two-thirds satisfied),
+`StreamEntry.ofCoreRecord`, and `coreWitnessWith <decodeOp>` (the full witness, alongside the
+existing verify-path `coreWitness`, whose `Decode` now refuses by name and points at the decoding
+one). No existing signature or wire shape changes. **Minor** by the Semver rule — *backward-compatible
+feature addition; existing consumer code keeps compiling*. This is the change that makes the release
+a minor rather than the patch a behavioural tightening alone would take.
+
+The decoder is a **top-level field scanner**, not a flat search, and that is load-bearing: the
+envelope's `op` is arbitrary canonical JSON that legitimately contains its own `ts` / `result` /
+`promptId` keys, so a whole-string search would read an envelope field out of the nested payload.
+The format version is **checked**, not merely readable — an unknown `v`, and the tagless pre-406 v1
+form, are refused by name.
+
+### 2. `DagReplayError` gains `SnapshotHashMismatch` — a new DU case, still minor
+
+A new case in a matched DU, so any consumer with an exhaustive `match` gets `FS0025`, which **is** a
+build break under `TreatWarningsAsErrors`. It is nonetheless **minor**, and the policy says so twice:
+the [Semver](#semver) section — *"DU exhaustiveness warnings (F#'s `FS0025`) are not considered
+breaking… existing consumers compile with a warning that they don't handle the new case, which is
+the correct signal"* — and the worked-examples table's *"Add a new `NodeKind` DU case | **Minor**"*.
+The [0.7.0 entry](#recorded-change--070-formfieldkinddaterange) settled this exact shape, naming the
+`TreatWarningsAsErrors` break explicitly and classifying it minor anyway. Consumers matching
+`DagReplayError` exhaustively add the arm.
+
+### 3. `replayFromCheckpoint` verifies `SnapshotHash` — a behavioural tightening
+
+**This was the security defect.** `DagReplay.replayFromCheckpoint` trusted `checkpoint.Snapshot`
+outright and **never looked at `SnapshotHash` at all**, so materialising a checkpoint was silently
+unchecked — replay folded the tail over whatever tree it was handed. And `SnapshotHash` itself bound
+only the tree, not the position (the A2 hole the linear chain closed at Phase 412), so a genuine
+snapshot from one node validated unchanged when presented as the checkpoint for a *different* one.
+
+Both halves are closed, mirroring `HashChain.snapshotHash` with the DAG's content-addressed node
+standing in for `(previousChainHead, sequence)`: a new `DagCheckpoint` module (`snapshotHash`,
+position-bound; `create`, so the binding cannot be forgotten at a record literal;
+`verifySnapshotHash`), and `replayFromCheckpoint` verifying **before** folding.
+
+**A tightening of the 0.3.3 class** — input that was accepted is now refused, and that refusal is the
+guarantee working rather than a regression. Same footing as the `Sanitize` policy note above, which
+puts *"rejecting … previously accepted"* on the minor axis. No durable-data migration cost: no sink
+persists a `DagCheckpoint`, so nothing on disk carries the old formula.
+
+`DagCheckpoint` is an addition to the stable `Fuaran.UI.OpStream.Dag.Abstractions` surface;
+`DagVerify` / `GuestFork` additionally gain Fable availability (the `#if !FABLE_COMPILER` fences are
+gone, so a browser host can verify a DAG), and `DagVerify.records` is rewritten over `Map`, which
+makes "the first violation" deterministic across hosts where the `Dictionary` it replaced iterated in
+insertion order.
+
+### 4. `GuestExport.FormatVersion` 1 → 2, v1 documents refused — below the semver line
+
+The bundle **document** envelope moved (`GuestExport` JSONL is now `Core.OpStream.toJsonl` /
+`fromJsonl` over the witness; the hand-rolled `OpRecordWire` envelope re-specified a format Core
+already owned, with a *different* field vocabulary from the chain pre-image the same records hash
+under, and is deleted). A v1 document is refused by name, which is what that field is for.
+
+Refusing previously-accepted documents would ordinarily be the strongest case for a major bump here.
+It is not, because `GuestExport` lives in **`Fuaran.UI.OpStream.Replay`**, which
+[Unstable surfaces](#unstable-surfaces) declares an implementation detail — *"the contract is the
+Abstractions package"* — explicitly *"not covered by semver"* and changeable *"in any patch release
+without notice"*. So the document-format bump carries no semver promise and cannot drive the axis up.
+It is recorded here anyway because a consumer holding v1 guest bundles must re-export them, and
+"no promise" is not the same as "no consequence".
+
+**Consumer impact:** repin; add the `DagReplayError` arm if you match it exhaustively; re-export any
+v1 guest bundle. A consumer that uses neither the DAG packages nor `GuestExport` sees an additive
+release only.
+
 ## How this policy interacts with phase authoring
 
 Per the workspace roadmap conventions, every phase that proposes a change to a stable surface (per the table above) must flag it explicitly in its phase body:

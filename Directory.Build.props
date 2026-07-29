@@ -45,7 +45,24 @@
          (`renderWithSourcesInScopeAndSink`), and the host-pluggable `GuestSeam`
          that puts a rendered `Mount` guest behind the host's capability policy.
          See STABILITY.md "Recorded change - 0.9.0". -->
-    <Version>0.9.0</Version>
+    <!-- 0.10.0 — the op-stream slice: DAG checkpoint verification + the
+         `OpStream.Abstractions` decode leg. MINOR, and the axis is worth
+         stating because two of the four changes look major at a glance.
+         (1) `DagReplayError` gains `SnapshotHashMismatch` — a new DU case, so a
+         source break under `TreatWarningsAsErrors`, which STABILITY.md's Semver
+         section classifies as NON-breaking and 0.7.0 already settled on exactly
+         this shape. (2) `GuestExport.FormatVersion` 1 -> 2 refuses v1 documents
+         by name, but `Fuaran.UI.OpStream.Replay` is an explicitly UNSTABLE
+         surface, so it carries no semver promise and cannot drive the axis up.
+         (3) `replayFromCheckpoint` now VERIFIES `SnapshotHash` where it
+         previously never read it — a behavioural tightening of the 0.3.3 class.
+         (4) Additive `OpStream.Abstractions` surface (`StreamEntry.decode`,
+         `coreWitnessWith`) — the feature addition that makes this a minor rather
+         than the patch a tightening alone would take. The canonical wire did NOT
+         move: `chainFormatVersion` stays 2, the `DagOpRecord` pre-image is
+         untouched, no fixture changed. See STABILITY.md "Recorded change -
+         0.10.0". -->
+    <Version>0.10.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
