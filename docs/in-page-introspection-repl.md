@@ -41,7 +41,7 @@ Every method returns a plain JS object (never throws, never a silent no-op); err
 | `__fuaran.getBindingValue(id, slot)` | The resolved value of one binding slot against the live sources (see below), or `{ error }` if the slot is not a binding slot on that kind. |
 | `__fuaran.getRenderedDom(id)` | `{ x, y, width, height, overflowing, hidden }` – live DOM geometry read from the node's `[data-fuaran-node-id]` element, or `{ error }`. |
 | `__fuaran.inspectTree()` | A recursive `{ id, kind, bindings, childIds, children }` snapshot of the whole tree. The fastest way to list every queryable node id. |
-| `__fuaran.findNodes(kind)` | The ids of every node whose wire kind discriminator equals `kind` (e.g. `"Metric"`, `"Button"`, `"GridLayout"`). |
+| `__fuaran.findNodes(kind)` | The ids of every node whose kind tag equals `kind` (e.g. `"Metric"`, `"Button"`, `"GridLayout"`). Note `"Grid"`, not `"DataGrid"`, for the data grid — see the `kind` note below. |
 | `__fuaran.apply(op)` | Policy-gated `TreeOp` mutation (see below). Accepts a JSON **string** or a structured **object**. |
 | `__fuaran.canApply` | Whether this host wired a real apply path (Phase 739). |
 | `__fuaran.treeRevision()` | An opaque token identifying the current tree state — compare for equality, never parse (Phase 739). |
@@ -50,7 +50,7 @@ Every method returns a plain JS object (never throws, never a silent no-op); err
 
 ### Payload shapes
 
-- **`kind`** is the canonical **wire discriminator** – `"Stack"`, `"Metric"`, `"Button"`, `"GridLayout"` (the layout grid), `"Grid"` (the data grid), `"Custom"`, `"ErrorBoundary"`, `"FragmentDecl"`, `"FragmentRef"`. It matches `getNodeState(...).kind`, `findNodes(kind)`, and the JSON wire-format `kind` tag.
+- **`kind`** is the **kind tag** (`Kind.name`, the vocabulary `HoleDecl.Slot` kind-constraints are matched against) – `"Stack"`, `"Metric"`, `"Button"`, `"GridLayout"` (the layout grid), `"Grid"` (the data grid), `"Custom"`, `"ErrorBoundary"`, `"FragmentDecl"`, `"FragmentRef"`. It matches `getNodeState(...).kind` and `findNodes(kind)`. It coincides with the JSON wire-format `kind.$type` for every kind **except the data grid**, which is `"Grid"` here and `"DataGrid"` on the wire — so a token copied out of a wire tree is directly usable in `findNodes` for every kind but that one. See [Host parity](#host-parity) for why the divergence is adapted at the relay boundary rather than resolved.
 - **`bindings`** lists each bound binding slot as `{ slot, expression, source }`, where `expression` is the canonical wire form (`$static`, `$queries.<name>`, `$state.<key>`, `$filters.<name>`, `$selection.<nodeId>`, `$computed`, `$i18n.<key>`, `$local`, `$format`) and `source` is the `Binding` case (`Static` / `Query` / `Filter` / `Selection` / `State` / `Computed` / `I18n`). Optional slots (Metric `Trend`, Tabs `ActiveTag`, Button/Select/Form/FileUpload `Disabled`) appear only when present.
 - **`getBindingValue`** returns one of:
   - `{ status: "resolved", value, expression, source }` – the slot resolved to a live value.

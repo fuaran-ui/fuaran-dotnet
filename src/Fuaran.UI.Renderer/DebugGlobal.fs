@@ -24,8 +24,11 @@ module Fuaran.UI.Renderer.DebugGlobal
 //  `Fuaran.UI.AiTools` (the canonical §4i introspection tier) is .NET-targeted
 //  — its `ResponseRender` boundary is `System.Text.Json`-based, and it depends
 //  on `Fuaran.UI.Ops`, which is deliberately kept OUT of the renderer's Fable
-//  graph (see the `#nowarn "67"` note at the top of `Render.fs`). Referencing
-//  it here would re-introduce the non-Fable-portable Ops surface. So — exactly
+//  graph (see the `#nowarn "67"` note at the top of `Render.fs`). That exclusion
+//  is a LAYERING choice, not a portability one — `Fuaran.UI.Ops` has been
+//  Fable-portable since Phase 191 (`docs/migrations/191-fable-portable-ops.md`);
+//  what referencing it here would re-introduce is the decode + apply engine in
+//  the renderer's graph, which belongs at the host seam. So — exactly
 //  as the TS half re-implements `kindName` / `extractBindingSlots` /
 //  `bindingForSlot` / `childNodes` inside `@fuaran-ui/ai-tools` rather than
 //  importing a shared module — this module replicates the small wire-shape
@@ -80,14 +83,25 @@ let compiledInDebug =
 /// both pipelines, so the .NET test runner pins the gating contract directly.
 let shouldRegister (debug: bool) : bool = debug && compiledInDebug
 
-// ─── Wire kind discriminator ─────────────────────────────────────────────────
+// ─── Console kind tag (NOT the wire discriminator) ───────────────────────────
 //
-// Delegates to the base package's `Kind.name` — the single canonical kind-tag
+// Delegates to the base package's `Kind.name` — the single kind-constraint
 // vocabulary (also what `Ops.Introspect.kindName` re-exports and what
 // `HoleDecl.Slot` kind-constraints are matched against). This console surface
 // previously carried its own hand-rolled mirror of the match; a drifted copy
 // would have mislabelled the debug output relative to the enforcement
 // vocabulary, so the copy is gone.
+//
+// **The console and the relay disagree for exactly one kind, by design.**
+// `Kind.name` is not the wire discriminator: `NodeKind.DataGrid` tags as `"Grid"`
+// here and as `"DataGrid"` in `kind.$type`. So in a DevTools session
+// `__fuaran.getNodeState(id).kind` reports `"Grid"` and `__fuaran.findNodes` must
+// be given `"Grid"`, while a relay client's `read.nodeState.kind` reports
+// `"DataGrid"` and `read.findNodes` must be given `"DataGrid"` — the relay adapts
+// at its boundary (`Relay.wireKindName`, sanctioned by the relay contract §1.4)
+// rather than move a vocabulary that is not the relay's to move. Every other kind
+// is identical across the two. Stated here because the place a developer meets
+// this is a console session, not `docs/in-page-introspection-repl.md`.
 
 let kindName (kind: NodeKind<'Msg>) : string = Kind.name kind
 

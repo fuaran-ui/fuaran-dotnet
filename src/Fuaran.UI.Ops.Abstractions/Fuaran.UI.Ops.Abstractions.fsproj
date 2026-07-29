@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.Ops.Abstractions</PackageId>
-    <Description>Fuaran tree-op apply engine — the pure type contract (the TreeOp DU + ErrorPayload + ApplyHint, §4g). FSharp.Core-only and Fable-portable: the shared types every op-stream / telemetry / renderer consumer needs WITHOUT pulling the apply engine + JSON decoder (which use .NET-only reflection patterns and don't Fable-compile). Apache-2.0 licensed.</Description>
+    <Description>Fuaran tree-op apply engine — the pure type contract (the TreeOp DU + ErrorPayload + ApplyHint, §4g). FSharp.Core-only and Fable-portable: the shared types every op-stream / telemetry / renderer consumer needs WITHOUT pulling in the apply engine + JSON decoder (which are themselves Fable-portable, but belong at the host seam rather than in every consumer's graph). Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

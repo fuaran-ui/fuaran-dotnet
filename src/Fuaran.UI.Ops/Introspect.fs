@@ -38,9 +38,20 @@ open Fuaran.UI.Types
 // dependency on this Ops package. This is a thin re-export preserving the
 // historical `Introspect.kindName` name + behaviour byte-for-byte (e.g.
 // `NodeKind.DataGrid → "Grid"`); callers already on `Introspect.kindName` need no
-// change. The wire discriminator carries the kind name directly
-// (`"kind":{"$type":"Heading",…}`), so this surface and the wire vocabulary stay
-// identical.
+// change.
+//
+// THIS IS THE DISPLAY / KIND-CONSTRAINT TAG, NOT THE WIRE DISCRIMINATOR — and the
+// example two lines up is the whole of the difference. The wire carries the kind
+// name directly (`"kind":{"$type":"Heading",…}`) and the two vocabularies coincide
+// for every kind BUT ONE: `NodeKind.DataGrid` is `"DataGrid"` on the wire (and so
+// in `SchemaGen`, the published JSON Schema, and every conformant host) while this
+// surface says `"Grid"`.
+//
+// So do NOT key a wire- or schema-facing lookup off `kindName`: it resolves for 38
+// kinds and misses on `DataGrid` alone, silently. Key it off the encoded node's
+// `kind.$type` — or off `Fuaran.UI.Renderer.Relay.wireKindName`, the adapted
+// projection the relay boundary already ships for exactly this reason. See
+// `Kind.name` in `Fuaran.UI.Types` for the vocabulary's own contract.
 
 let kindName (kind: NodeKind<'Msg>) : string = Kind.name kind
 

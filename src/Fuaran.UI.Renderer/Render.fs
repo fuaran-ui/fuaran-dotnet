@@ -7,7 +7,13 @@ module Fuaran.UI.Renderer.Render
 // redundant *under Fable* but required *under .NET*. Silence the redundant-cast
 // warning so the dual-pipeline code compiles cleanly on both (the .NET build
 // keeps the cast; Fable elides it). Surfaced once the renderer's Fable graph
-// stopped pulling the non-Fable-portable Fuaran.UI.Ops (Ops.Abstractions split).
+// stopped pulling Fuaran.UI.Ops (the Ops.Abstractions split). That split was a
+// LAYERING decision — the renderer's graph carries the type contract, not the
+// decode + apply engine, which belongs at the host seam — and NOT a portability
+// one: Fuaran.UI.Ops has been Fable-portable since Phase 191
+// (`docs/migrations/191-fable-portable-ops.md`). The decision stands; the reason
+// is stated precisely here because the older wording was cited as evidence for a
+// Fable blocker that does not exist.
 #nowarn "67"
 
 // ============================================================================

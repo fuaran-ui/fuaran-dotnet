@@ -1453,15 +1453,28 @@ type NodeCategory =
 /// (alongside `NodeKind`) so every tier can name a kind without a downstream
 /// dependency: `Fuaran.UI.Ops.Introspect.kindName` delegates here, the renderer's
 /// fragment applier enforces `HoleDecl.Slot` kind-constraints with it, and the AI
-/// tool surface reads it. The tag vocabulary is a wire contract — `HoleDecl.Slot`'s
+/// tool surface reads it. The tag vocabulary is a contract — `HoleDecl.Slot`'s
 /// `kindConstraint` string is matched against exactly these names, so a new
 /// `NodeKind` case adds its arm here in the same change that adds the case.
+///
+/// **It is the KIND-CONSTRAINT vocabulary, not the wire discriminator** — a
+/// separate vocabulary that coincides with `kind.$type` for 38 of the 39 kinds and
+/// deliberately diverges for the 39th (`DataGrid` → `"Grid"`, where the wire says
+/// `"DataGrid"`). The coincidence is convenient, not definitional: nothing here is
+/// derived from the encoder, and a caller that needs the wire token must read the
+/// encoded `kind.$type` (or `Fuaran.UI.Renderer.Relay.wireKindName`, which adapts
+/// at the relay boundary per the relay contract §1.4) rather than this. Moving
+/// `"Grid"` to match the wire would be a BREAKING change to every published
+/// `kindConstraint`, which is why the divergence is adapted at the boundary rather
+/// than resolved here; `Fuaran.UI.Tests/RelayTests.fs` pins the mapping against the
+/// canonical encoder, so a SECOND divergence fails the build.
 /// RequireQualifiedAccess: `Kind` is a very generic module name whose bare
 /// `name` would otherwise leak into scope on `open Fuaran.UI.Types`.
 [<RequireQualifiedAccess>]
 module Kind =
     /// The canonical kind-tag string of a node's kind. Total over `NodeKind`;
-    /// `DataGrid` intentionally tags as `"Grid"` (its wire name).
+    /// `DataGrid` intentionally tags as `"Grid"`, which is NOT its wire name
+    /// (`kind.$type` is `"DataGrid"`) — see the module note above.
     let name (kind: NodeKind<'Msg>) : string =
         match kind with
         | NodeKind.Box _ -> "Box"
