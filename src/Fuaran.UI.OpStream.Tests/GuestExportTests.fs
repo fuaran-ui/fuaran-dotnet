@@ -88,7 +88,7 @@ let opRecordWireTests =
               let record = buildRecords "guest-a" |> List.item 1
               let encoded = OpRecordWire.encodeRecord record
 
-              match OpRecordWire.decodeRecord GuestExport.decodeOpString encoded with
+              match OpRecordWire.decodeRecord record.StreamId GuestExport.decodeOpString encoded with
               | Error e -> failtestf "decode failed: %s" e
               | Ok decoded ->
                   Expect.equal
@@ -107,7 +107,7 @@ let opRecordWireTests =
 
               Expect.equal (jsonl.Split('\n').Length) records.Length "one line per record"
 
-              match OpRecordWire.ofJsonl GuestExport.decodeOpString jsonl with
+              match OpRecordWire.ofJsonl (GuestStream.streamId "guest-a") GuestExport.decodeOpString jsonl with
               | Error e -> failtestf "JSONL decode failed: %s" e
               | Ok decoded ->
                   Expect.equal
@@ -134,11 +134,27 @@ let bundleTests =
 
           test "an unsupported formatVersion is refused" {
               let doc =
-                  (GuestExport.encode (sourceBundle ())).Replace("\"formatVersion\":1", "\"formatVersion\":99")
+                  (GuestExport.encode (sourceBundle ()))
+                      .Replace(sprintf "\"formatVersion\":%d" GuestExport.FormatVersion, "\"formatVersion\":99")
 
               match GuestExport.decode doc with
               | Error e -> Expect.stringContains e "unsupported formatVersion" "the guard names the problem"
               | Ok _ -> failtest "formatVersion 99 must be refused"
+          }
+
+          test "a v1 bundle (the pre-Core-JSONL envelope) is refused by name" {
+              // The Phase-409 tail moved the bundle's `ops` elements onto
+              // `Core.OpStream`'s canonical record objects, so v1 documents are no
+              // longer readable. That is what `formatVersion` is for — the failure
+              // must name the version, not surface as a field-missing parse error
+              // from the middle of the ops array.
+              let doc =
+                  (GuestExport.encode (sourceBundle ()))
+                      .Replace(sprintf "\"formatVersion\":%d" GuestExport.FormatVersion, "\"formatVersion\":1")
+
+              match GuestExport.decode doc with
+              | Error e -> Expect.stringContains e "unsupported formatVersion 1" "the refusal names the old version"
+              | Ok _ -> failtest "a v1 bundle must be refused"
           }
 
           test "export reads the whole guest stream out of a sink" {

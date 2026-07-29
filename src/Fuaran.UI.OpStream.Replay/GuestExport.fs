@@ -15,11 +15,12 @@ open Fuaran.UI.OpStream.Abstractions
 //  lineage, and all three are exportable under the no-lock-in principle. This
 //  module makes an isolated guest a SELF-DESCRIBING, PORTABLE unit:
 //
-//    * `OpRecordWire`  — the canonical wire form of the LINEAR `OpRecord`
-//      (the DAG sibling is `DagWire`; this mirrors its envelope discipline:
-//      Ordinal-sorted keys, no whitespace, the nested op is
-//      `CanonicalJson.encodeOp` verbatim, the actor is `Actor.encode`
-//      verbatim). One record per line is the bundle's op-stream JSONL.
+//    * `OpRecordWire`  — the bundle's op-stream lines. Since the Phase-409 tail
+//      this is `Fuaran.Core.OpStream`'s canonical JSONL over the `StreamEntry`
+//      witness, not a hand-rolled envelope: the nested `op` IS the pinned chain
+//      pre-image, so the export format and the hashed format are one thing
+//      rather than two that must be kept aligned by hand. (The DAG sibling
+//      `DagWire` is still sovereign — its record shape is not Core's.)
 //    * `GuestExportBundle` — { scope id, initial tree (canonical wire JSON),
 //      the guest's `guest-<scopeId>` op-stream, } with the full per-op
 //      lineage (prompt ids, actor attribution, timestamps, hash chain)
@@ -43,80 +44,46 @@ open Fuaran.UI.OpStream.Abstractions
 //  sentinels on the wire and decode to no-ops, so there is nothing to rebase.
 // ============================================================================
 
-/// Canonical wire form of the linear `OpRecord` (the Phase 274 bundle's
-/// op-stream lines). Mirrors `DagWire`'s envelope discipline for the DAG
-/// record: Ordinal-sorted keys, `promptId` omitted when `None`, the nested
-/// `op` / `actor` reuse their canonical encoders verbatim.
+/// The bundle's op-stream lines. Since the Phase-409 tail this is **not a
+/// hand-rolled codec**: it is `Fuaran.Core.OpStream`'s canonical JSONL over the
+/// `StreamEntry` witness — `{"seq":…,"actor":…,"op":<StreamEntry envelope>,
+/// "prevHash":…,"hash":…}` — the same format Core gives every domain, with the
+/// same `op` raw-span round-trip guarantee.
+///
+/// This module survives as the bundle-document scanner plus a thin per-record
+/// façade over Core. The previous hand-written envelope (Ordinal-sorted keys,
+/// `sequence` / `streamId` / `timestamp` / `resultEnvelope` at the top level)
+/// re-specified, in this one file, a format Core already owns — and it did so
+/// with a *different* field vocabulary from the chain pre-image the very same
+/// records hash under, which is the kind of divergence that only ever costs.
+///
+/// Two consequences, both deliberate:
+///
+///  * **`StreamId` becomes a sidecar.** Core's record has no stream id, because
+///    the domain's `StreamId` is the sink's partition key and is outside the
+///    chain pre-image (see `OpRecord`'s hash-coverage note). The bundle already
+///    carries `ScopeId`, and every record in a guest bundle has
+///    `StreamId = GuestStream.streamId ScopeId` by construction — so the sidecar
+///    was always redundant with the bundle envelope, and reading it back from
+///    `ScopeId` is exact rather than lossy.
+///  * **The bundle `FormatVersion` moves to 2.** A version-1 document is refused
+///    by name (`GuestExport.decode` already gates on it), which is what the field
+///    is for. No chain hash moves — the records' `Hash` values are byte-identical
+///    on both sides; only the export envelope around them changed.
 [<RequireQualifiedAccess>]
 module OpRecordWire =
 
-    let private escapeInto (sb: StringBuilder) (s: string) : unit =
-        sb.Append '"' |> ignore
+    /// The Core witness for the ENCODE direction. Encoding never decodes, so the
+    /// refusing `coreWitness` is the honest one to hand it.
+    let private encodeWitness<'Msg> () = StreamEntry.coreWitness<'Msg> ()
 
-        for ch in s do
-            match ch with
-            | '"' -> sb.Append "\\\"" |> ignore
-            | '\\' -> sb.Append "\\\\" |> ignore
-            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
-            | c -> sb.Append c |> ignore
-
-        sb.Append '"' |> ignore
-
-    let private encodeEnvelope (sb: StringBuilder) (envelope: OpResultEnvelope) : unit =
-        match envelope with
-        | OpResultEnvelope.Success -> sb.Append "{\"$type\":\"Success\"}" |> ignore
-        | OpResultEnvelope.Failure(code, message) ->
-            sb.Append "{\"$type\":\"Failure\",\"code\":" |> ignore
-            escapeInto sb code
-            sb.Append ",\"message\":" |> ignore
-            escapeInto sb message
-            sb.Append '}' |> ignore
-
-    /// Encode one linear `OpRecord` to its canonical JSON wire form. Keys in
-    /// Ordinal order: actor < hash < op < previousHash < promptId <
-    /// resultEnvelope < sequence < streamId < timestamp. `promptId` is
-    /// omitted when `None`; `op` nests `CanonicalJson.encodeOp` and `actor`
-    /// nests `Actor.encode` verbatim (the same bytes the hash chain folds).
+    /// Encode one linear `OpRecord` to its canonical Core JSONL object — one
+    /// bundle line. `op` nests the pinned `StreamEntry.encode` envelope (the
+    /// exact bytes the chain hash folds) and `actor` Core's `Actor.encode`.
     let encodeRecord<'Msg> (record: OpRecord<'Msg>) : string =
-        let sb = StringBuilder()
-        sb.Append '{' |> ignore
+        Fuaran.Core.OpStream.toJsonl (encodeWitness<'Msg> ()) [ StreamEntry.toCoreRecord record ]
 
-        sb.Append "\"actor\":" |> ignore
-        sb.Append(Actor.encode record.Actor) |> ignore
-
-        sb.Append ",\"hash\":" |> ignore
-        escapeInto sb record.Hash
-
-        sb.Append ",\"op\":" |> ignore
-        sb.Append(CanonicalJson.encodeOp record.Op) |> ignore
-
-        sb.Append ",\"previousHash\":" |> ignore
-        escapeInto sb record.PreviousHash
-
-        match record.PromptId with
-        | Some p ->
-            sb.Append ",\"promptId\":" |> ignore
-            escapeInto sb p
-        | None -> ()
-
-        sb.Append ",\"resultEnvelope\":" |> ignore
-        encodeEnvelope sb record.ResultEnvelope
-
-        sb.Append ",\"sequence\":" |> ignore
-        sb.Append(record.Sequence.ToString(CultureInfo.InvariantCulture)) |> ignore
-
-        sb.Append ",\"streamId\":" |> ignore
-        escapeInto sb record.StreamId
-
-        sb.Append ",\"timestamp\":" |> ignore
-
-        sb.Append(record.Timestamp.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture))
-        |> ignore
-
-        sb.Append '}' |> ignore
-        sb.ToString()
-
-    // ── Decode — the DagWire scanner, over the linear envelope ────────────
+    // ── Decode — the bundle-document scanner ──────────────────────────────
 
     /// Scan one JSON value starting at `s[i]`; return the index just past it.
     let rec internal scanValue (s: string) (i: int) : int =
@@ -218,85 +185,37 @@ module OpRecordWire =
 
         fields
 
-    let private parseEnvelope (raw: string) : OpResultEnvelope =
-        if raw.Contains "\"Success\"" then
-            OpResultEnvelope.Success
-        else
-            let f = topLevelFields raw
-
-            let get k =
-                f |> Map.tryFind k |> Option.map unquote |> Option.defaultValue ""
-
-            OpResultEnvelope.Failure(get "code", get "message")
-
-    /// Decode one canonical linear-record envelope. `decodeOp` is the host's
-    /// op decoder for the nested `op` object (the `'Msg` shape is host-owned,
-    /// exactly as for the sinks' `IOpJsonCodec`).
-    let decodeRecord<'Msg>
-        (decodeOp: string -> Result<TreeOp<'Msg>, string>)
-        (json: string)
-        : Result<OpRecord<'Msg>, string> =
-        try
-            let f = topLevelFields json
-            let req k = Map.tryFind k f
-
-            match
-                req "actor", req "hash", req "op", req "previousHash", req "sequence", req "streamId", req "timestamp"
-            with
-            | Some actorRaw, Some hashRaw, Some opRaw, Some prevRaw, Some seqRaw, Some streamRaw, Some tsRaw ->
-                match decodeOp opRaw with
-                | Error e -> Error(sprintf "OpRecordWire.decodeRecord: op decode failed: %s" e)
-                | Ok op ->
-                    match Actor.tryDecode actorRaw with
-                    | None -> Error "OpRecordWire.decodeRecord: malformed actor payload"
-                    | Some actor ->
-                        let envelope =
-                            f
-                            |> Map.tryFind "resultEnvelope"
-                            |> Option.map parseEnvelope
-                            |> Option.defaultValue OpResultEnvelope.Success
-
-                        Ok
-                            { StreamId = unquote streamRaw
-                              Sequence = Int32.Parse(seqRaw, CultureInfo.InvariantCulture)
-                              PreviousHash = unquote prevRaw
-                              Hash = unquote hashRaw
-                              Op = op
-                              PromptId = f |> Map.tryFind "promptId" |> Option.map unquote
-                              Actor = actor
-                              Timestamp =
-                                DateTimeOffset.FromUnixTimeSeconds(Int64.Parse(tsRaw, CultureInfo.InvariantCulture))
-                              ResultEnvelope = envelope }
-            | _ ->
-                Error
-                    "OpRecordWire.decodeRecord: missing one of the required fields (actor/hash/op/previousHash/sequence/streamId/timestamp)"
-        with ex ->
-            Error(sprintf "OpRecordWire.decodeRecord: %s" ex.Message)
-
-    /// The op-stream as JSONL — one canonical record envelope per line, in
-    /// sequence order (the bundle's standalone op-stream artefact).
+    /// The op-stream as JSONL — `Core.OpStream.toJsonl` over the `StreamEntry`
+    /// witness, one canonical record per line in sequence order (the bundle's
+    /// standalone op-stream artefact).
     let toJsonl<'Msg> (records: OpRecord<'Msg> list) : string =
-        records |> List.map encodeRecord |> String.concat "\n"
+        Fuaran.Core.OpStream.toJsonl (encodeWitness<'Msg> ()) (records |> List.map StreamEntry.toCoreRecord)
 
-    /// Parse a JSONL op-stream back to records (blank lines skipped).
+    /// Parse a JSONL op-stream back to records — `Core.OpStream.fromJsonl` over
+    /// the `StreamEntry` witness, with `streamId` supplied as the sidecar Core's
+    /// record does not carry (see `StreamEntry.ofCoreRecord`). `decodeOp` is the
+    /// host's op decoder for the nested `op` payload (the `'Msg` shape is
+    /// host-owned, exactly as for the sinks' `IOpJsonCodec`).
     let ofJsonl<'Msg>
+        (streamId: string)
         (decodeOp: string -> Result<TreeOp<'Msg>, string>)
         (jsonl: string)
         : Result<OpRecord<'Msg> list, string> =
-        let lines =
-            jsonl.Split('\n')
-            |> Array.map (fun l -> l.Trim())
-            |> Array.filter (fun l -> l <> "")
+        Fuaran.Core.OpStream.fromJsonl (StreamEntry.coreWitnessWith decodeOp) jsonl
+        |> Result.map (List.map (StreamEntry.ofCoreRecord streamId))
 
-        (Ok [], lines)
-        ||> Array.fold (fun acc line ->
-            match acc with
-            | Error e -> Error e
-            | Ok records ->
-                match decodeRecord decodeOp line with
-                | Ok r -> Ok(r :: records)
-                | Error e -> Error e)
-        |> Result.map List.rev
+    /// Decode one canonical Core record line back to a domain `OpRecord`.
+    /// `streamId` is the sidecar; `decodeOp` the host's op decoder.
+    let decodeRecord<'Msg>
+        (streamId: string)
+        (decodeOp: string -> Result<TreeOp<'Msg>, string>)
+        (json: string)
+        : Result<OpRecord<'Msg>, string> =
+        match ofJsonl streamId decodeOp json with
+        | Error e -> Error e
+        | Ok [ r ] -> Ok r
+        | Ok other ->
+            Error(sprintf "OpRecordWire.decodeRecord: expected exactly one record, got %d" (List.length other))
 
 /// A guest scope as a self-describing portable unit (Phase 274): the scope id,
 /// the guest's initial tree (the state at mount, before its op-stream), and
@@ -311,8 +230,13 @@ type GuestExportBundle =
 [<RequireQualifiedAccess>]
 module GuestExport =
 
+    /// Bundle envelope version. **2** since the Phase-409 tail: the `ops`
+    /// elements are now `Core.OpStream`'s canonical record objects (see
+    /// `OpRecordWire`) rather than the hand-rolled linear envelope v1 carried.
+    /// `decode` refuses any other value by name — that gate is why the format
+    /// could be consolidated at all.
     [<Literal>]
-    let FormatVersion = 1
+    let FormatVersion = 2
 
     /// The obj-typed op decoder the bundle codec uses — the language tier's
     /// wire decoder with its structured error flattened to a string (the
@@ -425,7 +349,9 @@ module GuestExport =
                 Map.tryFind "formatVersion" f, Map.tryFind "initialTree" f, Map.tryFind "ops" f, Map.tryFind "scopeId" f
             with
             | Some versionRaw, Some treeRaw, Some opsRaw, Some scopeRaw ->
-                let version = Int32.Parse(versionRaw.Trim(), CultureInfo.InvariantCulture)
+                // `int (s: string)` is FSharp.Core's invariant-culture parse and is
+                // Fable-clean; the explicit provider overload is not.
+                let version = int (versionRaw.Trim())
 
                 if version <> FormatVersion then
                     Error(
@@ -435,8 +361,14 @@ module GuestExport =
                     match decodeNodeString treeRaw with
                     | Error e -> Error(sprintf "GuestExport.decode: initialTree decode failed: %s" e)
                     | Ok initialTree ->
+                        // The stream-id sidecar is recovered from the bundle's own
+                        // `scopeId` — every record in a guest bundle is keyed
+                        // `guest-<scopeId>` by construction, so this is exact.
+                        let streamId = GuestStream.streamId (OpRecordWire.unquote scopeRaw)
+
                         let recordResults =
-                            arrayElements opsRaw |> List.map (OpRecordWire.decodeRecord decodeOpString)
+                            arrayElements opsRaw
+                            |> List.map (OpRecordWire.decodeRecord streamId decodeOpString)
 
                         let firstError =
                             recordResults

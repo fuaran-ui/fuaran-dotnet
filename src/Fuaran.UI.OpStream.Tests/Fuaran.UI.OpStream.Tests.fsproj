@@ -8,6 +8,9 @@
   <ItemGroup>
     <Compile Include="TestSupport.fs" />
     <Compile Include="HashChainTests.fs" />
+    <!-- Phase 409 tail: StreamEntry.decode — the inverse of the pinned
+         provenance envelope, and the Core witness's decode leg. -->
+    <Compile Include="StreamEntryTests.fs" />
     <Compile Include="ReplayTests.fs" />
     <!-- Phase 274 (§4o): portable guest export — OpRecordWire codec, bundle
          document round-trip, export-from-sink, remap + replay-on-import. -->
