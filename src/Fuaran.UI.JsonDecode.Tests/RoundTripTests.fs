@@ -212,6 +212,69 @@ let kindSetPin =
                   extra
                   (sprintf "the F# decoder produced kinds the manifest omits (regenerate with --emit-corpus): %A" extra)) ]
 
+// ── WRONG_NODE_KIND hint pin (the model-facing half of the kind-set contract) ──
+// The kind-set attestation above pins what the decoder ACCEPTS. This pins what it
+// TELLS a model when it rejects: the `ExpectedShape` hint on a WRONG_NODE_KIND
+// error must enumerate the whole vocabulary. Both halves matter — a hint that has
+// silently fallen behind the kind set degrades every repair turn that reads it,
+// and no corpus fixture catches it (fixtures certify codes and paths, not prose).
+// The hint is projected from `JsonDecode.knownNodeKinds`, so this fails only if
+// that enumeration itself drifts from the manifest.
+[<Tests>]
+let wrongNodeKindHintPin =
+    testList
+        "Fuaran.UI.Ops.JsonDecode — WRONG_NODE_KIND hint"
+        [ testCase "knownNodeKinds equals the manifest kind enumeration" (fun () ->
+              let manifestKinds = Set.ofList (Corpus.loadKinds ())
+              let hostKinds = Set.ofList JsonDecode.knownNodeKinds
+
+              Expect.isEmpty
+                  (Set.difference manifestKinds hostKinds |> Set.toList)
+                  "manifest declares kinds JsonDecode.knownNodeKinds omits (the hint is projected from it, so the hint omits them too)"
+
+              Expect.isEmpty
+                  (Set.difference hostKinds manifestKinds |> Set.toList)
+                  "JsonDecode.knownNodeKinds names kinds the manifest does not declare")
+
+          testCase "the projected hint names every kind as its own token" (fun () ->
+              // Tokenise on non-letters so `List` is not satisfied by `SummaryList`
+              // (nor `Map` by `Markdown`). Only the forward direction is asserted
+              // here — the hint's prose ("Layout", "Display", …) is legitimately
+              // present and is not vocabulary; the reverse direction is covered by
+              // the set equality above, since the hint is a pure projection.
+              let tokens =
+                  JsonDecode.wrongNodeKindHint
+                  |> String.map (fun c -> if System.Char.IsLetter c then c else ' ')
+                  |> fun s -> s.Split(' ', System.StringSplitOptions.RemoveEmptyEntries)
+                  |> Set.ofArray
+
+              let missing = Corpus.loadKinds () |> List.filter (fun k -> not (tokens.Contains k))
+
+              Expect.isEmpty missing (sprintf "the WRONG_NODE_KIND hint does not name these kinds: %A" missing))
+
+          testCase "every hint-named kind is actually accepted by the decoder" (fun () ->
+              // The other direction: a kind advertised in the hint but absent from
+              // `decodeNodeKind` would send a model to a discriminator that rejects
+              // again. A hint-named kind must at minimum get PAST the kind dispatch
+              // (it will then fail on its own missing spec fields, not WRONG_NODE_KIND).
+              let stillWrongKind =
+                  JsonDecode.knownNodeKinds
+                  |> List.filter (fun k ->
+                      let json =
+                          sprintf
+                              """{"id":"x","kind":{"$type":"%s"},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+                              k
+
+                      match JsonDecode.decodeNodeObj json with
+                      | Ok _ -> false
+                      | Error e -> e.Code = "WRONG_NODE_KIND")
+
+              Expect.isEmpty
+                  stillWrongKind
+                  (sprintf
+                      "kinds named in the hint that the decoder still rejects as WRONG_NODE_KIND: %A"
+                      stillWrongKind)) ]
+
 // ── WireTree marker contract (the decoded-vs-authored closure barrier) ──────
 [<Tests>]
 let wireTreeMarker =

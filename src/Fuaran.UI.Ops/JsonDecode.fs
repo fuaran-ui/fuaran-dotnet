@@ -351,10 +351,10 @@ type DecodeErrorCode =
     | WRONG_TYPE
     /// `"$type"` discriminator value not recognised for the DU position.
     | UNKNOWN_DU_CASE
-    /// Top-level `"kind"` discriminator not a recognised node kind — i.e.
-    /// not one of the flat Layout / Display / Input / Visualisation
-    /// primitives (WIRE_FORMAT §3.2) nor `Custom` / `ErrorBoundary` /
-    /// `FragmentDecl` / `FragmentRef`.
+    /// Top-level `"kind"` discriminator not a recognised node kind — i.e. not
+    /// one of the flat Layout / Display / Input / Visualisation primitives nor
+    /// one of the structural kinds (WIRE_FORMAT §3.2). `knownNodeKinds` below
+    /// is the enumeration; this comment deliberately does not restate it.
     | WRONG_NODE_KIND
     /// `"id"` field present but empty — same defect
     /// `PreEmitValidate.EmptyNodeId` catches downstream after apply.
@@ -387,6 +387,104 @@ module DecodeError =
           Path = path
           Message = message
           ExpectedShape = expectedShape }
+
+// ─── The recognised NodeKind vocabulary (WIRE_FORMAT.md §3.2) ──────────────
+//
+// ONE enumeration, grouped by the four behavioural categories plus the
+// structural kinds. `decodeNodeKind` dispatches the four family decoders off
+// these lists, and `wrongNodeKindHint` is PROJECTED from them — so a kind the
+// decoder recognises can never be missing from the hint a repair path forwards
+// to the model, which is exactly the drift three hand-maintained hint strings
+// had accumulated across the hosts.
+//
+// Pinned against the generated `wire-format-fixtures` manifest `kinds`
+// enumeration by the JsonDecode test suite (beside the Phase 548 cross-host
+// kind-set attestation), so the §11 forward-coupling discipline is enforced by
+// a failing test rather than by a prose reminder.
+
+/// The flat Layout primitives.
+let layoutNodeKinds =
+    [ "Box"
+      "SplitPanel"
+      "Tabs"
+      "Stepper"
+      "SummaryList"
+      "Disclosure"
+      "Modal"
+      "ScrollArea" ]
+
+/// The flat Display primitives.
+let displayNodeKinds =
+    [ "Heading"
+      "Markdown"
+      "Metric"
+      "Badge"
+      "Sparkline"
+      "Callout"
+      "Progress"
+      "Skeleton"
+      "LabelValueRow"
+      "Fact"
+      "Link"
+      "Image"
+      "List"
+      "Toast"
+      "CodeBlock"
+      "Math"
+      "Drawing" ]
+
+/// The flat Input primitives.
+let inputNodeKinds = [ "Form"; "Filters"; "Button"; "FileUpload"; "Select" ]
+
+/// The flat Visualisation primitives.
+let visNodeKinds = [ "DataGrid"; "Chart"; "Map" ]
+
+/// The structural kinds — each carries its own decoder arm in `decodeNodeKind`
+/// rather than routing to a family decoder.
+let structuralNodeKinds =
+    [ "Custom"; "ErrorBoundary"; "Switch"; "FragmentDecl"; "FragmentRef"; "Mount" ]
+
+/// The vocabulary as labelled groups — the single enumeration `knownNodeKinds`
+/// flattens and `wrongNodeKindHint` is projected from. `Structural` is the one
+/// group the hint lists bare; every other group is a named primitive family.
+let nodeKindGroups =
+    [ "Layout", layoutNodeKinds
+      "Display", displayNodeKinds
+      "Input", inputNodeKinds
+      "Visualisation", visNodeKinds
+      "Structural", structuralNodeKinds ]
+
+/// Every recognised `kind.$type` discriminator, in wire-documentation order.
+/// A discriminator outside this set is `WRONG_NODE_KIND`.
+let knownNodeKinds = nodeKindGroups |> List.collect snd
+
+/// The `ExpectedShape` hint carried by every `WRONG_NODE_KIND` error, projected
+/// from the vocabulary above. Byte-identical to the sibling hosts' hint (the
+/// group order is the shared contract), so a model repairing against one host's
+/// error sees the same vocabulary it would from any other. Written as a fold
+/// over the groups rather than five hardcoded lookups, so a NEW primitive family
+/// also reaches the hint for free.
+let wrongNodeKindHint =
+    let primitives =
+        nodeKindGroups
+        |> List.filter (fun (label, _) -> label <> "Structural")
+        |> List.map (fun (label, kinds) ->
+            let article =
+                if List.contains label[0] [ 'A'; 'E'; 'I'; 'O'; 'U' ] then
+                    "an"
+                else
+                    "a"
+
+            sprintf "%s %s primitive (%s)" article label (String.concat " | " kinds))
+        |> String.concat ", "
+
+    let structural =
+        nodeKindGroups
+        |> List.tryFind (fun (label, _) -> label = "Structural")
+        |> Option.map snd
+        |> Option.defaultValue []
+
+    primitives + ", or " + String.concat " | " structural
 
 // ─── Internal helpers ─────────────────────────────────────────────────────
 
@@ -4443,18 +4541,20 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
         // The four behavioural categories are flat on the wire (WIRE_FORMAT
         // §3.2): the `kind` object carries the primitive discriminator
         // directly, so we route each primitive to its inner decoder and
-        // recover the category here. These name-sets MUST stay in sync with
-        // the four inner decoders, the encoder, and SchemaGen — the §11
-        // forward-coupling surface. An unrecognised discriminator falls
+        // recover the category here. The name-sets are the module-level
+        // `layoutNodeKinds` / `displayNodeKinds` / `inputNodeKinds` /
+        // `visNodeKinds` — the SAME lists `wrongNodeKindHint` is projected
+        // from, so dispatch and hint cannot drift apart. They MUST stay in
+        // sync with the four inner decoders, the encoder, and SchemaGen — the
+        // §11 forward-coupling surface. An unrecognised discriminator falls
         // through to WRONG_NODE_KIND below.
-        | Ok("Box" | "SplitPanel" | "Tabs" | "Stepper" | "SummaryList" | "Disclosure" | "Modal" | "ScrollArea") ->
+        | Ok s when List.contains s layoutNodeKinds ->
             // Phase 692 — the family decoders now build flat NodeKind cases
             // directly; the category wrappers they used to re-wrap into are gone.
             decodeLayoutKind path j
-        | Ok("Heading" | "Markdown" | "Metric" | "Badge" | "Link" | "Image" | "List" | "Toast" | "CodeBlock" | "Math" | "Drawing" | "Sparkline" | "Callout" | "Progress" | "Skeleton" | "LabelValueRow" | "Fact") ->
-            decodeDisplayKind path j
-        | Ok("Form" | "Filters" | "Button" | "FileUpload" | "Select") -> decodeInputKind path j
-        | Ok("DataGrid" | "Chart" | "Map") -> decodeVisKind path j
+        | Ok s when List.contains s displayNodeKinds -> decodeDisplayKind path j
+        | Ok s when List.contains s inputNodeKinds -> decodeInputKind path j
+        | Ok s when List.contains s visNodeKinds -> decodeVisKind path j
         | Ok "Custom" ->
             let moduleIdR =
                 requireField path fields "moduleId" "Custom moduleId string"
@@ -4818,8 +4918,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                 DecodeErrorCode.WRONG_NODE_KIND
                 (path + ".$type")
                 (sprintf "unknown NodeKind discriminator '%s'" s)
-                (Some
-                    "a Layout primitive (Box | SplitPanel | Tabs | Stepper | SummaryList | Disclosure | Modal | ScrollArea), a Display primitive (Heading | Markdown | Metric | Badge | Sparkline | Drawing | Callout | Progress | Skeleton | LabelValueRow), an Input primitive (Form | Filters | Button | FileUpload | Select), a Visualisation primitive (DataGrid | Chart | Map), or Custom | ErrorBoundary | FragmentDecl | FragmentRef | Mount")
+                (Some wrongNodeKindHint)
 
 and private decodeAccessibility (path: string) (j: Json) : Result<Accessibility, DecodeError> =
     match requireObject path j with
