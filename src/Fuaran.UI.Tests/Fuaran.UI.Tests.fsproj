@@ -104,6 +104,11 @@
          walk + the FilterStore ($filters twin of StateStore) — the .NET-testable
          half of the filter-channel live re-render. -->
     <Compile Include="FilterReactiveTests.fs" />
+    <!-- FormFieldWriteBackTests pins Render.pairFieldChange — the Range /
+         DateRange pair-field change dispatch: a handler-free change WRITES the
+         pair RECORD to the field's own State/Filter slot (the regressed Range
+         shape passed None, the write-back CLEAR, erasing the slot). -->
+    <Compile Include="FormFieldWriteBackTests.fs" />
     <!-- TransformParamTests pins Phase 424's parameterised Binding.Transform:
          param → env resolution, the unset-filter prune rule, and the derived
          Transform.paramsOf edge. -->

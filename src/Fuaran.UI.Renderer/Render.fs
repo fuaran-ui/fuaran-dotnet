@@ -587,6 +587,31 @@ let private writeBackTo (ctx: RenderContext<'Msg>) (binding: Binding<'T>) (value
         | None -> FilterStore.clear name
     | _ -> ()
 
+/// Change dispatch for the dual-input pair form fields (`FormFieldKind.Range` /
+/// `FormFieldKind.DateRange`): either input's change emits the WHOLE pair. A
+/// present handler dispatches it (the closure wins); an omitted handler writes
+/// the rebuilt pair record back to the field's own value binding.
+///
+/// The write payload is a plain `obj`, NOT `obj option`, and that is the point:
+/// a pair field has no cleared state, so the `None` a caller could otherwise
+/// pass is the write-back CLEAR — it would erase the slot instead of storing
+/// the new pair. Encoding "always writes" in the signature makes that defect
+/// unrepresentable rather than merely fixed at today's call sites. Callers box
+/// the pair RECORD (`RangePair` / `DateRangePair`), which is what
+/// `BindingResolver.tryResolve` reads back out; the `'v` tuple is the shape the
+/// `onChange` closure takes. Module-level so the .NET tests can pin the
+/// dispatch (precedent: `applyDispatchGate`).
+let pairFieldChange
+    (ctx: RenderContext<'Msg>)
+    (onChange: ('v -> Action<'Msg>) option)
+    (binding: Binding<'T>)
+    (pair: obj)
+    (v: 'v)
+    : unit =
+    match onChange with
+    | Some h -> runAction ctx (h v)
+    | None -> writeBackTo ctx binding (Some pair)
+
 /// Phase 663 — replace one field of a grid row for the editable-grid State
 /// write-back. Rows on the decoded path are `Map<string, obj>` (the
 /// `Transform` / decoded-`State` row shape — same contract as
@@ -2945,13 +2970,25 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                             [ prop.type'.number
                               prop.className "fuaran-field-range-min"
                               prop.value minV
-                              prop.onChange (fun (v: float) -> handle onChange value None (v, maxV)) ]
+                              prop.onChange (fun (v: float) ->
+                                  pairFieldChange
+                                      ctx
+                                      onChange
+                                      value
+                                      (box ({ Min = v; Max = maxV }: RangePair))
+                                      (v, maxV)) ]
                         Html.span [ prop.className "fuaran-field-range-sep"; prop.text "–" ]
                         Html.input
                             [ prop.type'.number
                               prop.className "fuaran-field-range-max"
                               prop.value maxV
-                              prop.onChange (fun (v: float) -> handle onChange value None (minV, v)) ] ] ]
+                              prop.onChange (fun (v: float) ->
+                                  pairFieldChange
+                                      ctx
+                                      onChange
+                                      value
+                                      (box ({ Min = minV; Max = v }: RangePair))
+                                      (minV, v)) ] ] ]
         | FormFieldKind.RangedNumber(value, onChange, min, max, step) ->
             // Parallel-additive Number case with optional Min /
             // Max / Step (flat options since the swap; the host
@@ -3126,7 +3163,12 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                               prop.required field.Required
                               prop.value fromV
                               prop.onChange (fun (v: string) ->
-                                  handle onChange value (Some(box ({ From = v; To = toV }: DateRangePair))) (v, toV)) ]
+                                  pairFieldChange
+                                      ctx
+                                      onChange
+                                      value
+                                      (box ({ From = v; To = toV }: DateRangePair))
+                                      (v, toV)) ]
                             @ constraintAttrs
                         )
                         Html.span [ prop.className "fuaran-field-range-sep"; prop.text "–" ]
@@ -3136,10 +3178,11 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                               prop.required field.Required
                               prop.value toV
                               prop.onChange (fun (v: string) ->
-                                  handle
+                                  pairFieldChange
+                                      ctx
                                       onChange
                                       value
-                                      (Some(box ({ From = fromV; To = v }: DateRangePair)))
+                                      (box ({ From = fromV; To = v }: DateRangePair))
                                       (fromV, v)) ]
                             @ constraintAttrs
                         ) ] ]
