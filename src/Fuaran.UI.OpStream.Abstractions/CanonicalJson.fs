@@ -614,6 +614,17 @@ and private encodeAction<'Msg> (a: Action<'Msg>) : Appender =
 // inline (an explicit auto-binding value, an all-default style, an all-None
 // state each re-encode as the canonical ABSENCE). Identity on
 // already-canonical trees, so decoded trees pay nothing.
+//
+// THE INVARIANT: every appender that splices a payload which can CONTAIN a
+// `Node` routes through the projection. Three do — `nodeAppender`,
+// `nodeKindAppender`, `stateBehaviourAppender` — and the third only since the
+// cross-host fuzz exchange caught it bypassing them (see its own note below).
+// The rest carry no `Node` and so have nothing to project: `SemanticStyle` is
+// five bare enum fields (its omit-when-default is structural, owned by the
+// generated encoder); `PropValue` is a scalar/`"<opaque>"` `Native` or an
+// already-canonical `Wire` JVal; `Binding` and `Action` resolve to values and
+// messages. Adding a Node-bearing payload to any of them means adding the
+// projection in the same change.
 
 let private nodeAppender<'Msg> (n: Node<'Msg>) : Appender =
     fun sb ->
@@ -629,9 +640,30 @@ let private nodeKindAppender<'Msg> (k: NodeKind<'Msg>) : Appender =
         )
         |> ignore
 
+/// `StateBehaviour` carries `onLoading` / `onEmpty` **Node** payloads, so it
+/// needs the §16 projection exactly as the two appenders above do — this one
+/// spliced the raw record straight into the structural encoder, and a
+/// `TreeOp.UpdateState` whose state node was (say) a `Filters` strip with an
+/// explicit self-referential auto binding therefore emitted PRE-canonical
+/// bytes on the one op path that skipped the projection. Found by the
+/// cross-host fuzz exchange; pinned deterministically in
+/// `Fuaran.UI.OpStream.Tests/CanonicalFormOpTests.fs`.
+///
+/// The projection maps over the two Node slots rather than routing a scratch
+/// envelope through `canonicalForm` (the `canonicalFormKind` shape), because
+/// `canonicalForm` collapses an all-`None` state to absence — correct for a
+/// node's own `State` field, wrong for an op that explicitly SETS one, where
+/// there is no absence to collapse to. `OnError` is `ErrorPayload -> Node`:
+/// no node to project until it is applied. Nested state inside the spliced
+/// nodes is reached by `canonicalForm`'s own recursion.
 let private stateBehaviourAppender<'Msg> (s: StateBehaviour<'Msg>) : Appender =
     fun sb ->
-        sb.Append(Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeStateBehaviourJson s))
+        let canonical =
+            { s with
+                OnLoading = s.OnLoading |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm
+                OnEmpty = s.OnEmpty |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm }
+
+        sb.Append(Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeStateBehaviourJson canonical))
         |> ignore
 
 let private semanticStyleAppender (s: SemanticStyle) : Appender =

@@ -29,6 +29,10 @@
     <Compile Include="ChainCorpusTests.fs" />
     <!-- Phase 437: teleport state-bundle codec. -->
     <Compile Include="TeleportTests.fs" />
+    <!-- The §16 canonical-form projection across every Node-bearing op
+         payload — the deterministic pin behind the probabilistic cross-host
+         fuzz gate that found `stateBehaviourAppender` bypassing it. -->
+    <Compile Include="CanonicalFormOpTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
