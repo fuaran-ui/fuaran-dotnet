@@ -47,6 +47,17 @@
          resolveSlot / childNodes + the applyGateDecision default-deny gate).
          The live cross-host browser assertion is the env-gated tail. -->
     <Compile Include="DebugGlobalTests.fs" />
+    <!-- Phase 739 — the committed-tree-change hub + the DevTools relay page
+         peer (profile relay@1.0). RelayTests pins the parts a corpus of
+         exchanges cannot reach (coalescing, the two postures of "off", the
+         CAPABILITY_ABSENT/UNKNOWN_MESSAGE distinction, silence, and the wire
+         kind-discriminator drift guard against the canonical encoder);
+         RelayCorpusTests is the F# leg of the cross-host conformance gate,
+         driving every fixture in wire-format-fixtures/devtools-relay/ through
+         the peer. Both run without a browser, because everything but the
+         postMessage transport is pure F#. -->
+    <Compile Include="RelayTests.fs" />
+    <Compile Include="RelayCorpusTests.fs" />
     <Compile Include="SanitizeTests.fs" />
     <!-- MarkdownTests pins Phase 292's deterministic GFM renderer
          (Fuaran.UI.Renderer.Markdown.toHtml) — the canonical-HTML contract

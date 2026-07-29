@@ -39,12 +39,23 @@
     <Compile Include="SelectionStore.fs" />
     <Compile Include="QueryStore.fs" />
     <Compile Include="BrowserRuntime.fs" />
+    <!-- Phase 739 — the committed-tree-change hub backing the debug surface's
+         treeRevision() + subscribe(). Lives OUTSIDE any surface instance (the
+         surface is rebuilt every render), so it compiles first and depends on
+         nothing but FSharp.Core. -->
+    <Compile Include="ChangeHub.fs" />
     <!-- Phase 90 — in-page introspection REPL (window.__fuaran). Pure
          wire-shape helpers (kindName / extractBindingSlots / resolveSlot /
          childNodes) compile on both pipelines; geometry + POJO + window
          registration are #if FABLE_COMPILER. Needs Runtime + BindingResolver
          only — not Render. -->
     <Compile Include="DebugGlobal.fs" />
+    <!-- Phase 739 — the DevTools relay page peer (profile relay@1.0). Pure
+         protocol logic over a host-agnostic surface record on both pipelines
+         (the .NET runner drives the shared conformance corpus with it); only the
+         postMessage transport is #if FABLE_COMPILER. After DebugGlobal, whose
+         introspection shapes it projects. -->
+    <Compile Include="Relay.fs" />
     <!-- Phase 202 — render-latency / TTFP probe. Pure timing model + node-count
          + aggregation compile on both pipelines (.NET runner pins them); the
          monotonic clock is the only #if FABLE_COMPILER surface (performance.now

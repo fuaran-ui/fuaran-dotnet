@@ -42,7 +42,10 @@ Every method returns a plain JS object (never throws, never a silent no-op); err
 | `__fuaran.getRenderedDom(id)` | `{ x, y, width, height, overflowing, hidden }` – live DOM geometry read from the node's `[data-fuaran-node-id]` element, or `{ error }`. |
 | `__fuaran.inspectTree()` | A recursive `{ id, kind, bindings, childIds, children }` snapshot of the whole tree. The fastest way to list every queryable node id. |
 | `__fuaran.findNodes(kind)` | The ids of every node whose wire kind discriminator equals `kind` (e.g. `"Metric"`, `"Button"`, `"GridLayout"`). |
-| `__fuaran.apply(opJson)` | Policy-gated `TreeOp` mutation (see below). |
+| `__fuaran.apply(op)` | Policy-gated `TreeOp` mutation (see below). Accepts a JSON **string** or a structured **object**. |
+| `__fuaran.canApply` | Whether this host wired a real apply path (Phase 739). |
+| `__fuaran.treeRevision()` | An opaque token identifying the current tree state — compare for equality, never parse (Phase 739). |
+| `__fuaran.subscribe(cb)` | Subscribe to committed tree changes; returns an unsubscribe function. Push, never poll (Phase 739). |
 | `__fuaran.help()` | A one-screen reference string – `console.log(__fuaran.help())`. |
 
 ### Payload shapes
@@ -57,9 +60,9 @@ Every method returns a plain JS object (never throws, never a silent no-op); err
   - `{ status: "noOverride", expression: "$none", source: "Static" }` – an optional slot that is declared on the kind but currently absent.
   - `{ error }` – the slot name is not a binding slot on this node's kind. Use `getNodeState(id).bindings` to list the slots.
 
-## `apply(opJson)` – policy-gated mutation
+## `apply(op)` – policy-gated mutation
 
-`__fuaran.apply(opJson)` is the one **mutating** entry. It obeys the same default-deny contract an AI-tool dispatch obeys (FGP 3): the call routes through the runtime's policy gate (`IFuaranRuntime.CanDispatch(ActionDescriptor.ApplyTreeOp …)`) **before** the host's apply handler ever decodes the op. A denied op returns the structured deny envelope and never touches the tree.
+`__fuaran.apply(op)` is the one **mutating** entry. `op` may be a JSON **string** (what a console user types) or a structured **object** — a `postMessage` relay is a structured-clone channel with no text layer, and canonicalising is the host's obligation rather than the least-qualified peer's, so the surface accepts the object and serialises it itself. It obeys the same default-deny contract an AI-tool dispatch obeys (FGP 3): the call routes through the runtime's policy gate (`IFuaranRuntime.CanDispatch(ActionDescriptor.ApplyTreeOp …)`) **before** the host's apply handler ever decodes the op. A denied op returns the structured deny envelope and never touches the tree.
 
 ```js
 > __fuaran.apply('{ "op": "UpdateProp", "nodeId": "revenue-metric", ... }')
@@ -71,6 +74,68 @@ Every method returns a plain JS object (never throws, never a silent no-op); err
 ```
 
 The renderer owns neither the apply engine nor the host's tree state, so `apply` is wired by the host as an `ApplyHandler` (`string -> ApplyOutcome`) passed to `register` – it decodes the op, applies it through `Fuaran.UI.Ops`, and re-renders. A host that supplies `None` (read-only) returns the `unwired` envelope. A default-deny host (a BYOK playground, a read-only embed) denies every mutation through the same `CanDispatch` seam it uses to refuse `Call` / `Navigate` / `AiTool`.
+
+## Change subscription — `treeRevision()` / `subscribe(cb)`
+
+_Phase 739._ Two additions let a reader track a live tree without polling:
+
+```js
+> __fuaran.treeRevision()
+"r-7"                                   // opaque: compare for equality, never parse
+> const off = __fuaran.subscribe(c => console.log(c))
+{ treeRevision: "r-8", cause: "host" }  // fires on each committed tree change
+> off()                                 // release
+> __fuaran.canApply
+true                                    // whether this host wired a real apply path
+```
+
+**The hub lives outside the surface, and that is the load-bearing part.** `window.__fuaran` is REBUILT on every committed tree change — the host calls `register` from its render path, so a new tree means a new surface object. A subscription held on one instance would be dropped by the very event it exists to report. So the listener registry and the revision sequence live in `Fuaran.UI.Renderer.ChangeHub`, outside any surface instance, and the registration commits the tree to it.
+
+Notifications **coalesce**: every commit in one turn collapses into a single notification carrying the latest revision, with the `apply` cause winning over `host` because it is the more specific answer. A change is a staleness signal, not a change log — a reader that needs the new state re-reads it. Commit is idempotent on tree *identity*, so a re-registration caused only by a change of `sources` or `runtime` is not reported as a tree change.
+
+Hosts that want an isolated signal (a test, a second embedded renderer) pass their own hub via `DebugOptions.Hub`; the default is the page-wide one, so one page has one notion of "current".
+
+## DevTools relay (`relay@1.0`)
+
+_Phase 739._ `Fuaran.UI.Renderer.Relay` is the **page peer** of the DevTools relay contract: a same-origin `postMessage` envelope that carries the surface above across the page/extension boundary, so a browser extension — or any other same-page script — can inspect, and where the host permits edit, a live Fuaran UI.
+
+The contract is specified language-neutrally in `DEVTOOLS_RELAY.md` in the wire-format specification repository, with an executable fixture family beside it. **This is a relay over the existing in-page surface, not a second introspection protocol**, and it is a client of the wire format rather than an extension of it: the relay profile `relay@1.0` versions independently of the wire profile `core@1.0`.
+
+```fsharp
+// once, at boot — the peer holds client subscriptions and reads the live
+// surface per request, so it needs no rebuild when the tree moves
+Relay.install true "0.6.0" |> ignore
+
+// per render — registers window.__fuaran AND publishes the relay surface
+Relay.registerAndPublish
+    true   // debug opt-in
+    true   // relay opt-in
+    tree
+    sources
+    runtime
+    { DebugGlobal.DebugOptions.defaults with ApplyHandler = Some handler }
+```
+
+**Off by default, and default-off is the point.** There are two postures of "off" and the contract prefers the stronger one: without the relay opt-in **no listener is installed at all**, so a probe gets no answer whatsoever — absent, not merely inert. A host that wants the honest development posture instead installs a peer with `OptedIn = false`, which answers `NOT_OPTED_IN` to every message including `hello`, telling a well-behaved client why it cannot proceed at the cost of confirming a host is present. `Relay.shouldInstall` adds the DEBUG-build gate on top, mirroring `shouldRegister`, so a release build installs nothing even if a flag is set wrongly.
+
+**The relay has no side door.** Every mutation crosses the host's own decode → validate → policy path, in the page: an op arriving over the relay is the same `ApplyHandler` seam the console uses, behind the same `CanDispatch` gate. The relay contributes no apply engine, no validator and no policy of its own — it maps the outcome onto a refusal class and nothing more. Consequently a relay client cannot construct a tree state the host would not accept from its own code, and no message in the closed set adjusts policy or raises a client's privilege.
+
+**Attribution is advisory.** A client may attach `{ actor, reason }` to an `apply`; the host records it and grants nothing on the basis of it. It is free-form text from an unprivileged peer.
+
+To carry the contract's typed refusal detail, a host's `ApplyHandler` can return the richer outcomes:
+
+| `ApplyOutcome` | Relay outcome |
+|---|---|
+| `AppliedWithTree newTree` | `apply.ok`, with the revision the `changed` event will carry — the two are the same token |
+| `Applied` | `apply.ok`, with the hub's current revision (the host commits its new tree on its next render) |
+| `DecodeFailedWith error` | `DECODE_FAILED`, carrying the wire format's own `DecodeError` verbatim |
+| `RejectedWith (message, code)` | `VALIDATOR_REJECT`, carrying the host's diagnostic code |
+
+### Host parity
+
+F# is the **second** relay-conformant host; `@fuaran-ui/renderer` shipped the TypeScript peer first. The two are parity-locked on **message shapes and refusal classification, not on bytes** — relay envelopes are transport, are never hashed or journalled, and carry no byte-parity obligation. Both hosts run the same fixture family (`devtools-relay/`, self-enumerated by its own manifest) as a conformance gate: the F# leg is `Fuaran.UI.Tests/RelayCorpusTests.fs`, which drives every fixture through the peer on the .NET pipeline, with no browser — everything but the `postMessage` transport is pure F#.
+
+One deliberate difference from this host's own console surface, sanctioned by the contract's "where hosts differed" rule: the relay reports the **wire** kind discriminator (`kind.$type`), where `__fuaran.getNodeState` reports `Kind.name`, the kind-constraint vocabulary. The two coincide for every kind except `DataGrid`, which is `"Grid"` in the console and `"DataGrid"` on the wire. A relay client filters on the token it read from a wire tree, so the peer adapts at the boundary; a test pins the mapping against the canonical encoder, so a second divergence fails the build.
 
 ## Diagnostics discipline (FGP 4)
 

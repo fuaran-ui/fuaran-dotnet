@@ -96,19 +96,45 @@ let view (model: Model) (dispatch: Msg -> unit) =
     // closes over the current tree (mirrors the TS demo's `onApply`).
     let applyHandler (opJson: string) : DebugGlobal.ApplyOutcome =
         match JsonDecode.decodeOp opJson with
-        | Error e -> DebugGlobal.ApplyOutcome.DecodeFailed e.Message
+        // Phase 739 — hand the decoder's STRUCTURED diagnostic back, not just its
+        // prose. The relay's DECODE_FAILED refusal carries the wire format's own
+        // `DecodeError` verbatim, so a client reports the failure typed.
+        | Error e ->
+            DebugGlobal.ApplyOutcome.DecodeFailedWith
+                { Code = e.Code
+                  Path = e.Path
+                  Message = e.Message
+                  ExpectedShape = e.ExpectedShape }
         | Ok op ->
             match Apply.apply op model.Tree with
             | Ok newTree ->
                 dispatch (ReplaceTree newTree)
-                DebugGlobal.ApplyOutcome.Applied
-            | Error err -> DebugGlobal.ApplyOutcome.Rejected err.Message
+                // Hand the POST-APPLY tree back so the renderer commits it to the
+                // change hub itself. That is what makes `apply.ok`'s revision and
+                // the `changed` event's revision the same token, which the relay
+                // contract says they are by construction.
+                DebugGlobal.ApplyOutcome.AppliedWithTree(box newTree)
+            | Error err -> DebugGlobal.ApplyOutcome.RejectedWith(err.Message, string err.Code)
 
     // Phase 90 — register the in-page REPL over the live Node<obj> tree WITH a
     // real apply handler (the samples/demo host passes None). `debug = true` is
     // the opt-in; `shouldRegister` still requires a DEBUG build, so a release
     // Fable build dead-code-eliminates the registration.
-    DebugGlobal.register true model.Tree sources runtime (Some applyHandler)
+    //
+    // Phase 739 — the same call also PUBLISHES the relay surface for the peer
+    // installed at boot, so a browser extension speaking `relay@1.0` reads (and,
+    // here, edits) this app through the very same gated path the console uses.
+    // The second `true` is the relay opt-in; leaving it `false` publishes
+    // nothing, and never calling `Relay.install` at all means no listener exists
+    // to probe — the contract's preferred production posture.
+    Relay.registerAndPublish
+        true
+        true
+        model.Tree
+        sources
+        runtime
+        { DebugGlobal.DebugOptions.defaults with
+            ApplyHandler = Some applyHandler }
 
     Render.render ctx model.Tree
 
@@ -127,6 +153,12 @@ let private exposeParityProbe () : unit =
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
 exposeParityProbe ()
+
+// Phase 739 — install the DevTools relay page peer ONCE, not per render: it
+// holds client subscriptions and reads the live surface each request, so it
+// needs no rebuild when the tree moves. `shouldInstall` still requires a DEBUG
+// build, so a release Fable build installs no listener at all.
+Relay.install true "0.6.0" |> ignore
 
 Program.mkProgram init update view
 |> Program.withReactSynchronous "fuaran-apply-root"

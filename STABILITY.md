@@ -266,6 +266,11 @@ The following are explicitly **not** covered by semver and may change in any pat
 - The concrete observer implementations in `Fuaran.UI.LayoutObserver` – `InMemoryLayoutObserver` and `BrowserLayoutObserver` are implementation details.
 - The concrete observer implementations in `Fuaran.UI.StyleObserver` – `InMemoryStyleObserver` and `BrowserStyleObserver` are implementation details; the contract is the Abstractions package.
 - The concrete telemetry sinks in `Fuaran.UI.Telemetry.Default` and `Fuaran.UI.Telemetry.Drift` – implementation details.
+- `Fuaran.UI.Renderer.DebugGlobal`, `.ChangeHub`, and `.Relay` – the debug-only in-page introspection surface (`window.__fuaran`), the committed-tree-change hub behind it, and the DevTools relay page peer. All three are registered/installed **only** under a DEBUG build with an explicit host opt-in, so they are `undefined` / absent in production; do not build features against their F# shape.
+
+  **But the relay's own stability contract is the `relay@1.0` profile and its conformance corpus, not this package's semver.** Those are different axes and the profile is the binding one: adding a request type, a capability, an optional payload field, or a refusal class is a **minor** relay bump; removing or renaming any of them is a **major** one; and a change to the profile *id* breaks every peer regardless of what `Fuaran.UI.Renderer`'s version does. A host may advance its wire profile (`core@1.0`) without advancing its relay profile, and the reverse. See `DEVTOOLS_RELAY.md` §5.3 in the wire-format specification repository.
+
+  Phase 739 additions to `DebugGlobal.ApplyOutcome` (`AppliedWithTree` / `DecodeFailedWith` / `RejectedWith`) are **additive cases**: an existing host's construction sites are unchanged, and a host that stays on `Applied` / `DecodeFailed` / `Rejected` keeps working — it merely forgoes the exact-revision guarantee and the typed refusal detail the new cases carry.
 
 ## Worked examples of breaking-vs-non-breaking
 

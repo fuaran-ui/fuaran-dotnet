@@ -256,6 +256,23 @@ type NodeIntrospection =
       Bindings: BindingSlotInfo list
       ChildIds: string list }
 
+/// Live geometry of a node's rendered element — the viewport-relative box plus
+/// the two derived flags. Typed here (rather than left as the raw POJO the
+/// browser read produces) so the relay can project it on a pipeline that has no
+/// DOM at all.
+type NodeGeometry =
+    {
+        X: float
+        Y: float
+        Width: float
+        Height: float
+        /// The element's scroll size exceeds its client size in either axis.
+        Overflowing: bool
+        /// Rendered but not visible — `display: none`, `visibility: hidden`, or a
+        /// zero-area box.
+        Hidden: bool
+    }
+
 /// A recursive structural snapshot of a whole subtree (TS `TreeIntrospection`).
 type TreeIntrospection =
     { Id: string
@@ -376,8 +393,20 @@ let resolveSlot (sources: BindingResolver.BindingSources) (kind: NodeKind<'Msg>)
 // denied op returns the structured deny envelope and never reaches the
 // handler; an allowed op is forwarded for decode + apply + re-render.
 
+/// The wire format's structured decode diagnostic, mirrored here so a host can
+/// hand it back without the renderer taking a dependency on the decoder that
+/// produced it (`Fuaran.UI.Ops.JsonDecode.DecodeError`, whose four fields these
+/// are). The DevTools relay carries it verbatim as the `DECODE_FAILED` refusal
+/// detail (relay contract §9.3 → `WIRE_FORMAT.md` §6).
+type ApplyDecodeError =
+    { Code: string
+      Path: string
+      Message: string
+      ExpectedShape: string option }
+
 /// Outcome the host-supplied apply handler returns. Surfaced (as a structured
-/// envelope) to the console caller.
+/// envelope) to the console caller, and mapped onto the relay's refusal classes
+/// by `Relay`.
 [<RequireQualifiedAccess>]
 type ApplyOutcome =
     /// The op decoded, the gate allowed it, and the host applied it + re-rendered.
@@ -387,6 +416,27 @@ type ApplyOutcome =
     /// The op decoded but the host's apply engine rejected it (structural
     /// apply error). `message` is the apply-error summary.
     | Rejected of message: string
+    /// As `Applied`, and hands the POST-APPLY tree back so the renderer commits
+    /// it to the change hub itself.
+    ///
+    /// Why this exists, and why it is preferred over bare `Applied`: the hub's
+    /// revision advances when a tree is COMMITTED, and a host that returns bare
+    /// `Applied` commits its new tree on its next render — which may be after
+    /// this call returns. The relay's `apply.ok` would then carry the pre-op
+    /// revision and the `changed` event the post-op one, where the contract
+    /// (§8.3) says the two are consistent by construction. Handing the tree back
+    /// makes them the same token.
+    ///
+    /// Boxed (`obj`) deliberately: the hub keys on tree IDENTITY, never on the
+    /// typed shape, so this needs no generic parameter and every existing
+    /// `ApplyOutcome` construction site stays source-compatible.
+    | AppliedWithTree of newTree: obj
+    /// As `DecodeFailed`, plus the decoder's structured diagnostic — what a
+    /// relay client needs to report a decode failure typed rather than as prose.
+    | DecodeFailedWith of error: ApplyDecodeError
+    /// As `Rejected`, plus the host's diagnostic code — the relay's
+    /// `VALIDATOR_REJECT` detail (§9.3).
+    | RejectedWith of message: string * code: string
 
 /// Host-supplied "decode + apply + re-render" handler. Invoked ONLY after the
 /// policy gate allows the op — it is never called for a denied op.
@@ -488,9 +538,118 @@ let denyTelemetry (userId: string) (occurredAt: System.DateTimeOffset) (reason: 
 /// stream that never happened.
 let shouldJournal (outcome: ApplyOutcome) : bool =
     match outcome with
-    | ApplyOutcome.Applied -> true
+    | ApplyOutcome.Applied
+    | ApplyOutcome.AppliedWithTree _ -> true
     | ApplyOutcome.DecodeFailed _
-    | ApplyOutcome.Rejected _ -> false
+    | ApplyOutcome.DecodeFailedWith _
+    | ApplyOutcome.Rejected _
+    | ApplyOutcome.RejectedWith _ -> false
+
+// ─── The typed apply pipeline (Phase 739) ───────────────────────────────────
+//
+// `applyEnvelope` below is the CONSOLE projection — a JS POJO. The DevTools
+// relay needs the same decision as a TYPED value so it can map each outcome
+// onto its own refusal class (§8.4's three mandated classes must not be
+// conflated). So the decision is taken once, here, on both pipelines, and the
+// two surfaces project it: the console to a POJO, the relay to an envelope.
+// The .NET test runner pins this function directly, which is what lets the
+// relay's conformance suite run without a browser.
+
+/// The typed outcome of a policy-gated in-page apply.
+[<RequireQualifiedAccess>]
+type ApplyResult =
+    /// Applied. `TreeRevision` is the hub revision after the op — exact when the
+    /// host returned `AppliedWithTree` (see that case), best-effort otherwise.
+    | Applied of treeRevision: string
+    /// No apply handler was supplied — this host is read-only.
+    | Unwired of message: string
+    /// The runtime's `CanDispatch` gate refused the mutation. Nothing about the
+    /// op was examined (FGP 3, default-deny by shape).
+    | Denied of reason: string
+    | DecodeFailed of message: string * detail: ApplyDecodeError option
+    | Rejected of message: string * code: string option
+
+/// Wiring for the in-page introspection surface. An options record rather than
+/// more positional parameters: the surface has grown a change hub and an apply
+/// seam, and a five-boolean call site is where a wiring mistake hides.
+type DebugOptions =
+    {
+        /// Durable-sink wiring for the apply path (Phase 193).
+        Sinks: DebugSinks
+        /// The committed-tree-change hub backing `treeRevision()` + `subscribe()`.
+        /// Defaults to the page-wide hub, which is what makes a subscription
+        /// outlive the surface rebuild every tree change causes. Supply your own
+        /// to isolate a host (or a test) from the page-wide signal.
+        Hub: ChangeHub.ChangeHub
+        /// The host's decode + apply + re-render handler. `None` for a read-only
+        /// host — `apply` then returns the `unwired` envelope and the relay does
+        /// not advertise the capability.
+        ApplyHandler: ApplyHandler option
+    }
+
+[<RequireQualifiedAccess>]
+module DebugOptions =
+
+    /// Read-only surface on the page-wide hub, with no durable emission — the
+    /// historical (pre-Phase-739) behaviour exactly.
+    let defaults: DebugOptions =
+        { Sinks = DebugSinks.none
+          Hub = ChangeHub.pageHub
+          ApplyHandler = None }
+
+/// The policy-gated apply pipeline: read-only host → `Unwired`; the gate denies
+/// (FGP 3) → `Denied`, with the diagnostic routed through `IFuaranRuntime.Warn`
+/// (FGP 4, never raw `console.*`) and recorded to the telemetry sink (FGP 5 —
+/// the deny envelope and the telemetry record are the same event on two
+/// surfaces); otherwise the host's handler decodes + applies + re-renders and
+/// its outcome is projected.
+///
+/// The gate is consulted BEFORE the handler ever decodes: a default-deny posture
+/// should not parse what it will refuse anyway. Sink failures are
+/// fire-and-forget — a failing sink must never gate dispatch, so it cannot
+/// change what the caller sees.
+let applyResult (runtime: Runtime.IFuaranRuntime) (options: DebugOptions) (opJson: string) : ApplyResult =
+    match options.ApplyHandler with
+    | None -> ApplyResult.Unwired "apply is not wired on this host (no apply handler supplied to register)."
+    | Some handler ->
+        match applyGateDecision runtime opJson with
+        | Error reason ->
+            runtime.Warn reason
+
+            options.Sinks.TelemetrySink
+            |> Option.iter (fun sink ->
+                try
+                    sink.RecordDeny(denyTelemetry options.Sinks.UserId System.DateTimeOffset.UtcNow reason)
+                with _ ->
+                    ())
+
+            ApplyResult.Denied reason
+        | Ok() ->
+            let outcome = handler opJson
+
+            // Only a genuinely applied op is durable — see `shouldJournal`.
+            if shouldJournal outcome then
+                options.Sinks.OnApplied
+                |> Option.iter (fun journal ->
+                    try
+                        journal opJson
+                    with _ ->
+                        ())
+
+            match outcome with
+            | ApplyOutcome.Applied ->
+                // The host owns the tree and will commit it on its next render;
+                // the honest answer now is the hub's current revision.
+                ApplyResult.Applied(options.Hub.Revision())
+            | ApplyOutcome.AppliedWithTree newTree ->
+                // Commit here, so `apply.ok` and the `changed` event carry the
+                // SAME token. Idempotent on identity, so the host's subsequent
+                // re-registration over this tree is not a second change.
+                ApplyResult.Applied(options.Hub.Commit newTree ChangeHub.ChangeCause.Apply)
+            | ApplyOutcome.DecodeFailed message -> ApplyResult.DecodeFailed(message, None)
+            | ApplyOutcome.DecodeFailedWith error -> ApplyResult.DecodeFailed(error.Message, Some error)
+            | ApplyOutcome.Rejected message -> ApplyResult.Rejected(message, None)
+            | ApplyOutcome.RejectedWith(message, code) -> ApplyResult.Rejected(message, Some code)
 
 // ─── help() text ────────────────────────────────────────────────────────────
 
@@ -503,7 +662,10 @@ let helpText =
     + "  .getRenderedDom(id)       live DOM geometry (x/y/size + overflow/hidden flags)\n"
     + "  .inspectTree()            recursive structural snapshot of the whole tree\n"
     + "  .findNodes(kind)          ids of every node whose kind === <kind>\n"
-    + "  .apply(opJson)            policy-gated TreeOp mutation (default-deny; deny → envelope)\n"
+    + "  .apply(op)                policy-gated TreeOp mutation (JSON string or object; default-deny)\n"
+    + "  .treeRevision()           opaque token identifying the current tree state\n"
+    + "  .subscribe(cb)            committed-tree-change signal; returns an unsubscribe fn\n"
+    + "  .canApply                 whether this host wired a real apply path\n"
     + "  .help()                   this text\n"
     + "Tip: __fuaran.inspectTree() lists every node id you can query."
 
@@ -541,6 +703,23 @@ let private geometryObj (nodeId: string) : obj =
         createObj [ "error", box (sprintf "No rendered element for node '%s'." nodeId) ]
     else
         geometry
+
+/// The typed geometry read — the same browser measurement, projected into
+/// `NodeGeometry` so a caller that is not the console (the relay) does not have
+/// to reach into an untyped POJO.
+let readGeometry (nodeId: string) : NodeGeometry option =
+    let geometry = readGeometryRaw nodeId
+
+    if isNull geometry then
+        None
+    else
+        Some
+            { X = unbox<float> geometry?x
+              Y = unbox<float> geometry?y
+              Width = unbox<float> geometry?width
+              Height = unbox<float> geometry?height
+              Overflowing = unbox<bool> geometry?overflowing
+              Hidden = unbox<bool> geometry?hidden }
 
 // ─── POJO materialisation — F# records → camelCase JS objects ───────────────
 //
@@ -610,56 +789,69 @@ let private slotResolutionToObj (kindForError: string) (nodeId: string) (slot: s
                       kindForError
               ) ]
 
-let private applyEnvelope
-    (runtime: Runtime.IFuaranRuntime)
-    (sinks: DebugSinks)
-    (handler: ApplyHandler option)
-    (opJson: string)
-    : obj =
-    match handler with
-    | None ->
+/// Project the typed `ApplyResult` onto the console POJO. Parity-locked with
+/// the TypeScript `ApplyEnvelope` shape so a console session is host-agnostic:
+/// a denied op returns the deny envelope (the tree is unchanged), never a
+/// silent no-op (FGP 3).
+let private applyResultToObj (result: ApplyResult) : obj =
+    match result with
+    | ApplyResult.Applied treeRevision ->
+        createObj [ "ok", box true; "status", box "applied"; "treeRevision", box treeRevision ]
+    | ApplyResult.Unwired message -> createObj [ "ok", box false; "status", box "unwired"; "error", box message ]
+    | ApplyResult.Denied reason ->
         createObj
             [ "ok", box false
-              "status", box "unwired"
-              "error", box "apply is not wired on this host (no apply handler supplied to register)." ]
-    | Some h ->
-        match applyGateDecision runtime opJson with
-        | Error reason ->
-            // FGP 4: route the deny diagnostic through the renderer's
-            // centralised warn channel — never raw console.*.
-            runtime.Warn reason
+              "status", box "denied"
+              "denied", box true
+              "error", box reason ]
+    | ApplyResult.DecodeFailed(message, detail) ->
+        let baseFields =
+            [ "ok", box false; "status", box "decodeFailed"; "error", box message ]
 
-            // FGP 5 (Phase 193): the deny envelope and the telemetry record are
-            // the SAME event on two surfaces. Fire-and-forget — a failing sink
-            // must never gate dispatch, so it cannot change what the caller sees.
-            sinks.TelemetrySink
-            |> Option.iter (fun sink ->
-                try
-                    sink.RecordDeny(denyTelemetry sinks.UserId System.DateTimeOffset.UtcNow reason)
-                with _ ->
-                    ())
+        match detail with
+        | None -> createObj baseFields
+        | Some e ->
+            createObj (
+                baseFields
+                @ [ "decodeError",
+                    createObj
+                        [ "code", box e.Code
+                          "path", box e.Path
+                          "message", box e.Message
+                          "expectedShape",
+                          (match e.ExpectedShape with
+                           | Some s -> box s
+                           | None -> null) ] ]
+            )
+    | ApplyResult.Rejected(message, code) ->
+        let baseFields = [ "ok", box false; "status", box "rejected"; "error", box message ]
 
-            createObj
-                [ "ok", box false
-                  "status", box "denied"
-                  "denied", box true
-                  "error", box reason ]
-        | Ok() ->
-            let outcome = h opJson
+        match code with
+        | None -> createObj baseFields
+        | Some c -> createObj (baseFields @ [ "code", box c ])
 
-            // Only a genuinely applied op is durable — see `shouldJournal`.
-            if shouldJournal outcome then
-                sinks.OnApplied
-                |> Option.iter (fun journal ->
-                    try
-                        journal opJson
-                    with _ ->
-                        ())
+// ─── apply(op) accepts a string OR a structured object ──────────────────────
+//
+// The console caller types a JSON string; a relay client hands over a
+// structured-clone object, because `postMessage` is not a text channel and
+// canonicalising is the HOST's obligation, not the least-qualified peer's
+// (relay contract §1.4, §8.2). So the surface accepts both and serialises the
+// object form itself before it reaches the host's decoder.
 
-            match outcome with
-            | ApplyOutcome.Applied -> createObj [ "ok", box true; "status", box "applied" ]
-            | ApplyOutcome.DecodeFailed m -> createObj [ "ok", box false; "status", box "decodeFailed"; "error", box m ]
-            | ApplyOutcome.Rejected m -> createObj [ "ok", box false; "status", box "rejected"; "error", box m ]
+[<Emit("typeof $0 === 'string'")>]
+let private isJsString (value: obj) : bool = jsNative
+
+[<Emit("JSON.stringify($0)")>]
+let private jsonStringify (value: obj) : string = jsNative
+
+let private opToJson (op: obj) : string =
+    if isJsString op then unbox<string> op else jsonStringify op
+
+/// Invoke a caller-supplied JS callback with one argument. `subscribe` takes a
+/// plain JS function (what a console user or a relay peer hands over), not a
+/// typed `System.Func`, so the call is emitted directly.
+[<Emit("$0($1)")>]
+let private invokeJsCallback (callback: obj) (argument: obj) : unit = jsNative
 
 // ─── Build + register the `window.__fuaran` surface ─────────────────────────
 //
@@ -669,15 +861,37 @@ let private applyEnvelope
 // Fable emits real n-ary JS functions (`__fuaran.getBindingValue(id, slot)`),
 // not curried unary chains.
 
-let buildGlobalWithSinks
+let buildGlobalWith
     (tree: Node<'Msg>)
     (sources: BindingResolver.BindingSources)
     (runtime: Runtime.IFuaranRuntime)
-    (sinks: DebugSinks)
-    (applyHandler: ApplyHandler option)
+    (options: DebugOptions)
     : obj =
     createObj
         [ "version", box Version
+          // Whether the host wired a real apply path. The relay advertises the
+          // `apply` capability only when this is true — an unadvertised
+          // capability refuses CAPABILITY_ABSENT rather than claiming an op was
+          // illegal (relay contract §6.4).
+          "canApply", box options.ApplyHandler.IsSome
+          // The hub is consulted per call, never captured: the surface object is
+          // REPLACED on every tree change, and a captured revision would be the
+          // one from the render that built this instance.
+          "treeRevision", box (System.Func<obj>(fun () -> box (options.Hub.Revision())))
+          "subscribe",
+          box (
+              System.Func<obj, obj>(fun callback ->
+                  let release =
+                      options.Hub.Subscribe(fun change ->
+                          let payload =
+                              createObj
+                                  [ "treeRevision", box change.TreeRevision
+                                    "cause", box (ChangeHub.ChangeCause.toWire change.Cause) ]
+
+                          invokeJsCallback callback payload)
+
+                  box (System.Action(fun () -> release ())))
+          )
           "getNodeState",
           box (
               System.Func<string, obj>(fun id ->
@@ -695,8 +909,24 @@ let buildGlobalWithSinks
           "getRenderedDom", box (System.Func<string, obj>(fun id -> geometryObj id))
           "inspectTree", box (System.Func<obj>(fun () -> treeIntrospectionToObj (inspectTree tree)))
           "findNodes", box (System.Func<string, obj>(fun kind -> box (Array.ofList (findNodesByKind kind tree))))
-          "apply", box (System.Func<string, obj>(fun opJson -> applyEnvelope runtime sinks applyHandler opJson))
+          "apply", box (System.Func<obj, obj>(fun op -> applyResultToObj (applyResult runtime options (opToJson op))))
           "help", box (System.Func<obj>(fun () -> box helpText)) ]
+
+/// `buildGlobalWith` in the historical positional shape.
+let buildGlobalWithSinks
+    (tree: Node<'Msg>)
+    (sources: BindingResolver.BindingSources)
+    (runtime: Runtime.IFuaranRuntime)
+    (sinks: DebugSinks)
+    (applyHandler: ApplyHandler option)
+    : obj =
+    buildGlobalWith
+        tree
+        sources
+        runtime
+        { DebugOptions.defaults with
+            Sinks = sinks
+            ApplyHandler = applyHandler }
 
 /// `buildGlobalWithSinks` with no durable emission — the historical surface.
 let buildGlobal
@@ -713,12 +943,39 @@ let private setWindowGlobal (value: obj) : bool = jsNative
 [<Emit("(typeof globalThis !== 'undefined' && globalThis.__fuaran) ? (delete globalThis.__fuaran, true) : false")>]
 let private clearWindowGlobal () : bool = jsNative
 
+/// The surface currently registered on `window.__fuaran`, or `None`. The LIVE
+/// lookup a relay peer uses: the surface object is REPLACED on every tree
+/// change, so a peer that captured one instance would answer from a stale tree.
+[<Emit("(typeof globalThis !== 'undefined' && globalThis.__fuaran) ? globalThis.__fuaran : null")>]
+let private readWindowGlobal () : obj = jsNative
+
+let readRegisteredGlobal () : obj option =
+    let value = readWindowGlobal ()
+    if isNull value then None else Some value
+
 /// Register `window.__fuaran` over the current `tree` + `sources` — but ONLY
 /// when `shouldRegister debug` (DEBUG build + host opt-in). A no-op otherwise,
-/// so production / opt-out hosts leave the global `undefined`. `applyHandler`
-/// is `None` for read-only hosts (apply returns the `unwired` envelope) and
-/// `Some` for hosts that own a TreeOp apply + setState loop. Call from the
+/// so production / opt-out hosts leave the global `undefined`. Call from the
 /// render path to keep the global pointed at the live tree.
+///
+/// Registration also COMMITS the tree to the change hub, which is what turns a
+/// host's own re-render into a `changed` signal. Idempotent on tree identity, so
+/// a re-registration caused only by a `sources` / `runtime` change is not
+/// reported as a tree change.
+let registerWith
+    (debug: bool)
+    (tree: Node<'Msg>)
+    (sources: BindingResolver.BindingSources)
+    (runtime: Runtime.IFuaranRuntime)
+    (options: DebugOptions)
+    : unit =
+    if shouldRegister debug then
+        setWindowGlobal (buildGlobalWith tree sources runtime options) |> ignore
+        options.Hub.Commit (box tree) ChangeHub.ChangeCause.Host |> ignore
+
+/// `registerWith` in the historical positional shape. `applyHandler` is `None`
+/// for read-only hosts (apply returns the `unwired` envelope) and `Some` for
+/// hosts that own a TreeOp apply + setState loop.
 let registerWithSinks
     (debug: bool)
     (tree: Node<'Msg>)
@@ -727,9 +984,14 @@ let registerWithSinks
     (sinks: DebugSinks)
     (applyHandler: ApplyHandler option)
     : unit =
-    if shouldRegister debug then
-        setWindowGlobal (buildGlobalWithSinks tree sources runtime sinks applyHandler)
-        |> ignore
+    registerWith
+        debug
+        tree
+        sources
+        runtime
+        { DebugOptions.defaults with
+            Sinks = sinks
+            ApplyHandler = applyHandler }
 
 /// `registerWithSinks` with no durable emission — the historical surface.
 let register
@@ -748,8 +1010,24 @@ let unregister () : unit = clearWindowGlobal () |> ignore
 #else
 
 /// Non-Fable hosts (the .NET test runner / SSR) have no `window`; registration
-/// is a no-op. The pure introspection helpers above are still exercised by the
-/// .NET test runner.
+/// is a no-op and there is never a registered surface to read. The pure
+/// introspection helpers — and the whole `applyResult` pipeline + the change hub
+/// — are still exercised by the .NET test runner, which is what lets the relay's
+/// conformance suite run without a browser.
+let readRegisteredGlobal () : obj option = None
+
+/// No DOM, so no rendered element for any node.
+let readGeometry (_nodeId: string) : NodeGeometry option = None
+
+let registerWith
+    (_debug: bool)
+    (_tree: Node<'Msg>)
+    (_sources: BindingResolver.BindingSources)
+    (_runtime: Runtime.IFuaranRuntime)
+    (_options: DebugOptions)
+    : unit =
+    ()
+
 let registerWithSinks
     (_debug: bool)
     (_tree: Node<'Msg>)
