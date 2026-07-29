@@ -505,14 +505,17 @@ authoritative hosting story is `docs/RENDER-ENTRIES.md`.
 
 ## Recorded change — 0.10.0, DAG checkpoint verification + the op-stream decode leg
 
-**Minor.** Four changes across `Fuaran.UI.OpStream.*`, two of which read as major at a glance. The
+**Minor.** Five changes across `Fuaran.UI.OpStream.*`, two of which read as major at a glance. The
 axis is argued against the policy text below rather than assumed, because the argument is the
 useful part.
 
-**The canonical wire did not move.** `StreamEntry.encode` is untouched and `chainFormatVersion`
-stays `2`, so every record `Hash` is byte-identical; the `DagOpRecord` pre-image is untouched; no
-`wire-format-fixtures/` fixture changed, and the corpus-backed JsonDecode conformance suite is
-green. None of the [Wire format](#wire-format) major events applies.
+**The canonical wire specification did not move — but one non-conformant emit path was corrected.**
+`StreamEntry.encode` is untouched and `chainFormatVersion` stays `2`; the `DagOpRecord` pre-image is
+untouched; no `wire-format-fixtures/` fixture changed, and the corpus-backed JsonDecode conformance
+suite is green. None of the [Wire format](#wire-format) major events applies. **The one exception is
+§5 below**, where `TreeOp.UpdateState` had been emitting bytes the spec never permitted; correcting
+it changes those bytes, and §5 states the one consequence that follows for persisted chains. Record
+`Hash` values are byte-identical for every chain that does not contain such an op.
 
 ### 1. `Fuaran.UI.OpStream.Abstractions` gains three functions — additive
 
@@ -580,9 +583,45 @@ without notice"*. So the document-format bump carries no semver promise and cann
 It is recorded here anyway because a consumer holding v1 guest bundles must re-export them, and
 "no promise" is not the same as "no consequence".
 
+### 5. `CanonicalJson.encodeOp` — `TreeOp.UpdateState` now emits its node payloads in canonical form
+
+`stateBehaviourAppender` spliced the raw `StateBehaviour` record into the structural encoder, while
+its two siblings (`nodeAppender`, `nodeKindAppender`) route through `Introspect.canonicalForm` /
+`canonicalFormKind`. Since `StateBehaviour` carries `onLoading` / `onEmpty` **Node** payloads, this
+one op path bypassed the canonical-form projection — so a state node carrying an explicit auto
+binding (a `Filters` chip whose control declared `Filter(<own name>)`) emitted a `value` key that
+[`WIRE_FORMAT.md`](../wire-format-fixtures/WIRE_FORMAT.md) **requires the encoder to omit**.
+
+**Not a wire-format change:** the spec always required the omitted form, and F# was non-conformant on
+this path alone. Decode is unaffected — both forms decode to the same tree — so **no persisted
+document becomes unreadable.**
+
+**The one consequence worth pinning:** canonical bytes feed the op-stream hash chain, so a chain
+persisted before this fix that *contains* such an `UpdateState` will re-hash differently and fail
+verification if re-encoded. Chains without one are byte-unchanged.
+
+The fix maps `canonicalForm` over the two Node slots — deliberately **not** the `canonicalFormKind`
+scratch-envelope shape, because `canonicalForm` collapses an all-`None` state to absence, which is
+right for a node's own `State` field and wrong for an op that explicitly *sets* one. `OnError` is
+`ErrorPayload -> Node`, so there is no node to project until applied.
+
+**Found by the cross-host fuzz exchange on its first run** (Legs F/G, 2026-07-29): 4 divergences per
+600 samples, every one an `UpdateState`, while the converse Python→F# leg was 600/600 — which
+isolated the fault to encode-side canonicalisation rather than the codec. Verified fixed across six
+fresh draws × 600 = 3,600 samples with zero divergences, and pinned deterministically by
+`CanonicalFormOpTests.fs` (three of its seven tests failed against the unfixed encoder; one is a
+negative case — a chip bound to a *different* filter must keep its `value`, so "canonicalise" cannot
+be satisfied by deleting every value).
+
+A survey of the remaining appenders confirms the pattern is now **complete** rather than
+two-of-three: `SemanticStyle` is bare enum fields, `PropValue` is a scalar or already-canonical
+`Wire` JVal, and `Binding` / `Action` resolve to values and messages — none can carry a `Node`. That
+invariant is recorded at the appender block so a future Node-bearing payload has a rule to meet.
+
 **Consumer impact:** repin; add the `DagReplayError` arm if you match it exhaustively; re-export any
-v1 guest bundle. A consumer that uses neither the DAG packages nor `GuestExport` sees an additive
-release only.
+v1 guest bundle; and if you persist op-stream chains containing `UpdateState` ops with state-node
+payloads, re-verify them (§5). A consumer that uses neither the DAG packages nor `GuestExport` sees
+an additive release only.
 
 ## How this policy interacts with phase authoring
 
