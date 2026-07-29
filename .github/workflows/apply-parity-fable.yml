@@ -18,6 +18,12 @@ name: Apply-parity Fable lane
 # checkout or token is needed. The parity runner imports only the Ops engine +
 # canonical encoder (no React / DOM / Elmish), so it runs in plain Node — no
 # JSDOM, no npm install.
+#
+# Two guard jobs ride alongside it (added 2026-07-29) — `fable-portability` and
+# `out-of-solution-projects`. Each closes a blind spot that let a real breakage
+# ship: the first, that a Fable compile inherits the ENTRY project's settings;
+# the second, that `dotnet build Fuaran.sln` never sees a project the solution
+# does not list. Their own headers carry the detail.
 
 on:
   push:
@@ -63,3 +69,109 @@ jobs:
       - name: Assert Fable apply parity against the golden
         working-directory: samples/apply-demo
         run: node parity-runner.mjs
+
+  # ── The Fable portability guard ───────────────────────────────────────────
+  #
+  # Why this exists, stated plainly because the gap it closes is invisible:
+  # under Fable it is the ENTRY project's MSBuild properties that govern the
+  # whole transpiled source graph, not each source's own project. Every Fable
+  # compile this repo ran in CI before 2026-07-29 went through an entry project
+  # that sets `<Nullable>disable</Nullable>` — samples/apply-demo (above) via
+  # Fuaran.UI.Renderer, and catalog-pages.yml via samples/catalog. So a source
+  # file could be F#-10-nullness-broken for every nullable-enabled Fable
+  # consumer while both lanes stayed green, and `dotnet build Fuaran.sln` was
+  # blind to it too whenever the site sat inside `#if FABLE_COMPILER`.
+  #
+  # This job compiles the packages that ship `Content Include="**\*.fs"
+  # PackagePath="fable\"` UNDER THEIR OWN SETTINGS — i.e. nullness ON, per
+  # Directory.Build.props — so a consumer's transpile cannot break in a way our
+  # own CI never sees. `Fuaran.UI` is the root of the graph; `ServerDriven` and
+  # `StyleObserver` are the two nullable-enabled entry points that transitively
+  # pull in Renderer.Core / ThemeManifest / StyleObserver.Abstractions, which is
+  # how those get covered without a job each.
+  #
+  # ONLY ADD PROJECTS THAT PASS. A guard that is red on known-open work trains
+  # everyone to ignore it, which is worse than not having it.
+  fable-portability:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Same NU1301 workaround the parity job carries — see its comment.
+      - name: Create empty local-nuget-feed on the runner
+        run: mkdir -p ../../../local-nuget-feed
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Fable-compile Fuaran.UI under its own settings
+        run: dotnet fable src/Fuaran.UI/Fuaran.UI.fsproj -o "$RUNNER_TEMP/fable-guard/ui" --noCache
+
+      - name: Fable-compile Fuaran.UI.ServerDriven under its own settings
+        run: dotnet fable src/Fuaran.UI.ServerDriven/Fuaran.UI.ServerDriven.fsproj -o "$RUNNER_TEMP/fable-guard/server-driven" --noCache
+
+      - name: Fable-compile Fuaran.UI.StyleObserver under its own settings
+        run: dotnet fable src/Fuaran.UI.StyleObserver/Fuaran.UI.StyleObserver.fsproj -o "$RUNNER_TEMP/fable-guard/style-observer" --noCache
+
+  # ── The out-of-solution project guard ─────────────────────────────────────
+  #
+  # `Fuaran.sln` does not list every project in the tree, and `dotnet build
+  # Fuaran.sln` is the repo's build gate — so a project outside the solution has
+  # no gate at all. That is not theoretical: the Phase 692-694 `Binding.Static
+  # of 'T` -> `of 'T option` swap left samples/apply-demo, samples/hydration and
+  # samples/resume uncompilable, and only apply-demo surfaced (it is the parity
+  # job's entry point, which is why THIS workflow went red and the others stayed
+  # silently broken).
+  #
+  # Keep this list in step with the solution: a new project either joins
+  # `Fuaran.sln` or joins this job. To find drift, diff the `*.?sproj` files on
+  # disk against the ones the solution names.
+  #
+  # apply-demo is deliberately absent — the parity job above already builds it.
+  # templates/fsharp-starter is deliberately absent — it is an unrooted template
+  # whose nuget.config resolves the local feed relative to the instantiated app,
+  # so it cannot restore in place.
+  out-of-solution-projects:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Same NU1301 workaround the parity job carries — see its comment.
+      - name: Create empty local-nuget-feed on the runner
+        run: mkdir -p ../../../local-nuget-feed
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Build the .NET-side out-of-solution projects
+        run: |
+          dotnet build samples/hydration/gen/Gen.fsproj --nologo
+          dotnet build samples/resume/gen/Gen.fsproj --nologo
+          dotnet build samples/giraffe-ssr/GiraffeSsr.Sample.fsproj --nologo
+
+      - name: Fable-compile the out-of-solution sample clients
+        run: |
+          dotnet fable samples/hydration/client/Client.fsproj -o "$RUNNER_TEMP/fable-samples/hydration" --noCache
+          dotnet fable samples/resume/client/Client.fsproj -o "$RUNNER_TEMP/fable-samples/resume" --noCache
