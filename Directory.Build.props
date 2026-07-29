@@ -40,7 +40,12 @@
          "Recorded change - 0.8.0". Consumers repin and expect source edits at
          record literals; the smart-ctor authoring surface is unchanged (the
          `samples/demo` application has ZERO source changes across the swap). -->
-    <Version>0.8.0</Version>
+    <!-- 0.9.0 — ADDITIVE renderer surface (no consumer edits): the scope-aware
+         render entry that also carries a telemetry sink
+         (`renderWithSourcesInScopeAndSink`), and the host-pluggable `GuestSeam`
+         that puts a rendered `Mount` guest behind the host's capability policy.
+         See STABILITY.md "Recorded change - 0.9.0". -->
+    <Version>0.9.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

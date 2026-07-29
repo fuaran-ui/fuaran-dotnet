@@ -1330,6 +1330,86 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
 let mutable private renderGuestHook: (RenderContext<obj> -> Node<obj> -> ReactElement) option =
     None
 
+// ─── Host-pluggable guest capability seam (§4o) ─────────────────────────────
+//
+// The `Mount` arm below renders a guest under its own scope, but it handed the
+// guest the HOST runtime and bridged the guest's dispatch through the mount's
+// `OnBubble` UNWRAPPED — so a capability gate was enforced only where an
+// orchestration tier authored the mount itself or drove the guest's dispatch
+// loop, never on the raw render path. A rendered guest was therefore not
+// default-deny.
+//
+// The fix cannot be a direct dependency: the language tier must not reference
+// the orchestration tier that owns the policy. So the gate arrives as a
+// language-tier-resident hook the host installs, mirroring `renderGuestHook`
+// above — a module-level `mutable` holding an `option`, consulted at the Mount
+// arm, and `None` by default so a host that installs nothing renders exactly as
+// it did before.
+
+/// The non-generic policy surface of a `NodeKind.Mount`, handed to the
+/// host-installed `GuestSeam`. Deliberately NOT the `MountSpec<'Msg>` itself:
+/// the seam is a single function value shared by every `'Msg` instantiation of
+/// the renderer (the same constraint that makes `renderGuestHook` `obj`-typed),
+/// and a capability policy needs the mount's identity, its declared
+/// capabilities, and its channel — none of which are `'Msg`-typed.
+type GuestSeamContext =
+    {
+        /// The guest's runtime scope id (`MountSpec.ScopeId`).
+        ScopeId: string
+        /// The capabilities the mount DECLARES for the guest
+        /// (`MountSpec.Capabilities`). A gate reads these as a *request*, not a
+        /// grant — deciding what to allow is the host policy's job.
+        Capabilities: string list
+        /// The declared guest channel (`MountSpec.Channel`); its `Direction`
+        /// bounds which way messages may legally cross the boundary.
+        Channel: GuestChannel
+    }
+
+/// Host-pluggable capability seam for rendered `Mount` guests (§4o).
+///
+/// Installed once by the host via `installGuestSeam`; the `Mount` arm consults
+/// it for **every** guest it renders, so a guest reached through the plain
+/// render path is gated by the same policy as one an orchestration tier mounts
+/// and drives itself.
+///
+/// - `WrapRuntime ctx hostRuntime` returns the `IFuaranRuntime` the guest gets.
+///   A capability-scoping host returns a restricted runtime (deny the effects
+///   the mount did not declare); returning `hostRuntime` unchanged is the
+///   identity policy.
+/// - `GateBubble ctx rawBubble` returns the function the guest's dispatches run
+///   through. `rawBubble` is the renderer's own bridge — it runs the mount's
+///   `OnBubble` in the HOST context (or does nothing when no bubble channel is
+///   wired). A gate may drop, transform, or pass through; returning `rawBubble`
+///   unchanged is the identity policy.
+///
+/// Both members are consulted per rendered mount, not per host, so a policy may
+/// vary by scope id / capability set without reinstalling.
+type GuestSeam =
+    { WrapRuntime: GuestSeamContext -> Runtime.IFuaranRuntime -> Runtime.IFuaranRuntime
+      GateBubble: GuestSeamContext -> (obj -> unit) -> (obj -> unit) }
+
+/// The installed guest seam. `None` (the default) means the Mount arm behaves
+/// exactly as it did before the seam existed — host runtime, unwrapped bubble.
+/// Private + set through `installGuestSeam` / `clearGuestSeam` because the
+/// installing host lives in another assembly, which is the one way this differs
+/// from `renderGuestHook` (set once, in-module, at init).
+let mutable private guestSeam: GuestSeam option = None
+
+/// Install the host's guest capability policy. Idempotent-by-replacement: a
+/// second call replaces the first (there is one policy per process, as there is
+/// one `StateStore`). Call before the first render that may reach a `Mount`.
+let installGuestSeam (seam: GuestSeam) : unit = guestSeam <- Some seam
+
+/// Remove any installed guest seam, restoring the ungated default. Exists for
+/// host teardown and for test isolation — a test that installs a seam must clear
+/// it, or the policy bleeds into every later case in the process.
+let clearGuestSeam () : unit = guestSeam <- None
+
+/// The currently-installed guest seam, if any. Read-only introspection for a
+/// host that needs to know whether it (or another component) already installed
+/// one before replacing it.
+let currentGuestSeam () : GuestSeam option = guestSeam
+
 let rec private renderKind
     (ctx: RenderContext<'Msg>)
     (parentNodeId: string)
@@ -2345,6 +2425,11 @@ let rec private renderKind
         // LayoutObserver + TreeDiff address across the boundary (§4o.6). When no
         // loader is wired (the default / standalone / server case), the declared
         // empty state renders — a Mount in an unwired host is inert, never a throw.
+        //
+        // The runtime the guest gets and the bubble it dispatches through both
+        // pass the host's `GuestSeam` when one is installed, so a guest reached
+        // through the plain render path is gated by the same capability policy as
+        // one an orchestration tier mounts and drives itself.
         let boundaryChild =
             match ctx.Runtime.TryLoadGuest spec.ScopeId, renderGuestHook with
             | Some guestTree, Some renderGuest ->
@@ -2355,18 +2440,33 @@ let rec private renderKind
                     (StateStore.forScope spec.ScopeId).Snapshot()
                     |> Map.fold (fun acc k v -> Map.add k v acc) ctx.Sources.State
 
+                // `MountSpec.OnBubble` is optional in the generated record — an
+                // unwired bubble channel swallows guest dispatches (inert,
+                // exactly like the old no-op).
+                let rawBubble (o: obj) =
+                    match spec.OnBubble with
+                    | Some onBubble -> runAction ctx (onBubble o)
+                    | None -> ()
+
+                // Apply the host's capability policy, if one is installed. With
+                // no seam this is exactly the pre-seam pair (host runtime,
+                // unwrapped bubble) — no behaviour change for existing hosts.
+                let guestRuntime, guestDispatch =
+                    match currentGuestSeam () with
+                    | Some seam ->
+                        let seamCtx: GuestSeamContext =
+                            { ScopeId = spec.ScopeId
+                              Capabilities = spec.Capabilities
+                              Channel = spec.Channel }
+
+                        seam.WrapRuntime seamCtx ctx.Runtime, seam.GateBubble seamCtx rawBubble
+                    | None -> ctx.Runtime, rawBubble
+
                 let guestCtx: RenderContext<obj> =
                     { Sources = { ctx.Sources with State = scopedState }
-                      Runtime = ctx.Runtime
+                      Runtime = guestRuntime
                       VisAdapter = VisAdapter.noOp<obj>
-                      // `MountSpec.OnBubble` is optional in the generated
-                      // record — an unwired bubble channel swallows guest
-                      // dispatches (inert, exactly like the old no-op).
-                      Dispatch =
-                        (fun (o: obj) ->
-                            match spec.OnBubble with
-                            | Some onBubble -> runAction ctx (onBubble o)
-                            | None -> ())
+                      Dispatch = guestDispatch
                       TelemetrySink = ctx.TelemetrySink
                       InErrorBoundary = false
                       Fragments = collectFragments Map.empty guestTree
@@ -4403,6 +4503,52 @@ let renderWithSourcesInScope
           VisAdapter = VisAdapter.noOp<'Msg>
           Dispatch = dispatch
           TelemetrySink = None
+          InErrorBoundary = false
+          Fragments = collectFragments Map.empty node
+          ExpandingFragments = Set.empty
+          Scope = Some scopeId
+          SessionContext = Map.empty }
+        node
+
+/// Scope-aware render entry WITH a telemetry sink — `renderWithSourcesInScope`
+/// plus the `IFuaranTelemetrySink` of `renderWithSourcesAndSink`.
+///
+/// It exists because the two axes were previously exclusive: every entry that
+/// carried a sink rendered against the process-global `StateStore`, and the one
+/// entry that took a `scopeId` hard-coded `TelemetrySink = None`. A host that
+/// needed state isolation — canonically a registered-custom-renderer host
+/// mounting guests, which is exactly the host most likely to see render
+/// failures it did not author — silently lost every render-failure event as the
+/// price of that isolation. Isolation and observability are orthogonal, and no
+/// entry should make a host trade one for the other.
+///
+/// Scoping semantics are identical to `renderWithSourcesInScope`:
+/// `Binding.State` reads resolve against `StateStore.forScope scopeId`
+/// (its snapshot merged over `sources.State`, scoped values winning) and
+/// `Action.SetState` writes route to that isolated store. Sink semantics are
+/// identical to `renderWithSourcesAndSink`: per-node-guard catches and
+/// `ErrorBoundary` catches are emitted to the host's sink.
+///
+/// For correlation context on top of this, see the hosting matrix in
+/// `docs/RENDER-ENTRIES.md`.
+let renderWithSourcesInScopeAndSink
+    (scopeId: string)
+    (sources: BindingResolver.BindingSources)
+    (runtime: Runtime.IFuaranRuntime)
+    (telemetrySink: IFuaranTelemetrySink)
+    (dispatch: 'Msg -> unit)
+    (node: Node<'Msg>)
+    : ReactElement =
+    let scopedState =
+        (StateStore.forScope scopeId).Snapshot()
+        |> Map.fold (fun acc k v -> Map.add k v acc) sources.State
+
+    render
+        { Sources = { sources with State = scopedState }
+          Runtime = runtime
+          VisAdapter = VisAdapter.noOp<'Msg>
+          Dispatch = dispatch
+          TelemetrySink = Some telemetrySink
           InErrorBoundary = false
           Fragments = collectFragments Map.empty node
           ExpandingFragments = Set.empty

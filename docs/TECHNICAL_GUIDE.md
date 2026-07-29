@@ -349,6 +349,10 @@ The renderer's job is to walk a `Node<'Msg>` tree and emit Feliz `ReactElement`s
 4. If any binding `Errored` and `OnError` is declared, render the error placeholder with the typed `ErrorPayload`.
 5. Otherwise render the component body.
 
+### Choosing a render entry
+
+`render` takes a `RenderContext` you build; the `renderWithSources*` family builds one for you and differs only in which axes it lets you supply — **runtime**, **telemetry sink**, **runtime scope**, **correlation context**. Which axes an entry pins is the contract, so pick by that rather than by name similarity. The full grid, plus the two seams that matter to hosts registering custom renderers or mounting guests (`TryRenderCustom`, `GuestSeam`), is [`RENDER-ENTRIES.md`](RENDER-ENTRIES.md).
+
 ### `BindingSources` – the resolver inputs
 
 ```fsharp
@@ -511,6 +515,7 @@ A Metric / Progress / Grid whose binding resolves to `NotResolved` renders the `
 - **Repo conventions** – [`../CLAUDE.md`](../CLAUDE.md).
 - **AI authoring guide** – [`AI_AUTHORING_GUIDE.md`](AI_AUTHORING_GUIDE.md).
 - **Host styling checklist** – [`HOST-STYLING-CHECKLIST.md`](HOST-STYLING-CHECKLIST.md).
+- **Render entries** – [`RENDER-ENTRIES.md`](RENDER-ENTRIES.md) (the entry × runtime × scope × sink hosting matrix + the `GuestSeam` mount policy).
 
 ### Phase tracking
 

@@ -89,6 +89,8 @@ The following are covered by the semver rules above:
 - The `Render` entry point and its signature.
 - The `Theme` and `BindingResolver` public surfaces consumed by Renderer extensions. _(As of Phase 138 these modules physically live in `Fuaran.UI.Renderer.Core` with their `Fuaran.UI.Renderer.*` namespaces preserved; the contract is unchanged.)_
 - **Decision (Phase 119): the renderer owns a dispatch policy-gate seam.** `IFuaranRuntime.CanDispatch : ActionDescriptor -> bool` is consulted by `runAction` before the gated host effects (`Call` / `Navigate` / `AiTool` – Phase 136 adds `ReadFileBody` to the gated set via the additive `ActionDescriptor.ReadFileBody of fileId: string` case); on deny the renderer emits a `Warn` diagnostic and skips the effect. The language tier therefore exposes its **own** default-deny seam rather than deferring the gate strictly to a downstream orchestration tier – a standalone host (e.g. the BYOK browser playground) consuming only the public packages can make the dispatch path default-deny without a §4j orchestration gate in the loop. The default runtimes (`Diagnostic` / `Mutable` / `Browser`) return `true` (allow), so a host that does not gate behaves exactly as before. Per the established precedent below, adding the `CanDispatch` abstract member is a **pre-1.0 minor add** – direct `IFuaranRuntime` implementers add `member _.CanDispatch _ = true` to preserve allow-by-default. (F# interfaces cannot carry a true default implementation, so the new member is technically a recompile for direct implementers; all in-repo implementers were updated in the same change, and there are no cross-sibling direct implementers.)
+- **The render-entry family and the axes each one pins.** `render` (the general `RenderContext` entry) plus the convenience entries `renderWithSources` / `renderWithSourcesAndSink` / `renderWithSourcesSinkAndContext` / `renderWithSourcesInScope` / `renderWithSourcesInScopeAndSink`, and the composing wrappers `renderWithTheme` / `renderStateReactive`. **Which `RenderContext` axis an entry PINS is part of the contract, not an implementation detail** – a host picks its entry by exactly that. Adding an entry is additive; changing an existing entry's pinned axis (giving `renderWithSources` a real runtime, say, or pinning a sink where a host supplies one) is a behavioural change to every consumer of that entry and bumps accordingly. The full grid is [`docs/RENDER-ENTRIES.md`](docs/RENDER-ENTRIES.md).
+- **`GuestSeam` – the host-pluggable `Mount` guest capability seam.** `GuestSeamContext` (`ScopeId` / `Capabilities` / `Channel`), the `GuestSeam` record (`WrapRuntime` / `GateBubble`), and `installGuestSeam` / `clearGuestSeam` / `currentGuestSeam`. The **default-off** property is the load-bearing part of the contract: with no seam installed the `Mount` arm hands the guest the host runtime and an unwrapped bubble, exactly as before the seam existed. Making the seam mandatory, or changing the no-seam default, is a breaking change for every host that installs nothing.
 - The `Sanitize` module's policy contract – `sanitizeExtraAttributes`, `sanitizeUrl` / `sanitizeUrlOrBlank`, `sanitizeMarkdownHtml` (Phase 56). Tightening the policy (rejecting an attribute key or URL scheme previously accepted) is a behavioural change to renderer output and counts as a minor-version bump; loosening it (accepting an attribute key or URL scheme previously rejected) is additive. The injection-safety contract is documented separately in [`SANITIZATION.md`](SANITIZATION.md), which the renderer leans on as the source of truth for which inputs are neutralised at render time.
 
 ### `Fuaran.UI.Ops`
@@ -454,6 +456,52 @@ changes across the entire swap.
 where it was those 13 plus the hand-written type definition plus the encoder mirror; the
 hand-maintained line count fell by 1,530 net. `WIRE_FORMAT.md` §11 step 1 names the IDL as the single
 source for the F# structural layer.
+
+## Recorded change — 0.9.0, the scope × sink render entry + the guest capability seam
+
+**Additive on `Fuaran.UI.Renderer`. No consumer source edits, no wire change, no
+behavioural change for a host that adopts neither addition.** Both close gaps the
+first Custom-node consumer hosts surfaced, and both sat on the *raw render path* —
+the path an orchestration tier was wrongly assumed to be covering.
+
+**`renderWithSourcesInScopeAndSink`** — the render-entry matrix had no cell
+combining a runtime **scope** with a telemetry **sink**. `renderWithSourcesInScope`
+hard-coded `TelemetrySink = None`, so a scope-aware host silently lost every
+render-failure event as the price of state isolation, while every sink-carrying
+entry rendered against the process-global `StateStore`. The two axes are
+orthogonal and no entry should have made a host trade one for the other — least
+of all this one, since the host most likely to need isolation (mounted guests,
+registered custom renderers) is the host most likely to render trees it did not
+author. Scoping semantics are identical to `renderWithSourcesInScope`; sink
+semantics identical to `renderWithSourcesAndSink`.
+
+**`GuestSeam`** — the `Mount` arm handed the guest the **host** runtime
+(`guestCtx.Runtime = ctx.Runtime`) and bridged its dispatch through the mount's
+`OnBubble` **unwrapped**, so the capability gate was enforced only where the
+orchestration tier authored the mount or drove the guest's dispatch loop. A
+*rendered* guest was therefore not default-deny. The gate now arrives as a
+language-tier-resident hook a host installs — the language tier must not
+reference the orchestration tier that owns the policy — mirroring the renderer's
+existing late-bound `renderGuestHook`.
+
+**Default-off, deliberately.** `currentGuestSeam ()` is `None` until a host calls
+`installGuestSeam`, and the `Mount` arm then behaves exactly as it did at 0.8.0.
+This is a capability *seam*, not a capability *change*: shipping a new default
+policy in a minor version would silently break every host that mounts a trusted
+guest today. The policy decision stays with the host; what shipped is the place
+to put it.
+
+**Migration:** none. Adopt `renderWithSourcesInScopeAndSink` where you currently
+call `renderWithSourcesInScope` and want telemetry; call `installGuestSeam` where
+you want rendered guests gated. See [`docs/RENDER-ENTRIES.md`](docs/RENDER-ENTRIES.md)
+for the entry × runtime × scope × sink grid and the `GuestSeam` shape.
+
+**Also recorded here because it is a stability claim about a *non*-change:** the
+"passing a telemetry sink trips a Fable assembly-identity split under source-packed
+`PackageReference` consumption" trap does not reproduce (verified 2026-07-08, Fable 5,
+concrete `IFuaranTelemetrySink` object expression through `renderWithSourcesAndSink`).
+It was never a documented constraint of this package and is not one now. The
+authoritative hosting story is `docs/RENDER-ENTRIES.md`.
 
 ## How this policy interacts with phase authoring
 

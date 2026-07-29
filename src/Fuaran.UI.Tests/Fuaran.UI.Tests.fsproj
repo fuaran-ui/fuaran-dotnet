@@ -183,6 +183,13 @@
     <!-- Phase 671: the IDL-generated structural layer, byte-diffed tier-side. -->
     <Compile Include="GeneratedLayerTests.fs" />
     <Compile Include="HandlerAddressTests.fs" />
+    <!-- RenderEntrySeamTests pins the two Custom-node hosting gaps: the
+         scope × telemetry-sink render entry (renderWithSourcesInScopeAndSink —
+         a scoped host no longer trades render-failure telemetry for state
+         isolation), and the Mount arm's host-pluggable GuestSeam (a RENDERED
+         guest passes the host's capability policy, not just an
+         orchestration-driven one). -->
+    <Compile Include="RenderEntrySeamTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
