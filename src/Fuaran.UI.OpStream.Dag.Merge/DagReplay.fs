@@ -26,6 +26,11 @@ type DagReplayError =
     | TombstonedOnSpine of hash: string
     /// The apply engine rejected a spine op.
     | ApplyFailed of hash: string * error: ApplyError
+    /// A `DagCheckpoint`'s stored `SnapshotHash` does not recompute against its
+    /// `Snapshot` at its claimed `AtHash` — the snapshot was tampered with, or a
+    /// genuine snapshot is being presented at a position it does not hold.
+    /// Replay refuses rather than folding the tail over an unverified base.
+    | SnapshotHashMismatch of atHash: string * expected: string * actual: string
 
 module DagReplay =
 
@@ -70,6 +75,15 @@ module DagReplay =
     /// not bound this head). This is the DAG generalisation of the linear
     /// "replay from op-index N" — the cost bound is (checkpoint→head) tail
     /// length, not total history.
+    ///
+    /// The snapshot is VERIFIED before it is trusted (the DAG half of the Phase
+    /// 412 / A2 fix): its stored `SnapshotHash` must recompute against its
+    /// `Snapshot` AT its claimed `AtHash`, so neither a swapped snapshot nor a
+    /// genuine snapshot presented at the wrong node is folded over. Pre-fix this
+    /// function trusted `checkpoint.Snapshot` outright and never looked at the
+    /// hash at all — the whole point of materialising one was silently unchecked.
+    /// The check is pure and runs before any record lookup, so a bad checkpoint
+    /// costs one canonical encode and never reaches the apply engine.
     let replayFromCheckpoint<'Msg>
         (getRecord: string -> DagOpRecord<'Msg> option)
         (checkpoint: DagCheckpoint<'Msg>)
@@ -92,16 +106,23 @@ module DagReplay =
                         Error(DagReplayError.UnknownHash checkpoint.AtHash)
                     | primary :: _ -> collect primary (r :: acc)
 
-        match collect head [] with
-        | Error e -> Error e
-        | Ok tail ->
-            tail
-            |> List.fold
-                (fun (acc: Result<Node<'Msg>, DagReplayError>) (r: DagOpRecord<'Msg>) ->
-                    match acc with
-                    | Error _ -> acc
-                    | Ok tree ->
-                        match Apply.apply r.Op tree with
-                        | Ok tree' -> Ok tree'
-                        | Error e -> Error(DagReplayError.ApplyFailed(r.Hash, e)))
-                (Ok checkpoint.Snapshot)
+        let foldTail () =
+            match collect head [] with
+            | Error e -> Error e
+            | Ok tail ->
+                tail
+                |> List.fold
+                    (fun (acc: Result<Node<'Msg>, DagReplayError>) (r: DagOpRecord<'Msg>) ->
+                        match acc with
+                        | Error _ -> acc
+                        | Ok tree ->
+                            match Apply.apply r.Op tree with
+                            | Ok tree' -> Ok tree'
+                            | Error e -> Error(DagReplayError.ApplyFailed(r.Hash, e)))
+                    (Ok checkpoint.Snapshot)
+
+        // Verify the snapshot BEFORE folding anything over it — an unverified
+        // base makes every op applied on top of it meaningless.
+        match DagCheckpoint.verifySnapshotHash checkpoint with
+        | Error(recomputed, stored) -> Error(DagReplayError.SnapshotHashMismatch(checkpoint.AtHash, stored, recomputed))
+        | Ok() -> foldTail ()

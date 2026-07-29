@@ -41,7 +41,12 @@ module GuestFork =
     /// keys the same way whether it wields the linear or the DAG sink.
     let streamId (scopeId: string) : string = GuestStream.streamId scopeId
 
-#if !FABLE_COMPILER
+    // Both builders below are thin guest-keyed aliases of `DagOpRecord.create`,
+    // which has been Fable-visible since Phase 408 (the pre-405 SHA-256 fence
+    // was stale). They carried a `#if !FABLE_COMPILER` fence inherited from that
+    // era, which left a Fable host able to name a guest stream but not open one.
+    // De-fenced with `DagVerify`.
+
     /// Build a guest stream's GENESIS `DagOpRecord`: the first op applied inside
     /// guest scope `scopeId`, recorded under `guest-<scopeId>` as a DAG child of
     /// `mountOpHash` — the content hash of the host-stream op that instantiated
@@ -77,7 +82,6 @@ module GuestFork =
         (resultEnvelope: OpResultEnvelope)
         : DagOpRecord<'Msg> =
         DagOpRecord.create (GuestStream.streamId scopeId) [ priorGuestHash ] op promptId userId timestamp resultEnvelope
-#endif
 
     /// Project a guest op's provenance — `(scopeId, promptId)` — so "which
     /// region, from which prompt" resolves per guest (consumed by the per-guest

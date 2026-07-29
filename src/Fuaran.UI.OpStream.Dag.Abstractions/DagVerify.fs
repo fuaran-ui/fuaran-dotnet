@@ -1,7 +1,5 @@
 namespace Fuaran.UI.OpStream.Dag.Abstractions
 
-open System.Collections.Generic
-
 // ============================================================================
 //  DagVerify — integrity verification over a set of DAG op-records.
 //
@@ -18,8 +16,15 @@ open System.Collections.Generic
 //      This is the FGP-5 "op-stream is the source of truth" guarantee carried
 //      through retention: pruning shortens payloads, never breaks the chain.
 //
-//  Server-side only (recompute needs SHA-256); scoped under `#if
-//  !FABLE_COMPILER` like the linear `Verify`.
+//  Portable on BOTH pipelines. The pre-405 `#if !FABLE_COMPILER` fence here was
+//  stale over-caution — it existed because recomputing a content address needed
+//  SHA-256 and SHA-256 used to be BCL-only. Phase 405 made `sha256Hex` a pure,
+//  Fable-safe FIPS 180-4 implementation, and the linear `Verify.chain` was
+//  de-fenced with it; `DagOpRecord.computeHash` followed at Phase 408. This
+//  module was the last fence between a browser host and DAG verification, so a
+//  Fable client could hold a DAG but never check it — exactly the asymmetry the
+//  linear chain no longer has. It is gone: the whole body is `Map` +
+//  `DagOpRecord.recomputeHash`, both Fable-clean.
 // ============================================================================
 
 [<RequireQualifiedAccess>]
@@ -30,40 +35,39 @@ type DagVerificationError =
     /// `(parents, op, timestamp)`.
     | HashMismatch of expected: string * actual: string
 
-#if !FABLE_COMPILER
 module DagVerify =
 
     /// Verify a set of DAG records: every parent resolves, and every live
     /// record's stored hash recomputes. Returns the first violation, or `Ok ()`
     /// on a clean DAG. Order-independent — the records are indexed by hash
-    /// first, so a topologically-unsorted input verifies the same.
+    /// first, so a topologically-unsorted input verifies the same, and the walk
+    /// is in Ordinal hash order so two hosts given the same broken DAG name the
+    /// same violation (the `Dictionary` this replaced iterated in insertion
+    /// order, which made "the first violation" host-dependent).
+    ///
+    /// A duplicate `Hash` is a re-add of identical content (content addressing
+    /// makes re-adds idempotent), so last-wins indexing loses nothing.
     let records<'Msg> (recs: DagOpRecord<'Msg> seq) : Result<unit, DagVerificationError> =
-        let byHash = Dictionary<string, DagOpRecord<'Msg>>()
+        let byHash = recs |> Seq.map (fun r -> r.Hash, r) |> Map.ofSeq
 
-        for r in recs do
-            byHash[r.Hash] <- r
-
-        let mutable result: Result<unit, DagVerificationError> = Ok()
-        use e = (byHash.Values :> IEnumerable<DagOpRecord<'Msg>>).GetEnumerator()
-        let mutable stop = false
-
-        while not stop && e.MoveNext() do
-            let r = e.Current
-
+        let violation (r: DagOpRecord<'Msg>) : DagVerificationError option =
             // 1. Parent linkage.
             match r.Parents |> List.tryFind (fun p -> not (byHash.ContainsKey p)) with
-            | Some missing ->
-                result <- Error(DagVerificationError.DanglingParent(r.Hash, missing))
-                stop <- true
+            | Some missing -> Some(DagVerificationError.DanglingParent(r.Hash, missing))
             | None ->
-                // 2. Content address — live records only. `recomputeHash`
-                // picks the op-hash or the merge-outcome-hash rule.
-                if not r.Tombstoned then
+                // 2. Content address — live records only. A tombstoned record's
+                // payload was pruned, so its hash is accepted as-stored.
+                // `recomputeHash` picks the op-hash or merge-outcome-hash rule.
+                if r.Tombstoned then
+                    None
+                else
                     let recomputed = DagOpRecord.recomputeHash r
 
-                    if recomputed <> r.Hash then
-                        result <- Error(DagVerificationError.HashMismatch(r.Hash, recomputed))
-                        stop <- true
+                    if recomputed = r.Hash then
+                        None
+                    else
+                        Some(DagVerificationError.HashMismatch(r.Hash, recomputed))
 
-        result
-#endif
+        match byHash |> Map.toSeq |> Seq.tryPick (snd >> violation) with
+        | Some e -> Error e
+        | None -> Ok()

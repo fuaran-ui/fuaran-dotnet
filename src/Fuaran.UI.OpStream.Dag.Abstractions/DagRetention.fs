@@ -2,6 +2,7 @@ namespace Fuaran.UI.OpStream.Dag.Abstractions
 
 open System
 open Fuaran.UI.Types
+open Fuaran.UI.OpStream.Abstractions
 
 // ============================================================================
 //  DagRetention — the retention MECHANISM (not policy).
@@ -53,13 +54,61 @@ module ResumeCoordinate =
 
 /// A materialised snapshot of the apply-engine tree AT a content-addressed DAG
 /// node — the DAG generalisation of the linear `Checkpoint`. `SnapshotHash` is
-/// `HashChain.sha256Hex (CanonicalJson.encodeNode Snapshot)`. Replay can resume
-/// from `Snapshot` and fold only the tail descendants of `AtHash`.
+/// `DagCheckpoint.snapshotHash AtHash (CanonicalJson.encodeNode Snapshot)` — the
+/// snapshot bound to its POSITION in the DAG, not merely to its own bytes.
+/// Replay can resume from `Snapshot` and fold only the tail descendants of
+/// `AtHash` (`DagReplay.replayFromCheckpoint`, which verifies the binding before
+/// trusting the snapshot).
 type DagCheckpoint<'Msg> =
     { StreamId: string
       AtHash: string
       Snapshot: Node<'Msg>
       SnapshotHash: string }
+
+/// The DAG analogue of the linear Phase-412 (A2) checkpoint binding. Pre-fix the
+/// DAG `SnapshotHash` was `sha256(canonicalTree)` alone — **position-free**, so a
+/// genuine snapshot taken at one node validated unchanged when presented as the
+/// checkpoint for a different one, and nothing on the replay path recomputed it
+/// anyway. Both halves are closed here: the hash binds `AtHash`, and
+/// `DagReplay.replayFromCheckpoint` verifies it before folding.
+///
+/// This is defence-in-depth, not tamper-proofing against an adversary who
+/// rewrites the whole checkpoint record consistently — that remains the signed
+/// attestation seam's job (Core `IAttestationSink`, Phase 320). The linear side
+/// says the same in `HashChain.snapshotHash`; the two stay in step.
+[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
+module DagCheckpoint =
+
+    /// The content address of a DAG checkpoint snapshot: the canonical tree in a
+    /// delimited payload, hashed under the checkpoint's POSITION (`atHash`) —
+    /// exactly the shape of the linear `HashChain.snapshotHash`, with the DAG's
+    /// content-addressed node standing in for `(previousChainHead, sequence)`
+    /// (a DAG has no global sequence; the node hash IS the position).
+    let snapshotHash (atHash: string) (canonicalTree: string) : string =
+        HashChain.sha256Hex (atHash + "|" + "{\"snapshot\":true,\"tree\":" + canonicalTree + "}")
+
+    /// Materialise a checkpoint for `snapshot` — the tree AT DAG node `atHash`
+    /// (its op already applied) — with the position-bound `SnapshotHash`
+    /// computed. The construction surface callers should prefer over a record
+    /// literal, so the binding cannot be forgotten.
+    let create<'Msg> (streamId: string) (atHash: string) (snapshot: Node<'Msg>) : DagCheckpoint<'Msg> =
+        { StreamId = streamId
+          AtHash = atHash
+          Snapshot = snapshot
+          SnapshotHash = snapshotHash atHash (CanonicalJson.encodeNode snapshot) }
+
+    /// Recompute the position-bound hash of `checkpoint.Snapshot` and compare to
+    /// the stored `SnapshotHash`. Pure — touches no sink. `Ok ()` on match,
+    /// `Error (recomputed, stored)` on mismatch (the linear
+    /// `Checkpoint.verifySnapshotHash` shape).
+    let verifySnapshotHash<'Msg> (checkpoint: DagCheckpoint<'Msg>) : Result<unit, string * string> =
+        let recomputed =
+            snapshotHash checkpoint.AtHash (CanonicalJson.encodeNode checkpoint.Snapshot)
+
+        if recomputed = checkpoint.SnapshotHash then
+            Ok()
+        else
+            Error(recomputed, checkpoint.SnapshotHash)
 
 /// The GC roots that keep records live: branch heads, checkpoint nodes, and
 /// live resume coordinates / permalinks.

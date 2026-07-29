@@ -278,10 +278,23 @@ module DagOpRecord =
                     | head :: _ -> [ head.Hash ]
 
                 let dag =
-                    // The DAG record keeps its bare-string UserId (its content-address is
-                    // deliberately tree-outcome-based, not actor-folded — folding the typed
-                    // actor into the DAG hash is a documented follow-on). Project the linear
-                    // record's typed actor down to the attribution id (Phase 320).
+                    // The DAG record keeps a bare-string `UserId`, so the linear
+                    // record's TYPED actor is projected down to its attribution id
+                    // (Phase 320) and the Human/Agent distinction is lost in the
+                    // embedding.
+                    //
+                    // The comment that stood here said the DAG's content address was
+                    // "deliberately tree-outcome-based, not actor-folded". That has
+                    // been WRONG since Phase 408, which folded `userId` (along with
+                    // `promptId` and the result envelope) into the pre-image — see
+                    // `provenanceJson`. Attribution IS hashed; what is outstanding is
+                    // only that it is hashed as an untyped string.
+                    //
+                    // Closing that gap is a MAJOR wire event, not a tidy-up: `userId`
+                    // is inside the content address, so typing it re-addresses every
+                    // DAG node, moves the `wire-format-fixtures/dag/` corpus, and must
+                    // land with the TS host in the same change-set (STABILITY.md puts
+                    // `DagOpRecord` pre-image breakage on the major axis).
                     create r.StreamId parents r.Op r.PromptId (Actor.id r.Actor) r.Timestamp r.ResultEnvelope
 
                 dag :: acc)

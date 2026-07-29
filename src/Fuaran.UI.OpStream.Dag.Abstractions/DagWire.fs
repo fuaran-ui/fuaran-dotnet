@@ -287,10 +287,12 @@ module DagWire =
                           OutcomeHash = f |> Map.tryFind "outcomeHash" |> Option.map unquote
                           PromptId = f |> Map.tryFind "promptId" |> Option.map unquote
                           UserId = unquote userRaw
-                          Timestamp =
-                            System.DateTimeOffset.FromUnixTimeSeconds(
-                                System.Int64.Parse(tsRaw, CultureInfo.InvariantCulture)
-                            )
+                          // `int64 (s: string)` is FSharp.Core's invariant-culture
+                          // parse and is Fable-supported; the explicit
+                          // `Int64.Parse(s, provider)` overload is not (Fable
+                          // errors "provider argument is ignored"), and this file
+                          // ships in the Fable-packed abstractions.
+                          Timestamp = System.DateTimeOffset.FromUnixTimeSeconds(int64 tsRaw)
                           ResultEnvelope = envelope
                           Tombstoned = (f |> Map.tryFind "tombstoned") = Some "true" }
             | _ ->

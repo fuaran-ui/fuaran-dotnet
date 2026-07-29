@@ -135,16 +135,84 @@ let tests =
                   | Ok t -> t
                   | Error e -> failtestf "snapshot replay failed: %A" e
 
-              let checkpoint =
-                  { StreamId = "s"
-                    AtHash = a.Hash
-                    Snapshot = snapshotAtA
-                    SnapshotHash = CanonicalJson.encodeNode snapshotAtA |> HashChain.sha256Hex }
+              let checkpoint = DagCheckpoint.create "s" a.Hash snapshotAtA
 
               match DagReplay.replayFromCheckpoint getRec checkpoint c.Hash with
               | Ok bounded ->
                   Expect.equal (canonical bounded) (canonical full) "checkpoint-bounded replay == full replay"
               | Error e -> failtestf "checkpoint replay failed: %A" e
+          }
+
+          test "TAMPER: a checkpoint whose Snapshot was swapped is REFUSED, not replayed" {
+              let sink, g, a, _, c, _ = fixture ()
+              let initial = buildDashboard ()
+
+              let getRec =
+                  let recs = sink.Records "s" |> Async.RunSynchronously
+                  let m = recs |> List.map (fun r -> r.Hash, r) |> Map.ofList
+                  fun h -> Map.tryFind h m
+
+              let snapshotAtA =
+                  match DagReplay.replay getRec initial a.Hash with
+                  | Ok t -> t
+                  | Error e -> failtestf "snapshot replay failed: %A" e
+
+              // A DIFFERENT tree (the state at `g`, one op earlier) is substituted
+              // for the snapshot while the checkpoint keeps the honest
+              // `SnapshotHash` of the tree it claims to hold. Nothing about the
+              // record is internally consistent any more — and replaying from it
+              // silently yields a tree that never existed at `a`.
+              let forged =
+                  match DagReplay.replay getRec initial g.Hash with
+                  | Ok t -> t
+                  | Error e -> failtestf "forged-snapshot replay failed: %A" e
+
+              Expect.notEqual
+                  (canonical forged)
+                  (canonical snapshotAtA)
+                  "the forged snapshot really is a different tree"
+
+              let tampered =
+                  { StreamId = "s"
+                    AtHash = a.Hash
+                    Snapshot = forged
+                    SnapshotHash = DagCheckpoint.snapshotHash a.Hash (canonical snapshotAtA) }
+
+              match DagReplay.replayFromCheckpoint getRec tampered c.Hash with
+              | Ok _ ->
+                  failtest "replayFromCheckpoint TRUSTED a tampered snapshot — the SnapshotHash was never verified"
+              | Error(DagReplayError.SnapshotHashMismatch(atHash, expected, actual)) ->
+                  Expect.equal atHash a.Hash "the refusal names the checkpoint node"
+                  Expect.notEqual expected actual "the stored and recomputed hashes differ"
+              | Error e -> failtestf "expected SnapshotHashMismatch, got %A" e
+          }
+
+          test "TAMPER: a genuine snapshot replayed at a DIFFERENT DAG node is REFUSED" {
+              // Cross-position substitution — the A2 hole on the DAG side. The
+              // snapshot and its hash are both genuine; only the `AtHash` moved.
+              // A tree-only hash cannot see this; a position-bound one must.
+              let sink, _, a, b, c, _ = fixture ()
+              let initial = buildDashboard ()
+
+              let getRec =
+                  let recs = sink.Records "s" |> Async.RunSynchronously
+                  let m = recs |> List.map (fun r -> r.Hash, r) |> Map.ofList
+                  fun h -> Map.tryFind h m
+
+              let genuineAtA =
+                  match DagReplay.replay getRec initial a.Hash with
+                  | Ok t -> t
+                  | Error e -> failtestf "snapshot replay failed: %A" e
+
+              let moved =
+                  { DagCheckpoint.create "s" a.Hash genuineAtA with
+                      AtHash = b.Hash }
+
+              match DagReplay.replayFromCheckpoint getRec moved c.Hash with
+              | Ok _ -> failtest "replayFromCheckpoint accepted a snapshot at a position it does not hold"
+              | Error(DagReplayError.SnapshotHashMismatch(atHash, _, _)) ->
+                  Expect.equal atHash b.Hash "the refusal names the claimed position"
+              | Error e -> failtestf "expected SnapshotHashMismatch, got %A" e
           }
 
           test "resume coordinate is linear↔DAG forward-compatible behind one envelope shape" {
