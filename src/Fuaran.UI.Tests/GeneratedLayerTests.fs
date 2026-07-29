@@ -1,5 +1,7 @@
 module Fuaran.UI.Tests.GeneratedLayer
 
+#nowarn "3261" // DirectoryInfo.Parent + JsonElement.GetString() are legitimately nullable here.
+
 // ============================================================================
 //  Phase 671 step 2 — the tier-side byte-diff.
 //
@@ -24,6 +26,7 @@ module Fuaran.UI.Tests.GeneratedLayer
 // ============================================================================
 
 open System.IO
+open System.Text.Json
 open Expecto
 
 open Fuaran.UI
@@ -70,6 +73,64 @@ let private familyFixtures (family: string) (pattern: string) : (string * string
         |> Array.toList
         |> List.sortBy fileName
         |> List.map (fun p -> fileName p, (File.ReadAllText p).Trim())
+
+/// The corpus root — the directory holding `manifest.json`.
+let private corpusRoot () : string option =
+    let rec climb (dir: DirectoryInfo option) =
+        match dir with
+        | None -> None
+        | Some d ->
+            let candidate = Path.Combine(d.FullName, "wire-format-fixtures")
+
+            if File.Exists(Path.Combine(candidate, "manifest.json")) then
+                Some candidate
+            else
+                climb (Option.ofObj d.Parent)
+
+    climb (Some(DirectoryInfo(System.AppContext.BaseDirectory)))
+
+/// How many fixtures of one `kind` the corpus MANIFEST enumerates.
+///
+/// The size pins below derive from this rather than naming a literal, because a
+/// literal is a forward-coupling trap in the one direction this repo cannot
+/// control. The corpus is a SEPARATE repo (`fuaran-ui/fuaran-ui-specification`,
+/// cloned to `../wire-format-fixtures/`), so a fixture lands there with no commit
+/// in this one — and the pin then goes red in whatever session next runs the
+/// gate, not the session that moved the corpus. That is exactly what happened at
+/// `wire-format-fixtures@d427a9a`: one new node fixture, 87 -> 88, three tests in
+/// this list red, and because they are `testList`-level failures they aborted the
+/// whole FAKE `Test` target, so every later suite stopped running too.
+/// `manifest.json` is the corpus's own authoritative enumeration and it moves
+/// WITH the fixture, in the same corpus commit.
+///
+/// The pin keeps its original teeth. It exists (per Phase 673, which removed five
+/// fixtures while every bucket held steady) to notice the corpus changing size
+/// silently — and directory-vs-manifest is a strictly STRONGER form of that check
+/// than directory-vs-literal, since it also catches a fixture file added or
+/// deleted without the manifest following.
+///
+/// Deliberately fails loudly rather than returning 0: with the corpus clone
+/// absent, both sides of the comparison would be 0 and the assertion would pass
+/// while measuring nothing.
+let private manifestFamilySize (kind: string) : int =
+    match corpusRoot () with
+    | None -> failtest "wire-format-fixtures/manifest.json not found — the corpus clone is missing"
+    | Some root ->
+        use manifest =
+            JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "manifest.json")))
+
+        let count =
+            manifest.RootElement.GetProperty("fixtures").EnumerateArray()
+            |> Seq.filter (fun entry ->
+                match entry.TryGetProperty "kind" with
+                | true, value -> value.GetString() = kind
+                | _ -> false)
+            |> Seq.length
+
+        if count = 0 then
+            failtestf "manifest.json enumerates no '%s' fixtures — the corpus or the family name is wrong" kind
+
+        count
 
 [<Tests>]
 let generatedLayerTests =
@@ -163,14 +224,17 @@ let generatedLayerTests =
           //  have to reproduce the corpus bytes exactly to pass.
           // ================================================================
 
-          test "hand-written encoder reproduces every corpus fixture (all 84)" {
-              // The control leg. It needs no generated layer, so it holds at 84
-              // even where the IDL does not yet model a fixture — which is what
-              // makes the generated leg's shortfall attributable rather than
-              // ambiguous.
+          test "hand-written encoder reproduces every corpus fixture" {
+              // The control leg. It needs no generated layer, so it covers the
+              // whole corpus even where the IDL does not yet model a fixture —
+              // which is what makes the generated leg's shortfall attributable
+              // rather than ambiguous.
               let corpus = familyFixtures "nodes" "*.json"
 
-              Expect.equal corpus.Length 87 "the node corpus is the expected 87 fixtures"
+              Expect.equal
+                  corpus.Length
+                  (manifestFamilySize "node-round-trip")
+                  "the nodes/ directory and the corpus manifest enumerate the same fixture set"
 
               let failures =
                   corpus
@@ -236,16 +300,25 @@ let generatedLayerTests =
                   []
                   "the generated and hand-written encoders now agree on every decodable fixture"
 
-              // 85 → 87 at the 692–694 landing: the two `DateRange` node fixtures
-              // became comparable when `FormFieldKind.DateRange` landed in the IDL
-              // (Fuaran-Core `5ddf06d`) and the generated layer was re-synced. Phase
-              // 725's dip to 85 was exactly the "a UI vocabulary addition lands here
-              // first, the generated layer follows" lag it documented, and it closed
-              // the way it said it would — by re-sync, not by weakening the diff.
+              // The claim is "no residue" — EVERY fixture is directly comparable —
+              // so it is stated against the corpus size, not a literal. That keeps
+              // the assertion's teeth exactly where they were: a new fixture the
+              // generated layer cannot decode leaves `compared` short and fails
+              // here, naming both numbers. What it stops doing is failing when the
+              // generated layer handles the new fixture perfectly well and only the
+              // literal was stale.
+              //
+              // History the number used to carry: 85 → 87 at the 692–694 landing,
+              // when the two `DateRange` node fixtures became comparable as
+              // `FormFieldKind.DateRange` landed in the IDL (Fuaran-Core `5ddf06d`)
+              // and the generated layer was re-synced. Phase 725's dip to 85 was
+              // exactly the "a UI vocabulary addition lands here first, the
+              // generated layer follows" lag it documented, and it closed the way it
+              // said it would — by re-sync, not by weakening the diff.
               Expect.equal
                   compared
-                  87
-                  (sprintf "the directly-compared set moved (%d of %d fixtures)" compared corpus.Length)
+                  corpus.Length
+                  (sprintf "the directly-compared set is not the whole corpus (%d of %d)" compared corpus.Length)
           }
 
           // ================================================================
@@ -282,12 +355,18 @@ let generatedLayerTests =
               // fixtures that were in the round-tripping set, so every bucket held
               // steady and this test passed without noticing the corpus had shrunk.
               // A count that only tracks failures is blind to the corpus itself.
-              // 47 → 52 at Phase 719 (the five compact authoring twins); 52 → 54 at
-              // Phase 725 (the two `DateRange` pair shorthands). The 719 bump was
-              // never applied here, so this pin was red against the published corpus
-              // before 725 corrected it — the hazard a size pin exists to catch,
-              // caught one release late.
-              Expect.equal expected.Length 54 "the lenient corpus is the expected 54 canonical fixtures"
+              //
+              // Against the MANIFEST rather than a literal — see `manifestFamilySize`.
+              // This pin is the reason: it read 47 → 52 at Phase 719 (the five
+              // compact authoring twins) and 52 → 54 at Phase 725 (the two
+              // `DateRange` pair shorthands), and the 719 bump was never applied
+              // here, so the pin sat red against the published corpus until 725
+              // corrected it — a size pin caught one release late by the very
+              // hand-maintenance it exists to replace.
+              Expect.equal
+                  expected.Length
+                  (manifestFamilySize "lenient-accept")
+                  "the lenient/ canonical fixtures and the corpus manifest enumerate the same set"
 
               // A node-envelope key present on the input but dropped on re-encode is
               // its own cause, not generic field drift: the IDL models no envelope.
@@ -359,17 +438,15 @@ let generatedLayerTests =
           // ---- Phase 672 task 5: what the generator actually owns, measured ----
           test "the generated layer's coverage of the node corpus is measured, not asserted" {
               // Task 5 exists because "the tax collapsed" is worthless unspecified.
-              // This is the number: how much of the real 84-fixture node corpus the
-              // generated structural layer can currently decode AND re-encode
-              // byte-for-byte, entirely on its own.
-              //
-              // It is pinned deliberately low-friction in one direction: a phase that
-              // widens the IDL raises the count and must update it here, which is the
-              // point — the figure quoted in `WIRE_FORMAT.md` §11 and Phase 671 step 5
-              // then has a checked-in source rather than a remembered one.
+              // This is the number: how much of the real node corpus the generated
+              // structural layer can currently decode AND re-encode byte-for-byte,
+              // entirely on its own.
               let corpus = familyFixtures "nodes" "*.json"
 
-              Expect.equal corpus.Length 87 "the node corpus is the expected 87 fixtures"
+              Expect.equal
+                  corpus.Length
+                  (manifestFamilySize "node-round-trip")
+                  "the nodes/ directory and the corpus manifest enumerate the same fixture set"
 
               let isCovered (json: string) =
                   match Generated.decodeNode json with
@@ -389,25 +466,32 @@ let generatedLayerTests =
               for name, _ in uncovered do
                   printfn "   %s" name
 
-              // 75 → 76 at Phase 690 (the node envelope; the gain was
-              // `style-role-voice-1`). 76 → 85 at the Phase 692 gap-closure: the
-              // 9-fixture residue fell to Binding.Transform/Selection (THosted +
-              // host-only accessors), the Phase 596 optional `value` slots, the
-              // Phase 425 grid `field`/`rowKeyField` vocabulary, and Modal's
-              // Phase 426 optional `onDismiss`. The whole node corpus now
-              // round-trips through the generated layer alone.
+              // The assertion is NO UNCOVERED RESIDUE, so it is stated against the
+              // corpus size rather than a literal. It keeps every tooth it had: a
+              // fixture the IDL cannot yet express fails here, with the residue
+              // NAMED by the printout above. It is precisely the shape a literal
+              // could not hold — the corpus is a separate repo, so the number is not
+              // this repo's to keep current, and the figure quoted in
+              // `WIRE_FORMAT.md` §11 and Phase 671 step 5 has a checked-in SOURCE
+              // (the manifest) rather than a remembered one.
               //
-              // 85 of 87 at Phase 725 — the residue was exactly the two `DateRange`
-              // node fixtures, the honest reading of a UI vocabulary addition landing
-              // here before the IDL. 85 → 87 at the 692–694 landing, when `DateRange`
-              // reached the IDL (Fuaran-Core `5ddf06d`) and the generated layer was
-              // re-synced: the whole node corpus round-trips through the generated
-              // layer alone again, with NO uncovered residue.
+              // History the number used to carry: 75 → 76 at Phase 690 (the node
+              // envelope; the gain was `style-role-voice-1`). 76 → 85 at the Phase
+              // 692 gap-closure, where the 9-fixture residue fell to
+              // Binding.Transform/Selection (THosted + host-only accessors), the
+              // Phase 596 optional `value` slots, the Phase 425 grid
+              // `field`/`rowKeyField` vocabulary, and Modal's Phase 426 optional
+              // `onDismiss`. 85 of 87 at Phase 725 — the residue was exactly the two
+              // `DateRange` node fixtures, the honest reading of a UI vocabulary
+              // addition landing here before the IDL — then 85 → 87 at the 692–694
+              // landing when `DateRange` reached the IDL (Fuaran-Core `5ddf06d`) and
+              // the generated layer was re-synced. The whole node corpus has
+              // round-tripped through the generated layer alone ever since.
               Expect.equal
                   covered
-                  87
+                  corpus.Length
                   (sprintf
-                      "generated-layer corpus coverage moved (%d of %d fixtures decode+re-encode byte-identically)"
+                      "generated-layer coverage is not the whole corpus (%d of %d fixtures decode+re-encode byte-identically)"
                       covered
                       corpus.Length)
           }
@@ -422,7 +506,10 @@ let generatedLayerTests =
               // split moves and this fails.
               let rejects = familyFixtures "reject" "*.json"
 
-              Expect.equal rejects.Length 41 "the reject corpus is the expected 41 fixtures"
+              Expect.equal
+                  rejects.Length
+                  (manifestFamilySize "reject")
+                  "the reject/ directory and the corpus manifest enumerate the same fixture set"
 
               let refusedByStructure, acceptedByStructure =
                   rejects
@@ -437,7 +524,7 @@ let generatedLayerTests =
 
               Expect.equal
                   (List.length refusedByStructure + List.length policyOwned)
-                  41
+                  rejects.Length
                   "every reject fixture is accounted for on one side of the seam"
 
               // Three became one at Phase 690, and the two that moved did so for the
