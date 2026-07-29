@@ -3136,7 +3136,11 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                               prop.required field.Required
                               prop.value toV
                               prop.onChange (fun (v: string) ->
-                                  handle onChange value (Some(box ({ From = fromV; To = v }: DateRangePair))) (fromV, v)) ]
+                                  handle
+                                      onChange
+                                      value
+                                      (Some(box ({ From = fromV; To = v }: DateRangePair)))
+                                      (fromV, v)) ]
                             @ constraintAttrs
                         ) ] ]
 

@@ -858,7 +858,13 @@ let formDateRange: Node<obj> =
           Label = TextSource.Literal "Stay"
           Kind =
             FormFieldKind.DateRange(
-                Some(Binding.Static(Some { From = "2026-03-01"; To = "2026-03-08" })),
+                Some(
+                    Binding.Static(
+                        Some
+                            { From = "2026-03-01"
+                              To = "2026-03-08" }
+                    )
+                ),
                 Some(fun _ -> placeholderChain),
                 DateVariant.Date,
                 Some "2026-01-01",
@@ -890,7 +896,13 @@ let formDateRange: Node<obj> =
           Label = TextSource.Literal "Window"
           Kind =
             FormFieldKind.DateRange(
-                Some(Binding.Static(Some { From = "2026-03-01T09:00"; To = "2026-03-01T17:00" })),
+                Some(
+                    Binding.Static(
+                        Some
+                            { From = "2026-03-01T09:00"
+                              To = "2026-03-01T17:00" }
+                    )
+                ),
                 Some(fun _ -> placeholderChain),
                 DateVariant.DateTime,
                 None,
@@ -918,8 +930,7 @@ let filtersDateRange: Node<obj> =
     let stayChip: FilterSpec<obj> =
         { Name = "stay"
           Label = TextSource.Literal "Stay"
-          Kind =
-            FormFieldKind.DateRange(Some(Binding.Filter("stay", None)), None, DateVariant.Date, None, None, None) }
+          Kind = FormFieldKind.DateRange(Some(Binding.Filter("stay", None)), None, DateVariant.Date, None, None, None) }
 
     node "filters-date-range" (NodeKind.Filters { Items = [ stayChip ] }) None
 

@@ -686,8 +686,13 @@ let tests =
                           Fuaran.select
                               "s"
                               { Defaults.select<obj> with
-                                  Source = Binding.Static []
-                                  Value = binding.state "pick" Option.None } ]
+                                  // Since the swap: `Static` payloads are
+                                  // option-wrapped, and `SelectSpec.Value` is a
+                                  // `Binding<string>` whose no-selection form is
+                                  // the default-less State read (it was a
+                                  // `Binding<string option>` with a `None` default).
+                                  Source = Binding.Static(Some [])
+                                  Value = binding.stateNoDefault "pick" } ]
 
                     for (expected, node) in cases do
                         Expect.equal (wireTypeOf node) expected (sprintf "the encoder's $type for %s" expected)

@@ -32,7 +32,15 @@
          `TreatWarningsAsErrors` even though STABILITY.md classifies DU
          exhaustiveness as non-breaking. Either way it is a public-contract
          addition, so it takes its own version rather than repacking 0.6.0. -->
-    <Version>0.7.0</Version>
+    <!-- 0.8.0 (Phases 692-694 — the swap onto the IDL-generated types): BREAKING
+         across the whole `Fuaran.UI` type surface, pre-1.0 so it rides a minor
+         bump. `Types.fs` no longer DEFINES the wire vocabulary; it ABBREVIATES
+         `Fuaran.UI.Generated` (the IDL emission). One version covers the whole
+         swap, per the staged plan — not one per stage. See STABILITY.md
+         "Recorded change - 0.8.0". Consumers repin and expect source edits at
+         record literals; the smart-ctor authoring surface is unchanged (the
+         `samples/demo` application has ZERO source changes across the swap). -->
+    <Version>0.8.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -387,9 +387,9 @@ let rec private inspectTreeForRelay (node: Node<'Msg>) : DebugGlobal.TreeIntrosp
 let private findNodesByWireKind (kind: string) (tree: Node<'Msg>) : string list =
     DebugGlobal.walkNodes tree
     |> List.filter (fun node -> wireKindName node.Kind = kind)
-    |> List.map (fun node ->
-        let (NodeId raw) = node.Id
-        raw)
+    // `Node.Id` is a bare string since the swap (`NodeId` survives only as the
+    // ops / store / tool wrapper), so there is nothing left to unwrap here.
+    |> List.map _.Id
 
 // ─── Payload projections ────────────────────────────────────────────────────
 

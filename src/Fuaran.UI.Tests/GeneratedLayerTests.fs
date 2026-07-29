@@ -236,14 +236,15 @@ let generatedLayerTests =
                   []
                   "the generated and hand-written encoders now agree on every decodable fixture"
 
-              // 85 of 87 since Phase 725: the two `DateRange` node fixtures are not
-              // COMPARABLE, because `FormFieldKind.DateRange` is not yet in the IDL
-              // (the IDL lives in the substrate sibling, so the generated layer
-              // follows a vocabulary addition rather than landing with it). They are
-              // named by the coverage test below; the diff itself is unweakened.
+              // 85 → 87 at the 692–694 landing: the two `DateRange` node fixtures
+              // became comparable when `FormFieldKind.DateRange` landed in the IDL
+              // (Fuaran-Core `5ddf06d`) and the generated layer was re-synced. Phase
+              // 725's dip to 85 was exactly the "a UI vocabulary addition lands here
+              // first, the generated layer follows" lag it documented, and it closed
+              // the way it said it would — by re-sync, not by weakening the diff.
               Expect.equal
                   compared
-                  85
+                  87
                   (sprintf "the directly-compared set moved (%d of %d fixtures)" compared corpus.Length)
           }
 
@@ -341,15 +342,14 @@ let generatedLayerTests =
               //    just no longer needs expressing to round-trip.
               //
               // Phase 725 reopened it with ONE bucket of two: the `DateRange` pair
-              // shorthands, whose canonical output the IDL cannot yet decode
-              // (`unknown FormFieldKind case: DateRange`). The IDL lives in the
-              // substrate sibling, so a UI vocabulary addition necessarily lands here
-              // first; the bucket closes when the generated layer is re-synced. It is
-              // a COVERAGE gap, not a normalisation failure — the hand-written policy
-              // layer round-trips both fixtures (the lenient-accept suite is green).
+              // shorthands, whose canonical output the IDL could not yet decode
+              // (`unknown FormFieldKind case: DateRange`). That bucket is CLOSED as of
+              // the 692–694 landing — `DateRange` is in the IDL (Fuaran-Core
+              // `5ddf06d`) and the generated layer is re-synced — so the residue is
+              // empty again, closed by modelling exactly like the three before it.
               Expect.equal
                   buckets
-                  [ "unclassified: unknown FormFieldKind case: DateRange", 2 ]
+                  []
                   (sprintf
                       "the IDL-coverage residue moved (%d of %d lenient-expected fixtures round-trip)"
                       roundTripped
@@ -397,14 +397,15 @@ let generatedLayerTests =
               // Phase 426 optional `onDismiss`. The whole node corpus now
               // round-trips through the generated layer alone.
               //
-              // 85 of 87 at Phase 725: the residue is exactly the two `DateRange`
-              // node fixtures. The IDL lives in the substrate sibling, so a UI
-              // vocabulary addition lands here first and the generated layer follows
-              // — the number going DOWN by an addition is the honest reading, not a
-              // regression in what the generator already covers.
+              // 85 of 87 at Phase 725 — the residue was exactly the two `DateRange`
+              // node fixtures, the honest reading of a UI vocabulary addition landing
+              // here before the IDL. 85 → 87 at the 692–694 landing, when `DateRange`
+              // reached the IDL (Fuaran-Core `5ddf06d`) and the generated layer was
+              // re-synced: the whole node corpus round-trips through the generated
+              // layer alone again, with NO uncovered residue.
               Expect.equal
                   covered
-                  85
+                  87
                   (sprintf
                       "generated-layer corpus coverage moved (%d of %d fixtures decode+re-encode byte-identically)"
                       covered
@@ -445,10 +446,17 @@ let generatedLayerTests =
               // generated decoder reads `style` and refuses a bad `tone` on structure
               // alone, where before it never looked at the key.
               //
-              // What is left is the one refusal structure genuinely cannot make: an
-              // empty-but-well-typed node id is a validator rule, not a shape.
+              // What is left are the refusals structure genuinely cannot make:
+              //  - an empty-but-well-typed node id is a validator rule, not a shape;
+              //  - a `DateRange` pair whose `from` sorts after its `to` is a RELATION
+              //    between two well-typed sibling values (Phase 725). It joined this
+              //    list at the 692–694 landing, when the generated decoder learned to
+              //    decode `DateRange` at all — the same reason Phase 725 could not
+              //    express the rule in JSON Schema either (Draft 2020-12 has no
+              //    keyword relating two sibling property values), which is why
+              //    `schemaInexpressibleRejects` pins it as schema-VALID.
               Expect.equal
                   policyOwned
-                  [ "reject-emptynodeid.json" ]
+                  [ "reject-daterange-unordered.json"; "reject-emptynodeid.json" ]
                   "the policy-owned residue is exactly the shapes structure cannot judge"
           } ]

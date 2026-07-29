@@ -55,7 +55,7 @@ DU exhaustiveness warnings (F#'s `FS0025`) are *not* considered breaking. Adding
 The following are covered by the semver rules above:
 
 ### `Fuaran.UI`
-- **Phase 692 (BREAKING — next release is a major/minor-zero bump): `NodeKind<'Msg>` is flat.** The
+- **Phase 692 (BREAKING — landed in 0.8.0): `NodeKind<'Msg>` is flat.** The
   four behavioural-category wrapper cases (`Layout of LayoutKind` / `Display of DisplayKind` /
   `Input of InputKind` / `Visualisation of VisKind`) are removed, and the 33 kinds they wrapped are
   now direct cases of `NodeKind<'Msg>` beside the six structural ones; the `LayoutKind` /
@@ -410,6 +410,50 @@ rule. Corpus: `nodes/form-date-range.json`, `nodes/filters-date-range.json`,
 
 **Host adoption.** The F# reference and the shared corpus land together; the other conformant hosts
 follow by fixture (their decode legs are filed as their own phases).
+
+## Recorded change — 0.8.0, the swap onto the IDL-generated types (Phases 692–694)
+
+**One version covers the whole swap**, not one per stage: the staged execution was a green-gate
+convenience, the contract change is a single event.
+
+**What changed.** `src/Fuaran.UI/Types.fs` no longer *defines* the wire vocabulary — it
+*abbreviates* `Fuaran.UI.Generated`, the layer emitted from the IDL in the substrate sibling.
+`Node<'Msg>`, `NodeKind<'Msg>`, `Binding<'T>`, `Action<'Msg>`, `TextSource`, `FormFieldKind<'Msg>`,
+every spec record, and the display enums are now type abbreviations over the generated types. The
+hand-written per-kind node encoder in `Fuaran.UI.OpStream.Abstractions.CanonicalJson` is **deleted**
+(2,351 → 632 lines); the generated encoder is the encoder, and the op codec splices its renderings.
+`CanonicalJson.encodeNode` survives as the public entry point.
+
+**The wire did not move.** Every corpus fixture is byte-identical: a full `--emit-corpus`
+regeneration at the landing reproduced all 242 fixtures + 39 kinds + `schema.json` with a zero diff.
+This is an internal type-model change, and the canonical bytes are the proof.
+
+**What it costs a consumer.** Source edits, not behavioural ones, and they bite *record literals and
+match arms*, not the authoring surface:
+
+- **Structurally identical, nominally different.** Field order within each union case was aligned to
+  the hand-written positional order before the swap, so construction and match sites compile
+  unchanged wherever arity and payload shape already matched.
+- **Typed absence.** Control `value` slots are `Binding<'v> option` and `Binding.Static` payloads are
+  option-wrapped (`Binding.Static(Some x)`); `Node.State` / `Node.Style` are `option` (absence is
+  structural). Previously-required closure slots are `option`.
+- **Wrapper erasure.** `Node.Id` is a bare `string` (`NodeId` survives as the ops / store / tool
+  wrapper); `ApiEndpoint` likewise erases at the tree level. A wrapper carrying runtime state keeps a
+  host-only slot instead (`FileRef.Handle`).
+- **Pair records.** `Range`'s `float * float` is the `RangePair` record and `DateRange`'s
+  `string * string` is the `DateRangePair` record — the record IS the wire object.
+- **Positional reshapes.** `LayoutMode` replaces the nested `BoxLayout`/`FlexLayout`/`GridTemplate`
+  records; `NumberFieldConstraints` / `DateFieldConstraints` are flattened to positional
+  `min` / `max` / `step` case fields (both records survive as host-side helpers).
+
+**What it does NOT cost.** The `Fuaran.*` smart-constructor authoring surface keeps its signatures.
+`samples/demo` — a complete authored application built only on that surface — has **zero** source
+changes across the entire swap.
+
+**Why it is worth the bump.** Adding a kind is now **1 IDL entry + 13 compiler-forced tier files**,
+where it was those 13 plus the hand-written type definition plus the encoder mirror; the
+hand-maintained line count fell by 1,530 net. `WIRE_FORMAT.md` §11 step 1 names the IDL as the single
+source for the F# structural layer.
 
 ## How this policy interacts with phase authoring
 
