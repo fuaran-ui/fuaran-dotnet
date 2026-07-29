@@ -491,6 +491,35 @@ let wrongNodeKindHint =
 
     primitives + ", or " + String.concat " | " structural
 
+/// Every recognised `FormFieldKind` discriminator (WIRE_FORMAT §11) — the ONE
+/// control vocabulary shared by a `Form`'s fields and a `Filters` strip's chips,
+/// in the same order the sibling hosts advertise it. A discriminator outside this
+/// set is `UNKNOWN_DU_CASE`.
+///
+/// Phase 746 — this list exists so the control vocabulary has a *declaration* to
+/// attest against the corpus, exactly as `knownNodeKinds` does for `NodeKind`.
+/// Its first act was to catch its own predecessor: the hand-typed
+/// `decodeFormFieldKind` fallback below had silently omitted `Range`, so a model
+/// that emitted a malformed range chip was told the case did not exist.
+let knownFormFieldKinds =
+    [ "Text"
+      "Number"
+      "Checkbox"
+      "Choice"
+      "Range"
+      "RangedNumber"
+      "SegmentedChoice"
+      "TextArea"
+      "Date"
+      "DateRange" ]
+
+/// The `ExpectedShape` hint carried by every `UNKNOWN_DU_CASE` a control
+/// discriminator raises, projected from the vocabulary above rather than
+/// re-typed — the same discipline `wrongNodeKindHint` follows, and for the same
+/// reason (a hand-written copy drifts, and a hint that names the wrong set is
+/// worse than none).
+let wrongFormFieldKindHint = String.concat " | " knownFormFieldKinds
+
 // ─── Internal helpers ─────────────────────────────────────────────────────
 
 let private closureSentinel = "<closure>"
@@ -3283,11 +3312,7 @@ let private decodeFormFieldKind
             | _, _, Error e, _, _
             | _, _, _, Error e, _
             | _, _, _, _, Error e -> Error e
-        | Ok s ->
-            unknownDuCase
-                path
-                s
-                "Text | Number | RangedNumber | Checkbox | Choice | SegmentedChoice | TextArea | Date | DateRange"
+        | Ok s -> unknownDuCase path s wrongFormFieldKindHint
 
 let private decodeFormField (path: string) (j: Json) : Result<FormField<obj>, DecodeError> =
     match requireObject path j with

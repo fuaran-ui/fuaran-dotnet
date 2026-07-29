@@ -212,6 +212,102 @@ let kindSetPin =
                   extra
                   (sprintf "the F# decoder produced kinds the manifest omits (regenerate with --emit-corpus): %A" extra)) ]
 
+// ── FormFieldKind attestation pin (Phase 746 — the control-vocabulary leg) ────
+// The second discriminator family to gain an executable attestation. `NodeKind`
+// has had one since Phase 548; `FormFieldKind` had none in ANY host, which is how
+// `DateRange` (Phase 725) landed in the corpus and sat unadopted in four hosts
+// while every gate stayed green. Go's node sweep documented the exclusion in a
+// comment; this closes it.
+//
+// Two directions, and both are load-bearing:
+//   - the corpus sweep — every control discriminator the corpus actually carries
+//     is one this host declares (a NEW kind in the corpus reddens here, named);
+//   - the derivable direction — this host declares no kind the corpus does not
+//     know (a kind added to the vocabulary without a fixture reddens here).
+[<Tests>]
+let formFieldKindSetPin =
+    let manifestControlKinds = Set.ofList (Corpus.loadFormFieldKinds ())
+    let hostControlKinds = Set.ofList JsonDecode.knownFormFieldKinds
+
+    testList
+        "Fuaran.UI.Ops.JsonDecode — FormFieldKind attestation (Phase 746)"
+        [ testCase "the F# control vocabulary equals manifest.formFieldKinds" (fun () ->
+              Expect.isNonEmpty
+                  manifestControlKinds
+                  "manifest.json declares no 'formFieldKinds' array — regenerate the corpus with --emit-corpus"
+
+              let missing = Set.difference manifestControlKinds hostControlKinds |> Set.toList
+
+              let extra = Set.difference hostControlKinds manifestControlKinds |> Set.toList
+
+              Expect.isEmpty
+                  missing
+                  (sprintf "manifest form-field kinds the F# decoder lacks (add the decode arm): %A" missing)
+
+              Expect.isEmpty
+                  extra
+                  (sprintf "F# decoder form-field kinds the manifest omits (add a fixture, regenerate): %A" extra))
+
+          testCase "every control discriminator in the corpus is in the host vocabulary" (fun () ->
+              // The sweep the phase asks for: `Form.fields[]` + `Filters.items[]`
+              // over every node fixture. Carriers are matched by their PARENT
+              // discriminator, never by property name — `DataGrid.columns[].kind`
+              // is a CellKindErased and shares the token `Text` with this family.
+              let seen =
+                  nodeEntries
+                  |> List.collect (fun e -> Corpus.controlKindsIn (Corpus.readPayload corpusRoot e.InputFile))
+                  |> Set.ofList
+
+              Expect.isNonEmpty seen "the node corpus carries no Form/Filters control at all — the sweep is blind"
+
+              let undeclared = Set.difference seen hostControlKinds |> Set.toList
+
+              Expect.isEmpty undeclared (sprintf "corpus control kinds the F# decoder does not declare: %A" undeclared)
+
+              // The corpus is what generated the manifest, so the two must agree —
+              // this catches a stale manifest committed without a regen.
+              let unlisted = Set.difference seen manifestControlKinds |> Set.toList
+
+              Expect.isEmpty
+                  unlisted
+                  (sprintf "control kinds the corpus carries but manifest.formFieldKinds omits: %A" unlisted))
+
+          testCase "every declared control kind is actually accepted by the decoder" (fun () ->
+              // The behavioural direction: a kind named in the vocabulary but
+              // absent from `decodeFormFieldKind`'s dispatch would send a model to
+              // a discriminator that rejects again. A declared kind must at
+              // minimum get PAST the dispatch (it may then fail on its own missing
+              // fields — anything but UNKNOWN_DU_CASE at the control's own $type).
+              let stillUnknown =
+                  JsonDecode.knownFormFieldKinds
+                  |> List.filter (fun k ->
+                      let json =
+                          sprintf
+                              """{"id":"f","kind":{"$type":"Form","fields":[{"id":"a","kind":{"$type":"%s"},"label":"L","required":false}],"onSubmit":"<closure>"},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+                              k
+
+                      match JsonDecode.decodeNodeObj json with
+                      | Ok _ -> false
+                      | Error e -> e.Code = "UNKNOWN_DU_CASE" && e.Path.EndsWith ".kind.$type")
+
+              Expect.isEmpty
+                  stillUnknown
+                  (sprintf "declared control kinds the decoder still rejects as UNKNOWN_DU_CASE: %A" stillUnknown))
+
+          testCase "the control hint names every kind in the vocabulary" (fun () ->
+              // The model-facing half. The hint is a pure projection, so this is a
+              // regression pin against someone re-typing it by hand again.
+              let tokens =
+                  JsonDecode.wrongFormFieldKindHint
+                  |> String.map (fun c -> if System.Char.IsLetter c then c else ' ')
+                  |> fun s -> s.Split(' ', System.StringSplitOptions.RemoveEmptyEntries)
+                  |> Set.ofArray
+
+              let missing =
+                  Corpus.loadFormFieldKinds () |> List.filter (fun k -> not (tokens.Contains k))
+
+              Expect.isEmpty missing (sprintf "the control-kind hint does not name these kinds: %A" missing)) ]
+
 // ── WRONG_NODE_KIND hint pin (the model-facing half of the kind-set contract) ──
 // The kind-set attestation above pins what the decoder ACCEPTS. This pins what it
 // TELLS a model when it rejects: the `ExpectedShape` hint on a WRONG_NODE_KIND

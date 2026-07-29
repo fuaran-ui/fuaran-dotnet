@@ -59,9 +59,66 @@ let private nodeIdStr (n: Node<obj>) : string = n.Id
 
 let private opId (name: string) : string = "op-" + name.ToLowerInvariant()
 
+/// Phase 746 — every `FormFieldKind` discriminator carried by an encoded node.
+///
+/// The control vocabulary rides in exactly TWO wire positions (WIRE_FORMAT §11:
+/// one vocabulary, two carriers): a `Form` spec's `fields[]` and a `Filters`
+/// spec's `items[]`. Both are matched by the PARENT discriminator rather than by
+/// property name, because `DataGrid.columns[].kind.$type` is a `CellKindErased`
+/// and shares the token `Text` with `FormFieldKind` — a property-name sweep
+/// silently attests the wrong family.
+let private controlKindsOf (root: JsonElement) : string list =
+    let acc = ResizeArray<string>()
+
+    let controlTag (el: JsonElement) : unit =
+        if el.ValueKind = JsonValueKind.Object then
+            match el.TryGetProperty "kind" with
+            | true, k when k.ValueKind = JsonValueKind.Object ->
+                match k.TryGetProperty "$type" with
+                | true, t ->
+                    match t.GetString() with
+                    | null -> ()
+                    | s -> acc.Add s
+                | _ -> ()
+            | _ -> ()
+
+    let rec walk (el: JsonElement) : unit =
+        match el.ValueKind with
+        | JsonValueKind.Object ->
+            let carrier =
+                match el.TryGetProperty "$type" with
+                | true, t ->
+                    match t.GetString() with
+                    | "Form" -> Some "fields"
+                    | "Filters" -> Some "items"
+                    | _ -> None
+                | _ -> None
+
+            match carrier with
+            | Some prop ->
+                match el.TryGetProperty prop with
+                | true, arr when arr.ValueKind = JsonValueKind.Array -> Seq.iter controlTag (arr.EnumerateArray())
+                | _ -> ()
+            | None -> ()
+
+            for p in el.EnumerateObject() do
+                walk p.Value
+        | JsonValueKind.Array ->
+            for v in el.EnumerateArray() do
+                walk v
+        | _ -> ()
+
+    walk root
+    List.ofSeq acc
+
 // ─── Emit (generator) ───────────────────────────────────────────────────────
 
-let private writeManifest (outputDir: string) (kinds: string list) (entries: FixtureEntry list) : unit =
+let private writeManifest
+    (outputDir: string)
+    (kinds: string list)
+    (formFieldKinds: string list)
+    (entries: FixtureEntry list)
+    : unit =
     let sorted = entries |> List.sortBy (fun e -> e.Kind, e.Id)
     // Relaxed escaping keeps the human-readable descriptions clean (no
     // + / — noise) — this is a spec artefact a human reads.
@@ -109,6 +166,20 @@ let private writeManifest (outputDir: string) (kinds: string list) (entries: Fix
     w.WriteStartArray("kinds")
 
     for k in kinds do
+        w.WriteStringValue(k)
+
+    w.WriteEndArray()
+
+    // Phase 746 — the canonical FormFieldKind enumeration: the CONTROL
+    // `kind.$type` vocabulary the corpus exercises, derived exactly the way
+    // `kinds` is (from the encoded node round-trip fixtures, never a hand list).
+    // `kinds` attests the NodeKind family; this attests the control family the
+    // Go comment at `conformance_test.go` explicitly excluded from the node
+    // sweep — the exclusion that let `DateRange` sit unadopted in four hosts.
+    // Every conformant host pins its control vocabulary against this list.
+    w.WriteStartArray("formFieldKinds")
+
+    for k in formFieldKinds do
         w.WriteStringValue(k)
 
     w.WriteEndArray()
@@ -405,8 +476,24 @@ let emit (outputDir: string) : unit =
         |> List.distinct
         |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
 
-    writeManifest outputDir kinds (List.ofSeq entries)
-    printfn "Emitted %d fixtures + %d kinds + schema.json to %s" entries.Count kinds.Length outputDir
+    // The canonical FormFieldKind enumeration — same derivation, same source
+    // bytes, one wire position deeper (see `controlKindsOf`).
+    let formFieldKinds =
+        Fixtures.allNodes
+        |> List.collect (fun (_, n) ->
+            use doc = JsonDocument.Parse(CanonicalJson.encodeNode n)
+            controlKindsOf doc.RootElement)
+        |> List.distinct
+        |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
+
+    writeManifest outputDir kinds formFieldKinds (List.ofSeq entries)
+
+    printfn
+        "Emitted %d fixtures + %d kinds + %d form-field kinds + schema.json to %s"
+        entries.Count
+        kinds.Length
+        formFieldKinds.Length
+        outputDir
 
 // ─── Load (test-time index) ──────────────────────────────────────────────────
 
@@ -475,20 +562,35 @@ let readPayload (root: string) (relativePath: string) : string =
     let native = relativePath.Replace('/', Path.DirectorySeparatorChar)
     File.ReadAllText(Path.Combine(root, native))
 
-/// The canonical NodeKind enumeration (the `kinds` array) from manifest.json —
-/// the Phase 548 cross-host kind-set attestation anchor. Every conformant host
-/// pins its decoder's recognised kind set against this generated list.
-let loadKinds () : string list =
+let private loadStringArray (property: string) : string list =
     let root = findRoot ()
     let manifestText = File.ReadAllText(Path.Combine(root, "manifest.json"))
     use doc = JsonDocument.Parse manifestText
 
-    match doc.RootElement.TryGetProperty "kinds" with
+    match doc.RootElement.TryGetProperty property with
     | true, arr ->
         arr.EnumerateArray()
         |> Seq.map (fun el ->
             match el.GetString() with
-            | null -> failwith "manifest 'kinds' entry is null"
+            | null -> failwithf "manifest '%s' entry is null" property
             | s -> s)
         |> List.ofSeq
-    | _ -> failwith "manifest.json has no 'kinds' array — regenerate with --emit-corpus"
+    | _ -> failwithf "manifest.json has no '%s' array — regenerate with --emit-corpus" property
+
+/// The canonical NodeKind enumeration (the `kinds` array) from manifest.json —
+/// the Phase 548 cross-host kind-set attestation anchor. Every conformant host
+/// pins its decoder's recognised kind set against this generated list.
+let loadKinds () : string list = loadStringArray "kinds"
+
+/// The canonical FormFieldKind enumeration (the `formFieldKinds` array) from
+/// manifest.json — the Phase 746 cross-host CONTROL-vocabulary attestation
+/// anchor, the second discriminator family to gain one.
+let loadFormFieldKinds () : string list = loadStringArray "formFieldKinds"
+
+/// Every `FormFieldKind` discriminator a corpus payload carries, in its two wire
+/// carriers (`Form.fields[]` / `Filters.items[]`). Shared by the emitter's
+/// derivation and the host attestation's fixture sweep, so the two cannot
+/// disagree about where the control vocabulary lives.
+let controlKindsIn (wire: string) : string list =
+    use doc = JsonDocument.Parse wire
+    controlKindsOf doc.RootElement
