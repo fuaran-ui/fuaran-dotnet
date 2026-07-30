@@ -1346,7 +1346,35 @@ Column.text "Status" (fun r -> r.Status)
 |> Column.withPill (fun r -> if r.Healthy then ToneVariant.Success else ToneVariant.Critical)
 ```
 
-The cell renders as `fuaran-grid-cell-pill fuaran-pill-<tone>` – the existing Pill rendering, no renderer change. This is the canonical idiom for the "map a category/status column to a coloured pill" pattern.
+The cell renders as `fuaran-grid-cell-pill fuaran-pill-<tone>` – the existing Pill rendering, no renderer change.
+
+**Which of the two pills you want.** `withPill` takes a closure, and a closure does not
+survive the wire: the tone rule erases to `"<closure>"`, so a decoded tree renders every row in
+the same tone. Since Phase 750 there is a declarative twin, and it is the one to reach for
+whenever the rule is *"this value gets this tone"*:
+
+```fsharp
+Column.text "Status" (fun r -> r.Status)
+|> Column.withTonedPill
+    "status"
+    (Map [ "On time", ToneVariant.Success; "Delayed", ToneVariant.Warning ])
+    ToneVariant.Subdued
+```
+
+Both render identically (a parity test pins that). The difference is what survives serialisation:
+
+| | `withPill` | `withTonedPill` |
+|---|---|---|
+| Tone rule | any F# expression over the row | a declared value→tone map |
+| On the wire | `{"$type":"Pill","labelFn":"<closure>","toneFn":"<closure>"}` – the rule is GONE | `{"$type":"TonedPill","field":"status","map":{…},"default":"Subdued"}` – the rule rides |
+| A decoded / replayed / AI-emitted tree | every row the same tone | correct |
+
+So: **`withTonedPill` unless the tone genuinely needs host computation** (a threshold against
+live data, a cross-field predicate). `withPill` remains the override for exactly those cases —
+the same closures-are-overrides-never-the-floor rule the rest of the vocabulary follows.
+
+The row-erased advice is unchanged for both: author through `Column.*`, not by hand-constructing
+a `CellKindErased` case.
 
 ## Self-checking before you emit (recommended pattern)
 

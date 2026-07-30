@@ -113,7 +113,7 @@ let all: SlotCapability list =
       row
           "CellKindErased.handlers"
           (SlotPosture.HostOnlyByDesign
-              "interactive-cell handlers (onEdit / onToggle / onClick / get / labelFn / hrefFn / toneFn / fractionFn / fn) mutate or project HOST data — 425 scoped cell mutation out of the declarative floor")
+              "interactive-cell handlers (onEdit / onToggle / onClick / get / labelFn / hrefFn / fractionFn / fn) mutate or project HOST data — 425 scoped cell mutation out of the declarative floor. Phase 750 removed `toneFn` from this list: `CellKindErased.TonedPill` is a declarative twin of the whole `Pill` case (field + value→tone map), so a value-conditional tone is now floor, not escape — the closure Pill survives as the override")
           "425"
       row
           "Binding.Computed.fn"

@@ -321,6 +321,8 @@ and mapCellKindErased (f: 'a -> 'b) (kind: CellKindErased<'a>) : CellKindErased<
         )
     | CellKindErased.Link(href, label) -> CellKindErased.Link(href, label)
     | CellKindErased.Pill(label, tone) -> CellKindErased.Pill(label, tone)
+    // Phase 750 — the declarative pill is pure data ('Msg-free), copied verbatim.
+    | CellKindErased.TonedPill(field, toneMap, defaultTone) -> CellKindErased.TonedPill(field, toneMap, defaultTone)
     | CellKindErased.Progress(fraction, label) -> CellKindErased.Progress(fraction, label)
     | CellKindErased.Custom render -> CellKindErased.Custom(render >> mapMsg f)
 

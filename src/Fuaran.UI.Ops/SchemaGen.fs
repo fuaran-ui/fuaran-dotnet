@@ -445,6 +445,17 @@ let private defs: (string * J) list =
                 [ "buttons", arrayOf (record [ "label"; "onClick" ] [ "label", ref "TextSource"; "onClick", closure ]) ]
             duCase "Link" [ "hrefFn"; "labelFn" ] [ "hrefFn", closure; "labelFn", closure ]
             duCase "Pill" [ "labelFn"; "toneFn" ] [ "labelFn", closure; "toneFn", closure ]
+            // Phase 750 — the declarative pill. `default` is omitted-when-`Default`, so
+            // it stays out of `required` (the Phase 460 discipline). `map` is a
+            // string-keyed object of `ToneVariant`s — the `additionalProperties` shape
+            // the i18n-args / fragment-args slots already use, which is what makes the
+            // legal tone names externally checkable rather than decoder-only.
+            duCase
+                "TonedPill"
+                [ "field"; "map" ]
+                [ "default", ref "ToneVariant"
+                  "field", str
+                  "map", JObj [ "type", JStr "object"; "additionalProperties", ref "ToneVariant" ] ]
             duCase "Progress" [ "fractionFn"; "labelFn" ] [ "fractionFn", closure; "labelFn", closure ]
             duCase "Custom" [ "fn" ] [ "fn", closure ] ]
 

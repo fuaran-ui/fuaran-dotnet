@@ -93,6 +93,29 @@ public sealed class Column<TRow>
     /// <summary>A date column reading <paramref name="value"/> from each row.</summary>
     public static Column<TRow> Date(string label, Func<TRow, DateTimeOffset> value) =>
         new(FsColumn.date<TRow, object>(label, Fs.Func<TRow, DateTimeOffset>(value)));
+
+    /// <summary>
+    /// Render this column's value as a tone-bearing pill whose tone comes from a declared
+    /// value&#8594;tone map (Phase 750). <paramref name="field"/> is the ROW PROPERTY name that
+    /// supplies both the pill's text and the map key; <paramref name="defaultTone"/> tones a value
+    /// the map does not mention.
+    /// </summary>
+    /// <remarks>
+    /// This is the only interactive-looking cell kind the fluent facade can offer, and that is not
+    /// an accident of scope: every other one (<c>Editable</c>, <c>Checkbox</c>, <c>Button</c>,
+    /// <c>Link</c>, <c>Pill</c>, <c>Progress</c>) is defined by a closure over the row, which the
+    /// facade has no way to model and the wire has no way to carry. A declared mapping has neither
+    /// problem, so it is expressible here and it survives serialisation intact.
+    /// </remarks>
+    public Column<TRow> WithTonedPill(
+        string field,
+        IEnumerable<KeyValuePair<string, Tone>> toneMap,
+        Tone defaultTone = Tone.Default) =>
+        new(FsColumn.withTonedPill<TRow, object>(
+            field,
+            Fs.Map(toneMap.Select(kv => new KeyValuePair<string, FsGen.ToneVariant>(kv.Key, kv.Value.ToFs()))),
+            defaultTone.ToFs(),
+            Inner));
 }
 
 /// <summary>Options for <see cref="Fuaran.Chart"/>.</summary>

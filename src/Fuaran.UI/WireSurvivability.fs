@@ -151,7 +151,11 @@ let all: Classification list =
       pt "CellKindErased.Button" None // label survives; onClick closure erases
       pt "CellKindErased.ButtonGroup" None // labels survive; per-entry onClick closures erase
       ho "CellKindErased.Link" (Some "Column.Field projecting the href row property + a Text cell")
-      ho "CellKindErased.Pill" None
+      // Phase 750 — `Pill` finally HAS a declarative twin. Until now its
+      // `Alternative` was honestly `None`: both its fields are closures, so the whole
+      // case erased and no wire construct said the same thing. `TonedPill` does.
+      ho "CellKindErased.Pill" (Some "CellKindErased.TonedPill (field + value→tone map, fully wire-expressible)")
+      sv "CellKindErased.TonedPill"
       ho "CellKindErased.Progress" None
       ho "CellKindErased.Custom" None // last-resort host escape
 

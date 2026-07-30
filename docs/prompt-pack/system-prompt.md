@@ -853,6 +853,137 @@ If you have a specific column count, emit `{"$type":"Grid","cols":N}`. If you wa
 responsive auto-tiling (the CSS auto-grid instinct), emit `{"$type":"Auto"}` — do not
 emit a `Grid` and omit `cols`.
 
+## Distinguishing rows by value — the toned pill
+
+When the prompt asks you to make certain rows stand out — "highlight the delayed
+shipments", "flag the poor performers", "show degraded services in red" — the column
+whose value decides it becomes a **`TonedPill`** cell. You DECLARE the rule as a
+value→tone map; you never write code for it.
+
+<!-- fuaran:example fixture=grid-toned-pill -->
+```json
+{
+  "id": "grid-toned-pill",
+  "kind": {
+    "$type": "DataGrid",
+    "columns": [
+      {
+        "field": "id",
+        "kind": {
+          "$type": "Text"
+        },
+        "label": "Shipment"
+      },
+      {
+        "field": "carrier",
+        "kind": {
+          "$type": "TonedPill",
+          "field": "carrier",
+          "map": {
+            "Meridian": "Info"
+          }
+        },
+        "label": "Carrier"
+      },
+      {
+        "field": "status",
+        "kind": {
+          "$type": "TonedPill",
+          "default": "Subdued",
+          "field": "status",
+          "map": {
+            "Cancelled": "Critical",
+            "Delayed": "Warning",
+            "On time": "Success"
+          }
+        },
+        "label": "Status"
+      }
+    ],
+    "rowKeyField": "id",
+    "source": {
+      "$type": "Transform",
+      "pipeline": [],
+      "source": {
+        "columns": {
+          "carrier": {
+            "validity": [
+              true,
+              true,
+              true
+            ],
+            "values": [
+              "Northwind",
+              "Meridian",
+              "Northwind"
+            ]
+          },
+          "id": {
+            "validity": [
+              true,
+              true,
+              true
+            ],
+            "values": [
+              "SHP-1001",
+              "SHP-1002",
+              "SHP-1003"
+            ]
+          },
+          "status": {
+            "validity": [
+              true,
+              true,
+              true
+            ],
+            "values": [
+              "On time",
+              "Delayed",
+              "Cancelled"
+            ]
+          }
+        },
+        "schema": [
+          {
+            "name": "id",
+            "type": "string"
+          },
+          {
+            "name": "carrier",
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "type": "string"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+<!-- /fuaran:example -->
+
+Read the `Status` column: `field` names the row property that supplies both the pill's
+text and the map's key, `map` gives the tone for each value it mentions, and `default`
+tones anything it does not. Note the `Carrier` column has no `default` — that means
+"leave the rest plain" (`Default` is the identity, so the key is omitted).
+
+Three things to get right:
+
+- **`map` values are `ToneVariant`s** — `Default` · `Subdued` · `Brand` · `Success` ·
+  `Warning` · `Critical` · `Info`. Not colours. `"Red"`, `"Urgent"` and `"Error"` are
+  all rejected; "bad" is `Critical`, "needs attention" is `Warning`, "fine" is
+  `Success`.
+- **`field` is the ROW PROPERTY name, not the label.** A column labelled `"Status"`
+  over a row property `status` has `"field": "status"` in BOTH the column and the cell.
+- **Do not reach for `{"$type":"Pill"}`.** That is the host-closure cell: its tone
+  comes from code you cannot write, so a `Pill` renders every row the same. (A `Pill`
+  carrying a `map` is accepted and read as a `TonedPill`, but emit the right tag.)
+
+The same tone vocabulary distinguishes non-tabular things: a `Badge` `variant`, a
+`Callout` `tone`, a `Metric` `tone`. `TonedPill` is the per-row form of it.
+
 ## Prompt-given data is `Static` — queries are for host data
 
 When the prompt HANDS you the data ("six SKUs: …", "channels: Search, Social, Display,
@@ -1186,7 +1317,7 @@ Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` 
 - `BoxLayout.$type`: `Auto`
 - `CallResultTarget.$type`: `State(key)` · `Query(name)`
 - `CellFormat.$type`: `None` · `Number` · `Currency(code)` · `Percent` · `SignificantDigits(digits)` · `Date(format)` · `Custom(fn)`
-- `CellKindErased.$type`: `Text` · `Numeric` · `Date` · `Editable(onEdit)` · `Checkbox(get, onToggle)` · `Button(label, onClick)` · `ButtonGroup(buttons)` · `Link(hrefFn, labelFn)` · `Pill(labelFn, toneFn)` · `Progress(fractionFn, labelFn)` · `Custom(fn)`
+- `CellKindErased.$type`: `Text` · `Numeric` · `Date` · `Editable(onEdit)` · `Checkbox(get, onToggle)` · `Button(label, onClick)` · `ButtonGroup(buttons)` · `Link(hrefFn, labelFn)` · `Pill(labelFn, toneFn)` · `TonedPill(field, map)` · `Progress(fractionFn, labelFn)` · `Custom(fn)`
 - `CellValue.$type`: `Numeric(value)` · `Text(value)` · `Bool(value)` · `Date(unixSeconds)` · `Empty`
 - `ColumnWidth.$type`: `Auto` · `Fixed(pixels)` · `Flex(weight)`
 - `CurveCommand.$type`: `MoveTo(to)` · `LineTo(to)` · `CubicTo(control1, control2, to)` · `QuadraticTo(control, to)` · `Close`

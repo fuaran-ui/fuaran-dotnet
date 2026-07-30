@@ -689,6 +689,9 @@ module Column =
                 CellKindErased.Link((fun (o: obj) -> href (unbox<'row> o)), (fun (o: obj) -> label (unbox<'row> o)))
             | CellKind.Pill(label, tone) ->
                 CellKindErased.Pill((fun (o: obj) -> label (unbox<'row> o)), (fun (o: obj) -> tone (unbox<'row> o)))
+            // Phase 750 — nothing to erase: the declarative pill holds no row accessor,
+            // so the typed and erased forms are the same three values.
+            | CellKind.TonedPill(field, toneMap, defaultTone) -> CellKindErased.TonedPill(field, toneMap, defaultTone)
             | CellKind.Progress(fraction, label) ->
                 CellKindErased.Progress(
                     (fun (o: obj) -> fraction (unbox<'row> o)),
@@ -751,6 +754,28 @@ module Column =
     let withPill (tone: 'row -> ToneVariant) (col: Column<'row, 'Msg>) : Column<'row, 'Msg> =
         { col with
             Kind = CellKind.Pill((fun r -> cellValueToText (col.Value r)), tone) }
+
+    /// Postfix pipe: render a column's value as a tone-bearing pill whose tone comes
+    /// from a DECLARED value→tone map rather than a host closure (Phase 750). Unlike
+    /// [[withPill]] this survives the wire intact — the pill's label and tone key are
+    /// both the named row property, so a decoded grid renders the distinction with
+    /// zero host code, and an AI author can emit it.
+    ///
+    /// `defaultTone` covers a value the map does not mention; pass
+    /// `ToneVariant.Default` for "leave the rest plain" (it is then omitted on the
+    /// wire).
+    ///
+    /// Example:
+    ///   Column.text "Status" (_.Status)
+    ///   |> Column.withTonedPill "status" (Map [ "Delayed", ToneVariant.Warning ]) ToneVariant.Default
+    let withTonedPill
+        (field: string)
+        (toneMap: Map<string, ToneVariant>)
+        (defaultTone: ToneVariant)
+        (col: Column<'row, 'Msg>)
+        : Column<'row, 'Msg> =
+        { col with
+            Kind = CellKind.TonedPill(field, toneMap, defaultTone) }
 
     let withFormat (format: CellFormat) (col: Column<'row, 'Msg>) : Column<'row, 'Msg> = { col with Format = format }
 

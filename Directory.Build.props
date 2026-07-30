@@ -62,7 +62,17 @@
          move: `chainFormatVersion` stays 2, the `DagOpRecord` pre-image is
          untouched, no fixture changed. See STABILITY.md "Recorded change -
          0.10.0". -->
-    <Version>0.10.0</Version>
+    <!-- 0.11.0 — ADDITIVE wire vocabulary: `CellKindErased.TonedPill`, the
+         declarative twin of the closure-only `Pill` (a `field` naming the row
+         property + a value→tone `map` + an omit-when-default `default`). MINOR
+         on exactly the 0.7.0 axis: a new case in a matched DU is an `FS0025`
+         source break under `TreatWarningsAsErrors`, which STABILITY.md's Semver
+         section classifies as non-breaking. No existing emission changes bytes —
+         a tree with no `TonedPill` cell encodes exactly as at 0.10.0. The typed
+         author facade `CellKind` gains the twin case and `Column.withTonedPill`;
+         the C# `Column` facade gains `WithTonedPill`. See STABILITY.md
+         "Recorded change - 0.11.0". -->
+    <Version>0.11.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

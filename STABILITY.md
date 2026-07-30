@@ -633,6 +633,53 @@ Per the workspace roadmap conventions, every phase that proposes a change to a s
 
 Roadmap maintenance passes scan for this annotation and surface major-version-bump candidates in their summaries.
 
+## Recorded change — 0.11.0, `CellKindErased.TonedPill`
+
+**Additive wire vocabulary.** `CellKindErased` gains a `TonedPill` case — a grid cell whose tone is
+a *declared* value→tone mapping rather than a host closure: `field` (the row property that supplies
+both the pill's label and the map key), `map` (`Map<string, ToneVariant>`), and `default` (the tone
+for a value the map does not mention, omitted on the wire at `ToneVariant.Default`). The typed author
+facade `CellKind` gains the same case, `Column.withTonedPill` is its smart constructor, and the C#
+`Column<TRow>` facade gains `WithTonedPill`.
+
+**Why it exists, in one line:** `Pill`'s two fields are both closures, so on the wire it is
+`{"labelFn":"<closure>","toneFn":"<closure>"}` and a value-conditional tone was **inexpressible** —
+not verbose, inexpressible, since no lenient shape can conjure a function. It is the one entry in
+`WireSurvivability` whose "recoverable alternative" was honestly `–` until now.
+
+**No existing emission changes meaning or bytes.** A tree with no `TonedPill` cell encodes to exactly
+the bytes it did at 0.10.0; the full `--emit-corpus` regeneration touched only the five new fixtures
+and the schema's new `$defs.CellKindErased` branch. `Pill` is untouched and remains the override for
+a tone that genuinely needs host computation (a threshold against live data, a cross-field predicate).
+
+**What it costs a consumer.** Per the [Semver](#semver) note, a new DU case is *minor*, not major —
+but `CellKindErased` is a matched DU, so an exhaustive `match` gets `FS0025`, a build break under
+`TreatWarningsAsErrors`. This is the axis [0.7.0](#recorded-change--070-formfieldkinddaterange)
+settled. Sites to expect: a grid cell renderer arm, an `AgGrid`-style column-def builder, a
+`'Msg`-mapping walk, and any survivability / inertness classification. The count is small and
+knowable — six files in this repo, all compiler-forced.
+
+**Wire contract.**
+`{"$type":"TonedPill","default"?:<ToneVariant>,"field":<string>,"map":{<string>:<ToneVariant>}}`.
+`map` values are the ordinary `ToneVariant` vocabulary and accept the §3.6 aliases
+(`Danger`→`Critical`, `Positive`→`Success`, `Neutral`→`Default`); an unrecognised value is an
+`UNKNOWN_DU_CASE` decode error naming all seven legal tones, reported at the offending **key**
+(`$…map.Delayed`). Two §16 shorthands are accepted: `toneMap` / `tones` alias `map`, and a
+`{"$type":"Pill"}` cell **carrying** a tone map normalises to `TonedPill` — that second one is not a
+convenience but a data-loss fix, since before 0.11.0 those keys were accepted and silently discarded.
+Corpus: `nodes/grid-toned-pill.json`, `reject/reject-tonedpill-unknown-tone.json`,
+`lenient/lenient-tonedpill-{pill-tag,tonemap-alias,tone-aliases}.json`.
+
+**Renderer.** Both grid backends (the simple-table cell and the AG Grid cell renderer) route through
+one shared lowering, `BindingResolver.tonedPillOf`, and emit the *same* element, class vocabulary and
+text as the hosted `Pill` arm — the case exists to make the rule expressible, not to render
+differently. A parity test pins the two derivations against each other over the cases a lookup gets
+wrong (mapped, unmapped, empty, field-absent, non-Map row). SSR is unaffected: it renders a
+hydration placeholder for a data-bound grid, never per-cell markup.
+
+**Host adoption.** The F# reference, the TypeScript tier and the shared corpus land together; the
+Python, Go and Rust codec legs follow by fixture as their own phases (the 725 / 730–733 precedent).
+
 ## Versioning policy (release identifiers)
 
 The `<Version>` property in [`Directory.Build.props`](Directory.Build.props) governs the package id+version pair pushed to **nuget.org**, the sole released channel — public and no-auth-restore. Policy: **per-release semver bump**.

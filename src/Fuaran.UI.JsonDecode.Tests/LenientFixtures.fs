@@ -525,4 +525,45 @@ let all: LenientFixture list =
         VerboseJson =
           """{"id":"len-dr-env","kind":{"$type":"Form","fields":[{"id":"stay","kind":{"$type":"DateRange","value":{"from":"2026-03-01","to":"2026-03-08"},"variant":"Date"},"label":"Stay","required":false}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Book"}}"""
         Description =
-          "Phase 725 — a DateRange Static pair wrapped in the explicit {\"$type\":\"Static\"} envelope stays decode-accepted (the `Range` read-compat posture); the bare {from, to} object is the canonical output" } ]
+          "Phase 725 — a DateRange Static pair wrapped in the explicit {\"$type\":\"Static\"} envelope stays decode-accepted (the `Range` read-compat posture); the bare {from, to} object is the canonical output" }
+
+      // ─── Phase 750 — the declarative pill's three accepted shorthands ────
+      //
+      // `Pill` + `field`/`map` is the one that MATTERS. Before this phase that
+      // document decoded happily as a closure `Pill` and threw `field` and `map`
+      // on the floor: the author's whole intent vanished with no error anywhere.
+      // Normalising it to `TonedPill` converts silent data loss into the shape
+      // the author meant, and it is also the emission an unaided model reaches
+      // for first — `Pill` is the word for the thing.
+      { Id = "lenient-tonedpill-pill-tag"
+        LenientJson =
+          """{"id":"shipments","kind":{"$type":"DataGrid","columns":[{"field":"status","kind":{"$type":"Pill","field":"status","map":{"Delayed":"Warning"}},"label":"Status"}],"rowKeyField":"status","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"status":{"validity":[true],"values":["Delayed"]}},"schema":[{"name":"status","type":"string"}]}}}}"""
+        VerboseJson =
+          """{"id":"shipments","kind":{"$type":"DataGrid","columns":[{"field":"status","kind":{"$type":"TonedPill","field":"status","map":{"Delayed":"Warning"}},"label":"Status"}],"rowKeyField":"status","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"status":{"validity":[true],"values":["Delayed"]}},"schema":[{"name":"status","type":"string"}]}}}}"""
+        Description =
+          "Phase 750 — a `Pill` cell carrying `field` + `map` normalises to `TonedPill`; before this the declarative fields were silently DROPPED into a closure pill (the author's intent lost with no error)" }
+
+      // `toneMap` / `tones` alias the terse canonical `map`. `map` is the shortest
+      // honest name for a value→tone dictionary but the least descriptive one, and
+      // the aliases cost nothing: the §16 layer already aliases `header`/`title`
+      // onto a column's `label` for the same reason.
+      { Id = "lenient-tonedpill-tonemap-alias"
+        LenientJson =
+          """{"id":"shipments","kind":{"$type":"DataGrid","columns":[{"field":"status","kind":{"$type":"TonedPill","field":"status","toneMap":{"Delayed":"Warning"}},"label":"Status"}],"rowKeyField":"status","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"status":{"validity":[true],"values":["Delayed"]}},"schema":[{"name":"status","type":"string"}]}}}}"""
+        VerboseJson =
+          """{"id":"shipments","kind":{"$type":"DataGrid","columns":[{"field":"status","kind":{"$type":"TonedPill","field":"status","map":{"Delayed":"Warning"}},"label":"Status"}],"rowKeyField":"status","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"status":{"validity":[true],"values":["Delayed"]}},"schema":[{"name":"status","type":"string"}]}}}}"""
+        Description =
+          "Phase 750 — `toneMap` (and `tones`) alias the canonical `map` on a TonedPill cell, the `header`/`title`→`label` field-alias device" }
+
+      // The tone-map VALUES are a tone position like any other, so the Phase 460
+      // tone aliases (Danger/Negative→Critical, Positive→Success, Neutral→Default)
+      // apply inside the map. Pinned because "the aliases work in the new position
+      // too" is the kind of claim that is true by construction until someone
+      // hand-rolls a second tone reader.
+      { Id = "lenient-tonedpill-tone-aliases"
+        LenientJson =
+          """{"id":"shipments","kind":{"$type":"DataGrid","columns":[{"field":"status","kind":{"$type":"TonedPill","default":"Neutral","field":"status","map":{"Cancelled":"Danger","On time":"Positive"}},"label":"Status"}],"rowKeyField":"status","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"status":{"validity":[true],"values":["Delayed"]}},"schema":[{"name":"status","type":"string"}]}}}}"""
+        VerboseJson =
+          """{"id":"shipments","kind":{"$type":"DataGrid","columns":[{"field":"status","kind":{"$type":"TonedPill","field":"status","map":{"Cancelled":"Critical","On time":"Success"}},"label":"Status"}],"rowKeyField":"status","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"status":{"validity":[true],"values":["Delayed"]}},"schema":[{"name":"status","type":"string"}]}}}}"""
+        Description =
+          "Phase 750 — the Phase 460 tone aliases apply inside a TonedPill `map` (Danger→Critical, Positive→Success) and in its `default` (Neutral→Default, which then omits)" } ]

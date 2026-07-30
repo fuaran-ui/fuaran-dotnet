@@ -264,6 +264,7 @@ and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
     | ButtonGroup of buttons: ButtonGroupItem<'Msg> list
     | Link of hrefFn: (obj -> string) * labelFn: (obj -> TextSource)
     | Pill of labelFn: (obj -> TextSource) * toneFn: (obj -> ToneVariant)
+    | TonedPill of field: string * map: Map<string, ToneVariant> * ``default``: ToneVariant
     | Progress of fractionFn: (obj -> float) * labelFn: (obj -> TextSource) option
     | Custom of fn: ((obj -> JVal) -> Node<'Msg>)
 
@@ -1199,6 +1200,7 @@ and private encCellKindErased<'Msg> (v: CellKindErased<'Msg>) : JVal =
     | CellKindErased.ButtonGroup buttons -> Canon.typed "ButtonGroup" [ "buttons", JArr(List.map encButtonGroupItem buttons) ]
     | CellKindErased.Link (hrefFn, labelFn) -> Canon.typed "Link" [ "hrefFn", JStr "<closure>"; "labelFn", JStr "<closure>" ]
     | CellKindErased.Pill (labelFn, toneFn) -> Canon.typed "Pill" [ "labelFn", JStr "<closure>"; "toneFn", JStr "<closure>" ]
+    | CellKindErased.TonedPill (field, map, ``default``) -> Canon.typed "TonedPill" ([ Some("field", JStr field); Some("map", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encToneVariant v))) map); (if ``default`` = ToneVariant.Default then None else Some("default", encToneVariant ``default``)) ] |> List.choose id)
     | CellKindErased.Progress (fractionFn, labelFn) -> Canon.typed "Progress" ([ Some("fractionFn", JStr "<closure>"); (labelFn |> Option.map (fun v -> "labelFn", JStr "<closure>")) ] |> List.choose id)
     | CellKindErased.Custom fn -> Canon.typed "Custom" [ "fn", JStr "<closure>" ]
 
@@ -2120,6 +2122,11 @@ and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, string> =
             Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
             Ok ((fun _ -> ToneVariant.Default)) |> Result.bind (fun toneFn ->
             Ok(CellKindErased.Pill(labelFn, toneFn))))
+        | "TonedPill" ->
+            dReq "field" __fs dStr |> Result.bind (fun field ->
+            dReq "map" __fs (dMap decToneVariant) |> Result.bind (fun map ->
+            dDef "default" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun ``default`` ->
+            Ok(CellKindErased.TonedPill(field, map, ``default``)))))
         | "Progress" ->
             Ok ((fun _ -> 0.0)) |> Result.bind (fun fractionFn ->
             (dPresent "labelFn" __fs |> Result.map (Option.map (fun () -> (fun _ -> TextSource.Literal "")))) |> Result.bind (fun labelFn ->

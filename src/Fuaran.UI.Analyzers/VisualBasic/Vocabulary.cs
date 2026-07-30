@@ -103,7 +103,11 @@ internal static class Vocabulary
         Add("Option", "value", "label");
         Add("Field", "kind", "id", "label", "required", "initial", "help", "selected", "rows");
         Add("Filter", "kind", "name", "label");
-        Add("Column", "type", "label", "field");
+        // Phase 750 — `tone-field` / `default-tone` accompany <Tone> children and turn the
+        // column into a declarative TonedPill; `tone-field` is only needed when the tone is
+        // driven by a DIFFERENT row property than the column displays.
+        Add("Column", "type", "label", "field", "tone-field", "default-tone");
+        Add("Tone", "value", "tone");
         Add("Marker", "lat", "lng", "label");
         Add("Prop", "name", "value");
         return b.ToImmutable();

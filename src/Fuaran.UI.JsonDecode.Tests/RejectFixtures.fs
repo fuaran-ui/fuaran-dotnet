@@ -350,4 +350,21 @@ let all: RejectFixture list =
         ExpectedCode = DecodeErrorCode.WRONG_TYPE
         ExpectedPath = "$.kind.fields[0].kind.value"
         IsOp = false
-        Description = "DateRange literal pair with start after end — the ordered-pair rule (Phase 725)" } ]
+        Description = "DateRange literal pair with start after end — the ordered-pair rule (Phase 725)" }
+
+      // ─── TonedPill tone-map values (Phase 750) ───────────────────────────
+      //
+      // The declarative pill's `map` VALUES are `ToneVariant`s, and a tone name
+      // is the one part of the shape an author has to know rather than infer:
+      // "Urgent" / "Red" / "Error" are all plausible-sounding and all wrong. The
+      // reject is deliberately routed through the same `decodeTone` every other
+      // tone position uses, so the message enumerates the seven legal names — an
+      // author who guesses gets the answer, not just a refusal.
+      { Id = "reject-tonedpill-unknown-tone"
+        Json =
+          """{"id":"g1","kind":{"$type":"DataGrid","columns":[{"field":"status","kind":{"$type":"TonedPill","field":"status","map":{"Delayed":"Urgent"}},"label":"Status"}],"rowKeyField":"status","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"status":{"validity":[true],"values":["Delayed"]}},"schema":[{"name":"status","type":"string"}]}}}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.columns[0].kind.map.Delayed"
+        IsOp = false
+        Description =
+          "TonedPill tone-map value outside ToneVariant — the message names the seven legal tones (Phase 750)" } ]

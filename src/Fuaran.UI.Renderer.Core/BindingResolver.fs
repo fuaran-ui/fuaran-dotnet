@@ -726,3 +726,24 @@ let projectRowFieldString (row: obj) (field: string) : string =
     | CellValue.Bool b -> (if b then "true" else "false")
     | CellValue.Date d -> d.ToString("o")
     | CellValue.Empty -> ""
+
+/// Phase 750 — lower a `CellKindErased.TonedPill` for one row: the named field's
+/// text IS the pill's label, and its tone is the map's entry for that text, or
+/// `defaultTone` for a value the map does not mention.
+///
+/// This is the whole of the declarative pill's semantics, in ONE place, because
+/// three surfaces render it (the simple-table cell, the AG Grid cell renderer, and
+/// the TS tier's two renderers) and a per-surface copy of a lookup-with-fallback is
+/// exactly how two hosts come to disagree about an unmapped value. Keyed on the
+/// same `projectRowFieldString` the row-key floor uses, so a numeric or boolean
+/// field maps by its canonical text rather than by a second coercion rule.
+/// Parity-locked with the TS renderers' `tonedPillOf`.
+let tonedPillOf
+    (row: obj)
+    (field: string)
+    (toneMap: Map<string, ToneVariant>)
+    (defaultTone: ToneVariant)
+    : string * ToneVariant =
+    let label = projectRowFieldString row field
+    let tone = toneMap |> Map.tryFind label |> Option.defaultValue defaultTone
+    label, tone

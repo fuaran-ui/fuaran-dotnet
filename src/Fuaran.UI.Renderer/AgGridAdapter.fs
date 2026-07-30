@@ -287,6 +287,20 @@ let private buildColumnDef<'Msg>
 
             [ "cellRenderer", box cellRenderer ]
 
+        | CellKindErased.TonedPill(field, toneMap, defaultTone) ->
+            // Phase 750 — the declarative twin, through the same shared lowering the
+            // simple-table cell uses, so the two grid backends cannot disagree about
+            // an unmapped value.
+            let cellRenderer (p: obj) : ReactElement =
+                let row: obj = p?data
+                let label, tone = BindingResolver.tonedPillOf row field toneMap defaultTone
+
+                Html.span
+                    [ prop.className (sprintf "fuaran-grid-cell-pill fuaran-pill-%s" (Theme.toneVar tone))
+                      prop.text label ]
+
+            [ "cellRenderer", box cellRenderer ]
+
         | CellKindErased.Progress(fractionFn, labelFn) ->
             let cellRenderer (p: obj) : ReactElement =
                 let row: obj = p?data

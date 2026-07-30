@@ -4037,6 +4037,16 @@ and private renderGridCell
         Html.span
             [ prop.className (sprintf "fuaran-grid-cell-pill fuaran-pill-%s" (Theme.toneVar (tone row)))
               prop.text (renderText ctx (label row)) ]
+    | CellKindErased.TonedPill(field, toneMap, defaultTone) ->
+        // Phase 750 — the declarative twin. Deliberately the SAME element, class
+        // vocabulary and text as the hosted `Pill` arm above: the wire variant exists
+        // to make the tone rule *expressible*, not to render differently, and a
+        // parity test pins the two against each other.
+        let label, tone = BindingResolver.tonedPillOf row field toneMap defaultTone
+
+        Html.span
+            [ prop.className (sprintf "fuaran-grid-cell-pill fuaran-pill-%s" (Theme.toneVar tone))
+              prop.text label ]
     | CellKindErased.Progress(fraction, label) ->
         let f = fraction row
 

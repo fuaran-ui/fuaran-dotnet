@@ -1031,6 +1031,12 @@ and [<RequireQualifiedAccess>] CellKind<'row, 'Msg> =
     | ButtonGroup of (TextSource * ('row -> Action<'Msg>)) list
     | Link of href: ('row -> string) * label: ('row -> TextSource)
     | Pill of label: ('row -> TextSource) * tone: ('row -> ToneVariant)
+    /// Phase 750 — the declarative twin of `Pill`, and the only cell kind with no
+    /// closure in it: `field` names the row property that is both the pill's label
+    /// and the tone-map key, `map` carries value → tone, `defaultTone` covers a
+    /// value the map does not mention. Row-type-free by construction, which is why
+    /// it survives the wire where `Pill` erases to two sentinels.
+    | TonedPill of field: string * map: Map<string, ToneVariant> * defaultTone: ToneVariant
     | Progress of fraction: ('row -> float) * label: (('row -> TextSource) option)
     | Custom of (('row -> JVal) -> Node<'Msg>)
 

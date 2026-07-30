@@ -60,16 +60,38 @@ Friend Module VisualisationMapping
 
     Private Function ReadColumn(c As XElement) As Csharp.Column(Of Object)
         Dim label = Attr(c, "label")
+        Dim col As Csharp.Column(Of Object)
         Select Case Attr(c, "type", "text").ToLowerInvariant()
             Case "numeric"
-                Return Csharp.Column(Of Object).Numeric(label, Function(row) 0.0)
+                col = Csharp.Column(Of Object).Numeric(label, Function(row) 0.0)
             Case "bool"
-                Return Csharp.Column(Of Object).Bool(label, Function(row) False)
+                col = Csharp.Column(Of Object).Bool(label, Function(row) False)
             Case "date"
-                Return Csharp.Column(Of Object).Date(label, Function(row) New DateTimeOffset())
+                col = Csharp.Column(Of Object).Date(label, Function(row) New DateTimeOffset())
             Case Else
-                Return Csharp.Column(Of Object).Text(label, Function(row) "")
+                col = Csharp.Column(Of Object).Text(label, Function(row) "")
         End Select
+
+        ' Phase 750 — a column carrying <Tone> children becomes a declarative TonedPill.
+        ' The children ARE the wire's value→tone map, so unlike every other cell kind
+        ' this one loses nothing in the XML round-trip: the tone rule is data, not a
+        ' closure the mapping would have to stub out.
+        Dim tones = ChildElements(c, "Tone").ToList()
+        If tones.Count > 0 Then
+            Dim map = New Dictionary(Of String, Csharp.Tone)()
+            For Each t In tones
+                map(Attr(t, "value")) = AsEnum(Of Csharp.Tone)(Attr(t, "tone"), Csharp.Tone.Default)
+            Next
+
+            ' `field` defaults to the column's own field — the overwhelmingly common case
+            ' is "tone this column by its own value"; `tone-field` overrides for the rarer
+            ' "tone this column by a DIFFERENT row property".
+            Dim field = If(HasAttr(c, "tone-field"), Attr(c, "tone-field"), Attr(c, "field"))
+            Dim dflt = AsEnum(Of Csharp.Tone)(Attr(c, "default-tone"), Csharp.Tone.Default)
+            Return col.WithTonedPill(field, map, dflt)
+        End If
+
+        Return col
     End Function
 
 End Module

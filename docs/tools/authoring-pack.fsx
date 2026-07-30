@@ -629,6 +629,11 @@ let fewShot =
       "A filter strip with a single date-range chip: pick a start and end date in one control, scoping everything downstream through one filter param."
       "lenient-grid-transform-param-compact",
       "A grid of embedded department data scoped by a filter: the transform's filter step compares the dept column to a param sourced from the 'dept' filter chip, so the grid re-filters as the chip changes."
+      // Phase 750 — the prompt is deliberately worded as the observed intent
+      // ("visually distinguish the delayed rows") rather than as the feature name, so
+      // the exemplar teaches the mapping FROM the request the model actually receives.
+      "grid-toned-pill",
+      "A shipment tracker over this data: SHP-1001 on time, SHP-1002 delayed, SHP-1003 cancelled (carriers Northwind, Meridian, Northwind). Visually distinguish the delayed and cancelled rows, and tint the Meridian shipments."
       "query-dependson",
       "A revenue metric fed by a host 'orders' query that declares it depends on the status and region filters — the host re-runs the query when either filter changes."
       "discl-1", "A collapsible 'Additional entitlements' section, open by default, containing a short note."

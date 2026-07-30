@@ -1479,6 +1479,89 @@ let gridVis: Node<obj> =
         ))
         None
 
+/// Phase 750 — `CellKindErased.TonedPill`, the wire-expressible conditional tone.
+/// The whole point of the fixture is that EVERY part of it rides the wire: the rows
+/// are embedded columnar data, the two display columns project row properties by
+/// `field` (no `value` closure), and the status column's tone comes from a declared
+/// value→tone map. Nothing here erases to a sentinel, so a decoded tree renders the
+/// delayed rows visually distinguished with zero host code — which is exactly what a
+/// hosted `Pill` cannot express.
+///
+/// Deliberately exercises both `default` postures in one document: the status column
+/// declares `Subdued` for a value the map does not mention (emitted), the carrier
+/// column leaves it at `ToneVariant.Default` (omitted-when-default, so the key is
+/// absent). One fixture, both branches of the omit rule.
+let gridTonedPill: Node<obj> =
+    let source =
+        Fuaran.Core.Embedded
+            { Schema =
+                [ "id", Fuaran.Core.StringType
+                  "carrier", Fuaran.Core.StringType
+                  "status", Fuaran.Core.StringType ]
+              Columns =
+                [ Fuaran.Core.Column.create
+                      "id"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "SHP-1001"
+                        Fuaran.Core.Str "SHP-1002"
+                        Fuaran.Core.Str "SHP-1003" ]
+                  Fuaran.Core.Column.create
+                      "carrier"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "Northwind"
+                        Fuaran.Core.Str "Meridian"
+                        Fuaran.Core.Str "Northwind" ]
+                  Fuaran.Core.Column.create
+                      "status"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "On time"
+                        Fuaran.Core.Str "Delayed"
+                        Fuaran.Core.Str "Cancelled" ] ] }
+
+    let declarative (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+        { Label = label
+          // Phase 425 — no `value` closure: `Field` alone drives the projection.
+          Value = None
+          Field = Some field
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-toned-pill"
+        (NodeKind.DataGrid(
+            { Source = Binding.Transform(source, [], None)
+              RowKey = None
+              RowKeyField = Some "id"
+              Columns =
+                [ declarative "Shipment" "id" CellKindErased.Text
+                  declarative
+                      "Carrier"
+                      "carrier"
+                      (CellKindErased.TonedPill(
+                          "carrier",
+                          Map [ "Meridian", ToneVariant.Info ],
+                          // Left at the identity default — the `default` key is OMITTED.
+                          ToneVariant.Default
+                      ))
+                  declarative
+                      "Status"
+                      "status"
+                      (CellKindErased.TonedPill(
+                          "status",
+                          Map
+                              [ "On time", ToneVariant.Success
+                                "Delayed", ToneVariant.Warning
+                                "Cancelled", ToneVariant.Critical ],
+                          // Non-identity — the `default` key IS emitted.
+                          ToneVariant.Subdued
+                      )) ]
+              OnRowClick = None
+              Editable = false
+              StaticRows = None }
+        ))
+        None
+
 let chart: Node<obj> =
     node
         "chart-1"
@@ -2720,6 +2803,8 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Grid (Phase 424 — parameterised Binding.Transform, filter param from a chip)", gridTransformParam
       "Display/Metric (Phase 421 — Binding.Query with a declared dependsOn filter edge)", queryDependsOn
       "Visualisation/Grid (Phase 425 — field-named columns + RowKeyField, closure-free)", gridFieldNamed
+      "Visualisation/Grid (Phase 750 — TonedPill: value-conditional cell tone declared as a value→tone map)",
+      gridTonedPill
       "Layout/Box (filterable-static dashboard — Filters params wired through Transform to chart + grid)",
       filterableStaticDashboard
       "Layout/Box (master-detail — grid + detail card State-bound with a pre-selected defaultValue)",

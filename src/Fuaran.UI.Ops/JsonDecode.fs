@@ -867,6 +867,12 @@ let private decodeHeadingVariant (path: string) (j: Json) : Result<HeadingVarian
     | JString s -> unknownDuCase path s "Standard | Eyebrow | Caption | Lead"
     | _ -> wrongType path "JSON string (HeadingVariant)"
 
+/// The legal `ToneVariant` names, in one place because two positions now teach them
+/// — a `tone` field and (Phase 750) a `TonedPill` tone-map value. A second inline
+/// copy is exactly how one of them comes to name six tones.
+let private toneVariantNames =
+    "Default | Subdued | Brand | Success | Warning | Critical | Info"
+
 let private decodeTone (path: string) (j: Json) : Result<ToneVariant, DecodeError> =
     match j with
     | JString "Default" -> Ok ToneVariant.Default
@@ -884,7 +890,7 @@ let private decodeTone (path: string) (j: Json) : Result<ToneVariant, DecodeErro
     | JString "Danger"
     | JString "Negative" -> Ok ToneVariant.Critical
     | JString "Neutral" -> Ok ToneVariant.Default
-    | JString s -> unknownDuCase path s "Default | Subdued | Brand | Success | Warning | Critical | Info"
+    | JString s -> unknownDuCase path s toneVariantNames
     | _ -> wrongType path "JSON string (ToneVariant)"
 
 let private decodeWeight (path: string) (j: Json) : Result<StyleWeight, DecodeError> =
@@ -3601,6 +3607,76 @@ let private decodeInputKind (path: string) (j: Json) : Result<NodeKind<obj>, Dec
 
 // ─── Visualisation ──────────────────────────────────────────────────────
 
+/// Phase 750 — a `TonedPill`'s `map`: a string-keyed object whose VALUES are
+/// `ToneVariant`s. Routed through `decodeTone` per entry, which buys two things
+/// deliberately rather than by accident: the Phase 460 tone aliases work inside the
+/// map exactly as they do in a `tone` field, and an unrecognised value's message
+/// enumerates the seven legal tone names. The path names the offending KEY
+/// (`…map.Delayed`), because "one of your tones is wrong" is not an actionable
+/// report when the map has nine entries.
+let private decodeToneMap (path: string) (j: Json) : Result<Map<string, ToneVariant>, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        // `decodeTone` is reused for the VALUE vocabulary + the Phase 460 aliases,
+        // but its refusal is re-issued here rather than passed through: it reports at
+        // `<path>.$type` with "unknown discriminator", and a map value is neither a
+        // discriminator nor at a `$type` key, so the raw error points at a path the
+        // document does not contain. The re-issue keeps the code and the legal-name
+        // list, and names the offending key and value in the terms the author wrote
+        // them — which is the whole reason this fixture is in the corpus.
+        let entryTone (key: string) (v: Json) : Result<string * ToneVariant, DecodeError> =
+            let entryPath = path + "." + key
+
+            match decodeTone entryPath v with
+            | Ok t -> Ok(key, t)
+            | Error e when e.Code = DecodeErrorCode.toString DecodeErrorCode.UNKNOWN_DU_CASE ->
+                let got =
+                    match v with
+                    | JString s -> s
+                    | _ -> ""
+
+                err
+                    DecodeErrorCode.UNKNOWN_DU_CASE
+                    entryPath
+                    (sprintf "tone-map value '%s' for '%s' is not a ToneVariant" got key)
+                    (Some toneVariantNames)
+            // A non-string value (a number, an object) is a WRONG_TYPE from
+            // `decodeTone` and already reports at the right path.
+            | Error e -> Error e
+
+        fields
+        |> Map.toList
+        |> traverse (fun (k, v) -> entryTone k v)
+        |> Result.map Map.ofList
+
+/// The shared body of the canonical `TonedPill` case and the `Pill`-tagged §16
+/// shorthand below — one reader, so the two spellings cannot drift apart in what
+/// they accept.
+let private decodeTonedPill (path: string) (fields: Map<string, Json>) : Result<CellKindErased<obj>, DecodeError> =
+    let fieldR =
+        requireField path fields "field" "TonedPill row-field name (drives the label and the map key)"
+        |> Result.bind (requireString (path + ".field"))
+
+    let mapR =
+        // Field aliases: `toneMap` / `tones` — `map` is the shortest honest name for
+        // a value→tone dictionary and the least descriptive one.
+        requireFieldAliased path fields "map" [ "toneMap"; "tones" ] "TonedPill value→ToneVariant map"
+        |> Result.bind (decodeToneMap (path + ".map"))
+
+    // `default` is omitted-when-`ToneVariant.Default` (Phase 460); restore the
+    // identity on absence.
+    let defaultR =
+        match tryField fields "default" with
+        | None -> Ok ToneVariant.Default
+        | Some v -> decodeTone (path + ".default") v
+
+    match fieldR, mapR, defaultR with
+    | Ok field, Ok toneMap, Ok defaultTone -> Ok(CellKindErased.TonedPill(field, toneMap, defaultTone))
+    | Error e, _, _
+    | _, Error e, _
+    | _, _, Error e -> Error e
+
 let private decodeCellKindErased (path: string) (j: Json) : Result<CellKindErased<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -3652,8 +3728,20 @@ let private decodeCellKindErased (path: string) (j: Json) : Result<CellKindErase
             |> Result.map CellKindErased.ButtonGroup
         | Ok "Link" ->
             Ok(CellKindErased.Link((fun _ -> closureSentinel), (fun _ -> TextSource.Literal closureSentinel)))
+        // Lenient-ingest (WIRE_FORMAT.md §16, Phase 750): `Pill` is the WORD for the
+        // thing, so a declarative tone rule arrives tagged `Pill` more often than
+        // tagged `TonedPill`. Before this phase that document decoded as a closure
+        // pill and threw `field`/`map` on the floor — the author's whole intent gone,
+        // silently, with no error to notice. Presence of a tone map is the
+        // unambiguous tell (a closure `Pill` has no such key), so route it.
+        | Ok "Pill" when
+            [ "map"; "toneMap"; "tones" ]
+            |> List.exists (fun k -> (tryField fields k).IsSome)
+            ->
+            decodeTonedPill path fields
         | Ok "Pill" ->
             Ok(CellKindErased.Pill((fun _ -> TextSource.Literal closureSentinel), (fun _ -> ToneVariant.Default)))
+        | Ok "TonedPill" -> decodeTonedPill path fields
         | Ok "Progress" ->
             Ok(
                 CellKindErased.Progress(
@@ -3667,7 +3755,7 @@ let private decodeCellKindErased (path: string) (j: Json) : Result<CellKindErase
             unknownDuCase
                 path
                 s
-                "Text | Numeric | Date | Editable | Checkbox | Button | ButtonGroup | Link | Pill | Progress | Custom"
+                "Text | Numeric | Date | Editable | Checkbox | Button | ButtonGroup | Link | Pill | TonedPill | Progress | Custom"
 
 let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<obj>, DecodeError> =
     match requireObject path j with
