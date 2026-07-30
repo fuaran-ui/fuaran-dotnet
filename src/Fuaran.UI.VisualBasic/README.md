@@ -1,6 +1,6 @@
 # Fuaran.UI.VisualBasic
 
-Author Fuaran UI trees in **VB.NET via first-class XML literals** — the notation the
+Author Fuaran UI trees in **VB via first-class XML literals** — the notation the
 design brief calls the strongest argument for VB tier-1 parity (it is closer to the
 VBA mental model than fluent builders).
 

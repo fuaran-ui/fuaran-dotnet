@@ -202,7 +202,7 @@ let private packableProjects =
         fsprojs
         @ [ Path.Combine(repoRoot, "src", "Fuaran.UI.CSharp", "Fuaran.UI.CSharp.csproj")
             Path.Combine(repoRoot, "src", "Fuaran.UI.Analyzers", "Fuaran.UI.Analyzers.csproj")
-            // Phase 310 — the VB.NET XML-literal veneer (a .vbproj).
+            // Phase 310 — the VB XML-literal veneer (a .vbproj).
             Path.Combine(repoRoot, "src", "Fuaran.UI.VisualBasic", "Fuaran.UI.VisualBasic.vbproj") ]
 
 let private dotnet args workingDir =

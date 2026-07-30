@@ -1,7 +1,7 @@
-# Authoring Fuaran UI trees in VB.NET
+# Authoring Fuaran UI trees in VB
 
-`Fuaran.UI.VisualBasic` lets you author Fuaran UI trees in VB.NET using **first-class
-XML literals** – the notation closest to the mental model a VBA / VB.NET developer
+`Fuaran.UI.VisualBasic` lets you author Fuaran UI trees in VB using **first-class
+XML literals** – the notation closest to the mental model a VBA / VB developer
 already has. You write the tree as XML, translate it to a wire-faithful node, and hand
 the canonical JSON to any Fuaran renderer. No F# knowledge is required, and no
 FSharp.Core type ever appears on the surface you touch.

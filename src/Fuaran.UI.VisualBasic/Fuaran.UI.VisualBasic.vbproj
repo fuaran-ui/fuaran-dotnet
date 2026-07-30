@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- ========================================================================
-       Phase 310 — Fuaran.UI.VisualBasic, the VB.NET XML-literal authoring veneer
+       Phase 310 — Fuaran.UI.VisualBasic, the VB XML-literal authoring veneer
        (§4e). VB authors compose a tree with first-class XML literals
        (`<Dashboard id="…"><Metric …/></Dashboard>`); this package translates the
        resulting `XElement` into `Node<obj>` AT RUNTIME and encodes through the
@@ -27,7 +27,7 @@
     <Nullable>disable</Nullable>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.VisualBasic</PackageId>
-    <Description>Fuaran.UI.VisualBasic — author Fuaran UI trees in VB.NET via first-class XML literals. A runtime XElement → Node&lt;obj&gt; translator over the shared F# encoder; no FSharp.Core types on the boundary. Apache-2.0 licensed.</Description>
+    <Description>Fuaran.UI.VisualBasic — author Fuaran UI trees in VB via first-class XML literals. A runtime XElement → Node&lt;obj&gt; translator over the shared F# encoder; no FSharp.Core types on the boundary. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RootNamespace>Fuaran.UI.VisualBasic</RootNamespace>
   </PropertyGroup>

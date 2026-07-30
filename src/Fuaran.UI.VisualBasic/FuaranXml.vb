@@ -14,7 +14,7 @@ Public NotInheritable Class FuaranXmlException
 End Class
 
 ''' <summary>
-''' The VB.NET XML-literal authoring surface. Author a Fuaran UI tree with first-class
+''' The VB XML-literal authoring surface. Author a Fuaran UI tree with first-class
 ''' XML literals and translate it to a wire-faithful node:
 ''' <code>
 ''' Dim tree = &lt;Card id="c" heading="Insights"&gt;

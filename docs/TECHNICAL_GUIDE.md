@@ -25,7 +25,7 @@ The novel parts of Fuaran are in the **type system** – typed bindings to schem
 | `Fuaran.X "id" { Defaults.X with Label = ... }` | F# records + smart constructors + pipes | Human F# authors |
 | `{ "kind": "metric", "id": "...", "label": "...", ... }` | Flat JSON discriminated by `"kind"` | AI generation, replay engines, structural-edit ops |
 
-Both project from the same record contracts in `Fuaran.UI.Types`. AI emits only the fields that differ from `Defaults.X`; the renderer re-applies defaults on JSON ingest. F# authors do the same with `{ Defaults.X with ... }`.
+Both project from the same record contracts – declared in the IDL, generated into `Fuaran.UI.Generated`, and read through `Fuaran.UI.Types` (see §3). AI emits only the fields that differ from `Defaults.X`; the renderer re-applies defaults on JSON ingest. F# authors do the same with `{ Defaults.X with ... }`.
 
 The wedge is **value-density** – Fuaran's record-shaped, NodeId-stable, state-behaviour-required type tree gives the AI authoring surface things Feliz alone does not (typed bindings to schema, structural ops, observable state) – not switching cost. The §4l down-shift portability story keeps the Fuaran↔Feliz interface clean: a Fuaran app mechanically translates to Feliz so consumers are never locked in.
 
@@ -74,66 +74,65 @@ fuaran-dotnet/
 
 ## 3. The §4b type contract
 
-The canonical type contract lives at [`src/Fuaran.UI/Types.fs`](../src/Fuaran.UI/Types.fs). It is the **source of truth** for the language. Smart constructors, the renderer, the tree-op apply engine, the AI tool surface, and any future C# / VB.NET authoring shapes all project from these record contracts.
+The F# reading surface for the type contract is [`src/Fuaran.UI/Types.fs`](../src/Fuaran.UI/Types.fs). Since the 0.8.0 swap onto the IDL-generated types (see [`STABILITY.md`](../STABILITY.md), "Recorded change — 0.8.0"), `Types.fs` no longer *defines* the wire vocabulary — it *abbreviates* [`src/Fuaran.UI/Generated.fs`](../src/Fuaran.UI/Generated.fs) (`Fuaran.UI.Generated`), the layer emitted from the IDL, carrying the host-facing doc comments plus a small set of authoring façade records the smart constructors map onto the generated cases. The **single source of truth for the F# structural layer is the IDL** — the vocabulary declared as data in the substrate sibling ([`fuaran-core` `tests/Fuaran.Core.Tests/UiIdl.fs`](https://github.com/fuaran-ui/fuaran-core/blob/main/tests/Fuaran.Core.Tests/UiIdl.fs), per [`WIRE_FORMAT.md`](WIRE_FORMAT.md) §11 step 1). The generated layer also carries the canonical node encoder — the hand-written per-kind encoder that used to live in `Fuaran.UI.OpStream.Abstractions.CanonicalJson` was deleted at the swap; `CanonicalJson.encodeNode` survives as the public entry point and the op codec splices the generated renderings. Smart constructors, the renderer, the tree-op apply engine, the AI tool surface, and the C# / VB authoring shapes all project from these contracts. Shape changes go through the IDL per `WIRE_FORMAT.md` §11 — never by hand-editing `Generated.fs`, which is regenerated output.
 
 ### Shape overview
 
 ```fsharp
 type Node<'Msg> =
-    { Id: NodeId
+    { Id: string
       Kind: NodeKind<'Msg>
-      State: StateBehaviour<'Msg>
-      Style: SemanticStyle }
+      Accessibility: Accessibility option
+      ExtraAttributes: Map<string, string> option
+      Motion: Motion option
+      State: StateBehaviour<'Msg> option
+      Style: SemanticStyle option }
 ```
 
 Every node carries:
-- **`Id : NodeId`** – stable across conversation turns. AI tree-ops address nodes by `NodeId`; the renderer maps `NodeId` to React's `key` so reconciliation survives op-driven mutation.
-- **`Kind : NodeKind<'Msg>`** – five-way DU: `Layout` / `Display` / `Input` / `Visualisation` / `Custom`. The `'Msg` parameter flows through `Input` and `Visualisation` so typed Elmish dispatch is preserved.
-- **`State : StateBehaviour<'Msg>`** – required slots for loading / empty / error. AI cannot forget them because they're a record field, not a downstream concern.
-- **`Style : SemanticStyle`** – semantic intent (`Tone` / `Weight` / `Emphasis`), not pixel-pushing. The renderer maps semantic style to CSS variables; consumer apps wire the palette.
+- **`Id : string`** – stable across conversation turns. AI tree-ops address nodes by id; the renderer maps the id to React's `key` so reconciliation survives op-driven mutation. Since 0.8.0 the tree-level field is a bare `string`; the `NodeId` wrapper survives as the ops / store / tool boundary type (wrap with `NodeId n.Id` where a wrapped value is needed).
+- **`Kind : NodeKind<'Msg>`** – a **flat** DU with one case per kind, each carrying its spec record. The `'Msg` parameter flows through the interactive kinds so typed Elmish dispatch is preserved.
+- **`State : StateBehaviour<'Msg> option`** – the loading / empty / error placeholder slots. AI cannot forget them because they're a record field, not a downstream concern; `None` is the canonical "no placeholders declared" shape (absence is structural, byte-identical on the wire).
+- **`Style : SemanticStyle option`** – semantic intent (`Tone` / `Weight` / `Emphasis`), not pixel-pushing. `None` means fully-default styling. The renderer maps semantic style to CSS variables; consumer apps wire the palette.
+- **`Accessibility` / `Motion` / `ExtraAttributes`** – optional per-node ARIA metadata, the typed animation vocabulary, and the AI-opaque consumer-side `data-*` hatch.
 
 ### `NodeKind` cases
 
+`NodeKind<'Msg>` is **flat** (Phase 692, landed in 0.8.0): the four behavioural-category wrapper cases (`Layout of LayoutKind` / `Display of DisplayKind` / `Input of InputKind` / `Visualisation of VisKind`) are gone, and every kind is a direct case carrying its spec record — the shape the wire always declared canonical:
+
 ```fsharp
 and [<RequireQualifiedAccess>] NodeKind<'Msg> =
-    | Layout of LayoutKind<'Msg>
-    | Display of DisplayKind<'Msg>
-    | Input of InputKind<'Msg>
-    | Visualisation of VisKind<'Msg>
-    | Custom of moduleId: string * componentId: string * props: Map<string, JsonValue>
+    | Heading of HeadingSpec
+    | Markdown of MarkdownSpec
+    // ... one case per kind ...
+    | Button of ButtonSpec<'Msg>
+    | DataGrid of DataGridSpec<'Msg>
+    | Custom of CustomSpec
+    | Mount of MountSpec<'Msg>
 ```
 
-| Branch | Purpose | Cases |
-|---|---|---|
-| `Layout` | Semantic containers; no Msg surface | `Dashboard` / `Stack` / `GridLayout` / `SplitPanel` / `Tabs` / `Card` / `Stepper` |
-| `Display` | Pure presentation, no Msg | `Heading` / `Markdown` / `Metric` / `Badge` / `Sparkline` / `Spacer` / `Callout` / `Progress` / `Skeleton` |
-| `Input` | Interactive, dispatches `Action<'Msg>` | `Form` / `Filters` / `Button` / `FileUpload` |
-| `Visualisation` | Data-bound, complex | `DataGrid` / `Chart` / `Table` / `Map` |
-| `Custom` | Last-resort escape – host-resident component identified by `moduleId` + `componentId` | – |
+The Layout / Display / Input / Visualisation classification survives as the **derived** `NodeCategory` DU – dispatch on `Kind.category kind` where code used to match the category wrappers. `Custom` remains the last-resort escape (a host-resident component identified by module + component id inside `CustomSpec`). The authoritative kind enumeration is the generated DU in [`Generated.fs`](../src/Fuaran.UI/Generated.fs) and the wire spec's kind catalogue — this guide doesn't repeat it.
 
 ### Children-as-records (Defect 3 resolution)
 
-Each `LayoutKind` case carries its own spec record with a typed `Children: Node<'Msg> list` field:
+Each container kind's spec record carries a typed `Children: Node<'Msg> list` field as a regular record field, for example:
 
 ```fsharp
-and DashboardSpec<'Msg> = { Children: Node<'Msg> list }
-and StackSpec<'Msg>     = { Orientation: Orientation; Children: Node<'Msg> list }
-and GridLayoutSpec<'Msg> = { Cols: int; Children: Node<'Msg> list }
-and SplitPanelSpec<'Msg> = { Weight: float; Children: Node<'Msg> list }
-and TabsSpec<'Msg>       = { Orientation: Orientation; Children: Node<'Msg> list }
-and CardSpec<'Msg>       = { Heading: TextSource option; Children: Node<'Msg> list }
-and StepperSpec<'Msg>    = { ActiveStep: Binding<int>; Children: Node<'Msg> list }
+and SplitPanelSpec<'Msg> = { Children: Node<'Msg> list; Weight: float }
+and StepperSpec<'Msg>    = { ActiveStep: Binding<int>; Children: Node<'Msg> list; OnSelect: (int -> Action<'Msg>) option }
 ```
+
+(The classic layout authoring shapes – `DashboardSpec` / `StackSpec` / `GridLayoutSpec` / `CardSpec` – survive in `Types.fs` as façade records that the smart constructors map onto the unified `Box` container kind; see [`BOX-CONTAINER-UNIFICATION.md`](BOX-CONTAINER-UNIFICATION.md).)
 
 Tree-ops apply uniformly – `UpdateProp(id, "Children", ...)` is the same op shape as any other field update. AI never has to learn a special "children are positional" rule.
 
-### `StateBehaviour` – required slots
+### `StateBehaviour` – the loading / empty / error slots
 
 ```fsharp
 and StateBehaviour<'Msg> =
-    { OnLoading: Node<'Msg> option
-      OnEmpty: Node<'Msg> option
-      OnError: (ErrorPayload -> Node<'Msg>) option }
+    { OnEmpty: Node<'Msg> option
+      OnError: (ErrorPayload -> Node<'Msg>) option
+      OnLoading: Node<'Msg> option }
 ```
 
 A node declares its loading / empty / error placeholders inline. The renderer substitutes them based on binding-resolution outcome:
@@ -157,22 +156,27 @@ Fuaran.metric "totalRevenue" { Defaults.metric with Label = TextSource.Literal "
 
 ```fsharp
 and [<RequireQualifiedAccess>] Binding<'T> =
-    | Static of 'T
-    | Query of name: string * accessor: (obj -> 'T)
-    | Filter of name: string
-    | Selection of nodeId: NodeId * accessor: (obj -> 'T)
-    | State of key: string * defaultValue: 'T
-    | Computed of (BindingContext -> 'T)
+    | Static of value: 'T option
+    | Query of name: string * accessor: (obj -> 'T) * dependsOn: string list option
+    | Filter of name: string * defaultValue: 'T option
+    | Selection of nodeId: string * accessor: (obj -> 'T) * defaultValue: 'T option * field: string option
+    | State of key: string * defaultValue: 'T option
+    | Computed of fn: (obj -> 'T)
+    // ... plus the later phase additions: Local / Format / I18n / Transform / Invoke
 ```
+
+Payloads are option-wrapped since 0.8.0 (**typed absence** – `Binding.Static(Some x)`; a `None` slot is structural absence, omitted on the wire).
 
 | Case | Purpose | AI emit |
 |---|---|---|
 | `Static` | Compile-time constant. | Literal value in JSON. |
 | `Query` | Read from a query result registered by name. **Module-scoped** by default (`"totalRevenue"` resolves against the current module's typed API); cross-module reads use the fully-qualified `"ModuleId.name"` form. | Name + path-shaped accessor expression. |
 | `Filter` | Read from a currently-active filter value. | Filter name. |
-| `Selection` | Read from another node's current selection state (e.g. selected row in a Grid). | NodeId + accessor expression. |
+| `Selection` | Read from another node's current selection state (e.g. selected row in a Grid). | Node id + accessor expression. |
 | `State` | Module-level state cell with a fallback default. | Key + default value. |
 | `Computed` | F#-only escape hatch; not serialisable. AI never emits these. | – |
+
+The later cases (`Local` debounced local edit, `Format` locale-aware formatting, `I18n`, `Transform` data-pipeline, `Invoke` capability call) are documented per phase in [`STABILITY.md`](../STABILITY.md) and the wire spec; the authoritative case set is the generated DU.
 
 The `Query` / `Selection` cases carry obj-erased accessors at the tree level – typed entry points (`binding.query` / `binding.selection`) wrap typed `'result -> 'T` / `'row -> 'T` accessors in obj-erasing closures. Authors never see the obj boundary. See §4 below.
 
@@ -180,22 +184,23 @@ The `Query` / `Selection` cases carry obj-erased accessors at the tree level –
 
 ```fsharp
 and [<RequireQualifiedAccess>] Action<'Msg> =
-    | Dispatch of 'Msg
-    | Call of ApiEndpoint * onResult: (obj -> 'Msg)
-    | Notify of channel: string * payload: JsonValue
+    | Dispatch of msg: 'Msg
+    | Call of endpoint: string * onResult: (obj -> 'Msg) option * into: CallResultTarget option
+    | Notify of channel: string * payload: JVal
     | Navigate of route: string
-    | SetState of key: string * value: JsonValue
-    | AiTool of toolName: string * args: JsonValue
-    | Chain of Action<'Msg> list
+    | SetState of key: string * value: JVal
+    | AiTool of toolName: string * args: JVal
+    | Chain of ops: Action<'Msg> list
+    // ... plus the later phase additions: WriteToClipboard / ReadFileBody / CommitLocal / Invoke
 ```
 
-`Dispatch` is the canonical Elmish entry point. `Chain` is the sequencer (two-step interactions like "set field then fetch"). The other five are typed effects the host's runtime executes – `Call` does HTTP via a registered `ApiEndpoint`, `Notify` publishes through the host's notification channel, `Navigate` routes, `SetState` writes a `binding.state` cell, `AiTool` invokes a named AI tool.
+`Dispatch` is the canonical Elmish entry point. `Chain` is the sequencer (two-step interactions like "set field then fetch"). The others are typed effects the host's runtime executes – `Call` does HTTP against a registered endpoint (the `ApiEndpoint` wrapper erases to a bare `string` at the tree level since 0.8.0), `Notify` publishes through the host's notification channel, `Navigate` routes, `SetState` writes a `binding.state` cell, `AiTool` invokes a named AI tool. JSON-valued payloads carry the structured `Fuaran.Core.JVal` AST – the same canonical wire model the whole substrate encodes and decodes. The later cases are documented per phase in [`STABILITY.md`](../STABILITY.md); the authoritative case set is the generated DU.
 
 The renderer's session-3a foundation wires `Dispatch` + `Chain` directly; the other five (`Call` / `Notify` / `Navigate` / `SetState` / `AiTool`) route through the `IFuaranRuntime` seam shipped in session 3b. Unwired action kinds are marked `fuaran-button-unwired` with a `title` tooltip and emit a `console.error` on click – a host that hasn't installed a runtime sees those affordances disabled rather than silently no-op.
 
 ### Visualisation – typed grid with obj-erasure boundary (Defect 1 resolution)
 
-`GridSpec<'Msg>` at the tree level is row-obj-erased (`Source : Binding<obj seq>`, `RowKey : obj -> string`, `Columns : ColumnErased<'Msg> list`). The author surface is the typed facade `GridSpecOf<'row, 'Msg>` – smart-ctor `Fuaran.grid` boxes the row accessors internally. The renderer trusts the per-Kind type-tag invariant.
+`DataGridSpec<'Msg>` at the tree level (`GridSpec` survives as an alias) is row-obj-erased (`Source : Binding<obj seq>`, `RowKey : (obj -> string) option`, `Columns : ColumnErased<'Msg> list`). The author surface is the typed facade `GridSpecOf<'row, 'Msg>` – smart-ctor `Fuaran.grid` boxes the row accessors internally. The renderer trusts the per-Kind type-tag invariant.
 
 Cell formatters (`CellFormat`) are typed enums (`Number` / `Currency` / `Percent` / `SignificantDigits` / `Date` / `Custom`) so a column displaying numbers keeps numeric sort intact – pre-formatted strings break AG Grid's numeric sort, which §4c idiom 3 explicitly forbids.
 
@@ -204,10 +209,10 @@ Cell kinds (`CellKind`) are typed too – `Text` / `Numeric` / `Date` are non-in
 ### Text – bindable + i18n-aware
 
 ```fsharp
-and [<RequireQualifiedAccess>] TextSource =
-    | Literal of string
-    | Bound of Binding<string>
-    | I18n of key: string * args: Map<string, JsonValue>
+and TextSource =
+    | Literal of text: string
+    | Bound of binding: Binding<string>
+    | I18n of key: string * args: Map<string, JVal>
 ```
 
 `Literal` for compile-time strings. `Bound` for dynamic strings reading from any `Binding`. `I18n` for translation keys; the session-3b renderer ships a catalog resolver (`IFuaranRuntime`-backed). Missing-translation cases stay loud – the renderer emits `[i18n:key]` as a debug-visible placeholder.
@@ -430,7 +435,7 @@ Three properties make this AI-friendly:
 2. **`NodeId` stability.** The `id` is the addressing key for structural-edit ops. AI editing a previous fragment via `UpdateProp(id, "Source", ...)` keeps the id stable across the edit.
 3. **Required state slots.** `state.onLoading` / `state.onEmpty` / `state.onError` are part of the same record shape – AI can't accidentally forget them in a separate downstream-concern section.
 
-The JSON schema for each `Kind` is derivable from the F# record contract. See [`AI_AUTHORING_GUIDE.md`](AI_AUTHORING_GUIDE.md) for the per-kind wire shapes.
+The JSON schema for each `Kind` and the F# record contract are two projections of the same IDL declaration (§3). See [`AI_AUTHORING_GUIDE.md`](AI_AUTHORING_GUIDE.md) for the per-kind wire shapes.
 
 ---
 
@@ -476,7 +481,7 @@ A common pattern: a Fuaran fragment is AI-authored, but its action handlers are 
 
 ### Fuaran-specific rules
 
-1. **§4b is canonical for the type contract.** Do not modify `Types.fs` to "improve" the shape. If the implementation surfaces a real design defect, surface it explicitly to the operator with the proposed amendment + section reference. Silent rewrites are forbidden.
+1. **§4b is canonical for the type contract, and the IDL is its single F# source.** Do not hand-edit `Generated.fs` (regenerated output — a hand edit is lost on the next regeneration) and do not reshape `Types.fs` or the IDL to "improve" the shape. If the implementation surfaces a real design defect, surface it explicitly to the operator with the proposed amendment + section reference; a deliberate vocabulary change goes through the `WIRE_FORMAT.md` §11 forward-coupling procedure. Silent rewrites are forbidden.
 2. **Fantomas before every commit.** `dotnet fantomas .` from the repo root, then build, then commit. No exceptions.
 3. **Expecto runner via `dotnet run --project`, NOT `dotnet test`.** `dotnet test` silently no-ops on Expecto console runners.
    ```powershell
