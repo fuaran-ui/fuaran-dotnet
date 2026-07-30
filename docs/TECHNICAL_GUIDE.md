@@ -228,23 +228,23 @@ The smart-ctor surface lives at [`src/Fuaran.UI/Fuaran.fs`](../src/Fuaran.UI/Fua
 Every `NodeKind` case has a smart constructor named `Fuaran.<kind>`:
 
 ```fsharp
-Fuaran.dashboard "id" spec    // LayoutKind.Dashboard
-Fuaran.stack "id" spec        // LayoutKind.Stack
-Fuaran.gridLayout "id" spec   // LayoutKind.GridLayout
-Fuaran.splitPanel "id" spec   // LayoutKind.SplitPanel
-Fuaran.tabs "id" spec         // LayoutKind.Tabs
-Fuaran.card "id" spec         // LayoutKind.Card
-Fuaran.stepper "id" spec      // LayoutKind.Stepper
+Fuaran.dashboard "id" spec    // NodeKind.Box (Auto layout, Dashboard role)
+Fuaran.stack "id" spec        // NodeKind.Box (Flex layout, Group role)
+Fuaran.gridLayout "id" spec   // NodeKind.Box (Grid layout, Group role)
+Fuaran.splitPanel "id" spec   // NodeKind.SplitPanel
+Fuaran.tabs "id" spec         // NodeKind.Tabs
+Fuaran.card "id" spec         // NodeKind.Box (Flex layout, Card role + heading)
+Fuaran.stepper "id" spec      // NodeKind.Stepper
 
-Fuaran.metric "id" spec       // DisplayKind.Metric
-Fuaran.markdown "id" body     // DisplayKind.Markdown (positional 80% case)
-Fuaran.markdownSpec "id" spec // DisplayKind.Markdown (full record form)
-Fuaran.callout "id" spec      // DisplayKind.Callout
-Fuaran.progress "id" spec     // DisplayKind.Progress
-Fuaran.skeleton "id" rows     // DisplayKind.Skeleton
+Fuaran.metric "id" spec       // NodeKind.Metric
+Fuaran.markdown "id" body     // NodeKind.Markdown (positional 80% case)
+Fuaran.markdownSpec "id" spec // NodeKind.Markdown (full record form)
+Fuaran.callout "id" spec      // NodeKind.Callout
+Fuaran.progress "id" spec     // NodeKind.Progress
+Fuaran.skeleton "id" rows     // NodeKind.Skeleton
 
-Fuaran.button "id" spec       // InputKind.Button
-Fuaran.grid "id" spec         // VisKind.DataGrid (typed GridSpecOf<'row,'Msg>)
+Fuaran.button "id" spec       // NodeKind.Button
+Fuaran.grid "id" spec         // NodeKind.DataGrid (typed GridSpecOf<'row,'Msg>)
 ```
 
 Two-tier API where authoring ergonomics call for it: `Fuaran.markdown "id" "body"` for the 80% case; `Fuaran.markdownSpec "id" { Defaults.markdown with Text = ... }` for full record control. Authors choose; AI emits the record form.
@@ -493,7 +493,7 @@ A common pattern: a Fuaran fragment is AI-authored, but its action handlers are 
 
 ### Anti-patterns
 
-- **Don't bypass smart constructors.** Direct construction of `Node<'Msg> { Id = ...; Kind = NodeKind.Layout (LayoutKind.Dashboard ...) }` works but loses the obj-erasure boundary smart constructors enforce. Use `Fuaran.dashboard` / `Fuaran.grid` / etc.
+- **Don't bypass smart constructors.** Direct construction of `Node<'Msg> { Id = ...; Kind = NodeKind.Box ... }` works but loses the obj-erasure boundary smart constructors enforce. Use `Fuaran.dashboard` / `Fuaran.grid` / etc.
 - **Don't author CSS-in-author-code.** The renderer maps `SemanticStyle` to CSS variables; the consuming app's stylesheet owns the values. Author-side `style.css` overrides defeat the AI-emit-shape stability story.
 - **Don't register the same NodeId twice within a tree.** The renderer maps `NodeId` to React's `key`; duplicates cause reconciliation drift. Smart constructors do not enforce this – it's an author / AI-generator discipline.
 
