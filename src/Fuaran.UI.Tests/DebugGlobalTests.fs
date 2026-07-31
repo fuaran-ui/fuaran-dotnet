@@ -136,7 +136,9 @@ let tests =
 
               Expect.equal (DebugGlobal.kindName gridLayout.Kind) "Box" "Layout grid → Box"
 
-              let dataGrid = Fuaran.grid "g" Defaults.grid<int, unit>
+              let dataGrid =
+                  Fuaran.grid "g" (fun (n: int) -> Map.ofList [ "n", nn n ]) Defaults.grid<int, unit>
+
               Expect.equal (DebugGlobal.kindName dataGrid.Kind) "Grid" "vis grid → Grid"
           }
 

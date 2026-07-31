@@ -83,7 +83,7 @@ let private buildSeries<'Msg> (runAction: Action<'Msg> -> unit) (spec: ChartSpec
         match spec.OnPointClick with
         | Some onClick ->
             let nodeClick (ev: obj) =
-                let datum: obj = ev?datum
+                let datum: Row = ev?datum
                 runAction (onClick datum)
 
             createObj [ "nodeClick" ==> nodeClick ]
@@ -156,7 +156,7 @@ let renderChart<'Msg> (spec: ChartSpec<'Msg>) (context: VisAdapter.Visualisation
     // State-slot dispatch mirrors AgGridAdapter — short-circuit to
     // OnLoading / OnError when the binding hasn't resolved. OnEmpty fires
     // once the row sequence resolves to an empty seq.
-    let resolution = BindingResolver.resolve<obj seq> context.Sources spec.Source
+    let resolution = BindingResolver.resolve<Row seq> context.Sources spec.Source
 
     let stateNode =
         match resolution, context.State.OnLoading, context.State.OnError with

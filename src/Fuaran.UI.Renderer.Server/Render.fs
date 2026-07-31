@@ -1061,7 +1061,7 @@ and private renderKind
                   prop.custom ("data-fuaran-row-count", string rowCount)
                   prop.text (sprintf "[Grid: %d rows — hydrates client-side]" rowCount) ]
     | NodeKind.Chart spec ->
-        match BindingResolver.resolve<obj seq> ctx.Sources spec.Source, spec.Kind with
+        match BindingResolver.resolve<Row seq> ctx.Sources spec.Source, spec.Kind with
         | BindingResolver.Resolved rows, kind when Fuaran.UI.Charts.isLowered kind ->
             // Phase 526 — the SSR renders the SAME first-party lowered Drawing
             // SVG the client does (static geometry ⇒ no client-hydration

@@ -1469,7 +1469,17 @@ let gridVis: Node<obj> =
     node
         "grid-1"
         (NodeKind.DataGrid(
-            { Source = Binding.Static(Some Seq.empty)
+            { Source =
+                // fuaran#665 — typed rows: a Static rows payload IS wire-representable
+                // (int cells ride rule 5's integer form). Mirrors Fuaran-Core's
+                // authored `gridNode` sample byte-for-byte.
+                Binding.Static(
+                    Some(
+                        Seq.ofList
+                            [ (Map.ofList [ "channel", box "Direct"; "revenue", box 1200 ]: Row)
+                              Map.ofList [ "channel", box "Referral"; "revenue", box 830 ] ]
+                    )
+                )
               RowKey = Some(fun _ -> "<closure>")
               RowKeyField = None
               Columns = [ col ]
@@ -1566,7 +1576,16 @@ let chart: Node<obj> =
     node
         "chart-1"
         (NodeKind.Chart(
-            { Source = Binding.Static(Some Seq.empty)
+            { Source =
+                // fuaran#665 — typed rows (see grid-1). Mirrors Fuaran-Core's
+                // authored `chartNode` sample byte-for-byte.
+                Binding.Static(
+                    Some(
+                        Seq.ofList
+                            [ (Map.ofList [ "cost", box 420; "month", box "Jan"; "revenue", box 980 ]: Row)
+                              Map.ofList [ "cost", box 390; "month", box "Feb"; "revenue", box 1105 ] ]
+                    )
+                )
               Kind = ChartKind.Line
               XField = "month"
               YFields = [ "revenue"; "cost" ]
@@ -1575,6 +1594,58 @@ let chart: Node<obj> =
               // Stacked = true (Phase 126) — exercises the now-carried
               // stacked-vs-grouped chart intent round-tripping.
               Stacked = true }
+        ))
+        None
+
+// ─── fuaran#665 — the Phase 663 editable-grid anchor (grid + chart on ONE state key) ──
+//
+// The corpus carried NO `editable: true` fixture at all, so the cross-host
+// parity harness had nothing to certify the editable-grid write-back floor
+// against. This pair is the canonical Phase 663 shape: `editable: true` over a
+// DIRECT `Binding.State` rows source (the one write-back-capable shape), typed
+// rows riding the wire in `defaultValue`, field-named Text/Numeric columns
+// (closure-free — the declarative floor), and a Chart sourced on the SAME state
+// key, so an edit committed by the grid re-renders the chart.
+
+let private planRows: Row list =
+    [ Map.ofList [ "month", box "Jan"; "revenue", box 980 ]
+      Map.ofList [ "month", box "Feb"; "revenue", box 1105 ] ]
+
+let gridEditableState: Node<obj> =
+    let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-editable-state"
+        (NodeKind.DataGrid(
+            { Source = Binding.State("planRows", Some(Seq.ofList planRows))
+              RowKey = None
+              RowKeyField = Some "month"
+              Columns =
+                [ col "Month" "month" CellKindErased.Text
+                  col "Revenue" "revenue" CellKindErased.Numeric ]
+              OnRowClick = None
+              Editable = true
+              StaticRows = None }
+        ))
+        None
+
+let chartStateRows: Node<obj> =
+    node
+        "chart-state-rows"
+        (NodeKind.Chart(
+            { Source = Binding.State("planRows", Some(Seq.ofList planRows))
+              Kind = ChartKind.Bar
+              XField = "month"
+              YFields = [ "revenue" ]
+              Title = None
+              OnPointClick = None
+              Stacked = false }
         ))
         None
 
@@ -2816,6 +2887,8 @@ let allNodes: (string * Node<obj>) list =
       "Display/Metric (Phase 283 — Binding.Invoke capability source)", metricInvoke
       "Input/Button (Phase 283 — Action.Invoke capability effect)", buttonInvoke
       "Visualisation/Chart", chart
+      "Visualisation/Grid (Phase 663/665 — editable State-sourced grid, typed rows on the wire)", gridEditableState
+      "Visualisation/Chart (Phase 663/665 — chart on the editable grid's state key)", chartStateRows
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Map", mapVis
       "Custom", custom

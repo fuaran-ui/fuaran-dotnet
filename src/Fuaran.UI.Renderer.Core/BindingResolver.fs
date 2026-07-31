@@ -432,18 +432,19 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
         // Phase 282 — the declarative Compute layer. Evaluate the serialisable dataframe pipeline
         // via the `Fuaran.Core.DataFrame` reference evaluator (the same evaluator `transformLaws`
         // certifies — the param/prune/eval machinery lives in `evalTransformFrame`, shared with the
-        // Phase-632 scalar path), then surface the result rows as `obj seq` — each row a
-        // `Map<string,obj>` keyed by column name, the cell scalar boxed. Constrained to
-        // `Binding<obj seq>` use at a data-bearing node (same 'T-constraint posture as
-        // `Binding.Format` / `Binding.I18n`); a SCALAR slot (TextSource, Metric/LabelValueRow
-        // values) resolves through `resolveScalarWith` instead (Phase 632).
+        // Phase-632 scalar path), then surface the result rows as `Row seq` — each row the
+        // `Map<string,obj>` keyed by column name, the cell scalar boxed (fuaran#665 named the
+        // shape; the representation is unchanged). Constrained to `Binding<Row seq>` use at a
+        // data-bearing node (same 'T-constraint posture as `Binding.Format` / `Binding.I18n`);
+        // a SCALAR slot (TextSource, Metric/LabelValueRow values) resolves through
+        // `resolveScalarWith` instead (Phase 632).
         match evalTransformFrame sources source pipeline (defaultArg parameters []) with
         | Error m -> Errored m
         | Ok result ->
             let names = Fuaran.Core.Table.columnNames result
             let rowCount = Fuaran.Core.Table.rowCount result
 
-            let rows: obj seq =
+            let rows: Row list =
                 [ for i in 0 .. rowCount - 1 ->
                       names
                       |> List.map (fun n ->
@@ -453,15 +454,14 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
                               |> Option.defaultValue Fuaran.Core.Null
 
                           n, cellToObj cell)
-                      |> Map.ofList
-                      |> box ]
+                      |> Map.ofList ]
 
             try
-                Resolved(unbox<'T> (box rows))
+                Resolved(unbox<'T> (box (Seq.ofList rows)))
             with ex ->
                 Errored(
                     sprintf
-                        "Transform binding produced rows that did not unbox to the expected type (Binding.Transform is constrained to Binding<obj seq>): %s"
+                        "Transform binding produced rows that did not unbox to the expected type (Binding.Transform is constrained to Binding<Row seq>): %s"
                         ex.Message
                 )
     | Binding.Invoke(capabilityId, args) ->
@@ -691,35 +691,22 @@ let objToCellValue (v: obj) : CellValue =
     | :? System.DateTimeOffset as d -> CellValue.Date d
     | _ -> CellValue.Empty
 
-/// Project a named field off a row `obj` to a `CellValue`. A `Map<string,obj>`
-/// row (the `Transform` shape) reads by key; a missing key is `CellValue.Empty`.
-/// The row-field display floor for a decoded grid column.
+/// Project a named field off a `Row` to a `CellValue`; a missing key is
+/// `CellValue.Empty`. The row-field display floor for a decoded grid column.
 ///
-/// Fable erases the `Map<_,_>` generic, so a `:? Map<string,obj>` type-test evals
-/// false there (it can't discriminate the instantiation). On the decoded-`Field`
-/// path the row is ALWAYS a `Transform`-produced `Map<string,obj>` (an AI-authored
-/// `Static` grid source is `"<opaque>"` and can't ride the wire), so on Fable we
-/// unbox + `tryFind` directly; on .NET we type-test so a non-Map row is `Empty`.
-let projectRowFieldValue (row: obj) (field: string) : CellValue =
-#if FABLE_COMPILER
-    if isNull (box row) then
-        CellValue.Empty
-    else
-        match Map.tryFind field (unbox<Map<string, obj>> row) with
-        | Some v -> objToCellValue v
-        | None -> CellValue.Empty
-#else
-    match row with
-    | :? Map<string, obj> as m ->
-        match Map.tryFind field m with
-        | Some v -> objToCellValue v
-        | None -> CellValue.Empty
-    | _ -> CellValue.Empty
-#endif
+/// fuaran#665 — the rows slot is statically `Row = Map<string,obj>` end to end
+/// (typed wire payload, typed `Transform` output, typed facade projection), so
+/// the old Fable `#if`-split unbox hack — needed when the slot was `obj` and a
+/// `:? Map<string,obj>` type-test evaluated false under Fable — is gone: no
+/// runtime test exists to get wrong.
+let projectRowFieldValue (row: Row) (field: string) : CellValue =
+    match Map.tryFind field row with
+    | Some v -> objToCellValue v
+    | None -> CellValue.Empty
 
-/// Project a named field off a row `obj` to a string (the row-key floor). Empty
+/// Project a named field off a `Row` to a string (the row-key floor). Empty
 /// string when the field is missing (the caller may fall back to the row index).
-let projectRowFieldString (row: obj) (field: string) : string =
+let projectRowFieldString (row: Row) (field: string) : string =
     match projectRowFieldValue row field with
     | CellValue.Text s -> s
     | CellValue.Numeric f -> string f
@@ -739,7 +726,7 @@ let projectRowFieldString (row: obj) (field: string) : string =
 /// field maps by its canonical text rather than by a second coercion rule.
 /// Parity-locked with the TS renderers' `tonedPillOf`.
 let tonedPillOf
-    (row: obj)
+    (row: Row)
     (field: string)
     (toneMap: Map<string, ToneVariant>)
     (defaultTone: ToneVariant)

@@ -42,7 +42,7 @@ let private chartBoundTo (id: string) (xField: string) (yFields: string list) : 
     Fuaran.chart
         id
         { Defaults.chart with
-            Source = binding.query "sales" (fun (x: obj seq) -> x)
+            Source = binding.query "sales" (fun (x: Row seq) -> x)
             XField = xField
             YFields = yFields }
 

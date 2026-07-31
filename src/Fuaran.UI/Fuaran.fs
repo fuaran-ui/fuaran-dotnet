@@ -650,16 +650,15 @@ module FilterField =
 // ─── Column helpers (§4c lines 523–529) ───────────────────────────────────
 
 module Column =
-    /// Per Defect (1) resolution: box a typed Column<'row,'Msg> into the
-    /// tree-level row-erased ColumnErased<'Msg>.
-    #nowarn "3261"
-
-    let erase (col: Column<'row, 'Msg>) : ColumnErased<'Msg> =
+    /// Lower a typed `Column<'Msg>` into the tree-level `ColumnErased<'Msg>`.
+    /// Since fuaran#665 the accessors are already `Row`-typed on both sides, so
+    /// this is a shape adaptation (required → optional-override slots), not a
+    /// row erasure — the unbox ceremony is gone.
+    let erase (col: Column<'Msg>) : ColumnErased<'Msg> =
         { Label = col.Label
           // Phase 425 — the typed closure is the override (`Some`); a field-named erased column
-          // (`Field = Some …`, `Value = None`) is produced on the decoded path. The slot's
-          // return is the typed `CellValue` (host-prelude DU, stage 4b) — only the row erases.
-          Value = Some(fun (o: obj) -> col.Value(unbox<'row> o))
+          // (`Field = Some …`, `Value = None`) is produced on the decoded path.
+          Value = Some col.Value
           Field = None
           Format = col.Format
           Kind =
@@ -667,68 +666,44 @@ module Column =
             | CellKind.Text -> CellKindErased.Text
             | CellKind.Numeric -> CellKindErased.Numeric
             | CellKind.Date -> CellKindErased.Date
-            | CellKind.Editable f ->
-                // The generated `onEdit` is optional; its `CellValue` argument
-                // stays typed (host-prelude DU) — only the row erases.
-                CellKindErased.Editable(Some(fun (o, v) -> f (unbox<'row> o, v)))
-            | CellKind.Checkbox(get, onToggle) ->
-                CellKindErased.Checkbox(
-                    (fun (o: obj) -> get (unbox<'row> o)),
-                    Some(fun (o, b) -> onToggle (unbox<'row> o, b))
-                )
-            | CellKind.Button(label, onClick) ->
-                CellKindErased.Button(label, Some(fun (o: obj) -> onClick (unbox<'row> o)))
+            | CellKind.Editable f -> CellKindErased.Editable(Some f)
+            | CellKind.Checkbox(get, onToggle) -> CellKindErased.Checkbox(get, Some onToggle)
+            | CellKind.Button(label, onClick) -> CellKindErased.Button(label, Some onClick)
             | CellKind.ButtonGroup btns ->
-                CellKindErased.ButtonGroup(
-                    btns
-                    |> List.map (fun (l, f) ->
-                        { Label = l
-                          OnClick = Some(fun (o: obj) -> f (unbox<'row> o)) })
-                )
-            | CellKind.Link(href, label) ->
-                CellKindErased.Link((fun (o: obj) -> href (unbox<'row> o)), (fun (o: obj) -> label (unbox<'row> o)))
-            | CellKind.Pill(label, tone) ->
-                CellKindErased.Pill((fun (o: obj) -> label (unbox<'row> o)), (fun (o: obj) -> tone (unbox<'row> o)))
-            // Phase 750 — nothing to erase: the declarative pill holds no row accessor,
-            // so the typed and erased forms are the same three values.
+                CellKindErased.ButtonGroup(btns |> List.map (fun (l, f) -> { Label = l; OnClick = Some f }))
+            | CellKind.Link(href, label) -> CellKindErased.Link(href, label)
+            | CellKind.Pill(label, tone) -> CellKindErased.Pill(label, tone)
             | CellKind.TonedPill(field, toneMap, defaultTone) -> CellKindErased.TonedPill(field, toneMap, defaultTone)
-            | CellKind.Progress(fraction, label) ->
-                CellKindErased.Progress(
-                    (fun (o: obj) -> fraction (unbox<'row> o)),
-                    label |> Option.map (fun l -> fun (o: obj) -> l (unbox<'row> o))
-                )
-            | CellKind.Custom render ->
-                CellKindErased.Custom(fun (jsonOf: obj -> JVal) -> render (fun (r: 'row) -> jsonOf (box r)))
+            | CellKind.Progress(fraction, label) -> CellKindErased.Progress(fraction, label)
+            | CellKind.Custom render -> CellKindErased.Custom render
           Width = col.Width }
 
-    #warnon "3261"
-
-    let text (label: string) (value: 'row -> string) : Column<'row, 'Msg> =
-        { Defaults.column<'row, 'Msg> with
+    let text (label: string) (value: Row -> string) : Column<'Msg> =
+        { Defaults.column<'Msg> with
             Label = label
             Value = (fun r -> CellValue.Text(value r))
             Kind = CellKind.Text }
 
-    let numeric (label: string) (value: 'row -> float) : Column<'row, 'Msg> =
-        { Defaults.column<'row, 'Msg> with
+    let numeric (label: string) (value: Row -> float) : Column<'Msg> =
+        { Defaults.column<'Msg> with
             Label = label
             Value = (fun r -> CellValue.Numeric(value r))
             Kind = CellKind.Numeric }
 
-    let date (label: string) (value: 'row -> System.DateTimeOffset) : Column<'row, 'Msg> =
-        { Defaults.column<'row, 'Msg> with
+    let date (label: string) (value: Row -> System.DateTimeOffset) : Column<'Msg> =
+        { Defaults.column<'Msg> with
             Label = label
             Value = (fun r -> CellValue.Date(value r))
             Kind = CellKind.Date }
 
-    let bool (label: string) (value: 'row -> bool) : Column<'row, 'Msg> =
-        { Defaults.column<'row, 'Msg> with
+    let bool (label: string) (value: Row -> bool) : Column<'Msg> =
+        { Defaults.column<'Msg> with
             Label = label
             Value = (fun r -> CellValue.Bool(value r))
             Kind = CellKind.Text }
 
     /// Postfix pipe: convert a non-interactive Column into an Editable one.
-    let editable (onEdit: 'row -> CellValue -> Action<'Msg>) (col: Column<'row, 'Msg>) : Column<'row, 'Msg> =
+    let editable (onEdit: Row -> CellValue -> Action<'Msg>) (col: Column<'Msg>) : Column<'Msg> =
         { col with
             Kind = CellKind.Editable(fun (r, v) -> onEdit r v) }
 
@@ -751,7 +726,7 @@ module Column =
     ///
     /// Example:
     ///   Column.text "Status" (_.Status) |> Column.withPill statusTone
-    let withPill (tone: 'row -> ToneVariant) (col: Column<'row, 'Msg>) : Column<'row, 'Msg> =
+    let withPill (tone: Row -> ToneVariant) (col: Column<'Msg>) : Column<'Msg> =
         { col with
             Kind = CellKind.Pill((fun r -> cellValueToText (col.Value r)), tone) }
 
@@ -772,14 +747,14 @@ module Column =
         (field: string)
         (toneMap: Map<string, ToneVariant>)
         (defaultTone: ToneVariant)
-        (col: Column<'row, 'Msg>)
-        : Column<'row, 'Msg> =
+        (col: Column<'Msg>)
+        : Column<'Msg> =
         { col with
             Kind = CellKind.TonedPill(field, toneMap, defaultTone) }
 
-    let withFormat (format: CellFormat) (col: Column<'row, 'Msg>) : Column<'row, 'Msg> = { col with Format = format }
+    let withFormat (format: CellFormat) (col: Column<'Msg>) : Column<'Msg> = { col with Format = format }
 
-    let withWidth (width: ColumnWidth) (col: Column<'row, 'Msg>) : Column<'row, 'Msg> = { col with Width = width }
+    let withWidth (width: ColumnWidth) (col: Column<'Msg>) : Column<'Msg> = { col with Width = width }
 
 // ─── Components — the `Fuaran.X` author surface ──────────────────────────────
 
@@ -1181,27 +1156,30 @@ module Fuaran =
     let map (id: string) (spec: MapSpec<'Msg>) : Node<'Msg> =
         buildNode id (NodeKind.Map(spec)) Defaults.Accessibility.map
 
-    /// Per Defect (1) resolution: take a typed `GridSpecOf<'row,'Msg>`, box
-    /// the row accessors into `GridSpec<'Msg>` (the tree-level obj-erased
-    /// shape).
-    #nowarn "3261"
-
-    let grid (id: string) (spec: GridSpecOf<'row, 'Msg>) : Node<'Msg> =
+    /// Take a typed `GridSpecOf<'row,'Msg>` and the REQUIRED `toRow` projection
+    /// (fuaran#665, operator decision 2026-07-31): every `'row` the source
+    /// yields is projected to the wire-expressible `Row` at this boundary, so a
+    /// Static/State rows payload survives canonical encoding instead of
+    /// collapsing to `"<opaque>"`. `toRow` is deliberately not defaultable —
+    /// the only candidate defaults silently produce empty rows or throw, and an
+    /// optional obligation is how the erasure went invisible in the first
+    /// place. A call site whose rows are already `Row`-shaped passes `id`.
+    let grid (id: string) (toRow: 'row -> Row) (spec: GridSpecOf<'row, 'Msg>) : Node<'Msg> =
         let erased: GridSpec<'Msg> =
             { Source =
                 match spec.Source with
-                | Binding.Static rows -> Binding.Static(rows |> Option.map Seq.cast<obj>)
+                | Binding.Static rows -> Binding.Static(rows |> Option.map (Seq.map toRow))
                 | Binding.Query(name, acc, dependsOn) ->
-                    Binding.Query(name, (fun o -> acc o |> Seq.cast<obj>), dependsOn)
+                    Binding.Query(name, (fun o -> acc o |> Seq.map toRow), dependsOn)
                 | Binding.Filter(name, _) -> Binding.Filter(name, None)
                 | Binding.Selection(nodeId, acc, dv, fld) ->
-                    Binding.Selection(nodeId, (fun o -> acc o |> Seq.cast<obj>), dv |> Option.map Seq.cast<obj>, fld)
-                | Binding.State(key, dv) -> Binding.State(key, dv |> Option.map Seq.cast<obj>)
-                | Binding.Computed f -> Binding.Computed(fun ctx -> f ctx |> Seq.cast<obj>)
+                    Binding.Selection(nodeId, (fun o -> acc o |> Seq.map toRow), dv |> Option.map (Seq.map toRow), fld)
+                | Binding.State(key, dv) -> Binding.State(key, dv |> Option.map (Seq.map toRow))
+                | Binding.Computed f -> Binding.Computed(fun ctx -> f ctx |> Seq.map toRow)
                 // `Binding.I18n` is semantically for `Binding<string>`
                 // bindings, but the DU is parameterised on 'T so the typechecker
                 // allows it on a grid's `Binding<'row seq>` Source. Pass through —
-                // resolution will throw at the obj-cast site, surfacing the
+                // resolution will throw at the cast site, surfacing the
                 // mis-use loudly rather than producing an empty grid silently.
                 | Binding.I18n(key, args) -> Binding.I18n(key, args)
                 // `Binding.Local` is semantically for `FormFieldKind.Text`
@@ -1214,26 +1192,26 @@ module Fuaran =
                 // `Binding.Format` is semantically for `Binding<string>`
                 // (the formatter returns a string). The DU is parameterised on
                 // 'T so it type-checks on a grid's `Binding<'row seq>` Source;
-                // pass through — resolution throws at the obj-cast site,
+                // pass through — resolution throws at the cast site,
                 // surfacing the mis-use loudly (same posture as `Binding.I18n`).
                 | Binding.Format(source, fmt, locale) -> Binding.Format(source, fmt, locale)
-                // `Binding.Transform` already produces `obj seq` rows (the Core evaluator's output);
-                // it is 'T-agnostic, so re-wrap unchanged (the `Seq.cast` other cases need is a no-op
-                // here — the rows are already obj-boxed).
+                // `Binding.Transform` produces `Row seq` rows directly (the Core
+                // evaluator's `Map<string,obj>` output IS the `Row` shape); it is
+                // 'T-agnostic, so re-wrap unchanged — `toRow` has nothing to do here.
                 | Binding.Transform(source, pipeline, parameters) -> Binding.Transform(source, pipeline, parameters)
                 // `Binding.Invoke` is 'T-agnostic (the resolved value is a host-produced `Deferred`);
                 // re-wrap unchanged.
                 | Binding.Invoke(capabilityId, args) -> Binding.Invoke(capabilityId, args)
-              RowKey = Some(fun (o: obj) -> spec.RowKey(unbox<'row> o))
+              // The accessors are `Row`-typed on both sides since fuaran#665 —
+              // no unbox wrapper survives.
+              RowKey = Some spec.RowKey
               RowKeyField = None
               Columns = spec.Columns |> List.map Column.erase
-              OnRowClick = spec.OnRowClick |> Option.map (fun f -> fun (o: obj) -> f (unbox<'row> o))
+              OnRowClick = spec.OnRowClick
               Editable = spec.Editable
               StaticRows = None }
 
         buildNode id (NodeKind.DataGrid(erased)) Defaults.Accessibility.grid
-
-    #warnon "3261"
 
     // ─── Custom — bounded escape ─────────────────────────────────────────
     //

@@ -238,7 +238,10 @@ let private defs: (string * J) list =
       // markers) have typed wire forms (WIRE_FORMAT §"Typed Static
       // payloads"), but `Binding` is one generic definition shared by every
       // slot, so the schema keeps the any-JSON envelope; `SelectOption`
-      // below already names the element record shape.
+      // below already names the element record shape. fuaran#665: grid/chart
+      // ROWS join the typed payloads — an array of row objects with scalar
+      // cells (the legacy `"<opaque>"` sentinel stays decode-accepted) — and
+      // ride the same shared any-JSON envelope here.
       "Binding",
       union
           // Phase 677 — `value` is OPTIONAL: absence is structural, so a binding

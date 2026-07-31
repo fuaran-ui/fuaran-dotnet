@@ -349,7 +349,7 @@ let fileUpload<'Msg> : FileUploadSpec<'Msg> =
 // ─── Visualisation defaults ─────────────────────────────────────────────────
 
 let chart<'Msg> : ChartSpec<'Msg> =
-    { Source = noBinding<obj seq>
+    { Source = noBinding<Row seq>
       Kind = ChartKind.Line
       XField = ""
       YFields = []
@@ -379,7 +379,7 @@ let grid<'row, 'Msg> : GridSpecOf<'row, 'Msg> =
       OnRowClick = Option.None
       Editable = false }
 
-let column<'row, 'Msg> : Column<'row, 'Msg> =
+let column<'Msg> : Column<'Msg> =
     { Label = ""
       Value = (fun _ -> CellValue.Empty)
       Format = CellFormat.None

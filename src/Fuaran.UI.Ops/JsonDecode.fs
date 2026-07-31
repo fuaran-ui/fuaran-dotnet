@@ -1895,17 +1895,30 @@ let private decodeBindingStringPair (path: string) (j: Json) : Result<Binding<Da
         parseStatic path j |> Result.map (Some >> Binding.Static)
     | _ -> bindingGeneric<DateRangePair> path parseStatic { From = ""; To = "" } j
 
-let private decodeBindingObjSeq (path: string) (j: Json) : Result<Binding<obj seq>, DecodeError> =
-    let parseStatic (p: string) (v: Json) : Result<obj seq, DecodeError> =
+// fuaran#665 — the typed rows decoder: a rows payload is an array of row
+// objects (each decoding to a `Row = Map<string, obj>` with `decodeObj` cell
+// shapes), with the legacy `"<opaque>"` sentinel accepted indefinitely
+// (read-compat → the empty feed, exactly the pre-typed behaviour). A non-object
+// row element is a named decode error.
+let private decodeRowSeq (path: string) (j: Json) : Result<Binding<Row seq>, DecodeError> =
+    let parseRow (p: string) (v: Json) : Result<Row, DecodeError> =
         match v with
-        | JNull -> Ok Seq.empty // an empty-list-backed seq boxes to `null` (obj seq stays opaque by design)
+        | JObject fields -> Ok(fields |> Map.map (fun _ cell -> decodeObj cell))
+        | _ -> wrongType p "row object"
+
+    let parseStatic (p: string) (v: Json) : Result<Row seq, DecodeError> =
+        match v with
+        | JNull -> Ok Seq.empty // lenient shorthand for absence (rule 4 decode-accept)
         | JString s when s = opaqueSentinel -> Ok Seq.empty
         | _ ->
             match requireArray p v with
             | Error e -> Error e
-            | Ok xs -> Ok(xs |> List.map decodeObj |> Seq.ofList)
+            | Ok xs ->
+                xs
+                |> traverseIndexed (fun i item -> parseRow (sprintf "%s[%d]" p i) item)
+                |> Result.map Seq.ofList
 
-    bindingGeneric<obj seq> path parseStatic Seq.empty j
+    bindingGeneric<Row seq> path parseStatic Seq.empty j
 
 let private decodeMapMarker (path: string) (j: Json) : Result<MapMarker, DecodeError> =
     match requireObject path j with
@@ -3722,7 +3735,7 @@ let private decodeCellKindErased (path: string) (j: Json) : Result<CellKindErase
                             |> Result.map (fun label ->
                                 { Label = label
                                   OnClick =
-                                    tryField bf "onClick" |> Option.map (fun _ -> fun (_: obj) -> Action.Chain []) }
+                                    tryField bf "onClick" |> Option.map (fun _ -> fun (_: Row) -> Action.Chain []) }
                                 : ButtonGroupItem<obj>))
                     xs)
             |> Result.map CellKindErased.ButtonGroup
@@ -3791,7 +3804,7 @@ let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<ob
         // row-field projection so the cell renders data with zero host code.
         let value =
             match tryField fields "value" with
-            | Some _ -> Some(fun (_: obj) -> CellValue.Empty)
+            | Some _ -> Some(fun (_: Row) -> CellValue.Empty)
             | None -> None
 
         let fieldR =
@@ -3868,10 +3881,10 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | Some v -> requireBool (path + ".editable") v
 
         let sourceR =
-            requireFieldAliased path fields "source" [ "data"; "rows" ] "Binding<obj seq> Source"
-            |> Result.bind (decodeBindingObjSeq (path + ".source"))
+            requireFieldAliased path fields "source" [ "data"; "rows" ] "Binding<Row seq> Source"
+            |> Result.bind (decodeRowSeq (path + ".source"))
 
-        let onRowClickR: Result<(obj -> Action<obj>) option, DecodeError> =
+        let onRowClickR: Result<(Row -> Action<obj>) option, DecodeError> =
             match tryField fields "onRowClick" with
             | None -> Ok None
             | Some _ -> Ok(Some(fun _ -> Action.Chain []))
@@ -3879,7 +3892,7 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
         // Phase 425 — `rowKey` (closure) + `rowKeyField` (declarative) are sibling optional slots.
         let rowKey =
             match tryField fields "rowKey" with
-            | Some _ -> Some(fun (_: obj) -> closureSentinel)
+            | Some _ -> Some(fun (_: Row) -> closureSentinel)
             | None -> None
 
         let rowKeyFieldR =
@@ -3924,8 +3937,8 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             |> Result.bind (decodeChartKind (path + ".kind"))
 
         let sourceR =
-            requireFieldAliased path fields "source" [ "data" ] "Binding<obj seq> source"
-            |> Result.bind (decodeBindingObjSeq (path + ".source"))
+            requireFieldAliased path fields "source" [ "data" ] "Binding<Row seq> source"
+            |> Result.bind (decodeRowSeq (path + ".source"))
 
         let xFieldR =
             requireField path fields "xField" "xField string"
@@ -3944,7 +3957,7 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             | None -> Ok None
             | Some v -> decodeTextSource (path + ".title") v |> Result.map Some
 
-        let onPointClickR: Result<(obj -> Action<obj>) option, DecodeError> =
+        let onPointClickR: Result<(Row -> Action<obj>) option, DecodeError> =
             match tryField fields "onPointClick" with
             | None -> Ok None
             | Some _ -> Ok(Some(fun _ -> Action.Chain []))

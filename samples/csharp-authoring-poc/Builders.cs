@@ -417,6 +417,7 @@ internal sealed class ChartBuilder : NodeBuilder
     private FSharpList<string> _yFields = Fs.Empty<string>();
     private FSharpOption<TextSource> _title = Fs.None<TextSource>();
     private bool _stacked;
+    private IEnumerable<FSharpMap<string, object>> _rows = Enumerable.Empty<FSharpMap<string, object>>();
 
     public ChartBuilder(string id) : base(id) { }
 
@@ -426,12 +427,21 @@ internal sealed class ChartBuilder : NodeBuilder
     public ChartBuilder Title(string text) { _title = Fs.Some(Txt.Literal(text)); return this; }
     public ChartBuilder Stacked(bool stacked = true) { _stacked = stacked; return this; }
 
+    /// <summary>fuaran#665 — static typed rows: each row is name→value cells.</summary>
+    public ChartBuilder Rows(params (string Key, object Value)[][] rows)
+    {
+        _rows = rows
+            .Select(r => Fs.Map(r.Select(c => new KeyValuePair<string, object>(c.Key, c.Value))))
+            .ToList();
+        return this;
+    }
+
     protected override NodeKind<object> BuildKind()
     {
-        // Source is an obj-seq binding; an empty static seq is opaque to the
-        // encoder ("<opaque>"), matching the corpus chart fixture. A real chart
-        // binds a row sequence via a query/state binding.
-        var source = Bind.Static<IEnumerable<object>>(Enumerable.Empty<object>());
+        // fuaran#665 — the rows slot is typed (`Row = FSharpMap<string, obj>`),
+        // so a static feed encodes as a JSON array of row objects (empty → `[]`),
+        // no longer the `"<opaque>"` sentinel.
+        var source = Bind.Static(_rows);
         // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
         // Source, Stacked, XField, YFields, Title, OnPointClick).
         return NodeKind<object>.NewChart(
@@ -442,7 +452,7 @@ internal sealed class ChartBuilder : NodeBuilder
                 _xField,
                 _yFields,
                 _title,
-                Fs.None<FSharpFunc<object, FsAction>>()));
+                Fs.None<FSharpFunc<FSharpMap<string, object>, FsAction>>()));
     }
 }
 

@@ -45,7 +45,7 @@ let private embeddedSource =
 let private paramPipeline: Fuaran.Core.Transform list =
     [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "dept", Fuaran.Core.Param "dept")) ]
 
-let private gridWithEditable (editable: bool) (source: Binding<obj seq>) : Node<Msg> =
+let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<Msg> =
     { Id = "grid"
       Kind =
         NodeKind.DataGrid(
@@ -69,7 +69,7 @@ let private gridWithEditable (editable: bool) (source: Binding<obj seq>) : Node<
       Motion = Defaults.Motion.none
       ExtraAttributes = None }
 
-let private gridWith (source: Binding<obj seq>) : Node<Msg> = gridWithEditable false source
+let private gridWith (source: Binding<Row seq>) : Node<Msg> = gridWithEditable false source
 
 [<Tests>]
 let tests =
@@ -238,11 +238,8 @@ let tests =
           }
 
           test "FUARAN090 does not fire for an editable State-sourced grid, nor for editable=false" {
-              let stateRows: obj seq =
-                  Seq.singleton (
-                      box (Map.ofList [ "dept", (box "eng" |> Unchecked.nonNull) ])
-                      |> Unchecked.nonNull
-                  )
+              let stateRows: Row seq =
+                  Seq.singleton (Map.ofList [ "dept", (box "eng" |> Unchecked.nonNull) ])
 
               let editableStateGrid =
                   gridWithEditable true (Binding.State("grid-rows", Some stateRows))

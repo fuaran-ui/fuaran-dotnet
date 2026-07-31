@@ -15,7 +15,7 @@ Friend Module VisualisationMapping
         d("Chart") = Function(el) Csharp.Fuaran.Chart(
             New Csharp.ChartOptions With {
                 .Id = Attr(el, "id"),
-                .Source = OptObjSeqBinding(el, "source"),
+                .Source = OptRowSeqBinding(el, "source"),
                 .Kind = AsEnum(Of Csharp.ChartKind)(Attr(el, "kind"), Csharp.ChartKind.Line),
                 .XField = If(HasAttr(el, "x-field"), Attr(el, "x-field"), ""),
                 .YFields = PipeList(Attr(el, "y-fields")),
@@ -40,9 +40,21 @@ Friend Module VisualisationMapping
             New Csharp.DataGridOptions(Of Object) With {
                 .Id = Attr(el, "id"),
                 .Source = OptObjSeqBinding(el, "source"),
+                .ToRow = AddressOf RowCells,
                 .Columns = ReadColumns(el),
                 .Editable = AttrBool(el, "editable")})
     End Sub
+
+    ''' fuaran#665 — the required ToRow projection for XML-authored grids, whose row
+    ''' type is dynamic Object: a host row that already IS a name→value sequence
+    ''' (an F# map, a dictionary) passes through; anything else projects to the
+    ''' empty row — the XML tier has no field metadata to do better with, and the
+    ''' choice is explicit here rather than silently defaulted in the facade.
+    Private Function RowCells(o As Object) As IEnumerable(Of KeyValuePair(Of String, Object))
+        Dim cells = TryCast(o, IEnumerable(Of KeyValuePair(Of String, Object)))
+        If cells IsNot Nothing Then Return cells
+        Return Enumerable.Empty(Of KeyValuePair(Of String, Object))()
+    End Function
 
     Private Function ReadRows(el As XElement) As IEnumerable(Of IEnumerable(Of Csharp.Text))
         Return ChildElements(el, "Row").Select(Function(r) ChildTexts(r, "Cell")).ToList()
@@ -54,22 +66,22 @@ Friend Module VisualisationMapping
             ToList()
     End Function
 
-    Private Function ReadColumns(el As XElement) As IEnumerable(Of Csharp.Column(Of Object))
+    Private Function ReadColumns(el As XElement) As IEnumerable(Of Csharp.Column)
         Return ChildElements(el, "Column").Select(AddressOf ReadColumn).ToList()
     End Function
 
-    Private Function ReadColumn(c As XElement) As Csharp.Column(Of Object)
+    Private Function ReadColumn(c As XElement) As Csharp.Column
         Dim label = Attr(c, "label")
-        Dim col As Csharp.Column(Of Object)
+        Dim col As Csharp.Column
         Select Case Attr(c, "type", "text").ToLowerInvariant()
             Case "numeric"
-                col = Csharp.Column(Of Object).Numeric(label, Function(row) 0.0)
+                col = Csharp.Column.Numeric(label, Function(row) 0.0)
             Case "bool"
-                col = Csharp.Column(Of Object).Bool(label, Function(row) False)
+                col = Csharp.Column.Bool(label, Function(row) False)
             Case "date"
-                col = Csharp.Column(Of Object).Date(label, Function(row) New DateTimeOffset())
+                col = Csharp.Column.Date(label, Function(row) New DateTimeOffset())
             Case Else
-                col = Csharp.Column(Of Object).Text(label, Function(row) "")
+                col = Csharp.Column.Text(label, Function(row) "")
         End Select
 
         ' Phase 750 — a column carrying <Tone> children becomes a declarative TonedPill.

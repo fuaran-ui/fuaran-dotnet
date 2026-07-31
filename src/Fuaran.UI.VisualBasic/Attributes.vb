@@ -177,6 +177,14 @@ Friend Module Attributes
         Return Csharp.Binding.Query(Of IEnumerable(Of Object))(v.Substring(1))
     End Function
 
+    ''' <summary>An optional TYPED-ROW-seq binding (fuaran#665 — the chart source binds
+    ''' name→value row maps) — only "$name" is meaningful.</summary>
+    Friend Function OptRowSeqBinding(el As XElement, name As String) As Csharp.Binding(Of IEnumerable(Of Microsoft.FSharp.Collections.FSharpMap(Of String, Object)))
+        Dim v = Attr(el, name)
+        If v Is Nothing OrElse Not v.StartsWith("$", StringComparison.Ordinal) Then Return Nothing
+        Return Csharp.Binding.Query(Of IEnumerable(Of Microsoft.FSharp.Collections.FSharpMap(Of String, Object)))(v.Substring(1))
+    End Function
+
     ''' <summary>An optional double-seq binding (sparkline source) — only "$name" is meaningful.</summary>
     Friend Function OptDoubleSeqBinding(el As XElement, name As String) As Csharp.Binding(Of IEnumerable(Of Double))
         Dim v = Attr(el, name)

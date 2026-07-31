@@ -167,15 +167,16 @@ let private cases: Case list =
         // Four equal shares pin the exact quarter-boundary arc geometry.
         Rows = [ "N", [ 25.0 ]; "E", [ 25.0 ]; "S", [ 25.0 ]; "W", [ 25.0 ] ] } ]
 
-/// Build the boxed `Map<string,obj>` rows (the canonical embedded-data shape).
-let private buildRows (case: Case) : obj list =
+/// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
+/// named the slot — the representation is the same `Map<string,obj>`).
+let private buildRows (case: Case) : Row list =
     List.zip (xCells case) (case.Rows |> List.map snd)
     |> List.map (fun (x, ys) ->
         let fields =
             (case.XField, x)
             :: (List.zip case.YFields ys |> List.map (fun (f, v) -> f, box v))
 
-        box (Map.ofList fields))
+        Map.ofList fields)
 
 let private specOf (case: Case) : ChartSpec<obj> =
     { Source = Binding.Static(Some(Seq.ofList (buildRows case)))
@@ -298,14 +299,14 @@ let chartLoweringTests =
                   // Build the same rows with a reversed field-insertion order; the
                   // lowering reads fields by name, so the Drawing must be identical.
                   for case in cases do
-                      let reversedRows: obj list =
+                      let reversedRows: Row list =
                           List.zip (xCells case) (case.Rows |> List.map snd)
                           |> List.map (fun (x, ys) ->
                               let fields =
                                   (List.zip case.YFields ys |> List.map (fun (f, v) -> f, box v))
                                   @ [ case.XField, x ]
 
-                              box (Map.ofList (List.rev fields)))
+                              Map.ofList (List.rev fields))
 
                       let nodeA: Node<obj> =
                           Fuaran.drawingSpec "c" (Charts.lower (specOf case) (Seq.ofList (buildRows case)))

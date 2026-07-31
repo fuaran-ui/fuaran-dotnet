@@ -236,7 +236,7 @@ let private fixtures: Fixture list =
               "cht"
               { Defaults.chart<obj> with
                   Kind = ChartKind.Bar
-                  Source = Binding.Static(Some(Seq.ofList [ box (Map.ofList [ "x", box "Q1"; "y", box 10.0 ]) ]))
+                  Source = Binding.Static(Some(Seq.ofList [ (Map.ofList [ "x", box "Q1"; "y", box 10.0 ]: Row) ]))
                   XField = "x"
                   YFields = [ "y" ] }
         Expected = [ "fuaran-drawing"; "fuaran-drawing-rect"; "role=\"img\""; "<svg" ] }
@@ -249,7 +249,7 @@ let private fixtures: Fixture list =
               "cht2"
               { Defaults.chart<obj> with
                   Kind = ChartKind.Heatmap
-                  Source = Binding.Static(Some(Seq.ofList [ box 1 ]))
+                  Source = Binding.Static(Some(Seq.ofList [ (Map.ofList [ "x", box 1 ]: Row) ]))
                   XField = "x"
                   YFields = [ "y" ] }
         Expected = [ "fuaran-chart-ssr-placeholder"; "data-fuaran-ssr-placeholder=\"Chart\"" ] }

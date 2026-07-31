@@ -15,6 +15,23 @@ open Fuaran.UI.Renderer
 //  No renderer assertions yet (session 3+).
 // ============================================================================
 
+// F# 10 `box _` types as `obj | null`; Row cells are nonnull-obj.
+let private nn (value: 'T) : obj = box value |> Unchecked.nonNull
+
+// fuaran#665 — terse named-cell reads off the projected `Row`.
+let private cellStr (field: string) (r: Row) : string =
+    defaultArg (Map.tryFind field r |> Option.map string) ""
+
+let private cellFloat (field: string) (r: Row) : float =
+    match Map.tryFind field r with
+    | Some v -> unbox<float> v
+    | None -> 0.0
+
+let private cellInt (field: string) (r: Row) : int =
+    match Map.tryFind field r with
+    | Some v -> unbox<int> v
+    | None -> 0
+
 type SampleRow =
     { RowId: int
       Channel: string
@@ -72,18 +89,21 @@ let tests =
               | other -> failtestf "Expected NodeKind.Metric, got %A" other
           }
 
-          test "Fuaran.grid boxes a typed GridSpecOf<'row,'Msg> into a row-erased GridSpec" {
+          test "Fuaran.grid projects a typed GridSpecOf<'row,'Msg> through toRow into a Row-typed GridSpec" {
               let node: Node<Msg> =
                   Fuaran.grid
                       "channel-grid"
+                      (fun (r: SampleRow) ->
+                          Map.ofList [ "rowId", nn r.RowId; "channel", nn r.Channel; "refGrp", nn r.RefGrp ])
                       { Defaults.grid<SampleRow, Msg> with
                           Source = binding.query "channelRows" id
-                          RowKey = (fun r -> string r.RowId)
+                          RowKey = cellStr "rowId"
                           Columns =
-                              [ Column.text "Channel" (fun (r: SampleRow) -> r.Channel)
-                                Column.numeric "GRPs" (fun (r: SampleRow) -> r.RefGrp)
-                                |> Column.editable (fun row _ -> Action.dispatch (UpdateRefGRP(row.RowId, 0.0))) ]
-                          OnRowClick = Some(fun row -> Action.dispatch (SelectRow row.RowId)) }
+                              [ Column.text "Channel" (cellStr "channel")
+                                Column.numeric "GRPs" (cellFloat "refGrp")
+                                |> Column.editable (fun row _ ->
+                                    Action.dispatch (UpdateRefGRP(cellInt "rowId" row, 0.0))) ]
+                          OnRowClick = Some(fun row -> Action.dispatch (SelectRow(cellInt "rowId" row))) }
 
               Expect.equal (idOf node) "channel-grid" "Id is set"
 
@@ -96,51 +116,48 @@ let tests =
           }
 
           test "Column.withPill sets CellKind.Pill reusing the column value as the label" {
-              let statusTone (r: SampleRow) =
-                  if r.RefGrp > 0.0 then
+              let statusTone (r: Row) =
+                  if cellFloat "refGrp" r > 0.0 then
                       ToneVariant.Brand
                   else
                       ToneVariant.Default
 
-              let col: Column<SampleRow, Msg> =
-                  Column.text "Status" _.Channel |> Column.withPill statusTone
+              let col: Column<Msg> =
+                  Column.text "Status" (cellStr "channel") |> Column.withPill statusTone
 
               match col.Kind with
               | CellKind.Pill(label, tone) ->
-                  let row =
-                      { RowId = 1
-                        Channel = "Active"
-                        RefGrp = 3.0 }
+                  let row: Row =
+                      Map.ofList [ "rowId", nn 1; "channel", nn "Active"; "refGrp", nn 3.0 ]
 
                   Expect.equal (literalOf (label row)) "Active" "Pill label reuses the column value"
                   Expect.equal (tone row) ToneVariant.Brand "Tone fn wired"
 
-                  let zeroRow = { row with RefGrp = 0.0 }
+                  let zeroRow = Map.add "refGrp" (nn 0.0) row
                   Expect.equal (tone zeroRow) ToneVariant.Default "Tone fn maps the row"
               | other -> failtestf "Expected CellKind.Pill, got %A" other
           }
 
-          test "Column.erase boxes a withPill column to CellKindErased.Pill (round-trip)" {
-              let statusTone (r: SampleRow) =
-                  if r.RefGrp > 0.0 then
+          test "Column.erase lowers a withPill column to CellKindErased.Pill (round-trip)" {
+              let statusTone (r: Row) =
+                  if cellFloat "refGrp" r > 0.0 then
                       ToneVariant.Brand
                   else
                       ToneVariant.Default
 
               let erased: ColumnErased<Msg> =
-                  Column.text "Status" _.Channel |> Column.withPill statusTone |> Column.erase
+                  Column.text "Status" (cellStr "channel")
+                  |> Column.withPill statusTone
+                  |> Column.erase
 
               match erased.Kind with
               | CellKindErased.Pill(label, tone) ->
-                  let row: obj =
-                      box
-                          { RowId = 1
-                            Channel = "Active"
-                            RefGrp = 3.0 }
-                      |> Unchecked.nonNull
+                  // fuaran#665 — the erased accessors are Row-typed too; no unbox seam remains.
+                  let row: Row =
+                      Map.ofList [ "rowId", nn 1; "channel", nn "Active"; "refGrp", nn 3.0 ]
 
-                  Expect.equal (literalOf (label row)) "Active" "Erased pill label unboxes the row"
-                  Expect.equal (tone row) ToneVariant.Brand "Erased tone fn unboxes the row"
+                  Expect.equal (literalOf (label row)) "Active" "Erased pill label reads the row"
+                  Expect.equal (tone row) ToneVariant.Brand "Erased tone fn reads the row"
               | other -> failtestf "Expected CellKindErased.Pill, got %A" other
           }
 

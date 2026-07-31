@@ -1,5 +1,10 @@
 module ApplyParity
 
+// fuaran#665 — the base tree boxes row cells into `Row = Map<string, obj>`;
+// the boxing seam trips F# 10 nullness (FS3261) exactly as the tier's own
+// obj-erasure files do (JsonDecode's file-scope precedent).
+#nowarn "3261"
+
 // ============================================================================
 //  Cross-pipeline apply-parity harness (Phase 192).
 //
@@ -69,10 +74,15 @@ let baseTree: Node<obj> =
                   Fuaran.dashboard "dash-empty" Defaults.dashboard
                   Fuaran.grid
                       "grid-1"
+                      // fuaran#665 — the required `toRow` projection; column accessors
+                      // read the projected `Row` by name.
+                      (fun (r: ParityRow) -> Map.ofList [ "channel", box r.Channel; "spend", box r.Spend ])
                       { Defaults.grid<ParityRow, obj> with
                           Columns =
-                              [ Column.text "Channel" (fun (r: ParityRow) -> r.Channel)
-                                Column.text "Spend" (fun (r: ParityRow) -> string r.Spend) ] }
+                              [ Column.text "Channel" (fun r ->
+                                    defaultArg (Map.tryFind "channel" r |> Option.map string) "")
+                                Column.text "Spend" (fun r ->
+                                    defaultArg (Map.tryFind "spend" r |> Option.map string) "") ] }
                   Fuaran.chart
                       "chart-1"
                       { Defaults.chart with

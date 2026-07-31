@@ -135,6 +135,20 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 
 // ─── §4c canonical example (revenue Metric + editable grid) ───────────────────
 
+// fuaran#665 — terse named-cell reads off the projected `Row`.
+let private cellText (field: string) (r: Row) : string =
+    defaultArg (Map.tryFind field r |> Option.map string) ""
+
+let private cellFloat (field: string) (r: Row) : float =
+    match Map.tryFind field r with
+    | Some v -> unbox<float> v
+    | None -> 0.0
+
+let private cellInt (field: string) (r: Row) : int =
+    match Map.tryFind field r with
+    | Some v -> unbox<int> v
+    | None -> 0
+
 let private canonicalSection (model: Model) : Node<Msg> =
     Fuaran.dashboard
         "channel-analysis"
@@ -151,23 +165,32 @@ let private canonicalSection (model: Model) : Node<Msg> =
                           TrendFormat = Some(format.percent (Some 1)) }
                   |> Node.onEmpty (Fuaran.markdown "no-data" "No revenue data yet.")
 
+                  // fuaran#665 — `toRow` projects each Channel to the wire-expressible
+                  // Row; accessors and handlers read the projected cells by name.
                   Fuaran.grid
                       "channel-grid"
+                      (fun (r: Channel) ->
+                          Map.ofList
+                              [ "rowId", box r.RowId
+                                "channel", box r.Channel
+                                "mediaType", box r.MediaType
+                                "refGrp", box r.RefGrp
+                                "audienceShare", box r.AudienceShare ])
                       { Defaults.grid<Channel, Msg> with
                           Source = binding.query "channelRows" id
-                          RowKey = (fun r -> string r.RowId)
+                          RowKey = cellText "rowId"
                           Columns =
-                              [ Column.text "Channel" (fun (r: Channel) -> r.Channel)
-                                Column.text "Media type" (fun (r: Channel) -> r.MediaType)
-                                Column.numeric "GRPs" (fun (r: Channel) -> r.RefGrp)
+                              [ Column.text "Channel" (cellText "channel")
+                                Column.text "Media type" (cellText "mediaType")
+                                Column.numeric "GRPs" (cellFloat "refGrp")
                                 |> Column.withFormat (format.number (Some 1))
                                 |> Column.editable (fun row v ->
                                     match v with
-                                    | CellValue.Numeric n -> Action.dispatch (UpdateRefGrp(row.RowId, n))
+                                    | CellValue.Numeric n -> Action.dispatch (UpdateRefGrp(cellInt "rowId" row, n))
                                     | _ -> Action.Chain [])
-                                Column.numeric "Audience share" (fun (r: Channel) -> r.AudienceShare)
+                                Column.numeric "Audience share" (cellFloat "audienceShare")
                                 |> Column.withFormat (format.percent (Some 1)) ]
-                          OnRowClick = Some(fun row -> Action.dispatch (SelectRow row.RowId)) }
+                          OnRowClick = Some(fun row -> Action.dispatch (SelectRow(cellInt "rowId" row))) }
                   |> Node.onEmpty (Fuaran.markdown "no-channels" "Load a fitted-parameters file to see channels.")
                   |> Node.onLoading (Fuaran.skeleton "loading" 5) ] }
 
@@ -331,7 +354,12 @@ let private session3bShowcase (model: Model) : Node<Msg> =
                   Fuaran.chart
                       "showcase-chart"
                       { Defaults.chart<Msg> with
-                          Source = binding.query "channelRows" (fun (rs: Channel list) -> rs |> Seq.map box)
+                          Source =
+                              // fuaran#665 — the chart source is a typed Row feed; project each
+                              // Channel to the named cells the XField/YFields address.
+                              binding.query "channelRows" (fun (rs: Channel list) ->
+                                  rs
+                                  |> Seq.map (fun r -> Map.ofList [ "Channel", box r.Channel; "RefGrp", box r.RefGrp ]))
                           Kind = ChartKind.Bar
                           XField = "Channel"
                           YFields = [ "RefGrp" ]

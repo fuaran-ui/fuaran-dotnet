@@ -49,6 +49,19 @@ type LenientFixture =
 
 let all: LenientFixture list =
     [
+      // ─── fuaran#665 — legacy rows sentinel read-compat ───────────────────
+      // Every pre-665 emission carried grid/chart rows as the residual
+      // `"<opaque>"` sentinel. The sentinel stays decode-accepted INDEFINITELY
+      // and normalises to the typed empty feed (`[]`) — the same
+      // accept-and-canonicalise law as the Phase 429 legacy forms.
+      { Id = "lenient-665-rows-opaque-sentinel"
+        LenientJson =
+          """{"id":"len-rows-opq","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"State","defaultValue":"<opaque>","key":"rows"}}}"""
+        VerboseJson =
+          """{"id":"len-rows-opq","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"State","defaultValue":[],"key":"rows"}}}"""
+        Description =
+          "fuaran#665 read-compat: the legacy \"<opaque>\" rows sentinel decodes to the empty typed feed and re-encodes as []" }
+
       // ─── 0.2.3 / fuaran-core#88 — Transform embedded-source shorthands ──
       // Core's lenient columnar ingest surfaces at the Transform slot: an
       // embedded source may omit `schema` (inferred from the cells) and a

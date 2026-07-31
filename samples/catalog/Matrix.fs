@@ -428,22 +428,34 @@ let private gridRows: GridRow list =
         Value = 12.1 }
       { Row = 3; Name = "TV"; Value = 35.6 } ]
 
+// fuaran#665 — accessors read the projected `Row` by name; these two helpers
+// keep the cell reads terse.
+let private cellText (field: string) (r: Row) : string =
+    defaultArg (Map.tryFind field r |> Option.map string) ""
+
+let private cellFloat (field: string) (r: Row) : float =
+    match Map.tryFind field r with
+    | Some v -> unbox<float> v
+    | None -> 0.0
+
 let private demoGrid (tone, weight, emphasis) : Node<unit> =
     Fuaran.grid
         (idFor "grid" tone weight emphasis)
+        // fuaran#665 — the required `toRow` projection to the wire-expressible Row.
+        (fun (r: GridRow) -> Map.ofList [ "name", box r.Name; "row", box r.Row; "value", box r.Value ])
         { Defaults.grid<GridRow, unit> with
             Source = Binding.Static(Some gridRows)
-            RowKey = (fun r -> string r.Row)
+            RowKey = cellText "row"
             Columns =
-                [ Column.text "Channel" (fun r -> r.Name)
-                  Column.numeric "GRPs" (fun r -> r.Value)
+                [ Column.text "Channel" (cellText "name")
+                  Column.numeric "GRPs" (cellFloat "value")
                   |> Column.withFormat (format.number (Some 1))
                   // Pill column: the typed value renders as a tone-bearing pill
                   // via `Column.withPill`, mapping the row to a `ToneVariant`
                   // (no renderer change — the Pill cell already ships).
-                  Column.text "Status" (fun r -> if r.Value >= 15.0 then "High" else "Low")
+                  Column.text "Status" (fun r -> if cellFloat "value" r >= 15.0 then "High" else "Low")
                   |> Column.withPill (fun r ->
-                      if r.Value >= 15.0 then
+                      if cellFloat "value" r >= 15.0 then
                           ToneVariant.Success
                       else
                           ToneVariant.Subdued) ] }

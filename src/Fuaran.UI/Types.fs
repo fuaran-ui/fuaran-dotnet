@@ -986,21 +986,33 @@ and CustomSpec = Generated.CustomSpec
 /// as a record).
 and StaticRows = Generated.StaticRows
 
-/// Typed author-facing facade for GridSpec. Smart-ctor `Fuaran.grid` boxes
-/// the row accessors and stores a `GridSpec<'Msg>` in the tree.
+/// A single grid / chart / table row — the *open* name→value map the wire
+/// carries (fuaran#665, Core's `Fuaran.Core.Row`). Cells are boxed scalars;
+/// the decoded path and `Binding.Transform` resolution have always produced
+/// exactly this shape, so naming it moves signatures, not representations.
+and Row = Fuaran.Core.Row
+
+/// Typed author-facing facade for GridSpec. Smart-ctor `Fuaran.grid` projects
+/// the `'row` source through its required `toRow: 'row -> Row` argument and
+/// stores a `GridSpec<'Msg>` in the tree (fuaran#665). `'row` types ONLY the
+/// source binding — every closure accessor takes the name-addressable `Row`
+/// the renderer actually resolves (the original `'row` value no longer exists
+/// past the projection).
 and GridSpecOf<'row, 'Msg> =
     { Source: Binding<'row seq>
-      RowKey: 'row -> string
-      Columns: Column<'row, 'Msg> list
-      OnRowClick: ('row -> Action<'Msg>) option
+      RowKey: Row -> string
+      Columns: Column<'Msg> list
+      OnRowClick: (Row -> Action<'Msg>) option
       Editable: bool }
 
 /// §4k Q3.2 — Column carries a typed `Kind`, not a nullable `OnEdit`.
-and Column<'row, 'Msg> =
+/// Row accessors take `Row` (fuaran#665) — the declarative `Field` floor is
+/// preferred; a closure is the override.
+and Column<'Msg> =
     { Label: string
-      Value: 'row -> CellValue
+      Value: Row -> CellValue
       Format: CellFormat
-      Kind: CellKind<'row, 'Msg>
+      Kind: CellKind<'Msg>
       Width: ColumnWidth }
 
 /// Tree-level row-erased Column (generated). `Fuaran.grid` boxes a
@@ -1021,24 +1033,24 @@ and CellValue = HostPrelude.CellValue
 /// §4k Q3.2 — typed cell-shape enum. Non-interactive kinds (Text / Numeric /
 /// Date) have no action surface; `Custom` is the last-resort escape for
 /// bespoke cell renderers.
-and [<RequireQualifiedAccess>] CellKind<'row, 'Msg> =
+and [<RequireQualifiedAccess>] CellKind<'Msg> =
     | Text
     | Numeric
     | Date
-    | Editable of (('row * CellValue) -> Action<'Msg>)
-    | Checkbox of get: ('row -> bool) * onToggle: ('row * bool -> Action<'Msg>)
-    | Button of label: TextSource * onClick: ('row -> Action<'Msg>)
-    | ButtonGroup of (TextSource * ('row -> Action<'Msg>)) list
-    | Link of href: ('row -> string) * label: ('row -> TextSource)
-    | Pill of label: ('row -> TextSource) * tone: ('row -> ToneVariant)
+    | Editable of ((Row * CellValue) -> Action<'Msg>)
+    | Checkbox of get: (Row -> bool) * onToggle: (Row * bool -> Action<'Msg>)
+    | Button of label: TextSource * onClick: (Row -> Action<'Msg>)
+    | ButtonGroup of (TextSource * (Row -> Action<'Msg>)) list
+    | Link of href: (Row -> string) * label: (Row -> TextSource)
+    | Pill of label: (Row -> TextSource) * tone: (Row -> ToneVariant)
     /// Phase 750 — the declarative twin of `Pill`, and the only cell kind with no
     /// closure in it: `field` names the row property that is both the pill's label
     /// and the tone-map key, `map` carries value → tone, `defaultTone` covers a
     /// value the map does not mention. Row-type-free by construction, which is why
     /// it survives the wire where `Pill` erases to two sentinels.
     | TonedPill of field: string * map: Map<string, ToneVariant> * defaultTone: ToneVariant
-    | Progress of fraction: ('row -> float) * label: (('row -> TextSource) option)
-    | Custom of (('row -> JVal) -> Node<'Msg>)
+    | Progress of fraction: (Row -> float) * label: ((Row -> TextSource) option)
+    | Custom of ((Row -> JVal) -> Node<'Msg>)
 
 /// Row-erased twin of CellKind (generated). Smart-ctor `Column.erase` boxes
 /// the row accessors before placing into the tree. Generated deltas vs the

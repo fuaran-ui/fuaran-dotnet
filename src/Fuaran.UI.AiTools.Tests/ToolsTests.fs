@@ -27,9 +27,16 @@ type Msg =
     | SelectRow of int
     | DismissBanner
 
-type Row = { RowId: int; Channel: string }
+// Renamed from `Row` (fuaran#665): `Fuaran.UI.Types.Row` is now the typed
+// wire row, so the fixture's domain row carries its own name.
+type ChannelRow = { RowId: int; Channel: string }
 
 let private idOf (NodeId rawId) = rawId
+
+// F# 10 `box _` types as `obj | null`; the BindingProbeSources contract and
+// the fuaran#665 `Row` cell maps require nonnull-obj values. Same workaround
+// Fuaran.UI.Ops.Tests's `nn` helper uses.
+let private nn (value: 'T) : obj = box value |> Unchecked.nonNull
 
 // ─── Fixture tree ──────────────────────────────────────────────────────────
 
@@ -51,13 +58,24 @@ let private revenueMetric: Node<Msg> =
             Trend = Some(binding.query "totalRevenue" (fun (r: TotalRevenueRow) -> r.trendPct)) }
 
 let private channelGrid: Node<Msg> =
+    // fuaran#665 — the required `toRow` projection; accessors read the
+    // projected `Row` by name.
     Fuaran.grid
         "channel-grid"
-        { Defaults.grid<Row, Msg> with
+        (fun (r: ChannelRow) -> Map.ofList [ "rowId", nn r.RowId; "channel", nn r.Channel ])
+        { Defaults.grid<ChannelRow, Msg> with
             Source = binding.query "channelRows" id
-            RowKey = (fun r -> string r.RowId)
-            Columns = [ Column.text "Channel" (fun (r: Row) -> r.Channel) ]
-            OnRowClick = Some(fun r -> Action.dispatch (SelectRow r.RowId)) }
+            RowKey = (fun r -> defaultArg (Map.tryFind "rowId" r |> Option.map string) "")
+            Columns = [ Column.text "Channel" (fun r -> defaultArg (Map.tryFind "channel" r |> Option.map string) "") ]
+            OnRowClick =
+                Some(fun r ->
+                    Action.dispatch (
+                        SelectRow(
+                            match Map.tryFind "rowId" r with
+                            | Some v -> unbox<int> v
+                            | None -> 0
+                        )
+                    )) }
 
 let private dashboard: Node<Msg> =
     Fuaran.dashboard
@@ -82,11 +100,6 @@ let private freshContext () : IntrospectionContext =
 let private contextWithSources (sources: BindingProbeSources) : IntrospectionContext =
     { (freshContext ()) with
         Sources = sources }
-
-// F# 10 `box _` types as `obj | null`; the BindingProbeSources contract
-// requires nonnull-obj values. Same workaround Fuaran.UI.Ops.Tests's `nn`
-// helper uses.
-let private nn (value: 'T) : obj = box value |> Unchecked.nonNull
 
 let private withQuery (name: string) (value: obj) : BindingProbeSources =
     { (freshContext ()).Sources with
@@ -422,7 +435,7 @@ let private bindingBearingFixtures: Node<Msg> list =
       Fuaran.fileUpload "n-fileupload" Defaults.fileUpload<Msg>
       Fuaran.chart "n-chart" Defaults.chart<Msg>
       Fuaran.map "n-map" Defaults.map<Msg>
-      Fuaran.grid "n-grid" Defaults.grid<Row, Msg> ]
+      Fuaran.grid "n-grid" (fun (r: ChannelRow) -> Map.ofList [ "rowId", nn r.RowId ]) Defaults.grid<ChannelRow, Msg> ]
 
 // `Binding.Filter` is a type-agnostic ReplaceBinding probe: `castBinding`
 // passes it through for any 'T without an unbox, so a recognised slot yields

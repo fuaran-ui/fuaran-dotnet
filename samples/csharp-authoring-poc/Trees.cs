@@ -77,10 +77,14 @@ internal static class Trees
             .DisabledWhen("formBusy")),
 
         // ─── Visualisation ───────────────────────────────────────────────
+        // fuaran#665 — typed rows ride the wire; mirrors the corpus chart-1 fixture.
         ("chart-1", Chart("chart-1")
             .Kind(ChartKind.Line)
             .XField("month")
             .YFields("revenue", "cost")
+            .Rows(
+                new[] { ("cost", (object)420), ("month", (object)"Jan"), ("revenue", (object)980) },
+                new[] { ("cost", (object)390), ("month", (object)"Feb"), ("revenue", (object)1105) })
             .Title("Channel mix")
             .Stacked()),
     };

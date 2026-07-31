@@ -709,3 +709,39 @@ Before this repo flips public (whether as a public GitHub repository, a publishe
 - [`LICENSE`](LICENSE)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - [`CLAUDE.md`](CLAUDE.md)
+
+## Recorded breaking change — 0.12.0, typed row-source encoding (fuaran#665)
+
+**Grid / chart rows leave the residual-`"<opaque>"` boundary.** The rows slot is typed end to end:
+`type Row = Fuaran.Core.Row` (= `Map<string, obj>` — the shape the decoded path and
+`Binding.Transform` resolution always produced at runtime, so the *representation* is unchanged and
+only the signatures move), `GridSpec.Source` / `ChartSpec.Source` are `Binding<Row seq>`, and every
+row-consuming closure slot (`ColumnErased.Value`, `RowKey`, `OnRowClick`, `OnPointClick`, the
+`CellKindErased` interactive arms, `ButtonGroupItem.OnClick`) retypes `obj` → `Row`.
+
+**API-breaking, in four places:**
+
+- `Fuaran.grid` takes a REQUIRED `toRow: 'row -> Row` projection (operator decision 2026-07-31,
+  recorded in the phase file): the author who wants rows on the wire says how to project them, once,
+  at the authoring boundary where every `'row` erasure already happened. Not defaultable — the only
+  candidate defaults silently produce empty rows (the exact loss the typed slot exists to end) or
+  throw. A call site whose rows are already `Row`-shaped passes `id`.
+- The typed facade's `Column<'row,'Msg>` / `CellKind<'row,'Msg>` drop their `'row` parameter
+  (`Column<'Msg>` / `CellKind<'Msg>`): accessors read the PROJECTED row by name — `'row` survives
+  only at `GridSpecOf<'row,'Msg>.Source`. This is forced by the algebra (the original `'row` value
+  no longer exists past the projection) and is the direction the declarative floor (Phases
+  425/428/750) already established: rows are name-addressable.
+- The C# fluent facade mirrors it: `DataGridOptions<TRow>` gains a `required ToRow`, `Column<TRow>`
+  becomes the row-type-free `Column` over `IReadOnlyDictionary<string, object>` accessors.
+- The renderer's Fable `#if`-split unbox hacks (`BindingResolver.projectRowFieldValue`,
+  `Render.updateRowField`) are DELETED — the slot is statically typed, so no runtime row test exists
+  to get wrong. This closes the F#/Fable byte-parity hazard the phase's task-1 measurement proved.
+
+**Wire-additive with read-compat, plus a deliberate corpus advance:** a Static/State rows payload
+now encodes as a JSON array of row objects (scalar cells per WIRE_FORMAT §2 rules 5/11, rendered by
+`Fuaran.Core.RowCodec` — Core 0.2.1); the legacy `"<opaque>"` sentinel stays decode-accepted
+INDEFINITELY (→ the empty feed), pinned by the `lenient-665-rows-opaque-sentinel` corpus fixture.
+The corpus gains `grid-editable-state` + `chart-state-rows` (the Phase 663 editable write-back
+anchor — `editable: true` + a direct `$state` rows source, previously uncertifiable because rows
+could not survive encoding). Cross-host codec parity (TS / Python / Go / Rust) is the phase's open
+follow-up; until each lands, that host's corpus gate is deliberately red on these fixtures.

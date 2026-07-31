@@ -21,7 +21,9 @@ type Msg =
     | SelectRow of int
     | DismissBanner
 
-type Row = { RowId: int; Channel: string }
+// Renamed from `Row` (fuaran#665): `Fuaran.UI.Types.Row` is now the typed
+// wire row, so the fixture's domain row carries its own name.
+type ChannelRow = { RowId: int; Channel: string }
 
 // `Node.Id` is a bare string since the 692-694 swap; `idOf` survives as the
 // naming seam the assertions read through.
@@ -42,13 +44,24 @@ let private revenueMetric: Node<Msg> =
             Tone = ToneVariant.Brand }
 
 let private channelGrid: Node<Msg> =
+    // fuaran#665 — the required `toRow` projection; accessors read the
+    // projected `Row` by name.
     Fuaran.grid
         "channel-grid"
-        { Defaults.grid<Row, Msg> with
+        (fun (r: ChannelRow) -> Map.ofList [ "rowId", nn r.RowId; "channel", nn r.Channel ])
+        { Defaults.grid<ChannelRow, Msg> with
             Source = binding.query "channelRows" id
-            RowKey = (fun r -> string r.RowId)
-            Columns = [ Column.text "Channel" (fun (r: Row) -> r.Channel) ]
-            OnRowClick = Some(fun r -> Action.dispatch (SelectRow r.RowId)) }
+            RowKey = (fun r -> defaultArg (Map.tryFind "rowId" r |> Option.map string) "")
+            Columns = [ Column.text "Channel" (fun r -> defaultArg (Map.tryFind "channel" r |> Option.map string) "") ]
+            OnRowClick =
+                Some(fun r ->
+                    Action.dispatch (
+                        SelectRow(
+                            match Map.tryFind "rowId" r with
+                            | Some v -> unbox<int> v
+                            | None -> 0
+                        )
+                    )) }
 
 let private dashboard: Node<Msg> =
     Fuaran.dashboard

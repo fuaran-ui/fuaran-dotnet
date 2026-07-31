@@ -95,8 +95,12 @@ let private metricNode: Node<obj> =
             Trend = None }
 
 let private gridNode: Node<obj> =
+    // fuaran#665 — the required `toRow`; this fixture never renders rows, so an
+    // explicit empty projection is the honest minimal choice (explicit here,
+    // never a facade default).
     Fuaran.grid
         "grid-1"
+        (fun (_: obj) -> (Map.empty: Row))
         { Defaults.grid<obj, obj> with
             Source = binding.query "channels" (fun (rows: obj list) -> rows) }
 

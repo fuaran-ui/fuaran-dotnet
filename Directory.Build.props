@@ -72,7 +72,17 @@
          author facade `CellKind` gains the twin case and `Column.withTonedPill`;
          the C# `Column` facade gains `WithTonedPill`. See STABILITY.md
          "Recorded change - 0.11.0". -->
-    <Version>0.11.0</Version>
+    <!-- 0.12.0 — BREAKING (fuaran#665, typed row-source encoding): grid/chart rows
+         leave the residual-"<opaque>" boundary. `GridSpec.Source` / `ChartSpec.Source`
+         are `Binding<Row seq>` (`Row = Fuaran.Core.Row = Map<string, obj>`), the
+         row-consuming closure slots (`ColumnErased.Value`, `RowKey`, the
+         `CellKindErased` arms) retype `obj` → `Row`, `Fuaran.grid` takes a REQUIRED
+         `toRow: 'row -> Row` projection, and the typed facade's `Column`/`CellKind`
+         drop their `'row` parameter (accessors read the projected `Row` by name).
+         Wire-ADDITIVE with read-compat: emissions gain structured rows where they
+         carried the sentinel; decoders accept `"<opaque>"` indefinitely (→ the
+         empty feed). See STABILITY.md "Recorded change - 0.12.0". -->
+    <Version>0.12.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

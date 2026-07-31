@@ -122,7 +122,7 @@ let private buildColumnDef<'Msg>
     (col: ColumnErased<'Msg>)
     : obj =
     // Phase 425 — the closure wins; else the declarative `Field` projects the row property; else empty.
-    let cellValue (row: obj) : CellValue =
+    let cellValue (row: Row) : CellValue =
         match col.Value with
         | Some accessor -> accessor row
         | None ->
@@ -131,12 +131,12 @@ let private buildColumnDef<'Msg>
             | None -> CellValue.Empty
 
     let cellValueOf (p: obj) : CellValue =
-        let row: obj = p?data
+        let row: Row = p?data
 
         if isNull (box row) then CellValue.Empty else cellValue row
 
     let valueGetter (p: obj) : obj =
-        let row: obj = p?data
+        let row: Row = p?data
 
         if isNull (box row) then
             null
@@ -179,7 +179,7 @@ let private buildColumnDef<'Msg>
             // `false` tells AG Grid not to mutate the row obj — Elmish's
             // dispatched message is the canonical update channel.
             let valueSetter (p: obj) : bool =
-                let row: obj = p?data
+                let row: Row = p?data
                 let newVal: obj = p?newValue
                 let currentVal = cellValueOf p
 
@@ -215,7 +215,7 @@ let private buildColumnDef<'Msg>
 
         | CellKindErased.Checkbox(getValue, onToggle) ->
             let cellRenderer (p: obj) : ReactElement =
-                let row: obj = p?data
+                let row: Row = p?data
                 let current = getValue row
 
                 Html.input
@@ -232,7 +232,7 @@ let private buildColumnDef<'Msg>
             let labelText = textOf label
 
             let cellRenderer (p: obj) : ReactElement =
-                let row: obj = p?data
+                let row: Row = p?data
 
                 Html.button
                     [ prop.className "fuaran-grid-cell-button"
@@ -248,7 +248,7 @@ let private buildColumnDef<'Msg>
 
         | CellKindErased.ButtonGroup buttons ->
             let cellRenderer (p: obj) : ReactElement =
-                let row: obj = p?data
+                let row: Row = p?data
 
                 Html.span
                     [ prop.className "fuaran-grid-cell-button-group"
@@ -268,7 +268,7 @@ let private buildColumnDef<'Msg>
 
         | CellKindErased.Link(hrefFn, labelFn) ->
             let cellRenderer (p: obj) : ReactElement =
-                let row: obj = p?data
+                let row: Row = p?data
 
                 Html.a
                     [ prop.className "fuaran-grid-cell-link"
@@ -279,7 +279,7 @@ let private buildColumnDef<'Msg>
 
         | CellKindErased.Pill(labelFn, toneFn) ->
             let cellRenderer (p: obj) : ReactElement =
-                let row: obj = p?data
+                let row: Row = p?data
 
                 Html.span
                     [ prop.className (sprintf "fuaran-grid-cell-pill fuaran-pill-%s" (Theme.toneVar (toneFn row)))
@@ -292,7 +292,7 @@ let private buildColumnDef<'Msg>
             // simple-table cell uses, so the two grid backends cannot disagree about
             // an unmapped value.
             let cellRenderer (p: obj) : ReactElement =
-                let row: obj = p?data
+                let row: Row = p?data
                 let label, tone = BindingResolver.tonedPillOf row field toneMap defaultTone
 
                 Html.span
@@ -303,7 +303,7 @@ let private buildColumnDef<'Msg>
 
         | CellKindErased.Progress(fractionFn, labelFn) ->
             let cellRenderer (p: obj) : ReactElement =
-                let row: obj = p?data
+                let row: Row = p?data
                 let f = fractionFn row
 
                 Html.div
@@ -320,7 +320,7 @@ let private buildColumnDef<'Msg>
 
         | CellKindErased.Custom render ->
             let cellRenderer (p: obj) : ReactElement =
-                let row: obj = p?data
+                let row: Row = p?data
                 // The custom cell renderer captures a `row -> JVal` accessor
                 // shape; bridge the JS row object to the structured JVal and
                 // let the author's render decide what to do with it.
@@ -340,7 +340,7 @@ let renderGrid<'Msg> (spec: GridSpec<'Msg>) (context: VisAdapter.VisualisationCo
     // shape for OnLoading / OnError; OnEmpty fires once rows resolve.
     // Returning Some commits the slot's Node to the rendered output, so
     // the renderer doesn't also run its fallback.
-    let resolution = BindingResolver.resolve<obj seq> context.Sources spec.Source
+    let resolution = BindingResolver.resolve<Row seq> context.Sources spec.Source
 
     let stateNode =
         match resolution, context.State.OnLoading, context.State.OnError with
@@ -373,7 +373,7 @@ let renderGrid<'Msg> (spec: GridSpec<'Msg>) (context: VisAdapter.VisualisationCo
             // Phase 425 — the row-key closure wins; else the declarative `RowKeyField` projects the
             // row property; else an empty id (AG Grid falls back to its own row index).
             let getRowId (p: obj) : string =
-                let row: obj = p?data
+                let row: Row = p?data
 
                 match spec.RowKey with
                 | Some rk -> rk row
@@ -384,7 +384,7 @@ let renderGrid<'Msg> (spec: GridSpec<'Msg>) (context: VisAdapter.VisualisationCo
 
             let onRowClicked (p: obj) =
                 match spec.OnRowClick with
-                | Some f -> context.RunAction(f p?data)
+                | Some f -> context.RunAction(f (p?data: Row))
                 | None -> ()
 
             let gridProps =

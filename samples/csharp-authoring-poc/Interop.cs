@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.FSharp.Collections;
 using Microsoft.FSharp.Core;
 
@@ -43,4 +44,10 @@ internal static class Fs
     public static FSharpMap<TKey, TValue> EmptyMap<TKey, TValue>()
         where TKey : notnull =>
         MapModule.Empty<TKey, TValue>();
+
+    /// <summary>An F# <c>Map</c> from key/value pairs (fuaran#665 — typed row cells).</summary>
+    public static FSharpMap<TKey, TValue> Map<TKey, TValue>(
+        System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<TKey, TValue>> pairs)
+        where TKey : notnull =>
+        MapModule.OfSeq(pairs.Select(kv => System.Tuple.Create(kv.Key, kv.Value)));
 }

@@ -6,15 +6,20 @@ using FsColumn = global::Fuaran.UI.Column;
 using FsTypes = Fuaran.UI.Types;
 using FsGen = Fuaran.UI.Generated;
 using FsAction = Fuaran.UI.Generated.Action<object>;
+// fuaran#665 — the typed row: the wire-expressible name→value map the rows
+// slot carries (`Fuaran.Core.Row` = FSharpMap<string, obj> on the F# side).
+using FsRow = Microsoft.FSharp.Collections.FSharpMap<string, object>;
 
 namespace Fuaran.UI.CSharp;
 
-// Phase 305 — the Visualisation kinds. DataGrid is generic over the row type; its
-// typed columns (Column.Text/Numeric/… with a `row -> value` selector) bridge the
-// row-type erasure the F# tier manages internally (`Fuaran.grid` boxes the accessors).
+// Phase 305 — the Visualisation kinds. DataGrid is generic over the row type;
+// fuaran#665: its REQUIRED `ToRow` projects each row to the wire-expressible
+// name→value map, and column accessors read that projected row by name (the
+// same shape the F# facade takes — `'row` survives only at the source seam).
 public static partial class Fuaran
 {
-    /// <summary>A chart. <c>Source</c> binds a row sequence; <c>XField</c>/<c>YFields</c> name the plotted keys.</summary>
+    /// <summary>A chart. <c>Source</c> binds a typed row sequence (name→value maps);
+    /// <c>XField</c>/<c>YFields</c> name the plotted keys.</summary>
     public static FuaranNode Chart(ChartOptions options) =>
         new(FsFactory.chart<object>(
             options.Id,
@@ -23,12 +28,12 @@ public static partial class Fuaran
             // Source-first hand order.
             new FsGen.ChartSpec<object>(
                 options.Kind.ToFs(),
-                (options.Source ?? Binding.Static(Enumerable.Empty<object>())).Inner,
+                (options.Source ?? Binding.Static(Enumerable.Empty<FsRow>())).Inner,
                 options.Stacked,
                 options.XField,
                 Fs.List(options.YFields ?? Enumerable.Empty<string>()),
                 options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsGen.TextSource>(),
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<object, FsAction>>())));
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>
     public static FuaranNode Table(TableOptions options) =>
@@ -59,40 +64,46 @@ public static partial class Fuaran
                 options.Zoom,
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsGen.MapMarker, FsAction>>())));
 
-    /// <summary>A data-bound grid over rows of type <typeparamref name="TRow"/>.</summary>
+    /// <summary>A data-bound grid over rows of type <typeparamref name="TRow"/>.
+    /// The REQUIRED <c>ToRow</c> (fuaran#665) projects each row to the
+    /// wire-expressible name→value map, so a static/state rows payload survives
+    /// canonical encoding instead of collapsing to <c>"&lt;opaque&gt;"</c>.</summary>
     public static FuaranNode DataGrid<TRow>(DataGridOptions<TRow> options) =>
         new(FsFactory.grid<TRow, object>(
             options.Id,
+            Fs.Func<TRow, FsRow>(r => Fs.Map(options.ToRow(r))),
             new FsTypes.GridSpecOf<TRow, object>(
                 (options.Source ?? Binding.Static(Enumerable.Empty<TRow>())).Inner,
-                Fs.Func<TRow, string>(options.RowKey ?? (_ => "")),
-                Fs.List((options.Columns ?? Enumerable.Empty<Column<TRow>>()).Select(c => c.Inner)),
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<TRow, FsAction>>(),
+                Fs.Func<FsRow, string>(row => (options.RowKey ?? (_ => ""))(row)),
+                Fs.List((options.Columns ?? Enumerable.Empty<Column>()).Select(c => c.Inner)),
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>(),
                 options.Editable)));
 }
 
-/// <summary>A typed data-grid column over rows of type <typeparamref name="TRow"/>.</summary>
-public sealed class Column<TRow>
+/// <summary>A data-grid column. Accessors read the PROJECTED row (fuaran#665 —
+/// the name→value map <c>ToRow</c> produced), so a column is row-type-free
+/// exactly as on the F# author surface.</summary>
+public sealed class Column
 {
-    internal FsTypes.Column<TRow, object> Inner { get; }
+    internal FsTypes.Column<object> Inner { get; }
 
-    private Column(FsTypes.Column<TRow, object> inner) => Inner = inner;
+    private Column(FsTypes.Column<object> inner) => Inner = inner;
 
-    /// <summary>A text column reading <paramref name="value"/> from each row.</summary>
-    public static Column<TRow> Text(string label, Func<TRow, string> value) =>
-        new(FsColumn.text<TRow, object>(label, Fs.Func<TRow, string>(value)));
+    /// <summary>A text column reading <paramref name="value"/> from each projected row.</summary>
+    public static Column Text(string label, Func<IReadOnlyDictionary<string, object>, string> value) =>
+        new(FsColumn.text<object>(label, Fs.Func<FsRow, string>(row => value(row))));
 
-    /// <summary>A numeric column reading <paramref name="value"/> from each row.</summary>
-    public static Column<TRow> Numeric(string label, Func<TRow, double> value) =>
-        new(FsColumn.numeric<TRow, object>(label, Fs.Func<TRow, double>(value)));
+    /// <summary>A numeric column reading <paramref name="value"/> from each projected row.</summary>
+    public static Column Numeric(string label, Func<IReadOnlyDictionary<string, object>, double> value) =>
+        new(FsColumn.numeric<object>(label, Fs.Func<FsRow, double>(row => value(row))));
 
-    /// <summary>A boolean column reading <paramref name="value"/> from each row.</summary>
-    public static Column<TRow> Bool(string label, Func<TRow, bool> value) =>
-        new(FsColumn.@bool<TRow, object>(label, Fs.Func<TRow, bool>(value)));
+    /// <summary>A boolean column reading <paramref name="value"/> from each projected row.</summary>
+    public static Column Bool(string label, Func<IReadOnlyDictionary<string, object>, bool> value) =>
+        new(FsColumn.@bool<object>(label, Fs.Func<FsRow, bool>(row => value(row))));
 
-    /// <summary>A date column reading <paramref name="value"/> from each row.</summary>
-    public static Column<TRow> Date(string label, Func<TRow, DateTimeOffset> value) =>
-        new(FsColumn.date<TRow, object>(label, Fs.Func<TRow, DateTimeOffset>(value)));
+    /// <summary>A date column reading <paramref name="value"/> from each projected row.</summary>
+    public static Column Date(string label, Func<IReadOnlyDictionary<string, object>, DateTimeOffset> value) =>
+        new(FsColumn.date<object>(label, Fs.Func<FsRow, DateTimeOffset>(row => value(row))));
 
     /// <summary>
     /// Render this column's value as a tone-bearing pill whose tone comes from a declared
@@ -107,11 +118,11 @@ public sealed class Column<TRow>
     /// facade has no way to model and the wire has no way to carry. A declared mapping has neither
     /// problem, so it is expressible here and it survives serialisation intact.
     /// </remarks>
-    public Column<TRow> WithTonedPill(
+    public Column WithTonedPill(
         string field,
         IEnumerable<KeyValuePair<string, Tone>> toneMap,
         Tone defaultTone = Tone.Default) =>
-        new(FsColumn.withTonedPill<TRow, object>(
+        new(FsColumn.withTonedPill<object>(
             field,
             Fs.Map(toneMap.Select(kv => new KeyValuePair<string, FsGen.ToneVariant>(kv.Key, kv.Value.ToFs()))),
             defaultTone.ToFs(),
@@ -124,8 +135,8 @@ public sealed record ChartOptions
     /// <summary>The node id.</summary>
     public required string Id { get; init; }
 
-    /// <summary>The bound row source.</summary>
-    public Binding<IEnumerable<object>>? Source { get; init; }
+    /// <summary>The bound row source — a sequence of name→value maps (fuaran#665).</summary>
+    public Binding<IEnumerable<FsRow>>? Source { get; init; }
 
     /// <summary>The chart kind (default line).</summary>
     public ChartKind Kind { get; init; } = ChartKind.Line;
@@ -182,14 +193,21 @@ public sealed record DataGridOptions<TRow>
     /// <summary>The node id.</summary>
     public required string Id { get; init; }
 
+    /// <summary>REQUIRED (fuaran#665): projects each row to the wire-expressible
+    /// name→value cells. Deliberately not defaultable — the only candidate
+    /// defaults silently produce empty rows, the exact loss the typed rows slot
+    /// exists to end. A source whose rows are already name→value pairs passes
+    /// them through.</summary>
+    public required Func<TRow, IEnumerable<KeyValuePair<string, object>>> ToRow { get; init; }
+
     /// <summary>The bound row source.</summary>
     public Binding<IEnumerable<TRow>>? Source { get; init; }
 
-    /// <summary>A stable per-row key selector.</summary>
-    public Func<TRow, string>? RowKey { get; init; }
+    /// <summary>A stable per-row key selector over the PROJECTED row.</summary>
+    public Func<IReadOnlyDictionary<string, object>, string>? RowKey { get; init; }
 
-    /// <summary>The typed columns.</summary>
-    public IEnumerable<Column<TRow>>? Columns { get; init; }
+    /// <summary>The columns (row-type-free; accessors read the projected row).</summary>
+    public IEnumerable<Column>? Columns { get; init; }
 
     /// <summary>Whether cells are editable.</summary>
     public bool Editable { get; init; }

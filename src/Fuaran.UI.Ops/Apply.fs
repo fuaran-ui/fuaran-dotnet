@@ -251,15 +251,18 @@ let inline private isCastMismatch (ex: exn) : bool =
 
 /// Throws on Static / State whose inner value is not actually the right
 /// runtime type; the apply engine catches and surfaces as KindMismatch.
-let rec private castBinding<'T> (b: Binding<obj>) : Binding<'T> =
+/// `mapBinding` is the converter-parametric walker; `castBinding` composes it
+/// with `unbox<'T>` (the historical shape), and the rows slot composes it with
+/// the structural `castRowSeq` (fuaran#665 — an element-wise reshape `unbox`
+/// alone cannot express).
+let rec private mapBinding<'T> (conv: obj -> 'T) (b: Binding<obj>) : Binding<'T> =
     match b with
-    | Binding.Static v -> Binding.Static(v |> Option.map unbox<'T>)
-    | Binding.Query(name, accessor, dependsOn) -> Binding.Query(name, accessor >> unbox<'T>, dependsOn)
-    | Binding.Filter(name, dv) -> Binding.Filter(name, dv |> Option.map unbox<'T>)
-    | Binding.Selection(id, accessor, dv, fld) ->
-        Binding.Selection(id, accessor >> unbox<'T>, dv |> Option.map unbox<'T>, fld)
-    | Binding.State(key, defaultValue) -> Binding.State(key, defaultValue |> Option.map unbox<'T>)
-    | Binding.Computed f -> Binding.Computed(f >> unbox<'T>)
+    | Binding.Static v -> Binding.Static(v |> Option.map conv)
+    | Binding.Query(name, accessor, dependsOn) -> Binding.Query(name, accessor >> conv, dependsOn)
+    | Binding.Filter(name, dv) -> Binding.Filter(name, dv |> Option.map conv)
+    | Binding.Selection(id, accessor, dv, fld) -> Binding.Selection(id, accessor >> conv, dv |> Option.map conv, fld)
+    | Binding.State(key, defaultValue) -> Binding.State(key, defaultValue |> Option.map conv)
+    | Binding.Computed f -> Binding.Computed(f >> conv)
     // i18n bindings carry only string key + JVal-typed args, no
     // 'T payload to cast. Pass through; the resolver enforces 'T = string at
     // resolution time.
@@ -271,9 +274,9 @@ let rec private castBinding<'T> (b: Binding<obj>) : Binding<'T> =
         Binding.Local(
             flushOn,
             (fun (t: 'T) -> format (box t)),
-            castBinding<'T> initialFrom,
+            mapBinding conv initialFrom,
             onCommit |> Option.map (fun oc -> fun (t: 'T) -> oc (box t)),
-            (fun s -> parse s |> Result.map unbox<'T>)
+            (fun s -> parse s |> Result.map conv)
         )
     // Format bindings carry a `Binding<float>` source + bounded
     // Format / LocaleSource — no 'T payload to cast (the formatter always
@@ -289,6 +292,18 @@ let rec private castBinding<'T> (b: Binding<obj>) : Binding<'T> =
     // Invoke bindings carry a capability id + scalar args (no 'T payload — the resolved value is a
     // host-produced `Deferred`). Pass through; the resolver dispatches at resolution time.
     | Binding.Invoke(capabilityId, args) -> Binding.Invoke(capabilityId, args)
+
+let private castBinding<'T> (b: Binding<obj>) : Binding<'T> = mapBinding unbox<'T> b
+
+/// fuaran#665 — reshape a boxed rows payload into the typed `Row seq`. A
+/// decoded `ReplaceBinding` payload carries rows as an `obj` list whose
+/// elements are boxed `Map<string,obj>` (`decodeObj`'s object shape), so the
+/// element-wise unbox is exact; a host-built payload already carrying a
+/// `Row seq` passes through the same route via `seq` covariance. EAGER by
+/// design: a mismatched element must throw here, inside the guarded `try`,
+/// not lazily at first enumeration during render.
+let private castRowSeq (v: obj) : Row seq =
+    unbox<obj seq> v |> Seq.toList |> List.map unbox<Row> |> Seq.ofList
 
 // ─── UpdateProp dispatch — per spec-record top-level fields ────────────────
 //
@@ -1589,7 +1604,7 @@ let private replaceBindingGrid
             Ok(
                 NodeKind.DataGrid(
                     { spec with
-                        Source = castBinding<obj seq> b }
+                        Source = mapBinding castRowSeq b }
                 )
             )
         | _ -> Error(slotNotFound (NodeKind.DataGrid(spec)) (NodeId "_") slot)
@@ -1613,7 +1628,7 @@ let private replaceBindingChart
             Ok(
                 NodeKind.Chart(
                     { spec with
-                        Source = castBinding<obj seq> b }
+                        Source = mapBinding castRowSeq b }
                 )
             )
         | _ -> Error(slotNotFound (NodeKind.Chart(spec)) (NodeId "_") slot)

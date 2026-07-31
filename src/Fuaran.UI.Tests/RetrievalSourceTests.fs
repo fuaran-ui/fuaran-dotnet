@@ -44,7 +44,7 @@ let private caseHistoryDashboard: Node<obj> =
               Fuaran.chart
                   "scoreByDate"
                   { Defaults.chart with
-                      Source = binding.query "hits" (fun (x: obj seq) -> x)
+                      Source = binding.query "hits" (fun (x: Row seq) -> x)
                       Kind = ChartKind.Bar
                       XField = "date"
                       YFields = [ "score" ] } ] }

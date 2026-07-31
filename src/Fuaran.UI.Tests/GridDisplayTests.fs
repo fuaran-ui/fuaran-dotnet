@@ -23,8 +23,8 @@ let private textOfLiteral (text: TextSource) : string =
     | TextSource.Literal s -> s
     | other -> failwithf "the parity fixture builds only literals, got %A" other
 
-let private row: obj =
-    Map.ofList [ "dept", nn "eng"; "amount", nn 100.0; "active", nn true ] |> box
+let private row: Row =
+    Map.ofList [ "dept", nn "eng"; "amount", nn 100.0; "active", nn true ]
 
 [<Tests>]
 let tests =
@@ -50,9 +50,9 @@ let tests =
               Expect.equal (BindingResolver.projectRowFieldString row "dept") "eng" "row key from field"
           }
 
-          test "a non-Map row projects to Empty (no host data shape)" {
-              Expect.equal (BindingResolver.projectRowFieldValue (nn "scalar") "dept") CellValue.Empty "non-map → Empty"
-          } ]
+          // fuaran#665 — the "non-Map row" case is gone BY TYPE: `projectRowFieldValue`
+          // takes `Row`, so an opaque host row can no longer reach it at all.
+          ]
 
 // ============================================================================
 //  Phase 750 — TonedPill / Pill render parity.
@@ -92,19 +92,19 @@ let private statusDefault = ToneVariant.Subdued
 /// the row field's text as the label, the map lookup as the tone. Spelled as the
 /// two closures the case actually carries, so the comparison is against the REAL
 /// hosted shape rather than against a paraphrase of it.
-let private hostedEquivalent: (obj -> TextSource) * (obj -> ToneVariant) =
-    (fun (r: obj) -> TextSource.Literal(BindingResolver.projectRowFieldString r "status")),
-    (fun (r: obj) ->
+let private hostedEquivalent: (Row -> TextSource) * (Row -> ToneVariant) =
+    (fun (r: Row) -> TextSource.Literal(BindingResolver.projectRowFieldString r "status")),
+    (fun (r: Row) ->
         statusToneMap
         |> Map.tryFind (BindingResolver.projectRowFieldString r "status")
         |> Option.defaultValue statusDefault)
 
-let private statusRow (v: string) : obj =
-    Map.ofList [ "id", nn "SHP-1"; "status", nn v ] |> box
+let private statusRow (v: string) : Row =
+    Map.ofList [ "id", nn "SHP-1"; "status", nn v ]
 
 [<Tests>]
 let tonedPillParityTests =
-    let parityFor (description: string) (row: obj) =
+    let parityFor (description: string) (row: Row) =
         test description {
             let labelFn, toneFn = hostedEquivalent
             let hosted = pillCellShape (textOfLiteral (labelFn row)) (toneFn row)
@@ -127,8 +127,8 @@ let tonedPillParityTests =
           parityFor "an empty value is a lookup miss, not a crash" (statusRow "")
           // A row with no `status` property at all: `projectRowFieldString` yields "",
           // so both sides take the fallback rather than throwing.
-          parityFor "a row missing the driving field falls back" (Map.ofList [ "id", nn "SHP-1" ] |> box)
-          parityFor "a non-Map row falls back" (nn "scalar")
+          parityFor "a row missing the driving field falls back" (Map.ofList [ "id", nn "SHP-1" ])
+          // fuaran#665 — the "non-Map row" parity case is gone BY TYPE (see above).
 
           test "an explicit map entry beats the default even when the default is louder" {
               let _, tone =
@@ -138,7 +138,7 @@ let tonedPillParityTests =
           }
 
           test "the tone map keys on the field's TEXT, so a numeric field maps by its canonical string" {
-              let row: obj = Map.ofList [ "code", nn 3.0 ] |> box
+              let row: Row = Map.ofList [ "code", nn 3.0 ]
 
               let _, tone =
                   BindingResolver.tonedPillOf row "code" (Map [ "3", ToneVariant.Info ]) ToneVariant.Default

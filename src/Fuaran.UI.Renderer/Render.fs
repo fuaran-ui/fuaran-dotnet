@@ -619,19 +619,10 @@ let pairFieldChange
     | None -> writeBackTo ctx binding (Some pair)
 
 /// Phase 663 — replace one field of a grid row for the editable-grid State
-/// write-back. Rows on the decoded path are `Map<string, obj>` (the
-/// `Transform` / decoded-`State` row shape — same contract as
-/// `BindingResolver.projectRowFieldValue`, including its Fable type-erasure
-/// caveat); a non-Map host row passes through unchanged on .NET (no sound
-/// write exists for an opaque row type).
-let private updateRowField (row: obj) (field: string) (newValue: obj) : obj =
-#if FABLE_COMPILER
-    box (Map.add field newValue (unbox<Map<string, obj>> row))
-#else
-    match row with
-    | :? Map<string, obj> as m -> box (Map.add field newValue m)
-    | _ -> row
-#endif
+/// write-back. fuaran#665 typed the rows slot (`Row = Map<string, obj>`), so
+/// the old Fable type-erasure caveat — and its `#if`-split unbox — is gone:
+/// every row IS the map, statically.
+let private updateRowField (row: Row) (field: string) (newValue: obj) : Row = Map.add field newValue row
 
 // ─── Custom bounded-escape verification ────────────────────────────────────
 //
@@ -3775,7 +3766,7 @@ and private renderGrid
     | Some rendered -> rendered
     | None ->
 
-        let resolution = BindingResolver.resolve<obj seq> ctx.Sources spec.Source
+        let resolution = BindingResolver.resolve<Row seq> ctx.Sources spec.Source
 
         match resolution, state.OnLoading, state.OnError with
         | BindingResolver.NotResolved, Some loadingNode, _ -> render ctx loadingNode
@@ -3803,7 +3794,7 @@ and private renderGrid
                 // `Binding.Selection` reader of this grid re-renders with the row — decoded
                 // master-detail with zero host code. A `Some` closure dispatches exactly as
                 // before and never touches the store (closure wins).
-                let rowKeyOf: (obj -> string) option =
+                let rowKeyOf: (Row -> string) option =
                     match spec.RowKey, spec.RowKeyField with
                     | Some key, _ -> Some key
                     | None, Some field -> Some(fun row -> BindingResolver.projectRowFieldString row field)
@@ -3820,8 +3811,10 @@ and private renderGrid
                 let selectedKey: string option =
                     match rowKeyOf with
                     | Some keyOf ->
+                        // The selection store is obj-typed across node kinds; this grid's
+                        // own entry is always the boxed `Row` its click handler stored.
                         Map.tryFind (NodeId parentNodeId) ctx.Sources.Selections
-                        |> Option.map keyOf
+                        |> Option.map (fun sel -> keyOf (unbox<Row> sel))
                         |> Option.filter usableKey
                     | None -> None
 
@@ -3904,7 +3897,7 @@ and private renderGridCell
     (ctx: RenderContext<'Msg>)
     (commit: (CellValue -> unit) option)
     (col: ColumnErased<'Msg>)
-    (row: obj)
+    (row: Row)
     : ReactElement =
     // Phase 425 — the closure wins when present; else the declarative `Field` projects the row
     // property; else the cell is empty. A decoded grid renders data from `Field` with zero host code.
@@ -4085,7 +4078,7 @@ and private renderChart
     | Some rendered -> rendered
     | None ->
 
-        let resolution = BindingResolver.resolve<obj seq> ctx.Sources spec.Source
+        let resolution = BindingResolver.resolve<Row seq> ctx.Sources spec.Source
 
         match resolution, state.OnLoading, state.OnError with
         | BindingResolver.NotResolved, Some loadingNode, _ -> render ctx loadingNode

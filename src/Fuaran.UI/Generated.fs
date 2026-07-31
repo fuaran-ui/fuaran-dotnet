@@ -258,15 +258,15 @@ and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
     | Text
     | Numeric
     | Date
-    | Editable of onEdit: (obj * Fuaran.UI.HostPrelude.CellValue -> Action<'Msg>) option
-    | Checkbox of get: (obj -> bool) * onToggle: (obj * bool -> Action<'Msg>) option
-    | Button of label: TextSource * onClick: (obj -> Action<'Msg>) option
+    | Editable of onEdit: (Fuaran.Core.Row * Fuaran.UI.HostPrelude.CellValue -> Action<'Msg>) option
+    | Checkbox of get: (Fuaran.Core.Row -> bool) * onToggle: (Fuaran.Core.Row * bool -> Action<'Msg>) option
+    | Button of label: TextSource * onClick: (Fuaran.Core.Row -> Action<'Msg>) option
     | ButtonGroup of buttons: ButtonGroupItem<'Msg> list
-    | Link of hrefFn: (obj -> string) * labelFn: (obj -> TextSource)
-    | Pill of labelFn: (obj -> TextSource) * toneFn: (obj -> ToneVariant)
+    | Link of hrefFn: (Fuaran.Core.Row -> string) * labelFn: (Fuaran.Core.Row -> TextSource)
+    | Pill of labelFn: (Fuaran.Core.Row -> TextSource) * toneFn: (Fuaran.Core.Row -> ToneVariant)
     | TonedPill of field: string * map: Map<string, ToneVariant> * ``default``: ToneVariant
-    | Progress of fractionFn: (obj -> float) * labelFn: (obj -> TextSource) option
-    | Custom of fn: ((obj -> JVal) -> Node<'Msg>)
+    | Progress of fractionFn: (Fuaran.Core.Row -> float) * labelFn: (Fuaran.Core.Row -> TextSource) option
+    | Custom of fn: ((Fuaran.Core.Row -> JVal) -> Node<'Msg>)
 
 and [<RequireQualifiedAccess>] HoleValueSpace =
     | IntRange of min: int * max: int
@@ -448,14 +448,14 @@ and ColumnErased<'Msg> =
       Format: CellFormat
       Kind: CellKindErased<'Msg>
       Label: string
-      Value: (obj -> Fuaran.UI.HostPrelude.CellValue) option
+      Value: (Fuaran.Core.Row -> Fuaran.UI.HostPrelude.CellValue) option
       Width: ColumnWidth
     }
 
 and ButtonGroupItem<'Msg> =
     {
       Label: TextSource
-      OnClick: (obj -> Action<'Msg>) option
+      OnClick: (Fuaran.Core.Row -> Action<'Msg>) option
     }
 
 and ContentHash =
@@ -749,23 +749,23 @@ and DataGridSpec<'Msg> =
     {
       Columns: ColumnErased<'Msg> list
       Editable: bool
-      RowKey: (obj -> string) option
+      RowKey: (Fuaran.Core.Row -> string) option
       RowKeyField: string option
-      Source: Binding<obj seq>
+      Source: Binding<Fuaran.Core.Row seq>
       StaticRows: StaticRows option
-      OnRowClick: (obj -> Action<'Msg>) option
+      OnRowClick: (Fuaran.Core.Row -> Action<'Msg>) option
     }
 
 // Visualisation
 and ChartSpec<'Msg> =
     {
       Kind: ChartKind
-      Source: Binding<obj seq>
+      Source: Binding<Fuaran.Core.Row seq>
       Stacked: bool
       XField: string
       YFields: string list
       Title: TextSource option
-      OnPointClick: (obj -> Action<'Msg>) option
+      OnPointClick: (Fuaran.Core.Row -> Action<'Msg>) option
     }
 
 // Visualisation
@@ -1410,10 +1410,10 @@ and private encFiltersSpec<'Msg> (s: FiltersSpec<'Msg>) : JVal =
     Canon.typed "Filters" ([ Some("items", JArr(List.map encFilterSpec s.Items)) ] |> List.choose id)
 
 and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
-    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); Some("source", (encBinding (fun (_: obj seq) -> JStr "<opaque>")) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encChartSpec<'Msg> (s: ChartSpec<'Msg>) : JVal =
-    Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding (fun (_: obj seq) -> JStr "<opaque>")) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encMapSpec<'Msg> (s: MapSpec<'Msg>) : JVal =
     Canon.typed "Map" ([ Some("centreLatitude", JFloat s.CentreLatitude); Some("centreLongitude", JFloat s.CentreLongitude); Some("source", (encBinding (fun __xs -> JArr(List.map encMapMarker __xs))) s.Source); Some("zoom", JInt s.Zoom); (s.OnMarkerClick |> Option.map (fun v -> "onMarkerClick", JStr "<closure>")) ] |> List.choose id)
@@ -2101,15 +2101,15 @@ and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, string> =
         | "Numeric" -> Ok CellKindErased.Numeric
         | "Date" -> Ok CellKindErased.Date
         | "Editable" ->
-            (dPresent "onEdit" __fs |> Result.map (Option.map (fun () -> (fun (_: obj * Fuaran.UI.HostPrelude.CellValue) -> Action.Chain [])))) |> Result.bind (fun onEdit ->
+            (dPresent "onEdit" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row * Fuaran.UI.HostPrelude.CellValue) -> Action.Chain [])))) |> Result.bind (fun onEdit ->
             Ok(CellKindErased.Editable(onEdit)))
         | "Checkbox" ->
             Ok ((fun _ -> false)) |> Result.bind (fun get ->
-            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: obj * bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
+            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row * bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
             Ok(CellKindErased.Checkbox(get, onToggle))))
         | "Button" ->
             dReq "label" __fs decTextSource |> Result.bind (fun label ->
-            (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onClick ->
+            (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onClick ->
             Ok(CellKindErased.Button(label, onClick))))
         | "ButtonGroup" ->
             dReq "buttons" __fs (dList decButtonGroupItem) |> Result.bind (fun buttons ->
@@ -2451,7 +2451,7 @@ and private decColumnErased (j: JVal) : Result<ColumnErased<obj>, string> =
 and private decButtonGroupItem (j: JVal) : Result<ButtonGroupItem<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onClick ->
+    (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onClick ->
     Ok { Label = label; OnClick = onClick })))
 
 and private decContentHash (j: JVal) : Result<ContentHash, string> =
@@ -2716,20 +2716,20 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, string> =
     dDef "editable" __fs dBool (false) |> Result.bind (fun editable ->
     (dPresent "rowKey" __fs |> Result.map (Option.map (fun () -> (fun _ -> "")))) |> Result.bind (fun rowKey ->
     dOpt "rowKeyField" __fs dStr |> Result.bind (fun rowKeyField ->
-    dReq "source" __fs (decBinding (fun _ -> Ok(Seq.empty: obj seq))) |> Result.bind (fun source ->
+    dReq "source" __fs (decBinding Fuaran.Core.RowCodec.decodeRows) |> Result.bind (fun source ->
     dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
-    (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
+    (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
     Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; Source = source; StaticRows = staticRows; OnRowClick = onRowClick }))))))))
 
 and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "kind" __fs decChartKind |> Result.bind (fun kind ->
-    dReq "source" __fs (decBinding (fun _ -> Ok(Seq.empty: obj seq))) |> Result.bind (fun source ->
+    dReq "source" __fs (decBinding Fuaran.Core.RowCodec.decodeRows) |> Result.bind (fun source ->
     dReq "stacked" __fs dBool |> Result.bind (fun stacked ->
     dReq "xField" __fs dStr |> Result.bind (fun xField ->
     dReq "yFields" __fs (dList dStr) |> Result.bind (fun yFields ->
     dOpt "title" __fs decTextSource |> Result.bind (fun title ->
-    (dPresent "onPointClick" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onPointClick ->
+    (dPresent "onPointClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onPointClick ->
     Ok { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = title; OnPointClick = onPointClick }))))))))
 
 and private decMapSpec (j: JVal) : Result<MapSpec<obj>, string> =
@@ -2966,10 +2966,10 @@ let mkForm (id: string) (fields: FormField<'Msg> list) (onSubmit: Action<'Msg>) 
 let mkFilters (id: string) (items: FilterSpec<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<obj seq>) : Node<'Msg> =
+let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Fuaran.Core.Row seq>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
-let mkChart (id: string) (kind: ChartKind) (source: Binding<obj seq>) (stacked: bool) (xField: string) (yFields: string list) : Node<'Msg> =
+let mkChart (id: string) (kind: ChartKind) (source: Binding<Fuaran.Core.Row seq>) (stacked: bool) (xField: string) (yFields: string list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node<'Msg> =

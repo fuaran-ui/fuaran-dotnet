@@ -137,8 +137,7 @@ let serverRenderTests =
           test "Chart (bar/line) lowers to first-party inline SVG server-side (Phase 526)" {
               // A resolvable Bar/Line chart now renders the lowered Drawing SVG on
               // the server (D3/D4) — no client-hydration placeholder, no blank.
-              let row (q: string) (v: float) : obj =
-                  box (Map.ofList [ "x", box q; "y", box v ])
+              let row (q: string) (v: float) : Row = Map.ofList [ "x", box q; "y", box v ]
 
               let chart: Node<obj> =
                   Fuaran.chart
@@ -165,7 +164,15 @@ let serverRenderTests =
                       "chart"
                       { Defaults.chart<obj> with
                           Kind = ChartKind.Heatmap
-                          Source = Binding.Static(Some(Seq.ofList [ box 1; box 2; box 3 ]))
+                          Source =
+                              Binding.Static(
+                                  Some(
+                                      Seq.ofList
+                                          [ (Map.ofList [ "x", box 1 ]: Row)
+                                            Map.ofList [ "x", box 2 ]
+                                            Map.ofList [ "x", box 3 ] ]
+                                  )
+                              )
                           XField = "x"
                           YFields = [ "y" ] }
 

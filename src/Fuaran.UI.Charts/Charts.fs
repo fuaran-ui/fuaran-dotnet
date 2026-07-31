@@ -219,7 +219,7 @@ let isLowered (kind: ChartKind) : bool =
     | ChartKind.Pie -> true
     | ChartKind.Heatmap -> false
 
-let private numericOf (row: obj) (field: string) : float =
+let private numericOf (row: Row) (field: string) : float =
     match BindingResolver.projectRowFieldValue row field with
     // Non-finite guard (Phase 640): NaN/Infinity would poison every domain
     // computation and emit NaN geometry into the SVG. Wire-carried data can
@@ -240,7 +240,7 @@ let private numericOf (row: obj) (field: string) : float =
 /// lowering rule lands with its own phase). `Stacked = true` on a kind where
 /// stacking is meaningless (`Line`, `Scatter`, `Pie`) is ignored — the flag
 /// only changes `Bar` / `Area` geometry.
-let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: obj seq) : DrawingSpec =
+let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
     let rows = rows |> Seq.toList
 
     let categories =
