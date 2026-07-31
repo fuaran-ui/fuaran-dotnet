@@ -134,16 +134,35 @@ let private streamingChecks (tree: Node<obj>) : Result<unit, string> =
 //     correctly rejects the duplicate. Uniquifying first exercises the
 //     streaming *invariant* on the real corpus *structure* regardless of
 //     fixture id-hygiene.
-// Interior ids of non-decomposable leaf kinds (ErrorBoundary / Custom
-// children) are not structural children and never participate in InsertChild's
-// dup-check, so relabelling the getChildren-reachable nodes is sufficient.
+// The relabel walks `getChildren` — the structural-op surface — so nodes held
+// in NON-structural positions (State alternatives, ErrorBoundary slots, Switch
+// cases, fragment bodies, Custom interiors) keep their generated ids. That is
+// fine for THEM (`Apply`'s duplicate-id pre-check walks the *incoming* subtree
+// structurally, so a retained interior id never enters the probe as an
+// insert), but the EXISTING-id set the pre-check probes against is built over
+// the full traversal surface (`collectNodeIdsInto` / `descendantNodes`), which
+// DOES see those interiors. A fresh structural label that happens to equal a
+// retained interior id — FsCheck once minted a Chart id literally "n6" inside
+// an ErrorBoundary fallback's FragmentDecl body — therefore fails the replay
+// with DuplicateNodeId on a tree this relabel was meant to make legal. Fresh
+// ids must dodge every id already anywhere in the tree.
 
 let private uniquifyIds (root: Node<obj>) : Node<obj> =
+    let retained = Introspect.allNodeIds root |> Set.ofList
     let mutable counter = 0
 
-    let rec go (node: Node<obj>) =
-        let id = sprintf "n%d" counter
+    let freshId () =
+        let mutable id = sprintf "n%d" counter
         counter <- counter + 1
+
+        while Set.contains (NodeId id) retained do
+            id <- sprintf "n%d" counter
+            counter <- counter + 1
+
+        id
+
+    let rec go (node: Node<obj>) =
+        let id = freshId ()
 
         match Introspect.getChildren node.Kind with
         | Some children ->
@@ -187,7 +206,13 @@ let corpusReplay =
 let private config1000 = Config.QuickThrowOnFailure.WithMaxTest(1000)
 
 let private generativeInvariant (n: Node<obj>) : bool =
-    streamingChecks (uniquifyIds n) |> Result.isOk
+    match streamingChecks (uniquifyIds n) with
+    | Ok() -> true
+    | Error reason ->
+        // `Prop.forAll` only sees the bool; without this the counterexample
+        // dump names the tree but not WHICH of the six checks diverged.
+        printfn "FGP 5 invariant failure: %s" reason
+        false
 
 [<Tests>]
 let generativeReplay =
