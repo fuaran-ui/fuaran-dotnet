@@ -370,6 +370,16 @@ or progress toward a limit** ("120 of 400 units", "68% complete") reads as a
 **`Progress`** fill bar (`fraction`† in 0..1), not a Metric — reach for `Metric` when
 the number stands alone, `Progress` when the prompt frames it against a maximum.
 
+And a **short state word shown as a chip** — "Active", "Overdue", "Tier 3", a
+severity or lifecycle marker sitting inline next to what it describes — is a
+**`Badge`** (`label` + `variant`), not a `Fact`. `Fact` is a LABELLED pair: it answers
+"Status: Active" with both halves visible. `Badge` is the bare marker, read at a
+glance, with the meaning carried by its `variant` colour. Decision rule: **if the
+label would be redundant next to what it sits beside, it is a `Badge`; if the reader
+needs the label to know what the value means, it is a `Fact`.** A one-word status
+rendered as a `Fact` stat tile is the common miss — "Status / Active" as a key-value
+tile where the design wanted a small coloured chip.
+
 ## Selected, pre-selected, and derived state — the three idioms
 
 Tasks constantly say "with X selected", "defaulting to Y", or "the banner turns red
@@ -394,6 +404,15 @@ paired with `field`, never for display text:
 ```json
 { "$type": "Bound", "binding": { "$type": "Selection", "nodeId": "ticket-grid", "field": "subject", "defaultValue": "Checkout fails for saved cards" } }
 ```
+
+**EVERY slot that describes the selected row gets its own `Selection`.** A detail
+panel beside a grid usually shows several fields at once — the id, the priority, the
+assignee, the route, the crew. Each of those is a separate binding naming the SAME
+`nodeId` with its OWN `field`; there is no limit on how many slots read one selection.
+Binding the first slot correctly and then writing the rest as literal strings is the
+most common failure in this shape: the panel then shows one field that follows the
+selection and several that silently never change. If a value in the detail panel came
+from the selected row, it is a `Selection` — not a literal.
 
 **2. Pre-selecting a control** ("Critical is selected by default", "defaults to Last
 30 days") — declare the default ON the binding. A form/tab/select control binds its
