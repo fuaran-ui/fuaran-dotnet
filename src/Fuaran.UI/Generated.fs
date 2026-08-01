@@ -171,6 +171,12 @@ type Motion =
     | ExpandCollapse
 
 [<RequireQualifiedAccess>]
+type LiveRegionKind =
+    | Polite
+    | Assertive
+    | Off
+
+[<RequireQualifiedAccess>]
 type TextSource =
     | Literal of text: string
     | Bound of binding: Binding<string>
@@ -333,7 +339,7 @@ and Accessibility =
       Hidden: Binding<bool> option
       Label: Binding<string> option
       LabelledBy: string option
-      LiveRegion: Fuaran.UI.HostPrelude.LiveRegionKind option
+      LiveRegion: LiveRegionKind option
       Role: Fuaran.UI.HostPrelude.AriaRole option
     }
 
@@ -1048,6 +1054,12 @@ let private encMotion (v: Motion) : JVal =
     | Motion.SlideInFromRight -> JStr "SlideInFromRight"
     | Motion.ExpandCollapse -> JStr "ExpandCollapse"
 
+let private encLiveRegionKind (v: LiveRegionKind) : JVal =
+    match v with
+    | LiveRegionKind.Polite -> JStr "polite"
+    | LiveRegionKind.Assertive -> JStr "assertive"
+    | LiveRegionKind.Off -> JStr "off"
+
 let rec private encNodeKind (k: NodeKind<'Msg>) : JVal =
     match k with
     | NodeKind.Heading s -> encHeadingSpec s
@@ -1260,7 +1272,7 @@ and private encStateBehaviour<'Msg> (s: StateBehaviour<'Msg>) : JVal =
     JObj([ (s.OnEmpty |> Option.map (fun v -> "onEmpty", encNode v)); (s.OnError |> Option.map (fun v -> "onError", JStr "<closure>")); (s.OnLoading |> Option.map (fun v -> "onLoading", encNode v)) ] |> List.choose id)
 
 and private encAccessibility (s: Accessibility) : JVal =
-    JObj([ (s.DescribedBy |> Option.map (fun v -> "describedBy", JStr v)); (s.Hidden |> Option.map (fun v -> "hidden", (encBinding JBool) v)); (s.Label |> Option.map (fun v -> "label", (encBinding JStr) v)); (s.LabelledBy |> Option.map (fun v -> "labelledBy", JStr v)); (s.LiveRegion |> Option.map (fun v -> "liveRegion", Fuaran.UI.HostPrelude.encLiveRegionKind v)); (s.Role |> Option.map (fun v -> "role", Fuaran.UI.HostPrelude.encAriaRole v)) ] |> List.choose id)
+    JObj([ (s.DescribedBy |> Option.map (fun v -> "describedBy", JStr v)); (s.Hidden |> Option.map (fun v -> "hidden", (encBinding JBool) v)); (s.Label |> Option.map (fun v -> "label", (encBinding JStr) v)); (s.LabelledBy |> Option.map (fun v -> "labelledBy", JStr v)); (s.LiveRegion |> Option.map (fun v -> "liveRegion", encLiveRegionKind v)); (s.Role |> Option.map (fun v -> "role", Fuaran.UI.HostPrelude.encAriaRole v)) ] |> List.choose id)
 
 and private encSwitchCase<'Msg> (s: SwitchCase<'Msg>) : JVal =
     JObj([ Some("child", encNode s.Child); Some("match", JStr s.Match) ] |> List.choose id)
@@ -1718,6 +1730,13 @@ let private decMotion (j: JVal) : Result<Motion, string> =
     | JStr "SlideInFromRight" -> Ok Motion.SlideInFromRight
     | JStr "ExpandCollapse" -> Ok Motion.ExpandCollapse
     | _ -> Error "not a Motion"
+
+let private decLiveRegionKind (j: JVal) : Result<LiveRegionKind, string> =
+    match j with
+    | JStr "polite" -> Ok LiveRegionKind.Polite
+    | JStr "assertive" -> Ok LiveRegionKind.Assertive
+    | JStr "off" -> Ok LiveRegionKind.Off
+    | _ -> Error "not a LiveRegionKind"
 
 let rec private decNodeKind (j: JVal) : Result<NodeKind<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -2329,7 +2348,7 @@ and private decAccessibility (j: JVal) : Result<Accessibility, string> =
     dOpt "hidden" __fs (decBinding dBool) |> Result.bind (fun hidden ->
     dOpt "label" __fs (decBinding dStr) |> Result.bind (fun label ->
     dOpt "labelledBy" __fs dStr |> Result.bind (fun labelledBy ->
-    dOpt "liveRegion" __fs Fuaran.UI.HostPrelude.decLiveRegionKind |> Result.bind (fun liveRegion ->
+    dOpt "liveRegion" __fs decLiveRegionKind |> Result.bind (fun liveRegion ->
     dOpt "role" __fs Fuaran.UI.HostPrelude.decAriaRole |> Result.bind (fun role ->
     Ok { DescribedBy = describedBy; Hidden = hidden; Label = label; LabelledBy = labelledBy; LiveRegion = liveRegion; Role = role })))))))
 

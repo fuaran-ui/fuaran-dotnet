@@ -252,12 +252,19 @@ type PropSchema = PropDecl list
 // `LabelledBy` / `DescribedBy` reference other Nodes by `NodeId`; the
 // renderer resolves them to the target's stable HTML `id` attribute.
 
-// `AriaRole` / `LiveRegionKind` moved to `HostPrelude.fs` with the swap — the
-// Accessibility record's role/liveRegion slots are `THosted` in the IDL, so
-// `Generated.fs` (compiled first) references the prelude definitions + codecs.
+// `AriaRole` moved to `HostPrelude.fs` with the swap — the Accessibility
+// record's `role` slot is `THosted` in the IDL (its set is OPEN: `Custom of
+// string` emits any string verbatim), so `Generated.fs` (compiled first)
+// references the prelude definition + its codecs.
 type AriaRole = HostPrelude.AriaRole
 
-type LiveRegionKind = HostPrelude.LiveRegionKind
+// `LiveRegionKind` came BACK from the prelude with fuaran-core Phase 707. Its set
+// was always closed — only its lower-case wire strings were unspellable as IDL
+// enum cases, and the IDL now maps case name to wire string, so `liveRegion` is a
+// declared `TEnum` and the generated layer owns the DU and its codecs. Same wire
+// bytes; the closed set is now visible to the schema, the TS decoder and the
+// sampler, which a host-owned codec kept opaque to all three.
+type LiveRegionKind = Generated.LiveRegionKind
 
 // ─── i18n resolver ──────────────────────────────────────────────────
 //
