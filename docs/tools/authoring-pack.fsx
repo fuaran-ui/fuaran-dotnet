@@ -648,6 +648,23 @@ let fewShot =
       "Build a content-performance dashboard from this data: region and genre dropdowns that filter both a retention line chart and an episode grid."
       "lenient-master-detail-preselected-compact",
       "A support-ticket triage screen: a ticket grid with TCK-2041 selected by default, and a detail card showing the selected ticket."
+      // 2026-08-01 n=3 review — 032/c6 + 036/c8 (×6, two tasks): models bind ONE
+      // slot to the selection and hard-code every sibling in the same card. The
+      // prompt is worded as the observed intent ("shows its priority and
+      // assignee"), not as `Selection.field`, so the exemplar teaches the mapping
+      // FROM the request the model actually receives.
+      "master-detail-multi-field",
+      "A ticket triage screen: a ticket grid with TCK-2041 selected by default, and a detail card that shows the selected ticket's id, its priority and its assignee — every field following the selection."
+      // 2026-08-01 n=3 review — 043/c2 (×3): every emission reached for a Metric
+      // stat tile where a progress bar was asked for. `Progress` existed and was
+      // taught in one pack file; it was never a few-shot exemplar.
+      "progress-1",
+      "Show how far through the quarter's hiring plan we are as a progress bar, labelled, filled to about two thirds."
+      // 2026-08-01 n=3 review — 042/c3 (×3): every emission reached for a Fact
+      // label-value tile in the STATUS-CHIP role. `Badge` existed and was taught;
+      // it was never a few-shot exemplar either.
+      "badge-1",
+      "Mark the record's state with a small inline status chip reading 'Active' — a compact badge, not a labelled stat tile."
       "lenient-scalar-transform-composition-compact",
       "A triage dashboard over embedded ticket data: a badge counting the critical tickets, and a warning callout whose body is the selected ticket's alert text (TCK-2041 selected by default)." ]
 

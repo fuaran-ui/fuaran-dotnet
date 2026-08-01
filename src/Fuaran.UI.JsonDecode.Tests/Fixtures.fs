@@ -1889,6 +1889,108 @@ let masterDetailPreselected: Node<obj> =
         ))
         None
 
+// The MULTI-FIELD twin of `masterDetailPreselected`. Every existing Selection
+// fixture projects the SAME field (`id`) into every slot, so "one selection can
+// feed N slots, each projecting a DIFFERENT column" is nowhere demonstrated —
+// and that is exactly the shape models miss. The 2026-08-01 n=3 review found
+// 032/c6 + 036/c8 (×6, two tasks) emitting a correct `Selection` + `defaultValue`
+// for ONE slot and then HARD-CODING every sibling in the same detail card:
+//   "selected-flight Fact is bound via Selection … with defaultValue UA451, but
+//    crew names and route are static hard-coded values not driven by selection."
+// `Binding.Selection(nodeId, accessor, defaultValue, field)` has carried `field`
+// since 0.2.10 (Phase 632), so the composition was expressible the whole time —
+// the models learned `defaultValue` (Phase 629) and never learned `field`. This
+// fixture teaches the projection by showing three sibling Facts off ONE grid,
+// each naming a different column.
+let masterDetailMultiField: Node<obj> =
+    let source =
+        Fuaran.Core.Embedded
+            { Schema =
+                [ "id", Fuaran.Core.StringType
+                  "priority", Fuaran.Core.StringType
+                  "assignee", Fuaran.Core.StringType ]
+              Columns =
+                [ Fuaran.Core.Column.create
+                      "id"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "TCK-2041"; Fuaran.Core.Str "TCK-2042" ]
+                  Fuaran.Core.Column.create
+                      "priority"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "high"; Fuaran.Core.Str "low" ]
+                  Fuaran.Core.Column.create
+                      "assignee"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "R. Okafor"; Fuaran.Core.Str "M. Lindqvist" ] ] }
+
+    let fieldCol (label: string) (field: string) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    // One slot of the detail card: a Fact projecting ONE named column off the
+    // shared selection. The only thing that varies across the three is `field`.
+    let projectedFact (nodeId: string) (label: string) (field: string) : Node<obj> =
+        node
+            nodeId
+            (NodeKind.Fact(
+                { Label = TextSource.Literal label
+                  Value =
+                    TextSource.Bound(
+                        Binding.Selection(
+                            "ticket-grid",
+                            Binding.projectSelectionField<string> field,
+                            Some "TCK-2041",
+                            Some field
+                        )
+                    )
+                  Icon = None
+                  Tone = ToneVariant.Default
+                  Emphasis = false
+                  Help = None }
+            ))
+            None
+
+    node
+        "master-detail-multi-field"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = None
+              Children =
+                [ node
+                      "ticket-grid"
+                      (NodeKind.DataGrid(
+                          { Source = Binding.Transform(source, [], None)
+                            RowKey = None
+                            RowKeyField = Some "id"
+                            Columns =
+                              [ fieldCol "Ticket" "id"
+                                fieldCol "Priority" "priority"
+                                fieldCol "Assignee" "assignee" ]
+                            OnRowClick = None
+                            Editable = false
+                            StaticRows = None }
+                      ))
+                      None
+                  node
+                      "ticket-detail"
+                      (NodeKind.Box(
+                          { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+                            Role = BoxRole.Card
+                            Heading = Some(TextSource.Literal "Ticket detail")
+                            Children =
+                              [ projectedFact "detail-ticket" "Selected ticket" "id"
+                                projectedFact "detail-priority" "Priority" "priority"
+                                projectedFact "detail-assignee" "Assignee" "assignee" ] }
+                      ))
+                      None ] }
+        ))
+        None
+
 // The NON-FIRST-ROW twin of `masterDetailPreselected`, and a deliberate
 // near-clone of it: same composition, one different default. Every existing
 // Selection fixture defaults to the FIRST row, which makes prune-vs-seed
@@ -2882,6 +2984,8 @@ let allNodes: (string * Node<obj>) list =
       masterDetailPreselected
       "Layout/Box (master-detail — Selection defaultValue naming a NON-FIRST row: prune-vs-seed is observable)",
       masterDetailPreselectedSecondRow
+      "Layout/Box (master-detail — ONE selection feeding N slots, each projecting a DIFFERENT field)",
+      masterDetailMultiField
       "Layout/Box (Phase 632 — Transform in scalar slots: selected-row Callout body + Badge count)",
       scalarTransformComposition
       "Display/Metric (Phase 283 — Binding.Invoke capability source)", metricInvoke

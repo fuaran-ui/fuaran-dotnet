@@ -860,6 +860,14 @@ shipments", "flag the poor performers", "show degraded services in red" — the 
 whose value decides it becomes a **`TonedPill`** cell. You DECLARE the rule as a
 value→tone map; you never write code for it.
 
+This applies whenever a column **carries severity meaning**, not only when the prompt
+says "highlight". A column named for a breach or a shortfall — `Days overdue`,
+`Stock remaining`, `SLA margin`, `Error rate` — is asking to be read at a glance, and a
+plain text or number cell answers "what is the value?" while leaving "is this bad?" to
+the reader. Give such a column a `TonedPill`, mapping its own values to tones. A label
+alone is not a visual distinction: "Days overdue" names the direction, it does not show
+which rows are in trouble.
+
 <!-- fuaran:example fixture=grid-toned-pill -->
 ```json
 {
