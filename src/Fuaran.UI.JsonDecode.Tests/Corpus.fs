@@ -133,6 +133,20 @@ let private writeManifest
     // can discover it from the manifest. Co-emitted by `emit` below.
     w.WriteString("schema", "schema.json")
 
+    // Pointer to the canonical IDL vocabulary artifact (Phase 696) — the same
+    // discovery affordance as `schema` above, for the artifact that answers the
+    // OTHER question: `schema.json` is the validation surface ("is this payload
+    // legal?"), `idl.json` the structural source ("what IS the vocabulary?" —
+    // field tables, optionality classes, omit-at-default VALUES and enum
+    // vocabularies, none of which survive a JSON Schema projection).
+    //
+    // Unlike `schema.json` this artifact is NOT co-emitted here: its encoder and
+    // the vocabulary it renders both live in Fuaran.Core's test project, which
+    // ships in no package and so is unreachable from this repo. It is emitted and
+    // drift-guarded on that side; this manifest only points at it. A conformant
+    // host reads the pointer, never the emitter. See WIRE_FORMAT.md §13.
+    w.WriteString("idl", "idl.json")
+
     w.WriteString(
         "description",
         "Fuaran canonical wire-format conformance corpus. node-round-trip / op-round-trip "
