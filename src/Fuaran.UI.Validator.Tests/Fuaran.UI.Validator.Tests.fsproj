@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="ManifestTests.fs" />
+    <Compile Include="ManifestEmitterTests.fs" />
     <Compile Include="ValidatorTests.fs" />
     <Compile Include="RecipeCertificationTests.fs" />
     <Compile Include="Program.fs" />

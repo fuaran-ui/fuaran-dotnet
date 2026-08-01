@@ -3,20 +3,30 @@ module Fuaran.UI.Validator.Manifest
 // ============================================================================
 //  Validator manifest (§4d / §4k Q3.1).
 //
-//  Module authors hand-write a tiny JSON file declaring the typed contract
-//  the validator gates against: registered query names, the Msg DU's case
-//  names, and (optionally) the row type each query returns.
+//  A tiny JSON file declaring the typed contract the validator gates against:
+//  registered query names, the Msg DU's case names, and (optionally) the row
+//  type each query returns.
 //
 //  The format is intentionally minimal — the validator does not infer; the
-//  manifest IS the contract. Module authors keep it in sync with their
-//  schema-registered queries and their `Msg` type. Future tooling could
-//  generate it from the F# sources, but for v1 it is hand-written so the
-//  contract surface stays explicit.
+//  manifest IS the contract.
 //
-//  File-discovery convention (v1): the validator looks for
+//  GENERATE-FIRST (Phase 377). The manifest is now DERIVED from the consumer
+//  app's own F# source by `ManifestEmitter`, so the grounding is
+//  correct-by-construction rather than hand-asserted and drift-prone. The
+//  hand-written path survives as an explicit OVERRIDE TIER: a sibling
+//  `fuaran-validator.manifest.overrides.json` carrying only what the walker
+//  cannot see (a dynamically registered query, a policy knob like
+//  `customNodeRatio`), merged OVER the derived base by `mergeOverrides`.
+//
+//  This module is the ingestion half of that story and its wire shape is
+//  unchanged — the validator loads exactly one file, exactly as before, and
+//  neither knows nor cares whether it was generated. `ManifestEmitter` owns
+//  derivation, merge orchestration, emission, and the `--check` drift gate.
+//
+//  File-discovery convention: the validator looks for
 //  `<ProjectDir>/fuaran-validator.manifest.json` next to the .fsproj. A future
 //  variant could let the .fsproj declare an explicit `<FuaranManifest>` item;
-//  v1 keeps it convention-only.
+//  the convention-only shape is deliberate.
 // ============================================================================
 
 open System.IO
@@ -111,6 +121,18 @@ let parse (json: string) : Manifest =
           QueryRowTypes = queryRowTypes
           CustomNodeRatio = customNodeRatio }
 
+/// The generated (or, pre-migration, hand-written) manifest's conventional
+/// filename, sibling of the .fsproj. This is the ONE file the validator reads.
+[<Literal>]
+let manifestFileName = "fuaran-validator.manifest.json"
+
+/// The override tier's conventional filename, sibling of the manifest. Holds
+/// only hand-ASSERTED entries — what the emitter's walker cannot see. Never
+/// read by the validator directly: the emitter merges it into the generated
+/// manifest, so the validator's input stays a single file.
+[<Literal>]
+let overridesFileName = "fuaran-validator.manifest.overrides.json"
+
 /// Convention-based discovery: returns the manifest sibling-of-.fsproj path
 /// if it exists, `None` otherwise. The validator emits a Warning when no
 /// manifest is present — the structural checks (NodeId uniqueness) still
@@ -118,7 +140,13 @@ let parse (json: string) : Manifest =
 /// produce no errors without a manifest because there is no contract to
 /// gate against.
 let discover (projectDir: string) : string option =
-    let candidate = Path.Combine(projectDir, "fuaran-validator.manifest.json")
+    let candidate = Path.Combine(projectDir, manifestFileName)
+    if File.Exists candidate then Some candidate else None
+
+/// Convention-based discovery of the override tier. `None` when the project
+/// asserts nothing by hand — the common case for a generate-first project.
+let discoverOverrides (projectDir: string) : string option =
+    let candidate = Path.Combine(projectDir, overridesFileName)
     if File.Exists candidate then Some candidate else None
 
 /// Load a manifest from disk. Returns the empty manifest if `path` is missing
@@ -128,3 +156,27 @@ let load (path: string) : Manifest =
         File.ReadAllText path |> parse
     else
         empty
+
+/// Merge a hand-asserted override manifest OVER a derived base.
+///
+/// Precedence, per facet:
+///  - `Queries` / `MsgCases` — UNION. An override adds names the walker
+///    cannot see; it can never *remove* a name the source demonstrably
+///    registers, because removing it would silently re-open the hole
+///    FUARAN010 / FUARAN020 exist to close.
+///  - `QueryRowTypes` — per-key OVERRIDE. The asserted row type wins, so an
+///    author can correct a query whose only in-source evidence is absent or
+///    ambiguous.
+///  - `CustomNodeRatio` — override wins when set. Never derivable (it is a
+///    policy threshold, not a fact about the source), so in practice this is
+///    the override tier's own field.
+let mergeOverrides (derived: Manifest) (overrides: Manifest) : Manifest =
+    { Queries = Set.union derived.Queries overrides.Queries
+      MsgCases = Set.union derived.MsgCases overrides.MsgCases
+      QueryRowTypes =
+        overrides.QueryRowTypes
+        |> Map.fold (fun acc key value -> Map.add key value acc) derived.QueryRowTypes
+      CustomNodeRatio =
+        match overrides.CustomNodeRatio with
+        | Some _ as asserted -> asserted
+        | None -> derived.CustomNodeRatio }

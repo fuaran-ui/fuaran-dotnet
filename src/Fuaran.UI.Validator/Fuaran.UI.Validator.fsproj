@@ -44,6 +44,11 @@
          certified valid-for-all-bindings (a correct-by-construction template),
          bridging the runtime PreEmitValidate rule family as the validity oracle. -->
     <Compile Include="RecipeCertification.fs" />
+    <!-- Phase 377 — manifest generation: derives the validator manifest from
+         the consumer app's own source (declaration sites, never the reference
+         sites the checks gate), merges the hand-asserted override tier over
+         it, and diffs against the committed file for the CI drift gate. -->
+    <Compile Include="ManifestEmitter.fs" />
     <Compile Include="Validator.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

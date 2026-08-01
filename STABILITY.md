@@ -745,3 +745,24 @@ The corpus gains `grid-editable-state` + `chart-state-rows` (the Phase 663 edita
 anchor — `editable: true` + a direct `$state` rows source, previously uncertifiable because rows
 could not survive encoding). Cross-host codec parity (TS / Python / Go / Rust) is the phase's open
 follow-up; until each lands, that host's corpus gate is deliberately red on these fixtures.
+
+## Recorded change — `Fuaran.UI.Validator` manifest generation (fuaran#377)
+
+**Additive; no behavioural change to any existing check.** The validator manifest is now DERIVED
+from the consumer app's own source rather than hand-written, so the artefact grounding every
+schema-coupled check is itself grounded. New public surface:
+
+- `Fuaran.UI.Validator.ManifestEmitter` — `derive` / `toManifest` / `mergeOverrides`-driven `run`,
+  `renderJson`, `diff`, `write`, plus the `MsgCase` / `Derivation` / `Provenance` / `Drift` /
+  `EmitOptions` / `EmitOutcome` types.
+- `Manifest` gains `manifestFileName`, `overridesFileName`, `discoverOverrides`, `mergeOverrides`.
+- `AstWalker` gains `parseTree` — the parse plumbing the declaration walkers share.
+- The CLI gains an `emit-manifest <project.fsproj> [--out] [--overrides] [--check]` subcommand.
+  The existing positional invocation is untouched.
+
+**Not a wire-format change.** The emitted manifest is the same v1 shape `Manifest.parse` already
+consumes, plus an additive `$generated` provenance key the parser ignores — so a generated manifest
+and a hand-written one are read identically, and the validator itself is unmodified. The
+hand-written path survives as the override tier
+(`fuaran-validator.manifest.overrides.json`), merged over the derived base at generation time.
+Contract + migration note: [`docs/VALIDATOR-MANIFEST.md`](docs/VALIDATOR-MANIFEST.md).

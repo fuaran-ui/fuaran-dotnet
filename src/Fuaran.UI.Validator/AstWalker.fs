@@ -931,6 +931,23 @@ let private parseFile (checker: FSharpChecker) (file: string) (source: string) =
         return parseResult
     }
 
+/// Parse one F# source file to its untyped syntax tree. `None` for a signature
+/// file (no implementation to walk) or an unparseable source.
+///
+/// Exposed so sibling passes that reason about DECLARATIONS rather than
+/// Fuaran.X call sites — `ManifestEmitter`'s `Msg` DU and query-registration
+/// walkers — share this parse plumbing instead of restating it.
+let parseTree (checker: FSharpChecker) (file: string) : Async<ParsedInput option> =
+    async {
+        let source = File.ReadAllText file
+        let! parseResult = parseFile checker file source
+
+        return
+            match parseResult.ParseTree with
+            | ParsedInput.ImplFile _ as tree -> Some tree
+            | ParsedInput.SigFile _ -> None
+    }
+
 /// Walk one F# source file, returning the FuaranCalls it contains.
 let walkFile (checker: FSharpChecker) (file: string) : Async<FuaranCall list> =
     async {
