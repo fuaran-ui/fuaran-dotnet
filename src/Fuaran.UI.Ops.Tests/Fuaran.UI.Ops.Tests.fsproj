@@ -18,6 +18,9 @@
       <Link>ApplyParity.fs</Link>
     </Compile>
     <Compile Include="ApplyParityTests.fs" />
+    <!-- Phase 381 — op-diff review notation goldens (coverage lock over the
+         full ops/* corpus). -->
+    <Compile Include="OpNotationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

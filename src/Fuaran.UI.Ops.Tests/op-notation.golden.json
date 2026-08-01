@@ -1,0 +1,112 @@
+[
+  {
+    "name": "op-batch",
+    "notation": "batch (2 ops):\n  metric-1: style \u2192 emphasis=Loud tone=Success weight=Spacious\n  metric-1: - node",
+    "op": "{\u0022$type\u0022:\u0022Batch\u0022,\u0022ops\u0022:[{\u0022$type\u0022:\u0022UpdateStyle\u0022,\u0022style\u0022:{\u0022emphasis\u0022:\u0022Loud\u0022,\u0022tone\u0022:\u0022Success\u0022,\u0022weight\u0022:\u0022Spacious\u0022},\u0022target\u0022:\u0022metric-1\u0022},{\u0022$type\u0022:\u0022RemoveNode\u0022,\u0022target\u0022:\u0022metric-1\u0022}]}"
+  },
+  {
+    "name": "op-editnode",
+    "notation": "metric-1: kind \u2192 Markdown",
+    "op": "{\u0022$type\u0022:\u0022EditNode\u0022,\u0022newKind\u0022:{\u0022$type\u0022:\u0022Markdown\u0022,\u0022text\u0022:\u0022Edited\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-insertchild",
+    "notation": "dash-empty: \u002B child Metric \u0022metric-1\u0022",
+    "op": "{\u0022$type\u0022:\u0022InsertChild\u0022,\u0022child\u0022:{\u0022id\u0022:\u0022metric-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Metric\u0022,\u0022format\u0022:{\u0022$type\u0022:\u0022Currency\u0022,\u0022code\u0022:\u0022GBP\u0022},\u0022icon\u0022:\u0022trending-up\u0022,\u0022label\u0022:\u0022Revenue\u0022,\u0022subtext\u0022:\u0022vs last month\u0022,\u0022tone\u0022:\u0022Brand\u0022,\u0022trend\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:0.07},\u0022trendFormat\u0022:{\u0022$type\u0022:\u0022Percent\u0022,\u0022decimals\u0022:1},\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:1234.5}}},\u0022parentId\u0022:\u0022dash-empty\u0022}"
+  },
+  {
+    "name": "op-movenode",
+    "notation": "metric-1: move \u2192 parent card-1",
+    "op": "{\u0022$type\u0022:\u0022MoveNode\u0022,\u0022newParentId\u0022:\u0022card-1\u0022,\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-removenode",
+    "notation": "metric-1: - node",
+    "op": "{\u0022$type\u0022:\u0022RemoveNode\u0022,\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-reorderchildren",
+    "notation": "stack-1: reorder \u2192 [markdown-1, metric-1]",
+    "op": "{\u0022$type\u0022:\u0022ReorderChildren\u0022,\u0022newOrder\u0022:[\u0022markdown-1\u0022,\u0022metric-1\u0022],\u0022parentId\u0022:\u0022stack-1\u0022}"
+  },
+  {
+    "name": "op-replacebinding",
+    "notation": "metric-1: Value \u2192 static 99.5",
+    "op": "{\u0022$type\u0022:\u0022ReplaceBinding\u0022,\u0022binding\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:99.5},\u0022slot\u0022:\u0022Value\u0022,\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-replaceroot",
+    "notation": "\u003Croot\u003E: replace \u2192 Box \u0022composite-root\u0022 (7 nodes)",
+    "op": "{\u0022$type\u0022:\u0022ReplaceRoot\u0022,\u0022node\u0022:{\u0022id\u0022:\u0022composite-root\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Box\u0022,\u0022children\u0022:[{\u0022id\u0022:\u0022composite-card\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Box\u0022,\u0022children\u0022:[{\u0022id\u0022:\u0022metric-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Metric\u0022,\u0022format\u0022:{\u0022$type\u0022:\u0022Currency\u0022,\u0022code\u0022:\u0022GBP\u0022},\u0022icon\u0022:\u0022trending-up\u0022,\u0022label\u0022:\u0022Revenue\u0022,\u0022subtext\u0022:\u0022vs last month\u0022,\u0022tone\u0022:\u0022Brand\u0022,\u0022trend\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:0.07},\u0022trendFormat\u0022:{\u0022$type\u0022:\u0022Percent\u0022,\u0022decimals\u0022:1},\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:1234.5}}},{\u0022id\u0022:\u0022lvr-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022LabelValueRow\u0022,\u0022emphasis\u0022:true,\u0022format\u0022:{\u0022$type\u0022:\u0022Number\u0022,\u0022decimals\u0022:2},\u0022help\u0022:\u0022Last 30 days\u0022,\u0022label\u0022:\u0022Total\u0022,\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:42}}}],\u0022heading\u0022:\u0022Composite\u0022,\u0022layout\u0022:{\u0022$type\u0022:\u0022Flex\u0022,\u0022direction\u0022:\u0022Vertical\u0022,\u0022wrap\u0022:false},\u0022role\u0022:\u0022Card\u0022}},{\u0022id\u0022:\u0022stack-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Box\u0022,\u0022children\u0022:[{\u0022id\u0022:\u0022metric-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Metric\u0022,\u0022format\u0022:{\u0022$type\u0022:\u0022Currency\u0022,\u0022code\u0022:\u0022GBP\u0022},\u0022icon\u0022:\u0022trending-up\u0022,\u0022label\u0022:\u0022Revenue\u0022,\u0022subtext\u0022:\u0022vs last month\u0022,\u0022tone\u0022:\u0022Brand\u0022,\u0022trend\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:0.07},\u0022trendFormat\u0022:{\u0022$type\u0022:\u0022Percent\u0022,\u0022decimals\u0022:1},\u0022value\u0022:{\u0022$type\u0022:\u0022Static\u0022,\u0022value\u0022:1234.5}}},{\u0022id\u0022:\u0022markdown-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Markdown\u0022,\u0022text\u0022:\u0022Updated hourly.\u0022}}],\u0022layout\u0022:{\u0022$type\u0022:\u0022Flex\u0022,\u0022direction\u0022:\u0022Vertical\u0022,\u0022wrap\u0022:false},\u0022role\u0022:\u0022Group\u0022}}],\u0022layout\u0022:{\u0022$type\u0022:\u0022Auto\u0022},\u0022role\u0022:\u0022Dashboard\u0022}}}"
+  },
+  {
+    "name": "op-updateprop",
+    "notation": "metric-1: Label \u2192 \u0022Updated revenue\u0022",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022Label\u0022,\u0022target\u0022:\u0022metric-1\u0022,\u0022value\u0022:\u0022Updated revenue\u0022}"
+  },
+  {
+    "name": "op-updateprop-nested-badfield",
+    "notation": "grid-1: Columns[0].Nope \u2192 \u0022No such sub-field\u0022",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022Columns[0].Nope\u0022,\u0022target\u0022:\u0022grid-1\u0022,\u0022value\u0022:\u0022No such sub-field\u0022}"
+  },
+  {
+    "name": "op-updateprop-nested-badindex",
+    "notation": "grid-1: Columns[9].Label \u2192 \u0022Out of range\u0022",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022Columns[9].Label\u0022,\u0022target\u0022:\u0022grid-1\u0022,\u0022value\u0022:\u0022Out of range\u0022}"
+  },
+  {
+    "name": "op-updateprop-nested-column0-label",
+    "notation": "grid-1: Columns[0].Label \u2192 \u0022Channel name\u0022",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022Columns[0].Label\u0022,\u0022target\u0022:\u0022grid-1\u0022,\u0022value\u0022:\u0022Channel name\u0022}"
+  },
+  {
+    "name": "op-updateprop-nested-column1-label",
+    "notation": "grid-1: Columns[1].Label \u2192 \u0022Spend (GBP)\u0022",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022Columns[1].Label\u0022,\u0022target\u0022:\u0022grid-1\u0022,\u0022value\u0022:\u0022Spend (GBP)\u0022}"
+  },
+  {
+    "name": "op-updateprop-nested-field0-required",
+    "notation": "form-1: Fields[0].Required \u2192 true",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022Fields[0].Required\u0022,\u0022target\u0022:\u0022form-1\u0022,\u0022value\u0022:true}"
+  },
+  {
+    "name": "op-updateprop-nested-field1-required",
+    "notation": "form-1: Fields[1].Required \u2192 false",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022Fields[1].Required\u0022,\u0022target\u0022:\u0022form-1\u0022,\u0022value\u0022:false}"
+  },
+  {
+    "name": "op-updateprop-nested-malformed",
+    "notation": "grid-1: Columns[x].Label \u2192 \u0022Bad index literal\u0022",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022Columns[x].Label\u0022,\u0022target\u0022:\u0022grid-1\u0022,\u0022value\u0022:\u0022Bad index literal\u0022}"
+  },
+  {
+    "name": "op-updateprop-nested-object-value",
+    "notation": "grid-1: Columns[0].Format \u2192 {\u0022$type\u0022:\u0022Currency\u0022,\u0022code\u0022:\u0022GBP\u0022}",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022Columns[0].Format\u0022,\u0022target\u0022:\u0022grid-1\u0022,\u0022value\u0022:{\u0022$type\u0022:\u0022Currency\u0022,\u0022code\u0022:\u0022GBP\u0022}}"
+  },
+  {
+    "name": "op-updateprop-nested-yfield0",
+    "notation": "chart-1: YFields[0] \u2192 \u0022sales\u0022",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022YFields[0]\u0022,\u0022target\u0022:\u0022chart-1\u0022,\u0022value\u0022:\u0022sales\u0022}"
+  },
+  {
+    "name": "op-updateprop-nested-yfield1",
+    "notation": "chart-1: YFields[1] \u2192 \u0022profit\u0022",
+    "op": "{\u0022$type\u0022:\u0022UpdateProp\u0022,\u0022path\u0022:\u0022YFields[1]\u0022,\u0022target\u0022:\u0022chart-1\u0022,\u0022value\u0022:\u0022profit\u0022}"
+  },
+  {
+    "name": "op-updatestate",
+    "notation": "metric-1: state \u2192 onLoading=Skeleton \u0022skel-1\u0022",
+    "op": "{\u0022$type\u0022:\u0022UpdateState\u0022,\u0022state\u0022:{\u0022onLoading\u0022:{\u0022id\u0022:\u0022skel-1\u0022,\u0022kind\u0022:{\u0022$type\u0022:\u0022Skeleton\u0022,\u0022rows\u0022:3}}},\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-updatestyle",
+    "notation": "metric-1: style \u2192 emphasis=Loud tone=Success weight=Spacious",
+    "op": "{\u0022$type\u0022:\u0022UpdateStyle\u0022,\u0022style\u0022:{\u0022emphasis\u0022:\u0022Loud\u0022,\u0022tone\u0022:\u0022Success\u0022,\u0022weight\u0022:\u0022Spacious\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-updatestyle (phase 147 role=eyebrow \u002B voice=structural)",
+    "notation": "metric-1: style \u2192 role=Eyebrow voice=Structural",
+    "op": "{\u0022$type\u0022:\u0022UpdateStyle\u0022,\u0022style\u0022:{\u0022role\u0022:\u0022Eyebrow\u0022,\u0022voice\u0022:\u0022Structural\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
+  }
+]

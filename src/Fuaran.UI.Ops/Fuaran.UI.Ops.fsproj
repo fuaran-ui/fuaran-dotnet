@@ -38,6 +38,14 @@
          Apply.fs (uses Apply.apply) + JsonDecode.fs (uses decodeNode) +
          Introspect.fs (uses getChildren / withChildren). -->
     <Compile Include="Streaming.fs" />
+    <!-- Op-diff review notation (Phase 381) — the read-only human-readable
+         projection of TreeOp values and batches. Projection ONLY: no decoder,
+         no round-trip obligation, no wire-format change. Compiled after
+         Introspect.fs (uses kindName / allNodeIds); depends on nothing else
+         here, and on nothing above this package (the provenance frame mirrors
+         the op-stream Actor rather than referencing it — see the module
+         header). -->
+    <Compile Include="OpNotation.fs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
