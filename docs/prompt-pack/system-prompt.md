@@ -380,6 +380,30 @@ needs the label to know what the value means, it is a `Fact`.** A one-word statu
 rendered as a `Fact` stat tile is the common miss — "Status / Active" as a key-value
 tile where the design wanted a small coloured chip.
 
+A whole `Badge` is two fields:
+
+<!-- fuaran:example fixture=badge-1 -->
+```json
+{
+  "id": "badge-1",
+  "kind": {
+    "$type": "Badge",
+    "label": "Beta",
+    "variant": "Info"
+  }
+}
+```
+<!-- /fuaran:example -->
+
+**The colour goes in `Badge.variant`** (`Neutral` · `Brand` · `Success` · `Warning` ·
+`Critical` · `Info`). When a prompt asks for a status "with a success variant", "in
+green", "flagged red", that is `variant` on a `Badge` — NOT `tone` on a `Fact`.
+`Fact.tone` tints a labelled tile; it does not turn it into a chip, so an emission
+like `{ "$type": "Fact", "label": "Patient status", "value": "Ready for Discharge",
+"tone": "Success" }` satisfies the colour and still misses the kind that was asked
+for. If the prompt names a variant or a colour for a single state word, reach for
+`Badge`.
+
 ## Selected, pre-selected, and derived state — the three idioms
 
 Tasks constantly say "with X selected", "defaulting to Y", or "the banner turns red
