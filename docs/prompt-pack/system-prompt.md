@@ -446,6 +446,188 @@ a literal string is the same defect wearing prose: the panel's facts update on c
 and its narration does not. Bind the body, or write a sentence that stays true for
 every row.
 
+The whole shape — one grid, three `Fact` slots each projecting a different column, and
+a `Callout` whose body follows the same selection:
+
+<!-- fuaran:example fixture=master-detail-multi-field -->
+```json
+{
+  "id": "master-detail-multi-field",
+  "kind": {
+    "$type": "Box",
+    "children": [
+      {
+        "id": "ticket-grid",
+        "kind": {
+          "$type": "DataGrid",
+          "columns": [
+            {
+              "field": "id",
+              "kind": {
+                "$type": "Text"
+              },
+              "label": "Ticket"
+            },
+            {
+              "field": "priority",
+              "kind": {
+                "$type": "Text"
+              },
+              "label": "Priority"
+            },
+            {
+              "field": "assignee",
+              "kind": {
+                "$type": "Text"
+              },
+              "label": "Assignee"
+            }
+          ],
+          "rowKeyField": "id",
+          "source": {
+            "$type": "Transform",
+            "pipeline": [],
+            "source": {
+              "columns": {
+                "assignee": {
+                  "validity": [
+                    true,
+                    true
+                  ],
+                  "values": [
+                    "R. Okafor",
+                    "M. Lindqvist"
+                  ]
+                },
+                "id": {
+                  "validity": [
+                    true,
+                    true
+                  ],
+                  "values": [
+                    "TCK-2041",
+                    "TCK-2042"
+                  ]
+                },
+                "priority": {
+                  "validity": [
+                    true,
+                    true
+                  ],
+                  "values": [
+                    "high",
+                    "low"
+                  ]
+                }
+              },
+              "schema": [
+                {
+                  "name": "id",
+                  "type": "string"
+                },
+                {
+                  "name": "priority",
+                  "type": "string"
+                },
+                {
+                  "name": "assignee",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "ticket-detail",
+        "kind": {
+          "$type": "Box",
+          "children": [
+            {
+              "id": "detail-ticket",
+              "kind": {
+                "$type": "Fact",
+                "label": "Selected ticket",
+                "value": {
+                  "$type": "Bound",
+                  "binding": {
+                    "$type": "Selection",
+                    "defaultValue": "TCK-2041",
+                    "field": "id",
+                    "nodeId": "ticket-grid"
+                  }
+                }
+              }
+            },
+            {
+              "id": "detail-priority",
+              "kind": {
+                "$type": "Fact",
+                "label": "Priority",
+                "value": {
+                  "$type": "Bound",
+                  "binding": {
+                    "$type": "Selection",
+                    "defaultValue": "TCK-2041",
+                    "field": "priority",
+                    "nodeId": "ticket-grid"
+                  }
+                }
+              }
+            },
+            {
+              "id": "detail-assignee",
+              "kind": {
+                "$type": "Fact",
+                "label": "Assignee",
+                "value": {
+                  "$type": "Bound",
+                  "binding": {
+                    "$type": "Selection",
+                    "defaultValue": "TCK-2041",
+                    "field": "assignee",
+                    "nodeId": "ticket-grid"
+                  }
+                }
+              }
+            },
+            {
+              "id": "detail-note",
+              "kind": {
+                "$type": "Callout",
+                "body": {
+                  "$type": "Bound",
+                  "binding": {
+                    "$type": "Selection",
+                    "defaultValue": "R. Okafor",
+                    "field": "assignee",
+                    "nodeId": "ticket-grid"
+                  }
+                },
+                "heading": "Assigned to",
+                "tone": "Info"
+              }
+            }
+          ],
+          "heading": "Ticket detail",
+          "layout": {
+            "$type": "Flex",
+            "direction": "Vertical",
+            "wrap": false
+          },
+          "role": "Card"
+        }
+      }
+    ],
+    "layout": {
+      "$type": "Auto"
+    },
+    "role": "Dashboard"
+  }
+}
+```
+<!-- /fuaran:example -->
+
 **2. Pre-selecting a control** ("Critical is selected by default", "defaults to Last
 30 days") — declare the default ON the binding. A form/tab/select control binds its
 `value` through **`State` with a `defaultValue`**; a **filter chip** declares its

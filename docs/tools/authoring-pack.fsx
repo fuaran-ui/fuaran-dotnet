@@ -654,7 +654,7 @@ let fewShot =
       // assignee"), not as `Selection.field`, so the exemplar teaches the mapping
       // FROM the request the model actually receives.
       "master-detail-multi-field",
-      "A ticket triage screen: a ticket grid with TCK-2041 selected by default, and a detail card that shows the selected ticket's id, its priority and its assignee — every field following the selection."
+      "A ticket triage screen: a ticket grid with TCK-2041 selected by default, and a detail card that shows the selected ticket's id, its priority and its assignee, plus a note calling out who it is assigned to — every field AND the note following the selection."
       // 2026-08-01 n=3 review — 043/c2 (×3): every emission reached for a Metric
       // stat tile where a progress bar was asked for. `Progress` existed and was
       // taught in one pack file; it was never a few-shot exemplar.

@@ -1985,7 +1985,35 @@ let masterDetailMultiField: Node<obj> =
                             Children =
                               [ projectedFact "detail-ticket" "Selected ticket" "id"
                                 projectedFact "detail-priority" "Priority" "priority"
-                                projectedFact "detail-assignee" "Assignee" "assignee" ] }
+                                projectedFact "detail-assignee" "Assignee" "assignee"
+                                // A PROSE slot on the same selection. The 2026-08-02
+                                // flip-4 shakedown found models wiring the Facts
+                                // correctly and leaving the narration literal, so the
+                                // panel's numbers follow the click and its sentence
+                                // does not (036/c8, 5/6). `Callout.Body` is a
+                                // TextSource like any other — this is the SIMPLE
+                                // bound-body form; the only other bound body in the
+                                // corpus is the heavy Transform composition in
+                                // `scalar-transform-composition`, which is not a
+                                // shape a model reaches for to write one sentence.
+                                node
+                                    "detail-note"
+                                    (NodeKind.Callout(
+                                        { Tone = ToneVariant.Info
+                                          Heading = Some(TextSource.Literal "Assigned to")
+                                          Body =
+                                            TextSource.Bound(
+                                                Binding.Selection(
+                                                    "ticket-grid",
+                                                    Binding.projectSelectionField<string> "assignee",
+                                                    Some "R. Okafor",
+                                                    Some "assignee"
+                                                )
+                                            )
+                                          Icon = None
+                                          Dismissable = false }
+                                    ))
+                                    None ] }
                       ))
                       None ] }
         ))
