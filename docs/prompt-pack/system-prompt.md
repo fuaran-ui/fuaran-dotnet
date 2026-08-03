@@ -1516,6 +1516,148 @@ declaration displays as the raw number and fails the task's data checks. The sur
 - If the prompt gives display-ready times ("14:03"), a plain string in a text slot is
   fine — the rule is about ENCODED values, which always need a format declaration.
 
+### "Today" is a binding, never a literal
+
+When the prompt wants the CURRENT date or time — "today's date in the header", "days
+overdue", "posted N days ago" — emit **`{ "$type": "Now" }`**. Do **not** hardcode a
+date: a literal is wrong the moment it is read, and the tree has no way to say it meant
+"today". `Now` has no fields; the host supplies the instant (an ISO-8601 UTC string) at
+render time, so the tree stays a pure value.
+
+It works in two positions — a text slot, and a `Transform` param, which is what lets you
+DERIVE against today rather than bake a number:
+
+<!-- fuaran:example fixture=now-environment-binding -->
+```json
+{
+  "id": "now-environment-binding",
+  "kind": {
+    "$type": "Box",
+    "children": [
+      {
+        "id": "today-fact",
+        "kind": {
+          "$type": "Fact",
+          "label": "Today",
+          "value": {
+            "$type": "Bound",
+            "binding": {
+              "$type": "Now"
+            }
+          }
+        }
+      },
+      {
+        "id": "overdue-grid",
+        "kind": {
+          "$type": "DataGrid",
+          "columns": [
+            {
+              "field": "id",
+              "kind": {
+                "$type": "Text"
+              },
+              "label": "Invoice"
+            },
+            {
+              "field": "due",
+              "kind": {
+                "$type": "Text"
+              },
+              "label": "Due"
+            },
+            {
+              "field": "daysOverdue",
+              "kind": {
+                "$type": "Text"
+              },
+              "label": "Days overdue"
+            }
+          ],
+          "rowKeyField": "id",
+          "source": {
+            "$type": "Transform",
+            "params": [
+              {
+                "from": {
+                  "$type": "Now"
+                },
+                "name": "today"
+              }
+            ],
+            "pipeline": [
+              {
+                "$type": "derive",
+                "expr": {
+                  "$type": "apply",
+                  "args": [
+                    {
+                      "$type": "param",
+                      "name": "today"
+                    },
+                    {
+                      "$type": "col",
+                      "name": "due"
+                    }
+                  ],
+                  "fn": "dateDiffDays"
+                },
+                "name": "daysOverdue"
+              }
+            ],
+            "source": {
+              "columns": {
+                "due": {
+                  "validity": [
+                    true,
+                    true
+                  ],
+                  "values": [
+                    "2026-07-01",
+                    "2026-07-28"
+                  ]
+                },
+                "id": {
+                  "validity": [
+                    true,
+                    true
+                  ],
+                  "values": [
+                    "INV-1001",
+                    "INV-1002"
+                  ]
+                }
+              },
+              "schema": [
+                {
+                  "name": "id",
+                  "type": "string"
+                },
+                {
+                  "name": "due",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "layout": {
+      "$type": "Auto"
+    },
+    "role": "Dashboard"
+  }
+}
+```
+<!-- /fuaran:example -->
+
+Note the second one: `dateDiffDays(param "today", col "due")` computes days-overdue per
+row from the data, with `"today"` sourced from `{ "$type": "Now" }`. Any date arithmetic
+against the present has this shape — a `Now` param plus the existing `dateDiffDays`
+verb. **`Now` is the only way to obtain the current date**; there is no `now()`
+function, no `"today"` string literal, and no clock inside any expression.
+
 ## Closed enum vocabularies — emit these values EXACTLY
 
 Every enum-typed field takes **only** the values listed below. Do not invent a
@@ -1554,7 +1696,7 @@ Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` 
 **`$type` discriminators are closed vocabularies too** — each of these takes exactly one of its listed cases (a `Binding` case in a `TextSource` slot, or an invented case name, is an `UNKNOWN_DU_CASE` reject). A case's REQUIRED payload fields ride in parentheses — use those exact key names (`Navigate(route)` means the key is `route`, not `href`/`url`):
 
 - `Action.$type`: `Dispatch` · `Call(endpoint)` · `Notify(channel, payload)` · `Navigate(route)` · `SetState(key, value)` · `AiTool(args, toolName)` · `Chain(ops)` · `CommitLocal(nodeId)` · `WriteToClipboard(text)` · `ReadFileBody(encoding, fileRef, onRead)` · `Invoke(args, capabilityId)`
-- `Binding.$type`: `Static` · `Query(name)` · `Filter(name)` · `Selection(nodeId)` · `State(key)` · `Computed(fn)` · `I18n(key)` · `Local(flushOn, format, initialFrom, onCommit, parse)` · `Format(format, locale, source)` · `Transform(pipeline, source)` · `Invoke(args, capabilityId)`
+- `Binding.$type`: `Static` · `Query(name)` · `Filter(name)` · `Selection(nodeId)` · `State(key)` · `Computed(fn)` · `Now` · `I18n(key)` · `Local(flushOn, format, initialFrom, onCommit, parse)` · `Format(format, locale, source)` · `Transform(pipeline, source)` · `Invoke(args, capabilityId)`
 - `BoxLayout.$type`: `Auto`
 - `CallResultTarget.$type`: `State(key)` · `Query(name)`
 - `CellFormat.$type`: `None` · `Number` · `Currency(code)` · `Percent` · `SignificantDigits(digits)` · `Date(format)` · `Custom(fn)`

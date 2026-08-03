@@ -82,6 +82,10 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     | Binding.Filter(name, _) -> [ BindingUse.Filter name ]
     | Binding.Selection(nodeId, _, _, _) -> [ BindingUse.Selection nodeId ]
     | Binding.Query(name, _, dependsOn) -> [ BindingUse.Query(name, defaultArg dependsOn []) ]
+    // Phase 765 — `Now` reads no node, state key, filter or query: the host
+    // furnishes it once per render pass. It participates in no reactive edge,
+    // so it contributes no usage (the `Computed` posture below).
+    | Binding.Now _ -> []
     | Binding.Local(_, _, initialFrom, _, _) -> usesOfBinding initialFrom
     | Binding.I18n(_, Some args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<JVal> ab)
     | Binding.I18n(_, None) -> []

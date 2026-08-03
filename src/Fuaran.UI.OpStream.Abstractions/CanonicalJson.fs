@@ -404,6 +404,10 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
 
             appendObject sb (case "State" (defaultField @ [ "key", str key ]))
         | Binding.Computed _ -> appendObject sb (case "Computed" [ "fn", sentinel closureSentinel ])
+        // Phase 765 — no wire fields: the instant is furnished by the host at
+        // resolve time, never carried on the wire. Byte-identical to the
+        // generated encoder's `Canon.typed "Now" []`.
+        | Binding.Now _ -> appendObject sb (case "Now" [])
         | Binding.I18n(key, args) ->
             // i18n binding. Args are `Map<string, Binding<JVal>> option` (the
             // swap's typed verbatim carrier); each renders via the JVal-typed

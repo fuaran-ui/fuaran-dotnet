@@ -230,6 +230,26 @@ module binding =
 
     let filter (name: string) : Binding<'T> = Binding.Filter(name, None)
 
+    /// The host-furnished current instant, as an ISO-8601 UTC string
+    /// (`2026-08-02T06:59:24Z`) — Phase 765.
+    ///
+    /// The tree names "now"; it never *reads* a clock. The host resolves the
+    /// instant once per render pass into `BindingSources.Now`, which is what
+    /// keeps a tree a pure value and lets a replayed op-stream reproduce its
+    /// original render rather than drifting to replay-time "now". A host that
+    /// furnishes nothing leaves the slot `NotResolved`, so the node shows its
+    /// placeholder instead of a plausible wrong date.
+    ///
+    /// The ISO-8601 form composes with `Fuaran.Core`'s `dateDiffDays`, which
+    /// reads the leading `YYYY-MM-DD` — so "days overdue" is
+    /// `dateDiffDays(col "due", now)` with no Core change.
+    let now: Binding<string> = Binding.Now(fun (o: obj) -> unbox<string> o)
+
+    /// `now` at an arbitrary slot type, for a `Transform` param or a
+    /// `JVal`-typed position where the host value is projected by the caller.
+    let nowAs (accessor: string -> 'T) : Binding<'T> =
+        Binding.Now(fun (o: obj) -> accessor (unbox<string> o))
+
     let selection (nodeId: string) (accessor: 'row -> 'T) : Binding<'T> =
         Binding.Selection(nodeId, (fun (o: obj) -> accessor (unbox<'row> o)), None, None)
 
@@ -1176,6 +1196,12 @@ module Fuaran =
                     Binding.Selection(nodeId, (fun o -> acc o |> Seq.map toRow), dv |> Option.map (Seq.map toRow), fld)
                 | Binding.State(key, dv) -> Binding.State(key, dv |> Option.map (Seq.map toRow))
                 | Binding.Computed f -> Binding.Computed(fun ctx -> f ctx |> Seq.map toRow)
+                // Phase 765 — `Now` yields the host-furnished instant, a scalar.
+                // It is meaningless as a grid's row source, but the DU is
+                // parameterised on 'T so the typechecker permits it here; map
+                // the accessor through `toRow` for uniformity and let resolution
+                // surface the cast, exactly as `I18n` does below.
+                | Binding.Now acc -> Binding.Now(fun ctx -> acc ctx |> Seq.map toRow)
                 // `Binding.I18n` is semantically for `Binding<string>`
                 // bindings, but the DU is parameterised on 'T so the typechecker
                 // allows it on a grid's `Binding<'row seq>` Source. Pass through —

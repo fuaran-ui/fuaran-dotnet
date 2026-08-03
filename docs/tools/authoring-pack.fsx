@@ -658,6 +658,10 @@ let fewShot =
       // 2026-08-01 n=3 review — 043/c2 (×3): every emission reached for a Metric
       // stat tile where a progress bar was asked for. `Progress` existed and was
       // taught in one pack file; it was never a few-shot exemplar.
+      // Phase 765 — worded as the observed intent ("as of today", "how many days
+      // overdue"), not as the feature name, per the Phase 750 convention.
+      "now-environment-binding",
+      "An invoice aging panel: show today's date, and a table of invoices with how many days overdue each one is as of today."
       "progress-1",
       "Show how far through the quarter's hiring plan we are as a progress bar, labelled, filled to about two thirds."
       // 2026-08-01 n=3 review — 042/c3 (×3): every emission reached for a Fact

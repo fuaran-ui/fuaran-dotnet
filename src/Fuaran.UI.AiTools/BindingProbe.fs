@@ -43,6 +43,10 @@ let identify<'T> (binding: Binding<'T>) : BindingSource * string =
         BindingSource.Selection(NodeId nodeId), sprintf "$selection.%s" nodeId
     | Binding.State(key, _) -> BindingSource.State key, sprintf "$state.%s" key
     | Binding.Computed _ -> BindingSource.Computed, "$computed"
+    // Phase 765 — reuses `BindingSource.Computed` rather than widening that
+    // DU, exactly as `Local` does below: neither reads a named store, and the
+    // wire expression carries the distinction.
+    | Binding.Now _ -> BindingSource.Computed, "$now"
     | Binding.I18n(key, _) -> BindingSource.I18n key, sprintf "$i18n.%s" key
     | Binding.Local _ ->
         // Local binding's identity-wise reads through to its
@@ -212,6 +216,17 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
             BindingErrorCode.NotResolvedYet
             "Computed bindings are not yet introspectable (the BindingContext is renderer-side)."
             (Some "Express the same derivation via Binding.Query + a computed-column accessor, then introspect that.")
+
+    | Binding.Now _ ->
+        // Phase 765 — the instant lives in `BindingSources.Now`, a
+        // renderer-side value this probe does not receive, so it is the same
+        // shape of non-introspectable as `Computed` above: report
+        // NotResolvedYet rather than inventing a clock here, which would make
+        // the probe disagree with what the renderer actually showed.
+        failed
+            BindingErrorCode.NotResolvedYet
+            "Now bindings resolve against the host-furnished instant (BindingSources.Now), which is renderer-side."
+            (Some "Introspect the rendered value instead, or supply the instant to the renderer and read it there.")
 
     | Binding.Local(_, _, initialFrom, _, _) ->
         // Local binding's read side is its initialFrom source.

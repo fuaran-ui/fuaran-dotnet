@@ -259,6 +259,10 @@ let private defs: (string * J) list =
             // Phase 677 — `defaultValue` is OPTIONAL for the same reason as `Static.value`.
             duCase "State" [ "key" ] [ "defaultValue", anyJson; "key", str ]
             duCase "Computed" [ "fn" ] [ "fn", closure ]
+            // Phase 765 — `Now` carries NO wire fields: the instant is furnished
+            // by the host at resolve time, never serialised. `{"$type":"Now"}`
+            // is the whole form.
+            duCase "Now" [] []
             duCase
                 "I18n"
                 [ "key" ]

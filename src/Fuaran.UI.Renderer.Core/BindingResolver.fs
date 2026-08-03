@@ -120,6 +120,27 @@ type BindingSources =
         /// `Signature`, run the host body, and journal non-deterministic results through the
         /// determinism-capture seam.
         CapabilityInvoker: string -> (string * string) list -> Fuaran.UI.Types.Deferred<obj>
+        /// The current instant the host furnishes for `Binding.Now` (Phase 765),
+        /// as an **ISO-8601 UTC** string (`2026-08-02T06:59:24Z`).
+        ///
+        /// The clock lives HERE, in the host — never on the wire and never read
+        /// during resolution. That is what keeps a tree a pure value: a replayed
+        /// op-stream re-supplies the instant it recorded, so replay reproduces
+        /// the original render instead of drifting to whatever "now" means at
+        /// replay time. Resolve it ONCE per render pass and hold it for the
+        /// whole pass, or two `Now` slots in one tree can disagree.
+        ///
+        /// The ISO-8601 instant form is deliberate: `Fuaran.Core`'s
+        /// `DateDiffDays` reads the leading `YYYY-MM-DD`, so a day-delta against
+        /// `Now` composes with **zero** Core change, while the retained time
+        /// component leaves finer-grained verbs (relative minutes) possible later
+        /// without re-cutting the wire.
+        ///
+        /// Default is the empty string — "this host furnishes no clock" — which
+        /// resolves `NotResolved`, so the node shows its `onLoading`/placeholder
+        /// surface. That is deliberately LOUD: a host that forgets to supply the
+        /// instant must not silently render a plausible wrong date.
+        Now: string
     }
 
 /// The empty `BindingSources` — useful for tests and for the renderer
@@ -133,7 +154,8 @@ let empty: BindingSources =
       I18n = Map.empty
       I18nResolver = passthroughI18nResolver
       Locale = ""
-      CapabilityInvoker = (fun _ _ -> Fuaran.UI.Types.Deferred.Pending) }
+      CapabilityInvoker = (fun _ _ -> Fuaran.UI.Types.Deferred.Pending)
+      Now = "" }
 
 /// Resolution result.  Renderer code treats `NotResolved` as the trigger for
 /// the `OnLoading` state behaviour; `Resolved` flows into the component body;
@@ -226,6 +248,11 @@ let rec private objOfJValBinding (b: Binding<JVal>) : Binding<obj> =
         Binding.Selection(nodeId, accessor, dv |> Option.map box, fld)
     | Binding.State(key, dv) -> Binding.State(key, dv |> Option.map box)
     | Binding.Computed f -> Binding.Computed(f >> box)
+    // Phase 765 — the JVal-typed accessor is bypassed here for the same
+    // reason `Selection`'s is: the host furnishes a RAW string, not a
+    // `JVal`, so resolving at `JVal` would unbox-cast a primitive to a
+    // union (a throw on .NET, a silent mismatch under Fable erasure).
+    | Binding.Now _ -> Binding.Now id
     | Binding.I18n(key, args) -> Binding.I18n(key, args)
     | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
         Binding.Local(
@@ -326,6 +353,21 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
             match defaultValue with
             | Some d -> Resolved d
             | None -> Resolved Unchecked.defaultof<'T>
+    | Binding.Now accessor ->
+        // Phase 765 — the host-furnished instant. The clock is NOT read here:
+        // `sources.Now` was resolved once, host-side, for the whole render pass,
+        // which is what makes a replayed op-stream reproduce its original render
+        // instead of drifting to replay-time "now".
+        //
+        // An unset instant is `NotResolved`, so the node shows its
+        // `onLoading`/placeholder surface. That is deliberately loud — a host
+        // that forgets to furnish the clock must not silently render a
+        // plausible wrong date, which is exactly the failure the models were
+        // producing by hardcoding one.
+        if System.String.IsNullOrEmpty sources.Now then
+            NotResolved
+        else
+            Resolved(accessor (box sources.Now))
     | Binding.Computed f ->
         // Phase 137: hand the closure a context with typed read access to the
         // live module-state bag. `sources.State` is authoritative (the same map

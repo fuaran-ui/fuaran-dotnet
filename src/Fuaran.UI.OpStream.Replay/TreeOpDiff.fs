@@ -177,6 +177,7 @@ module TreeOpDiff =
             Binding.Selection(id, accessor >> boxNN, dv |> Option.map boxNN, fld)
         | Binding.State(key, defaultValue) -> Binding.State(key, defaultValue |> Option.map boxNN)
         | Binding.Computed f -> Binding.Computed(f >> boxNN)
+        | Binding.Now accessor -> Binding.Now(accessor >> boxNN)
         | Binding.I18n(key, args) -> Binding.I18n(key, args)
         | Binding.Local(flushOn, format, initialFrom, onCommit, parse) ->
             Binding.Local(

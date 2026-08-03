@@ -177,6 +177,11 @@ let all: Classification list =
       sv "Binding.Filter"
       pt "Binding.Selection" None // nodeId survives; the accessor decodes to an identity projection
       sv "Binding.State"
+      // Phase 765 — there are no wire fields to lose (`{"$type":"Now"}` is the
+      // whole form); only the accessor closure erases, exactly as Query's and
+      // Selection's do. The VALUE is host-furnished at resolve time by design,
+      // not something the wire was supposed to carry.
+      pt "Binding.Now" None
       ho
           "Binding.Computed"
           (Some

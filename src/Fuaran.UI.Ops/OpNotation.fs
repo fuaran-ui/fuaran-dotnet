@@ -178,6 +178,8 @@ let rec private bindingTextWith<'T> (staticText: 'T -> string) (b: Binding<'T>) 
         | Some x -> "static " + staticText x
         | None -> "static none"
     | Binding.Query(name, _, dependsOn) -> "$query." + name + depsSuffix dependsOn
+    // Phase 765 — no name, no key: the host furnishes one instant per render.
+    | Binding.Now _ -> "$now"
     | Binding.Filter(name, _) -> "$filter." + name
     | Binding.Selection(nodeId, _, _, field) ->
         "$selection."

@@ -2188,6 +2188,97 @@ let masterDetailPreselectedSecondRow: Node<obj> =
 //     post-click);
 //   - a Badge count over the same data (`filter` → `groupBy(keys: [],
 //     aggs: [one count])` — the global-aggregate terminal; empty ⇒ 0).
+// Phase 765 — the host-furnished instant, in BOTH the positions the demand
+// evidence asked for:
+//
+//   - `today-fact`   — `Now` straight into a text slot ("the current date in a
+//                      header", the pilot-5 row dispositioned "the strongest
+//                      new capability demand"; models hardcoded a date and were
+//                      judged PARTIAL because nothing else was expressible).
+//   - `overdue-grid` — `Now` as a `Transform` PARAM feeding `dateDiffDays`, so
+//                      "days overdue" is derived rather than baked. This is the
+//                      leg that proves the composition: the verbs already
+//                      shipped (Core's `DateDiffDays` reads the leading
+//                      `YYYY-MM-DD`, so the ISO-8601 instant works unchanged) —
+//                      only the operand was missing.
+//
+// No clock appears on the wire: `{"$type":"Now"}` has no fields. The host
+// resolves it once per render into `BindingSources.Now`, which is what keeps a
+// replayed op-stream reproducing its ORIGINAL render instead of drifting to
+// replay-time "now".
+let nowEnvironmentBinding: Node<obj> =
+    let source =
+        Fuaran.Core.Embedded
+            { Schema = [ "id", Fuaran.Core.StringType; "due", Fuaran.Core.StringType ]
+              Columns =
+                [ Fuaran.Core.Column.create
+                      "id"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "INV-1001"; Fuaran.Core.Str "INV-1002" ]
+                  Fuaran.Core.Column.create
+                      "due"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "2026-07-01"; Fuaran.Core.Str "2026-07-28" ] ] }
+
+    let fieldCol (label: string) (field: string) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    node
+        "now-environment-binding"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = None
+              Children =
+                [ node
+                      "today-fact"
+                      (NodeKind.Fact(
+                          { Label = TextSource.Literal "Today"
+                            Value = TextSource.Bound(Binding.Now(fun (o: obj) -> unbox<string> o))
+                            Icon = None
+                            Tone = ToneVariant.Default
+                            Emphasis = false
+                            Help = None }
+                      ))
+                      None
+                  node
+                      "overdue-grid"
+                      (NodeKind.DataGrid(
+                          { Source =
+                              Binding.Transform(
+                                  source,
+                                  // days overdue = dateDiffDays(today, due) — the
+                                  // param is the ONLY new part; the verb is Core's.
+                                  [ Fuaran.Core.Derive(
+                                        "daysOverdue",
+                                        Fuaran.Core.ApplyFn(
+                                            Fuaran.Core.DateDiffDays,
+                                            [ Fuaran.Core.Param "today"; Fuaran.Core.Col "due" ]
+                                        )
+                                    ) ],
+                                  Some
+                                      [ { From = Binding.Now(fun (o: obj) -> JStr(unbox<string> o))
+                                          Name = "today" } ]
+                              )
+                            RowKey = None
+                            RowKeyField = Some "id"
+                            Columns =
+                              [ fieldCol "Invoice" "id"
+                                fieldCol "Due" "due"
+                                fieldCol "Days overdue" "daysOverdue" ]
+                            OnRowClick = None
+                            Editable = false
+                            StaticRows = None }
+                      ))
+                      None ] }
+        ))
+        None
+
 let scalarTransformComposition: Node<obj> =
     let source =
         Fuaran.Core.Embedded
@@ -3016,6 +3107,8 @@ let allNodes: (string * Node<obj>) list =
       masterDetailMultiField
       "Layout/Box (Phase 632 — Transform in scalar slots: selected-row Callout body + Badge count)",
       scalarTransformComposition
+      "Binding/Now (Phase 765 — the host-furnished instant: a text slot + a Transform param feeding dateDiffDays)",
+      nowEnvironmentBinding
       "Display/Metric (Phase 283 — Binding.Invoke capability source)", metricInvoke
       "Input/Button (Phase 283 — Action.Invoke capability effect)", buttonInvoke
       "Visualisation/Chart", chart

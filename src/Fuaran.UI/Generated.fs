@@ -189,6 +189,7 @@ and [<RequireQualifiedAccess>] Binding<'T> =
     | Selection of nodeId: string * accessor: (obj -> 'T) * defaultValue: 'T option * field: string option
     | State of key: string * defaultValue: 'T option
     | Computed of fn: (obj -> 'T)
+    | Now of accessor: (obj -> 'T)
     | Local of flushOn: LocalFlushTrigger * format: ('T -> string) * initialFrom: Binding<'T> * onCommit: ('T -> obj) option * parse: (string -> Result<'T, string>)
     | Format of source: Binding<float> * format: Format * locale: LocaleSource
     | I18n of key: string * args: Map<string, Binding<JVal>> option
@@ -1121,6 +1122,7 @@ and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     | Binding.Selection (nodeId, accessor, defaultValue, field) -> Canon.typed "Selection" ([ Some("nodeId", JStr nodeId); None; (defaultValue |> Option.map (fun v -> "defaultValue", encT v)); (field |> Option.map (fun v -> "field", JStr v)) ] |> List.choose id)
     | Binding.State (key, defaultValue) -> Canon.typed "State" ([ Some("key", JStr key); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
     | Binding.Computed fn -> Canon.typed "Computed" [ "fn", JStr "<closure>" ]
+    | Binding.Now accessor -> Canon.typed "Now" []
     | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>") ] |> List.choose id)
     | Binding.Format (source, format, locale) -> Canon.typed "Format" [ "source", (encBinding JFloat) source; "format", encFormat format; "locale", encLocaleSource locale ]
     | Binding.I18n (key, args) -> Canon.typed "I18n" ([ Some("key", JStr key); (args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (encBinding id) v))) v)) ] |> List.choose id)
@@ -1843,6 +1845,9 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
         | "Computed" ->
             Ok ((fun _ -> Unchecked.defaultof<'T>)) |> Result.bind (fun fn ->
             Ok(Binding.Computed(fn)))
+        | "Now" ->
+            Ok ((fun _ -> Unchecked.defaultof<'T>)) |> Result.bind (fun accessor ->
+            Ok(Binding.Now(accessor)))
         | "Local" ->
             dReq "flushOn" __fs decLocalFlushTrigger |> Result.bind (fun flushOn ->
             Ok ((fun _ -> "")) |> Result.bind (fun format ->

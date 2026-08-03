@@ -121,6 +121,7 @@ let bindingExpression (binding: Binding<'T>) : string * string =
     | Binding.Selection(raw, _, _, _) -> "Selection", sprintf "$selection.%s" raw
     | Binding.State(key, _) -> "State", sprintf "$state.%s" key
     | Binding.Computed _ -> "Computed", "$computed"
+    | Binding.Now _ -> "Computed", "$now"
     | Binding.I18n(key, _) -> "I18n", sprintf "$i18n.%s" key
     | Binding.Local _ -> "Computed", "$local"
     | Binding.Format _ -> "Computed", "$format"

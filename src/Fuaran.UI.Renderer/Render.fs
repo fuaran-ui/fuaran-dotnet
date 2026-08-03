@@ -870,6 +870,9 @@ type KeyChannel =
 /// binding's source + pipeline are static `Fuaran.Core` data (no `State`/`Filter` reader inside).
 let rec keysOfBinding<'T> (channel: KeyChannel) (binding: Binding<'T>) : string list =
     match binding with
+    // Phase 765 — `Now` is furnished once per render pass and reads no state
+    // key or filter, so it opens no reactive channel.
+    | Binding.Now _ -> []
     | Binding.State(key, _) ->
         match channel with
         | StateChannel -> [ key ]

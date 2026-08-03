@@ -1413,6 +1413,14 @@ and private bindingGeneric<'T>
             | Ok "Computed" ->
                 // Encoder writes the fn as `<closure>`; decode to a placeholder.
                 Ok(Binding.Computed(fun _ -> placeholder))
+            | Ok "Now" ->
+                // Phase 765 — the host-furnished current instant. No wire fields:
+                // the VALUE is supplied by the runtime at resolve time (the `Query`
+                // precedent), never carried on the wire, so a tree stays a pure
+                // value and a replayed op-stream re-supplies the recorded instant
+                // rather than re-reading a clock. The accessor decodes to a
+                // placeholder exactly as `Computed`'s does.
+                Ok(Binding.Now(fun _ -> placeholder))
             | Ok "I18n" ->
                 match requireField path fields "key" "i18n key string" with
                 | Error e -> Error e
