@@ -662,6 +662,10 @@ let fewShot =
       // overdue"), not as the feature name, per the Phase 750 convention.
       // Phase 766 — worded as the observed intent (a start/stop switch), not as
       // the kind name.
+      // Phase 767 — the observed intent verbatim ("empty state ... and a button"),
+      // which is what the failing emissions received.
+      "empty-state-card",
+      "An empty state for a Saved Searches section: a heading saying none are saved yet, a short line explaining that saved searches appear here, and a Browse jobs button — as one unified panel."
       "form-toggle",
       "A settings form for an irrigation controller: a switch to start and stop the irrigation, and a required tick-box to accept the terms."
       "now-environment-binding",

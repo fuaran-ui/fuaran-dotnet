@@ -1257,6 +1257,53 @@ let formDeclarative: Node<obj> =
 
 /// Phase 596 — the symmetric-auto-bind minimal form: every field's value IS
 /// the exact auto-binding `State(field.Id, typed placeholder)`, so the
+// Phase 767 — the CANONICAL empty state with a call to action, authored to
+// settle a question rather than to add vocabulary.
+//
+// 020/c4 (MUST, x2) failed on "the parts read as a single unified empty-state
+// element, not three disconnected pieces". The emissions put a `Callout` and a
+// `Button` side by side inside a Card `Box`, and the judge was right about the
+// render: a Callout carries its OWN chrome, so nesting one inside a Card gives a
+// bordered region inside a bordered region with the button outside the inner
+// border — two elements, visually.
+//
+// The fix is NOT a `Callout.actions` field or an `EmptyState` kind. `Box` with
+// `role: "Card"` already carries `heading` + `children`, so ONE bordered region
+// holding heading, prose and action is expressible today — which is exactly the
+// vocabulary charter's §1.2 irreducibility gate ("a shape no combination of
+// existing kinds, roles and variants can express"). This composition is that
+// combination. A `Callout` is the right kind for a *banner* — a message with no
+// action; it is the wrong kind for an actionable empty state.
+let emptyStateCard: Node<obj> =
+    node
+        "empty-state-card"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Card
+              Heading = Some(TextSource.Literal "No saved searches yet")
+              Children =
+                [ node
+                      "empty-state-note"
+                      (NodeKind.Markdown(
+                          { Text =
+                              TextSource.Literal
+                                  "Searches you save will appear here so you can re-run them with one click." }
+                      ))
+                      None
+                  node
+                      "empty-state-cta"
+                      (NodeKind.Button(
+                          { Label = TextSource.Literal "Browse jobs"
+                            OnClick = Action.Chain []
+                            Variant = ButtonVariant.Primary
+                            Icon = Some "search"
+                            Tooltip = Option.None
+                            Disabled = Option.None }
+                      ))
+                      None ] }
+        ))
+        None
+
 // Phase 766 — the boolean TOGGLE affordance, beside a Checkbox so the corpus
 // records the distinction the vocabulary now draws. Same data (a bool, the same
 // write-back), different control and a11y contract: the toggle renders
@@ -3149,6 +3196,8 @@ let allNodes: (string * Node<obj>) list =
       masterDetailPreselected
       "Layout/Box (master-detail — Selection defaultValue naming a NON-FIRST row: prune-vs-seed is observable)",
       masterDetailPreselectedSecondRow
+      "Layout/Box (Phase 767 — the canonical empty state with a CTA: one Card region, no nested Callout)",
+      emptyStateCard
       "Layout/Box (master-detail — ONE selection feeding N slots, each projecting a DIFFERENT field)",
       masterDetailMultiField
       "Layout/Box (Phase 632 — Transform in scalar slots: selected-row Callout body + Badge count)",

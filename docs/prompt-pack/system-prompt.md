@@ -1740,6 +1740,62 @@ reject with `UNKNOWN_DU_CASE`. A filter chip's control IS a `FormFieldKind` case
 control vocabulary for forms and filter strips: a choice chip is `Choice`, a segmented
 chip is `SegmentedChoice`, a search/text chip is `Text`, a numeric range chip is `Range`.
 
+### Empty states and other actionable messages — a Card `Box`, not a `Callout`
+
+`Callout` is a **banner**: a message with no action. It carries its own chrome
+(border + tone), and it has **no `children` and no action slot** — a `Button` cannot go
+inside one.
+
+So when the prompt wants a message *plus* a button — an empty state, a
+"nothing here yet" panel, an upgrade prompt — do **not** put a `Callout` and a `Button`
+side by side. That renders a bordered region inside a bordered region with the button
+outside the inner border: two elements, not one. Use a `Box` with `role: "Card"`, which
+carries its own `heading` and holds every part as a child:
+
+<!-- fuaran:example fixture=empty-state-card -->
+```json
+{
+  "id": "empty-state-card",
+  "kind": {
+    "$type": "Box",
+    "children": [
+      {
+        "id": "empty-state-note",
+        "kind": {
+          "$type": "Markdown",
+          "text": "Searches you save will appear here so you can re-run them with one click."
+        }
+      },
+      {
+        "id": "empty-state-cta",
+        "kind": {
+          "$type": "Button",
+          "icon": "search",
+          "label": "Browse jobs",
+          "onClick": {
+            "$type": "Chain",
+            "ops": []
+          },
+          "variant": "Primary"
+        }
+      }
+    ],
+    "heading": "No saved searches yet",
+    "layout": {
+      "$type": "Flex",
+      "direction": "Vertical",
+      "wrap": false
+    },
+    "role": "Card"
+  }
+}
+```
+<!-- /fuaran:example -->
+
+One bordered region; heading, prose and action all inside it. Reach for `Callout` when
+the message is purely informational, and for a Card `Box` the moment an action belongs
+with it — **even if the prompt says "callout"**, which describes the intent, not the kind.
+
 ### On/off controls — `Toggle` is the switch, `Checkbox` is the tick
 
 A prompt asking for a **switch**, a **toggle**, an **on/off** control, or a start/stop
