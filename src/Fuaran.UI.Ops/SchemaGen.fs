@@ -393,6 +393,7 @@ let private defs: (string * J) list =
                   "max", number
                   "step", number ]
             duCase "Checkbox" [] [ "onToggle", closure; "value", ref "Binding" ]
+            duCase "Toggle" [] [ "onToggle", closure; "value", ref "Binding" ]
             duCase "Choice" [ "options" ] [ "onChange", closure; "options", ref "Binding"; "value", ref "Binding" ]
             duCase
                 "RangedNumber"

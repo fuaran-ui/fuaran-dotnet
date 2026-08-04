@@ -233,6 +233,7 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                 | FormFieldKind.RangedNumber _
                 | FormFieldKind.Range _
                 | FormFieldKind.Checkbox _
+                | FormFieldKind.Toggle _
                 | FormFieldKind.Date _
                 // Phase 725 — a DateRange handler takes the (from, to) pair,
                 // not the single chosen string this resolution carries.

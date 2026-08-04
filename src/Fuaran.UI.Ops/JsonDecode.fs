@@ -505,6 +505,11 @@ let knownFormFieldKinds =
     [ "Text"
       "Number"
       "Checkbox"
+      // Phase 766 — the switch affordance. Listing it here is what makes the
+      // UNKNOWN_DU_CASE hint name it, which is the model-facing half: the
+      // pilot-4 census recorded models reaching for `Toggle` x3 when it did not
+      // exist, so the spelling was already the one the intent produces.
+      "Toggle"
       "Choice"
       "Range"
       "RangedNumber"
@@ -3158,6 +3163,11 @@ let private decodeFormFieldKind
         | Ok "Checkbox" ->
             valueOr decodeBindingBool (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) "Binding<bool> value"
             |> Result.map (fun value -> FormFieldKind.Checkbox(value, handlerOpt "onToggle"))
+        // Phase 766 — same payload as Checkbox; the DIFFERENCE is presentation
+        // and the a11y contract (role="switch"), not the data.
+        | Ok "Toggle" ->
+            valueOr decodeBindingBool (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) "Binding<bool> value"
+            |> Result.map (fun value -> FormFieldKind.Toggle(value, handlerOpt "onToggle"))
         | Ok "Choice" ->
             let optionsR =
                 requireField path fields "options" "Binding<SelectOption list>"

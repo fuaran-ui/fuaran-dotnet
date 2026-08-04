@@ -584,6 +584,15 @@ module FormFieldKind =
     let checkboxDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> =
         FormFieldKind.Checkbox(Some value, None)
 
+    /// Handler-free `Toggle` — the on/off SWITCH affordance (Phase 766). Same
+    /// boolean data and write-back as `checkbox`; what differs is the rendered
+    /// control and its a11y contract (`role="switch"` + `aria-checked`, which a
+    /// screen reader announces as on/off rather than checked).
+    ///
+    /// Reach for it when the prompt says switch / toggle / on-off / start-stop;
+    /// reach for `checkbox` for consent, opt-in and multi-select list items.
+    let toggleDeclarative (value: Binding<bool>) : FormFieldKind<'Msg> = FormFieldKind.Toggle(Some value, None)
+
     /// Handler-free `Choice` — writes the chosen option (string option) back to
     /// the value slot; a cleared choice clears the slot.
     let choiceDeclarative (options: Binding<SelectOption list>) (value: Binding<string>) : FormFieldKind<'Msg> =

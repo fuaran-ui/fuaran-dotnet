@@ -123,6 +123,9 @@ let all: Classification list =
       pt "FormFieldKind.Text" writeBack
       pt "FormFieldKind.Number" writeBack
       pt "FormFieldKind.Checkbox" writeBack
+      // Phase 766 — the switch affordance; identical survivability to Checkbox
+      // (the bool value survives, the onToggle closure erases).
+      pt "FormFieldKind.Toggle" writeBack
       pt "FormFieldKind.Choice" writeBack
       pt "FormFieldKind.TextArea" writeBack
       pt "FormFieldKind.RangedNumber" writeBack

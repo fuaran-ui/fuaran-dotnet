@@ -660,6 +660,10 @@ let fewShot =
       // taught in one pack file; it was never a few-shot exemplar.
       // Phase 765 — worded as the observed intent ("as of today", "how many days
       // overdue"), not as the feature name, per the Phase 750 convention.
+      // Phase 766 — worded as the observed intent (a start/stop switch), not as
+      // the kind name.
+      "form-toggle",
+      "A settings form for an irrigation controller: a switch to start and stop the irrigation, and a required tick-box to accept the terms."
       "now-environment-binding",
       "An invoice aging panel: show today's date, and a table of invoices with how many days overdue each one is as of today."
       "progress-1",

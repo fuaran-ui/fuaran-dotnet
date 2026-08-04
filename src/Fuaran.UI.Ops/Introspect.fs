@@ -664,6 +664,8 @@ let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
             FormFieldKind.Number(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.number) value, oc)
         | FormFieldKind.Checkbox(value, ot) ->
             FormFieldKind.Checkbox(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) value, ot)
+        | FormFieldKind.Toggle(value, ot) ->
+            FormFieldKind.Toggle(collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox) value, ot)
         | FormFieldKind.Choice(options, value, oc) ->
             FormFieldKind.Choice(options, collapse Fuaran.UI.Defaults.ControlValueDefaults.choice value, oc)
         | FormFieldKind.TextArea(value, oc, rows) ->
@@ -718,6 +720,7 @@ and private canonicalFilterItem (item: FilterSpec<'Msg>) : FilterSpec<'Msg> =
         | FormFieldKind.Text(value, oc) -> FormFieldKind.Text(collapse value, oc)
         | FormFieldKind.Number(value, oc) -> FormFieldKind.Number(collapse value, oc)
         | FormFieldKind.Checkbox(value, ot) -> FormFieldKind.Checkbox(collapse value, ot)
+        | FormFieldKind.Toggle(value, ot) -> FormFieldKind.Toggle(collapse value, ot)
         | FormFieldKind.Choice(options, value, oc) -> FormFieldKind.Choice(options, collapse value, oc)
         | FormFieldKind.TextArea(value, oc, rows) -> FormFieldKind.TextArea(collapse value, oc, rows)
         | FormFieldKind.RangedNumber(value, oc, mn, mx, st) ->

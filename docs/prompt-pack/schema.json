@@ -1202,6 +1202,23 @@
           "type": "object",
           "properties": {
             "$type": {
+              "const": "Toggle"
+            },
+            "onToggle": {
+              "const": "<closure>"
+            },
+            "value": {
+              "$ref": "#/$defs/Binding"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
               "const": "Choice"
             },
             "onChange": {

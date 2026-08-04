@@ -1704,7 +1704,7 @@ Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` 
 - `CellValue.$type`: `Numeric(value)` · `Text(value)` · `Bool(value)` · `Date(unixSeconds)` · `Empty`
 - `ColumnWidth.$type`: `Auto` · `Fixed(pixels)` · `Flex(weight)`
 - `CurveCommand.$type`: `MoveTo(to)` · `LineTo(to)` · `CubicTo(control1, control2, to)` · `QuadraticTo(control, to)` · `Close`
-- `FormFieldKind.$type`: `Text` · `Number` · `Range` · `Checkbox` · `Choice(options)` · `RangedNumber` · `SegmentedChoice(options, orientation)` · `TextArea(rows)` · `Date(variant)` · `DateRange(variant)`
+- `FormFieldKind.$type`: `Text` · `Number` · `Range` · `Checkbox` · `Toggle` · `Choice(options)` · `RangedNumber` · `SegmentedChoice(options, orientation)` · `TextArea(rows)` · `Date(variant)` · `DateRange(variant)`
 - `Format.$type`: `Number` · `Currency(isoCode)` · `Percent` · `Date(dateStyle)` · `RelativeTime(unit)`
 - `FragmentArg.$type`: `Int(value)` · `Float(value)` · `Bool(value)` · `Str(value)` · `SlotArg(tree)`
 - `HoleDecl.$type`: `Value(name, space)` · `Slot(name)` · `Repeat(countSpace, name)`
@@ -1739,6 +1739,60 @@ Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` 
 reject with `UNKNOWN_DU_CASE`. A filter chip's control IS a `FormFieldKind` case — one
 control vocabulary for forms and filter strips: a choice chip is `Choice`, a segmented
 chip is `SegmentedChoice`, a search/text chip is `Text`, a numeric range chip is `Range`.
+
+### On/off controls — `Toggle` is the switch, `Checkbox` is the tick
+
+A prompt asking for a **switch**, a **toggle**, an **on/off** control, or a start/stop
+control wants **`Toggle`**. A `Select` with "On"/"Off" options is not a switch, and a
+`Checkbox` is a tick-box: both are marked down for the wrong affordance even though the
+data is the same boolean.
+
+Decision rule: **is the control a setting the user flips, or a statement the user
+agrees to?** A setting is a `Toggle` — irrigation running, notifications enabled, dark
+mode. A statement is a `Checkbox` — accepting terms, opting in, ticking items in a list.
+
+<!-- fuaran:example fixture=form-toggle -->
+```json
+{
+  "id": "form-toggle",
+  "kind": {
+    "$type": "Form",
+    "fields": [
+      {
+        "id": "irrigation-running",
+        "kind": {
+          "$type": "Toggle"
+        },
+        "label": "Irrigation",
+        "required": false
+      },
+      {
+        "id": "accept-terms",
+        "kind": {
+          "$type": "Checkbox"
+        },
+        "label": "I accept the terms",
+        "required": true
+      }
+    ],
+    "onSubmit": {
+      "$type": "Chain",
+      "ops": []
+    },
+    "submitLabel": "Save"
+  }
+}
+```
+<!-- /fuaran:example -->
+
+Both fields above carry the same `Binding<bool>` and the same write-back; only the
+control differs. `Toggle` renders `role="switch"` with `aria-checked`, which a screen
+reader announces as on/off.
+
+**Note the name.** `Toggle` is a `FormFieldKind` — a CONTROL. `Switch` is a different
+thing entirely: the state-bound **conditional** node kind that picks a child by a state
+key. Reaching for `"$type": "Switch"` when you want an on/off control emits a
+conditional with no cases.
 
 ## Style vocabularies — density & prominence, not font styling
 

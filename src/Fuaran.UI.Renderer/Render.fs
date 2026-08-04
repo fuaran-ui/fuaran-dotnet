@@ -960,6 +960,7 @@ let private keysOfFormFieldKind<'Msg>
     | FormFieldKind.Text(v, _) -> keysOfValue v
     | FormFieldKind.Number(v, _) -> keysOfValue v
     | FormFieldKind.Checkbox(v, _) -> keysOfValue v
+    | FormFieldKind.Toggle(v, _) -> keysOfValue v
     | FormFieldKind.TextArea(v, _, _) -> keysOfValue v
     | FormFieldKind.RangedNumber(v, _, _, _, _) -> keysOfValue v
     | FormFieldKind.Range(v, _, _, _, _) -> keysOfValue v
@@ -3018,6 +3019,30 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.id field.Id
                   prop.isChecked current
                   prop.onChange (fun (b: bool) -> handle onToggle value (Some(box b)) b) ]
+        // Phase 766 — the toggle/switch affordance. Same DATA as Checkbox (a
+        // boolean, the same write-back path); different PRESENTATION and, the
+        // part that matters, a different a11y contract: `role="switch"` with
+        // `aria-checked`, which is what a screen reader announces as "on/off"
+        // rather than "checked". Built on a native checkbox input so keyboard
+        // operation (Space) and focus come for free — an ARIA role on a
+        // non-interactive element would have to reimplement both, and that is
+        // the usual way a hand-rolled switch becomes unusable.
+        | FormFieldKind.Toggle(value, onToggle) ->
+            let value =
+                value
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
+
+            Html.input
+                [ prop.className "fuaran-form-toggle"
+                  prop.type'.checkbox
+                  prop.role "switch"
+                  prop.ariaChecked current
+                  prop.id field.Id
+                  prop.isChecked current
+                  prop.onChange (fun (b: bool) -> handle onToggle value (Some(box b)) b) ]
         | FormFieldKind.Choice(options, value, onChange) ->
             let value =
                 value
@@ -3418,6 +3443,21 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
             Html.input
                 [ prop.className "fuaran-filter-checkbox"
                   prop.type'.checkbox
+                  prop.isChecked current
+                  prop.onChange (fun (v: bool) -> handleBool onToggle v) ]
+        // Phase 766 — the filter-chip twin of the form toggle; same boolean
+        // filter write-back, switch semantics for the screen reader.
+        | FormFieldKind.Toggle(value, onToggle) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
+
+            Html.input
+                [ prop.className "fuaran-filter-toggle"
+                  prop.type'.checkbox
+                  prop.role "switch"
+                  prop.ariaChecked current
                   prop.isChecked current
                   prop.onChange (fun (v: bool) -> handleBool onToggle v) ]
         | FormFieldKind.TextArea(value, onChange, rows) ->

@@ -566,6 +566,7 @@ let private validateCore
                  | FormFieldKind.Text(value, oc) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Number(value, oc) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Checkbox(value, ot) -> recordWriteBack value ot.IsNone
+                 | FormFieldKind.Toggle(value, ot) -> recordWriteBack value ot.IsNone
                  | FormFieldKind.Choice(_, value, oc) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.TextArea(value, oc, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.RangedNumber(value, oc, _, _, _) -> recordWriteBack value oc.IsNone
@@ -586,6 +587,7 @@ let private validateCore
                     | FormFieldKind.Text(value, oc) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.Number(value, oc) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.Checkbox(value, ot) -> ot.IsNone && not (valueLive value)
+                    | FormFieldKind.Toggle(value, ot) -> ot.IsNone && not (valueLive value)
                     | FormFieldKind.Choice(_, value, oc) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.TextArea(value, oc, _) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.RangedNumber(value, oc, _, _, _) -> oc.IsNone && not (valueLive value)

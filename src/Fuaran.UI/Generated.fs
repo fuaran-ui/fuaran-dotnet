@@ -248,6 +248,7 @@ and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | Text of value: Binding<string> option * onChange: (string -> Action<'Msg>) option
     | Number of value: Binding<float> option * onChange: (float -> Action<'Msg>) option
     | Checkbox of value: Binding<bool> option * onToggle: (bool -> Action<'Msg>) option
+    | Toggle of value: Binding<bool> option * onToggle: (bool -> Action<'Msg>) option
     | Choice of options: Binding<SelectOption list> * value: Binding<string> option * onChange: (string option -> Action<'Msg>) option
     | TextArea of value: Binding<string> option * onChange: (string -> Action<'Msg>) option * rows: int
     | RangedNumber of value: Binding<float> option * onChange: (float -> Action<'Msg>) option * min: float option * max: float option * step: float option
@@ -1189,6 +1190,7 @@ and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     | FormFieldKind.Text (value, onChange) -> Canon.typed "Text" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
     | FormFieldKind.Number (value, onChange) -> Canon.typed "Number" ([ (value |> Option.map (fun v -> "value", (encBinding JFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
     | FormFieldKind.Checkbox (value, onToggle) -> Canon.typed "Checkbox" ([ (value |> Option.map (fun v -> "value", (encBinding JBool) v)); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Toggle (value, onToggle) -> Canon.typed "Toggle" ([ (value |> Option.map (fun v -> "value", (encBinding JBool) v)); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
     | FormFieldKind.Choice (options, value, onChange) -> Canon.typed "Choice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
     | FormFieldKind.TextArea (value, onChange, rows) -> Canon.typed "TextArea" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("rows", JInt rows) ] |> List.choose id)
     | FormFieldKind.RangedNumber (value, onChange, min, max, step) -> Canon.typed "RangedNumber" ([ (value |> Option.map (fun v -> "value", (encBinding JFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", JFloat v)); (max |> Option.map (fun v -> "max", JFloat v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
@@ -2052,6 +2054,10 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, string> =
             dOpt "value" __fs (decBinding dBool) |> Result.bind (fun value ->
             (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
             Ok(FormFieldKind.Checkbox(value, onToggle))))
+        | "Toggle" ->
+            dOpt "value" __fs (decBinding dBool) |> Result.bind (fun value ->
+            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
+            Ok(FormFieldKind.Toggle(value, onToggle))))
         | "Choice" ->
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->

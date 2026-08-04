@@ -150,6 +150,7 @@ let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: Fo
     | FormFieldKind.Text(v, _) -> usesOfValueSlot v
     | FormFieldKind.Number(v, _) -> usesOfValueSlot v
     | FormFieldKind.Checkbox(v, _) -> usesOfValueSlot v
+    | FormFieldKind.Toggle(v, _) -> usesOfValueSlot v
     | FormFieldKind.TextArea(v, _, _) -> usesOfValueSlot v
     | FormFieldKind.RangedNumber(v, _, _, _, _) -> usesOfValueSlot v
     | FormFieldKind.Range(v, _, _, _, _) -> usesOfValueSlot v

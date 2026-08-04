@@ -144,6 +144,8 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.Checkbox(v, ot) ->
                         handler nodeId (slot "onToggle") ot.IsSome (isWritableOpt v) "$state"
+                    | FormFieldKind.Toggle(v, ot) ->
+                        handler nodeId (slot "onToggle") ot.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.Choice(_, v, oc) ->
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.TextArea(v, oc, _) ->
@@ -181,6 +183,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         | FormFieldKind.Text(_, oc) -> oc.IsSome
                         | FormFieldKind.Number(_, oc) -> oc.IsSome
                         | FormFieldKind.Checkbox(_, ot) -> ot.IsSome
+                        | FormFieldKind.Toggle(_, ot) -> ot.IsSome
                         | FormFieldKind.Choice(_, _, oc) -> oc.IsSome
                         | FormFieldKind.TextArea(_, oc, _) -> oc.IsSome
                         | FormFieldKind.RangedNumber(_, oc, _, _, _) -> oc.IsSome

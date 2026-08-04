@@ -231,6 +231,7 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
             | FormFieldKind.RangedNumber(value, _, _, _, _) -> addOpt BindingSinkClass.Numeric value
             | FormFieldKind.Range(value, _, _, _, _) -> addOpt BindingSinkClass.Numeric value
             | FormFieldKind.Checkbox(value, _) -> addOpt BindingSinkClass.Boolean value
+            | FormFieldKind.Toggle(value, _) -> addOpt BindingSinkClass.Boolean value
             | FormFieldKind.Date(value, _, _, _, _, _) -> addOpt BindingSinkClass.Temporal value
             | FormFieldKind.DateRange(value, _, _, _, _, _) -> addOpt BindingSinkClass.Temporal value
             | FormFieldKind.Text(value, _) -> addOpt BindingSinkClass.Categorical value

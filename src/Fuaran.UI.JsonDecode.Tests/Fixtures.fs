@@ -1257,6 +1257,51 @@ let formDeclarative: Node<obj> =
 
 /// Phase 596 — the symmetric-auto-bind minimal form: every field's value IS
 /// the exact auto-binding `State(field.Id, typed placeholder)`, so the
+// Phase 766 — the boolean TOGGLE affordance, beside a Checkbox so the corpus
+// records the distinction the vocabulary now draws. Same data (a bool, the same
+// write-back), different control and a11y contract: the toggle renders
+// `role="switch"` + `aria-checked`, which a screen reader announces as on/off
+// rather than checked.
+//
+// The demand: 017/c2 x3 + 043/c3 x3 across two unrelated tasks, every sighting
+// substituting a `Select` or a `Checkbox` because no switch existed — the
+// `contains`/Core#90 fingerprint. `NodeKind.Switch` is the state-bound
+// CONDITIONAL and always was; the widget had no spelling until now.
+let formToggle: Node<obj> =
+    let toggleField: FormField<obj> =
+        { Id = "irrigation-running"
+          Label = TextSource.Literal "Irrigation"
+          Kind =
+            FormFieldKind.Toggle(
+                Some(Binding.State("irrigation-running", Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox)),
+                Option.None
+            )
+          Required = false
+          Help = None }
+
+    // The contrast case: consent stays a Checkbox. Both in one fixture so the
+    // corpus shows a reader WHEN each applies, not merely that both exist.
+    let consentField: FormField<obj> =
+        { Id = "accept-terms"
+          Label = TextSource.Literal "I accept the terms"
+          Kind =
+            FormFieldKind.Checkbox(
+                Some(Binding.State("accept-terms", Some Fuaran.UI.Defaults.ControlValueDefaults.checkbox)),
+                Option.None
+            )
+          Required = true
+          Help = None }
+
+    node
+        "form-toggle"
+        (NodeKind.Form(
+            { Fields = [ toggleField; consentField ]
+              OnSubmit = Action.Chain []
+              SubmitLabel = TextSource.Literal "Save"
+              Disabled = Option.None }
+        ))
+        None
+
 /// canonical bytes carry NO `value` key on any field (mirror of the
 /// filters-declarative minimal chip). Pins the round-trip: decode
 /// synthesises the same bindings back, encode omits them again.
@@ -3067,6 +3112,7 @@ let allNodes: (string * Node<obj>) list =
       "Layout/Modal (heading + child + onDismiss)", modal
       "Layout/ScrollArea (vertical, maxHeight)", scrollArea
       "Input/Form (all fields)", formAllFields
+      "Input/Form (Phase 766 — the Toggle switch affordance beside a Checkbox)", formToggle
       "Input/Form (RangedNumber — all/min-only/no bounds)", formRangedNumber
       "Input/Form (Local-bound text, OnBlur)", formLocalText
       "Input/Form (Local-bound text, OnDebounce 250)", formLocalDebounce

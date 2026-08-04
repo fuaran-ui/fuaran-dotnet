@@ -1276,6 +1276,7 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
              |> Option.defaultValue "")
         | FormFieldKind.Range _ -> "range", ""
         | FormFieldKind.Checkbox _ -> "checkbox", ""
+        | FormFieldKind.Toggle _ -> "toggle", ""
         | FormFieldKind.TextArea(v, _, _) ->
             let v =
                 v
@@ -1397,6 +1398,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
         | FormFieldKind.Text _
         | FormFieldKind.TextArea _ -> "text"
         | FormFieldKind.Range _ -> "range"
+        | FormFieldKind.Toggle _ -> "toggle"
         | FormFieldKind.Choice _ -> "choice"
         | FormFieldKind.SegmentedChoice _ -> "segmented"
         | FormFieldKind.Number _
@@ -1447,6 +1449,24 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
             Html.input
                 [ prop.className "fuaran-filter-checkbox"
                   prop.custom ("type", "checkbox")
+                  prop.custom ("data-filter-name", spec.Name)
+                  if current then
+                      prop.custom ("checked", "checked") ]
+        // Phase 766 — the SSR twin. The `role`/`aria-checked` pair must appear
+        // in the SERVER HTML too: a switch that only becomes a switch after
+        // hydration is announced wrongly on first paint, and for a static
+        // (never-hydrated) render it would never be announced at all.
+        | FormFieldKind.Toggle(value, _) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue false
+
+            Html.input
+                [ prop.className "fuaran-filter-toggle"
+                  prop.custom ("type", "checkbox")
+                  prop.custom ("role", "switch")
+                  prop.custom ("aria-checked", (if current then "true" else "false"))
                   prop.custom ("data-filter-name", spec.Name)
                   if current then
                       prop.custom ("checked", "checked") ]
