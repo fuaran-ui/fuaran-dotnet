@@ -2731,11 +2731,97 @@ let errorBoundary: Node<obj> =
 // "default":<node>, "stateKey":<string> }`; the decoder reverses it to
 // `NodeKind.Switch { StateKey = …; Cases = …; Default = … }`. Two cases + a
 // distinct default exercise the case-array round-trip and the fallback leg.
+// Phase 768 — the Switch selector widened to any Binding: `on` takes a
+// Selection, so the branch FOLLOWS THE CLICKED ROW with no writer at all.
+//
+// This is the 032/c6 shape done right. The failing emissions wired a Switch to
+// a stateKey nothing emittable could write (SetState.value is a literal; a
+// grid's onRowClick is a host closure) — the models had the right intent
+// against a dead end. Moving the READ side is what closes it: the selector
+// resolves the selected row's `status` field (defaulted pre-click per the
+// Phase 629 law), and first-match-wins picks the branch.
+//
+// The State form keeps its compact `stateKey` spelling on the wire — this
+// fixture is the `on` spelling's coverage; `switch-1` pins the compact form.
+let switchOnSelection: Node<obj> =
+    let source =
+        Fuaran.Core.Embedded
+            { Schema = [ "id", Fuaran.Core.StringType; "status", Fuaran.Core.StringType ]
+              Columns =
+                [ Fuaran.Core.Column.create
+                      "id"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "WARD-A"; Fuaran.Core.Str "WARD-B" ]
+                  Fuaran.Core.Column.create
+                      "status"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "steady"; Fuaran.Core.Str "critical" ] ] }
+
+    let fieldCol (label: string) (field: string) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    node
+        "switch-on-selection"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = None
+              Children =
+                [ node
+                      "ward-grid"
+                      (NodeKind.DataGrid(
+                          { Source = Binding.Transform(source, [], None)
+                            RowKey = None
+                            RowKeyField = Some "id"
+                            Columns = [ fieldCol "Ward" "id"; fieldCol "Status" "status" ]
+                            OnRowClick = None
+                            Editable = false
+                            StaticRows = None }
+                      ))
+                      None
+                  node
+                      "ward-status-panel"
+                      (NodeKind.Switch(
+                          { On =
+                              Binding.Selection(
+                                  "ward-grid",
+                                  Binding.projectSelectionField<string> "status",
+                                  Some "steady",
+                                  Some "status"
+                              )
+                            Cases =
+                              [ { Match = "critical"
+                                  Child =
+                                    node
+                                        "ward-critical"
+                                        (NodeKind.Callout(
+                                            { Tone = ToneVariant.Critical
+                                              Heading = Some(TextSource.Literal "Ward at capacity")
+                                              Body = TextSource.Literal "Escalate admissions to the on-call manager."
+                                              Icon = None
+                                              Dismissable = false }
+                                        ))
+                                        None } ]
+                            Default =
+                              node
+                                  "ward-steady"
+                                  (NodeKind.Markdown({ Text = TextSource.Literal "Occupancy within normal range." }))
+                                  None }
+                      ))
+                      None ] }
+        ))
+        None
+
 let switchBasic: Node<obj> =
     node
         "switch-1"
         (NodeKind.Switch
-            { StateKey = "view"
+            { On = Binding.State("view", None)
               Cases =
                 [ { Match = "details"
                     Child = node "switch-details" (NodeKind.Markdown({ Text = TextSource.Literal "Details view" })) None }
@@ -3216,6 +3302,8 @@ let allNodes: (string * Node<obj>) list =
       "Custom (bounded escape, AdvisoryWarning hash + no exposed-ids)", customBoundedAdvisory
       "ErrorBoundary (Markdown child + Callout fallback)", errorBoundary
       "Switch (view state → details/summary cases + info default)", switchBasic
+      "Meta/Switch (Phase 768 — the selector widened: `on` takes a Selection, the branch follows the clicked row)",
+      switchOnSelection
       "FragmentDecl (named template with Markdown body)", fragmentDecl
       "FragmentRef (name-only wire shape)", fragmentRef
       "FragmentDecl (parameterised — value/slot/repeat holes + effect class)", fragmentDeclParam

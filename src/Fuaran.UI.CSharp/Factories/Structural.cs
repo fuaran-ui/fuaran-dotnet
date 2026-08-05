@@ -91,7 +91,13 @@ public static partial class Fuaran
                 Fs.List((options.Cases ?? Enumerable.Empty<SwitchCase>())
                     .Select(c => new FsGen.SwitchCase<object>(c.Child.Inner, c.Match))),
                 options.Default.Inner,
-                options.StateKey)));
+                // Phase 768 — the F# selector is now any Binding; the C#
+                // authoring surface keeps the compact StateKey string and wraps
+                // it in the State form here, which the encoder collapses back to
+                // the `stateKey` wire spelling. Byte-identical output.
+                FsGen.Binding<string>.NewState(
+                    options.StateKey,
+                    Microsoft.FSharp.Core.FSharpOption<string>.None))));
 }
 
 /// <summary>Options for <see cref="Fuaran.Custom"/>.</summary>

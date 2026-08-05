@@ -54,7 +54,7 @@ let private inStateSlot = leaf "hidden-in-state-slot"
 let private switchNode: Node<Msg> =
     Fuaran.switch
         "mode-switch"
-        { StateKey = "mode"
+        { On = Binding.State("mode", None)
           Cases =
             [ { Match = "compact"
                 Child = inSwitchCase } ]

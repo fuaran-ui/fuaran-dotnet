@@ -1425,7 +1425,9 @@ and private bindingGeneric<'T>
                 // value and a replayed op-stream re-supplies the recorded instant
                 // rather than re-reading a clock. The accessor decodes to a
                 // placeholder exactly as `Computed`'s does.
-                Ok(Binding.Now(fun _ -> placeholder))
+                // Identity, not a placeholder (the 427 Selection fix replayed):
+                // the instant is already the wire-shaped string.
+                Ok(Binding.Now(fun (raw: obj) -> unbox raw))
             | Ok "I18n" ->
                 match requireField path fields "key" "i18n key string" with
                 | Error e -> Error e
@@ -4817,9 +4819,17 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
             // first-match-wins keeps decode structural; the validator
             // (FUARAN082) flags them, mirroring FragmentDecl name-collision
             // handling (§WIRE_FORMAT decoder is structural, six codes only).
+            // Phase 768 — the selector is `on` (any Binding) or the compact
+            // `stateKey` (the State form's canonical spelling). Both absent
+            // keeps the stateKey MISSING_FIELD, so the existing reject
+            // fixture's error is byte-identical.
             let stateKeyR =
-                requireField path fields "stateKey" "Switch stateKey string"
-                |> Result.bind (requireString (path + ".stateKey"))
+                match tryField fields "on" with
+                | Some onJ -> decodeBindingString (path + ".on") onJ
+                | None ->
+                    requireField path fields "stateKey" "Switch stateKey string"
+                    |> Result.bind (requireString (path + ".stateKey"))
+                    |> Result.map (fun key -> Binding.State(key, None))
 
             let casesR =
                 match requireField path fields "cases" "Switch cases array" with
@@ -4853,10 +4863,10 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                 |> Result.bind (decodeNodeAst (path + ".default"))
 
             match stateKeyR, casesR, defaultR with
-            | Ok stateKey, Ok cases, Ok defaultNode ->
+            | Ok on, Ok cases, Ok defaultNode ->
                 Ok(
                     NodeKind.Switch
-                        { StateKey = stateKey
+                        { On = on
                           Cases = cases
                           Default = defaultNode }
                 )

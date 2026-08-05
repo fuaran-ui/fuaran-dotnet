@@ -701,10 +701,13 @@ let private validateCore
         | NodeKind.Switch spec ->
             let nodeIdStr = n.Id
 
-            // FUARAN083 (Phase 392): an empty state key is ungrounded — the
-            // switch can never resolve a case, so it is stuck on `default`.
-            if spec.StateKey = "" then
-                defects.Add(PreEmitDefect.UngroundedSwitchStateKey nodeIdStr)
+            // FUARAN083 (Phase 392, widened by Phase 768): an empty-key State
+            // selector is ungrounded — the switch can never resolve a case, so
+            // it is stuck on `default`. Any other Binding is grounded by
+            // construction (a Selection/Filter/Query names its source).
+            match spec.On with
+            | Binding.State("", _) -> defects.Add(PreEmitDefect.UngroundedSwitchStateKey nodeIdStr)
+            | _ -> ()
 
             // FUARAN082 (Phase 392): duplicate `match` values make the later
             // case dead (first-match-wins). Report each duplicated value once.

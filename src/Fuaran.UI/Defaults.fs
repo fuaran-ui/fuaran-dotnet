@@ -432,7 +432,9 @@ let errorBoundary<'Msg> : ErrorBoundarySpec<'Msg> =
 // only the `Default` child (a valid degenerate). FUARAN082 flags duplicate
 // match values at validate time.
 let switch<'Msg> : SwitchSpec<'Msg> =
-    { StateKey = ""
+    // Phase 768 — the default selector is the empty-key State form, so the
+    // FUARAN083 "ungrounded switch" validator still fires on an unedited default.
+    { On = Binding.State("", None)
       Cases = []
       Default = errorBoundaryPlaceholder<'Msg> }
 

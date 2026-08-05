@@ -260,7 +260,7 @@ let tests =
                   Fuaran.switch
                       "sw"
                       { Defaults.switch<Msg> with
-                          StateKey = "view"
+                          On = Binding.State("view", None)
                           Cases =
                               [ { Match = "a"
                                   Child = markdown "c1" "one" }
@@ -305,7 +305,7 @@ let tests =
                   Fuaran.switch
                       "sw"
                       { Defaults.switch<Msg> with
-                          StateKey = "view"
+                          On = Binding.State("view", None)
                           Cases =
                               [ { Match = "details"
                                   Child = markdown "c1" "one" }

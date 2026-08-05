@@ -1114,7 +1114,24 @@ and private renderKind
         // the same initial state (the StateStore seeded identically), so server
         // and client emit the same tree shape → hydration is mismatch-free
         // (docs/SSR.md); after hydration a client `SetState` re-selects a case.
-        let currentValue = Map.tryFind spec.StateKey ctx.Sources.State
+        // Phase 768 — the selector is any Binding. The State form keeps the
+        // host-seeded map read (hydration-parity path, unchanged); other
+        // bindings resolve through the standard resolver, so an SSR switch on a
+        // pre-seeded Selection/Filter renders the same branch the client will.
+        let currentValue: obj option =
+            match spec.On with
+            | Binding.State(key, dv) ->
+                match Map.tryFind key ctx.Sources.State with
+                | Some v -> Some v
+                | None -> dv |> Option.map box
+            | Binding.Selection(nodeId, _, dv, fld) ->
+                let projector: obj -> obj =
+                    match fld with
+                    | Some f -> Binding.projectSelectionField<obj> f
+                    | None -> id
+
+                BindingResolver.tryResolve ctx.Sources (Binding.Selection(nodeId, projector, dv |> Option.map box, fld))
+            | on -> BindingResolver.tryResolve ctx.Sources on |> Option.map box
 
         let matched =
             match currentValue with

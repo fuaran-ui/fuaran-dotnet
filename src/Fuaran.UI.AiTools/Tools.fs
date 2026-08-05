@@ -503,7 +503,17 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
         // NodeId so AI introspection can read "what does this switch key off,
         // and what can it show?". The case/default subtrees are addressable via
         // the console tree-walker; these entries are the scalar peek.
-        [ valueEntry "StateKey" spec.StateKey
+        // Phase 768 — the selector is any Binding; surface the State key
+        // verbatim (the common case, name unchanged for tool consumers) and a
+        // coarse tag for the rest.
+        [ (match spec.On with
+           | Binding.State(key, _) -> valueEntry "StateKey" key
+           | Binding.Selection(nodeId, _, _, field) ->
+               valueEntry
+                   "On"
+                   (sprintf "$selection.%s%s" nodeId (field |> Option.map (sprintf ".%s") |> Option.defaultValue ""))
+           | Binding.Filter(name, _) -> valueEntry "On" (sprintf "$filter.%s" name)
+           | _ -> valueEntry "On" "$binding")
           valueEntry "MatchValues" (spec.Cases |> List.map _.Match |> String.concat ", ")
           valueEntry "DefaultNodeId" spec.Default.Id ]
     | NodeKind.FragmentDecl spec ->

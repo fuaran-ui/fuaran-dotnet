@@ -219,7 +219,13 @@ let buildRequiredFieldsTable () =
             let kind =
                 parts.[0].GetProperty("properties").GetProperty("$type").GetProperty("const").GetString()
 
-            Some(kind, fieldsOf (resolveRef (parts.[1].GetProperty("$ref").GetString())))
+            // Two allOf shapes exist: the hoisted-spec form (`[$type-const; $ref]`,
+            // resolve the ref) and the inline-record-plus-constraint form
+            // (Phase 768's Switch: `[record; anyOf]` — the record IS parts[0],
+            // and the trailing constraint carries no field definitions).
+            match parts.[1].TryGetProperty "$ref" with
+            | true, r -> Some(kind, fieldsOf (resolveRef (r.GetString())))
+            | _ -> Some(kind, fieldsOf parts.[0])
         | _ ->
             match case.TryGetProperty "properties" with
             | true, props ->
@@ -318,7 +324,12 @@ let buildEnumVocabTable () =
                 let kind =
                     parts.[0].GetProperty("properties").GetProperty("$type").GetProperty("const").GetString()
 
-                Some(kind, resolveRef (parts.[1].GetProperty("$ref").GetString()))
+                // Same two allOf shapes as `caseEntry` above: hoisted-spec
+                // (resolve the ref) vs inline-record-plus-constraint (Phase 768's
+                // Switch — the record IS parts[0]).
+                match parts.[1].TryGetProperty "$ref" with
+                | true, r -> Some(kind, resolveRef (r.GetString()))
+                | _ -> Some(kind, parts.[0])
             | _ ->
                 match case.TryGetProperty "properties" with
                 | true, props ->
@@ -664,6 +675,10 @@ let fewShot =
       // the kind name.
       // Phase 767 — the observed intent verbatim ("empty state ... and a button"),
       // which is what the failing emissions received.
+      // Phase 768 — worded as the observed intent (the 032/c6 shape: a panel that
+      // follows the selected ward), not as the feature name.
+      "switch-on-selection",
+      "A ward dashboard: a grid of wards, and a status panel that changes with the selected ward — a critical ward shows an escalation callout, otherwise a normal-range note."
       "empty-state-card",
       "An empty state for a Saved Searches section: a heading saying none are saved yet, a short line explaining that saved searches appear here, and a Browse jobs button — as one unified panel."
       "form-toggle",

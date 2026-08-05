@@ -176,7 +176,7 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
               Fallback = mapMsg f spec.Fallback }
     | NodeKind.Switch spec ->
         NodeKind.Switch
-            { StateKey = spec.StateKey
+            { On = spec.On
               Cases =
                 spec.Cases
                 |> List.map (fun c ->

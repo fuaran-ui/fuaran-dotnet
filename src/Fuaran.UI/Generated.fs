@@ -824,7 +824,13 @@ and SwitchSpec<'Msg> =
     {
       Cases: SwitchCase<'Msg> list
       Default: Node<'Msg>
-      StateKey: string
+      // Phase 768 — the branch SELECTOR is any Binding, not only a StateStore
+      // key: `on: {"$type":"Selection",…}` lets the branch follow the clicked
+      // row with no writer at all, which is what closes 032/c6 (the failing
+      // emissions wired a Switch to a stateKey nothing emittable could write).
+      // The state form keeps its compact spelling on the wire — see the
+      // encoder's collapse rule.
+      On: Binding<string>
     }
 
 // Meta
@@ -1447,7 +1453,7 @@ and private encFragmentRefSpec<'Msg> (s: FragmentRefSpec<'Msg>) : JVal =
     Canon.typed "FragmentRef" ([ Some("name", JStr s.Name); (s.Args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)) ] |> List.choose id)
 
 and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =
-    Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); Some("stateKey", JStr s.StateKey) ] |> List.choose id)
+    Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some("stateKey", JStr key) | on -> Some("on", (encBinding JStr) on)) ] |> List.choose id)
 
 and private encMountSpec<'Msg> (s: MountSpec<'Msg>) : JVal =
     Canon.typed "Mount" ([ Some("capabilities", JArr(List.map JStr s.Capabilities)); Some("channel", encGuestChannel s.Channel); (s.Inputs |> Option.map (fun v -> "inputs", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)); (s.OnBubble |> Option.map (fun v -> "onBubble", JStr "<closure>")); Some("scopeId", JStr s.ScopeId) ] |> List.choose id)
@@ -1848,7 +1854,11 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             Ok ((fun _ -> Unchecked.defaultof<'T>)) |> Result.bind (fun fn ->
             Ok(Binding.Computed(fn)))
         | "Now" ->
-            Ok ((fun _ -> Unchecked.defaultof<'T>)) |> Result.bind (fun accessor ->
+            // Identity accessor (the Phase 427 Selection fix replayed): the
+            // host-furnished instant is already the wire-shaped string, so a
+            // decoded reader receives it as-is; a value-discarding placeholder
+            // would make every decoded `Now` resolve to nothing.
+            Ok ((fun (raw: obj) -> unbox raw)) |> Result.bind (fun accessor ->
             Ok(Binding.Now(accessor)))
         | "Local" ->
             dReq "flushOn" __fs decLocalFlushTrigger |> Result.bind (fun flushOn ->
@@ -2804,8 +2814,14 @@ and private decSwitchSpec (j: JVal) : Result<SwitchSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "cases" __fs (dList decSwitchCase) |> Result.bind (fun cases ->
     dReq "default" __fs decNode |> Result.bind (fun ``default`` ->
-    dReq "stateKey" __fs dStr |> Result.bind (fun stateKey ->
-    Ok { Cases = cases; Default = ``default``; StateKey = stateKey }))))
+    // Phase 768 — `on` (any Binding) or the compact `stateKey` (State form).
+    // When both are absent the stateKey requirement carries the MISSING_FIELD,
+    // keeping the existing reject fixture's error byte-identical.
+    (match dOpt "on" __fs (decBinding dStr) with
+     | Ok (Some on) -> Ok on
+     | Ok None -> dReq "stateKey" __fs dStr |> Result.map (fun key -> Binding.State(key, None))
+     | Error e -> Error e) |> Result.bind (fun on ->
+    Ok { Cases = cases; Default = ``default``; On = on }))))
 
 and private decMountSpec (j: JVal) : Result<MountSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3018,7 +3034,7 @@ let mkFragmentRef (id: string) (name: string) : Node<'Msg> =
     { Id = id; Kind = NodeKind.FragmentRef { Name = name; Args = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; StateKey = stateKey }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None) }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkMount (id: string) (capabilities: string list) (channel: GuestChannel) (scopeId: string) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Mount { Capabilities = capabilities; Channel = channel; Inputs = None; OnBubble = None; ScopeId = scopeId }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

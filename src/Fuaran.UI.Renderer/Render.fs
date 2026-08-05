@@ -1122,10 +1122,11 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
         // it, so a global `Action.SetState` re-renders and Switch re-selects the
         // matching case. Off the state channel the key contributes nothing. The
         // case children + default recurse for their own reactive keys.
-        let ownKeys =
-            match channel with
-            | StateChannel -> [ spec.StateKey ]
-            | _ -> []
+        // Phase 768 — the selector is any Binding, so the reactive walk defers
+        // to keysOfBinding: a State selector still subscribes its key on the
+        // state channel (the Phase 392 behaviour, unchanged), and a Filter
+        // selector now subscribes its name on the filter channel.
+        let ownKeys = keysOfBinding channel spec.On
 
         ownKeys, (spec.Cases |> List.map _.Child) @ [ spec.Default ]
     | NodeKind.FragmentDecl spec -> [], [ spec.Body ]
@@ -2246,16 +2247,44 @@ let rec private renderKind
         // `Default`. The surface is subscribed to `spec.StateKey` via
         // `kindKeys`/`collectKeys`, so a global `Action.SetState` re-renders here
         // and re-selects the matching case with no bespoke dispatch path (FGP 3).
-        let currentValue =
-            match ctx.Scope with
-            | Some scopeId -> (StateStore.forScope scopeId).Get spec.StateKey
-            | None -> StateStore.get spec.StateKey
+        let currentValue: string option =
+            match spec.On with
+            | Binding.State(key, dv) ->
+                // The Phase 392 path, preserved verbatim: a State selector reads
+                // the SCOPED StateStore (BindingResolver has no scope concept),
+                // so fragment-expanded switches keep their per-scope state. A
+                // 768-form defaultValue seeds the un-written key, mirroring the
+                // Filter/Selection default law.
+                let raw =
+                    match ctx.Scope with
+                    | Some scopeId -> (StateStore.forScope scopeId).Get key
+                    | None -> StateStore.get key
+
+                match raw with
+                | Some v -> Some(if isNull v then "" else string v)
+                | None -> dv
+            | Binding.Selection(nodeId, _, dv, fld) ->
+                // Phase 768 — the driving case (032/c6): the branch follows the
+                // clicked row with NO writer. The decoded accessor is the
+                // identity, so project the raw row's field here exactly as the
+                // resolver's JVal path does — unboxing a whole row at string
+                // would throw.
+                let projector: obj -> obj =
+                    match fld with
+                    | Some f -> Binding.projectSelectionField<obj> f
+                    | None -> id
+
+                BindingResolver.tryResolve ctx.Sources (Binding.Selection(nodeId, projector, dv |> Option.map box, fld))
+                |> Option.map (fun v -> if isNull v then "" else string v)
+            | on ->
+                // Filter / Static / Query / Now selectors resolve through the
+                // standard resolver at the string slot type.
+                BindingResolver.tryResolve ctx.Sources on
+                |> Option.map (fun s -> if isNull (box s) then "" else s)
 
         let matched =
             match currentValue with
-            | Some v ->
-                let valueStr = if isNull v then "" else string v
-
+            | Some valueStr ->
                 spec.Cases
                 |> List.tryPick (fun c -> if c.Match = valueStr then Some c.Child else None)
             | None -> None

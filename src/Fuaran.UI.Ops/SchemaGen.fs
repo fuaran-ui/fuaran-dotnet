@@ -987,14 +987,27 @@ let private defs: (string * J) list =
                   "contentHash", ref "ContentHash"
                   "exposedNodeIds", arrayOf str ]
             duCase "ErrorBoundary" [ "child"; "fallback" ] [ "child", ref "Node"; "fallback", ref "Node" ]
-            // State-bound conditional child (Phase 392). `cases` is an array of
-            // `{child,match}` objects; `default` a Node; `stateKey` a string.
-            duCase
-                "Switch"
-                [ "cases"; "default"; "stateKey" ]
-                [ "cases", arrayOf (record [ "child"; "match" ] [ "child", ref "Node"; "match", str ])
-                  "default", ref "Node"
-                  "stateKey", str ]
+            // Binding-driven conditional child (Phase 392; selector widened by
+            // Phase 768). The selector is `on` (any Binding) OR the compact
+            // `stateKey` (the State form's canonical spelling) — exactly one is
+            // required, expressed as an `anyOf` over the two `required` lists so
+            // the both-absent reject fixture still fails the schema, keeping the
+            // schema an honest mirror of the decoder's MISSING_FIELD.
+            JObj
+                [ "allOf",
+                  JArr
+                      [ duCase
+                            "Switch"
+                            [ "cases"; "default" ]
+                            [ "cases", arrayOf (record [ "child"; "match" ] [ "child", ref "Node"; "match", str ])
+                              "default", ref "Node"
+                              "stateKey", str
+                              "on", ref "Binding" ]
+                        JObj
+                            [ "anyOf",
+                              JArr
+                                  [ JObj [ "required", JArr [ JStr "stateKey" ] ]
+                                    JObj [ "required", JArr [ JStr "on" ] ] ] ] ] ]
             duCase
                 "FragmentDecl"
                 [ "body"; "name" ]

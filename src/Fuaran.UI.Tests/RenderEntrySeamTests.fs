@@ -146,7 +146,7 @@ let private switchOverScopedKey (stateKey: string) : Node<obj> =
     mkNode
         "res-switch"
         (NodeKind.Switch
-            { StateKey = stateKey
+            { On = Binding.State(stateKey, None)
               Cases =
                 [ { Match = "boom"
                     Child = mountNode "res-boom-mount" throwingScope None } ]

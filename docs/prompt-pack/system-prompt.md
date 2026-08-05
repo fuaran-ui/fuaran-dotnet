@@ -342,7 +342,7 @@ Getting this boundary wrong is the single most common emission error.
 | Visualisation `Map` | `centreLatitude`, `centreLongitude`, `source†`, `zoom` | `onMarkerClick` |
 | Structural `Custom` | `componentId`, `moduleId`, `props` | `contentHash`, `exposedNodeIds` |
 | Structural `ErrorBoundary` | `child`, `fallback` | — |
-| Structural `Switch` | `cases`, `default`, `stateKey` | — |
+| Structural `Switch` | `cases`, `default` | `on†`, `stateKey` |
 | Structural `FragmentDecl` | `body`, `name` | `effect`, `holes` |
 | Structural `FragmentRef` | `name` | `args` |
 | Structural `Mount` | `capabilities`, `channel`, `onBubble`, `scopeId` | `inputs` |
@@ -1739,6 +1739,133 @@ Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` 
 reject with `UNKNOWN_DU_CASE`. A filter chip's control IS a `FormFieldKind` case — one
 control vocabulary for forms and filter strips: a choice chip is `Choice`, a segmented
 chip is `SegmentedChoice`, a search/text chip is `Text`, a numeric range chip is `Range`.
+
+### Conditional rendering — `Switch` branches on any binding
+
+`Switch` picks ONE child by a selector value (first `match` wins; `default`
+otherwise). The selector is the **`on`** field and takes any binding — so a panel can
+follow the **selected row of a grid with no state wiring at all**:
+
+<!-- fuaran:example fixture=switch-on-selection -->
+```json
+{
+  "id": "switch-on-selection",
+  "kind": {
+    "$type": "Box",
+    "children": [
+      {
+        "id": "ward-grid",
+        "kind": {
+          "$type": "DataGrid",
+          "columns": [
+            {
+              "field": "id",
+              "kind": {
+                "$type": "Text"
+              },
+              "label": "Ward"
+            },
+            {
+              "field": "status",
+              "kind": {
+                "$type": "Text"
+              },
+              "label": "Status"
+            }
+          ],
+          "rowKeyField": "id",
+          "source": {
+            "$type": "Transform",
+            "pipeline": [],
+            "source": {
+              "columns": {
+                "id": {
+                  "validity": [
+                    true,
+                    true
+                  ],
+                  "values": [
+                    "WARD-A",
+                    "WARD-B"
+                  ]
+                },
+                "status": {
+                  "validity": [
+                    true,
+                    true
+                  ],
+                  "values": [
+                    "steady",
+                    "critical"
+                  ]
+                }
+              },
+              "schema": [
+                {
+                  "name": "id",
+                  "type": "string"
+                },
+                {
+                  "name": "status",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "ward-status-panel",
+        "kind": {
+          "$type": "Switch",
+          "cases": [
+            {
+              "child": {
+                "id": "ward-critical",
+                "kind": {
+                  "$type": "Callout",
+                  "body": "Escalate admissions to the on-call manager.",
+                  "heading": "Ward at capacity",
+                  "tone": "Critical"
+                }
+              },
+              "match": "critical"
+            }
+          ],
+          "default": {
+            "id": "ward-steady",
+            "kind": {
+              "$type": "Markdown",
+              "text": "Occupancy within normal range."
+            }
+          },
+          "on": {
+            "$type": "Selection",
+            "defaultValue": "steady",
+            "field": "status",
+            "nodeId": "ward-grid"
+          }
+        }
+      }
+    ],
+    "layout": {
+      "$type": "Auto"
+    },
+    "role": "Dashboard"
+  }
+}
+```
+<!-- /fuaran:example -->
+
+The `Selection` selector reads the clicked row's `field` (defaulted before the first
+click via `defaultValue`), and the matching case renders. **Do not** wire a `Switch`
+to a `stateKey` that nothing writes — a `stateKey` selector only changes when
+something calls `SetState` with that key (a `Button` or a form's `onSubmit` can;
+a grid row-click cannot). For "show X when a row is selected", use `on` +
+`Selection`. The compact `"stateKey": "<key>"` spelling remains for state-driven
+switches — e.g. a post-submission confirmation: `onSubmit` runs
+`{ "$type": "SetState", "key": "submitted", "value": "yes" }` and a
+`Switch` with `"stateKey": "submitted"` shows the success panel.
 
 ### Empty states and other actionable messages — a Card `Box`, not a `Callout`
 
