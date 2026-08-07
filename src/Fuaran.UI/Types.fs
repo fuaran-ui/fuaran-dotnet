@@ -538,12 +538,21 @@ and FragmentRefSpec<'Msg> = Generated.FragmentRefSpec<'Msg>
 /// `CapabilityTag` wrapper survives below — wrap/unwrap at boundaries).
 and MountSpec<'Msg> = Generated.MountSpec<'Msg>
 
-/// The declared out-channel of a `Mount` (§4o.4). `Direction` bounds host↔guest coupling; the optional
-/// `MessageShape` names the guest's message shape for validation + the capability gate.
+/// The DECLARED out-channel of a `Mount` (§4o.4). `Direction` states which way messages may cross;
+/// the optional `MessageShape` names the guest's message shape for validation + the capability gate.
+/// "Declared" is load-bearing — see `ChannelDirection` below for what the renderer actually honours.
 and GuestChannel = Generated.GuestChannel
-/// `OutOnly` (the default, safe for untrusted guests) lets the guest bubble to the host but forbids the
-/// host pushing messages into the guest; `TwoWay` additionally permits host→guest push (which couples
-/// the two lifecycles — memo open Q2, resolved: OutOnly default, TwoWay opt-in per-mount).
+/// `OutOnly` lets the guest bubble to the host but forbids the host pushing messages into the guest;
+/// `TwoWay` additionally permits host→guest push (which couples the two lifecycles — memo open Q2,
+/// resolved: OutOnly default, TwoWay opt-in per-mount).
+///
+/// **This field is a REQUEST, not a grant (Phase 783).** `direction` is a required WIRE field, so a
+/// decoded tree writes whichever value it likes; `OutOnly` is only the default of the *authoring*
+/// smart constructor (`Fuaran.guestOutChannel`), which made the previous "OutOnly, the default, safe
+/// for untrusted guests" gloss true of hand-authored trees and false of wire ones. The renderer
+/// therefore CLAMPS every rendered mount to `OutOnly` and records the downgrade; `TwoWay` is granted
+/// host-side through `Render.GuestSeam.GrantTwoWay`, never by the tree declaring it. The codec still
+/// round-trips the declared value verbatim — the clamp is a render-time policy, not a wire narrowing.
 and ChannelDirection = Generated.ChannelDirection
 // Phase 694 — the `CapabilityTag` wrapper is DELETED: `MountSpec.Capabilities`
 // is a bare `string list` since the swap and nothing constructed or matched the
