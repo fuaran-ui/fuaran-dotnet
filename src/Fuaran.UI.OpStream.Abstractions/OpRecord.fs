@@ -19,9 +19,12 @@ open Fuaran.UI.Ops.Types
 //                        ++ Timestamp[n].ToUnixTimeSeconds().ToString()
 //                        ++ Actor.encode(Actor[n]))
 //      Hash[0]'s PreviousHash is HashChain.genesisPreviousHash (sixty-four '0' chars).
-//  The actor is now INSIDE the hash, so re-attributing an op breaks the chain —
-//  attribution is tamper-evident, not just recorded. (Pre-320 the actor lived
-//  outside the hash; see docs/migrations/12-Z-op-stream.md for the prior rule.)
+//  The actor is now INSIDE the hash, so re-attributing an op breaks the chain
+//  unless the chain is recomputed — attribution is covered by the digest, not
+//  merely stored beside it. (Pre-320 the actor lived outside the hash; see
+//  docs/migrations/12-Z-op-stream.md for the prior rule.) The chain is an
+//  UNKEYED digest, so this detects corruption and accidental re-attribution,
+//  NOT an editor who rewrites the records and re-chains them — see CRYPTO.md.
 // ============================================================================
 
 /// Who authored an op. The Human/Agent distinction is the load-bearing
@@ -182,7 +185,10 @@ type OpResultEnvelope =
 ///
 /// **Hash coverage (Phase 412 / A4).** Since Phase 406/411 the chain pre-image
 /// folds every field of a record EXCEPT `StreamId` — `Op`, `Sequence`, `Actor`,
-/// `Timestamp`, `PromptId`, `ResultEnvelope` are all tamper-evident. `StreamId`
+/// `Timestamp`, `PromptId`, `ResultEnvelope` are all covered by the digest, so a
+/// change to any of them is detected on verification (the chain is unkeyed, so
+/// that is corruption detection, not evidence against a writer who re-chains —
+/// see `CRYPTO.md`). `StreamId`
 /// is **deliberately outside the hash**: it is the sink's *partition key* — host
 /// naming, not provenance — so the same op history relocated under a new stream
 /// id (a guest rebase, a rename, a copy) stays a verifiable chain. This mirrors

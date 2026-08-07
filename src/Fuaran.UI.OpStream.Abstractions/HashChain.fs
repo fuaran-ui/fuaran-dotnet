@@ -22,6 +22,25 @@ open Fuaran.UI.Ops.Types
 //
 //  `genesisPreviousHash` — sixty-four '0' characters — anchors every stream's
 //  first record per the pinned algorithm in `docs/migrations/12-Z-op-stream.md`.
+//
+//  ── WHAT THE CHAIN PROVES, AND WHAT IT DOES NOT ────────────────────────────
+//  The chain is an UNKEYED content digest. `Verify.chain` therefore detects
+//  **accidental corruption, truncation and reordering** of a stored stream, and
+//  — relative to an anchor you already trust — substitution of one record for
+//  another. It is NOT tamper evidence: every input to every hash lives in the
+//  store beside the hash, so anyone who can write the store edits a record,
+//  recomputes the chain from that point, and verification passes. Using a
+//  stronger unkeyed hash would not change this; collision resistance stops a
+//  forged record sharing an EXISTING hash, not a writer who is free to change
+//  the hash too.
+//
+//  Detecting an edit by someone with write access needs a secret the writer does
+//  not have — a keyed MAC, or a signature over the chain head. That is the
+//  signing seam (Core's `IAttestationSink`, Phase 320), deliberately host-side
+//  so the key never enters this portable package; until a host wires it the
+//  property here is corruption detection. See `CRYPTO.md`, and keep every
+//  description of this chain — in docs, doc comments and error text — inside
+//  that boundary.
 // ============================================================================
 
 module HashChain =

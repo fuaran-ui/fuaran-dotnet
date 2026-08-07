@@ -316,7 +316,7 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
                         style.backgroundColor "var(--fuaran-tone-critical-background)"
                         style.color "var(--fuaran-tone-critical-foreground)" ]
                   prop.text
-                      "Chain integrity failed ✗ — refusing to render diff against tampered records. Surface from StepDiffsError.IntegrityFailed." ]
+                      "Chain integrity failed ✗ — refusing to render diff against corrupt records. Surface from StepDiffsError.IntegrityFailed." ]
 
     React.Fragment
         [ Render.themeStyleElement Defaults.theme

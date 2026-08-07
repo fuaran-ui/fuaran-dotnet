@@ -130,8 +130,9 @@ module ApplyPersist =
             // PersistContext keeps its bare-string UserId (host API unchanged);
             // lift it to a typed Human actor at the op-record boundary (Phase 320).
             let actor = Actor.ofLegacyString ctx.UserId
-            // Phase 406: promptId + resultEnvelope are folded into the chain hash
-            // (provenance is tamper-evident). v1 records only successful applies.
+            // Phase 406: promptId + resultEnvelope are folded into the chain hash,
+            // so provenance is covered by the digest (corruption detection — the
+            // chain is unkeyed; see CRYPTO.md). v1 records only successful applies.
             let resultEnvelope = OpResultEnvelope.Success
 
             let hash =

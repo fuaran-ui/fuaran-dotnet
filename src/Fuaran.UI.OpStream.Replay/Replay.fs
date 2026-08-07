@@ -20,7 +20,9 @@ open Fuaran.UI.OpStream.Abstractions
 //  Note: replay does NOT verify the hash chain. Use
 //  `Fuaran.UI.OpStream.Abstractions.Verify.chain` for that pass; the two
 //  concerns are orthogonal (replay drives the apply engine; hash-chain
-//  verification proves the stream itself wasn't tampered with).
+//  verification checks the stream was not corrupted, truncated or reordered
+//  in storage — the chain is unkeyed, so it says nothing about a writer who
+//  edited the records and re-chained them; see CRYPTO.md).
 // ============================================================================
 
 [<RequireQualifiedAccess>]

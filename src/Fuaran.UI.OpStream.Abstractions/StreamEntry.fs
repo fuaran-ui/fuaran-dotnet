@@ -19,8 +19,10 @@ open Fuaran.UI.Ops.Types
 //   1. Provenance hole — `PromptId` and `ResultEnvelope` were OUTSIDE the hash
 //      pre-image, so re-attributing an op to a different prompt or flipping a
 //      recorded `Failure` to `Success` did not break `Verify.chain`. They are
-//      now folded in (inside `encode`), so attribution AND outcome are
-//      tamper-evident.
+//      now folded in (inside `encode`), so attribution AND outcome are covered
+//      by the digest — an edit to either is detected on verification, provided
+//      the chain was not recomputed with it (the chain is UNKEYED: it detects
+//      corruption, not a writer who re-chains — see CRYPTO.md).
 //   2. Undelimited pre-image — the old formula concatenated `sequence` and the
 //      unix timestamp with no separator, so distinct `(seq, ts)` pairs could be
 //      byte-identical. Core's canonical payload is a delimited JSON object.
@@ -40,10 +42,11 @@ type StreamEntry<'Msg> =
 module StreamEntry =
 
     /// The chain FORMAT version, folded into the hash pre-image (the first field
-    /// of `encode`). It makes the chain format **self-describing and tamper-evident**:
-    /// a host can read `v` from any record's envelope before verifying and reject an
-    /// unrecognised version with a clear error (rather than a cryptic hash break), and
-    /// because it is inside the pre-image, a stream cannot be silently relabelled. Bump
+    /// of `encode`). It makes the chain format **self-describing, and covered by the
+    /// digest**: a host can read `v` from any record's envelope before verifying and
+    /// reject an unrecognised version with a clear error (rather than a cryptic hash
+    /// break), and because it is inside the pre-image, relabelling a stream's format
+    /// breaks verification unless the chain is recomputed with it. Bump
     /// this — in lock-step across every host (F#/TS/Python) and the `chain-corpus.json`
     /// golden — whenever the pre-image formula, the envelope shape, or the `HashFn`
     /// changes. History:

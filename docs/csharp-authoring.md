@@ -346,11 +346,18 @@ section); `Validate` is the runtime structural gate that complements it.
 
 ## 15. Op-streams and hash chains (`OpStreamChain`)
 
-Every applied op can be recorded in a **tamper-evident, hash-chained** log – the
-provenance substrate for an AI-driven session. `OpStreamChain` builds and
-verifies one entirely from C#: each `Append` computes the next record's SHA-256
-over the shared canonical pre-image (previous hash + op + sequence + timestamp +
-actor + prompt + outcome), and `Verify` delegates to the shared F# verifier.
+Every applied op can be recorded in a **hash-chained** log – the provenance
+substrate for an AI-driven session. `OpStreamChain` builds and verifies one
+entirely from C#: each `Append` computes the next record's SHA-256 over the
+shared canonical pre-image (previous hash + op + sequence + timestamp + actor +
+prompt + outcome), and `Verify` delegates to the shared F# verifier.
+
+**What verification proves.** The chain detects corruption, truncation and
+reordering of a stored stream. It is an *unkeyed* digest over data the store
+itself holds, so it is not evidence against someone who can write the store:
+they recompute the hashes and `Verify` passes. Evidence against a writer needs a
+key they do not have – see [`CRYPTO.md`](../CRYPTO.md) and the signing seam it
+describes.
 
 ```csharp
 var chain = new OpStreamChain("insights-stream");
@@ -365,8 +372,9 @@ if (!v.IsIntact) { Console.Error.WriteLine(v.Message); }
 ```
 
 The author is a `FuaranActor` – `Human(id)` or `Agent(model, version, id)` – and
-it is folded **into** the hash, so re-attributing an op breaks the chain
-(attribution is tamper-evident, not merely recorded). Because the pre-image is
+it is folded **into** the hash, so re-attributing an op breaks the chain unless
+the chain is recomputed with it (attribution is covered by the digest, not
+merely stored beside it). Because the pre-image is
 shared across hosts, a chain built here verifies on the F# or TS host and
 vice-versa; re-appending an identical op/actor/timestamp reproduces the identical
 hash.

@@ -19,15 +19,23 @@ Both live in `Fuaran.UI.Tests` (`CustomContractTests.fs`).
 
 ## What it is for — and NOT for
 
-- **For: integrity / tamper-evidence.** Content-addressing (a `Custom` body-shape hash; the op-stream
-  chain and op-DAG node hashes). With the **default** hash a chain is tamper-evident against accidental
-  corruption and reordering, **not** against a motivated adversary who recomputes the chain — see
-  `STABILITY.md` "Hash-chain integrity posture" (inherited from `Fuaran.Core`).
-- **NOT for: authentication or secrecy.** There is no HMAC, no keyed MAC, no signing, no encryption in
-  this package. Do not use `sha256Hex` to authenticate a message or store a secret. Adversarial
-  tamper-evidence is obtained by supplying a cryptographic `HashFn` at the host boundary and, for
-  attestation, wiring a signing sink (the `IAttestationSink` seam) whose key lives host-side (e.g.
-  KMS/HSM) — the crypto that needs a key stays out of this portable package by design.
+- **For: content-addressing and corruption detection.** A `Custom` body-shape hash; the op-stream
+  chain and op-DAG node hashes. The chain detects **accidental corruption, truncation and reordering**
+  of a stored stream, and — given an anchor you already trust — detects substitution of one record for
+  another.
+- **NOT for: tamper evidence, authentication, or secrecy.** There is no HMAC, no keyed MAC, no
+  signing, no encryption in this package. Do not use `sha256Hex` to authenticate a message or store a
+  secret.
+
+  **Being SHA-256 does not make the chain tamper-evident, and no stronger unkeyed hash would.** The
+  chain is a content digest computed from data the store itself holds, so anyone who can write the
+  store can recompute every hash after editing a record, and verification then passes. What
+  collision resistance buys is that an attacker cannot forge a *different* record with the *same*
+  hash — it does not stop one who is free to change the hash as well. Detecting an edit by someone
+  with write access needs a secret the writer does not have: a keyed MAC, or a signature over the
+  chain head. That is the `IAttestationSink` seam (Phase 320), whose key lives host-side (e.g.
+  KMS/HSM) — the crypto that needs a key stays out of this portable package by design, and until a
+  host wires it the property is corruption detection, not tamper evidence.
 
 ## Why one pure-F# implementation, not the BCL on .NET
 

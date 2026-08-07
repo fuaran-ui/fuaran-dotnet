@@ -56,7 +56,7 @@ let provenanceInDagHash =
               Expect.notEqual ok.Hash fail.Hash "flipping Success → Failure → different content id"
           }
 
-          test "recomputeHash catches a re-attributed node (DagVerify tamper-evidence)" {
+          test "recomputeHash catches a re-attributed node (DagVerify hash coverage)" {
               let op = TreeOp.RemoveNode rightChildId
               let r = DagOpRecord.create "s" [] op None "alice" (ts 1L) OpResultEnvelope.Success
               // Re-attribute WITHOUT re-hashing — the stored hash no longer recomputes.

@@ -492,7 +492,9 @@ module GuestImport =
             Records = records }
 
     /// Reconstruct the guest's state from the bundle alone: verify the hash
-    /// chain (tamper-evidence on arrival), then replay the op-stream over the
+    /// chain (catching a corrupt or truncated bundle on arrival — the chain is
+    /// unkeyed, so a bundle rewritten and re-chained by its sender verifies;
+    /// see `CRYPTO.md`), then replay the op-stream over the
     /// initial tree (Phase 177 posture — the op-stream is the source of
     /// truth, no snapshot trusted).
     let reconstruct (b: GuestExportBundle) : Result<Node<obj>, string> =

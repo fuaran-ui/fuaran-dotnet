@@ -235,7 +235,7 @@ Dim m2 = FuaranXml.Translate(<Metric id="cost" label="Cost" value="500" tone="De
 Dim result = Csharp.Fuaran.Apply(card, Csharp.Ops.InsertChild("insights", 1, m2))
 If result.IsOk Then Dim wire = result.Value.Encode()
 
-' Record ops in a tamper-evident hash chain.
+' Record ops in a hash chain (corruption detection - see CRYPTO.md).
 Dim chain = New Csharp.OpStreamChain("insights-stream")
 Dim actor = Csharp.FuaranActor.Agent("claude", "opus-4", "agent-1")
 chain.Append(Csharp.Ops.RemoveNode("cost"), actor)

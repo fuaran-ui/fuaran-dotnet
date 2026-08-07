@@ -26,9 +26,11 @@ security posture is documented explicitly:
   every string→DOM seam the renderer exposes (`href`/`src` scheme filtering, no
   `dangerouslySetInnerHTML` outside the documented seams, the Custom-renderer trust boundary).
   A render path that violates a declared guarantee there is a vulnerability we want to hear about.
-- **Cryptographic posture:** [`CRYPTO.md`](CRYPTO.md) declares which hashes are cryptographic and
-  which are integrity-only. A non-cryptographic default doing exactly what that document says is
-  by design, not a defect.
+- **Cryptographic posture:** [`CRYPTO.md`](CRYPTO.md) declares what the one shipped hash is for.
+  The op-stream chain detects corruption, truncation and reordering; it is **not** tamper evidence
+  against someone who can write the store, because an unkeyed digest is recomputable by whoever
+  edits the data. A hash doing exactly what that document says is by design, not a defect; a chain
+  described anywhere as proof against modification is a documentation defect we want to hear about.
 - **Wire decoding:** a decode path that admits malformed wire as valid, or parser resource
   exhaustion (unbounded depth or size), is in scope.
 - **Dispatch gating:** interactive dispatch is default-deny — a tree cannot invoke a host action

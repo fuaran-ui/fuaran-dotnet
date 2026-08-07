@@ -29,8 +29,11 @@ open Fuaran.UI.Ops.Types
 //  The inner form follows WIRE_FORMAT.md §2 (Ordinal-sorted keys, canonical
 //  floats, omit-when-empty); `tree` / `history` items are the standard
 //  canonical Node / TreeOp wire forms. `digest` is SHA-256 over the canonical
-//  envelope *without* the digest field, so any tamper — including a rewritten
-//  `chainHead` — fails verification as a typed error. Both encode and decode
+//  envelope *without* the digest field, so any change — including a rewritten
+//  `chainHead` — fails verification as a typed error, PROVIDED the digest was
+//  not recomputed with it. It is an unkeyed digest, so it catches corruption in
+//  transit, not a sender who assembles a bundle it prefers (CRYPTO.md). Both
+//  encode and decode
 //  assemble the digest preimage through the same `Fuaran.Core.Canon.render`
 //  path, so verification cannot drift from production.
 //

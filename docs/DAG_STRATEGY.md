@@ -44,7 +44,9 @@ vocabulary but keeps its own identity.** (Internally this is tracked as the "F15
 
 What *did* transfer regardless: the provenance-hardening applied to the linear chain (folding the
 prompt id / actor / result outcome into the content hash, and delimiting the pre-image) was applied to
-the UI DAG's node hash too – so a DAG node is as tamper-evident as a linear record.
+the UI DAG's node hash too – so a DAG node's digest covers exactly what a linear record's does.
+(What that digest is worth is the same in both cases: it detects corruption and reordering, and it is
+unkeyed, so it is not evidence against a writer who re-chains – see [`../CRYPTO.md`](../CRYPTO.md).)
 
 ## In short
 
