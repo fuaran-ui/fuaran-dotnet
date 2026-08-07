@@ -22,6 +22,11 @@
          so Types.fs can alias its vocabulary (type abbreviations over
          Fuaran.UI.Generated). Generated.fs depends only on Fuaran.Core. -->
     <Compile Include="HostPrelude.fs" />
+    <!-- Phase 781: the decode-side resource limits (max node depth / JSON depth /
+         string length / array length / node count) every walk in the stack is
+         bounded by. Literals only — depends on nothing, so it compiles first and
+         is visible to Ops, Renderer.Server and ServerDriven alike. -->
+    <Compile Include="WireLimits.fs" />
     <Compile Include="Generated.fs" />
     <Compile Include="Types.fs" />
     <!-- Phase 268: Node.mapMsg — exhaustive ('a -> 'b) -> Node<'a> -> Node<'b>

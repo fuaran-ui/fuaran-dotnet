@@ -221,6 +221,16 @@ type PreEmitDefect =
     /// `{"$type": "State", "key": …, "default": [rows]}` binding. Carries the
     /// grid node's id.
     | InertEditableGrid of nodeId: string
+    /// **FUARAN091 (Error)**. The tree nests nodes deeper than
+    /// `WireLimits.MaxDepth` (Phase 781; WIRE_FORMAT §21). Reported ONCE, at the
+    /// first node past the limit, carrying that node's id and the limit — the
+    /// walk stops descending there, so a single over-deep subtree does not bury
+    /// the rest of the report under thousands of identical entries.
+    ///
+    /// The point of the defect is what it replaces: before the bound, this walk
+    /// simply recursed until the process died of a `StackOverflowException`,
+    /// which .NET cannot catch, so no defect list of any kind came back.
+    | MaxDepthExceeded of nodeId: string * limit: int
 
 /// Render a defect as its stable (code, severity, message) triple — the ONE
 /// projection every consumer shares (the .NET validator oracle, certification
@@ -391,6 +401,13 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         sprintf
             "grid '%s' sets editable=true but its source is not a direct $state binding — edits have nowhere to go, every cell renders read-only; source the grid (and any chart that should track edits) from a shared {\"$type\":\"State\",\"key\":…,\"default\":[rows]} binding"
             nodeId
+    | PreEmitDefect.MaxDepthExceeded(nodeId, limit) ->
+        "FUARAN091",
+        DefectSeverity.Error,
+        sprintf
+            "node '%s' nests deeper than the wire limit MaxDepth = %d (WIRE_FORMAT §21) — the tree was not walked past this point; flatten the nesting"
+            nodeId
+            limit
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -427,7 +444,35 @@ let private validateCore
             | true, n -> nodeIdCounts[raw] <- n + 1
             | false, _ -> nodeIdCounts[raw] <- 1
 
+    // Phase 781 — the depth bound on this walk. `walkBody` below is the
+    // pre-existing recursion; `walk` is the counter around it, so the guard sits
+    // on every recursion site at once rather than on the forty-odd `List.iter
+    // walk` calls individually. Measured, this walk overflows the .NET default
+    // 1 MB stack at 294 levels in Release and 151 in Debug, so an unbounded tree
+    // took the process down with a `StackOverflowException` — uncatchable, hence
+    // no defect list, hence no "structured error, never an exception".
+    //
+    // A local mutable is the right shape here rather than a threaded parameter:
+    // `walk` is a closure created fresh per `validateCore` call, so the counter
+    // is per-invocation and cannot be shared across threads.
+    let mutable depth = 0
+    // One defect, not one per over-deep node — an over-deep subtree would
+    // otherwise emit thousands of identical entries and bury the real report.
+    let mutable depthReported = false
+
     let rec walk (n: Node<'Msg>) =
+        depth <- depth + 1
+
+        if depth > WireLimits.MaxDepth then
+            if not depthReported then
+                depthReported <- true
+                defects.Add(PreEmitDefect.MaxDepthExceeded(n.Id, WireLimits.MaxDepth))
+        else
+            walkBody n
+
+        depth <- depth - 1
+
+    and walkBody (n: Node<'Msg>) =
         recordNodeId n.Id
         // Per-kind: check kind-specific invariants + enumerate children.
         match n.Kind with

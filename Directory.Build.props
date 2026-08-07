@@ -81,8 +81,17 @@
          drop their `'row` parameter (accessors read the projected `Row` by name).
          Wire-ADDITIVE with read-compat: emissions gain structured rows where they
          carried the sentinel; decoders accept `"<opaque>"` indefinitely (→ the
-         empty feed). See STABILITY.md "Recorded change - 0.12.0". -->
-    <Version>0.12.0</Version>
+         empty feed). See STABILITY.md "Recorded change - 0.12.0".
+
+         0.13.0 (fuaran#781) - wire resource limits. New module
+         `Fuaran.UI.WireLimits` (the F# expression of WIRE_FORMAT.md section 21);
+         `DecodeErrorCode` gains `LIMIT_EXCEEDED` and `PreEmitDefect` gains
+         `MaxDepthExceeded` (FUARAN091) - both additive DU cases, so MINOR per
+         the Semver note in STABILITY.md. It also NARROWS what the decoder
+         accepts (over-deep / oversized payloads are now refused rather than
+         decoded), which is why it advances the version rather than repacking
+         0.12.0. See STABILITY.md "Recorded change - 0.13.0". -->
+    <Version>0.13.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -313,9 +313,38 @@ let private nodeCost (node: Node<'a>) : int =
 /// weighted by the data they carry. Named `countNodes` no longer: a cost is what
 /// `MaxNodes` has always been comparing, and for every non-data-bearing tree
 /// this is exactly the node count it was before.
-let rec private treeCost (node: Node<'a>) : int =
-    let kids = getChildren node.Kind |> Option.defaultValue []
-    kids |> List.fold (fun acc kid -> satAdd acc (treeCost kid)) (nodeCost node)
+///
+/// ITERATIVE, with an explicit stack, and it STOPS as soon as the cost passes
+/// `ceiling` (Phase 781). Both properties matter and neither was true before:
+///
+///  - Recursive, it was bounded by the caller's stack rather than by the budget,
+///    so the function whose whole job is to bound a tree's cost was itself the
+///    thing an over-deep tree could kill.
+///  - Unconditional, it walked the ENTIRE tree before anyone compared the result
+///    against `MaxNodes` — so the budget was charged after the work it exists to
+///    refuse had already been done. The ceiling makes the check happen DURING
+///    the walk: a tree ten thousand times over budget costs the same as one
+///    marginally over.
+///
+/// The returned value is exact when it is at or below `ceiling`, and is
+/// "greater than `ceiling`" otherwise — which is all a budget comparand needs,
+/// since every use of it past that point is a refusal.
+let private treeCostTo (ceiling: int) (node: Node<'a>) : int =
+    let pending = System.Collections.Generic.Stack<Node<'a>>()
+    pending.Push node
+    let mutable total = 0
+
+    while pending.Count > 0 && total <= ceiling do
+        let current = pending.Pop()
+        total <- satAdd total (nodeCost current)
+
+        match getChildren current.Kind with
+        | Some kids ->
+            for kid in kids do
+                pending.Push kid
+        | None -> ()
+
+    total
 
 // ─── the driver ──────────────────────────────────────────────────────────────
 
@@ -382,13 +411,27 @@ type BoundedStepOutput =
 /// so `decodeNode json |> Result.map (BoundedDriver.init services store)` is
 /// the safe end-to-end path with no `reify`. The initial resolved tree (the
 /// first diff baseline) is `resolveTree store tree`.
+///
+/// **Budget ORDERING (Phase 781).** The cost is priced FIRST, with the walk
+/// stopping the moment it passes `MaxNodes`, and `resolveTree` runs only if the
+/// tree is within budget. Previously `init` did the opposite: it walked the
+/// whole tree to price it and then resolved the whole tree, and nothing compared
+/// the result against `MaxNodes` until the first `step` — so an over-budget tree
+/// was fully walked twice by the very construction that was supposed to refuse
+/// it, and only then declared too expensive. An over-budget session is still
+/// RETURNED rather than refused (the signature is total and consumers depend on
+/// that), but it is returned unresolved, and `step` rejects it with
+/// `BudgetExceeded` on the first event exactly as before — so the observable
+/// contract is unchanged and only the work is.
 let init (services: BoundedServices) (store: BoundedStore) (wire: WireTree) : BoundedSession =
     let tree = WireTree.reify wire
+    let budget = services.Budget.MaxNodes
+    let cost = treeCostTo budget tree
 
     { BaseTree = tree
       Store = store
-      Resolved = resolveTree store tree
-      NodeCount = treeCost tree
+      Resolved = (if cost > budget then tree else resolveTree store tree)
+      NodeCount = cost
       Services = services }
 
 let private rejected (r: BoundedReject) : BoundedStepOutput =

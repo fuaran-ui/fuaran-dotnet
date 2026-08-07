@@ -330,4 +330,57 @@ let extraAttributeNameInjectionTests =
                   Feliz.ViewEngine.Render.htmlView (Html.div [ prop.custom (injectedKey, "v") ])
 
               Expect.isTrue (contains "onmouseover=alert(document.domain)" unguarded) "unguarded emission IS injectable"
+          }
+
+          // ── Phase 781: the render walk is depth-bounded ─────────────────────
+          //
+          // This is the SHALLOWEST walk in the whole stack by a wide margin —
+          // measured, roughly 15 KB of stack per node level in Release and
+          // 34 KB in Debug, surviving 67 / 30 levels on the .NET default 1 MB
+          // thread stack (`renderKind` is one large function whose frame carries
+          // every branch's locals). It is why `WireLimits.MaxDepth` is 24 and not
+          // something more generous.
+          //
+          // The renderer's signature is total (`Node<obj> -> string`), so refusal
+          // cannot be a `Result` without breaking every caller: it emits a
+          // machine-readable truncation marker instead. The fixture is built
+          // ITERATIVELY — a recursive builder would overflow constructing the
+          // input rather than rendering it.
+
+          test "a subtree past MaxDepth is truncated with a marker, not rendered into a stack overflow" {
+              let mutable tree: Node<obj> = Fuaran.markdown "leaf" "deep-leaf-marker"
+
+              for i in 1 .. WireLimits.MaxDepth do
+                  tree <-
+                      Fuaran.dashboard
+                          (sprintf "d%d" i)
+                          { Defaults.dashboard<obj> with
+                              Children = [ tree ] }
+
+              let html = Render.renderStatic tree
+
+              Expect.isTrue
+                  (contains "data-fuaran-depth-exceeded" html)
+                  "the over-deep subtree is replaced by a marker the host can see"
+
+              Expect.isFalse
+                  (contains "deep-leaf-marker" html)
+                  "and the content past the limit is genuinely not rendered"
+          }
+
+          test "a tree exactly at MaxDepth renders in full" {
+              // The complement: the guard must not truncate what the limit admits.
+              let mutable tree: Node<obj> = Fuaran.markdown "leaf" "deep-leaf-marker"
+
+              for i in 1 .. WireLimits.MaxDepth - 1 do
+                  tree <-
+                      Fuaran.dashboard
+                          (sprintf "d%d" i)
+                          { Defaults.dashboard<obj> with
+                              Children = [ tree ] }
+
+              let html = Render.renderStatic tree
+
+              Expect.isFalse (contains "data-fuaran-depth-exceeded" html) "no truncation at the limit"
+              Expect.isTrue (contains "deep-leaf-marker" html) "the leaf at exactly MaxDepth is rendered"
           } ]

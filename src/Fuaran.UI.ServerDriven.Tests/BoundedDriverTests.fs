@@ -330,4 +330,95 @@ let tests =
                       Expect.equal nodeId "set" "diagnostic names the originating node"
                       Expect.stringContains action "Call" "diagnostic names the inert action"
                   | other -> failtestf "expected one UnsupportedOnBoundedPath diagnostic, got %A" other
+          }
+
+          // ── Phase 781: the budget is charged BEFORE the walk it bounds ──────
+          //
+          // `init` used to price the whole tree and then resolve the whole tree,
+          // with nothing comparing the cost against `MaxNodes` until the first
+          // `step`. So the construction whose purpose is to refuse an oversized
+          // tree walked it twice, in full, and only then declared it too
+          // expensive. The cost walk is now iterative (it cannot overflow) and
+          // stops the moment it passes the budget, and `resolveTree` is skipped
+          // entirely for a tree that is already over.
+
+          test "G2 ordering: the cost walk STOPS at the budget instead of pricing the whole tree" {
+              // A wide tree whose true cost is far above the budget. If the walk
+              // ran to completion the reported cost would be the full node count;
+              // stopping early, it can only be a little past the ceiling.
+              let children = [ for i in 1..400 -> Fuaran.markdown (sprintf "m%d" i) "x" ]
+
+              let tree =
+                  WireTree.ofDecoded (
+                      Fuaran.dashboard
+                          "root"
+                          { Defaults.dashboard<obj> with
+                              Children = children }
+                  )
+
+              let services =
+                  { BoundedServices.create stubRender with
+                      Budget =
+                          { InteractionBudget.defaults with
+                              MaxNodes = 5 } }
+
+              let session = BoundedDriver.init services empty tree
+
+              Expect.isGreaterThan session.NodeCount 5 "the tree is genuinely over budget"
+
+              // The full cost is 401. Anything near that means the walk did not
+              // stop — which is the defect, restated as a number.
+              Expect.isLessThan
+                  session.NodeCount
+                  50
+                  (sprintf
+                      "the cost walk should stop just past MaxNodes = 5, not price all 401 nodes (got %d)"
+                      session.NodeCount)
+          }
+
+          test "G2 ordering: an over-budget tree is still refused at step, unchanged" {
+              // The observable contract must not have moved: `init` stays total,
+              // and the refusal still arrives from `step`. The button is needed
+              // because G1 (does this node exist and accept this event?) runs
+              // ahead of G2 — an event naming an absent node is refused as
+              // `UnknownNode` and never reaches the budget at all.
+              let children =
+                  Fuaran.button
+                      "set"
+                      { Defaults.button<obj> with
+                          OnClick = Action.SetState("msg", jv "x") }
+                  :: [ for i in 1..400 -> Fuaran.markdown (sprintf "m%d" i) "x" ]
+
+              let tree =
+                  WireTree.ofDecoded (
+                      Fuaran.dashboard
+                          "root"
+                          { Defaults.dashboard<obj> with
+                              Children = children }
+                  )
+
+              let services =
+                  { BoundedServices.create stubRender with
+                      Budget =
+                          { InteractionBudget.defaults with
+                              MaxNodes = 5 } }
+
+              let session = BoundedDriver.init services empty tree
+              let _, out = BoundedDriver.step session (clickEv "set")
+
+              match out.Rejected with
+              | Some(BudgetExceeded _) -> ()
+              | other -> failtestf "expected BudgetExceeded, got %A" other
+          }
+
+          test "G2 ordering: a within-budget tree is priced exactly and still resolves" {
+              // The other half — early exit must not corrupt the ordinary case.
+              let session =
+                  BoundedDriver.init (BoundedServices.create stubRender) empty (mkTree (Action.SetState("msg", jv "x")))
+
+              Expect.equal session.NodeCount 3 "dashboard + button + markdown, priced exactly"
+
+              let _, out = BoundedDriver.step session (clickEv "set")
+              Expect.isNone out.Rejected "a within-budget tree drives normally"
+              Expect.isNonEmpty out.Patches "and still produces patches, so resolveTree ran"
           } ]

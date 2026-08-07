@@ -608,4 +608,56 @@ let tests =
                       (PreEmitDefect.ChartStackedMeaningless("ln", "Line"))
                       "stacked Line flagged as dead intent"
               | Ok() -> failtest "Expected ChartStackedMeaningless"
+          }
+
+          // ── Phase 781: the walk is depth-bounded ────────────────────────────
+          //
+          // This walk was plainly recursive with no counter. Measured, it dies on
+          // the .NET default 1 MB stack at 294 levels in Release and 151 in
+          // Debug — with a `StackOverflowException`, which .NET cannot catch, so
+          // the "every defect in one list" contract could not be honoured at all
+          // past that point: there was no list, and no process.
+          //
+          // The fixture is built ITERATIVELY. Building it with a recursive
+          // helper would overflow while constructing the INPUT, which tests the
+          // test rather than the walker.
+
+          test "FUARAN091: a tree past MaxDepth is reported, once, instead of overflowing" {
+              let mutable tree: Node<Msg> = Fuaran.markdown "leaf" "x"
+
+              for i in 1 .. WireLimits.MaxDepth do
+                  tree <- dashboard (sprintf "d%d" i) [ tree ]
+
+              match PreEmitValidate.validate tree with
+              | Ok() -> failtest "Expected MaxDepthExceeded"
+              | Error defects ->
+                  let depthDefects =
+                      defects
+                      |> List.filter (fun d ->
+                          match d with
+                          | PreEmitDefect.MaxDepthExceeded _ -> true
+                          | _ -> false)
+
+                  match depthDefects with
+                  | [ PreEmitDefect.MaxDepthExceeded(_, limit) ] ->
+                      Expect.equal limit WireLimits.MaxDepth "the defect carries the limit it breached"
+                  | other ->
+                      failtestf "expected exactly one MaxDepthExceeded (not one per over-deep node), got %A" other
+
+                  let code, severity, _ = describe depthDefects.Head
+                  Expect.equal code "FUARAN091" "stable code"
+                  Expect.equal severity DefectSeverity.Error "an over-deep tree is an error, not an advisory"
+          }
+
+          test "a tree exactly at MaxDepth validates cleanly" {
+              // The limit must admit what it claims to admit — otherwise a guard
+              // and a decoder that refuses everything look the same.
+              let mutable tree: Node<Msg> = Fuaran.markdown "leaf" "x"
+
+              for i in 1 .. WireLimits.MaxDepth - 1 do
+                  tree <- dashboard (sprintf "d%d" i) [ tree ]
+
+              match PreEmitValidate.validate tree with
+              | Ok() -> ()
+              | Error defects -> failtestf "a tree exactly at MaxDepth was rejected: %A" defects
           } ]

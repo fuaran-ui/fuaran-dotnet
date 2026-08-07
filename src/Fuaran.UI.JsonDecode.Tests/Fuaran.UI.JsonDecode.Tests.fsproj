@@ -41,6 +41,10 @@
          (FGP 5): a streamed emission replays byte-identically to the same
          emission applied as one batch, over the corpus + generated trees. -->
     <Compile Include="StreamingProperties.fs" />
+    <!-- Phase 781 — the decode-side resource limits (WireLimits / WIRE_FORMAT
+         §21). Every hostile payload is built as a STRING: a nested F# value
+         would overflow while constructing the input and prove nothing. -->
+    <Compile Include="LimitTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

@@ -82,6 +82,70 @@ open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 
+// ─── DecodeError surface ─────────────────────────────────────────────────
+
+/// Stable AI-friendly discriminator for decode-time failures. The string
+/// form (rendered via `DecodeErrorCode.toString`) lands in `DecodeError.Code`
+/// and is what Gate 1 pattern-matches on.
+[<RequireQualifiedAccess>]
+type DecodeErrorCode =
+    /// JSON syntax violation (surfaced by the underlying parser).
+    | INVALID_JSON
+    /// Required object key absent.
+    | MISSING_FIELD
+    /// Object value present but wrong JSON kind under the key
+    /// (e.g. string where object expected, array where string expected).
+    | WRONG_TYPE
+    /// `"$type"` discriminator value not recognised for the DU position.
+    | UNKNOWN_DU_CASE
+    /// Top-level `"kind"` discriminator not a recognised node kind — i.e. not
+    /// one of the flat Layout / Display / Input / Visualisation primitives nor
+    /// one of the structural kinds (WIRE_FORMAT §3.2). `knownNodeKinds` below
+    /// is the enumeration; this comment deliberately does not restate it.
+    | WRONG_NODE_KIND
+    /// `"id"` field present but empty — same defect
+    /// `PreEmitValidate.EmptyNodeId` catches downstream after apply.
+    | EMPTY_NODE_ID
+    /// A `Fuaran.UI.WireLimits` resource limit was exceeded (WIRE_FORMAT §21):
+    /// node nesting past `MaxDepth`, JSON nesting past `MaxJsonDepth`, a string
+    /// past `MaxStringLength`, or an array / object past `MaxArrayLength`.
+    ///
+    /// Phase 781. Its whole purpose is that this is an ERROR rather than a
+    /// `StackOverflowException` — which .NET cannot catch, so past that point
+    /// no envelope of any code can be returned at all. The `Message` names the
+    /// limit and the observed value so a repairing author knows which bound to
+    /// come back under.
+    | LIMIT_EXCEEDED
+
+module DecodeErrorCode =
+    let toString (code: DecodeErrorCode) : string =
+        match code with
+        | DecodeErrorCode.INVALID_JSON -> "INVALID_JSON"
+        | DecodeErrorCode.MISSING_FIELD -> "MISSING_FIELD"
+        | DecodeErrorCode.WRONG_TYPE -> "WRONG_TYPE"
+        | DecodeErrorCode.UNKNOWN_DU_CASE -> "UNKNOWN_DU_CASE"
+        | DecodeErrorCode.WRONG_NODE_KIND -> "WRONG_NODE_KIND"
+        | DecodeErrorCode.EMPTY_NODE_ID -> "EMPTY_NODE_ID"
+        | DecodeErrorCode.LIMIT_EXCEEDED -> "LIMIT_EXCEEDED"
+
+/// AI-recoverable decode-time failure. Mirrors the §4d AI-recovery JSON
+/// envelope vocabulary from `Fuaran.UI.Ops.ErrorRender` so eval gate-1
+/// failures stay in the same shape downstream consumers (gates 2/3/4 +
+/// AI-driving-the-UI consumer) read.
+type DecodeError =
+    { Code: string
+      Path: string
+      Message: string
+      ExpectedShape: string option }
+
+module DecodeError =
+    /// Construct a `DecodeError` from the typed code + path + message.
+    let create (code: DecodeErrorCode) (path: string) (message: string) (expectedShape: string option) : DecodeError =
+        { Code = DecodeErrorCode.toString code
+          Path = path
+          Message = message
+          ExpectedShape = expectedShape }
+
 // ─── Local JSON AST + parser ─────────────────────────────────────────────
 //
 // Design point: `Fable.SimpleJson` is the project's go-to
@@ -111,7 +175,34 @@ type private Json =
     | JArray of Json list
     | JObject of Map<string, Json>
 
-type private ParseState = { Text: string; mutable Pos: int }
+/// Parser cursor + the Phase 781 resource-limit bookkeeping.
+///
+/// `Depth` is the current syntactic JSON nesting level (0 outside any composite
+/// value), incremented on entry to an object / array and decremented on exit;
+/// `parseValue` refuses past `WireLimits.MaxJsonDepth`. Without it,
+/// `parseValue` / `parseObjectValue` / `parseArrayValue` are mutually recursive
+/// with nothing bounding them, and about 200 KB of `[[[[[…` — two bytes per
+/// level — is a `StackOverflowException`: uncatchable in .NET, so the process
+/// dies and no `Result` is ever returned.
+///
+/// `Breach` records that a failure was a LIMIT rather than a syntax error, so
+/// `tryParse` can hand the caller `LIMIT_EXCEEDED` instead of the
+/// `INVALID_JSON` every other parse failure maps to. It is a field rather than
+/// a richer error type because the parser's internals are threaded through
+/// `Result<_, string>` in about forty places; carrying one out-of-band flag is
+/// a far smaller change than re-typing all of them, and it is written exactly
+/// once per parse.
+type private ParseState =
+    { Text: string
+      mutable Pos: int
+      mutable Depth: int
+      mutable Breach: bool }
+
+/// Record a resource-limit breach and produce the message. The `Breach` flag is
+/// what promotes the eventual failure from `INVALID_JSON` to `LIMIT_EXCEEDED`.
+let private limitError (s: ParseState) (message: string) : Result<'a, string> =
+    s.Breach <- true
+    Error message
 
 let private peek (s: ParseState) : char =
     if s.Pos < s.Text.Length then s.Text[s.Pos] else ' '
@@ -203,7 +294,20 @@ let private parseStringRaw (s: ParseState) : Result<string, string> =
 
         match error with
         | Some e -> parseError s e
-        | None -> Ok(sb.ToString())
+        | None ->
+            // Phase 781 / WIRE_FORMAT §21. Linear rather than recursive work, so
+            // it cannot overflow the stack — but an unbounded string is still an
+            // unbounded allocation, and closing depth without closing this would
+            // leave the cheapest remaining denial-of-service open.
+            if sb.Length > Fuaran.UI.WireLimits.MaxStringLength then
+                limitError
+                    s
+                    (sprintf
+                        "string of length %d exceeds the wire limit MaxStringLength = %d"
+                        sb.Length
+                        Fuaran.UI.WireLimits.MaxStringLength)
+            else
+                Ok(sb.ToString())
 
 let private parseNumberRaw (s: ParseState) : Result<float, string> =
     let start = s.Pos
@@ -221,6 +325,15 @@ let private parseNumberRaw (s: ParseState) : Result<float, string> =
     match System.Double.TryParse slice with
     | true, n -> Ok n
     | false, _ -> parseError s (sprintf "invalid number '%s'" slice)
+
+/// True when entering one more level of syntactic nesting would exceed
+/// `MaxJsonDepth`. Callers that pass this increment `Depth` and decrement it on
+/// the way out; callers that do not never incremented, so nothing to undo.
+let private wouldExceedDepth (s: ParseState) : bool =
+    s.Depth >= Fuaran.UI.WireLimits.MaxJsonDepth
+
+let private depthLimitMessage: string =
+    sprintf "JSON nesting deeper than the wire limit MaxJsonDepth = %d" Fuaran.UI.WireLimits.MaxJsonDepth
 
 let rec private parseValue (s: ParseState) : Result<Json, string> =
     skipWs s
@@ -258,8 +371,12 @@ and private parseObjectValue (s: ParseState) : Result<Json, string> =
         if peek s = '}' then
             advance s
             Ok(JObject Map.empty)
+        elif wouldExceedDepth s then
+            limitError s depthLimitMessage
         else
+            s.Depth <- s.Depth + 1
             let mutable acc: (string * Json) list = []
+            let mutable count = 0
             let mutable error: string option = None
             let mutable finished = false
 
@@ -278,14 +395,28 @@ and private parseObjectValue (s: ParseState) : Result<Json, string> =
                         | Error e -> error <- Some e
                         | Ok v ->
                             acc <- (key, v) :: acc
-                            skipWs s
+                            count <- count + 1
 
-                            match peek s with
-                            | ',' -> advance s
-                            | '}' ->
-                                advance s
-                                finished <- true
-                            | other -> error <- Some(sprintf "expected ',' or '}' but found '%c'" other)
+                            if count > Fuaran.UI.WireLimits.MaxArrayLength then
+                                s.Breach <- true
+
+                                error <-
+                                    Some(
+                                        sprintf
+                                            "object with more than the wire limit MaxArrayLength = %d members"
+                                            Fuaran.UI.WireLimits.MaxArrayLength
+                                    )
+                            else
+                                skipWs s
+
+                                match peek s with
+                                | ',' -> advance s
+                                | '}' ->
+                                    advance s
+                                    finished <- true
+                                | other -> error <- Some(sprintf "expected ',' or '}' but found '%c'" other)
+
+            s.Depth <- s.Depth - 1
 
             match error with
             | Some e -> parseError s e
@@ -300,8 +431,12 @@ and private parseArrayValue (s: ParseState) : Result<Json, string> =
         if peek s = ']' then
             advance s
             Ok(JArray [])
+        elif wouldExceedDepth s then
+            limitError s depthLimitMessage
         else
+            s.Depth <- s.Depth + 1
             let mutable acc: Json list = []
+            let mutable count = 0
             let mutable error: string option = None
             let mutable finished = false
 
@@ -310,83 +445,65 @@ and private parseArrayValue (s: ParseState) : Result<Json, string> =
                 | Error e -> error <- Some e
                 | Ok v ->
                     acc <- v :: acc
-                    skipWs s
+                    count <- count + 1
 
-                    match peek s with
-                    | ',' -> advance s
-                    | ']' ->
-                        advance s
-                        finished <- true
-                    | other -> error <- Some(sprintf "expected ',' or ']' but found '%c'" other)
+                    if count > Fuaran.UI.WireLimits.MaxArrayLength then
+                        s.Breach <- true
+
+                        error <-
+                            Some(
+                                sprintf
+                                    "array longer than the wire limit MaxArrayLength = %d"
+                                    Fuaran.UI.WireLimits.MaxArrayLength
+                            )
+                    else
+                        skipWs s
+
+                        match peek s with
+                        | ',' -> advance s
+                        | ']' ->
+                            advance s
+                            finished <- true
+                        | other -> error <- Some(sprintf "expected ',' or ']' but found '%c'" other)
+
+            s.Depth <- s.Depth - 1
 
             match error with
             | Some e -> parseError s e
             | None -> Ok(JArray(List.rev acc))
 
-let private tryParse (input: string) : Result<Json, string> =
+/// Parse, classifying the failure. The code is `LIMIT_EXCEEDED` when a
+/// `WireLimits` bound was hit (the `ParseState.Breach` flag) and `INVALID_JSON`
+/// for every ordinary syntax failure — the two are different repairs, and only
+/// one of them means "the input was structurally hostile rather than malformed".
+let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
     if isNull input then
-        Error "input is null"
+        Error(DecodeErrorCode.INVALID_JSON, "input is null")
     else
-        let state = { Text = input; Pos = 0 }
+        let state =
+            { Text = input
+              Pos = 0
+              Depth = 0
+              Breach = false }
+
         skipWs state
 
-        if state.Pos >= state.Text.Length then
-            Error "input is empty"
-        else
-            parseValue state
+        let outcome =
+            if state.Pos >= state.Text.Length then
+                Error "input is empty"
+            else
+                parseValue state
 
-// ─── DecodeError surface ─────────────────────────────────────────────────
+        match outcome with
+        | Ok j -> Ok j
+        | Error message ->
+            let code =
+                if state.Breach then
+                    DecodeErrorCode.LIMIT_EXCEEDED
+                else
+                    DecodeErrorCode.INVALID_JSON
 
-/// Stable AI-friendly discriminator for decode-time failures. The string
-/// form (rendered via `DecodeErrorCode.toString`) lands in `DecodeError.Code`
-/// and is what Gate 1 pattern-matches on.
-[<RequireQualifiedAccess>]
-type DecodeErrorCode =
-    /// JSON syntax violation (surfaced by the underlying parser).
-    | INVALID_JSON
-    /// Required object key absent.
-    | MISSING_FIELD
-    /// Object value present but wrong JSON kind under the key
-    /// (e.g. string where object expected, array where string expected).
-    | WRONG_TYPE
-    /// `"$type"` discriminator value not recognised for the DU position.
-    | UNKNOWN_DU_CASE
-    /// Top-level `"kind"` discriminator not a recognised node kind — i.e. not
-    /// one of the flat Layout / Display / Input / Visualisation primitives nor
-    /// one of the structural kinds (WIRE_FORMAT §3.2). `knownNodeKinds` below
-    /// is the enumeration; this comment deliberately does not restate it.
-    | WRONG_NODE_KIND
-    /// `"id"` field present but empty — same defect
-    /// `PreEmitValidate.EmptyNodeId` catches downstream after apply.
-    | EMPTY_NODE_ID
-
-module DecodeErrorCode =
-    let toString (code: DecodeErrorCode) : string =
-        match code with
-        | DecodeErrorCode.INVALID_JSON -> "INVALID_JSON"
-        | DecodeErrorCode.MISSING_FIELD -> "MISSING_FIELD"
-        | DecodeErrorCode.WRONG_TYPE -> "WRONG_TYPE"
-        | DecodeErrorCode.UNKNOWN_DU_CASE -> "UNKNOWN_DU_CASE"
-        | DecodeErrorCode.WRONG_NODE_KIND -> "WRONG_NODE_KIND"
-        | DecodeErrorCode.EMPTY_NODE_ID -> "EMPTY_NODE_ID"
-
-/// AI-recoverable decode-time failure. Mirrors the §4d AI-recovery JSON
-/// envelope vocabulary from `Fuaran.UI.Ops.ErrorRender` so eval gate-1
-/// failures stay in the same shape downstream consumers (gates 2/3/4 +
-/// AI-driving-the-UI consumer) read.
-type DecodeError =
-    { Code: string
-      Path: string
-      Message: string
-      ExpectedShape: string option }
-
-module DecodeError =
-    /// Construct a `DecodeError` from the typed code + path + message.
-    let create (code: DecodeErrorCode) (path: string) (message: string) (expectedShape: string option) : DecodeError =
-        { Code = DecodeErrorCode.toString code
-          Path = path
-          Message = message
-          ExpectedShape = expectedShape }
+            Error(code, message)
 
 // ─── The recognised NodeKind vocabulary (WIRE_FORMAT.md §3.2) ──────────────
 //
@@ -542,29 +659,75 @@ let private wrongType (path: string) (expected: string) : Result<'a, DecodeError
 let private unknownDuCase (path: string) (got: string) (expected: string) : Result<'a, DecodeError> =
     err DecodeErrorCode.UNKNOWN_DU_CASE (path + ".$type") (sprintf "unknown discriminator '%s'" got) (Some expected)
 
+/// The depth breach shared by both `Json` -> `JVal` bridges. Phase 781: these
+/// walk a STRUCTURED PAYLOAD position (`Custom` props, an action payload, a
+/// `Transform` pipeline), which nests freely inside a single node and so is not
+/// covered by the node-level `MaxDepth` at all — only by the parser's
+/// `MaxJsonDepth`. The guard is repeated here rather than relied on from the
+/// parser because a `Json` value reaching these is only *currently* guaranteed
+/// to have come from `tryParse`; that is an invariant of this file's privacy,
+/// not of the functions themselves.
+let private jvalTooDeep (path: string) (depth: int) : Result<'a, DecodeError> =
+    err
+        DecodeErrorCode.LIMIT_EXCEEDED
+        path
+        (sprintf
+            "JSON payload nesting depth %d exceeds the wire limit MaxJsonDepth = %d"
+            depth
+            Fuaran.UI.WireLimits.MaxJsonDepth)
+        (Some(sprintf "a payload nesting no more than %d levels deep" Fuaran.UI.WireLimits.MaxJsonDepth))
+
 /// Bridge the decoder's `Json` AST to `Fuaran.Core.JVal` so a `Binding.Transform`'s columnar
 /// source + pipeline decode through the shared `Fuaran.Core` codecs (Phase 282 — the Compute
 /// layer). Both ASTs already share the canonical `$type` discipline; the only impedance is Core's
 /// `JInt`/`JFloat` split — an integral-valued JSON number bridges to `JInt` (Core's decoders widen
 /// `JInt`→`JFloat` where a float is expected, but require `JInt` where an int is). The compute wire
 /// carries no `null` (Column uses a validity mask), so `JNull` is unreachable here.
-let rec private jsonToJVal (j: Json) : Fuaran.Core.JVal =
-    match j with
-    | JNull -> Fuaran.Core.JStr ""
-    | JBool b -> Fuaran.Core.JBool b
-    | JNumber n ->
-        if
-            not (System.Double.IsNaN n)
-            && not (System.Double.IsInfinity n)
-            && floor n = n
-            && abs n <= 2147483647.0
-        then
-            Fuaran.Core.JInt(int n)
-        else
-            Fuaran.Core.JFloat n
-    | JString s -> Fuaran.Core.JStr s
-    | JArray xs -> Fuaran.Core.JArr(xs |> List.map jsonToJVal)
-    | JObject m -> Fuaran.Core.JObj(m |> Map.toList |> List.map (fun (k, v) -> k, jsonToJVal v))
+///
+/// `depth` is this value's nesting level (the outermost value being 1); past
+/// `MaxJsonDepth` the bridge refuses rather than recursing (Phase 781). The
+/// return type became a `Result` for exactly that reason — it was total before,
+/// which is precisely why it could only fail by killing the process.
+let rec private jsonToJVal (depth: int) (path: string) (j: Json) : Result<Fuaran.Core.JVal, DecodeError> =
+    if depth > Fuaran.UI.WireLimits.MaxJsonDepth then
+        jvalTooDeep path depth
+    else
+        match j with
+        | JNull -> Ok(Fuaran.Core.JStr "")
+        | JBool b -> Ok(Fuaran.Core.JBool b)
+        | JNumber n ->
+            if
+                not (System.Double.IsNaN n)
+                && not (System.Double.IsInfinity n)
+                && floor n = n
+                && abs n <= 2147483647.0
+            then
+                Ok(Fuaran.Core.JInt(int n))
+            else
+                Ok(Fuaran.Core.JFloat n)
+        | JString s -> Ok(Fuaran.Core.JStr s)
+        | JArray xs ->
+            let folded =
+                (Ok [], List.indexed xs)
+                ||> List.fold (fun acc (i, x) ->
+                    match acc with
+                    | Error e -> Error e
+                    | Ok items ->
+                        jsonToJVal (depth + 1) (path + "[" + string i + "]") x
+                        |> Result.map (fun v -> v :: items))
+
+            folded |> Result.map (fun items -> Fuaran.Core.JArr(List.rev items))
+        | JObject m ->
+            let folded =
+                (Ok [], m |> Map.toList)
+                ||> List.fold (fun acc (k, v) ->
+                    match acc with
+                    | Error e -> Error e
+                    | Ok fields ->
+                        jsonToJVal (depth + 1) (path + "." + k) v
+                        |> Result.map (fun jv -> (k, jv) :: fields))
+
+            folded |> Result.map (fun fields -> Fuaran.Core.JObj(List.rev fields))
 
 /// The same AST bridge for the JSON-valued PAYLOAD positions (Custom props,
 /// Action.Notify / SetState / AiTool payloads, I18n args, a wire-form
@@ -572,48 +735,56 @@ let rec private jsonToJVal (j: Json) : Fuaran.Core.JVal =
 /// depth — the Fuaran wire model has no null (omit the field instead), and
 /// `JVal` makes that unrepresentable by construction. The error names the rule
 /// so an AI author recovers by omission, not by retrying encodings of null.
-let rec private jsonToJValStrict (path: string) (j: Json) : Result<Fuaran.Core.JVal, DecodeError> =
-    match j with
-    | JNull ->
-        Error(
-            DecodeError.create
-                DecodeErrorCode.WRONG_TYPE
-                path
-                "null is not representable in the Fuaran wire model — omit the field instead"
-                (Some "any JSON value except null (rule 12: the wire model has no null; omit the field to mean absent)")
-        )
-    | JBool b -> Ok(Fuaran.Core.JBool b)
-    | JNumber n ->
-        if
-            not (System.Double.IsNaN n)
-            && not (System.Double.IsInfinity n)
-            && floor n = n
-            && abs n <= 2147483647.0
-        then
-            Ok(Fuaran.Core.JInt(int n))
-        else
-            Ok(Fuaran.Core.JFloat n)
-    | JString s -> Ok(Fuaran.Core.JStr s)
-    | JArray xs ->
-        let folded =
-            (Ok [], List.indexed xs)
-            ||> List.fold (fun acc (i, x) ->
-                match acc with
-                | Error e -> Error e
-                | Ok items ->
-                    jsonToJValStrict (path + "[" + string i + "]") x
-                    |> Result.map (fun v -> v :: items))
+///
+/// Depth-bounded on the same terms as `jsonToJVal` (Phase 781).
+let rec private jsonToJValStrict (depth: int) (path: string) (j: Json) : Result<Fuaran.Core.JVal, DecodeError> =
+    if depth > Fuaran.UI.WireLimits.MaxJsonDepth then
+        jvalTooDeep path depth
+    else
+        match j with
+        | JNull ->
+            Error(
+                DecodeError.create
+                    DecodeErrorCode.WRONG_TYPE
+                    path
+                    "null is not representable in the Fuaran wire model — omit the field instead"
+                    (Some
+                        "any JSON value except null (rule 12: the wire model has no null; omit the field to mean absent)")
+            )
+        | JBool b -> Ok(Fuaran.Core.JBool b)
+        | JNumber n ->
+            if
+                not (System.Double.IsNaN n)
+                && not (System.Double.IsInfinity n)
+                && floor n = n
+                && abs n <= 2147483647.0
+            then
+                Ok(Fuaran.Core.JInt(int n))
+            else
+                Ok(Fuaran.Core.JFloat n)
+        | JString s -> Ok(Fuaran.Core.JStr s)
+        | JArray xs ->
+            let folded =
+                (Ok [], List.indexed xs)
+                ||> List.fold (fun acc (i, x) ->
+                    match acc with
+                    | Error e -> Error e
+                    | Ok items ->
+                        jsonToJValStrict (depth + 1) (path + "[" + string i + "]") x
+                        |> Result.map (fun v -> v :: items))
 
-        folded |> Result.map (fun items -> Fuaran.Core.JArr(List.rev items))
-    | JObject m ->
-        let folded =
-            (Ok [], m |> Map.toList)
-            ||> List.fold (fun acc (k, v) ->
-                match acc with
-                | Error e -> Error e
-                | Ok fields -> jsonToJValStrict (path + "." + k) v |> Result.map (fun jv -> (k, jv) :: fields))
+            folded |> Result.map (fun items -> Fuaran.Core.JArr(List.rev items))
+        | JObject m ->
+            let folded =
+                (Ok [], m |> Map.toList)
+                ||> List.fold (fun acc (k, v) ->
+                    match acc with
+                    | Error e -> Error e
+                    | Ok fields ->
+                        jsonToJValStrict (depth + 1) (path + "." + k) v
+                        |> Result.map (fun jv -> (k, jv) :: fields))
 
-        folded |> Result.map (fun fields -> Fuaran.Core.JObj(List.rev fields))
+            folded |> Result.map (fun fields -> Fuaran.Core.JObj(List.rev fields))
 
 /// Map a `Fuaran.Core.ColumnError` (the compute codecs' six-code envelope) into this host's
 /// `DecodeError` at `path` — surfaced as `WRONG_TYPE` (the closest host code for a
@@ -1193,7 +1364,7 @@ let rec private decodeObj (j: Json) : obj =
 
 /// Decode a JSON-valued payload position to the structured `JVal` AST —
 /// null-rejecting per the no-null wire model (see `jsonToJValStrict`).
-let private decodeJVal (path: string) (j: Json) : Result<JVal, DecodeError> = jsonToJValStrict path j
+let private decodeJVal (path: string) (j: Json) : Result<JVal, DecodeError> = jsonToJValStrict 1 path j
 
 let private decodeJValMap (path: string) (j: Json) : Result<Map<string, JVal>, DecodeError> =
     match requireObject path j with
@@ -1238,7 +1409,7 @@ let rec private decodeBindingObj (path: string) (j: Json) : Result<Binding<obj>,
 /// The `Binding<JVal>` flavour (the swap's typed verbatim carrier, D3) —
 /// `Binding.I18n` args and `Binding.Transform` param sources since the swap.
 and private decodeBindingJVal (path: string) (j: Json) : Result<Binding<JVal>, DecodeError> =
-    bindingGeneric<JVal> path (fun _ v -> Ok(jsonToJVal v)) (JStr closureSentinel) j
+    bindingGeneric<JVal> path (fun p v -> jsonToJVal 1 p v) (JStr closureSentinel) j
 
 and private decodeLocalFlushTrigger (path: string) (j: Json) : Result<LocalFlushTrigger, DecodeError> =
     // 4-case DU; one carries a `milliseconds: int` payload.
@@ -1520,11 +1691,23 @@ and private bindingGeneric<'T>
                     match requireField path fields "pipeline" "Transform pipeline array" with
                     | Error e -> Error e
                     | Ok pipeJ ->
-                        match Fuaran.Core.ColumnCodec.decodeJson (jsonToJVal srcJ) with
-                        | Error ce -> Error(coreError (path + ".source") ce)
+                        let sourceR =
+                            jsonToJVal 1 (path + ".source") srcJ
+                            |> Result.bind (fun v ->
+                                Fuaran.Core.ColumnCodec.decodeJson v
+                                |> Result.mapError (coreError (path + ".source")))
+
+                        let pipelineR =
+                            jsonToJVal 1 (path + ".pipeline") pipeJ
+                            |> Result.bind (fun v ->
+                                Fuaran.Core.DataFrameCodec.decodePipelineJson v
+                                |> Result.mapError (coreError (path + ".pipeline")))
+
+                        match sourceR with
+                        | Error e -> Error e
                         | Ok source ->
-                            match Fuaran.Core.DataFrameCodec.decodePipelineJson (jsonToJVal pipeJ) with
-                            | Error ce -> Error(coreError (path + ".pipeline") ce)
+                            match pipelineR with
+                            | Error e -> Error e
                             | Ok pipeline ->
                                 // Phase 424 — optional `params`: [{ "from": <Binding>, "name": <string> }, …]
                                 // binding each `ColExpr.Param` name to a scalar `Binding<obj>` source.
@@ -4250,15 +4433,36 @@ let private decodeEffectClass (path: string) (j: Json) : Result<EffectClass, Dec
 
 // ─── Layout (mutually recursive with Node) ──────────────────────────────
 
-let rec private decodeChildren (path: string) (fields: Map<string, Json>) : Result<Node<obj> list, DecodeError> =
+/// The structural walk's budget state (Phase 781): this node's own nesting
+/// level, plus the number of nodes decoded so far across the WHOLE document.
+///
+/// One value rather than two parameters because the structural decode threads it
+/// through some twenty-five recursion sites, and `Depth` is per-position while
+/// `Nodes` is per-document — `descend` copies the record (advancing the level)
+/// but the `ref` cell inside is shared by reference, so every position sees the
+/// same running total. A plain mutable field would NOT work here: `{ w with … }`
+/// copies it, and each branch would then count only its own subtree.
+type private Walk = { Depth: int; Nodes: int ref }
+
+/// A fresh budget for one document. Depth 1 is the root node.
+let private walkRoot () : Walk = { Depth = 1; Nodes = ref 0 }
+
+/// One level further down, same document-wide node budget.
+let private descend (w: Walk) : Walk = { w with Depth = w.Depth + 1 }
+
+let rec private decodeChildren
+    (w: Walk)
+    (path: string)
+    (fields: Map<string, Json>)
+    : Result<Node<obj> list, DecodeError> =
     match requireField path fields "children" "children Node list" with
     | Error e -> Error e
     | Ok v ->
         match requireArray (path + ".children") v with
         | Error e -> Error e
-        | Ok xs -> traverseIndexed (fun i item -> decodeNodeAst (sprintf "%s.children[%d]" path i) item) xs
+        | Ok xs -> traverseIndexed (fun i item -> decodeNodeAst (descend w) (sprintf "%s.children[%d]" path i) item) xs
 
-and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
+and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
@@ -4277,7 +4481,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                 match getSpecFields () with
                 | Error e -> Error e
                 | Ok specFields ->
-                    let childrenR = decodeChildren specPath specFields
+                    let childrenR = decodeChildren w specPath specFields
 
                     let headingR =
                         match optFieldAliased specFields "heading" [ "title" ] with
@@ -4381,7 +4585,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                 match getSpecFields () with
                 | Error e -> Error e
                 | Ok specFields ->
-                    let childrenR = decodeChildren specPath specFields
+                    let childrenR = decodeChildren w specPath specFields
 
                     let weightR =
                         requireField specPath specFields "weight" "weight float"
@@ -4395,7 +4599,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                 match getSpecFields () with
                 | Error e -> Error e
                 | Ok specFields ->
-                    let childrenR = decodeChildren specPath specFields
+                    let childrenR = decodeChildren w specPath specFields
 
                     let orientationR =
                         // 0.2.0 — omitted-when-Horizontal on both boundaries.
@@ -4508,7 +4712,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                 match getSpecFields () with
                 | Error e -> Error e
                 | Ok specFields ->
-                    let childrenR = decodeChildren specPath specFields
+                    let childrenR = decodeChildren w specPath specFields
 
                     let activeR =
                         requireField specPath specFields "activeStep" "Binding<int> activeStep"
@@ -4535,7 +4739,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                 match getSpecFields () with
                 | Error e -> Error e
                 | Ok specFields ->
-                    let childrenR = decodeChildren specPath specFields
+                    let childrenR = decodeChildren w specPath specFields
 
                     let headingR =
                         match optFieldAliased specFields "heading" [ "title" ] with
@@ -4563,7 +4767,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                 match getSpecFields () with
                 | Error e -> Error e
                 | Ok specFields ->
-                    let childrenR = decodeChildren specPath specFields
+                    let childrenR = decodeChildren w specPath specFields
 
                     let headingR =
                         requireFieldAliased specPath specFields "heading" [ "title" ] "TextSource heading"
@@ -4605,7 +4809,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                 match getSpecFields () with
                 | Error e -> Error e
                 | Ok specFields ->
-                    let childrenR = decodeChildren specPath specFields
+                    let childrenR = decodeChildren w specPath specFields
 
                     let openR =
                         requireField specPath specFields "open" "Binding<bool> open"
@@ -4647,7 +4851,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                 match getSpecFields () with
                 | Error e -> Error e
                 | Ok specFields ->
-                    let childrenR = decodeChildren specPath specFields
+                    let childrenR = decodeChildren w specPath specFields
 
                     let orientationR =
                         requireField specPath specFields "orientation" "ScrollOrientation"
@@ -4678,7 +4882,7 @@ and private decodeLayoutKind (path: string) (j: Json) : Result<NodeKind<obj>, De
                     | _, _, _, Error e -> Error e
             | s -> unknownDuCase path s (String.concat " | " layoutNodeKinds)
 
-and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
+and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
@@ -4697,7 +4901,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
         | Ok s when List.contains s layoutNodeKinds ->
             // Phase 692 — the family decoders now build flat NodeKind cases
             // directly; the category wrappers they used to re-wrap into are gone.
-            decodeLayoutKind path j
+            decodeLayoutKind w path j
         | Ok s when List.contains s displayNodeKinds -> decodeDisplayKind path j
         | Ok s when List.contains s inputNodeKinds -> decodeInputKind path j
         | Ok s when List.contains s visNodeKinds -> decodeVisKind path j
@@ -4802,11 +5006,11 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
             // boundary is meaningless without either half).
             let childR =
                 requireField path fields "child" "ErrorBoundary child Node"
-                |> Result.bind (decodeNodeAst (path + ".child"))
+                |> Result.bind (decodeNodeAst (descend w) (path + ".child"))
 
             let fallbackR =
                 requireField path fields "fallback" "ErrorBoundary fallback Node"
-                |> Result.bind (decodeNodeAst (path + ".fallback"))
+                |> Result.bind (decodeNodeAst (descend w) (path + ".fallback"))
 
             match childR, fallbackR with
             | Ok child, Ok fallback -> Ok(NodeKind.ErrorBoundary { Child = child; Fallback = fallback })
@@ -4851,7 +5055,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
 
                                 let childR =
                                     requireField casePath caseFields "child" "Switch case child Node"
-                                    |> Result.bind (decodeNodeAst (casePath + ".child"))
+                                    |> Result.bind (decodeNodeAst (descend w) (casePath + ".child"))
 
                                 match matchR, childR with
                                 | Ok m, Ok child -> Ok({ Match = m; Child = child }: SwitchCase<obj>)
@@ -4860,7 +5064,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
 
             let defaultR =
                 requireField path fields "default" "Switch default Node"
-                |> Result.bind (decodeNodeAst (path + ".default"))
+                |> Result.bind (decodeNodeAst (descend w) (path + ".default"))
 
             match stateKeyR, casesR, defaultR with
             | Ok on, Ok cases, Ok defaultNode ->
@@ -4885,7 +5089,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
 
             let bodyR =
                 requireField path fields "body" "FragmentDecl body Node"
-                |> Result.bind (decodeNodeAst (path + ".body"))
+                |> Result.bind (decodeNodeAst (descend w) (path + ".body"))
 
             // Phase 180 — `holes` + `effect` are additive; absent ⇒ degenerate
             // fixed-body (zero holes, pure-deterministic — `None` since the
@@ -4932,7 +5136,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                     | Error e -> Error e
                     | Ok "SlotArg" ->
                         requireField argPath argFields "tree" "SlotArg tree Node"
-                        |> Result.bind (decodeNodeAst (argPath + ".tree"))
+                        |> Result.bind (decodeNodeAst (descend w) (argPath + ".tree"))
                         |> Result.map FragmentArg.SlotArg
                     | Ok _ ->
                         // Int | Float | Bool | Str — a value argument (the
@@ -5035,7 +5239,7 @@ and private decodeNodeKind (path: string) (j: Json) : Result<NodeKind<obj>, Deco
                                  | Error e -> Error e
                                  | Ok "SlotArg" ->
                                      requireField argPath af "tree" "SlotArg tree Node"
-                                     |> Result.bind (decodeNodeAst (argPath + ".tree"))
+                                     |> Result.bind (decodeNodeAst (descend w) (argPath + ".tree"))
                                      |> Result.map FragmentArg.SlotArg
                                  | Ok _ ->
                                      decodeScalarTyped argPath v
@@ -5124,19 +5328,19 @@ and private decodeAccessibility (path: string) (j: Json) : Result<Accessibility,
         | _, _, _, _, Error e, _
         | _, _, _, _, _, Error e -> Error e
 
-and private decodeStateBehaviour (path: string) (j: Json) : Result<StateBehaviour<obj>, DecodeError> =
+and private decodeStateBehaviour (w: Walk) (path: string) (j: Json) : Result<StateBehaviour<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
         let onLoadingR =
             match tryField fields "onLoading" with
             | None -> Ok None
-            | Some v -> decodeNodeAst (path + ".onLoading") v |> Result.map Some
+            | Some v -> decodeNodeAst (descend w) (path + ".onLoading") v |> Result.map Some
 
         let onEmptyR =
             match tryField fields "onEmpty" with
             | None -> Ok None
-            | Some v -> decodeNodeAst (path + ".onEmpty") v |> Result.map Some
+            | Some v -> decodeNodeAst (descend w) (path + ".onEmpty") v |> Result.map Some
 
         // The encoder writes OnError as a `<closure>` sentinel string when
         // present (the rendering closure is opaque). Decode `<closure>`
@@ -5207,7 +5411,55 @@ and private decodeSemanticStyle (path: string) (j: Json) : Result<SemanticStyle,
         | _, _, _, Error e, _
         | _, _, _, _, Error e -> Error e
 
-and private decodeNodeAst (path: string) (j: Json) : Result<Node<obj>, DecodeError> =
+/// The single gate every node in the document passes through — both structural
+/// bounds are enforced here, on the way DOWN (Phase 781; WIRE_FORMAT §21).
+///
+/// `w.Depth` is this node's own nesting level, the root being 1. The DEPTH guard
+/// is here and not only in the parser because the two bounds are different
+/// quantities. The parser bounds SYNTACTIC nesting (`MaxJsonDepth`), which a
+/// tree consumes several levels of per node and which a structured payload
+/// position consumes freely within a single node; this bounds NODE nesting
+/// (`MaxDepth`). The structural decoder's frames are also far heavier than the
+/// parser's — measured, it overflows roughly an order of magnitude shallower —
+/// so the parser's bound could never have stood in for this one.
+///
+/// The NODE-COUNT guard closes the remaining cost channel once depth is bounded.
+/// Depth, string length and array length together still admit a tree that is
+/// merely WIDE — 24 levels of 100 000 siblings — whose cost is linear in the
+/// input but whose constant is not: the decoded tree is far larger in memory
+/// than the bytes that produced it. Counting on the way down means an oversized
+/// document stops being decoded at the ceiling rather than after the whole tree
+/// has been allocated.
+///
+/// It does NOT bound the parse that precedes it — `tryParse` has already built a
+/// `Json` AST for the entire input by the time the first node is decoded — and
+/// this comment says so rather than implying a stronger guarantee. Bounding
+/// total payload SIZE is a transport concern the host owns (a request body
+/// limit); what these limits bound is structure, which is the part a size limit
+/// cannot express.
+and private decodeNodeAst (w: Walk) (path: string) (j: Json) : Result<Node<obj>, DecodeError> =
+    if w.Depth > Fuaran.UI.WireLimits.MaxDepth then
+        err
+            DecodeErrorCode.LIMIT_EXCEEDED
+            path
+            (sprintf "node nesting depth %d exceeds the wire limit MaxDepth = %d" w.Depth Fuaran.UI.WireLimits.MaxDepth)
+            (Some(sprintf "a tree nesting nodes no more than %d levels deep" Fuaran.UI.WireLimits.MaxDepth))
+    else
+        w.Nodes.Value <- w.Nodes.Value + 1
+
+        if w.Nodes.Value > Fuaran.UI.WireLimits.MaxNodes then
+            err
+                DecodeErrorCode.LIMIT_EXCEEDED
+                path
+                (sprintf "the document holds more than the wire limit MaxNodes = %d nodes" Fuaran.UI.WireLimits.MaxNodes)
+                (Some(sprintf "a tree of no more than %d nodes in total" Fuaran.UI.WireLimits.MaxNodes))
+        else
+            decodeNodeAstCore w path j
+
+/// The node decode proper. Reached only through `decodeNodeAst`, which is what
+/// enforces `MaxDepth` — split out purely so the guard is a two-line function
+/// rather than a wrapper around sixty indented lines.
+and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
@@ -5223,7 +5475,7 @@ and private decodeNodeAst (path: string) (j: Json) : Result<Node<obj>, DecodeErr
 
         let kindR =
             requireField path fields "kind" "NodeKind discriminator object"
-            |> Result.bind (decodeNodeKind (path + ".kind"))
+            |> Result.bind (decodeNodeKind w (path + ".kind"))
 
         // `state` and `style` are optional on the flat wire (omitted when empty
         // / all-default, WIRE_FORMAT §3.1). The envelope slots are OPTIONS since
@@ -5232,7 +5484,7 @@ and private decodeNodeAst (path: string) (j: Json) : Result<Node<obj>, DecodeErr
         let stateR: Result<StateBehaviour<obj> option, DecodeError> =
             match tryField fields "state" with
             | None -> Ok None
-            | Some v -> decodeStateBehaviour (path + ".state") v |> Result.map Some
+            | Some v -> decodeStateBehaviour w (path + ".state") v |> Result.map Some
 
         let styleR: Result<SemanticStyle option, DecodeError> =
             match tryField fields "style" with
@@ -5266,7 +5518,41 @@ and private decodeNodeAst (path: string) (j: Json) : Result<Node<obj>, DecodeErr
 
 // ─── TreeOp decoder ─────────────────────────────────────────────────────
 
-let rec private decodeTreeOpAst (path: string) (j: Json) : Result<TreeOp<obj>, DecodeError> =
+/// The op decoder is bounded on the SAME two axes as the node decoder, and for a
+/// reason that was measured rather than assumed (Phase 781).
+///
+/// `TreeOp.Batch` carries a list of ops, so `decodeTreeOpAst` is recursive in
+/// itself, and it was left unguarded on the first pass at this phase because the
+/// phase's own defect list did not name it. The parser's `MaxJsonDepth` looked
+/// like sufficient cover — a Batch level costs two JSON levels, so 256 admits
+/// only about 127 of them. It is not sufficient: a 2.6 KB payload of 100 nested
+/// Batches kills the process outright, because these frames are as heavy as the
+/// node decoder's. That is the original defect exactly, reached through the other
+/// public entry point.
+///
+/// `w.Depth` therefore bounds BATCH nesting here. The node-bearing arms restart
+/// the depth count with `atRoot` rather than continuing it: op nesting and node
+/// nesting are different axes, and charging a node tree for the depth of the
+/// Batch that carries it would refuse legitimate ops. The node COUNT is
+/// deliberately not restarted — `atRoot` keeps the same `Nodes` cell — because a
+/// Batch is one wire artefact, and a per-op budget would let a thousand-op batch
+/// smuggle a thousand times the ceiling.
+let private atRoot (w: Walk) : Walk = { w with Depth = 1 }
+
+let rec private decodeTreeOpAst (w: Walk) (path: string) (j: Json) : Result<TreeOp<obj>, DecodeError> =
+    if w.Depth > Fuaran.UI.WireLimits.MaxDepth then
+        err
+            DecodeErrorCode.LIMIT_EXCEEDED
+            path
+            (sprintf "op nesting depth %d exceeds the wire limit MaxDepth = %d" w.Depth Fuaran.UI.WireLimits.MaxDepth)
+            (Some(sprintf "a Batch nesting ops no more than %d levels deep" Fuaran.UI.WireLimits.MaxDepth))
+    else
+        decodeTreeOpAstCore w path j
+
+/// The op decode proper. Reached only through `decodeTreeOpAst`, which is what
+/// enforces the bound — split out so the guard is a few lines rather than a
+/// wrapper around two hundred indented ones.
+and private decodeTreeOpAstCore (w: Walk) (path: string) (j: Json) : Result<TreeOp<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
@@ -5280,7 +5566,7 @@ let rec private decodeTreeOpAst (path: string) (j: Json) : Result<TreeOp<obj>, D
 
             let newKindR =
                 requireField path fields "newKind" "NodeKind object"
-                |> Result.bind (decodeNodeKind (path + ".newKind"))
+                |> Result.bind (decodeNodeKind (atRoot w) (path + ".newKind"))
 
             match targetR, newKindR with
             | Ok target, Ok newKind -> Ok(TreeOp.EditNode(target, newKind))
@@ -5368,7 +5654,7 @@ let rec private decodeTreeOpAst (path: string) (j: Json) : Result<TreeOp<obj>, D
 
             let stateR =
                 requireField path fields "state" "StateBehaviour object"
-                |> Result.bind (decodeStateBehaviour (path + ".state"))
+                |> Result.bind (decodeStateBehaviour (atRoot w) (path + ".state"))
 
             match targetR, stateR with
             | Ok target, Ok state -> Ok(TreeOp.UpdateState(target, state))
@@ -5382,7 +5668,7 @@ let rec private decodeTreeOpAst (path: string) (j: Json) : Result<TreeOp<obj>, D
 
             let childR =
                 requireField path fields "child" "child Node object"
-                |> Result.bind (decodeNodeAst (path + ".child"))
+                |> Result.bind (decodeNodeAst (atRoot w) (path + ".child"))
 
             // A legacy `position` is ACCEPTED AND IGNORED for the migration window
             // (phase 681): five hosts adopt independently, and a stored v1 emission
@@ -5437,13 +5723,13 @@ let rec private decodeTreeOpAst (path: string) (j: Json) : Result<TreeOp<obj>, D
             | _, Error e -> Error e
         | Ok "ReplaceRoot" ->
             requireField path fields "node" "root Node object"
-            |> Result.bind (decodeNodeAst (path + ".node"))
+            |> Result.bind (decodeNodeAst (atRoot w) (path + ".node"))
             |> Result.map TreeOp.ReplaceRoot
         | Ok "Batch" ->
             requireField path fields "ops" "Batch inner-op list"
             |> Result.bind (fun v -> requireArray (path + ".ops") v)
             |> Result.bind (fun xs ->
-                traverseIndexed (fun i item -> decodeTreeOpAst (sprintf "%s.ops[%d]" path i) item) xs)
+                traverseIndexed (fun i item -> decodeTreeOpAst (descend w) (sprintf "%s.ops[%d]" path i) item) xs)
             |> Result.map TreeOp.Batch
         | Ok s ->
             unknownDuCase
@@ -5669,6 +5955,27 @@ module Coerce =
 
 // ─── Public surface ─────────────────────────────────────────────────────
 
+/// Map a `tryParse` failure onto the `DecodeError` envelope. `LIMIT_EXCEEDED`
+/// keeps the parser's own message — it already names the limit and the observed
+/// value — because "input is not valid JSON" would be an actively wrong
+/// diagnosis: the input was perfectly well-formed and simply too big to walk.
+let private parseFailure (code: DecodeErrorCode, message: string) : Result<'a, DecodeError> =
+    match code with
+    | DecodeErrorCode.LIMIT_EXCEEDED ->
+        err
+            code
+            "$"
+            message
+            (Some
+                "a payload within the WIRE_FORMAT §21 resource limits (node depth, JSON depth, string length, array length)")
+    | _ ->
+        err
+            code
+            "$"
+            (sprintf "input is not valid JSON: %s" message)
+            (Some "well-formed JSON object per the canonical-JSON shape")
+
+
 /// Decode a canonical-JSON encoded `Node<'Msg>` payload into a `WireTree` —
 /// the storage-shape `Node<obj>` marked as wire-originated. The wire format is
 /// the output of `Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeNode`.
@@ -5682,13 +5989,8 @@ module Coerce =
 let decodeNode (json: string) : Result<WireTree, DecodeError> =
     let decoded =
         match tryParse json with
-        | Error parseErr ->
-            err
-                DecodeErrorCode.INVALID_JSON
-                "$"
-                (sprintf "input is not valid JSON: %s" parseErr)
-                (Some "well-formed JSON object per the canonical-JSON shape")
-        | Ok j -> decodeNodeAst "$" j
+        | Error failure -> parseFailure failure
+        | Ok j -> decodeNodeAst (walkRoot ()) "$" j
 
     decoded |> Result.map WireTree.ofDecoded
 
@@ -5698,23 +6000,13 @@ let decodeNode (json: string) : Result<WireTree, DecodeError> =
 /// exists so those boundaries don't wrap-then-immediately-reify.
 let decodeNodeObj (json: string) : Result<Node<obj>, DecodeError> =
     match tryParse json with
-    | Error parseErr ->
-        err
-            DecodeErrorCode.INVALID_JSON
-            "$"
-            (sprintf "input is not valid JSON: %s" parseErr)
-            (Some "well-formed JSON object per the canonical-JSON shape")
-    | Ok j -> decodeNodeAst "$" j
+    | Error failure -> parseFailure failure
+    | Ok j -> decodeNodeAst (walkRoot ()) "$" j
 
 /// Decode a canonical-JSON encoded `TreeOp<'Msg>` payload into the
 /// storage-shape `TreeOp<obj>`. Symmetric with
 /// `Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeOp`.
 let decodeOp (json: string) : Result<TreeOp<obj>, DecodeError> =
     match tryParse json with
-    | Error parseErr ->
-        err
-            DecodeErrorCode.INVALID_JSON
-            "$"
-            (sprintf "input is not valid JSON: %s" parseErr)
-            (Some "well-formed JSON object per the canonical-JSON shape")
-    | Ok j -> decodeTreeOpAst "$" j
+    | Error failure -> parseFailure failure
+    | Ok j -> decodeTreeOpAst (walkRoot ()) "$" j

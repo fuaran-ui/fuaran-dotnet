@@ -711,6 +711,60 @@ Before this repo flips public (whether as a public GitHub repository, a publishe
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - [`CLAUDE.md`](CLAUDE.md)
 
+## Recorded change — 0.13.0, wire resource limits (fuaran#781)
+
+**Minor, not major — but it narrows what the decoder accepts, and that is stated rather than
+buried.** New module `Fuaran.UI.WireLimits` (literals only): `MaxDepth = 24` (node nesting),
+`MaxJsonDepth = 256` (syntactic JSON nesting), `MaxStringLength = 1048576`,
+`MaxArrayLength = 100000`, `MaxNodes = 100000`. These are the F# host's expression of the normative
+limits in [`WIRE_FORMAT.md`](../wire-format-fixtures/WIRE_FORMAT.md) §21 — protocol numbers, not
+implementation details. Changing one is a wire-format change and moves across every host, not here
+alone.
+
+**Why the change exists.** The claim that decoding is total — "a malformed or hostile input yields a
+structured, typed error, never an exception or a hang" — held on semantics and was **false on
+shape**. Every walk in the stack (the hand-rolled parser, the structural decoder, the `JVal`
+bridges, `PreEmitValidate`, the server-side renderer, the interaction-cost accounting) was plainly
+recursive with no counter, so a few hundred kilobytes of `[[[[[…` produced a
+`StackOverflowException` — which .NET cannot catch. Past that point no `DecodeError` of any kind
+could be returned, so the guarantee did not degrade, it became unobservable.
+
+**Additive public surface (each a *minor* event per the Semver note above — existing matches gain
+`FS0025`):**
+
+- `JsonDecode.DecodeErrorCode` gains **`LIMIT_EXCEEDED`**. Per §6 this is the seventh code. A limit
+  breach is deliberately **not** `INVALID_JSON`: the input is well-formed and merely unbounded, and
+  reporting it as a syntax error sends the author to repair the wrong thing.
+- `PreEmitValidate.PreEmitDefect` gains **`MaxDepthExceeded of nodeId * limit`** → **FUARAN091
+  (Error)**. Reported once per tree, at the first node past the limit.
+
+**Behaviour narrowing (the part a consumer must actually read).** A document nesting nodes more than
+24 deep, or carrying more than 100 000 nodes, or a string over 1 MiB, or an array over 100 000
+elements, or JSON nesting over 256, was previously decoded and is now refused with
+`LIMIT_EXCEEDED`. `decodeOp` additionally refuses a `TreeOp.Batch` nested more than 24 deep —
+a separate axis from node nesting, held to the same figure. (That walk was measured to kill the
+process at 100 levels with every other bound already in place, on a 2.6 KB payload; the syntactic
+bound was not cover for it.) This is on the same footing as §19's renderer URL-scheme floor: a narrowing whose
+alternative is not "it worked" but "the process died". For scale, the deepest tree in the shared
+corpus is 3 levels and a deliberately deep application tree reaches about 16, so no corpus fixture
+and no realistic tree is affected — the whole existing suite is green unchanged.
+
+**Server-side renderer.** `Render.renderStatic` / `renderWith` / `renderToElement` have total
+signatures and so cannot return a refusal. A subtree past `MaxDepth` is replaced by a visible,
+machine-readable marker element (`data-fuaran-depth-exceeded`) rather than recursed into. This also
+closes a latent non-termination: a self-referential `FragmentDecl`/`FragmentRef` pair previously
+recursed until the process died.
+
+**`BoundedDriver` budget ordering.** `init` now prices the tree *before* resolving it, with the cost
+walk iterative and stopping at `InteractionBudget.MaxNodes` rather than walking the whole tree. The
+observable contract is unchanged — `init` stays total and `step` still rejects with
+`BudgetExceeded` — only the work is.
+
+**Cross-host status.** The limits are spec-level; the TypeScript, Python, Go and Rust hosts have not
+adopted them, and `LIMIT_EXCEEDED` reject fixtures are deliberately **not** in the shared corpus
+until they do (§21.5) — a fixture landing ahead of the hosts turns their builds red for a rule none
+of them has adopted.
+
 ## Recorded breaking change — 0.12.0, typed row-source encoding (fuaran#665)
 
 **Grid / chart rows leave the residual-`"<opaque>"` boundary.** The rows slot is typed end to end:

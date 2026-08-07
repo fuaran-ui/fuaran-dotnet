@@ -163,28 +163,46 @@ let private buttonVariantClass (variant: ButtonVariant) : string =
 
 // ─── Fragment registry (mirrors the client `collectFragments`) ──────────────
 
-let rec private collectFragments (acc: Map<string, Node<obj>>) (node: Node<obj>) : Map<string, Node<obj>> =
-    let acc =
-        match node.Kind with
-        | NodeKind.FragmentDecl spec -> Map.add spec.Name spec.Body acc
-        | _ -> acc
+let private fragmentChildren (node: Node<obj>) : Node<obj> list =
+    match node.Kind with
+    | NodeKind.Box(s) -> s.Children
+    | NodeKind.SplitPanel(s) -> s.Children
+    | NodeKind.Tabs(s) -> s.Children
+    | NodeKind.Stepper(s) -> s.Children
+    | NodeKind.SummaryList(s) -> s.Children
+    | NodeKind.Disclosure(s) -> s.Children
+    | NodeKind.Modal(s) -> s.Children
+    | NodeKind.ScrollArea(s) -> s.Children
+    | NodeKind.ErrorBoundary s -> [ s.Child ]
+    | NodeKind.Switch s -> (s.Cases |> List.map _.Child) @ [ s.Default ]
+    | NodeKind.FragmentDecl s -> [ s.Body ]
+    | _ -> []
 
-    let children =
-        match node.Kind with
-        | NodeKind.Box(s) -> s.Children
-        | NodeKind.SplitPanel(s) -> s.Children
-        | NodeKind.Tabs(s) -> s.Children
-        | NodeKind.Stepper(s) -> s.Children
-        | NodeKind.SummaryList(s) -> s.Children
-        | NodeKind.Disclosure(s) -> s.Children
-        | NodeKind.Modal(s) -> s.Children
-        | NodeKind.ScrollArea(s) -> s.Children
-        | NodeKind.ErrorBoundary s -> [ s.Child ]
-        | NodeKind.Switch s -> (s.Cases |> List.map _.Child) @ [ s.Default ]
-        | NodeKind.FragmentDecl s -> [ s.Body ]
-        | _ -> []
+/// Collect the tree's `FragmentDecl` bodies by name.
+///
+/// ITERATIVE, with an explicit stack (Phase 781). This runs from `mkContext`,
+/// i.e. BEFORE `renderNode` on every server render, so it is the first walk an
+/// untrusted tree meets on this path — a recursive version would have made the
+/// depth guard on `renderNode` unreachable for anything deep enough to matter.
+/// Insertion order is preserved against the previous fold: children are pushed
+/// in reverse so they pop left-to-right, and a later `Map.add` for the same
+/// fragment name wins exactly as it did before.
+let private collectFragments (acc: Map<string, Node<obj>>) (node: Node<obj>) : Map<string, Node<obj>> =
+    let pending = System.Collections.Generic.Stack<Node<obj>>()
+    pending.Push node
+    let mutable result = acc
 
-    children |> List.fold collectFragments acc
+    while pending.Count > 0 do
+        let current = pending.Pop()
+
+        match current.Kind with
+        | NodeKind.FragmentDecl spec -> result <- Map.add spec.Name spec.Body result
+        | _ -> ()
+
+        for child in List.rev (fragmentChildren current) do
+            pending.Push child
+
+    result
 
 // ─── Accessibility + node attribute helpers ─────────────────────────────────
 
@@ -217,7 +235,45 @@ let private extraAttrProps (node: Node<obj>) : IReactProperty list =
 
 // ─── The renderer ───────────────────────────────────────────────────────────
 
-let rec private renderNode (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
+/// The element emitted in place of a subtree nested past `WireLimits.MaxDepth`
+/// (Phase 781). The renderer's contract is `Node<obj> -> ReactElement`, total by
+/// signature, so refusal cannot be a `Result` here without breaking every caller
+/// — it is a visible, machine-readable truncation marker instead. Two properties
+/// make that acceptable rather than a silent lie: the marker CARRIES the fact
+/// (`data-fuaran-depth-exceeded` + the limit, plus text in the rendered output),
+/// and every path that produces a tree from the wire has already refused this
+/// input with a typed error, so a host reaching the marker built the tree
+/// in-process rather than accepting it from outside.
+///
+/// It exists because the alternative is not "a deep tree renders" — it is
+/// `StackOverflowException`. Measured, this walk costs roughly 15 KB of stack
+/// per node level in Release and 34 KB in Debug, surviving 67 / 30 levels on the
+/// .NET default 1 MB thread stack: by a wide margin the shallowest walk in the
+/// stack, and the reason `MaxDepth` is the number it is.
+let private depthExceededElement (id: string) : ReactElement =
+    Html.div
+        [ prop.id id
+          prop.custom ("data-fuaran-node-id", id)
+          prop.custom ("data-fuaran-depth-exceeded", string Fuaran.UI.WireLimits.MaxDepth)
+          prop.className "fuaran-depth-exceeded"
+          prop.custom ("role", "note")
+          prop.children
+              [ Html.text (
+                    "[subtree omitted: nesting exceeds the wire limit MaxDepth = "
+                    + string Fuaran.UI.WireLimits.MaxDepth
+                    + "]"
+                ) ] ]
+
+let rec private renderNode (depth: int) (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
+    if depth > Fuaran.UI.WireLimits.MaxDepth then
+        depthExceededElement node.Id
+    else
+        renderNodeCore depth ctx node
+
+/// The node render proper. Reached only through `renderNode`, which is what
+/// enforces `MaxDepth` — split out so the guard is two lines rather than a
+/// wrapper around fifty indented ones.
+and private renderNodeCore (depth: int) (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
     let id = node.Id
 
     let baseClassName =
@@ -229,7 +285,7 @@ let rec private renderNode (ctx: ServerRenderContext) (node: Node<obj>) : ReactE
         | Some motion -> baseClassName + " fuaran-motion-" + Theme.motionVar motion
         | None -> baseClassName
 
-    let kindBody = renderKind ctx id node.State node.Kind
+    let kindBody = renderKind depth ctx id node.State node.Kind
 
     let a11y = a11yProps ctx node.Accessibility
     let extras = extraAttrProps node
@@ -271,6 +327,7 @@ let rec private renderNode (ctx: ServerRenderContext) (node: Node<obj>) : ReactE
     | None -> element
 
 and private renderKind
+    (depth: int)
     (ctx: ServerRenderContext)
     (parentNodeId: string)
     (state: StateBehaviour<obj> option)
@@ -293,12 +350,12 @@ and private renderKind
                         | None -> Html.none
                         Html.div
                             [ prop.className "fuaran-card-body"
-                              prop.children (spec.Children |> List.map (renderNode ctx)) ] ] ]
+                              prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ] ] ]
         | BoxRole.Dashboard, _
         | BoxRole.Group, BoxLayout.Auto ->
             Html.div
                 [ prop.className "fuaran-layout-dashboard"
-                  prop.children (spec.Children |> List.map (renderNode ctx)) ]
+                  prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
         | BoxRole.Separator, _ -> Html.hr [ prop.className "fuaran-layout-separator" ]
         | BoxRole.Group, BoxLayout.Grid(cols, gridTemplateColumns, gridGap) ->
             let templateColumns =
@@ -317,7 +374,7 @@ and private renderKind
             Html.div
                 [ prop.className "fuaran-layout-grid"
                   prop.style gridStyle
-                  prop.children (spec.Children |> List.map (renderNode ctx)) ]
+                  prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
         | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
             let dir =
                 match direction with
@@ -331,12 +388,12 @@ and private renderKind
                 @ (match flexGap with
                    | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
                    | None -> [])
-                @ [ prop.children (spec.Children |> List.map (renderNode ctx)) ]
+                @ [ prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
             )
     | NodeKind.SplitPanel spec ->
         let weightLeft = max 0.0 (min 1.0 spec.Weight)
         let weightRight = 1.0 - weightLeft
-        let renderedChildren = spec.Children |> List.map (renderNode ctx)
+        let renderedChildren = spec.Children |> List.map (renderNode (depth + 1) ctx)
 
         let leftChildren, rightChildren =
             match renderedChildren with
@@ -470,7 +527,7 @@ and private renderKind
                                           prop.custom ("aria-labelledby", tabId activeIndex)
                                           prop.tabIndex 0
                                           prop.className "fuaran-tabs-panel"
-                                          prop.children [ renderNode ctx childNode ] ] ]
+                                          prop.children [ renderNode (depth + 1) ctx childNode ] ] ]
                               | None -> []
                           ) ] ] ]
     | NodeKind.SummaryList spec ->
@@ -485,7 +542,7 @@ and private renderKind
                     | None -> Html.none
                     Html.div
                         [ prop.className "fuaran-summary-list-body"
-                          prop.children (spec.Children |> List.map (renderNode ctx)) ] ] ]
+                          prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ] ] ]
     | NodeKind.Disclosure spec ->
         let resolvedOpen =
             BindingResolver.tryResolve ctx.Sources spec.Open
@@ -500,7 +557,7 @@ and private renderKind
                             prop.text (renderText ctx spec.Heading) ]
                       Html.div
                           [ prop.className "fuaran-disclosure-body"
-                            prop.children (spec.Children |> List.map (renderNode ctx)) ] ] ]
+                            prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ] ] ]
         )
     | NodeKind.Stepper spec ->
         let activeIndex =
@@ -532,7 +589,7 @@ and private renderKind
                         [ prop.className "fuaran-stepper-body"
                           prop.children (
                               match List.tryItem activeIndex spec.Children with
-                              | Some node -> [ renderNode ctx node ]
+                              | Some node -> [ renderNode (depth + 1) ctx node ]
                               | None -> []
                           ) ] ] ]
     | NodeKind.Modal spec ->
@@ -573,7 +630,7 @@ and private renderKind
                                 @ dismissEls
                                 @ [ Html.div
                                         [ prop.className "fuaran-modal-body"
-                                          prop.children (spec.Children |> List.map (renderNode ctx)) ] ]
+                                          prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ] ]
                             ) ] ] ]
         )
     | NodeKind.ScrollArea spec ->
@@ -598,7 +655,7 @@ and private renderKind
             // camelCase `tabIndex`, diverging from React's DOM `tabindex`).
             [ prop.className axisClass; prop.custom ("tabindex", "0") ]
             @ (if styleProps.IsEmpty then [] else [ prop.style styleProps ])
-            @ [ prop.children (spec.Children |> List.map (renderNode ctx)) ]
+            @ [ prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
         )
     // -- Display --
     | NodeKind.Heading spec ->
@@ -631,7 +688,7 @@ and private renderKind
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
 
         match resolution, (state |> Option.bind _.OnLoading) with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
+        | BindingResolver.NotResolved, Some loadingNode -> renderNode (depth + 1) ctx loadingNode
         | _ ->
             Html.div
                 [ prop.className (sprintf "fuaran-metric fuaran-metric-%s" (Theme.toneVar spec.Tone))
@@ -688,7 +745,7 @@ and private renderKind
         let resolution = BindingResolver.resolve ctx.Sources spec.Fraction
 
         match resolution, (state |> Option.bind _.OnLoading) with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
+        | BindingResolver.NotResolved, Some loadingNode -> renderNode (depth + 1) ctx loadingNode
         | _ ->
             let fraction =
                 match resolution with
@@ -732,7 +789,7 @@ and private renderKind
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
 
         match resolution, (state |> Option.bind _.OnLoading) with
-        | BindingResolver.NotResolved, Some loadingNode -> renderNode ctx loadingNode
+        | BindingResolver.NotResolved, Some loadingNode -> renderNode (depth + 1) ctx loadingNode
         | _ ->
             let emphasisSuffix =
                 if spec.Emphasis then
@@ -1117,7 +1174,7 @@ and private renderKind
     | NodeKind.ErrorBoundary spec ->
         // Server has no throws to catch — render the protected child subtree
         // directly. The Fallback is the client-runtime degradation path.
-        renderNode ctx spec.Child
+        renderNode (depth + 1) ctx spec.Child
     | NodeKind.Switch spec ->
         // State-bound conditional child (Phase 392). SSR resolves the initial
         // state value from `ctx.Sources.State` (host pre-populated) and renders
@@ -1154,14 +1211,14 @@ and private renderKind
             | None -> None
 
         match matched with
-        | Some child -> renderNode ctx child
-        | None -> renderNode ctx spec.Default
+        | Some child -> renderNode (depth + 1) ctx child
+        | None -> renderNode (depth + 1) ctx spec.Default
     | NodeKind.FragmentDecl _ ->
         // Zero-paint: the decl is a template, not visible output.
         Html.none
     | NodeKind.FragmentRef spec ->
         match Map.tryFind spec.Name ctx.Fragments with
-        | Some body -> renderNode ctx body
+        | Some body -> renderNode (depth + 1) ctx body
         | None ->
             let raw = spec.Name
 
@@ -1712,7 +1769,7 @@ let mkContext (sources: BindingResolver.BindingSources) (node: Node<obj>) : Serv
 /// embedding inside a host's own ViewEngine document layout). The host calls
 /// `Feliz.ViewEngine.Render.htmlView` (or `htmlDocument`) when ready.
 let renderToElement (sources: BindingResolver.BindingSources) (node: Node<obj>) : ReactElement =
-    renderNode (mkContext sources node) node
+    renderNode 1 (mkContext sources node) node
 
 /// Render a `Node<obj>` tree to an HTML string on plain .NET. The body-fragment
 /// HTML only — the host owns `<html>` / `<head>` / meta / the reference CSS.
@@ -1732,7 +1789,7 @@ let renderWith
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : string =
-    Render.htmlView (renderNode (mkContextWith customs sources node) node)
+    Render.htmlView (renderNode 1 (mkContextWith customs sources node) node)
 
 /// A `<style>` element carrying the Phase 12.K `Theme` → CSS-variable `:root`
 /// projection — parity with the client `themeStyleElement`. The host mounts
