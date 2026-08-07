@@ -56,7 +56,7 @@ let private ev nodeId event =
       LastSeq = 0 }
 
 let private session () =
-    init (DriverServices.create stubRender) update view 0
+    init (DriverServices.createPermissive stubRender) update view 0
 
 [<Tests>]
 let tests =
@@ -90,9 +90,35 @@ let tests =
               Expect.isEmpty out.Patches "no tree change → no patches"
           }
 
+          // ─── Phase 782 — the gate default inverted on this path too ────────
+          //
+          // `DriverServices.create` returned `CanDispatch = fun _ -> true` until
+          // Phase 782, so an unconfigured server-driven host validated every
+          // inbound LiveEvent against a policy that permitted everything. Every
+          // OTHER test in this file now names `createPermissive` deliberately;
+          // this one pins what plain `create` does.
+          test "DriverServices.create DENIES by default; createPermissive is the named opt-in" {
+              let defaultServices: DriverServices<Msg> = DriverServices.create stubRender
+              Expect.isFalse (defaultServices.CanDispatch(Action.Dispatch Inc)) "the default gate refuses"
+
+              let permissiveServices: DriverServices<Msg> =
+                  DriverServices.createPermissive stubRender
+
+              Expect.isTrue (permissiveServices.CanDispatch(Action.Dispatch Inc)) "the named opt-in allows"
+
+              // …and the refusal is a real refusal end-to-end, not just a flag.
+              let s0 = init defaultServices update view 0
+              let s2, out = step s0 (ev "inc" "click")
+              Expect.equal s2.Model 0 "an unconfigured host mutates nothing"
+
+              match out.Rejected with
+              | Some(RejectReason.DispatchDenied("inc", _)) -> ()
+              | other -> failtestf "expected DispatchDenied from the default gate, got %A" other
+          }
+
           test "a denied action leaves the session unchanged (default-deny)" {
               let denyServices =
-                  { DriverServices.create stubRender with
+                  { DriverServices.createPermissive stubRender with
                       CanDispatch = fun _ -> false }
 
               let s0 = init denyServices update view 0
@@ -119,7 +145,7 @@ let tests =
               let captured = ResizeArray<TreeOp<Msg>>()
 
               let services =
-                  { DriverServices.create stubRender with
+                  { DriverServices.createPermissive stubRender with
                       OnApply = fun ops -> captured.AddRange ops }
 
               let s0 = init services update view 0

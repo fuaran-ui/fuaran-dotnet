@@ -92,7 +92,10 @@ let tests =
         "Phase 153 — bounded driver"
         [ test "init re-resolves a State-bound TextSource to its default Literal" {
               let session =
-                  BoundedDriver.init (BoundedServices.create stubRender) empty (mkTree (Action.SetState("msg", jv "x")))
+                  BoundedDriver.init
+                      (BoundedServices.createPermissive stubRender)
+                      empty
+                      (mkTree (Action.SetState("msg", jv "x")))
 
               Expect.equal (markdownLiteral session.Resolved "count") (Some "init") "default resolved"
           }
@@ -100,7 +103,7 @@ let tests =
           test "a SetState click re-resolves the bound node and patches only it" {
               let session =
                   BoundedDriver.init
-                      (BoundedServices.create stubRender)
+                      (BoundedServices.createPermissive stubRender)
                       empty
                       (mkTree (Action.SetState("msg", jv "updated")))
 
@@ -120,7 +123,7 @@ let tests =
               // Static pass is what lets the diff see *real* value changes).
               let session =
                   BoundedDriver.init
-                      (BoundedServices.create stubRender)
+                      (BoundedServices.createPermissive stubRender)
                       empty
                       (mkTree (Action.SetState("msg", jv "init")))
 
@@ -131,7 +134,10 @@ let tests =
 
           test "Navigate click → ClientEffect, store + tree unchanged" {
               let session =
-                  BoundedDriver.init (BoundedServices.create stubRender) empty (mkTree (Action.Navigate "/next"))
+                  BoundedDriver.init
+                      (BoundedServices.createPermissive stubRender)
+                      empty
+                      (mkTree (Action.Navigate "/next"))
 
               let session2, out = BoundedDriver.step session (clickEv "set")
               Expect.equal out.Effects [ ClientEffect.Navigate "/next" ] "navigate effect shipped"
@@ -141,7 +147,10 @@ let tests =
 
           test "G1: an unknown node id is rejected; store unchanged, no patch" {
               let session =
-                  BoundedDriver.init (BoundedServices.create stubRender) empty (mkTree (Action.SetState("msg", jv "x")))
+                  BoundedDriver.init
+                      (BoundedServices.createPermissive stubRender)
+                      empty
+                      (mkTree (Action.SetState("msg", jv "x")))
 
               let session2, out = BoundedDriver.step session (clickEv "ghost")
 
@@ -159,7 +168,7 @@ let tests =
                   Action.Chain [ for i in 1..200 -> Action.SetState(sprintf "k%d" i, jv i) ]
 
               let session =
-                  BoundedDriver.init (BoundedServices.create stubRender) empty (mkTree bigChain)
+                  BoundedDriver.init (BoundedServices.createPermissive stubRender) empty (mkTree bigChain)
 
               let session2, out = BoundedDriver.step session (clickEv "set")
 
@@ -173,7 +182,7 @@ let tests =
 
           test "G2: a tree larger than MaxNodes is rejected" {
               let services =
-                  { BoundedServices.create stubRender with
+                  { BoundedServices.createPermissive stubRender with
                       Budget =
                           { InteractionBudget.defaults with
                               MaxNodes = 1 } }
@@ -229,7 +238,7 @@ let tests =
               // Three NODES, but 200 points of render cost. A budget of 50 is
               // far above the node count and far below the cost.
               let services =
-                  { BoundedServices.create stubRender with
+                  { BoundedServices.createPermissive stubRender with
                       Budget =
                           { InteractionBudget.defaults with
                               MaxNodes = 50 } }
@@ -250,7 +259,10 @@ let tests =
 
           test "G2 (Phase 790): a data-free tree still costs exactly its node count" {
               let session =
-                  BoundedDriver.init (BoundedServices.create stubRender) empty (mkTree (Action.SetState("msg", jv "x")))
+                  BoundedDriver.init
+                      (BoundedServices.createPermissive stubRender)
+                      empty
+                      (mkTree (Action.SetState("msg", jv "x")))
 
               Expect.equal session.NodeCount 3 "dashboard + button + markdown — unchanged from the pre-790 count"
           }
@@ -259,7 +271,7 @@ let tests =
               let captured = ResizeArray<TreeOp<obj> list>()
 
               let services =
-                  { BoundedServices.create stubRender with
+                  { BoundedServices.createPermissive stubRender with
                       OnApply = captured.Add }
 
               let session =
@@ -290,7 +302,9 @@ let tests =
               match JsonDecode.decodeNode json with
               | Error e -> failtestf "decode failed: %A" e
               | Ok decoded ->
-                  let session = BoundedDriver.init (BoundedServices.create stubRender) empty decoded
+                  let session =
+                      BoundedDriver.init (BoundedServices.createPermissive stubRender) empty decoded
+
                   let session2, out = BoundedDriver.step session (clickEv "set")
                   Expect.isNone out.Rejected "not rejected"
                   Expect.equal (Map.tryFind "msg" session2.Store.State) (Some(o "wire")) "wire-decoded SetState applied"
@@ -317,7 +331,9 @@ let tests =
               match JsonDecode.decodeNode json with
               | Error e -> failtestf "decode failed: %A" e
               | Ok decoded ->
-                  let session = BoundedDriver.init (BoundedServices.create stubRender) empty decoded
+                  let session =
+                      BoundedDriver.init (BoundedServices.createPermissive stubRender) empty decoded
+
                   let _, out = BoundedDriver.step session (clickEv "set")
                   Expect.isFalse invoked "the authored closure was erased at the wire boundary and never ran"
                   Expect.isNone out.Rejected "the decoded inert Call drives without error"
@@ -357,7 +373,7 @@ let tests =
                   )
 
               let services =
-                  { BoundedServices.create stubRender with
+                  { BoundedServices.createPermissive stubRender with
                       Budget =
                           { InteractionBudget.defaults with
                               MaxNodes = 5 } }
@@ -398,7 +414,7 @@ let tests =
                   )
 
               let services =
-                  { BoundedServices.create stubRender with
+                  { BoundedServices.createPermissive stubRender with
                       Budget =
                           { InteractionBudget.defaults with
                               MaxNodes = 5 } }
@@ -414,7 +430,10 @@ let tests =
           test "G2 ordering: a within-budget tree is priced exactly and still resolves" {
               // The other half — early exit must not corrupt the ordinary case.
               let session =
-                  BoundedDriver.init (BoundedServices.create stubRender) empty (mkTree (Action.SetState("msg", jv "x")))
+                  BoundedDriver.init
+                      (BoundedServices.createPermissive stubRender)
+                      empty
+                      (mkTree (Action.SetState("msg", jv "x")))
 
               Expect.equal session.NodeCount 3 "dashboard + button + markdown, priced exactly"
 

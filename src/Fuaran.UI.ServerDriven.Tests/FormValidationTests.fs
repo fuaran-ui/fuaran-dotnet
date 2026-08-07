@@ -142,7 +142,7 @@ let tests =
           }
 
           test "stepWithValidation suppresses the mutation on an invalid submit" {
-              let session = init (DriverServices.create stubRender) update view 0
+              let session = init (DriverServices.createPermissive stubRender) update view 0
 
               let s2, out =
                   stepWithValidation declaredOnly session (submitEv "c" [ "age", LiveValue.Num 30.0 ])
@@ -157,7 +157,7 @@ let tests =
           }
 
           test "stepWithValidation applies the mutation + clears errors on a valid submit" {
-              let session = init (DriverServices.create stubRender) update view 0
+              let session = init (DriverServices.createPermissive stubRender) update view 0
 
               let s2, out =
                   stepWithValidation
@@ -177,7 +177,7 @@ let tests =
               // The host says everything is fine, but the declared 0..120 bound is
               // non-bypassable — it runs first regardless.
               let permissiveHost: FormValidator<Msg> = fun _ -> []
-              let session = init (DriverServices.create stubRender) update view 0
+              let session = init (DriverServices.createPermissive stubRender) update view 0
 
               let s2, out =
                   stepWithValidation
@@ -203,7 +203,7 @@ let tests =
                               Message = "Reserved name." } ]
                       | _ -> []
 
-              let session = init (DriverServices.create stubRender) update view 0
+              let session = init (DriverServices.createPermissive stubRender) update view 0
 
               let s2, out =
                   stepWithValidation
@@ -223,7 +223,7 @@ let tests =
               let channel = InMemoryChannel()
 
               let conn =
-                  LiveConnection("c1", init (DriverServices.create stubRender) update view 0, channel)
+                  LiveConnection("c1", init (DriverServices.createPermissive stubRender) update view 0, channel)
 
               conn.EnableFormValidation declaredOnly
 
@@ -248,7 +248,7 @@ let tests =
               let channel = InMemoryChannel()
 
               let conn =
-                  LiveConnection("c2", init (DriverServices.create stubRender) update view 0, channel)
+                  LiveConnection("c2", init (DriverServices.createPermissive stubRender) update view 0, channel)
               // No validator — a submit with a missing required field still mutates,
               // exactly as before Phase 156 (validation is strictly opt-in).
               channel.Send(submitEv "c2" [ "age", LiveValue.Num 30.0 ])

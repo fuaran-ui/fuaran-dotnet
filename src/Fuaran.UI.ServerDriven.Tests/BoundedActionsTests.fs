@@ -172,4 +172,55 @@ let tests =
               Expect.equal calls 0 "NO closure carried by any chained action was invoked"
               Expect.equal out.Store.State (Map.ofList [ "ok", o 1.0 ]) "the SetState still applied"
               Expect.equal out.Effects [ ClientEffect.ReadFileBody("up", "Base64") ] "only the closure-free read effect"
+          }
+
+          // ─── Phase 782 — the server EFFECT path is a URL sink too ───────────
+          //
+          // A `ClientEffect.Navigate` is performed by the shim with whatever
+          // router the host wired, so an unsafe route emitted here lands on the
+          // client exactly as if the client had produced it. Sanitising only the
+          // client action path would have left this half open.
+          test "a javascript: route is neutralised on the server effect path" {
+              let unsafeRoutes =
+                  [ "javascript:alert(1)"
+                    "JaVaScRiPt:alert(1)"
+                    "vbscript:msgbox(1)"
+                    "//evil.example/x" ]
+
+              for route in unsafeRoutes do
+                  let out = BoundedActions.runBoundedAction "n" (Action.Navigate route) store0
+
+                  Expect.isEmpty out.Effects (sprintf "'%s' emits NO client effect" route)
+
+                  Expect.equal out.Diagnostics.Length 1 (sprintf "'%s' refusal is recorded, not silent" route)
+
+                  match out.Diagnostics with
+                  | [ BoundedDiagnostic.Refused(nodeId, _, reason) ] ->
+                      Expect.equal nodeId "n" "the diagnostic names the originating node"
+                      Expect.stringContains reason "safe URL" "the diagnostic says why"
+                  | other -> failtestf "expected a Refused diagnostic, got %A" other
+
+              // A legitimate route still ships, sanitised.
+              let ok = BoundedActions.runBoundedAction "n" (Action.Navigate "  /next  ") store0
+              Expect.equal ok.Effects [ ClientEffect.Navigate "/next" ] "a safe route ships trimmed"
+              Expect.isEmpty ok.Diagnostics "no diagnostic for a safe route"
+          }
+
+          test "a host-reserved State key is refused on the bounded path" {
+              let out =
+                  BoundedActions.runBoundedAction "n" (Action.SetState("host.session-token", jv "stolen")) store0
+
+              Expect.equal out.Store.State store0.State "the host-reserved slot is NOT written"
+
+              match out.Diagnostics with
+              | [ BoundedDiagnostic.Refused(_, _, reason) ] ->
+                  Expect.stringContains reason "host-reserved" "the diagnostic names the namespace"
+              | other -> failtestf "expected a Refused diagnostic, got %A" other
+
+              // Ordinary keys are unaffected — this is a namespace, not a ban.
+              let ok =
+                  BoundedActions.runBoundedAction "n" (Action.SetState("theme", jv "dark")) store0
+
+              Expect.equal ok.Store.State (Map.ofList [ "theme", o "dark" ]) "an ordinary key writes normally"
+              Expect.isEmpty ok.Diagnostics "no diagnostic for an ordinary key"
           } ]

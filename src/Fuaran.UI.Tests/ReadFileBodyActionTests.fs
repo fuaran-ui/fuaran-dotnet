@@ -83,14 +83,26 @@ let tests =
               Expect.equal fired 0 "onRead not fired by the diagnostic runtime"
           }
 
-          test "default runtimes allow the ReadFileBody gate descriptor" {
-              Expect.isTrue
+          // Phase 782 inverted this: the default is DENY. Reading a
+          // user-selected file's bytes on the say-so of a decoded tree is
+          // exactly the capability an unconfigured host should not grant.
+          test "default runtimes REFUSE the ReadFileBody gate descriptor" {
+              Expect.isFalse
                   (Runtime.diagnostic.CanDispatch(ActionDescriptor.ReadFileBody "workbook-upload:0"))
-                  "diagnostic allows ReadFileBody"
+                  "diagnostic refuses ReadFileBody"
+
+              Expect.isFalse
+                  ((MutableRuntime() :> IFuaranRuntime).CanDispatch(ActionDescriptor.ReadFileBody "f"))
+                  "mutable refuses ReadFileBody"
+
+              // …and the named opt-in restores the old posture.
+              Expect.isTrue
+                  (Runtime.permissive.CanDispatch(ActionDescriptor.ReadFileBody "workbook-upload:0"))
+                  "the named permissive runtime allows ReadFileBody"
 
               Expect.isTrue
-                  ((MutableRuntime() :> IFuaranRuntime).CanDispatch(ActionDescriptor.ReadFileBody "f"))
-                  "mutable allows ReadFileBody"
+                  ((MutableRuntime.Permissive() :> IFuaranRuntime).CanDispatch(ActionDescriptor.ReadFileBody "f"))
+                  "MutableRuntime.Permissive allows ReadFileBody"
           }
 
           test "the gate descriptor labels the file id for a denied read" {

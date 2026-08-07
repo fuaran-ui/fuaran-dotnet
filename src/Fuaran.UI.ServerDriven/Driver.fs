@@ -70,15 +70,28 @@ type DriverServices<'Msg> =
     }
 
 module DriverServices =
-    /// Permissive defaults — allow all dispatch, no host-effects, no op sink,
-    /// no reject sink (the AspNetCore backend layers its default logging sink).
-    /// `renderFragment` MUST be supplied (HTML production is host-owned).
+    /// Default services — **DENY all dispatch** (Phase 782), no host-effects, no
+    /// op sink, no reject sink (the AspNetCore backend layers its default
+    /// logging sink). `renderFragment` MUST be supplied (HTML production is
+    /// host-owned).
+    ///
+    /// The gate default was `true` until Phase 782, which meant an unconfigured
+    /// server-driven host validated every inbound `LiveEvent` against a policy
+    /// that permitted everything. `createPermissive` is the named opt-in back to
+    /// that; a real host supplies `{ create render with CanDispatch = … }`.
     let create (renderFragment: Node<'Msg> -> string) : DriverServices<'Msg> =
-        { CanDispatch = fun _ -> true
+        { CanDispatch = fun _ -> false
           RenderFragment = renderFragment
           InterpretHostEffect = fun _ -> None
           OnApply = ignore
           OnReject = ignore }
+
+    /// **The named opt-in back to the pre-0.14.0 allow-everything gate**
+    /// (Phase 782). Identical to `create` except that `CanDispatch` permits
+    /// every action.
+    let createPermissive (renderFragment: Node<'Msg> -> string) : DriverServices<'Msg> =
+        { create renderFragment with
+            CanDispatch = fun _ -> true }
 
 /// One connection's live state: the server-held model + the Elmish loop + the
 /// current rendered tree (the diff baseline) + the injected services.
@@ -122,7 +135,15 @@ let rec private interpret
     match action with
     | Action.Dispatch m -> [ m ], []
     // Inherently-browser arms → ClientEffect (no server form).
-    | Action.Navigate route -> [], [ ClientEffect.Navigate route ]
+    // Phase 782 — the route is sanitised BEFORE it is shipped to the shim. The
+    // shim performs the navigation with whatever router the host wired, so an
+    // unsafe scheme emitted here is a `javascript:`-URL sink on the client. A
+    // refused route emits NO effect rather than a neutered one: `about:blank` is
+    // a navigation the author did not ask for.
+    | Action.Navigate route ->
+        match Fuaran.UI.Renderer.Sanitize.sanitizeUrl route with
+        | Some safe -> [], [ ClientEffect.Navigate safe ]
+        | None -> [], []
     | Action.WriteToClipboard text -> [], [ ClientEffect.WriteToClipboard text ]
     | Action.ReadFileBody(_, _, encoding, _) ->
         let enc =

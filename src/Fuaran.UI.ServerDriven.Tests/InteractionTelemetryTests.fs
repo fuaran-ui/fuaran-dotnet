@@ -50,7 +50,7 @@ let tests =
               let channel = InMemoryChannel()
 
               let conn =
-                  LiveConnection("c", init (DriverServices.create stubRender) update view 0, channel)
+                  LiveConnection("c", init (DriverServices.createPermissive stubRender) update view 0, channel)
 
               conn.EnableTelemetry collector
 
@@ -73,7 +73,7 @@ let tests =
               let channel = InMemoryChannel()
 
               let conn =
-                  LiveConnection("c", init (DriverServices.create stubRender) update view 0, channel)
+                  LiveConnection("c", init (DriverServices.createPermissive stubRender) update view 0, channel)
 
               conn.EnableTelemetry collector
 
@@ -92,7 +92,7 @@ let tests =
               let channel = InMemoryChannel()
 
               let conn =
-                  LiveConnection("c", init (DriverServices.create stubRender) update view 0, channel)
+                  LiveConnection("c", init (DriverServices.createPermissive stubRender) update view 0, channel)
 
               conn.EnableTelemetry collector
 
@@ -111,7 +111,7 @@ let tests =
               let channel = InMemoryChannel()
               // No EnableTelemetry call.
               let _ =
-                  LiveConnection("c", init (DriverServices.create stubRender) update view 0, channel)
+                  LiveConnection("c", init (DriverServices.createPermissive stubRender) update view 0, channel)
 
               channel.Send(ev "inc")
               Expect.isEmpty collector.Recorded "no telemetry recorded when the sink was never wired"

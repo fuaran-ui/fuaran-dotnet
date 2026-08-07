@@ -366,13 +366,24 @@ type BoundedServices =
     }
 
 module BoundedServices =
-    /// Permissive defaults — allow all dispatch, no op sink, default budget.
-    /// `renderFragment` MUST be supplied (HTML production is host-owned).
+    /// Default services — **DENY all dispatch** (Phase 782), no op sink, default
+    /// budget. `renderFragment` MUST be supplied (HTML production is host-owned).
+    ///
+    /// This driver exists specifically to run AI-emitted, wire-decoded trees, so
+    /// an allow-everything gate default was the least defensible of the four
+    /// Phase 782 inverted: the whole point of the bounded path is that the tree
+    /// is untrusted. `createPermissive` is the named opt-in back to it.
     let create (renderFragment: Node<obj> -> string) : BoundedServices =
-        { CanDispatch = fun _ -> true
+        { CanDispatch = fun _ -> false
           RenderFragment = renderFragment
           OnApply = ignore
           Budget = InteractionBudget.defaults }
+
+    /// **The named opt-in back to the pre-0.14.0 allow-everything gate**
+    /// (Phase 782).
+    let createPermissive (renderFragment: Node<obj> -> string) : BoundedServices =
+        { create renderFragment with
+            CanDispatch = fun _ -> true }
 
 /// One connection's bounded live state: the FIXED decoded tree (`BaseTree`), the
 /// mutable store, the current resolved tree (the diff baseline), the cached node

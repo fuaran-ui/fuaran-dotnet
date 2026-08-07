@@ -90,8 +90,25 @@
          the Semver note in STABILITY.md. It also NARROWS what the decoder
          accepts (over-deep / oversized payloads are now refused rather than
          decoded), which is why it advances the version rather than repacking
-         0.12.0. See STABILITY.md "Recorded change - 0.13.0". -->
-    <Version>0.13.0</Version>
+         0.12.0. See STABILITY.md "Recorded change - 0.13.0".
+
+         0.14.0 (fuaran#782) - BREAKING: the dispatch gate fails closed.
+         `IFuaranRuntime.CanDispatch` returned `true` in every shipped runtime,
+         which is the inverse of the published default-deny posture; it now
+         DENIES in DiagnosticRuntime / MutableRuntime / BrowserRuntime /
+         DriverServices.create / BoundedServices.create, and the permissive
+         posture is reached by NAME (Runtime.permissive, MutableRuntime.Permissive,
+         BrowserRuntime.createPermissive, *Services.createPermissive) so
+         re-enabling it is greppable. `ActionDescriptor` also gains four cases
+         (Notify / SetState / WriteToClipboard / CommitLocal), closing the set of
+         wire-survivable actions that reach the gate; `Action.Navigate` is
+         sanitised on the action path; and a host-reserved State-key namespace
+         (`StateKeys.HostReservedPrefix`) is unaddressable from a tree write.
+         The break is BEHAVIOURAL, not signature-level - a host compiles and then
+         refuses the actions it used to perform, which is the loudest safe way for
+         this change to arrive. See STABILITY.md "Recorded breaking change -
+         0.14.0" + docs/migrations/782-default-deny-dispatch-gate.md. -->
+    <Version>0.14.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

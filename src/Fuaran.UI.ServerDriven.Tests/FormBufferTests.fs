@@ -111,7 +111,7 @@ let private stubRender (n: Node<Msg>) : string =
     $"<n id='{s}'/>"
 
 let private session () =
-    init (DriverServices.create stubRender) update view initialModel
+    init (DriverServices.createPermissive stubRender) update view initialModel
 
 let private submitEv (values: (string * LiveValue) list) : LiveEvent =
     { ConnId = "c"

@@ -470,6 +470,55 @@ let applyDispatchGate
             sprintf "[Fuaran] dispatch denied by policy gate: %s" (Runtime.ActionDescriptor.describe descriptor)
         )
 
+/// Perform a TREE-ORIGINATED write to the State channel, refusing any key under
+/// the host-reserved namespace (Phase 782). Every State write that originates in
+/// a rendered tree — `Action.SetState`, a covered control's write-back, a
+/// declarative `Call … into State` target — routes through here, so
+/// `StateKeys.HostReservedPrefix` is unaddressable from a tree by construction
+/// rather than by whatever the host's `CanDispatch` policy happened to say.
+///
+/// A refusal is RECORDED through `Warn`, never silent: a tree that tried to write
+/// a host slot is a signal worth surfacing, and a silently-dropped write is
+/// indistinguishable from a store that did not re-render.
+///
+/// Public so the .NET tests can pin the decision without a browser render
+/// (precedent: `applyDispatchGate`).
+let treeStateWrite (runtime: Runtime.IFuaranRuntime) (key: string) (write: unit -> unit) : unit =
+    if StateKeys.isHostReserved key then
+        runtime.Warn(
+            sprintf
+                "[Fuaran] State write refused — key '%s' is under the host-reserved '%s' namespace and is not addressable from a rendered tree."
+                key
+                StateKeys.HostReservedPrefix
+        )
+    else
+        write ()
+
+/// Perform a TREE-DECLARED navigation (Phase 782): sanitise the route, then
+/// gate it, then hand the SANITISED route to the host router.
+///
+/// Sanitising here rather than only at href/src render time is the point.
+/// `IFuaranRuntime.Navigate` is documented as the seam a host wires to its SPA
+/// router; the shipped browser runtime happens to assign `window.location.hash`,
+/// which cannot execute script, but a host that wires `location.href` or
+/// `router.push` — exactly what the interface invites — inherits a
+/// `javascript:`-URL sink and an open redirect from a decoded tree.
+///
+/// The route arrives here as the CANONICAL DECODED FIELD, which is what makes
+/// this total: the wire accepts `route` / `href` / `url` / `to` as aliases and
+/// they all decode to this one field, so there is no spelling that reaches the
+/// router around the check. A refusal emits nothing at all rather than
+/// navigating to `about:blank` — a redirect the author never asked for is not an
+/// improvement on a refused one.
+///
+/// Public so the .NET tests can pin the decision without a browser render
+/// (precedent: `applyDispatchGate`).
+let treeNavigate (runtime: Runtime.IFuaranRuntime) (route: string) (navigate: string -> unit) : unit =
+    match Sanitize.sanitizeUrl route with
+    | None -> runtime.Warn(sprintf "[Fuaran] Action.Navigate refused — route is not a safe URL: %s" route)
+    | Some safeRoute ->
+        applyDispatchGate runtime (Runtime.ActionDescriptor.Navigate safeRoute) (fun () -> navigate safeRoute)
+
 let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =
     match action with
     | Action.Dispatch msg -> ctx.Dispatch msg
@@ -498,27 +547,39 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
                     fun raw ->
                         match target with
                         | CallResultTarget.State key ->
-                            // Scope-aware routing mirrors `Action.SetState` (Phase 266).
-                            match ctx.Scope with
-                            | Some scopeId -> (StateStore.forScope scopeId).Set(key, raw)
-                            | None -> StateStore.set key raw
+                            // Scope-aware routing mirrors `Action.SetState` (Phase 266);
+                            // host-reserved keys are refused (Phase 782) — the response
+                            // target is as tree-declared as an `Action.SetState` key is.
+                            treeStateWrite ctx.Runtime key (fun () ->
+                                match ctx.Scope with
+                                | Some scopeId -> (StateStore.forScope scopeId).Set(key, raw)
+                                | None -> StateStore.set key raw)
                         | CallResultTarget.Query name -> QueryStore.set name raw
                 )
             | None, None -> ctx.Runtime.Call(endpoint, ignore))
-    | Action.Notify(channel, payload) -> ctx.Runtime.Notify(channel, payload)
-    | Action.Navigate route ->
-        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.Navigate route) (fun () -> ctx.Runtime.Navigate(route))
+    | Action.Notify(channel, payload) ->
+        // Phase 782 — `Notify` publishes onto a host-addressable channel, so it
+        // is gated like every other outbound effect. Before 782 it reached the
+        // runtime with no gate consultation at all.
+        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.Notify channel) (fun () ->
+            ctx.Runtime.Notify(channel, payload))
+    // Phase 782 — sanitise-then-gate on the ACTION path, not only where an
+    // href/src is rendered. See `treeNavigate`.
+    | Action.Navigate route -> treeNavigate ctx.Runtime route (fun safe -> ctx.Runtime.Navigate safe)
     | Action.SetState(key, value) ->
-        // Scope-aware routing (Phase 266): a guest rendered under `Some scopeId`
-        // writes to its own isolated `StateStore.forScope` instance so its state
-        // never touches the host's default store (mirrors BrowserRuntime.SetState
-        // — the `JVal` payload lowers to a plain JS value via the bridge). The
-        // default (`None`) delegates to the host runtime exactly as before.
-        match ctx.Scope with
-        | Some scopeId ->
-            let raw = Runtime.JsonBridge.jvalToJs value
-            (StateStore.forScope scopeId).Set(key, raw)
-        | None -> ctx.Runtime.SetState(key, value)
+        // Phase 782 — gated, and host-reserved keys refused. Scope-aware routing
+        // (Phase 266): a guest rendered under `Some scopeId` writes to its own
+        // isolated `StateStore.forScope` instance so its state never touches the
+        // host's default store (mirrors BrowserRuntime.SetState — the `JVal`
+        // payload lowers to a plain JS value via the bridge). The default
+        // (`None`) delegates to the host runtime.
+        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.SetState key) (fun () ->
+            treeStateWrite ctx.Runtime key (fun () ->
+                match ctx.Scope with
+                | Some scopeId ->
+                    let raw = Runtime.JsonBridge.jvalToJs value
+                    (StateStore.forScope scopeId).Set(key, raw)
+                | None -> ctx.Runtime.SetState(key, value)))
     | Action.AiTool(toolName, args) ->
         applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.AiTool toolName) (fun () ->
             ctx.Runtime.InvokeAiTool(toolName, args))
@@ -529,11 +590,22 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
         // typed `OnCommit`. The event name is namespaced under
         // `fuaran-commit-local-` so cross-app collisions stay
         // structurally unlikely.
-        let eventName = sprintf "fuaran-commit-local-%s" nodeId
-        let evt = Browser.Dom.window.document.createEvent "CustomEvent"
-        evt.initEvent (eventName, false, true)
-        Browser.Dom.window.dispatchEvent (evt) |> ignore
-    | Action.WriteToClipboard text -> ctx.Runtime.WriteToClipboard(text)
+        //
+        // Phase 782 — gated. No `IFuaranRuntime` member backs it, which is why it
+        // was missed, but dispatching a window event IS a host-observable effect:
+        // anything listening on `fuaran-commit-local-*` is reachable from a
+        // decoded tree that names the right node id.
+        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.CommitLocal nodeId) (fun () ->
+            let eventName = sprintf "fuaran-commit-local-%s" nodeId
+            let evt = Browser.Dom.window.document.createEvent "CustomEvent"
+            evt.initEvent (eventName, false, true)
+            Browser.Dom.window.dispatchEvent (evt) |> ignore)
+    | Action.WriteToClipboard text ->
+        // Phase 782 — gated. The clipboard is a cross-application channel: a
+        // decoded tree writing it can plant content a user later pastes
+        // somewhere with authority.
+        applyDispatchGate ctx.Runtime Runtime.ActionDescriptor.WriteToClipboard (fun () ->
+            ctx.Runtime.WriteToClipboard(text))
     | Action.ReadFileBody(fileRef, fileHandle, encoding, onRead) ->
         // Default-deny by shape (FGP 3): consult the policy gate before the
         // host reads the file. On allow, the runtime reads the blob (async at
@@ -582,11 +654,15 @@ let private writeBackTo (ctx: RenderContext<'Msg>) (binding: Binding<'T>) (value
     | Binding.State(key, _) ->
         // Scope-aware routing mirrors `Action.SetState` (Phase 266): a guest
         // rendered under `Some scopeId` writes to its own isolated store.
-        match ctx.Scope, value with
-        | Some scopeId, Some v -> (StateStore.forScope scopeId).Set(key, v)
-        | Some scopeId, None -> (StateStore.forScope scopeId).Remove key
-        | None, Some v -> StateStore.set key v
-        | None, None -> StateStore.remove key
+        // Host-reserved keys are refused (Phase 782) — the write-back default is
+        // a tree-originated write like any other, and a decoded control binding
+        // to `host.<x>` must not become a back door around `Action.SetState`.
+        treeStateWrite ctx.Runtime key (fun () ->
+            match ctx.Scope, value with
+            | Some scopeId, Some v -> (StateStore.forScope scopeId).Set(key, v)
+            | Some scopeId, None -> (StateStore.forScope scopeId).Remove key
+            | None, Some v -> StateStore.set key v
+            | None, None -> StateStore.remove key)
     | Binding.Filter(name, _) ->
         match value with
         | Some v -> FilterStore.set name v

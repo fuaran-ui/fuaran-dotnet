@@ -77,7 +77,7 @@ let private popstateEv route : LiveEvent =
       LastSeq = 0 }
 
 let private session () =
-    init (DriverServices.create stubRender) update view 0
+    init (DriverServices.createPermissive stubRender) update view 0
 
 [<Tests>]
 let tests =

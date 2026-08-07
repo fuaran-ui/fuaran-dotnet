@@ -23,6 +23,14 @@ module Fuaran.UI.Renderer.StateStore
 
 open System.Collections.Generic
 
+//  Host-reserved key namespace (Phase 782): the `host.` prefix a tree-originated
+//  write cannot address lives in `Fuaran.UI.Renderer.StateKeys` (the
+//  emission-agnostic core), because three separate paths enforce it — the client
+//  renderer's `runAction`, its control write-back default, and the bounded
+//  server-driven interpreter, which does not depend on this module. Writes made
+//  through the module functions below are HOST writes and are deliberately
+//  unrestricted: the host owns its own store.
+
 // ── Single-process / single-threaded assumption (Phase 128) ─────────────────
 //  The process-global default store + its subscriber lists are deliberately
 //  unlocked mutable state. This matches the single-threaded browser-JS

@@ -89,7 +89,7 @@ The following are covered by the semver rules above:
 ### `Fuaran.UI.Renderer`
 - The `Render` entry point and its signature.
 - The `Theme` and `BindingResolver` public surfaces consumed by Renderer extensions. _(As of Phase 138 these modules physically live in `Fuaran.UI.Renderer.Core` with their `Fuaran.UI.Renderer.*` namespaces preserved; the contract is unchanged.)_
-- **Decision (Phase 119): the renderer owns a dispatch policy-gate seam.** `IFuaranRuntime.CanDispatch : ActionDescriptor -> bool` is consulted by `runAction` before the gated host effects (`Call` / `Navigate` / `AiTool` – Phase 136 adds `ReadFileBody` to the gated set via the additive `ActionDescriptor.ReadFileBody of fileId: string` case); on deny the renderer emits a `Warn` diagnostic and skips the effect. The language tier therefore exposes its **own** default-deny seam rather than deferring the gate strictly to a downstream orchestration tier – a standalone host (e.g. the BYOK browser playground) consuming only the public packages can make the dispatch path default-deny without a §4j orchestration gate in the loop. The default runtimes (`Diagnostic` / `Mutable` / `Browser`) return `true` (allow), so a host that does not gate behaves exactly as before. Per the established precedent below, adding the `CanDispatch` abstract member is a **pre-1.0 minor add** – direct `IFuaranRuntime` implementers add `member _.CanDispatch _ = true` to preserve allow-by-default. (F# interfaces cannot carry a true default implementation, so the new member is technically a recompile for direct implementers; all in-repo implementers were updated in the same change, and there are no cross-sibling direct implementers.)
+- **Decision (Phase 119): the renderer owns a dispatch policy-gate seam.** `IFuaranRuntime.CanDispatch : ActionDescriptor -> bool` is consulted by `runAction` before the gated host effects (`Call` / `Navigate` / `AiTool` – Phase 136 adds `ReadFileBody` to the gated set via the additive `ActionDescriptor.ReadFileBody of fileId: string` case); on deny the renderer emits a `Warn` diagnostic and skips the effect. The language tier therefore exposes its **own** default-deny seam rather than deferring the gate strictly to a downstream orchestration tier – a standalone host (e.g. the BYOK browser playground) consuming only the public packages can make the dispatch path default-deny without a §4j orchestration gate in the loop. **INVERTED in 0.14.0 (Phase 782): the default runtimes DENY.** They returned `true` (allow) from Phase 119 until then, which made the gate an opt-in a host had to remember to override — the inverse of the posture the language claims, with the shipped default contradicting the published claim. `Diagnostic` / `Mutable` / `Browser` / `DriverServices.create` / `BoundedServices.create` now refuse every descriptor, and the permissive posture is reached BY NAME: `Runtime.permissive`, `PermissiveRuntime`, `MutableRuntime.Permissive()`, `BrowserRuntime.createPermissive()`, `DriverServices.createPermissive`, `BoundedServices.createPermissive`. 0.14.0 also CLOSED the descriptor set — `Notify` / `SetState` / `WriteToClipboard` / `CommitLocal` reached their substrates with no gate consultation at all before it. Per the established precedent below, adding the `CanDispatch` abstract member was a **pre-1.0 minor add** – direct `IFuaranRuntime` implementers add the member, and one returning `true` unconditionally has written a permissive host deliberately rather than inheriting one silently. (F# interfaces cannot carry a true default implementation, so the new member is technically a recompile for direct implementers; all in-repo implementers were updated in the same change, and there are no cross-sibling direct implementers.)
 - **The render-entry family and the axes each one pins.** `render` (the general `RenderContext` entry) plus the convenience entries `renderWithSources` / `renderWithSourcesAndSink` / `renderWithSourcesSinkAndContext` / `renderWithSourcesInScope` / `renderWithSourcesInScopeAndSink`, and the composing wrappers `renderWithTheme` / `renderStateReactive`. **Which `RenderContext` axis an entry PINS is part of the contract, not an implementation detail** – a host picks its entry by exactly that. Adding an entry is additive; changing an existing entry's pinned axis (giving `renderWithSources` a real runtime, say, or pinning a sink where a host supplies one) is a behavioural change to every consumer of that entry and bumps accordingly. The full grid is [`docs/RENDER-ENTRIES.md`](docs/RENDER-ENTRIES.md).
 - **`GuestSeam` – the host-pluggable `Mount` guest capability seam.** `GuestSeamContext` (`ScopeId` / `Capabilities` / `Channel`), the `GuestSeam` record (`WrapRuntime` / `GateBubble`), and `installGuestSeam` / `clearGuestSeam` / `currentGuestSeam`. The **default-off** property is the load-bearing part of the contract: with no seam installed the `Mount` arm hands the guest the host runtime and an unwrapped bubble, exactly as before the seam existed. Making the seam mandatory, or changing the no-seam default, is a breaking change for every host that installs nothing.
 - The `Sanitize` module's policy contract – `sanitizeExtraAttributes`, `sanitizeUrl` / `sanitizeUrlOrBlank`, `sanitizeMarkdownHtml` (Phase 56). Tightening the policy (rejecting an attribute key or URL scheme previously accepted) is a behavioural change to renderer output and counts as a minor-version bump; loosening it (accepting an attribute key or URL scheme previously rejected) is additive. The injection-safety contract is documented separately in [`SANITIZATION.md`](SANITIZATION.md), which the renderer leans on as the source of truth for which inputs are neutralised at render time.
@@ -710,6 +710,61 @@ Before this repo flips public (whether as a public GitHub repository, a publishe
 - [`LICENSE`](LICENSE)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - [`CLAUDE.md`](CLAUDE.md)
+
+## Recorded breaking change — 0.14.0, the dispatch gate fails closed (fuaran#782)
+
+**Breaking, and the direction is the point: a security default has to fail closed.** The published
+claim is that any capability a generated UI reaches "is denied by default and permitted only through
+an explicit allow-list". In every shipped runtime `CanDispatch` returned `true`. The seam existed,
+was correct, and was wired to the wrong default — which is worse than an absent gate, because the
+claim reads as satisfied.
+
+**What changed.**
+
+1. **The default is DENY** in `DiagnosticRuntime`, `MutableRuntime`, `BrowserRuntime`, the .NET
+   layout-observer fallback runtime, `DriverServices.create` and `BoundedServices.create`.
+2. **The descriptor set is CLOSED.** `ActionDescriptor` gains `Notify of channel`,
+   `SetState of key`, `WriteToClipboard` and `CommitLocal of nodeId`, and the corresponding
+   `runAction` arms now route through `applyDispatchGate`. Before this, a host with a perfect
+   deny-all policy still could not refuse a decoded tree's `SetState` — which writes the
+   process-global `StateStore` and, on the browser path, persists into a `localStorage` namespace
+   shared with host-owned keys. The old doc-comment's reason ("they route through their own
+   substrates") described a routing detail, not a reason they were unreachable.
+3. **`Action.Navigate` is sanitised on the ACTION path**, in both the client renderer
+   (`Render.treeNavigate`) and the two server-driven interpreters, not only where an `href`/`src` is
+   rendered. The shipped browser runtime assigns `window.location.hash` and is incidentally safe,
+   but `IFuaranRuntime.Navigate` is documented as the seam a host wires to its SPA router, and
+   `location.href` / `router.push` turn a `javascript:` route into script execution and any absolute
+   URL into an open redirect. The check sits on the **canonical decoded field**, so the wire's
+   `route` / `href` / `url` / `to` aliases are covered by construction rather than by enumeration.
+   A refused route emits nothing — not `about:blank`, which is a navigation the author did not ask
+   for.
+4. **A host-reserved State namespace** (`Fuaran.UI.Renderer.StateKeys.HostReservedPrefix = "host."`).
+   Every tree-originated State write — `Action.SetState`, a covered control's write-back default, a
+   `Call … into State` target, and the bounded server-driven interpreter's `SetState` — refuses a key
+   under that prefix and records the refusal. This is deliberately NOT gate policy: it holds even
+   when `CanDispatch` allows everything, because which of a host's own key names are sensitive is not
+   something a shipped default can know.
+
+**What this does NOT do, stated so nobody assumes otherwise.** Tree writes are not themselves
+re-namespaced into a sandbox. The declarative write-back loop (a control writes `Binding.State k`,
+every reader of `k` re-resolves) requires tree writes and tree reads to name the same key, and the
+host merges its own `BindingSources.State` seed under those same names — so prefixing tree writes
+would either break reactivity or need an un-prefixing projection at read time that reintroduces the
+collision it removed. Reserving a namespace the tree cannot address closes the same class from the
+other side. A host with a sensitive slot named `theme` rather than `host.theme` is still reachable;
+renaming it is the migration.
+
+**Migration.** [`docs/migrations/782-default-deny-dispatch-gate.md`](docs/migrations/782-default-deny-dispatch-gate.md)
+— one page, copy-pasteable, with the "my actions stopped working" symptom first. In short: implement
+a real `CanDispatch` allow-list, or name one of the `permissive` constructors. One grep for
+`permissive` then finds every place in a codebase where the old behaviour is back, which is the whole
+reason the opt-in is a name rather than a boolean argument.
+
+**Version axis.** Pre-1.0, so a minor bump carries a breaking change. It is genuinely breaking on
+behaviour rather than on signature: a host that compiled before compiles after, and then refuses the
+actions it used to perform. That is the loudest safe way for this particular change to arrive — a
+silent re-enablement would have wasted it.
 
 ## Recorded change — 0.13.0, wire resource limits (fuaran#781)
 

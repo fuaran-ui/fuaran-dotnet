@@ -44,7 +44,7 @@ let private ev connId nodeId =
 
 let private connect connId =
     let channel = InMemoryChannel()
-    let session = init (DriverServices.create stubRender) update view 0
+    let session = init (DriverServices.createPermissive stubRender) update view 0
     let conn = LiveConnection(connId, session, channel)
     channel, conn
 
@@ -132,7 +132,7 @@ let tests =
               let channel = InMemoryChannel()
 
               let services =
-                  { DriverServices.create stubRender with
+                  { DriverServices.createPermissive stubRender with
                       OnReject = rejects.Add }
 
               // No EnableTelemetry call — the interaction-telemetry opt-in is
@@ -157,7 +157,7 @@ let tests =
               let channel = InMemoryChannel()
 
               let services =
-                  { DriverServices.create stubRender with
+                  { DriverServices.createPermissive stubRender with
                       OnReject = rejects.Add }
 
               let conn = LiveConnection("c1", init services update view 0, channel)
@@ -170,7 +170,7 @@ let tests =
           // ── Phase 212 — bounded reconnect-replay buffer ───────────────────
           test "the reconnect buffer is bounded: oldest frames evict at capacity" {
               let channel = InMemoryChannel()
-              let session = init (DriverServices.create stubRender) update view 0
+              let session = init (DriverServices.createPermissive stubRender) update view 0
 
               let conn = LiveConnection("c1", session, channel, replayBufferCapacity = 2)
 

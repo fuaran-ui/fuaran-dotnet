@@ -39,6 +39,39 @@ Every place a string makes it to the DOM through `Fuaran.UI.Renderer`:
 | `prop.id` (NodeId) | Smart-ctor first positional arg | **Author-trusted** — NodeId is consumer-emitted (in the AI scenario, the AI; in the wire-decode scenario, the JSON decoder); React's attribute encoder applies | `Render.render` |
 | `NodeKind.Custom` via `IFuaranRuntime.TryRenderCustom` | Host-registered closure | **Host trust boundary** — see below | `Render.renderKind` |
 
+## `Action.Navigate` and the State-key namespace (Phase 782)
+
+The table above covers strings the renderer pours into the **DOM**. Two seams carry a string out of a
+decoded tree without touching the DOM at all, and both were unguarded until Phase 782.
+
+**`Action.Navigate` → `IFuaranRuntime.Navigate` / `ClientEffect.Navigate`.** A route is a URL a host
+performs, not a URL the renderer emits, so `sanitizeUrlOrBlank` at the `href`/`src` render sites did
+not cover it. The shipped `BrowserRuntime` assigns `window.location.hash`, which cannot execute
+script — but `IFuaranRuntime.Navigate` is documented as the seam a host wires to its SPA router, and
+`location.href` / `router.push` turn a `javascript:` route into script execution and any absolute URL
+into an open redirect. Since Phase 782 the route passes `Sanitize.sanitizeUrl` on the action path in
+all three interpreters (`Render.treeNavigate`, `Driver.interpret`, `BoundedActions.runBoundedAction`)
+**before** the dispatch gate sees it and before any host code is reached. A refusal performs nothing
+and emits no effect — `about:blank` would be a navigation the author did not ask for.
+
+The check sits on the **canonical decoded field**. The wire accepts `route` / `href` / `url` / `to`
+as spellings of the same thing, so guarding the decoded field covers all four by construction; a
+wire-key match would have covered whichever ones someone remembered.
+
+**`Action.SetState` → the State channel.** The State channel is one flat key namespace shared by the
+host and every tree it renders, persisting (on the browser path) into one flat `localStorage`
+namespace. A decoded tree could therefore address any key the host owned. `StateKeys.HostReservedPrefix`
+(`"host."`) splits it: every tree-originated write — `Action.SetState`, a covered control's write-back
+default, a `Call … into State` target, the bounded server-driven interpreter — refuses a key under
+that prefix and records the refusal. **This is not gate policy**: it holds when `CanDispatch` allows
+everything, because which of a host's own key names are sensitive is not something a shipped default
+can know.
+
+Stated plainly so it is not over-read: tree writes are **not** re-namespaced into a sandbox. The
+declarative write-back loop needs tree writes and tree reads to name the same key, and hosts seed
+`BindingSources.State` under those same names. A host slot that matters takes the `host.` prefix; one
+that does not is reachable by any tree that renders, exactly as before.
+
 ## React's escaping floor
 
 React's `prop.text` (text content), `prop.value`, `prop.placeholder`, and the standard typed attribute setters (`prop.className`, `prop.id`, …) HTML-escape their string arguments before insertion. The Fuaran renderer leans on this floor for the bulk of its text-rendering path. Where the renderer reaches past React's typed surface — `prop.custom`, `prop.href`, `prop.dangerouslySetInnerHTML` — sanitization is the renderer's explicit responsibility, not React's.

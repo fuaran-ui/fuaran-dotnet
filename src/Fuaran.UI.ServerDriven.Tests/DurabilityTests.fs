@@ -74,7 +74,7 @@ let tests =
               let channel = InMemoryChannel()
 
               let conn =
-                  LiveConnection("c1", init (DriverServices.create stubRender) update view 0, channel)
+                  LiveConnection("c1", init (DriverServices.createPermissive stubRender) update view 0, channel)
 
               conn.EnableDurability(store, checkpointEvery = 2, clock = fixedClock)
 
@@ -99,7 +99,7 @@ let tests =
               let channel = InMemoryChannel()
 
               let conn =
-                  LiveConnection("c2", init (DriverServices.create stubRender) update view 0, channel)
+                  LiveConnection("c2", init (DriverServices.createPermissive stubRender) update view 0, channel)
               // checkpointEvery defaults to 0 → never auto-checkpoints; the journal
               // alone must carry the full state.
               conn.EnableDurability(store, clock = fixedClock)
@@ -120,7 +120,7 @@ let tests =
               let chA = InMemoryChannel()
 
               let connA =
-                  LiveConnection("s1", init (DriverServices.create stubRender) update view 0, chA)
+                  LiveConnection("s1", init (DriverServices.createPermissive stubRender) update view 0, chA)
 
               connA.EnableDurability(shared, checkpointEvery = 1, clock = fixedClock)
               chA.Send(ev "s1" "inc")
@@ -132,7 +132,7 @@ let tests =
               let chB = InMemoryChannel()
 
               let connB =
-                  LiveConnection("s1", init (DriverServices.create stubRender) update view 0, chB)
+                  LiveConnection("s1", init (DriverServices.createPermissive stubRender) update view 0, chB)
 
               connB.EnableDurability(shared, clock = fixedClock)
 
@@ -253,7 +253,7 @@ let tests =
               let mutable hostOps = 0
 
               let services =
-                  { DriverServices.create stubRender with
+                  { DriverServices.createPermissive stubRender with
                       OnApply = fun ops -> hostOps <- hostOps + List.length ops }
 
               let store = SessionStore.inMemory<Msg> ()
@@ -279,7 +279,7 @@ let tests =
               let channel = InMemoryChannel()
 
               let conn =
-                  LiveConnection("p1", init (DriverServices.create stubRender) update view 0, channel)
+                  LiveConnection("p1", init (DriverServices.createPermissive stubRender) update view 0, channel)
 
               channel.Send(ev "p1" "inc")
               channel.Send(ev "p1" "inc")

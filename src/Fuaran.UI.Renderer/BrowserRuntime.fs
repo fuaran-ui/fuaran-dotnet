@@ -80,11 +80,15 @@ let private writeClipboard (text: string) : obj = jsNative
 [<Emit("(function(file, mode, cb){ try { var r = new FileReader(); r.onload = function(){ var res = String(r.result == null ? '' : r.result); if (mode === 'base64') { var i = res.indexOf(','); cb(i >= 0 ? res.slice(i + 1) : res); } else { cb(res); } }; r.onerror = function(){ console.warn('[Fuaran] Action.ReadFileBody: FileReader error'); }; if (mode === 'text') { r.readAsText(file); } else { r.readAsDataURL(file); } } catch (e) { console.warn('[Fuaran] Action.ReadFileBody threw: ' + e); } })($0, $1, $2)")>]
 let private readFileBlob (file: obj) (mode: string) (cb: string -> unit) : unit = jsNative
 
-type BrowserRuntime(layoutObserver: ILayoutObserver option) =
+type BrowserRuntime(layoutObserver: ILayoutObserver option, allowAll: bool) =
     let customRegistry = CustomRendererRegistry()
 
-    /// Default constructor — no layout observer wired.
-    new() = BrowserRuntime(None)
+    /// Default constructor — no layout observer wired, DENY-by-default dispatch
+    /// (Phase 782).
+    new() = BrowserRuntime(None, false)
+
+    /// Layout-observer constructor, DENY-by-default dispatch (Phase 782).
+    new(layoutObserver: ILayoutObserver option) = BrowserRuntime(layoutObserver, false)
 
     /// Register a renderer for `NodeKind.Custom(moduleId,
     /// componentId, props, ...)`. Subsequent renders consult the registry
@@ -158,10 +162,11 @@ type BrowserRuntime(layoutObserver: ILayoutObserver option) =
         member _.TryGetCustomRenderer(moduleId, componentId) =
             customRegistry.TryGet(moduleId, componentId)
 
-        // Allow-by-default (Phase 119): the browser runtime imposes no
-        // dispatch policy. A standalone host that needs deny-by-default
-        // wraps/overrides this member with its hydrated allowlist.
-        member _.CanDispatch(_) = true
+        // DENY-by-default (Phase 782). The browser runtime is the standalone
+        // host shape — the BYOK-playground case with no orchestration tier
+        // behind it — which is precisely the host that cannot afford an
+        // allow-everything default. `createPermissive ()` is the named opt-out.
+        member _.CanDispatch(_) = allowAll
 
         // Standalone browser runtime composes no guest loader — a Mount renders
         // its declared empty state (Phase 266). A host that composes guests
@@ -169,6 +174,7 @@ type BrowserRuntime(layoutObserver: ILayoutObserver option) =
         member _.TryLoadGuest(_) = None
 
 /// Default browser runtime singleton — the demo wires this once at mount time.
+/// DENY-by-default dispatch since Phase 782.
 let create () : IFuaranRuntime = BrowserRuntime() :> IFuaranRuntime
 
 /// Construct a browser runtime wired to a layout observer.
@@ -177,18 +183,28 @@ let create () : IFuaranRuntime = BrowserRuntime() :> IFuaranRuntime
 let createWithLayoutObserver (observer: ILayoutObserver) : IFuaranRuntime =
     BrowserRuntime(Some observer) :> IFuaranRuntime
 
+/// **The named opt-in back to the pre-0.14.0 allow-everything dispatch posture**
+/// (Phase 782) for the browser host. Prefer a real `CanDispatch` allow-list;
+/// this exists so a host that needs the old behaviour states it in its own
+/// source rather than inheriting it.
+let createPermissive () : IFuaranRuntime =
+    BrowserRuntime(None, true) :> IFuaranRuntime
+
+/// Permissive twin of `createWithLayoutObserver` (Phase 782).
+let createPermissiveWithLayoutObserver (observer: ILayoutObserver) : IFuaranRuntime =
+    BrowserRuntime(Some observer, true) :> IFuaranRuntime
+
 #else
 
 /// Non-Fable consumers fall back to the diagnostic runtime — the browser
-/// substrate is meaningless under `dotnet build`.
+/// substrate is meaningless under `dotnet build`. DENY-by-default dispatch
+/// since Phase 782.
 let create () : IFuaranRuntime = Runtime.diagnostic
 
-/// .NET-side fallback for the layout-observer-wired browser runtime.
-/// Returns a wrapper that delegates everything to the diagnostic runtime
-/// but reports the wired observer through `LayoutObserver`. It
-/// also carries a `CustomRendererRegistry` so .NET-side tests can
-/// register Custom renderers against this shape.
-let createWithLayoutObserver (observer: ILayoutObserver) : IFuaranRuntime =
+/// .NET-side twin of the browser host's named permissive opt-in (Phase 782).
+let createPermissive () : IFuaranRuntime = Runtime.permissive
+
+let private layoutObserverRuntime (allowAll: bool) (observer: ILayoutObserver) : IFuaranRuntime =
     let registry = CustomRendererRegistry()
 
     { new IFuaranRuntime with
@@ -219,9 +235,24 @@ let createWithLayoutObserver (observer: ILayoutObserver) : IFuaranRuntime =
 
         member _.TryGetCustomRenderer(moduleId, componentId) = registry.TryGet(moduleId, componentId)
 
-        member _.CanDispatch(action) = Runtime.diagnostic.CanDispatch(action)
+        member _.CanDispatch(action) =
+            if allowAll then
+                Runtime.permissive.CanDispatch(action)
+            else
+                Runtime.diagnostic.CanDispatch(action)
 
         member _.TryLoadGuest(scopeId) =
             Runtime.diagnostic.TryLoadGuest(scopeId) }
+
+/// .NET-side fallback for the layout-observer-wired browser runtime.
+/// Returns a wrapper that delegates everything to the diagnostic runtime
+/// but reports the wired observer through `LayoutObserver`. It
+/// also carries a `CustomRendererRegistry` so .NET-side tests can
+/// register Custom renderers against this shape.
+let createWithLayoutObserver (observer: ILayoutObserver) : IFuaranRuntime = layoutObserverRuntime false observer
+
+/// Permissive twin of `createWithLayoutObserver` (Phase 782).
+let createPermissiveWithLayoutObserver (observer: ILayoutObserver) : IFuaranRuntime =
+    layoutObserverRuntime true observer
 
 #endif

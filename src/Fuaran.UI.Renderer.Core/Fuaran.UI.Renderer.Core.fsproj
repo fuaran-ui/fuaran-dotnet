@@ -27,6 +27,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Sanitize.fs" />
+    <Compile Include="StateKeys.fs" />
     <Compile Include="Markdown.fs" />
     <Compile Include="Theme.fs" />
     <Compile Include="Formatting.fs" />

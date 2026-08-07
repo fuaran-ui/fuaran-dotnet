@@ -191,10 +191,17 @@ type CustomRendererRegistry() =
 /// Describes a host-effecting action presented to the dispatch policy gate
 /// (`IFuaranRuntime.CanDispatch`, Phase 119) BEFORE the renderer invokes the
 /// corresponding runtime effect. Closed + structural so a gate can switch on
-/// it without a `'Msg`-aware codec. Covers the three externally-effecting
-/// actions a standalone host most wants to gate — an outbound HTTP/Remoting
-/// `Call`, a `Navigate`, and an `AiTool` invocation; `Notify` / `SetState` /
-/// clipboard route through their own substrates and are not gated here.
+/// it without a `'Msg`-aware codec.
+///
+/// Phase 782 closed the set: it now covers **every wire-survivable action that
+/// reaches a host substrate**. Until then it covered only `Call` / `Navigate` /
+/// `AiTool` / `ReadFileBody` / `ApplyTreeOp`, and `Notify` / `SetState` /
+/// `WriteToClipboard` / `CommitLocal` called their substrates with no gate
+/// consultation at all — so a host with a perfect deny-all policy still could
+/// not refuse a decoded tree's `SetState`, which writes the process-global
+/// `StateStore` (persisted, on the browser path, in a key namespace shared with
+/// host-owned keys). "Route through their own substrates" was never a reason
+/// they were unreachable; it was only a reason nobody had wired them up.
 [<RequireQualifiedAccess>]
 type ActionDescriptor =
     | Call of endpoint: string
@@ -217,6 +224,24 @@ type ActionDescriptor =
     /// graph), so the gate decides on the opaque payload, and the host's
     /// apply handler decodes only after the gate allows.
     | ApplyTreeOp of summary: string
+    /// A `Notify` publication on a named channel (Phase 782). The channel name
+    /// is host-addressable — a decoded tree naming a channel the host listens on
+    /// is injecting into the host's own message plane, so it is gated like any
+    /// other outbound effect.
+    | Notify of channel: string
+    /// A `SetState` write of `key` (Phase 782). The gate sees the key, so a host
+    /// policy can be per-key rather than all-or-nothing. Note the key namespace
+    /// is ALSO closed structurally — `StateStore.HostReservedPrefix` keys are
+    /// unaddressable from a tree-originated write regardless of gate policy.
+    | SetState of key: string
+    /// A clipboard write (Phase 782). The text is deliberately NOT carried: a
+    /// clipboard payload is user data, and a gate that logs its descriptor would
+    /// then log it. The decision is "may this tree write the clipboard at all".
+    | WriteToClipboard
+    /// A `CommitLocal` flush for `nodeId` (Phase 782). It dispatches a DOM
+    /// CustomEvent, which is a host-observable effect even though no
+    /// `IFuaranRuntime` member backs it.
+    | CommitLocal of nodeId: string
 
 [<RequireQualifiedAccess>]
 module ActionDescriptor =
@@ -228,6 +253,10 @@ module ActionDescriptor =
         | ActionDescriptor.AiTool toolName -> sprintf "AiTool(%s)" toolName
         | ActionDescriptor.ReadFileBody fileId -> sprintf "ReadFileBody(%s)" fileId
         | ActionDescriptor.ApplyTreeOp summary -> sprintf "ApplyTreeOp(%s)" summary
+        | ActionDescriptor.Notify channel -> sprintf "Notify(%s)" channel
+        | ActionDescriptor.SetState key -> sprintf "SetState(%s)" key
+        | ActionDescriptor.WriteToClipboard -> "WriteToClipboard"
+        | ActionDescriptor.CommitLocal nodeId -> sprintf "CommitLocal(%s)" nodeId
 
 /// The five Action substrates the renderer dispatches to. Consumers
 /// implement once at the app shell; the renderer treats it as a black box.
@@ -325,23 +354,26 @@ type IFuaranRuntime =
     abstract TryGetCustomRenderer:
         moduleId: string * componentId: string -> ((Map<string, JVal> -> ReactElement) * ContentHash option) option
 
-    /// Deny-by-default seam at the renderer dispatch boundary (Phase 119).
-    /// `runAction` consults this BEFORE invoking the host effect for the gated
-    /// actions (`Call` / `Navigate` / `AiTool`). Return `false` to deny — the
-    /// renderer emits a diagnostic via `Warn` and skips the host effect.
+    /// Deny-by-default seam at the renderer dispatch boundary (Phase 119,
+    /// inverted by Phase 782). `runAction` consults this BEFORE invoking the
+    /// host effect for EVERY wire-survivable action. Return `false` to deny —
+    /// the renderer emits a diagnostic via `Warn` and skips the host effect.
     ///
-    /// The default runtimes return `true` (allow), so a host that does not
-    /// gate dispatches exactly as before. A standalone host that needs
-    /// deny-by-default (e.g. the BYOK browser playground, which consumes only
-    /// the public packages and has no downstream orchestration gate to lean
-    /// on) overrides this member — typically consulting a hydrated allowlist —
-    /// so the language tier's own dispatch path can be made default-deny
-    /// without a §4j-style orchestration tier in the loop.
+    /// **The shipped runtimes DENY by default** (Phase 782). Before that they
+    /// all returned `true`, which made the gate an opt-in seam a host had to
+    /// remember to override — the inverse of the posture the language claims,
+    /// and a claim is not worth much when the shipped default contradicts it.
+    /// A host that genuinely wants the permissive posture asks for it BY NAME:
+    /// `Runtime.permissive` / `PermissiveRuntime` / `MutableRuntime.Permissive()`
+    /// / `BrowserRuntime.createPermissive()` / `DriverServices.createPermissive`.
+    /// One grep for `permissive` finds every place the old behaviour is back.
     ///
     /// Per established precedent, `IFuaranRuntime` gaining a new abstract
     /// member is a pre-1.0 minor add — direct implementers add the member
-    /// (returning `true` to keep allow-by-default) alongside their existing
-    /// members. See `STABILITY.md`.
+    /// alongside their existing members. A direct implementer that returns
+    /// `true` unconditionally has, since Phase 782, written a permissive host;
+    /// that is allowed, and it is now visible in its own source rather than
+    /// inherited silently. See `STABILITY.md`.
     abstract CanDispatch: action: ActionDescriptor -> bool
 
     /// Guest-loader seam for `NodeKind.Mount` (Phase 266, §4o). The renderer's
@@ -404,12 +436,12 @@ type DiagnosticRuntime() =
         // use `MutableRuntime` / `BrowserRuntime` (both override this).
         member _.TryGetCustomRenderer(_, _) = None
 
-        // Allow-by-default is intentional here: the renderer is not the trust
-        // boundary — the host / server gate is. The diagnostic runtime imposes
-        // no policy; a host that needs deny-by-default supplies its own runtime
-        // overriding this. See the abstract-member rationale above (the
-        // `CanDispatch` doc-comment, ~lines 278–291) for the full reasoning.
-        member _.CanDispatch(_) = true
+        // DENY-by-default (Phase 782). The previous "the renderer is not the
+        // trust boundary — the host gate is" rationale was self-defeating: this
+        // IS the runtime an unconfigured host gets, so "the host gate" was, for
+        // an unconfigured host, exactly this line returning `true`. A security
+        // default has to fail closed; the opt-out is `Runtime.permissive`.
+        member _.CanDispatch(_) = false
 
         // No guest loader in the diagnostic runtime — a Mount renders its
         // declared empty state (Phase 266). Hosts that compose guests plug an
@@ -419,6 +451,40 @@ type DiagnosticRuntime() =
 /// Shared instance of the diagnostic runtime — the renderer falls back to
 /// this when the caller does not supply one.
 let diagnostic: IFuaranRuntime = DiagnosticRuntime() :> IFuaranRuntime
+
+/// **The named opt-in back to the pre-0.14.0 allow-everything dispatch posture**
+/// (Phase 782). Identical to [[DiagnosticRuntime]] in every respect except that
+/// `CanDispatch` allows every descriptor.
+///
+/// This type exists so that re-enabling the permissive posture is a deliberate,
+/// greppable act. A host that upgrades and finds its actions refused has exactly
+/// two honest choices: implement a real allow-list, or name this type. What it
+/// cannot do any more is inherit permissiveness without saying so — which is
+/// what every host did before Phase 782, mostly without knowing.
+///
+/// Prefer a real policy. This is the migration ramp, not the destination.
+type PermissiveRuntime() =
+    interface IFuaranRuntime with
+        member _.Call(endpoint, onResult) = diagnostic.Call(endpoint, onResult)
+        member _.Notify(channel, payload) = diagnostic.Notify(channel, payload)
+        member _.Navigate(route) = diagnostic.Navigate(route)
+        member _.SetState(key, value) = diagnostic.SetState(key, value)
+        member _.InvokeAiTool(toolName, args) = diagnostic.InvokeAiTool(toolName, args)
+        member _.WriteToClipboard(text) = diagnostic.WriteToClipboard(text)
+
+        member _.ReadFileBody(file, encoding, onRead) =
+            diagnostic.ReadFileBody(file, encoding, onRead)
+
+        member _.Warn(message) = diagnostic.Warn(message)
+        member _.LayoutObserver = diagnostic.LayoutObserver
+        member _.TryRenderCustom(_, _, _) = None
+        member _.TryGetCustomRenderer(_, _) = None
+        member _.CanDispatch(_) = true
+        member _.TryLoadGuest(_) = None
+
+/// Shared instance of the permissive runtime — the one-line migration for a
+/// host that relied on the pre-0.14.0 allow-everything default.
+let permissive: IFuaranRuntime = PermissiveRuntime() :> IFuaranRuntime
 
 /// Diagnostic-shaped runtime that ALSO holds a
 /// `CustomRendererRegistry` so callers can register `NodeKind.Custom`
@@ -430,8 +496,18 @@ let diagnostic: IFuaranRuntime = DiagnosticRuntime() :> IFuaranRuntime
 ///
 /// All non-Custom members delegate to [[diagnostic]] verbatim so the
 /// substrate-warning shape is unchanged.
-type MutableRuntime() =
+type MutableRuntime(allowAll: bool) =
     let registry = CustomRendererRegistry()
+
+    /// Default construction is DENY-by-default (Phase 782), matching every
+    /// other shipped runtime.
+    new() = MutableRuntime(false)
+
+    /// The named permissive opt-in (Phase 782) — a `MutableRuntime` whose
+    /// `CanDispatch` allows every descriptor. Same rationale as
+    /// [[PermissiveRuntime]]: the old behaviour stays available, but only to a
+    /// caller who asks for it by name.
+    static member Permissive() = MutableRuntime(true)
 
     /// Register a renderer for `NodeKind.Custom(moduleId, componentId, props,
     /// ...)`. The renderer's Custom arm calls the registered function with
@@ -469,6 +545,10 @@ type MutableRuntime() =
 
         member _.TryGetCustomRenderer(moduleId, componentId) = registry.TryGet(moduleId, componentId)
 
-        member _.CanDispatch(action) = diagnostic.CanDispatch(action)
+        member _.CanDispatch(action) =
+            if allowAll then
+                permissive.CanDispatch(action)
+            else
+                diagnostic.CanDispatch(action)
 
         member _.TryLoadGuest(scopeId) = diagnostic.TryLoadGuest(scopeId)

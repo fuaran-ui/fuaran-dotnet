@@ -28,12 +28,18 @@ let private renderFragment = Render.render BindingResolver.empty
 
 /// A fresh per-connection session, all starting at the initial model —
 /// matching the GET / SSR baseline so the first diff is exact.
+///
+/// `createPermissive` since Phase 782: the dispatch gate DENIES by default now,
+/// and this sample drives a hand-authored tree it wrote itself. A real host
+/// serving decoded trees supplies its own allow-list —
+/// `{ DriverServices.create renderFragment with CanDispatch = … }` — rather than
+/// naming the permissive constructor.
 let private makeSession () =
-    init (DriverServices.create renderFragment) App.update App.view App.initial
+    init (DriverServices.createPermissive renderFragment) App.update App.view App.initial
 
 /// The form sample's per-connection session (Phase 152 form policy).
 let private makeFormSession () =
-    init (DriverServices.create renderFragment) Form.update Form.view Form.initial
+    init (DriverServices.createPermissive renderFragment) Form.update Form.view Form.initial
 
 let private page (streamPath: string) (sendPath: string) (bodyHtml: string) : string =
     sprintf

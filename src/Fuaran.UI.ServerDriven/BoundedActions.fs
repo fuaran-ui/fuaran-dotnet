@@ -77,6 +77,12 @@ type BoundedDiagnostic =
     /// it has no server form there. `action` is the action's constructor name
     /// (`Validation.describeAction` — log-safe, never payload values).
     | UnsupportedOnBoundedPath of nodeId: string * action: string
+    /// Phase 782 — the action was REFUSED, not merely inert: an `Action.Navigate`
+    /// whose route is not a safe URL, or a State write addressing a host-reserved
+    /// key. Distinct from `UnsupportedOnBoundedPath` because the two mean opposite
+    /// things to whoever is debugging an emission: "this path does not implement
+    /// that" versus "that was not allowed".
+    | Refused of nodeId: string * action: string * reason: string
 
 module BoundedDiagnostic =
     /// Human-readable, log-safe description for introspection / debugging.
@@ -87,6 +93,8 @@ module BoundedDiagnostic =
                 "action '%s' on node '%s' is inert on the bounded path (no server form for the generated-app driver)"
                 action
                 nodeId
+        | BoundedDiagnostic.Refused(nodeId, action, reason) ->
+            sprintf "action '%s' on node '%s' was refused: %s" action nodeId reason
 
 /// The outcome of interpreting one bounded `Action`: the (possibly-updated)
 /// store + the closure-free client effects to ship + the no-op diagnostics
@@ -114,6 +122,13 @@ module BoundedActions =
           Effects = []
           Diagnostics = [ BoundedDiagnostic.UnsupportedOnBoundedPath(nodeId, Validation.describeAction action) ] }
 
+    /// A REFUSED outcome (Phase 782): unchanged store, no effects, one readable
+    /// diagnostic naming what was refused and why.
+    let private refused (nodeId: string) (action: Action<obj>) (reason: string) (s: BoundedStore) : BoundedOutcome =
+        { Store = s
+          Effects = []
+          Diagnostics = [ BoundedDiagnostic.Refused(nodeId, Validation.describeAction action, reason) ] }
+
     /// Interpret one resolved bounded `Action<obj>` against the store. `nodeId`
     /// is the originating event's node (for node-addressed client effects such
     /// as `ReadFileBody`). **Never invokes a closure carried by the action** —
@@ -126,15 +141,36 @@ module BoundedActions =
         // lowers to the structural obj shapes the store historically held —
         // `Binding.State` re-resolution (in the bounded driver) reads it back.
         | Action.SetState(key, value) ->
-            store
-                { s with
-                    State = Map.add key (JValObj.toObj value) s.State }
+            // Phase 782 — the host-reserved key namespace is closed on the bounded
+            // path too. This driver's whole premise is that the tree is untrusted,
+            // so a generated tree writing `host.<x>` is exactly the case the
+            // namespace exists for.
+            if Fuaran.UI.Renderer.StateKeys.isHostReserved key then
+                refused
+                    nodeId
+                    action
+                    (sprintf
+                        "State key '%s' is under the host-reserved '%s' namespace"
+                        key
+                        Fuaran.UI.Renderer.StateKeys.HostReservedPrefix)
+                    s
+            else
+                store
+                    { s with
+                        State = Map.add key (JValObj.toObj value) s.State }
 
         // Inherently-browser arms → closure-free ClientEffects (no server form).
+        // Phase 782 — the route is sanitised before the effect is shipped; the
+        // shim navigates with the host's router, so an unsafe scheme emitted here
+        // lands as a client-side sink. A refusal emits no effect and one
+        // diagnostic, never a silently-neutered `about:blank`.
         | Action.Navigate route ->
-            { Store = s
-              Effects = [ ClientEffect.Navigate route ]
-              Diagnostics = [] }
+            match Fuaran.UI.Renderer.Sanitize.sanitizeUrl route with
+            | Some safe ->
+                { Store = s
+                  Effects = [ ClientEffect.Navigate safe ]
+                  Diagnostics = [] }
+            | None -> refused nodeId action "route is not a safe URL" s
         | Action.WriteToClipboard text ->
             { Store = s
               Effects = [ ClientEffect.WriteToClipboard text ]
