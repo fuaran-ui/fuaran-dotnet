@@ -195,4 +195,51 @@ let drawingSvgTests =
               Expect.isTrue
                   (contains "<ellipse class=\"fuaran-drawing-ellipse\" cx=\"50\" cy=\"25\" rx=\"30\" ry=\"15\"/>" svg)
                   "ellipse"
+          }
+
+          // ── Phase 790 — the output ceiling ──────────────────────────────────
+          //
+          // A Drawing is ONE node, so a tree-size budget never sees the size of
+          // the markup it lowers to. The emitter therefore appends THROUGH a
+          // budget and abandons the walk at the ceiling; measuring the finished
+          // string would not be a bound, it would be a post-mortem.
+
+          test "an over-budget drawing is refused rather than emitted unbounded (Phase 790)" {
+              let huge =
+                  drawing [ Shape.Polyline([ for i in 1..20000 -> { X = float i; Y = float i } ], noStyle) ] None
+
+              match DrawingSvg.tryRenderWithLimit 2000 BindingResolver.empty textOf huge with
+              | Error(DrawingSvg.OutputTooLarge limit) -> Expect.equal limit 2000 "the breached ceiling is reported"
+              | Ok svg -> failtestf "expected OutputTooLarge, got %d chars of markup" svg.Length
+          }
+
+          test "the shipped render entry point substitutes a bounded refusal SVG (Phase 790)" {
+              // Past the DEFAULT ceiling, so this exercises the path a host
+              // actually takes. ~150k points is a couple of megabytes of markup.
+              let huge =
+                  drawing [ Shape.Polyline([ for i in 1..150000 -> { X = float i; Y = float i } ], noStyle) ] None
+
+              let markup = render huge
+
+              Expect.isLessThan markup.Length DrawingSvg.defaultMaxOutputChars "the refusal markup is bounded"
+
+              Expect.isTrue (contains "not rendered" markup) "the refusal says why it is empty"
+              Expect.isFalse (contains "<polyline" markup) "no partial geometry is emitted"
+          }
+
+          test "an in-budget drawing is unaffected by the ceiling (Phase 790)" {
+              let small = drawing [ Shape.Line(0.0, 0.0, 10.0, 10.0, noStyle) ] None
+
+              match DrawingSvg.tryRenderWithLimit 2000 BindingResolver.empty textOf small with
+              | Ok svg ->
+                  Expect.isTrue (contains "<line" svg) "an in-budget drawing renders normally"
+                  Expect.equal svg (render small) "and byte-identically to the unbudgeted default path"
+              | Error e -> failtestf "expected Ok for a small drawing, got %A" e
+          }
+
+          test "the default output ceiling is finite (Phase 790)" {
+              Expect.isLessThan
+                  DrawingSvg.defaultMaxOutputChars
+                  System.Int32.MaxValue
+                  "the default emitted-character ceiling is finite"
           } ]

@@ -529,7 +529,12 @@ let webApp =
 ETag = SHA-256 over the canonical tree wire-form + theme CSS + shell signature;
 `If-None-Match` serves `304 Not Modified` with no body and no re-render. A
 host-supplied `IFuaranRenderCache` is consulted before render and populated
-after – the default `RenderCache.none` is a zero-cost pass-through. The render
+after – the default `RenderCache.none` is a zero-cost pass-through, and
+`RenderCache.inMemory ()` is a **bounded** in-process store
+(`RenderCache.defaultCapacity` documents, LRU eviction; `RenderCache.bounded n`
+sizes it yourself). The bound is not incidental: the key is a content hash, so a
+high-fan-out surface mints a fresh key per distinct tree and a never-evicting
+store grows for the process lifetime. The render
 mode (static vs hydratable vs fragment) folds into the ETag, so the three
 emissions of one tree get distinct cache keys.
 

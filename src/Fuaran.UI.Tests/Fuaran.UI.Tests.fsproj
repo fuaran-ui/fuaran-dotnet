@@ -180,6 +180,10 @@
     <Compile Include="NodeMapTests.fs" />
     <Compile Include="WireSurvivabilityTests.fs" />
     <Compile Include="ChartLoweringTests.fs" />
+    <!-- Phase 790 — the resource bounds a well-formed emission can otherwise
+         exhaust slowly: portable-memo-store eviction and the chart-lowering
+         series / point caps + the linear-not-quadratic property. -->
+    <Compile Include="CostBoundsTests.fs" />
     <!-- Phase 671: the IDL-generated structural layer, byte-diffed tier-side. -->
     <Compile Include="GeneratedLayerTests.fs" />
     <Compile Include="HandlerAddressTests.fs" />

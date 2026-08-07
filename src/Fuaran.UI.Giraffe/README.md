@@ -44,7 +44,12 @@ Every response carries a **deterministic strong ETag** (SHA-256 over the
 canonical tree wire-form + theme CSS + shell signature) and honours
 `If-None-Match` → `304 Not Modified` without re-rendering. A host-supplied
 `IFuaranRenderCache` is consulted before render and populated after — the
-default `RenderCache.none` is a zero-cost pass-through.
+default `RenderCache.none` is a zero-cost pass-through. `RenderCache.inMemory ()`
+is a **bounded** in-process store (`RenderCache.defaultCapacity` documents, LRU
+eviction); `RenderCache.bounded n` sizes it to your own working set. The bound
+matters because the key is a content hash: a high-fan-out surface mints a fresh
+key per distinct tree, so a store that never evicts grows for the process
+lifetime.
 
 ## Document shell
 

@@ -715,7 +715,7 @@ The no-closures invariant prevents arbitrary *code*; it does not prevent
 arbitrary *cost* – a generated tree can still drive an enormous `Chain` or be
 pathologically large. `InteractionBudget` caps both **per interaction**:
 `MaxActions` (the bounded-action cascade size – a `Chain` flattens) and
-`MaxNodes` (the re-resolve + diff tree size, the work/memory proxy). A breach
+`MaxNodes` (the re-resolve + diff tree cost, the work/memory proxy). A breach
 surfaces a structured `BudgetExceeded` (the session is unchanged – no hang, no
 mutation; default-deny by shape). The budget is **step/size-based, not
 wall-clock** (no `Stopwatch` / `Date.now`), so it is Fable-clean and
@@ -725,6 +725,19 @@ single-tenant default; `InteractionBudget.defaults` is the conservative
 multi-tenant cap. **Bounded code + bounded cost = safe to run untrusted generated
 apps on shared / multi-tenant infrastructure** (the property Phase 154's
 Fable-free vibe-coding emission cites).
+
+**`MaxNodes` is a COST, not a node count (Phase 790).** A `Chart` or a
+`DataGrid` is a *single node* carrying its own data, so a bare node count priced
+a chart of ten thousand points the same as an empty one — a bounded-looking tree
+with unbounded render work behind it. The tree cost therefore weights a
+data-bearing node by the payload it carries (a chart: one per point × series; a
+grid: one per row × column; a map / sparkline: one per point), counting only
+`Binding.Static` payloads, since a `Query` / `State` binding's size is a
+property of the host's store rather than of the untrusted tree. For a tree with
+no data-bearing node the cost is exactly the node count it always was. A new
+data-bearing kind joins the cost function, and the existing budget then sees it
+with no host-side change — which is what stops the one-node-unbounded-cost shape
+recurring.
 
 > **Status:** shipped – `BoundedActions.runBoundedAction`, `BoundedDriver`
 > (`init` / `step` / `resolveTree`), `InteractionBudget`, and the safety-boundary

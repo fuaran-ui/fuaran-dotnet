@@ -219,6 +219,58 @@ let isLowered (kind: ChartKind) : bool =
     | ChartKind.Pie -> true
     | ChartKind.Heatmap -> false
 
+// ─── Cost bounds (Phase 790) ─────────────────────────────────────────────────
+//
+// A `Chart` is ONE node, so the tree-size budget a host applies to an untrusted
+// emission never sees the lowering's cost: a single node carrying a large enough
+// series is unbounded work behind a bounded-looking tree. These caps close that
+// — the lowering refuses rather than truncating, per the estate's default-deny
+// posture (a silently truncated chart is a wrong chart that looks right).
+//
+// The point cap is enforced by TAKING `MaxPointsPerSeries + 1` from the row
+// sequence, so an over-budget (or infinite) source is never materialised: the
+// refusal costs one row more than the cap, not the whole feed.
+
+/// Per-lowering cost caps.
+type ChartLimits =
+    {
+        /// Maximum number of series (`YFields`) one chart may carry.
+        MaxSeries: int
+        /// Maximum number of data rows (points per series) one chart may carry.
+        MaxPointsPerSeries: int
+    }
+
+/// Why a lowering refused. Carries the observed magnitude and the breached
+/// limit, so a host can report the breach rather than an empty picture.
+type ChartRefusal =
+    /// More series than `MaxSeries`.
+    | TooManySeries of series: int * limit: int
+    /// At least `atLeast` rows against `MaxPointsPerSeries` (the count is a lower
+    /// bound: the source is only read to the cap + 1).
+    | TooManyPoints of atLeast: int * limit: int
+
+module ChartLimits =
+    /// The shipped defaults. 32 series exceeds any legible categorical palette
+    /// (the palette itself has 6 colours) and 10 000 points is well past the
+    /// 640×400 canvas's ability to distinguish marks — so a chart at these caps
+    /// is already unreadable, and anything beyond them is cost, not information.
+    let defaults: ChartLimits =
+        { MaxSeries = 32
+          MaxPointsPerSeries = 10_000 }
+
+    /// No caps — the trusted-author case (the chart is your own data).
+    let unlimited: ChartLimits =
+        { MaxSeries = System.Int32.MaxValue
+          MaxPointsPerSeries = System.Int32.MaxValue }
+
+/// A human-readable one-line description of a refusal — the text a refusal
+/// drawing carries as its `<desc>`.
+let describeRefusal (r: ChartRefusal) : string =
+    match r with
+    | TooManySeries(series, limit) -> sprintf "Chart not rendered: %d series exceeds the limit of %d." series limit
+    | TooManyPoints(atLeast, limit) ->
+        sprintf "Chart not rendered: at least %d data points exceeds the limit of %d per series." atLeast limit
+
 let private numericOf (row: Row) (field: string) : float =
     match BindingResolver.projectRowFieldValue row field with
     // Non-finite guard (Phase 640): NaN/Infinity would poison every domain
@@ -233,25 +285,36 @@ let private numericOf (row: Row) (field: string) : float =
 
 // ─── The lowering ─────────────────────────────────────────────────────────────
 
-/// Lower a resolved `ChartSpec` + data rows to a canonical `DrawingSpec`.
+/// The core lowering: an ALREADY-CAPPED row list to a canonical `DrawingSpec`.
+/// The public entry points (`lower` / `lowerWith` / `tryLower*`) apply the
+/// Phase-790 cost caps before this runs, so it never sees an over-budget input.
 /// Lowered arms: `Bar` (grouped + stacked), `Line`, `Area` (overlaid +
 /// stacked), `Scatter` (linear numeric x), `Pie` (polar, single-series) —
 /// Phases 533 + 637 + 636 + 638. `Heatmap` produces an empty drawing (its
 /// lowering rule lands with its own phase). `Stacked = true` on a kind where
 /// stacking is meaningless (`Line`, `Scatter`, `Pie`) is ignored — the flag
 /// only changes `Bar` / `Area` geometry.
-let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
-    let rows = rows |> Seq.toList
-
+let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSpec =
+    // ARRAYS, not lists, for everything the nested series-by-point loops index
+    // (Phase 790). F# list indexing is O(index), so `series.[j].[i]` inside a
+    // per-category × per-series loop made Pie roughly O(n²) and stacked bar
+    // roughly O(n²m + nm²). Array access is O(1), so the lowering is linear in
+    // points. The emitted geometry is byte-identical — this is an access-cost
+    // fix, not a layout change.
     let categories =
-        rows |> List.map (fun r -> BindingResolver.projectRowFieldString r spec.XField)
+        rows
+        |> List.map (fun r -> BindingResolver.projectRowFieldString r spec.XField)
+        |> List.toArray
 
     let n = List.length rows
 
-    let series =
-        spec.YFields |> List.map (fun yf -> rows |> List.map (fun r -> numericOf r yf))
+    let yFields = List.toArray spec.YFields
 
-    let m = List.length series
+    let series =
+        yFields
+        |> Array.map (fun yf -> rows |> List.map (fun r -> numericOf r yf) |> List.toArray)
+
+    let m = Array.length series
 
     // Stacking applies to Bar + Area only (Phase 637). Values stack as-is by
     // plain cumulative sum per category — deterministic and total; a negative
@@ -266,8 +329,8 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
 
     /// Per-category running sums across the series, INCLUDING the leading 0
     /// baseline: `cumsFor i` has length m+1.
-    let cumsFor (i: int) : float list =
-        [ for j in 0 .. m - 1 -> series.[j].[i] ] |> List.scan (+) 0.0
+    let cumsFor (i: int) : float[] =
+        Array.init m (fun j -> series.[j].[i]) |> Array.scan (+) 0.0
 
     let allValues =
         let vs =
@@ -275,7 +338,8 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
                 [ for i in 0 .. n - 1 do
                       yield! cumsFor i ]
             else
-                series |> List.collect id
+                [ for s in series do
+                      yield! s ]
 
         match vs with
         | [] -> [ 0.0 ]
@@ -306,15 +370,16 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
 
     let xValues =
         if isScatter then
-            rows |> List.map (fun r -> numericOf r spec.XField)
+            rows |> List.map (fun r -> numericOf r spec.XField) |> List.toArray
         else
-            []
+            [||]
 
     let xNiceLo, xNiceHi, xTicks =
         if isScatter then
-            match xValues with
-            | [] -> niceDomain 0.0 1.0
-            | vs -> niceDomain (List.min vs) (List.max vs)
+            if Array.isEmpty xValues then
+                niceDomain 0.0 1.0
+            else
+                niceDomain (Array.min xValues) (Array.max xValues)
         else
             0.0, 1.0, []
 
@@ -361,13 +426,14 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
                 ))
         else
             categories
-            |> List.mapi (fun i c ->
+            |> Array.mapi (fun i c ->
                 Shape.Label(
                     centreX i,
                     r2 (plotY1 + 20.0),
                     TextSource.Literal c,
                     textStyle (Some labelOpacity) TextAnchor.Middle tickSize Emphasis.Normal
                 ))
+            |> Array.toList
 
     // ── Axis titles (a name on both axes) ──
     let capitalise (s: string) =
@@ -415,7 +481,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
                           bw,
                           hgt,
                           None,
-                          styleFill (colourFor j) |> withMark (List.item j spec.YFields) categories.[i]
+                          styleFill (colourFor j) |> withMark yFields.[j] categories.[i]
                       ) ]
         | ChartKind.Bar ->
             let groupW = bandW * 0.7
@@ -434,14 +500,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
                       let top = min vy baseY
                       let hgt = r2 (abs (vy - baseY))
 
-                      Shape.Rectangle(
-                          bx,
-                          top,
-                          bw,
-                          hgt,
-                          None,
-                          styleFill colour |> withMark (List.item j spec.YFields) categories.[i]
-                      ) ]
+                      Shape.Rectangle(bx, top, bw, hgt, None, styleFill colour |> withMark yFields.[j] categories.[i]) ]
         | ChartKind.Area when stacked ->
             // Cumulative bands, bottom band first (painter's order): band j fills
             // between boundary j (below) and boundary j+1 (above); its upper
@@ -449,11 +508,11 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
             if n = 0 then
                 []
             else
-                let cums = [ for i in 0 .. n - 1 -> cumsFor i ]
+                let cums = Array.init n cumsFor
 
                 [ for j in 0 .. m - 1 do
                       let colour = colourFor j
-                      let yf = List.item j spec.YFields
+                      let yf = yFields.[j]
 
                       let upper = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale cums.[i].[j + 1]) ]
 
@@ -473,7 +532,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
                 [ for j in 0 .. m - 1 do
                       let colour = colourFor j
                       let values = series.[j]
-                      let yf = List.item j spec.YFields
+                      let yf = yFields.[j]
 
                       let points = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale values.[i]) ]
 
@@ -488,7 +547,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
 
                   let points = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale values.[i]) ]
 
-                  Shape.Polyline(points, styleStroke colour 2.0 |> withSeriesMark (List.item j spec.YFields)) ]
+                  Shape.Polyline(points, styleStroke colour 2.0 |> withSeriesMark yFields.[j]) ]
         | ChartKind.Scatter ->
             // Fixed-radius point marks per datum (Phase 636). A non-numeric
             // x/y cell reads 0.0 (`numericOf`'s posture, shared with the other
@@ -496,7 +555,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
             [ for j in 0 .. m - 1 do
                   let colour = colourFor j
                   let values = series.[j]
-                  let yf = List.item j spec.YFields
+                  let yf = yFields.[j]
 
                   for i in 0 .. n - 1 do
                       Shape.Circle(
@@ -519,7 +578,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
                       Shape.Label(
                           r2 (lx + 15.0),
                           43.0,
-                          TextSource.Literal(List.item j spec.YFields),
+                          TextSource.Literal yFields.[j],
                           textStyle (Some labelOpacity) TextAnchor.Start tickSize Emphasis.Normal
                       ) ]
         else
@@ -547,11 +606,11 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
     // .005 boundaries, the same exposure `niceNum`'s `10.0 ** exp` already
     // carries.
     let pieShapes () : Shape list =
-        let values = if m = 1 then series.[0] else []
+        let values = if m = 1 then series.[0] else [||]
 
-        let refused = m <> 1 || values |> List.exists (fun v -> v < 0.0)
+        let refused = m <> 1 || values |> Array.exists (fun v -> v < 0.0)
 
-        let total = List.sum values
+        let total = Array.sum values
 
         if refused || total <= 0.0 then
             []
@@ -579,12 +638,12 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
 
                       CurveCommand.CubicTo(c1, c2, pt t1) ]
 
-            let fractions = values |> List.map (fun v -> v / total)
-            let starts = fractions |> List.scan (+) 0.0
+            let fractions = values |> Array.map (fun v -> v / total)
+            let starts = fractions |> Array.scan (+) 0.0
             let top = -System.Math.PI / 2.0
 
             let segs =
-                let yf = List.item 0 spec.YFields
+                let yf = yFields.[0]
 
                 [ for i in 0 .. n - 1 do
                       let f = fractions.[i]
@@ -620,7 +679,7 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
                           Shape.Label(
                               r2 (W - 153.0),
                               r2 (ly + 9.0),
-                              TextSource.Literal(sprintf "%s (%s%%)" (List.item i categories) pct),
+                              TextSource.Literal(sprintf "%s (%s%%)" categories.[i] pct),
                               textStyle (Some labelOpacity) TextAnchor.Start tickSize Emphasis.Normal
                           ) ]
 
@@ -651,3 +710,60 @@ let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
       Style = emptyStyle
       Title = spec.Title
       Description = None }
+
+/// The drawing a refused lowering produces (Phase 790): the same canvas, no
+/// shapes, and the refusal as the a11y `<desc>` — bounded output that says why
+/// it is empty rather than a blank picture that does not.
+let refusalDrawing<'Msg> (spec: ChartSpec<'Msg>) (refusal: ChartRefusal) : DrawingSpec =
+    { ViewBox =
+        { MinX = 0.0
+          MinY = 0.0
+          Width = W
+          Height = H }
+      Shapes = []
+      Style = emptyStyle
+      Title = spec.Title
+      Description = Some(TextSource.Literal(describeRefusal refusal)) }
+
+/// Lower under explicit cost caps, refusing rather than doing unbounded work
+/// (Phase 790). The row source is read at most `MaxPointsPerSeries + 1` deep, so
+/// an over-budget — or unbounded — sequence is never materialised.
+let tryLowerWith<'Msg>
+    (limits: ChartLimits)
+    (spec: ChartSpec<'Msg>)
+    (rows: Row seq)
+    : Result<DrawingSpec, ChartRefusal> =
+    let seriesCount = List.length spec.YFields
+
+    if seriesCount > limits.MaxSeries then
+        Error(TooManySeries(seriesCount, limits.MaxSeries))
+    else
+        let capped =
+            if limits.MaxPointsPerSeries = System.Int32.MaxValue then
+                rows |> Seq.toList
+            else
+                rows |> Seq.truncate (limits.MaxPointsPerSeries + 1) |> Seq.toList
+
+        let observed = List.length capped
+
+        if observed > limits.MaxPointsPerSeries then
+            Error(TooManyPoints(observed, limits.MaxPointsPerSeries))
+        else
+            Ok(lowerRows spec capped)
+
+/// Lower under the shipped default caps, surfacing a refusal typed.
+let tryLower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : Result<DrawingSpec, ChartRefusal> =
+    tryLowerWith ChartLimits.defaults spec rows
+
+/// Lower under explicit caps; a refusal renders as the bounded refusal drawing.
+let lowerWith<'Msg> (limits: ChartLimits) (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
+    match tryLowerWith limits spec rows with
+    | Ok drawing -> drawing
+    | Error refusal -> refusalDrawing spec refusal
+
+/// Lower a resolved `ChartSpec` + data rows to a canonical `DrawingSpec` under
+/// the shipped default cost caps (`ChartLimits.defaults`). An over-budget chart
+/// yields the refusal drawing; `tryLower` is the typed form for a caller that
+/// wants to handle the refusal itself.
+let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
+    lowerWith ChartLimits.defaults spec rows

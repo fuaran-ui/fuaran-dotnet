@@ -10,6 +10,9 @@
   <ItemGroup>
     <Compile Include="DocumentTests.fs" />
     <Compile Include="HandlerTests.fs" />
+    <!-- Phase 790 — the render cache is bounded (LRU eviction), including the
+         default `inMemory` one the samples and docs wire. -->
+    <Compile Include="CachingTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

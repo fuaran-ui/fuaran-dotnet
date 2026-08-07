@@ -189,6 +189,72 @@ let tests =
               | other -> failtestf "expected BudgetExceeded (MaxNodes), got %A" other
           }
 
+          // ── Phase 790: the budget is COST-aware, not node-count-blind ───────
+          //
+          // A Chart is ONE node, so a node count prices a chart carrying ten
+          // thousand points the same as an empty one — the shape that let a
+          // bounded-looking tree carry unbounded render work. The budget now
+          // weights a data-bearing node by the data it carries.
+
+          test "G2 (Phase 790): a data-bearing node is priced by its payload, not as one node" {
+              let rows: Fuaran.Core.Row seq =
+                  Seq.ofList [ for i in 1..200 -> Map.ofList [ "x", o (sprintf "c%d" i); "y", o (float i) ] ]
+
+              let chart: Node<obj> =
+                  { Fuaran.markdown "chart" "placeholder" with
+                      Kind =
+                          NodeKind.Chart(
+                              { Kind = ChartKind.Bar
+                                Source = Binding.Static(Some rows)
+                                Stacked = false
+                                XField = "x"
+                                YFields = [ "y" ]
+                                Title = None
+                                OnPointClick = None }
+                          ) }
+
+              let tree =
+                  WireTree.ofDecoded (
+                      Fuaran.dashboard
+                          "root"
+                          { Defaults.dashboard<obj> with
+                              Children =
+                                  [ Fuaran.button
+                                        "set"
+                                        { Defaults.button<obj> with
+                                            OnClick = Action.SetState("msg", jv "x") }
+                                    chart ] }
+                  )
+
+              // Three NODES, but 200 points of render cost. A budget of 50 is
+              // far above the node count and far below the cost.
+              let services =
+                  { BoundedServices.create stubRender with
+                      Budget =
+                          { InteractionBudget.defaults with
+                              MaxNodes = 50 } }
+
+              let session = BoundedDriver.init services empty tree
+
+              Expect.isGreaterThan
+                  session.NodeCount
+                  50
+                  "the chart's payload is priced into the tree cost (a bare node count would be 3)"
+
+              let _, out = BoundedDriver.step session (clickEv "set")
+
+              match out.Rejected with
+              | Some(BudgetExceeded _) -> ()
+              | other -> failtestf "expected BudgetExceeded on render cost, got %A" other
+          }
+
+          test "G2 (Phase 790): a data-free tree still costs exactly its node count" {
+              let session =
+                  BoundedDriver.init (BoundedServices.create stubRender) empty (mkTree (Action.SetState("msg", jv "x")))
+
+              Expect.equal session.NodeCount 3 "dashboard + button + markdown — unchanged from the pre-790 count"
+          }
+
           test "FGP 5: applied ops are emitted to the OnApply sink" {
               let captured = ResizeArray<TreeOp<obj> list>()
 

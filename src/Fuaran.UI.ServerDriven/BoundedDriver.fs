@@ -222,9 +222,14 @@ type InteractionBudget =
         /// flattens; each non-Chain action costs 1). Caps a pathological deep /
         /// wide `Chain`.
         MaxActions: int
-        /// Max node count of the driven tree — the per-interaction
+        /// Max render COST of the driven tree — the per-interaction
         /// re-resolve + diff cost (and a proxy for the memory ceiling, since the
         /// resolved tree + op list scale with it).
+        ///
+        /// Cost is the node count with data-bearing nodes weighted by the data
+        /// they carry (Phase 790): a `Chart` costs one per (point × series), a
+        /// `DataGrid` one per (row × column). For a tree with no data-bearing
+        /// node this is exactly the node count, which is what it was before.
         MaxNodes: int
     }
 
@@ -243,9 +248,74 @@ let rec private actionCost (a: Action<obj>) : int =
     | Action.Chain xs -> xs |> List.sumBy actionCost
     | _ -> 1
 
-let rec private countNodes (node: Node<'a>) : int =
+// ─── Per-kind render cost (Phase 790) ────────────────────────────────────────
+//
+// Most nodes cost 1: one node's worth of re-resolve, diff and render. A
+// DATA-BEARING node is different — its render cost scales with data it carries
+// INSIDE one node, which a node count cannot see. A `Chart` is a single node
+// whose lowering emits geometry per (point × series); a `DataGrid` is a single
+// node whose render emits a cell per (row × column). Counting those as 1 is what
+// let a single node carry unbounded work behind a bounded-looking tree, and
+// weighting them is what stops the shape reappearing on the next data-bearing
+// kind: a new kind that carries its own data joins this function, and the
+// existing `MaxNodes` budget then sees it with no host-side change.
+//
+// Only a `Binding.Static` payload is counted. A `Query` / `State` / `Transform`
+// binding resolves at render time from the host's own store, so its size is not
+// a property of the untrusted tree and is not this budget's business.
+
+/// Ceiling on rows counted for cost. Reading a possibly-lazy payload to
+/// exhaustion just to price it would itself be the unbounded work; a count this
+/// far past any sane budget is already "refuse", so the exact figure past it
+/// carries no decision.
+[<Literal>]
+let private maxCountedRows = 100_000
+
+/// Saturating `int` arithmetic — a cost is a budget comparand, and an overflow
+/// that wrapped NEGATIVE would read as "cheap" and admit the very tree the
+/// budget exists to refuse.
+let private satAdd (a: int) (b: int) : int =
+    let sum = int64 a + int64 b
+
+    if sum > int64 System.Int32.MaxValue then
+        System.Int32.MaxValue
+    else
+        int sum
+
+let private satMul (a: int) (b: int) : int =
+    let product = int64 a * int64 b
+
+    if product > int64 System.Int32.MaxValue then
+        System.Int32.MaxValue
+    else
+        int product
+
+let private staticSeqCount (binding: Binding<'t seq>) : int =
+    match binding with
+    | Binding.Static(Some items) -> items |> Seq.truncate maxCountedRows |> Seq.length
+    | _ -> 0
+
+let private staticListCount (binding: Binding<'t list>) : int =
+    match binding with
+    | Binding.Static(Some items) -> min maxCountedRows (List.length items)
+    | _ -> 0
+
+/// The render cost of ONE node, excluding its children.
+let private nodeCost (node: Node<'a>) : int =
+    match node.Kind with
+    | NodeKind.Chart spec -> satAdd 1 (satMul (staticSeqCount spec.Source) (max 1 (List.length spec.YFields)))
+    | NodeKind.DataGrid spec -> satAdd 1 (satMul (staticSeqCount spec.Source) (max 1 (List.length spec.Columns)))
+    | NodeKind.Map spec -> satAdd 1 (staticListCount spec.Source)
+    | NodeKind.Sparkline spec -> satAdd 1 (staticListCount spec.Source)
+    | _ -> 1
+
+/// The tree's total render cost — the node count, with data-bearing nodes
+/// weighted by the data they carry. Named `countNodes` no longer: a cost is what
+/// `MaxNodes` has always been comparing, and for every non-data-bearing tree
+/// this is exactly the node count it was before.
+let rec private treeCost (node: Node<'a>) : int =
     let kids = getChildren node.Kind |> Option.defaultValue []
-    1 + (kids |> List.sumBy countNodes)
+    kids |> List.fold (fun acc kid -> satAdd acc (treeCost kid)) (nodeCost node)
 
 // ─── the driver ──────────────────────────────────────────────────────────────
 
@@ -279,11 +349,16 @@ module BoundedServices =
 /// mutable store, the current resolved tree (the diff baseline), the cached node
 /// count (for G2), and the injected services.
 type BoundedSession =
-    { BaseTree: Node<obj>
-      Store: BoundedStore
-      Resolved: Node<obj>
-      NodeCount: int
-      Services: BoundedServices }
+    {
+        BaseTree: Node<obj>
+        Store: BoundedStore
+        Resolved: Node<obj>
+        /// The tree's cached render COST (Phase 790) — the node count with
+        /// data-bearing nodes weighted by their payload. Field name kept for
+        /// source compatibility; `MaxNodes` is what it is compared against.
+        NodeCount: int
+        Services: BoundedServices
+    }
 
 /// Why the bounded driver produced no patches: a G1 gate rejection or a G2
 /// budget breach. Either way the store is unchanged.
@@ -313,7 +388,7 @@ let init (services: BoundedServices) (store: BoundedStore) (wire: WireTree) : Bo
     { BaseTree = tree
       Store = store
       Resolved = resolveTree store tree
-      NodeCount = countNodes tree
+      NodeCount = treeCost tree
       Services = services }
 
 let private rejected (r: BoundedReject) : BoundedStepOutput =
@@ -351,7 +426,7 @@ let step (session: BoundedSession) (ev: LiveEvent) : BoundedSession * BoundedSte
             rejected (BudgetExceeded(sprintf "action cascade cost %d exceeds MaxActions %d" cost budget.MaxActions))
         elif session.NodeCount > budget.MaxNodes then
             session,
-            rejected (BudgetExceeded(sprintf "tree size %d exceeds MaxNodes %d" session.NodeCount budget.MaxNodes))
+            rejected (BudgetExceeded(sprintf "tree cost %d exceeds MaxNodes %d" session.NodeCount budget.MaxNodes))
         else
             let outcome = BoundedActions.runBoundedAction ev.NodeId action session.Store
             let newResolved = resolveTree outcome.Store session.BaseTree

@@ -70,8 +70,9 @@ type IFragmentStore<'Msg> =
     abstract member Bypasses: int
     /// The number of distinct cached subtrees currently held.
     abstract member Count: int
-    /// The store's declared bound. A bounded (LRU) store returns its capacity; an
-    /// unbounded portable store returns its live `Count` (no fixed bound).
+    /// The store's declared entry bound. Every shipped store is bounded (Phase
+    /// 790): both the in-process LRU and the portable `MemoCache`-backed store
+    /// return their configured capacity.
     abstract member Capacity: int
 
 /// The DEFAULT store (Phase 360) — a thin adapter over the Phase-183
@@ -96,19 +97,58 @@ type InProcessStore<'Msg>(capacity: int) =
         member _.Count = lru.Count
         member _.Capacity = lru.Capacity
 
+/// Portable-store defaults (Phase 790).
+module PortableStoreDefaults =
+
+    /// The default entry bound for the portable store. The store is keyed by a
+    /// content hash, so a caller feeding varied trees mints a fresh key every
+    /// application: without a bound the store grows once per distinct emission,
+    /// for the lifetime of the session. Finite by default, and a host that
+    /// genuinely wants "hold everything" passes an explicit capacity.
+    [<Literal>]
+    let capacity = 4096
+
 /// The PORTABLE store (Phase 360) — backed by `Fuaran.Core.MemoCache<Node<'Msg>>`
 /// (the `Fuaran.Core.Function.applyMemo` cache type), threaded BY VALUE through a
 /// single mutable cell holding the immutable cache record. Because the cache is a
 /// pure `Map<content-hash, subtree>` (+ counters), `.Snapshot` can be persisted
 /// and lifted onto a fresh `MemoCacheStore.fromCache` on another machine / after a
 /// restart — the same subtree served as a hit without re-derivation. This is the
-/// content-addressed-application cache of `fuaran-core#49`, unbounded (portability
-/// over eviction) — a host that wants a bound wraps `InProcessStore` instead.
-type MemoCacheStore<'Msg>(initial: Fuaran.Core.MemoCache<Node<'Msg>>) =
+/// content-addressed-application cache of `fuaran-core#49`.
+///
+/// **Bounded since Phase 790.** The store holds at most `capacity` entries and
+/// evicts the least-recently-used one on insert when full — the same policy the
+/// `InProcessStore` LRU uses, for the same reason: recency is the only signal a
+/// content hash carries. Recency stamps live beside the cache (a plain
+/// `Dictionary<string,int64>`) rather than inside it, so `.Snapshot` stays
+/// exactly the portable `MemoCache` record it always was — the bound costs the
+/// portability property nothing. Pass a capacity to widen or narrow the default;
+/// `System.Int32.MaxValue` restores the pre-790 unbounded behaviour for a host
+/// that has its own reason to want it.
+type MemoCacheStore<'Msg>(initial: Fuaran.Core.MemoCache<Node<'Msg>>, capacity: int) =
+    let capacity = max 1 capacity
     let mutable cache = initial
+    // Recency stamps for the LRU bound — deliberately OUTSIDE the cache record
+    // so the snapshot stays portable. A seeded store starts every carried-over
+    // entry at stamp 0, so the first eviction wave drops the carried entries the
+    // session has not touched, which is the correct reading of "least recently
+    // used" for a restored cache.
+    let stamps = System.Collections.Generic.Dictionary<string, int64>()
+    let mutable clock = 0L
 
-    /// An empty portable store.
-    new() = MemoCacheStore<'Msg>(Fuaran.Core.Memo.empty)
+    do
+        for kv in initial.Entries do
+            stamps[kv.Key] <- 0L
+
+    let nextStamp () =
+        clock <- clock + 1L
+        clock
+
+    /// An empty portable store at the default bound.
+    new() = MemoCacheStore<'Msg>(Fuaran.Core.Memo.empty, PortableStoreDefaults.capacity)
+
+    /// A portable store seeded from a cache snapshot, at the default bound.
+    new(initial: Fuaran.Core.MemoCache<Node<'Msg>>) = MemoCacheStore<'Msg>(initial, PortableStoreDefaults.capacity)
 
     /// Seed a portable store from a cache snapshot (the machine-B / post-restart
     /// path — the entries carried over from another session).
@@ -123,15 +163,43 @@ type MemoCacheStore<'Msg>(initial: Fuaran.Core.MemoCache<Node<'Msg>>) =
             match Map.tryFind key cache.Entries with
             | Some hit ->
                 cache <- { cache with Hits = cache.Hits + 1 }
+                stamps[key] <- nextStamp ()
                 Some hit
             | None ->
                 cache <- { cache with Misses = cache.Misses + 1 }
                 None
 
         member _.Set(key: string, value: Node<'Msg>) : unit =
+            // A NEW key at capacity first evicts the least-recently-used entry;
+            // refreshing an existing key never evicts.
+            if not (Map.containsKey key cache.Entries) && Map.count cache.Entries >= capacity then
+                let mutable lruKey = ""
+                let mutable lruStamp = System.Int64.MaxValue
+                let mutable found = false
+
+                for entry in cache.Entries do
+                    let stamp =
+                        match stamps.TryGetValue entry.Key with
+                        | true, s -> s
+                        | _ -> 0L
+
+                    if stamp < lruStamp then
+                        lruStamp <- stamp
+                        lruKey <- entry.Key
+                        found <- true
+
+                if found then
+                    cache <-
+                        { cache with
+                            Entries = Map.remove lruKey cache.Entries }
+
+                    stamps.Remove lruKey |> ignore
+
             cache <-
                 { cache with
                     Entries = Map.add key value cache.Entries }
+
+            stamps[key] <- nextStamp ()
 
         member _.NoteBypass() : unit =
             cache <-
@@ -142,7 +210,9 @@ type MemoCacheStore<'Msg>(initial: Fuaran.Core.MemoCache<Node<'Msg>>) =
         member _.Misses = cache.Misses
         member _.Bypasses = cache.Bypasses
         member _.Count = Map.count cache.Entries
-        member _.Capacity = Map.count cache.Entries
+        /// The store's declared bound (Phase 790). Pre-790 this returned the live
+        /// `Count`, the honest answer while the store was unbounded.
+        member _.Capacity = capacity
 
 /// Helpers for building the default / portable stores and for the effect gate.
 module FragmentStore =
@@ -151,8 +221,14 @@ module FragmentStore =
     let inProcess<'Msg> (capacity: int) : IFragmentStore<'Msg> =
         InProcessStore<'Msg>(capacity) :> IFragmentStore<'Msg>
 
-    /// An empty portable (`MemoCache`-backed) store.
+    /// An empty portable (`MemoCache`-backed) store at the default entry bound
+    /// (`PortableStoreDefaults.capacity`).
     let portable<'Msg> () : MemoCacheStore<'Msg> = MemoCacheStore<'Msg>()
+
+    /// An empty portable store at an explicit entry bound (Phase 790) — for a
+    /// host whose working set is larger or smaller than the default.
+    let portableWithCapacity<'Msg> (capacity: int) : MemoCacheStore<'Msg> =
+        MemoCacheStore<'Msg>(Fuaran.Core.Memo.empty, capacity)
 
     /// A portable store seeded from a cache snapshot — the cross-session /
     /// cross-machine restore path.
