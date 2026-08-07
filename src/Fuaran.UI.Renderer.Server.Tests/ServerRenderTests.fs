@@ -241,3 +241,93 @@ let serverRenderTests =
               Expect.isTrue (contains "data-fuaran-custom-hash-mismatch=\"strict\"" html) "strict marker"
               Expect.isFalse (contains "host-score" html) "the drifted renderer is NOT invoked"
           } ]
+
+// ============================================================================
+//  Phase 788 — SSR attribute-NAME injection.
+//
+//  Feliz.ViewEngine's `ViewBuilder.buildElement` emits `" " + key + "=\"" +
+//  value + "\""` and `Interop.mkAttr` escapes the VALUE only: nothing anywhere
+//  escapes an attribute NAME. React's own attribute-name validation gives the
+//  client renderer an accidental floor the server path has never had, so the
+//  key gate (`Sanitize.isAllowedExtraAttributeKey`) plus the emission-site
+//  re-check (`Sanitize.isSafeAttributeName`) are the whole defence here.
+//
+//  These assert on the real emitted HTML string, not on the predicate — the
+//  predicate is pinned in `Fuaran.UI.Tests/SanitizeTests.fs`. Each negative
+//  assertion is paired with a POSITIVE control proving the ExtraAttributes
+//  emission path runs at all for the same tree; without it a renderer that
+//  silently stopped emitting ExtraAttributes would pass every "no payload"
+//  assertion vacuously.
+// ============================================================================
+
+/// The canonical payload: prefix-valid (`data-`), then a space + `=` that
+/// terminate the name and open a second, live attribute.
+let private injectedKey = "data-x=1 onmouseover=alert(document.domain) z"
+
+[<Tests>]
+let extraAttributeNameInjectionTests =
+    testList
+        "Fuaran.UI.Renderer.Server — ExtraAttributes attribute-name injection (Phase 788)"
+        [ test "an injected attribute name never reaches the emitted HTML" {
+              // The record-with hatch — the documented bypass of the smart
+              // constructor's prefix gate, and the reachable path today (the
+              // wire decoder hard-codes `extraAttributes` to None).
+              let node: Node<obj> =
+                  { Fuaran.heading
+                        "h"
+                        { Defaults.heading with
+                            Text = TextSource.Literal "Title" } with
+                      ExtraAttributes = Some(Map.ofList [ injectedKey, "v"; "data-cy", "title" ]) }
+
+              let html = Render.render BindingResolver.empty node
+
+              // POSITIVE CONTROL — the emission path is live for this tree, so
+              // the negative assertions below are not vacuous.
+              Expect.isTrue (contains "data-cy=\"title\"" html) "the safe ExtraAttributes entry IS emitted"
+
+              Expect.isFalse (contains "onmouseover" html) "no event-handler attribute in the emitted HTML"
+              Expect.isFalse (contains "alert(document.domain)" html) "no handler body in the emitted HTML"
+              Expect.isFalse (contains "data-x=" html) "the injected key is dropped entirely, not partially emitted"
+          }
+
+          test "a valid data-* / aria-* key still round-trips through SSR" {
+              let node: Node<obj> =
+                  { Fuaran.heading
+                        "h"
+                        { Defaults.heading with
+                            Text = TextSource.Literal "Title" } with
+                      ExtraAttributes = Some(Map.ofList [ "data-test-id", "hero"; "aria-describedby", "hint-1" ]) }
+
+              let html = Render.render BindingResolver.empty node
+              Expect.isTrue (contains "data-test-id=\"hero\"" html) "data-* key round-trips"
+              Expect.isTrue (contains "aria-describedby=\"hint-1\"" html) "aria-* key round-trips"
+          }
+
+          test "a whitespace-padded key is emitted TRIMMED, not verbatim" {
+              // The gate judges `key.Trim()`; emitting the original would emit a
+              // string the gate never inspected.
+              let node: Node<obj> =
+                  { Fuaran.heading
+                        "h"
+                        { Defaults.heading with
+                            Text = TextSource.Literal "Title" } with
+                      ExtraAttributes = Some(Map.ofList [ "  data-cy  ", "padded" ]) }
+
+              let html = Render.render BindingResolver.empty node
+              Expect.isTrue (contains "data-cy=\"padded\"" html) "emitted under the trimmed name"
+              Expect.isFalse (contains "  data-cy  =" html) "the untrimmed name is not emitted"
+          }
+
+          test "go-red self-test: the payload IS an injection if the gate does not fire" {
+              // Proves the assertions above measure something. `prop.custom` is
+              // the same verbatim-name emission site `extraAttrProps` reaches;
+              // handed the payload directly — i.e. with the gate bypassed — it
+              // produces exactly the live handler the gate exists to stop. If a
+              // future edit made this test pass with the injection absent, the
+              // emission site would have gained its own escaping and the
+              // negative assertions above would be measuring nothing.
+              let unguarded =
+                  Feliz.ViewEngine.Render.htmlView (Html.div [ prop.custom (injectedKey, "v") ])
+
+              Expect.isTrue (contains "onmouseover=alert(document.domain)" unguarded) "unguarded emission IS injectable"
+          } ]

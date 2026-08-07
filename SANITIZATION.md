@@ -30,7 +30,7 @@ Every place a string makes it to the DOM through `Fuaran.UI.Renderer`:
 | `TextSource.Literal` / `Bound` / `I18n` → `prop.text` | AI emission, query resolution, i18n catalog | **Escaped by React** (textContent assignment) | `Render.renderText` |
 | `Markdown.toHtml` → `prop.dangerouslySetInnerHTML` | AI-emitted markdown source | **Escaped by construction** (deterministic GFM renderer escapes every text run, escapes raw HTML, routes URLs through `sanitizeUrlOrBlank`) **+ sanitized at render-time** as defence-in-depth (strip `<script>`/`<iframe>`/`<object>`/`<embed>`/`<form>`/`<link>`/`<meta>` blocks + `on*=` attributes + `javascript:`/`vbscript:` URLs) | `Renderer.Core` `Markdown.toHtml` → `Sanitize.sanitizeMarkdownHtml` |
 | `Theme.toCss` → `prop.dangerouslySetInnerHTML` (via `themeStyleElement`) | Host-supplied `Theme` record | **Host-trusted** — Theme is a consumer-authored F# record; the wire-decode path strips it (Theme is not part of the §4d JSON contract) | `themeStyleElement` |
-| `Node.ExtraAttributes` → `prop.custom(k, v)` | Smart-ctor `Node.withExtraAttribute` (prefix-gated) OR `{ node with ExtraAttributes = ... }` (bypass) | **Sanitized at render-time** — data-* / aria-* key allowlist + value safety check; non-conforming entries dropped | `Render.render` → `Sanitize.sanitizeExtraAttributes` |
+| `Node.ExtraAttributes` → `prop.custom(k, v)` | Smart-ctor `Node.withExtraAttribute` (prefix-gated) OR `{ node with ExtraAttributes = ... }` (bypass) | **Sanitized at render-time** — data-* / aria-* prefix rule **plus a positive `[A-Za-z0-9-]` character allowlist over the whole key** + value safety check; non-conforming entries dropped, survivors emitted **trimmed**. The server renderer re-checks the key at its emission site (see "Attribute-name injection" below) | `Render.render` → `Sanitize.sanitizeExtraAttributes`; SSR emission site → `Sanitize.isSafeAttributeName` |
 | `Render.accessibilityAttributes` → `prop.custom` | Renderer-controlled keys (`aria-label`, `role`, …); values resolved through `BindingResolver` | **Renderer-controlled keys + React-escaped values** | `Render.accessibilityAttributes` |
 | `IconSource s` → `prop.custom("data-icon", s)` | Smart-ctor IconSource | **Escaped by React** (attribute encoder). The icon-contract hook is an EMPTY element — the name rides the `data-icon` attribute only, never text content, and no SVG/glyph path exists in the renderer (a future bundled-glyph path needs its own sanitization arm) | `Render.iconHook` (Tabs / Fact / Metric / Callout / Button) |
 | `CellKindErased.Link href` → `prop.href` | AI-emitted grid row + accessor closure | **Sanitized at render-time** — http/https/mailto/tel allowlist; `javascript:`/`vbscript:`/unknown schemes replaced with `about:blank`; relative paths pass through | `Render.renderCell` → `Sanitize.sanitizeUrlOrBlank` |
@@ -41,6 +41,21 @@ Every place a string makes it to the DOM through `Fuaran.UI.Renderer`:
 ## React's escaping floor
 
 React's `prop.text` (text content), `prop.value`, `prop.placeholder`, and the standard typed attribute setters (`prop.className`, `prop.id`, …) HTML-escape their string arguments before insertion. The Fuaran renderer leans on this floor for the bulk of its text-rendering path. Where the renderer reaches past React's typed surface — `prop.custom`, `prop.href`, `prop.dangerouslySetInnerHTML` — sanitization is the renderer's explicit responsibility, not React's.
+
+**The floor covers attribute VALUES, not attribute NAMES** — see the next section.
+
+## Attribute-name injection (Phase 788)
+
+Every escaping surface in this document escapes attribute *values*. Nothing escapes an attribute *name*: React's attribute encoder escapes the value it is given, and on the server `Feliz.ViewEngine`'s `Interop.mkAttr` does the same while `ViewBuilder.buildElement` writes `" " + key + "=\"" + value + "\""` with the key verbatim.
+
+That asymmetry is not an oversight in either library — **HTML has no escape for an illegal character in an attribute name.** A space inside a name simply starts a *new* attribute and an `=` starts its value, so a key of `data-x=1 onmouseover=alert(document.domain) z` is not a mangled attribute name; it is three attributes, one of them a live event handler. The only sound response is to drop the entry.
+
+So the key gate is a **positive character allowlist** (`[A-Za-z0-9-]`, applied to the whole trimmed key) layered on the `data-` / `aria-` prefix rule and the explicit `on*` / `style` rejects — `Sanitize.isAllowedExtraAttributeKey`. `Sanitize.sanitizeExtraAttributes` emits the **trimmed** key, since the trimmed form is what the gate inspected. The server renderer's emission site re-checks each surviving name with `Sanitize.isSafeAttributeName` as defence in depth, so it does not rest solely on upstream validation remaining correct.
+
+Two scope notes, so the posture is neither overstated nor understated:
+
+- **The reachable path is host-side, not wire-side.** The wire decoder hard-codes `extraAttributes` to `None` (`Fuaran.UI/Generated.fs`, `Ops/JsonDecode.fs`), so a decoded AI emission cannot carry an `ExtraAttributes` entry at all today. The reachable surface is a host or adapter mapping its own untrusted data through `{ node with ExtraAttributes = ... }` — the record-with bypass documented above. If a future phase teaches the decoder to carry `extraAttributes`, this seam becomes wire-reachable with no further change, which is why the gate lives at render time rather than at the decoder.
+- **Before Phase 788 the client renderer was saved only by React**, which validates attribute names and refuses to set an invalid one. That is an accidental floor, not a declared posture; the server renderer had no equivalent, and this document previously described the seam as covered by a "key allowlist" when only the prefix was checked.
 
 ## Custom-renderer trust boundary
 
@@ -171,6 +186,14 @@ The validator does NOT walk the typed tree's record-with bypass (`{ node with Ex
 - `Node.ExtraAttributes` keys that don't match data-* / aria-* are dropped at render time even when the smart-ctor gate is bypassed.
 - `on*=` keys are rejected even if hand-built into the map.
 - `style` is rejected.
+- **Attribute-name injection (Phase 788)** — a prefix-valid key that terminates its own name
+  (`data-x=1 onmouseover=alert(document.domain) z`) is rejected, as are keys carrying quote
+  characters, angle brackets, `/`, whitespace or control bytes; a surviving key is emitted trimmed.
+  `Fuaran.UI.Renderer.Server.Tests/ServerRenderTests.fs` pins the same payload on the **real emitted
+  HTML string** for the SSR path, each negative assertion paired with a positive control proving the
+  `ExtraAttributes` emission path is live, plus a go-red self-test showing that the same payload
+  handed straight to `prop.custom` *does* produce the live handler — so the gate is demonstrably
+  what neutralises it.
 - `CellKindErased.Link` with a `javascript:` href resolves to `about:blank`.
 - Legitimate `data-cy` / `aria-describedby` keys pass through unchanged (Phase 12.F + Phase 12.I regression floor).
 - Legitimate http / https / mailto / tel hrefs pass through unchanged.
@@ -182,8 +205,9 @@ The validator does NOT walk the typed tree's record-with bypass (`{ node with Ex
 
 ## Reference
 
-- [`src/Fuaran.UI.Renderer/Sanitize.fs`](src/Fuaran.UI.Renderer/Sanitize.fs) — implementation.
+- [`src/Fuaran.UI.Renderer.Core/Sanitize.fs`](src/Fuaran.UI.Renderer.Core/Sanitize.fs) — implementation (shared by the client and server renderers).
 - [`src/Fuaran.UI.Tests/SanitizeTests.fs`](src/Fuaran.UI.Tests/SanitizeTests.fs) — XSS-payload corpus.
+- [`src/Fuaran.UI.Renderer.Server.Tests/ServerRenderTests.fs`](src/Fuaran.UI.Renderer.Server.Tests/ServerRenderTests.fs) — SSR attribute-name-injection assertions on the emitted HTML string.
 - [`STABILITY.md`](STABILITY.md) — language-tier stability policy (which surfaces are stable).
 - [`docs/VALIDATOR-MANIFEST.md`](docs/VALIDATOR-MANIFEST.md) — validator codes including FUARAN060.
 - [`CLAUDE.md`](CLAUDE.md) — repo conventions.

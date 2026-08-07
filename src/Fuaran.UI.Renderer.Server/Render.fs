@@ -201,6 +201,17 @@ let private extraAttrProps (node: Node<obj>) : IReactProperty list =
         |> Map.remove Fuaran.UI.Node.IslandAttributeKey
         |> Sanitize.sanitizeExtraAttributes
         |> Map.toList
+        // Defence in depth (Phase 788). `Sanitize.sanitizeExtraAttributes` has
+        // already gated the key, but this is the site that writes an attribute
+        // NAME verbatim: Feliz.ViewEngine's `ViewBuilder.buildElement` emits
+        // `" " + key + "=\"" + value + "\""`, and `Interop.mkAttr` escapes the
+        // VALUE only — nothing anywhere escapes the name. React's own attribute-
+        // name validation gives the client renderer an accidental floor the
+        // server path does not have, so the server re-checks rather than
+        // depending on upstream validation staying correct. Dropping, not
+        // escaping, is the response: HTML cannot escape an illegal character in
+        // an attribute name (see `Sanitize.isSafeAttributeName`).
+        |> List.filter (fun (k, _) -> Sanitize.isSafeAttributeName k)
         |> List.map (fun (k, v) -> prop.custom (k, v))
     | None -> []
 

@@ -19,11 +19,18 @@ module Fuaran.UI.Renderer.Sanitize
 //  in `Fuaran.UI.Tests/SanitizeTests.fs`).
 //
 //  Threat model summary (see `fuaran-dotnet/SANITIZATION.md` for the full doc):
-//    1. ExtraAttributes — drop `on*` event handlers, `style`, anything
-//       outside data-*/aria-*. Reject keys/values containing `<`, `>`,
-//       quote chars, or NULs (defence in depth — React's attribute
-//       encoder already escapes, but `prop.custom`'s contract is "emit
-//       verbatim" so we don't lean on it).
+//    1. ExtraAttributes — the KEY passes a positive character allowlist
+//       (`[A-Za-z0-9-]` only) on top of the data-*/aria-* prefix rule, so
+//       `on*` handlers, `style`, and any key carrying `=`, quote chars,
+//       `<`, `>`, `/`, whitespace or control bytes are dropped; the
+//       surviving key is emitted TRIMMED. The VALUE rejects C0 control
+//       bytes (except tab) and `<` / `>`; quote characters are NOT
+//       rejected in a value — both renderers escape attribute values
+//       (React's encoder client-side, Feliz.ViewEngine's `Interop.mkAttr`
+//       server-side), and that escaping is what makes a quote in a value
+//       inert. Attribute NAMES are escaped by neither, which is why the
+//       key gate is an allowlist rather than a denylist and why the SSR
+//       emission site re-checks it (`isSafeAttributeName`).
 //    2. URL props — block `javascript:`, `vbscript:`, raw `data:` schemes.
 //       Allow http/https/mailto/tel + same-origin relative paths.
 //    3. Markdown raw-HTML output — strip `<script>` / `<iframe>` / `<object>`
@@ -56,10 +63,48 @@ open System
 
 // ─── ExtraAttributes key/value sanitization ────────────────────────────────
 
-/// Allowlist predicate for an ExtraAttributes key. The same data-* / aria-*
-/// rule the smart-ctor enforces, plus a value-side guard against
-/// the keys we know are dangerous even if they happen to start with
-/// `data-` (none today, but the rejection list is the future-proof shape).
+/// Positive character allowlist for an HTML attribute NAME: ASCII letters,
+/// digits, and `-`. Everything else — `=`, `"`, `'`, `` ` ``, `<`, `>`, `/`,
+/// space, tab, newline, C0 controls, and any non-ASCII byte — is rejected.
+///
+/// This is a REJECTION gate, not an escape, because HTML has no escape for an
+/// illegal character in an attribute name: a space inside a name simply starts
+/// a NEW attribute, and an `=` starts its value. So
+/// `data-x=1 onmouseover=alert(1) z` is not a mangled attribute name, it is
+/// three attributes, one of them a live event handler. Neither renderer escapes
+/// the name (React's attribute encoder and Feliz.ViewEngine's `Interop.mkAttr`
+/// both escape only the VALUE), so dropping the entry is the only sound
+/// response.
+///
+/// Exported so the emission sites that write a name verbatim can re-check it as
+/// defence in depth rather than trusting upstream validation alone.
+let isSafeAttributeName (name: string) : bool =
+    if isNull name || name = "" then
+        false
+    else
+        let mutable ok = true
+
+        for ch in name do
+            let allowed =
+                (ch >= 'a' && ch <= 'z')
+                || (ch >= 'A' && ch <= 'Z')
+                || (ch >= '0' && ch <= '9')
+                || ch = '-'
+
+            if not allowed then
+                ok <- false
+
+        ok
+
+/// Allowlist predicate for an ExtraAttributes key. The data-* / aria-* prefix
+/// rule the smart-ctor enforces, plus explicit rejects for `on*` handlers and
+/// `style`, plus `isSafeAttributeName` over the whole trimmed key — without
+/// that last check a key like `data-x=1 onmouseover=alert(1) z` satisfies the
+/// `data-` prefix and smuggles a live event handler into server-rendered HTML.
+///
+/// Note the predicate answers "is this key admissible", judged on its TRIMMED
+/// form; `sanitizeExtraAttributes` is what emits the trimmed key, so a caller
+/// using this predicate directly must trim before emission too.
 let isAllowedExtraAttributeKey (key: string) : bool =
     if isNull key then
         false
@@ -76,13 +121,21 @@ let isAllowedExtraAttributeKey (key: string) : bool =
             // CSS injection vector (`expression()`, `url(javascript:...)`
             // in legacy browsers, plus content-spoofing). Out of scope.
             false
+        elif not (isSafeAttributeName trimmed) then
+            // Attribute-NAME injection: any character that could terminate the
+            // name and open a second attribute at the emission site.
+            false
         else
             trimmed.StartsWith("data-", StringComparison.Ordinal)
             || trimmed.StartsWith("aria-", StringComparison.Ordinal)
 
-/// Reject values containing control / NUL bytes or angle brackets. React's
-/// attribute encoder already escapes these for the common case, but
-/// `prop.custom` is a "render verbatim" contract — we don't lean on it.
+/// Reject values containing C0 control / NUL bytes (tab excepted) or angle
+/// brackets. Quote characters are deliberately NOT rejected here: both
+/// renderers escape attribute VALUES (React's attribute encoder client-side,
+/// Feliz.ViewEngine's `Interop.mkAttr` server-side), so a quote in a value is
+/// inert. This check is the defence-in-depth floor UNDER that escaping, not a
+/// replacement for it — do not drop the escaping on the strength of this
+/// predicate.
 let isSafeExtraAttributeValue (value: string) : bool =
     if isNull value then
         false
@@ -100,11 +153,24 @@ let isSafeExtraAttributeValue (value: string) : bool =
         ok
 
 /// Filter a candidate ExtraAttributes map down to the entries that pass
-/// both predicates. Used at render time so the renderer never trusts a
-/// hand-built ExtraAttributes map.
+/// both predicates, re-keyed on the TRIMMED key. Used at render time so the
+/// renderer never trusts a hand-built ExtraAttributes map.
+///
+/// The re-key is load-bearing: the predicate judges `key.Trim()`, so emitting
+/// the original would emit a string the gate never inspected — leading/trailing
+/// whitespace around an otherwise-valid name is exactly the residue an
+/// emission site would write verbatim. Two keys differing only in surrounding
+/// whitespace collapse to one entry (last wins in the map's ordinal key order);
+/// that is a deliberate, deterministic normalisation, not an accident.
 let sanitizeExtraAttributes (attrs: Map<string, string>) : Map<string, string> =
     attrs
-    |> Map.filter (fun k v -> isAllowedExtraAttributeKey k && isSafeExtraAttributeValue v)
+    |> Map.fold
+        (fun acc k v ->
+            if isAllowedExtraAttributeKey k && isSafeExtraAttributeValue v then
+                Map.add (k.Trim()) v acc
+            else
+                acc)
+        Map.empty
 
 // ─── URL-scheme sanitization ───────────────────────────────────────────────
 
