@@ -162,6 +162,12 @@ type BrowserRuntime(layoutObserver: ILayoutObserver option, allowAll: bool) =
         member _.TryGetCustomRenderer(moduleId, componentId) =
             customRegistry.TryGet(moduleId, componentId)
 
+        member _.TryRenderCustomInScope(scope, moduleId, componentId, props) =
+            customRegistry.TryRenderInScope(scope, moduleId, componentId, props)
+
+        member _.TryGetCustomRendererInScope(scope, moduleId, componentId) =
+            customRegistry.TryGetInScope(scope, moduleId, componentId)
+
         // DENY-by-default (Phase 782). The browser runtime is the standalone
         // host shape — the BYOK-playground case with no orchestration tier
         // behind it — which is precisely the host that cannot afford an
@@ -234,6 +240,12 @@ let private layoutObserverRuntime (allowAll: bool) (observer: ILayoutObserver) :
             registry.TryRender(moduleId, componentId, props)
 
         member _.TryGetCustomRenderer(moduleId, componentId) = registry.TryGet(moduleId, componentId)
+
+        member _.TryRenderCustomInScope(scope, moduleId, componentId, props) =
+            registry.TryRenderInScope(scope, moduleId, componentId, props)
+
+        member _.TryGetCustomRendererInScope(scope, moduleId, componentId) =
+            registry.TryGetInScope(scope, moduleId, componentId)
 
         member _.CanDispatch(action) =
             if allowAll then

@@ -99,6 +99,43 @@ Two scope notes, so the posture is neither overstated nor understated:
 
 **The same boundary applies to the server renderer (Phase 141).** `Fuaran.UI.Renderer.Server`'s `Registry.register (moduleId) (componentId) (closure)` registers a `Map<string, JsonValue> -> Feliz.ViewEngine` element closure; the server `Custom` arm invokes it verbatim and does NOT police its output — identical posture to the client `RegisterCustomRenderer`. The host owns + escapes its own server HTML. The bounded-escape `ContentHash` (Phase 70) is verified on the server path per its `HashStrictness` (a `StrictReplay` / `Enforced` mismatch routes to a labelled error placeholder and does NOT invoke the drifted renderer). See `docs/SSR.md` "Custom-renderer registry".
 
+### What the registry scoping and `ContentHash` do and do NOT protect (Phase 783)
+
+Two clarifications the earlier text left implicit, both of which had been read the strong way.
+
+**The registry is scope-constrained, and it was not before.** Until Phase 783 the registry was one
+process-wide dictionary keyed on `(moduleId, componentId)` **taken straight off the wire**, so any
+decoded tree could invoke any renderer registered anywhere in the process, with attacker-chosen
+props. A renderer registered for a privileged admin surface was reachable from a tree rendered on a
+public one — a confused deputy, and the "the closure is consumer-authored, not AI-emitted" argument
+above did not address it: the CLOSURE was trusted, but WHICH closure ran was chosen by the tree.
+
+The key now carries the render scope on both renderers. `None` is the root scope, where the unscoped
+`Register` / `register` land; a host separates surfaces by rendering under distinct scopes
+(`Render.renderWithSourcesInScope` client-side, `ServerRenderContext.Scope` /
+`Render.renderWithInScope` server-side) and registering with `RegisterInScope` /
+`Registry.registerInScope`. Lookup does **not** fall back across scopes — a fallback would make the
+scoping advisory, which is indistinguishable from not having it. A mounted guest already renders
+under its own scope, so a guest reaches only what was registered for it.
+
+**`ContentHash` is drift detection, not authentication — and cannot be authentication.** The tree
+supplies its own hash record, so a match proves only that whoever wrote the tree knew the registered
+renderer's hash. Two bypasses followed from reading it as more than that, and both are closed:
+
+- **Omitting the hash** classified as `NoTreeHash`, which shared a render branch with `Match` and
+  rendered **silently** — the cheapest route past verification was to skip it. Under an enforcing
+  host floor, an unverifiable hash is now a refusal.
+- **Declaring a lenient strictness** worked because strictness was read from the *tree's own* record,
+  so an attacker who did declare a hash chose `AdvisoryWarning` and got warn-then-render. Strictness
+  is now a **host floor** (`CustomHash.installCustomHashFloor`) that a tree may only tighten.
+
+The floor defaults to `AdvisoryWarning` — today's behaviour — because a tree with no hash is the
+common legitimate case. Enforcement is a host act; what changed is that a host *can* enforce, and
+that a tree cannot talk its way underneath the host's choice.
+
+**The closure's OUTPUT remains unpoliced, deliberately.** That is the host trust boundary and it has
+not moved. What Phase 783 changed is who may cause a given closure to run.
+
 The contract for hosts implementing custom renderers:
 
 1. Treat `props : Map<string, JsonValue>` as untrusted AI-emitted data.
@@ -142,6 +179,27 @@ Security-relevant properties:
 - **The render fn receives typed, decoded `'Props`, not the raw `Map<string, JsonValue>`.** It still treats those values as untrusted AI-emitted data and escapes them on the way to HTML (rules 2–4 above are unchanged).
 - **A malformed payload is debuggable, not a blank box.** A decode failure (`CustomDecodeError`) routes to a labelled `fuaran-custom-decode-error` placeholder that names the failing key (`data-fuaran-custom-decode-error="<key>"`) and emits a diagnostic on both pipelines — it never silently invokes the render fn with bad data.
 - **The content hash is derived from the declared shape, not hand-typed**, so the Phase-70 bounded-escape verification (`StrictReplay` / `AdvisoryWarning` / `Enforced`) is honoured with no opportunity for a stale hand-set hash to drift from the registered renderer.
+
+### The `Mount` boundary (Phase 783)
+
+`NodeKind.Mount` is described as an isolation boundary. For an **authored** tree it was; for a
+**decoded** one it was not, in two ways, both now closed:
+
+- **The guest received the host's runtime unwrapped** when no `GuestSeam` was installed. A guest is
+  foreign content and `MountSpec.Capabilities` is documented as "a request, not a grant", so the
+  no-policy default granting everything was the exact inverse of the declared posture. With no seam
+  the guest now receives a `Runtime.UnprivilegedGuestRuntime`: every capability refused, every
+  refusal recorded through the host's `Warn` channel, `CanDispatch` false, no custom renderers in any
+  scope, and no nested guest loading (so a guest cannot mount its own guests to climb back out).
+- **`ChannelDirection` is a REQUIRED wire field**, so a hostile tree simply wrote `TwoWay`. `OutOnly`
+  was only the default of the *authoring* smart constructor, and no host-side clamp existed — which
+  made `Types.fs`'s "OutOnly, the default, safe for untrusted guests" true of authored trees and
+  false of wire ones. The renderer now clamps every mount to `OutOnly` and records the downgrade;
+  `TwoWay` is a host grant (`GuestSeam.GrantTwoWay`), never a wire-declared property.
+
+The clamp is at the RENDERER, not the decoder, deliberately: the decoder preserves what the wire
+said, so canonical round-trip and the shared conformance corpus are untouched, and the host's own
+policy decides what is honoured.
 
 ## `sanitizeMarkdownHtml` is a floor over escaped-by-construction input, not a general sanitizer (Phase 303)
 

@@ -721,29 +721,14 @@ let private updateRowField (row: Row) (field: string) (newValue: obj) : Row = Ma
 //      .NET, no-op — FUARAN053 in the validator covers the build-time
 //      AST-walk for the same invariant.
 
-[<RequireQualifiedAccess>]
-type private CustomHashOutcome =
-    | NoTreeHash
-    | Match
-    | RegistryNoHash
-    | MismatchAdvisory
-    | MismatchStrict
+// The `Custom` content-hash verdict + the host-configured strictness floor live
+// in `Fuaran.UI.Renderer.CustomHash` (Phase 783), because the SERVER renderer
+// needs exactly the same verdict from exactly the same floor. Abbreviated here
+// so the dispatch body below reads unchanged.
+type private CustomHashOutcome = CustomHash.CustomHashOutcome
 
 let private classifyCustomHash (treeHash: ContentHash option) (registryHash: ContentHash option) : CustomHashOutcome =
-    match treeHash, registryHash with
-    | None, _ -> CustomHashOutcome.NoTreeHash
-    | Some _, None -> CustomHashOutcome.RegistryNoHash
-    | Some t, Some r ->
-        if t.Algorithm = r.Algorithm && t.Hash = r.Hash then
-            CustomHashOutcome.Match
-        else
-            match t.Strictness with
-            | HashStrictness.StrictReplay -> CustomHashOutcome.MismatchStrict
-            | HashStrictness.AdvisoryWarning -> CustomHashOutcome.MismatchAdvisory
-            // `Enforced` is primarily a build-time gate (validator FUARAN062);
-            // if a mismatch still reaches the renderer, treat it as strictly as
-            // `StrictReplay` — route through `OnError` rather than render drift.
-            | HashStrictness.Enforced -> CustomHashOutcome.MismatchStrict
+    CustomHash.classify treeHash registryHash
 
 /// Structured warn-channel payload for a hash mismatch. Hosts that route
 /// `IFuaranRuntime.Warn` through their observability stack can pattern-
@@ -1432,9 +1417,17 @@ type GuestSeamContext =
         /// (`MountSpec.Capabilities`). A gate reads these as a *request*, not a
         /// grant — deciding what to allow is the host policy's job.
         Capabilities: string list
-        /// The declared guest channel (`MountSpec.Channel`); its `Direction`
-        /// bounds which way messages may legally cross the boundary.
+        /// The guest channel as the renderer will ACTUALLY honour it (Phase
+        /// 783). Its `Direction` is `OutOnly` unless the seam granted otherwise
+        /// via `GrantTwoWay` — never simply what the tree declared.
         Channel: GuestChannel
+        /// What the TREE asked for (Phase 783). `ChannelDirection` is a required
+        /// wire field, so a hostile tree simply writes `TwoWay`; `OutOnly` was
+        /// only ever the default of the *authoring* smart constructor, and no
+        /// host-side clamp existed. The renderer now clamps, and hands the
+        /// policy both values: `Channel` is what will happen, this is what was
+        /// requested. A gate deciding `GrantTwoWay` reads this one.
+        DeclaredDirection: ChannelDirection
     }
 
 /// Host-pluggable capability seam for rendered `Mount` guests (§4o).
@@ -1456,12 +1449,23 @@ type GuestSeamContext =
 ///
 /// Both members are consulted per rendered mount, not per host, so a policy may
 /// vary by scope id / capability set without reinstalling.
+/// - `GrantTwoWay ctx` decides whether this mount gets a `TwoWay` channel
+///   (Phase 783). `ctx.DeclaredDirection` is what the tree asked for and
+///   `ctx.Channel` is the clamped `OutOnly` the renderer will otherwise use.
+///   `TwoWay` is a HOST GRANT: the wire cannot confer it, because
+///   `ChannelDirection` is a required wire field a decoded tree fills in itself.
+///   `fun _ -> false` is the safe policy and the one to write unless a specific
+///   mount genuinely needs host→guest push.
 type GuestSeam =
     { WrapRuntime: GuestSeamContext -> Runtime.IFuaranRuntime -> Runtime.IFuaranRuntime
-      GateBubble: GuestSeamContext -> (obj -> unit) -> (obj -> unit) }
+      GateBubble: GuestSeamContext -> (obj -> unit) -> (obj -> unit)
+      GrantTwoWay: GuestSeamContext -> bool }
 
-/// The installed guest seam. `None` (the default) means the Mount arm behaves
-/// exactly as it did before the seam existed — host runtime, unwrapped bubble.
+/// The installed guest seam. `None` is the default, and since Phase 783 it means
+/// the guest is UNPRIVILEGED: it receives a `Runtime.UnprivilegedGuestRuntime`
+/// (every capability refused, refusals recorded) and an `OutOnly` channel. It
+/// previously meant the guest received the HOST's runtime unwrapped, which is
+/// the opposite of what "no policy installed" should mean.
 /// Private + set through `installGuestSeam` / `clearGuestSeam` because the
 /// installing host lives in another assembly, which is the one way this differs
 /// from `renderGuestHook` (set once, in-module, at init).
@@ -2375,14 +2379,19 @@ let rec private renderKind
         let componentId = customSpec.ComponentId
         let props = customSpec.Props
         let contentHash = customSpec.ContentHash
-        // Dispatch through the runtime's Custom-renderer surface.
-        // Bounded-escape verification:
-        //   1. Hash check (pre-dispatch) via TryGetCustomRenderer.
-        //   2. Exposed-NodeIds DOM walk (post-mount) when the tree declares
+        // Dispatch through the runtime's SCOPE-CONSTRAINED Custom-renderer
+        // surface (Phase 783). Bounded-escape verification:
+        //   1. Scope check — the lookup is keyed by the render scope this tree
+        //      is running under, so a tree cannot address a renderer registered
+        //      for another surface. There is deliberately no cross-scope
+        //      fallback: falling back would make the scoping advisory.
+        //   2. Hash check (pre-dispatch) via TryGetCustomRendererInScope, under
+        //      the host's strictness floor.
+        //   3. Exposed-NodeIds DOM walk (post-mount) when the tree declares
         //      any. .NET-side: no-op (FUARAN053 covers build-time).
-        // Hosts implementing TryRenderCustom directly continue
-        // working — their TryGetCustomRenderer returns None and the renderer
-        // falls through to TryRenderCustom for the actual dispatch.
+        // A host implementing `IFuaranRuntime` by hand that has not implemented
+        // the scoped members gets the unregistered placeholder — fail closed;
+        // "unimplemented" is a kind of unregistered.
 
         let renderPlaceholder () : ReactElement =
             let propKeys = props |> Map.toList |> List.map fst |> String.concat ", "
@@ -2397,7 +2406,9 @@ let rec private renderKind
                             [ prop.className "fuaran-custom-props"
                               prop.text (sprintf "props: %s" propKeys) ] ] ]
 
-        let registryProbe = ctx.Runtime.TryGetCustomRenderer(moduleId, componentId)
+        let registryProbe =
+            ctx.Runtime.TryGetCustomRendererInScope(ctx.Scope, moduleId, componentId)
+
         let registryHash = registryProbe |> Option.bind snd
         let outcome = classifyCustomHash contentHash registryHash
 
@@ -2405,9 +2416,25 @@ let rec private renderKind
             match registryProbe with
             | Some(fn, _) -> fn props
             | None ->
-                match ctx.Runtime.TryRenderCustom(moduleId, componentId, props) with
+                match ctx.Runtime.TryRenderCustomInScope(ctx.Scope, moduleId, componentId, props) with
                 | Some element -> element
                 | None -> renderPlaceholder ()
+
+        /// Refuse the node: warn, then route through `OnError` when the consumer
+        /// supplied one, else the labelled placeholder so the failure stays
+        /// visible rather than becoming a blank box.
+        let refuse (reason: string) : ReactElement =
+            ctx.Runtime.Warn(formatHashMismatchPayload moduleId componentId contentHash registryHash)
+
+            match state.OnError with
+            | Some onErr ->
+                let payload: ErrorPayload =
+                    { Kind = ErrorKind.BindingResolution
+                      Message = sprintf "Custom node %s.%s refused: %s" moduleId componentId reason
+                      CorrelationId = correlationId (parentNodeId + "|custom-hash") }
+
+                render ctx (onErr payload)
+            | None -> renderPlaceholder ()
 
         let renderedElement =
             match outcome with
@@ -2418,25 +2445,16 @@ let rec private renderKind
                 ctx.Runtime.Warn(formatHashMismatchPayload moduleId componentId contentHash registryHash)
                 dispatchToRenderer ()
             | CustomHashOutcome.MismatchStrict ->
-                ctx.Runtime.Warn(formatHashMismatchPayload moduleId componentId contentHash registryHash)
                 // OnError-routing: synthesize a BindingResolution-shaped
                 // payload (closest existing ErrorKind for a renderer-side
-                // failure that didn't cross the wire) and render the
-                // consumer-supplied error slot when present. When absent,
-                // fall back to the placeholder so the failure stays visible.
-                match state.OnError with
-                | Some onErr ->
-                    let payload: ErrorPayload =
-                        { Kind = ErrorKind.BindingResolution
-                          Message =
-                            sprintf
-                                "Custom hash mismatch for %s.%s — registered renderer's hash differs from the declared ContentHash (StrictReplay)."
-                                moduleId
-                                componentId
-                          CorrelationId = correlationId (parentNodeId + "|custom-hash") }
-
-                    render ctx (onErr payload)
-                | None -> renderPlaceholder ()
+                // failure that didn't cross the wire).
+                refuse "the registered renderer's hash differs from the declared ContentHash (StrictReplay)"
+            // Phase 783 — under an enforcing host floor, a hash that cannot be
+            // verified is a refusal. Omitting the hash was the cheapest bypass:
+            // `NoTreeHash` shared a branch with `Match` and rendered silently.
+            | CustomHashOutcome.Unverifiable ->
+                refuse
+                    "the content hash could not be verified (the tree declared none, or the registry recorded none) and the host is enforcing"
 
         // Exposed-NodeIds post-mount DOM walk. Skip the syscall
         // entirely when the tree doesn't declare any (the common case) —
@@ -2548,19 +2566,66 @@ let rec private renderKind
                     | Some onBubble -> runAction ctx (onBubble o)
                     | None -> ()
 
-                // Apply the host's capability policy, if one is installed. With
-                // no seam this is exactly the pre-seam pair (host runtime,
-                // unwrapped bubble) — no behaviour change for existing hosts.
-                let guestRuntime, guestDispatch =
-                    match currentGuestSeam () with
-                    | Some seam ->
-                        let seamCtx: GuestSeamContext =
-                            { ScopeId = spec.ScopeId
-                              Capabilities = spec.Capabilities
-                              Channel = spec.Channel }
+                // Phase 783 — CLAMP the declared channel before anything reads
+                // it. `ChannelDirection` is a required wire field, so a decoded
+                // tree simply writes `TwoWay`; `OutOnly` was only the default of
+                // the AUTHORING smart constructor, and no host-side clamp
+                // existed. `TwoWay` is now a host grant, never a wire-declared
+                // property.
+                let declaredDirection = spec.Channel.Direction
 
-                        seam.WrapRuntime seamCtx ctx.Runtime, seam.GateBubble seamCtx rawBubble
-                    | None -> ctx.Runtime, rawBubble
+                let clampedChannel =
+                    { spec.Channel with
+                        Direction = ChannelDirection.OutOnly }
+
+                let clampedCtx: GuestSeamContext =
+                    { ScopeId = spec.ScopeId
+                      Capabilities = spec.Capabilities
+                      Channel = clampedChannel
+                      DeclaredDirection = declaredDirection }
+
+                let seamOpt = currentGuestSeam ()
+
+                // The grant decision reads the CLAMPED context, so a policy sees
+                // what will happen by default and what was asked for, and says
+                // yes or no to the difference.
+                let granted =
+                    match seamOpt with
+                    | Some seam -> seam.GrantTwoWay clampedCtx
+                    | None -> false
+
+                let effectiveChannel =
+                    if granted then
+                        { spec.Channel with
+                            Direction = ChannelDirection.TwoWay }
+                    else
+                        clampedChannel
+
+                // Record the downgrade rather than dropping it silently: a tree
+                // asking for TwoWay and getting OutOnly is a fact the host's
+                // observability should carry, and a silent clamp is
+                // indistinguishable from a guest that simply never pushed.
+                if declaredDirection = ChannelDirection.TwoWay && not granted then
+                    ctx.Runtime.Warn(
+                        sprintf
+                            "[Fuaran] mount '%s' declared a TwoWay guest channel; downgraded to OutOnly. TwoWay is a host grant (GuestSeam.GrantTwoWay), not a wire-declared property."
+                            spec.ScopeId
+                    )
+
+                let seamCtx =
+                    { clampedCtx with
+                        Channel = effectiveChannel }
+
+                // Apply the host's capability policy. With NO seam installed the
+                // guest is UNPRIVILEGED (Phase 783) — it used to receive the
+                // host's own runtime unwrapped, which meant a host that had
+                // installed nothing granted a mounted guest everything the host
+                // could do. Unregistered must mean unprivileged.
+                let guestRuntime, guestDispatch =
+                    match seamOpt with
+                    | Some seam -> seam.WrapRuntime seamCtx ctx.Runtime, seam.GateBubble seamCtx rawBubble
+                    | None ->
+                        Runtime.UnprivilegedGuestRuntime(ctx.Runtime, spec.ScopeId) :> Runtime.IFuaranRuntime, rawBubble
 
                 let guestCtx: RenderContext<obj> =
                     { Sources = { ctx.Sources with State = scopedState }

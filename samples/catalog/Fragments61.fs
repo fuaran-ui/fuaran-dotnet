@@ -92,6 +92,12 @@ type private CapturingRuntime(dispatch: Msg -> unit) =
         member _.TryGetCustomRenderer(moduleId, componentId) =
             Runtime.diagnostic.TryGetCustomRenderer(moduleId, componentId)
 
+        member _.TryRenderCustomInScope(scope, moduleId, componentId, props) =
+            Runtime.diagnostic.TryRenderCustomInScope(scope, moduleId, componentId, props)
+
+        member _.TryGetCustomRendererInScope(scope, moduleId, componentId) =
+            Runtime.diagnostic.TryGetCustomRendererInScope(scope, moduleId, componentId)
+
         member _.CanDispatch(action) = Runtime.diagnostic.CanDispatch(action)
         member _.TryLoadGuest(_) = None
 

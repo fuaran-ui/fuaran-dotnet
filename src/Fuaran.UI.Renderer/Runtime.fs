@@ -112,10 +112,28 @@ module JsonBridge =
 /// constructor (`MutableRuntime` for tests, `BrowserRuntime` for the
 /// browser).
 type CustomRendererRegistry() =
+    // Phase 783 — the key gains a RENDER SCOPE. It was `(moduleId, componentId)`
+    // process-wide, and lookup was a raw `TryGetValue` on ids taken straight off
+    // the wire, so any decoded tree could invoke any renderer registered anywhere
+    // in the process, with attacker-chosen props. That is a confused deputy: a
+    // renderer registered for a privileged admin surface was reachable from a
+    // tree rendered on a public one, and nothing in the language could express
+    // "not from there".
+    //
+    // `None` is the ROOT scope — what a plain `render` / `renderWithSources` runs
+    // under, and where the unscoped `Register` overloads land, so existing hosts
+    // are unaffected. A host separates surfaces by rendering them under distinct
+    // scopes (`renderWithSourcesInScope`) and registering each surface's
+    // renderers with `RegisterInScope`; a mounted guest already renders under its
+    // own scope, so a guest reaches only what was registered for it.
     let renderers =
-        System.Collections.Generic.Dictionary<string * string, (Map<string, JVal> -> ReactElement) * ContentHash option>()
+        System.Collections.Generic.Dictionary<
+            string option * string * string,
+            (Map<string, JVal> -> ReactElement) * ContentHash option
+         >()
 
-    /// Register (or replace) a renderer keyed on the module + component id.
+    /// Register (or replace) a renderer keyed on the module + component id, in
+    /// the ROOT render scope (`None`) — the scope a plain `render` runs under.
     /// Subsequent renders of `NodeKind.Custom(moduleId, componentId, props,
     /// ...)` invoke `renderFn props` and use the returned element.
     /// Optional `contentHash` carries the registered
@@ -126,7 +144,20 @@ type CustomRendererRegistry() =
     member _.Register
         (moduleId: string, componentId: string, renderFn: Map<string, JVal> -> ReactElement, ?contentHash: ContentHash)
         : unit =
-        renderers[(moduleId, componentId)] <- (renderFn, contentHash)
+        renderers[(None, moduleId, componentId)] <- (renderFn, contentHash)
+
+    /// Register (or replace) a renderer reachable ONLY from trees rendered under
+    /// `scope` (Phase 783). A tree rendered under a different scope — or under the
+    /// root scope — cannot address it, and gets the unregistered placeholder.
+    member _.RegisterInScope
+        (
+            scope: string,
+            moduleId: string,
+            componentId: string,
+            renderFn: Map<string, JVal> -> ReactElement,
+            ?contentHash: ContentHash
+        ) : unit =
+        renderers[(Some scope, moduleId, componentId)] <- (renderFn, contentHash)
 
     /// Register a typed Custom **contract** (Phase 164) — one call wires the
     /// decode + render + the contract's derived content hash. A decode failure
@@ -165,11 +196,20 @@ type CustomRendererRegistry() =
 
         this.Register(contract.ModuleId, contract.ComponentId, wrapped, contract.Hash)
 
-    /// Look up a renderer; returns `Some element` when registered, `None`
-    /// when the renderer is not registered (the renderer's Custom arm then
+    /// Look up a ROOT-scope renderer; returns `Some element` when registered,
+    /// `None` when the renderer is not registered (the renderer's Custom arm then
     /// falls back to the labelled placeholder).
-    member _.TryRender(moduleId: string, componentId: string, props: Map<string, JVal>) : ReactElement option =
-        match renderers.TryGetValue((moduleId, componentId)) with
+    member this.TryRender(moduleId: string, componentId: string, props: Map<string, JVal>) : ReactElement option =
+        this.TryRenderInScope(None, moduleId, componentId, props)
+
+    /// Scope-constrained lookup (Phase 783). `scope` is the render scope the
+    /// current tree is running under (`RenderContext.Scope`); `None` is the root
+    /// scope. There is deliberately NO fallback to another scope — falling back
+    /// would make the scoping advisory, which is the same as not having it.
+    member _.TryRenderInScope
+        (scope: string option, moduleId: string, componentId: string, props: Map<string, JVal>)
+        : ReactElement option =
+        match renderers.TryGetValue((scope, moduleId, componentId)) with
         | true, (fn, _) -> Some(fn props)
         | false, _ -> None
 
@@ -178,10 +218,16 @@ type CustomRendererRegistry() =
     /// The renderer's Custom arm uses this to perform hash verification
     /// before dispatch; `TryRender` is kept stable so hosts
     /// implementing `IFuaranRuntime` directly don't need updating.
-    member _.TryGet
+    member this.TryGet
         (moduleId: string, componentId: string)
         : ((Map<string, JVal> -> ReactElement) * ContentHash option) option =
-        match renderers.TryGetValue((moduleId, componentId)) with
+        this.TryGetInScope(None, moduleId, componentId)
+
+    /// Scope-constrained twin of `TryGet` (Phase 783). No cross-scope fallback.
+    member _.TryGetInScope
+        (scope: string option, moduleId: string, componentId: string)
+        : ((Map<string, JVal> -> ReactElement) * ContentHash option) option =
+        match renderers.TryGetValue((scope, moduleId, componentId)) with
         | true, pair -> Some pair
         | false, _ -> None
 
@@ -354,6 +400,34 @@ type IFuaranRuntime =
     abstract TryGetCustomRenderer:
         moduleId: string * componentId: string -> ((Map<string, JVal> -> ReactElement) * ContentHash option) option
 
+    /// **Scope-constrained custom-renderer lookup (Phase 783) — the members the
+    /// renderer's `Custom` arm actually calls.**
+    ///
+    /// `scope` is the render scope the current tree is running under
+    /// (`RenderContext.Scope`): `None` for a plain `render`, `Some scopeId`
+    /// inside a mounted guest or under `renderWithSourcesInScope`. An
+    /// implementation MUST NOT fall back to another scope — a fallback makes the
+    /// scoping advisory, which is indistinguishable from not having it.
+    ///
+    /// **Why these exist rather than a parameter change.** The registry was one
+    /// process-wide dictionary keyed on `(moduleId, componentId)` taken straight
+    /// off the wire, so any decoded tree could invoke any renderer registered
+    /// anywhere in the process: a renderer registered for a privileged admin
+    /// surface was reachable from a tree rendered on a public one. Adding members
+    /// rather than retyping the existing ones follows this interface's own
+    /// pre-1.0 minor-add precedent — but note the FAIL-CLOSED consequence, which
+    /// is deliberate: a host that implements `IFuaranRuntime` by hand and returns
+    /// `None` here loses custom rendering until it implements them. Unregistered
+    /// must mean unreachable, and "unimplemented" is a kind of unregistered.
+    abstract TryRenderCustomInScope:
+        scope: string option * moduleId: string * componentId: string * props: Map<string, JVal> -> ReactElement option
+
+    /// Scope-constrained twin of `TryGetCustomRenderer` (Phase 783). Same
+    /// no-fallback contract as `TryRenderCustomInScope`.
+    abstract TryGetCustomRendererInScope:
+        scope: string option * moduleId: string * componentId: string ->
+            ((Map<string, JVal> -> ReactElement) * ContentHash option) option
+
     /// Deny-by-default seam at the renderer dispatch boundary (Phase 119,
     /// inverted by Phase 782). `runAction` consults this BEFORE invoking the
     /// host effect for EVERY wire-survivable action. Return `false` to deny —
@@ -436,6 +510,10 @@ type DiagnosticRuntime() =
         // use `MutableRuntime` / `BrowserRuntime` (both override this).
         member _.TryGetCustomRenderer(_, _) = None
 
+        // No registry, so no scope has anything registered either.
+        member _.TryRenderCustomInScope(_, _, _, _) = None
+        member _.TryGetCustomRendererInScope(_, _, _) = None
+
         // DENY-by-default (Phase 782). The previous "the renderer is not the
         // trust boundary — the host gate is" rationale was self-defeating: this
         // IS the runtime an unconfigured host gets, so "the host gate" was, for
@@ -479,12 +557,69 @@ type PermissiveRuntime() =
         member _.LayoutObserver = diagnostic.LayoutObserver
         member _.TryRenderCustom(_, _, _) = None
         member _.TryGetCustomRenderer(_, _) = None
+        member _.TryRenderCustomInScope(_, _, _, _) = None
+        member _.TryGetCustomRendererInScope(_, _, _) = None
         member _.CanDispatch(_) = true
         member _.TryLoadGuest(_) = None
 
 /// Shared instance of the permissive runtime — the one-line migration for a
 /// host that relied on the pre-0.14.0 allow-everything default.
 let permissive: IFuaranRuntime = PermissiveRuntime() :> IFuaranRuntime
+
+/// The runtime a `NodeKind.Mount` guest receives when the host has installed NO
+/// `GuestSeam` (Phase 783). Refuses every capability and records each refusal
+/// through the host's own `Warn` channel, so an unwired mount is observable
+/// rather than mysteriously inert.
+///
+/// **Why this type exists.** Until Phase 783 the `Mount` arm's no-seam branch
+/// handed the guest `ctx.Runtime` — the HOST's runtime — unwrapped. A guest is by
+/// definition foreign content, and `MountSpec.Capabilities` is documented as "a
+/// request, not a grant", so the default grant was the complete opposite of the
+/// declared posture: a host that had installed nothing gave a mounted guest
+/// everything the host itself could do. Unregistered must mean unprivileged.
+///
+/// A host that wants a mounted guest to reach anything installs a `GuestSeam`
+/// and returns a runtime of its choosing from `WrapRuntime` — which is exactly
+/// the deliberate, visible act the seam was built for.
+type UnprivilegedGuestRuntime(host: IFuaranRuntime, scopeId: string) =
+    let refuse (what: string) =
+        host.Warn(
+            sprintf
+                "[Fuaran] mount guest '%s' attempted %s with no GuestSeam installed — refused. Install a GuestSeam (Render.installGuestSeam) to grant a mounted guest any capability."
+                scopeId
+                what
+        )
+
+    interface IFuaranRuntime with
+        member _.Call(ApiEndpoint endpoint, _) = refuse (sprintf "Call(%s)" endpoint)
+        member _.Notify(channel, _) = refuse (sprintf "Notify(%s)" channel)
+        member _.Navigate(route) = refuse (sprintf "Navigate(%s)" route)
+        member _.SetState(key, _) = refuse (sprintf "SetState(%s)" key)
+        member _.InvokeAiTool(toolName, _) = refuse (sprintf "AiTool(%s)" toolName)
+        member _.WriteToClipboard(_) = refuse "WriteToClipboard"
+
+        member _.ReadFileBody(file, _, _) =
+            refuse (sprintf "ReadFileBody(%s)" file.Id)
+
+        // Diagnostics still reach the host — refusing to say anything would make
+        // an unwired mount silently inert, which is how this defect survived.
+        member _.Warn(message) = host.Warn message
+
+        // Observing the host's layout is itself a capability.
+        member _.LayoutObserver = None
+
+        // No custom renderers, in any scope: reaching one is exactly the
+        // confused-deputy shape the scoping closes.
+        member _.TryRenderCustom(_, _, _) = None
+        member _.TryGetCustomRenderer(_, _) = None
+        member _.TryRenderCustomInScope(_, _, _, _) = None
+        member _.TryGetCustomRendererInScope(_, _, _) = None
+
+        member _.CanDispatch(_) = false
+
+        // No nested guest loading — a guest cannot mount its own guests to climb
+        // back out through a differently-wired branch.
+        member _.TryLoadGuest(_) = None
 
 /// Diagnostic-shaped runtime that ALSO holds a
 /// `CustomRendererRegistry` so callers can register `NodeKind.Custom`
@@ -544,6 +679,12 @@ type MutableRuntime(allowAll: bool) =
             registry.TryRender(moduleId, componentId, props)
 
         member _.TryGetCustomRenderer(moduleId, componentId) = registry.TryGet(moduleId, componentId)
+
+        member _.TryRenderCustomInScope(scope, moduleId, componentId, props) =
+            registry.TryRenderInScope(scope, moduleId, componentId, props)
+
+        member _.TryGetCustomRendererInScope(scope, moduleId, componentId) =
+            registry.TryGetInScope(scope, moduleId, componentId)
 
         member _.CanDispatch(action) =
             if allowAll then

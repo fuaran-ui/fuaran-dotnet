@@ -59,17 +59,25 @@ let private benignBox (id: string) : Node<obj> =
               Heading = None
               Children = [] })
 
-let private mountNode (id: string) (scopeId: string) (onBubble: (obj -> Action<obj>) option) : Node<obj> =
+let private mountNodeWithDirection
+    (id: string)
+    (scopeId: string)
+    (direction: ChannelDirection)
+    (onBubble: (obj -> Action<obj>) option)
+    : Node<obj> =
     mkNode
         id
         (NodeKind.Mount
             { ScopeId = scopeId
               Inputs = None
               Channel =
-                { Direction = ChannelDirection.OutOnly
+                { Direction = direction
                   MessageShape = None }
               OnBubble = onBubble
               Capabilities = [ "read" ] })
+
+let private mountNode (id: string) (scopeId: string) (onBubble: (obj -> Action<obj>) option) : Node<obj> =
+    mountNodeWithDirection id scopeId ChannelDirection.OutOnly onBubble
 
 /// In-memory render-failure recorder (same shape as ErrorBoundaryTests' —
 /// the Tests project does not reference `Telemetry.Default`).
@@ -106,6 +114,39 @@ let private guestLoaderRuntime (loaded: ResizeArray<string>) (load: string -> No
         member _.LayoutObserver = None
         member _.TryRenderCustom(_, _, _) = None
         member _.TryGetCustomRenderer(_, _) = None
+        member _.TryRenderCustomInScope(_, _, _, _) = None
+        member _.TryGetCustomRendererInScope(_, _, _) = None
+        member _.CanDispatch(_) = true
+
+        member _.TryLoadGuest(scopeId) =
+            loaded.Add scopeId
+            load scopeId }
+
+/// `guestLoaderRuntime` plus a `Warn` recorder — Phase 783's clamp and its
+/// no-seam refusal both REPORT through the host's warn channel, and a guard that
+/// records nothing is indistinguishable from one that did nothing.
+let private warningRuntime
+    (warnings: ResizeArray<string>)
+    (loaded: ResizeArray<string>)
+    (load: string -> Node<obj> option)
+    : IFuaranRuntime =
+    { new IFuaranRuntime with
+        member _.Call(e, o) = Runtime.diagnostic.Call(e, o)
+        member _.Notify(c, p) = Runtime.diagnostic.Notify(c, p)
+        member _.Navigate(r) = Runtime.diagnostic.Navigate(r)
+        member _.SetState(k, v) = Runtime.diagnostic.SetState(k, v)
+        member _.InvokeAiTool(t, a) = Runtime.diagnostic.InvokeAiTool(t, a)
+        member _.WriteToClipboard(t) = Runtime.diagnostic.WriteToClipboard(t)
+
+        member _.ReadFileBody(f, e, o) =
+            Runtime.diagnostic.ReadFileBody(f, e, o)
+
+        member _.Warn(m) = warnings.Add m
+        member _.LayoutObserver = None
+        member _.TryRenderCustom(_, _, _) = None
+        member _.TryGetCustomRenderer(_, _) = None
+        member _.TryRenderCustomInScope(_, _, _, _) = None
+        member _.TryGetCustomRendererInScope(_, _, _) = None
         member _.CanDispatch(_) = true
 
         member _.TryLoadGuest(scopeId) =
@@ -324,7 +365,15 @@ let guestSeamTests =
     testSequenced
     <| testList
         "Mount guest capability seam"
-        [ test "with no seam installed the guest gets the HOST runtime (unchanged behaviour)" {
+        // ─── Phase 783 — unregistered means UNPRIVILEGED ───────────────────
+        //
+        // This test asserted the OPPOSITE until Phase 783: "both mounts resolved
+        // through the ONE host runtime — nothing was wrapped". That was the
+        // defect written down as a specification. A guest is foreign content and
+        // `MountSpec.Capabilities` is documented as "a request, not a grant", so
+        // a host that installed no policy handing a guest its own runtime was the
+        // exact inverse of what "no policy" should mean.
+        [ test "with NO seam installed the guest does NOT get the host runtime" {
               Render.clearGuestSeam ()
               StateStore.resetAllScopes ()
               let hostCalls = ResizeArray<string>()
@@ -339,10 +388,122 @@ let guestSeamTests =
                           ignore
                           host)
 
+                  // The OUTER mount is resolved by the host's own runtime — that
+                  // is the host loading a guest, which is its prerogative. The
+                  // INNER one is not: the outer guest holds an
+                  // `UnprivilegedGuestRuntime`, whose `TryLoadGuest` returns None,
+                  // so a guest cannot mount its own guests to climb back out
+                  // through a differently-wired branch.
                   Expect.equal
                       (List.ofSeq hostCalls)
-                      [ outerScope; innerScope ]
-                      "both mounts resolved through the ONE host runtime — nothing was wrapped"
+                      [ outerScope ]
+                      "the guest never reached the host runtime — no nested load"
+              finally
+                  Render.clearGuestSeam ()
+                  StateStore.resetAllScopes ()
+          }
+
+          test "a decoded TwoWay mount is CLAMPED to OutOnly and the downgrade is recorded" {
+              Render.clearGuestSeam ()
+              StateStore.resetAllScopes ()
+              let seenContexts = ResizeArray<Render.GuestSeamContext>()
+              let warnings = ResizeArray<string>()
+              let hostCalls = ResizeArray<string>()
+
+              // A hostile decoded tree simply writes `TwoWay` — `ChannelDirection`
+              // is a REQUIRED wire field, and `OutOnly` is only the default of the
+              // authoring smart constructor.
+              let host =
+                  mountNodeWithDirection "clamp-outer" outerScope ChannelDirection.TwoWay None
+
+              let load (scopeId: string) =
+                  if scopeId = outerScope then
+                      Some(benignBox "clamp-body")
+                  else
+                      None
+
+              let seam: Render.GuestSeam =
+                  { WrapRuntime =
+                      fun ctx rt ->
+                          seenContexts.Add ctx
+                          rt
+                    GateBubble = fun _ raw -> raw
+                    GrantTwoWay = fun _ -> false }
+
+              try
+                  Render.installGuestSeam seam
+
+                  renderTolerantly (fun () ->
+                      Render.renderWithSourcesAndSink
+                          BindingResolver.empty
+                          (warningRuntime warnings hostCalls load)
+                          (RecordingSink() :> IFuaranTelemetrySink)
+                          ignore
+                          host)
+
+                  Expect.equal seenContexts.Count 1 "the seam saw the mount"
+
+                  Expect.equal
+                      seenContexts[0].DeclaredDirection
+                      ChannelDirection.TwoWay
+                      "the policy still sees what the tree ASKED for"
+
+                  Expect.equal
+                      seenContexts[0].Channel.Direction
+                      ChannelDirection.OutOnly
+                      "and what it will actually get is the clamped OutOnly"
+
+                  Expect.isTrue
+                      (warnings |> Seq.exists (fun w -> w.Contains "downgraded to OutOnly"))
+                      "the downgrade is RECORDED, not silently dropped"
+              finally
+                  Render.clearGuestSeam ()
+                  StateStore.resetAllScopes ()
+          }
+
+          test "TwoWay is a HOST GRANT — the seam can restore it, the wire cannot" {
+              Render.clearGuestSeam ()
+              StateStore.resetAllScopes ()
+              let seenContexts = ResizeArray<Render.GuestSeamContext>()
+              let warnings = ResizeArray<string>()
+              let hostCalls = ResizeArray<string>()
+
+              let host =
+                  mountNodeWithDirection "grant-outer" outerScope ChannelDirection.TwoWay None
+
+              let load (scopeId: string) =
+                  if scopeId = outerScope then
+                      Some(benignBox "grant-body")
+                  else
+                      None
+
+              let seam: Render.GuestSeam =
+                  { WrapRuntime =
+                      fun ctx rt ->
+                          seenContexts.Add ctx
+                          rt
+                    GateBubble = fun _ raw -> raw
+                    GrantTwoWay = fun ctx -> ctx.ScopeId = outerScope }
+
+              try
+                  Render.installGuestSeam seam
+
+                  renderTolerantly (fun () ->
+                      Render.renderWithSourcesAndSink
+                          BindingResolver.empty
+                          (warningRuntime warnings hostCalls load)
+                          (RecordingSink() :> IFuaranTelemetrySink)
+                          ignore
+                          host)
+
+                  Expect.equal
+                      seenContexts[0].Channel.Direction
+                      ChannelDirection.TwoWay
+                      "the host GRANTED TwoWay, so that is what the guest gets"
+
+                  Expect.isFalse
+                      (warnings |> Seq.exists (fun w -> w.Contains "downgraded to OutOnly"))
+                      "a granted TwoWay is not a downgrade"
               finally
                   Render.clearGuestSeam ()
                   StateStore.resetAllScopes ()
@@ -364,7 +525,9 @@ let guestSeamTests =
                           // that reached the host one would record in the WRONG
                           // list, which is the assertion below.
                           guestLoaderRuntime wrappedCalls load
-                    GateBubble = fun _ raw -> raw }
+                    GateBubble = fun _ raw -> raw
+                    // Phase 783 — TwoWay is a host grant; these cases do not need it.
+                    GrantTwoWay = fun _ -> false }
 
               try
                   Render.installGuestSeam seam
@@ -419,7 +582,8 @@ let guestSeamTests =
                           if ctx.ScopeId = innerScope then
                               innerRaw <- Some raw
 
-                          raw }
+                          raw
+                    GrantTwoWay = fun _ -> false }
 
               try
                   Render.installGuestSeam seam
@@ -462,7 +626,8 @@ let guestSeamTests =
                           else
                               // Deny at the OUTER boundary — the guest's dispatch
                               // is the gated function, so nothing crosses.
-                              fun _ -> denied <- denied + 1 }
+                              fun _ -> denied <- denied + 1
+                    GrantTwoWay = fun _ -> false }
 
               try
                   Render.installGuestSeam seam
@@ -490,7 +655,9 @@ let guestSeamTests =
 
               Render.installGuestSeam
                   { WrapRuntime = fun _ rt -> rt
-                    GateBubble = fun _ raw -> raw }
+                    GateBubble = fun _ raw -> raw
+                    // Phase 783 — TwoWay is a host grant; these cases do not need it.
+                    GrantTwoWay = fun _ -> false }
 
               Expect.isSome (Render.currentGuestSeam ()) "installed"
               Render.clearGuestSeam ()

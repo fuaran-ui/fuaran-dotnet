@@ -55,6 +55,11 @@ type ServerRenderContext =
         /// default — every `Custom` node then falls back to the labelled
         /// placeholder, matching the client's unregistered path.
         Customs: Registry.ServerCustomRendererRegistry
+        /// The render SCOPE this tree runs under (Phase 783). `None` is the root
+        /// scope. Custom-renderer lookup is constrained to it, so a tree rendered
+        /// for a public surface cannot invoke a renderer registered for a
+        /// privileged one — the server twin of the client's `RenderContext.Scope`.
+        Scope: string option
     }
 
 // ─── Text + value helpers ──────────────────────────────────────────────────
@@ -1267,19 +1272,45 @@ and private renderCustom
               prop.custom ("data-fuaran-custom-component", componentId)
               prop.text (sprintf "[fuaran:custom %s.%s]" moduleId componentId) ]
 
-    match Registry.tryRender moduleId componentId ctx.Customs with
+    // Phase 783 — SCOPE-CONSTRAINED lookup. No cross-scope fallback.
+    match Registry.tryRenderInScope ctx.Scope moduleId componentId ctx.Customs with
     | None -> placeholder ()
     | Some renderer ->
         // Bounded-escape hash check (Phase 70). When the node declares a
         // ContentHash AND the registry recorded the renderer's hash, compare per
         // strictness: StrictReplay / Enforced route a hard mismatch to a labelled
         // error placeholder; AdvisoryWarning renders the body + a drift marker.
-        let mismatch =
-            match contentHash, Registry.tryHash moduleId componentId ctx.Customs with
-            | Some declared, Some registered when declared.Hash <> registered -> Some declared.Strictness
-            | _ -> None
+        // Phase 783 — the strictness applied is the tighter of the HOST's floor
+        // and the tree's own declaration, and under an enforcing floor a hash
+        // that cannot be VERIFIED (no tree hash, or no registered hash) is a
+        // refusal rather than a silent render. Reading strictness from the
+        // tree's own record alone let an attacker who declared a hash pick
+        // `AdvisoryWarning` and get warn-then-render, and omitting the hash
+        // skipped verification altogether.
+        let registeredHash =
+            Registry.tryHashInScope ctx.Scope moduleId componentId ctx.Customs
 
-        match mismatch with
+        let floor = CustomHash.currentCustomHashFloor ()
+
+        let outcome =
+            match contentHash, registeredHash with
+            | Some declared, Some registered when declared.Hash <> registered ->
+                let effective =
+                    if declared.Strictness = HashStrictness.AdvisoryWarning then
+                        floor
+                    else
+                        declared.Strictness
+
+                Some effective
+            | Some _, Some _ -> None
+            | _ ->
+                // Unverifiable: refuse under an enforcing floor, render otherwise.
+                if floor = HashStrictness.AdvisoryWarning then
+                    None
+                else
+                    Some floor
+
+        match outcome with
         | Some HashStrictness.StrictReplay
         | Some HashStrictness.Enforced ->
             Html.div
@@ -1758,7 +1789,20 @@ let mkContextWith
     : ServerRenderContext =
     { Sources = sources
       Fragments = collectFragments Map.empty node
-      Customs = customs }
+      Customs = customs
+      Scope = None }
+
+/// Build a `ServerRenderContext` under a named render SCOPE (Phase 783) —
+/// Custom-renderer lookup is then constrained to renderers registered for that
+/// scope (`Registry.registerInScope`).
+let mkContextInScope
+    (scope: string)
+    (customs: Registry.ServerCustomRendererRegistry)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : ServerRenderContext =
+    { mkContextWith customs sources node with
+        Scope = Some scope }
 
 /// Build a `ServerRenderContext` with no Custom renderers registered (every
 /// `Custom` node falls back to the labelled placeholder).
@@ -1790,6 +1834,16 @@ let renderWith
     (node: Node<obj>)
     : string =
     Render.htmlView (renderNode 1 (mkContextWith customs sources node) node)
+
+/// Render under a named render SCOPE with a host-supplied registry (Phase 783).
+/// Only renderers registered for `scope` are reachable from the tree.
+let renderWithInScope
+    (scope: string)
+    (customs: Registry.ServerCustomRendererRegistry)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : string =
+    Render.htmlView (renderNode 1 (mkContextInScope scope customs sources node) node)
 
 /// A `<style>` element carrying the Phase 12.K `Theme` → CSS-variable `:root`
 /// projection — parity with the client `themeStyleElement`. The host mounts

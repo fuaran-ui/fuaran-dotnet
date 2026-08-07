@@ -91,7 +91,7 @@ The following are covered by the semver rules above:
 - The `Theme` and `BindingResolver` public surfaces consumed by Renderer extensions. _(As of Phase 138 these modules physically live in `Fuaran.UI.Renderer.Core` with their `Fuaran.UI.Renderer.*` namespaces preserved; the contract is unchanged.)_
 - **Decision (Phase 119): the renderer owns a dispatch policy-gate seam.** `IFuaranRuntime.CanDispatch : ActionDescriptor -> bool` is consulted by `runAction` before the gated host effects (`Call` / `Navigate` / `AiTool` – Phase 136 adds `ReadFileBody` to the gated set via the additive `ActionDescriptor.ReadFileBody of fileId: string` case); on deny the renderer emits a `Warn` diagnostic and skips the effect. The language tier therefore exposes its **own** default-deny seam rather than deferring the gate strictly to a downstream orchestration tier – a standalone host (e.g. the BYOK browser playground) consuming only the public packages can make the dispatch path default-deny without a §4j orchestration gate in the loop. **INVERTED in 0.14.0 (Phase 782): the default runtimes DENY.** They returned `true` (allow) from Phase 119 until then, which made the gate an opt-in a host had to remember to override — the inverse of the posture the language claims, with the shipped default contradicting the published claim. `Diagnostic` / `Mutable` / `Browser` / `DriverServices.create` / `BoundedServices.create` now refuse every descriptor, and the permissive posture is reached BY NAME: `Runtime.permissive`, `PermissiveRuntime`, `MutableRuntime.Permissive()`, `BrowserRuntime.createPermissive()`, `DriverServices.createPermissive`, `BoundedServices.createPermissive`. 0.14.0 also CLOSED the descriptor set — `Notify` / `SetState` / `WriteToClipboard` / `CommitLocal` reached their substrates with no gate consultation at all before it. Per the established precedent below, adding the `CanDispatch` abstract member was a **pre-1.0 minor add** – direct `IFuaranRuntime` implementers add the member, and one returning `true` unconditionally has written a permissive host deliberately rather than inheriting one silently. (F# interfaces cannot carry a true default implementation, so the new member is technically a recompile for direct implementers; all in-repo implementers were updated in the same change, and there are no cross-sibling direct implementers.)
 - **The render-entry family and the axes each one pins.** `render` (the general `RenderContext` entry) plus the convenience entries `renderWithSources` / `renderWithSourcesAndSink` / `renderWithSourcesSinkAndContext` / `renderWithSourcesInScope` / `renderWithSourcesInScopeAndSink`, and the composing wrappers `renderWithTheme` / `renderStateReactive`. **Which `RenderContext` axis an entry PINS is part of the contract, not an implementation detail** – a host picks its entry by exactly that. Adding an entry is additive; changing an existing entry's pinned axis (giving `renderWithSources` a real runtime, say, or pinning a sink where a host supplies one) is a behavioural change to every consumer of that entry and bumps accordingly. The full grid is [`docs/RENDER-ENTRIES.md`](docs/RENDER-ENTRIES.md).
-- **`GuestSeam` – the host-pluggable `Mount` guest capability seam.** `GuestSeamContext` (`ScopeId` / `Capabilities` / `Channel`), the `GuestSeam` record (`WrapRuntime` / `GateBubble`), and `installGuestSeam` / `clearGuestSeam` / `currentGuestSeam`. The **default-off** property is the load-bearing part of the contract: with no seam installed the `Mount` arm hands the guest the host runtime and an unwrapped bubble, exactly as before the seam existed. Making the seam mandatory, or changing the no-seam default, is a breaking change for every host that installs nothing.
+- **`GuestSeam` – the host-pluggable `Mount` guest capability seam.** `GuestSeamContext` (`ScopeId` / `Capabilities` / `Channel`), the `GuestSeam` record (`WrapRuntime` / `GateBubble`), and `installGuestSeam` / `clearGuestSeam` / `currentGuestSeam`. **CHANGED in 0.15.0 (Phase 783), and the previous sentence said this would be breaking — it is.** The no-seam default used to hand the guest the host runtime and an unwrapped bubble; it now hands it a `Runtime.UnprivilegedGuestRuntime` (every capability refused, refusals recorded) and an `OutOnly` channel. A guest is foreign content and `MountSpec.Capabilities` is "a request, not a grant", so a host that installed no policy granting a mounted guest everything the host could do was the inverse of the declared posture. `GuestSeamContext` gains `DeclaredDirection` and `GuestSeam` gains `GrantTwoWay` — both breaking record changes for a host constructing them literally. `TwoWay` is now a host grant; a decoded mount is clamped to `OutOnly` and the downgrade is recorded.
 - The `Sanitize` module's policy contract – `sanitizeExtraAttributes`, `sanitizeUrl` / `sanitizeUrlOrBlank`, `sanitizeMarkdownHtml` (Phase 56). Tightening the policy (rejecting an attribute key or URL scheme previously accepted) is a behavioural change to renderer output and counts as a minor-version bump; loosening it (accepting an attribute key or URL scheme previously rejected) is additive. The injection-safety contract is documented separately in [`SANITIZATION.md`](SANITIZATION.md), which the renderer leans on as the source of truth for which inputs are neutralised at render time.
 
 ### `Fuaran.UI.Ops`
@@ -710,6 +710,60 @@ Before this repo flips public (whether as a public GitHub repository, a publishe
 - [`LICENSE`](LICENSE)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - [`CLAUDE.md`](CLAUDE.md)
+
+## Recorded breaking change — 0.15.0, Mount + custom-renderer isolation (fuaran#783)
+
+**Breaking, on the two surfaces that sit outside the dispatch gate structurally** — so
+[0.14.0](#recorded-breaking-change--0140-the-dispatch-gate-fails-closed-fuaran782)'s inversion did
+not reach them. Both are described in the design docs as isolation boundaries; neither was one for a
+**decoded** tree.
+
+**1. A decoded `Mount` is clamped to `OutOnly`.** `ChannelDirection` is a *required* wire field, so a
+hostile tree simply wrote `TwoWay`; `OutOnly` was only the default of the authoring smart
+constructor, and no host-side clamp existed. `TwoWay` is now a host grant via the new
+`GuestSeam.GrantTwoWay`, and the downgrade is recorded rather than silently applied. The clamp is at
+the **renderer**, not the decoder — so canonical round-trip and the shared conformance corpus are
+untouched, and the host's policy decides what is honoured rather than the codec deciding what is
+representable.
+
+**2. No seam means unprivileged.** With no `GuestSeam` installed the `Mount` arm handed the guest the
+HOST's runtime, unwrapped. It now hands it `Runtime.UnprivilegedGuestRuntime`: every capability
+refused and recorded, `CanDispatch` false, no custom renderers in any scope, and no nested guest
+loading. The previous entry for `GuestSeam` in this document said in as many words that changing the
+no-seam default would be breaking for every host that installs nothing. It is, and it is the right
+break.
+
+**3. The custom-renderer registry is scope-constrained.** It was one process-wide dictionary keyed on
+`(moduleId, componentId)` taken straight off the wire, so any decoded tree could invoke any renderer
+registered anywhere in the process, with attacker-chosen props — a renderer registered for a
+privileged admin surface was reachable from a tree rendered on a public one. Both registries (client
+`CustomRendererRegistry`, server `Registry.ServerCustomRendererRegistry`) now key on
+`(scope, moduleId, componentId)`; `None` is the root scope where the unscoped `Register` / `register`
+land, so an existing single-surface host is unaffected. **There is no cross-scope fallback**, which is
+what makes it a boundary rather than a hint.
+
+`IFuaranRuntime` gains `TryRenderCustomInScope` / `TryGetCustomRendererInScope` — the members the
+renderer's `Custom` arm now calls. Per this document's pre-1.0 minor-add precedent, direct
+implementers add them; note the **fail-closed** consequence, which is deliberate: an implementer that
+has not added them loses custom rendering rather than silently keeping the unscoped behaviour.
+`ServerRenderContext` gains a required `Scope` field.
+
+**4. The hash bypass is closed.** `ContentHash` is drift detection between a registered renderer and a
+replayed tree; it is not, and cannot be, authentication of the tree, because the tree supplies its own
+hash record. Two bypasses followed from reading it as more: omitting the hash classified as
+`NoTreeHash`, which shared a render branch with `Match` and rendered **silently**; and strictness was
+read from the *tree's own* record, so an attacker who declared a hash chose `AdvisoryWarning` and got
+warn-then-render. Strictness is now a host floor (`Fuaran.UI.Renderer.CustomHash`, in the
+emission-agnostic core so both renderers share one verdict) that a tree may only **tighten**, and
+under an enforcing floor an unverifiable hash is a refusal.
+
+**The floor defaults to `AdvisoryWarning`** — today's behaviour — because a tree with no hash is the
+common legitimate case and an enforcing default would refuse most existing `Custom` nodes on upgrade.
+Enforcement is a host act; what 0.15.0 changes is that a host *can* enforce, and that a tree cannot
+talk its way underneath the host's choice. That is a deliberate limit on how much this version fixes,
+and it is stated rather than implied.
+
+**Migration.** [`docs/migrations/783-mount-custom-renderer-isolation.md`](docs/migrations/783-mount-custom-renderer-isolation.md).
 
 ## Recorded breaking change — 0.14.0, the dispatch gate fails closed (fuaran#782)
 

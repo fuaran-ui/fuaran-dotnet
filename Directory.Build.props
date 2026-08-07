@@ -107,8 +107,27 @@
          The break is BEHAVIOURAL, not signature-level - a host compiles and then
          refuses the actions it used to perform, which is the loudest safe way for
          this change to arrive. See STABILITY.md "Recorded breaking change -
-         0.14.0" + docs/migrations/782-default-deny-dispatch-gate.md. -->
-    <Version>0.14.0</Version>
+         0.14.0" + docs/migrations/782-default-deny-dispatch-gate.md.
+
+         0.15.0 (fuaran#783) - BREAKING: Mount + custom-renderer isolation, the
+         two surfaces that sit outside the dispatch gate structurally so 782's
+         inversion did not reach them. A decoded Mount is CLAMPED to OutOnly
+         (ChannelDirection is a required wire field, so a hostile tree simply
+         wrote TwoWay; TwoWay is now a host grant via the new
+         GuestSeam.GrantTwoWay, and the downgrade is recorded). With no GuestSeam
+         installed a guest now receives Runtime.UnprivilegedGuestRuntime rather
+         than the HOST's runtime unwrapped. Both custom-renderer registries key
+         on (scope, moduleId, componentId) with NO cross-scope fallback, and
+         IFuaranRuntime gains TryRenderCustomInScope /
+         TryGetCustomRendererInScope (fail-closed for a hand-written implementer
+         that has not added them - deliberate). ServerRenderContext gains a
+         required Scope field. And the hash bypass is closed: strictness is a
+         host FLOOR (Fuaran.UI.Renderer.CustomHash) a tree may only tighten, and
+         under an enforcing floor an unverifiable hash is a refusal - the floor
+         still defaults to AdvisoryWarning, so enforcement is opt-in.
+         See STABILITY.md "Recorded breaking change - 0.15.0" +
+         docs/migrations/783-mount-custom-renderer-isolation.md. -->
+    <Version>0.15.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -245,6 +245,8 @@ let private recordingRuntime (loaded: ResizeArray<string>) (guest: Node<obj> opt
         member _.LayoutObserver = None
         member _.TryRenderCustom(_, _, _) = None
         member _.TryGetCustomRenderer(_, _) = None
+        member _.TryRenderCustomInScope(_, _, _, _) = None
+        member _.TryGetCustomRendererInScope(_, _, _) = None
         member _.CanDispatch(_) = true
 
         member _.TryLoadGuest(scopeId) =

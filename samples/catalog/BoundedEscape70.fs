@@ -202,6 +202,12 @@ type private CapturingRuntime(dispatch: Msg -> unit, registry: Runtime.CustomRen
 
         member _.TryGetCustomRenderer(moduleId, componentId) = registry.TryGet(moduleId, componentId)
 
+        member _.TryRenderCustomInScope(scope, moduleId, componentId, props) =
+            registry.TryRenderInScope(scope, moduleId, componentId, props)
+
+        member _.TryGetCustomRendererInScope(scope, moduleId, componentId) =
+            registry.TryGetInScope(scope, moduleId, componentId)
+
         member _.CanDispatch(_) = true
         member _.TryLoadGuest(_) = None
 

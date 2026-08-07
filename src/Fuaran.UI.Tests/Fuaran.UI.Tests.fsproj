@@ -42,6 +42,7 @@
     <!-- DispatchGateTests pins Phase 119's IFuaranRuntime.CanDispatch seam
          via Render.applyDispatchGate (allow-by-default + deny path). -->
     <Compile Include="DispatchGateTests.fs" />
+    <Compile Include="CustomIsolationTests.fs" />
     <!-- DebugGlobalTests pins Phase 90's window.__fuaran introspection surface
          (the pure, both-pipelines helpers: kindName / extractBindingSlots /
          resolveSlot / childNodes + the applyGateDecision default-deny gate).
