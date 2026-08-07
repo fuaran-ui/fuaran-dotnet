@@ -13,6 +13,7 @@ Threats in scope:
 - **Script injection** via text fields, markdown bodies, or attribute values.
 - **Event-handler injection** via `on*=` attributes (`onclick`, `onerror`, …).
 - **URL-scheme injection** via `javascript:` / `vbscript:` / unguarded `data:` schemes in `href` / `src` props.
+- **Off-origin redirection** via a PROTOCOL-RELATIVE `href` / `src` — a URL with no scheme but a leading pair of slash-ish characters. All four spellings (`//host`, `/\host`, `\\host`, `\/host`) resolve off-origin, because WHATWG URL parsing treats `\` as `/` for a special scheme and reads what follows the pair as an AUTHORITY. On an `href` that is a live off-origin link; on an `Image.src` it is an off-origin request that leaks the Referer. `sanitizeUrl` rejects all four (`//` and `/\` from Phase 298, the backslash-leading pair from Phase 784). A SINGLE leading backslash is NOT in scope: WHATWG reads `\path` as `/path`, an ordinary same-origin path.
 - **HTML smuggling** through markdown source containing literal `<script>` / `<iframe>` / `<object>` blocks. Since Phase 292 markdown is rendered by Fuaran's own deterministic GFM renderer (`Markdown.toHtml`), which **escapes raw HTML by construction** (raw HTML is the OUT bucket — see [`docs/MARKDOWN.md`](docs/MARKDOWN.md)); the `sanitizeMarkdownHtml` sweep below is therefore now defence-in-depth over a much smaller surface (it was the primary gate when markdown came from the npm `marked` library, which rendered embedded HTML by default).
 
 Threats out of scope (consumer responsibility):

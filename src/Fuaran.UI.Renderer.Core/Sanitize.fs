@@ -224,6 +224,24 @@ let private extractScheme (url: string) : string option * string =
 
             Some(trimAndLower cleaned), url
 
+/// `true` when a schemeless URL is PROTOCOL-RELATIVE — it starts with two
+/// slash-ish characters, in any mix of `/` and `\`.
+///
+/// All four spellings (`//host`, `/\host`, `\\host`, `\/host`) resolve
+/// off-origin, because WHATWG URL parsing treats `\` as `/` for a special
+/// scheme: the browser normalises the pair to `//` and reads what follows as an
+/// AUTHORITY, not a path. Phase 298 closed the first two; the backslash-leading
+/// pair fell through to the "no scheme → relative, allowed" arm, so a `Link`
+/// href of `\\evil.example/x` rendered as a live off-origin link and an
+/// `Image.src` became an off-origin request leaking the Referer.
+///
+/// A SINGLE leading backslash (`\evil.example`) is deliberately not caught: the
+/// same WHATWG rule reads it as `/evil.example`, an ordinary same-origin path,
+/// which is exactly what the `/`-spelling is allowed to be.
+let private isProtocolRelative (url: string) : bool =
+    let slashish (c: char) = c = '/' || c = '\\'
+    url.Length >= 2 && slashish url[0] && slashish url[1]
+
 /// Returns the sanitized URL or `None` if the URL's scheme is rejected.
 /// `data:` is rejected by default for href/src (image data: URLs are a
 /// known XSS vector when fed into SVG); callers that need data: URLs
@@ -242,11 +260,11 @@ let sanitizeUrl (url: string) : string option =
             Some trimmed
         else
             match extractScheme trimmed with
-            | None, _ when trimmed.StartsWith "//" || trimmed.StartsWith "/\\" ->
+            | None, _ when isProtocolRelative trimmed ->
                 // Protocol-relative URL (`//host/path`) — has no scheme, so the schemeless branch would
                 // otherwise admit it, but the browser resolves it to an OFF-ORIGIN `https://host/path`,
-                // defeating the same-origin intent. `/\` is browsers' lenient normalisation of `//`.
-                // Reject (Phase 298).
+                // defeating the same-origin intent. Reject (Phase 298; the backslash spellings
+                // `\\host` / `\/host` added by Phase 784 — see `isProtocolRelative`).
                 None
             | None, _ ->
                 // No scheme → relative / fragment / same-origin. Allowed.
