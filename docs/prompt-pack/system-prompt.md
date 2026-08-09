@@ -1283,8 +1283,17 @@ fine) and a typed action:
     "onClick": { "$type": "Notify", "channel": "ops", "payload": "reroute" } } }
 ```
 
-A **per-row fraction/percentage column** — capacity, utilisation, completion — is a
-**`Numeric` cell with a `Percent` format**, not a `Progress` cell:
+A **per-row fill-bar column** — capacity, utilisation, completion — is a `Progress`
+cell whose fraction comes from **the column's own `field`** (the row value is the
+fraction, 0..1):
+
+```json
+{ "field": "capacity", "label": "Capacity", "kind": { "$type": "Progress" } }
+```
+
+No function payload, no extra key — the `field` you already declare on the column
+drives the fill. When the number should read as a figure rather than a bar, a
+`Numeric` cell with a `Percent` format is the alternative:
 
 ```json
 { "field": "capacity", "label": "Capacity",
@@ -1292,8 +1301,9 @@ A **per-row fraction/percentage column** — capacity, utilisation, completion �
 ```
 
 The cells you can fully author from the wire: `Text` · `Numeric` · `Date` ·
-`TonedPill(field, map)` · `Button(label, onClick)` · `ButtonGroup(buttons)` ·
-`Checkbox` · `Editable`. Everything `*Fn`-shaped belongs to native hosts.
+`TonedPill(field, map)` · `Progress` (field-driven, above) · `Button(label, onClick)` ·
+`ButtonGroup(buttons)` · `Checkbox` · `Editable`. Everything `*Fn`-shaped belongs to
+native hosts.
 
 ## Prompt-given data is `Static` — queries are for host data
 
