@@ -376,6 +376,25 @@ single arithmetic emission fails the whole document. And **`Metric.value` never 
 text** — `{"$type":"Static","value":"Stable"}` in a Metric fails to decode; a labelled
 string is a `Fact`.
 
+The trap is not status words — it is **quantities you have already formatted**. A
+duration, a size, an amount with its unit baked in ("1h 20m", "3.2 GB", "£1,240") is
+TEXT the moment you format it, and this exact emission fails to decode:
+
+```json
+{ "id": "longest-wait", "kind": { "$type": "Metric", "label": "Longest Wait",
+    "value": { "$type": "Static", "value": "1h 20m" } } }
+```
+
+The same intent, canonical — the formatted string is a labelled text fact:
+
+```json
+{ "id": "longest-wait", "kind": { "$type": "Fact", "label": "Longest Wait", "value": "1h 20m" } }
+```
+
+Keep `Metric` only when you emit the RAW number and let `format` render it
+(`{"$type":"Percent"}`, `{"$type":"Currency","code":"GBP"}`, …). There is no duration
+format — a pre-formatted duration is always a `Fact`.
+
 And a **short state word shown as a chip** — "Active", "Overdue", "Tier 3", a
 severity or lifecycle marker sitting inline next to what it describes — is a
 **`Badge`** (`label` + `variant`), not a `Fact`. `Fact` is a LABELLED pair: it answers
