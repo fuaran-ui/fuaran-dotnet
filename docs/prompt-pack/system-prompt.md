@@ -95,7 +95,10 @@ orthogonal fields:
 
 So a card is `{ "$type": "Box", …, "layout": { "$type": "Flex", "direction": "Vertical",
 "wrap": false }, "role": "Card" }`; a dashboard tile region is `layout` `Auto` + `role`
-`"Dashboard"`; a plain vertical stack is `Flex` + `role` `"Group"`. The example below nests all
+`"Dashboard"`; a plain vertical stack is `Flex` + `role` `"Group"`. **The direction is a
+FIELD, never the discriminator** — `{ "$type": "Vertical", "wrap": false }` does not
+decode (`Flex` | `Grid` | `Auto` are the only layout `$type`s); the vertical stack is
+`{ "$type": "Flex", "direction": "Vertical", "wrap": false }`. The example below nests all
 three:
 
 <!-- fuaran:example fixture=composite-root -->
@@ -1253,6 +1256,44 @@ Three things to get right:
 
 The same tone vocabulary distinguishes non-tabular things: a `Badge` `variant`, a
 `Callout` `tone`, a `Metric` `tone`. `TonedPill` is the per-row form of it.
+
+### Closure cells cannot be authored from the wire — no `*Fn` payloads, no invented bindings
+
+The `Pill` rule above generalises. Several cell kinds carry **host-code closure** slots
+(`Link`'s `hrefFn`/`labelFn`, `Progress`'s `fractionFn`, `Custom`'s `fn`); on the wire
+those slots decode to inert placeholders, so **whatever JSON you put inside is discarded
+silently** — a wire `Progress` cell renders a zero fill on every row. There is no
+function vocabulary to reach for: `{"$type":"col","name":"capacity"}` and
+`{"$type":"lit","cell":{"$type":"Str","value":"…"}}` decode nowhere in the format. And
+this exact emission fails — `labelFn` is not a `Button` field, so its required `label`
+is missing:
+
+```json
+{ "field": "action", "kind": { "$type": "Button",
+    "labelFn": { "$type": "lit", "cell": { "$type": "Str", "value": "Reroute Power" } },
+    "onClick": { "$type": "Chain", "ops": [] } } }
+```
+
+The same intent, canonical — a `Button` column takes a plain `label` (bare string is
+fine) and a typed action:
+
+```json
+{ "field": "action", "label": "Actions", "kind": { "$type": "Button",
+    "label": "Reroute Power",
+    "onClick": { "$type": "Notify", "channel": "ops", "payload": "reroute" } } }
+```
+
+A **per-row fraction/percentage column** — capacity, utilisation, completion — is a
+**`Numeric` cell with a `Percent` format**, not a `Progress` cell:
+
+```json
+{ "field": "capacity", "label": "Capacity",
+    "kind": { "$type": "Numeric" }, "format": { "$type": "Percent" } }
+```
+
+The cells you can fully author from the wire: `Text` · `Numeric` · `Date` ·
+`TonedPill(field, map)` · `Button(label, onClick)` · `ButtonGroup(buttons)` ·
+`Checkbox` · `Editable`. Everything `*Fn`-shaped belongs to native hosts.
 
 ## Prompt-given data is `Static` — queries are for host data
 
