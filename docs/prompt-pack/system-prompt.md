@@ -370,6 +370,12 @@ or progress toward a limit** ("120 of 400 units", "68% complete") reads as a
 **`Progress`** fill bar (`fraction`† in 0..1), not a Metric — reach for `Metric` when
 the number stands alone, `Progress` when the prompt frames it against a maximum.
 
+Two hard rules on the numbers themselves. **Compute every number you emit** —
+`"fraction": 0.989`, never `"fraction": 178 / 180`: JSON carries no expressions, and a
+single arithmetic emission fails the whole document. And **`Metric.value` never carries
+text** — `{"$type":"Static","value":"Stable"}` in a Metric fails to decode; a labelled
+string is a `Fact`.
+
 And a **short state word shown as a chip** — "Active", "Overdue", "Tier 3", a
 severity or lifecycle marker sitting inline next to what it describes — is a
 **`Badge`** (`label` + `variant`), not a `Fact`. `Fact` is a LABELLED pair: it answers
@@ -1100,6 +1106,10 @@ plain text or number cell answers "what is the value?" while leaving "is this ba
 the reader. Give such a column a `TonedPill`, mapping its own values to tones. A label
 alone is not a visual distinction: "Days overdue" names the direction, it does not show
 which rows are in trouble.
+
+**`Badge` is a node kind and never a cell kind.** Inside a `DataGrid` column the chip
+spelling is `TonedPill` — a `{"$type":"Badge"}` in a `columns[].kind` slot does not
+decode. The instinct is right (a pill in the cell); only the spelling differs.
 
 <!-- fuaran:example fixture=grid-toned-pill -->
 ```json
