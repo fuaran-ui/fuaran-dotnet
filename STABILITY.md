@@ -930,3 +930,62 @@ and a hand-written one are read identically, and the validator itself is unmodif
 hand-written path survives as the override tier
 (`fuaran-validator.manifest.overrides.json`), merged over the derived base at generation time.
 Contract + migration note: [`docs/VALIDATOR-MANIFEST.md`](docs/VALIDATOR-MANIFEST.md).
+
+## Recorded change — op-stream verification on the read paths (fuaran#793)
+
+**Minor.** New public surface plus a behavioural tightening on paths that previously performed no
+check at all. Nothing about the chain FORMAT changes — no new pre-image, no re-hash, no corpus move;
+a stream written before this change verifies unaltered.
+
+### 1. `Fuaran.UI.OpStream.Abstractions` gains a segment verifier and a load-mode — additive
+
+- `Verify.segmentFrom expectedPreviousHash expectedFirstSequence records` — verify a contiguous
+  segment against an anchor the caller already trusts. `Verify.chain` is now `segmentFrom` at
+  `(genesisPreviousHash, 1)`, so its behaviour and error shapes are unchanged.
+- `Verify.segment records` — the anchor-relative form for a reader holding no external anchor
+  (a `Replay(from, to)` slice, a compacted stream). A segment starting at sequence 1 must still carry
+  the genesis anchor, so a whole-stream read is verified exactly as strictly as before.
+- `Verify.loaded` / `Verify.describe` — the sink-facing entry point and its message renderer.
+- `LoadVerification` (`Full` / `Tail n` / `Off`) — how much of a loaded segment a read path
+  re-verifies.
+
+**Why `segmentFrom` had to exist:** `Verify.chain` hardcodes a genesis start, so it reports every
+legitimate mid-stream read as `OutOfOrder` and could not be wired into any sink. One consumer had
+already hit that and written its own walker (`SessionStore.verifyTail`), which is now retired onto
+the shared one.
+
+### 2. `ReplayError` gains `ChainBroken` — a new DU case, still minor
+
+Same shape as the [`DagReplayError` precedent](#2-dagreplayerror-gains-snapshothashmismatch--a-new-du-case-still-minor):
+a consumer with an exhaustive `match` gets `FS0025`, which **is** a build break under
+`TreatWarningsAsErrors`, and the [Semver](#semver) section classifies it minor regardless. Add the arm.
+
+### 3. `DagVerify` gains `record` and `recordsResolving` — additive
+
+`records` is retained and is now `recordsResolving` closed over the input set. The parameterised form
+exists because parent linkage must be resolved against the WHOLE STORE, not the stream being read:
+the guest-fork contract anchors a guest branch's genesis on the `Mount` op in the host stream, so a
+stream-scoped record set is not a closed parent universe.
+
+### 4. Read paths now verify — a behavioural tightening
+
+`Replay.applyTo`, both linear sinks' `Replay`, and both DAG sinks' `Records` / `TryGet` verify what
+they return. **A store that was already corrupt will now be refused where it previously replayed
+silently** — that is the point, and it is the only way a consumer notices this change.
+
+Three consumer-visible consequences:
+
+- `Replay.applyTo` **refuses the whole stream** on a break rather than folding the clean prefix, and
+  materialises its `records` argument (a lazy sequence is fully enumerated). `Replay.applyToUnverified`
+  is the old body under a deliberately longer name, for a caller that verified upstream or is
+  replaying synthetic records.
+- The sinks have no error channel, so they refuse with an `InvalidOperationException` naming the
+  stream and the offending record — the idiom they already use for a duplicate sequence.
+- Verification is roughly linear at ~5 µs/record; it about doubles a 10,000-record Sqlite read and is
+  unmeasurable on a single-record one. Opt down with `LoadVerification` at construction
+  (`SqliteSink.createWith`, `InMemorySink.createWith`, `SqliteDagSink.createWith`,
+  `InMemoryDagSink.createWith`). Measurements and the reasoning are in
+  [`CRYPTO.md`](CRYPTO.md#verification-on-the-read-paths).
+
+**Not a security-property change.** The chain stays UNKEYED: this makes the corruption detection it
+genuinely provides actually happen, and adds no tamper evidence. See `CRYPTO.md`.

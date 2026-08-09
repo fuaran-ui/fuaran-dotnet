@@ -96,6 +96,7 @@ let tests =
 
               match Replay.applyTo tree [ r1; r2 ] with
               | Error(ReplayError.ApplyFailed(sequence, _)) -> Expect.equal sequence 2 "Failure points at sequence 2"
+              | Error(ReplayError.ChainBroken e) -> failtestf "Expected an apply failure, not a chain break: %A" e
               | Ok _ -> failtest "Expected apply to fail at sequence 2"
           }
 

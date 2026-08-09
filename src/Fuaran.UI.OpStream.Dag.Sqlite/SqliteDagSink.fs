@@ -38,6 +38,21 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //  ops can't round-trip generically). Topology queries load the stream's
 //  (hash, parents) rows into memory and delegate to the pure `DagTopology`
 //  algorithms — a recursive-CTE implementation is a later optimisation.
+//
+//  ── VERIFY ON READ (Phase 793) ─────────────────────────────────────────────
+//  `Records` and `TryGet` re-verify what they hand back
+//  (`DagVerify.recordsResolving` / `DagVerify.record`) rather than trusting the
+//  rows because this sink wrote them. This store outlives the process and is a file any other program can
+//  touch, so it is where "computed on write, never checked on read" actually
+//  costs something. `Add`'s collision check is a different question and stays
+//  as it was: it asks whether this hash already means something else, not
+//  whether a stored record still hashes to its address.
+//
+//  The topology reads (`Parents` / `Reachable` / `Lca` / `Heads`) deliberately
+//  do NOT verify: they read only (hash, parents) and never return a record, so
+//  there is no content address in scope to recompute — the check would have to
+//  load every payload to say nothing more than `Records` already says. A caller
+//  that wants the whole store proved calls `Records`.
 // ============================================================================
 
 module private DagJson =
@@ -134,9 +149,23 @@ module private DagJson =
 
             OpResultEnvelope.Failure(extract "code", extract "message")
 
-type SqliteDagSink<'Msg>(connectionString: string, codec: IOpJsonCodec<'Msg>) =
+type SqliteDagSink<'Msg>(connectionString: string, codec: IOpJsonCodec<'Msg>, loadVerification: LoadVerification) =
 
     let emptyBatchJson = codec.EncodeOp(TreeOp.Batch [])
+
+    /// `IDagOpStreamSink` has no error channel — its reads return bare records —
+    /// so a broken DAG is refused the way this sink already refuses an
+    /// undecodable row: by name, naming the stream and the record.
+    /// `LoadVerification.Tail` has no meaning over a SET (no total order to take
+    /// a tail of), so it verifies in full — erring towards more checking.
+    let verifyOnRead (streamId: string) (check: unit -> Result<unit, DagVerificationError>) =
+        match loadVerification with
+        | LoadVerification.Off -> ()
+        | LoadVerification.Full
+        | LoadVerification.Tail _ ->
+            match check () with
+            | Ok() -> ()
+            | Error e -> invalidOp ("SqliteDagSink: " + DagVerify.describe streamId e)
 
     let openConnection () : SqliteConnection =
         let conn = new SqliteConnection(connectionString)
@@ -270,6 +299,40 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
 
         List.ofSeq acc
 
+    /// Which of `hashes` name a record ANYWHERE in this store. Parent linkage is
+    /// resolved store-wide, not within the stream being read: a guest branch's
+    /// genesis is anchored on the `Mount` op in the HOST stream, so a
+    /// stream-scoped set is not a closed parent universe. One query over the
+    /// candidate parents, not one query per parent.
+    let presentHashes (hashes: string list) : Set<string> =
+        match hashes with
+        | [] -> Set.empty
+        | _ ->
+            use conn = openConnection ()
+            use cmd = conn.CreateCommand()
+
+            let names = hashes |> List.mapi (fun i _ -> "@h" + string i)
+
+            cmd.CommandText <-
+                "SELECT hash FROM dag_op_record WHERE hash IN ("
+                + String.concat "," names
+                + ");"
+
+            hashes
+            |> List.iteri (fun i h -> cmd.Parameters.AddWithValue("@h" + string i, h) |> ignore)
+
+            use reader = cmd.ExecuteReader()
+            let acc = ResizeArray<string>()
+
+            while reader.Read() do
+                acc.Add(reader.GetString 0)
+
+            Set.ofSeq acc
+
+    /// Two-arg constructor — verifies every read (Phase 793).
+    new(connectionString: string, codec: IOpJsonCodec<'Msg>) =
+        SqliteDagSink<'Msg>(connectionString, codec, LoadVerification.Full)
+
     interface IDagOpStreamSink<'Msg> with
 
         member _.Add(record: DagOpRecord<'Msg>) : Async<unit> =
@@ -347,7 +410,15 @@ ON CONFLICT(stream_id, hash) DO NOTHING;"""
             }
 
         member _.TryGet(streamId: string, hash: string) : Async<DagOpRecord<'Msg> option> =
-            async { return readRecord streamId hash }
+            async {
+                let found = readRecord streamId hash
+
+                match found with
+                | None -> ()
+                | Some r -> verifyOnRead streamId (fun () -> DagVerify.record r)
+
+                return found
+            }
 
         member _.Head(streamId: string) : Async<string option> =
             async {
@@ -410,7 +481,16 @@ ON CONFLICT(stream_id, hash) DO NOTHING;"""
             }
 
         member _.Records(streamId: string) : Async<DagOpRecord<'Msg> list> =
-            async { return readAllRecords streamId }
+            async {
+                let records = readAllRecords streamId
+
+                verifyOnRead streamId (fun () ->
+                    let present = records |> List.collect _.Parents |> List.distinct |> presentHashes
+
+                    DagVerify.recordsResolving present.Contains records)
+
+                return records
+            }
 
         member _.Tombstone(streamId: string, hash: string) : Async<bool> =
             async {
@@ -443,6 +523,15 @@ WHERE stream_id = @s AND hash = @h;"""
             }
 
 module SqliteDagSink =
-    /// Fresh sink as the abstraction interface.
+    /// Fresh sink as the abstraction interface. Verifies every read (Phase 793).
     let create<'Msg> (connectionString: string) (codec: IOpJsonCodec<'Msg>) : IDagOpStreamSink<'Msg> =
         upcast SqliteDagSink<'Msg>(connectionString, codec)
+
+    /// `create` under an explicit read-path verification mode. Naming a cheaper
+    /// mode here is the ONLY way to get one — there is no silent fast path.
+    let createWith<'Msg>
+        (loadVerification: LoadVerification)
+        (connectionString: string)
+        (codec: IOpJsonCodec<'Msg>)
+        : IDagOpStreamSink<'Msg> =
+        upcast SqliteDagSink<'Msg>(connectionString, codec, loadVerification)

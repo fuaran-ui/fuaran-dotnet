@@ -24,6 +24,9 @@
     <Compile Include="OpenCoreInvariantTests.fs" />
     <!-- Phase 267: guest op-stream fork + host-convergence anchor (§4o). -->
     <Compile Include="GuestForkTests.fs" />
+    <!-- Phase 793: DagVerify wired at the sinks' read paths. Go-red proofs —
+         each corrupts a real record, the Sqlite ones by UPDATEing the file. -->
+    <Compile Include="DagVerifyOnReadTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

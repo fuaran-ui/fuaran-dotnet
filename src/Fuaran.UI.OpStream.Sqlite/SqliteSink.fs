@@ -42,6 +42,20 @@ open Fuaran.UI.OpStream.Abstractions
 //  pass `NodeJsonCodec.encodeOnly` and accept that
 //  LatestCheckpointAtOrBefore will surface decoder errors. Result-envelope
 //  serialisation stays owned by this sink (closed shape, no host codec).
+//
+//  ── VERIFY ON LOAD (Phase 793) ─────────────────────────────────────────────
+//  `Replay` re-verifies the hash chain of the rows it just read, rather than
+//  trusting them because this sink wrote them. This is the sink whose store
+//  outlives the process and is a file on a disk any other program can touch, so
+//  it is the one where "the chain was computed on write and never checked"
+//  actually costs something: a truncated write, a bad sector or a hand-run
+//  `UPDATE` all replay silently without it. The chain is UNKEYED, so what is
+//  detected is accidental corruption, truncation and reordering — not a writer
+//  who edits a row and re-chains from there (CRYPTO.md).
+//
+//  Cost is linear in rows returned and is measured in CRYPTO.md; a host that
+//  has read that and wants a cheaper posture passes an explicit
+//  `LoadVerification` — the default is `Full`.
 // ============================================================================
 
 module private ResultEnvelopeJson =
@@ -125,7 +139,13 @@ module private ResultEnvelopeJson =
         else
             Error(sprintf "Unknown OpResultEnvelope shape: %s" json)
 
-type SqliteSink<'Msg>(connectionString: string, codec: IOpJsonCodec<'Msg>, nodeCodec: INodeJsonCodec<'Msg>) =
+type SqliteSink<'Msg>
+    (
+        connectionString: string,
+        codec: IOpJsonCodec<'Msg>,
+        nodeCodec: INodeJsonCodec<'Msg>,
+        loadVerification: LoadVerification
+    ) =
 
     let openConnection () : SqliteConnection =
         let conn = new SqliteConnection(connectionString)
@@ -163,13 +183,26 @@ CREATE TABLE IF NOT EXISTS op_checkpoint (
 
     do ensureSchema ()
 
+    /// Verify a segment about to be handed to a caller. `IOpStreamSink` has no
+    /// error channel — `Replay` returns a bare list — so a broken chain is
+    /// refused the way this sink already refuses an undecodable row: by name,
+    /// with a message that says which stream and which record.
+    let verifyLoaded (streamId: string) (records: OpRecord<'Msg> list) : OpRecord<'Msg> list =
+        match Verify.loaded loadVerification records with
+        | Ok() -> records
+        | Error e -> invalidOp ("SqliteSink: " + Verify.describe streamId e)
+
+    /// Three-arg constructor — verifies the whole loaded segment on `Replay`.
+    new(connectionString: string, codec: IOpJsonCodec<'Msg>, nodeCodec: INodeJsonCodec<'Msg>) =
+        SqliteSink<'Msg>(connectionString, codec, nodeCodec, LoadVerification.Full)
+
     /// Legacy two-arg constructor, kept for callers that don't
     /// need checkpoint snapshot round-trip (hash-chain verification only).
     /// Defaults the node codec to `NodeJsonCodec.encodeOnly`; AppendCheckpoint
     /// works (the encoder is purely additive) but LatestCheckpointAtOrBefore
     /// will return a decoder error if a checkpoint exists.
     new(connectionString: string, codec: IOpJsonCodec<'Msg>) =
-        SqliteSink<'Msg>(connectionString, codec, NodeJsonCodec.encodeOnly<'Msg> ())
+        SqliteSink<'Msg>(connectionString, codec, NodeJsonCodec.encodeOnly<'Msg> (), LoadVerification.Full)
 
     interface IOpStreamCheckpointSink<'Msg> with
 
@@ -282,7 +315,7 @@ ORDER BY sequence;"""
 
                             results.Add record
 
-                return List.ofSeq results
+                return verifyLoaded streamId (List.ofSeq results)
             }
 
         member _.LatestSequence(streamId: string) : Async<int> =
@@ -461,6 +494,15 @@ module SqliteSink =
     let create<'Msg> (connectionString: string) (codec: IOpJsonCodec<'Msg>) : IOpStreamSink<'Msg> =
         upcast SqliteSink<'Msg>(connectionString, codec)
 
+    /// `create` under an explicit read-path verification mode. Naming a cheaper
+    /// mode here is the ONLY way to get one — there is no silent fast path.
+    let createWith<'Msg>
+        (loadVerification: LoadVerification)
+        (connectionString: string)
+        (codec: IOpJsonCodec<'Msg>)
+        : IOpStreamSink<'Msg> =
+        upcast SqliteSink<'Msg>(connectionString, codec, NodeJsonCodec.encodeOnly<'Msg> (), loadVerification)
+
     /// Convenience factory returning the checkpoint-aware sink
     /// interface. Requires a real `INodeJsonCodec<'Msg>` for snapshot
     /// round-trip; hosts that only need integrity-verification of
@@ -471,3 +513,12 @@ module SqliteSink =
         (nodeCodec: INodeJsonCodec<'Msg>)
         : IOpStreamCheckpointSink<'Msg> =
         upcast SqliteSink<'Msg>(connectionString, codec, nodeCodec)
+
+    /// `createWithCheckpoints` under an explicit read-path verification mode.
+    let createWithCheckpointsAnd<'Msg>
+        (loadVerification: LoadVerification)
+        (connectionString: string)
+        (codec: IOpJsonCodec<'Msg>)
+        (nodeCodec: INodeJsonCodec<'Msg>)
+        : IOpStreamCheckpointSink<'Msg> =
+        upcast SqliteSink<'Msg>(connectionString, codec, nodeCodec, loadVerification)

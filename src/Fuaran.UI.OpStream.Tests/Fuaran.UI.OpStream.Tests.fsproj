@@ -20,6 +20,10 @@
     <!-- Phase 193: the append-only journal leg behind the in-page apply seam. -->
     <Compile Include="JournalAppliedTests.fs" />
     <Compile Include="TamperTests.fs" />
+    <!-- Phase 793: the chain is verified on the READ paths (Replay + both
+         linear sinks). Go-red proofs — each corrupts a real record in a real
+         store, the Sqlite ones by UPDATEing the database file. -->
+    <Compile Include="VerifyOnReadTests.fs" />
     <Compile Include="ConcurrencyTests.fs" />
     <Compile Include="SqliteTests.fs" />
     <Compile Include="TreeDiffTests.fs" />

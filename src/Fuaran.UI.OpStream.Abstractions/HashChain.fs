@@ -135,41 +135,191 @@ type VerificationError =
     /// Records are not in ascending Sequence order, or have a gap.
     | OutOfOrder of expectedSequence: int * actualSequence: int
 
+/// How much of a loaded segment a **read path** re-verifies (Phase 793).
+///
+/// This exists so that a fast path is a NAMED, deliberate choice at the seam
+/// that takes it, rather than a silent default: "we verify" quietly becoming
+/// "we sometimes verify" is the failure this whole phase exists to remove. The
+/// sinks all DEFAULT to `Full`; the cheaper modes must be passed explicitly at
+/// construction, and each states what it stops proving.
+///
+/// Cost, and when the cheaper modes are defensible, are documented in
+/// `CRYPTO.md` ("Verification on the read paths").
+[<RequireQualifiedAccess>]
+type LoadVerification =
+    /// Recompute the whole loaded segment. The default everywhere.
+    | Full
+    /// Recompute only the last `records` of the loaded segment, anchored on
+    /// that sub-segment's own first `PreviousHash`. Detects corruption WITHIN
+    /// the window and nothing before it — appropriate for an append-heavy host
+    /// that re-reads a growing stream and has verified the prefix already.
+    /// `records <= 0` verifies nothing (equivalent to `Off`).
+    | Tail of records: int
+    /// Do not verify on load. The caller takes responsibility for integrity —
+    /// e.g. it verifies once per process at start-up, or the "store" is a
+    /// per-process structure it wrote itself and never re-reads from disk.
+    | Off
+
 module Verify =
+
+    /// Map Core's 0-based, segment-relative `ChainBreak` onto the domain's
+    /// 1-based absolute `VerificationError`. `offset0` is the Core-basis index
+    /// of the segment's first record (0 for a genesis-anchored stream).
+    let private ofChainBreak (offset0: int) (b: Fuaran.Core.ChainBreak) : VerificationError =
+        let seq1 = b.Index + offset0 + 1
+
+        match b.Reason with
+        | "sequence-number mismatch" ->
+            // Expected/Got are Core's stringified 0-based segment-relative seqs.
+            let parse (s: string) =
+                match System.Int32.TryParse s with
+                | true, v -> v + offset0 + 1
+                | false, _ -> seq1
+
+            VerificationError.OutOfOrder(parse b.Expected, parse b.Got)
+        | "prev-hash link broken" -> VerificationError.PreviousHashMismatch(seq1, b.Expected, b.Got)
+        | _ -> VerificationError.HashMismatch(seq1, b.Expected, b.Got)
+
+    /// Verify a CONTIGUOUS SEGMENT of a stream against an anchor the caller
+    /// already trusts: assert (a) the first record links to
+    /// `expectedPreviousHash` and sits at `expectedFirstSequence`, (b) every
+    /// subsequent `PreviousHash` links to its predecessor's `Hash`, (c) every
+    /// `Hash` recomputes, and (d) the sequence is contiguous ascending. Returns
+    /// the first violation, or `Ok ()` on a clean segment. An empty segment is
+    /// vacuously `Ok`.
+    ///
+    /// **Why this exists (Phase 793).** `chain` hardcodes a genesis start, so it
+    /// cannot verify anything a real read path returns: a `Replay(from, to)`
+    /// slice, a post-checkpoint journal tail, or a store whose prefix was
+    /// truncated by compaction all legitimately begin above sequence 1 and would
+    /// be reported `OutOfOrder` by a genesis-anchored walker. Two call sites had
+    /// already discovered that and each was on its way to a bespoke walker; this
+    /// is the one definition, still delegating to Core's `firstChainBreakWith`
+    /// (the Phase-411 F14 posture — the domain owns the presentation, never the
+    /// walk).
+    ///
+    /// The mechanism: Core's walker anchors at index 0 / `cfg.Genesis`, so the
+    /// segment is re-based onto that origin (`Seq - offset0`) and the payload
+    /// binding shifts the real sequence back in — the hash pre-image is always
+    /// computed over the record's TRUE sequence, only the contiguity counter
+    /// moves.
+    let segmentFrom<'Msg>
+        (expectedPreviousHash: string)
+        (expectedFirstSequence: int)
+        (records: OpRecord<'Msg> seq)
+        : Result<unit, VerificationError> =
+        let recordList = records |> Seq.map StreamEntry.toCoreRecord |> List.ofSeq
+
+        if List.isEmpty recordList then
+            Ok()
+        else
+            // Core's 0-based index the segment's first record should occupy.
+            let offset0 = expectedFirstSequence - 1
+
+            let cfg: Fuaran.Core.StreamConfig =
+                { Payload = fun seq0 actor op -> Fuaran.Core.OpStream.canonicalConfig.Payload (seq0 + offset0) actor op
+                  Genesis = expectedPreviousHash }
+
+            let rebased = recordList |> List.map (fun r -> { r with Seq = r.Seq - offset0 })
+
+            match
+                Fuaran.Core.OpStream.firstChainBreakWith
+                    cfg
+                    StreamEntry.hashFn
+                    (StreamEntry.coreWitness<'Msg> ())
+                    rebased
+            with
+            | None -> Ok()
+            | Some b -> Error(ofChainBreak offset0 b)
 
     /// Assert (a) the `PreviousHash` chain links, (b) each `Hash` recomputes to
     /// the stored value, and (c) contiguous 1-based sequence, from genesis.
     /// Returns the first violation, or `Ok ()` on a clean chain.
     ///
+    /// The STRICT whole-stream verifier: it additionally proves the stream
+    /// starts at sequence 1 with the genesis anchor. A read that returns a slice
+    /// or a compacted tail wants `segment` / `segmentFrom` instead — this one
+    /// reports `OutOfOrder` on any segment that does not begin at the origin,
+    /// which is correct but is not a corruption finding.
+    ///
     /// Phase 411 — F14 resolved: the domain's hand-rolled walker is retired.
     /// Records project onto Core's shape (`StreamEntry.toCoreRecord`, `Seq =
-    /// Sequence - 1`) and `Core.OpStream.firstChainBreakWith chainConfig` is the
-    /// verifier — one definition of chain integrity across every domain. Only
-    /// the typed-error presentation (Core's 0-based `ChainBreak` index → the
-    /// domain's 1-based `VerificationError`) stays here.
+    /// Sequence - 1`) and `Core.OpStream.firstChainBreakWith` is the verifier —
+    /// one definition of chain integrity across every domain. Only the typed-error
+    /// presentation (Core's 0-based `ChainBreak` index → the domain's 1-based
+    /// `VerificationError`) stays here.
     let chain<'Msg> (records: OpRecord<'Msg> seq) : Result<unit, VerificationError> =
-        let coreRecords = records |> Seq.map StreamEntry.toCoreRecord |> List.ofSeq
+        segmentFrom HashChain.genesisPreviousHash 1 records
 
-        match
-            Fuaran.Core.OpStream.firstChainBreakWith
-                HashChain.chainConfig
-                StreamEntry.hashFn
-                (StreamEntry.coreWitness<'Msg> ())
-                coreRecords
-        with
-        | None -> Ok()
-        | Some b ->
-            // `b.Index` is Core's 0-based record index; the domain reports 1-based.
-            let seq1 = b.Index + 1
+    /// Verify a contiguous segment read from a store when the caller holds NO
+    /// external anchor — the shape every sink read path is in. The segment is
+    /// checked against its own first record's `PreviousHash` and `Sequence`,
+    /// except that a segment beginning at sequence 1 must carry the genesis
+    /// anchor (so a whole-stream read is verified exactly as strictly as
+    /// `chain`).
+    ///
+    /// **State what this proves, because it is less than `chain`.** Every record
+    /// in the segment is proved internally consistent and correctly linked to
+    /// its neighbours — which is precisely the accidental-corruption,
+    /// truncation-within-the-segment and reordering detection the unkeyed
+    /// SHA-256 genuinely provides. What it does NOT prove for a segment starting
+    /// above sequence 1 is the segment's POSITION: its first `PreviousHash` is
+    /// taken on trust, so a whole segment lifted from elsewhere in the same
+    /// stream is not detected here. A caller that holds the real anchor (a
+    /// checkpoint's `PreviousChainHead`, the prior record's `Hash`) should pass
+    /// it to `segmentFrom` and get that stronger property. And none of this is
+    /// tamper evidence — see `CRYPTO.md`.
+    let segment<'Msg> (records: OpRecord<'Msg> seq) : Result<unit, VerificationError> =
+        let recordList = List.ofSeq records
 
-            match b.Reason with
-            | "sequence-number mismatch" ->
-                // Expected/Got are Core's stringified 0-based seqs; re-base to 1-based.
-                let parse (s: string) =
-                    match System.Int32.TryParse s with
-                    | true, v -> v + 1
-                    | false, _ -> seq1
+        match recordList with
+        | [] -> Ok()
+        | first :: _ ->
+            let anchor =
+                if first.Sequence = 1 then
+                    HashChain.genesisPreviousHash
+                else
+                    first.PreviousHash
 
-                Error(VerificationError.OutOfOrder(parse b.Expected, parse b.Got))
-            | "prev-hash link broken" -> Error(VerificationError.PreviousHashMismatch(seq1, b.Expected, b.Got))
-            | _ -> Error(VerificationError.HashMismatch(seq1, b.Expected, b.Got))
+            segmentFrom anchor first.Sequence recordList
+
+    /// `segment` under a `LoadVerification` mode — the entry point every sink
+    /// read path calls, so the mode is honoured identically everywhere.
+    let loaded<'Msg> (mode: LoadVerification) (records: OpRecord<'Msg> list) : Result<unit, VerificationError> =
+        match mode with
+        | LoadVerification.Off -> Ok()
+        | LoadVerification.Full -> segment records
+        | LoadVerification.Tail n when n <= 0 -> Ok()
+        | LoadVerification.Tail n ->
+            let length = List.length records
+
+            if n >= length then
+                segment records
+            else
+                segment (List.skip (length - n) records)
+
+    /// Human-readable rendering of a violation — the shape a read path that has
+    /// no `Result` channel (the sink interfaces return a bare list) uses to
+    /// refuse BY NAME rather than by an opaque throw.
+    let describe (streamId: string) (error: VerificationError) : string =
+        match error with
+        | VerificationError.PreviousHashMismatch(sequence, expected, actual) ->
+            sprintf
+                "op-stream chain broken in stream '%s' at sequence %d: PreviousHash does not link (expected %s, stored %s)"
+                streamId
+                sequence
+                expected
+                actual
+        | VerificationError.HashMismatch(sequence, expected, actual) ->
+            sprintf
+                "op-stream chain broken in stream '%s' at sequence %d: Hash does not recompute (expected %s, stored %s)"
+                streamId
+                sequence
+                expected
+                actual
+        | VerificationError.OutOfOrder(expectedSequence, actualSequence) ->
+            sprintf
+                "op-stream chain broken in stream '%s': expected sequence %d, found %d (a gap, a reordering, or a truncation)"
+                streamId
+                expectedSequence
+                actualSequence

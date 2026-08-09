@@ -501,9 +501,15 @@ module GuestImport =
         match Verify.chain b.Records with
         | Error e -> Error(sprintf "GuestImport.reconstruct: hash-chain verification failed: %A" e)
         | Ok() ->
-            match Replay.applyTo b.InitialTree b.Records with
+            // Verified above from GENESIS, which is stronger than the
+            // anchor-relative check `applyTo` runs — so skip the second walk.
+            match Replay.applyToUnverified b.InitialTree b.Records with
             | Error(ReplayError.ApplyFailed(sequence, applyError)) ->
                 Error(sprintf "GuestImport.reconstruct: replay diverged at record %d: %s" sequence applyError.Message)
+            | Error(ReplayError.ChainBroken verificationError) ->
+                // Unreachable — `applyToUnverified` never verifies — but the
+                // match must be total, and an honest arm beats a wildcard.
+                Error(sprintf "GuestImport.reconstruct: hash-chain verification failed: %A" verificationError)
             | Ok tree -> Ok tree
 
     /// Load a bundle into an importing host's sink: refuse a scope whose

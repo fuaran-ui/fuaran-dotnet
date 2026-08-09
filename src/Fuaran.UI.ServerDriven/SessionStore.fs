@@ -233,53 +233,23 @@ type SessionReconstructError =
 module SessionReplay =
     /// Walk a journal tail starting from `(startPreviousHash, startSequence)`,
     /// asserting contiguous sequence, `PreviousHash` linkage, and recomputed
-    /// `Hash` for every record. (The shipped `Verify.chain` hardcodes a
-    /// genesis start; a checkpoint tail starts mid-chain, so this is the
-    /// tail-aware variant — it also catches the checkpoint→tail boundary, since
-    /// the first record's `PreviousHash` must equal the checkpoint's
-    /// `PreviousChainHead`.)
+    /// `Hash` for every record. It catches the checkpoint→tail boundary too,
+    /// since the first record's `PreviousHash` must equal the checkpoint's
+    /// `PreviousChainHead`.
+    ///
+    /// Phase 793 — this was a hand-rolled walker, written because "the shipped
+    /// `Verify.chain` hardcodes a genesis start". That gap is now closed at the
+    /// source: `Verify.segmentFrom` is the anchored segment verifier in the
+    /// abstractions package, delegating to Core's `firstChainBreakWith` like
+    /// `Verify.chain` does. One definition of chain integrity, per the Phase-411
+    /// F14 posture — the duplicate walker is retired, and the error shapes are
+    /// unchanged (same cases, same argument order).
     let private verifyTail<'Msg>
         (startPreviousHash: string)
         (startSequence: int)
         (records: OpRecord<'Msg> list)
         : Result<unit, VerificationError> =
-        let mutable result = Ok()
-        let mutable previousHash = startPreviousHash
-        let mutable expectedSequence = startSequence
-        let mutable remaining = records
-        let mutable stop = false
-
-        while not stop && not (List.isEmpty remaining) do
-            let record = List.head remaining
-            remaining <- List.tail remaining
-
-            if record.Sequence <> expectedSequence then
-                result <- Error(VerificationError.OutOfOrder(expectedSequence, record.Sequence))
-                stop <- true
-            elif record.PreviousHash <> previousHash then
-                result <-
-                    Error(VerificationError.PreviousHashMismatch(record.Sequence, previousHash, record.PreviousHash))
-
-                stop <- true
-            else
-                let recomputed =
-                    HashChain.computeHash
-                        record.PreviousHash
-                        record.Op
-                        record.Sequence
-                        record.Timestamp
-                        record.Actor
-                        record.PromptId
-                        record.ResultEnvelope
-
-                if recomputed <> record.Hash then
-                    result <- Error(VerificationError.HashMismatch(record.Sequence, recomputed, record.Hash))
-                    stop <- true
-                else
-                    previousHash <- record.Hash
-                    expectedSequence <- expectedSequence + 1
-
-        result
+        Verify.segmentFrom startPreviousHash startSequence records
 
     /// Reconstruct a session's current rendered tree from durable storage:
     /// load the latest checkpoint, verify its snapshot hash, verify + replay the
@@ -305,7 +275,9 @@ module SessionReplay =
                 match verifyTail HashChain.genesisPreviousHash 1 all with
                 | Error e -> return Error(SessionReconstructError.JournalIntegrity e)
                 | Ok() ->
-                    match Replay.applyTo genesisTree all with
+                    // Already verified above against the genesis anchor — the
+                    // stronger check, so `applyToUnverified` skips a second walk.
+                    match Replay.applyToUnverified genesisTree all with
                     | Ok tree ->
                         let headSeq = all |> List.tryLast |> Option.map _.Sequence |> Option.defaultValue 0
 
@@ -334,7 +306,10 @@ module SessionReplay =
                         match verifyTail checkpoint.PreviousChainHead (checkpoint.Sequence + 1) tail with
                         | Error e -> return Error(SessionReconstructError.JournalIntegrity e)
                         | Ok() ->
-                            match Replay.applyTo checkpoint.Snapshot tail with
+                            // Already verified above against the checkpoint's own
+                            // chain head — stronger than the anchor-relative check
+                            // `applyTo` would repeat.
+                            match Replay.applyToUnverified checkpoint.Snapshot tail with
                             | Ok tree ->
                                 let last = List.last tail
                                 return Ok(tree, last.Sequence, last.Hash)

@@ -17,6 +17,17 @@ open Fuaran.UI.OpStream.Abstractions
 //  Dictionary<string, ResizeArray<Checkpoint<'Msg>>>; TruncateOpsThrough
 //  removes ops from the live stream's ResizeArray in-place. No codec
 //  needed for InMemory either — snapshots round-trip as typed values.
+//
+//  ── VERIFY ON LOAD (Phase 793) ─────────────────────────────────────────────
+//  `Replay` re-verifies the hash chain of the segment it returns, rather than
+//  trusting it because this sink wrote it. That is a weaker-looking case than
+//  the durable sinks — the records never leave the process — and it is still
+//  the right default for two reasons. The records are handed out as MUTABLE
+//  references into a shared store that a host is free to hold, re-add or
+//  rebuild; and this sink is the reference implementation every host reads to
+//  learn what a sink owes its caller, so a version of it that skips the check
+//  teaches the wrong contract. A host that has measured the cost and does not
+//  want it passes `LoadVerification.Off` explicitly — see CRYPTO.md.
 // ============================================================================
 
 /// Per-stream bookkeeping: the records plus O(1)-maintained metadata so the
@@ -37,11 +48,20 @@ type private StreamState<'Msg> =
           MaxSequence = 0
           Ascending = true }
 
-type InMemorySink<'Msg>() =
+type InMemorySink<'Msg>(loadVerification: LoadVerification) =
 
     let streams = Dictionary<string, StreamState<'Msg>>()
     let checkpoints = Dictionary<string, ResizeArray<Checkpoint<'Msg>>>()
     let lockObj = obj ()
+
+    /// Verify a segment about to be handed to a caller. `IOpStreamSink` has no
+    /// error channel — `Replay` returns a bare list — so a broken chain is
+    /// refused the way this sink already refuses a duplicate sequence: by name,
+    /// with an `invalidOp` that says which stream and which record.
+    let verifyLoaded (streamId: string) (records: OpRecord<'Msg> list) : OpRecord<'Msg> list =
+        match Verify.loaded loadVerification records with
+        | Ok() -> records
+        | Error e -> invalidOp ("InMemorySink: " + Verify.describe streamId e)
 
     let getOrCreateStream (streamId: string) : StreamState<'Msg> =
         match streams.TryGetValue streamId with
@@ -58,6 +78,9 @@ type InMemorySink<'Msg>() =
             let fresh = ResizeArray<Checkpoint<'Msg>>()
             checkpoints[streamId] <- fresh
             fresh
+
+    /// Default construction verifies the whole loaded segment (Phase 793).
+    new() = InMemorySink<'Msg>(LoadVerification.Full)
 
     interface IOpStreamCheckpointSink<'Msg> with
 
@@ -109,7 +132,7 @@ type InMemorySink<'Msg>() =
                                 else
                                     inRange |> Seq.sortBy _.Sequence
 
-                            ordered |> List.ofSeq)
+                            ordered |> List.ofSeq |> verifyLoaded streamId)
             }
 
         member _.LatestSequence(streamId: string) : Async<int> =
@@ -216,10 +239,20 @@ type InMemorySink<'Msg>() =
 
 module InMemorySink =
     /// Convenience factory returning a fresh sink as the abstraction interface.
+    /// Verifies the whole loaded segment on every `Replay` (Phase 793).
     let create<'Msg> () : IOpStreamSink<'Msg> = upcast InMemorySink<'Msg>()
+
+    /// `create` under an explicit read-path verification mode. Naming a cheaper
+    /// mode here is the ONLY way to get one — there is no silent fast path.
+    let createWith<'Msg> (loadVerification: LoadVerification) : IOpStreamSink<'Msg> =
+        upcast InMemorySink<'Msg>(loadVerification)
 
     /// Convenience factory returning the checkpoint-aware sink
     /// interface. The underlying instance is the same class — InMemorySink
     /// always implements `IOpStreamCheckpointSink<'Msg>`. Use this factory
     /// when the consumer needs the checkpoint methods on the static surface.
     let createWithCheckpoints<'Msg> () : IOpStreamCheckpointSink<'Msg> = upcast InMemorySink<'Msg>()
+
+    /// `createWithCheckpoints` under an explicit read-path verification mode.
+    let createWithCheckpointsAnd<'Msg> (loadVerification: LoadVerification) : IOpStreamCheckpointSink<'Msg> =
+        upcast InMemorySink<'Msg>(loadVerification)
