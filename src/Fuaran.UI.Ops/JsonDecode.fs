@@ -472,6 +472,69 @@ and private parseArrayValue (s: ParseState) : Result<Json, string> =
             | Some e -> parseError s e
             | None -> Ok(JArray(List.rev acc))
 
+/// The one didactic-free error class, closed (2026-08-09). A syntax failure
+/// carries only an offset, so a model repairing from the envelope has no cause
+/// to act on — and the emission class that hides behind it is inline
+/// arithmetic (`"value": 178 / 180`): the model computes a fraction and writes
+/// the division, which is not JSON. The parser halts exactly on the operator
+/// (a complete number was parsed, then `,`/`}`/`]` was expected), so sniff the
+/// failure site for `<number> <op> <number>` and, on a hit, name the cause the
+/// way every other didactic in this decoder does. Purely additive to the
+/// message — never fires on a payload that parses, and a miss changes nothing.
+let private sniffArithmeticExpression (text: string) (pos: int) : string option =
+    let isDigit c = c >= '0' && c <= '9'
+
+    let isNumChar c =
+        isDigit c || c = '.' || c = 'e' || c = 'E' || c = '+' || c = '-'
+
+    let isWs c = c = ' ' || c = '\t'
+
+    if pos < 0 || pos >= text.Length then
+        None
+    else
+        let op = text[pos]
+
+        if op <> '/' && op <> '*' && op <> '+' && op <> '-' then
+            None
+        else
+            // Left operand: skip inline whitespace backwards; a JSON number
+            // always ends in a digit, then extend through the number run.
+            let mutable i = pos - 1
+
+            while i >= 0 && isWs text[i] do
+                i <- i - 1
+
+            let leftEnd = i
+
+            if leftEnd < 0 || not (isDigit text[leftEnd]) then
+                None
+            else
+                while i >= 0 && isNumChar text[i] do
+                    i <- i - 1
+
+                let leftStart = i + 1
+
+                // Right operand: skip inline whitespace forwards; accept an
+                // optional leading '-' then require a digit.
+                let mutable j = pos + 1
+
+                while j < text.Length && isWs text[j] do
+                    j <- j + 1
+
+                let rightStart = j
+
+                let rightLooksNumeric =
+                    (j < text.Length && isDigit text[j])
+                    || (j + 1 < text.Length && text[j] = '-' && isDigit text[j + 1])
+
+                if not rightLooksNumeric then
+                    None
+                else
+                    while j < text.Length && isNumChar text[j] do
+                        j <- j + 1
+
+                    Some(text.Substring(leftStart, j - leftStart))
+
 /// Parse, classifying the failure. The code is `LIMIT_EXCEEDED` when a
 /// `WireLimits` bound was hit (the `ParseState.Breach` flag) and `INVALID_JSON`
 /// for every ordinary syntax failure — the two are different repairs, and only
@@ -502,6 +565,18 @@ let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
                     DecodeErrorCode.LIMIT_EXCEEDED
                 else
                     DecodeErrorCode.INVALID_JSON
+
+            let message =
+                if state.Breach then
+                    message
+                else
+                    match sniffArithmeticExpression state.Text state.Pos with
+                    | Some expr ->
+                        message
+                        + sprintf
+                            " — cause: '%s' is an arithmetic expression in a value position. JSON has no expressions; compute the value yourself and emit only the resulting number"
+                            expr
+                    | None -> message
 
             Error(code, message)
 

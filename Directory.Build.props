@@ -126,8 +126,11 @@
          under an enforcing floor an unverifiable hash is a refusal - the floor
          still defaults to AdvisoryWarning, so enforcement is opt-in.
          See STABILITY.md "Recorded breaking change - 0.15.0" +
-         docs/migrations/783-mount-custom-renderer-isolation.md. -->
-    <Version>0.15.0</Version>
+         docs/migrations/783-mount-custom-renderer-isolation.md.
+         0.15.1 - additive: INVALID_JSON arithmetic cause-sniffing (the
+         didactic names inline arithmetic like `"value": 178 / 180` instead
+         of a bare offset - the one repair-envelope class with no cause). -->
+    <Version>0.15.1</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

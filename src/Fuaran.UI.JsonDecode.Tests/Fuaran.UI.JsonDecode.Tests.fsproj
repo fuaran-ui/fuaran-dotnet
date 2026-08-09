@@ -45,6 +45,7 @@
          §21). Every hostile payload is built as a STRING: a nested F# value
          would overflow while constructing the input and prove nothing. -->
     <Compile Include="LimitTests.fs" />
+    <Compile Include="ArithmeticCauseTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
