@@ -49,6 +49,11 @@ let private runtime: Runtime.IFuaranRuntime =
         member _.LayoutObserver = None
         member _.TryRenderCustom(_, _, _) = None
         member _.TryGetCustomRenderer(_, _) = None
+        // Phase 783 scoped lookups. This sample registers no custom renderers at
+        // all, so the scoped arms answer `None` exactly as the unscoped ones do —
+        // unregistered means unreachable, which is the posture 783 makes explicit.
+        member _.TryRenderCustomInScope(_, _, _, _) = None
+        member _.TryGetCustomRendererInScope(_, _, _) = None
         member _.TryLoadGuest(_) = None
         member _.CanDispatch(_) = true }
 
