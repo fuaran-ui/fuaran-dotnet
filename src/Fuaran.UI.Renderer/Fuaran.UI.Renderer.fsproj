@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.Renderer</PackageId>
-    <Description>Fuaran renderer — Fable + React + Feliz. Apache-2.0 licensed.</Description>
+    <Description>Fuaran renderer – Fable + React + Feliz. Every string-to-DOM seam carries a declared sanitisation posture (SANITIZATION.md states it seam by seam): an allowlisted URL-scheme floor on href/src that also rejects the protocol-relative spellings, a positive character gate on extra-attribute names, and a raw-HTML floor over rendered markdown. Interactive dispatch fails closed – a shipped runtime denies until the host grants, and the permissive posture is reached by name. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Feliz 3.3.3 + Fable.React 5.x are pre-F#-10-nullness libraries; their
          sources contain `null` / `not null` constraint mixes that F# 10's

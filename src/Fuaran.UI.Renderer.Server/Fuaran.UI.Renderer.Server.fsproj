@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.Renderer.Server</PackageId>
-    <Description>Fuaran server-side renderer — turns a Node tree into an HTML string on plain .NET (no React, no Fable) via Feliz.ViewEngine, for SEO surfaces with no client-runtime requirement. Class + ARIA parity with the Feliz client renderer (shared Fuaran.UI.Renderer.Core spine). Apache-2.0 licensed.</Description>
+    <Description>Fuaran server-side renderer — turns a Node tree into an HTML string on plain .NET (no React, no Fable) via Feliz.ViewEngine, for SEO surfaces with no client-runtime requirement. Class + ARIA parity with the Feliz client renderer (shared Fuaran.UI.Renderer.Core spine), and the same declared sanitisation posture (SANITIZATION.md) – with the attribute-name gate re-checked at the emission site, since HTML offers no escape for an illegal character in an attribute name and a string renderer has no library validation to fall back on. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Render.fs downcasts and the shared spine guard string DOM seams with
          isNull (defence in depth); under F# 10 nullness that warns and the repo

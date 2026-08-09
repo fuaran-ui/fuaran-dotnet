@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.Ops</PackageId>
-    <Description>Fuaran tree-op apply engine — §4g op vocabulary + Result-returning apply against typed Node&lt;'Msg&gt; trees, with §4d AI-recovery-shaped error payloads. Apache-2.0 licensed.</Description>
+    <Description>Fuaran tree-op apply engine — §4g op vocabulary + Result-returning apply against typed Node&lt;'Msg&gt; trees, with §4d AI-recovery-shaped error payloads. The JSON decoder is default-deny by shape: an undeclared or malformed emission is refused with a typed DecodeError carrying a stable code and a path, and a payload breaching the wire format's §21 resource limits is refused as LIMIT_EXCEEDED before the recursion that would breach them. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

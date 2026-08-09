@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI</PackageId>
-    <Description>Fuaran — AI-emittable F# UI language. Apache-2.0 licensed.</Description>
+    <Description>Fuaran – AI-emittable F# UI language. An emission is bounded data over a closed vocabulary rather than code or markup, so a malformed tree is a typed refusal with a stable code and a path rather than a plausible-looking render. Fuaran.UI.WireLimits expresses the wire format's normative resource limits (node depth, JSON depth, string and array length, total node count) that keep a decode of untrusted input bounded. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
