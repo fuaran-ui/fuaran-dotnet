@@ -46,6 +46,7 @@
          would overflow while constructing the input and prove nothing. -->
     <Compile Include="LimitTests.fs" />
     <Compile Include="ArithmeticCauseTests.fs" />
+    <Compile Include="ProgressFieldCellTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

@@ -3968,7 +3968,11 @@ let private decodeTonedPill (path: string) (fields: Map<string, Json>) : Result<
     | _, Error e, _
     | _, _, Error e -> Error e
 
-let private decodeCellKindErased (path: string) (j: Json) : Result<CellKindErased<obj>, DecodeError> =
+let private decodeCellKindErased
+    (columnField: string option)
+    (path: string)
+    (j: Json)
+    : Result<CellKindErased<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
@@ -4034,9 +4038,37 @@ let private decodeCellKindErased (path: string) (j: Json) : Result<CellKindErase
             Ok(CellKindErased.Pill((fun _ -> TextSource.Literal closureSentinel), (fun _ -> ToneVariant.Default)))
         | Ok "TonedPill" -> decodeTonedPill path fields
         | Ok "Progress" ->
+            // Phase 425 / cat:Fuaran.UI.ProgressFieldCell (2026-08-10) — the
+            // field-driven fraction. A decoded `Progress` cell in a column that
+            // carries `field` derives its per-row fill from that row property
+            // (clamped to 0..1; missing / non-numeric → 0, never a throw),
+            // ending the silent zero-fill class: before this, EVERY wire
+            // `Progress` cell rendered an empty bar regardless of the data —
+            // rubric-demanded + repair-proof evidence in the eval suite's
+            // 627-repair-escalation-20260809.md. No new wire key: the driver
+            // is the column-level `field` the Phase 425 core shipped. A
+            // columnless (node-context) or fieldless `Progress` keeps the
+            // inert placeholder; native-host closures never pass through
+            // decode, so closure-authored grids are untouched.
+            let fraction: Row -> float =
+                match columnField with
+                | Some field ->
+                    fun row ->
+                        match Map.tryFind field row with
+                        | Some v ->
+                            let f =
+                                match v with
+                                | :? float as x -> x
+                                | :? int as i -> float i
+                                | _ -> 0.0
+
+                            max 0.0 (min 1.0 f)
+                        | None -> 0.0
+                | None -> fun _ -> 0.0
+
             Ok(
                 CellKindErased.Progress(
-                    (fun _ -> 0.0),
+                    fraction,
                     tryField fields "labelFn"
                     |> Option.map (fun _ -> fun _ -> TextSource.Literal closureSentinel)
                 )
@@ -4061,10 +4093,24 @@ let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<ob
             | None -> Ok CellFormat.None
             | Some v -> decodeCellFormat (path + ".format") v
 
+        let fieldR =
+            match tryField fields "field" with
+            | None -> Ok None
+            | Some fJ -> requireString (path + ".field") fJ |> Result.map Some
+
         let kindR =
             // Field alias: type — the universal JSON prior for a column's kind.
+            // The column-level `field` rides into the kind decode so field-driven
+            // cell kinds (Phase 425 / cat:Fuaran.UI.ProgressFieldCell — `Progress`
+            // first) can synthesize their row projection at decode time.
             requireFieldAliased path fields "kind" [ "type" ] "CellKindErased"
-            |> Result.bind (decodeCellKindErased (path + ".kind"))
+            |> Result.bind (fun kJ ->
+                let columnField =
+                    match fieldR with
+                    | Ok f -> f
+                    | Error _ -> None
+
+                decodeCellKindErased columnField (path + ".kind") kJ)
 
         let labelR =
             // Field aliases: header/title — the react-table / antd prior.
@@ -4084,11 +4130,6 @@ let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<ob
             match tryField fields "value" with
             | Some _ -> Some(fun (_: Row) -> CellValue.Empty)
             | None -> None
-
-        let fieldR =
-            match tryField fields "field" with
-            | None -> Ok None
-            | Some fJ -> requireString (path + ".field") fJ |> Result.map Some
 
         match formatR, kindR, labelR, widthR, fieldR with
         | Ok format, Ok kind, Ok label, Ok width, Ok field ->
