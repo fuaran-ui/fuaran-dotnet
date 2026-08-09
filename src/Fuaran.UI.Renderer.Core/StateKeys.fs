@@ -42,6 +42,16 @@ module Fuaran.UI.Renderer.StateKeys
 [<Literal>]
 let HostReservedPrefix = "host."
 
+// `isHostReserved` null-tests a `string` parameter, because a hand-built or
+// wire-decoded record can carry a null the type says cannot exist. F# 10's
+// nullness checker rejects that test on a non-nullable `string` (FS3261). This
+// project declares `<Nullable>disable</Nullable>`, but under Fable that property
+// is the ENTRY project's: a nullable-enabled entry transpiles this source with
+// nullness ON and the file stops compiling. The file-scoped suppression makes the
+// posture travel with the source, matching the precedent in Sanitize.fs +
+// Markdown.fs. Do NOT drop the `isNull` guard — it is the contract.
+#nowarn "3261"
+
 /// True when `key` names a host-reserved slot (see [[HostReservedPrefix]]).
 /// Total on null: an absent key is not "privileged", it is malformed, and that
 /// is a different refusal in a different place.
