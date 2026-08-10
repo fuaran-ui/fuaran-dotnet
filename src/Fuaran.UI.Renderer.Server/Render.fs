@@ -370,8 +370,12 @@ and private renderKind
 
             // `gap` (Phase 459) emits only when set — gap-free grids stay
             // byte-identical to the pre-459 emission (SSR parity with the client).
+            // The property name deliberately diverges from the client arm's
+            // camelCase `gridTemplateColumns`: Feliz.ViewEngine emits the key
+            // verbatim into the style attribute (where CSS ignores camelCase),
+            // while the client's React style object requires camelCase.
             let gridStyle =
-                [ style.custom ("gridTemplateColumns", templateColumns) ]
+                [ style.custom ("grid-template-columns", templateColumns) ]
                 @ (match gridGap with
                    | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
                    | None -> [])

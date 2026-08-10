@@ -75,6 +75,10 @@ let private fixtures: Fixture list =
                   Children = [ leaf "a" ] }
         Expected = [ "fuaran-layout-card"; "fuaran-card-heading"; "fuaran-card-body" ] }
 
+      // The inline style must use the CSS property name, never the client
+      // arm's camelCase `gridTemplateColumns` — Feliz.ViewEngine emits the
+      // key verbatim, and CSS ignores camelCase names, so a camelCase
+      // emission silently renders every SSR grid single-column.
       { Name = "Layout/GridLayout"
         Node =
           Fuaran.gridLayout
@@ -82,7 +86,18 @@ let private fixtures: Fixture list =
               { Defaults.gridLayout<obj> with
                   Cols = 3
                   Children = [ leaf "a" ] }
-        Expected = [ "fuaran-layout-grid"; "gridTemplateColumns" ] }
+        Expected = [ "fuaran-layout-grid"; "grid-template-columns:repeat(3, 1fr)" ] }
+
+      { Name = "Layout/GridLayoutTemplated"
+        Node =
+          Fuaran.gridLayoutTemplated
+              "grdt"
+              "repeat(auto-fit, minmax(15rem, 1fr))"
+              { Defaults.gridLayout<obj> with
+                  Children = [ leaf "a" ] }
+        Expected =
+          [ "fuaran-layout-grid"
+            "grid-template-columns:repeat(auto-fit, minmax(15rem, 1fr))" ] }
 
       { Name = "Layout/Disclosure"
         Node =
