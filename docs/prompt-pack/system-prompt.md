@@ -1134,6 +1134,39 @@ If you have a specific column count, emit `{"$type":"Grid","cols":N}`. If you wa
 responsive auto-tiling (the CSS auto-grid instinct), emit `{"$type":"Auto"}` — do not
 emit a `Grid` and omit `cols`.
 
+## Which tabular shape — `columns` vs `staticRows` vs a Markdown table
+
+Three shapes carry tabular content and they are not interchangeable. Decide by what the
+reader will DO with the rows, not by how the data arrived.
+
+**Data the user will sort, filter, or select from → a `DataGrid` with `columns` and
+`source`.** That is the data-bound grid: each column declares its `kind` and `field`, the
+rows come from a binding, and the grid is a live surface a `Filters` node or a selection
+binding can act on.
+
+**A simple read-only table → a `DataGrid` with `staticRows`.** Reference tables, glossary
+definitions, a small comparison, structured help content: headers plus literal cells, no
+column model and no data feed. Emit `"columns": []` and `"source": {"$type":"Static",
+"value": []}` alongside it — both stay required, and the static mode ignores them.
+
+**Prose that happens to contain a table → a Markdown node's GFM table.** If the table is
+one element of a written passage and nothing will be done to it, leave it in the markdown
+rather than lifting it into a kind of its own.
+
+**When the user asks for a sortable simple table, emit `staticRows` with
+`"sortable": true`** — and add `"defaultSort": {"column": <header index>, "direction":
+"asc" | "desc"}` when they also name an initial order ("sorted by revenue, highest
+first"). `column` is a zero-based index into `headers`; `direction` is exactly one of
+those two strings. Both fields are optional: omit them for an ordinary static table.
+`"sortable": false` is worth emitting deliberately when the row order IS the content — a
+ranking, a running order, a stepwise procedure — because it tells a host that sorts tables
+by default to leave this one alone.
+
+**Keep static cells RAW values, not pre-formatted strings.** Write `"1200"`, not
+`"$1,200.00"`; `"0.68"`, not `"68%"`. Column sorting compares numbers as numbers only when
+the cell reads as one, and a pre-formatted cell sorts as text — so `"$980"` lands above
+`"$1,200"`. Put the units in the header (`"Revenue (£)"`) where they belong.
+
 ## Distinguishing rows by value — the toned pill
 
 When the prompt asks you to make certain rows stand out — "highlight the delayed
