@@ -5,6 +5,7 @@ This folder is packed into the `Fuaran.UI.Renderer` NuGet under `content/` so co
 ## Files
 
 - `fuaran-reference.css` — canonical reference stylesheet. Apache 2.0 licensed. Drop it into any host that wants the Fuaran reference styling unmodified, or copy + customise. Re-binding `--fuaran-*` variables at the `:root` layer is the preferred override path; replacing the file wholesale is supported for §4l down-shift portability.
+- `fuaran-reference-tables.js` — the reference table-sort enhancement. Apache 2.0 licensed. Dependency-free, ES5, no build step: serve it as a file and every server-rendered `.fuaran-table` on the page gains sortable column headers (ascending → descending → the authored order; `aria-sort` mirrors the state; annotated figures parse numerically; the `–` unmeasured placeholder sorts last in both directions). Progressive enhancement — without it the tables are simply static. The file's own header carries the CSP guidance (`script-src 'self'` covers it as a file; hash the exact bytes if inlined).
 - `fuaran-bridge.css.template` — copy-and-customise alias template for hosts that already own design tokens (`--color-brand`, shadcn `--primary`, MUI `--mui-palette-primary-main`, etc.). See `Fuaran/docs/THEME-BRIDGE-GUIDE.md` for the four worked examples this template is derived from.
 - `README.md` — this file.
 
@@ -30,6 +31,17 @@ If your host already has design tokens, layer a bridge file on top per `THEME-BR
 ```
 
 The bridge file re-binds `--fuaran-tone-*` variables to your host's existing tokens — Fuaran then picks up your design system without forking the reference CSS.
+
+## How to use the table-sort enhancement
+
+Copy `fuaran-reference-tables.js` into your host's static assets alongside the stylesheet and load it as a file — `defer`, or at the end of `<body>`:
+
+```html
+<link rel="stylesheet" href="/fuaran-reference.css" />
+<script src="/fuaran-reference-tables.js" defer></script>
+```
+
+That is the whole integration. The stylesheet already carries the indicator affordances (`.fuaran-table-header[data-sortable]` / `[aria-sort]`), and every attribute they key off is set by the script — so a host that ships the CSS without the script shows no sort affordance at all, which is the correct behaviour rather than a broken one.
 
 ## Why the reference CSS lives in the NuGet
 

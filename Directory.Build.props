@@ -133,8 +133,20 @@
          0.16.0 - additive behaviour (cat:Fuaran.UI.ProgressFieldCell): a
          decoded Progress grid cell in a field-carrying column derives its
          per-row fraction from the row field (clamp 0..1) instead of the
-         silent zero fill; no wire-shape change. -->
-    <Version>0.16.0</Version>
+         silent zero fill; no wire-shape change.
+         0.17.0 (fuaran#800) - additive package CONTENT: the Fuaran.UI.Renderer
+         package gains `content/fuaran-reference-tables.js`, the reference
+         table-sort enhancement over the server-rendered `.fuaran-table` markup
+         (a dependency-free, ES5, no-build-step progressive enhancement a host
+         serves as a file), plus the `[data-sortable]` / `[aria-sort]` indicator
+         affordances in `content/fuaran-reference.css`. No managed API, wire
+         shape or emission changes, and no existing page changes appearance: the
+         new CSS keys ONLY off attributes the script sets, so it cannot match
+         until the script is served. It rides a minor rather than a patch
+         because a new packaged asset is a public-contract ADDITION - a
+         consumer can now link something the previous version could not
+         supply - and an addition never rides a same-version repack. -->
+    <Version>0.17.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

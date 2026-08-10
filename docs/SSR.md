@@ -306,6 +306,63 @@ This is the same shape as the overlay contract (deterministic structure pinned,
 behaviour layered on after) – see `SsrParityTests.fs` (the `CodeBlock` / `Math`
 fixtures assert only the bare floor).
 
+## Sortable rendered tables
+
+A `staticRows` `DataGrid` and a markdown-node table both server-render as the
+same semantic markup – `<table class="fuaran-table">` with
+`.fuaran-table-header` / `.fuaran-table-row` / `.fuaran-table-cell` – so both are
+static HTML: complete, readable, and in their authored order, with no data
+binding and no client grid library involved. Column sorting over that output is a
+**host affordance**, the same posture as the icon hook and the highlight pass:
+the language emits the semantics, the host owns the presentation-interaction.
+
+The reference implementation of that affordance ships with the renderer package
+as `content/fuaran-reference-tables.js`, beside `content/fuaran-reference.css`.
+Serve it as a file – nothing to build, nothing to import, no dependencies:
+
+```html
+<link rel="stylesheet" href="/fuaran-reference.css" />
+<script src="/fuaran-reference-tables.js" defer></script>
+```
+
+Every table on the page with a `thead` and at least two body rows then gains
+sortable headers:
+
+- **Cycling.** Click a header, or focus it and press Enter or Space, to cycle
+  ascending → descending → **the authored order**. The third activation restores
+  rather than adding a third sort: an emitted row order is a deliberate default –
+  a grouping, a ranking, a chronology – so leaving a stuck sort would discard
+  information the tree carried.
+- **`aria-sort`** on the active header mirrors the live state (`ascending` /
+  `descending`, removed on restore), so assistive technology reads what the arrow
+  shows. The direction glyphs in the reference stylesheet key off that same
+  attribute, which is what keeps the two from drifting apart.
+- **Numeric parsing through display annotations.** Currency symbols, thousands
+  separators, percent signs and `±` markers are stripped before parsing; an
+  `a / b` fraction compares by ratio; unparseable text compares case-insensitively.
+- **Unmeasured is not zero.** An en-dash placeholder (`–`, or `—` / `-` / empty)
+  means *no measurement*, and sorts **last in both directions**. Sorting a column
+  to find its worst value must never surface the rows that were never measured.
+- **Ties keep their authored order** – the sort is stable, so a partial ordering
+  never scrambles the rest of the table.
+
+Two properties matter for the contracts above. The enhancement is **client-only**
+and lives outside every parity comparison: it re-orders existing DOM rows and
+sets attributes (`data-sortable`, `tabindex`, `aria-sort`), never touching cell
+content, so the server-rendered bytes stay byte-identical for every visitor and
+the deterministic-render gate is unaffected. And the **no-JS fallback is the
+static table itself** – nothing degrades, because nothing was replaced. Since
+every attribute the indicator CSS matches on is set by the script, a page that
+serves the stylesheet without the script shows no sort affordance at all: a table
+never advertises an interaction it cannot perform.
+
+**Author cells as raw values, not pre-formatted strings.** The parser reaches
+through the common display annotations, but it is reading rendered text – so a
+`CellKind.Numeric` column sorts numerically and reliably, while the same figures
+pre-baked into a `CellKind.Text` column as decorated strings sort only as well as
+the annotation-stripping happens to manage. Let the cell kind carry the type and
+the renderer carry the formatting; sorting then follows for free.
+
 ## Isomorphic hydration (Phase 143)
 
 "Server render for first paint + SEO, hydrate for interactivity, one canonical

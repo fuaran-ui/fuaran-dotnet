@@ -21,6 +21,12 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <Content Include="content\fuaran-reference.css" Pack="true" PackagePath="content\" />
+    <!-- The reference table-sort enhancement — progressive enhancement over the
+         server-rendered .fuaran-table markup, shipped beside the stylesheet so a
+         host gets sortable static tables without a client grid library. Serve it
+         as a file (script-src 'self'); the file's own header carries the CSP
+         guidance and the no-JS posture. -->
+    <Content Include="content\fuaran-reference-tables.js" Pack="true" PackagePath="content\" />
     <Content Include="content\fuaran-bridge.css.template" Pack="true" PackagePath="content\" />
     <Content Include="content\README.md" Pack="true" PackagePath="content\" />
   </ItemGroup>
