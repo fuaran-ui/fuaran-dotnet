@@ -145,8 +145,11 @@
          until the script is served. It rides a minor rather than a patch
          because a new packaged asset is a public-contract ADDITION - a
          consumer can now link something the previous version could not
-         supply - and an addition never rides a same-version repack. -->
-    <Version>0.18.0</Version>
+         supply - and an addition never rides a same-version repack. 
+         0.18.1 - additive: INVALID_JSON envelope de-dup (the innermost
+         "parse error at offset N" propagates unwrapped - one occurrence per
+         envelope; didactic tails unchanged). -->
+    <Version>0.18.1</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

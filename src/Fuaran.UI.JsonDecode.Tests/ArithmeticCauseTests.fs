@@ -67,6 +67,20 @@ let arithmeticCauseTests =
                   ((decodeError """{"a": 1"b": 2}""").Message.Contains "arithmetic")
                   "a missing comma between members is not an expression"
 
+          testCase "Phase 810 — the offset wrapper appears exactly once per envelope"
+          <| fun () ->
+              // Deeply nested failure: pre-810 this message carried the
+              // "parse error at offset N:" prefix once per unwind level.
+              let e =
+                  decodeError
+                      """{"id":"g","kind":{"$type":"Box","children":[{"id":"x","kind":{"$type":"Progress","fraction":{"$type":"Static","value":1 / 2}}}]}}"""
+
+              let occurrences =
+                  System.Text.RegularExpressions.Regex.Matches(e.Message, "parse error at offset").Count
+
+              Expect.equal occurrences 1 "one wrap, the innermost offset"
+              Expect.stringContains e.Message "arithmetic expression" "the didactic tail is unchanged"
+
           testCase "expressions inside strings are legal JSON and still parse past the parser"
           <| fun () ->
               // `"178 / 180"` is a perfectly valid JSON string; the payload

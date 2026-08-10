@@ -215,7 +215,15 @@ let private skipWs (s: ParseState) : unit =
         advance s
 
 let private parseError (s: ParseState) (msg: string) : Result<'a, string> =
-    Error(sprintf "parse error at offset %d: %s" s.Pos msg)
+    // Phase 810 — nested parsers each wrapped the propagated message again,
+    // so a deep failure read "parse error at offset N:" up to six times and
+    // pushed the didactic tail (the load-bearing part) further back each
+    // level. The INNERMOST wrap carries the precise offset; propagate it
+    // unchanged.
+    if msg.StartsWith "parse error at offset" then
+        Error msg
+    else
+        Error(sprintf "parse error at offset %d: %s" s.Pos msg)
 
 let private expectChar (s: ParseState) (ch: char) : Result<unit, string> =
     if peek s = ch then
