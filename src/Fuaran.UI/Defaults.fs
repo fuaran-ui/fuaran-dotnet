@@ -360,7 +360,10 @@ let chart<'Msg> : ChartSpec<'Msg> =
 let table<'Msg> : TableSpec<'Msg> =
     { Headers = []
       Rows = []
-      OnRowClick = Option.None }
+      OnRowClick = Option.None
+      // Phase 801 — sort intent is opt-in; absent is absent on the wire.
+      Sortable = Option.None
+      DefaultSort = Option.None }
 
 let map<'Msg> : MapSpec<'Msg> =
     { Source = noBinding<MapMarker list>

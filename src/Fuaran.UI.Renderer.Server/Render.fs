@@ -1103,14 +1103,14 @@ and private renderKind
     // -- Vis --
     | NodeKind.DataGrid spec ->
         match spec.StaticRows with
-        | Some { Headers = headers; Rows = rows } ->
+        | Some sr ->
             // Phase 393 — static read-only mode: SSR renders the full semantic <table> statically
             // (byte-identical to the retired Table), NOT a hydration placeholder.
             let headerCells =
-                [ for h in headers -> Html.th [ prop.className "fuaran-table-header"; prop.text (renderText ctx h) ] ]
+                [ for h in sr.Headers -> Html.th [ prop.className "fuaran-table-header"; prop.text (renderText ctx h) ] ]
 
             let bodyRows =
-                [ for row in rows ->
+                [ for row in sr.Rows ->
                       Html.tr
                           [ prop.className "fuaran-table-row"
                             prop.children
@@ -1119,6 +1119,23 @@ and private renderKind
 
             Html.table
                 [ prop.className "fuaran-table"
+                  // Phase 801 — the declared sort intent, surfaced as data attributes so the
+                  // reference table enhancement honours it without re-parsing wire. Emitted
+                  // ONLY when declared: an undeclared table's SSR bytes are unchanged.
+                  match sr.Sortable with
+                  | Some sortable -> prop.custom ("data-fuaran-sortable", if sortable then "true" else "false")
+                  | None -> ()
+                  match sr.DefaultSort with
+                  | Some ds ->
+                      prop.custom ("data-fuaran-sort-column", string ds.Column)
+
+                      prop.custom (
+                          "data-fuaran-sort-direction",
+                          match ds.Direction with
+                          | SortDirection.Asc -> "asc"
+                          | SortDirection.Desc -> "desc"
+                      )
+                  | None -> ()
                   prop.children [ Html.thead [ Html.tr headerCells ]; Html.tbody bodyRows ] ]
         | None ->
             // Client-library grid. SSR emits a deterministic placeholder carrying a

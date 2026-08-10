@@ -957,10 +957,21 @@ and ChartKind = Generated.ChartKind
 /// binding-substitution still apply. `OnRowClick` is retained for source
 /// compatibility but the read-only mode is non-interactive (it was host-only on the
 /// wire — see [[Fuaran.UI.WireSurvivability]]).
+///
+/// Phase 801 adds the two declarative sort-intent slots. `Sortable = Some true`
+/// says the table INVITES interactive column sorting — it is a declaration of
+/// intent, not a behaviour guarantee: a host honours it with whatever sorting
+/// affordance it has (the reference table enhancement shipped beside
+/// `fuaran-reference.css` is the first implementation). `DefaultSort` declares
+/// the table's INITIAL order — configuration, and deliberately distinct from the
+/// transform pipeline's one-shot data `sort`, which re-orders the data itself.
+/// Both `None` ⇒ the pre-801 wire, byte-for-byte.
 and TableSpec<'Msg> =
     { Headers: TextSource list
       Rows: TextSource list list
-      OnRowClick: (int -> Action<'Msg>) option }
+      OnRowClick: (int -> Action<'Msg>) option
+      Sortable: bool option
+      DefaultSort: DefaultSort option }
 
 /// Minimal viable Map spec for session 3b. Coordinates are WGS-84 latitude /
 /// longitude in decimal degrees. The renderer defers to a host-provided map
@@ -999,8 +1010,19 @@ and CustomSpec = Generated.CustomSpec
 
 /// The static read-only rows of a `DataGrid` (generated — Phase 393's folded
 /// `Table`): `TextSource` header / cell text (the old `(headers, rows)` tuple
-/// as a record).
+/// as a record), plus the Phase 801 optional sort-intent slots `Sortable` and
+/// `DefaultSort` (both `None` ⇒ the pre-801 wire, byte-for-byte).
 and StaticRows = Generated.StaticRows
+
+/// A static table's declared INITIAL order (generated — Phase 801): `Column` is
+/// an index into `StaticRows.Headers`, `Direction` the two-value closed enum.
+/// Configuration, not data movement — see `TableSpec` for the distinction from
+/// the transform pipeline's `sort`.
+and DefaultSort = Generated.DefaultSort
+
+/// Sort direction on a `DefaultSort` (generated — Phase 801). Lower-case on the
+/// wire: `"asc"` / `"desc"`.
+and SortDirection = Generated.SortDirection
 
 /// A single grid / chart / table row — the *open* name→value map the wire
 /// carries (fuaran#665, Core's `Fuaran.Core.Row`). Cells are boxed scalars;

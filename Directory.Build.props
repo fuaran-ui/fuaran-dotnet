@@ -146,7 +146,7 @@
          because a new packaged asset is a public-contract ADDITION - a
          consumer can now link something the previous version could not
          supply - and an addition never rides a same-version repack. -->
-    <Version>0.17.0</Version>
+    <Version>0.18.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

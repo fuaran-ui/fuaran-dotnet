@@ -542,8 +542,18 @@ let generatedLayerTests =
               //    express the rule in JSON Schema either (Draft 2020-12 has no
               //    keyword relating two sibling property values), which is why
               //    `schemaInexpressibleRejects` pins it as schema-VALID.
+              //  - a `staticRows.defaultSort.column` of -1 is a VALUE BOUND on a
+              //    well-typed integer (Phase 801). The IDL has no refined-integer
+              //    type, so the generated decoder reads it as an ordinary `int` and
+              //    accepts; the policy decoder refuses it. Note this one differs from
+              //    the two above in that the SCHEMA *can* express it (`minimum: 0`),
+              //    so it is schema-invalid and stays out of `schemaInexpressibleRejects`
+              //    — structure-inexpressible and schema-inexpressible are not the
+              //    same set, and this fixture is the first to show the difference.
               Expect.equal
                   policyOwned
-                  [ "reject-daterange-unordered.json"; "reject-emptynodeid.json" ]
+                  [ "reject-daterange-unordered.json"
+                    "reject-emptynodeid.json"
+                    "reject-wrongtype-static-sort-column.json" ]
                   "the policy-owned residue is exactly the shapes structure cannot judge"
           } ]

@@ -989,3 +989,72 @@ Three consumer-visible consequences:
 
 **Not a security-property change.** The chain stays UNKEYED: this makes the corruption detection it
 genuinely provides actually happen, and adds no tamper evidence. See `CRYPTO.md`.
+
+## Recorded change — 0.18.0, declarative sort intent on `staticRows` (fuaran#801)
+
+**Additive wire vocabulary, and additive in the strict sense: no existing emission changes bytes.**
+A `DataGrid`'s `staticRows` payload gains two OPTIONAL fields:
+
+- `sortable: bool` — this table invites interactive column sorting.
+- `defaultSort: { "column": <header index>, "direction": "asc" | "desc" }` — the table's initial
+  order.
+
+Both omitted ⇒ exactly the 0.17.0 wire. The full `--emit-corpus` regeneration moved no pre-existing
+fixture payload by a single byte; it added one node fixture, two reject fixtures, and the
+corresponding `manifest.json` / `schema.json` / `idl.json` entries. `nodes/table-1.json` is the
+anchor for that claim and is deliberately left declaring nothing.
+
+**Why it exists, in one line:** an emitter asked for "a sortable table" had no way to say so —
+sortability was invisible to the wire and therefore unteachable to a model, and the reference table
+enhancement shipped at [fuaran#800] is a host-wide on/off with no per-table intent to read.
+
+**Intent, not behaviour.** `sortable` declares what the table INVITES, not what a host guarantees. A
+host with no sorting affordance renders the authored order and is fully conformant; a grid-backed
+host may map the declaration onto its own sorting. Nothing in the wire promises an interaction.
+
+**`defaultSort` is configuration, not a data transform.** It is deliberately distinct from the
+transform pipeline's `sort`, which re-orders the DATA. `defaultSort` states an initial presentation
+order over rows the emitter already wrote, and the authored order stays recoverable — the reference
+enhancement seats a declared sort inside its existing ascending → descending → authored cycle rather
+than beside it, so the emitter's order is always reachable.
+
+**Additive public surface (each a *minor* event per the Semver note above).**
+
+- Generated types: `Fuaran.UI.Generated.DefaultSort` (record) and `SortDirection` (`Asc` / `Desc`),
+  re-exposed as `Fuaran.UI.Types.DefaultSort` / `SortDirection`. Modelled in the IDL, so they are
+  generator output, never hand-written.
+- `Generated.StaticRows` gains `DefaultSort: DefaultSort option` and `Sortable: bool option`. **A
+  record field addition breaks construction sites** — every `{ Headers = …; Rows = … }` literal needs
+  the two new fields. This is compiler-forced and the count is small and knowable (four sites in this
+  repo). Pattern matches over the record are unaffected.
+- `TableSpec<'Msg>` gains matching `Sortable` / `DefaultSort` slots, and `Fuaran.sortableTable` is
+  the shorthand constructor. `Defaults.table` supplies `None` for both.
+- `JsonDecode.DecodeErrorCode` is **unchanged** — no seventh-plus code was needed.
+
+**Wire contract.** `"staticRows": { "defaultSort"?: {"column": <int ≥ 0>, "direction": "asc"|"desc"},
+"headers": [...], "rows": [...], "sortable"?: <bool> }`. Two decode rejections: a `direction` outside
+the closed pair is `UNKNOWN_DU_CASE` at `$…staticRows.defaultSort.direction` naming both legal
+values, and a negative `column` is `WRONG_TYPE` at `$…staticRows.defaultSort.column`. The published
+schema says the same thing (`minimum: 0` and an `enum`), so both fixtures are schema-invalid as well
+as decoder-rejected. A column index PAST the end of `headers` is deliberately NOT a decode error — it
+is a cross-field relation the codec does not judge, and a host that cannot resolve the column renders
+the authored order. Corpus: `nodes/table-sortable-1.json`,
+`reject/reject-unknown-static-sort-direction.json`, `reject/reject-wrongtype-static-sort-column.json`.
+
+**Renderer.** Both the client renderer and the SSR renderer emit `data-fuaran-sortable` and, when a
+default sort is declared, `data-fuaran-sort-column` / `data-fuaran-sort-direction` on the
+`<table class="fuaran-table">`. **Emitted only when the field is present**, so an undeclared table's
+markup — and the server-rendered bytes a deterministic-render gate hashes — is unchanged. The
+reference enhancement (`content/fuaran-reference-tables.js`) reads those attributes:
+`data-fuaran-sortable="false"` exempts a table entirely, ahead of any DOM mutation, so an exempted
+table advertises nothing.
+
+**Host adoption.** The F# reference, the shared corpus and the TypeScript tier land together; the
+Python, Go and Rust codec legs follow by fixture (the 725 / 730–733 precedent).
+
+**Authoring veneers not extended.** The C# fluent factory and the VB XML mapping still author a table
+without the sort slots. `WIRE_FORMAT.md` §11 step 6 is written for `NodeKind` additions and its gates
+pin KINDS — `Fuaran.UI.CSharp.Conformance.Tests/Coverage.cs` reflects `NodeKind` cases and the VB
+analyzer pins `Vocabulary.Kinds` — so a payload-FIELD addition binds neither veneer and neither gate
+fails. Exposing the slots there is a follow-up, recorded here so it reads as a decision rather than
+an oversight.

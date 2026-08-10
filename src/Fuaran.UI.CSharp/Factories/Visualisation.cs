@@ -43,7 +43,14 @@ public static partial class Fuaran
                 Fs.List((options.Headers ?? Enumerable.Empty<Text>()).Select(t => t.Inner)),
                 Fs.List((options.Rows ?? Enumerable.Empty<IEnumerable<Text>>())
                     .Select(r => Fs.List(r.Select(t => t.Inner)))),
-                Fs.None<Microsoft.FSharp.Core.FSharpFunc<int, FsAction>>())));
+                Fs.None<Microsoft.FSharp.Core.FSharpFunc<int, FsAction>>(),
+                // Phase 801 — the declarative sort-intent slots. The veneer does not
+                // expose them yet: the §11 step-6 gates pin KINDS (Coverage.cs reflects
+                // NodeKind cases; the VB analyzer pins Vocabulary.Kinds), so a payload-
+                // field addition binds neither veneer. Authoring them from C#/VB is a
+                // follow-up, not a gate failure.
+                Fs.None<bool>(),
+                Fs.None<FsGen.DefaultSort>())));
 
     /// <summary>A marker map.</summary>
     public static FuaranNode Map(MapOptions options) =>

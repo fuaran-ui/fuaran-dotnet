@@ -1164,6 +1164,10 @@ module Fuaran =
     /// `NodeKind.DataGrid` (one tabular kind); the renderer emits semantic `<table>`
     /// markup from the `TextSource` cells. `OnRowClick` on the retired `TableSpec`
     /// was host-only and is not carried (the mode is non-interactive).
+    ///
+    /// Phase 801 — `spec.Sortable` / `spec.DefaultSort` ride through to the
+    /// `StaticRows` payload verbatim. Both `None` (the `Defaults.table` shape)
+    /// emits the pre-801 wire byte-for-byte.
     let table (id: string) (spec: TableSpec<'Msg>) : Node<'Msg> =
         // `StaticRows` cells are `TextSource` (stage 4b closed the transient
         // string-narrowing at the IDL seam) — `Bound` / `I18n` cells ride
@@ -1177,10 +1181,35 @@ module Fuaran =
               Editable = false
               StaticRows =
                 Some
-                    { Headers = spec.Headers
-                      Rows = spec.Rows } }
+                    { DefaultSort = spec.DefaultSort
+                      Headers = spec.Headers
+                      Rows = spec.Rows
+                      Sortable = spec.Sortable } }
 
         buildNode id (NodeKind.DataGrid(staticGrid)) Defaults.Accessibility.table
+
+    /// Phase 801 — the sort-intent shorthand over [[table]]: a static read-only
+    /// table that declares it invites column sorting, with an optional initial
+    /// order. `sortableTable id headers rows None` is the commonest shape; pass
+    /// `Some { Column = 2; Direction = SortDirection.Desc }` to declare the table
+    /// arrives sorted by its third column, descending.
+    ///
+    /// The declaration is intent, not behaviour: a host with no sorting
+    /// affordance renders exactly the authored order, and the table is complete
+    /// and readable without one.
+    let sortableTable
+        (id: string)
+        (headers: TextSource list)
+        (rows: TextSource list list)
+        (defaultSort: DefaultSort option)
+        : Node<'Msg> =
+        table
+            id
+            { Defaults.table<'Msg> with
+                Headers = headers
+                Rows = rows
+                Sortable = Some true
+                DefaultSort = defaultSort }
 
     let map (id: string) (spec: MapSpec<'Msg>) : Node<'Msg> =
         buildNode id (NodeKind.Map(spec)) Defaults.Accessibility.map

@@ -4146,9 +4146,57 @@ let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<ob
         | _, _, _, Error e, _
         | _, _, _, _, Error e -> Error e
 
+/// Phase 801 — `"asc"` / `"desc"`, closed. A value outside the pair is an
+/// `UNKNOWN_DU_CASE` (the bare-string-enum convention `decodeLiveRegion` sets),
+/// never a silent fallback to ascending: an unrecognised direction is an emitter
+/// defect the author can fix, and quietly picking one hides it.
+let private decodeSortDirection (path: string) (j: Json) : Result<SortDirection, DecodeError> =
+    match j with
+    | JString "asc" -> Ok SortDirection.Asc
+    | JString "desc" -> Ok SortDirection.Desc
+    | JString s -> unknownDuCase path s "asc | desc"
+    | _ -> wrongType path "JSON string (SortDirection)"
+
+/// Phase 801 — the `{column, direction}` initial-order declaration. `column` is a
+/// NON-NEGATIVE index into `headers`; a negative (or non-numeric) index is a
+/// `WRONG_TYPE`, which is also what the published schema's `minimum: 0` says, so
+/// the two expressions of the contract agree.
+///
+/// An index PAST the end of `headers` is deliberately NOT rejected here: the
+/// decoder validates one object at a time and the header list is a sibling field,
+/// so the cross-field check belongs to the pre-emit validator, not the codec. A
+/// host that cannot resolve the column renders the authored order.
+let private decodeDefaultSort (path: string) (j: Json) : Result<DefaultSort, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let columnR =
+            match requireField path fields "column" "non-negative header index" with
+            | Error e -> Error e
+            | Ok v ->
+                match v with
+                | JNumber n when n >= 0.0 && n = floor n -> Ok(int n)
+                | _ -> wrongType (path + ".column") "JSON number (non-negative integer header index)"
+
+        let directionR =
+            match requireField path fields "direction" "asc | desc" with
+            | Error e -> Error e
+            | Ok v -> decodeSortDirection (path + ".direction") v
+
+        match columnR, directionR with
+        | Ok column, Ok direction ->
+            Ok
+                { Column = column
+                  Direction = direction }
+        | Error e, _
+        | _, Error e -> Error e
+
 /// Phase 393 — decode the `{headers, rows}` static-rows object of a read-only grid
 /// (also the shape the legacy `Table` decode-upgrade reads). Cells are `TextSource`.
-let private decodeStaticRows (path: string) (j: Json) : Result<TextSource list * TextSource list list, DecodeError> =
+///
+/// Phase 801 — plus the two optional sort-intent slots. Both absent ⇒ the returned
+/// record is the pre-801 shape and re-encodes byte-identically.
+let private decodeStaticRows (path: string) (j: Json) : Result<StaticRows, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
@@ -4177,10 +4225,27 @@ let private decodeStaticRows (path: string) (j: Json) : Result<TextSource list *
                                 traverseIndexed (fun j cell -> decodeTextSource (sprintf "%s[%d]" p j) cell) cells)
                         rows
 
-        match headersR, rowsR with
-        | Ok headers, Ok rows -> Ok(headers, rows)
-        | Error e, _
-        | _, Error e -> Error e
+        let sortableR =
+            match tryField fields "sortable" with
+            | None -> Ok None
+            | Some v -> requireBool (path + ".sortable") v |> Result.map Some
+
+        let defaultSortR =
+            match tryField fields "defaultSort" with
+            | None -> Ok None
+            | Some v -> decodeDefaultSort (path + ".defaultSort") v |> Result.map Some
+
+        match headersR, rowsR, sortableR, defaultSortR with
+        | Ok headers, Ok rows, Ok sortable, Ok defaultSort ->
+            Ok
+                { DefaultSort = defaultSort
+                  Headers = headers
+                  Rows = rows
+                  Sortable = sortable }
+        | Error e, _, _, _
+        | _, Error e, _, _
+        | _, _, Error e, _
+        | _, _, _, Error e -> Error e
 
 let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, DecodeError> =
     match requireObject path j with
@@ -4226,9 +4291,7 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
         let staticRowsR: Result<StaticRows option, DecodeError> =
             match tryField fields "staticRows" with
             | None -> Ok None
-            | Some sJ ->
-                decodeStaticRows (path + ".staticRows") sJ
-                |> Result.map (fun (headers, rows) -> Some { Headers = headers; Rows = rows })
+            | Some sJ -> decodeStaticRows (path + ".staticRows") sJ |> Result.map Some
 
         match columnsR, editableR, sourceR, onRowClickR, rowKeyFieldR, staticRowsR with
         | Ok columns, Ok editable, Ok source, Ok onRowClick, Ok rowKeyField, Ok staticRows ->

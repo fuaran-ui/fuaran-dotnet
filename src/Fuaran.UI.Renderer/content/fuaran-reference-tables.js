@@ -15,6 +15,30 @@
    This file makes those tables sortable with no data binding and no client
    grid library. Drop it into any host that serves the reference stylesheet.
 
+   ── Declared sort intent (the per-table opt-out and initial order) ─────────
+   A `staticRows` DataGrid can DECLARE its sort intent on the wire, and the
+   renderer surfaces the declaration as data attributes on the `<table>`:
+
+     - `data-fuaran-sortable="false"` EXEMPTS the table. It wins over the
+       host's broad enable: a host that drops this file in front of every page
+       is making a default, and a table that says it does not sort is making a
+       decision — a running order, a stepwise procedure, a ranked list whose
+       order IS the content. The decision beats the default, so an exempted
+       table is left entirely alone: no handlers, no `tabindex`, no
+       `data-sortable`, nothing to advertise.
+     - `data-fuaran-sortable="true"` is the affirmative declaration. It changes
+       nothing about what this file does — every eligible table is enhanced
+       either way — but it is what a host with a NARROWER policy reads to pick
+       out the tables that asked.
+     - `data-fuaran-sort-column` + `data-fuaran-sort-direction` declare an
+       INITIAL order, applied once on load. It is configuration, not data
+       movement: the authored row order is still captured first and remains the
+       third activation's restore state, so a reader can always get back to the
+       order the emitter chose. A column index outside the header row, or a
+       direction outside `asc`/`desc`, is ignored rather than guessed at.
+
+   Absent attributes mean today's behaviour, unchanged.
+
    Every table on the page with a `thead` and at least two body rows gains
    sortable column headers:
 
@@ -129,6 +153,15 @@
   }
 
   function enhance(table) {
+    /* The declared per-table opt-out, checked BEFORE anything is touched: an
+       exempted table gets no handlers and no affordance markers, so it cannot
+       advertise a sort it will not perform. Only the explicit "false" exempts —
+       an absent attribute is not a declaration either way, and the host's
+       broad enable stands. */
+    if (table.getAttribute('data-fuaran-sortable') === 'false') {
+      return;
+    }
+
     var thead = table.tHead;
     var tbody = table.tBodies[0];
 
@@ -182,6 +215,22 @@
       });
     }
 
+    /* Move to a sorted state. Shared by the click/keyboard path and by the
+       declared initial order below, so a table that arrives pre-sorted sits at
+       a real position in the ascending → descending → authored cycle rather
+       than beside it. That is what keeps the authored order REACHABLE: a
+       declared sort seats the reader mid-cycle (one more activation from
+       restore if it declared descending, two if ascending), where a separate
+       "initial" state outside the cycle would strand the emitter's order
+       permanently. */
+    function applySort(col, dir) {
+      clearSort();
+      state.col = col;
+      state.dir = dir;
+      ths[col].setAttribute('aria-sort', dir);
+      sortBy(col, dir);
+    }
+
     Array.prototype.forEach.call(ths, function (th, col) {
       /* Set by the script, never by the server: the indicator CSS keys off
          these, so an unenhanced table advertises nothing. */
@@ -196,9 +245,8 @@
               ? ''
               : 'ascending';
 
-        clearSort();
-
         if (dir === '') {
+          clearSort();
           state.col = -1;
           state.dir = '';
           restore();
@@ -206,10 +254,7 @@
           return;
         }
 
-        state.col = col;
-        state.dir = dir;
-        th.setAttribute('aria-sort', dir);
-        sortBy(col, dir);
+        applySort(col, dir);
       }
 
       th.addEventListener('click', activate);
@@ -222,6 +267,24 @@
         }
       });
     });
+
+    /* The declared initial order, applied once. Every part of the declaration
+       is validated rather than trusted — the column must index a real header
+       and the direction must be one of the two the wire admits — because a
+       declaration that cannot be honoured should leave the authored order
+       standing, not produce an arbitrary one. `original` was captured above,
+       so the restore state is still what the emitter wrote. */
+    var declaredCol = parseInt(table.getAttribute('data-fuaran-sort-column'), 10);
+    var declaredDir = table.getAttribute('data-fuaran-sort-direction');
+
+    if (
+      !isNaN(declaredCol) &&
+      declaredCol >= 0 &&
+      declaredCol < ths.length &&
+      (declaredDir === 'asc' || declaredDir === 'desc')
+    ) {
+      applySort(declaredCol, declaredDir === 'asc' ? 'ascending' : 'descending');
+    }
   }
 
   function enhanceAll() {

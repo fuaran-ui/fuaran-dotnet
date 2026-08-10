@@ -2627,10 +2627,43 @@ let table: Node<obj> =
               Editable = false
               StaticRows =
                 Some
-                    { Headers = [ TextSource.Literal "Term"; TextSource.Literal "Definition" ]
+                    // Phase 801 — the sort-intent slots stay ABSENT here deliberately.
+                    // `table-1.json` is the byte-identity anchor for the pre-801 wire:
+                    // if this fixture's payload ever moves, the addition was not additive.
+                    { DefaultSort = None
+                      Headers = [ TextSource.Literal "Term"; TextSource.Literal "Definition" ]
                       Rows =
                         [ [ TextSource.Literal "MVU"; TextSource.Literal "Model-View-Update" ]
-                          [ TextSource.Literal "DSL"; TextSource.Literal "Domain-specific language" ] ] } })
+                          [ TextSource.Literal "DSL"; TextSource.Literal "Domain-specific language" ] ]
+                      Sortable = None } })
+        None
+
+/// Phase 801 — the same static table DECLARING sort intent: `sortable: true` plus a
+/// `defaultSort` naming the second column descending. The round-trip leg proves both
+/// optional slots survive canonical encode/decode in every host; sitting beside
+/// `table-1` it also proves the two forms are distinguishable on the wire, which is
+/// the whole point of modelling absence as absence.
+let tableSortable: Node<obj> =
+    node
+        "table-sortable-1"
+        (NodeKind.DataGrid
+            { Source = Binding.Static(Some Seq.empty)
+              RowKey = None
+              RowKeyField = None
+              Columns = []
+              OnRowClick = None
+              Editable = false
+              StaticRows =
+                Some
+                    { DefaultSort =
+                        Some
+                            { Column = 1
+                              Direction = SortDirection.Desc }
+                      Headers = [ TextSource.Literal "Region"; TextSource.Literal "Revenue" ]
+                      Rows =
+                        [ [ TextSource.Literal "North"; TextSource.Literal "1200" ]
+                          [ TextSource.Literal "South"; TextSource.Literal "980" ] ]
+                      Sortable = Some true } })
         None
 
 let mapVis: Node<obj> =
@@ -3296,6 +3329,7 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Grid (Phase 663/665 — editable State-sourced grid, typed rows on the wire)", gridEditableState
       "Visualisation/Chart (Phase 663/665 — chart on the editable grid's state key)", chartStateRows
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
+      "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
       "Visualisation/Map", mapVis
       "Custom", custom
       "Custom (bounded escape, StrictReplay hash + exposed-ids)", customBounded

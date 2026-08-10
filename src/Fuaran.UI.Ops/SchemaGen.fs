@@ -782,11 +782,21 @@ let private defs: (string * J) list =
             "source", ref "Binding"
             "onRowClick", closure
             // Phase 393 — the static read-only mode (folded in from the retired `Table`).
+            // Phase 801 — plus the optional declarative sort intent. `column` carries
+            // `minimum: 0` so the schema rejects a negative header index exactly where
+            // the decoder does; both fields are optional, so the pre-801 shape validates
+            // unchanged.
             "staticRows",
             record
                 [ "headers"; "rows" ]
-                [ "headers", arrayOf (ref "TextSource")
-                  "rows", arrayOf (arrayOf (ref "TextSource")) ] ]
+                [ "defaultSort",
+                  record
+                      [ "column"; "direction" ]
+                      [ "column", JObj [ "type", JStr "integer"; "minimum", JInt 0 ]
+                        "direction", enumDef [ "asc"; "desc" ] ]
+                  "headers", arrayOf (ref "TextSource")
+                  "rows", arrayOf (arrayOf (ref "TextSource"))
+                  "sortable", boolean ] ]
 
       "ChartSpec",
       record

@@ -2255,7 +2255,11 @@ let rec private renderKind
             let tableSpec: TableSpec<'Msg> =
                 { Headers = sr.Headers
                   Rows = sr.Rows
-                  OnRowClick = None }
+                  OnRowClick = None
+                  // Phase 801 — the declared sort intent rides through to the
+                  // rendered `<table>` as data attributes.
+                  Sortable = sr.Sortable
+                  DefaultSort = sr.DefaultSort }
 
             renderTable ctx tableSpec
         | None -> renderGrid ctx parentNodeId state spec
@@ -4361,6 +4365,23 @@ and private renderTable (ctx: RenderContext<'Msg>) (spec: TableSpec<'Msg>) : Rea
 
     Html.table
         [ prop.className "fuaran-table"
+          // Phase 801 — the declared sort intent, surfaced as data attributes so a
+          // progressive-enhancement script honours it without re-parsing the wire.
+          // Emitted ONLY when declared: an undeclared table's markup is unchanged.
+          match spec.Sortable with
+          | Some sortable -> prop.custom ("data-fuaran-sortable", if sortable then "true" else "false")
+          | None -> ()
+          match spec.DefaultSort with
+          | Some ds ->
+              prop.custom ("data-fuaran-sort-column", string ds.Column)
+
+              prop.custom (
+                  "data-fuaran-sort-direction",
+                  match ds.Direction with
+                  | SortDirection.Asc -> "asc"
+                  | SortDirection.Desc -> "desc"
+              )
+          | None -> ()
           prop.children
               [ Html.thead [ Html.tr [ prop.children headerCells ] ]
                 Html.tbody [ prop.children bodyRows ] ] ]

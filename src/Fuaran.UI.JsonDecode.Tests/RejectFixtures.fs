@@ -177,6 +177,14 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.text.$type"
         IsOp = false
         Description = "Discriminator under Style is number" }
+      { Id = "reject-wrongtype-static-sort-column"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"defaultSort":{"column":-1,"direction":"asc"},"headers":["A"],"rows":[["1"],["2"]]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.staticRows.defaultSort.column"
+        IsOp = false
+        Description =
+          "staticRows defaultSort column -1 — a header index is non-negative; the schema says the same with minimum:0 (Phase 801)" }
 
       // ─── UNKNOWN_DU_CASE ─────────────────────────────────────────────
       { Id = "reject-unknown-tone"
@@ -221,6 +229,14 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.shapes[0].commands[0].$type"
         IsOp = false
         Description = "Drawing CurveCommand $type 'ArcTo' — typed command list default-deny (Phase 524)" }
+      { Id = "reject-unknown-static-sort-direction"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"defaultSort":{"column":0,"direction":"sideways"},"headers":["A"],"rows":[["1"],["2"]]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.staticRows.defaultSort.direction"
+        IsOp = false
+        Description =
+          "staticRows defaultSort direction 'sideways' — the closed asc|desc pair default-denies (Phase 801)" }
 
       // ─── WRONG_NODE_KIND ─────────────────────────────────────────────
       { Id = "reject-wrongnodekind-widget"

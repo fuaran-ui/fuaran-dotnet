@@ -177,6 +177,11 @@ type LiveRegionKind =
     | Off
 
 [<RequireQualifiedAccess>]
+type SortDirection =
+    | Asc
+    | Desc
+
+[<RequireQualifiedAccess>]
 type TextSource =
     | Literal of text: string
     | Bound of binding: Binding<string>
@@ -403,10 +408,18 @@ and MapMarker =
       Longitude: float
     }
 
+and DefaultSort =
+    {
+      Column: int
+      Direction: SortDirection
+    }
+
 and StaticRows =
     {
+      DefaultSort: DefaultSort option
       Headers: TextSource list
       Rows: TextSource list list
+      Sortable: bool option
     }
 
 and FormField<'Msg> =
@@ -1068,6 +1081,11 @@ let private encLiveRegionKind (v: LiveRegionKind) : JVal =
     | LiveRegionKind.Assertive -> JStr "assertive"
     | LiveRegionKind.Off -> JStr "off"
 
+let private encSortDirection (v: SortDirection) : JVal =
+    match v with
+    | SortDirection.Asc -> JStr "asc"
+    | SortDirection.Desc -> JStr "desc"
+
 let rec private encNodeKind (k: NodeKind<'Msg>) : JVal =
     match k with
     | NodeKind.Heading s -> encHeadingSpec s
@@ -1308,8 +1326,11 @@ and private encSelectOption (s: SelectOption) : JVal =
 and private encMapMarker (s: MapMarker) : JVal =
     JObj([ Some("label", JStr s.Label); Some("latitude", JFloat s.Latitude); Some("longitude", JFloat s.Longitude) ] |> List.choose id)
 
+and private encDefaultSort (s: DefaultSort) : JVal =
+    JObj([ Some("column", JInt s.Column); Some("direction", encSortDirection s.Direction) ] |> List.choose id)
+
 and private encStaticRows (s: StaticRows) : JVal =
-    JObj([ Some("headers", JArr(List.map encTextSource s.Headers)); Some("rows", JArr(List.map (fun __xs -> JArr(List.map encTextSource __xs)) s.Rows)) ] |> List.choose id)
+    JObj([ (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); Some("headers", JArr(List.map encTextSource s.Headers)); Some("rows", JArr(List.map (fun __xs -> JArr(List.map encTextSource __xs)) s.Rows)); (s.Sortable |> Option.map (fun v -> "sortable", JBool v)) ] |> List.choose id)
 
 and private encFormField<'Msg> (s: FormField<'Msg>) : JVal =
     JObj([ Some("id", JStr s.Id); Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("required", JBool s.Required); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
@@ -1747,6 +1768,12 @@ let private decLiveRegionKind (j: JVal) : Result<LiveRegionKind, string> =
     | JStr "assertive" -> Ok LiveRegionKind.Assertive
     | JStr "off" -> Ok LiveRegionKind.Off
     | _ -> Error "not a LiveRegionKind"
+
+let private decSortDirection (j: JVal) : Result<SortDirection, string> =
+    match j with
+    | JStr "asc" -> Ok SortDirection.Asc
+    | JStr "desc" -> Ok SortDirection.Desc
+    | _ -> Error "not a SortDirection"
 
 let rec private decNodeKind (j: JVal) : Result<NodeKind<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -2431,11 +2458,19 @@ and private decMapMarker (j: JVal) : Result<MapMarker, string> =
     dReq "longitude" __fs dFloat |> Result.bind (fun longitude ->
     Ok { Label = label; Latitude = latitude; Longitude = longitude }))))
 
+and private decDefaultSort (j: JVal) : Result<DefaultSort, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "column" __fs dInt |> Result.bind (fun column ->
+    dReq "direction" __fs decSortDirection |> Result.bind (fun direction ->
+    Ok { Column = column; Direction = direction })))
+
 and private decStaticRows (j: JVal) : Result<StaticRows, string> =
     dObj j |> Result.bind (fun __fs ->
+    dOpt "defaultSort" __fs decDefaultSort |> Result.bind (fun defaultSort ->
     dReq "headers" __fs (dList decTextSource) |> Result.bind (fun headers ->
     dReq "rows" __fs (dList (dList decTextSource)) |> Result.bind (fun rows ->
-    Ok { Headers = headers; Rows = rows })))
+    dOpt "sortable" __fs dBool |> Result.bind (fun sortable ->
+    Ok { DefaultSort = defaultSort; Headers = headers; Rows = rows; Sortable = sortable })))))
 
 and private decFormField (j: JVal) : Result<FormField<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
