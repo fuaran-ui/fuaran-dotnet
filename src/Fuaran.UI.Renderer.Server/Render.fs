@@ -847,20 +847,46 @@ and private renderKind
 
         let safeHref = Sanitize.sanitizeUrlOrBlank resolvedHref
 
-        Html.a (
-            [ prop.className "fuaran-link"; prop.href safeHref ]
-            @ (match spec.Rel with
-               | Some rel -> [ prop.custom ("rel", rel) ]
-               | None -> [])
-            @ (match spec.Target with
-               | Some target -> [ prop.custom ("target", target) ]
-               | None -> [])
-            @ (if spec.Download then
-                   [ prop.custom ("download", "") ]
-               else
-                   [])
-            @ [ prop.text (renderText ctx spec.Label) ]
-        )
+        match spec.Protection with
+        | Some LinkProtection.Email when safeHref.StartsWith("mailto:", System.StringComparison.Ordinal) ->
+            // Phase 812 — protected email link. The address must not appear in
+            // plaintext in the emitted document, so every character of the
+            // sanitised href AND the label is emitted as a decimal HTML entity.
+            // The browser decodes entities in both positions, so the anchor is
+            // a working `mailto:` with no JavaScript, while the raw source
+            // carries no scrapeable address. Encoding every character (not
+            // just specials) makes the fragment injection-proof by
+            // construction, which is why `dangerouslySetInnerHTML` is safe
+            // here. CSR emits the same structure with the decoded href — the
+            // two DOMs are identical after entity decoding.
+            let entityEncode (s: string) =
+                s |> Seq.map (fun c -> "&#" + string (int c) + ";") |> String.concat ""
+
+            let anchor =
+                "<a class=\"fuaran-link fuaran-link-protected\" href=\""
+                + entityEncode safeHref
+                + "\">"
+                + entityEncode (renderText ctx spec.Label)
+                + "</a>"
+
+            Html.span
+                [ prop.className "fuaran-link-protected-wrap"
+                  prop.dangerouslySetInnerHTML anchor ]
+        | _ ->
+            Html.a (
+                [ prop.className "fuaran-link"; prop.href safeHref ]
+                @ (match spec.Rel with
+                   | Some rel -> [ prop.custom ("rel", rel) ]
+                   | None -> [])
+                @ (match spec.Target with
+                   | Some target -> [ prop.custom ("target", target) ]
+                   | None -> [])
+                @ (if spec.Download then
+                       [ prop.custom ("download", "") ]
+                   else
+                       [])
+                @ [ prop.text (renderText ctx spec.Label) ]
+            )
     | NodeKind.Image spec ->
         let resolvedSrc =
             BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""

@@ -207,7 +207,8 @@ let link: LinkSpec =
       Label = emptyLiteral
       Rel = Option.None
       Target = Option.None
-      Download = false }
+      Download = false
+      Protection = Option.None }
 
 let image: ImageSpec =
     { Src = noBinding<string>

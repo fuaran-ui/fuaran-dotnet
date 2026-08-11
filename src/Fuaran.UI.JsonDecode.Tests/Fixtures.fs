@@ -144,7 +144,8 @@ let link: Node<obj> =
               Label = TextSource.Literal "About us"
               Rel = Some "noopener"
               Target = Some "_blank"
-              Download = false }
+              Download = false
+              Protection = None }
         ))
         None
 

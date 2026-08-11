@@ -2089,11 +2089,26 @@ let rec private renderKind
               if spec.Download then
                   prop.custom ("download", "") ]
 
-        Html.a (
-            [ prop.className "fuaran-link"; prop.href safeHref ]
-            @ optionalAttrs
-            @ [ prop.text (renderText ctx spec.Label) ]
-        )
+        match spec.Protection with
+        | Some LinkProtection.Email when safeHref.StartsWith("mailto:", System.StringComparison.Ordinal) ->
+            // Phase 812 — protected email link, CSR side. The client DOM is
+            // assembled at runtime (nothing scrapes a hydrated DOM that the
+            // SSR document did not already reveal), so the real href is set
+            // directly; the wrapper span + protected class mirror the SSR
+            // structure so the post-entity-decode DOMs are identical.
+            Html.span
+                [ prop.className "fuaran-link-protected-wrap"
+                  prop.children
+                      [ Html.a
+                            [ prop.className "fuaran-link fuaran-link-protected"
+                              prop.href safeHref
+                              prop.text (renderText ctx spec.Label) ] ] ]
+        | _ ->
+            Html.a (
+                [ prop.className "fuaran-link"; prop.href safeHref ]
+                @ optionalAttrs
+                @ [ prop.text (renderText ctx spec.Label) ]
+            )
     | NodeKind.Image spec ->
         // Phase 287 — real `<img>`; `src` resolves then passes through
         // `Sanitize.sanitizeUrlOrBlank` (blocks javascript:/vbscript:/file:);

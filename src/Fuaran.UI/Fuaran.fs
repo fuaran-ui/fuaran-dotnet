@@ -984,6 +984,24 @@ module Fuaran =
     let linkSpec (id: string) (spec: LinkSpec) : Node<'Msg> =
         buildNode id (NodeKind.Link(spec)) Defaults.Accessibility.none
 
+    /// Protected email link (Phase 812). A `mailto:` Link whose
+    /// address the renderers must not emit in plaintext: SSR entity-encodes the
+    /// href and label character-by-character (works without JavaScript, absent
+    /// from the raw page source); CSR renders the real href post-hydration —
+    /// the decoded DOM is identical. Positional 80% case:
+    /// `Fuaran.emailLink "id" "user@example.com" "user@example.com"`; the full
+    /// record form via `linkSpec` with `Protection = Some LinkProtection.Email`.
+    let emailLink (id: string) (address: string) (label: string) : Node<'Msg> =
+        buildNode
+            id
+            (NodeKind.Link(
+                { Defaults.link with
+                    Href = Binding.Static(Some("mailto:" + address))
+                    Label = TextSource.Literal label
+                    Protection = Some LinkProtection.Email }
+            ))
+            Defaults.Accessibility.none
+
     /// Standalone image (Phase 287). Two-tier API: positional
     /// `Fuaran.image "id" "https://…" "alt text"` for the static-src 80% case;
     /// the full record form via the `imageSpec` twin for bound srcs / Avatar

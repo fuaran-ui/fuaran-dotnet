@@ -417,7 +417,18 @@ let private fixtures: Fixture list =
             "<rect"
             "<text"
             "<title"
-            "<desc" ] } ]
+            "<desc" ] }
+
+      // Phase 812 — protected email link: wrapper + protected classes present,
+      // and the href begins with the entity-encoded "mailto:" prefix
+      // (&#109;… = 'm'); the plaintext-absence lock is the dedicated test
+      // below (the fixture vocabulary only asserts presence).
+      { Name = "Display/LinkProtectedEmail"
+        Node = Fuaran.emailLink "plk" "user@example.com" "user@example.com"
+        Expected =
+          [ "fuaran-link-protected-wrap"
+            "fuaran-link fuaran-link-protected"
+            "&#109;&#97;&#105;&#108;&#116;&#111;&#58;" ] } ]
 
 [<Tests>]
 let ssrParityTests =
@@ -456,6 +467,27 @@ let ssrParityTests =
           test "the parity lock is not vacuous — a bogus class is absent" {
               let html = Render.render BindingResolver.empty (Fuaran.link "lk" "/x" "X")
               Expect.isFalse (contains "fuaran-not-a-real-class" html) "a non-existent class must not appear"
+          }
+
+          // Phase 812 — the protected-email absence lock: the address must not
+          // appear in plaintext ANYWHERE in the emitted document (href or
+          // text). The entity-encoded anchor still decodes to a working
+          // mailto: with JavaScript disabled.
+          test "protected email link emits no plaintext address" {
+              let html =
+                  Render.render BindingResolver.empty (Fuaran.emailLink "plk" "user@example.com" "user@example.com")
+
+              Expect.isFalse (contains "user@example.com" html) "plaintext address must be absent"
+              Expect.isFalse (contains "mailto:" html) "plaintext mailto: prefix must be absent"
+              Expect.isTrue (contains "&#117;&#115;&#101;&#114;&#64;" html) "entity-encoded address must be present"
+          }
+
+          test "an unprotected mailto link still emits the plain anchor" {
+              let html =
+                  Render.render BindingResolver.empty (Fuaran.link "lk" "mailto:user@example.com" "Email us")
+
+              Expect.isTrue (contains "href=\"mailto:user@example.com\"" html) "plain mailto anchor unchanged"
+              Expect.isFalse (contains "fuaran-link-protected" html) "protected classes absent"
           }
 
           // The icon-contract lock: the icon NAME rides the `data-icon`

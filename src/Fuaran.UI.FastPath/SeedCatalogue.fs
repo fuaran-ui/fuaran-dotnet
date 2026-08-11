@@ -325,6 +325,24 @@ module SeedCatalogue =
                               Label = TextSource.Literal "Revenue by region"
                               Value = computedRevenue } ] }
 
+    /// Phase 812 — the canonical "add my email" emission. A protected mailto
+    /// link: the renderers never emit the address in plaintext (SSR
+    /// entity-encodes href + label; still a working link with JS disabled), so
+    /// this — not a bare `Fuaran.link "mailto:…"` — is the shape to reach for
+    /// on any contact / "email me" request.
+    let private protectedEmailLink: Pattern =
+        { Id = "protected-email-link"
+          Title = "Protected email link"
+          Summary = "A clickable email contact link whose address never appears in plaintext in the page source."
+          ResultType = "Link"
+          Holes =
+            [ textHole "email.address" "email address"
+              textHole "email.label" "visible label" ]
+          Build =
+            fun v ->
+                let address = strOf v "email.address" "hello@example.com"
+                Fuaran.emailLink "pel" address (strOf v "email.label" address) }
+
     /// The full seed catalogue.
     let all: Pattern list =
         [ singleMetric
@@ -338,6 +356,7 @@ module SeedCatalogue =
           featureList
           section
           ctaBanner
+          protectedEmailLink
           computeMetric
           computeDashboard ]
 

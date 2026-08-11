@@ -226,6 +226,37 @@ let tests =
               | Ok() -> failtest "Expected FUARAN077 + FUARAN078 defects, got Ok"
           }
 
+          // Phase 812 — FUARAN092: email protection is only meaningful over a
+          // mailto: href; a statically non-mailto href is dead intent.
+          test "FUARAN092: email protection over a non-mailto static href is flagged" {
+              let link =
+                  Fuaran.linkSpec
+                      "lk"
+                      { Defaults.link with
+                          Href = Binding.Static(Some "/contact")
+                          Label = TextSource.Literal "Email"
+                          Protection = Some LinkProtection.Email }
+
+              let tree = dashboard "root" [ link ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  Expect.contains defects (PreEmitDefect.ProtectedNonMailtoLink "lk") "ProtectedNonMailtoLink surfaced"
+              | Ok() -> failtest "Expected FUARAN092 defect, got Ok"
+          }
+
+          test "FUARAN092 does not fire for a protected mailto nor an unprotected link" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ Fuaran.emailLink "lk1" "user@example.com" "user@example.com"
+                        Fuaran.link "lk2" "/contact" "Contact" ]
+
+              match PreEmitValidate.validate tree with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok, got %A" defects
+          }
+
           test "FUARAN090: editable over a non-State source is inert and flagged" {
               let grid = gridWithEditable true (Binding.Transform(embeddedSource, [], None))
 

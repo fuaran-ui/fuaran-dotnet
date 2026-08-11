@@ -105,7 +105,10 @@ public static partial class Fuaran
                 options.Label.Inner,
                 options.Download,
                 Fs.OptStr(options.Rel),
-                Fs.OptStr(options.Target))));
+                Fs.OptStr(options.Target),
+                // Phase 812 — email protection stays opt-in via the F# surface for
+                // now; the veneer emits the unprotected default.
+                Microsoft.FSharp.Core.FSharpOption<FsGen.LinkProtection>.None)));
 
     /// <summary>A standalone image.</summary>
     public static FuaranNode Image(ImageOptions options) =>

@@ -743,6 +743,10 @@ and BadgeSpec = Generated.BadgeSpec
 /// `Defaults.link`, so the AI emits only what differs.
 and LinkSpec = Generated.LinkSpec
 
+/// Phase 812 — anti-scraper render strategy for a `Link` (`Email` = protected
+/// mailto emission; see the renderers).
+and LinkProtection = Generated.LinkProtection
+
 /// §4b — `NodeKind.Image`'s typed spec (Phase 287). `Src` is a
 /// `Binding<string>` routed through `Sanitize.sanitizeUrlOrBlank` at render
 /// time (blocks `javascript:` / `vbscript:` / `file:` and unknown schemes).

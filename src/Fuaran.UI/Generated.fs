@@ -10,6 +10,14 @@ type HeadingVariant =
     | Caption
     | Lead
 
+/// Phase 812 — anti-scraper render strategy for a `Link`. `Email` marks a
+/// `mailto:` link whose address must not appear in plaintext in emitted HTML
+/// (the renderers own the emission strategy; hand-added ahead of the IDL
+/// backfill — see roadmap Phase 802).
+[<RequireQualifiedAccess>]
+type LinkProtection =
+    | Email
+
 [<RequireQualifiedAccess>]
 type BadgeVariant =
     | Neutral
@@ -549,6 +557,7 @@ and LinkSpec =
       Download: bool
       Rel: string option
       Target: string option
+      Protection: LinkProtection option
     }
 
 // Display
@@ -1384,7 +1393,7 @@ and private encImageSpec (s: ImageSpec) : JVal =
     Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); Some("variant", encImageVariant s.Variant) ] |> List.choose id)
 
 and private encLinkSpec (s: LinkSpec) : JVal =
-    Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)) ] |> List.choose id)
+    Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun p -> "protection", JStr (match p with LinkProtection.Email -> "email"))) ] |> List.choose id)
 
 and private encCalloutSpec (s: CalloutSpec) : JVal =
     Canon.typed "Callout" ([ Some("body", encTextSource s.Body); (if s.Dismissable = false then None else Some("dismissable", JBool s.Dismissable)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)) ] |> List.choose id)
@@ -2591,7 +2600,14 @@ and private decLinkSpec (j: JVal) : Result<LinkSpec, string> =
     dReq "download" __fs dBool |> Result.bind (fun download ->
     dOpt "rel" __fs dStr |> Result.bind (fun rel ->
     dOpt "target" __fs dStr |> Result.bind (fun target ->
-    Ok { Href = href; Label = label; Download = download; Rel = rel; Target = target }))))))
+    dOpt "protection" __fs decLinkProtection |> Result.bind (fun protection ->
+    Ok { Href = href; Label = label; Download = download; Rel = rel; Target = target; Protection = protection })))))))
+
+and private decLinkProtection (j: JVal) : Result<LinkProtection, string> =
+    match j with
+    | JStr "email" -> Ok LinkProtection.Email
+    | JStr other -> Error ("unknown LinkProtection case: " + other)
+    | _ -> Error "expected a LinkProtection string"
 
 and private decCalloutSpec (j: JVal) : Result<CalloutSpec, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -2979,7 +2995,7 @@ let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: Imag
     { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkCallout (id: string) (body: TextSource) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Callout { Body = body; Dismissable = false; Tone = ToneVariant.Default; Heading = None; Icon = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

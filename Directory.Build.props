@@ -149,7 +149,7 @@
          0.18.1 - additive: INVALID_JSON envelope de-dup (the innermost
          "parse error at offset N" propagates unwrapped - one occurrence per
          envelope; didactic tails unchanged). -->
-    <Version>0.18.1</Version>
+    <Version>0.19.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

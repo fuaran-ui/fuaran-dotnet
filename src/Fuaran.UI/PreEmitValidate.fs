@@ -231,6 +231,14 @@ type PreEmitDefect =
     /// simply recursed until the process died of a `StackOverflowException`,
     /// which .NET cannot catch, so no defect list of any kind came back.
     | MaxDepthExceeded of nodeId: string * limit: int
+    /// **FUARAN092 (Warning)**. A `Link` declares `protection: "email"` on an
+    /// href that is statically known NOT to be a `mailto:` (Phase 812). The
+    /// Email protection strategy only has meaning over a mailto address — on
+    /// anything else the renderers fall through to the ordinary anchor, so the
+    /// flag is dead intent. Only statically-decidable hrefs are flagged
+    /// (`Binding.Static`); a bound href that resolves at runtime is left
+    /// alone. Carries the link node's id.
+    | ProtectedNonMailtoLink of nodeId: string
 
 /// Render a defect as its stable (code, severity, message) triple — the ONE
 /// projection every consumer shares (the .NET validator oracle, certification
@@ -408,6 +416,12 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "node '%s' nests deeper than the wire limit MaxDepth = %d (WIRE_FORMAT §21) — the tree was not walked past this point; flatten the nesting"
             nodeId
             limit
+    | PreEmitDefect.ProtectedNonMailtoLink nodeId ->
+        "FUARAN092",
+        DefectSeverity.Warning,
+        sprintf
+            "link '%s' sets protection=\"email\" on a non-mailto href — the Email strategy only protects a mailto: address, so the renderers ignore the flag (dead intent); drop the protection or point the href at mailto:<address>"
+            nodeId
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -578,13 +592,23 @@ let private validateCore
         | NodeKind.Skeleton _
         | NodeKind.LabelValueRow _
         | NodeKind.Fact _
-        | NodeKind.Link _
         | NodeKind.Image _
         | NodeKind.List _
         | NodeKind.Toast _
         | NodeKind.CodeBlock _
         | NodeKind.Math _
         | NodeKind.Drawing _ -> ()
+        // FUARAN092 (Phase 812): email protection declared over an href that
+        // is statically known not to be a mailto:. Bound hrefs (Query / State
+        // / …) resolve at runtime and are not judged here.
+        | NodeKind.Link spec ->
+            match spec.Protection, spec.Href with
+            | Some LinkProtection.Email, Binding.Static(Some href) when
+                not (href.StartsWith("mailto:", System.StringComparison.Ordinal))
+                ->
+                defects.Add(PreEmitDefect.ProtectedNonMailtoLink n.Id)
+            | Some LinkProtection.Email, Binding.Static None -> defects.Add(PreEmitDefect.ProtectedNonMailtoLink n.Id)
+            | _ -> ()
         // FUARAN069 (Phase 426): an interactive input whose handler is
         // omitted needs a writable value binding for the write-back
         // default to target; anything else is an inert control. Filter

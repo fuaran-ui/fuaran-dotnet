@@ -198,6 +198,8 @@ let private defs: (string * J) list =
       "BadgeVariant", enumDef [ "Neutral"; "Brand"; "Success"; "Warning"; "Critical"; "Info" ]
       "ButtonVariant", enumDef [ "Primary"; "Secondary"; "Tertiary"; "Destructive" ]
       "HeadingVariant", enumDef [ "Standard"; "Eyebrow"; "Caption"; "Lead" ]
+      // Phase 812 — anti-scraper render strategy for a mailto Link.
+      "LinkProtection", enumDef [ "email" ]
       "ImageVariant", enumDef [ "Default"; "Avatar"; "Rounded" ]
       "ScrollOrientation", enumDef [ "Vertical"; "Horizontal"; "Both" ]
       "DateVariant", enumDef [ "Date"; "Time"; "DateTime" ]
@@ -500,7 +502,10 @@ let private defs: (string * J) list =
             "label", ref "TextSource"
             "download", boolean
             "rel", str
-            "target", str ]
+            "target", str
+            // Phase 812 — "email" marks a mailto: link whose address the
+            // renderers must not emit in plaintext (SSR entity-encodes it).
+            "protection", ref "LinkProtection" ]
 
       "ImageSpec",
       record

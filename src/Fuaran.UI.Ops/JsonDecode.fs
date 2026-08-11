@@ -2698,19 +2698,37 @@ let private decodeLinkSpec (path: string) (j: Json) : Result<LinkSpec, DecodeErr
             | None -> Ok None
             | Some v -> requireString (path + ".target") v |> Result.map Some
 
-        match hrefR, labelR, downloadR, relR, targetR with
-        | Ok href, Ok label, Ok download, Ok rel, Ok target ->
+        let protectionR =
+            match tryField fields "protection" with
+            | None -> Ok None
+            | Some v ->
+                requireString (path + ".protection") v
+                |> Result.bind (function
+                    | "email" -> Ok(Some LinkProtection.Email)
+                    | other ->
+                        Error(
+                            DecodeError.create
+                                DecodeErrorCode.UNKNOWN_DU_CASE
+                                (path + ".protection")
+                                ("unknown LinkProtection case: " + other)
+                                (Some "\"email\"")
+                        ))
+
+        match hrefR, labelR, downloadR, relR, targetR, protectionR with
+        | Ok href, Ok label, Ok download, Ok rel, Ok target, Ok protection ->
             Ok
                 { Href = href
                   Label = label
                   Rel = rel
                   Target = target
-                  Download = download }
-        | Error e, _, _, _, _
-        | _, Error e, _, _, _
-        | _, _, Error e, _, _
-        | _, _, _, Error e, _
-        | _, _, _, _, Error e -> Error e
+                  Download = download
+                  Protection = protection }
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
 
 let private decodeImageSpec (path: string) (j: Json) : Result<ImageSpec, DecodeError> =
     match requireObject path j with
