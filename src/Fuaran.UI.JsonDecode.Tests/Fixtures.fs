@@ -149,6 +149,21 @@ let link: Node<obj> =
         ))
         None
 
+let linkProtected: Node<obj> =
+    // Phase 812 — the optional `protection` field ("email" on the wire),
+    // omitted when absent so every pre-812 tree stays byte-identical.
+    node
+        "link-protected-1"
+        (NodeKind.Link(
+            { Href = Binding.Static(Some "mailto:contact@example.com")
+              Label = TextSource.Literal "Email us"
+              Rel = None
+              Target = None
+              Download = false
+              Protection = Some LinkProtection.Email }
+        ))
+        None
+
 let image: Node<obj> =
     // Phase 287 — Avatar variant exercises the variant DU; Src round-trips a
     // Binding<string> (sanitised at render, not at wire).
@@ -3250,6 +3265,7 @@ let allNodes: (string * Node<obj>) list =
       "Display/Metric (float divergence-zone — integer > 2^53)", metricFloatBigInt
       "Display/Badge", badge
       "Display/Link", link
+      "Display/Link (protected email — Phase 812 protection field)", linkProtected
       "Display/Image (Avatar variant)", image
       "Display/List (ordered)", listDisplay
       "Display/Toast (Success tone, open)", toast

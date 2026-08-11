@@ -262,6 +262,22 @@ across all three hosts:
 imperative `Action.Notify` (no rendered node) is the host-chrome path – see
 WIRE_FORMAT.md §3.2 "Toast vs Action.Notify".
 
+### Protected email links (Phase 812)
+
+A `Link` with `protection = email` over a `mailto:` href renders as the same
+tree shape on both sides – a `fuaran-link-protected-wrap` span wrapping a
+`fuaran-link fuaran-link-protected` anchor – but the **SSR side emits every
+character of the sanitised href AND the label as a decimal HTML entity**
+(no plaintext address anywhere in the document source, a working `mailto:`
+anchor with no JavaScript), while the **CSR side sets the decoded href
+directly** (a hydrated DOM reveals nothing the document didn't). The parity
+contract is therefore *post-entity-decode*: the two DOMs are identical after
+the browser decodes the SSR entities, which is exactly the comparison the
+`Display/LinkProtectedEmail` fixture in the SSR-parity corpus locks (plus a
+plaintext-absence assertion on the raw SSR output). Cross-host, the wire field
+is certified by `nodes/link-protected-1.json` in the conformance corpus –
+see WIRE_FORMAT.md §3.2 "Link protection".
+
 ## Deterministic-render + client-only-enhancement contract (Phases 290, 293)
 
 `CodeBlock` (syntax highlighting) and `Math` (KaTeX) carry rich rendering that is

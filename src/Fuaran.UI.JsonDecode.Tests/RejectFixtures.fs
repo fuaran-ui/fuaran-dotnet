@@ -229,6 +229,13 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.shapes[0].commands[0].$type"
         IsOp = false
         Description = "Drawing CurveCommand $type 'ArcTo' — typed command list default-deny (Phase 524)" }
+      { Id = "reject-unknown-link-protection"
+        Json =
+          """{"id":"x","kind":{"$type":"Link","download":false,"href":{"$type":"Static","value":"mailto:a@example.com"},"label":{"$type":"Literal","text":"Email"},"protection":"rot13"},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.protection"
+        IsOp = false
+        Description = "LinkProtection value 'rot13' — the closed protection DU default-denies (Phase 812)" }
       { Id = "reject-unknown-static-sort-direction"
         Json =
           """{"id":"x","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"defaultSort":{"column":0,"direction":"sideways"},"headers":["A"],"rows":[["1"],["2"]]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
