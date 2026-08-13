@@ -134,8 +134,20 @@ let rec encodeAction (action: Action<'Msg>) : string =
     | Action.Navigate route -> sprintf "{\"$type\":\"Navigate\",\"route\":%s}" (jsonString route)
     | Action.Notify(channel, payload) ->
         sprintf "{\"$type\":\"Notify\",\"channel\":%s,\"payload\":%s}" (jsonString channel) (jsonValueLite payload)
-    | Action.SetState(key, value) ->
+    // Phase 818 — the literal `value` keeps the existing lite shape
+    // byte-identical; a `valueFrom` action re-encodes wholesale through the
+    // canonical encoder (the binding shape is the codec's own vocabulary — a
+    // second hand-rolled binding encoder here would only drift).
+    | Action.SetState(key, Some value, _) ->
         sprintf "{\"$type\":\"SetState\",\"key\":%s,\"value\":%s}" (jsonString key) (jsonValueLite value)
+    | Action.SetState(_, None, _) ->
+        // Script-embedding safety (the `jsonString` posture): `<` / `>` / `&`
+        // only ever occur inside JSON string literals, so the global escape is
+        // sound and keeps the payload inert inside a `<script>` element.
+        (Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeActionJson action))
+            .Replace("<", "\\u003c")
+            .Replace(">", "\\u003e")
+            .Replace("&", "\\u0026")
     | Action.AiTool(name, args) ->
         sprintf "{\"$type\":\"AiTool\",\"args\":%s,\"toolName\":%s}" (jsonValueLite args) (jsonString name)
     | Action.WriteToClipboard text -> sprintf "{\"$type\":\"WriteToClipboard\",\"text\":%s}" (jsonString text)

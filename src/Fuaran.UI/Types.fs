@@ -1210,6 +1210,15 @@ and LocalFlushTrigger = Generated.LocalFlushTrigger
 /// scalar binding source (generated; `From` carries `Binding<JVal>`).
 and TransformParam = Generated.TransformParam
 
+/// Phase 818 — a `Binding.Transform`'s source slot (generated). `Data` is the
+/// canonical columnar / `ref` `Fuaran.Core.DataSource` (the pre-818 shape);
+/// `Live` preserves a binding-shaped wire source (State / Selection / Query)
+/// for subscription-semantics re-evaluation, carrying the decode-time initial
+/// snapshot the SSR / diagnostic evaluation reads (never encoded). This is the
+/// reactive-derivation charter's O1: the Phase-815 snapshot leniency upgraded
+/// to live semantics without re-encoding anything.
+and TransformSource = Generated.TransformSource
+
 /// A capability-invoke argument (generated; `Addr`/`Value` — was `(string * string)`).
 and InvokeArg = Generated.InvokeArg
 

@@ -518,13 +518,22 @@ and private encodeBindingWith<'T> (staticEnc: 'T -> Appender) (b: Binding<'T>) :
                                            [ "from", encodeBindingWith<JVal> (fun jv -> encodeJVal jv) p.From
                                              "name", str p.Name ]))) ]
 
+            // Phase 818 — a `Data` source splices Core's canonical columnar
+            // rendering (byte-identical to pre-818); a `Live` source re-encodes
+            // the preserved binding itself (one wire dialect — the derived
+            // initial snapshot is never encoded).
+            let sourceAppender: Appender =
+                match source with
+                | TransformSource.Data ds -> (fun sb -> sb.Append(Fuaran.Core.ColumnCodec.encode ds) |> ignore)
+                | TransformSource.Live(b, _) -> encodeBindingWith<JVal> (fun jv -> encodeJVal jv) b
+
             appendObject
                 sb
                 (case
                     "Transform"
                     (paramField
                      @ [ "pipeline", (fun sb -> sb.Append(Fuaran.Core.DataFrameCodec.encodePipeline pipeline) |> ignore)
-                         "source", (fun sb -> sb.Append(Fuaran.Core.ColumnCodec.encode source) |> ignore) ]))
+                         "source", sourceAppender ]))
         | Binding.Invoke(capabilityId, args) ->
             // Phase 283 — invoke a host-registered capability for a value. `args` are scalar
             // `InvokeArg` records since the swap (validated host-side against the capability's
@@ -571,7 +580,16 @@ and private encodeAction<'Msg> (a: Action<'Msg>) : Appender =
         | Action.Notify(channel, payload) ->
             appendObject sb (case "Notify" [ "channel", str channel; "payload", encodeJVal payload ])
         | Action.Navigate route -> appendObject sb (case "Navigate" [ "route", str route ])
-        | Action.SetState(key, value) -> appendObject sb (case "SetState" [ "key", str key; "value", encodeJVal value ])
+        | Action.SetState(key, value, valueFrom) ->
+            // Phase 818 — `value` XOR `valueFrom`; each rides only when present
+            // (`appendObject` pre-sorts, so field order stays canonical).
+            let optionals =
+                [ value |> Option.map (fun v -> "value", encodeJVal v)
+                  valueFrom
+                  |> Option.map (fun b -> "valueFrom", encodeBindingWith<JVal> (fun jv -> encodeJVal jv) b) ]
+                |> List.choose id
+
+            appendObject sb (case "SetState" ([ "key", str key ] @ optionals))
         | Action.AiTool(name, args) -> appendObject sb (case "AiTool" [ "args", encodeJVal args; "toolName", str name ])
         | Action.Chain inner ->
             let items = inner |> List.map encodeAction

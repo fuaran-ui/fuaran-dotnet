@@ -272,7 +272,7 @@ let describeAction (a: Action<'Msg>) : string =
     | Action.Call(ep, _, _) -> sprintf "Call(%s)" ep
     | Action.Notify(ch, _) -> sprintf "Notify(%s)" ch
     | Action.Navigate r -> sprintf "Navigate(%s)" r
-    | Action.SetState(k, _) -> sprintf "SetState(%s)" k
+    | Action.SetState(k, _, _) -> sprintf "SetState(%s)" k
     | Action.AiTool(t, _) -> sprintf "AiTool(%s)" t
     | Action.Chain _ -> "Chain"
     | Action.CommitLocal id -> sprintf "CommitLocal(%s)" id

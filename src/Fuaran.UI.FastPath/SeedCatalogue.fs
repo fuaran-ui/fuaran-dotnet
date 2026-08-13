@@ -110,7 +110,7 @@ module SeedCatalogue =
     /// A data binding computed from the embedded table by the transform pipeline —
     /// no server, no hard-coded number.
     let private computedRevenue: Binding<float> =
-        Binding.Transform(DataSource.Embedded salesTable, revenueByRegion, None)
+        Binding.Transform(TransformSource.Data(DataSource.Embedded salesTable), revenueByRegion, None)
 
     // ── the patterns ─────────────────────────────────────────────────────────
 

@@ -182,7 +182,8 @@ let tests =
                       Id = "channel-grid"
                       Kind =
                           NodeKind.DataGrid(
-                              { Source = Binding.Static(Some Seq.empty)
+                              { SortStateKey = None
+                                Source = Binding.Static(Some Seq.empty)
                                 RowKey = Some(fun _ -> "")
                                 RowKeyField = None
                                 Columns =
@@ -220,7 +221,8 @@ let tests =
                       Id = "channel-grid"
                       Kind =
                           NodeKind.DataGrid(
-                              { Source = Binding.Static(Some Seq.empty)
+                              { SortStateKey = None
+                                Source = Binding.Static(Some Seq.empty)
                                 RowKey = Some(fun _ -> "")
                                 RowKeyField = None
                                 Columns =

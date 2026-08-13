@@ -59,7 +59,7 @@ let private exemplarTree () : Node<TestMsg> =
                                     Kind = FormFieldKind.textDeclarative (binding.state "draft-team" "")
                                     Required = false
                                     Help = None } ]
-                              OnSubmit = Action.SetState("wizard-step", JInt 2)
+                              OnSubmit = Action.SetState("wizard-step", Some(JInt 2), None)
                               SubmitLabel = TextSource.Literal "Continue"
                               Disabled = None }
                         Fuaran.markdown "step-review" "All done — review and finish." ]

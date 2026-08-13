@@ -39,7 +39,7 @@ let tests =
         "Phase 153 — bounded-action interpreter"
         [ test "SetState writes the State channel; no client effect" {
               let out =
-                  BoundedActions.runBoundedAction "n" (Action.SetState("count", jv 3)) store0
+                  BoundedActions.runBoundedAction "n" (Action.SetState("count", Some(jv 3), None)) store0
 
               Expect.equal
                   out.Store.State
@@ -55,9 +55,43 @@ let tests =
                       State = Map.ofList [ "mode", o "cash" ] }
 
               let out =
-                  BoundedActions.runBoundedAction "n" (Action.SetState("mode", jv "real")) s1
+                  BoundedActions.runBoundedAction "n" (Action.SetState("mode", Some(jv "real"), None)) s1
 
               Expect.equal out.Store.State (Map.ofList [ "mode", o "real" ]) "mode overwritten to 'real'"
+          }
+
+          test "Phase 818 — SetState.valueFrom derives the write from the store at dispatch time" {
+              // The selected row's `id` field becomes the written value — the
+              // derived state write, evaluated against the BoundedStore itself.
+              let selectedRow: Fuaran.Core.Row = Map.ofList [ "id", o "ORD-17"; "total", o 42.5 ]
+
+              let s1 =
+                  { store0 with
+                      Selections = Map.ofList [ NodeId "orders-grid", o selectedRow ] }
+
+              let valueFrom: Binding<JVal> =
+                  Binding.Selection("orders-grid", Binding.projectSelectionField<JVal> "id", None, Some "id")
+
+              let out =
+                  BoundedActions.runBoundedAction "n" (Action.SetState("chosen-id", None, Some valueFrom)) s1
+
+              Expect.equal
+                  (Map.tryFind "chosen-id" out.Store.State)
+                  (Some(o "ORD-17"))
+                  "the derived value is written under the key"
+
+              Expect.isEmpty out.Effects "no client effect"
+          }
+
+          test "Phase 818 — an unresolved SetState.valueFrom performs NO write and is diagnosed" {
+              let valueFrom: Binding<JVal> =
+                  Binding.Selection("orders-grid", Binding.projectSelectionField<JVal> "id", None, Some "id")
+
+              let out =
+                  BoundedActions.runBoundedAction "n" (Action.SetState("chosen-id", None, Some valueFrom)) store0
+
+              Expect.isFalse (Map.containsKey "chosen-id" out.Store.State) "no write"
+              Expect.isNonEmpty out.Diagnostics "the missed write is observable, never silent"
           }
 
           test "Navigate → closure-free ClientEffect; store unchanged" {
@@ -90,9 +124,9 @@ let tests =
           test "Chain threads the store and concatenates effects in order" {
               let action =
                   Action.Chain
-                      [ Action.SetState("a", jv 1)
+                      [ Action.SetState("a", Some(jv 1), None)
                         Action.Navigate "/go"
-                        Action.SetState("b", jv 2) ]
+                        Action.SetState("b", Some(jv 2), None) ]
 
               let out = BoundedActions.runBoundedAction "n" action store0
 
@@ -128,7 +162,9 @@ let tests =
           }
 
           test "SetState / Navigate emit no diagnostic (only the no-op arms do)" {
-              let setOut = BoundedActions.runBoundedAction "n" (Action.SetState("k", jv 1)) store0
+              let setOut =
+                  BoundedActions.runBoundedAction "n" (Action.SetState("k", Some(jv 1), None)) store0
+
               Expect.isEmpty setOut.Diagnostics "SetState is a real mutation — no diagnostic"
               let navOut = BoundedActions.runBoundedAction "n" (Action.Navigate "/x") store0
               Expect.isEmpty navOut.Diagnostics "Navigate has a client effect — no diagnostic"
@@ -163,7 +199,7 @@ let tests =
 
               let action =
                   Action.Chain
-                      [ Action.SetState("ok", jv 1)
+                      [ Action.SetState("ok", Some(jv 1), None)
                         Action.Call("e", Some throwing, None)
                         Action.ReadFileBody("f", None, FileReadEncoding.Base64, Some throwingRead) ]
 
@@ -208,7 +244,10 @@ let tests =
 
           test "a host-reserved State key is refused on the bounded path" {
               let out =
-                  BoundedActions.runBoundedAction "n" (Action.SetState("host.session-token", jv "stolen")) store0
+                  BoundedActions.runBoundedAction
+                      "n"
+                      (Action.SetState("host.session-token", Some(jv "stolen"), None))
+                      store0
 
               Expect.equal out.Store.State store0.State "the host-reserved slot is NOT written"
 
@@ -219,7 +258,7 @@ let tests =
 
               // Ordinary keys are unaffected — this is a namespace, not a ban.
               let ok =
-                  BoundedActions.runBoundedAction "n" (Action.SetState("theme", jv "dark")) store0
+                  BoundedActions.runBoundedAction "n" (Action.SetState("theme", Some(jv "dark"), None)) store0
 
               Expect.equal ok.Store.State (Map.ofList [ "theme", o "dark" ]) "an ordinary key writes normally"
               Expect.isEmpty ok.Diagnostics "no diagnostic for an ordinary key"

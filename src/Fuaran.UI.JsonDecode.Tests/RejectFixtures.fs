@@ -258,6 +258,16 @@ let all: RejectFixture list =
         Description =
           "staticRows defaultSort direction 'sideways' — the closed asc|desc pair default-denies (Phase 801)" }
 
+      // ─── Phase 818 — SetState value XOR valueFrom ────────────────────
+      { Id = "reject-setstate-value-and-valuefrom"
+        Json =
+          """{"id":"b-both","kind":{"$type":"Button","label":{"$type":"Literal","text":"Go"},"onClick":{"$type":"SetState","key":"chosen","value":"literal","valueFrom":{"$type":"State","key":"other"}},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.onClick.valueFrom"
+        IsOp = false
+        Description =
+          "SetState carrying BOTH 'value' and 'valueFrom' — exactly one is allowed; the didactic names both fields and how each is used (Phase 818)" }
+
       // ─── WRONG_NODE_KIND ─────────────────────────────────────────────
       { Id = "reject-wrongnodekind-widget"
         Json =

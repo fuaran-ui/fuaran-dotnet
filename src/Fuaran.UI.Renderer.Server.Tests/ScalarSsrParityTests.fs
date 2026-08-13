@@ -165,4 +165,49 @@ let scalarSsrParityTests =
                   (contains "data-fuaran-ssr-placeholder=\"DataGrid\"" html
                    && contains "data-fuaran-row-count=\"2\"" html)
                   "the grid keeps its hydration placeholder over the prune-unfiltered row count"
+          }
+
+          test "Phase 818 — a LIVE State-sourced Transform SSRs byte-identically to its snapshot equivalent" {
+              // The reactive-derivation contract's SSR clause: with no state
+              // written, the live source evaluates its carried defaults and
+              // the rendered output is byte-identical to what the 815-era
+              // snapshot decode produced for the same data.
+              let live = decodeFixture "badge-transform-live"
+              let htmlLive = Render.render BindingResolver.empty live
+
+              let snapshotJson =
+                  """{"id":"badge-transform-live","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[{"$type":"groupBy","aggs":[{"fn":"count","name":"n","of":"medication"}],"keys":[]}],"source":{"columns":{"medication":["Amoxicillin","Ibuprofen"],"quantity":[20,50]}}}},"variant":"Info"}}"""
+
+              let snapshot =
+                  match JsonDecode.decodeNodeObj snapshotJson with
+                  | Ok n -> n
+                  | Error e -> failwithf "snapshot twin decode failed: %A" e
+
+              let htmlSnap = Render.render BindingResolver.empty snapshot
+
+              Expect.equal htmlLive htmlSnap "live-over-defaults SSR == snapshot SSR (byte-identical)"
+              Expect.isTrue (contains ">2<" htmlLive) "the count badge SSRs '2'"
+
+              // A host that seeds the state store server-side gets the LIVE
+              // derivation on SSR too — the same table the client derives.
+              let written =
+                  Fuaran.UI.Ops.Types.JValObj.toObj (
+                      Fuaran.Core.JArr
+                          [ Fuaran.Core.JObj
+                                [ "medication", Fuaran.Core.JStr "Amoxicillin"
+                                  "quantity", Fuaran.Core.JInt 20 ]
+                            Fuaran.Core.JObj
+                                [ "medication", Fuaran.Core.JStr "Ibuprofen"; "quantity", Fuaran.Core.JInt 50 ]
+                            Fuaran.Core.JObj
+                                [ "medication", Fuaran.Core.JStr "Paracetamol"
+                                  "quantity", Fuaran.Core.JInt 12 ] ]
+                  )
+
+              let seeded =
+                  { BindingResolver.empty with
+                      State = Map.ofList [ "request-log", written ] }
+
+              Expect.isTrue
+                  (contains ">3<" (Render.render seeded live))
+                  "a seeded state store re-derives the count server-side"
           } ]

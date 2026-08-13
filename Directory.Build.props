@@ -180,8 +180,26 @@
          change. `DriverServices` gains a record field (hosts constructing
          via the documented `create ... with` pattern are unaffected), and
          a public-contract addition never rides a same-version repack
-         (the 0.6.0 precedent), so it takes its own version. -->
-    <Version>0.22.0</Version>
+         (the 0.6.0 precedent), so it takes its own version.
+         0.23.0 (fuaran#818) - the reactive-derivation first cut, one
+         rule (operator-approved 2026-08-13: O1+O2+O3 together, the
+         `valueFrom` field name, and the grid-sort header affordance
+         pulled INTO the first cut): any read slot that takes a literal
+         may take a Binding, evaluated with subscription semantics, the
+         Transform verbs the only computation vocabulary. O1 - Transform
+         sources shaped as State/Selection/Query bindings are PRESERVED
+         (`TransformSource.Data | Live`) and re-evaluated live (the 815
+         snapshot upgraded in place; canonical re-encode reproduces the
+         binding-shaped source byte-for-byte). O3 - `SetState.valueFrom`
+         (value XOR valueFrom; dispatch-time evaluation inside the
+         existing gate). Plus `DataGridSpec.sortStateKey` (sortable
+         data-bound grid headers writing a `{column, direction}` state
+         descriptor; runtime-side row sort). O2 (`Switch.on`) had
+         already shipped as fuaran#768. Source-breaking DU/record
+         changes (`Binding.Transform` source slot, `Action.SetState`
+         arity, `DataGridSpec` field) are pre-1.0 minor per the 0.5.0
+         precedent; the wire is additive. -->
+    <Version>0.23.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -442,7 +442,8 @@ let tests =
                   { Id = "orders-grid"
                     Kind =
                       NodeKind.DataGrid(
-                          { Source = Binding.Static(Some Seq.empty)
+                          { SortStateKey = None
+                            Source = Binding.Static(Some Seq.empty)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns = []
@@ -484,7 +485,8 @@ let tests =
                       "cht"
                       { Defaults.chart<Msg> with
                           Kind = ChartKind.Bar
-                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], None)
+                          Source =
+                              Binding.Transform(TransformSource.Data(Fuaran.Core.DataSource.Embedded table), [], None)
                           XField = "quarter"
                           YFields = [ "revenu" ] } // typo — absent from the schema
 
@@ -509,7 +511,8 @@ let tests =
                       "cht"
                       { Defaults.chart<Msg> with
                           Kind = ChartKind.Bar
-                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], None)
+                          Source =
+                              Binding.Transform(TransformSource.Data(Fuaran.Core.DataSource.Embedded table), [], None)
                           XField = "quarter"
                           YFields = [ "revenue" ] }
 
@@ -526,7 +529,7 @@ let tests =
                           Kind = ChartKind.Bar
                           Source =
                               Binding.Transform(
-                                  Fuaran.Core.DataSource.Embedded table,
+                                  TransformSource.Data(Fuaran.Core.DataSource.Embedded table),
                                   [ Fuaran.Core.Transform.Derive("variance", Fuaran.Core.ColExpr.Col "revenue") ],
                                   None
                               )
@@ -550,7 +553,8 @@ let tests =
                       "cht"
                       { Defaults.chart<Msg> with
                           Kind = ChartKind.Bar
-                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], None)
+                          Source =
+                              Binding.Transform(TransformSource.Data(Fuaran.Core.DataSource.Embedded table), [], None)
                           XField = "name"
                           YFields = [ "name" ] } // string column as a value series
 
@@ -567,7 +571,8 @@ let tests =
                       "cht2"
                       { Defaults.chart<Msg> with
                           Kind = ChartKind.Scatter
-                          Source = Binding.Transform(Fuaran.Core.DataSource.Embedded table, [], None)
+                          Source =
+                              Binding.Transform(TransformSource.Data(Fuaran.Core.DataSource.Embedded table), [], None)
                           XField = "name" // scatter x must be numeric
                           YFields = [ "score" ] }
 

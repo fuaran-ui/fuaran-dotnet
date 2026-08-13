@@ -1055,7 +1055,7 @@ let buttonJsonPayloads: Node<obj> =
               OnClick =
                 Action.Chain
                     [ Action.Notify("audit.channel", awkward)
-                      Action.SetState("draft", awkward)
+                      Action.SetState("draft", Some(awkward), None)
                       Action.AiTool("summarise", awkward) ]
               Variant = ButtonVariant.Primary
               Icon = None
@@ -1611,7 +1611,8 @@ let gridVis: Node<obj> =
     node
         "grid-1"
         (NodeKind.DataGrid(
-            { Source =
+            { SortStateKey = None
+              Source =
                 // fuaran#665 — typed rows: a Static rows payload IS wire-representable
                 // (int cells ride rule 5's integer form). Mirrors Fuaran-Core's
                 // authored `gridNode` sample byte-for-byte.
@@ -1682,7 +1683,8 @@ let gridTonedPill: Node<obj> =
     node
         "grid-toned-pill"
         (NodeKind.DataGrid(
-            { Source = Binding.Transform(source, [], None)
+            { SortStateKey = None
+              Source = Binding.Transform(TransformSource.Data(source), [], None)
               RowKey = None
               RowKeyField = Some "id"
               Columns =
@@ -1765,7 +1767,8 @@ let gridEditableState: Node<obj> =
     node
         "grid-editable-state"
         (NodeKind.DataGrid(
-            { Source = Binding.State("planRows", Some(Seq.ofList planRows))
+            { SortStateKey = None
+              Source = Binding.State("planRows", Some(Seq.ofList planRows))
               RowKey = None
               RowKeyField = Some "month"
               Columns =
@@ -1826,7 +1829,8 @@ let gridTransform: Node<obj> =
     node
         "grid-transform"
         (NodeKind.DataGrid(
-            { Source = Binding.Transform(source, pipeline, None)
+            { SortStateKey = None
+              Source = Binding.Transform(TransformSource.Data(source), pipeline, None)
               RowKey = Some(fun _ -> "<closure>")
               RowKeyField = None
               Columns = []
@@ -1856,9 +1860,10 @@ let gridTransformParam: Node<obj> =
     node
         "grid-transform-param"
         (NodeKind.DataGrid(
-            { Source =
+            { SortStateKey = None
+              Source =
                 Binding.Transform(
-                    source,
+                    TransformSource.Data(source),
                     pipeline,
                     Some
                         [ { From = Binding.Filter("dept", None)
@@ -1895,7 +1900,8 @@ let gridFieldNamed: Node<obj> =
     node
         "grid-field-named"
         (NodeKind.DataGrid(
-            { Source = Binding.Transform(source, [], None)
+            { SortStateKey = None
+              Source = Binding.Transform(TransformSource.Data(source), [], None)
               RowKey = None
               RowKeyField = Some "dept"
               Columns = [ fieldCol "Dept" "dept"; fieldCol "Amount" "amount" ]
@@ -1946,7 +1952,8 @@ let masterDetailPreselected: Node<obj> =
                 [ node
                       "ticket-grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Transform(source, [], None)
+                          { SortStateKey = None
+                            Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns = [ fieldCol "Ticket" "id"; fieldCol "Priority" "priority" ]
@@ -1997,9 +2004,10 @@ let masterDetailPreselected: Node<obj> =
                   node
                       "related-grid"
                       (NodeKind.DataGrid(
-                          { Source =
+                          { SortStateKey = None
+                            Source =
                               Binding.Transform(
-                                  source,
+                                  TransformSource.Data(source),
                                   [ Fuaran.Core.Filter(
                                         Fuaran.Core.Binary(
                                             Fuaran.Core.Eq,
@@ -2106,7 +2114,8 @@ let masterDetailMultiField: Node<obj> =
                 [ node
                       "ticket-grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Transform(source, [], None)
+                          { SortStateKey = None
+                            Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns =
@@ -2245,7 +2254,8 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                 [ node
                       "ticket-grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Transform(source, [], None)
+                          { SortStateKey = None
+                            Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns =
@@ -2288,7 +2298,9 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                   node
                       "related-grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Transform(source, [ filterById ], Some [ ticketIdParam ])
+                          { SortStateKey = None
+                            Source =
+                              Binding.Transform(TransformSource.Data(source), [ filterById ], Some [ ticketIdParam ])
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns =
@@ -2308,7 +2320,7 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                             Body =
                               TextSource.Bound(
                                   Binding.Transform(
-                                      source,
+                                      TransformSource.Data(source),
                                       [ filterById; Fuaran.Core.Project [ "note", "note" ]; Fuaran.Core.Limit(1, 0) ],
                                       Some [ ticketIdParam ]
                                   )
@@ -2391,9 +2403,10 @@ let nowEnvironmentBinding: Node<obj> =
                   node
                       "overdue-grid"
                       (NodeKind.DataGrid(
-                          { Source =
+                          { SortStateKey = None
+                            Source =
                               Binding.Transform(
-                                  source,
+                                  TransformSource.Data(source),
                                   // days overdue = dateDiffDays(today, due) — the
                                   // param is the ONLY new part; the verb is Core's.
                                   [ Fuaran.Core.Derive(
@@ -2458,7 +2471,8 @@ let scalarTransformComposition: Node<obj> =
                 [ node
                       "scalar-ticket-grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Transform(source, [], None)
+                          { SortStateKey = None
+                            Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns =
@@ -2485,7 +2499,7 @@ let scalarTransformComposition: Node<obj> =
                           { Label =
                               TextSource.Bound(
                                   Binding.Transform(
-                                      source,
+                                      TransformSource.Data(source),
                                       [ Fuaran.Core.Filter(
                                             Fuaran.Core.Binary(
                                                 Fuaran.Core.Eq,
@@ -2513,7 +2527,7 @@ let scalarTransformComposition: Node<obj> =
                             Body =
                               TextSource.Bound(
                                   Binding.Transform(
-                                      source,
+                                      TransformSource.Data(source),
                                       [ Fuaran.Core.Filter(
                                             Fuaran.Core.Binary(
                                                 Fuaran.Core.Eq,
@@ -2577,7 +2591,7 @@ let filterableStaticDashboard: Node<obj> =
     // Both consumers share the same wiring; a fresh Binding per consumer.
     let filteredSource () =
         Binding.Transform(
-            source,
+            TransformSource.Data(source),
             [ Fuaran.Core.Filter(
                   Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "region", Fuaran.Core.Param "region")
               )
@@ -2637,7 +2651,8 @@ let filterableStaticDashboard: Node<obj> =
                   node
                       "episode-grid"
                       (NodeKind.DataGrid(
-                          { Source = filteredSource ()
+                          { SortStateKey = None
+                            Source = filteredSource ()
                             RowKey = None
                             RowKeyField = Some "month"
                             Columns = [ fieldCol "Month" "month"; fieldCol "Retention" "retention" ]
@@ -2669,7 +2684,8 @@ let table: Node<obj> =
         (
         // Phase 393 — the static read-only table is now the `StaticRows` mode of `DataGrid`.
         NodeKind.DataGrid
-            { Source = Binding.Static(Some Seq.empty)
+            { SortStateKey = None
+              Source = Binding.Static(Some Seq.empty)
               RowKey = None
               RowKeyField = None
               Columns = []
@@ -2697,7 +2713,8 @@ let tableSortable: Node<obj> =
     node
         "table-sortable-1"
         (NodeKind.DataGrid
-            { Source = Binding.Static(Some Seq.empty)
+            { SortStateKey = None
+              Source = Binding.Static(Some Seq.empty)
               RowKey = None
               RowKeyField = None
               Columns = []
@@ -2858,7 +2875,8 @@ let switchOnSelection: Node<obj> =
                 [ node
                       "ward-grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Transform(source, [], None)
+                          { SortStateKey = None
+                            Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns = [ fieldCol "Ward" "id"; fieldCol "Status" "status" ]
@@ -3286,6 +3304,96 @@ let formatBindings: Node<obj> =
         ))
         None
 
+// ─── Phase 818 — the reactive-derivation first cut ────────────────────────
+//
+// Four wire shapes, one rule (any read slot may take a Binding; subscription
+// semantics; the Transform verbs stay the only computation vocabulary):
+//   1. a LIVE State-sourced Transform — the Tier-D count badge done right
+//      (the 815 snapshot upgraded: the source binding is preserved, its
+//      carried defaultValue is the initial snapshot);
+//   2. `SetState.valueFrom` — a derived state write (value XOR valueFrom);
+//   3. `sortStateKey` — the data-bound grid-sort header affordance.
+// (`Switch.on` shipped with Phase 768 — `switchOnSelection` above pins it.)
+
+/// The Tier-D count badge, live: a Badge whose label derives from a
+/// State-carried request log (initial rows in the binding's defaultValue), so
+/// a `SetState("request-log", …)` re-derives the count.
+let badgeTransformLive: Node<obj> =
+    let defaultRows =
+        JArr
+            [ JObj [ "medication", JStr "Amoxicillin"; "quantity", JInt 20 ]
+              JObj [ "medication", JStr "Ibuprofen"; "quantity", JInt 50 ] ]
+
+    let source: Binding<JVal> = Binding.State("request-log", Some defaultRows)
+
+    let initial =
+        match Fuaran.UI.HostPrelude.TransformLive.initialSource defaultRows with
+        | Ok ds -> ds
+        | Error e -> failwithf "badgeTransformLive initial snapshot failed: %A" e
+
+    let pipeline =
+        [ Fuaran.Core.GroupBy(
+              [],
+              [ { Name = "n"
+                  Fn = Fuaran.Core.AggFn.Count
+                  Of = "medication" } ]
+          ) ]
+
+    node
+        "badge-transform-live"
+        (NodeKind.Badge(
+            { Label = TextSource.Bound(Binding.Transform(TransformSource.Live(source, initial), pipeline, None))
+              Variant = BadgeVariant.Info }
+        ))
+        None
+
+/// A derived state write: clicking the button writes the SELECTED row's `id`
+/// field to the `chosen-id` state slot — `valueFrom` evaluated at dispatch
+/// time, no closure, no literal.
+let buttonSetStateValueFrom: Node<obj> =
+    let selectedId: Binding<JVal> =
+        Binding.Selection("orders-grid", Binding.projectSelectionField<JVal> "id", None, Some "id")
+
+    node
+        "button-setstate-valuefrom"
+        (NodeKind.Button(
+            { Label = TextSource.Literal "Track this order"
+              OnClick = Action.SetState("chosen-id", None, Some selectedId)
+              Variant = ButtonVariant.Secondary
+              Icon = None
+              Tooltip = None
+              Disabled = None }
+        ))
+        None
+
+/// The data-bound grid-sort affordance: `sortStateKey` names the State slot
+/// carrying `{column, direction}`; the runtime renders sortable headers
+/// (field-named columns only) and sorts resolved rows by the descriptor.
+let gridSortStateKey: Node<obj> =
+    let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-sort-state-key"
+        (NodeKind.DataGrid(
+            { SortStateKey = Some "inventory-sort"
+              Source = Binding.State("inventory", Some(Seq.ofList planRows))
+              RowKey = None
+              RowKeyField = Some "month"
+              Columns =
+                [ col "Month" "month" CellKindErased.Text
+                  col "Revenue" "revenue" CellKindErased.Numeric ]
+              OnRowClick = None
+              Editable = false
+              StaticRows = None }
+        ))
+        None
+
 // ─── Public collections ─────────────────────────────────────────────────
 
 let allNodes: (string * Node<obj>) list =
@@ -3383,6 +3491,11 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Chart (Phase 663/665 — chart on the editable grid's state key)", chartStateRows
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
+      "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey
+      "Display/Badge (Phase 818 — LIVE State-sourced Transform: the Tier-D count badge, preserved source + initial snapshot)",
+      badgeTransformLive
+      "Input/Button (Phase 818 — SetState.valueFrom: a derived state write from the selected row's field)",
+      buttonSetStateValueFrom
       "Visualisation/Map", mapVis
       "Custom", custom
       "Custom (bounded escape, StrictReplay hash + exposed-ids)", customBounded

@@ -52,6 +52,7 @@
          display kind: wire round-trips, the shared duration decomposition
          (via Fuaran.UI.Renderer.Core), and the didactic enum rejects. -->
     <Compile Include="DurationFormatTests.fs" />
+    <Compile Include="ReactiveDerivationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

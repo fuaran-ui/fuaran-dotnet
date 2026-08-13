@@ -723,7 +723,7 @@ let private validateCore
             // remove — and no static output-schema derivation exists yet, so
             // it deliberately passes ungrounded rather than false-positive).
             (match spec.Source with
-             | Binding.Transform(DataSource.Embedded table, [], _) ->
+             | Binding.Transform(TransformSource.Data(DataSource.Embedded table), [], _) ->
                  let colType (name: string) : ColumnType option =
                      table.Schema |> List.tryFind (fun (c, _) -> c = name) |> Option.map snd
 

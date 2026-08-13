@@ -446,13 +446,20 @@ let all: LenientFixture list =
         Description =
           "fuaran#815 — ROW-MAJOR Transform source (an array of row objects) transposes to canonical columnar: first-row key set, absent cells null" }
 
+      // Phase 818 upgraded this pair's SEMANTICS in place: the State-shaped
+      // source is no longer unwrapped to a snapshot — it is PRESERVED as a
+      // LIVE source (re-evaluated when the state key changes) and is itself
+      // the canonical spelling, so the pair pins that the shape round-trips
+      // byte-for-byte (one wire dialect) instead of normalising away. The
+      // initial snapshot (SSR / diagnostic evaluation) still derives from the
+      // carried defaultValue exactly as the 815 unwrap did.
       { Id = "lenient-transform-source-state-rows"
         LenientJson =
           """{"id":"len-tf-state-rows","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[],"source":{"$type":"State","defaultValue":[{"dept":"ops","waitMins":12},{"dept":"eng","waitMins":31}],"key":"waitTimes"}}},"variant":"Neutral"}}"""
         VerboseJson =
-          """{"id":"len-tf-state-rows","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[],"source":{"columns":{"dept":{"validity":[true,true],"values":["ops","eng"]},"waitMins":{"validity":[true,true],"values":[12,31]}},"schema":[{"name":"dept","type":"string"},{"name":"waitMins","type":"int"}]}}},"variant":"Neutral"}}"""
+          """{"id":"len-tf-state-rows","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[],"source":{"$type":"State","defaultValue":[{"dept":"ops","waitMins":12},{"dept":"eng","waitMins":31}],"key":"waitTimes"}}},"variant":"Neutral"}}"""
         Description =
-          "fuaran#815 — the Tier-D pilot shape: a State binding WRAPPER around row-major data in the Transform source slot unwraps to its defaultValue (initial-snapshot semantics), then transposes to canonical columnar" }
+          "fuaran#815/fuaran#818 — the Tier-D pilot shape: a State binding as the Transform source is preserved as a LIVE source (subscription semantics; the carried defaultValue is the initial snapshot) and round-trips byte-for-byte — the canonical spelling, not a shorthand" }
 
       { Id = "lenient-transform-flat-or"
         LenientJson =

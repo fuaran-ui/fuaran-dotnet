@@ -299,6 +299,10 @@ let private defs: (string * J) list =
             // decompose" posture as obj-erased `Static.value` (§5 / §13).
             // `params` (Phase 424) is optional (omitted-when-empty) — each entry binds a `ColExpr.Param`
             // name to a scalar `Binding` source; absent leaves the Phase 282 shape byte-identical.
+            // `source` (Phase 818) is EITHER a Fuaran.Core DataSource object OR a live
+            // binding-shaped source (`{"$type":"State"|"Selection"|"Query",…}` — preserved for
+            // subscription-semantics re-evaluation); both are objects, so the structural
+            // `object_` posture above covers the widened slot without re-deriving either shape.
             duCase
                 "Transform"
                 [ "pipeline"; "source" ]
@@ -332,7 +336,22 @@ let private defs: (string * J) list =
             duCase "Call" [ "endpoint" ] [ "endpoint", str; "onResult", closure; "into", ref "CallResultTarget" ]
             duCase "Notify" [ "channel"; "payload" ] [ "channel", str; "payload", jsonValue ]
             duCase "Navigate" [ "route" ] [ "route", str ]
-            duCase "SetState" [ "key"; "value" ] [ "key", str; "value", jsonValue ]
+            // Phase 818 — `value` XOR `valueFrom` (a Binding evaluated at
+            // dispatch time): both leave `required`, and the `oneOf` over the
+            // two required-lists is the exclusive-or itself — neither-present
+            // fails (the decoder's MISSING_FIELD) AND both-present fails (the
+            // decoder's didactic), so the schema mirrors the decoder on both
+            // edges. (The Switch stateKey/on precedent uses `anyOf` because
+            // its decoder tolerates both; SetState's does not.)
+            JObj
+                [ "allOf",
+                  JArr
+                      [ duCase "SetState" [ "key" ] [ "key", str; "value", jsonValue; "valueFrom", ref "Binding" ]
+                        JObj
+                            [ "oneOf",
+                              JArr
+                                  [ JObj [ "required", JArr [ JStr "value" ] ]
+                                    JObj [ "required", JArr [ JStr "valueFrom" ] ] ] ] ] ]
             duCase "AiTool" [ "args"; "toolName" ] [ "args", jsonValue; "toolName", str ]
             duCase "Chain" [ "ops" ] [ "ops", arrayOf (ref "Action") ]
             duCase "CommitLocal" [ "nodeId" ] [ "nodeId", str ]
@@ -800,6 +819,10 @@ let private defs: (string * J) list =
             "editable", boolean
             "rowKey", closure
             "rowKeyField", str
+            // Phase 818 — the grid-sort header affordance: the State key
+            // carrying the `{column, direction}` sort descriptor a data-bound
+            // grid's runtime sorts by (and whose sortable headers write).
+            "sortStateKey", str
             "source", ref "Binding"
             "onRowClick", closure
             // Phase 393 — the static read-only mode (folded in from the retired `Table`).

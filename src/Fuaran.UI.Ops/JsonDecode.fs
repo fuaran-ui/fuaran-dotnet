@@ -1879,14 +1879,71 @@ and private bindingGeneric<'T>
                     match requireField path fields "pipeline" "Transform pipeline array" with
                     | Error e -> Error e
                     | Ok pipeJ ->
-                        let sourceR =
+                        let sourceR: Result<TransformSource, DecodeError> =
                             // Phase 815 — normalise the two observed organic
                             // shapes (State/Static wrapper; row-major rows)
                             // to canonical columnar before Core decodes.
-                            jsonToJVal 1 (path + ".source") (normaliseTransformSource srcJ)
-                            |> Result.bind (fun v ->
-                                Fuaran.Core.ColumnCodec.decodeJson v
-                                |> Result.mapError (coreError (path + ".source")))
+                            // Phase 818 — a binding-shaped source (State /
+                            // Selection / Query `$type`) is now PRESERVED as
+                            // `TransformSource.Live` so a runtime re-evaluates
+                            // the pipeline when the binding's channel changes.
+                            // The initial snapshot still derives through the
+                            // same 815 normalisation, so SSR output and the
+                            // didactics (ragged rows; a State wrapper carrying
+                            // NO data) are byte-identical to the snapshot era.
+                            let snapshot () =
+                                jsonToJVal 1 (path + ".source") (normaliseTransformSource srcJ)
+                                |> Result.bind (fun v ->
+                                    Fuaran.Core.ColumnCodec.decodeJson v
+                                    |> Result.mapError (coreError (path + ".source")))
+
+                            let liveTag =
+                                match srcJ with
+                                | JObject sf ->
+                                    (match Map.tryFind "$type" sf with
+                                     | Some(JString(("State" | "Selection" | "Query") as t)) -> Some t
+                                     | _ -> None)
+                                | _ -> None
+
+                            match liveTag with
+                            | None -> snapshot () |> Result.map TransformSource.Data
+                            | Some tag ->
+                                decodeBindingJVal (path + ".source") srcJ
+                                |> Result.bind (fun b ->
+                                    let carried =
+                                        match b with
+                                        | Binding.State(_, dv) -> dv
+                                        | Binding.Selection(_, _, dv, _) -> dv
+                                        | _ -> None
+
+                                    match carried, tag with
+                                    | Some _, "State" ->
+                                        // The carried data IS the initial snapshot;
+                                        // the Json-level 815 path keeps the ragged-
+                                        // rows didactic byte-identical.
+                                        snapshot () |> Result.map (fun initial -> TransformSource.Live(b, initial))
+                                    | Some data, _ ->
+                                        // A Selection default may be scalar / row
+                                        // shaped; a non-table default starts from
+                                        // the empty snapshot (runtime evaluation
+                                        // stays loud on a non-tabular value).
+                                        (match Fuaran.UI.HostPrelude.TransformLive.initialSource data with
+                                         | Ok initial -> Ok(TransformSource.Live(b, initial))
+                                         | Error _ ->
+                                             Ok(
+                                                 TransformSource.Live(
+                                                     b,
+                                                     Fuaran.UI.HostPrelude.TransformLive.emptySource
+                                                 )
+                                             ))
+                                    | None, "State" ->
+                                        // A State wrapper carrying NO data still
+                                        // errors didactically (the 815 posture) —
+                                        // the columnar codec names the missing
+                                        // canonical field.
+                                        snapshot () |> Result.map TransformSource.Data
+                                    | None, _ ->
+                                        Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource)))
 
                         let pipelineR =
                             jsonToJVal 1 (path + ".pipeline") pipeJ
@@ -2442,15 +2499,35 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                 | Error e -> Error e
                 | Ok v -> requireString (path + ".route") v |> Result.map Action.Navigate
             | Ok "SetState" ->
+                // Phase 818 — `value` (a literal JSON value) XOR `valueFrom`
+                // (a Binding evaluated at dispatch time inside the existing
+                // gate). Exactly one must be present; both / neither error
+                // didactically naming both fields.
                 match requireField path fields "key" "state key string" with
                 | Error e -> Error e
                 | Ok kJ ->
                     match requireString (path + ".key") kJ with
                     | Error e -> Error e
                     | Ok key ->
-                        match requireField path fields "value" "JSON value" with
-                        | Error e -> Error e
-                        | Ok vJ -> decodeJVal (path + ".value") vJ |> Result.map (fun v -> Action.SetState(key, v))
+                        match tryField fields "value", tryField fields "valueFrom" with
+                        | Some _, Some _ ->
+                            err
+                                DecodeErrorCode.WRONG_TYPE
+                                (path + ".valueFrom")
+                                "SetState carries both 'value' and 'valueFrom' — exactly one is allowed"
+                                (Some
+                                    "either 'value' (a literal JSON value written verbatim) or 'valueFrom' (a Binding — State / Selection / Query / Transform — evaluated at dispatch time); remove one")
+                        | None, None ->
+                            missingField
+                                path
+                                "value"
+                                "a literal JSON value under 'value', or a Binding under 'valueFrom' (evaluated at dispatch time)"
+                        | Some vJ, None ->
+                            decodeJVal (path + ".value") vJ
+                            |> Result.map (fun v -> Action.SetState(key, Some v, None))
+                        | None, Some bJ ->
+                            decodeBindingJVal (path + ".valueFrom") bJ
+                            |> Result.map (fun b -> Action.SetState(key, None, Some b))
             | Ok "AiTool" ->
                 match requireField path fields "toolName" "AI tool name string" with
                 | Error e -> Error e
@@ -4465,6 +4542,14 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | None -> Ok None
             | Some fJ -> requireString (path + ".rowKeyField") fJ |> Result.map Some
 
+        // Phase 818 — the grid-sort header affordance: `sortStateKey` names the
+        // State key carrying the sort descriptor `{column, direction}` a
+        // data-bound grid's runtime sorts by (and whose headers write it).
+        let sortStateKeyR =
+            match tryField fields "sortStateKey" with
+            | None -> Ok None
+            | Some fJ -> requireString (path + ".sortStateKey") fJ |> Result.map Some
+
         // Phase 393 — the static read-only mode. `staticRows` (optional, omitted for a
         // data-bound grid so existing fixtures stay byte-identical) carries the retired
         // `Table`'s `TextSource` header/row matrix; when present the renderer emits static
@@ -4474,22 +4559,24 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | None -> Ok None
             | Some sJ -> decodeStaticRows (path + ".staticRows") sJ |> Result.map Some
 
-        match columnsR, editableR, sourceR, onRowClickR, rowKeyFieldR, staticRowsR with
-        | Ok columns, Ok editable, Ok source, Ok onRowClick, Ok rowKeyField, Ok staticRows ->
+        match columnsR, editableR, sourceR, onRowClickR, rowKeyFieldR, sortStateKeyR, staticRowsR with
+        | Ok columns, Ok editable, Ok source, Ok onRowClick, Ok rowKeyField, Ok sortStateKey, Ok staticRows ->
             Ok
                 { Source = source
                   RowKey = rowKey
                   RowKeyField = rowKeyField
+                  SortStateKey = sortStateKey
                   Columns = columns
                   OnRowClick = onRowClick
                   Editable = editable
                   StaticRows = staticRows }
-        | Error e, _, _, _, _, _
-        | _, Error e, _, _, _, _
-        | _, _, Error e, _, _, _
-        | _, _, _, Error e, _, _
-        | _, _, _, _, Error e, _
-        | _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, DecodeError> =
     match requireObject path j with

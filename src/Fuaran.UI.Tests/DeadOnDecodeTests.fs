@@ -85,7 +85,8 @@ let tests =
                   node
                       "grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Static(Some Seq.empty)
+                          { SortStateKey = None
+                            Source = Binding.Static(Some Seq.empty)
                             RowKey = Some(fun _ -> "<closure>")
                             RowKeyField = None
                             Columns =
@@ -159,7 +160,8 @@ let tests =
                   node
                       "grid"
                       (NodeKind.DataGrid(
-                          { Source = Binding.Static(Some Seq.empty)
+                          { SortStateKey = None
+                            Source = Binding.Static(Some Seq.empty)
                             RowKey = None
                             RowKeyField = Some "id"
                             Columns =

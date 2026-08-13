@@ -233,7 +233,11 @@ and [<RequireQualifiedAccess>] Binding<'T> =
     | Local of flushOn: LocalFlushTrigger * format: ('T -> string) * initialFrom: Binding<'T> * onCommit: ('T -> obj) option * parse: (string -> Result<'T, string>)
     | Format of source: Binding<float> * format: Format * locale: LocaleSource
     | I18n of key: string * args: Map<string, Binding<JVal>> option
-    | Transform of source: Fuaran.Core.DataSource * pipeline: Fuaran.Core.Transform list * ``params``: TransformParam list option
+    // Phase 818 — the source slot widened from `Fuaran.Core.DataSource` to the
+    // host `TransformSource` DU so a binding-shaped wire source (State /
+    // Selection / Query) is PRESERVED for live re-evaluation instead of being
+    // snapshotted at decode (the Phase-815 leniency's semantics upgrade).
+    | Transform of source: TransformSource * pipeline: Fuaran.Core.Transform list * ``params``: TransformParam list option
     | Invoke of capabilityId: string * args: InvokeArg list
 
 and [<RequireQualifiedAccess>] CellFormat =
@@ -263,7 +267,11 @@ and [<RequireQualifiedAccess>] Action<'Msg> =
     | Navigate of route: string
     | CommitLocal of nodeId: string
     | Notify of channel: string * payload: JVal
-    | SetState of key: string * value: JVal
+    // Phase 818 — `valueFrom` (a Binding evaluated at dispatch time inside the
+    // existing gate) is a SIBLING of the literal `value`; decode enforces
+    // value XOR valueFrom. `value` became an option in the same change so the
+    // valueFrom-only wire shape is representable without a placeholder.
+    | SetState of key: string * value: JVal option * valueFrom: Binding<JVal> option
     | AiTool of toolName: string * args: JVal
 
 and [<RequireQualifiedAccess>] CallResultTarget =
@@ -490,6 +498,19 @@ and TransformParam =
       From: Binding<JVal>
       Name: string
     }
+
+/// Phase 818 — a `Binding.Transform`'s source slot (hand-added ahead of the
+/// IDL backfill — the Phase 812 `LinkProtection` precedent). `Data` is the
+/// canonical columnar / `ref` source (the pre-818 shape, byte-identical on the
+/// wire). `Live` preserves a binding-shaped source (State / Selection / Query)
+/// verbatim so a runtime re-evaluates the Transform with subscription
+/// semantics when the binding's channel changes; `initial` is the decode-time
+/// snapshot table derived from the binding's carried default data (never
+/// encoded — the binding IS the wire form), which SSR / diagnostic evaluation
+/// reads, byte-identical to the Phase-815 snapshot for the same input.
+and [<RequireQualifiedAccess>] TransformSource =
+    | Data of source: Fuaran.Core.DataSource
+    | Live of binding: Binding<JVal> * initial: Fuaran.Core.DataSource
 
 and RangePair =
     {
@@ -835,6 +856,16 @@ and DataGridSpec<'Msg> =
       Editable: bool
       RowKey: (Fuaran.Core.Row -> string) option
       RowKeyField: string option
+      // Phase 818 — the grid-sort header affordance for a DATA-BOUND grid:
+      // names the State key carrying the sort descriptor
+      // `{"column": <index>, "direction": "asc"|"desc"}`. When set, the
+      // runtime renders sortable column headers (a header click writes the
+      // toggled descriptor via the SetState path) and sorts its resolved rows
+      // by the state-carried descriptor before rendering. Sorting keys off the
+      // clicked column's `field` — a field-less closure column renders without
+      // the affordance. Omitted on the wire when absent; `staticRows`' own
+      // Phase-801 sort intent is untouched.
+      SortStateKey: string option
       Source: Binding<Fuaran.Core.Row seq>
       StaticRows: StaticRows option
       OnRowClick: (Fuaran.Core.Row -> Action<'Msg>) option
@@ -1236,7 +1267,11 @@ and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>") ] |> List.choose id)
     | Binding.Format (source, format, locale) -> Canon.typed "Format" [ "source", (encBinding JFloat) source; "format", encFormat format; "locale", encLocaleSource locale ]
     | Binding.I18n (key, args) -> Canon.typed "I18n" ([ Some("key", JStr key); (args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (encBinding id) v))) v)) ] |> List.choose id)
-    | Binding.Transform (source, pipeline, ``params``) -> Canon.typed "Transform" ([ Some("source", Fuaran.Core.ColumnCodec.encodeJson source); Some("pipeline", JArr(List.map Fuaran.Core.DataFrameCodec.encodeTransform pipeline)); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
+    // Phase 818 — a `Data` source keeps the Core columnar encoding
+    // byte-identical; a `Live` source re-encodes the preserved binding itself
+    // (one wire dialect — the State/Selection/Query-shaped source round-trips
+    // byte-for-byte; the derived `initial` snapshot is never encoded).
+    | Binding.Transform (source, pipeline, ``params``) -> Canon.typed "Transform" ([ Some("source", (match source with | TransformSource.Data ds -> Fuaran.Core.ColumnCodec.encodeJson ds | TransformSource.Live (b, _) -> (encBinding id) b)); Some("pipeline", JArr(List.map Fuaran.Core.DataFrameCodec.encodeTransform pipeline)); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
     | Binding.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
 
 and private encCellFormat (v: CellFormat) : JVal =
@@ -1262,7 +1297,9 @@ and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     | Action.Navigate route -> Canon.typed "Navigate" [ "route", JStr route ]
     | Action.CommitLocal nodeId -> Canon.typed "CommitLocal" [ "nodeId", JStr nodeId ]
     | Action.Notify (channel, payload) -> Canon.typed "Notify" [ "channel", JStr channel; "payload", id payload ]
-    | Action.SetState (key, value) -> Canon.typed "SetState" [ "key", JStr key; "value", id value ]
+    // Phase 818 — `value` / `valueFrom` are XOR siblings; each is emitted only
+    // when present (Canon sorts keys, so the field order stays alphabetical).
+    | Action.SetState (key, value, valueFrom) -> Canon.typed "SetState" ([ Some("key", JStr key); (value |> Option.map (fun v -> "value", v)); (valueFrom |> Option.map (fun b -> "valueFrom", (encBinding id) b)) ] |> List.choose id)
     | Action.AiTool (toolName, args) -> Canon.typed "AiTool" [ "toolName", JStr toolName; "args", id args ]
 
 and private encCallResultTarget (v: CallResultTarget) : JVal =
@@ -1547,7 +1584,7 @@ and private encFiltersSpec<'Msg> (s: FiltersSpec<'Msg>) : JVal =
     Canon.typed "Filters" ([ Some("items", JArr(List.map encFilterSpec s.Items)) ] |> List.choose id)
 
 and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
-    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encChartSpec<'Msg> (s: ChartSpec<'Msg>) : JVal =
     Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
@@ -1582,6 +1619,12 @@ let encodeNodeJson (n: Node<'Msg>) : JVal = encNode n
 let encodeNodeKindJson (k: NodeKind<'Msg>) : JVal = encNodeKind k
 
 let encodeStateBehaviourJson (s: StateBehaviour<'Msg>) : JVal = encStateBehaviour s
+
+// Phase 818 — JVal-level accessor for a data-shaped Action (hand-added; the
+// `encodeNodeKindJson` precedent): the server resume script re-encodes a
+// `SetState` whose payload is a `valueFrom` Binding through the canonical
+// encoder rather than growing a second hand-rolled binding encoder.
+let encodeActionJson (a: Action<'Msg>) : JVal = encAction a
 
 let encodeSemanticStyleJson (s: SemanticStyle) : JVal = encSemanticStyle s
 
@@ -2022,7 +2065,14 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             dOpt "args" __fs (dMap (decBinding dJson)) |> Result.bind (fun args ->
             Ok(Binding.I18n(key, args))))
         | "Transform" ->
-            dReq "source" __fs (fun __j -> Fuaran.Core.ColumnCodec.decodeJson __j |> Result.mapError string) |> Result.bind (fun source ->
+            // Phase 818 — a binding-shaped source (State / Selection / Query
+            // `$type`) is preserved as `TransformSource.Live`; the initial
+            // snapshot derives from the binding's carried default data via the
+            // host-prelude helpers (a State source must carry data — the
+            // Phase-815 posture; Selection/Query fall back to the empty
+            // table). Anything else decodes through Core's columnar codec as
+            // before, byte-identical.
+            dReq "source" __fs (fun __j -> decTransformSource __j) |> Result.bind (fun source ->
             dReq "pipeline" __fs (dList (fun __j -> Fuaran.Core.DataFrameCodec.decodeTransform __j |> Result.mapError string)) |> Result.bind (fun pipeline ->
             dOpt "params" __fs (dList decTransformParam) |> Result.bind (fun ``params`` ->
             Ok(Binding.Transform(source, pipeline, ``params``)))))
@@ -2107,9 +2157,15 @@ and private decAction (j: JVal) : Result<Action<obj>, string> =
             dReq "payload" __fs dJson |> Result.bind (fun payload ->
             Ok(Action.Notify(channel, payload))))
         | "SetState" ->
+            // Phase 818 — value XOR valueFrom (a literal, or a Binding
+            // evaluated at dispatch time); exactly one must be present.
             dReq "key" __fs dStr |> Result.bind (fun key ->
-            dReq "value" __fs dJson |> Result.bind (fun value ->
-            Ok(Action.SetState(key, value))))
+            dOpt "value" __fs dJson |> Result.bind (fun value ->
+            dOpt "valueFrom" __fs (decBinding dJson) |> Result.bind (fun valueFrom ->
+            match value, valueFrom with
+            | Some _, Some _ -> Error "SetState carries both 'value' and 'valueFrom' — exactly one is allowed ('value' is a literal; 'valueFrom' derives the written value from a Binding at dispatch time)"
+            | None, None -> Error "SetState requires 'value' (a literal JSON value) or 'valueFrom' (a Binding evaluated at dispatch time)"
+            | _ -> Ok(Action.SetState(key, value, valueFrom)))))
         | "AiTool" ->
             dReq "toolName" __fs dStr |> Result.bind (fun toolName ->
             dReq "args" __fs dJson |> Result.bind (fun args ->
@@ -2623,6 +2679,50 @@ and private decTransformParam (j: JVal) : Result<TransformParam, string> =
     dReq "name" __fs dStr |> Result.bind (fun name ->
     Ok { From = from; Name = name })))
 
+// Phase 818 — the Transform source slot (hand-added ahead of the IDL
+// backfill). A `$type` of State / Selection / Query preserves the binding as
+// `TransformSource.Live` with the initial snapshot derived from its carried
+// default data (`Fuaran.UI.HostPrelude.TransformLive`); a State source with no
+// data is refused through the columnar codec so the didactic names the missing
+// canonical field (the Phase-815 posture). Every other shape decodes through
+// Core's columnar codec unchanged.
+and private decTransformSource (j: JVal) : Result<TransformSource, string> =
+    let asData (v: JVal) : Result<TransformSource, string> =
+        Fuaran.Core.ColumnCodec.decodeJson v |> Result.map TransformSource.Data |> Result.mapError string
+
+    match j with
+    | JObj fields ->
+        match fields |> List.tryFind (fun (k, _) -> k = "$type") with
+        | Some(_, JStr(("State" | "Selection" | "Query") as tag)) ->
+            decBinding dJson j |> Result.bind (fun b ->
+                let carried =
+                    match b with
+                    | Binding.State(_, dv) -> dv
+                    | Binding.Selection(_, _, dv, _) -> dv
+                    | _ -> None
+
+                match carried, tag with
+                | Some data, "State" ->
+                    // A State source's carried data IS the initial snapshot —
+                    // it must decode as a table (the Phase-815 posture).
+                    Fuaran.UI.HostPrelude.TransformLive.initialSource data
+                    |> Result.map (fun initial -> TransformSource.Live(b, initial))
+                    |> Result.mapError Fuaran.Core.ColumnCodec.errorString
+                | Some data, _ ->
+                    // A Selection default may legitimately be a scalar / row
+                    // shape rather than a table; fall back to the empty
+                    // initial (the runtime evaluation stays loud on mismatch).
+                    match Fuaran.UI.HostPrelude.TransformLive.initialSource data with
+                    | Ok initial -> Ok(TransformSource.Live(b, initial))
+                    | Error _ -> Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource))
+                | None, "State" ->
+                    // No carried data: surface the columnar codec's own
+                    // missing-field didactic (byte-identical to pre-818).
+                    asData j
+                | None, _ -> Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource)))
+        | _ -> asData j
+    | _ -> asData j
+
 and private decRangePair (j: JVal) : Result<RangePair, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "max" __fs dFloat |> Result.bind (fun max ->
@@ -2936,10 +3036,11 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, string> =
     dDef "editable" __fs dBool (false) |> Result.bind (fun editable ->
     (dPresent "rowKey" __fs |> Result.map (Option.map (fun () -> (fun _ -> "")))) |> Result.bind (fun rowKey ->
     dOpt "rowKeyField" __fs dStr |> Result.bind (fun rowKeyField ->
+    dOpt "sortStateKey" __fs dStr |> Result.bind (fun sortStateKey ->
     dReq "source" __fs (decBinding Fuaran.Core.RowCodec.decodeRows) |> Result.bind (fun source ->
     dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
     (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
-    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; Source = source; StaticRows = staticRows; OnRowClick = onRowClick }))))))))
+    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; Source = source; StaticRows = staticRows; OnRowClick = onRowClick })))))))))
 
 and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3194,7 +3295,7 @@ let mkFilters (id: string) (items: FilterSpec<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Fuaran.Core.Row seq>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkChart (id: string) (kind: ChartKind) (source: Binding<Fuaran.Core.Row seq>) (stacked: bool) (xField: string) (yFields: string list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

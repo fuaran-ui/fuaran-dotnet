@@ -1058,3 +1058,79 @@ pin KINDS — `Fuaran.UI.CSharp.Conformance.Tests/Coverage.cs` reflects `NodeKin
 analyzer pins `Vocabulary.Kinds` — so a payload-FIELD addition binds neither veneer and neither gate
 fails. Exposing the slots there is a follow-up, recorded here so it reads as a decision rather than
 an oversight.
+
+## Recorded change — 0.23.0, the reactive-derivation first cut (fuaran#818)
+
+**One rule, operator-approved 2026-08-13 (O1+O2+O3 together; the `valueFrom` field name; the
+grid-sort header affordance pulled INTO the first cut): any read slot that today takes a literal may
+take a Binding; the runtime evaluates bindings with subscription semantics; the Transform verb set is
+the only computation vocabulary.** The wire is additive; the host surface takes deliberate
+source-breaking changes classified pre-1.0 minor per the [Semver](#semver) note and the 0.5.0
+precedent.
+
+**O1 — live Transform sources.** A `Transform` whose `source` is binding-shaped
+(`{"$type":"State"|"Selection"|"Query",…}`) is now PRESERVED rather than snapshotted: the 0.20.0
+(fuaran#815) leniency decoded that shape as an initial-value snapshot; 0.23.0 upgrades its
+*semantics* without re-encoding anything.
+
+- Host type: `Binding.Transform`'s source slot widens from `Fuaran.Core.DataSource` to the host DU
+  `TransformSource` — `Data of Fuaran.Core.DataSource` (the pre-818 shape) `| Live of binding:
+  Binding<JVal> * initial: Fuaran.Core.DataSource`. `initial` is the decode-time snapshot derived
+  from the binding's carried default data (never encoded — the binding IS the wire form).
+  **Source-breaking for constructors and full-arity matches** on `Binding.Transform`; wildcard and
+  pass-through matches compile unchanged. `Fuaran.binding.transform`/`transformWith` keep their
+  `DataSource` signatures (they wrap); `binding.transformLive` is the new live-source constructor.
+- Wire: **one dialect** — canonical re-encode reproduces a binding-shaped source byte-for-byte
+  (pinned by the upgraded `lenient-transform-source-state-rows` corpus pair, whose expected file now
+  equals its input). A canonical columnar / `ref` source is byte-identical to 0.22.0.
+- Runtime: the resolver (`BindingResolver.evalTransformFrame`) resolves a `Live` source against the
+  reactive stores and evaluates the pipeline over the CURRENT data (row-major store values transpose
+  through the same 815 normalisation, now shared at `Fuaran.UI.HostPrelude.TransformLive`); an
+  unwritten store falls back to `initial`, which is what keeps SSR byte-identical to the 815
+  snapshot (pinned in `Renderer.Server.Tests`). The client reactive walk (`keysOfBinding`)
+  contributes the live source's channel keys, so a `SetState` on the source key re-evaluates every
+  reader. A State-shaped source still requires carried data (the 815 didactic for an empty wrapper is
+  unchanged); Selection/Query sources start from the empty table. Non-tabular live values error
+  loudly, never silently.
+- New public resolver surface: `BindingResolver.jvalOfResolved` (store-value → `JVal` lift, per-host
+  legs), `resolveJVal`, `readSortDescriptor`, `sortRowsByDescriptor`.
+
+**O2 — `Switch.on`.** Already shipped as fuaran#768 (0.16.x era): `on` accepts any Binding with
+`stateKey` as the compact State-form spelling. Re-pinned here as part of the family; no change.
+
+**O3 — `SetState.valueFrom`.** `Action.SetState` becomes
+`SetState of key: string * value: JVal option * valueFrom: Binding<JVal> option` — `valueFrom` is a
+SIBLING of `value`, never a reinterpretation (a binding-shaped object in the `value` slot remains a
+legitimate literal). Decode enforces value XOR valueFrom: both-present is a `WRONG_TYPE` didactic
+naming both fields (corpus `reject-setstate-value-and-valuefrom`; the schema's `oneOf` rejects it
+too), neither-present a `MISSING_FIELD` naming the alternative. `valueFrom` evaluates AT DISPATCH
+TIME inside the existing gate + host-reserved-key guard, on both the client runtime (`runAction`)
+and the bounded server driver (`BoundedActions`); an unresolved/unliftable source performs NO write
+and is warned/diagnosed. **Source-breaking for `Action.SetState` constructors/full-arity matches**;
+`Action.setState` keeps its two-argument signature and `Action.setStateFrom` is the derived-write
+constructor.
+
+**Grid-sort header affordance — `DataGridSpec.sortStateKey: string option`** (encode-omitted when
+absent; record-field addition breaks construction literals, compiler-forced). Semantics, for a
+DATA-BOUND grid: the runtime renders column headers as sortable affordances reusing the Phase-801
+static-table presentation vocabulary (`data-sortable` + live `aria-sort`; the reference CSS
+selectors now cover `.fuaran-grid-header` alongside `.fuaran-table-header`); clicking header N
+dispatches the equivalent of `SetState(sortStateKey, {"column": N, "direction": "asc"|"desc"})`
+(asc ⇄ desc toggle, routed through the ordinary tree-write path so gate/guard/scope apply); the grid
+sorts its RESOLVED rows by the state-carried descriptor before rendering (runtime-side sort — the
+author wires no Transform; empty cells last in both directions; stable ties; a malformed descriptor
+or out-of-range column leaves the authored order standing). **Sorting keys off the addressed
+column's `field`** — a field-less closure column is not sortable and renders without the affordance.
+SSR: the data-bound grid keeps its hydration placeholder (no state ⇒ natural source order); a
+`staticRows` grid's Phase-801 `sortable`/`defaultSort` path is untouched. The grid subscribes its
+`sortStateKey` on the State channel, so descriptor writes re-render it.
+
+**Corpus.** New node fixtures `badge-transform-live`, `button-setstate-valuefrom`,
+`grid-sort-state-key`; new reject fixture `reject-setstate-value-and-valuefrom`; the
+`lenient-transform-source-state-rows` pair upgraded in place; `schema.json` regenerated (SetState
+`oneOf`, `sortStateKey`, the widened Transform-source comment). `Switch.on` was already pinned by
+`switch-on-selection`. No pre-existing fixture moved a byte.
+
+**Host adoption.** The F# reference and the shared corpus land together; the TS/Python/Go/Rust legs
+follow by fixture (the 801 precedent). The C#/VB authoring veneers do not yet expose the new slots —
+same posture as 0.18.0, recorded as a decision.

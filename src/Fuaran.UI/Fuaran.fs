@@ -293,7 +293,26 @@ module binding =
     /// `Table` / `Metric`); the `Fuaran.UI.Ops` evaluator runs it via the `Fuaran.Core.DataFrame`
     /// reference evaluator. Authored idiomatically with the `Fuaran.Core.DataFrame` algebra ctors.
     let transform (source: Fuaran.Core.DataSource) (pipeline: Fuaran.Core.Transform list) : Binding<obj seq> =
-        Binding.Transform(source, pipeline, None)
+        Binding.Transform(TransformSource.Data source, pipeline, None)
+
+    /// A LIVE declarative dataframe transform (Phase 818 — the reactive-derivation first cut).
+    /// `source` is a binding (typically `binding.state` carrying initial rows in its default; a
+    /// `binding.selection` / `binding.query` also works) the runtime re-evaluates the pipeline
+    /// against with subscription semantics — a `SetState` on the key re-derives every reader.
+    /// The initial snapshot (what SSR / diagnostic evaluation reads) derives from the binding's
+    /// carried default data via the Phase-815 normalisation (row-major rows transpose to
+    /// columnar); a source with no carried table data starts from the empty table.
+    let transformLive (source: Binding<JVal>) (pipeline: Fuaran.Core.Transform list) : Binding<obj seq> =
+        let initial =
+            match source with
+            | Binding.State(_, Some data)
+            | Binding.Selection(_, _, Some data, _) ->
+                match HostPrelude.TransformLive.initialSource data with
+                | Ok ds -> ds
+                | Error _ -> HostPrelude.TransformLive.emptySource
+            | _ -> HostPrelude.TransformLive.emptySource
+
+        Binding.Transform(TransformSource.Live(source, initial), pipeline, None)
 
     /// A parameterised declarative dataframe transform (Phase 424). `parameters` binds each
     /// `ColExpr.Param` name the pipeline references to a scalar `Binding<JVal>` source (author a
@@ -310,7 +329,7 @@ module binding =
             parameters
             |> List.map (fun (name, fromB) -> ({ From = fromB; Name = name }: TransformParam))
 
-        Binding.Transform(source, pipeline, (if List.isEmpty ps then None else Some ps))
+        Binding.Transform(TransformSource.Data source, pipeline, (if List.isEmpty ps then None else Some ps))
 
     /// Invoke a host-registered compute capability for a value (Phase 283 — the Compute layer's
     /// hard-stuff seam). `capabilityId` references a `Fuaran.Core.Capability` in the host registry;
@@ -388,7 +407,14 @@ module Action =
 
     let navigate (route: string) : Action<'Msg> = Action.Navigate route
 
-    let setState (key: string) (value: JVal) : Action<'Msg> = Action.SetState(key, value)
+    let setState (key: string) (value: JVal) : Action<'Msg> = Action.SetState(key, Some value, None)
+
+    /// Phase 818 — write a DERIVED value to the State channel: `source` is a
+    /// Binding evaluated at dispatch time inside the existing gate (value XOR
+    /// valueFrom on the wire). Closes "set state from what the user
+    /// clicked/typed" without closures — e.g.
+    /// `action.setStateFrom "chosen-id" (binding.selectionField "grid" "id")`.
+    let setStateFrom (key: string) (source: Binding<JVal>) : Action<'Msg> = Action.SetState(key, None, Some source)
 
     let aiTool (toolName: string) (args: JVal) : Action<'Msg> = Action.AiTool(toolName, args)
 
@@ -1210,6 +1236,7 @@ module Fuaran =
             { Source = Binding.Static None
               RowKey = None
               RowKeyField = None
+              SortStateKey = None
               Columns = []
               OnRowClick = None
               Editable = false
@@ -1304,6 +1331,7 @@ module Fuaran =
               // no unbox wrapper survives.
               RowKey = Some spec.RowKey
               RowKeyField = None
+              SortStateKey = None
               Columns = spec.Columns |> List.map Column.erase
               OnRowClick = spec.OnRowClick
               Editable = spec.Editable

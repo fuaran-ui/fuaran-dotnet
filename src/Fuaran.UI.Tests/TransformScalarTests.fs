@@ -52,7 +52,7 @@ let private table =
 /// projection, so the param stays scalar post-click.
 let private r42Binding: Binding<string> =
     Binding.Transform(
-        table,
+        TransformSource.Data(table),
         [ Fuaran.Core.Filter(Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "id", Fuaran.Core.Param "ticketId"))
           Fuaran.Core.Project [ "alert", "alert" ]
           Fuaran.Core.Limit(1, 0) ],
@@ -69,7 +69,7 @@ let private r42Binding: Binding<string> =
 
 let private countBinding<'T> (severity: string) : Binding<'T> =
     Binding.Transform(
-        table,
+        TransformSource.Data(table),
         [ Fuaran.Core.Filter(
               Fuaran.Core.Binary(Fuaran.Core.Eq, Fuaran.Core.Col "severity", Fuaran.Core.Lit(Fuaran.Core.Str severity))
           )
@@ -127,7 +127,7 @@ let tests =
           }
 
           test "an N×M result is a LOUD didactic, never a silent first cell" {
-              let bare: Binding<string> = Binding.Transform(table, [], None)
+              let bare: Binding<string> = Binding.Transform(TransformSource.Data(table), [], None)
 
               match BindingResolver.resolveScalarText BindingResolver.empty bare with
               | BindingResolver.Errored m ->
@@ -139,7 +139,7 @@ let tests =
           test "an empty non-aggregate result renders absence (NotResolved)" {
               let emptyLookup: Binding<string> =
                   Binding.Transform(
-                      table,
+                      TransformSource.Data(table),
                       [ Fuaran.Core.Filter(
                             Fuaran.Core.Binary(
                                 Fuaran.Core.Eq,

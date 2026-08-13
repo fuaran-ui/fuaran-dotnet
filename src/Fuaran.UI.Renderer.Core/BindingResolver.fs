@@ -274,6 +274,138 @@ let private resolvedToCell (v: obj) : Fuaran.Core.Cell option =
     | :? JVal as jv -> jvalToCell jv
     | other -> objToCell other
 
+// ─── Store-value → JVal lift (Phase 818 — the reactive-derivation first cut) ─
+//
+// A LIVE Transform source and a `SetState.valueFrom` both read a store value
+// and need it as structured data. What a store actually holds differs by host:
+// the browser StateStore holds PLAIN JS values (the runtime lowers a SetState
+// JVal through the JSON bridge before storing); the bounded server store holds
+// the `JValObj` lowering (numbers as floats, objects as `Map<string, obj>`,
+// arrays as `obj list`); a decoded binding's carried defaultValue resolves as
+// a genuine `JVal` instance on both. The lift re-raises each to `JVal`
+// structurally; a value with no faithful lift is `None` — every caller
+// surfaces that LOUDLY (the Phase-427 mismatch posture, never a silent wrong
+// value). Number policy matches the wire bridge (`jsonToJVal`): an integral
+// in-int32-range number lifts to `JInt`, everything else to `JFloat`.
+
+#if FABLE_COMPILER
+module private JsLift =
+    open Fable.Core
+
+    [<Emit("typeof $0")>]
+    let jsTypeof (_: obj) : string = jsNative
+
+    [<Emit("Array.isArray($0)")>]
+    let jsIsArray (_: obj) : bool = jsNative
+
+    [<Emit("$0 !== null && typeof $0 === 'object' && ($0.constructor === Object || Object.getPrototypeOf($0) === null)")>]
+    let jsIsPlainObject (_: obj) : bool = jsNative
+
+    [<Emit("Object.keys($0)")>]
+    let jsKeys (_: obj) : string[] = jsNative
+
+    [<Emit("$0[$1]")>]
+    let jsGet (_: obj) (_: string) : obj = jsNative
+#endif
+
+let private liftNumber (f: float) : JVal =
+    if
+        not (System.Double.IsNaN f)
+        && not (System.Double.IsInfinity f)
+        && floor f = f
+        && abs f <= 2147483647.0
+    then
+        JInt(int f)
+    else
+        JFloat f
+
+/// Lift a store-resolved value to a `JVal` (see the section note above).
+/// `None` when the value has no faithful structural lift — callers surface
+/// that loudly, never silently.
+let rec jvalOfResolved (v: obj) : JVal option =
+#if FABLE_COMPILER
+    match v with
+    | :? JVal as jv -> Some jv
+    | _ when isNull v -> None
+    | _ ->
+        match JsLift.jsTypeof v with
+        | "string" -> Some(JStr(unbox<string> v))
+        | "boolean" -> Some(JBool(unbox<bool> v))
+        | "number" -> Some(liftNumber (unbox<float> v))
+        | _ ->
+            if JsLift.jsIsArray v then
+                let items = unbox<obj[]> v |> Array.toList |> List.map jvalOfResolved
+
+                if items |> List.forall Option.isSome then
+                    Some(JArr(items |> List.map Option.get))
+                else
+                    None
+            elif JsLift.jsIsPlainObject v then
+                let fields =
+                    JsLift.jsKeys v
+                    |> Array.toList
+                    |> List.sortWith (fun a b -> System.String.CompareOrdinal(a, b))
+                    |> List.map (fun k -> k, jvalOfResolved (JsLift.jsGet v k))
+
+                if fields |> List.forall (fun (_, fv) -> Option.isSome fv) then
+                    Some(JObj(fields |> List.map (fun (k, fv) -> k, Option.get fv)))
+                else
+                    None
+            else
+                None
+#else
+    match v with
+    | :? JVal as jv -> Some jv
+    | :? string as s -> Some(JStr s)
+    | :? bool as b -> Some(JBool b)
+    | :? int as i -> Some(JInt i)
+    | :? int64 as i -> Some(liftNumber (float i))
+    | :? float as f -> Some(liftNumber f)
+    | :? (obj list) as xs ->
+        // The `JValObj` array lowering (the bounded server store's shape).
+        let items = xs |> List.map jvalOfResolved
+
+        if items |> List.forall Option.isSome then
+            Some(JArr(items |> List.map Option.get))
+        else
+            None
+    | :? Map<string, obj> as m ->
+        // The `JValObj` object lowering / a single `Row`.
+        let fields = m |> Map.toList |> List.map (fun (k, fv) -> k, jvalOfResolved fv)
+
+        if fields |> List.forall (fun (_, fv) -> Option.isSome fv) then
+            Some(JObj(fields |> List.map (fun (k, fv) -> k, Option.get fv)))
+        else
+            None
+    | :? seq<Row> as rows ->
+        // The editable-grid write-back shape: a `Row seq` written whole to a
+        // State key. Rows lift element-wise (each `Row` is the Map arm above).
+        let items = rows |> Seq.toList |> List.map (box >> jvalOfResolved)
+
+        if items |> List.forall Option.isSome then
+            Some(JArr(items |> List.map Option.get))
+        else
+            None
+    | _ -> None
+#endif
+
+/// Phase 818 — materialise a LIVE Transform source's resolved store value as
+/// the input table: lift to `JVal`, normalise (row-major rows transpose to
+/// canonical columnar — the same rule the decode-time snapshot applies), then
+/// decode through Core's columnar codec. Loud on every unliftable /
+/// non-tabular value.
+let private liveValueToTable (v: obj) : Result<Fuaran.Core.Table, string> =
+    match jvalOfResolved v with
+    | None ->
+        Error
+            "Transform live source resolved to a value that cannot be read as data — expected rows (an array of row objects) or canonical columnar data"
+    | Some jv ->
+        match Fuaran.UI.HostPrelude.TransformLive.initialSource jv with
+        | Ok(Fuaran.Core.Embedded t) -> Ok t
+        | Ok(Fuaran.Core.Ref name) ->
+            Error(sprintf "Transform live source resolved to a 'ref' source ('%s'), which is not host-resolved" name)
+        | Error e -> Error("Transform live source: " + Fuaran.Core.ColumnCodec.errorString e)
+
 /// Resolve a typed `Binding<'T>` against the supplied sources.
 ///
 /// Per-Defect (2) note: `Query` / `Selection` accessors are obj-typed at the
@@ -531,7 +663,7 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
 /// source (deferred — Phase 282 evaluates Embedded), and an evaluator error are all `Error`.
 and private evalTransformFrame
     (sources: BindingSources)
-    (source: Fuaran.Core.DataSource)
+    (source: TransformSource)
     (pipeline: Fuaran.Core.Transform list)
     (parameters: TransformParam list)
     : Result<Fuaran.Core.Table, string> =
@@ -564,17 +696,57 @@ and private evalTransformFrame
                     |> List.forall (fun p -> not (Set.contains p unbound))
                 | _ -> true)
 
+        let evalTable (inputTable: Fuaran.Core.Table) : Result<Fuaran.Core.Table, string> =
+            match Fuaran.Core.DataFrame.evalPipelineInEnv env pipeline inputTable with
+            | Error e -> Error("Transform evaluation failed: " + Fuaran.Core.DataFrame.errorString e)
+            | Ok result -> Ok result
+
         match source with
-        | Fuaran.Core.Ref name ->
+        | TransformSource.Data(Fuaran.Core.Ref name) ->
             Error(
                 sprintf
                     "Transform 'Ref' source '%s' is not host-resolved yet (Phase 282 evaluates Embedded sources)"
                     name
             )
-        | Fuaran.Core.Embedded inputTable ->
-            match Fuaran.Core.DataFrame.evalPipelineInEnv env pipeline inputTable with
-            | Error e -> Error("Transform evaluation failed: " + Fuaran.Core.DataFrame.errorString e)
-            | Ok result -> Ok result
+        | TransformSource.Data(Fuaran.Core.Embedded inputTable) -> evalTable inputTable
+        // Phase 818 — the LIVE source: resolve the preserved binding against
+        // the reactive stores (through the store-reading erasure, so raw store
+        // values stay raw) and evaluate over the CURRENT data; an unwritten
+        // store falls back to the decode-time initial snapshot, which is what
+        // makes SSR byte-identical to the Phase-815 snapshot semantics. The
+        // renderer's reactive key walk subscribes the source binding's channel
+        // keys, so a store write re-evaluates every reader.
+        | TransformSource.Live(binding, initial) ->
+            let tableR =
+                match resolve<obj> sources (objOfJValBinding binding) with
+                | Resolved v -> liveValueToTable v
+                | NotResolved ->
+                    (match initial with
+                     | Fuaran.Core.Embedded t -> Ok t
+                     | Fuaran.Core.Ref name ->
+                         Error(
+                             sprintf "Transform live source initial snapshot is a non-host-resolved 'ref' ('%s')" name
+                         ))
+                | Errored m -> Error(sprintf "Transform live source errored: %s" m)
+                | I18nUnresolved k -> Error(sprintf "Transform live source is an unresolved i18n key '%s'" k)
+
+            tableR |> Result.bind evalTable
+
+/// Phase 818 — resolve a `Binding<JVal>` (a `SetState.valueFrom` source) against
+/// the stores at `obj` through the store-reading erasure, lifting the resolved
+/// raw store value back to `JVal`. An unliftable value is `Errored` — loud, the
+/// Phase-427 mismatch posture — never a silent wrong write.
+let resolveJVal (sources: BindingSources) (binding: Binding<JVal>) : Resolution<JVal> =
+    match resolve<obj> sources (objOfJValBinding binding) with
+    | Resolved v ->
+        (match jvalOfResolved v with
+         | Some jv -> Resolved jv
+         | None ->
+             Errored
+                 "the binding resolved to a value with no wire representation (a host object) — it cannot be written as a derived state value")
+    | NotResolved -> NotResolved
+    | Errored m -> Errored m
+    | I18nUnresolved k -> I18nUnresolved k
 
 /// Best-effort `tryResolve` — returns `Some` for `Resolved`, otherwise `None`.
 /// Convenience for renderer call sites that treat NotResolved + Errored
@@ -755,6 +927,94 @@ let projectRowFieldString (row: Row) (field: string) : string =
     | CellValue.Bool b -> (if b then "true" else "false")
     | CellValue.Date d -> d.ToString("o")
     | CellValue.Empty -> ""
+
+// ─── Data-bound grid sort (Phase 818 — `sortStateKey`) ───────────────────────
+//
+// A data-bound grid whose spec names a `sortStateKey` sorts its RESOLVED rows
+// by the state-carried descriptor `{"column": <header index>, "direction":
+// "asc" | "desc"}` before rendering — runtime-side sort, the author wires no
+// Transform. One implementation serves the client renderer and any SSR host
+// that seeds the key, so two surfaces cannot disagree about ordering rules
+// (the `tonedPillOf` single-definition rationale). The rules mirror the
+// Phase-801 reference table enhancement where they overlap: empty cells sort
+// LAST in both directions (unmeasured is not zero), ties keep their authored
+// relative order (`List.sortWith` is stable).
+
+/// Read the sort descriptor carried at `key` in the State store. Every part is
+/// validated rather than trusted — a malformed descriptor reads as "no sort"
+/// so the authored order stands (never an arbitrary one).
+let readSortDescriptor (sources: BindingSources) (key: string) : (int * SortDirection) option =
+    Map.tryFind key sources.State
+    |> Option.bind jvalOfResolved
+    |> Option.bind (fun jv ->
+        match jv with
+        | JObj fields ->
+            let col =
+                fields
+                |> List.tryPick (function
+                    | ("column", JInt i) -> Some i
+                    | ("column", JFloat f) when floor f = f -> Some(int f)
+                    | _ -> None)
+
+            let dir =
+                fields
+                |> List.tryPick (function
+                    | ("direction", JStr "asc") -> Some SortDirection.Asc
+                    | ("direction", JStr "desc") -> Some SortDirection.Desc
+                    | _ -> None)
+
+            (match col, dir with
+             | Some c, Some d when c >= 0 -> Some(c, d)
+             | _ -> None)
+        | _ -> None)
+
+let private cellSortRank (v: CellValue) : int =
+    match v with
+    | CellValue.Numeric _ -> 0
+    | CellValue.Bool _ -> 1
+    | CellValue.Date _ -> 2
+    | CellValue.Text _ -> 3
+    | CellValue.Empty -> 4
+
+let private compareCells (a: CellValue) (b: CellValue) : int =
+    match a, b with
+    | CellValue.Numeric x, CellValue.Numeric y -> compare x y
+    | CellValue.Bool x, CellValue.Bool y -> compare x y
+    | CellValue.Date x, CellValue.Date y -> compare x y
+    | CellValue.Text x, CellValue.Text y -> System.String.CompareOrdinal(x.ToLowerInvariant(), y.ToLowerInvariant())
+    | _ -> compare (cellSortRank a) (cellSortRank b)
+
+/// Sort resolved grid rows by a sort descriptor over the column set. Sorting
+/// keys off the addressed column's declared `field` (the row property it
+/// displays); a column index outside the set or a field-less closure column
+/// leaves the authored order standing — a declaration that cannot be honoured
+/// is ignored, not guessed at. Empty cells sort last in BOTH directions; the
+/// sort is stable.
+let sortRowsByDescriptor
+    (columns: ColumnErased<'Msg> list)
+    (descriptor: (int * SortDirection) option)
+    (rows: Row list)
+    : Row list =
+    match descriptor with
+    | None -> rows
+    | Some(colIndex, direction) ->
+        match List.tryItem colIndex columns |> Option.bind _.Field with
+        | None -> rows
+        | Some field ->
+            rows
+            |> List.map (fun r -> projectRowFieldValue r field, r)
+            |> List.sortWith (fun (ka, _) (kb, _) ->
+                match ka, kb with
+                | CellValue.Empty, CellValue.Empty -> 0
+                | CellValue.Empty, _ -> 1
+                | _, CellValue.Empty -> -1
+                | _ ->
+                    let c = compareCells ka kb
+
+                    (match direction with
+                     | SortDirection.Asc -> c
+                     | SortDirection.Desc -> -c))
+            |> List.map snd
 
 /// Phase 750 — lower a `CellKindErased.TonedPill` for one row: the named field's
 /// text IS the pill's label, and its tone is the map's entry for that text, or

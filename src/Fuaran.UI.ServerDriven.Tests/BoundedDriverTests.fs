@@ -95,7 +95,7 @@ let tests =
                   BoundedDriver.init
                       (BoundedServices.createPermissive stubRender)
                       empty
-                      (mkTree (Action.SetState("msg", jv "x")))
+                      (mkTree (Action.SetState("msg", Some(jv "x"), None)))
 
               Expect.equal (markdownLiteral session.Resolved "count") (Some "init") "default resolved"
           }
@@ -105,7 +105,7 @@ let tests =
                   BoundedDriver.init
                       (BoundedServices.createPermissive stubRender)
                       empty
-                      (mkTree (Action.SetState("msg", jv "updated")))
+                      (mkTree (Action.SetState("msg", Some(jv "updated"), None)))
 
               let session2, out = BoundedDriver.step session (clickEv "set")
 
@@ -125,7 +125,7 @@ let tests =
                   BoundedDriver.init
                       (BoundedServices.createPermissive stubRender)
                       empty
-                      (mkTree (Action.SetState("msg", jv "init")))
+                      (mkTree (Action.SetState("msg", Some(jv "init"), None)))
 
               let _, out = BoundedDriver.step session (clickEv "set")
               Expect.isNone out.Rejected "not rejected"
@@ -150,7 +150,7 @@ let tests =
                   BoundedDriver.init
                       (BoundedServices.createPermissive stubRender)
                       empty
-                      (mkTree (Action.SetState("msg", jv "x")))
+                      (mkTree (Action.SetState("msg", Some(jv "x"), None)))
 
               let session2, out = BoundedDriver.step session (clickEv "ghost")
 
@@ -165,7 +165,7 @@ let tests =
           test "G2: a bounded-action cascade over MaxActions is rejected (no hang, no mutation)" {
               // A pathological 200-action Chain against the default budget (64).
               let bigChain =
-                  Action.Chain [ for i in 1..200 -> Action.SetState(sprintf "k%d" i, jv i) ]
+                  Action.Chain [ for i in 1..200 -> Action.SetState(sprintf "k%d" i, Some(jv i), None) ]
 
               let session =
                   BoundedDriver.init (BoundedServices.createPermissive stubRender) empty (mkTree bigChain)
@@ -189,7 +189,7 @@ let tests =
 
               // The fixture tree has 3 nodes (dashboard + button + markdown) > 1.
               let session =
-                  BoundedDriver.init services empty (mkTree (Action.SetState("msg", jv "x")))
+                  BoundedDriver.init services empty (mkTree (Action.SetState("msg", Some(jv "x"), None)))
 
               let _, out = BoundedDriver.step session (clickEv "set")
 
@@ -231,7 +231,7 @@ let tests =
                                   [ Fuaran.button
                                         "set"
                                         { Defaults.button<obj> with
-                                            OnClick = Action.SetState("msg", jv "x") }
+                                            OnClick = Action.SetState("msg", Some(jv "x"), None) }
                                     chart ] }
                   )
 
@@ -262,7 +262,7 @@ let tests =
                   BoundedDriver.init
                       (BoundedServices.createPermissive stubRender)
                       empty
-                      (mkTree (Action.SetState("msg", jv "x")))
+                      (mkTree (Action.SetState("msg", Some(jv "x"), None)))
 
               Expect.equal session.NodeCount 3 "dashboard + button + markdown — unchanged from the pre-790 count"
           }
@@ -275,7 +275,7 @@ let tests =
                       OnApply = captured.Add }
 
               let session =
-                  BoundedDriver.init services empty (mkTree (Action.SetState("msg", jv "updated")))
+                  BoundedDriver.init services empty (mkTree (Action.SetState("msg", Some(jv "updated"), None)))
 
               let _, _ = BoundedDriver.step session (clickEv "set")
               Expect.equal captured.Count 1 "OnApply fired once"
@@ -287,7 +287,7 @@ let tests =
                   { empty with
                       State = Map.ofList [ "msg", o "deterministic" ] }
 
-              let tree = mkTreeNode (Action.SetState("msg", jv "x"))
+              let tree = mkTreeNode (Action.SetState("msg", Some(jv "x"), None))
               let r1 = BoundedDriver.resolveTree store tree
               let r2 = BoundedDriver.resolveTree store tree
               Expect.equal (markdownLiteral r1 "count") (markdownLiteral r2 "count") "resolveTree is deterministic"
@@ -296,7 +296,7 @@ let tests =
 
           // ── End-to-end: real wire JSON → decode → bounded driver ──────────
           test "end-to-end: a decoded wire tree drives a SetState click" {
-              let authored = mkTreeNode (Action.SetState("msg", jv "wire"))
+              let authored = mkTreeNode (Action.SetState("msg", Some(jv "wire"), None))
               let json = CanonicalJson.encodeNode authored
 
               match JsonDecode.decodeNode json with
@@ -402,7 +402,7 @@ let tests =
                   Fuaran.button
                       "set"
                       { Defaults.button<obj> with
-                          OnClick = Action.SetState("msg", jv "x") }
+                          OnClick = Action.SetState("msg", Some(jv "x"), None) }
                   :: [ for i in 1..400 -> Fuaran.markdown (sprintf "m%d" i) "x" ]
 
               let tree =
@@ -433,7 +433,7 @@ let tests =
                   BoundedDriver.init
                       (BoundedServices.createPermissive stubRender)
                       empty
-                      (mkTree (Action.SetState("msg", jv "x")))
+                      (mkTree (Action.SetState("msg", Some(jv "x"), None)))
 
               Expect.equal session.NodeCount 3 "dashboard + button + markdown, priced exactly"
 

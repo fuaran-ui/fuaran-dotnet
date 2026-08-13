@@ -35,7 +35,7 @@ let private pipeline: Fuaran.Core.Transform list =
 
 let private transformBinding: Binding<obj seq> =
     Binding.Transform(
-        table,
+        TransformSource.Data(table),
         pipeline,
         Some
             [ { From = Binding.Filter("dept", None)

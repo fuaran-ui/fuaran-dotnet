@@ -551,7 +551,7 @@ let rec private genAction: Gen<Action<obj>> =
           Gen.map (fun ep -> Action.Call(ep, Some(fun _ -> box "<r>"), None)) genNonEmptyString
           Gen.map2 (fun c p -> Action.Notify(c, p)) genNonEmptyString genJVal
           Gen.map Action.Navigate genNonEmptyString
-          Gen.map2 (fun k v -> Action.SetState(k, v)) genNonEmptyString genJVal
+          Gen.map2 (fun k v -> Action.SetState(k, Some(v), None)) genNonEmptyString genJVal
           Gen.map2 (fun n a -> Action.AiTool(n, a)) genNonEmptyString genJVal
           Gen.map Action.CommitLocal genNonEmptyString
           Gen.map Action.WriteToClipboard genString
@@ -568,7 +568,7 @@ let private allActionsChain: Action<obj> =
           Action.Call("/api", Some(fun _ -> box "<r>"), None)
           Action.Notify("ch", JStr "p")
           Action.Navigate "/route"
-          Action.SetState("k", JStr "v")
+          Action.SetState("k", Some(JStr "v"), None)
           Action.AiTool("tool", JStr "a")
           Action.Chain []
           Action.CommitLocal "node"
@@ -819,7 +819,8 @@ let private genGridSpec: Gen<GridSpec<obj>> =
         let! editable = genBool
 
         return
-            { Source = Binding.Static(Some Seq.empty)
+            { SortStateKey = None
+              Source = Binding.Static(Some Seq.empty)
               RowKey = Some(fun _ -> "<rowkey>")
               RowKeyField = None
               Columns = columns

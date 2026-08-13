@@ -116,3 +116,58 @@ let decAriaRole (j: JVal) : Result<AriaRole, string> =
     | JStr "tabpanel" -> Ok AriaRole.Tabpanel
     | JStr other -> Ok(AriaRole.Custom other)
     | _ -> Error "expected JSON string for aria role"
+
+// ─── Live Transform-source helpers (Phase 818 — the reactive-derivation
+//     first cut). Compiled ahead of `Generated.fs` so the generated decoder's
+//     Transform arm (which now preserves a binding-shaped source as
+//     `TransformSource.Live`) can derive the SSR/diagnostic initial snapshot
+//     from the binding's carried data. Mirrors the host bridge's Phase-815
+//     Json-level row-major transpose at the JVal level — same first-row key
+//     set, same canonical columnar target — so the decode-time snapshot and a
+//     runtime re-evaluation of the same data produce the same table. ─────────
+
+[<RequireQualifiedAccess>]
+module TransformLive =
+
+    /// Normalise a live source's carried JVal data toward the canonical
+    /// columnar shape `{"columns": {...}}`: ROW-MAJOR data (an array of row
+    /// objects) transposes by the first row's key set; canonical columnar (and
+    /// anything else) passes through untouched. A ragged row set is NOT
+    /// silently patched — the missing cell surfaces as Core's schema-inference
+    /// didactic downstream, matching the Phase-815 Json-level behaviour
+    /// (`JVal` has no null to fill with, and a quiet wrong column is worse
+    /// than a loud teachable error).
+    let normaliseData (j: JVal) : JVal =
+        match j with
+        | JArr(JObj first :: _ as rows) ->
+            let keys = first |> List.map fst
+
+            let cols =
+                keys
+                |> List.map (fun k ->
+                    let cells =
+                        rows
+                        |> List.collect (function
+                            | JObj rf ->
+                                (match rf |> List.tryFind (fun (rk, _) -> rk = k) with
+                                 | Some(_, v) -> [ v ]
+                                 | None -> [])
+                            | _ -> [])
+
+                    k, JArr cells)
+
+            JObj [ "columns", JObj cols ]
+        | _ -> j
+
+    /// The empty embedded table — the initial snapshot of a live source that
+    /// carries no data yet (a `Selection` with no default, a `Query`): the
+    /// pipeline evaluates over zero rows and the node renders its empty state.
+    let emptySource: DataSource = Embedded { Schema = []; Columns = [] }
+
+    /// Decode a live source's carried JVal data to the initial snapshot
+    /// `DataSource` (normalise, then Core's columnar codec). This is the
+    /// decode-time half of the Phase-815 snapshot semantics: SSR / diagnostic
+    /// evaluation reads this table, byte-identical to what the 0.20.0 snapshot
+    /// unwrap produced for the same input.
+    let initialSource (data: JVal) : Result<DataSource, ColumnError> =
+        ColumnCodec.decodeJson (normaliseData data)

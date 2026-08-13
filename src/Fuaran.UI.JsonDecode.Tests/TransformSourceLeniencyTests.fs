@@ -3,12 +3,17 @@ module Fuaran.UI.JsonDecode.Tests.TransformSourceLeniency
 // Phase 815 — the Transform `source` slot's organic-demand leniencies. Three
 // model families independently emitted `{"$type":"State","defaultValue":
 // [{row},…]}` as a Transform source (the Tier-D pilot count badge,
-// 2026-08-13); the host bridge now normalises a State/Static/Bound WRAPPER
-// (unwrap to its carried data — initial-snapshot semantics) and ROW-MAJOR
-// data (transpose to canonical columnar) before Fuaran.Core's ColumnCodec
-// decodes. These tests pin both leniencies, their composition (the observed
-// shape uses both at once), the canonical form's indifference, and that an
-// empty wrapper still fails didactically.
+// 2026-08-13); the host bridge normalises a Static/Bound WRAPPER (unwrap to
+// its carried data — snapshot semantics) and ROW-MAJOR data (transpose to
+// canonical columnar) before Fuaran.Core's ColumnCodec decodes.
+//
+// Phase 818 upgraded the STATE-shaped source's semantics in place: it is now
+// PRESERVED as `TransformSource.Live` (re-evaluated when the state key
+// changes) and round-trips byte-for-byte — the canonical spelling, not a
+// shorthand normalised away. Its initial snapshot still derives through the
+// same 815 normalisation, so evaluation over the defaults is byte-identical
+// to the snapshot era (pinned below via the resolver), and the didactics
+// (ragged rows, an empty State wrapper) are unchanged.
 
 open Expecto
 open Fuaran.UI.Ops
@@ -23,7 +28,7 @@ let private decodeOk (label: string) (json: string) =
 /// spelled `%s`.
 let private badgeWith (source: string) =
     sprintf
-        """{"id":"count-badge","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[],"source":%s}},"variant":"Default"}}"""
+        """{"id":"count-badge","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[],"source":%s}},"variant":"Neutral"}}"""
         source
 
 let private canonicalColumnar =
@@ -36,18 +41,68 @@ let private rowMajor =
 let tests =
     testList
         "Fuaran.UI.Ops.JsonDecode — Transform source leniencies (Phase 815)"
-        [ test "the observed pilot shape — a State wrapper around row-major rows — decodes to the canonical source" {
+        [ test
+              "the observed pilot shape — a State source around row-major rows — is PRESERVED and round-trips byte-for-byte (Phase 818)" {
               let observed =
                   badgeWith (sprintf """{"$type":"State","defaultValue":%s,"key":"request-log"}""" rowMajor)
 
-              let canonical = badgeWith canonicalColumnar
               let fromObserved = decodeOk "state-wrapped row-major" observed
-              let fromCanonical = decodeOk "canonical columnar" canonical
 
+              // One wire dialect: the State-shaped source IS canonical now —
+              // re-encode reproduces it byte-for-byte (the binding reference
+              // survives decode, so a runtime can re-evaluate it live).
               Expect.equal
                   (CanonicalJson.encodeNode fromObserved)
-                  (CanonicalJson.encodeNode fromCanonical)
-                  "both spellings decode to the SAME node (one wire dialect, not two)"
+                  observed
+                  "canonical re-encode reproduces the State-shaped source byte-for-byte"
+          }
+
+          test
+              "live-vs-snapshot equivalence — the State-sourced Transform evaluates its defaults to the SAME cell the canonical columnar snapshot yields" {
+              // The 815 tests pinned that both spellings decoded to one node;
+              // 818 preserves the binding, so the equivalence moves to the
+              // EVALUATION: over an unwritten state store, the live source
+              // resolves through its carried defaultValue and must yield
+              // exactly what the canonical columnar snapshot yields — which is
+              // what keeps SSR output byte-identical to the snapshot era.
+              let pipeline =
+                  """[{"$type":"groupBy","aggs":[{"fn":"count","name":"n","of":"medication"}],"keys":[]}]"""
+
+              let badgeWithPipeline (source: string) =
+                  sprintf
+                      """{"id":"count-badge","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":%s,"source":%s}},"variant":"Neutral"}}"""
+                      pipeline
+                      source
+
+              let labelBinding (n: Fuaran.UI.Types.Node<obj>) : Fuaran.UI.Types.Binding<string> =
+                  match n.Kind with
+                  | Fuaran.UI.Types.NodeKind.Badge b ->
+                      (match b.Label with
+                       | Fuaran.UI.Types.TextSource.Bound binding -> binding
+                       | other -> failtestf "expected a Bound label, got %A" other)
+                  | other -> failtestf "expected a Badge, got %A" other
+
+              let live =
+                  decodeOk
+                      "live state-sourced"
+                      (badgeWithPipeline (
+                          sprintf """{"$type":"State","defaultValue":%s,"key":"request-log"}""" rowMajor
+                      ))
+                  |> labelBinding
+
+              let snapshot =
+                  decodeOk "canonical columnar" (badgeWithPipeline canonicalColumnar)
+                  |> labelBinding
+
+              let resolveText b =
+                  match
+                      Fuaran.UI.Renderer.BindingResolver.resolveScalarText Fuaran.UI.Renderer.BindingResolver.empty b
+                  with
+                  | Fuaran.UI.Renderer.BindingResolver.Resolved s -> s
+                  | other -> failtestf "expected Resolved, got %A" other
+
+              Expect.equal (resolveText live) (resolveText snapshot) "live-over-defaults == snapshot evaluation"
+              Expect.equal (resolveText live) "2" "the count badge derives 2 from two rows"
           }
 
           test "a Static wrapper around a canonical columnar source unwraps" {

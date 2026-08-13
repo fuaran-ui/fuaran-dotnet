@@ -49,7 +49,8 @@ let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<
     { Id = "grid"
       Kind =
         NodeKind.DataGrid(
-            { Source = source
+            { SortStateKey = None
+              Source = source
               RowKey = None
               RowKeyField = Some "dept"
               Columns =
@@ -91,7 +92,7 @@ let tests =
               let grid =
                   gridWith (
                       Binding.Transform(
-                          embeddedSource,
+                          TransformSource.Data(embeddedSource),
                           paramPipeline,
                           Some
                               [ { From = Binding.Filter("dept", None)
@@ -144,7 +145,7 @@ let tests =
               let grid =
                   gridWith (
                       Binding.Transform(
-                          embeddedSource,
+                          TransformSource.Data(embeddedSource),
                           paramPipeline,
                           Some
                               [ { From = Binding.Filter("dept", None)
@@ -167,7 +168,7 @@ let tests =
               let grid =
                   gridWith (
                       Binding.Transform(
-                          embeddedSource,
+                          TransformSource.Data(embeddedSource),
                           paramPipeline,
                           Some
                               [ { From = Binding.Filter("dept", None)
@@ -193,7 +194,8 @@ let tests =
                   { Id = "bare-grid"
                     Kind =
                       NodeKind.DataGrid(
-                          { Source = Binding.Static(Some Seq.empty)
+                          { SortStateKey = None
+                            Source = Binding.Static(Some Seq.empty)
                             RowKey = None
                             RowKeyField = None
                             Columns =
@@ -258,7 +260,8 @@ let tests =
           }
 
           test "FUARAN090: editable over a non-State source is inert and flagged" {
-              let grid = gridWithEditable true (Binding.Transform(embeddedSource, [], None))
+              let grid =
+                  gridWithEditable true (Binding.Transform(TransformSource.Data(embeddedSource), [], None))
 
               let tree = dashboard "root" [ grid ]
 
@@ -280,7 +283,7 @@ let tests =
               | Error defects -> failtestf "Expected Ok for an editable State-sourced grid, got: %A" defects
 
               let readOnlyTransformGrid =
-                  gridWithEditable false (Binding.Transform(embeddedSource, [], None))
+                  gridWithEditable false (Binding.Transform(TransformSource.Data(embeddedSource), [], None))
 
               match PreEmitValidate.validate (dashboard "root" [ readOnlyTransformGrid ]) with
               | Ok() -> ()

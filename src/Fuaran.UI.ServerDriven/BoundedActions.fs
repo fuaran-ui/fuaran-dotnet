@@ -140,7 +140,7 @@ module BoundedActions =
         // The one store mutation: write the `State` channel. The `JVal` payload
         // lowers to the structural obj shapes the store historically held —
         // `Binding.State` re-resolution (in the bounded driver) reads it back.
-        | Action.SetState(key, value) ->
+        | Action.SetState(key, value, valueFrom) ->
             // Phase 782 — the host-reserved key namespace is closed on the bounded
             // path too. This driver's whole premise is that the tree is untrusted,
             // so a generated tree writing `host.<x>` is exactly the case the
@@ -155,9 +155,27 @@ module BoundedActions =
                         Fuaran.UI.Renderer.StateKeys.HostReservedPrefix)
                     s
             else
-                store
-                    { s with
-                        State = Map.add key (JValObj.toObj value) s.State }
+                // Phase 818 — `valueFrom` (value XOR valueFrom, decode-enforced)
+                // evaluates AT DISPATCH TIME against the store itself (the
+                // BoundedStore IS the BindingSources). An unresolved / errored
+                // source performs NO write and is diagnosed, never silent.
+                let payload: Result<Fuaran.Core.JVal option, string> =
+                    match valueFrom, value with
+                    | Some b, _ ->
+                        (match Fuaran.UI.Renderer.BindingResolver.resolveJVal s b with
+                         | Resolved jv -> Ok(Some jv)
+                         | NotResolved -> Ok None
+                         | Errored m -> Error m
+                         | I18nUnresolved k -> Error(sprintf "unresolved i18n key '%s'" k))
+                    | None, v -> Ok v
+
+                match payload with
+                | Ok(Some jv) ->
+                    store
+                        { s with
+                            State = Map.add key (JValObj.toObj jv) s.State }
+                | Ok None -> refused nodeId action "valueFrom did not resolve to a value — no write performed" s
+                | Error m -> refused nodeId action (sprintf "valueFrom errored: %s — no write performed" m) s
 
         // Inherently-browser arms → closure-free ClientEffects (no server form).
         // Phase 782 — the route is sanitised before the effect is shipped; the

@@ -566,20 +566,55 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
     // Phase 782 — sanitise-then-gate on the ACTION path, not only where an
     // href/src is rendered. See `treeNavigate`.
     | Action.Navigate route -> treeNavigate ctx.Runtime route (fun safe -> ctx.Runtime.Navigate safe)
-    | Action.SetState(key, value) ->
+    | Action.SetState(key, value, valueFrom) ->
         // Phase 782 — gated, and host-reserved keys refused. Scope-aware routing
         // (Phase 266): a guest rendered under `Some scopeId` writes to its own
         // isolated `StateStore.forScope` instance so its state never touches the
         // host's default store (mirrors BrowserRuntime.SetState — the `JVal`
         // payload lowers to a plain JS value via the bridge). The default
         // (`None`) delegates to the host runtime.
+        // Phase 818 — `valueFrom` (value XOR valueFrom, decode-enforced)
+        // evaluates AT DISPATCH TIME, inside the same gate + host-reserved
+        // guard the literal path runs under. An unresolved / unliftable source
+        // performs NO write and warns — a derived write must never silently
+        // write a wrong value.
         applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.SetState key) (fun () ->
             treeStateWrite ctx.Runtime key (fun () ->
-                match ctx.Scope with
-                | Some scopeId ->
-                    let raw = Runtime.JsonBridge.jvalToJs value
-                    (StateStore.forScope scopeId).Set(key, raw)
-                | None -> ctx.Runtime.SetState(key, value)))
+                let payload: JVal option =
+                    match valueFrom, value with
+                    | Some b, _ ->
+                        (match BindingResolver.resolveJVal ctx.Sources b with
+                         | BindingResolver.Resolved jv -> Some jv
+                         | BindingResolver.NotResolved ->
+                             ctx.Runtime.Warn(
+                                 sprintf
+                                     "[Fuaran] Action.SetState(%s) valueFrom did not resolve — no write performed."
+                                     key
+                             )
+
+                             None
+                         | BindingResolver.Errored m ->
+                             ctx.Runtime.Warn(sprintf "[Fuaran] Action.SetState(%s) valueFrom errored: %s" key m)
+                             None
+                         | BindingResolver.I18nUnresolved k ->
+                             ctx.Runtime.Warn(
+                                 sprintf
+                                     "[Fuaran] Action.SetState(%s) valueFrom is an unresolved i18n key '%s' — no write performed."
+                                     key
+                                     k
+                             )
+
+                             None)
+                    | None, v -> v
+
+                match payload with
+                | None -> ()
+                | Some jv ->
+                    (match ctx.Scope with
+                     | Some scopeId ->
+                         let raw = Runtime.JsonBridge.jvalToJs jv
+                         (StateStore.forScope scopeId).Set(key, raw)
+                     | None -> ctx.Runtime.SetState(key, jv))))
     | Action.AiTool(toolName, args) ->
         applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.AiTool toolName) (fun () ->
             ctx.Runtime.InvokeAiTool(toolName, args))
@@ -958,10 +993,19 @@ let rec keysOfBinding<'T> (channel: KeyChannel) (binding: Binding<'T>) : string 
     | Binding.Format(source, _, _) -> keysOfBinding channel source
     // A parameterised `Transform` (Phase 424) reads through to each param's scalar source, so a chip
     // write re-evaluates every pipeline parameterised on it (its filter/state keys are the union of
-    // its param sources' keys). A param-free `Transform` still contributes nothing.
-    | Binding.Transform(_, _, parameters) ->
-        defaultArg parameters []
-        |> List.collect (fun (p: TransformParam) -> keysOfBinding channel p.From)
+    // its param sources' keys). A param-free `Transform` over a `Data` source still contributes
+    // nothing. Phase 818 — a LIVE source contributes its own binding's channel keys, so a
+    // `SetState` on the source key re-evaluates the pipeline and re-renders every reader (the
+    // subscription semantics the reactive-derivation charter names).
+    | Binding.Transform(source, _, parameters) ->
+        let sourceKeys =
+            match source with
+            | TransformSource.Live(b, _) -> keysOfBinding channel b
+            | TransformSource.Data _ -> []
+
+        sourceKeys
+        @ (defaultArg parameters []
+           |> List.collect (fun (p: TransformParam) -> keysOfBinding channel p.From))
     // A `Query`'s `dependsOn` (Phase 421) names the FILTERS that scope it — a filter-store change
     // re-resolves the query. On the Filter channel it contributes those names (the invalidation
     // subscription); on the Query channel (Phase 428) it contributes its own name, so a
@@ -1169,6 +1213,12 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
     | NodeKind.DataGrid g ->
         let __v =
             keysOfBinding channel g.Source
+            // Phase 818 — a `sortStateKey` grid reads its sort descriptor off
+            // the State channel, so it subscribes that key: a header click's
+            // descriptor write re-renders (and re-sorts) the grid.
+            @ (match g.SortStateKey, channel with
+               | Some k, StateChannel -> [ k ]
+               | _ -> [])
             @ (match g.StaticRows with
                | Some sr ->
                    (sr.Headers |> List.collect (keysOfText channel))
@@ -4044,10 +4094,19 @@ and private renderGrid
                       CorrelationId = correlationId parentNodeId })
         | _ ->
 
+            // Phase 818 — `sortStateKey`: the grid sorts its RESOLVED rows by
+            // the state-carried descriptor before rendering (runtime-side sort
+            // — the author wires no Transform). No descriptor written yet ⇒
+            // natural source order.
+            let sortDescriptor =
+                spec.SortStateKey
+                |> Option.bind (fun k -> BindingResolver.readSortDescriptor ctx.Sources k)
+
             let rows =
-                match resolution with
-                | BindingResolver.Resolved seq -> Seq.toList seq
-                | _ -> []
+                (match resolution with
+                 | BindingResolver.Resolved seq -> Seq.toList seq
+                 | _ -> [])
+                |> BindingResolver.sortRowsByDescriptor spec.Columns sortDescriptor
 
             match rows, state.OnEmpty with
             | [], Some emptyNode -> render ctx emptyNode
@@ -4105,14 +4164,59 @@ and private renderGrid
                             writeBackTo ctx spec.Source (Some(box (Seq.ofList newRows))))
                     | _ -> None
 
+                // Phase 818 — the sortable-header affordance for a
+                // `sortStateKey` grid. A header whose column declares a
+                // `field` renders as a sortable affordance (the Phase-801
+                // static-table presentation vocabulary: `data-sortable` +
+                // live `aria-sort`, keyboard-activatable); clicking header N
+                // dispatches the equivalent of
+                // `SetState(sortStateKey, {"column": N, "direction": …})` —
+                // routed through `runAction` so the gate + host-reserved-key
+                // guard + scope-aware store apply exactly as any tree write.
+                // A field-less closure column is not sortable and renders
+                // without the affordance.
+                let sortableHeader (colIndex: int) (col: ColumnErased<'Msg>) : ReactElement =
+                    match spec.SortStateKey, col.Field with
+                    | Some sortKey, Some _ ->
+                        let active =
+                            match sortDescriptor with
+                            | Some(c, d) when c = colIndex -> Some d
+                            | _ -> None
+
+                        let dispatchToggle () =
+                            let nextDirection =
+                                match active with
+                                | Some SortDirection.Asc -> "desc"
+                                | _ -> "asc"
+
+                            let descriptor = JObj [ "column", JInt colIndex; "direction", JStr nextDirection ]
+
+                            runAction ctx (Action.SetState(sortKey, Some descriptor, None))
+
+                        Html.th
+                            [ prop.className "fuaran-grid-header"
+                              prop.custom ("data-sortable", "")
+                              prop.tabIndex 0
+                              match active with
+                              | Some SortDirection.Asc -> prop.custom ("aria-sort", "ascending")
+                              | Some SortDirection.Desc -> prop.custom ("aria-sort", "descending")
+                              | None -> ()
+                              prop.onClick (fun _ -> dispatchToggle ())
+                              prop.onKeyDown (fun e ->
+                                  if e.key = "Enter" || e.key = " " then
+                                      e.preventDefault ()
+                                      dispatchToggle ())
+                              prop.text col.Label ]
+                    | _ -> Html.th [ prop.className "fuaran-grid-header"; prop.text col.Label ]
+
                 Html.table
                     [ prop.className "fuaran-grid"
                       prop.children
                           [ Html.thead
                                 [ Html.tr
                                       [ prop.children
-                                            [ for col in spec.Columns ->
-                                                  Html.th [ prop.className "fuaran-grid-header"; prop.text col.Label ] ] ] ]
+                                            [ for (colIndex, col) in List.indexed spec.Columns ->
+                                                  sortableHeader colIndex col ] ] ]
                             Html.tbody
                                 [ prop.children
                                       [ for (rowIndex, row) in List.indexed rows ->

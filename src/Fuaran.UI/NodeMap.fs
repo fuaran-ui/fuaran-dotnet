@@ -55,7 +55,7 @@ let rec mapAction (f: 'a -> 'b) (action: Action<'a>) : Action<'b> =
         Action.Call(endpoint, onResult |> Option.map (fun g -> g >> f), into)
     | Action.Notify(channel, payload) -> Action.Notify(channel, payload)
     | Action.Navigate route -> Action.Navigate route
-    | Action.SetState(key, value) -> Action.SetState(key, value)
+    | Action.SetState(key, value, valueFrom) -> Action.SetState(key, value, valueFrom)
     | Action.AiTool(toolName, args) -> Action.AiTool(toolName, args)
     | Action.Chain actions -> Action.Chain(actions |> List.map (mapAction f))
     | Action.CommitLocal nodeId -> Action.CommitLocal nodeId
@@ -290,6 +290,7 @@ and mapGridSpec (f: 'a -> 'b) (spec: GridSpec<'a>) : GridSpec<'b> =
     { Source = spec.Source
       RowKey = spec.RowKey
       RowKeyField = spec.RowKeyField
+      SortStateKey = spec.SortStateKey
       Columns = spec.Columns |> List.map (mapColumnErased f)
       OnRowClick = spec.OnRowClick |> Option.map (fun g -> g >> mapAction f)
       Editable = spec.Editable
