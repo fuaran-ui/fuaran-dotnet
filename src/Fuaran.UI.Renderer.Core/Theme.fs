@@ -56,6 +56,15 @@ let toneVar (tone: ToneVariant) : string =
     | ToneVariant.Critical -> "critical"
     | ToneVariant.Info -> "info"
 
+/// Phase 821 — map an `IconSize` to the `fuaran-icon--<size>` modifier-class
+/// fragment for the standalone `Icon` display kind. Shared by both renderers
+/// so the emitted class strings cannot drift.
+let iconSizeClass (size: IconSize) : string =
+    match size with
+    | IconSize.Small -> "small"
+    | IconSize.Medium -> "medium"
+    | IconSize.Large -> "large"
+
 /// Map a `StyleWeight` to its CSS-variable name root.  Affects padding,
 /// font scale, density — not colour.
 let weightVar (weight: StyleWeight) : string =
@@ -180,6 +189,7 @@ let kindClass (kind: NodeKind<'Msg>) : string =
     | NodeKind.Callout(_) -> "fuaran-kind-callout"
     | NodeKind.Progress(_) -> "fuaran-kind-progress"
     | NodeKind.Skeleton(_) -> "fuaran-kind-skeleton"
+    | NodeKind.Icon(_) -> "fuaran-kind-icon"
     | NodeKind.Image(_) -> "fuaran-kind-image"
     | NodeKind.List(_) -> "fuaran-kind-list"
     | NodeKind.Toast(_) -> "fuaran-kind-toast"

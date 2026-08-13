@@ -148,6 +148,7 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
     | NodeKind.Callout spec -> NodeKind.Callout spec
     | NodeKind.Progress spec -> NodeKind.Progress spec
     | NodeKind.Skeleton spec -> NodeKind.Skeleton spec
+    | NodeKind.Icon spec -> NodeKind.Icon spec
     | NodeKind.LabelValueRow spec -> NodeKind.LabelValueRow spec
     | NodeKind.Fact spec -> NodeKind.Fact spec
     | NodeKind.Link spec -> NodeKind.Link spec

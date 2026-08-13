@@ -1130,6 +1130,22 @@ module Fuaran =
     let skeleton (id: string) (rows: int) : Node<'Msg> =
         buildNode id (NodeKind.Skeleton({ Rows = rows })) Defaults.Accessibility.none
 
+    /// Phase 821 — the standalone icon-only display kind, decorative form
+    /// (`Label = None` → `aria-hidden`). Full record form via `iconSpec`.
+    let icon (id: string) (name: string) : Node<'Msg> =
+        buildNode
+            id
+            (NodeKind.Icon(
+                { Icon = name
+                  Size = IconSize.Medium
+                  Tone = ToneVariant.Default
+                  Label = None }
+            ))
+            Defaults.Accessibility.none
+
+    let iconSpec (id: string) (spec: IconSpec) : Node<'Msg> =
+        buildNode id (NodeKind.Icon(spec)) Defaults.Accessibility.none
+
     // ─── Input ──────────────────────────────────────────────────────────
 
     let button (id: string) (spec: ButtonSpec<'Msg>) : Node<'Msg> =

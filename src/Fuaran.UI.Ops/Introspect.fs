@@ -123,6 +123,7 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     | NodeKind.Callout _ -> [ "Tone"; "Heading"; "Body"; "Icon"; "Dismissable" ]
     | NodeKind.Progress _ -> [ "Fraction"; "Label"; "Caveat"; "Indeterminate"; "Tone" ]
     | NodeKind.Skeleton _ -> [ "Rows" ]
+    | NodeKind.Icon _ -> [ "Icon"; "Size"; "Tone"; "Label" ]
     | NodeKind.LabelValueRow _ -> [ "Label"; "Value"; "Format"; "Emphasis"; "Help" ]
     | NodeKind.Fact _ -> [ "Label"; "Value"; "Icon"; "Tone"; "Emphasis"; "Help" ]
     | NodeKind.Link _ -> [ "Href"; "Label"; "Rel"; "Target"; "Download" ]

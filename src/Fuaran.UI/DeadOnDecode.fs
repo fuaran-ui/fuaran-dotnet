@@ -254,6 +254,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
             | NodeKind.Callout _
             | NodeKind.Progress _
             | NodeKind.Skeleton _
+            | NodeKind.Icon _
             | NodeKind.LabelValueRow _
             | NodeKind.Fact _
             | NodeKind.Link _

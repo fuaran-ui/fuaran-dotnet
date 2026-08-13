@@ -339,6 +339,14 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
           valueEntry "Indeterminate" spec.Indeterminate
           valueEntry "Tone" spec.Tone ]
     | NodeKind.Skeleton(spec) -> [ valueEntry "Rows" spec.Rows ]
+    | NodeKind.Icon(spec) ->
+        // Phase 821 — all four Icon fields are scalar props (no Binding slot).
+        [ valueEntry "Icon" spec.Icon
+          valueEntry "Size" spec.Size
+          valueEntry "Tone" spec.Tone
+          (match spec.Label with
+           | Some l -> valueEntry "Label" l
+           | None -> entry "Label" None (Some "string option")) ]
     | NodeKind.LabelValueRow(spec) ->
         // Source is a Binding slot exposed via
         // extractBindings; the remaining four fields are scalar props.

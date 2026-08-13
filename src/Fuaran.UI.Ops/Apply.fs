@@ -496,6 +496,32 @@ let private updateSkeleton (field: string) (v: obj) (spec: SkeletonSpec) : Updat
         | Error msg -> TypeMismatch msg
     | _ -> UnknownField
 
+// Phase 821 — the standalone Icon display kind's field surface.
+let private updateIcon (field: string) (v: obj) (spec: IconSpec) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Icon(newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Icon" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryString v
+            |> Result.map (fun x -> { spec with Icon = x }))
+    | "Size" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryIconSize v
+            |> Result.map (fun x -> { spec with Size = x }))
+    | "Tone" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTone v
+            |> Result.map (fun x -> { spec with Tone = x }))
+    | "Label" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryStringOption v
+            |> Result.map (fun x -> { spec with Label = x }))
+    | _ -> UnknownField
+
 let private updateCallout (field: string) (v: obj) (spec: CalloutSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
@@ -1142,6 +1168,7 @@ let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) 
     | NodeKind.Callout spec -> updateCallout field v spec
     | NodeKind.Progress spec -> updateProgress field v spec
     | NodeKind.Skeleton spec -> updateSkeleton field v spec
+    | NodeKind.Icon spec -> updateIcon field v spec
     | NodeKind.LabelValueRow spec -> updateLabelValueRow field v spec
     | NodeKind.Fact spec -> updateFact field v spec
     | NodeKind.Link spec -> updateLink field v spec

@@ -219,6 +219,7 @@ let childNodes (node: Node<'Msg>) : Node<'Msg> list =
     | NodeKind.Callout _
     | NodeKind.Progress _
     | NodeKind.Skeleton _
+    | NodeKind.Icon _
     | NodeKind.LabelValueRow _
     | NodeKind.Fact _
     | NodeKind.Link _

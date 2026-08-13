@@ -590,6 +590,7 @@ let private validateCore
         | NodeKind.Callout _
         | NodeKind.Progress _
         | NodeKind.Skeleton _
+        | NodeKind.Icon _
         | NodeKind.LabelValueRow _
         | NodeKind.Fact _
         | NodeKind.Image _

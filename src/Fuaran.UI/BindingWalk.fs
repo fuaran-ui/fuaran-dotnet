@@ -254,6 +254,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.Callout c -> usesOfTextOpt c.Heading @ usesOfText c.Body, []
             | NodeKind.Progress p -> usesOfBinding p.Fraction @ usesOfTextOpt p.Label @ usesOfTextOpt p.Caveat, []
             | NodeKind.Skeleton _ -> [], []
+            | NodeKind.Icon _ -> [], []
             | NodeKind.LabelValueRow r -> usesOfText r.Label @ usesOfBinding r.Value @ usesOfTextOpt r.Help, []
             | NodeKind.Fact fa -> usesOfText fa.Label @ usesOfText fa.Value @ usesOfTextOpt fa.Help, []
             | NodeKind.Link l -> usesOfBinding l.Href @ usesOfText l.Label, []
