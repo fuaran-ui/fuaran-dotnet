@@ -252,6 +252,18 @@ sentinel string `"<closure>"`; the host re-attaches real behaviour:
 ```
 <!-- /fuaran:example -->
 
+### Submitting a form — `Call` posts the fields
+
+A form's `onSubmit` should DO something with the values. The simplest correct spelling
+is `"onSubmit": { "$type": "Call", "endpoint": "<what-this-submits-to>" }` — on submit
+the runtime delivers every declared field's value to the endpoint, keyed by field id
+(exactly the HTML form intuition). `Notify` in `onSubmit` likewise receives the values
+in its payload under `"fields"`. An EMPTY `Chain` in `onSubmit` is the classic failure:
+it declares a form whose values go nowhere. Reach for the `Local` buffer +
+`CommitLocal` choreography only when the flow needs per-field staging (an "Apply"
+button, cross-field sequencing) — for plain "submit this form", `Call` is the whole
+answer.
+
 ## Editing an existing tree
 
 After the first emission, prefer a `TreeOp` over re-sending the whole tree. A `TreeOp`
@@ -326,9 +338,10 @@ Getting this boundary wrong is the single most common emission error.
 | Display `Callout` | `body` | `dismissable`, `heading`, `icon`, `tone` |
 | Display `Progress` | `fraction†` | `caveat`, `indeterminate`, `label`, `tone` |
 | Display `Skeleton` | `rows` | — |
+| Display `Icon` | `icon` | `label`, `size`, `tone` |
 | Display `LabelValueRow` | `label`, `value†` | `emphasis`, `format`, `help` |
 | Display `Fact` | `label`, `value` | `emphasis`, `help`, `icon`, `tone` |
-| Display `Link` | `download`, `href†`, `label` | `rel`, `target` |
+| Display `Link` | `download`, `href†`, `label` | `protection`, `rel`, `target` |
 | Display `Image` | `alt`, `src†`, `variant` | — |
 | Display `List` | `items`, `ordered` | — |
 | Display `Toast` | `message`, `open†` | `dismissable`, `tone` |
@@ -1646,6 +1659,17 @@ declaration displays as the raw number and fails the task's data checks. The sur
   column / Metric.
 - **Date input**: the `Date` form-field kind — its value is an **ISO-8601 string**
   (`"2026-07-18"`), with `variant` `Date` · `Time` · `DateTime`.
+- **A duration** ("average handle time", "session length", "time on hold"): the value
+  rides as a raw COUNT of a unit and the presentation is `{ "$type": "Duration",
+  "style": "Compact", "unit": "Seconds" }` — in the `Format` binding for text slots
+  and in the `CellFormat` vocabulary for a Metric or column. `unit` is `Seconds` ·
+  `Minutes` · `Hours` (how to read the number); `style` is `Compact` ("1h 22m") ·
+  `Clock` ("1:22:00") · `Long` ("1 hour 22 minutes"). Never pre-format a duration
+  into a string in a numeric slot ("1h 20m" in `Metric.value` is the classic
+  failure) — keep the raw number so the value stays trendable, and declare the style.
+- **A relative time in a grid cell** ("last seen", "updated"): the `CellFormat`
+  vocabulary also carries `{ "$type": "RelativeTime", "unit": "Minute" }` — the cell
+  value is a signed count of the unit, exactly like the text-slot form.
 - If the prompt gives display-ready times ("14:03"), a plain string in a text slot is
   fine — the rule is about ENCODED values, which always need a format declaration.
 
@@ -1807,17 +1831,21 @@ kinds (`variant` on a `Button` is not `variant` on a `Heading`) — match on the
 | `Chart.kind` | `ChartKind` | `Line` · `Bar` · `Area` · `Pie` · `Scatter` · `Heatmap` |
 | `Metric.emphasis` | `Emphasis` | `Quiet` · `Normal` · `Loud` |
 | `Heading.variant` | `HeadingVariant` | `Standard` · `Eyebrow` · `Caption` · `Lead` |
+| `Icon.size` | `IconSize` | `Small` · `Medium` · `Large` |
 | `Image.variant` | `ImageVariant` | `Default` · `Avatar` · `Rounded` |
+| `Link.protection` | `LinkProtection` | `email` |
 | `Math.display` | `MathDisplay` | `Inline` · `Block` |
 | `Tabs.orientation` | `Orientation` | `Vertical` · `Horizontal` |
 | `ScrollArea.orientation` | `ScrollOrientation` | `Vertical` · `Horizontal` · `Both` |
 | `Metric.weight` | `StyleWeight` | `Compact` · `Standard` · `Spacious` |
-| `Callout.tone`, `Fact.tone`, `Metric.tone`, `Progress.tone`, `Toast.tone` | `ToneVariant` | `Default` · `Subdued` · `Brand` · `Success` · `Warning` · `Critical` · `Info` |
+| `Callout.tone`, `Fact.tone`, `Icon.tone`, `Metric.tone`, `Progress.tone`, `Toast.tone` | `ToneVariant` | `Default` · `Subdued` · `Brand` · `Success` · `Warning` · `Critical` · `Info` |
 
 Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` cases):
 
 - `DateStyle`: `Short` · `Medium` · `Long` · `Full`
 - `DateVariant`: `Date` · `Time` · `DateTime`
+- `DurationStyle`: `Compact` · `Clock` · `Long`
+- `DurationUnit`: `Seconds` · `Minutes` · `Hours`
 - `FileReadEncoding`: `Text` · `Base64` · `DataUrl`
 - `FontVoice`: `Default` · `Display` · `Structural`
 - `HashStrictness`: `StrictReplay` · `AdvisoryWarning` · `Enforced`
@@ -1832,13 +1860,13 @@ Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` 
 - `Binding.$type`: `Static` · `Query(name)` · `Filter(name)` · `Selection(nodeId)` · `State(key)` · `Computed(fn)` · `Now` · `I18n(key)` · `Local(flushOn, format, initialFrom, onCommit, parse)` · `Format(format, locale, source)` · `Transform(pipeline, source)` · `Invoke(args, capabilityId)`
 - `BoxLayout.$type`: `Auto`
 - `CallResultTarget.$type`: `State(key)` · `Query(name)`
-- `CellFormat.$type`: `None` · `Number` · `Currency(code)` · `Percent` · `SignificantDigits(digits)` · `Date(format)` · `Custom(fn)`
+- `CellFormat.$type`: `None` · `Number` · `Currency(code)` · `Percent` · `SignificantDigits(digits)` · `Date(format)` · `Duration(style, unit)` · `RelativeTime(unit)` · `Custom(fn)`
 - `CellKindErased.$type`: `Text` · `Numeric` · `Date` · `Editable(onEdit)` · `Checkbox(get, onToggle)` · `Button(label, onClick)` · `ButtonGroup(buttons)` · `Link(hrefFn, labelFn)` · `Pill(labelFn, toneFn)` · `TonedPill(field, map)` · `Progress(fractionFn, labelFn)` · `Custom(fn)`
 - `CellValue.$type`: `Numeric(value)` · `Text(value)` · `Bool(value)` · `Date(unixSeconds)` · `Empty`
 - `ColumnWidth.$type`: `Auto` · `Fixed(pixels)` · `Flex(weight)`
 - `CurveCommand.$type`: `MoveTo(to)` · `LineTo(to)` · `CubicTo(control1, control2, to)` · `QuadraticTo(control, to)` · `Close`
 - `FormFieldKind.$type`: `Text` · `Number` · `Range` · `Checkbox` · `Toggle` · `Choice(options)` · `RangedNumber` · `SegmentedChoice(options, orientation)` · `TextArea(rows)` · `Date(variant)` · `DateRange(variant)`
-- `Format.$type`: `Number` · `Currency(isoCode)` · `Percent` · `Date(dateStyle)` · `RelativeTime(unit)`
+- `Format.$type`: `Number` · `Currency(isoCode)` · `Percent` · `Date(dateStyle)` · `RelativeTime(unit)` · `Duration(style, unit)`
 - `FragmentArg.$type`: `Int(value)` · `Float(value)` · `Bool(value)` · `Str(value)` · `SlotArg(tree)`
 - `HoleDecl.$type`: `Value(name, space)` · `Slot(name)` · `Repeat(countSpace, name)`
 - `HoleValueSpace.$type`: `IntRange(max, min)` · `FloatRange(max, min)` · `StringLen(maxLen, minLen)` · `Enum(choices)` · `AnyString`
@@ -2010,7 +2038,14 @@ So when the prompt wants a message *plus* a button — an empty state, a
 "nothing here yet" panel, an upgrade prompt — do **not** put a `Callout` and a `Button`
 side by side. That renders a bordered region inside a bordered region with the button
 outside the inner border: two elements, not one. Use a `Box` with `role: "Card"`, which
-carries its own `heading` and holds every part as a child:
+carries its own `heading` and holds every part as a child.
+
+A decorative glyph for the empty state — the big checkmark, the empty inbox — is its
+own child: `{ "$type": "Icon", "icon": "check-circle", "size": "Large" }`. `Icon` is a
+standalone display kind (never a Button you don't want, never an `Image` with a fake
+`src`); it is decorative by default (hidden from screen readers), and gains a spoken
+description only when you set `label`. Sizes: `Small` · `Medium` (default, omit) ·
+`Large`:
 
 <!-- fuaran:example fixture=empty-state-card -->
 ```json
