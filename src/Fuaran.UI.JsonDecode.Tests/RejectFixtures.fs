@@ -236,6 +236,19 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.protection"
         IsOp = false
         Description = "LinkProtection value 'rot13' — the closed protection DU default-denies (Phase 812)" }
+      // fuaran#815 / Phase 822 — the leniency's own boundary: a State wrapper
+      // carrying only a key has no defaultValue/value to unwrap, so
+      // `normaliseTransformSource` leaves it untouched and Core's columnar
+      // codec refuses it (surfaced through the `coreError` wrap — WRONG_TYPE,
+      // no ExpectedShape; see `coreWrappedHintlessRejects`).
+      { Id = "reject-transform-source-empty-wrapper"
+        Json =
+          """{"id":"rej-tf-empty-wrapper","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[],"source":{"$type":"State","key":"rows"}}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.source.source"
+        IsOp = false
+        Description =
+          "fuaran#815 — a State wrapper carrying only a key (no defaultValue/value) is NOT unwrappable: the Transform source stays a binding object and the columnar decode refuses it" }
       { Id = "reject-unknown-static-sort-direction"
         Json =
           """{"id":"x","kind":{"$type":"DataGrid","columns":[],"source":{"$type":"Static","value":[]},"staticRows":{"defaultSort":{"column":0,"direction":"sideways"},"headers":["A"],"rows":[["1"],["2"]]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

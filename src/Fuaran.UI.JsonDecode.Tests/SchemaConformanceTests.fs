@@ -85,11 +85,18 @@ let private acceptTest (e: Corpus.FixtureEntry) : Test =
 ///   property values, so the payload is a well-formed `{from, to}` object by
 ///   every shape rule the schema can state. Ordering is decoder policy.
 ///
+/// - `reject-transform-source-empty-wrapper` (fuaran#815 / Phase 822): the
+///   schema deliberately models `Transform.source` as a bare object — Fuaran.Core
+///   owns the columnar algebra (§5 / §13 "don't constrain content the encoder
+///   doesn't decompose") — so a State wrapper carrying no `defaultValue`/`value`
+///   is a well-formed object by every shape rule the schema states. The
+///   unwrap-payload requirement is decoder policy.
+///
 /// Each entry is asserted schema-VALID below — the INVERSE pin. If the schema
 /// ever gains the power to refuse one of these, this test fails and the list
 /// shrinks deliberately rather than the exemption quietly outliving its reason.
 let private schemaInexpressibleRejects: Set<string> =
-    set [ "reject-daterange-unordered" ]
+    set [ "reject-daterange-unordered"; "reject-transform-source-empty-wrapper" ]
 
 let private rejectTest (e: Corpus.FixtureEntry) : Test =
     if schemaInexpressibleRejects.Contains e.Id then

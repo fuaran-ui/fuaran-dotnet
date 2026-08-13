@@ -431,6 +431,29 @@ let all: LenientFixture list =
         Description =
           "fuaran-core#94 — a values-only column object is the all-present shorthand (the canonical wrapped shape minus the mask); the masked form stays canonical" }
 
+      // ─── fuaran#815 — Transform-source leniencies (Phase 822 corpus pin) ──
+      // The two organic shapes observed cross-family in the Tier-D pilot
+      // (claude, gemini, kimi — 2026-08-13): a State/Static/Bound binding
+      // WRAPPER around the data unwraps to its defaultValue/value, and
+      // ROW-MAJOR data (an array of row objects) transposes to canonical
+      // columnar (first-row key set, absent cells null). Pinned in the shared
+      // corpus so all five hosts hold the normalisation forever.
+      { Id = "lenient-transform-source-rowmajor"
+        LenientJson =
+          """{"id":"len-tf-rowmajor","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[],"source":[{"dept":"ops","amount":100},{"dept":"eng","amount":200}]}}}"""
+        VerboseJson =
+          """{"id":"len-tf-rowmajor","kind":{"$type":"DataGrid","columns":[{"field":"dept","kind":{"$type":"Text"},"label":"Dept"}],"rowKeyField":"dept","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"amount":{"validity":[true,true],"values":[100,200]},"dept":{"validity":[true,true],"values":["ops","eng"]}},"schema":[{"name":"amount","type":"int"},{"name":"dept","type":"string"}]}}}}"""
+        Description =
+          "fuaran#815 — ROW-MAJOR Transform source (an array of row objects) transposes to canonical columnar: first-row key set, absent cells null" }
+
+      { Id = "lenient-transform-source-state-rows"
+        LenientJson =
+          """{"id":"len-tf-state-rows","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[],"source":{"$type":"State","defaultValue":[{"dept":"ops","waitMins":12},{"dept":"eng","waitMins":31}],"key":"waitTimes"}}},"variant":"Neutral"}}"""
+        VerboseJson =
+          """{"id":"len-tf-state-rows","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[],"source":{"columns":{"dept":{"validity":[true,true],"values":["ops","eng"]},"waitMins":{"validity":[true,true],"values":[12,31]}},"schema":[{"name":"dept","type":"string"},{"name":"waitMins","type":"int"}]}}},"variant":"Neutral"}}"""
+        Description =
+          "fuaran#815 — the Tier-D pilot shape: a State binding WRAPPER around row-major data in the Transform source slot unwraps to its defaultValue (initial-snapshot semantics), then transposes to canonical columnar" }
+
       { Id = "lenient-transform-flat-or"
         LenientJson =
           """{"id":"len-tf-or","kind":{"$type":"DataGrid","columns":[{"field":"item","kind":{"$type":"Text"},"label":"Item"}],"rowKeyField":"item","source":{"$type":"Transform","pipeline":[{"$type":"filter","pred":{"$type":"or","exprs":[{"$type":"eq","left":{"$type":"col","name":"status"},"right":{"$type":"lit","cell":{"$type":"Str","value":"low"}}},{"$type":"eq","left":{"$type":"col","name":"status"},"right":{"$type":"lit","cell":{"$type":"Str","value":"critical"}}}]}}],"source":{"columns":{"item":["widget","gadget"],"status":["low","ok"]}}}}}"""

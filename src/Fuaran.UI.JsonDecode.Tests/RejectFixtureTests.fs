@@ -22,6 +22,22 @@ let private corpusRoot = fst corpus
 
 let private rejectEntries = snd corpus |> List.filter (fun e -> e.Kind = "reject")
 
+/// Node rejects whose refusal is produced by a `Fuaran.Core` codec and
+/// surfaced through the host's cross-pillar `coreError` wrap — `WRONG_TYPE`
+/// with NO `ExpectedShape` (Core's `ColumnError` carries no UI-layer shape
+/// hint; the wrap deliberately does not invent one). Named, never counted —
+/// the same posture as `SchemaConformance.schemaInexpressibleRejects`.
+///
+/// - `reject-transform-source-empty-wrapper` (fuaran#815 / Phase 822): the
+///   un-unwrappable State wrapper reaches Core's columnar codec verbatim, so
+///   the refusal is Core's, not this decoder's.
+///
+/// Each entry is asserted hint-LESS below — the inverse pin. If the wrap ever
+/// gains a recovery hint, this fails and the list shrinks deliberately rather
+/// than the exemption quietly outliving its reason.
+let private coreWrappedHintlessRejects: Set<string> =
+    set [ "reject-transform-source-empty-wrapper" ]
+
 let private checkError
     (e: Corpus.FixtureEntry)
     (expectedCode: string)
@@ -34,8 +50,12 @@ let private checkError
 
     // Node-side rejects carry an expected-shape recovery hint (the
     // decoder-quality invariant); op-side rejects assert only Code + Path.
+    // Core-wrapped refusals are the named exception (inverse-pinned above).
     if e.Decoder = "node" then
-        Expect.isSome err.ExpectedShape "ExpectedShape hint populated"
+        if coreWrappedHintlessRejects.Contains e.Id then
+            Expect.isNone err.ExpectedShape "core-wrapped reject stays hint-less (inverse pin)"
+        else
+            Expect.isSome err.ExpectedShape "ExpectedShape hint populated"
 
 let private rejectTest (e: Corpus.FixtureEntry) : Test =
     testCase (sprintf "reject — %s (%s)" e.Description e.Id) (fun () ->
