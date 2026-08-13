@@ -33,6 +33,7 @@
     <Compile Include="Theme.fs" />
     <Compile Include="Formatting.fs" />
     <Compile Include="BindingResolver.fs" />
+    <Compile Include="SubmitPayload.fs" />
     <Compile Include="DrawingSvg.fs" />
     <Compile Include="MathMl.fs" />
     <Compile Include="Accessibility.fs" />

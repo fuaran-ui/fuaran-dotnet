@@ -1,5 +1,6 @@
 module Fuaran.UI.ServerDriven.Driver
 
+open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.OpStream.Replay
@@ -56,6 +57,19 @@ type DriverServices<'Msg> =
         /// Run a computational host-coupled arm (`Call` / `SetState` / `Notify`
         /// / `AiTool` / `CommitLocal`); may return a follow-up `'Msg` to fold.
         InterpretHostEffect: Action<'Msg> -> 'Msg option
+        /// Phase 820 — submit-payload semantics. An `Action.Call` reached from
+        /// a Form's `OnSubmit` (directly or `Chain`-nested) carries the form's
+        /// harvested field values as its invocation body,
+        /// `{"fields": {<id>: <value>, …}}` (`SubmitPayload.callBody`).
+        /// `Action.Call` has no payload slot on the wire — the shape is
+        /// unchanged, `into` unchanged — so the body rides THIS seam: when
+        /// wired (`Some`), the driver routes an `OnSubmit` `Call` here with the
+        /// body instead of `InterpretHostEffect`; when `None` (the `create`
+        /// default), the `OnSubmit` `Call` falls back to `InterpretHostEffect`
+        /// exactly as before Phase 820. (A `Notify` needs no seam: its payload
+        /// slot exists on the action, so the form-flush path merges the fields
+        /// into it before the action reaches `InterpretHostEffect`.)
+        InterpretSubmitCall: (Action<'Msg> -> JVal -> 'Msg option) option
         /// FGP 5 — the ops applied this step, for the journal / telemetry sink.
         OnApply: TreeOp<'Msg> list -> unit
         /// Phase 212 — the ALWAYS-ON G1 reject sink. `LiveConnection.Handle`
@@ -83,6 +97,7 @@ module DriverServices =
         { CanDispatch = fun _ -> false
           RenderFragment = renderFragment
           InterpretHostEffect = fun _ -> None
+          InterpretSubmitCall = None
           OnApply = ignore
           OnReject = ignore }
 
@@ -126,10 +141,14 @@ let init
 
 /// Interpret a resolved `Action` into the messages to fold through `update` and
 /// the client effects to ship. `nodeId` is the originating event's node (for the
-/// node-addressed client effects, `Focus` / `ReadFileBody`).
+/// node-addressed client effects, `Focus` / `ReadFileBody`). `submitBody` is
+/// the Phase 820 submit-payload envelope (`Some` only on a form-submit's
+/// `OnSubmit` action — see `applyResolvedActionsWithSubmitBody`), threaded
+/// through `Chain` so a nested `Call` still receives it.
 let rec private interpret
     (nodeId: string)
     (services: DriverServices<'Msg>)
+    (submitBody: JVal option)
     (action: Action<'Msg>)
     : 'Msg list * ClientEffect list =
     match action with
@@ -158,12 +177,23 @@ let rec private interpret
         actions
         |> List.fold
             (fun (ms, es) a ->
-                let m2, e2 = interpret nodeId services a
+                let m2, e2 = interpret nodeId services submitBody a
                 ms @ m2, es @ e2)
             ([], [])
+    // Phase 820 — a `Call` executing with a submit body (a form-submit's
+    // `OnSubmit`, at any Chain depth) routes through the `InterpretSubmitCall`
+    // seam when the host wired it, so the harvested field values reach the
+    // host's invocation. An unwired host (`None`) falls back to
+    // `InterpretHostEffect` — the pre-820 behaviour, no body.
+    | Action.Call _ ->
+        let msg =
+            match submitBody, services.InterpretSubmitCall with
+            | Some body, Some submitCall -> submitCall action body
+            | _ -> services.InterpretHostEffect action
+
+        (msg |> Option.toList), []
     // Computational host-coupled arms → the injected host interpreter (which
     // may yield a follow-up 'Msg to fold).
-    | Action.Call _
     | Action.Notify _
     | Action.SetState _
     | Action.AiTool _
@@ -173,22 +203,25 @@ let rec private interpret
     | Action.Invoke _ -> (services.InterpretHostEffect action |> Option.toList), []
 
 /// Apply a list of already-resolved, already-gated `Action`s to the session in
-/// one step: interpret each (`nodeId` is the originating event's node, for the
-/// node-addressed client effects), fold the produced messages through `update`,
-/// re-render, diff old→new, emit the ops (FGP 5), and lower to patches. The
-/// shared core of `step` (a single resolved action) and the form-flush path
-/// (`FormBuffer` — N buffered field-commit actions plus the form's `OnSubmit`,
-/// applied atomically so one submit is one diff/patch).
-let applyResolvedActions
+/// one step, each paired with the Phase 820 submit body to thread to any
+/// `Action.Call` inside it (`None` ⇒ the pre-820 behaviour): interpret each
+/// (`nodeId` is the originating event's node, for the node-addressed client
+/// effects), fold the produced messages through `update`, re-render, diff
+/// old→new, emit the ops (FGP 5), and lower to patches. The shared core of
+/// `step` / `applyResolvedActions` and the form-flush path (`FormBuffer` — N
+/// buffered field-commit actions, body-less, plus the form's `OnSubmit`
+/// carrying the harvested submit body, applied atomically so one submit is one
+/// diff/patch).
+let applyResolvedActionsWithSubmitBody
     (session: LiveSession<'Model, 'Msg>)
     (nodeId: string)
-    (actions: Action<'Msg> list)
+    (actions: (Action<'Msg> * JVal option) list)
     : LiveSession<'Model, 'Msg> * StepOutput =
     let msgs, effects =
         actions
         |> List.fold
-            (fun (ms, es) a ->
-                let m2, e2 = interpret nodeId session.Services a
+            (fun (ms, es) (a, submitBody) ->
+                let m2, e2 = interpret nodeId session.Services submitBody a
                 ms @ m2, es @ e2)
             ([], [])
 
@@ -204,6 +237,15 @@ let applyResolvedActions
     { Patches = patches
       Effects = effects
       Rejected = None }
+
+/// `applyResolvedActionsWithSubmitBody` with no submit body on any action —
+/// the ordinary (non-form-submit) shape, byte-identical to the pre-820 fold.
+let applyResolvedActions
+    (session: LiveSession<'Model, 'Msg>)
+    (nodeId: string)
+    (actions: Action<'Msg> list)
+    : LiveSession<'Model, 'Msg> * StepOutput =
+    applyResolvedActionsWithSubmitBody session nodeId [ for a in actions -> a, None ]
 
 /// Step the session with one untrusted inbound event. Validates (G1), runs the
 /// resolved action through `update`, re-renders, diffs, lowers — returning the

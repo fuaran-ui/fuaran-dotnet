@@ -90,7 +90,7 @@ a `file-read` `LiveEvent`.
 | `Action` arm | Disposition |
 |---|---|
 | `Dispatch` | **Server-executed** → `update` |
-| `Call`, `Notify`, `SetState`, `AiTool`, `CommitLocal` | **Server-executed** (host `InterpretHostEffect`) |
+| `Call`, `Notify`, `SetState`, `AiTool`, `CommitLocal` | **Server-executed** (host `InterpretHostEffect`; a form-submit's `Call` routes through `InterpretSubmitCall` with the submit body when wired – Phase 820, §"Submit payload") |
 | `Navigate route` | **`ClientEffect.Navigate`** |
 | `WriteToClipboard text` | **`ClientEffect.WriteToClipboard`** |
 | `ReadFileBody(file, encoding, onRead)` | **`ClientEffect.ReadFileBody`** (body round-trips as a `file-read` `LiveEvent`; the blob is browser-held) |
@@ -491,6 +491,25 @@ construction (that's what `Local` means), so it never round-trips per keystroke.
    by this protocol (it had no client buffer), so enabling the flush is purely
    additive: a form built from non-`Local` fields behaves exactly as the
    pre-policy 152 path (only `OnSubmit` fires).
+5. **Submit payload (Phase 820).** A `Call` (or `Notify`) in the form's
+   `OnSubmit` – directly or `Chain`-nested – receives the harvested field
+   values as its payload, keyed by field id: the HTML prior ("submitting posts
+   the fields"), made real on the harvest that already exists. Included is
+   every value the step-2 harvest delivered that names a **declared** field of
+   the form – `Local` and non-`Local` alike, since every rendered control
+   carries the `data-fuaran-field` marker – coerced as the shim read it
+   (checkbox → bool, number → number, everything else its string value; a
+   `null` – e.g. an empty number input – is omitted, the wire has no null; a
+   pair control contributes its marker-carrying first input). A `Notify` gains
+   the object merged into its payload under a `"fields"` key (an authored
+   `"fields"` key wins – the merge never clobbers); a `Call`, which has no
+   payload slot on the wire (`into` unchanged), receives the body
+   `{"fields": {<id>: <value>, …}}` through the driver's
+   `DriverServices.InterpretSubmitCall` seam (`None` default falls back to
+   `InterpretHostEffect` with no body – the pre-820 behaviour). No wire
+   change; an `OnSubmit` with no `Call`/`Notify` folds byte-identical actions.
+   The `Local`/`CommitLocal` ceremony remains the precision path for
+   cross-field choreography.
 
 The buffer-flush composes with the Phase 156 validation half above
 (`LiveConnection.EnableFormValidation`): on a valid submit the buffers commit and

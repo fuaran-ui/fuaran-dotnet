@@ -1,9 +1,12 @@
 module Fuaran.UI.ServerDriven.FormBuffer
 
+open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Introspect
 open Fuaran.UI.ServerDriven.Validation
 open Fuaran.UI.ServerDriven.Driver
+
+module SubmitPayload = Fuaran.UI.Renderer.SubmitPayload
 
 // ============================================================================
 //  Form / input / local-state buffer flush (Phase 152, Track C — the form
@@ -34,6 +37,17 @@ open Fuaran.UI.ServerDriven.Driver
 //  `OnSubmit` fires — the existing Phase 156 tests rely on this). This keeps the
 //  flush additive: enabling the buffer protocol cannot change a non-`Local`
 //  form's behaviour.
+//
+//  ── Submit payload (Phase 820) ─────────────────────────────────────────────
+//  A `Call` / `Notify` in the form's `OnSubmit` receives the harvested field
+//  values as its payload, keyed by field id — the HTML prior ("submitting
+//  posts the fields") made real on the existing harvest. `submitFields`
+//  projects the untrusted flush payload onto the DECLARED fields;
+//  `SubmitPayload.attachToAction` merges them into any `Notify` payload under
+//  a "fields" key, and the OnSubmit action folds with the Phase 820 submit
+//  body so a `Call` reaches the host's `InterpretSubmitCall` seam with
+//  `{"fields": {…}}`. No wire change; the Local/CommitLocal ceremony remains
+//  the precision path.
 //
 //  Pure + Fable-clean where it can be: `fieldFlushAction` / `commitActions` are
 //  functions of `(field, value)` → `Action`; the `step` wrapper reuses the
@@ -87,6 +101,35 @@ let fieldFlushAction (field: FormField<'Msg>) (value: LiveValue) : Action<'Msg> 
 let commitActions (form: FormSpec<'Msg>) (values: Map<string, LiveValue>) : Action<'Msg> list =
     form.Fields
     |> List.choose (fun field -> Map.tryFind field.Id values |> Option.bind (fieldFlushAction field))
+
+// ─── the submit payload (Phase 820) ──────────────────────────────────────────
+
+/// A harvested `LiveValue` as a wire field value. `Null` yields nothing — the
+/// Fuaran wire model has no null (an empty number input harvests `null` from
+/// the shim), so a null-valued field is omitted from the submit payload rather
+/// than fabricated.
+let private liveValueToJVal (v: LiveValue) : JVal option =
+    match v with
+    | LiveValue.Str s -> Some(JStr s)
+    | LiveValue.Num n -> Some(JFloat n)
+    | LiveValue.Bool b -> Some(JBool b)
+    | LiveValue.Null -> None
+
+/// Phase 820 — the form's harvested field values as wire fields, keyed by
+/// field id in field-declaration order. The shim harvests EVERY rendered
+/// `data-fuaran-field` control on submit (`Local` and non-`Local` alike:
+/// checkbox → bool, number/range → number-or-null, everything else its string
+/// value; a pair control contributes its first — min/from — input, the one
+/// carrying the marker). This projection then keeps only values naming a
+/// DECLARED field of this form — the payload is untrusted (G1), so a forged
+/// key that names no field contributes nothing — and drops `Null`s (no null on
+/// the wire).
+let submitFields (form: FormSpec<'Msg>) (values: Map<string, LiveValue>) : (string * JVal) list =
+    form.Fields
+    |> List.choose (fun field ->
+        Map.tryFind field.Id values
+        |> Option.bind liveValueToJVal
+        |> Option.map (fun v -> field.Id, v))
 
 /// Find a form field by id anywhere in the tree (an `Action.CommitLocal fieldId`
 /// names a form field, not a `Node`, so `findNode` can't resolve it). Walks the
@@ -172,8 +215,23 @@ let step
                     let fieldActions =
                         commitActions form ev.Payload |> List.filter session.Services.CanDispatch
 
-                    let actions = fieldActions @ (gated.Action |> Option.toList)
-                    let s2, out = applyResolvedActions session ev.NodeId actions
+                    // Phase 820 — submit-payload semantics: the harvested field
+                    // values ride the OnSubmit action. A `Notify` gains them
+                    // merged into its payload under a "fields" key (authored
+                    // "fields" wins); a `Call` — which has no payload slot —
+                    // receives them as its invocation body through the
+                    // `InterpretSubmitCall` seam. Field-flush (`OnCommit`)
+                    // actions are NOT submit-scoped: they fold body-less,
+                    // exactly as before.
+                    let fields = submitFields form ev.Payload
+
+                    let submitAction = gated.Action |> Option.map (SubmitPayload.attachToAction fields)
+
+                    let pairs =
+                        [ for a in fieldActions -> a, None ]
+                        @ [ for a in Option.toList submitAction -> a, Some(SubmitPayload.callBody fields) ]
+
+                    let s2, out = applyResolvedActionsWithSubmitBody session ev.NodeId pairs
                     // Clear stale field-error attributes only when validation is
                     // active (so the non-validating 152 path's patch set is unchanged).
                     let clear =

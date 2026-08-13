@@ -20,6 +20,7 @@ module Fuaran.UI.ServerDriven.Tests.FormBufferTests
 // fuaran-validator: disable FUARAN042 — server-side flush fixtures, no display layer
 
 open Expecto
+open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.ServerDriven
@@ -112,6 +113,28 @@ let private stubRender (n: Node<Msg>) : string =
 
 let private session () =
     init (DriverServices.createPermissive stubRender) update view initialModel
+
+// ─── Phase 820 fixtures — submit-payload semantics ────────────────────────────
+
+/// A view over the same name/age fields with a caller-chosen `OnSubmit` (the
+/// Phase 820 tests vary the submit action: Call / Notify / Chain / Dispatch).
+let private viewWith (onSubmit: Action<Msg>) (m: Model) : Node<Msg> =
+    Fuaran.dashboard
+        "root"
+        { Defaults.dashboard<Msg> with
+            Children =
+                [ Fuaran.form
+                      "f"
+                      { Defaults.form<Msg> with
+                          Fields = [ nameField; ageField ]
+                          OnSubmit = onSubmit }
+                  Fuaran.markdown "status" (sprintf "%s/%g/%b" m.Name m.Age m.Greeted) ] }
+
+let private sessionWith (services: DriverServices<Msg>) (onSubmit: Action<Msg>) =
+    init services update (viewWith onSubmit) initialModel
+
+/// The submit body / merged-payload object the name+age submit should carry.
+let private expectedFields = JObj [ "name", JStr "Ada"; "age", JFloat 30.0 ]
 
 let private submitEv (values: (string * LiveValue) list) : LiveEvent =
     { ConnId = "c"
@@ -296,4 +319,173 @@ let tests =
               match tryFindFormField "age" (view initialModel) with
               | Some f -> Expect.equal f.Id "age" "found the nested age field"
               | None -> failtest "expected to find the age field under the form"
+          }
+
+          // ─── Phase 820 — submit-payload semantics ──────────────────────────
+
+          test "submit delivers the harvested fields to a Call via InterpretSubmitCall (keyed by field id)" {
+              let mutable captured: (Action<Msg> * JVal) option = None
+
+              let services =
+                  { DriverServices.createPermissive stubRender with
+                      InterpretSubmitCall =
+                          Some(fun action body ->
+                              captured <- Some(action, body)
+                              None) }
+
+              let s = sessionWith services (Action.Call("api/submit", None, None))
+
+              // A forged payload key naming no declared field must not leak
+              // into the body (the payload is untrusted — G1).
+              let _, out =
+                  step
+                      None
+                      s
+                      (submitEv
+                          [ "name", LiveValue.Str "Ada"
+                            "age", LiveValue.Num 30.0
+                            "forged", LiveValue.Str "nope" ])
+
+              Expect.isNone out.Rejected "a clean submit is not rejected"
+
+              match captured with
+              | Some(Action.Call("api/submit", _, _), body) ->
+                  Expect.equal body (JObj [ "fields", expectedFields ]) "the Call body is the declared fields only"
+              | other -> failtestf "expected the OnSubmit Call with a submit body, got %A" other
+          }
+
+          test "an unwired InterpretSubmitCall falls back to InterpretHostEffect (pre-820 behaviour)" {
+              let mutable received: Action<Msg> list = []
+
+              let services =
+                  { DriverServices.createPermissive stubRender with
+                      InterpretHostEffect =
+                          fun action ->
+                              received <- received @ [ action ]
+                              None }
+
+              let s = sessionWith services (Action.Call("api/submit", None, None))
+
+              let _, out =
+                  step None s (submitEv [ "name", LiveValue.Str "Ada"; "age", LiveValue.Num 30.0 ])
+
+              Expect.isNone out.Rejected "a clean submit is not rejected"
+
+              match received with
+              | [ Action.Call("api/submit", _, _) ] -> ()
+              | other -> failtestf "expected the Call to reach InterpretHostEffect unchanged, got %A" other
+          }
+
+          test "submit merges the harvested fields into a Notify payload under a 'fields' key" {
+              let mutable received: Action<Msg> list = []
+
+              let services =
+                  { DriverServices.createPermissive stubRender with
+                      InterpretHostEffect =
+                          fun action ->
+                              received <- received @ [ action ]
+                              None }
+
+              let s =
+                  sessionWith services (Action.Notify("form-events", JObj [ "kind", JStr "signup" ]))
+
+              let _, out =
+                  step None s (submitEv [ "name", LiveValue.Str "Ada"; "age", LiveValue.Num 30.0 ])
+
+              Expect.isNone out.Rejected "a clean submit is not rejected"
+
+              match received with
+              | [ Action.Notify("form-events", payload) ] ->
+                  Expect.equal
+                      payload
+                      (JObj [ "kind", JStr "signup"; "fields", expectedFields ])
+                      "authored payload keys kept, fields merged after them"
+              | other -> failtestf "expected the merged Notify, got %A" other
+          }
+
+          test "a Chain-nested Call still receives the submit body (and the Chain's Dispatch folds)" {
+              let mutable captured: JVal option = None
+
+              let services =
+                  { DriverServices.createPermissive stubRender with
+                      InterpretSubmitCall =
+                          Some(fun _ body ->
+                              captured <- Some body
+                              None) }
+
+              let s =
+                  sessionWith services (Action.Chain [ Action.Dispatch Greet; Action.Call("api/submit", None, None) ])
+
+              let s2, out =
+                  step None s (submitEv [ "name", LiveValue.Str "Ada"; "age", LiveValue.Num 30.0 ])
+
+              Expect.isNone out.Rejected "a clean submit is not rejected"
+              Expect.isTrue s2.Model.Greeted "the Chain's Dispatch folded"
+              Expect.equal captured (Some(JObj [ "fields", expectedFields ])) "the nested Call carried the body"
+          }
+
+          test "an authored 'fields' key in a Notify payload wins — the merge never clobbers" {
+              let mutable received: Action<Msg> list = []
+
+              let services =
+                  { DriverServices.createPermissive stubRender with
+                      InterpretHostEffect =
+                          fun action ->
+                              received <- received @ [ action ]
+                              None }
+
+              let authored = JObj [ "fields", JStr "mine" ]
+              let s = sessionWith services (Action.Notify("form-events", authored))
+
+              let _, out =
+                  step None s (submitEv [ "name", LiveValue.Str "Ada"; "age", LiveValue.Num 30.0 ])
+
+              Expect.isNone out.Rejected "a clean submit is not rejected"
+
+              match received with
+              | [ Action.Notify("form-events", payload) ] ->
+                  Expect.equal payload authored "the authored 'fields' payload is untouched"
+              | other -> failtestf "expected the untouched Notify, got %A" other
+          }
+
+          test "a submit with no Call/Notify behaves exactly as before (no seam invoked)" {
+              let mutable submitCalls = 0
+              let mutable hostEffects = 0
+
+              let services =
+                  { DriverServices.createPermissive stubRender with
+                      InterpretSubmitCall =
+                          Some(fun _ _ ->
+                              submitCalls <- submitCalls + 1
+                              None)
+                      InterpretHostEffect =
+                          fun _ ->
+                              hostEffects <- hostEffects + 1
+                              None }
+
+              let s = sessionWith services (Action.Dispatch Greet)
+
+              let s2, out =
+                  step None s (submitEv [ "name", LiveValue.Str "Ada"; "age", LiveValue.Num 30.0 ])
+
+              Expect.isNone out.Rejected "a clean submit is not rejected"
+              Expect.isTrue s2.Model.Greeted "OnSubmit (Greet) folded"
+              Expect.equal s2.Model.Name "Ada" "the field flush still committed"
+              Expect.equal submitCalls 0 "no Call in the OnSubmit — the submit seam is never invoked"
+              Expect.equal hostEffects 0 "no host-effect arm in the OnSubmit either"
+          }
+
+          test "submitFields projects the untrusted payload onto declared fields, dropping Null" {
+              // `age` arrives Null (an empty number input harvests null) — the
+              // wire model has no null, so the field is omitted, not fabricated;
+              // `forged` names no declared field, so it never reaches the body.
+              let fields =
+                  submitFields
+                      formSpec
+                      (Map.ofList
+                          [ "age", LiveValue.Null
+                            "name", LiveValue.Str "Ada"
+                            "forged", LiveValue.Str "nope" ])
+
+              Expect.equal fields [ "name", JStr "Ada" ] "declared fields only, Null omitted"
           } ]

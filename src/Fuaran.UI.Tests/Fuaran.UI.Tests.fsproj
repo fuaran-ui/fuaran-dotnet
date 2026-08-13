@@ -110,6 +110,11 @@
          pair RECORD to the field's own State/Filter slot (the regressed Range
          shape passed None, the write-back CLEAR, erasing the slot). -->
     <Compile Include="FormFieldWriteBackTests.fs" />
+    <!-- SubmitPayloadTests pins Phase 820's client-tier submit-payload core
+         (Renderer.Core SubmitPayload): the declared-field harvest, the Notify
+         "fields" merge (authored key wins, scalar untouched), and the
+         Chain-recursive onSubmit rewrite. -->
+    <Compile Include="SubmitPayloadTests.fs" />
     <!-- TransformParamTests pins Phase 424's parameterised Binding.Transform:
          param → env resolution, the unset-filter prune rule, and the derived
          Transform.paramsOf edge. -->

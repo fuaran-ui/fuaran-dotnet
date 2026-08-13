@@ -169,8 +169,19 @@
          tone + optional a11y label, decorative-by-default) (821). New DU
          cases break consumers' exhaustive matches under
          TreatWarningsAsErrors, so it takes its own version per the
-         additive-DU-case precedent (0.7.0/0.11.0). -->
-    <Version>0.21.0</Version>
+         additive-DU-case precedent (0.7.0/0.11.0).
+         0.22.0 (fuaran#820) - behavioural addition, submit-payload
+         semantics: a `Call` / `Notify` in a Form's `onSubmit` receives the
+         form's field values keyed by field id (Notify: merged into its
+         payload under a "fields" key, authored key wins; Call: the body
+         `{"fields": {...}}` through the server-driven driver's new
+         `DriverServices.InterpretSubmitCall` seam - `None` default falls
+         back to `InterpretHostEffect`, the pre-820 behaviour). No wire
+         change. `DriverServices` gains a record field (hosts constructing
+         via the documented `create ... with` pattern are unaffected), and
+         a public-contract addition never rides a same-version repack
+         (the 0.6.0 precedent), so it takes its own version. -->
+    <Version>0.22.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

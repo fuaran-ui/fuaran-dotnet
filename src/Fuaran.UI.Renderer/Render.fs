@@ -3107,7 +3107,17 @@ and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : React
               // because the typed OnSubmit may dispatch a network call
               // that reads the just-committed values.
               LocalBindings.dispatchFormCommit ()
-              runAction ctx spec.OnSubmit)
+              // Phase 820 — submit-payload semantics: the form's current
+              // field values (read exactly as this renderer's own controls
+              // read them — see `SubmitPayload.harvestFields`) ride the
+              // OnSubmit's `Notify` payloads under a "fields" key. A `Call`
+              // has no payload slot on `IFuaranRuntime.Call(endpoint,
+              // onResult)` — the client Call substrate is host-owned — so on
+              // this tier the submit body reaches only the arms with a
+              // payload slot; the server-driven tier delivers the Call body
+              // through its `InterpretSubmitCall` seam (SERVER_DRIVEN.md).
+              let fields = SubmitPayload.harvestFields ctx.Sources spec.Fields
+              runAction ctx (SubmitPayload.attachToAction fields spec.OnSubmit))
           prop.children formChildren ]
 
 and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) : ReactElement =
