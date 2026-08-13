@@ -65,6 +65,20 @@ public static partial class Fuaran
     public static FuaranNode Skeleton(SkeletonOptions options) =>
         new(FsFactory.skeleton<object>(options.Id, options.Rows));
 
+    /// <summary>A standalone icon (Phase 821) — decorative by default
+    /// (no <c>Label</c> → <c>aria-hidden</c>); meaningful with a <c>Label</c>
+    /// (<c>role="img"</c> + <c>aria-label</c>).</summary>
+    public static FuaranNode Icon(IconOptions options) =>
+        new(FsFactory.iconSpec<object>(
+            options.Id,
+            // Generated IconSpec ctor is Generated.fs declaration order
+            // (Icon, Size, Tone, Label).
+            new FsGen.IconSpec(
+                options.Icon,
+                options.Size.ToFs(),
+                options.Tone.ToFs(),
+                Icon(options.Label))));
+
     /// <summary>A single label-left / value-right row.</summary>
     public static FuaranNode LabelValueRow(LabelValueRowOptions options) =>
         new(FsFactory.labelValueRow<object>(
@@ -253,6 +267,25 @@ public sealed record ProgressOptions
 
     /// <summary>Semantic tone (default default).</summary>
     public Tone Tone { get; init; } = Tone.Default;
+}
+
+/// <summary>Options for <see cref="Fuaran.Icon"/>.</summary>
+public sealed record IconOptions
+{
+    /// <summary>The node id.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The glyph name from the icon vocabulary (the <c>data-icon</c> hook).</summary>
+    public required string Icon { get; init; }
+
+    /// <summary>Display size (default <see cref="IconSize.Medium"/>).</summary>
+    public IconSize Size { get; init; } = IconSize.Medium;
+
+    /// <summary>Tone (default <see cref="Tone.Default"/>).</summary>
+    public Tone Tone { get; init; } = Tone.Default;
+
+    /// <summary>Accessible label — omit for a decorative icon.</summary>
+    public string? Label { get; init; }
 }
 
 /// <summary>Options for <see cref="Fuaran.Skeleton"/>.</summary>

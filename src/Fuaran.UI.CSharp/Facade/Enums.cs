@@ -107,6 +107,14 @@ public enum ChartKind
     Heatmap,
 }
 
+/// <summary>Icon display size (Phase 821) — <c>Medium</c> is the default.</summary>
+public enum IconSize
+{
+    Small,
+    Medium,
+    Large,
+}
+
 /// <summary>The single translation seam between the C# enums and the F# DUs.</summary>
 internal static class EnumMap
 {
@@ -130,6 +138,14 @@ internal static class EnumMap
 
     internal static FsGen.MathDisplay ToFs(this MathDisplay d) =>
         d == MathDisplay.Inline ? FsGen.MathDisplay.Inline : FsGen.MathDisplay.Block;
+
+    internal static FsGen.IconSize ToFs(this IconSize s) =>
+        s switch
+        {
+            IconSize.Small => FsGen.IconSize.Small,
+            IconSize.Large => FsGen.IconSize.Large,
+            _ => FsGen.IconSize.Medium,
+        };
 
     internal static FsGen.DateStyle ToFs(this DateStyle d) =>
         d switch

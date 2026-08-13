@@ -39,6 +39,14 @@ Friend Module DisplayMapping
         d("Skeleton") = Function(el) Csharp.Fuaran.Skeleton(
             New Csharp.SkeletonOptions With {.Id = Attr(el, "id"), .Rows = AttrInt(el, "rows", 3)})
 
+        d("Icon") = Function(el) Csharp.Fuaran.Icon(
+            New Csharp.IconOptions With {
+                .Id = Attr(el, "id"),
+                .Icon = Attr(el, "icon"),
+                .Size = AsEnum(Of Csharp.IconSize)(Attr(el, "size"), Csharp.IconSize.Medium),
+                .Tone = AsEnum(Of Csharp.Tone)(Attr(el, "tone"), Csharp.Tone.Default),
+                .Label = Attr(el, "label")})
+
         d("LabelValueRow") = Function(el) Csharp.Fuaran.LabelValueRow(
             New Csharp.LabelValueRowOptions With {
                 .Id = Attr(el, "id"),
