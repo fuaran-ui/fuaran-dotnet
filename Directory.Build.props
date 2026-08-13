@@ -159,8 +159,18 @@
          Tier-D pilot (2026-08-13). Host-bridge normalisation only; Core,
          the wire spec and canonical emissions are untouched. Its own
          version rather than joining the unreleased 0.19.0, per the
-         same-version-repack rule. -->
-    <Version>0.20.0</Version>
+         same-version-repack rule.
+         0.21.0 (fuaran#819 + fuaran#821) - additive wire vocabulary, one
+         version for the change-set: `Duration` in BOTH format vocabularies
+         (`Format` + `CellFormat`, unit Seconds/Minutes/Hours x style
+         Compact/Clock/Long, locale-independent shared rendering) plus
+         `CellFormat.RelativeTime` cell-vocabulary parity (819); and the
+         standalone `Icon` display kind (`IconSpec`: icon + IconSize +
+         tone + optional a11y label, decorative-by-default) (821). New DU
+         cases break consumers' exhaustive matches under
+         TreatWarningsAsErrors, so it takes its own version per the
+         additive-DU-case precedent (0.7.0/0.11.0). -->
+    <Version>0.21.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

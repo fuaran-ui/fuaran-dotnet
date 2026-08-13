@@ -207,6 +207,23 @@ let private genColumnWidth: Gen<ColumnWidth> =
           Gen.map ColumnWidth.Fixed genInt
           Gen.map ColumnWidth.Flex genFiniteFloat ]
 
+// Phase 819 — the Duration format enums (shared by Format + CellFormat).
+let private genDurationUnit: Gen<DurationUnit> =
+    Gen.elements [ DurationUnit.Seconds; DurationUnit.Minutes; DurationUnit.Hours ]
+
+let private genDurationStyle: Gen<DurationStyle> =
+    Gen.elements [ DurationStyle.Compact; DurationStyle.Clock; DurationStyle.Long ]
+
+let private genRelativeTimeUnitCell: Gen<RelativeTimeUnit> =
+    Gen.elements
+        [ RelativeTimeUnit.Second
+          RelativeTimeUnit.Minute
+          RelativeTimeUnit.Hour
+          RelativeTimeUnit.Day
+          RelativeTimeUnit.Week
+          RelativeTimeUnit.Month
+          RelativeTimeUnit.Year ]
+
 let private genCellFormat: Gen<CellFormat> =
     Gen.oneof
         [ Gen.constant CellFormat.None
@@ -215,10 +232,12 @@ let private genCellFormat: Gen<CellFormat> =
           Gen.map CellFormat.Percent (genOption genInt)
           Gen.map CellFormat.SignificantDigits genInt
           Gen.map CellFormat.Date genNonEmptyString
+          Gen.map2 (fun u s -> CellFormat.Duration(u, s)) genDurationUnit genDurationStyle
+          Gen.map CellFormat.RelativeTime genRelativeTimeUnitCell
           Gen.constant (CellFormat.Custom(fun _ -> "<custom>")) ]
 
 /// Deterministic spread covering every `CellFormat` arm — used by the grid
-/// column generator so a single generated grid exercises all seven.
+/// column generator so a single generated grid exercises all nine.
 let private allCellFormats: CellFormat list =
     [ CellFormat.None
       CellFormat.Number(Some 2)
@@ -226,6 +245,8 @@ let private allCellFormats: CellFormat list =
       CellFormat.Percent None
       CellFormat.SignificantDigits 3
       CellFormat.Date "yyyy-MM-dd"
+      CellFormat.Duration(DurationUnit.Minutes, DurationStyle.Compact)
+      CellFormat.RelativeTime RelativeTimeUnit.Minute
       CellFormat.Custom(fun _ -> "<custom>") ]
 
 // ─── JVal (scalar, round-trip-faithful subset) ───────────────────────────────
@@ -282,7 +303,9 @@ let private genFormat: Gen<Format> =
           Gen.map Format.Currency genNonEmptyString
           Gen.map Format.Percent (genOption genInt)
           Gen.map Format.Date genDateStyle
-          Gen.map Format.RelativeTime genRelativeTimeUnit ]
+          Gen.map Format.RelativeTime genRelativeTimeUnit
+          // Phase 819 — the locale-independent duration arm.
+          Gen.map2 (fun u s -> Format.Duration(u, s)) genDurationUnit genDurationStyle ]
 
 let private genLocaleSource: Gen<LocaleSource> =
     Gen.oneof
@@ -504,6 +527,20 @@ let private genDisplayKind: Gen<NodeKind<obj>> =
           Gen.map NodeKind.Callout genCalloutSpec
           Gen.map NodeKind.Progress genProgressSpec
           Gen.map (fun r -> NodeKind.Skeleton { Rows = r }) (Gen.choose (0, 12))
+          // Phase 821 — the standalone icon-only display kind.
+          gen {
+              let! name = genNonEmptyString
+              let! size = Gen.elements [ IconSize.Small; IconSize.Medium; IconSize.Large ]
+              let! tone = genTone
+              let! label = genOption genNonEmptyString
+
+              return
+                  NodeKind.Icon
+                      { Icon = name
+                        Size = size
+                        Tone = tone
+                        Label = label }
+          }
           Gen.map NodeKind.LabelValueRow genLabelValueRowSpec ]
 
 // ─── Action ─────────────────────────────────────────────────────────────────

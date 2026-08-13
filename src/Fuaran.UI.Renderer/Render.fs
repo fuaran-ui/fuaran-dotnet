@@ -873,6 +873,7 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
     | NodeKind.Callout _
     | NodeKind.Progress _
     | NodeKind.Skeleton _
+    | NodeKind.Icon _
     | NodeKind.LabelValueRow _
     | NodeKind.Fact _
     | NodeKind.Link _
@@ -1091,6 +1092,7 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
 
         __v, []
     | NodeKind.Skeleton _ -> [], []
+    | NodeKind.Icon _ -> [], []
     | NodeKind.LabelValueRow r ->
         let __v =
             keysOfText channel r.Label
@@ -1338,6 +1340,7 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
     | NodeKind.Callout _
     | NodeKind.Progress _
     | NodeKind.Skeleton _
+    | NodeKind.Icon _
     | NodeKind.LabelValueRow _
     | NodeKind.Fact _
     | NodeKind.Link _
@@ -2057,6 +2060,26 @@ let rec private renderKind
         Html.div
             [ prop.className "fuaran-skeleton"
               prop.children [ for _ in 1 .. spec.Rows -> Html.div [ prop.className "fuaran-skeleton-row" ] ] ]
+    | NodeKind.Icon spec ->
+        // Phase 821 — the standalone icon-only display kind. The glyph NAME
+        // rides `data-icon` (the uniform icon-hook contract — no text
+        // content, hosts map it to glyphs); size + tone are modifier classes.
+        // A11y: decorative (`Label = None`) emits `aria-hidden="true"`;
+        // labelled emits `role="img"` + `aria-label`. Mirrors the SSR
+        // renderer byte-for-byte.
+        Html.span
+            [ prop.className (
+                  sprintf
+                      "fuaran-icon fuaran-icon--%s fuaran-icon-%s"
+                      (Theme.iconSizeClass spec.Size)
+                      (Theme.toneVar spec.Tone)
+              )
+              prop.custom ("data-icon", spec.Icon)
+              match spec.Label with
+              | Some label ->
+                  prop.custom ("role", "img")
+                  prop.custom ("aria-label", label)
+              | None -> prop.custom ("aria-hidden", "true") ]
     | NodeKind.Callout spec -> renderCallout ctx spec
     | NodeKind.Progress spec -> renderProgress ctx parentNodeId state spec
     | NodeKind.Sparkline spec -> renderSparkline ctx spec
@@ -4486,6 +4509,10 @@ and private formatNumber (format: CellFormat) (value: float) : string =
     | CellFormat.Percent None -> sprintf "%.1f%%" (value * 100.0)
     | CellFormat.SignificantDigits digits -> value.ToString("G" + string digits)
     | CellFormat.Date _ -> string value
+    // Phase 819 — both delegate to the shared Renderer.Core helpers so CSR,
+    // SSR and the grid adapter render byte-identically (locale-independent).
+    | CellFormat.Duration(unit, style) -> Formatting.formatDuration unit style value
+    | CellFormat.RelativeTime unit -> Formatting.formatRelativeEnglish unit value
     | CellFormat.Custom f -> f (CellValue.Numeric value)
 
 and private renderCellValue (format: CellFormat) (value: CellValue) : string =

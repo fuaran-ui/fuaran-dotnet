@@ -87,6 +87,10 @@ let private formatNumber (format: CellFormat) (value: float) : string =
     | CellFormat.Percent None -> sprintf "%.1f%%" (value * 100.0)
     | CellFormat.SignificantDigits digits -> sprintf "%.*g" digits value
     | CellFormat.Date _ -> string value
+    // Phase 819 — shared Renderer.Core helpers, keeping the adapter in
+    // lockstep with `Render.fs`'s formatNumber (see the note above).
+    | CellFormat.Duration(unit, style) -> Formatting.formatDuration unit style value
+    | CellFormat.RelativeTime unit -> Formatting.formatRelativeEnglish unit value
     | CellFormat.Custom f -> f (CellValue.Numeric value)
 
 let private renderCellValue (format: CellFormat) (value: CellValue) : string =

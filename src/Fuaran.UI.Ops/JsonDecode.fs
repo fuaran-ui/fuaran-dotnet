@@ -623,6 +623,7 @@ let displayNodeKinds =
       "Callout"
       "Progress"
       "Skeleton"
+      "Icon"
       "LabelValueRow"
       "Fact"
       "Link"
@@ -1334,6 +1335,38 @@ let private decodeLiveRegion (path: string) (j: Json) : Result<LiveRegionKind, D
 
 // ─── CellFormat / CellValue ──────────────────────────────────────────────
 
+// Phase 819 — the Duration / RelativeTime format enums. Defined ahead of
+// `decodeCellFormat` (which references them); `decodeFormat` below shares
+// them (`decodeRelativeTimeUnit` moved up from the Format section for the
+// same reason).
+let private decodeDurationUnit (path: string) (j: Json) : Result<DurationUnit, DecodeError> =
+    match j with
+    | JString "Seconds" -> Ok DurationUnit.Seconds
+    | JString "Minutes" -> Ok DurationUnit.Minutes
+    | JString "Hours" -> Ok DurationUnit.Hours
+    | JString s -> unknownDuCase path s "Seconds | Minutes | Hours"
+    | _ -> wrongType path "JSON string (DurationUnit)"
+
+let private decodeDurationStyle (path: string) (j: Json) : Result<DurationStyle, DecodeError> =
+    match j with
+    | JString "Compact" -> Ok DurationStyle.Compact
+    | JString "Clock" -> Ok DurationStyle.Clock
+    | JString "Long" -> Ok DurationStyle.Long
+    | JString s -> unknownDuCase path s "Compact | Clock | Long"
+    | _ -> wrongType path "JSON string (DurationStyle)"
+
+let private decodeRelativeTimeUnit (path: string) (j: Json) : Result<RelativeTimeUnit, DecodeError> =
+    match j with
+    | JString "Second" -> Ok RelativeTimeUnit.Second
+    | JString "Minute" -> Ok RelativeTimeUnit.Minute
+    | JString "Hour" -> Ok RelativeTimeUnit.Hour
+    | JString "Day" -> Ok RelativeTimeUnit.Day
+    | JString "Week" -> Ok RelativeTimeUnit.Week
+    | JString "Month" -> Ok RelativeTimeUnit.Month
+    | JString "Year" -> Ok RelativeTimeUnit.Year
+    | JString s -> unknownDuCase path s "Second | Minute | Hour | Day | Week | Month | Year"
+    | _ -> wrongType path "JSON string (RelativeTimeUnit)"
+
 let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -1365,11 +1398,34 @@ let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, Decod
             match requireField path fields "format" "format string" with
             | Error e -> Error e
             | Ok j -> requireString (path + ".format") j |> Result.map CellFormat.Date
+        | Ok "Duration" ->
+            // Phase 819 — trendable duration cells: raw float counts `unit`s,
+            // rendered per `style`.
+            match requireField path fields "unit" "DurationUnit string" with
+            | Error e -> Error e
+            | Ok unitJ ->
+                match decodeDurationUnit (path + ".unit") unitJ with
+                | Error e -> Error e
+                | Ok unit ->
+                    match requireField path fields "style" "DurationStyle string" with
+                    | Error e -> Error e
+                    | Ok styleJ ->
+                        decodeDurationStyle (path + ".style") styleJ
+                        |> Result.map (fun style -> CellFormat.Duration(unit, style))
+        | Ok "RelativeTime" ->
+            // Phase 819 — cell-vocabulary parity with `Format.RelativeTime`.
+            match requireField path fields "unit" "RelativeTimeUnit string" with
+            | Error e -> Error e
+            | Ok j -> decodeRelativeTimeUnit (path + ".unit") j |> Result.map CellFormat.RelativeTime
         | Ok "Custom" ->
             // Encoder writes the fn as `<closure>`; decode to a placeholder
             // that returns the sentinel for any CellValue input.
             Ok(CellFormat.Custom(fun _ -> closureSentinel))
-        | Ok s -> unknownDuCase path s "None | Number | Currency | Percent | SignificantDigits | Date | Custom"
+        | Ok s ->
+            unknownDuCase
+                path
+                s
+                "None | Number | Currency | Percent | SignificantDigits | Date | Duration | RelativeTime | Custom"
 
 let private decodeCellValue (path: string) (j: Json) : Result<CellValue, DecodeError> =
     match requireObject path j with
@@ -1409,17 +1465,8 @@ let private decodeDateStyle (path: string) (j: Json) : Result<DateStyle, DecodeE
     | JString s -> unknownDuCase path s "Short | Medium | Long | Full"
     | _ -> wrongType path "JSON string (DateStyle)"
 
-let private decodeRelativeTimeUnit (path: string) (j: Json) : Result<RelativeTimeUnit, DecodeError> =
-    match j with
-    | JString "Second" -> Ok RelativeTimeUnit.Second
-    | JString "Minute" -> Ok RelativeTimeUnit.Minute
-    | JString "Hour" -> Ok RelativeTimeUnit.Hour
-    | JString "Day" -> Ok RelativeTimeUnit.Day
-    | JString "Week" -> Ok RelativeTimeUnit.Week
-    | JString "Month" -> Ok RelativeTimeUnit.Month
-    | JString "Year" -> Ok RelativeTimeUnit.Year
-    | JString s -> unknownDuCase path s "Second | Minute | Hour | Day | Week | Month | Year"
-    | _ -> wrongType path "JSON string (RelativeTimeUnit)"
+// (`decodeRelativeTimeUnit` lives beside `decodeCellFormat` above since
+// Phase 819 — both format vocabularies reference it.)
 
 let private decodeFormat (path: string) (j: Json) : Result<Format, DecodeError> =
     match requireObject path j with
@@ -1449,7 +1496,20 @@ let private decodeFormat (path: string) (j: Json) : Result<Format, DecodeError> 
             match requireField path fields "unit" "RelativeTimeUnit string" with
             | Error e -> Error e
             | Ok j -> decodeRelativeTimeUnit (path + ".unit") j |> Result.map Format.RelativeTime
-        | Ok s -> unknownDuCase path s "Number | Currency | Percent | Date | RelativeTime"
+        | Ok "Duration" ->
+            // Phase 819 — locale-independent duration formatting.
+            match requireField path fields "unit" "DurationUnit string" with
+            | Error e -> Error e
+            | Ok unitJ ->
+                match decodeDurationUnit (path + ".unit") unitJ with
+                | Error e -> Error e
+                | Ok unit ->
+                    match requireField path fields "style" "DurationStyle string" with
+                    | Error e -> Error e
+                    | Ok styleJ ->
+                        decodeDurationStyle (path + ".style") styleJ
+                        |> Result.map (fun style -> Format.Duration(unit, style))
+        | Ok s -> unknownDuCase path s "Number | Currency | Percent | Date | RelativeTime | Duration"
 
 let private decodeLocaleSource (path: string) (j: Json) : Result<LocaleSource, DecodeError> =
     match requireObject path j with
@@ -2935,6 +2995,52 @@ let private decodeSkeletonSpec (path: string) (j: Json) : Result<SkeletonSpec, D
         |> Result.bind (requireInt (path + ".rows"))
         |> Result.map (fun rows -> { Rows = rows })
 
+// Phase 821 — the standalone icon-only display kind.
+let private decodeIconSize (path: string) (j: Json) : Result<IconSize, DecodeError> =
+    match j with
+    | JString "Small" -> Ok IconSize.Small
+    | JString "Medium" -> Ok IconSize.Medium
+    | JString "Large" -> Ok IconSize.Large
+    | JString s -> unknownDuCase path s "Small | Medium | Large"
+    | _ -> wrongType path "JSON string (IconSize)"
+
+let private decodeIconSpec (path: string) (j: Json) : Result<IconSpec, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let iconR =
+            requireField path fields "icon" "icon name string"
+            |> Result.bind (requireString (path + ".icon"))
+
+        // `size` omitted-when-`Medium`; `tone` omitted-when-default (the
+        // Phase 460 discipline); `label` omitted-when-decorative.
+        let sizeR =
+            match tryField fields "size" with
+            | None -> Ok IconSize.Medium
+            | Some v -> decodeIconSize (path + ".size") v
+
+        let toneR =
+            match tryField fields "tone" with
+            | None -> Ok ToneVariant.Default
+            | Some v -> decodeTone (path + ".tone") v
+
+        let labelR =
+            match tryField fields "label" with
+            | None -> Ok None
+            | Some v -> requireString (path + ".label") v |> Result.map Some
+
+        match iconR, sizeR, toneR, labelR with
+        | Ok icon, Ok size, Ok tone, Ok label ->
+            Ok
+                { Icon = icon
+                  Size = size
+                  Tone = tone
+                  Label = label }
+        | Error e, _, _, _
+        | _, Error e, _, _
+        | _, _, Error e, _
+        | _, _, _, Error e -> Error e
+
 let private decodeCalloutSpec (path: string) (j: Json) : Result<CalloutSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -3403,6 +3509,7 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 getSpec ()
                 |> Result.bind (decodeSkeletonSpec specPath)
                 |> Result.map NodeKind.Skeleton
+            | "Icon" -> getSpec () |> Result.bind (decodeIconSpec specPath) |> Result.map NodeKind.Icon
             | "LabelValueRow" ->
                 getSpec ()
                 |> Result.bind (decodeLabelValueRowSpec specPath)
@@ -6128,6 +6235,10 @@ module Coerce =
 
     let tryOrientation (v: obj) : Result<Orientation, string> = viaJson decodeOrientation v
     let tryTone (v: obj) : Result<ToneVariant, string> = viaJson decodeTone v
+
+    /// `Icon.Size : IconSize` (Phase 821) — the UpdateProp twin of
+    /// `decodeIconSize`, added with the standalone Icon display kind.
+    let tryIconSize (v: obj) : Result<IconSize, string> = viaJson decodeIconSize v
     let tryStyleWeight (v: obj) : Result<StyleWeight, string> = viaJson decodeWeight v
     let tryEmphasis (v: obj) : Result<Emphasis, string> = viaJson decodeEmphasis v
 

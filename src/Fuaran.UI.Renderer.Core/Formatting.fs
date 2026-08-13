@@ -48,6 +48,95 @@ let private relativeUnitStr (u: RelativeTimeUnit) : string =
     | RelativeTimeUnit.Month -> "month"
     | RelativeTimeUnit.Year -> "year"
 
+// ─── Duration decomposition (Phase 819) ─────────────────────────────────────
+//
+// ONE shared hand-rolled implementation for BOTH pipelines, defined above the
+// `#if` so Fable and .NET render byte-identically. A duration is deliberately
+// LOCALE-INDEPENDENT: "1h 20m" / "1:20:00" / "1 hour 20 minutes" are unit
+// glyphs and English words, not CLDR-driven forms — `Intl` has no duration
+// formatter at this API surface — so no locale is consulted and SSR ↔ CSR
+// parity is exact by construction. The numeric source counts `unit`s
+// (Seconds = 1, Minutes = 60, Hours = 3600); negatives render with a leading
+// "-" once the rounded magnitude is nonzero.
+
+let private durationUnitSeconds (u: DurationUnit) : float =
+    match u with
+    | DurationUnit.Seconds -> 1.0
+    | DurationUnit.Minutes -> 60.0
+    | DurationUnit.Hours -> 3600.0
+
+/// Render `value` (a signed count of `unit`s) per the bounded `DurationStyle`.
+let formatDuration (unit: DurationUnit) (style: DurationStyle) (value: float) : string =
+    let totalSeconds = value * durationUnitSeconds unit
+    let total = int (round (abs totalSeconds))
+    let sign = if totalSeconds < 0.0 && total > 0 then "-" else ""
+    let hours = total / 3600
+    let minutes = (total % 3600) / 60
+    let seconds = total % 60
+
+    let body =
+        match style with
+        | DurationStyle.Compact ->
+            // Largest two grains, zero tails omitted: "1h 20m" / "2h" /
+            // "5m 30s" / "42s"; zero → "0s".
+            if hours >= 1 then
+                if minutes > 0 then
+                    sprintf "%dh %dm" hours minutes
+                else
+                    sprintf "%dh" hours
+            elif minutes >= 1 then
+                if seconds > 0 then
+                    sprintf "%dm %ds" minutes seconds
+                else
+                    sprintf "%dm" minutes
+            else
+                sprintf "%ds" seconds
+        | DurationStyle.Clock ->
+            // "h:mm:ss" from one hour up, "m:ss" below it.
+            if hours >= 1 then
+                sprintf "%d:%02d:%02d" hours minutes seconds
+            else
+                sprintf "%d:%02d" minutes seconds
+        | DurationStyle.Long ->
+            // English words, singular/plural, zero components omitted;
+            // zero → "0 minutes".
+            let part (n: int) (word: string) : string option =
+                if n = 0 then None
+                elif n = 1 then Some(sprintf "1 %s" word)
+                else Some(sprintf "%d %ss" n word)
+
+            let parts =
+                [ part hours "hour"; part minutes "minute"; part seconds "second" ]
+                |> List.choose id
+
+            match parts with
+            | [] -> "0 minutes"
+            | ps -> String.concat " " ps
+
+    sign + body
+
+/// English relative-time rendering over a signed count of `unit` — "in 2
+/// hours" / "3 minutes ago" / "this minute" (Phase 819). Shared above the
+/// `#if`: the `CellFormat.RelativeTime` projection in BOTH renderers uses it
+/// (the cell vocabulary has no locale dimension, so the English form IS the
+/// canonical cell rendering), and the .NET `Format.RelativeTime` fallback
+/// below delegates to it (the browser `Format` path stays
+/// `Intl.RelativeTimeFormat`).
+let formatRelativeEnglish (unit: RelativeTimeUnit) (value: float) : string =
+    let n = int (round value)
+    let unitWord = relativeUnitStr unit
+
+    if n = 0 then
+        sprintf "this %s" unitWord
+    else
+        let magnitude = abs n
+        let plural = if magnitude = 1 then unitWord else unitWord + "s"
+
+        if n < 0 then
+            sprintf "%d %s ago" magnitude plural
+        else
+            sprintf "in %d %s" magnitude plural
+
 #if FABLE_COMPILER
 
 open Fable.Core
@@ -79,7 +168,8 @@ let private numberOptions (fmt: Format) : obj =
               "maximumFractionDigits" ==> d ]
     | Format.Percent None -> createObj [ "style" ==> "percent" ]
     | Format.Date _
-    | Format.RelativeTime _ -> createObj []
+    | Format.RelativeTime _
+    | Format.Duration _ -> createObj []
 
 /// Format `value` per the bounded `Format` intent + resolved `localeTag`.
 let format (localeTag: string) (fmt: Format) (value: float) : string =
@@ -90,6 +180,7 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
     | Format.Date dateStyle ->
         intlDate (localeArg localeTag) (createObj [ "dateStyle" ==> dateStyleStr dateStyle ]) value
     | Format.RelativeTime unit -> intlRelative (localeArg localeTag) value (relativeUnitStr unit)
+    | Format.Duration(unit, style) -> formatDuration unit style value
 
 #else
 
@@ -211,19 +302,13 @@ let format (localeTag: string) (fmt: Format) (value: float) : string =
 
         dt.ToString(pattern, c)
     | Format.RelativeTime unit ->
-        // English-only fallback (no CLDR relative-time data on .NET).
-        let n = int (Math.Round value)
-        let unitWord = relativeUnitStr unit
-
-        if n = 0 then
-            sprintf "this %s" unitWord
-        else
-            let magnitude = abs n
-            let plural = if magnitude = 1 then unitWord else unitWord + "s"
-
-            if n < 0 then
-                sprintf "%d %s ago" magnitude plural
-            else
-                sprintf "in %d %s" magnitude plural
+        // English-only fallback (no CLDR relative-time data on .NET) — the
+        // shared helper above the #if (Phase 819 hoisted it so the
+        // CellFormat.RelativeTime projection shares the exact rendering).
+        formatRelativeEnglish unit value
+    | Format.Duration(unit, style) ->
+        // Locale-independent by design (see the shared helper above) — the
+        // one Format case with exact .NET ↔ browser parity.
+        formatDuration unit style value
 
 #endif

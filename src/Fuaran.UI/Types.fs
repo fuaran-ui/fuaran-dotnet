@@ -118,6 +118,14 @@ type DateStyle = Generated.DateStyle
 /// Relative-time grain for `Format.RelativeTime` (generated).
 type RelativeTimeUnit = Generated.RelativeTimeUnit
 
+/// Phase 819 — the unit the raw numeric source counts for
+/// `Format.Duration` / `CellFormat.Duration` (generated).
+type DurationUnit = Generated.DurationUnit
+
+/// Phase 819 — presentation style for a duration: `Compact` "1h 20m",
+/// `Clock` "1:20:00", `Long` "1 hour 20 minutes" (generated).
+type DurationStyle = Generated.DurationStyle
+
 /// Bounded, semantic locale-aware formatting intent carried by `Binding.Format` (generated).
 type Format = Generated.Format
 
@@ -845,6 +853,14 @@ and DrawingSpec = Generated.DrawingSpec
 
 and SkeletonSpec = Generated.SkeletonSpec
 
+/// Phase 821 — size class for the standalone `Icon` display kind (generated).
+and IconSize = Generated.IconSize
+
+/// Phase 821 — the standalone icon-only display kind: a decorative
+/// (`Label = None`, `aria-hidden`) or labelled (`role="img"`) glyph with no
+/// Button / Image envelope (generated).
+and IconSpec = Generated.IconSpec
+
 /// §4b lines 473–487 — Metric's typed spec record. All fields default in
 /// `Defaults.metric`; AI emits only what differs.
 and MetricSpec = Generated.MetricSpec
@@ -1560,6 +1576,7 @@ module Kind =
         | NodeKind.Callout _ -> "Callout"
         | NodeKind.Progress _ -> "Progress"
         | NodeKind.Skeleton _ -> "Skeleton"
+        | NodeKind.Icon _ -> "Icon"
         | NodeKind.LabelValueRow _ -> "LabelValueRow"
         | NodeKind.Fact _ -> "Fact"
         | NodeKind.Link _ -> "Link"
@@ -1603,6 +1620,7 @@ module Kind =
         | NodeKind.Callout _
         | NodeKind.Progress _
         | NodeKind.Skeleton _
+        | NodeKind.Icon _
         | NodeKind.LabelValueRow _
         | NodeKind.Fact _
         | NodeKind.Link _

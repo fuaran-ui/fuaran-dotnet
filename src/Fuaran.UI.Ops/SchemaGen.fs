@@ -215,6 +215,11 @@ let private defs: (string * J) list =
       // Locale-aware formatting enums (Phase 102).
       "DateStyle", enumDef [ "Short"; "Medium"; "Long"; "Full" ]
       "RelativeTimeUnit", enumDef [ "Second"; "Minute"; "Hour"; "Day"; "Week"; "Month"; "Year" ]
+      // Duration formatting enums (Phase 819).
+      "DurationUnit", enumDef [ "Seconds"; "Minutes"; "Hours" ]
+      "DurationStyle", enumDef [ "Compact"; "Clock"; "Long" ]
+      // Icon display-kind size class (Phase 821).
+      "IconSize", enumDef [ "Small"; "Medium"; "Large" ]
       // Action.ReadFileBody encoding (Phase 136).
       "FileReadEncoding", enumDef [ "Text"; "Base64"; "DataUrl" ]
       // AriaRole encodes as the raw ARIA string (named roles + Custom raw),
@@ -349,6 +354,9 @@ let private defs: (string * J) list =
             duCase "Percent" [] [ "decimals", integer ]
             duCase "SignificantDigits" [ "digits" ] [ "digits", integer ]
             duCase "Date" [ "format" ] [ "format", str ]
+            // Phase 819 — duration cells + cell-level relative time.
+            duCase "Duration" [ "style"; "unit" ] [ "style", ref "DurationStyle"; "unit", ref "DurationUnit" ]
+            duCase "RelativeTime" [ "unit" ] [ "unit", ref "RelativeTimeUnit" ]
             duCase "Custom" [ "fn" ] [ "fn", closure ] ]
 
       "CellValue",
@@ -372,7 +380,9 @@ let private defs: (string * J) list =
             duCase "Currency" [ "isoCode" ] [ "isoCode", str ]
             duCase "Percent" [] [ "decimals", integer ]
             duCase "Date" [ "dateStyle" ] [ "dateStyle", ref "DateStyle" ]
-            duCase "RelativeTime" [ "unit" ] [ "unit", ref "RelativeTimeUnit" ] ]
+            duCase "RelativeTime" [ "unit" ] [ "unit", ref "RelativeTimeUnit" ]
+            // Phase 819 — locale-independent duration formatting.
+            duCase "Duration" [ "style"; "unit" ] [ "style", ref "DurationStyle"; "unit", ref "DurationUnit" ] ]
 
       "LocaleSource", union [ duCase "Ambient" [] []; duCase "Explicit" [ "tag" ] [ "tag", str ] ]
 
@@ -540,6 +550,11 @@ let private defs: (string * J) list =
 
       "SkeletonSpec", record [ "rows" ] [ "rows", integer ]
 
+      // Phase 821 — the standalone icon-only display kind. Only `icon` is
+      // required: `size` omitted-when-Medium, `tone` omitted-when-default,
+      // `label` omitted-when-decorative.
+      "IconSpec", record [ "icon" ] [ "icon", str; "label", str; "size", ref "IconSize"; "tone", ref "ToneVariant" ]
+
       "CalloutSpec",
       record
           // Phase 460 — `tone` omitted-when-default; out of `required`, stays in `props`.
@@ -684,6 +699,7 @@ let private defs: (string * J) list =
             duCaseHoisted "Callout" "CalloutSpec"
             duCaseHoisted "Progress" "ProgressSpec"
             duCaseHoisted "Skeleton" "SkeletonSpec"
+            duCaseHoisted "Icon" "IconSpec"
             duCaseHoisted "LabelValueRow" "LabelValueRowSpec"
             duCaseHoisted "Fact" "FactSpec"
             duCaseHoisted "Link" "LinkSpec"

@@ -93,6 +93,8 @@ let private requiredNodeTokens: string list =
       "\"$type\":\"Callout\""
       "\"$type\":\"Progress\""
       "\"$type\":\"Skeleton\""
+      // Phase 821 — the standalone icon-only display kind.
+      "\"$type\":\"Icon\""
       "\"$type\":\"LabelValueRow\""
       // InputKind (Filters renders as an items array, no own $type)
       "\"$type\":\"Form\""
@@ -125,6 +127,10 @@ let private requiredNodeTokens: string list =
       "\"$type\":\"Currency\""
       "\"$type\":\"Percent\""
       "\"$type\":\"SignificantDigits\""
+      // Phase 819 — the Duration + cell RelativeTime formats (the grid
+      // column spread carries both deterministically).
+      "\"$type\":\"Duration\""
+      "\"$type\":\"RelativeTime\""
       // Binding
       "\"$type\":\"Static\""
       "\"$type\":\"Query\""

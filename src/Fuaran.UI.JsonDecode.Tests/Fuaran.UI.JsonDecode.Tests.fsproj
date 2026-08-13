@@ -48,6 +48,10 @@
     <Compile Include="LimitTests.fs" />
     <Compile Include="ArithmeticCauseTests.fs" />
     <Compile Include="ProgressFieldCellTests.fs" />
+    <!-- Phase 819/821 — Duration + cell RelativeTime formats and the Icon
+         display kind: wire round-trips, the shared duration decomposition
+         (via Fuaran.UI.Renderer.Core), and the didactic enum rejects. -->
+    <Compile Include="DurationFormatTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -57,6 +61,9 @@
          (CanonicalJson.encodeNode / encodeOp) to drive the
          encode -> decode -> encode -> string-equal assertion. -->
     <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <!-- Phase 819 — the shared duration decomposition under test
+         (DurationFormatTests.fs) lives in the renderer spine. -->
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- The WIRE_FORMAT §15 envelope/tolerance family (EnvelopeFixtures.fs) drives

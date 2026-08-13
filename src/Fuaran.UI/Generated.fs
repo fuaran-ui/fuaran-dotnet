@@ -114,6 +114,33 @@ type RelativeTimeUnit =
     | Month
     | Year
 
+/// Phase 819 — how `Format.Duration` / `CellFormat.Duration` interpret the
+/// numeric source: the unit the raw float counts (hand-added ahead of the
+/// IDL backfill — see the Phase 812 `LinkProtection` precedent above).
+[<RequireQualifiedAccess>]
+type DurationUnit =
+    | Seconds
+    | Minutes
+    | Hours
+
+/// Phase 819 — presentation style for a duration: `Compact` "1h 20m",
+/// `Clock` "1:20:00", `Long` "1 hour 20 minutes" (hand-added ahead of the
+/// IDL backfill — see the Phase 812 `LinkProtection` precedent above).
+[<RequireQualifiedAccess>]
+type DurationStyle =
+    | Compact
+    | Clock
+    | Long
+
+/// Phase 821 — size class for the standalone `Icon` display kind; `Medium`
+/// is the default and is omitted on the wire (hand-added ahead of the IDL
+/// backfill — see the Phase 812 `LinkProtection` precedent above).
+[<RequireQualifiedAccess>]
+type IconSize =
+    | Small
+    | Medium
+    | Large
+
 [<RequireQualifiedAccess>]
 type ChartKind =
     | Line
@@ -216,6 +243,14 @@ and [<RequireQualifiedAccess>] CellFormat =
     | Percent of decimals: int option
     | SignificantDigits of digits: int
     | Date of format: string
+    /// Phase 819 — trendable duration cells: the raw float counts `unit`s,
+    /// rendered per `style` (hand-added ahead of the IDL backfill — the
+    /// Phase 812 `LinkProtection` precedent).
+    | Duration of unit: DurationUnit * style: DurationStyle
+    /// Phase 819 — cell-vocabulary parity with `Format.RelativeTime`: the
+    /// raw float is a signed count of `unit` (hand-added ahead of the IDL
+    /// backfill — the Phase 812 `LinkProtection` precedent).
+    | RelativeTime of unit: RelativeTimeUnit
     | Custom of fn: (Fuaran.UI.HostPrelude.CellValue -> string)
 
 and [<RequireQualifiedAccess>] Action<'Msg> =
@@ -241,6 +276,10 @@ and [<RequireQualifiedAccess>] Format =
     | Percent of decimals: int option
     | Date of dateStyle: DateStyle
     | RelativeTime of unit: RelativeTimeUnit
+    /// Phase 819 — locale-independent duration formatting: the numeric
+    /// source counts `unit`s, rendered per `style` (hand-added ahead of the
+    /// IDL backfill — the Phase 812 `LinkProtection` precedent).
+    | Duration of unit: DurationUnit * style: DurationStyle
 
 and [<RequireQualifiedAccess>] LocaleSource =
     | Ambient
@@ -532,6 +571,21 @@ and MathSpec =
 and SkeletonSpec =
     {
       Rows: int
+    }
+
+// Display
+/// Phase 821 — the standalone icon-only display kind: a decorative or
+/// labelled glyph with no Button / Image envelope (hand-added ahead of the
+/// IDL backfill — the Phase 812 `LinkProtection` precedent). `Icon` names a
+/// glyph from the existing icon vocabulary (the `data-icon` hook); `Label =
+/// None` is decorative (`aria-hidden="true"`), `Some` is meaningful
+/// (`role="img"` + `aria-label`).
+and IconSpec =
+    {
+      Icon: string
+      Size: IconSize
+      Tone: ToneVariant
+      Label: string option
     }
 
 // Display
@@ -871,6 +925,7 @@ and [<RequireQualifiedAccess>] NodeKind<'Msg> =
     | Markdown of MarkdownSpec
     | Math of MathSpec
     | Skeleton of SkeletonSpec
+    | Icon of IconSpec
     | List of ListSpec
     | Image of ImageSpec
     | Link of LinkSpec
@@ -1020,6 +1075,26 @@ let private encRelativeTimeUnit (v: RelativeTimeUnit) : JVal =
     | RelativeTimeUnit.Month -> JStr "Month"
     | RelativeTimeUnit.Year -> JStr "Year"
 
+// Phase 819 — Duration format enums (hand-added ahead of the IDL backfill).
+let private encDurationUnit (v: DurationUnit) : JVal =
+    match v with
+    | DurationUnit.Seconds -> JStr "Seconds"
+    | DurationUnit.Minutes -> JStr "Minutes"
+    | DurationUnit.Hours -> JStr "Hours"
+
+let private encDurationStyle (v: DurationStyle) : JVal =
+    match v with
+    | DurationStyle.Compact -> JStr "Compact"
+    | DurationStyle.Clock -> JStr "Clock"
+    | DurationStyle.Long -> JStr "Long"
+
+// Phase 821 — Icon size class (hand-added ahead of the IDL backfill).
+let private encIconSize (v: IconSize) : JVal =
+    match v with
+    | IconSize.Small -> JStr "Small"
+    | IconSize.Medium -> JStr "Medium"
+    | IconSize.Large -> JStr "Large"
+
 let private encChartKind (v: ChartKind) : JVal =
     match v with
     | ChartKind.Line -> JStr "Line"
@@ -1102,6 +1177,7 @@ let rec private encNodeKind (k: NodeKind<'Msg>) : JVal =
     | NodeKind.Markdown s -> encMarkdownSpec s
     | NodeKind.Math s -> encMathSpec s
     | NodeKind.Skeleton s -> encSkeletonSpec s
+    | NodeKind.Icon s -> encIconSpec s
     | NodeKind.List s -> encListSpec s
     | NodeKind.Image s -> encImageSpec s
     | NodeKind.Link s -> encLinkSpec s
@@ -1171,6 +1247,8 @@ and private encCellFormat (v: CellFormat) : JVal =
     | CellFormat.Percent decimals -> Canon.typed "Percent" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
     | CellFormat.SignificantDigits digits -> Canon.typed "SignificantDigits" [ "digits", JInt digits ]
     | CellFormat.Date format -> Canon.typed "Date" [ "format", JStr format ]
+    | CellFormat.Duration (unit, style) -> Canon.typed "Duration" [ "style", encDurationStyle style; "unit", encDurationUnit unit ]
+    | CellFormat.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
     | CellFormat.Custom fn -> Canon.typed "Custom" [ "fn", JStr "<closure>" ]
 
 and private encAction<'Msg> (v: Action<'Msg>) : JVal =
@@ -1199,6 +1277,7 @@ and private encFormat (v: Format) : JVal =
     | Format.Percent decimals -> Canon.typed "Percent" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
     | Format.Date dateStyle -> Canon.typed "Date" [ "dateStyle", encDateStyle dateStyle ]
     | Format.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
+    | Format.Duration (unit, style) -> Canon.typed "Duration" [ "style", encDurationStyle style; "unit", encDurationUnit unit ]
 
 and private encLocaleSource (v: LocaleSource) : JVal =
     match v with
@@ -1385,6 +1464,12 @@ and private encMathSpec (s: MathSpec) : JVal =
 
 and private encSkeletonSpec (s: SkeletonSpec) : JVal =
     Canon.typed "Skeleton" ([ Some("rows", JInt s.Rows) ] |> List.choose id)
+
+// Phase 821 — Icon display kind (hand-added ahead of the IDL backfill).
+// `size` omitted-when-`Medium`, `tone` omitted-when-`Default`, `label`
+// omitted-when-`None` (decorative).
+and private encIconSpec (s: IconSpec) : JVal =
+    Canon.typed "Icon" ([ Some("icon", JStr s.Icon); (s.Label |> Option.map (fun v -> "label", JStr v)); (if s.Size = IconSize.Medium then None else Some("size", encIconSize s.Size)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)) ] |> List.choose id)
 
 and private encListSpec (s: ListSpec) : JVal =
     Canon.typed "List" ([ Some("items", JArr(List.map encTextSource s.Items)); Some("ordered", JBool s.Ordered) ] |> List.choose id)
@@ -1698,6 +1783,29 @@ let private decRelativeTimeUnit (j: JVal) : Result<RelativeTimeUnit, string> =
     | JStr "Year" -> Ok RelativeTimeUnit.Year
     | _ -> Error "not a RelativeTimeUnit"
 
+// Phase 819 — Duration format enums (hand-added ahead of the IDL backfill).
+let private decDurationUnit (j: JVal) : Result<DurationUnit, string> =
+    match j with
+    | JStr "Seconds" -> Ok DurationUnit.Seconds
+    | JStr "Minutes" -> Ok DurationUnit.Minutes
+    | JStr "Hours" -> Ok DurationUnit.Hours
+    | _ -> Error "not a DurationUnit"
+
+let private decDurationStyle (j: JVal) : Result<DurationStyle, string> =
+    match j with
+    | JStr "Compact" -> Ok DurationStyle.Compact
+    | JStr "Clock" -> Ok DurationStyle.Clock
+    | JStr "Long" -> Ok DurationStyle.Long
+    | _ -> Error "not a DurationStyle"
+
+// Phase 821 — Icon size class (hand-added ahead of the IDL backfill).
+let private decIconSize (j: JVal) : Result<IconSize, string> =
+    match j with
+    | JStr "Small" -> Ok IconSize.Small
+    | JStr "Medium" -> Ok IconSize.Medium
+    | JStr "Large" -> Ok IconSize.Large
+    | _ -> Error "not a IconSize"
+
 let private decChartKind (j: JVal) : Result<ChartKind, string> =
     match j with
     | JStr "Line" -> Ok ChartKind.Line
@@ -1793,6 +1901,7 @@ let rec private decNodeKind (j: JVal) : Result<NodeKind<obj>, string> =
     | "Markdown" -> decMarkdownSpec j |> Result.map NodeKind.Markdown
     | "Math" -> decMathSpec j |> Result.map NodeKind.Math
     | "Skeleton" -> decSkeletonSpec j |> Result.map NodeKind.Skeleton
+    | "Icon" -> decIconSpec j |> Result.map NodeKind.Icon
     | "List" -> decListSpec j |> Result.map NodeKind.List
     | "Image" -> decImageSpec j |> Result.map NodeKind.Image
     | "Link" -> decLinkSpec j |> Result.map NodeKind.Link
@@ -1945,6 +2054,13 @@ and private decCellFormat (j: JVal) : Result<CellFormat, string> =
         | "Date" ->
             dReq "format" __fs dStr |> Result.bind (fun format ->
             Ok(CellFormat.Date(format)))
+        | "Duration" ->
+            dReq "unit" __fs decDurationUnit |> Result.bind (fun unit ->
+            dReq "style" __fs decDurationStyle |> Result.bind (fun style ->
+            Ok(CellFormat.Duration(unit, style))))
+        | "RelativeTime" ->
+            dReq "unit" __fs decRelativeTimeUnit |> Result.bind (fun unit ->
+            Ok(CellFormat.RelativeTime(unit)))
         | "Custom" ->
             Ok ((fun _ -> "")) |> Result.bind (fun fn ->
             Ok(CellFormat.Custom(fn)))
@@ -2035,6 +2151,10 @@ and private decFormat (j: JVal) : Result<Format, string> =
         | "RelativeTime" ->
             dReq "unit" __fs decRelativeTimeUnit |> Result.bind (fun unit ->
             Ok(Format.RelativeTime(unit)))
+        | "Duration" ->
+            dReq "unit" __fs decDurationUnit |> Result.bind (fun unit ->
+            dReq "style" __fs decDurationStyle |> Result.bind (fun style ->
+            Ok(Format.Duration(unit, style))))
         | __other -> Error ("unknown Format case: " + __other))
     | _ -> Error "expected a Format object"
 
@@ -2580,6 +2700,15 @@ and private decSkeletonSpec (j: JVal) : Result<SkeletonSpec, string> =
     dReq "rows" __fs dInt |> Result.bind (fun rows ->
     Ok { Rows = rows }))
 
+// Phase 821 — Icon display kind (hand-added ahead of the IDL backfill).
+and private decIconSpec (j: JVal) : Result<IconSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "icon" __fs dStr |> Result.bind (fun icon ->
+    dDef "size" __fs decIconSize (IconSize.Medium) |> Result.bind (fun size ->
+    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
+    dOpt "label" __fs dStr |> Result.bind (fun label ->
+    Ok { Icon = icon; Size = size; Tone = tone; Label = label })))))
+
 and private decListSpec (j: JVal) : Result<ListSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "items" __fs (dList decTextSource) |> Result.bind (fun items ->
@@ -2895,6 +3024,7 @@ let private witnessKindTag (n: Node<'Msg>) : string =
     | NodeKind.Markdown _ -> "Markdown"
     | NodeKind.Math _ -> "Math"
     | NodeKind.Skeleton _ -> "Skeleton"
+    | NodeKind.Icon _ -> "Icon"
     | NodeKind.List _ -> "List"
     | NodeKind.Image _ -> "Image"
     | NodeKind.Link _ -> "Link"

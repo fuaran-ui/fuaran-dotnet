@@ -367,6 +367,40 @@ let fact: Node<obj> =
         ))
         None
 
+/// Phase 819 — a duration Metric: the raw value counts MINUTES (80 → "1h
+/// 20m" under Compact), and the trend slot carries the cell-vocabulary
+/// RelativeTime parity case (a signed count of the unit).
+let metricDuration: Node<obj> =
+    node
+        "metric-duration-1"
+        (NodeKind.Metric(
+            { Label = TextSource.Literal "Avg wait"
+              Value = Binding.Static(Some 80.0)
+              Format = CellFormat.Duration(DurationUnit.Minutes, DurationStyle.Compact)
+              Tone = ToneVariant.Default
+              Weight = StyleWeight.Standard
+              Emphasis = Emphasis.Normal
+              Trend = Some(Binding.Static(Some(-3.0)))
+              TrendFormat = Some(CellFormat.RelativeTime RelativeTimeUnit.Minute)
+              Icon = None
+              Subtext = None }
+        ))
+        None
+
+/// Phase 821 — the standalone icon-only display kind, decorative form: no
+/// label (renderers emit `aria-hidden="true"`), non-default `size` so the
+/// optional key appears on the wire, default tone omitted.
+let iconDecorative: Node<obj> =
+    node
+        "icon-1"
+        (NodeKind.Icon(
+            { Icon = "sparkles"
+              Size = IconSize.Large
+              Tone = ToneVariant.Default
+              Label = None }
+        ))
+        None
+
 // ─── Layout fixtures ─────────────────────────────────────────────────────
 
 let dashboardEmpty: Node<obj> =
@@ -3279,6 +3313,8 @@ let allNodes: (string * Node<obj>) list =
       "Display/Progress", progress
       "Display/LabelValueRow", labelValueRow
       "Display/Fact", fact
+      "Display/Metric (Phase 819 — CellFormat.Duration value + cell RelativeTime trend)", metricDuration
+      "Display/Icon (Phase 821 — decorative, no label, Large)", iconDecorative
       "Layout/Dashboard (empty)", dashboardEmpty
       "Layout/Stack", stack
       "Layout/Grid", gridLayout

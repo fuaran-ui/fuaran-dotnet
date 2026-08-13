@@ -102,6 +102,7 @@ let all: Classification list =
       sv "NodeKind.Callout"
       sv "NodeKind.Progress"
       sv "NodeKind.Skeleton"
+      sv "NodeKind.Icon" // Phase 821 — four scalar fields, no closures
       sv "NodeKind.LabelValueRow"
       sv "NodeKind.Fact"
       sv "NodeKind.Link"
@@ -169,7 +170,9 @@ let all: Classification list =
       sv "CellFormat.Percent"
       sv "CellFormat.SignificantDigits"
       sv "CellFormat.Date"
-      ho "CellFormat.Custom" (Some "one of the six typed CellFormat cases — they are the declarative set")
+      sv "CellFormat.Duration" // Phase 819 — unit + style enums, fully declarative
+      sv "CellFormat.RelativeTime" // Phase 819 — the cell-vocabulary parity case
+      ho "CellFormat.Custom" (Some "one of the eight typed CellFormat cases — they are the declarative set")
 
       // ── Binding ──────────────────────────────────────────────────────────
       pt

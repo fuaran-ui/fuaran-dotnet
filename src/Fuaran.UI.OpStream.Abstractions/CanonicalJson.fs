@@ -298,6 +298,22 @@ let private encodeRelativeTimeUnit (u: RelativeTimeUnit) : Appender =
         | RelativeTimeUnit.Month -> appendRawString sb "Month"
         | RelativeTimeUnit.Year -> appendRawString sb "Year"
 
+// Phase 819 — Duration format enums; bare strings like every other variant
+// DU in this file.
+let private encodeDurationUnit (u: DurationUnit) : Appender =
+    fun sb ->
+        match u with
+        | DurationUnit.Seconds -> appendRawString sb "Seconds"
+        | DurationUnit.Minutes -> appendRawString sb "Minutes"
+        | DurationUnit.Hours -> appendRawString sb "Hours"
+
+let private encodeDurationStyle (s: DurationStyle) : Appender =
+    fun sb ->
+        match s with
+        | DurationStyle.Compact -> appendRawString sb "Compact"
+        | DurationStyle.Clock -> appendRawString sb "Clock"
+        | DurationStyle.Long -> appendRawString sb "Long"
+
 /// Locale-aware Format DU (Phase 102). Numeric Number / Percent cases omit
 /// `decimals` when `None` (algorithm rule 4) so an unspecified-fraction payload
 /// stays minimal; DateStyle / RelativeTimeUnit render as bare strings (matching
@@ -322,6 +338,10 @@ let private encodeFormat (f: Format) : Appender =
             appendObject sb (case "Percent" fields)
         | Format.Date dateStyle -> appendObject sb (case "Date" [ "dateStyle", encodeDateStyle dateStyle ])
         | Format.RelativeTime unit -> appendObject sb (case "RelativeTime" [ "unit", encodeRelativeTimeUnit unit ])
+        | Format.Duration(unit, style) ->
+            // Phase 819 — alphabetical field order (style before unit), the
+            // canonical ordering rule.
+            appendObject sb (case "Duration" [ "style", encodeDurationStyle style; "unit", encodeDurationUnit unit ])
 
 let private encodeLocaleSource (l: LocaleSource) : Appender =
     fun sb ->

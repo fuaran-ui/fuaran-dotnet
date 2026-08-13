@@ -112,6 +112,10 @@ let private formatNumber (format: CellFormat) (value: float) : string =
     | CellFormat.Percent None -> sprintf "%.1f%%" (value * 100.0)
     | CellFormat.SignificantDigits digits -> value.ToString("G" + string digits)
     | CellFormat.Date _ -> string value
+    // Phase 819 — both delegate to the shared Renderer.Core helpers so SSR,
+    // CSR and the grid adapter render byte-identically (locale-independent).
+    | CellFormat.Duration(unit, style) -> Formatting.formatDuration unit style value
+    | CellFormat.RelativeTime unit -> Formatting.formatRelativeEnglish unit value
     | CellFormat.Custom f -> f (CellValue.Numeric value)
 
 // ─── Options resolution (mirrors the client `resolveOptions`) ───────────────
@@ -738,6 +742,26 @@ and private renderKind
         Html.div
             [ prop.className "fuaran-skeleton"
               prop.children [ for _ in 1 .. spec.Rows -> Html.div [ prop.className "fuaran-skeleton-row" ] ] ]
+    | NodeKind.Icon spec ->
+        // Phase 821 — the standalone icon-only display kind. The glyph NAME
+        // rides `data-icon` (the uniform icon-hook contract above — no text
+        // content, hosts map it to glyphs); size + tone are modifier classes.
+        // A11y: decorative (`Label = None`) emits `aria-hidden="true"`;
+        // labelled emits `role="img"` + `aria-label`. Mirrors the client
+        // renderer byte-for-byte.
+        Html.span
+            [ prop.className (
+                  sprintf
+                      "fuaran-icon fuaran-icon--%s fuaran-icon-%s"
+                      (Theme.iconSizeClass spec.Size)
+                      (Theme.toneVar spec.Tone)
+              )
+              prop.custom ("data-icon", spec.Icon)
+              match spec.Label with
+              | Some label ->
+                  prop.custom ("role", "img")
+                  prop.custom ("aria-label", label)
+              | None -> prop.custom ("aria-hidden", "true") ]
     | NodeKind.Callout spec ->
         Html.div
             [ prop.className (sprintf "fuaran-callout fuaran-callout-%s" (Theme.toneVar spec.Tone))
