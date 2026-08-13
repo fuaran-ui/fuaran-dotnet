@@ -771,6 +771,51 @@ let private jvalTooDeep (path: string) (depth: int) : Result<'a, DecodeError> =
 /// `MaxJsonDepth` the bridge refuses rather than recursing (Phase 781). The
 /// return type became a `Result` for exactly that reason — it was total before,
 /// which is precisely why it could only fail by killing the process.
+/// Phase 815 — organic-demand leniencies for the Transform `source` slot, both
+/// observed cross-family (claude, gemini, kimi — the Tier-D pilot, 2026-08-13):
+/// models bind a derived value to a Transform whose source is
+/// `{"$type":"State","defaultValue":[{row},…]}`. Two universal priors,
+/// accommodated as typed data at THIS host bridge, before `Fuaran.Core`'s
+/// `ColumnCodec` sees the value (the fuaran#633 `Bound`-unwrap precedent — no
+/// Core change, no wire-spec change, no new key):
+///   1. a `State`/`Static`/`Bound` binding WRAPPER around the data unwraps to
+///      its `defaultValue`/`value` (initial-snapshot semantics — a LIVE
+///      state-sourced Transform is the 032/c6 charter, deliberately not this);
+///   2. ROW-MAJOR data (an array of row objects) transposes to the canonical
+///      columnar `{"columns": …}` shape — first-row key set, absent cells
+///      null. Canonical columnar and `ref` sources pass through untouched, so
+///      existing fixtures stay byte-identical.
+let private normaliseTransformSource (j: Json) : Json =
+    let unwrapped =
+        match j with
+        | JObject fields ->
+            match Map.tryFind "$type" fields with
+            | Some(JString("State" | "Static" | "Bound")) ->
+                match Map.tryFind "defaultValue" fields, Map.tryFind "value" fields with
+                | Some inner, _
+                | None, Some inner -> inner
+                | None, None -> j
+            | _ -> j
+        | _ -> j
+
+    match unwrapped with
+    | JArray(JObject first :: _ as rows) ->
+        let keys = first |> Map.toList |> List.map fst
+
+        let cols =
+            keys
+            |> List.map (fun k ->
+                let cells =
+                    rows
+                    |> List.map (function
+                        | JObject rf -> Map.tryFind k rf |> Option.defaultValue JNull
+                        | _ -> JNull)
+
+                k, JArray cells)
+
+        JObject(Map.ofList [ "columns", JObject(Map.ofList cols) ])
+    | _ -> unwrapped
+
 let rec private jsonToJVal (depth: int) (path: string) (j: Json) : Result<Fuaran.Core.JVal, DecodeError> =
     if depth > Fuaran.UI.WireLimits.MaxJsonDepth then
         jvalTooDeep path depth
@@ -1775,7 +1820,10 @@ and private bindingGeneric<'T>
                     | Error e -> Error e
                     | Ok pipeJ ->
                         let sourceR =
-                            jsonToJVal 1 (path + ".source") srcJ
+                            // Phase 815 — normalise the two observed organic
+                            // shapes (State/Static wrapper; row-major rows)
+                            // to canonical columnar before Core decodes.
+                            jsonToJVal 1 (path + ".source") (normaliseTransformSource srcJ)
                             |> Result.bind (fun v ->
                                 Fuaran.Core.ColumnCodec.decodeJson v
                                 |> Result.mapError (coreError (path + ".source")))

@@ -27,6 +27,7 @@
     <Compile Include="ElicitationTests.fs" />
     <Compile Include="RejectFixtureTests.fs" />
     <Compile Include="LenientIngestTests.fs" />
+    <Compile Include="TransformSourceLeniencyTests.fs" />
     <Compile Include="StyleOmitDefaultTests.fs" />
     <Compile Include="SchemaConformanceTests.fs" />
     <!-- Phase 101 — generative / property-based wire-format fuzzer:

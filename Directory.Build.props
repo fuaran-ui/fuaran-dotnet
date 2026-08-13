@@ -148,8 +148,19 @@
          supply - and an addition never rides a same-version repack. 
          0.18.1 - additive: INVALID_JSON envelope de-dup (the innermost
          "parse error at offset N" propagates unwrapped - one occurrence per
-         envelope; didactic tails unchanged). -->
-    <Version>0.19.0</Version>
+         envelope; didactic tails unchanged).
+         0.19.0 (fuaran#812) - protected email links (scraper-resistant
+         mailto emission).
+         0.20.0 (fuaran#815) - additive decode leniency: the Transform
+         `source` slot accepts a State/Static/Bound WRAPPER (unwrapped to
+         its defaultValue/value - initial-snapshot semantics) and ROW-MAJOR
+         data (an array of row objects, transposed to canonical columnar) -
+         the two shapes three model families emitted organically in the
+         Tier-D pilot (2026-08-13). Host-bridge normalisation only; Core,
+         the wire spec and canonical emissions are untouched. Its own
+         version rather than joining the unreleased 0.19.0, per the
+         same-version-repack rule. -->
+    <Version>0.20.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
