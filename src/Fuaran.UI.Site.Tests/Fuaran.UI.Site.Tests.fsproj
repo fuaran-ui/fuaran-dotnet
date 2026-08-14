@@ -9,6 +9,7 @@
   <ItemGroup>
     <Compile Include="SitePageTests.fs" />
     <Compile Include="SiteCheckTests.fs" />
+    <Compile Include="NavTests.fs" />
     <Compile Include="RenderPlanTests.fs" />
     <Compile Include="ExportTests.fs" />
     <Compile Include="Program.fs" />

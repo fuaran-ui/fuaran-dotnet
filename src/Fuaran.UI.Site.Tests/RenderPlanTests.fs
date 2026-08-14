@@ -27,17 +27,42 @@ let private fakeRenderBody (_: SitePage) (node: Node<obj>) : string =
         | _ -> "<body>?</body>"
     | _ -> "<tree>" + node.Id + "</tree>"
 
+/// The nav rendered as a pipe-list of hrefs, current one starred — proving the
+/// shell seam receives a per-page nav with zero per-page wiring.
+let private navSummary (nav: Node<obj>) : string =
+    match nav.Kind with
+    | NodeKind.Box spec ->
+        spec.Children
+        |> List.map (fun child ->
+            match child.Kind with
+            | NodeKind.Link link ->
+                let href =
+                    match link.Href with
+                    | Binding.Static(Some h) -> h
+                    | _ -> "?"
+
+                let current =
+                    match child.ExtraAttributes with
+                    | Some attrs when Map.tryFind "aria-current" attrs = Some "page" -> "*"
+                    | _ -> ""
+
+                href + current
+            | _ -> "?")
+        |> String.concat "|"
+    | _ -> "?"
+
 let private seams: SiteSeams<obj> =
     { Layouts =
         Map.ofList
             [ "page", (fun (p: SitePage) -> Fuaran.markdown ("md-" + p.Title) p.Body)
               "landing", (fun (p: SitePage) -> Fuaran.markdown ("landing-" + p.Title) p.Body) ]
       RenderBody = fakeRenderBody
-      Shell = fun ctx body -> sprintf "<html><title>%s</title>%s</html>" ctx.Page.Title body }
+      Shell =
+        fun ctx body -> sprintf "<html><title>%s</title><nav>%s</nav>%s</html>" ctx.Page.Title (navSummary ctx.Nav) body }
 
 let private pages =
-    [ page "/" "page" "Home" []
-      page "/about" "landing" "About" []
+    [ page "/" "page" "Home" [ "nav-order", "0" ]
+      page "/about" "landing" "About" [ "nav-order", "10" ]
       page "/legal" "page" "Legal" [] ]
 
 [<Tests>]
@@ -52,8 +77,21 @@ let tests =
 
                   Expect.equal
                       (RenderPlan.tryFind "/about" plan)
-                      (Some "<html><title>About</title><body>body of /about</body></html>")
-                      "layout dispatched, body rendered, shell wrapped"
+                      (Some "<html><title>About</title><nav>/|/about*</nav><body>body of /about</body></html>")
+                      "layout dispatched, body rendered, shell wrapped, nav current-marked"
+          }
+
+          test "every page's shell receives the nav with THAT page marked current" {
+              match RenderPlan.compute seams pages with
+              | Error issues -> failtest (SiteCheck.describe issues)
+              | Ok plan ->
+                  match RenderPlan.tryFind "/" plan with
+                  | Some html -> Expect.stringContains html "<nav>/*|/about</nav>" "home marked on /"
+                  | None -> failtest "no document for /"
+
+                  match RenderPlan.tryFind "/legal" plan with
+                  | Some html -> Expect.stringContains html "<nav>/|/about</nav>" "nothing marked on a non-nav page"
+                  | None -> failtest "no document for /legal"
           }
 
           test "an unknown layout refuses the plan with the gate's findings" {
@@ -64,6 +102,18 @@ let tests =
               | Error issues ->
                   Expect.isTrue (SiteCheck.hasErrors issues) "error severity"
                   Expect.exists issues (fun i -> i.Detail.Contains "unknown layout 'prose'") "names the layout"
+          }
+
+          test "warnings ride the plan without refusing it" {
+              let noisy =
+                  [ page "/" "page" "Home" [ "nav-order", "0" ]
+                    page "/a" "page" "A" [ "nav-order", "0" ] ]
+
+              match RenderPlan.compute seams noisy with
+              | Error issues -> failtest (SiteCheck.describe issues)
+              | Ok plan ->
+                  Expect.hasLength plan.Warnings 1 "the duplicate nav-order warning"
+                  Expect.equal plan.Warnings.Head.Severity SiteSeverity.Warning "warning severity"
           }
 
           test "the plan is deterministic — two computations are equal" {

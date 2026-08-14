@@ -5,7 +5,9 @@ namespace Fuaran.UI.Site
 // Validate a loaded page set before anything renders, so a defect is a build
 // failure rather than a published broken page. Errors: duplicate routes, an
 // unknown layout (never a silent fall-through to some default), an empty
-// title.
+// title, a non-integer `nav-order`. Warnings: a duplicated `nav-order` (the
+// projection is still deterministic — the route tie-break — but the ordering
+// intent is probably unfinished).
 
 open System
 
@@ -26,7 +28,8 @@ type SiteIssue =
 module SiteCheck =
 
     /// Validate a page set against the layouts the host registers: route
-    /// uniqueness, known-layout membership, non-empty titles.
+    /// uniqueness, known-layout membership, non-empty titles, and the nav
+    /// frontmatter contract (`nav-order` integer; duplicate orders warned).
     let run (knownLayouts: Set<string>) (pages: SitePage list) : SiteIssue list =
         let duplicateRoutes =
             pages
@@ -66,7 +69,34 @@ module SiteCheck =
                 else
                     None)
 
-        duplicateRoutes @ unknownLayouts @ emptyTitles
+        let malformedNavOrders =
+            pages
+            |> List.choose (fun p ->
+                match Nav.entryOf p with
+                | Error detail ->
+                    Some
+                        { Severity = SiteSeverity.Error
+                          Where = p.SourcePath
+                          Detail = detail }
+                | Ok _ -> None)
+
+        let duplicateNavOrders =
+            Nav.entries pages
+            |> List.groupBy (fun e -> e.Order)
+            |> List.choose (fun (order, es) ->
+                if List.length es > 1 then
+                    Some
+                        { Severity = SiteSeverity.Warning
+                          Where = es |> List.map (fun e -> e.Route) |> String.concat ", "
+                          Detail = sprintf "%d pages share %s %d" (List.length es) Nav.OrderKey order }
+                else
+                    None)
+
+        duplicateRoutes
+        @ unknownLayouts
+        @ emptyTitles
+        @ malformedNavOrders
+        @ duplicateNavOrders
 
     /// The error-severity findings only.
     let errors (issues: SiteIssue list) : SiteIssue list =

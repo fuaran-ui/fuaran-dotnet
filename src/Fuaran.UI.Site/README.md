@@ -18,6 +18,7 @@ for a pure static export).
 | Filename → route derivation (`Routes`) | — |
 | The typed content gate (`SiteCheck`) | Failing its build on the gate |
 | The once-computed render plan (`RenderPlan`) | Layout trees, the body renderer, the document shell |
+| Auto-nav projection (`Nav`) | Placing the nav node in its chrome |
 | Static-export planning + writing (`Export`) | The deploy target |
 
 ## Pages
@@ -31,6 +32,7 @@ strict hand-parsed subset, no YAML dependency):
 title: Pricing
 description: Simple, transparent pricing.
 layout: page
+nav-order: 20
 ---
 
 Body markdown…
@@ -44,9 +46,13 @@ slashes. `Routes.mdRouteOf` gives each route its raw-markdown agent twin
 
 ## The gate
 
-`SiteCheck.run knownLayouts pages` returns typed findings — duplicate routes,
-an **unknown layout** (never a silent fall-through to a default), an empty
-title — each an error a host should fail its build on.
+`SiteCheck.run knownLayouts pages` returns typed findings:
+
+- **Errors** (refuse to build): duplicate routes; an **unknown layout** —
+  never a silent fall-through to a default; an empty title; a non-integer
+  `nav-order`.
+- **Warnings**: a duplicated `nav-order` (ordering stays deterministic via the
+  route tie-break, but the intent is probably unfinished).
 
 ## The render plan
 
@@ -59,7 +65,7 @@ let seams: SiteSeams<obj> =
             [ "page", fun page -> Layouts.prose page
               "landing", fun page -> Layouts.landing page ]
       RenderBody = fun _ tree -> MyRenderer.render tree
-      Shell = fun ctx body -> MyShell.document ctx.Page body }
+      Shell = fun ctx body -> MyShell.document ctx.Page (MyRenderer.render ctx.Nav) body }
 
 match RenderPlan.compute seams (SitePage.loadAll pagesRoot) with
 | Ok plan -> plan // (SitePage * renderedDocument) list, computed once
@@ -68,6 +74,19 @@ match RenderPlan.compute seams (SitePage.loadAll pagesRoot) with
 
 The dispatch map's key set **is** the known-layout set the gate checks — one
 declaration feeds both, so an unadmitted layout cannot reach the dispatch.
+
+## Auto-nav from frontmatter
+
+Frontmatter contract: **`nav-order`** (integer; present ⇒ the page is in the
+nav) and optional **`nav-title`** (defaults to the page title). A page joins
+the nav by frontmatter alone — no host-side anchor chrome.
+
+`Nav.project pages currentRoute` emits ordinary Fuaran nodes: ordered
+crawlable `Link` nodes in a `Group`-role container with the navigation ARIA
+role, the current page marked **`aria-current="page"`**. Ordering is
+(`nav-order`, route) — deterministic even under equal orders. Every
+`PageContext` handed to the shell seam carries the nav projected for that
+page, so placement is a single line in the shell.
 
 ## Static export
 
@@ -79,8 +98,8 @@ documents.
 
 ## Scope
 
-Depends only on `Fuaran.UI` (the `Node` tree the dispatch produces). No
-Giraffe / ASP.NET dependency — the Giraffe adapter is the separate
+Depends only on `Fuaran.UI` (the `Node` tree the dispatch produces and the nav
+emits). No Giraffe / ASP.NET dependency — the Giraffe adapter is the separate
 `Fuaran.UI.Site.Giraffe` package. No markdown renderer — the body is kept raw
 for the host's layout trees to render as they choose.
 

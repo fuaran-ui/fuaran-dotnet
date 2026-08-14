@@ -4,9 +4,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.Site</PackageId>
-    <Description>The page-set layer for pure-SSR Fuaran sites. Discovers markdown pages (frontmatter + filename→route derivation), gates the set with a typed SiteCheck (route uniqueness, known-layout membership, non-empty titles — an unknown layout is an error, never a silent fall-through), computes a once-at-startup RenderPlan through three host-owned seams (layout dispatch, body renderer, document shell), and plans the static export (route→file mapping, sitemap.xml, robots.txt, public-asset copy). The host owns content, layout trees, and chrome; this package owns discovery, routes, gates, and export. No Giraffe / ASP.NET / markdown dependency. Apache-2.0 licensed.</Description>
+    <Description>The page-set layer for pure-SSR Fuaran sites. Discovers markdown pages (frontmatter + filename→route derivation), gates the set with a typed SiteCheck (route uniqueness, known-layout membership, non-empty titles, the nav frontmatter contract — an unknown layout is an error, never a silent fall-through), computes a once-at-startup RenderPlan through three host-owned seams (layout dispatch, body renderer, document shell), projects primary navigation from the pages themselves (nav-order/nav-title frontmatter → ordered crawlable Link nodes, current page marked aria-current), and plans the static export (route→file mapping, sitemap.xml, robots.txt, public-asset copy). The host owns content, layout trees, and chrome; this package owns discovery, routes, gates, and export. No Giraffe / ASP.NET / markdown dependency. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageTags>fuaran;ssr;site;markdown;frontmatter;sitemap;static-export</PackageTags>
+    <PackageTags>fuaran;ssr;site;markdown;frontmatter;sitemap;static-export;navigation</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
@@ -14,15 +14,16 @@
   <ItemGroup>
     <Compile Include="Routes.fs" />
     <Compile Include="SitePage.fs" />
+    <Compile Include="Nav.fs" />
     <Compile Include="Check.fs" />
     <Compile Include="RenderPlan.fs" />
     <Compile Include="Export.fs" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Fuaran.UI — the Node tree the layout dispatch produces. No Renderer /
-         Giraffe / markdown dependency: the body renderer and the document
-         shell are host-supplied seams, so the page-set layer stays
-         host-neutral and pure-testable. -->
+    <!-- Fuaran.UI — the Node tree the layout dispatch produces and the nav
+         projection emits. No Renderer / Giraffe / markdown dependency: the
+         body renderer and the document shell are host-supplied seams, so the
+         page-set layer stays host-neutral and pure-testable. -->
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
   </ItemGroup>
   <ItemGroup>

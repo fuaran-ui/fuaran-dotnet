@@ -42,8 +42,28 @@ let tests =
               Expect.isTrue (SiteCheck.run layouts pages |> SiteCheck.hasErrors) "errors present"
           }
 
+          test "a non-integer nav-order is an error" {
+              let pages = [ page "/a" "page" "A" [ "nav-order", "first" ] ]
+              let issues = SiteCheck.run layouts pages
+              Expect.isTrue (SiteCheck.hasErrors issues) "errors present"
+              Expect.exists issues (fun i -> i.Detail.Contains "nav-order") "names the key"
+          }
+
+          test "a duplicate nav-order is a warning, not an error" {
+              let pages =
+                  [ page "/a" "page" "A" [ "nav-order", "10" ]
+                    page "/b" "page" "B" [ "nav-order", "10" ] ]
+
+              let issues = SiteCheck.run layouts pages
+              Expect.isFalse (SiteCheck.hasErrors issues) "no errors"
+              Expect.exists issues (fun i -> i.Severity = SiteSeverity.Warning) "warning present"
+          }
+
           test "errors filters to error severity only" {
-              let pages = [ page "/a" "prose" "A" [] ]
+              let pages =
+                  [ page "/a" "prose" "A" [ "nav-order", "10" ]
+                    page "/b" "page" "B" [ "nav-order", "10" ] ]
+
               let issues = SiteCheck.run layouts pages
               Expect.isNonEmpty (SiteCheck.errors issues) "has errors"
 
