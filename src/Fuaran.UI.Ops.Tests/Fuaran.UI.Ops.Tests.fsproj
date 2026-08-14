@@ -21,6 +21,9 @@
     <!-- Phase 381 — op-diff review notation goldens (coverage lock over the
          full ops/* corpus). -->
     <Compile Include="OpNotationTests.fs" />
+    <!-- Placement algebra — unit acceptance + FsCheck properties against the
+         real apply engine. -->
+    <Compile Include="PlacementTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -31,6 +34,8 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />
+    <!-- PlacementTests.fs — generated-tree properties over the placement algebra. -->
+    <PackageReference Include="FsCheck" />
     <PackageReference Include="FSharp.Core" />
   </ItemGroup>
 </Project>

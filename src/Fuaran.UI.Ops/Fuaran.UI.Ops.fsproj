@@ -30,6 +30,11 @@
          (encoder) + JsonDecode (decoder), co-updated per WIRE_FORMAT.md §11. -->
     <Compile Include="SchemaGen.fs" />
     <Compile Include="Apply.fs" />
+    <!-- Placement algebra — pure op construction over the existing TreeOp
+         vocabulary (no new op kinds, no wire change); pre-checks mirror the
+         apply engine's rejections. Compiled after Introspect.fs (uses the
+         traversal + structural lenses); independent of Apply.fs. -->
+    <Compile Include="Placement.fs" />
     <Compile Include="ErrorRender.fs" />
     <!-- Streaming / progressive partial-tree decode + apply (Phase 104).
          Purely additive: lowers a decoded tree to the canonical InsertChild
