@@ -479,14 +479,6 @@ most common failure in this shape: the panel then shows one field that follows t
 selection and several that silently never change. If a value in the detail panel came
 from the selected row, it is a `Selection` — not a literal.
 
-**That includes prose slots, not just `Fact` values.** A `Callout` `body` or `heading`
-is a `TextSource` like any other, so it takes `{ "$type": "Bound", "binding": { …
-"Selection" … } }` exactly as a `Fact` value does. A summary sentence about the
-selected row — "UA451 is delayed at gate B12", "TCK-2041 breaches SLA in 2h" — left as
-a literal string is the same defect wearing prose: the panel's facts update on click
-and its narration does not. Bind the body, or write a sentence that stays true for
-every row.
-
 The whole shape — one grid, three `Fact` slots each projecting a different column, and
 a `Callout` whose body follows the same selection:
 

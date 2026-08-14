@@ -633,6 +633,15 @@ let reconcileMarkdown (relPath: string) (expectTable: bool) =
 // Each pairs a canonical fixture tree with the kind of request that should produce it.
 // The tree is corpus-sourced; only the prompt is authored. Drives the pack's few-shot
 // and (downstream) the evaluation seed corpus.
+//
+// Phase 834 dedup rule: a fixture that already renders as a SYSTEM-PROMPT example
+// block is not repeated here. The flip record shows the system prompt is the
+// operative teaching surface (flip-4 2026-08-02: a few-shot entry "the default
+// posture never reads"; the Badge flip's mechanism was promotion INTO the system
+// prompt) — a duplicate entry adds no example any posture would otherwise lack and
+// spends the prefix budget twice. New teaching examples go into the system prompt;
+// few-shot carries fixtures the system prompt does not (plus the caution-listed
+// metric-1 / badge-1 / btn-1 / composite-root / op-replacebinding pairings).
 let fewShot =
     [ "composite-root",
       "Show a revenue dashboard: a card holding the revenue metric and a labelled total row, then a stack with the same metric and a short 'updated hourly' note."
@@ -650,11 +659,7 @@ let fewShot =
       "A filter strip with a single date-range chip: pick a start and end date in one control, scoping everything downstream through one filter param."
       "lenient-grid-transform-param-compact",
       "A grid of embedded department data scoped by a filter: the transform's filter step compares the dept column to a param sourced from the 'dept' filter chip, so the grid re-filters as the chip changes."
-      // Phase 750 — the prompt is deliberately worded as the observed intent
-      // ("visually distinguish the delayed rows") rather than as the feature name, so
-      // the exemplar teaches the mapping FROM the request the model actually receives.
-      "grid-toned-pill",
-      "A shipment tracker over this data: SHP-1001 on time, SHP-1002 delayed, SHP-1003 cancelled (carriers Northwind, Meridian, Northwind). Visually distinguish the delayed and cancelled rows, and tint the Meridian shipments."
+      // grid-toned-pill: cut 2026-08-15 (Phase 834 dedup — system-prompt block).
       "query-dependson",
       "A revenue metric fed by a host 'orders' query that declares it depends on the status and region filters — the host re-runs the query when either filter changes."
       "discl-1", "A collapsible 'Additional entitlements' section, open by default, containing a short note."
@@ -665,45 +670,21 @@ let fewShot =
       "op-insertchild", "Edit the existing tree: add the revenue metric to the empty dashboard."
       "op-reorderchildren",
       "Edit the existing tree: put the markdown note above the metric in 'stack-1' by stating the order."
-      "lenient-filterable-static-dashboard-compact",
-      "Build a content-performance dashboard from this data: region and genre dropdowns that filter both a retention line chart and an episode grid."
-      "lenient-master-detail-preselected-compact",
-      "A support-ticket triage screen: a ticket grid with TCK-2041 selected by default, and a detail card showing the selected ticket."
-      // 2026-08-01 n=3 review — 032/c6 + 036/c8 (×6, two tasks): models bind ONE
-      // slot to the selection and hard-code every sibling in the same card. The
-      // prompt is worded as the observed intent ("shows its priority and
-      // assignee"), not as `Selection.field`, so the exemplar teaches the mapping
-      // FROM the request the model actually receives.
-      "master-detail-multi-field",
-      "A ticket triage screen: a ticket grid with TCK-2041 selected by default, and a detail card that shows the selected ticket's id, its priority and its assignee, plus a note calling out who it is assigned to — every field AND the note following the selection."
-      // 2026-08-01 n=3 review — 043/c2 (×3): every emission reached for a Metric
-      // stat tile where a progress bar was asked for. `Progress` existed and was
-      // taught in one pack file; it was never a few-shot exemplar.
-      // Phase 765 — worded as the observed intent ("as of today", "how many days
-      // overdue"), not as the feature name, per the Phase 750 convention.
-      // Phase 766 — worded as the observed intent (a start/stop switch), not as
-      // the kind name.
-      // Phase 767 — the observed intent verbatim ("empty state ... and a button"),
-      // which is what the failing emissions received.
-      // Phase 768 — worded as the observed intent (the 032/c6 shape: a panel that
-      // follows the selected ward), not as the feature name.
-      "switch-on-selection",
-      "A ward dashboard: a grid of wards, and a status panel that changes with the selected ward — a critical ward shows an escalation callout, otherwise a normal-range note."
-      "empty-state-card",
-      "An empty state for a Saved Searches section: a heading saying none are saved yet, a short line explaining that saved searches appear here, and a Browse jobs button — as one unified panel."
-      "form-toggle",
-      "A settings form for an irrigation controller: a switch to start and stop the irrigation, and a required tick-box to accept the terms."
-      "now-environment-binding",
-      "An invoice aging panel: show today's date, and a table of invoices with how many days overdue each one is as of today."
-      "progress-1",
-      "Show how far through the quarter's hiring plan we are as a progress bar, labelled, filled to about two thirds."
+      // Cut 2026-08-15 (Phase 834 dedup — each renders as a system-prompt example
+      // block, which the flip record shows is the operative surface):
+      //   lenient-filterable-static-dashboard-compact,
+      //   lenient-master-detail-preselected-compact, master-detail-multi-field
+      //   (flip-4 named this exact entry as never read by the default posture),
+      //   switch-on-selection, empty-state-card, form-toggle,
+      //   now-environment-binding, lenient-scalar-transform-composition-compact.
+      // progress-1: cut on the flip-3 verdict — "the few-shot addition was
+      // redundant; no change at n=6" (Progress stays taught in prose).
       // 2026-08-01 n=3 review — 042/c3 (×3): every emission reached for a Fact
       // label-value tile in the STATUS-CHIP role. `Badge` existed and was taught;
-      // it was never a few-shot exemplar either.
+      // it was never a few-shot exemplar either. (Kept through the 834 dedup —
+      // caution-listed: the Badge example.)
       "badge-1",
-      "Mark the record's state with a small inline status chip reading 'Active' — a compact badge, not a labelled stat tile."
-      "lenient-scalar-transform-composition-compact",
-      "A triage dashboard over embedded ticket data: a badge counting the critical tickets, and a warning callout whose body is the selected ticket's alert text (TCK-2041 selected by default)." ]
+      "Mark the record's state with a small inline status chip reading 'Active' — a compact badge, not a labelled stat tile." ]
 
 let buildFewShotJsonl () =
     fewShot
