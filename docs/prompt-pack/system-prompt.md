@@ -408,8 +408,8 @@ The same intent, canonical — the formatted string is a labelled text fact:
 ```
 
 Keep `Metric` only when you emit the RAW number and let `format` render it
-(`{"$type":"Percent"}`, `{"$type":"Currency","code":"GBP"}`, …). There is no duration
-format — a pre-formatted duration is always a `Fact`.
+(`{"$type":"Percent"}`, `{"$type":"Currency","code":"GBP"}`, … — for a trendable
+duration, a raw count plus the `Duration` format; see Dates and times).
 
 And a **short state word shown as a chip** — "Active", "Overdue", "Tier 3", a
 severity or lifecycle marker sitting inline next to what it describes — is a
@@ -676,18 +676,11 @@ changes the chip). A default-less binding shows nothing selected:
 ```
 
 **3. State-dependent display** ("the callout is red when occupancy is critical") —
-encode the branching VISIBLY with a `Switch` on a state key, one child per case; never
-hard-code one branch's tone and hope:
-
-```json
-{ "$type": "Switch", "stateKey": "occupancyTier",
-  "cases": [ { "match": "critical", "child": { "id": "st-crit", "kind": { "$type": "Callout", "tone": "Critical", "body": "Over capacity" } } },
-             { "match": "warning",  "child": { "id": "st-warn", "kind": { "$type": "Callout", "tone": "Warning", "body": "Approaching capacity" } } } ],
-  "default": { "id": "st-ok", "kind": { "$type": "Callout", "tone": "Success", "body": "Within capacity" } } }
-```
-
-If the task states thresholds ("critical above 90%"), name them in the visible text or
-labels so the mapping is explicit.
+encode the branching VISIBLY with a `Switch`, one child per case; never hard-code one
+branch's tone and hope. The selector is the `on` field and takes any binding (a
+`Selection`, a `State`) — the full shape and its rules are in "Conditional rendering —
+`Switch` branches on any binding" below. If the task states thresholds ("critical
+above 90%"), name them in the visible text or labels so the mapping is explicit.
 
 **The master-detail composition** ("a ticket grid with TCK-2041 selected by default and
 a detail panel"): the grid itself stays declarative (`rowKeyField` names the key column —
