@@ -451,6 +451,32 @@ let descendantNodes (node: Node<'Msg>) : Node<'Msg> list =
     let nonStructural, _ = nonStructuralSlots node
     structural @ nonStructural
 
+/// Rebuild `node` with `replacements` in exactly the positions `descendantNodes`
+/// enumerates (structural children first, then the non-structural slots). The
+/// write companion to `descendantNodes`, making the pair a lens over the whole
+/// traversal surface the way `getChildren` / `withChildren` are over the
+/// structural one. Positional only: the replacement list must have the same
+/// length as `descendantNodes node` — callers rebuild in place (an id-remap, a
+/// whole-tree map), never structurally (insert / remove stay with the
+/// structural surface, where the apply engine gates them).
+let replaceDescendantNodes (node: Node<'Msg>) (replacements: Node<'Msg> list) : Node<'Msg> =
+    let structuralCount =
+        getChildren node.Kind |> Option.map List.length |> Option.defaultValue 0
+
+    let structural = replacements |> List.truncate structuralCount
+    let nonStructural = replacements |> List.skip structuralCount
+
+    let rebuilt =
+        match withChildren node.Kind structural with
+        | Some kind -> { node with Kind = kind }
+        | None -> node
+
+    if List.isEmpty nonStructural then
+        rebuilt
+    else
+        let _, put = nonStructuralSlots rebuilt
+        put nonStructural
+
 let rec findNode (target: NodeId) (node: Node<'Msg>) : Node<'Msg> option =
     // The op layer addresses by `NodeId`; `Node.Id` is a bare string since the
     // swap — unwrap at the comparison.

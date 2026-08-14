@@ -1,7 +1,8 @@
 namespace Fuaran.UI.Ops
 
 // ============================================================================
-//  Placement algebra — placed insert / move / nudge.
+//  Placement algebra — placed insert / move / nudge, and the clone verbs
+//  (duplicate / paste) built on top of them.
 //
 //  The op vocabulary is deliberately positionless: `InsertChild` and `MoveNode`
 //  append, and an explicit order is stated only by `ReorderChildren` naming
@@ -23,8 +24,18 @@ namespace Fuaran.UI.Ops
 //  that could honour such an anchor would be a `ReorderChildren` naming it,
 //  which the apply engine refuses as `OrderingMismatch`; saying so before
 //  emission is friendlier than a rejection after it.
+//
+//  The clone verbs wrap `Fuaran.Core.Tree.subtree` + `remapIds` (whose doc
+//  comment names exactly this use: rewrite a copied subtree's ids to a fresh,
+//  collision-free set before `InsertChild`). The remap runs over the WHOLE
+//  traversal surface — `Introspect.descendantNodes` / `replaceDescendantNodes`,
+//  not just the structural child lists — because the id-uniqueness contract is
+//  tree-wide, and a clone that kept an old id inside a Switch case or an
+//  ErrorBoundary slot would smuggle a duplicate past it.
 // ============================================================================
 
+open System.Collections.Generic
+open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 
@@ -58,9 +69,9 @@ type PlaceError =
     /// The destination parent's kind has no `Children` field (apply:
     /// `ChildlessKind`).
     | ChildlessKind of parentId: NodeId
-    /// The node to move / nudge is not structurally addressable (absent, or
-    /// held in a non-structural position the structural ops cannot reach) —
-    /// apply: `NodeNotFound`.
+    /// The node to move / nudge / duplicate is not structurally addressable
+    /// (absent, or held in a non-structural position the structural ops cannot
+    /// reach) — apply: `NodeNotFound`.
     | NodeNotFound of nodeId: NodeId
     /// The placement anchor is not among the destination's post-op children.
     /// The only op that could honour it — a `ReorderChildren` naming it — is
@@ -79,10 +90,68 @@ type PlaceError =
     /// The nudge would leave the sibling range (already first / already last).
     | NudgeOutOfRange of nodeId: NodeId * delta: int
 
+// ─── Fresh-id strategy (the clone verbs' id-minting seam) ────────────────────
+
+/// How the clone verbs mint replacement ids: given the id being replaced and a
+/// predicate over every id already claimed (the whole target tree, the whole
+/// incoming subtree, and ids minted earlier in the same remap), return an id
+/// the predicate refuses. Injectable so a host with its own id discipline can
+/// supply it; `FreshIds.derived` is the default.
+type FreshIds = string -> (string -> bool) -> string
+
+[<RequireQualifiedAccess>]
+module FreshIds =
+    /// The default: `<oldId>-copy`, then `<oldId>-copy-2`, `-copy-3`, … — the
+    /// first candidate not already taken. Deterministic (derived from the id
+    /// it replaces, no ambient state) and collision-free by probing — the same
+    /// derive-and-probe convention the tree's other id-minting surfaces use.
+    let derived: FreshIds =
+        fun oldId taken ->
+            let rec probe (n: int) =
+                let candidate =
+                    if n = 1 then
+                        oldId + "-copy"
+                    else
+                        oldId + "-copy-" + string n
+
+                if taken candidate then probe (n + 1) else candidate
+
+            probe 1
+
+    /// Sequential ids under a fixed prefix (`<prefix>-1`, `-2`, …) — the
+    /// deterministic-replay option: the minted sequence depends only on the
+    /// prefix and the order of requests, never on the ids being replaced.
+    /// Each call to `sequential` starts its own counter.
+    let sequential (prefix: string) : FreshIds =
+        let counter = ref 0
+
+        fun _ taken ->
+            let rec probe () =
+                counter.Value <- counter.Value + 1
+                let candidate = prefix + "-" + string counter.Value
+                if taken candidate then probe () else candidate
+
+            probe ()
+
 // ─── The verbs ───────────────────────────────────────────────────────────────
 
 [<RequireQualifiedAccess>]
 module Placement =
+
+    let private idw: IdWitness<NodeId> =
+        { ToString = fun (NodeId s) -> s
+          OfString = NodeId
+          Equals = (=) }
+
+    /// The whole-traversal-surface witness: children are `descendantNodes`
+    /// (structural children plus the non-structural slots), so the clone
+    /// verbs' subtree extraction and id-remap reach every node the tree-wide
+    /// duplicate-id contract covers — not just the structural surface.
+    let private traversalWitness () : NodeWitness<Node<'Msg>, NodeId> =
+        { Id = fun n -> NodeId n.Id
+          KindTag = fun n -> Introspect.kindName n.Kind
+          Children = Introspect.descendantNodes
+          ReplaceChildren = fun n cs -> Introspect.replaceDescendantNodes n cs }
 
     /// The destination's current child ids, or the mirrored apply-side refusal
     /// (absent parent / childless kind).
@@ -216,3 +285,79 @@ module Placement =
                             else id)
 
                     Ok(TreeOp.ReorderChildren(NodeId parent.Id, reordered))
+
+    // ─── Clone verbs ─────────────────────────────────────────────────────────
+
+    /// Rewrite every id in `incoming` that collides with an id in `targetRoot`
+    /// to a fresh, collision-free one (via `Fuaran.Core.Tree.remapIds` over the
+    /// whole-traversal-surface witness). Ids with no collision are preserved —
+    /// a pasted subtree keeps its identity where it can; a subtree duplicated
+    /// within its own tree remaps every id, since every one collides.
+    let private remapForInsert (freshIds: FreshIds) (targetRoot: Node<'Msg>) (incoming: Node<'Msg>) : Node<'Msg> =
+        let existing = HashSet<string>()
+
+        for (NodeId s) in Introspect.allNodeIds targetRoot do
+            existing.Add s |> ignore
+
+        // Fresh ids must also dodge the incoming subtree's own ids (a minted id
+        // colliding with a not-yet-visited incoming node would re-introduce the
+        // duplicate the remap exists to remove) and each other.
+        let taken = HashSet<string>(existing)
+
+        for (NodeId s) in Introspect.allNodeIds incoming do
+            taken.Add s |> ignore
+
+        let rename =
+            Introspect.allNodeIds incoming
+            |> List.choose (fun (NodeId oldId) ->
+                if existing.Contains oldId then
+                    let fresh = freshIds oldId (fun candidate -> taken.Contains candidate)
+                    taken.Add fresh |> ignore
+                    Some(oldId, fresh)
+                else
+                    None)
+            |> Map.ofList
+
+        if Map.isEmpty rename then
+            incoming
+        else
+            Tree.remapIds
+                (traversalWitness ())
+                (fun (NodeId fresh) n -> { n with Id = fresh })
+                (fun (NodeId oldId) -> NodeId(rename |> Map.tryFind oldId |> Option.defaultValue oldId))
+                incoming
+
+    /// Duplicate the subtree rooted at `source` and place the clone at
+    /// `target`, minting replacement ids with `freshIds`. The emitted op is an
+    /// ordinary placed insert — the clone is a fresh subtree, so the standard
+    /// apply gate (including the tree-wide duplicate-id check) accepts it
+    /// unchanged.
+    let duplicateOpWith
+        (freshIds: FreshIds)
+        (root: Node<'Msg>)
+        (source: NodeId)
+        (target: Target)
+        : Result<TreeOp<'Msg>, PlaceError> =
+        match Tree.subtree (traversalWitness ()) idw source root with
+        | None -> Error(PlaceError.NodeNotFound source)
+        | Some sub -> placeOp root (remapForInsert freshIds root sub) target
+
+    /// `duplicateOpWith` under the default derived-suffix id strategy.
+    let duplicateOp (root: Node<'Msg>) (source: NodeId) (target: Target) : Result<TreeOp<'Msg>, PlaceError> =
+        duplicateOpWith FreshIds.derived root source target
+
+    /// Place a subtree lifted from a DIFFERENT tree into `targetRoot`,
+    /// remapping any id that collides with one already present (ids with no
+    /// collision are preserved). The incoming subtree's ids must be unique
+    /// within itself — a subtree extracted from any well-formed tree is.
+    let pasteOpWith
+        (freshIds: FreshIds)
+        (targetRoot: Node<'Msg>)
+        (incoming: Node<'Msg>)
+        (target: Target)
+        : Result<TreeOp<'Msg>, PlaceError> =
+        placeOp targetRoot (remapForInsert freshIds targetRoot incoming) target
+
+    /// `pasteOpWith` under the default derived-suffix id strategy.
+    let pasteOp (targetRoot: Node<'Msg>) (incoming: Node<'Msg>) (target: Target) : Result<TreeOp<'Msg>, PlaceError> =
+        pasteOpWith FreshIds.derived targetRoot incoming target

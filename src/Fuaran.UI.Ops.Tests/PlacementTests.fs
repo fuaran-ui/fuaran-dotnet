@@ -15,6 +15,12 @@ module Fuaran.UI.Tests.PlacementTests
 //       rejection of the op the helper would otherwise have emitted (or, for
 //       `UnknownAnchor`, to the `OrderingMismatch` refusal of the only op that
 //       could have honoured the anchor).
+//
+//  The clone verbs add the tree-wide id obligations: a duplicate never
+//  collides with any id in the target tree (including ids held in
+//  non-structural positions), the clone is structurally equal to its source
+//  modulo ids, and a paste preserves non-colliding ids while remapping
+//  colliding ones.
 // ============================================================================
 
 open Expecto
@@ -68,6 +74,25 @@ let private expectRefusal (result: Result<TreeOp<obj>, PlaceError>) (expected: P
     match result with
     | Error e -> Expect.equal e expected message
     | Ok _ -> failtestf "expected the refusal %A, got Ok (%s)" expected message
+
+let private rawIds (root: Node<obj>) : string list =
+    Introspect.allNodeIds root |> List.map (fun (NodeId s) -> s)
+
+let private allDistinct (root: Node<obj>) : bool =
+    let ids = rawIds root
+    List.length ids = List.length (List.distinct ids)
+
+/// Preorder kind tags over the whole traversal surface — structural equality
+/// modulo ids.
+let rec private kindShape (n: Node<obj>) : string list =
+    Introspect.kindName n.Kind
+    :: (Introspect.descendantNodes n |> List.collect kindShape)
+
+let private insertedChild (op: TreeOp<obj>) : Node<obj> =
+    match op with
+    | TreeOp.InsertChild(_, c) -> c
+    | TreeOp.Batch [ TreeOp.InsertChild(_, c); _ ] -> c
+    | other -> failtestf "expected a placed insert, got %A" other
 
 let private at (parentId: string) (placement: Placement) : Target =
     { ParentId = NodeId parentId
@@ -351,6 +376,113 @@ let nudgeOpTests =
               expectRefusal (Placement.nudgeOp t (NodeId "ghost") 1) (PlaceError.NodeNotFound(NodeId "ghost")) "ghost"
           } ]
 
+// ─── Unit tests: duplicateOp / pasteOp ──────────────────────────────────────
+
+[<Tests>]
+let cloneVerbTests =
+    testList
+        "Placement.duplicateOp / pasteOp"
+        [ test "duplicate places a fresh-id clone beside its source" {
+              let t = fixture ()
+
+              match Placement.duplicateOp t (NodeId "left") (at "root" (Placement.After(NodeId "left"))) with
+              | Ok op ->
+                  let updated = applied op t
+
+                  Expect.equal
+                      (childIdsIn updated "root")
+                      [ "left"; "left-copy"; "solo"; "right"; "empty" ]
+                      "clone lands immediately after its source"
+
+                  Expect.equal
+                      (childIdsIn updated "left-copy")
+                      [ "a-copy"; "b-copy"; "c-copy" ]
+                      "interior ids remapped by the default derived strategy"
+
+                  Expect.isTrue (allDistinct updated) "no id collides anywhere in the tree"
+              | Error e -> failtestf "expected Ok, got %A" e
+          }
+
+          test "duplicate is structurally equal to its source modulo ids" {
+              let t = fixture ()
+
+              match Placement.duplicateOp t (NodeId "left") (at "right" Placement.Last) with
+              | Ok op ->
+                  let source =
+                      Introspect.findNode (NodeId "left") t
+                      |> Option.defaultWith (fun () -> failtest "fixture")
+
+                  Expect.equal (kindShape (insertedChild op)) (kindShape source) "same kind tags, same shape"
+              | Error e -> failtestf "expected Ok, got %A" e
+          }
+
+          test "the injectable strategy mints deterministic sequential ids" {
+              let t = fixture ()
+
+              match
+                  Placement.duplicateOpWith (FreshIds.sequential "dup") t (NodeId "left") (at "root" Placement.Last)
+              with
+              | Ok op ->
+                  let updated = applied op t
+                  Expect.equal (List.last (childIdsIn updated "root")) "dup-1" "clone root is dup-1"
+
+                  Expect.equal
+                      (childIdsIn updated "dup-1")
+                      [ "dup-2"; "dup-3"; "dup-4" ]
+                      "interior ids minted in traversal order"
+              | Error e -> failtestf "expected Ok, got %A" e
+          }
+
+          test "duplicate remaps ids held in non-structural positions too" {
+              // `ph` lives in a State slot — invisible to the structural child
+              // lists, but inside the tree-wide id-uniqueness contract.
+              let t = container "root" [ Node.onLoading (leaf "ph") (leaf "m") ]
+
+              match Placement.duplicateOp t (NodeId "m") (at "root" Placement.Last) with
+              | Ok op ->
+                  let updated = applied op t
+                  Expect.isTrue (allDistinct updated) "the State-slot id was remapped, not smuggled"
+                  Expect.contains (rawIds updated) "ph-copy" "the placeholder clone carries a fresh id"
+              | Error e -> failtestf "expected Ok, got %A" e
+          }
+
+          test "duplicate of an absent source is refused" {
+              let t = fixture ()
+
+              expectRefusal
+                  (Placement.duplicateOp t (NodeId "ghost") (at "root" Placement.Last))
+                  (PlaceError.NodeNotFound(NodeId "ghost"))
+                  "ghost"
+          }
+
+          test "paste remaps colliding ids and preserves the rest" {
+              let t = fixture ()
+
+              // Lifted from a different tree: "left" and "a" collide with the
+              // target; "z" does not.
+              let foreign = container "left" [ leaf "a"; leaf "z" ]
+
+              match Placement.pasteOp t foreign (at "right" Placement.Last) with
+              | Ok op ->
+                  let updated = applied op t
+                  Expect.equal (childIdsIn updated "right") [ "d"; "left-copy" ] "pasted under right"
+                  Expect.equal (childIdsIn updated "left-copy") [ "a-copy"; "z" ] "collisions remapped, z preserved"
+                  Expect.isTrue (allDistinct updated) "no id collides anywhere in the tree"
+              | Error e -> failtestf "expected Ok, got %A" e
+          }
+
+          test "paste with no collisions preserves every id" {
+              let t = fixture ()
+              let foreign = container "p" [ leaf "q" ]
+
+              match Placement.pasteOp t foreign (at "empty" Placement.Last) with
+              | Ok op ->
+                  let updated = applied op t
+                  Expect.equal (childIdsIn updated "empty") [ "p" ] "pasted"
+                  Expect.equal (childIdsIn updated "p") [ "q" ] "interior id untouched"
+              | Error e -> failtestf "expected Ok, got %A" e
+          } ]
+
 // ─── Property tests ──────────────────────────────────────────────────────────
 //
 // Generated trees are Box containers over Markdown leaves with sequential
@@ -520,6 +652,61 @@ let private nudgeCorresponds (t: Node<obj>) (node: NodeId) (delta: int) : bool =
             idx + delta < 0 || idx + delta >= len
     | Error _ -> false
 
+let private duplicateCorresponds (t: Node<obj>) (source: NodeId) (target: Target) : bool =
+    match Placement.duplicateOp t source target with
+    | Ok op ->
+        match Apply.apply op t with
+        | Error _ -> false
+        | Ok updated ->
+            let sourceNode =
+                Introspect.findNode source t
+                |> Option.defaultWith (fun () -> failwith "source vanished")
+
+            let ids = rawIds updated
+
+            List.length ids = List.length (List.distinct ids)
+            && List.length ids = List.length (rawIds t) + List.length (Introspect.allNodeIds sourceNode)
+            && (match op with
+                | TreeOp.InsertChild(_, clone)
+                | TreeOp.Batch [ TreeOp.InsertChild(_, clone); _ ] -> kindShape clone = kindShape sourceNode
+                | _ -> false)
+    | Error(PlaceError.NodeNotFound n) -> n = source && Introspect.findNode source t |> Option.isNone
+    | Error(PlaceError.ParentNotFound p) -> p = target.ParentId && Introspect.findNode p t |> Option.isNone
+    | Error(PlaceError.ChildlessKind p) ->
+        (Introspect.findNode p t
+         |> Option.map (fun n -> Introspect.getChildren n.Kind |> Option.isNone)
+         |> Option.defaultValue false)
+    | Error(PlaceError.UnknownAnchor a) ->
+        // The clone's fresh root id is never its own anchor, so exclusion is moot.
+        anchorOf target.Placement = Some a
+        && anchorNotASibling t target.ParentId (NodeId "«none»") a
+    | Error _ -> false
+
+let private pasteCorresponds (tA: Node<obj>) (tB: Node<obj>) (source: NodeId) (target: Target) : bool =
+    match Introspect.findNode source tA with
+    | None -> true // only tree ids are generated; ghost source is not the paste contract under test
+    | Some lifted ->
+        match Placement.pasteOp tB lifted target with
+        | Ok op ->
+            match Apply.apply op tB with
+            | Error _ -> false
+            | Ok updated ->
+                let ids = rawIds updated
+                let before = rawIds tB |> Set.ofList
+
+                let preserved =
+                    rawIds lifted |> List.filter (fun id -> not (Set.contains id before))
+
+                List.length ids = List.length (List.distinct ids)
+                && (preserved |> List.forall (fun id -> List.contains id ids))
+        | Error(PlaceError.ParentNotFound p) -> Introspect.findNode p tB |> Option.isNone
+        | Error(PlaceError.ChildlessKind p) ->
+            (Introspect.findNode p tB
+             |> Option.map (fun n -> Introspect.getChildren n.Kind |> Option.isNone)
+             |> Option.defaultValue false)
+        | Error(PlaceError.UnknownAnchor a) -> anchorOf target.Placement = Some a
+        | Error _ -> false
+
 let private config = Config.QuickThrowOnFailure.WithMaxTest(400)
 
 [<Tests>]
@@ -577,4 +764,34 @@ let propertyTests =
               Check.One(
                   config,
                   Prop.forAll (Arb.fromGen scenarios) (fun (t, node, delta) -> nudgeCorresponds t node delta)
+              ))
+
+          testCase "duplicateOp: never collides, grows by exactly the subtree, clones the shape" (fun () ->
+              let scenarios =
+                  gen {
+                      let! t = genTree
+                      let! source = genPick t
+                      let! target = genTarget t
+                      return t, source, target
+                  }
+
+              Check.One(
+                  config,
+                  Prop.forAll (Arb.fromGen scenarios) (fun (t, source, target) -> duplicateCorresponds t source target)
+              ))
+
+          testCase "pasteOp: colliding ids remap, non-colliding ids survive, no duplicates" (fun () ->
+              let scenarios =
+                  gen {
+                      let! tA = genTree
+                      let! tB = genTree
+                      let! source = genPick tA
+                      let! target = genTarget tB
+                      return tA, tB, source, target
+                  }
+
+              Check.One(
+                  config,
+                  Prop.forAll (Arb.fromGen scenarios) (fun (tA, tB, source, target) ->
+                      pasteCorresponds tA tB source target)
               )) ]
