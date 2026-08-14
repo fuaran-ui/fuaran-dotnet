@@ -131,6 +131,45 @@ pair; the redundancy lives in the few-shot duplication, which is where the bulk 
 slim lands. Cutting deeper into prose would mean cutting live teaching, which the
 charter forbids ("measured, not maximal").
 
-## Post-slim ledger
+## Post-slim ledger (2026-08-15)
 
-_(appended by the final commit)_
+| File | Baseline | Post-slim | Delta |
+|---|---|---|---|
+| `system-prompt.md` | 87,873 ch / ~21,968 tok | 86,438 ch / ~21,610 tok | −1,435 ch / ~−359 tok |
+| `few-shot.jsonl` (28 → 18 entries) | 21,920 ch / ~5,480 tok | 8,756 ch / ~2,189 tok | −13,164 ch / ~−3,291 tok |
+| **Pack total** | **109,793 ch / ~27,448 tok** | **95,194 ch / ~23,798 tok** | **−14,599 ch / ~−3,650 tok (−13.3%)** |
+
+### Per-cut ledger (one commit per class — bisection-ready)
+
+| Commit | Class | Cut | Evidence |
+|---|---|---|---|
+| `f8434ff` | prep | regen of the drift-checked surfaces (corpus had moved at fuaran#818) + `authoring-pack.fsx` walker fix so `SetState(key)` is not silently dropped from the generated `Action.$type` list | drift gate must be clean before any cut is sized |
+| `1db06df` | (a) | the gpt-4o arithmetic wrong-then-right pair (§Metric-vs-Fact, ~780 ch) | teaching-proof at both treatments (`a89e84c`, `602ada7`); generation-scoped 2026-08-11: sol@low 4/4 + terra@low 4/4 clean |
+| `c74eee9` | (b) | Callout-body prose paragraph (`61a9c01`, ~450 ch) — failed twice (flip-4 1/6→1/6, flip-5 1/6→1/6); few-shot dedup ×10 (~13.2k ch): grid-toned-pill, lenient-filterable-static-dashboard-compact, lenient-master-detail-preselected-compact, master-detail-multi-field, switch-on-selection, empty-state-card, form-toggle, now-environment-binding, lenient-scalar-transform-composition-compact (all dups of system-prompt blocks), progress-1 (flip-3: "redundant; no change at n=6") | flip record: the system prompt is the operative surface; no posture loses an example |
+| `1ff2305` | (c) | "There is no duration format" sentence (falsified by shipped `Duration` format, Phase 819, 817-sweep-verified); idiom-3 stateKey-Switch inline example (superseded by Phase 768 `Switch.on`; wired a stateKey nothing writes — the pack's own §Conditional-rendering warns against exactly that) → both replaced by pointers to the canonical sections | ~530 ch net |
+
+### Deferred to Phase 836 (class d — cut nothing)
+
+The schema-prose-duplicated-by-generated-tables list in the census above (Badge
+variants, TonedPill tone values, Icon sizes, Style-vocabulary enumerations, Rules
+3/4 restatements) — measure, then cut.
+
+### Considered and held (cut wanted, evidence said no)
+
+- The formatted-quantity ("1h 20m") wrong-then-right pair — same census window as the
+  extinct arithmetic pair, but it is the `e4c3a2a` mechanism that extinguished a live
+  WRONG_TYPE cluster and was never generation-scope-verified extinct.
+- The closure-cells / `*Fn` subsection — verified flips (`ade366b` 2/2, `4fcf841` 2/2),
+  not generation-scoped; needs a targeted probe before any cut.
+- The second master-detail example (`lenient-master-detail-preselected-compact` block)
+  — overlaps `master-detail-multi-field` but uniquely pins the Selection-as-param
+  composition (2026-07-20 pinned rows).
+- The `-Filter` retirement paragraph — it IS the mechanism that took incidence
+  397 → 0/89; cutting it would re-open a closed demand.
+- `composite-root` in few-shot — a dup, but the archetypal composition
+  request-pairing; uncertain, held under the caution rule.
+
+**Next (the coordinator's wet half):** stress-track sweep (n=1, two families) +
+Tier-A/B mini-window against this pack SHA; any flip regression restores the class by
+reverting its single commit. Then the eval-suite pin + the depth-cost re-measure
+(grok's cumulative-USD ratio is the sentinel).
