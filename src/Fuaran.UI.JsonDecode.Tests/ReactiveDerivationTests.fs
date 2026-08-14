@@ -74,6 +74,20 @@ let liveTransformTests =
               | other -> failtestf "expected a Live State-sourced Transform with an Embedded initial, got %A" other
           }
 
+          test "an EMPTY-array State default decodes to the empty table (0.23.1) and round-trips" {
+              // The organic Tier-D r0 shape (terra): a live count over an
+              // initially-empty log. Zero rows have no columns to infer, so
+              // this maps to the empty table exactly as Query/Selection do.
+              let wire = badgeWith """{"$type":"State","defaultValue":[],"key":"request-log"}"""
+
+              let n = roundTrips "empty-array state-sourced Transform" wire
+
+              match labelBinding n with
+              | Binding.Transform(TransformSource.Live(Binding.State("request-log", Some _), Embedded t), _, _) ->
+                  Expect.equal (Table.rowCount t) 0 "empty default ⇒ the empty table"
+              | other -> failtestf "expected a Live State-sourced Transform with the empty initial, got %A" other
+          }
+
           test "a Query-shaped source decodes live with the EMPTY initial snapshot" {
               let wire = badgeWith """{"$type":"Query","name":"request-log"}"""
               let n = roundTrips "query-sourced Transform" wire

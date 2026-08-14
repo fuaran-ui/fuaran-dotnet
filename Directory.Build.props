@@ -198,8 +198,13 @@
          already shipped as fuaran#768. Source-breaking DU/record
          changes (`Binding.Transform` source slot, `Action.SetState`
          arity, `DataGridSpec` field) are pre-1.0 minor per the 0.5.0
-         precedent; the wire is additive. -->
-    <Version>0.23.0</Version>
+         precedent; the wire is additive. 
+         0.23.1 - additive leniency: an EMPTY array default on a live
+         Transform source (defaultValue: []) decodes to the empty table,
+         as Query/Selection sources do - an initially-empty live collection
+         is a complete intent with zero rows and no columns to infer
+         (observed organically: the Tier-D cohort r0 count badge, terra). -->
+    <Version>0.23.1</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

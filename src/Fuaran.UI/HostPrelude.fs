@@ -169,5 +169,15 @@ module TransformLive =
     /// decode-time half of the Phase-815 snapshot semantics: SSR / diagnostic
     /// evaluation reads this table, byte-identical to what the 0.20.0 snapshot
     /// unwrap produced for the same input.
+    ///
+    /// 0.23.1 — an EMPTY array default (`"defaultValue": []`) is the empty
+    /// table, exactly as a Query/Selection live source starts: an
+    /// initially-empty live collection ("count the requests in an empty log")
+    /// is a correct, complete intent with zero rows and no columns to infer —
+    /// observed organically (terra, the Tier-D cohort r0 count badge), where
+    /// the columnar codec's "expected object, got array" didactic was refusing
+    /// a shape with nothing wrong in it.
     let initialSource (data: JVal) : Result<DataSource, ColumnError> =
-        ColumnCodec.decodeJson (normaliseData data)
+        match data with
+        | JArr [] -> Ok emptySource
+        | _ -> ColumnCodec.decodeJson (normaliseData data)

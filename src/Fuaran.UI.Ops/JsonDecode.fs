@@ -1917,6 +1917,16 @@ and private bindingGeneric<'T>
                                         | _ -> None
 
                                     match carried, tag with
+                                    | Some(Fuaran.Core.JArr []), "State" ->
+                                        // 0.23.1 — an EMPTY array default is the
+                                        // empty table, exactly as Query/Selection
+                                        // start: an initially-empty live collection
+                                        // ("count the requests in an empty log")
+                                        // has zero rows and no columns to infer;
+                                        // the codec's refusal had nothing wrong to
+                                        // name. Observed organically (terra, the
+                                        // Tier-D cohort r0 count badge).
+                                        Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource))
                                     | Some _, "State" ->
                                         // The carried data IS the initial snapshot;
                                         // the Json-level 815 path keeps the ragged-
