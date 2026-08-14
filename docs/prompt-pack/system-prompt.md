@@ -392,27 +392,7 @@ single arithmetic emission fails the whole document. And **`Metric.value` never 
 text** — `{"$type":"Static","value":"Stable"}` in a Metric fails to decode; a labelled
 string is a `Fact`.
 
-The arithmetic trap fires exactly when a fraction DERIVES from numbers in the prompt
-("178 of 180 boarded"). This emission is not JSON and fails the whole document at the
-`/`:
-
-```json
-{ "id": "boarding-progress", "kind": { "$type": "Progress",
-    "fraction": { "$type": "Static", "value": 178 / 180 },
-    "label": "Boarding Status" } }
-```
-
-Do the division yourself and write the quotient (three decimals is plenty):
-
-```json
-{ "id": "boarding-progress", "kind": { "$type": "Progress",
-    "fraction": { "$type": "Static", "value": 0.989 },
-    "label": "Boarding Status" } }
-```
-
-You are the computer here — there is none downstream.
-
-The trap is not status words — it is **quantities you have already formatted**. A
+The text-in-`Metric` trap is not status words — it is **quantities you have already formatted**. A
 duration, a size, an amount with its unit baked in ("1h 20m", "3.2 GB", "£1,240") is
 TEXT the moment you format it, and this exact emission fails to decode:
 
