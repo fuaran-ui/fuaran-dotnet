@@ -401,12 +401,22 @@ let buildEnumVocabTable () =
                           name ]
             | _ -> []
 
+        // A payload-DU case can be the inline-record-plus-constraint allOf shape
+        // (Phase 818's SetState, like Phase 768's Switch: `[record; oneOf]` — the
+        // record IS parts[0] and the trailing constraint carries no fields). Unwrap
+        // it so the case keeps its `$type` const and its required list; a flat case
+        // passes through unchanged.
+        let caseRecord (case: JsonElement) =
+            match case.TryGetProperty "allOf" with
+            | true, allOf -> allOf.EnumerateArray() |> Seq.head
+            | _ -> case
+
         [ for d in defs.EnumerateObject() do
               if not (excluded.Contains d.Name) then
                   match d.Value.TryGetProperty "oneOf" with
                   | true, oneOf ->
                       let consts =
-                          [ for case in oneOf.EnumerateArray() do
+                          [ for case in oneOf.EnumerateArray() |> Seq.map caseRecord do
                                 match case.TryGetProperty "properties" with
                                 | true, props ->
                                     match props.TryGetProperty "$type" with

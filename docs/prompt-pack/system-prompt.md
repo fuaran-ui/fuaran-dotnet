@@ -353,7 +353,7 @@ Getting this boundary wrong is the single most common emission error.
 | Input `Button` | `label`, `onClick`, `variant` | `disabled†`, `icon` |
 | Input `FileUpload` | `accept`, `label`, `multiple`, `onSelect` | `disabled†` |
 | Input `Select` | `label`, `source†`, `value†` | `disabled†`, `multiple`, `onChange`, `onChangeMulti`, `placeholder`, `values†` |
-| Visualisation `DataGrid` | `columns`, `source†` | `editable`, `onRowClick`, `rowKey`, `rowKeyField`, `staticRows` |
+| Visualisation `DataGrid` | `columns`, `source†` | `editable`, `onRowClick`, `rowKey`, `rowKeyField`, `sortStateKey`, `staticRows` |
 | Visualisation `Chart` | `kind`, `source†`, `xField`, `yFields` | `onPointClick`, `stacked`, `title` |
 | Visualisation `Map` | `centreLatitude`, `centreLongitude`, `source†`, `zoom` | `onMarkerClick` |
 | Structural `Custom` | `componentId`, `moduleId`, `props` | `contentHash`, `exposedNodeIds` |
@@ -1856,9 +1856,9 @@ Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` 
 
 **`$type` discriminators are closed vocabularies too** — each of these takes exactly one of its listed cases (a `Binding` case in a `TextSource` slot, or an invented case name, is an `UNKNOWN_DU_CASE` reject). A case's REQUIRED payload fields ride in parentheses — use those exact key names (`Navigate(route)` means the key is `route`, not `href`/`url`):
 
-- `Action.$type`: `Dispatch` · `Call(endpoint)` · `Notify(channel, payload)` · `Navigate(route)` · `SetState(key, value)` · `AiTool(args, toolName)` · `Chain(ops)` · `CommitLocal(nodeId)` · `WriteToClipboard(text)` · `ReadFileBody(encoding, fileRef, onRead)` · `Invoke(args, capabilityId)`
+- `Action.$type`: `Dispatch` · `Call(endpoint)` · `Notify(channel, payload)` · `Navigate(route)` · `SetState(key)` · `AiTool(args, toolName)` · `Chain(ops)` · `CommitLocal(nodeId)` · `WriteToClipboard(text)` · `ReadFileBody(encoding, fileRef, onRead)` · `Invoke(args, capabilityId)`
 - `Binding.$type`: `Static` · `Query(name)` · `Filter(name)` · `Selection(nodeId)` · `State(key)` · `Computed(fn)` · `Now` · `I18n(key)` · `Local(flushOn, format, initialFrom, onCommit, parse)` · `Format(format, locale, source)` · `Transform(pipeline, source)` · `Invoke(args, capabilityId)`
-- `BoxLayout.$type`: `Auto`
+- `BoxLayout.$type`: `Flex` · `Grid` · `Auto`
 - `CallResultTarget.$type`: `State(key)` · `Query(name)`
 - `CellFormat.$type`: `None` · `Number` · `Currency(code)` · `Percent` · `SignificantDigits(digits)` · `Date(format)` · `Duration(style, unit)` · `RelativeTime(unit)` · `Custom(fn)`
 - `CellKindErased.$type`: `Text` · `Numeric` · `Date` · `Editable(onEdit)` · `Checkbox(get, onToggle)` · `Button(label, onClick)` · `ButtonGroup(buttons)` · `Link(hrefFn, labelFn)` · `Pill(labelFn, toneFn)` · `TonedPill(field, map)` · `Progress(fractionFn, labelFn)` · `Custom(fn)`
