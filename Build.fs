@@ -86,6 +86,11 @@ let private giraffeTestProject =
 let private contentTestProject =
     Path.Combine(repoRoot, "src", "Fuaran.UI.Content.Tests", "Fuaran.UI.Content.Tests.fsproj")
 
+// Page-set layer (SitePage + SiteCheck + Nav projection + RenderPlan + static-
+// export planning). Pure + corpus-independent — runs unconditionally.
+let private siteTestProject =
+    Path.Combine(repoRoot, "src", "Fuaran.UI.Site.Tests", "Fuaran.UI.Site.Tests.fsproj")
+
 // Phase 205 — structure-only clean room (content-free skeleton projection +
 // structural-op gate + audit). Pure + Fable-clean; no workspace corpus needed.
 let private cleanRoomTestProject =
@@ -193,7 +198,13 @@ let private packableProjects =
       // Host-neutral validated-exemplar seam (decode + pre-emit-validate +
       // canonical round-trip). Graduated out of the fuaran-ui.io docs site; no
       // Renderer / Giraffe / Markdig dependency.
-      "Fuaran.UI.Content" ]
+      "Fuaran.UI.Content"
+      // The page-set layer for pure-SSR sites (page model + frontmatter +
+      // route derivation + SiteCheck gate + RenderPlan + auto-nav + static
+      // export) and its Giraffe host adapter — Giraffe isolated to the
+      // adapter, matching the Fuaran.UI.Giraffe precedent.
+      "Fuaran.UI.Site"
+      "Fuaran.UI.Site.Giraffe" ]
     |> List.map (fun name -> Path.Combine(repoRoot, "src", name, $"{name}.fsproj"))
     // Phase 304 — the C# authoring veneer packs alongside the F# tier. It is a
     // .csproj (appended after the .fsproj map). Phase 314 appends the Roslyn
@@ -260,6 +271,7 @@ let private registerTargets () =
         dotnet [ "run"; "--project"; serverDrivenWebSocketTestProject; "-c"; "Release" ] repoRoot
         dotnet [ "run"; "--project"; giraffeTestProject; "-c"; "Release" ] repoRoot
         dotnet [ "run"; "--project"; contentTestProject; "-c"; "Release" ] repoRoot
+        dotnet [ "run"; "--project"; siteTestProject; "-c"; "Release" ] repoRoot
         dotnet [ "run"; "--project"; cleanRoomTestProject; "-c"; "Release" ] repoRoot
         dotnet [ "run"; "--project"; catalogTestProject; "-c"; "Release" ] repoRoot
 

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="SitePageTests.fs" />
+    <Compile Include="SiteCheckTests.fs" />
+    <Compile Include="RenderPlanTests.fs" />
+    <Compile Include="ExportTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+    <ProjectReference Include="..\Fuaran.UI.Site\Fuaran.UI.Site.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

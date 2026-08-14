@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Site.Giraffe</PackageId>
+    <Description>Giraffe host adapter for the Fuaran.UI.Site page-set layer. Serves a computed RenderPlan as one exact-match GET route per pre-rendered page, an optional raw-markdown agent route per page (/x → /x.md, text/markdown), and the SEO pair (sitemap.xml + robots.txt) derived from the same page set. Giraffe is isolated to this package — Fuaran.UI.Site stays web-framework-free. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;giraffe;ssr;aspnetcore;site;sitemap;markdown</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Host.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.Site\Fuaran.UI.Site.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Giraffe" />
+  </ItemGroup>
+</Project>
