@@ -680,3 +680,145 @@ Coverage 136 of 436 taught rules, 116 of them on the operative surface.
 - The `alias:` family as a teaching target. It is recorded so the model stays honest about
   what an exemplar's bytes say, not because the pack should teach §16 shorthands — the
   taught dialect is canonical, and that is Phase 840's territory.
+
+# Lenient-dialect census — Phase 840 (fuaran)
+
+**Date:** 2026-08-15. **Charter:** Phase 840 — the §16 lenient-accept shorthands exist
+decoder-side as a silent safety net, taught nowhere; this phase inverts the posture for
+ONE pack variant: teach the tersest decodable form as the primary emission dialect and
+let the decoder normalise to canonical. The only pack strategy that cuts OUTPUT tokens
+(the expensive ones — the Tier-D analysis has output at parity with the jsx baseline)
+as well as the prefix. The canonical wire form remains the sole contract; the dialect
+is an emission-side economy, invisible to hosts.
+
+**Method.** Both currencies (bytes + o200k_base), per the 838 finding. The new
+instruments: a classification of the ENTIRE leniency surface (the corpus's 60
+`lenient-accept` fixtures, every id claimed by exactly one family — generated as
+[`DIALECT-APPENDIX.md`](DIALECT-APPENDIX.md), so a new leniency fails the drift gate
+until classified); a mechanical canonical→dialect transform run to a FIXPOINT (the
+one-dialect-per-variant purity property, structural rather than reviewed); and a
+per-block decoder PROOF (`docs/tools/dialect-verify.fsx`): every emitted dialect block
+must satisfy `encode(decode(dialect)) == encode(decode(canonical))` byte-equal through
+the real decoder, or the emission refuses to write. 32 of 33 proposed blocks proved;
+the one advisory failure is the deliberately-WRONG Metric teaching example, which does
+not decode by design and correctly fell back to its canonical text.
+
+## The classification — 28 families over 60 fixtures
+
+Full table (generated, with per-family evidence): [`DIALECT-APPENDIX.md`](DIALECT-APPENDIX.md).
+
+| Class | Families | Disposition |
+|---|---:|---|
+| **taught-primary** (total + loss-free + token-positive) | 7 | Static-envelope elision (scalar/array), bare-string options, bare source columns, guarded schema omission, params map, flat filter step (eq/contains vs param), DateRange pair — the taught table |
+| **composite** | 1 | the five `-compact` whole-tree exemplars |
+| **safe-not-taught** (loss-free, no token gain) | 8 | enum/field/step/expression aliases, values-only columns, Pill-tag, bare Grid to Auto, bool-emphasis coercion |
+| **already-canonical** (the terse side IS canonical) | 5 | Literal envelope, Bound wrapper, explicit defaults, plain-field Static unwrap, DateRange Static envelope |
+| **never-taught** (partial / heuristic / contextual) | 7 | row-major transposition (order-lossy heuristic), source State/Static envelope (semantics-bearing), epoch timestamps (magnitude heuristic), legacy cumSum, opaque sentinels, null-for-absence, synthesised Grid cols |
+
+**The decoder proof earned its place on day one — two order-semantics findings no
+document carried.** (1) Schema ENTRY ORDER is semantic on the canonical wire (re-encode
+preserves it) while inference derives its order from the columns object's sorted key
+order — so dropping a schema whose declared order differs from the column order changes
+canonical bytes. Caught LOSSY on four pack blocks; the transform now drops a schema only
+when the declared order matches the column order exactly. (2) The params-map coercion
+re-encodes the params array NAME-SORTED, so the byte-exact transform applies only to
+already-sorted params (emission-side the map stays order-free — params are a name-keyed
+set). Both are now guards, and both are the class of thing the appendix exists to record:
+"loss-free" claims decided by the decoder, not by reading the spec.
+
+**Enumeration findings (leniencies with no dedicated fixture — recorded, not taught,
+no fixtures authored per the cross-host CI cost).** The flat filter step with a LITERAL
+right-hand (`"value":…`) decodes in the F# tier but is not corpus-pinned — teaching it
+would be a private dialect, so composed/literal predicates keep the full `pred` form.
+A `limit` step's `offset:0` is explicit in canonical bytes yet restorable on omission
+(visible inside the step-aliases fixture) — an omit-default the canonical encoder does
+not omit. The segmented-orientation fixture's expected bytes still carry
+`"orientation":"Horizontal"` although §3.6 records the 0.2.0 encoder as omitting it —
+a minor spec/corpus tension worth a look next corpus regen. Pre-existing and held: the
+CANONICAL pack already carries four `lenient-*-compact` example blocks (bare columns, no
+schema), i.e. the default pack was already mildly mixed-dialect before this phase; the
+one-dialect purity rule is enforced on the dialect variant, and re-emitting the
+canonical variant's lenient blocks in strict canonical form would change the shipped
+teaching — a separate decision, not taken here.
+
+## Ledger (2026-08-15)
+
+| File | Canonical (HEAD) | Dialect variant | Delta |
+|---|---|---|---|
+| `system-prompt.md` | 69,340 B / 18,796 o200k | 70,544 B / 19,053 o200k | +1,204 B / +257 o200k |
+| `few-shot.jsonl` | 11,551 B / 3,128 o200k | 10,827 B / 2,920 o200k | −724 B / −208 o200k |
+| **Pack total** | **80,891 B / 21,924 o200k** | **81,371 B / 21,973 o200k** | **+480 B / +49 o200k** |
+
+The decomposition: the generated dialect passage costs 2,379 B / 624 o200k; the example
+re-emissions pay back −1,342 B / −383 o200k across the 10 transformed system-prompt
+blocks and −724 B / −208 o200k across few-shot. So the PREFIX is net +49 o200k — the
+dialect variant is not a prefix cut, it is a bet that teaching the shorthand moves the
+OUTPUT side, which the prefix ledger cannot show and the sweep below does.
+
+## Sweep — dialect pack vs canonical pack (n=1, two families)
+
+Stress track, all 12 tasks × two families (`claude-opus-4-8@low`, `gpt-5.6-terra@low`) ×
+the `fuaran` condition at n=1 — the same 24-cell shape as the 817/834/839/838/841 gates.
+The canonical arm is the Phase 841 arm (window `20260815T0952Z`, pack `ed89b27` — whose
+pack files are byte-identical at HEAD), reused at zero marginal cost. The dialect arm is
+window `20260815T1032Z`–`1035Z` against the dialect variant (composed-prompt
+`sha256:6c0d6296…`), pinned via the harness's pack-directory override; verified
+in-flight: every cell's sent prompt carries the emission-dialect passage.
+
+| Arm | claude parse | claude success | gpt parse | gpt success | Total success |
+|---|---|---|---|---|---|
+| Canonical (`0952Z`) | 11/12 | 5/12 | 10/12 | 6/12 | 11/24 |
+| Dialect (`1032Z`) | **12/12** | **7/12** | **11/12** | 6/12 | **13/24** |
+
+**Output tokens (the phase's claim), excluding reasoning tokens — the emission bytes:**
+
+| Family | Canonical | Dialect | Delta |
+|---|---:|---:|---|
+| claude-opus | 5,959 | 5,604 | **−6.0%** |
+| gpt | 3,422 | 3,208 | **−6.3%** |
+
+Direction is consistent, not just aggregate: 17 of 24 cells emitted fewer output tokens,
+6 more, 1 unchanged. **And the mechanism is verified, not inferred** — across the arm's
+24 emissions, elidable `Static` envelopes fell 21 → 1, `validity` masks 3 → 0, flat
+filter steps rose 1 → 3, and one params map appeared: the models adopted the taught
+shorthand, and every one of those emissions decoded through the released decoder the
+harness gates with. (Under the canonical pack the models already emitted bare columns
+uninstructed — the leniency was silently absorbing dialect before this phase taught it;
+what the teaching adds is the envelope elision, which nothing emitted spontaneously.)
+
+**Flips, honesty-framed per the 839 rule.** Three cells changed verdict — stress-001
+claude (judge, up), stress-002 claude (parse fail to clean, up), stress-006 gpt (parse
+fail to clean, judge still down) — 3/24 ≈ 12.5%, inside the instrument's ~33%
+same-prompt repeat error at n=1, and all three moved UP. So this sweep demonstrates the
+absence of a decode-rate regression (the per-family decline trigger — decode rate
+dropping on shorthand — did not fire for either family; parse in fact rose on both) and
+cannot certify the success-rate gain. The output-token delta is the more robust reading:
+it is an aggregate over 24 cells with a verified mechanism, not a verdict flip — but it
+is still n=1 per cell, and the per-cell spread (−136 to +84) is wide.
+
+**Cost of the sweep:** one arm only (the canonical arm reused): 22,166 metered input +
+13,929 output tokens, 505,928 cache-read + 59,368 cache-create across 24 cells, plus the
+unmetered judge leg — ≈ $1–2 by the 839 gate's same-shape yardstick. Well inside the
+$15 cap.
+
+## Per-family verdicts (the Phase 843 compiler input)
+
+| Family | Decode on dialect | Output delta | Verdict |
+|---|---|---|---|
+| `claude-opus-4-8@low` | 12/12 (was 11/12) | −6.0% | **ADOPT** — dialect eligible as this family's pack dimension |
+| `gpt-5.6-terra@low` | 11/12 (was 10/12) | −6.3% | **ADOPT** — same |
+
+Neither family tripped the phase's decline rule ("a family whose decode rate drops on
+shorthand keeps canonical") — both rose. The verdicts are adoption of the dialect as a
+**per-family pack dimension for the Phase 843 compiler**, NOT a flip of the default
+artifact: the canonical pack remains the default; the dialect variant is a sibling
+emission selected per family. What would reverse a verdict: a reproducible per-family
+decode drop at n ≥ 3 or in the Tier-A/B mini-window — the same escalation the
+839/838/841 gates name.
+
+**Epoch input (Phase 840):** dialect variant at `docs/prompt-pack-lenient/`
+(`system-prompt.md` 70,544 B / 19,053 o200k; `few-shot.jsonl` 10,827 B / 2,920 o200k;
+pack total 81,371 B / 21,973 o200k; composed-prompt `sha256:6c0d6296…`); canonical
+baseline `ed89b27` content (80,891 B / 21,924 o200k). Output-token delta −6.0% (claude)
+/ −6.3% (gpt) at decode 12/12 + 11/12. Appendix: 60 fixtures, 28 families, 7
+taught-primary. Corpus: unchanged (no fixtures authored).
