@@ -392,6 +392,22 @@ let private registerTargets () =
 
     "AuthoringPack" ==> "Check" |> ignore
 
+    // Phase 840 — the lenient-dialect pack variant's drift check. Unlike AuthoringPack
+    // it NEEDS the build: every dialect example block is proved loss-free by running
+    // the real decoder over (canonical, dialect) pairs (docs/tools/dialect-verify.fsx
+    // consumes the Release outputs of Fuaran.UI.JsonDecode.Tests), so the target
+    // depends on Build rather than being a pure fsi pass.
+    Target.create "AuthoringPackDialect" (fun _ ->
+        dotnet
+            [ "fsi"
+              Path.Combine(repoRoot, "docs", "tools", "authoring-pack.fsx")
+              "--check"
+              "--dialect"
+              "lenient" ]
+            repoRoot)
+
+    "Build" ==> "AuthoringPackDialect" ==> "Check" |> ignore
+
 [<EntryPoint>]
 let main args =
     init args

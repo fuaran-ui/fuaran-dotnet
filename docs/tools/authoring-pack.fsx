@@ -6,8 +6,11 @@
 // `spec` wrapper). This script makes the corpus the single source of truth for every
 // wire-shape example in the docs + prompt pack, so a hand edit cannot silently drift.
 //
-//   dotnet fsi authoring-pack.fsx --write    # regenerate every corpus-derived surface
-//   dotnet fsi authoring-pack.fsx --check    # verify nothing drifted (exit 1 on drift)
+//   dotnet fsi authoring-pack.fsx --write                     # regenerate every corpus-derived surface
+//   dotnet fsi authoring-pack.fsx --check                     # verify nothing drifted (exit 1 on drift)
+//   dotnet fsi authoring-pack.fsx --write --dialect lenient   # regenerate the Phase 840 lenient-dialect
+//                                                             # pack variant (docs/prompt-pack-lenient/;
+//                                                             # decoder-proved — build JsonDecode.Tests first)
 //
 // PROMPT-PACK example blocks are emitted as minified JSON BY DEFAULT (the adopted
 // emission since the Phase 839 gate; the DEFAULT since Phase 838 — a bare `--write`
@@ -71,7 +74,8 @@ let packDir = Path.Combine(docsDir, "prompt-pack")
 let argv = fsi.CommandLineArgs |> Array.skip 1
 
 let private usage () =
-    eprintfn "usage: dotnet fsi authoring-pack.fsx (--write | --check | --mine) [--minify-examples | --pretty-examples]"
+    eprintfn
+        "usage: dotnet fsi authoring-pack.fsx (--write | --check | --mine) [--minify-examples | --pretty-examples] [--dialect lenient]"
 
     exit 2
 
@@ -88,10 +92,29 @@ let mode =
 let writeMode = mode = "write"
 let mineMode = mode = "mine"
 
+// `--dialect lenient` (Phase 840) selects the DIALECT surfaces: the sibling
+// `docs/prompt-pack-lenient/` pack variant, whose example blocks re-emit in the
+// taught §16 shorthand and are decoder-verified loss-free (dialect-verify.fsx).
+// The canonical pack is untouched by a dialect run, and a bare `--write` never
+// touches the dialect variant — the two emissions are separate artefact sets,
+// each reproducible only by its own invocation, so neither can silently revert
+// the other.
+let dialectMode, argvSansDialect =
+    match argv |> Array.tryFindIndex ((=) "--dialect") with
+    | None -> false, argv
+    | Some i when i + 1 < argv.Length && argv[i + 1] = "lenient" -> true, Array.append argv[.. i - 1] argv[i + 2 ..]
+    | Some _ ->
+        eprintfn "--dialect takes exactly one value: lenient"
+        usage ()
+
+if dialectMode && mineMode then
+    eprintfn "--dialect does not combine with --mine (the miner runs on the canonical pack only)"
+    usage ()
+
 // An unrecognised trailing argument is a typo, not a no-op: silently ignoring
 // `--minify-example` would emit an emission the caller did not choose.
 match
-    argv
+    argvSansDialect
     |> Array.skip 1
     |> Array.filter (fun a -> a <> "--minify-examples" && a <> "--pretty-examples")
 with
@@ -707,6 +730,999 @@ let buildFewShotJsonl () =
         $"{{\"prompt\":{promptJson},\"decoder\":\"{meta.Decoder}\",\"fixture\":{idJson},\"tree\":{tree}}}")
     |> String.concat "\n"
     |> fun body -> body + "\n"
+
+// ── The lenient emission dialect (Phase 840) ─────────────────────────────────────
+// §16's lenient-accept profile exists decoder-side as a silent safety net; Phase 840
+// inverts the posture for ONE pack variant: teach the tersest decodable form as the
+// primary emission dialect and let the decoder normalise to canonical. Three parts:
+//
+//   * A CLASSIFICATION of the whole leniency surface (the corpus's lenient-accept
+//     family is the executable enumeration): which shorthands are total AND loss-free
+//     AND token-positive (taught as primary), which are safe but buy nothing (never
+//     taught), which are the canonical form already, and which are partial/heuristic/
+//     contextual (never taught — they stay a safety net). Emitted as a generated
+//     appendix (DIALECT-APPENDIX.md); every lenient fixture id must be claimed by
+//     exactly one family, so a NEW leniency landing in the corpus fails this script
+//     until it is classified — the appendix tracks decoder changes by construction.
+//   * A MECHANICAL canonical→dialect transform (`toDialect`) applying only the
+//     taught families, each locally guarded to its total, loss-free domain. Run to a
+//     fixpoint, so an emitted dialect block is idempotent under the transform —
+//     which is the one-dialect-per-variant purity property, enforced structurally.
+//   * A DECODER PROOF per emitted block (dialect-verify.fsx, spawned): the real
+//     decoder decodes both forms and the canonical re-encodes must be byte-equal.
+//     "Loss-free" is proved per artefact, never assumed from the classification.
+//
+// The dialect pack variant lives at `docs/prompt-pack-lenient/` — a sibling artefact
+// set (system-prompt.md + few-shot.jsonl + schema.json), fully generated from the
+// canonical pack + the corpus; nothing in it is hand-authored. The signature
+// catalogue and all prose teaching the WIRE stay canonical in both variants — the
+// wire contract does not change; only the example encodings and the added dialect
+// passage differ. TreeOp example blocks stay canonical in both variants: all 60
+// lenient-accept fixtures pin NODE decode, so no op-position shorthand is
+// corpus-pinned cross-host, and an op emission teaching an unpinned leniency would
+// be a private-dialect defect (§16: a conformant decoder must not extend the
+// profile).
+
+let dialectPackDir = Path.Combine(docsDir, "prompt-pack-lenient")
+
+// ── A tiny raw-preserving JSON AST ──
+// Leaves keep their exact source text (number formatting, string escapes), so the
+// transform can only ever change STRUCTURE it explicitly rewrites — the same
+// argument the minifier's scanner makes, in AST form.
+type private JNode =
+    | JLeaf of string
+    | JObj of (string * JNode) list
+    | JArr of JNode list
+
+let rec private ofElement (el: JsonElement) : JNode =
+    match el.ValueKind with
+    | JsonValueKind.Object -> JObj [ for p in el.EnumerateObject() -> p.Name, ofElement p.Value ]
+    | JsonValueKind.Array -> JArr [ for v in el.EnumerateArray() -> ofElement v ]
+    | _ -> JLeaf(el.GetRawText())
+
+let rec private writeJ (sb: StringBuilder) (n: JNode) =
+    match n with
+    | JLeaf raw -> sb.Append raw |> ignore
+    | JObj fields ->
+        sb.Append '{' |> ignore
+
+        fields
+        |> List.iteri (fun i (k, v) ->
+            if i > 0 then
+                sb.Append ',' |> ignore
+
+            sb.Append(JsonSerializer.Serialize k).Append ':' |> ignore
+            writeJ sb v)
+
+        sb.Append '}' |> ignore
+    | JArr items ->
+        sb.Append '[' |> ignore
+
+        items
+        |> List.iteri (fun i v ->
+            if i > 0 then
+                sb.Append ',' |> ignore
+
+            writeJ sb v)
+
+        sb.Append ']' |> ignore
+
+let private jString =
+    function
+    | JLeaf r when r.StartsWith "\"" -> Some(JsonSerializer.Deserialize<string> r)
+    | _ -> None
+
+let private jField (name: string) =
+    function
+    | JObj fields -> fields |> List.tryFind (fun (k, _) -> k = name) |> Option.map snd
+    | _ -> None
+
+let private jTypeTag (n: JNode) = jField "$type" n |> Option.bind jString
+
+// ── The taught transform families, each guarded to its total loss-free domain ──
+
+/// T1 — Static-envelope elision: `{"$type":"Static","value":V}` → `V` for a scalar
+/// or array V (§3.6: a bare scalar/array in a Binding slot can only mean Static).
+/// Never for an object V (a bare object without `$type` is refused as more plausibly
+/// a mistyped binding) and never for null/absent (ambiguous with absence).
+let private staticEnvelopeValue (n: JNode) : JNode option =
+    match n with
+    | JObj fields when fields.Length = 2 ->
+        match jTypeTag n, jField "value" n with
+        | Some "Static", Some(JLeaf raw) when raw <> "null" -> Some(JLeaf raw)
+        | Some "Static", Some(JArr items) -> Some(JArr items)
+        | _ -> None
+    | _ -> None
+
+/// T2 — option compaction: `{"label":S,"value":S}` → `S` (the HTML `<select>`
+/// prior, §3.6 SelectOption rule), only when label and value are the SAME string.
+let private isCollapsibleOption (n: JNode) =
+    match n with
+    | JObj [ (ka, va); (kb, vb) ] when (ka = "label" && kb = "value") || (ka = "value" && kb = "label") ->
+        match jString va, jString vb with
+        | Some a, Some b -> a = b
+        | _ -> false
+    | _ -> false
+
+let private optionLabel (n: JNode) =
+    match jField "label" n with
+    | Some l -> l
+    | None -> n
+
+/// T3 guard — a column envelope `{"values":[…],"validity":[true,…]}` whose mask is
+/// all-true (the only mask a bare array can denote — the wire has no null).
+let private collapsibleColumn (n: JNode) : JNode option =
+    match n with
+    | JObj fields when fields.Length = 2 ->
+        match jField "values" n, jField "validity" n with
+        | Some(JArr vs), Some(JArr mask) when mask.Length = vs.Length && mask |> List.forall (fun m -> m = JLeaf "true") ->
+            Some(JArr vs)
+        | _ -> None
+    | _ -> None
+
+/// T4 guard — deterministic column-type inference per the §3.6 rule (all-int→int,
+/// any-fractional→float, all-bool→bool, all-string→string; NEVER date/timestamp;
+/// empty or mixed → no inference). The schema is dropped only when inference
+/// reproduces every declared type exactly, so the drop is loss-free by check, not
+/// by hope.
+let private inferColumnType (cells: JNode list) : string option =
+    let raws =
+        cells
+        |> List.map (function
+            | JLeaf r -> Some r
+            | _ -> None)
+
+    if cells.IsEmpty || raws |> List.exists Option.isNone then
+        None
+    else
+        let rs = raws |> List.map Option.get
+
+        let isNum (r: string) =
+            r.Length > 0
+            && r <> "true"
+            && r <> "false"
+            && not (r.StartsWith "\"")
+            && r <> "null"
+
+        if rs |> List.forall (fun r -> r.StartsWith "\"") then
+            Some "string"
+        elif rs |> List.forall (fun r -> r = "true" || r = "false") then
+            Some "bool"
+        elif rs |> List.forall isNum then
+            if rs |> List.exists (fun r -> r.Contains "." || r.Contains "e" || r.Contains "E") then
+                Some "float"
+            else
+                Some "int"
+        else
+            None
+
+/// T6 — flat filter step: a `filter` whose pred is exactly ONE binary comparison of
+/// a column against a param, with an op the corpus pins flat (`eq` — lenient-
+/// transform-flat-filter; `contains` — lenient-transform-flat-contains). Any other
+/// predicate shape keeps the full `pred` form — the flat spelling for literals or
+/// composed predicates is NOT corpus-pinned, so teaching it would be a private
+/// dialect.
+let private flattenFilterStep (n: JNode) : JNode option =
+    match n with
+    | JObj [ _; _ ] when jTypeTag n = Some "filter" ->
+        match jField "pred" n with
+        | Some pred when jTypeTag pred = Some "binary" ->
+            match jField "left" pred, jField "op" pred, jField "right" pred with
+            | Some left, Some(JLeaf opRaw), Some right when
+                jTypeTag left = Some "col"
+                && jTypeTag right = Some "param"
+                && (opRaw = "\"eq\"" || opRaw = "\"contains\"")
+                ->
+                match jField "name" left, jField "name" right with
+                | Some(JLeaf col), Some(JLeaf param) ->
+                    Some(
+                        JObj
+                            [ "$type", JLeaf "\"filter\""
+                              "column", JLeaf col
+                              "op", JLeaf opRaw
+                              "param", JLeaf param ]
+                    )
+                | _ -> None
+            | _ -> None
+        | _ -> None
+    | _ -> None
+
+let rec private rw (key: string) (node: JNode) : JNode =
+    match node with
+    | JLeaf _ -> node
+    | JArr items ->
+        let items = items |> List.map (rw key)
+
+        // T2 — gated to option positions (`options`, a Select's `source`) so a
+        // data array whose rows happen to be {label,value} pairs is never touched.
+        if
+            (key = "options" || key = "source")
+            && not items.IsEmpty
+            && items |> List.forall isCollapsibleOption
+        then
+            JArr(items |> List.map optionLabel)
+        else
+            JArr items
+    | JObj _ ->
+        let fields =
+            match node with
+            | JObj fs -> fs |> List.map (fun (k, v) -> k, rw k v)
+            | _ -> []
+
+        // T7 — DateRange value pair: `{"from":A,"to":B}` → `[A,B]` (pinned by
+        // lenient-daterange-bare-array; a two-element array at that position can
+        // only mean from/to). Gated on the sibling `$type` being DateRange.
+        let fields =
+            if fields |> List.exists (fun (k, v) -> k = "$type" && v = JLeaf "\"DateRange\"") then
+                fields
+                |> List.map (fun (k, v) ->
+                    match k, v with
+                    | "value", JObj [ ("from", f); ("to", t) ] when (jString f).IsSome && (jString t).IsSome ->
+                        "value", JArr [ f; t ]
+                    | _ -> k, v)
+            else
+                fields
+
+        // T5 — params map (pinned by lenient-shape-params-map): a Transform's
+        // params array whose every element is exactly {name, from} becomes the
+        // name→binding map (params are a name-keyed SET — key order carries no
+        // meaning, so the map is loss-free).
+        let fields =
+            if fields |> List.exists (fun (k, v) -> k = "$type" && v = JLeaf "\"Transform\"") then
+                fields
+                |> List.map (fun (k, v) ->
+                    match k, v with
+                    | "params", JArr elems when
+                        not elems.IsEmpty
+                        && elems
+                           |> List.forall (fun e ->
+                               match e with
+                               | JObj efs when efs.Length = 2 ->
+                                   (jField "name" e |> Option.bind jString).IsSome && (jField "from" e).IsSome
+                               | _ -> false)
+                        ->
+                        let pairs =
+                            elems
+                            |> List.map (fun e ->
+                                (jField "name" e |> Option.bind jString).Value, (jField "from" e).Value)
+
+                        let names = pairs |> List.map fst
+
+                        // Order guard (decoder-proof finding): the map coercion
+                        // re-encodes the params array in NAME-SORTED order, so the
+                        // byte-exact transform applies only when the canonical
+                        // array is already name-sorted. (Emission-side the map is
+                        // order-free — params are a name-keyed set — but a
+                        // generated artefact holds itself to byte-parity.)
+                        if
+                            names |> List.distinct |> List.length = names.Length
+                            && names = List.sortWith (fun a b -> String.CompareOrdinal(a, b)) names
+                        then
+                            "params", JObj pairs
+                        else
+                            k, v
+                    | _ -> k, v)
+            else
+                fields
+
+        // T3 + T4 — embedded columnar source: collapse all-valid column envelopes
+        // to bare arrays, then drop a schema that inference provably reproduces.
+        let fields =
+            match fields |> List.tryFind (fun (k, _) -> k = "columns") with
+            | Some("columns", JObj cols) ->
+                let cols =
+                    cols
+                    |> List.map (fun (name, col) ->
+                        match collapsibleColumn col with
+                        | Some bare -> name, bare
+                        | None -> name, col)
+
+                let fields =
+                    fields |> List.map (fun (k, v) -> if k = "columns" then k, JObj cols else k, v)
+
+                let schemaDroppable =
+                    match fields |> List.tryFind (fun (k, _) -> k = "schema") with
+                    | Some("schema", JArr entries) when not entries.IsEmpty ->
+                        let declared =
+                            entries
+                            |> List.map (fun e ->
+                                match e with
+                                | JObj efs when efs.Length = 2 ->
+                                    match
+                                        jField "name" e |> Option.bind jString, jField "type" e |> Option.bind jString
+                                    with
+                                    | Some n, Some t -> Some(n, t)
+                                    | _ -> None
+                                | _ -> None)
+
+                        if declared |> List.exists Option.isNone then
+                            false
+                        else
+                            let declared = declared |> List.map Option.get
+
+                            // Order guard (decoder-proof finding): schema entry
+                            // order is SEMANTIC on the canonical wire (re-encode
+                            // preserves it), and inference derives its order from
+                            // the columns object's key order — so the drop is
+                            // loss-free only when the declared order matches the
+                            // column order exactly, not merely as a set.
+                            declared |> List.map fst = (cols |> List.map fst)
+                            && declared
+                               |> List.forall (fun (n, t) ->
+                                   match cols |> List.tryFind (fun (cn, _) -> cn = n) with
+                                   | Some(_, JArr cells) -> inferColumnType cells = Some t
+                                   | _ -> false)
+                    | _ -> false
+
+                if schemaDroppable then
+                    fields |> List.filter (fun (k, _) -> k <> "schema")
+                else
+                    fields
+            | _ -> fields
+
+        let node = JObj fields
+
+        // T1 — Static-envelope elision, anywhere in a Node document (any Binding
+        // slot; the decoder proof backstops the position argument per block).
+        match staticEnvelopeValue node with
+        | Some v -> v
+        | None ->
+            // T6 — flat filter step.
+            match flattenFilterStep node with
+            | Some flat -> flat
+            | None -> node
+
+/// The canonical→dialect transform, run to a FIXPOINT: rewrites cascade (an
+/// envelope elision exposes an option array to compaction) and the fixpoint is the
+/// one-dialect purity property — an emitted block is invariant under its own
+/// transform, so no canonical spelling a taught family covers can survive in it.
+let toDialect (raw: string) : string =
+    use doc = JsonDocument.Parse raw
+    let mutable ast = ofElement doc.RootElement
+    let mutable go = true
+    let mutable iterations = 0
+
+    while go do
+        let next = rw "$" ast
+        iterations <- iterations + 1
+
+        if next = ast || iterations > 10 then
+            go <- false
+
+        ast <- next
+
+    let sb = StringBuilder()
+    writeJ sb ast
+    sb.ToString()
+
+// ── The leniency-surface classification (the generated appendix's data) ──────────
+
+type private DialectClass =
+    /// Total, loss-free, token-positive — taught as the primary emission dialect.
+    | TaughtPrimary
+    /// Total and loss-free, but buys no tokens (or contradicts the taught
+    /// catalogue spelling) — accepted, never taught.
+    | SafeNotTaught
+    /// The terse side of the pair IS the canonical form — the leniency accepts the
+    /// VERBOSE spelling, so there is nothing to teach beyond the canonical rule.
+    | AlreadyCanonical
+    /// Partial, heuristic, or contextual — never taught; stays a decode-side
+    /// safety net. A leniency whose normalisation cannot be proved loss-free for
+    /// every legal input is in this class by default.
+    | NeverTaught
+    /// A composite fixture exercising several taught families at once (the pack's
+    /// own compact exemplars).
+    | Composite
+
+    member this.Label =
+        match this with
+        | TaughtPrimary -> "taught-primary"
+        | SafeNotTaught -> "safe-not-taught"
+        | AlreadyCanonical -> "already-canonical"
+        | NeverTaught -> "never-taught"
+        | Composite -> "composite"
+
+/// One leniency family: its corpus pins + the classification judgement + the
+/// evidence the judgement rests on. The FixtureIds partition is asserted total
+/// over the manifest's lenient-accept family, so a new leniency cannot land
+/// unclassified.
+type private LeniencyFamily =
+    { Name: string
+      Class: DialectClass
+      FixtureIds: string list
+      Evidence: string }
+
+let private leniencyFamilies: LeniencyFamily list =
+    [ { Name = "Static-envelope elision (bare scalar / array in a Binding slot)"
+        Class = TaughtPrimary
+        FixtureIds = [ "lenient-shape-binding-scalar-fraction" ]
+        Evidence =
+          "JUDGEMENT: total + loss-free — §3.6: every Binding case is $type-discriminated, so a bare "
+          + "array/scalar can only mean Static; bare objects and null stay refused (ambiguity preserved). "
+          + "Token-positive: ~24 chars per slot. Decoder-proof per emitted block." }
+      { Name = "Option as bare string (label = value)"
+        Class = TaughtPrimary
+        FixtureIds =
+          [ "lenient-shape-options-bare-strings"
+            "lenient-shape-segmented-orientation-omitted" ]
+        Evidence =
+          "JUDGEMENT: total + loss-free on its domain — a bare string option denotes exactly "
+          + "{label:s, value:s} (§3.6 SelectOption rule, the HTML <select> prior). Applied only where "
+          + "label equals value; distinct labels keep the object form. (The segmented fixture also pins "
+          + "orientation-omitted-⇒-Horizontal — the omitted-default family below.)" }
+      { Name = "Embedded source column as bare array (validity elided)"
+        Class = TaughtPrimary
+        FixtureIds = [ "lenient-transform-bare-columns" ]
+        Evidence =
+          "JUDGEMENT: total + loss-free when the mask is all-true — the wire has no JSON null, so a bare "
+          + "array can only denote all-present (§3.6, §16.1 explicitly PREFERS this form). Guarded: a "
+          + "column with any false validity keeps its envelope." }
+      { Name = "Schema omission (inferable column types)"
+        Class = TaughtPrimary
+        FixtureIds = [ "lenient-transform-schemaless" ]
+        Evidence =
+          "JUDGEMENT: loss-free ONLY on the guarded domain — types infer deterministically for "
+          + "string/int/float/bool (fuaran-core columnar codec authority); date/timestamp NEVER infer and "
+          + "empty/mixed refuse. The transform drops a schema only when inference reproduces every "
+          + "declared type exactly (checked per column), so e.g. a float column of integral literals "
+          + "keeps its schema. §16.1 PREFERS the omitted form on this domain." }
+      { Name = "Transform.params as a name→binding map"
+        Class = TaughtPrimary
+        FixtureIds = [ "lenient-shape-params-map" ]
+        Evidence =
+          "JUDGEMENT: total + loss-free — params are a name-keyed SET (ColExpr.Param lookup), so object "
+          + "key order carries no meaning (§3.6, contrast the refused options-map form where order IS "
+          + "meaningful). Applied only when every element is exactly {name, from} with distinct names." }
+      { Name = "Flat filter step (column/op/param)"
+        Class = TaughtPrimary
+        FixtureIds = [ "lenient-transform-flat-filter"; "lenient-transform-flat-contains" ]
+        Evidence =
+          "JUDGEMENT: total + loss-free on its pinned domain — one binary comparison of a column against "
+          + "a param with op eq (flat-filter) or contains (flat-contains). The flat spelling for literal "
+          + "right-hands or composed predicates is NOT corpus-pinned, so those keep the full pred form "
+          + "(teaching an unpinned shorthand would be a private dialect, §16). Largest per-occurrence "
+          + "saving (~90 chars per wired filter step)." }
+      { Name = "DateRange value as the bare [from,to] pair"
+        Class = TaughtPrimary
+        FixtureIds = [ "lenient-daterange-bare-array" ]
+        Evidence =
+          "JUDGEMENT: total + loss-free — a two-element array at a DateRange value position maps uniquely "
+          + "onto {from, to} (pinned cross-host by the fixture)." }
+      { Name = "Compact composites (multi-family exemplars)"
+        Class = Composite
+        FixtureIds =
+          [ "lenient-filterable-static-dashboard-compact"
+            "lenient-grid-field-named-compact"
+            "lenient-grid-transform-param-compact"
+            "lenient-master-detail-preselected-compact"
+            "lenient-scalar-transform-composition-compact" ]
+        Evidence =
+          "Whole-tree fixtures composing several taught families (bare columns, schema omission, wired "
+          + "filters). Several are pack exemplars already — the shipped dialect the 841 miner was "
+          + "constrained to preserve." }
+      { Name = "values-only column envelope"
+        Class = SafeNotTaught
+        FixtureIds = [ "lenient-transform-values-only-columns" ]
+        Evidence =
+          "Safe (validity restores all-true) but strictly dominated by the bare-array form — an "
+          + "intermediate spelling with no reason to teach it." }
+      { Name = "Literal-envelope acceptance (bare string IS canonical)"
+        Class = AlreadyCanonical
+        FixtureIds =
+          [ "lenient-bare-text-button-label"
+            "lenient-bare-text-callout"
+            "lenient-bare-text-heading"
+            "lenient-bare-text-markdown" ]
+        Evidence =
+          "0.2.0 direction-flip (§16 rule 1): the bare string is the canonical TextSource form; the "
+          + "leniency accepts the VERBOSE {\"$type\":\"Literal\"} envelope. The terse side is already "
+          + "taught as canonical." }
+      { Name = "Bound-wrapper unwrap in Binding value positions"
+        Class = AlreadyCanonical
+        FixtureIds = [ "lenient-binding-bound-wrapper" ]
+        Evidence =
+          "fuaran#633: {\"$type\":\"Bound\",\"binding\":B} in a Binding slot unwraps to B. The wrapper "
+          + "costs MORE tokens than canonical — a safety net for a TextSource-convention carry-over, "
+          + "nothing to teach." }
+      { Name = "Explicit defaults accepted (canonical omits them)"
+        Class = AlreadyCanonical
+        FixtureIds =
+          [ "lenient-460-explicit-default-column"
+            "lenient-460-explicit-default-metric"
+            "lenient-460-explicit-default-style"
+            "lenient-596-form-explicit-auto-state"
+            "lenient-fact-explicit-defaults" ]
+        Evidence =
+          "Omitted-when-default is the canonical posture on both boundaries (§3.6): the leniency accepts "
+          + "the VERBOSE explicit spelling and re-encode drops it. The terse side (omission) is already "
+          + "the taught rule — restated in the dialect passage, no transform needed (canonical corpus "
+          + "bytes already omit)." }
+      { Name = "Static-envelope unwrap at plain-value fields"
+        Class = AlreadyCanonical
+        FixtureIds = [ "lenient-shape-static-envelope-plain-scalars" ]
+        Evidence =
+          "The INVERSE confusion (§3.6): models wrap plain fields in Static envelopes; the decoder "
+          + "unwraps. Canonical at a plain field is the bare value — already the terse form." }
+      { Name = "DateRange value in a Static envelope"
+        Class = AlreadyCanonical
+        FixtureIds = [ "lenient-daterange-static-envelope" ]
+        Evidence = "Same inverse-wrap acceptance at the DateRange position; canonical is the bare {from,to}." }
+      { Name = "Enum-value aliases"
+        Class = SafeNotTaught
+        FixtureIds =
+          [ "lenient-460-alias-emphasis-muted"
+            "lenient-460-alias-emphasis-strong"
+            "lenient-460-alias-tone-danger"
+            "lenient-460-alias-tone-positive"
+            "lenient-tonedpill-tone-aliases" ]
+        Evidence =
+          "Total (each alias maps to exactly one canonical case, §3.6 tables) but token-NEUTRAL — "
+          + "synonym acceptance for model priors, not compression. Teaching them would displace the "
+          + "catalogue's canonical spellings for zero gain." }
+      { Name = "Enum-spelling coercion at bool emphasis slots"
+        Class = SafeNotTaught
+        FixtureIds =
+          [ "lenient-022-lvr-emphasis-loud"
+            "lenient-022-lvr-emphasis-normal"
+            "lenient-emphasis-cross-vocab" ]
+        Evidence =
+          "Cross-vocabulary re-typing (\"Loud\"→true at a bool slot; true→\"Loud\" at the enum slot): "
+          + "total for the accepted spellings but the canonical bool is already the terse form." }
+      { Name = "Field-name aliases"
+        Class = SafeNotTaught
+        FixtureIds =
+          [ "lenient-alias-call-url"
+            "lenient-alias-card-title-metric-value"
+            "lenient-alias-datagrid-data-column-type"
+            "lenient-alias-form-field-name"
+            "lenient-alias-grid-columns-row"
+            "lenient-alias-navigate-href"
+            "lenient-alias-select-options-query-deps"
+            "lenient-tonedpill-tonemap-alias" ]
+        Evidence =
+          "Total (same concept, same semantics, §3.6 table; canonical wins when both present) but "
+          + "token-neutral or negative — the canonical names are as short or shorter (route vs href, "
+          + "cols vs columns, map vs toneMap). Synonym safety net, not compression." }
+      { Name = "Pill tag carrying a tone map (→ TonedPill)"
+        Class = SafeNotTaught
+        FixtureIds = [ "lenient-tonedpill-pill-tag" ]
+        Evidence =
+          "Total + unambiguous (a closure Pill can never carry a map — Phase 750, prevents silent data "
+          + "loss) but saves ~1 token and contradicts the catalogue's case name. Not taught." }
+      { Name = "Pipeline step / aggregation aliases"
+        Class = SafeNotTaught
+        FixtureIds = [ "lenient-transform-step-aliases" ]
+        Evidence =
+          "Alias spellings (by→keys, aggregations→aggs, avg→mean, descending→dir, count→n): the "
+          + "canonical names are mostly SHORTER. Synonym acceptance, not compression." }
+      { Name = "Alternate predicate/expression spellings"
+        Class = SafeNotTaught
+        FixtureIds =
+          [ "lenient-transform-expr-spellings"
+            "lenient-transform-flat-or"
+            "lenient-transform-flat-scalar-fn" ]
+        Evidence =
+          "Alternate spellings of the expression algebra ($type-as-op eq, or/exprs n-ary form, "
+          + "call/fn/predicate spellings). Marginally terser in places, but the flat step above covers "
+          + "the dominant case and teaching a second predicate dialect would split model attention for "
+          + "single-digit tokens. Accepted, not taught." }
+      { Name = "Row-major source transposition"
+        Class = NeverTaught
+        FixtureIds = [ "lenient-transform-source-rowmajor" ]
+        Evidence =
+          "JUDGEMENT: heuristic + not order-preserving — transposed with the FIRST row's key set "
+          + "(sorted), absent cells null, ragged rows refuse downstream (fuaran#815). Column order is "
+          + "not preserved, so normalisation is not loss-free in general; also token-NEGATIVE beyond "
+          + "~2 rows (keys repeat per row). Safety net only." }
+      { Name = "State/Static/Bound envelope at a Transform source"
+        Class = NeverTaught
+        FixtureIds = [ "lenient-transform-source-state-rows" ]
+        Evidence =
+          "Semantics-bearing (live/snapshot distinction, fuaran#815/#818) — the fixture is now an "
+          + "identity (the State envelope round-trips as a live source), so this is not an emission "
+          + "shorthand at all; teaching it would teach a different meaning." }
+      { Name = "Epoch-integer timestamps"
+        Class = NeverTaught
+        FixtureIds = [ "lenient-transform-epoch-timestamps" ]
+        Evidence =
+          "JUDGEMENT: heuristic — seconds-vs-milliseconds is resolved by magnitude (the fixture's own "
+          + "1752000000 and 1752000000000 normalise to the SAME instant), and the coercion is contextual "
+          + "on a schema declaring timestamp. Not provably loss-free; safety net only." }
+      { Name = "Legacy window-function spelling"
+        Class = NeverTaught
+        FixtureIds = [ "lenient-window-cumsum-legacy" ]
+        Evidence =
+          "cumSum→cumulSum is a superseded-spelling seam — §16's own admission law says backward "
+          + "compatibility is NOT an admission ground; teaching it would resurrect a retired spelling." }
+      { Name = "Opaque-sentinel recovery"
+        Class = NeverTaught
+        FixtureIds =
+          [ "lenient-665-rows-opaque-sentinel"
+            "lenient-opaque-static-markers"
+            "lenient-opaque-static-options"
+            "lenient-opaque-static-series"
+            "lenient-opaque-static-values" ]
+        Evidence =
+          "\"<opaque>\" is the §5.1 erasure residue of a survivability boundary, not an authoring form — "
+          + "an author emitting it would be emitting data loss on purpose." }
+      { Name = "null accepted for absence (two positions)"
+        Class = NeverTaught
+        FixtureIds = [ "lenient-null-static-options" ]
+        Evidence =
+          "null in a Binding slot is refused in general (ambiguous with absence, §3.6); the two accepted "
+          + "positions normalise to empty. Omission is the taught form; emitting null teaches the "
+          + "refused shape everywhere else." }
+      { Name = "Bare Grid (no cols) → Auto"
+        Class = SafeNotTaught
+        FixtureIds = [ "lenient-shape-grid-no-cols" ]
+        Evidence =
+          "Total (accept-and-canonicalise across kinds, the CSS auto-grid prior) but token-neutral: "
+          + "emitting {\"$type\":\"Auto\"} costs the same and matches the catalogue." }
+      { Name = "Grid templateColumns without cols (cols synthesised)"
+        Class = NeverTaught
+        FixtureIds = [ "lenient-shape-grid-template-no-cols" ]
+        Evidence =
+          "Contextual synthesis — the decoder inserts cols:1 beside a templateColumns; loss-free only "
+          + "when the intended cols was 1, which the input cannot state. Safety net only." } ]
+
+// ── The taught dialect passage (generated into the dialect variant's prompt) ─────
+
+let private dialectPassage =
+    "## The emission dialect — emit the shorthand; the decoder canonicalises\n\
+     \n\
+     Every conformant decoder accepts a small FIXED set of shorthands and normalises\n\
+     each to exactly its canonical form at the decode boundary — hosts and wire\n\
+     consumers only ever see canonical bytes, so a shorthand costs nothing downstream.\n\
+     In this prompt, EMIT THE SHORTHAND wherever a row below applies; every JSON\n\
+     example here is already written in this dialect. The signature catalogue below\n\
+     remains the wire contract — every type, field name and enum spelling is\n\
+     unchanged; only these encodings shorten:\n\
+     \n\
+     | Emit | Instead of | Where |\n\
+     |---|---|---|\n\
+     | `\"value\":1234.5`, `\"options\":[\"A\",\"B\"]` | `{\"$type\":\"Static\",\"value\":…}` | any `Binding` slot holding literal data — a bare scalar or array means `Static`. A bare OBJECT is never a shorthand: objects keep their `$type` envelope |\n\
+     | `\"options\":[\"EMEA\",\"APAC\"]` | `[{\"label\":\"EMEA\",\"value\":\"EMEA\"},…]` | an option whose label equals its value is the bare string |\n\
+     | `\"amount\":[100,200]` | `{\"values\":[100,200],\"validity\":[true,true]}` | an embedded Transform source column — cells are all-present by construction (the wire has no null) |\n\
+     | omit `schema` | `\"schema\":[{\"name\":…,\"type\":…},…]` | an embedded Transform source whose column types are plain string / int / float / bool (they infer). KEEP `schema` for `date` / `timestamp` or an empty column — those never infer |\n\
+     | `\"params\":{\"region\":{\"$type\":\"Filter\",\"name\":\"region\"}}` | `\"params\":[{\"name\":\"region\",\"from\":…}]` | `Transform.params` — a name→binding map |\n\
+     | `{\"$type\":\"filter\",\"column\":\"region\",\"op\":\"eq\",\"param\":\"region\"}` | `{\"$type\":\"filter\",\"pred\":{\"$type\":\"binary\",\"left\":{\"$type\":\"col\",\"name\":\"region\"},\"op\":\"eq\",\"right\":{\"$type\":\"param\",\"name\":\"region\"}}}` | a pipeline `filter` step comparing ONE column against ONE param with `eq` or `contains`. Any other predicate (a literal comparison, `and`/`or`, a function) keeps the full `pred` form |\n\
+     | `\"value\":[\"2026-03-01\",\"2026-03-08\"]` | `\"value\":{\"from\":\"2026-03-01\",\"to\":\"2026-03-08\"}` | a `DateRange` value — the bare `[from,to]` pair |\n\
+     \n\
+     And, as everywhere: omit every optional field whose value is its default — the\n\
+     omitted form is the canonical one. Nothing else has a shorthand. Do not invent\n\
+     an abbreviation, an alias, or a shape beyond this table — anything not listed\n\
+     here is emitted exactly as the catalogue and the rules state.\n\
+     \n"
+
+// ── The generated appendix ───────────────────────────────────────────────────────
+
+let private lenientFixtureFiles: Map<string, string * string> =
+    use doc = JsonDocument.Parse(File.ReadAllText manifestPath)
+
+    doc.RootElement.GetProperty("fixtures").EnumerateArray()
+    |> Seq.filter (fun f -> f.GetProperty("kind").GetString() = "lenient-accept")
+    |> Seq.map (fun f ->
+        f.GetProperty("id").GetString(),
+        (f.GetProperty("inputFile").GetString(), f.GetProperty("expectedFile").GetString()))
+    |> Map.ofSeq
+
+/// Every manifest lenient-accept id must be claimed by exactly one family — the
+/// mechanism that makes the appendix track decoder/corpus changes by construction:
+/// a new leniency fixture fails BOTH --write and --check until it is classified.
+let private assertLenientPartition () =
+    let claimed = leniencyFamilies |> List.collect _.FixtureIds
+
+    match claimed |> List.countBy id |> List.filter (fun (_, n) -> n > 1) with
+    | [] -> ()
+    | dups -> failwithf "DIALECT-APPENDIX: fixture id(s) claimed twice: %A" (dups |> List.map fst)
+
+    let claimedSet = Set.ofList claimed
+    let manifestSet = lenientFixtureFiles |> Map.toSeq |> Seq.map fst |> Set.ofSeq
+
+    let unclaimed = Set.difference manifestSet claimedSet
+    let phantom = Set.difference claimedSet manifestSet
+
+    if not (Set.isEmpty unclaimed) then
+        failwithf
+            "DIALECT-APPENDIX: new lenient-accept fixture(s) with no classification — judge and classify them \
+             in leniencyFamilies (a leniency you cannot prove loss-free is never-taught by default): %A"
+            (Set.toList unclaimed)
+
+    if not (Set.isEmpty phantom) then
+        failwithf "DIALECT-APPENDIX: classified fixture id(s) not in the manifest: %A" (Set.toList phantom)
+
+let private buildDialectAppendix () =
+    assertLenientPartition ()
+
+    let sb = StringBuilder()
+
+    let line (s: string) = sb.Append(s).Append '\n' |> ignore
+
+    line "<!--"
+    line "  GENERATED FILE (Phase 840) — the leniency-surface classification behind the"
+    line "  lenient emission dialect. Produced by docs/tools/authoring-pack.fsx from the"
+    line "  wire-format-fixtures manifest's lenient-accept family + the classification"
+    line "  table in the generator; drift-checked in the build. Do not hand-edit — edit"
+    line "  the generator's `leniencyFamilies` table and rerun `authoring-pack.fsx --write`."
+    line "-->"
+    line ""
+    line "# The lenient-dialect appendix — Phase 840"
+    line ""
+    line "Classification of the ENTIRE decoder-leniency surface, as pinned by the corpus's"
+
+    line
+        $"`lenient-accept` fixture family ({Map.count lenientFixtureFiles} fixtures — `manifest.json` authoritative). Every"
+
+    line "fixture id is claimed by exactly one family below (asserted at generation, so a"
+    line "new leniency cannot land unclassified). Classes:"
+    line ""
+    line "- **taught-primary** — TOTAL and LOSS-FREE and token-positive: the decoder"
+    line "  provably normalises the shorthand to exactly the canonical semantics for every"
+    line "  legal input, and the shorthand is cheaper. Taught as the primary emission"
+    line "  dialect in `prompt-pack-lenient/`; the pack transform applies exactly these,"
+    line "  each block decoder-proved (`dialect-verify.fsx`)."
+    line "- **safe-not-taught** — total and loss-free, but token-neutral/negative (synonym"
+    line "  acceptance for model priors) or catalogue-contradicting. Stays a safety net."
+    line "- **already-canonical** — the TERSE side of the pair is the canonical form; the"
+    line "  leniency accepts the verbose spelling. Nothing to teach beyond the canonical"
+    line "  rule the pack already teaches."
+    line "- **never-taught** — partial, heuristic, or contextual: normalisation cannot be"
+    line "  proved loss-free for every legal input (unproved ⇒ unsafe by default)."
+    line ""
+    line "The Δ column is mechanical: minified EXPECTED (canonical) bytes − minified"
+    line "INPUT (shorthand) bytes, summed per family (positive = the shorthand side is"
+    line "cheaper; 0 = identity or equal size; negative = the fixture's input is the"
+    line "VERBOSE side — the accepted-not-preferred direction). It measures the corpus"
+    line "pins, not the pack — the pack-level ledger lives in the census."
+    line ""
+    line "| Family | Class | Δ bytes | Fixtures | Evidence / judgement |"
+    line "|---|---|---:|---|---|"
+
+    for fam in leniencyFamilies do
+        let delta =
+            fam.FixtureIds
+            |> List.sumBy (fun id ->
+                let input, expected = Map.find id lenientFixtureFiles
+                let i = (minifyJson (File.ReadAllText(Path.Combine(fixturesDir, input)))).Length
+                let e = (minifyJson (File.ReadAllText(Path.Combine(fixturesDir, expected)))).Length
+                e - i)
+
+        let fixtures = fam.FixtureIds |> List.map (sprintf "`%s`") |> String.concat "<br>"
+        let deltaText = delta.ToString("+#;-#;0")
+
+        line $"| {fam.Name} | {fam.Class.Label} | {deltaText} | {fixtures} | {fam.Evidence} |"
+
+    line ""
+    line "## What the dialect variant does with this"
+    line ""
+    line "`docs/prompt-pack-lenient/` re-emits every example block and few-shot tree in"
+    line "the taught-primary shorthand via a mechanical transform run to a fixpoint (so"
+    line "the variant is ONE dialect — no canonical spelling a taught family covers can"
+    line "survive in an emitted block), and every transformed block is proved loss-free"
+    line "through the real decoder: `encode(decode(dialect)) == encode(decode(canonical))`,"
+    line "byte-equal. TreeOp examples stay canonical in both variants: the lenient-accept"
+    line "family pins NODE decode only, so no op-position shorthand is corpus-pinned"
+    line "cross-host, and §16 forbids teaching an unpinned one. Regenerate with"
+    line "`dotnet fsi docs/tools/authoring-pack.fsx --write --dialect lenient` (requires"
+    line "the Release build of src/Fuaran.UI.JsonDecode.Tests for the decoder proof)."
+    line ""
+
+    sb.ToString()
+
+// ── The dialect pack variant emission ────────────────────────────────────────────
+
+/// Collected (label, canonical, dialect) pairs for the decoder proof.
+let private dialectProofPairs = ResizeArray<string * string * string>()
+
+let private genericJsonBlockRegex =
+    Regex(@"```json\r?\n(?<body>.*?)\r?\n```", RegexOptions.Singleline)
+
+let private buildDialectSystemPrompt (handVerdicts: Map<string, string> option) =
+    let original =
+        normalizeEol (File.ReadAllText(Path.Combine(packDir, "system-prompt.md")))
+
+    // 1. Swap the banner: this file is FULLY generated, not generated-adjacent.
+    let banner =
+        String.concat
+            "\n"
+            [ "<!--"
+              "  FULLY GENERATED FILE (Phase 840) — the LENIENT-DIALECT variant of"
+              "  ../prompt-pack/system-prompt.md. Every byte here derives from the canonical"
+              "  pack + the wire-format-fixtures corpus: example blocks re-emit in the taught"
+              "  emission shorthand (decoder-proved loss-free), and the emission-dialect"
+              "  passage is generated from the classification in authoring-pack.fsx. Do not"
+              "  hand-edit ANYTHING here — edit the canonical pack and rerun"
+              "  `authoring-pack.fsx --write --dialect lenient`."
+              "-->" ]
+
+    let body =
+        let t = original.TrimStart()
+
+        if t.StartsWith "<!--" then
+            // The canonical banner's prose itself names `<!-- fuaran:example -->`
+            // markers, so the first inline `-->` is NOT the banner close — the
+            // close is the delimiter on its own line.
+            match t.IndexOf "\n-->" with
+            | i when i >= 0 -> banner + t.Substring(i + 4)
+            | _ -> banner + "\n" + t
+        else
+            banner + "\n" + t
+
+    // 2. Marker blocks: node-decoder fixtures re-emit through the transform; op
+    //    fixtures stay canonical (no op-position leniency is corpus-pinned).
+    let body =
+        markerRegex.Replace(
+            body,
+            fun (m: Match) ->
+                let id = m.Groups.["id"].Value
+                let canonical = fixtureRaw id
+
+                let newBody =
+                    if (fixtureMeta id).Decoder = "op" then
+                        minifyJson canonical
+                    else
+                        let d = toDialect canonical
+                        dialectProofPairs.Add($"example:{id}", minifyJson canonical, d)
+                        d
+
+                $"<!-- fuaran:example fixture={id} -->\n```json\n{newBody}\n```\n<!-- /fuaran:example -->"
+        )
+
+    // 3. Hand-authored ```json blocks that are complete Node documents re-emit too
+    //    (one dialect per variant); fragments and TreeOp documents stay as they are.
+    //    Marker bodies are already at the transform's fixpoint, so this pass leaves
+    //    them byte-identical and adds no duplicate proof pair. Hand blocks are the
+    //    ADVISORY tier of the proof: a block the decoder cannot verify — notably the
+    //    deliberately-WRONG teaching examples, which do not decode by design — falls
+    //    back to its canonical text instead of failing the emission (collect mode
+    //    proposes every candidate; apply mode keeps only the proved ones).
+    let mutable handIndex = -1
+
+    let body =
+        genericJsonBlockRegex.Replace(
+            body,
+            fun (m: Match) ->
+                let blockBody = m.Groups.["body"].Value
+
+                let isNodeDoc =
+                    try
+                        use doc = JsonDocument.Parse blockBody
+                        let root = doc.RootElement
+
+                        root.ValueKind = JsonValueKind.Object
+                        && (match root.TryGetProperty "id" with
+                            | true, _ -> true
+                            | _ -> false)
+                        && (match root.TryGetProperty "kind" with
+                            | true, _ -> true
+                            | _ -> false)
+                    with _ ->
+                        false
+
+                if isNodeDoc then
+                    let d = toDialect blockBody
+
+                    if d = normalizeEol blockBody then
+                        m.Value
+                    else
+                        handIndex <- handIndex + 1
+                        let label = $"hand:{handIndex}"
+
+                        match handVerdicts with
+                        | None ->
+                            dialectProofPairs.Add(label, minifyJson blockBody, d)
+                            $"```json\n{d}\n```"
+                        | Some verdicts ->
+                            if verdicts.TryFind label = Some "ok" then
+                                $"```json\n{d}\n```"
+                            else
+                                m.Value
+                else
+                    m.Value
+        )
+
+    // 4. Insert the dialect passage after the wire-shape section (shape first, then
+    //    the economy). Anchored on the next section's heading prefix; a heading
+    //    rename fails loudly rather than silently omitting the passage.
+    let anchor = "\n## Containers nest"
+
+    match body.IndexOf anchor with
+    | -1 ->
+        failwith
+            "dialect emission: anchor heading '## Containers nest' not found in the canonical \
+             system prompt — update the insertion anchor in authoring-pack.fsx"
+    | i -> body.Substring(0, i) + "\n" + dialectPassage + body.Substring(i + 1)
+
+let private buildDialectFewShotJsonl () =
+    fewShot
+    |> List.map (fun (id, prompt) ->
+        let meta = fixtureMeta id
+        let promptJson = JsonSerializer.Serialize(prompt, prettyOpts)
+        let idJson = JsonSerializer.Serialize(id)
+
+        let tree =
+            if meta.Decoder = "op" then
+                minifyJson (fixtureRaw id)
+            else
+                let canonical = fixtureRaw id
+                let d = toDialect canonical
+                dialectProofPairs.Add($"few-shot:{id}", minifyJson canonical, d)
+                d
+
+        $"{{\"prompt\":{promptJson},\"decoder\":\"{meta.Decoder}\",\"fixture\":{idJson},\"tree\":{tree}}}")
+    |> String.concat "\n"
+    |> fun body -> body + "\n"
+
+/// The decoder proof: spawn dialect-verify.fsx over the collected pairs and
+/// return the per-pair verdicts (label → ok | lossy | canonical-fail |
+/// dialect-fail). Refuses to run (with the remedy) when the decoder build
+/// outputs are absent — an unproved dialect emission must not be writable.
+let private runDialectProof () : Map<string, string> =
+    let binDir =
+        Path.Combine(fuaranDir, "src", "Fuaran.UI.JsonDecode.Tests", "bin", "Release", "net10.0")
+
+    if not (File.Exists(Path.Combine(binDir, "Fuaran.UI.Ops.dll"))) then
+        failwith
+            "dialect emission requires the decoder proof, and the decoder build outputs are missing — \
+             run `dotnet build src/Fuaran.UI.JsonDecode.Tests -c Release` first"
+
+    let tmp = Path.GetTempFileName()
+
+    File.WriteAllLines(
+        tmp,
+        dialectProofPairs
+        |> Seq.map (fun (label, canonical, dialect) ->
+            JsonSerializer.Serialize(
+                {| label = label
+                   canonical = canonical
+                   dialect = dialect |}
+            ))
+    )
+
+    let verifyScript = Path.Combine(scriptDir, "dialect-verify.fsx")
+
+    let psi =
+        Diagnostics.ProcessStartInfo(
+            "dotnet",
+            $"fsi \"{verifyScript}\" \"{tmp}\"",
+            WorkingDirectory = scriptDir,
+            UseShellExecute = false
+        )
+
+    use p = Diagnostics.Process.Start psi
+    p.WaitForExit()
+
+    let verdictsPath = tmp + ".verdicts"
+
+    // Exit 0 = all pairs proved; exit 3 = some pair failed, verdicts written (the
+    // caller applies the policy: corpus pairs are REQUIRED, hand pairs fall back).
+    // Anything else is the verify script itself failing (missing dlls, bad file).
+    if (p.ExitCode <> 0 && p.ExitCode <> 3) || not (File.Exists verdictsPath) then
+        failwith $"dialect emission REFUSED: dialect-verify did not complete (exit {p.ExitCode}; pairs kept at {tmp})"
+
+    let verdicts =
+        File.ReadAllLines verdictsPath
+        |> Array.choose (fun line ->
+            match line.Split '\t' with
+            | [| label; status |] -> Some(label, status)
+            | _ -> None)
+        |> Map.ofArray
+
+    // Corpus-derived pairs (example blocks + few-shot trees) are the REQUIRED
+    // tier: a failure there is a transform defect, never a fallback.
+    let requiredFailures =
+        verdicts
+        |> Map.toList
+        |> List.filter (fun (label, status) -> not (label.StartsWith "hand:") && status <> "ok")
+
+    if not requiredFailures.IsEmpty then
+        failwith
+            $"dialect emission REFUSED: corpus-derived pair(s) failed the loss-free proof \
+              (%A{requiredFailures}; pairs kept at {tmp})"
+
+    File.Delete tmp
+    File.Delete verdictsPath
+    verdicts
 
 // ── Rule → fixture coverage matrix (Phase 841) ───────────────────────────────────
 // Exemplar selection used to be accretion: one example per lesson, added when a
@@ -1631,43 +2647,87 @@ if mineMode then
     exit 0
 
 printfn
-    "Fuaran authoring pack — %s mode%s"
+    "Fuaran authoring pack — %s mode%s%s"
     (if writeMode then "write" else "check")
     (if minifyExamples then " (minified pack examples)" else "")
+    (if dialectMode then " (lenient dialect variant)" else "")
 
-// 1. Corpus-derived marker examples (+ the schema-derived required-fields table) in
-//    the managed markdown. Only the pack system prompt carries the catalogue.
-reconcileMarkdown "AI_AUTHORING_GUIDE.md" false false
-reconcileMarkdown (Path.Combine("prompt-pack", "system-prompt.md")) true true
+if dialectMode then
+    // ── Dialect surfaces ONLY (Phase 840). The canonical pack is a different
+    // invocation's artefact set; neither run can touch the other's files.
+    //
+    // Two-phase: COLLECT proposes every candidate transform and gathers the proof
+    // pairs; the decoder proof then gates them (corpus pairs required, hand-block
+    // pairs advisory); APPLY rebuilds keeping only what was proved. The proof
+    // gates BOTH --write and --check: an unproved emission is neither written nor
+    // passed. (Purity is by construction — the transform runs to a fixpoint, so
+    // every emitted block is invariant under its own transform.)
+    buildDialectSystemPrompt None |> ignore
+    let dialectFewShot = buildDialectFewShotJsonl ()
+    let verdicts = runDialectProof ()
+    let dialectSystemPrompt = buildDialectSystemPrompt (Some verdicts)
 
-// 2. Few-shot corpus.
-reconcileFile
-    (Path.Combine("prompt-pack", "few-shot.jsonl"))
-    (Path.Combine(packDir, "few-shot.jsonl"))
-    (buildFewShotJsonl ())
+    reconcileFile
+        (Path.Combine("prompt-pack-lenient", "system-prompt.md"))
+        (Path.Combine(dialectPackDir, "system-prompt.md"))
+        dialectSystemPrompt
 
-// 3. Schema copy (byte-equal to the canonical artefact).
-reconcileFile
-    (Path.Combine("prompt-pack", "schema.json"))
-    (Path.Combine(packDir, "schema.json"))
-    (File.ReadAllText schemaSrcPath)
+    reconcileFile
+        (Path.Combine("prompt-pack-lenient", "few-shot.jsonl"))
+        (Path.Combine(dialectPackDir, "few-shot.jsonl"))
+        dialectFewShot
 
-// 4. Rule→fixture coverage matrix (Phase 841). Tooling output, not pack content — it
-//    is the mining evidence, so it lives beside the generator rather than in the paid
-//    prefix, and is reconciled here so a corpus change cannot age it silently.
-if not (Set.isEmpty inventoryEscapes) then
-    eprintfn "PROBE FAILURE — the coverage walker observed rules the enumerator cannot express:"
+    // The wire schema is the CONTRACT, not the dialect — a byte copy of the same
+    // canonical artefact the default pack ships (the harness's constrained-decode
+    // arm binds the canonical schema whichever pack variant is pinned).
+    reconcileFile
+        (Path.Combine("prompt-pack-lenient", "schema.json"))
+        (Path.Combine(dialectPackDir, "schema.json"))
+        (File.ReadAllText schemaSrcPath)
+else
+    // 1. Corpus-derived marker examples (+ the schema-derived required-fields table) in
+    //    the managed markdown. Only the pack system prompt carries the catalogue.
+    reconcileMarkdown "AI_AUTHORING_GUIDE.md" false false
+    reconcileMarkdown (Path.Combine("prompt-pack", "system-prompt.md")) true true
 
-    for r in inventoryEscapes do
-        eprintfn "  ? %s" r
+    // 2. Few-shot corpus.
+    reconcileFile
+        (Path.Combine("prompt-pack", "few-shot.jsonl"))
+        (Path.Combine(packDir, "few-shot.jsonl"))
+        (buildFewShotJsonl ())
 
-    eprintfn "This is a generator defect, not a coverage finding — fix schemaRules before trusting any figure."
-    exit 1
+    // 3. Schema copy (byte-equal to the canonical artefact).
+    reconcileFile
+        (Path.Combine("prompt-pack", "schema.json"))
+        (Path.Combine(packDir, "schema.json"))
+        (File.ReadAllText schemaSrcPath)
 
-reconcileFile
-    (Path.Combine("tools", "coverage-matrix.json"))
-    (Path.Combine(docsDir, "tools", "coverage-matrix.json"))
-    (buildCoverageMatrix ())
+    // 4. Rule→fixture coverage matrix (Phase 841). Tooling output, not pack content — it
+    //    is the mining evidence, so it lives beside the generator rather than in the paid
+    //    prefix, and is reconciled here so a corpus change cannot age it silently.
+    if not (Set.isEmpty inventoryEscapes) then
+        eprintfn "PROBE FAILURE — the coverage walker observed rules the enumerator cannot express:"
+
+        for r in inventoryEscapes do
+            eprintfn "  ? %s" r
+
+        eprintfn "This is a generator defect, not a coverage finding — fix schemaRules before trusting any figure."
+        exit 1
+
+    reconcileFile
+        (Path.Combine("tools", "coverage-matrix.json"))
+        (Path.Combine(docsDir, "tools", "coverage-matrix.json"))
+        (buildCoverageMatrix ())
+
+    // 5. The leniency-surface classification appendix (Phase 840). Deliberately
+    //    reconciled by the DEFAULT (build-free) run: its derivation is pure —
+    //    manifest + fixture bytes + the classification table — so the every-commit
+    //    drift gate pins it, and a new lenient-accept fixture fails the gate until
+    //    classified (see assertLenientPartition).
+    reconcileFile
+        (Path.Combine("prompt-pack", "DIALECT-APPENDIX.md"))
+        (Path.Combine(packDir, "DIALECT-APPENDIX.md"))
+        (buildDialectAppendix ())
 
 // ── Verdict ────────────────────────────────────────────────────────────────────
 match writeMode, drift with
@@ -1683,5 +2743,8 @@ match writeMode, drift with
     for d in List.rev ds do
         eprintfn "  - %s" d
 
-    eprintfn "Regenerate with: dotnet fsi docs/tools/authoring-pack.fsx --write"
+    eprintfn
+        "Regenerate with: dotnet fsi docs/tools/authoring-pack.fsx --write%s"
+        (if dialectMode then " --dialect lenient" else "")
+
     exit 1
