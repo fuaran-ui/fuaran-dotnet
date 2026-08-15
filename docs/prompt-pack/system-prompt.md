@@ -454,8 +454,8 @@ A whole `Badge` is two fields:
 ```
 <!-- /fuaran:example -->
 
-**The colour goes in `Badge.variant`** (`Neutral` · `Brand` · `Success` · `Warning` ·
-`Critical` · `Info`). When a prompt asks for a status "with a success variant", "in
+**The colour goes in `Badge.variant`** (spellings in the catalogue's `Badge` row).
+When a prompt asks for a status "with a success variant", "in
 green", "flagged red", that is `variant` on a `Badge` — NOT `tone` on a `Fact`.
 `Fact.tone` tints a labelled tile; it does not turn it into a chip, so an emission
 like `{ "$type": "Fact", "label": "Patient status", "value": "Ready for Discharge",
@@ -679,8 +679,8 @@ tones anything it does not. Note the `Carrier` column has no `default` — that 
 
 Three things to get right:
 
-- **`map` values are `ToneVariant`s** — `Default` · `Subdued` · `Brand` · `Success` ·
-  `Warning` · `Critical` · `Info`. Not colours. `"Red"`, `"Urgent"` and `"Error"` are
+- **`map` values are `ToneVariant`s** (spellings in the catalogue), not colours.
+  `"Red"`, `"Urgent"` and `"Error"` are
   all rejected; "bad" is `Critical`, "needs attention" is `Warning`, "fine" is
   `Success`.
 - **`field` is the ROW PROPERTY name, not the label.** A column labelled `"Status"`
@@ -865,8 +865,8 @@ A decorative glyph for the empty state — the big checkmark, the empty inbox �
 own child: `{ "$type": "Icon", "icon": "check-circle", "size": "Large" }`. `Icon` is a
 standalone display kind (never a Button you don't want, never an `Image` with a fake
 `src`); it is decorative by default (hidden from screen readers), and gains a spoken
-description only when you set `label`. Sizes: `Small` · `Medium` (default, omit) ·
-`Large`:
+description only when you set `label`. `size` spellings are in the catalogue's `Icon`
+row; `Medium` is the default — omit it:
 
 <!-- fuaran:example fixture=empty-state-card -->
 ```json
