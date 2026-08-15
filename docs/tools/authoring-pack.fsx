@@ -11,6 +11,11 @@
 //   dotnet fsi authoring-pack.fsx --write --dialect lenient   # regenerate the Phase 840 lenient-dialect
 //                                                             # pack variant (docs/prompt-pack-lenient/;
 //                                                             # decoder-proved — build JsonDecode.Tests first)
+//   dotnet fsi authoring-pack.fsx --write --family all        # compile the Phase 843 per-family pack
+//                                                             # variants (docs/prompt-pack-variants/<id>/)
+//   dotnet fsi authoring-pack.fsx --write --family <id> \     # …with the OPTIONAL per-host registered-
+//       --host-manifest <path> --out <dir>                    # components section (default OFF; never
+//                                                             # written into the committed variant set)
 //
 // PROMPT-PACK example blocks are emitted as minified JSON BY DEFAULT (the adopted
 // emission since the Phase 839 gate; the DEFAULT since Phase 838 — a bare `--write`
@@ -50,11 +55,22 @@
 //   * prompt-pack/few-shot.jsonl   — one {prompt, decoder, fixture, tree} per curated id.
 //   * prompt-pack/schema.json      — a byte copy of wire-format-fixtures/schema.json.
 //
+// Record-derived surfaces (cannot diverge from the recorded flips):
+//   * tools/section-demand-index.json — the Phase 843 per-family (section → needed |
+//     never-needed | unknown) map, distilled from prompt-pack/SLIMMING-CENSUS.md and
+//     prompt-pack/demand-attribution.jsonl. Every verdict carries the record line
+//     that decided it, and `unknown` defaults to INCLUDED.
+//   * prompt-pack-variants/<family>/ — the compiled per-family packs, each a
+//     versioned artefact with an inclusion manifest under the Phase 383 hash
+//     discipline. Emitted only under `--family`, so a bare `--write` can never
+//     revert them and they can never revert the canonical pack.
+//
 // The script reads only docs/ + wire-format-fixtures/ and writes only docs/. It is the
 // generation source the Phase 110 drift-check Build target runs in --check mode.
 
 open System
 open System.IO
+open System.Security.Cryptography
 open System.Text
 open System.Text.Json
 open System.Text.RegularExpressions
@@ -75,7 +91,9 @@ let argv = fsi.CommandLineArgs |> Array.skip 1
 
 let private usage () =
     eprintfn
-        "usage: dotnet fsi authoring-pack.fsx (--write | --check | --mine) [--minify-examples | --pretty-examples] [--dialect lenient]"
+        "usage: dotnet fsi authoring-pack.fsx (--write | --check | --mine) [--minify-examples | --pretty-examples]\n\
+         \                                    [--dialect lenient]\n\
+         \                                    [--family <id|all> [--host-manifest <path> --out <dir>]]"
 
     exit 2
 
@@ -111,10 +129,66 @@ if dialectMode && mineMode then
     eprintfn "--dialect does not combine with --mine (the miner runs on the canonical pack only)"
     usage ()
 
+/// Pull a `--name <value>` pair out of an argument array, returning the value (when
+/// present) and the array with BOTH tokens removed.
+///
+/// A flag supplied without a value is a typo, never a default. Every option this
+/// takes selects a compilation dimension, and a dimension chosen by omission is a
+/// variant nobody asked for — the same argument the unknown-argument guard below
+/// makes about `--minify-example`.
+let private takeOption (name: string) (args: string array) : string option * string array =
+    match args |> Array.tryFindIndex ((=) name) with
+    | None -> None, args
+    | Some i when i + 1 < args.Length && not (args[i + 1].StartsWith "--") ->
+        Some args[i + 1], Array.append args[.. i - 1] args[i + 2 ..]
+    | Some _ ->
+        eprintfn "%s takes exactly one value" name
+        usage ()
+
+// `--family <id|all>` (Phase 843) selects the PER-FAMILY COMPILED PACK surfaces —
+// the `docs/prompt-pack-variants/<family>/` artefact set. Like `--dialect`, it is its
+// own invocation: a bare `--write` never touches a variant and a `--family` run never
+// touches the canonical pack, so neither emission can silently revert the other.
+let familyArg, argvSansFamily = takeOption "--family" argvSansDialect
+let hostManifestArg, argvSansHost = takeOption "--host-manifest" argvSansFamily
+let outArg, argvRest = takeOption "--out" argvSansHost
+
+let familyMode = familyArg.IsSome
+
+if familyMode && mineMode then
+    eprintfn "--family does not combine with --mine (the miner runs on the canonical pack only)"
+    usage ()
+
+if familyMode && dialectMode then
+    eprintfn
+        "--family does not combine with --dialect: the dialect is a COMPILED dimension, chosen per \
+         family from the flip record's own per-family verdicts, not set by hand"
+
+    usage ()
+
+if hostManifestArg.IsSome && not familyMode then
+    eprintfn "--host-manifest is a --family dimension; supply --family <id|all> as well"
+    usage ()
+
+// The per-host section is default-OFF and its output is default-NOWHERE. A host
+// registry is host-specific by definition, so a run carrying one may not write into
+// the committed, host-free variant set — `--out` is mandatory and is the only place
+// such a run writes.
+if hostManifestArg.IsSome && outArg.IsNone then
+    eprintfn
+        "--host-manifest requires --out <dir>: a host-specific variant is not the committed artefact \
+         and must never overwrite it"
+
+    usage ()
+
+if outArg.IsSome && hostManifestArg.IsNone then
+    eprintfn "--out is only meaningful with --host-manifest (the committed variants have a fixed home)"
+    usage ()
+
 // An unrecognised trailing argument is a typo, not a no-op: silently ignoring
 // `--minify-example` would emit an emission the caller did not choose.
 match
-    argvSansDialect
+    argvRest
     |> Array.skip 1
     |> Array.filter (fun a -> a <> "--minify-examples" && a <> "--pretty-examples")
 with
@@ -2497,6 +2571,978 @@ let private buildCoverageMatrix () =
 
     sb.ToString()
 
+// ── Per-family compiled packs (Phase 843) ───────────────────────────────────────
+//
+// The pack as a COMPILATION TARGET over the flip history. One pack serves every
+// family, so it carries the union of every family's needs — yet the flip record
+// (prompt-pack/SLIMMING-CENSUS.md) records WHICH family each teaching flipped for,
+// and the dialect verdicts are already per-family. `--family <id>` emits a variant
+// carrying the always-core plus every section that family's flip record does not
+// show to be unnecessary, in the dialect that family's own verdict adopted.
+//
+// THREE DIMENSIONS, each DERIVED and none hand-set:
+//   * sections — the generated section-demand index below, which distils the flip
+//     record into a per-family (section → needed | never-needed | unknown) map.
+//     `unknown` defaults to INCLUDED, the conservative side: a family whose flip
+//     record says nothing about a section gets the full pack rather than a guess.
+//   * dialect  — the per-family verdict table the flip record already carries
+//     (Phase 840, "Per-family verdicts"). ADOPT compiles from the lenient sibling
+//     pack; anything else, and any family with no verdict at all, stays canonical.
+//   * per-host — an OPTIONAL registered-components section, emitted only when a host
+//     registry manifest is supplied. Default OFF, and its output cannot land in the
+//     committed variant set (`--out` is mandatory beside it).
+//
+// SIZING IS NOT A DIMENSION, and that is the amended framing, not an omission. Cache
+// posture is a MEASURED input per deployment — the Phase 842 shakedown found a family
+// taking deep prefix-cache hits against its own reputation, and a deep-cache family
+// whose token fade saved nothing — so a warm posture can afford the RICHER pack while
+// a genuinely cold one cannot, and the SAME family can be either. The compiler
+// therefore selects TEACHING CONTENT per family and says nothing about which posture
+// should run which variant. Which variant a posture is served is the measurement's
+// job.
+
+/// The families the flip record and the evaluation harness both name, in the
+/// provider-generic spelling shared with the harness's own family ids.
+let private packFamilies =
+    [ "claude-opus"; "claude-sonnet"; "gemini"; "gpt"; "grok"; "kimi" ]
+
+/// Every spelling the flip record uses for a family, mapped to its family id.
+///
+/// Matched on WORD BOUNDARIES, so a snapshot or effort suffix (`…-4-8@low`,
+/// `…@low`) resolves and an incidental substring does not. Two conventions are
+/// worth stating because they are inferences rather than readings:
+///
+///   * a bare model-line name (a snapshot codename) resolves to its family, because
+///     the record names arms by snapshot and sections by family;
+///   * a bare vendor name resolves to the arm the record actually ran — the recorded
+///     arms are the larger model of that vendor throughout — and the alias that
+///     matched is carried into every provenance row, so the inference is visible at
+///     the point of use rather than buried here.
+let private familyAliases: (string * string) list =
+    [ "claude-opus-4-8", "claude-opus"
+      "claude-opus", "claude-opus"
+      "opus", "claude-opus"
+      "claude", "claude-opus"
+      "claude-sonnet", "claude-sonnet"
+      "sonnet", "claude-sonnet"
+      "gpt-5.6-terra", "gpt"
+      "gpt-5.6-sol", "gpt"
+      "gpt-5.6", "gpt"
+      "gpt-4o", "gpt"
+      "gpt", "gpt"
+      "terra", "gpt"
+      "sol", "gpt"
+      "gemini", "gemini"
+      "grok", "grok"
+      "kimi", "kimi" ]
+
+/// Lower-cased, punctuation-flattened text for phrase matching. Backticks, `§`
+/// sigils, em-dashes, slashes and colons all become spaces, so the record's several
+/// spellings of one heading (`§Metric-vs-Fact`, "Numbers vs text: `Metric` vs
+/// `Fact`") normalise to the same words without a hand-written alias table.
+let private normaliseForMatch (s: string) =
+    let sb = StringBuilder(s.Length)
+
+    for c in s do
+        if Char.IsLetterOrDigit c then
+            sb.Append(Char.ToLowerInvariant c) |> ignore
+        else
+            sb.Append ' ' |> ignore
+
+    Regex.Replace(sb.ToString(), @"\s+", " ").Trim()
+
+/// Split pack text into the SAME units a mechanical slice cuts on: the preamble
+/// under key `""`, one unit per `## ` section, one per `### ` subsection keyed
+/// `<parent>/<child>`.
+///
+/// Deliberately identical to the harness's own splitter, line for line. The
+/// compiler's output is loaded by that splitter downstream, so a unit boundary that
+/// disagreed would make an included section and a priced section different bytes.
+let private packUnits (text: string) : (string * string) list =
+    let lines = text.Replace("\r\n", "\n").Split '\n'
+    let acc = ResizeArray<string * StringBuilder>()
+    acc.Add("", StringBuilder())
+    let mutable parent = ""
+
+    for line in lines do
+        if line.StartsWith "## " then
+            parent <- line.Substring(3).Trim()
+            acc.Add(parent, StringBuilder())
+        elif line.StartsWith "### " then
+            let child = line.Substring(4).Trim()
+            acc.Add((if parent = "" then child else parent + "/" + child), StringBuilder())
+
+        let _, sb = acc[acc.Count - 1]
+        sb.Append(line).Append '\n' |> ignore
+
+    acc |> Seq.map (fun (t, sb) -> t, sb.ToString()) |> List.ofSeq
+
+/// Reassemble units into pack text. Every unit is LF-terminated and the split's final
+/// element is the empty tail, so dropping ONE trailing LF makes an empty drop set
+/// reproduce the source byte for byte — the property the whole variant discipline
+/// rests on, since a variant that drops nothing must BE its source.
+let private reassembleUnits (units: (string * string) list) =
+    let joined = units |> List.map snd |> String.concat ""
+
+    if joined.EndsWith "\n" then
+        joined.Substring(0, joined.Length - 1)
+    else
+        joined
+
+/// The `## ` title of a unit — its own for a `## ` unit, the parent's for a `### `
+/// child, `""` for the preamble.
+let private unitTitle (key: string) =
+    match key.IndexOf '/' with
+    | -1 -> key
+    | i -> key.Substring(i + 1)
+
+// ── The section-demand index ────────────────────────────────────────────────────
+//
+// The flip record distilled to a per-family map, GENERATED rather than
+// hand-classified. Three mechanical steps, and every classification carries the
+// line that justified it:
+//
+//   1. RESOLVE a record line to a pack section, by longest matching phrase over
+//      phrases derived from the live section titles (full title, the head before an
+//      em-dash, the tail after one, the text after a colon, and the first two to
+//      four words). One line resolves to at most ONE section — the longest match —
+//      so a passing mention cannot borrow another section's evidence.
+//   2. ATTRIBUTE the line to families, by word-boundary alias match.
+//   3. CLASSIFY by marker: a positive marker makes the section `needed` for that
+//      family, an extinction marker makes it `never-needed`, and a line with
+//      neither says nothing.
+//
+// NEEDED WINS over never-needed wherever both fire on one (section, family). The
+// asymmetry is the conservative direction: a section with any live flip evidence for
+// a family is teaching that family has been measured to want, and the cost of
+// keeping it is tokens where the cost of cutting it is a regression.
+
+/// Phrases that identify a live pack section in record prose, longest first.
+let private sectionPhrases (key: string) : string list =
+    let title = unitTitle key
+
+    if title = "" then
+        []
+    else
+        let norm = normaliseForMatch title
+
+        let splitOn (seps: string list) (s: string) =
+            seps
+            |> List.tryPick (fun sep ->
+                match s.IndexOf(sep, StringComparison.Ordinal) with
+                | -1 -> None
+                | i -> Some(s.Substring(0, i).Trim(), s.Substring(i + sep.Length).Trim()))
+
+        let head, tail =
+            match splitOn [ " — "; " – "; " (" ] title with
+            | Some(h, t) -> normaliseForMatch h, normaliseForMatch t
+            | None -> norm, ""
+
+        let afterColon =
+            match splitOn [ ": " ] title with
+            | Some(_, t) -> normaliseForMatch t
+            | None -> ""
+
+        let stripArticle (s: string) =
+            if s.StartsWith "the " then s.Substring 4 else s
+
+        let words = norm.Split ' '
+
+        // A phrase that OPENS on a function word is not distinctive — "the canonical"
+        // and "on inputs" occur throughout the record's prose about other sections,
+        // and one of them did attribute an unrelated row to the wire-shape section
+        // before this guard existed. Distinctiveness is what a resolver needs; length
+        // alone is not it.
+        let functionWords =
+            set
+                [ "the"
+                  "a"
+                  "an"
+                  "and"
+                  "or"
+                  "of"
+                  "on"
+                  "in"
+                  "to"
+                  "for"
+                  "from"
+                  "with"
+                  "no"
+                  "not"
+                  "is"
+                  "its"
+                  "by"
+                  "this"
+                  "that"
+                  "per"
+                  "as"
+                  "at" ]
+
+        let distinctive (p: string) =
+            match p.Split ' ' with
+            | [||] -> false
+            | first -> not (functionWords.Contains first[0])
+
+        let lastTwo =
+            if words.Length >= 2 then
+                [ String.Join(" ", words |> Array.skip (words.Length - 2)) ]
+            else
+                []
+
+        let openingFour =
+            if words.Length >= 4 then
+                [ String.Join(" ", words |> Array.take 4) ]
+            else
+                []
+
+        [ norm; head; tail; stripArticle tail; afterColon ]
+        @ (lastTwo @ openingFour |> List.filter distinctive)
+        |> List.filter (fun p -> p.Length >= 10)
+        |> List.distinct
+        |> List.sortByDescending _.Length
+
+/// Word separators removed. The record spells several headings closed-up
+/// (`§TonedPill` for "the toned pill", `§Metric-vs-Fact`), and a matcher that only
+/// saw word-separated text would read those as no reference at all — which is worse
+/// than a false negative, because the section would then look UNATTESTED rather than
+/// unmatched.
+let private despace (s: string) = s.Replace(" ", "")
+
+/// A record line that fired: which section, which family, which way, and why.
+type private DemandEvidence =
+    { Section: string
+      Family: string
+      Needed: bool
+      Alias: string
+      Marker: string
+      Line: int
+      Excerpt: string }
+
+/// Markers that read as LIVE teaching for the family named on the same line. Every
+/// one is a verdict word the record uses about a section that earned its place.
+let private positiveMarkers =
+    [ "keep"
+      "flip"
+      "verified"
+      "extinguish"
+      "adopt"
+      "mechanism"
+      "cluster"
+      "demand"
+      "pinned" ]
+
+/// Markers that read as the teaching's target behaviour being ABSENT on the family
+/// named on the same line — the only evidence that licenses cutting a section for
+/// one family and not another. Deliberately narrow: "the teaching failed to move
+/// this family" is NOT one of them, because a teaching that fails to flip a family
+/// is not thereby teaching that family does not need.
+let private extinctionMarkers =
+    [ "generation-scoped"; "extinct"; "no current family emits"; "unaffected" ]
+
+let private censusPath = Path.Combine(packDir, "SLIMMING-CENSUS.md")
+
+/// The second recorded-flip source: the evaluation harness's capability-demand log,
+/// distilled to one record per row that names BOTH a family and a teaching lever.
+///
+/// It is a GENERATED, committed input rather than a file this script reads across a
+/// repo boundary — the harness emits it, this repo carries it, and the division of
+/// labour is deliberate: the emitter EXTRACTS (date, cluster, families, text) and
+/// nothing else, while every classification decision — which section a record names,
+/// and which way it points — is made here, by the same resolver and the same marker
+/// lists the flip record goes through. Two evidence sources, one classifier.
+let private demandAttributionPath =
+    Path.Combine(packDir, "demand-attribution.jsonl")
+
+let private aliasRegexes =
+    familyAliases
+    |> List.map (fun (alias, family) ->
+        alias, family, Regex(@"(?<![A-Za-z0-9])" + Regex.Escape alias + @"(?![A-Za-z0-9])", RegexOptions.IgnoreCase))
+
+let private liveSectionKeys =
+    packUnits (File.ReadAllText(Path.Combine(packDir, "system-prompt.md")))
+    |> List.map fst
+    |> List.filter (fun k -> k <> "")
+
+let private phraseIndex = liveSectionKeys |> List.map (fun k -> k, sectionPhrases k)
+
+/// The one section a line of record prose names, or `None`. Longest matching phrase
+/// wins, so a passing mention can never borrow a neighbouring section's evidence,
+/// and one line contributes to at most one section.
+let private resolveSection (text: string) : string option =
+    let norm = normaliseForMatch text
+    let flat = despace norm
+
+    phraseIndex
+    |> List.choose (fun (key, phrases) ->
+        phrases
+        |> List.tryFind (fun p -> norm.Contains p || (let d = despace p in d.Length >= 9 && flat.Contains d))
+        |> Option.map (fun p -> key, p.Length))
+    |> function
+        | [] -> None
+        | hits -> hits |> List.maxBy snd |> fst |> Some
+
+/// Resolve a MARKDOWN TABLE ROW, whose first section-naming cell outranks the rest of
+/// the row.
+///
+/// The flip record's per-section census is a table whose Section column names the row's
+/// subject, while its Verdict column routinely cites OTHER sections ("the exact shape
+/// §Conditional-rendering below now warns against"). Under a whole-line longest match a
+/// citation can outrank the subject, and the row's evidence then lands on the section it
+/// merely mentioned. Reading the first cell that resolves fixes that mechanically, and
+/// falls through to the whole line for every table whose cells name no section at all.
+let private resolveRow (line: string) : string option =
+    if not (line.StartsWith "|") then
+        resolveSection line
+    else
+        let cells = line.Split '|'
+
+        match cells |> Array.tryPick resolveSection with
+        | Some s -> Some s
+        | None -> resolveSection line
+
+let private excerptOf (text: string) =
+    let t = text.Trim().Replace("\n", " ")
+    if t.Length > 200 then t.Substring(0, 197) + "…" else t
+
+/// Classify one piece of record prose against a family set: which section it names,
+/// which way its markers point, and the row that says so.
+let private classifyRecordText (source: string) (lineNo: int) (text: string) (families: (string * string) list) =
+    match resolveRow text with
+    | None -> []
+    | Some section ->
+        let lower = text.ToLowerInvariant()
+        let positive = positiveMarkers |> List.tryFind lower.Contains
+        let extinction = extinctionMarkers |> List.tryFind lower.Contains
+        let excerpt = $"{source}:{lineNo} {excerptOf text}"
+
+        // One record line, one row per (family, polarity). Several aliases of the same
+        // family routinely match one line ("gpt-5.6-sol@low", "terra@low", "gpt-4o"),
+        // and six identical rows are not six pieces of evidence. The LONGEST alias is
+        // kept, because it is the most specific spelling the record actually used.
+        families
+        |> List.groupBy snd
+        |> List.map (fun (family, aliases) -> aliases |> List.maxBy (fst >> String.length) |> fst, family)
+        |> List.collect (fun (alias, family) ->
+            [ match positive with
+              | Some m ->
+                  { Section = section
+                    Family = family
+                    Needed = true
+                    Alias = alias
+                    Marker = m
+                    Line = lineNo
+                    Excerpt = excerpt }
+              | None -> ()
+              match extinction with
+              | Some m ->
+                  { Section = section
+                    Family = family
+                    Needed = false
+                    Alias = alias
+                    Marker = m
+                    Line = lineNo
+                    Excerpt = excerpt }
+              | None -> () ])
+
+/// Every (section, family, polarity) the two recorded-flip sources assert.
+let private demandEvidence: DemandEvidence list =
+    let censusRows =
+        normalizeEol (File.ReadAllText censusPath)
+        |> fun t -> t.Split '\n'
+        |> Array.toList
+        |> List.mapi (fun i line -> i + 1, line)
+        |> List.collect (fun (lineNo, line) ->
+            let families =
+                aliasRegexes
+                |> List.filter (fun (_, _, rx) -> rx.IsMatch line)
+                |> List.map (fun (alias, family, _) -> alias, family)
+
+            classifyRecordText "SLIMMING-CENSUS.md" lineNo line families)
+
+    let demandRows =
+        if not (File.Exists demandAttributionPath) then
+            []
+        else
+            File.ReadAllLines demandAttributionPath
+            |> Array.toList
+            |> List.mapi (fun i line -> i + 1, line)
+            |> List.collect (fun (lineNo, line) ->
+                if String.IsNullOrWhiteSpace line then
+                    []
+                else
+                    use doc = JsonDocument.Parse line
+                    let root = doc.RootElement
+
+                    let str name =
+                        match root.TryGetProperty(name: string) with
+                        | true, v when v.ValueKind = JsonValueKind.String ->
+                            defaultArg (Option.ofObj (v.GetString())) ""
+                        | _ -> ""
+
+                    let families =
+                        match root.TryGetProperty "families" with
+                        | true, v when v.ValueKind = JsonValueKind.Array ->
+                            v.EnumerateArray()
+                            |> Seq.map _.GetString()
+                            |> Seq.filter (fun f -> List.contains f packFamilies)
+                            |> Seq.map (fun f -> f, f)
+                            |> List.ofSeq
+                        | _ -> []
+
+                    let text = str "intent" + " " + str "disposition"
+                    let date = str "date"
+                    let cluster = str "cluster"
+                    classifyRecordText $"demand-attribution.jsonl[{date} {cluster}]" lineNo text families)
+
+    censusRows @ demandRows
+
+/// `needed` | `never-needed` | `unknown` for one (section, family), plus the
+/// evidence rows that decided it. `needed` wins a conflict.
+let private demandClass (section: string) (family: string) : string * DemandEvidence list =
+    let rows =
+        demandEvidence
+        |> List.filter (fun e -> e.Section = section && e.Family = family)
+
+    match rows |> List.filter _.Needed, rows |> List.filter (fun e -> not e.Needed) with
+    | [], [] -> "unknown", []
+    | [], neg -> "never-needed", neg
+    | pos, [] -> "needed", pos
+    | pos, neg -> "needed", pos @ neg
+
+// ── Always-core ─────────────────────────────────────────────────────────────────
+//
+// The sections no variant may drop, whatever the index says. Enumerated in every
+// variant manifest rather than left implicit, because a reader of a compiled pack
+// must be able to see what was structurally out of the compiler's reach.
+
+/// Sections that are always-core by their ROLE in the contract. A key matched by
+/// prefix, so a `### ` child of one rides with its parent.
+let private alwaysCoreByRole =
+    [ "The canonical wire shape", "wire-shape — the emission contract itself"
+      "The node kinds you can emit", "type-surface — the spelling-complete signature catalogue"
+      "Rules", "contract — the self-wiring / editable / Call-into rules" ]
+
+/// Why a section is always-core, or `None` if it is not.
+let private alwaysCoreReason (section: string) : string option =
+    if section = "" then
+        Some "preamble — the framing every posture reads"
+    else
+        match alwaysCoreByRole |> List.tryFind (fun (prefix, _) -> section.StartsWith prefix) with
+        | Some(_, why) -> Some why
+        | None ->
+            // Cross-family flip: teaching two or more families' flip records both
+            // name. A per-family cut of one of these would remove teaching another
+            // family is measured to need from a pack the two might share.
+            let neededBy =
+                packFamilies |> List.filter (fun f -> fst (demandClass section f) = "needed")
+
+            if neededBy.Length >= 2 then
+                Some($"cross-family-flip — needed by " + String.concat ", " neededBy)
+            else
+                None
+
+/// The fixture ids the pack's own system-prompt example blocks pin, per section —
+/// the load-bearing exemplars, listed in the manifest so "always-core" names the
+/// examples it protects and not only the headings.
+let private sectionExemplars: Map<string, string list> =
+    packUnits (File.ReadAllText(Path.Combine(packDir, "system-prompt.md")))
+    |> List.map (fun (key, body) ->
+        key,
+        markerRegex.Matches body
+        |> Seq.map (fun m -> m.Groups.["id"].Value)
+        |> Seq.distinct
+        |> List.ofSeq)
+    |> Map.ofList
+
+// ── The dialect dimension ───────────────────────────────────────────────────────
+
+/// Per-family dialect, read from the flip record's own verdict table (Phase 840,
+/// "Per-family verdicts"): ADOPT ⇒ the lenient sibling pack is this family's
+/// compilation source. A family the table does not name keeps canonical — the
+/// default artifact — because no verdict is not a verdict.
+let private dialectVerdicts: Map<string, string * int * string> =
+    let lines = normalizeEol (File.ReadAllText censusPath) |> fun t -> t.Split '\n'
+
+    let mutable inTable = false
+    let acc = ResizeArray<string * (string * int * string)>()
+
+    for i in 0 .. lines.Length - 1 do
+        let line = lines[i]
+
+        if line.StartsWith "## " then
+            inTable <- normaliseForMatch line |> fun n -> n.Contains "per family verdicts"
+
+        if inTable && line.StartsWith "|" && line.ToUpperInvariant().Contains "ADOPT" then
+            let cell = line.Split '|' |> Array.tryItem 1 |> Option.defaultValue ""
+
+            for _, family, rx in aliasRegexes do
+                if rx.IsMatch cell && not (acc |> Seq.exists (fun (f, _) -> f = family)) then
+                    let excerpt = line.Trim()
+
+                    acc.Add(
+                        family,
+                        ("lenient",
+                         i + 1,
+                         (if excerpt.Length > 200 then
+                              excerpt.Substring(0, 197) + "…"
+                          else
+                              excerpt))
+                    )
+
+    Map.ofSeq acc
+
+// ── The optional per-host registered-components dimension ───────────────────────
+//
+// `Custom` is emittable only for a `(moduleId, componentId)` pair the host has
+// registered, and the pack registers none — so the escape hatch is unreachable in
+// the shipped artefact BY DESIGN. A probe of the taught form (recorded in the
+// evaluation harness's own probe record, 2026-08-15) read the registry as a CLOSED
+// ENUMERATION in both families tried: zero foreign pairs, zero diversion under gap
+// pressure, zero erosion where a typed kind sufficed, and exact contract fidelity
+// from ONE exemplar. That is what licenses this dimension; it does not license a
+// many-component registry, a component overlapping a typed kind, or the weaker
+// families the probe did not reach — so the section is OFF unless a host asks for
+// it, and a host that asks supplies the content.
+//
+// NOTHING HERE IS HAND-AUTHORED CONTENT. The section is generated from the supplied
+// registry manifest: the closed-enumeration framing (the wording the probe measured),
+// then one block per component with its props contract and its own exemplar tree,
+// minified through the same scanner the pack's example blocks use.
+
+type private HostComponent =
+    { ModuleId: string
+      ComponentId: string
+      Summary: string
+      Props: (string * string * string) list
+      Notes: string list
+      Exemplar: string }
+
+type private HostRegistry =
+    { HostId: string
+      Components: HostComponent list
+      Sha256: string
+      Path: string }
+
+let private sha256Of (text: string) =
+    use sha = SHA256.Create()
+
+    "sha256:"
+    + (sha.ComputeHash(Encoding.UTF8.GetBytes(normalizeEol text))
+       |> Array.map (fun b -> b.ToString "x2")
+       |> String.concat "")
+
+let private readHostRegistry (path: string) : HostRegistry =
+    let raw = File.ReadAllText path
+    use doc = JsonDocument.Parse raw
+    let root = doc.RootElement
+
+    let str (el: JsonElement) name =
+        match el.TryGetProperty(name: string) with
+        | true, v when v.ValueKind = JsonValueKind.String -> defaultArg (Option.ofObj (v.GetString())) ""
+        | _ -> ""
+
+    match str root "kind" with
+    | "fuaran.pack.host-registry/v1" -> ()
+    | other -> failwithf "%s: expected kind 'fuaran.pack.host-registry/v1', found '%s'" path other
+
+    let manifestDir = Path.GetDirectoryName(Path.GetFullPath path)
+
+    let components =
+        root.GetProperty("components").EnumerateArray()
+        |> Seq.map (fun c ->
+            let exemplarRel = str c "exemplar"
+            let exemplarPath = Path.Combine(manifestDir, exemplarRel)
+
+            if not (File.Exists exemplarPath) then
+                failwithf "%s: component exemplar '%s' does not exist" path exemplarRel
+
+            { ModuleId = str c "moduleId"
+              ComponentId = str c "componentId"
+              Summary = str c "summary"
+              Props =
+                match c.TryGetProperty "props" with
+                | true, ps ->
+                    ps.EnumerateArray()
+                    |> Seq.map (fun p -> str p "name", str p "type", str p "doc")
+                    |> List.ofSeq
+                | _ -> []
+              Notes =
+                match c.TryGetProperty "notes" with
+                | true, ns -> ns.EnumerateArray() |> Seq.map _.GetString() |> List.ofSeq
+                | _ -> []
+              // Parsed here, not merely read: an exemplar that is not JSON would ride
+              // into a paid prefix as teaching, which is the one thing a generated
+              // surface must make impossible.
+              Exemplar = minifyJson ((File.ReadAllText exemplarPath).Trim()) })
+        |> List.ofSeq
+
+    if components.IsEmpty then
+        failwithf "%s: a host registry with no components teaches nothing — omit --host-manifest instead" path
+
+    { HostId = str root "host"
+      Components = components
+      Sha256 = sha256Of raw
+      Path = path }
+
+let private buildHostSection (registry: HostRegistry) =
+    let sb = StringBuilder()
+    let line (s: string) = sb.Append(s).Append '\n' |> ignore
+    let n = registry.Components.Length
+
+    line ""
+    line "## Registered components (this host)"
+    line ""
+
+    line (
+        "`Custom` is emittable only for a `(moduleId, componentId)` pair the host has registered. "
+        + "This section is that registry in full: this host registers exactly "
+        + (if n = 1 then "ONE pair" else $"{n} pairs")
+        + ". Any other pair does not exist here."
+    )
+
+    for c in registry.Components do
+        line ""
+        line $"### `{c.ModuleId}` / `{c.ComponentId}`"
+        line ""
+        line c.Summary
+        line ""
+
+        if c.Props.IsEmpty then
+            line "Props — this component accepts none."
+        else
+            line "Props — all are required, and no other prop is accepted:"
+            line ""
+
+            for name, kind, doc in c.Props do
+                line $"- `{name}` ({kind}) — {doc}"
+
+        for note in c.Notes do
+            line ""
+            line note
+
+        line ""
+        line "Exemplar emission:"
+        line ""
+        line "```json"
+        line c.Exemplar
+        line "```"
+
+    sb.ToString()
+
+// ── The index artefact ──────────────────────────────────────────────────────────
+
+let private jstr (s: string) = JsonSerializer.Serialize s
+
+let private polarityWord (needed: bool) =
+    if needed then "needed" else "never-needed"
+
+let private decisionWord (keep: bool) = if keep then "included" else "excluded"
+
+let private jbool (b: bool) = if b then "true" else "false"
+
+let private jstrOrNull (s: string option) =
+    match s with
+    | Some v -> jstr v
+    | None -> "null"
+
+let private buildSectionDemandIndex () =
+    let systemPromptText = File.ReadAllText(Path.Combine(packDir, "system-prompt.md"))
+    let keys = packUnits systemPromptText |> List.map fst
+    let sb = StringBuilder()
+    let line (s: string) = sb.Append(s).Append '\n' |> ignore
+
+    line "{"
+    line "  \"kind\": \"fuaran.pack.section-demand-index/v1\","
+    line "  \"generatedBy\": \"docs/tools/authoring-pack.fsx --write\","
+
+    line
+        "  \"what\": \"Per-family (section -> needed | never-needed | unknown) map, distilled from the flip record. `unknown` defaults to INCLUDED; `needed` wins a conflict with `never-needed`. Every verdict carries the record line that decided it.\","
+
+    line
+        $"  \"flipRecord\": {{ \"file\": \"SLIMMING-CENSUS.md\", \"sha256\": {jstr (sha256Of (File.ReadAllText censusPath))} }},"
+
+    line (
+        if File.Exists demandAttributionPath then
+            let records =
+                File.ReadAllLines demandAttributionPath
+                |> Array.filter (String.IsNullOrWhiteSpace >> not)
+                |> Array.length
+
+            $"  \"demandAttribution\": {{ \"file\": \"demand-attribution.jsonl\", \"sha256\": {jstr (sha256Of (File.ReadAllText demandAttributionPath))}, \"records\": {records} }},"
+        else
+            "  \"demandAttribution\": null,"
+    )
+
+    line
+        $"  \"pack\": {{ \"file\": \"system-prompt.md\", \"sha256\": {jstr (sha256Of systemPromptText)}, \"sections\": {keys.Length} }},"
+
+    line $"""  "families": [{packFamilies |> List.map jstr |> String.concat ", "}],"""
+    line "  \"dialect\": {"
+
+    packFamilies
+    |> List.map (fun f ->
+        match Map.tryFind f dialectVerdicts with
+        | Some(d, ln, ex) ->
+            $"    {jstr f}: {{ \"dialect\": {jstr d}, \"evidence\": {{ \"line\": {ln}, \"excerpt\": {jstr ex} }} }}"
+        | None -> $"    {jstr f}: {{ \"dialect\": \"canonical\", \"evidence\": null }}")
+    |> String.concat ",\n"
+    |> line
+
+    line "  },"
+    line "  \"sections\": ["
+
+    keys
+    |> List.map (fun key ->
+        let core = alwaysCoreReason key
+
+        let verdicts =
+            packFamilies
+            |> List.map (fun f ->
+                let cls, ev = demandClass key f
+
+                let evJson =
+                    ev
+                    |> List.map (fun e ->
+                        $"{{ \"line\": {e.Line}, \"alias\": {jstr e.Alias}, \"marker\": {jstr e.Marker}, \"polarity\": {jstr (polarityWord e.Needed)}, \"excerpt\": {jstr e.Excerpt} }}")
+                    |> String.concat ", "
+
+                $"        {jstr f}: {{ \"class\": {jstr cls}, \"evidence\": [{evJson}] }}")
+            |> String.concat ",\n"
+
+        let exemplars =
+            Map.tryFind key sectionExemplars
+            |> Option.defaultValue []
+            |> List.map jstr
+            |> String.concat ", "
+
+        String.concat
+            "\n"
+            [ "    {"
+              $"      \"key\": {jstr key},"
+              $"      \"alwaysCore\": {jbool core.IsSome},"
+              $"      \"alwaysCoreReason\": {jstrOrNull core},"
+              $"      \"pinnedExemplars\": [{exemplars}],"
+              "      \"families\": {"
+              verdicts
+              "      }"
+              "    }" ])
+    |> String.concat ",\n"
+    |> line
+
+    line "  ],"
+    line "  \"summary\": {"
+
+    packFamilies
+    |> List.map (fun f ->
+        let classOf k = fst (demandClass k f)
+        let needed = keys |> List.filter (fun k -> classOf k = "needed") |> List.length
+        let never = keys |> List.filter (fun k -> classOf k = "never-needed") |> List.length
+
+        let cuttable =
+            keys
+            |> List.filter (fun k -> classOf k = "never-needed" && (alwaysCoreReason k).IsNone)
+            |> List.length
+
+        $"    {jstr f}: {{ \"needed\": {needed}, \"neverNeeded\": {never}, \"unknownDefaultedIn\": {keys.Length - needed - never}, \"cuttable\": {cuttable} }}")
+    |> String.concat ",\n"
+    |> line
+
+    line "  }"
+    line "}"
+    sb.ToString()
+
+// ── The compiler ────────────────────────────────────────────────────────────────
+
+let private variantsRoot = Path.Combine(docsDir, "prompt-pack-variants")
+
+/// Compile one family's variant into `outDir`, reconciling each artefact through the
+/// shared drift/write path so a `--check` reports exactly what a `--write` would fix.
+let private compileFamily (family: string) (outDir: string) (host: HostRegistry option) =
+    let dialect, dialectWhy =
+        match Map.tryFind family dialectVerdicts with
+        | Some(d, ln, ex) -> d, $"flip record line {ln}: {ex}"
+        | None -> "canonical", "no per-family dialect verdict on record — canonical is the default artifact"
+
+    let sourceDir, sourceRel =
+        if dialect = "lenient" then
+            dialectPackDir, "docs/prompt-pack-lenient"
+        else
+            packDir, "docs/prompt-pack"
+
+    let sourcePromptPath = Path.Combine(sourceDir, "system-prompt.md")
+    let sourceFewShotPath = Path.Combine(sourceDir, "few-shot.jsonl")
+
+    if not (File.Exists sourcePromptPath) then
+        failwithf
+            "family '%s' compiles from %s, which has no system-prompt.md — regenerate it first (authoring-pack.fsx --write --dialect lenient)"
+            family
+            sourceRel
+
+    let sourcePrompt = normalizeEol (File.ReadAllText sourcePromptPath)
+    let sourceFewShot = normalizeEol (File.ReadAllText sourceFewShotPath)
+    let units = packUnits sourcePrompt
+
+    // A unit the index does not know (the dialect pack's own generated passage) is
+    // `unknown`, and `unknown` is included — so a new section can never be dropped
+    // by an index that has not seen it.
+    let decisions =
+        units
+        |> List.map (fun (key, body) ->
+            let cls, evidence = demandClass key family
+            let core = alwaysCoreReason key
+
+            let keep, why =
+                match cls, core with
+                | "never-needed", Some r -> true, $"always-core ({r}) — outranks the family's never-needed verdict"
+                | "never-needed", None -> false, "never-needed on this family's flip record"
+                | "needed", _ -> true, "needed on this family's flip record"
+                | _, Some r -> true, $"always-core ({r})"
+                | _, None -> true, "unknown on this family's flip record — included, the conservative default"
+
+            key, body, cls, core, keep, why, evidence)
+
+    let kept = decisions |> List.filter (fun (_, _, _, _, k, _, _) -> k)
+
+    let hostSection =
+        match host with
+        | Some r -> buildHostSection r
+        | None -> ""
+
+    let systemPrompt =
+        reassembleUnits (kept |> List.map (fun (k, b, _, _, _, _, _) -> k, b))
+        + hostSection
+
+    let variantSha = sha256Of (systemPrompt + "\n" + sourceFewShot)
+
+    let manifest =
+        let sb = StringBuilder()
+        let line (s: string) = sb.Append(s).Append '\n' |> ignore
+
+        let coreSections =
+            decisions
+            |> List.choose (fun (k, _, _, core, _, _, _) ->
+                core
+                |> Option.map (fun r ->
+                    let ex =
+                        Map.tryFind k sectionExemplars
+                        |> Option.defaultValue []
+                        |> List.map jstr
+                        |> String.concat ", "
+
+                    $"      {{ \"key\": {jstr k}, \"because\": {jstr r}, \"pinnedExemplars\": [{ex}] }}"))
+
+        let included = kept.Length
+        let excluded = decisions.Length - included
+
+        let unknownDefaulted =
+            decisions
+            |> List.filter (fun (_, _, c, _, k, _, _) -> k && c = "unknown")
+            |> List.length
+
+        line "{"
+        line "  \"kind\": \"fuaran.pack.variant/v1\","
+        line $"  \"family\": {jstr family},"
+        line "  \"wireFormatVersion\": \"v1\","
+
+        let hostArgs =
+            if host.IsSome then
+                " --host-manifest <path> --out <dir>"
+            else
+                ""
+
+        line $"  \"generatedBy\": \"docs/tools/authoring-pack.fsx --write --family {family}{hostArgs}\","
+
+        line "  \"artifacts\": { \"systemPrompt\": \"system-prompt.md\", \"fewShot\": \"few-shot.jsonl\" },"
+
+        line "  \"schema\": \"../../prompt-pack/schema.json\","
+
+        line
+            "  \"schemaNote\": \"The wire schema is the CONTRACT, not a compiled dimension — every variant shares the canonical artefact rather than carrying a copy.\","
+
+        line $"  \"variantSha256\": {jstr variantSha},"
+
+        line
+            $"  \"bytes\": {{ \"systemPrompt\": {Encoding.UTF8.GetByteCount systemPrompt}, \"fewShot\": {Encoding.UTF8.GetByteCount sourceFewShot}, \"total\": {Encoding.UTF8.GetByteCount systemPrompt
+                                                                                                                                                                + Encoding.UTF8.GetByteCount sourceFewShot} }},"
+
+        line "  \"source\": {"
+        line $"    \"pack\": {jstr sourceRel},"
+        line $"    \"systemPromptSha256\": {jstr (sha256Of sourcePrompt)},"
+        line $"    \"fewShotSha256\": {jstr (sha256Of sourceFewShot)}"
+        line "  },"
+        line "  \"index\": {"
+        line "    \"file\": \"../../tools/section-demand-index.json\","
+        line $"    \"sha256\": {jstr (sha256Of (buildSectionDemandIndex ()))}"
+        line "  },"
+        line "  \"dimensions\": {"
+        line $"    \"dialect\": {{ \"value\": {jstr dialect}, \"why\": {jstr dialectWhy} }},"
+
+        line
+            $"    \"sections\": {{ \"included\": {included}, \"excluded\": {excluded}, \"unknownDefaultedIn\": {unknownDefaulted} }},"
+
+        line (
+            match host with
+            | None -> "    \"perHost\": { \"enabled\": false, \"why\": \"default OFF — no --host-manifest supplied\" }"
+            | Some r ->
+                $"    \"perHost\": {{ \"enabled\": true, \"host\": {jstr r.HostId}, \"components\": {r.Components.Length}, \"registrySha256\": {jstr r.Sha256} }}"
+        )
+
+        line "  },"
+        line "  \"alwaysCore\": {"
+
+        line
+            "    \"rule\": \"The wire shape, the signature catalogue, the Rules, the preamble, and every section two or more families' flip records both name. Enumerated, never implicit — a compiled pack must show what was out of the compiler's reach.\","
+
+        line "    \"sections\": ["
+        line (String.concat ",\n" coreSections)
+        line "    ]"
+        line "  },"
+        line "  \"sections\": ["
+
+        decisions
+        |> List.map (fun (key, _, cls, core, keep, why, evidence) ->
+            let evJson =
+                evidence
+                |> List.map (fun e ->
+                    $"{{ \"line\": {e.Line}, \"alias\": {jstr e.Alias}, \"marker\": {jstr e.Marker}, \"polarity\": {jstr (polarityWord e.Needed)} }}")
+                |> String.concat ", "
+
+            String.concat
+                "\n"
+                [ "    {"
+                  $"      \"key\": {jstr key},"
+                  $"      \"decision\": {jstr (decisionWord keep)},"
+                  $"      \"class\": {jstr cls},"
+                  $"      \"alwaysCore\": {jbool core.IsSome},"
+                  $"      \"why\": {jstr why},"
+                  $"      \"evidence\": [{evJson}]"
+                  "    }" ])
+        |> String.concat ",\n"
+        |> line
+
+        line "  ]"
+        line "}"
+        sb.ToString()
+
+    // The reported label is the artefact's own directory, so a `--out` run reports the
+    // path it actually wrote rather than the committed one it deliberately did not.
+    let label (name: string) =
+        Path.Combine(Path.GetFileName outDir, name)
+
+    reconcileFile (label "system-prompt.md") (Path.Combine(outDir, "system-prompt.md")) systemPrompt
+    reconcileFile (label "few-shot.jsonl") (Path.Combine(outDir, "few-shot.jsonl")) sourceFewShot
+    reconcileFile (label "manifest.json") (Path.Combine(outDir, "manifest.json")) manifest
+
+    printfn
+        "  %-14s dialect=%-9s sections %d/%d kept  %d B  %s"
+        family
+        dialect
+        kept.Length
+        decisions.Length
+        (Encoding.UTF8.GetByteCount systemPrompt
+         + Encoding.UTF8.GetByteCount sourceFewShot)
+        variantSha
+
 // ── Run ──────────────────────────────────────────────────────────────────────────
 if mineMode then
     let universe, covered, chosen = mine ()
@@ -2647,12 +3693,41 @@ if mineMode then
     exit 0
 
 printfn
-    "Fuaran authoring pack — %s mode%s%s"
+    "Fuaran authoring pack — %s mode%s%s%s"
     (if writeMode then "write" else "check")
     (if minifyExamples then " (minified pack examples)" else "")
     (if dialectMode then " (lenient dialect variant)" else "")
+    (match familyArg with
+     | Some f -> $" (per-family compiled pack: {f})"
+     | None -> "")
 
-if dialectMode then
+if familyMode then
+    // ── Per-family compiled packs ONLY (Phase 843). Like the dialect run, this is
+    // its own artefact set: a family run never touches the canonical pack, and a
+    // bare --write never touches a variant.
+    let families =
+        match familyArg with
+        | Some "all" -> packFamilies
+        | Some f when List.contains f packFamilies -> [ f ]
+        | Some f ->
+            eprintfn "unknown family '%s' — known: %s" f (String.concat ", " packFamilies)
+            usage ()
+        | None -> []
+
+    let host = hostManifestArg |> Option.map readHostRegistry
+
+    match host with
+    | Some r -> printfn "  host registry %s — %d component(s), %s" r.HostId r.Components.Length r.Sha256
+    | None -> ()
+
+    for family in families do
+        let outDir =
+            match outArg with
+            | Some root -> Path.Combine(root, family)
+            | None -> Path.Combine(variantsRoot, family)
+
+        compileFamily family outDir host
+elif dialectMode then
     // ── Dialect surfaces ONLY (Phase 840). The canonical pack is a different
     // invocation's artefact set; neither run can touch the other's files.
     //
@@ -2729,6 +3804,17 @@ else
         (Path.Combine(packDir, "DIALECT-APPENDIX.md"))
         (buildDialectAppendix ())
 
+    // 6. The section-demand index (Phase 843). Tooling output on the coverage-matrix
+    //    precedent — it is the compiler's INPUT evidence, not pack content, so it
+    //    lives beside the generator. Reconciled by the DEFAULT run because its two
+    //    inputs (the flip record and the live section list) both live in this repo:
+    //    editing the census without regenerating the index would leave the compiler
+    //    reading a map of a pack that no longer exists, silently.
+    reconcileFile
+        (Path.Combine("tools", "section-demand-index.json"))
+        (Path.Combine(docsDir, "tools", "section-demand-index.json"))
+        (buildSectionDemandIndex ())
+
 // ── Verdict ────────────────────────────────────────────────────────────────────
 match writeMode, drift with
 | true, _ ->
@@ -2744,7 +3830,10 @@ match writeMode, drift with
         eprintfn "  - %s" d
 
     eprintfn
-        "Regenerate with: dotnet fsi docs/tools/authoring-pack.fsx --write%s"
+        "Regenerate with: dotnet fsi docs/tools/authoring-pack.fsx --write%s%s"
         (if dialectMode then " --dialect lenient" else "")
+        (match familyArg with
+         | Some f -> $" --family {f}"
+         | None -> "")
 
     exit 1

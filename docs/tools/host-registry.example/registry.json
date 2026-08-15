@@ -1,0 +1,22 @@
+{
+  "kind": "fuaran.pack.host-registry/v1",
+  "host": "example-host",
+  "_note": "A WORKED EXAMPLE of the optional per-host dimension, not a shipped registration. `Custom` is emittable only for a (moduleId, componentId) pair the host has registered, and the pack registers none — so the escape hatch is unreachable in the default artefact by design. A host that DOES register one supplies a manifest of this shape and compiles its own variant: `dotnet fsi docs/tools/authoring-pack.fsx --write --family <id> --host-manifest <path> --out <dir>`. The dimension is OFF unless --host-manifest is passed, and a run carrying one may not write into the committed variant set (--out is mandatory beside it).",
+  "_evidence": "The taught form is the one a 2026-08-15 probe measured across two families: the registry stated as a CLOSED ENUMERATION ('this is the registry in full; any other pair does not exist here') plus ONE exemplar per component. That reading gave zero foreign pairs, zero diversion under gap pressure, zero substitution where a typed kind sufficed, and exact contract fidelity. It does not license a many-component registry, a component overlapping a typed kind, or families the probe did not reach — which is why this dimension defaults off and why scale is a measured question, not a generated one.",
+  "components": [
+    {
+      "moduleId": "host-ui",
+      "componentId": "paginator",
+      "summary": "A pagination control for a list or table: it shows one page at a time and lets the reader move between pages.",
+      "props": [
+        { "name": "pageSize", "type": "integer", "doc": "how many rows are shown per page." },
+        { "name": "totalItems", "type": "integer", "doc": "the total number of rows across all pages." },
+        { "name": "targetNodeId", "type": "string", "doc": "the `id` of the node this control pages." }
+      ],
+      "notes": [
+        "Page changes are wired host-side against `targetNodeId`, so there is no callback prop. The wire's no-closure rule applies inside `props` exactly as it does everywhere else: never place a function, an expression object, or a `*Fn` payload in a prop."
+      ],
+      "exemplar": "orders-pager.json"
+    }
+  ]
+}

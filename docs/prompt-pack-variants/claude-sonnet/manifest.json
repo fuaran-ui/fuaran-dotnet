@@ -1,0 +1,231 @@
+{
+  "kind": "fuaran.pack.variant/v1",
+  "family": "claude-sonnet",
+  "wireFormatVersion": "v1",
+  "generatedBy": "docs/tools/authoring-pack.fsx --write --family claude-sonnet",
+  "artifacts": { "systemPrompt": "system-prompt.md", "fewShot": "few-shot.jsonl" },
+  "schema": "../../prompt-pack/schema.json",
+  "schemaNote": "The wire schema is the CONTRACT, not a compiled dimension — every variant shares the canonical artefact rather than carrying a copy.",
+  "variantSha256": "sha256:330961fb858c29e245784ae210579fa67f4b815cb1b8779ce9b1fed8fe298266",
+  "bytes": { "systemPrompt": 69340, "fewShot": 11551, "total": 80891 },
+  "source": {
+    "pack": "docs/prompt-pack",
+    "systemPromptSha256": "sha256:e009d4c196b3b54e3e5d9f1c917490a848d52067a903a3d9d6b9f7b65db1bc33",
+    "fewShotSha256": "sha256:965f98eb3aac2d330ad4be1d66053ee74968c8fe16052f8194344205d118e2f2"
+  },
+  "index": {
+    "file": "../../tools/section-demand-index.json",
+    "sha256": "sha256:bd6f7a6d4fb7d882456283d14fa1f40dc485cdc4cbd6b7baf9cc0e3fde5c948a"
+  },
+  "dimensions": {
+    "dialect": { "value": "canonical", "why": "no per-family dialect verdict on record \u2014 canonical is the default artifact" },
+    "sections": { "included": 24, "excluded": 0, "unknownDefaultedIn": 24 },
+    "perHost": { "enabled": false, "why": "default OFF — no --host-manifest supplied" }
+  },
+  "alwaysCore": {
+    "rule": "The wire shape, the signature catalogue, the Rules, the preamble, and every section two or more families' flip records both name. Enumerated, never implicit — a compiled pack must show what was out of the compiler's reach.",
+    "sections": [
+      { "key": "", "because": "preamble \u2014 the framing every posture reads", "pinnedExemplars": [] },
+      { "key": "The canonical wire shape (read this twice)", "because": "wire-shape \u2014 the emission contract itself", "pinnedExemplars": ["metric-1"] },
+      { "key": "The node kinds you can emit \u2014 the signature catalogue", "because": "type-surface \u2014 the spelling-complete signature catalogue", "pinnedExemplars": [] },
+      { "key": "Deriving ONE value from data \u2014 Transform in a scalar slot", "because": "cross-family-flip \u2014 needed by claude-opus, gemini, gpt", "pinnedExemplars": ["lenient-scalar-transform-composition-compact"] },
+      { "key": "Distinguishing rows by value \u2014 the toned pill", "because": "cross-family-flip \u2014 needed by claude-opus, gemini, gpt, grok", "pinnedExemplars": ["grid-toned-pill"] },
+      { "key": "Conditional rendering \u2014 \u0060Switch\u0060 branches on any binding", "because": "cross-family-flip \u2014 needed by claude-opus, grok", "pinnedExemplars": ["switch-on-selection"] },
+      { "key": "Rules", "because": "contract \u2014 the self-wiring / editable / Call-into rules", "pinnedExemplars": ["lenient-grid-field-named-compact"] }
+    ]
+  },
+  "sections": [
+    {
+      "key": "",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": true,
+      "why": "always-core (preamble \u2014 the framing every posture reads)",
+      "evidence": []
+    },
+    {
+      "key": "The canonical wire shape (read this twice)",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": true,
+      "why": "always-core (wire-shape \u2014 the emission contract itself)",
+      "evidence": []
+    },
+    {
+      "key": "Containers nest under \u0060children\u0060",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Actions on inputs",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Actions on inputs/Submitting a form \u2014 \u0060Call\u0060 posts the fields",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Editing an existing tree",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "The node kinds you can emit \u2014 the signature catalogue",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": true,
+      "why": "always-core (type-surface \u2014 the spelling-complete signature catalogue)",
+      "evidence": []
+    },
+    {
+      "key": "Numbers vs text: \u0060Metric\u0060 vs \u0060Fact\u0060",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Selected, pre-selected, and derived state \u2014 the three idioms",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Transform \u2014 the embedded-data canonical shape",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Deriving ONE value from data \u2014 Transform in a scalar slot",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": true,
+      "why": "always-core (cross-family-flip \u2014 needed by claude-opus, gemini, gpt)",
+      "evidence": []
+    },
+    {
+      "key": "Grids without a column count",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Which tabular shape \u2014 \u0060columns\u0060 vs \u0060staticRows\u0060 vs a Markdown table",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Distinguishing rows by value \u2014 the toned pill",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": true,
+      "why": "always-core (cross-family-flip \u2014 needed by claude-opus, gemini, gpt, grok)",
+      "evidence": []
+    },
+    {
+      "key": "Distinguishing rows by value \u2014 the toned pill/Closure cells cannot be authored from the wire \u2014 no \u0060*Fn\u0060 payloads, no invented bindings",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Prompt-given data is \u0060Static\u0060 \u2014 queries are for host data",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Filters must be WIRED \u2014 declaring them is not enough",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Dates and times \u2014 always declare the presentation",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Dates and times \u2014 always declare the presentation/\u0022Today\u0022 is a binding, never a literal",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Conditional rendering \u2014 \u0060Switch\u0060 branches on any binding",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": true,
+      "why": "always-core (cross-family-flip \u2014 needed by claude-opus, grok)",
+      "evidence": []
+    },
+    {
+      "key": "Empty states and other actionable messages \u2014 a Card \u0060Box\u0060, not a \u0060Callout\u0060",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "On/off controls \u2014 \u0060Toggle\u0060 is the switch, \u0060Checkbox\u0060 is the tick",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Style vocabularies \u2014 density \u0026 prominence, not font styling",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": false,
+      "why": "unknown on this family\u0027s flip record \u2014 included, the conservative default",
+      "evidence": []
+    },
+    {
+      "key": "Rules",
+      "decision": "included",
+      "class": "unknown",
+      "alwaysCore": true,
+      "why": "always-core (contract \u2014 the self-wiring / editable / Call-into rules)",
+      "evidence": []
+    }
+  ]
+}

@@ -408,6 +408,24 @@ let private registerTargets () =
 
     "Build" ==> "AuthoringPackDialect" ==> "Check" |> ignore
 
+    // Phase 843 — the per-family compiled pack variants' drift check. A pure fsi pass
+    // like AuthoringPack: each variant is compiled from committed inputs only (the
+    // section-demand index, the flip record's per-family dialect verdicts, and the
+    // canonical or lenient pack it selects), so nothing here needs the decoder. It IS
+    // in the gate rather than left to the operator: a pack regen that did not
+    // recompile the variants would leave every compiled artefact silently describing
+    // a pack that no longer exists, and a variant's whole value is being attributable.
+    Target.create "AuthoringPackFamilies" (fun _ ->
+        dotnet
+            [ "fsi"
+              Path.Combine(repoRoot, "docs", "tools", "authoring-pack.fsx")
+              "--check"
+              "--family"
+              "all" ]
+            repoRoot)
+
+    "AuthoringPackFamilies" ==> "Check" |> ignore
+
 [<EntryPoint>]
 let main args =
     init args
