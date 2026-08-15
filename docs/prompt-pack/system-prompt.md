@@ -394,7 +394,7 @@ chip is `SegmentedChoice`, a search/text chip is `Text`, a numeric range chip is
 
 ## Numbers vs text: `Metric` vs `Fact`
 
-`Metric` is **numeric-only** — its `value`† resolves to a number (KPI value, count,
+`Metric` is **numeric-only** — its Binding-enveloped `value` resolves to a number (KPI value, count,
 rate; optionally trended). A text value in `Metric.value` is a **type error** and is
 rejected. A labeled TEXT fact — "Patient: Alice Smith", "Policy: POL-99382-X", a
 status word, an assignee name — belongs in **`Fact`**:
@@ -408,7 +408,7 @@ optional). Decision rule: **would you chart or trend it? `Metric`. Would you rea
 aloud as a labeled string? `Fact`.** Rows of numeric label/value pairs inside a
 `SummaryList` use `LabelValueRow` (numeric, formattable). And a **share of a capacity
 or progress toward a limit** ("120 of 400 units", "68% complete") reads as a
-**`Progress`** fill bar (`fraction`† in 0..1), not a Metric — reach for `Metric` when
+**`Progress`** fill bar (a Binding-enveloped `fraction` in 0..1), not a Metric — reach for `Metric` when
 the number stands alone, `Progress` when the prompt frames it against a maximum.
 
 Two hard rules on the numbers themselves. **Compute every number you emit** —
@@ -782,7 +782,7 @@ declaration displays as the raw number and fails the task's data checks. The sur
   slot over a `Format` binding — `{ "$type": "Bound", "binding": { "$type": "Format",
   "format": { "$type": "Date", "dateStyle": "Medium" }, "locale": { "$type":
   "Ambient" }, "source": { "$type": "Static", "value": 1755500000 } } }`. The `source`
-  is **Unix-epoch seconds**; `dateStyle` is `Short` · `Medium` · `Long` · `Full`.
+  is **Unix-epoch seconds**; `dateStyle` spellings are in the catalogue's `Format` row.
   For "3 days ago" / "in 2 hours", use `{ "$type": "RelativeTime", "unit": "Day" }`
   with the source as a **signed count** of that unit.
 - **A date column or date-formatted metric**: `"format": { "$type": "Date",
@@ -935,22 +935,15 @@ only when you mean it, and only a catalogue-listed spelling; an unknown case fai
    comments, no `NaN`/`Infinity`, no hex literals.
 2. `id` is a non-empty string, unique across the whole tree, and reused on re-emit so
    edits address the same node.
-3. Keep emissions small by omitting what is *genuinely* optional — never by dropping a
-   required field. Omittable: the node-level `state` / `style` / `accessibility` keys
-   (when empty / all-default) and each kind's **Optional**-column fields (table above).
-   Always present: `id`, `kind.$type`, and each kind's **Required**-column fields —
-   the decoder raises `MISSING_FIELD` on an absent required field; it never fills in a
-   default for you.
-4. Match each field's type: a number binding gets a number, a text slot gets text.
-   Literal text is the **bare JSON string** (`"body": "Saved."`); dynamic text wraps a
-   `Binding` in `Bound` — `{ "$type": "Bound", "binding": { "$type": "Query", "name":
-   "…" } }` — and translated text is `I18n`. A bare `Query` / `State` / any other
+3. Keep emissions small by omitting what is *genuinely* optional — the node-level
+   `state` / `style` / `accessibility` keys (when empty / all-default) and every
+   `?`-marked catalogue field — never by dropping an unmarked one.
+4. Match each field's type per the catalogue. A bare `Query` / `State` / any other
    `Binding` `$type` directly in a text slot is rejected (`UNKNOWN_DU_CASE`), and
    there is no `Template` text source. The decoder rejects type mismatches with a
    precise path.
-5. The companion JSON schema (`schema.json`, Draft 2020-12) is the exhaustive field
-   reference; the `few-shot.jsonl` examples are canonical request→tree pairs. When a
-   field's name or shape is in doubt, the schema and the few-shot corpus are authoritative.
+5. When a field's name or shape is in doubt, the signature catalogue is the exhaustive
+   reference and the `few-shot.jsonl` examples are canonical request→tree pairs.
 6. **Every control is self-wiring — never author event handlers, and omit `value`
    unless you mean a specific binding.** The minimal control omits BOTH the handler
    (`onChange` / `onToggle`) and `value`; an absent `value` auto-binds the control to
