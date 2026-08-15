@@ -628,7 +628,12 @@ let fewShot =
       "heading-1", "Add a level-2 section heading reading 'Channel performance'."
       "metric-1",
       "Show revenue as a headline metric, formatted as GBP currency, with a +7% upward trend versus last month."
-      "markdown-1", "Render a short markdown note that says 'Updated hourly.'."
+      // markdown-1: cut 2026-08-15 (Phase 841 minimisation). The 834 census read it as
+      // "unique", meaning unique among few-shot FIXTURES; the coverage matrix asks the
+      // stronger question and finds every rule it carries already carried elsewhere —
+      // `switch-on-selection`'s default branch is a Markdown node, in the system prompt,
+      // where every posture reads it. Both the redundancy prune and greedy set-cover
+      // drop it independently.
       "callout-1", "Warn the user with a dismissable callout that live data is delayed."
       "btn-1", "A primary 'Refresh' button with a refresh icon, disabled while the 'loading' state flag is true."
       "form-1",
@@ -637,8 +642,12 @@ let fewShot =
       "A filter strip that scopes a dataset: a search box, a tier dropdown, and an age range — self-wiring, no host code (each chip omits onChange and its value reads its own filter)."
       "filters-date-range",
       "A filter strip with a single date-range chip: pick a start and end date in one control, scoping everything downstream through one filter param."
-      "lenient-grid-transform-param-compact",
-      "A grid of embedded department data scoped by a filter: the transform's filter step compares the dept column to a param sourced from the 'dept' filter chip, so the grid re-filters as the chip changes."
+      // lenient-grid-transform-param-compact: cut 2026-08-15 (Phase 841 minimisation).
+      // Same correction as markdown-1 — "unique" in the 834 census meant not-a-
+      // system-prompt-block, not carrying a rule nothing else carries. The wired-filter
+      // composition it demonstrates (Filter param → pipeline `param` reference → grid)
+      // is exactly what `lenient-filterable-static-dashboard-compact` demonstrates, and
+      // that one IS a system-prompt block.
       // grid-toned-pill: cut 2026-08-15 (Phase 834 dedup — system-prompt block).
       "query-dependson",
       "A revenue metric fed by a host 'orders' query that declares it depends on the status and region filters — the host re-runs the query when either filter changes."
