@@ -656,9 +656,14 @@ let fewShot =
       "custom-1", "Emit the host-registered custom 'trend-card' component from the 'analytics' module."
       "op-replacebinding",
       "Edit the existing tree: pin node 'metric-1' to a static figure of 99.5 by replacing its Source binding."
-      "op-insertchild", "Edit the existing tree: add the revenue metric to the empty dashboard."
-      "op-reorderchildren",
-      "Edit the existing tree: put the markdown note above the metric in 'stack-1' by stating the order."
+      // op-insertchild + op-reorderchildren: cut 2026-08-15 (Phase 841 minimisation,
+      // second pass). §Editing an existing tree carries a hand-authored `Batch` block
+      // that inserts a child AND states the resulting order, on the surface every
+      // posture reads — so both entries were teaching a second time what the system
+      // prompt already teaches once. The first pass missed this because the coverage
+      // model only read corpus-derived marker blocks; teaching it to read the pack's
+      // hand-authored JSON too is what made the redundancy visible.
+      // `op-replacebinding` stays: it is the section's marker example and caution-listed.
       // Cut 2026-08-15 (Phase 834 dedup — each renders as a system-prompt example
       // block, which the flip record shows is the operative surface):
       //   lenient-filterable-static-dashboard-compact, master-detail-multi-field
@@ -1297,9 +1302,45 @@ let private inventoryEscapes =
     |> Set.ofSeq
     |> fun observed -> Set.difference observed taughtRules
 
+/// The pack's HAND-AUTHORED JSON blocks — the fenced examples that are not corpus
+/// marker blocks. There is at least one and it is load-bearing: §Editing an existing
+/// tree illustrates `Batch` + `InsertChild` + `ReorderChildren` against ids from the
+/// `composite-root` tree, which is precisely why it cannot be a corpus fixture (no
+/// fixture knows another fixture's ids). It is teaching on the surface every posture
+/// reads, so a coverage model blind to it reports gaps the pack does not have — and
+/// would send a reinvestment pass to fill one that is already filled.
+let private inlineRules =
+    let text =
+        normalizeEol (File.ReadAllText(Path.Combine(packDir, "system-prompt.md")))
+
+    let stripped = markerRegex.Replace(text, "")
+
+    Regex.Matches(stripped, @"```json\n(?<body>.*?)\n```", RegexOptions.Singleline)
+    |> Seq.map (fun m -> m.Groups.["body"].Value)
+    |> Seq.fold
+        (fun acc body ->
+            try
+                use doc = JsonDocument.Parse body
+                let root = doc.RootElement
+
+                let rootDef =
+                    if sHas "id" root && sHas "kind" root then
+                        "Node"
+                    else
+                        "TreeOp"
+
+                Set.union acc (Set.union (schemaRules rootDef (Some root)) (idiomRules root))
+            with _ ->
+                // An illustrative fragment that is not a whole document (a spec excerpt)
+                // contributes nothing rather than failing the run.
+                acc)
+        Set.empty
+
+/// Coverage always starts from the hand-authored blocks: they are on the page whatever
+/// the exemplar set does, so they are the floor every candidate is scored against.
 let private coverageOf (ids: string list) =
     ids
-    |> List.fold (fun acc id -> Set.union acc (Map.find id fixtureRules)) Set.empty
+    |> List.fold (fun acc id -> Set.union acc (Map.find id fixtureRules)) inlineRules
 
 /// Minified bytes — the currency an exemplar actually spends in the paid prefix.
 let private costOf (id: string) = (minifyJson (fixtureRaw id)).Length
