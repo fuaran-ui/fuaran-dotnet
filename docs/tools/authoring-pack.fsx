@@ -71,14 +71,22 @@ let packDir = Path.Combine(docsDir, "prompt-pack")
 let argv = fsi.CommandLineArgs |> Array.skip 1
 
 let private usage () =
-    eprintfn "usage: dotnet fsi authoring-pack.fsx (--write | --check) [--minify-examples | --pretty-examples]"
+    eprintfn "usage: dotnet fsi authoring-pack.fsx (--write | --check | --mine) [--minify-examples | --pretty-examples]"
+
     exit 2
 
-let writeMode =
+// `--mine` (Phase 841) is a READ-ONLY mode: it runs the set-cover exemplar miner over
+// the generated rule→fixture coverage matrix and prints the report. It writes nothing,
+// so it can be run against a dirty tree without touching the pack.
+let mode =
     match argv |> Array.tryHead with
-    | Some "--write" -> true
-    | Some "--check" -> false
+    | Some "--write" -> "write"
+    | Some "--check" -> "check"
+    | Some "--mine" -> "mine"
     | _ -> usage ()
+
+let writeMode = mode = "write"
+let mineMode = mode = "mine"
 
 // An unrecognised trailing argument is a typo, not a no-op: silently ignoring
 // `--minify-example` would emit an emission the caller did not choose.
@@ -682,7 +690,892 @@ let buildFewShotJsonl () =
     |> String.concat "\n"
     |> fun body -> body + "\n"
 
+// ── Rule → fixture coverage matrix (Phase 841) ───────────────────────────────────
+// Exemplar selection used to be accretion: one example per lesson, added when a
+// lesson was learned and never re-examined against the rest. This section makes it an
+// OPTIMISATION — score every corpus fixture by which taught rules it exercises, then
+// choose the smallest set whose joint coverage matches what the pack already teaches.
+//
+// The taught-rule inventory has three families, and only the third is authored:
+//
+//   * `case:<Union>.<Case>`  — every $type-discriminated alternative of every schema
+//     union (NodeKind and its four sub-unions, Binding, Action, TreeOp, CellKindErased,
+//     Format, …). Enumerable from `schema.json`, so the inventory cannot go stale.
+//   * `field:<Scope>.<name>` — every OPTIONAL property of every record/case. Required
+//     properties are implied by the case rule (a fixture cannot carry the case without
+//     them), so listing them would inflate coverage with rules nothing can miss.
+//   * `enum:<Enum>=<value>`  — every value of every closed string vocabulary, keyed by
+//     the enum's def name (matching the signature catalogue's "declared once by name").
+//
+//   * `idiom:<name>` — the semantic residue: teaching that is a COMPOSITION rather than
+//     a symbol, so no schema walk can see it (a filter chip wired through a Transform
+//     param; a Transform in a scalar slot; a container nested inside a wrapper). Each is
+//     a structural predicate below, not a hand-maintained fixture list — a fixture that
+//     stops exercising an idiom loses the rule at the next regen rather than rotting.
+//   * `pipestep:` / `pipefn:` / `pipeop:` / `pipeagg:` — the Transform pipeline algebra.
+//     `schema.json` models `pipeline` as `any[]` (which is why the 838 catalogue could
+//     not carry it either), so this vocabulary is enumerated from the corpus itself —
+//     the corpus is the oracle for the one surface the schema does not constrain.
+//
+// The matrix is GENERATED into `docs/tools/coverage-matrix.json` and reconciled by
+// `--check` like every other derived surface, so a fixture added to the corpus without
+// a regen fails the build rather than silently ageing the mining evidence.
+
+let private schemaDoc = JsonDocument.Parse(File.ReadAllText schemaSrcPath)
+let private schemaDefs = schemaDoc.RootElement.GetProperty "$defs"
+
+let private sHas (n: string) (el: JsonElement) =
+    el.ValueKind = JsonValueKind.Object
+    && (match el.TryGetProperty n with
+        | true, _ -> true
+        | _ -> false)
+
+let private sProp (n: string) (el: JsonElement) = el.GetProperty n
+
+let private sRefName (el: JsonElement) =
+    (sProp "$ref" el).GetString().Substring "#/$defs/".Length
+
+let private sIsStringEnum (el: JsonElement) =
+    sHas "enum" el
+    && (match el.TryGetProperty "type" with
+        | true, t -> t.ValueKind = JsonValueKind.String && t.GetString() = "string"
+        | _ -> false)
+
+/// Flatten nested `oneOf` wrappers (TextSource's inner DU) into one alternative list.
+let rec private sAlts (el: JsonElement) : JsonElement seq =
+    if sHas "oneOf" el && not (sHas "properties" el) && not (sHas "allOf" el) then
+        (sProp "oneOf" el).EnumerateArray() |> Seq.collect sAlts
+    else
+        Seq.singleton el
+
+/// The `$type` const an alternative discriminates on, if it is a tagged case at all.
+let private sCaseTag (alt: JsonElement) : string option =
+    let carrier =
+        if sHas "allOf" alt then
+            (sProp "allOf" alt).EnumerateArray() |> Seq.tryHead
+        elif sHas "properties" alt then
+            Some alt
+        else
+            None
+
+    match carrier with
+    | Some c when sHas "properties" c ->
+        match (sProp "properties" c).TryGetProperty "$type" with
+        | true, t when sHas "const" t -> Some((sProp "const" t).GetString())
+        | _ -> None
+    | _ -> None
+
+/// Does this union (transitively through `$ref` alternatives) declare `tg`?
+///
+/// `NodeKind`'s alternatives are `$ref`s to the four sub-unions, so a `Box` node's tag
+/// matches NONE of them directly — the observe walk has to know to descend. Getting
+/// this wrong is silent: the walk records the `Node` fields, finds no case, and returns
+/// a plausible-looking rule set an order of magnitude too small.
+let rec private unionHasTag (el: JsonElement) (tg: string) : bool =
+    sAlts el
+    |> Seq.exists (fun a ->
+        match sCaseTag a with
+        | Some t -> t = tg
+        | None -> sHas "$ref" a && unionHasTag (schemaDefs.GetProperty(sRefName a)) tg)
+
+/// Schema-directed walk. With `json = None` it ENUMERATES every rule the schema can
+/// express from `rootDef` down (the taught inventory); with `json = Some tree` it
+/// records only the rules that tree actually exercises. One traversal, two modes, so
+/// an inventory rule and an observed rule are spelled by the same code — a coverage
+/// figure cannot drift from its denominator.
+let private schemaRules (rootDef: string) (json: JsonElement option) : Set<string> =
+    let acc = System.Collections.Generic.HashSet<string>()
+    let emit (r: string) = acc.Add r |> ignore
+    // Enumeration mode only: `Node` is recursive, so a def is expanded once. Rules are
+    // keyed by def name rather than by path, so one expansion is complete.
+    let visited = System.Collections.Generic.HashSet<string>()
+
+    // A string an enum slot accepts but does not DECLARE is a §16 lenient alias
+    // (`"Danger"` for `Critical`, `"row"` for `Horizontal`). It is a distinct rule, not
+    // the canonical one: the exemplar's bytes are what the model reads, so a fixture
+    // spelling the alias teaches the alias. Recording it as the canonical value would
+    // credit teaching that is not on the page.
+    let emitEnum (name: string) (enumSch: JsonElement) (v: string) =
+        let declared =
+            (sProp "enum" enumSch).EnumerateArray()
+            |> Seq.map (fun e -> e.GetString())
+            |> Set.ofSeq
+
+        if declared.Contains v then
+            emit $"enum:{name}={v}"
+        else
+            emit $"alias:{name}={v}"
+
+    let rec go (scope: string) (sch: JsonElement) (j: JsonElement option) =
+        if sch.ValueKind = JsonValueKind.True then
+            ()
+        elif sHas "$ref" sch then
+            let n = sRefName sch
+            let target = schemaDefs.GetProperty n
+
+            if sIsStringEnum target then
+                match j with
+                | Some v when v.ValueKind = JsonValueKind.String -> emitEnum n target (v.GetString())
+                | Some _ -> ()
+                | None ->
+                    for e in (sProp "enum" target).EnumerateArray() do
+                        emit $"enum:{n}={e.GetString()}"
+            elif j.IsSome || visited.Add n then
+                go n target j
+        elif sHas "allOf" sch then
+            for p in (sProp "allOf" sch).EnumerateArray() do
+                go scope p j
+        elif sHas "oneOf" sch then
+            let alts = sAlts sch |> Seq.toArray
+
+            match j with
+            | Some je when je.ValueKind = JsonValueKind.Object ->
+                let tag =
+                    match je.TryGetProperty "$type" with
+                    | true, t when t.ValueKind = JsonValueKind.String -> Some(t.GetString())
+                    | _ -> None
+
+                match tag with
+                | Some tg ->
+                    match alts |> Array.tryFind (fun a -> sCaseTag a = Some tg) with
+                    | Some a ->
+                        emit $"case:{scope}.{tg}"
+                        goCase scope tg a j
+                    | None ->
+                        // No direct case — descend into the `$ref` alternative that owns
+                        // the tag (NodeKind → LayoutKind / DisplayKind / InputKind /
+                        // VisKind). `go`'s `$ref` branch resets the scope to the
+                        // declaring union, so the rule reads `case:LayoutKind.Box`.
+                        alts
+                        |> Array.tryFind (fun a -> sHas "$ref" a && unionHasTag (schemaDefs.GetProperty(sRefName a)) tg)
+                        |> Option.iter (fun a -> go scope a j)
+                | None ->
+                    alts
+                    |> Array.tryFind (fun a -> sCaseTag a = None && (sHas "properties" a || sHas "$ref" a))
+                    |> Option.iter (fun a -> go scope a j)
+            | Some _ -> () // a primitive leg (TextSource's bare string) carries no rule
+            | None ->
+                for a in alts do
+                    match sCaseTag a with
+                    | Some tg ->
+                        emit $"case:{scope}.{tg}"
+                        goCase scope tg a None
+                    | None -> go scope a None
+        elif sHas "properties" sch then
+            goObject scope sch j
+        elif sHas "enum" sch then
+            match j with
+            | Some v when v.ValueKind = JsonValueKind.String -> emitEnum scope sch (v.GetString())
+            | Some _ -> ()
+            | None ->
+                for e in (sProp "enum" sch).EnumerateArray() do
+                    if e.ValueKind = JsonValueKind.String then
+                        emit $"enum:{scope}={e.GetString()}"
+        else
+            match sch.TryGetProperty "type" with
+            | true, t when t.ValueKind = JsonValueKind.String ->
+                match t.GetString() with
+                | "array" ->
+                    match sch.TryGetProperty "items" with
+                    | true, items when items.ValueKind <> JsonValueKind.True ->
+                        match j with
+                        | Some je when je.ValueKind = JsonValueKind.Array ->
+                            for v in je.EnumerateArray() do
+                                go scope items (Some v)
+                        | Some _ -> ()
+                        | None -> go scope items None
+                    | _ -> ()
+                | "object" ->
+                    match sch.TryGetProperty "additionalProperties" with
+                    | true, ap when ap.ValueKind <> JsonValueKind.True ->
+                        match j with
+                        | Some je when je.ValueKind = JsonValueKind.Object ->
+                            for p in je.EnumerateObject() do
+                                go scope ap (Some p.Value)
+                        | Some _ -> ()
+                        | None -> go scope ap None
+                    | _ -> ()
+                | _ -> ()
+            | _ -> ()
+
+    // A tagged case either hoists a named Spec record (`allOf [$type-const; $ref Spec]`
+    // — the scope becomes the Spec, matching the signature catalogue) or declares its
+    // fields inline (`Binding.Query`, `NodeKind.Custom` — scope `Union.Case`).
+    and goCase (union: string) (tag: string) (alt: JsonElement) (j: JsonElement option) =
+        if sHas "allOf" alt then
+            for p in (sProp "allOf" alt).EnumerateArray() do
+                if sHas "$ref" p then
+                    let n = sRefName p
+
+                    if j.IsSome || visited.Add n then
+                        go n (schemaDefs.GetProperty n) j
+                else
+                    goObject $"{union}.{tag}" p j
+        else
+            goObject $"{union}.{tag}" alt j
+
+    and goObject (scope: string) (sch: JsonElement) (j: JsonElement option) =
+        let required =
+            match sch.TryGetProperty "required" with
+            | true, r -> r.EnumerateArray() |> Seq.map (fun e -> e.GetString()) |> Set.ofSeq
+            | _ -> Set.empty
+
+        // An OPTIONAL closure slot is not a taught rule. The 838 signature catalogue
+        // suppresses exactly these ("host-side handler slots the self-wiring rules
+        // forbid authoring — listing them would spend tokens teaching fields whose only
+        // correct emission is absence"), and the coverage model has to agree with the
+        // catalogue or it scores exemplars on teaching the pack does not do. Required
+        // closure slots are unaffected: they carry no field rule either way, and the
+        // sentinel itself is covered by `idiom:closure-sentinel`.
+        let isOptionalClosure (name: string) (p: JsonElement) =
+            not (required.Contains name)
+            && sHas "const" p
+            && (let c = sProp "const" p in c.ValueKind = JsonValueKind.String && c.GetString() = "<closure>")
+
+        match sch.TryGetProperty "properties" with
+        | true, props ->
+            for p in props.EnumerateObject() do
+                if p.Name <> "$type" && not (isOptionalClosure p.Name p.Value) then
+                    match j with
+                    | Some je ->
+                        match je.TryGetProperty p.Name with
+                        | true, v when v.ValueKind <> JsonValueKind.Null ->
+                            if not (required.Contains p.Name) then
+                                emit $"field:{scope}.{p.Name}"
+
+                            go $"{scope}.{p.Name}" p.Value (Some v)
+                        | _ -> ()
+                    | None ->
+                        if not (required.Contains p.Name) then
+                            emit $"field:{scope}.{p.Name}"
+
+                        go $"{scope}.{p.Name}" p.Value None
+        | _ -> ()
+
+    go rootDef (schemaDefs.GetProperty rootDef) json
+    Set.ofSeq acc
+
+// ── Idioms + the Transform algebra (the non-schema-derivable residue) ────────────
+let private layoutCases =
+    sAlts (schemaDefs.GetProperty "LayoutKind") |> Seq.choose sCaseTag |> Set.ofSeq
+
+/// Every idiom rule, with the pack section that teaches it. Present as a fixed list so
+/// the inventory enumerates even when no fixture exercises the idiom — an idiom nothing
+/// covers is exactly what the reinvestment queue is looking for.
+let private idiomCatalogue =
+    [ "idiom:multi-section-composition", "Containers nest under `children`"
+      "idiom:nested-container", "Containers nest under `children`"
+      "idiom:container-in-wrapper", "Containers nest under `children`"
+      "idiom:actionable-message", "Empty states — a Card `Box`, not a `Callout`"
+      "idiom:filter-param-wiring", "Filters must be WIRED"
+      "idiom:transform-embedded-source", "Transform — the embedded-data canonical shape"
+      "idiom:transform-scalar-slot", "Deriving ONE value — Transform in a scalar slot"
+      "idiom:selection-multi-field", "Selected, pre-selected, and derived state"
+      "idiom:preselected-default", "Selected, pre-selected, and derived state"
+      "idiom:prefilled-default", "The node kinds — control `value` slots"
+      "idiom:closure-sentinel", "Closure cells cannot be authored from the wire" ]
+
+let private isNodeObj (el: JsonElement) =
+    el.ValueKind = JsonValueKind.Object && sHas "id" el && sHas "kind" el
+
+/// The shallowest Node-shaped descendants of a node — its direct children, whatever
+/// slot they ride in (`children`, `child`, `fallback`, a Switch case).
+let private directChildren (el: JsonElement) : JsonElement list =
+    let acc = ResizeArray<JsonElement>()
+
+    let rec search (x: JsonElement) =
+        match x.ValueKind with
+        | JsonValueKind.Object ->
+            if isNodeObj x then
+                acc.Add x
+            else
+                for p in x.EnumerateObject() do
+                    search p.Value
+        | JsonValueKind.Array ->
+            for v in x.EnumerateArray() do
+                search v
+        | _ -> ()
+
+    for p in el.EnumerateObject() do
+        search p.Value
+
+    List.ofSeq acc
+
+let private kindTag (nodeEl: JsonElement) =
+    match (sProp "kind" nodeEl).TryGetProperty "$type" with
+    | true, t when t.ValueKind = JsonValueKind.String -> t.GetString()
+    | _ -> ""
+
+let private idiomRules (root: JsonElement) : Set<string> =
+    let acc = System.Collections.Generic.HashSet<string>()
+    let emit (r: string) = acc.Add r |> ignore
+
+    // Keyed walk — the carrier property name is what separates a Transform feeding a
+    // grid (`source`) from one feeding a scalar slot (`binding` / `value`), which is a
+    // distinction the schema itself cannot make (both are `Binding`).
+    let rec keyed (key: string) (el: JsonElement) (f: string -> JsonElement -> unit) =
+        f key el
+
+        match el.ValueKind with
+        | JsonValueKind.Object ->
+            for p in el.EnumerateObject() do
+                keyed p.Name p.Value f
+        | JsonValueKind.Array ->
+            for v in el.EnumerateArray() do
+                keyed key v f
+        | _ -> ()
+
+    let tagOf (el: JsonElement) =
+        if el.ValueKind <> JsonValueKind.Object then
+            ""
+        else
+            match el.TryGetProperty "$type" with
+            | true, t when t.ValueKind = JsonValueKind.String -> t.GetString()
+            | _ -> ""
+
+    // ── Node-structure idioms ──
+    let rec nodes (el: JsonElement) =
+        seq {
+            if isNodeObj el then
+                yield el
+
+            match el.ValueKind with
+            | JsonValueKind.Object ->
+                for p in el.EnumerateObject() do
+                    yield! nodes p.Value
+            | JsonValueKind.Array ->
+                for v in el.EnumerateArray() do
+                    yield! nodes v
+            | _ -> ()
+        }
+
+    let allNodes = nodes root |> Seq.toList
+
+    if isNodeObj root && List.length (directChildren root) >= 3 then
+        emit "idiom:multi-section-composition"
+
+    for n in allNodes do
+        let k = kindTag n
+
+        if layoutCases.Contains k then
+            let childKinds = directChildren n |> List.map kindTag
+
+            if k = "Box" && childKinds |> List.exists (fun c -> c = "Box") then
+                emit "idiom:nested-container"
+
+            if k <> "Box" && childKinds |> List.exists layoutCases.Contains then
+                emit "idiom:container-in-wrapper"
+
+            let hasAction = childKinds |> List.exists (fun c -> c = "Button" || c = "Form")
+
+            let hasMessage =
+                childKinds
+                |> List.exists (fun c -> c = "Callout" || c = "Markdown" || c = "Heading" || c = "Icon")
+
+            if hasAction && hasMessage then
+                emit "idiom:actionable-message"
+
+    // ── Binding / Transform idioms + the pipeline algebra ──
+    let selections = ResizeArray<string * string>()
+
+    keyed "$" root (fun key el ->
+        match tagOf el with
+        | "Selection" ->
+            let nodeId =
+                match el.TryGetProperty "nodeId" with
+                | true, v -> v.GetString()
+                | _ -> ""
+
+            let field =
+                match el.TryGetProperty "field" with
+                | true, v when v.ValueKind = JsonValueKind.String -> v.GetString()
+                | _ -> ""
+
+            selections.Add(nodeId, field)
+
+            if sHas "defaultValue" el then
+                emit "idiom:preselected-default"
+        | "Transform" ->
+            if key = "binding" || key = "value" then
+                emit "idiom:transform-scalar-slot"
+
+            match el.TryGetProperty "source" with
+            | true, s when sHas "columns" s -> emit "idiom:transform-embedded-source"
+            | _ -> ()
+
+            let filterParams =
+                match el.TryGetProperty "params" with
+                | true, ps when ps.ValueKind = JsonValueKind.Array ->
+                    ps.EnumerateArray()
+                    |> Seq.exists (fun p ->
+                        match p.TryGetProperty "from" with
+                        | true, f -> tagOf f = "Filter"
+                        | _ -> false)
+                | _ -> false
+
+            let mutable usesParam = false
+
+            match el.TryGetProperty "pipeline" with
+            | true, steps when steps.ValueKind = JsonValueKind.Array ->
+                for step in steps.EnumerateArray() do
+                    let stepTag = tagOf step
+
+                    if stepTag <> "" then
+                        emit $"pipestep:{stepTag}"
+
+                    keyed "$" step (fun k2 inner ->
+                        let t = tagOf inner
+
+                        if t <> "" then
+                            if t = "param" then
+                                usesParam <- true
+
+                            if t <> stepTag then
+                                emit $"pipefn:{t}"
+
+                        if inner.ValueKind = JsonValueKind.String then
+                            if k2 = "op" then
+                                emit $"pipeop:{inner.GetString()}"
+                            elif k2 = "fn" then
+                                emit $"pipeagg:{inner.GetString()}")
+            | _ -> ()
+
+            if filterParams && usesParam then
+                emit "idiom:filter-param-wiring"
+        | _ ->
+            ignore key
+
+            if el.ValueKind = JsonValueKind.String && el.GetString() = "<closure>" then
+                emit "idiom:closure-sentinel")
+
+    // A control slot arriving PRE-FILLED: the `value` of a form field, filter chip or
+    // select carrying the prompt-named default rather than an empty slot. Matched at
+    // the control carrier rather than by property name — `value` is also MetricSpec's
+    // data slot, and a name-only sweep would attest the wrong family on every metric.
+    let controlSpecs (n: JsonElement) =
+        let k = sProp "kind" n
+
+        let sub (arrName: string) =
+            match k.TryGetProperty arrName with
+            | true, arr when arr.ValueKind = JsonValueKind.Array ->
+                arr.EnumerateArray()
+                |> Seq.choose (fun item ->
+                    match item.TryGetProperty "kind" with
+                    | true, ck -> Some ck
+                    | _ -> None)
+                |> List.ofSeq
+            | _ -> []
+
+        match kindTag n with
+        | "Form" -> sub "fields"
+        | "Filters" -> sub "items"
+        | "Select" -> [ k ]
+        | _ -> []
+
+    for n in allNodes do
+        for spec in controlSpecs n do
+            match spec.TryGetProperty "value" with
+            | true, v when v.ValueKind <> JsonValueKind.Null ->
+                if v.ValueKind <> JsonValueKind.Object || tagOf v = "Static" then
+                    emit "idiom:prefilled-default"
+            | _ -> ()
+
+    if
+        selections
+        |> Seq.filter (fun (n, f) -> n <> "" && f <> "")
+        |> Seq.groupBy fst
+        |> Seq.exists (fun (_, g) -> g |> Seq.map snd |> Seq.distinct |> Seq.length >= 2)
+    then
+        emit "idiom:selection-multi-field"
+
+    Set.ofSeq acc
+
+// ── The exemplar sets ───────────────────────────────────────────────────────────
+let private systemPromptExemplars =
+    let text = File.ReadAllText(Path.Combine(packDir, "system-prompt.md"))
+
+    markerRegex.Matches text
+    |> Seq.map (fun m -> m.Groups.["id"].Value)
+    |> Seq.distinct
+    |> List.ofSeq
+
+let private fewShotExemplars = fewShot |> List.map fst
+
+/// PINNED — the miner may never displace these, only make them work harder.
+///
+/// Every system-prompt example block is pinned, and that is not a shortcut: the Phase
+/// 834 per-section census returned KEEP for every section carrying one, each citing its
+/// own flip record (Badge 0/6 → 6/6; the toned pill 35/35; filters-wired against the
+/// ×34+×12+×9+×7 cluster; the multi-field projection 1 → 5; Now/Icon/Duration verified
+/// in the 817 sweep). The flip record also shows WHY the pin sits on this surface and
+/// not the other: the system prompt is what the default posture reads, so displacing a
+/// block would remove teaching from every request, while a few-shot entry is optional
+/// context. The miner's freedom is therefore over few-shot, which is where accretion
+/// actually happened.
+let private pinnedExemplars = systemPromptExemplars
+
+let private currentExemplars =
+    (systemPromptExemplars @ fewShotExemplars)
+    |> List.distinct
+    |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
+
+// ── The matrix ──────────────────────────────────────────────────────────────────
+/// Every corpus fixture a pack exemplar could be drawn from.
+///
+/// Two exclusions, both by construction rather than by taste. REJECT fixtures: a wire
+/// form the decoder refuses cannot exemplify anything, and several are not parseable
+/// JSON at all. LENIENT-ACCEPT fixtures the pack does not already carry: admitting one
+/// would swap a canonical example for a §16 shorthand, which changes the taught DIALECT
+/// — a separate decision with its own evidence, not a side-effect of minimising a
+/// coverage set. The lenient exemplars already in the pack stay eligible because their
+/// dialect is the shipped one; the miner may keep them, it may not introduce more.
+let private candidateFixtures =
+    use doc = JsonDocument.Parse(File.ReadAllText manifestPath)
+
+    doc.RootElement.GetProperty("fixtures").EnumerateArray()
+    |> Seq.filter (fun f ->
+        let id = f.GetProperty("id").GetString()
+
+        match f.GetProperty("kind").GetString() with
+        | "node-round-trip"
+        | "op-round-trip"
+        | "envelope-round-trip" -> true
+        | "lenient-accept" -> List.contains id currentExemplars
+        | _ -> false)
+    |> Seq.map (fun f -> f.GetProperty("id").GetString())
+    |> Seq.sortWith (fun a b -> String.CompareOrdinal(a, b))
+    |> List.ofSeq
+
+let private rulesFor (id: string) : Set<string> =
+    let meta = fixtureMeta id
+    use doc = JsonDocument.Parse(fixtureRaw id)
+    let root = doc.RootElement
+    let rootDef = if meta.Decoder = "op" then "TreeOp" else "Node"
+    Set.union (schemaRules rootDef (Some root)) (idiomRules root)
+
+let private fixtureRules =
+    candidateFixtures |> List.map (fun id -> id, rulesFor id) |> Map.ofList
+
+let private schemaInventory =
+    Set.union (schemaRules "Node" None) (schemaRules "TreeOp" None)
+
+/// The taught inventory. The schema half enumerates itself; the idiom half is the fixed
+/// catalogue; the Transform-algebra half is the corpus's own vocabulary (the schema
+/// models `pipeline` as `any[]`, so there is nothing else to enumerate it from).
+let private taughtRules =
+    let observed = fixtureRules |> Map.toSeq |> Seq.collect snd |> Set.ofSeq
+
+    let corpusDerived =
+        observed
+        |> Set.filter (fun r ->
+            r.StartsWith "pipestep:"
+            || r.StartsWith "pipefn:"
+            || r.StartsWith "pipeop:"
+            || r.StartsWith "pipeagg:"
+            || r.StartsWith "alias:")
+
+    schemaInventory
+    |> Set.union (idiomCatalogue |> List.map fst |> Set.ofList)
+    |> Set.union corpusDerived
+
+/// A rule a fixture exercises that the inventory does not know about means the walker
+/// and the enumerator disagree — a probe failure, not a coverage finding. Fail loudly
+/// rather than quietly reporting coverage against the wrong denominator.
+let private inventoryEscapes =
+    fixtureRules
+    |> Map.toSeq
+    |> Seq.collect snd
+    |> Set.ofSeq
+    |> fun observed -> Set.difference observed taughtRules
+
+let private coverageOf (ids: string list) =
+    ids
+    |> List.fold (fun acc id -> Set.union acc (Map.find id fixtureRules)) Set.empty
+
+/// Minified bytes — the currency an exemplar actually spends in the paid prefix.
+let private costOf (id: string) = (minifyJson (fixtureRaw id)).Length
+
+/// Greedy set-cover with the pinned set forced into the solution, weighted by COST:
+/// each round takes the candidate with the best new-rules-per-byte ratio, not simply
+/// the most new rules. Unweighted greedy answers "how few exemplars", which is not the
+/// question — one maximally dense tree demonstrating forty rules beats ten demonstrating
+/// four each only if it is also cheaper than the ten, and the ratio form is what tests
+/// that. The target universe is what the CURRENT exemplar set covers: the miner may not
+/// declare success by lowering the bar, and any rule it cannot reach is named.
+let private mine () =
+    let universe = coverageOf currentExemplars
+    let mutable covered = coverageOf pinnedExemplars
+    let mutable chosen: (string * int) list = []
+
+    let pool =
+        candidateFixtures
+        |> List.filter (fun id -> not (List.contains id pinnedExemplars))
+
+    let mutable go = true
+
+    while go do
+        let remaining = Set.difference universe covered
+
+        if Set.isEmpty remaining then
+            go <- false
+        else
+            let scored =
+                pool
+                |> List.filter (fun id -> not (chosen |> List.exists (fun (c, _) -> c = id)))
+                |> List.map (fun id ->
+                    let gain = Set.intersect (Map.find id fixtureRules) remaining
+                    id, Set.count gain, costOf id)
+                |> List.filter (fun (_, g, _) -> g > 0)
+
+            match scored with
+            | [] -> go <- false
+            | _ ->
+                // Best rules-per-byte wins; ties go to the larger absolute gain, then
+                // the cheaper fixture, then the Ordinal-first id — so the selection is
+                // reproducible byte-for-byte on any machine.
+                let best =
+                    scored
+                    |> List.sortWith (fun (idA, gA, cA) (idB, gB, cB) ->
+                        let rA = float gA / float (max cA 1)
+                        let rB = float gB / float (max cB 1)
+
+                        if rA <> rB then compare rB rA
+                        elif gA <> gB then compare gB gA
+                        elif cA <> cB then compare cA cB
+                        else String.CompareOrdinal(idA, idB))
+                    |> List.head
+
+                let id, gain, _ = best
+                chosen <- chosen @ [ (id, gain) ]
+                covered <- Set.union covered (Map.find id fixtureRules)
+
+    universe, covered, chosen
+
+/// The other half of the minimisation, and on an already-deduped set the half that
+/// pays: walk the CURRENT exemplars most-expensive-first and drop each one whose
+/// removal leaves the covered rule set unchanged. Greedy-from-scratch answers "what
+/// would we choose knowing nothing"; the prune answers "what is provably carried
+/// twice", and only the second is a cut with no re-authoring attached — a pruned entry
+/// needs no new natural-language prompt and no new fixture.
+let private prune () =
+    let universe = coverageOf currentExemplars
+
+    let ordered =
+        currentExemplars
+        |> List.filter (fun id -> not (List.contains id pinnedExemplars))
+        |> List.sortWith (fun a b ->
+            let ca, cb = costOf a, costOf b
+
+            if ca <> cb then
+                compare cb ca
+            else
+                String.CompareOrdinal(a, b))
+
+    let mutable kept = currentExemplars
+    let mutable dropped = []
+
+    for id in ordered do
+        let candidate = kept |> List.filter (fun x -> x <> id)
+
+        if coverageOf candidate = universe then
+            kept <- candidate
+            dropped <- dropped @ [ id ]
+
+    kept, dropped
+
+let private buildCoverageMatrix () =
+    let ruleIndex =
+        taughtRules
+        |> Set.toList
+        |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
+
+    let idxOf = ruleIndex |> List.mapi (fun i r -> r, i) |> Map.ofList
+
+    let jsonArr (xs: string seq) =
+        xs |> Seq.map JsonSerializer.Serialize |> String.concat ","
+
+    let sb = StringBuilder()
+
+    sb
+        .AppendLine("{")
+        .AppendLine(
+            "  \"_\": \"GENERATED by docs/tools/authoring-pack.fsx (Phase 841). Do not hand-edit — run --write.\","
+        )
+        .AppendLine("  \"source\": \"wire-format-fixtures/\",")
+        .AppendLine($"  \"rules\": [{jsonArr ruleIndex}],")
+        .AppendLine($"  \"pinned\": [{jsonArr pinnedExemplars}],")
+        .AppendLine($"  \"systemPrompt\": [{jsonArr systemPromptExemplars}],")
+        .AppendLine($"  \"fewShot\": [{jsonArr fewShotExemplars}],")
+        .AppendLine("  \"coverage\": {")
+    |> ignore
+
+    let rows =
+        candidateFixtures
+        |> List.map (fun id ->
+            let idxs =
+                Map.find id fixtureRules
+                |> Set.toList
+                |> List.choose (fun r -> Map.tryFind r idxOf)
+                |> List.sort
+                |> List.map string
+                |> String.concat ","
+
+            $"    {JsonSerializer.Serialize id}: [{idxs}]")
+
+    sb.AppendLine(String.concat ",\n" rows).AppendLine("  }").AppendLine("}")
+    |> ignore
+
+    sb.ToString()
+
 // ── Run ──────────────────────────────────────────────────────────────────────────
+if mineMode then
+    let universe, covered, chosen = mine ()
+    let unexemplified = Set.difference taughtRules universe
+    let unreached = Set.difference universe covered
+
+    printfn "Fuaran exemplar miner (Phase 841) — greedy set-cover over the coverage matrix"
+    printfn ""
+    printfn "  taught rules (inventory)   %d" (Set.count taughtRules)
+    printfn "  corpus candidates          %d" (List.length candidateFixtures)
+    printfn ""
+
+    printfn
+        "  current exemplars          %d (%d system-prompt + %d few-shot, deduped)"
+        currentExemplars.Length
+        systemPromptExemplars.Length
+        fewShotExemplars.Length
+
+    printfn
+        "  current coverage           %d rules (%.1f%% of inventory)"
+        (Set.count universe)
+        (100.0 * float (Set.count universe) / float (Set.count taughtRules))
+
+    printfn "  pinned coverage            %d rules" (Set.count (coverageOf pinnedExemplars))
+    printfn ""
+    printfn "  mined additions (greedy, pinned forced):"
+
+    if List.isEmpty chosen then
+        printfn "    (none — the pinned set already covers the current universe)"
+
+    for id, gain in chosen do
+        printfn "    +%-3d %s" gain id
+
+    let minedSet = pinnedExemplars @ (chosen |> List.map fst)
+    let bytesOf ids = ids |> List.sumBy costOf
+
+    let displaced =
+        fewShotExemplars
+        |> List.filter (fun id ->
+            not (List.contains id pinnedExemplars)
+            && not (chosen |> List.exists (fun (c, _) -> c = id)))
+
+    let admitted =
+        chosen
+        |> List.map fst
+        |> List.filter (fun id -> not (List.contains id currentExemplars))
+
+    printfn ""
+
+    printfn
+        "  mined set size             %d (%d pinned + %d mined)"
+        minedSet.Length
+        pinnedExemplars.Length
+        chosen.Length
+
+    printfn
+        "  exemplar tree bytes        %d current → %d mined (%+d)"
+        (bytesOf currentExemplars)
+        (bytesOf minedSet)
+        (bytesOf minedSet - bytesOf currentExemplars)
+
+    printfn "  displaced few-shot entries %d" displaced.Length
+
+    for id in displaced do
+        printfn "    - %-46s (%d B)" id (costOf id)
+
+    if not admitted.IsEmpty then
+        printfn "  newly-admitted fixtures    %d" admitted.Length
+
+        for id in admitted do
+            printfn "    + %-46s (%d B)" id (costOf id)
+
+    let keptSet, droppedSet = prune ()
+
+    printfn ""
+    printfn "  redundancy prune (coverage-preserving removals from the CURRENT set):"
+
+    if List.isEmpty droppedSet then
+        printfn "    (none — every current exemplar carries at least one rule uniquely)"
+
+    for id in droppedSet do
+        printfn "    - %-46s (%d B)" id (costOf id)
+
+    printfn
+        "  pruned set                 %d exemplars, %d B (%+d B)"
+        keptSet.Length
+        (bytesOf keptSet)
+        (bytesOf keptSet - bytesOf currentExemplars)
+
+    printfn ""
+
+    printfn
+        "  ADOPT: %s"
+        (if bytesOf keptSet <= bytesOf minedSet then
+             $"the pruned current set ({bytesOf keptSet} B) — greedy-from-scratch is no cheaper ({bytesOf minedSet} B)"
+         else
+             $"the greedy set ({bytesOf minedSet} B) — cheaper than the pruned current set ({bytesOf keptSet} B)")
+
+    if not (Set.isEmpty unreached) then
+        printfn ""
+        printfn "  UNREACHED (in the current universe, no candidate covers): %d" (Set.count unreached)
+
+        for r in unreached do
+            printfn "    ! %s" r
+
+    // The operative-surface gap. flip-4 (2026-08-02) recorded that the default posture
+    // never reads few-shot, so a rule exemplified ONLY there is exemplified only for
+    // the postures that opt in — a softer form of uncovered, and the one the Badge flip
+    // (0/6 → 6/6 on promotion INTO the system prompt) is the worked example of.
+    let fewShotOnly = Set.difference universe (coverageOf pinnedExemplars)
+
+    printfn ""
+    printfn "  exemplified ONLY in few-shot: %d rules (the default posture does not read these)" (Set.count fewShotOnly)
+
+    for r in fewShotOnly do
+        printfn "    ~ %s" r
+
+    printfn ""
+    printfn "  taught but UNEXEMPLIFIED   %d rules (the reinvestment queue)" (Set.count unexemplified)
+
+    for fam in
+        [ "idiom:"
+          "pipestep:"
+          "pipefn:"
+          "pipeop:"
+          "pipeagg:"
+          "case:"
+          "field:"
+          "enum:" ] do
+        let hits = unexemplified |> Set.filter (fun r -> r.StartsWith fam) |> Set.toList
+
+        if not hits.IsEmpty then
+            printfn "    %s %d" (fam.TrimEnd ':') hits.Length
+
+            if fam <> "field:" && fam <> "enum:" then
+                for h in hits do
+                    printfn "        %s" h
+
+    if not (Set.isEmpty inventoryEscapes) then
+        printfn ""
+        printfn "  PROBE FAILURE — observed rules outside the inventory: %d" (Set.count inventoryEscapes)
+
+        for r in inventoryEscapes do
+            printfn "    ? %s" r
+
+        exit 1
+
+    exit 0
+
 printfn
     "Fuaran authoring pack — %s mode%s"
     (if writeMode then "write" else "check")
@@ -704,6 +1597,23 @@ reconcileFile
     (Path.Combine("prompt-pack", "schema.json"))
     (Path.Combine(packDir, "schema.json"))
     (File.ReadAllText schemaSrcPath)
+
+// 4. Rule→fixture coverage matrix (Phase 841). Tooling output, not pack content — it
+//    is the mining evidence, so it lives beside the generator rather than in the paid
+//    prefix, and is reconciled here so a corpus change cannot age it silently.
+if not (Set.isEmpty inventoryEscapes) then
+    eprintfn "PROBE FAILURE — the coverage walker observed rules the enumerator cannot express:"
+
+    for r in inventoryEscapes do
+        eprintfn "  ? %s" r
+
+    eprintfn "This is a generator defect, not a coverage finding — fix schemaRules before trusting any figure."
+    exit 1
+
+reconcileFile
+    (Path.Combine("tools", "coverage-matrix.json"))
+    (Path.Combine(docsDir, "tools", "coverage-matrix.json"))
+    (buildCoverageMatrix ())
 
 // ── Verdict ────────────────────────────────────────────────────────────────────
 match writeMode, drift with
