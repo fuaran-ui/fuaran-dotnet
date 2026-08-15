@@ -203,8 +203,16 @@
          Transform source (defaultValue: []) decodes to the empty table,
          as Query/Selection sources do - an initially-empty live collection
          is a complete intent with zero rows and no columns to infer
-         (observed organically: the Tier-D cohort r0 count badge, terra). -->
-    <Version>0.23.1</Version>
+         (observed organically: the Tier-D cohort r0 count badge, terra).
+         0.24.0 - fuaran#850 implied-node-close decode recovery: on an
+         INVALID_JSON node payload matching the dropped-node-wrapper-brace
+         class (children[]/cases[]/root boundary), ancestor-legal-token
+         auto-close repairs the owed wrappers, counted under the new
+         JsonDecode.Reliance surface (id "implied-node-close"); bounded,
+         profile-gated, fails closed to the original error. Additive
+         decode behaviour + additive public surface (pre-1.0 minor, the
+         0.20.0 leniency precedent). -->
+    <Version>0.24.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -588,6 +588,471 @@ let private tryParse (input: string) : Result<Json, DecodeErrorCode * string> =
 
             Error(code, message)
 
+// ─── Implied-node-close decode recovery (fuaran#850) ──────────────────────
+//
+// The one malformed-emission class the wire grammar cannot teach away: a node
+// wrapper's closing brace dropped at the end of a `children[]` / `cases[]`
+// element (or the root node left open at EOF), typically after a run of ≥2
+// closing braces — the model closes the nested spec value and `kind` and stops
+// one brace short of the node's own `}`. Measured on stored model emissions
+// (2026-08-15): the emission is canonical in intent and correct in vocabulary,
+// and fails on a brace count in a run; teaching the brace rule in the prompt
+// has zero measured effect (failures re-emit the exact fragment the teaching
+// quotes as its own wrong half), so the class is closed at the decode boundary
+// instead.
+//
+// The remedy is measured, not assumed. Auto-close at EOF — the obvious fix —
+// recovers NONE of the mid-document cells: the missing brace is owed
+// mid-document, so the `]` that follows it is already mis-parsed and appending
+// closers at the end fixes nothing (pinned as a test so the wrong fix cannot
+// return). What recovers the whole measured set is auto-close on an
+// ANCESTOR-LEGAL TOKEN: when `]` (or the array-level `,` that separates two
+// element objects) arrives while node wrappers opened inside that array are
+// still open, close the owed wrappers implicitly; when EOF arrives with the
+// document prefix-valid and every open wrapper closable, close what is owed.
+//
+// CONTRACT — bounded, profile-gated, fails closed:
+//   - Attempted ONLY after `tryParse` fails with `INVALID_JSON` (never on
+//     `LIMIT_EXCEEDED`, and never on a document that parses — the happy path
+//     does not enter this code at all).
+//   - INSERT-ONLY OWED CLOSERS: the recovery inserts `}` for wrappers that are
+//     demonstrably open at a boundary where their close is the only insert-only
+//     reading (plus the matching `]`/`}` closers at a clean EOF). It never
+//     invents content, keys, values, or brackets that open anything.
+//   - PROFILE-GATED: mid-document closes fire only into an array keyed
+//     `children` / `cases` (the node-wrapper positions of the measured class).
+//     The same defect inside any other array does NOT recover — it stays a
+//     visible error, so the demand signal for other classes is not eaten.
+//   - FAILS CLOSED: any input outside the profile — genuinely-ambiguous
+//     nesting (a wrapper that is mid-key, awaiting a value, or after a `,`),
+//     an over-closed document, an unterminated string, a truncated tail, or a
+//     repaired text that still does not parse — returns the ORIGINAL error
+//     unchanged.
+//   - COUNTED: every recovery is recorded under the `Reliance` counter id
+//     `implied-node-close`, surfacing exactly the way the §16 leniencies are
+//     measured. This is error RECOVERY, not §16 shorthand normalisation — a
+//     silently-recovered class stops generating demand signal, and the counter
+//     is what keeps it measurable while ceasing to be a loss (see
+//     `docs/migrations/850-implied-node-close-recovery.md`).
+
+/// Reliance accounting for decode-time recoveries — the read side of the
+/// "recover WITH the coercion counted" posture. A recovery that fired is a
+/// document that was malformed and was repaired at the boundary; consumers
+/// measuring how much a cohort of emissions leans on the lenient decoder read
+/// these counters beside the §16 structural-divergence measurement.
+///
+/// Counts are process-wide and monotonic between `reset` calls. The write side
+/// is internal (only the decode entry points record); the read side —
+/// `count` / `snapshot` / `reset` — is public surface.
+module Reliance =
+    /// Counter id for the implied-node-close recovery (fuaran#850): a node
+    /// wrapper's dropped closing brace at a `children[]`/`cases[]`/root
+    /// boundary, repaired by ancestor-legal-token auto-close.
+    [<Literal>]
+    let ImpliedNodeClose = "implied-node-close"
+
+    // Module-level mutable, justified: this IS the process-wide accounting
+    // surface — the counter must survive across decode calls with no ambient
+    // context to thread it through (`decodeNode` is a pure string -> Result
+    // function consumed from both .NET and Fable hosts). Updates are a single
+    // reference swap; racing writers on .NET may under-count (telemetry
+    // best-effort, documented), never corrupt.
+    let mutable private counters: Map<string, int> = Map.empty
+
+    /// Record one recovery under `counterId`. Internal — the decode entry
+    /// points are the only writers.
+    let internal record (counterId: string) : unit =
+        let current = counters |> Map.tryFind counterId |> Option.defaultValue 0
+        counters <- counters |> Map.add counterId (current + 1)
+
+    /// Recoveries recorded under `counterId` since process start (or the last
+    /// `reset`).
+    let count (counterId: string) : int =
+        counters |> Map.tryFind counterId |> Option.defaultValue 0
+
+    /// Every counter id with its count — the surfacing read side.
+    let snapshot () : Map<string, int> = counters
+
+    /// Zero every counter (per-run measurement isolation; tests).
+    let reset () : unit = counters <- Map.empty
+
+module private ImpliedNodeClose =
+    [<RequireQualifiedAccess>]
+    type Kind =
+        | Obj
+        | Arr
+
+    /// Between-token expectation of the innermost open container. A container
+    /// with an open child sits in `Value` (object) / `Value` or `ValueOrClose`
+    /// (array) until the child completes — which is what makes the owed-wrapper
+    /// chain checkable: a frame BELOW the top is mid-value by construction, and
+    /// its pending value IS the frame above it.
+    [<RequireQualifiedAccess>]
+    type State =
+        /// Object, after `{` — a key or `}` may follow.
+        | KeyOrClose
+        /// Object, after `,` — a key must follow.
+        | Key
+        /// Object, after a key — `:` must follow.
+        | Colon
+        /// A value must follow (object: after `:`; array: after `,`).
+        | Value
+        /// After a complete member / element — `,` or the closer.
+        | CommaOrClose
+        /// Array, after `[` — a value or `]` may follow.
+        | ValueOrClose
+
+    type Frame =
+        {
+            Kind: Kind
+            mutable State: State
+            /// Arr frames only: the object key whose value this array is (None
+            /// for an array nested directly in an array) — the profile gate.
+            ArrKey: string option
+            /// Obj frames only: the most recently read member key.
+            mutable LastKey: string option
+        }
+
+    /// The array keys the mid-document recovery may close owed wrappers into —
+    /// the node-list positions of the measured class. Deliberately NOT every
+    /// array: a dropped brace in a data array stays a visible error.
+    let private recoveryArrayKeys = [ "children"; "cases" ]
+
+    /// Scan `text`, closing owed node wrappers at ancestor-legal tokens.
+    /// `Some repaired` when the profile matched and a bounded repair exists;
+    /// `None` otherwise (the caller falls back to the original error).
+    let tryRecover (text: string) : string option =
+        if isNull text then
+            None
+        else
+            let n = text.Length
+            let mutable i = 0
+            let stack = ResizeArray<Frame>()
+            let inserts = ResizeArray<int>()
+            let mutable rootDone = false
+            let mutable failed = false
+            let mutable finished = false
+
+            let isWsChar c =
+                c = ' ' || c = '\t' || c = '\n' || c = '\r'
+
+            let skipWsLocal () =
+                while i < n && isWsChar text[i] do
+                    i <- i + 1
+
+            // Skip a string literal (cursor on the opening quote); false on an
+            // unterminated string — the truncation fingerprint, never recovered.
+            let skipString () =
+                i <- i + 1
+                let mutable closed = false
+
+                while not closed && i < n do
+                    let c = text[i]
+
+                    if c = '\\' then
+                        i <- i + 2
+                    elif c = '"' then
+                        i <- i + 1
+                        closed <- true
+                    else
+                        i <- i + 1
+
+                closed
+
+            let readKey () : string option =
+                let start = i
+
+                if skipString () then
+                    Some(text.Substring(start + 1, i - start - 2))
+                else
+                    None
+
+            let top () = stack[stack.Count - 1]
+
+            // A completed value: advance the enclosing frame (or mark the root
+            // value complete).
+            let completeValue () =
+                if stack.Count = 0 then
+                    rootDone <- true
+                else
+                    (top ()).State <- State.CommaOrClose
+
+            let isScalarStart c =
+                c = '-' || (c >= '0' && c <= '9') || c = 't' || c = 'f' || c = 'n'
+
+            let skipScalar () =
+                let isScalarChar c =
+                    c = '-'
+                    || c = '+'
+                    || c = '.'
+                    || (c >= '0' && c <= '9')
+                    || (c >= 'a' && c <= 'z')
+                    || (c >= 'A' && c <= 'Z')
+
+                while i < n && isScalarChar text[i] do
+                    i <- i + 1
+
+            // Consume the opening of one value at the cursor. Malformed scalars
+            // are tolerated here — the repaired text re-parses through the real
+            // parser, which is the validator of record.
+            let openValue () : bool =
+                let c = text[i]
+
+                if c = '{' then
+                    stack.Add
+                        { Kind = Kind.Obj
+                          State = State.KeyOrClose
+                          ArrKey = None
+                          LastKey = None }
+
+                    i <- i + 1
+                    true
+                elif c = '[' then
+                    let key =
+                        if stack.Count > 0 && (top ()).Kind = Kind.Obj then
+                            (top ()).LastKey
+                        else
+                            None
+
+                    stack.Add
+                        { Kind = Kind.Arr
+                          State = State.ValueOrClose
+                          ArrKey = key
+                          LastKey = None }
+
+                    i <- i + 1
+                    true
+                elif c = '"' then
+                    if skipString () then
+                        completeValue ()
+                        true
+                    else
+                        false
+                elif isScalarStart c then
+                    skipScalar ()
+                    completeValue ()
+                    true
+                else
+                    false
+
+            let isClosableObj (f: Frame) =
+                f.Kind = Kind.Obj
+                && (f.State = State.CommaOrClose || f.State = State.KeyOrClose)
+
+            // Close the owed object-wrapper chain so the current token can be
+            // consumed at the nearest enclosing array — the ancestor-legal-token
+            // rule. The TOP frame must be a closable object (between members);
+            // every frame beneath it in the chain is an object mid-value (its
+            // pending value is the frame above, completed by the implied close);
+            // the chain ends at the first enclosing array, which must be keyed
+            // `children` / `cases`. Anything else fails closed.
+            let closeOwedWrappers () : bool =
+                if stack.Count = 0 || not (isClosableObj (top ())) then
+                    false
+                else
+                    let mutable k = 1
+
+                    while k < stack.Count
+                          && stack[stack.Count - 1 - k].Kind = Kind.Obj
+                          && stack[stack.Count - 1 - k].State = State.Value do
+                        k <- k + 1
+
+                    if k >= stack.Count then
+                        false // the chain ran to the root — no enclosing array
+                    else
+                        let target = stack[stack.Count - 1 - k]
+
+                        let profileOk =
+                            target.Kind = Kind.Arr
+                            && (match target.ArrKey with
+                                | Some key -> List.contains key recoveryArrayKeys
+                                | None -> false)
+
+                        if not profileOk then
+                            false
+                        else
+                            for _ in 1..k do
+                                inserts.Add i
+                                stack.RemoveAt(stack.Count - 1)
+
+                            // The implied closes complete the array's pending
+                            // element.
+                            target.State <- State.CommaOrClose
+                            true
+
+            skipWsLocal ()
+
+            if i >= n || text[i] <> '{' then
+                None
+            else
+                openValue () |> ignore // pushes the root object frame
+
+                while not failed && not finished do
+                    skipWsLocal ()
+
+                    if i >= n then
+                        finished <- true
+                    elif rootDone then
+                        failed <- true // trailing content
+                    else
+                        let f = top ()
+                        let c = text[i]
+
+                        match f.Kind, f.State with
+                        | Kind.Obj, State.KeyOrClose ->
+                            if c = '}' then
+                                i <- i + 1
+                                stack.RemoveAt(stack.Count - 1)
+                                completeValue ()
+                            elif c = '"' then
+                                match readKey () with
+                                | Some key ->
+                                    f.LastKey <- Some key
+                                    f.State <- State.Colon
+                                | None -> failed <- true
+                            else
+                                failed <- true
+                        | Kind.Obj, State.Key ->
+                            if c = '"' then
+                                match readKey () with
+                                | Some key ->
+                                    f.LastKey <- Some key
+                                    f.State <- State.Colon
+                                | None -> failed <- true
+                            else
+                                failed <- true
+                        | Kind.Obj, State.Colon ->
+                            if c = ':' then
+                                i <- i + 1
+                                f.State <- State.Value
+                            else
+                                failed <- true
+                        | Kind.Obj, State.Value -> failed <- not (openValue ())
+                        | Kind.Obj, State.CommaOrClose ->
+                            if c = ',' then
+                                // Lookahead: an object continuation must be a
+                                // key. `,` then `{` is only legal at an ancestor
+                                // ARRAY — the second signature of the class (the
+                                // wrapper owed its close before the separator).
+                                let save = i
+                                i <- i + 1
+                                skipWsLocal ()
+
+                                if i < n && text[i] = '"' then
+                                    f.State <- State.Key
+                                elif i < n && text[i] = '{' then
+                                    i <- save
+
+                                    if not (closeOwedWrappers ()) then
+                                        failed <- true
+                                else
+                                    failed <- true
+                            elif c = '}' then
+                                i <- i + 1
+                                stack.RemoveAt(stack.Count - 1)
+                                completeValue ()
+                            elif c = ']' then
+                                // The first signature of the class: `]` while
+                                // node wrappers inside the array are still open.
+                                if not (closeOwedWrappers ()) then
+                                    failed <- true
+                            else
+                                failed <- true
+                        | Kind.Obj, State.ValueOrClose -> failed <- true // unreachable
+                        | Kind.Arr, (State.ValueOrClose | State.Value) ->
+                            if c = ']' && f.State = State.ValueOrClose then
+                                i <- i + 1
+                                stack.RemoveAt(stack.Count - 1)
+                                completeValue ()
+                            else
+                                failed <- not (openValue ())
+                        | Kind.Arr, State.CommaOrClose ->
+                            if c = ',' then
+                                i <- i + 1
+                                f.State <- State.Value
+                            elif c = ']' then
+                                i <- i + 1
+                                stack.RemoveAt(stack.Count - 1)
+                                completeValue ()
+                            else
+                                failed <- true
+                        | Kind.Arr, _ -> failed <- true // unreachable
+
+                if failed then
+                    None
+                else
+                    // EOF. The TOP frame's own state gates (between members /
+                    // elements only — a mid-key, post-`:`, or post-`,` cut is
+                    // genuine truncation, never recovered). Frames below it are
+                    // mid-value by construction (their value IS the frame
+                    // above), so the implied close of the child completes them.
+                    let eofCloses = ResizeArray<char>()
+                    let mutable eofOk = true
+
+                    if not rootDone then
+                        if stack.Count = 0 then
+                            eofOk <- false
+                        else
+                            let t = top ()
+
+                            let topClosable =
+                                match t.Kind, t.State with
+                                | Kind.Obj, (State.CommaOrClose | State.KeyOrClose) -> true
+                                | Kind.Arr, (State.CommaOrClose | State.ValueOrClose) -> true
+                                | _ -> false
+
+                            if not topClosable then
+                                eofOk <- false
+                            else
+                                for idx in stack.Count - 1 .. -1 .. 0 do
+                                    eofCloses.Add(if stack[idx].Kind = Kind.Obj then '}' else ']')
+
+                    if not eofOk then
+                        None
+                    elif inserts.Count = 0 && eofCloses.Count = 0 then
+                        // The scanner consumed the document cleanly but the real
+                        // parser rejected it — the failure is not this class.
+                        None
+                    elif inserts.Count + eofCloses.Count > Fuaran.UI.WireLimits.MaxJsonDepth then
+                        None
+                    else
+                        // Insert positions are ascending by construction.
+                        let sb = System.Text.StringBuilder(n + inserts.Count + eofCloses.Count)
+
+                        let mutable prev = 0
+
+                        for pos in inserts do
+                            sb.Append(text.Substring(prev, pos - prev)).Append '}' |> ignore
+                            prev <- pos
+
+                        sb.Append(text.Substring prev) |> ignore
+
+                        for ch in eofCloses do
+                            sb.Append ch |> ignore
+
+                        Some(sb.ToString())
+
+/// Parse a NODE payload with the fuaran#850 implied-node-close recovery. A
+/// document that parses takes the identical `tryParse` path (the recovery code
+/// never runs); an `INVALID_JSON` failure whose profile matches the class is
+/// re-parsed from the bounded repair (counted under
+/// `Reliance.ImpliedNodeClose`); everything else — profile mismatch, ambiguous
+/// nesting, a repair that still fails to parse, `LIMIT_EXCEEDED` — surfaces
+/// the ORIGINAL error unchanged.
+let private tryParseNodeWithRecovery (json: string) : Result<Json, DecodeErrorCode * string> =
+    match tryParse json with
+    | Ok j -> Ok j
+    | Error(DecodeErrorCode.INVALID_JSON, _) as original ->
+        match ImpliedNodeClose.tryRecover json with
+        | Some repaired ->
+            match tryParse repaired with
+            | Ok j ->
+                Reliance.record Reliance.ImpliedNodeClose
+                Ok j
+            | Error _ -> original
+        | None -> original
+    | Error _ as e -> e
+
 // ─── The recognised NodeKind vocabulary (WIRE_FORMAT.md §3.2) ──────────────
 //
 // ONE enumeration, grouped by the four behavioural categories plus the
@@ -6449,7 +6914,7 @@ let private parseFailure (code: DecodeErrorCode, message: string) : Result<'a, D
 /// `Node<obj>` when you are the reattachment / persistence boundary.
 let decodeNode (json: string) : Result<WireTree, DecodeError> =
     let decoded =
-        match tryParse json with
+        match tryParseNodeWithRecovery json with
         | Error failure -> parseFailure failure
         | Ok j -> decodeNodeAst (walkRoot ()) "$" j
 
@@ -6460,7 +6925,7 @@ let decodeNode (json: string) : Result<WireTree, DecodeError> =
 /// `decodeNode json |> Result.map WireTree.reify`). Prefer `decodeNode`; this
 /// exists so those boundaries don't wrap-then-immediately-reify.
 let decodeNodeObj (json: string) : Result<Node<obj>, DecodeError> =
-    match tryParse json with
+    match tryParseNodeWithRecovery json with
     | Error failure -> parseFailure failure
     | Ok j -> decodeNodeAst (walkRoot ()) "$" j
 

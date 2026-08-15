@@ -1134,3 +1134,34 @@ SSR: the data-bound grid keeps its hydration placeholder (no state ⇒ natural s
 **Host adoption.** The F# reference and the shared corpus land together; the TS/Python/Go/Rust legs
 follow by fixture (the 801 precedent). The C#/VB authoring veneers do not yet expose the new slots —
 same posture as 0.18.0, recorded as a decision.
+
+## Recorded change — 0.24.0, implied-node-close decode recovery (fuaran#850)
+
+**`Fuaran.UI.Ops.JsonDecode` recovers the one malformed-emission class the wire grammar cannot
+teach away**: a node wrapper's closing brace dropped at the end of a `children[]` / `cases[]`
+element (or the root node left open at end of input), typically after a run of ≥ 2 closing braces.
+Measured on stored model emissions (2026-08-15): auto-close at EOF — the obvious fix — repairs
+none of the mid-document cells (pinned as a test so the wrong fix cannot return); auto-close on an
+**ancestor-legal token** recovers 36/36, with 34/36 decoding clean (the two residuals are
+unrelated `MISSING_FIELD` defects). Full contract:
+[`docs/migrations/850-implied-node-close-recovery.md`](docs/migrations/850-implied-node-close-recovery.md).
+
+- **Additive decode behaviour — pre-1.0 minor** (the 0.20.0 leniency precedent). Every document
+  that parsed before decodes byte-identically (the recovery is reached only after the ordinary
+  parse fails); every document that failed with a code other than the recovered class's
+  `INVALID_JSON` profile keeps its exact error. The newly-accepted inputs were rejections before,
+  so no existing consumer behaviour changes.
+- **Bounded, profile-gated, fail-closed.** Insert-only owed closers; mid-document closes fire only
+  into an array keyed `children` / `cases`; ambiguous nesting, truncation fingerprints,
+  over-closed documents, and `LIMIT_EXCEEDED` all keep the original error. `decodeOp` is
+  untouched (strict parse — the class is node emissions).
+- **New public surface: `JsonDecode.Reliance`** — the recovery accounting read side (`count` /
+  `snapshot` / `reset`) with the literal counter id `Reliance.ImpliedNodeClose` =
+  `"implied-node-close"`. This is error RECOVERY, not §16 shorthand normalisation: every recovery
+  is counted and surfaced the way §16 leniencies are measured, so the class stays measurable
+  while ceasing to be a loss. The counter id string is a stable identifier (same footing as a
+  `DecodeError` code).
+- **Corpus / spec / host parity — staged, not shipped here.** The shared-corpus fixture family,
+  the `WIRE_FORMAT.md` §16-adjacent optional-host-behaviour note, and the sibling-host ports
+  follow deliberately (the 0.20.0 staging pattern); until then the in-repo
+  `recovery-fixtures/` suite (the 36 stored emissions) is the acceptance record.

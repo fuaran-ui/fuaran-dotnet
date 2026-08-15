@@ -53,7 +53,18 @@
          (via Fuaran.UI.Renderer.Core), and the didactic enum rejects. -->
     <Compile Include="DurationFormatTests.fs" />
     <Compile Include="ReactiveDerivationTests.fs" />
+    <!-- Phase 850 — implied-node-close decode recovery. The 36 stored
+         malformed emissions under recovery-fixtures/ are the acceptance
+         suite (36/36 recover, 34/36 decode clean); the EOF-close
+         counter-example is pinned so the wrong fix cannot return. -->
+    <Compile Include="ImpliedNodeCloseRecoveryTests.fs" />
     <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The stored malformed emissions (code fences stripped) driving the
+         Phase 850 recovery re-gate. Deliberately .txt: none of them is valid
+         JSON — that is the point. -->
+    <Content Include="recovery-fixtures\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
