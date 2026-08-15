@@ -12,8 +12,8 @@ content inside the three generated marker families (`fuaran:example`,
 `docs/tools/authoring-pack.fsx --check`, and NOT hand-cuttable except by cutting a whole
 section); "prose" is the authored remainder. `few-shot.jsonl` is counted per entry
 (line length). Evidence citations are rows of
-`eval-suite/docs/CAPABILITY-DEMAND-LOG.md` (cited by date/cluster) and
-`eval-suite/docs/EXPRESSIBILITY-CENSUS.md`.
+the evaluation harness's demand log (`CAPABILITY-DEMAND-LOG.md`, cited by
+date/cluster) and its expressibility census (`EXPRESSIBILITY-CENSUS.md`).
 
 ## Baseline (pre-slim)
 
@@ -171,5 +171,5 @@ variants, TonedPill tone values, Icon sizes, Style-vocabulary enumerations, Rule
 
 **Next (the coordinator's wet half):** stress-track sweep (n=1, two families) +
 Tier-A/B mini-window against this pack SHA; any flip regression restores the class by
-reverting its single commit. Then the eval-suite pin + the depth-cost re-measure
+reverting its single commit. Then the evaluation-harness pin + the depth-cost re-measure
 (grok's cumulative-USD ratio is the sentinel).
