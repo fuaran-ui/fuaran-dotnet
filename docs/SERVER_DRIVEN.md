@@ -677,11 +677,24 @@ reference CSS; no new packages.
 
 ## The bounded tree driver – driving *generated* apps (no `'Msg`)
 
+> **Moved in 0.25.0 — this path now ships in `Fuaran.Program.Bounded`, not
+> `Fuaran.UI.ServerDriven`.** `BoundedActions`, `BoundedDriver` and `resolveTree`
+> (now `Resolve.resolveTree`) live in the program domain's package, because the
+> same interpreter drives *two* placements of this loop — the server session
+> described below, and a browser client — and "one algebra, two placements" only
+> holds if there is exactly one interpreter. Behaviour is unchanged; the section
+> below describes it as it still works, at its new address. Add a
+> `Fuaran.Program.Bounded` package reference and `open Fuaran.Program.Bounded`
+> (plus `.BoundedDriver` for the loop). The transport core this section builds on
+> — `Validation`, `Lowering`, `DomPatch`, `ClientEffect` — is untouched and stays
+> in `Fuaran.UI.ServerDriven`. See `STABILITY.md`, "Recorded breaking change —
+> 0.25.0".
+
 The driver above (`Driver` / `LiveConnection`) runs a **hand-authored** Elmish
 `(Model, update, view)` loop on the server. But an AI-generated app has **no
 hand-authored `update` / `'Msg` / `view`** – it is an **AI-emitted, wire-decoded
-`Node<obj>` tree**. `BoundedDriver` is the second driver mode for that case
-(Phase 153): the "model" is the tree's **state store** (a
+`Node<obj>` tree**. `BoundedDriver` is the second driver mode for that case: the
+"model" is the tree's **state store** (a
 `BindingResolver.BindingSources` value), and the "update" is **applying the
 bounded `Action` set against that store** – no app-specific F# code, no Fable
 compile, no `'Msg` type. The bounded language *is* the update loop.

@@ -6907,7 +6907,8 @@ let private parseFailure (code: DecodeErrorCode, message: string) : Result<'a, D
 /// the output of `Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeNode`.
 /// Closure-bearing slots decode to inert placeholders carrying the `"<closure>"`
 /// sentinel, so the result is safe to persist / diff / apply ops to / drive
-/// server-side (`BoundedDriver.init` takes a `WireTree` directly) but NOT to
+/// through a bounded program loop (`Fuaran.Program.Bounded`'s driver takes a
+/// `WireTree` directly) but NOT to
 /// render through the live client renderer (its handlers are gone) — see
 /// `WireTree`. The orchestrator's typed re-attachment happens downstream
 /// (`moduleMsgDecoder: JVal -> 'Msg`). Use `decodeNodeObj` for the raw

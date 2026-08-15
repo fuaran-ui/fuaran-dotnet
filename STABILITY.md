@@ -1165,3 +1165,41 @@ unrelated `MISSING_FIELD` defects). Full contract:
   the `WIRE_FORMAT.md` §16-adjacent optional-host-behaviour note, and the sibling-host ports
   follow deliberately (the 0.20.0 staging pattern); until then the in-repo
   `recovery-fixtures/` suite (the 36 stored emissions) is the acceptance record.
+
+## Recorded breaking change — 0.25.0, the bounded program path leaves `Fuaran.UI.ServerDriven` (fuaran#756)
+
+`Fuaran.UI.ServerDriven` **no longer ships the bounded (no-`'Msg`) program path**. Three surfaces are
+removed from the package:
+
+- `Fuaran.UI.ServerDriven.BoundedActions` — the bounded-`Action` interpreter, with `BoundedStore`,
+  `BoundedOutcome` and `BoundedDiagnostic`.
+- `Fuaran.UI.ServerDriven.BoundedDriver` — the no-`'Msg` driver, with `BoundedServices`,
+  `BoundedSession`, `BoundedReject`, `BoundedStepOutput` and `InteractionBudget`.
+- `BoundedDriver.resolveTree` — the binding re-resolution pass.
+
+They **moved whole** to `Fuaran.Program.Bounded`, the program domain's package (Apache-2.0), where
+`resolveTree` now lives at `Fuaran.Program.Bounded.Resolve.resolveTree` and the rest keep their
+names. Behaviour is unchanged: this is a relocation, not a rewrite, and the moved invariant suite
+(no closure is ever invoked; `SetState` is the only mutation) moved with it.
+
+**Why the code moved rather than the package gaining a dependency.** The interpreter is shared by two
+placements of the same loop — a server session and a browser client — and "one algebra, two
+placements" only holds if there is exactly one interpreter. Keeping the driver here and referencing
+the domain package would have made this repo depend on a package that itself depends on `Fuaran.UI`,
+putting two builds of the same types in one compilation and turning every `Fuaran.UI` type change into
+a two-repo round trip. The dependency therefore runs one way only — the program domain consumes
+`Fuaran.UI.*`, and no `Fuaran.UI.*` package references `Fuaran.Program.*`. The reasoning is recorded
+as D5 in that repo's `DECISIONS.md`.
+
+**Migration.** A consumer of the bounded path adds a `Fuaran.Program.Bounded` package reference and
+changes `open Fuaran.UI.ServerDriven.BoundedDriver` to `open Fuaran.Program.Bounded.BoundedDriver`
+(plus `open Fuaran.Program.Bounded` for the interpreter types). `resolveTree` call sites become
+`Resolve.resolveTree`. No other edit is required — the types and their members are unchanged.
+
+**Unaffected.** The server-driven transport core stays exactly where it is: `DomPatch`,
+`ClientEffect`, `Lowering`, `Validation`, `Inbound`, the hand-authored `Driver`, `FormValidation`,
+`FormBuffer`, `Navigation`, `InteractionTelemetry`, `SessionStore`, `Channel` and `FrameWire`. A
+consumer that never touched the bounded path needs no change at all.
+
+A removal is a major-versus-minor question the pre-1.0 caveat settles: `Fuaran.UI.ServerDriven` is
+pre-1.0 and not in the Scope table above, and this ships as a minor bump on the 0.5.0 precedent.

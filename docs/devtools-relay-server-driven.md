@@ -80,7 +80,9 @@ browser. An extension edit here would apply, appear to work, then visibly snap b
 click. There is no correct way to route relay `apply` into this mode, and none should be invented; an
 edit that must survive has to be expressed as a model change, which a `TreeOp` cannot express.
 
-**Bounded driver (Phase 153) — coherent, and the round-trip falls out for free.** The bounded mode has
+**Bounded driver — coherent, and the round-trip falls out for free.** _(From 0.25.0 the bounded
+driver ships in `Fuaran.Program.Bounded`, not this repo; the type shapes cited below are unchanged.)_
+The bounded mode has
 no `Model`/`View`/`Update`. Its state is the tree itself plus a store, and the tree is the fixed
 structural input (`BoundedDriver.fs`):
 

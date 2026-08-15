@@ -265,7 +265,8 @@ module ApplyHint =
 /// interactive closures did **not** survive serialisation — every handler slot
 /// is an inert `"<closure>"` sentinel (a `Button.OnClick`, `Tabs.OnSelect`, …
 /// decodes to a no-op). A `WireTree` is therefore safe to persist, diff, apply
-/// ops to, and **drive server-side** (`BoundedDriver.init` takes it directly),
+/// ops to, and **drive through a bounded program loop** (`Fuaran.Program.Bounded`
+/// takes it directly),
 /// where interactivity is re-derived from the store — never by invoking a
 /// closure. But rendering it through the **live client renderer** would produce
 /// dead interactivity (its buttons dispatch nothing), because the closures are

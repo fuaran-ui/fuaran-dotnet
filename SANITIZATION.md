@@ -51,7 +51,8 @@ not cover it. The shipped `BrowserRuntime` assigns `window.location.hash`, which
 script — but `IFuaranRuntime.Navigate` is documented as the seam a host wires to its SPA router, and
 `location.href` / `router.push` turn a `javascript:` route into script execution and any absolute URL
 into an open redirect. Since Phase 782 the route passes `Sanitize.sanitizeUrl` on the action path in
-all three interpreters (`Render.treeNavigate`, `Driver.interpret`, `BoundedActions.runBoundedAction`)
+all three interpreters (`Render.treeNavigate`, `Driver.interpret`, and
+`BoundedActions.runBoundedAction` — which ships in `Fuaran.Program.Bounded` from 0.25.0)
 **before** the dispatch gate sees it and before any host code is reached. A refusal performs nothing
 and emits no effect — `about:blank` would be a navigation the author did not ask for.
 

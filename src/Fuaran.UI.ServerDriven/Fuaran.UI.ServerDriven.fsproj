@@ -28,8 +28,6 @@
     <Compile Include="Validation.fs" />
     <Compile Include="Inbound.fs" />
     <Compile Include="Driver.fs" />
-    <Compile Include="BoundedActions.fs" />
-    <Compile Include="BoundedDriver.fs" />
     <Compile Include="FormValidation.fs" />
     <Compile Include="FormBuffer.fs" />
     <Compile Include="Navigation.fs" />
@@ -47,8 +45,10 @@
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
-    <!-- Phase 153 (bounded-tree driver): the binding resolver + BindingSources
-         store value the bounded driver re-resolves a generated tree against.
+    <!-- The binding resolver + BindingSources store value the hand-authored
+         driver, the form buffer and the lowering read. (The bounded-tree driver
+         that also used it moved to Fuaran.Program.Bounded — see that package;
+         the dependency runs one way, so nothing here references it.)
          Renderer.Core is the FSharp.Core-only render SPINE (not the Feliz/
          Feliz.ViewEngine renderers) — no React/Feliz/Server dep — so
          referencing it keeps the "no renderer-emission dep leaks into this

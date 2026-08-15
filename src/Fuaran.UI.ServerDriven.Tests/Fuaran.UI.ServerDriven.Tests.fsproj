@@ -10,8 +10,6 @@
     <Compile Include="LoweringTests.fs" />
     <Compile Include="ValidationTests.fs" />
     <Compile Include="DriverTests.fs" />
-    <Compile Include="BoundedActionsTests.fs" />
-    <Compile Include="BoundedDriverTests.fs" />
     <Compile Include="ChannelTests.fs" />
     <Compile Include="FrameWireTests.fs" />
     <Compile Include="DurabilityTests.fs" />

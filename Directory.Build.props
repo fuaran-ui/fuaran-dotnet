@@ -211,8 +211,19 @@
          JsonDecode.Reliance surface (id "implied-node-close"); bounded,
          profile-gated, fails closed to the original error. Additive
          decode behaviour + additive public surface (pre-1.0 minor, the
-         0.20.0 leniency precedent). -->
-    <Version>0.24.0</Version>
+         0.20.0 leniency precedent).
+         0.25.0 - the bounded program path LEAVES Fuaran.UI.ServerDriven:
+         `BoundedActions` (the bounded-Action interpreter), `resolveTree`
+         (binding re-resolution) and `BoundedDriver` (the no-'Msg loop)
+         move whole to the program domain's Fuaran.Program.Bounded, so a
+         single interpreter serves both placements of that loop instead of
+         one per host. A REMOVAL from this package's public surface -
+         consumers of the bounded path reference Fuaran.Program.Bounded
+         instead; the transport core (DomPatch / ClientEffect / Lowering /
+         Validation / Driver / Channel) is untouched. The dependency runs
+         one way (program -> UI, never back), which is what the split buys:
+         see that repo's DECISIONS.md D5. Pre-1.0 minor. -->
+    <Version>0.25.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
