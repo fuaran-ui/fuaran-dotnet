@@ -213,9 +213,10 @@ against are both wrong:
 - **Not `fuaran-ts`.** A server-driven page never loads `@fuaran-ui/renderer`; there is no
   server-driven code anywhere in that repo. The relay work for this tier is in the shim, which is
   `fuaran-dotnet`.
-- **Not `orchestration`, except for composition.** The driver, channel, shim and transports are all
-  `fuaran-dotnet/src/Fuaran.UI.ServerDriven*`. `orchestration` holds `RelayApplyGate` (already shipped,
-  Phase 740) and a 53-line forge channel adapter; the host wires the gate, it does not implement this.
+- **Not the private runtime tier, except for composition.** The driver, channel, shim and transports
+  are all `fuaran-dotnet/src/Fuaran.UI.ServerDriven*`. The runtime tier holds `RelayApplyGate` (already
+  shipped, Phase 740) and a 53-line host channel adapter; the host wires the gate, it does not
+  implement this.
 
 The blocking order is B1 → (B2, B3) → the phase:
 
@@ -237,7 +238,7 @@ Attempting it before B1 would mean building a relay leg for a page that cannot b
   bounded driver.
 - [`../../wire-format-fixtures/DEVTOOLS_RELAY.md`](../../wire-format-fixtures/DEVTOOLS_RELAY.md) —
   the relay contract (§6.4 capabilities, §8 apply, §9 refusals, §11 security).
-- `../../orchestration/docs/migrations/740-relay-apply-authorization.md` — `RelayApplyGate`, the grant
-  model, and where it hooks on the client tiers.
+- `RelayApplyGate` — the grant model, and where it hooks on the client tiers — is documented in the
+  Phase 740 migration note shipped with the runtime tier that owns it.
 - [`in-page-introspection-repl.md`](in-page-introspection-repl.md) — the `window.__fuaran` surface the
   relay wraps on the client tiers, and which the server-driven tier does not have.
