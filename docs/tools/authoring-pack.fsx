@@ -9,10 +9,14 @@
 //   dotnet fsi authoring-pack.fsx --write    # regenerate every corpus-derived surface
 //   dotnet fsi authoring-pack.fsx --check    # verify nothing drifted (exit 1 on drift)
 //
-// Either mode accepts `--minify-examples`, which emits the PROMPT-PACK example blocks
-// as minified JSON instead of the 2-space pretty form. The decoder is
-// whitespace-indifferent and the pack is a paid prefix, so the indentation buys a
-// machine reader nothing and costs tokens on every request. Scope + guarantees:
+// PROMPT-PACK example blocks are emitted as minified JSON BY DEFAULT (the adopted
+// emission since the Phase 839 gate; the DEFAULT since Phase 838 — a bare `--write`
+// used to emit the pretty form, which silently reverted the adopted minification
+// whenever a session regenerated without the flag). `--pretty-examples` opts out for
+// inspection; `--minify-examples` names the default explicitly and is accepted as a
+// no-op. The decoder is whitespace-indifferent and the pack is a paid prefix, so the
+// indentation buys a machine reader nothing and costs tokens on every request.
+// Scope + guarantees:
 //
 //   * It applies to prompt-pack/system-prompt.md ONLY. AI_AUTHORING_GUIDE.md is a
 //     human-facing document, is not part of the paid prefix, and stays pretty.
@@ -25,18 +29,21 @@
 //     record cannot carry a raw newline, so the embedded tree has to be compact
 //     whatever the flag says. The flag is a no-op there on a corpus that stores its
 //     fixtures compact (which it does) — it only rescues a pretty-stored fixture.
-//   * The drift check passes in either emission. Structural drift from the corpus is
-//     what `--check` asserts, and whitespace is explicitly not drift (`canonicalize`).
-//     `--check --minify-examples` additionally asserts the pack is IN the minified
-//     form, so the adopted emission can be pinned by the build once it is gated.
+//   * The drift check passes structurally in either emission (whitespace is
+//     explicitly not drift — `canonicalize`), but under the minified default a
+//     `--check` additionally asserts the pack IS in the minified form, so the build
+//     gate pins the adopted emission; `--check --pretty-examples` waives that.
 //
 // Corpus-derived surfaces (cannot diverge from wire-format-fixtures/):
 //   * Marker blocks  <!-- fuaran:example fixture=ID -->```json …```<!-- /fuaran:example -->
 //     in the managed markdown files (the authoring guide + the pack system prompt).
-//   * Marker block   <!-- fuaran:required-fields --> … <!-- /fuaran:required-fields -->
-//     in the pack system prompt — the per-kind required/optional field table, derived
-//     from wire-format-fixtures/schema.json (the Phase 422 eval cohort showed models
-//     omitting per-kind required fields when the pack didn't enumerate them).
+//   * Marker block   <!-- fuaran:signature-catalogue --> … <!-- /fuaran:signature-catalogue -->
+//     in the pack system prompt — the Phase 838 declaration-style signature catalogue
+//     (every kind, field, payload DU and closed enum, `.d.ts`-flavoured), derived from
+//     wire-format-fixtures/schema.json. Successor to the retired required-fields +
+//     enum-vocab tables (Phase 422 / the 2026-07-15 smoke run created those; 838
+//     re-encoded the same constraint set declaration-style at a fraction of the
+//     token cost, spelling-complete on every closed vocabulary).
 //   * prompt-pack/few-shot.jsonl   — one {prompt, decoder, fixture, tree} per curated id.
 //   * prompt-pack/schema.json      — a byte copy of wire-format-fixtures/schema.json.
 //
@@ -64,7 +71,7 @@ let packDir = Path.Combine(docsDir, "prompt-pack")
 let argv = fsi.CommandLineArgs |> Array.skip 1
 
 let private usage () =
-    eprintfn "usage: dotnet fsi authoring-pack.fsx (--write | --check) [--minify-examples]"
+    eprintfn "usage: dotnet fsi authoring-pack.fsx (--write | --check) [--minify-examples | --pretty-examples]"
     exit 2
 
 let writeMode =
@@ -74,14 +81,22 @@ let writeMode =
     | _ -> usage ()
 
 // An unrecognised trailing argument is a typo, not a no-op: silently ignoring
-// `--minify-example` would emit the pretty form while the caller believed otherwise.
-match argv |> Array.skip 1 |> Array.filter (fun a -> a <> "--minify-examples") with
+// `--minify-example` would emit an emission the caller did not choose.
+match
+    argv
+    |> Array.skip 1
+    |> Array.filter (fun a -> a <> "--minify-examples" && a <> "--pretty-examples")
+with
 | [||] -> ()
 | unknown ->
     eprintfn "unknown argument(s): %s" (String.concat " " unknown)
     usage ()
 
-let minifyExamples = argv |> Array.contains "--minify-examples"
+// Minified is the DEFAULT (Phase 838): the pack's committed state is the adopted
+// minified emission, and a bare `--write` regen must reproduce it rather than
+// silently revert it. `--pretty-examples` opts out; `--minify-examples` names the
+// default and remains accepted so older invocations keep working unchanged.
+let minifyExamples = not (argv |> Array.contains "--pretty-examples")
 
 // ── Corpus index ─────────────────────────────────────────────────────────────────
 type FixtureMeta = { File: string; Decoder: string }
@@ -229,381 +244,268 @@ let reconcileFile (label: string) (path: string) (expected: string) =
     else
         reportDrift $"{label}: out of sync with the corpus (run authoring-pack.fsx --write)"
 
-// ── Per-kind required-fields table (derived from the canonical schema) ───────────
-// Walks $defs.NodeKind in wire-format-fixtures/schema.json: the four category defs
-// (LayoutKind / DisplayKind / InputKind / VisKind) hold oneOf cases that are either
-// `allOf [ { $type const }; { $ref <Kind>Spec } ]` or an inline object case (e.g.
-// Filters); the remaining non-$ref NodeKind cases (Custom, ErrorBoundary, …) are
-// inline. For each kind: required = the spec's `required` minus `$type`; optional =
-// its `properties` minus required minus `$type`. Because the schema itself is
-// generated from the decoder, this table cannot drift from what the decoder rejects
-// with MISSING_FIELD.
-let buildRequiredFieldsTable () =
-    use doc = JsonDocument.Parse(File.ReadAllText schemaSrcPath)
+// ── Signature catalogue (Phase 838) ──────────────────────────────────────────────
+// The whole type surface as a `.d.ts`-flavoured declaration block, derived from
+// wire-format-fixtures/schema.json — the same derivation source as the retired
+// required-fields + enum-vocab tables, re-encoded declaration-style. Design rules:
+//
+//   * `Name { field: type; opt?: type }` — required fields first (schema `required`
+//     order), optional fields `?`-marked and Ordinal-sorted, `$type` implied by the
+//     case / kind name.
+//   * `A = B | C` — a closed `$type`-discriminated union, one case per `| ` line.
+//   * SPELLING-COMPLETE on every closed vocabulary: enums referenced from exactly one
+//     site inline their quoted values AT the use site (`"Group"|"Card"|…`); enums
+//     used from several sites are declared once by name (`ToneVariant = …`) — the
+//     measured catalogue-stub arm's one failure class was an invented enum spelling,
+//     so every legal value appears verbatim somewhere in the block.
+//   * `closure` renders a host-code slot (`const "<closure>"`). REQUIRED closure
+//     fields are kept (the author must emit the sentinel — Mount.onBubble, the
+//     CellKindErased closure cells, Local's format/parse/onCommit); OPTIONAL closure
+//     fields are suppressed outright — they are host-side handler slots the pack's
+//     self-wiring rules forbid authoring (rules 6–9: omit onChange/onSelect/
+//     onRowClick/onResult), so listing them would spend tokens teaching fields whose
+//     only correct emission is absence.
+//   * `any` renders a schema-unconstrained value; `str`/`num`/`int`/`bool` the JSON
+//     primitives.
+//   * Emission order is deterministic: Node, the kind unions, TreeOp, then payload
+//     unions / records / enums alphabetically — only defs actually referenced by
+//     name are emitted, so the block cannot carry dead vocabulary.
+let buildSignatureCatalogue () =
+    let schemaText = File.ReadAllText schemaSrcPath
+    use doc = JsonDocument.Parse schemaText
     let defs = doc.RootElement.GetProperty "$defs"
+    let getDef (name: string) = defs.GetProperty name
 
-    let resolveRef (refValue: string) =
-        defs.GetProperty(refValue.Substring "#/$defs/".Length)
+    let refCount (name: string) =
+        Regex.Matches(schemaText, Regex.Escape($"\"#/$defs/{name}\"")).Count
 
-    let fieldsOf (spec: JsonElement) =
-        // 2026-07-17 — mark Binding-typed fields inline. The launch eval's biggest
-        // failure family was ENVELOPE CONFUSION: models could not predict which
-        // fields take a Binding envelope vs a plain value (fraction: 0.9 bare;
-        // indeterminate wrapped in Static). The table now says so per field.
-        let isBinding (name: string) =
-            match spec.TryGetProperty "properties" with
-            | true, props ->
-                match props.TryGetProperty name with
-                | true, p ->
-                    match p.TryGetProperty "$ref" with
-                    | true, r -> r.GetString() = "#/$defs/Binding"
-                    | _ -> false
-                | _ -> false
-            | _ -> false
+    let hasProp (name: string) (el: JsonElement) =
+        el.ValueKind = JsonValueKind.Object
+        && (match el.TryGetProperty name with
+            | true, _ -> true
+            | _ -> false)
 
-        let tag name =
-            if isBinding name then name + "†" else name
+    let isStringEnum (el: JsonElement) =
+        hasProp "enum" el
+        && (match el.TryGetProperty "type" with
+            | true, t -> t.GetString() = "string"
+            | _ -> false)
 
-        let required =
-            match spec.TryGetProperty "required" with
-            | true, r ->
-                [ for e in r.EnumerateArray() do
-                      let name = e.GetString()
+    // A named alias for a bare string with no closed vocabulary (AriaRole) — rendered
+    // as `str` at the use site, never declared.
+    let isPlainStringAlias (el: JsonElement) =
+        not (hasProp "enum" el)
+        && not (hasProp "oneOf" el)
+        && not (hasProp "properties" el)
+        && (match el.TryGetProperty "type" with
+            | true, t -> t.ValueKind = JsonValueKind.String && t.GetString() = "string"
+            | _ -> false)
 
-                      if name <> "$type" then
-                          tag name ]
-            | _ -> []
+    let enumInline (el: JsonElement) =
+        el.GetProperty("enum").EnumerateArray()
+        |> Seq.map (fun v -> "\"" + v.GetString() + "\"")
+        |> String.concat "|"
 
-        let optional =
-            match spec.TryGetProperty "properties" with
-            | true, props ->
-                [ for p in props.EnumerateObject() do
-                      if p.Name <> "$type" && not (List.contains p.Name required) then
-                          p.Name ]
-                |> List.filter (fun n -> not (List.contains (tag n) required))
-                |> List.map tag
-                |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
-            | _ -> []
+    // Defs that must be declared by name because some rendered type referenced them.
+    let namedRefs = System.Collections.Generic.HashSet<string>()
 
-        required, optional
+    let rec renderType (el: JsonElement) : string =
+        if el.ValueKind = JsonValueKind.True then
+            "any"
+        elif hasProp "$ref" el then
+            let name = el.GetProperty("$ref").GetString().Substring "#/$defs/".Length
+            let target = getDef name
 
-    // A oneOf case → (kind name, (required, optional)); None for a pure $ref case.
-    let caseEntry (case: JsonElement) =
-        match case.TryGetProperty "allOf" with
-        | true, allOf ->
-            let parts = allOf.EnumerateArray() |> Seq.toArray
+            if isStringEnum target then
+                if refCount name <= 1 then
+                    enumInline target
+                else
+                    namedRefs.Add name |> ignore
+                    name
+            elif isPlainStringAlias target then
+                "str"
+            else
+                namedRefs.Add name |> ignore
+                name
+        elif hasProp "const" el then
+            let c = el.GetProperty "const"
+
+            if c.ValueKind = JsonValueKind.String && c.GetString() = "<closure>" then
+                "closure"
+            else
+                c.GetRawText()
+        elif hasProp "not" el then
+            "any"
+        elif
+            hasProp "allOf" el
+            || (hasProp "properties" el && hasProp "$type" (el.GetProperty "properties"))
+        then
+            renderAlternative el
+        elif hasProp "oneOf" el then
+            el.GetProperty("oneOf").EnumerateArray()
+            |> Seq.map renderAlternative
+            |> String.concat " | "
+        elif hasProp "enum" el then
+            enumInline el
+        else
+            match el.TryGetProperty "type" with
+            | true, t ->
+                match t.GetString() with
+                | "string" -> "str"
+                | "number" -> "num"
+                | "integer" -> "int"
+                | "boolean" -> "bool"
+                | "array" ->
+                    let itemTy =
+                        match el.TryGetProperty "items" with
+                        | true, items when items.ValueKind <> JsonValueKind.True -> renderType items
+                        | _ -> "any"
+
+                    if itemTy.Contains "|" then
+                        $"({itemTy})[]"
+                    else
+                        itemTy + "[]"
+                | "object" ->
+                    if hasProp "properties" el then
+                        "{ " + renderFields el + " }"
+                    else
+                        match el.TryGetProperty "additionalProperties" with
+                        | true, ap when ap.ValueKind <> JsonValueKind.True -> "{ [key]: " + renderType ap + " }"
+                        | true, _ -> "{ [key]: any }"
+                        | _ -> "object"
+                | other -> other
+            | _ -> "any"
+
+    // A union alternative: an allOf hoist (`[$type-const; $ref Spec]` or the
+    // inline-record-plus-constraint shape — Switch/SetState), an inline object case
+    // with a `$type` const, or (TextSource's bare-string leg) any other type.
+    and renderAlternative (case: JsonElement) : string =
+        if hasProp "allOf" case then
+            let parts = case.GetProperty("allOf").EnumerateArray() |> Seq.toArray
 
             let kind =
                 parts.[0].GetProperty("properties").GetProperty("$type").GetProperty("const").GetString()
 
-            // Two allOf shapes exist: the hoisted-spec form (`[$type-const; $ref]`,
-            // resolve the ref) and the inline-record-plus-constraint form
-            // (Phase 768's Switch: `[record; anyOf]` — the record IS parts[0],
-            // and the trailing constraint carries no field definitions).
-            match parts.[1].TryGetProperty "$ref" with
-            | true, r -> Some(kind, fieldsOf (resolveRef (r.GetString())))
-            | _ -> Some(kind, fieldsOf parts.[0])
-        | _ ->
-            match case.TryGetProperty "properties" with
-            | true, props ->
-                match props.TryGetProperty "$type" with
-                | true, t ->
-                    match t.TryGetProperty "const" with
-                    | true, c -> Some(c.GetString(), fieldsOf case)
-                    | _ -> None
-                | _ -> None
-            | _ -> None
+            let record =
+                if hasProp "$ref" parts.[1] then
+                    getDef (parts.[1].GetProperty("$ref").GetString().Substring "#/$defs/".Length)
+                else
+                    parts.[0]
 
-    let categoryRows =
-        [ "Layout", "LayoutKind"
-          "Display", "DisplayKind"
-          "Input", "InputKind"
-          "Visualisation", "VisKind" ]
-        |> List.collect (fun (category, defName) ->
-            defs.GetProperty(defName).GetProperty("oneOf").EnumerateArray()
-            |> Seq.choose caseEntry
-            |> Seq.map (fun (kind, fields) -> category, kind, fields)
-            |> List.ofSeq)
+            renderCase kind record
+        elif hasProp "properties" case && hasProp "$type" (case.GetProperty "properties") then
+            let kind =
+                case.GetProperty("properties").GetProperty("$type").GetProperty("const").GetString()
 
-    let structuralRows =
-        defs.GetProperty("NodeKind").GetProperty("oneOf").EnumerateArray()
-        |> Seq.choose caseEntry
-        |> Seq.map (fun (kind, fields) -> "Structural", kind, fields)
-        |> List.ofSeq
+            renderCase kind case
+        else
+            renderType case
 
-    let fieldList =
-        function
-        | [] -> "—"
-        | fields -> fields |> List.map (sprintf "`%s`") |> String.concat ", "
+    and renderCase (name: string) (record: JsonElement) : string =
+        match renderFields record with
+        | "" -> name
+        | fields -> name + " { " + fields + " }"
 
-    [ yield "| Kind | Required (MISSING_FIELD if absent) | Optional (omittable) |"
-      yield "|---|---|---|"
-      for category, kind, (required, optional) in categoryRows @ structuralRows do
-          yield $"| {category} `{kind}` | {fieldList required} | {fieldList optional} |" ]
-    |> String.concat "\n"
+    and renderFields (record: JsonElement) : string =
+        let required =
+            match record.TryGetProperty "required" with
+            | true, r ->
+                [ for e in r.EnumerateArray() do
+                      let n = e.GetString()
 
-// ── Closed enum vocabulary table (derived from the canonical schema) ─────────────
-// The 2026-07-15 smoke run found the sequel to the Phase 422 lesson that created the
-// required-fields table: the pack REQUIRED `variant` on Heading but never enumerated
-// its legal values, so every provider guessed a plausible synonym ('Title', 'Page')
-// and was rejected with UNKNOWN_DU_CASE. This table walks every kind's spec
-// properties to their $ref'd string-enum defs and pins kind.field → legal values —
-// usage-anchored (not enum-name-only) because `variant` names a DIFFERENT enum on
-// Heading vs Button vs Badge vs Image. Enums only reachable inside nested payloads
-// (Binding / CellFormat / Action cases) are appended without a usage anchor so the
-// vocabulary is complete. Schema-derived ⇒ cannot drift from the decoder.
-let buildEnumVocabTable () =
-    use doc = JsonDocument.Parse(File.ReadAllText schemaSrcPath)
-    let defs = doc.RootElement.GetProperty "$defs"
-
-    let resolveRef (refValue: string) =
-        defs.GetProperty(refValue.Substring "#/$defs/".Length)
-
-    let enumDefName (prop: JsonElement) =
-        // direct { "$ref": "#/$defs/X" } or array { "items": { "$ref": … } }
-        let refOf (e: JsonElement) =
-            match e.TryGetProperty "$ref" with
-            | true, r -> Some(r.GetString())
-            | _ -> None
-
-        let candidate =
-            match refOf prop with
-            | Some r -> Some r
-            | None ->
-                match prop.TryGetProperty "items" with
-                | true, items -> refOf items
-                | _ -> None
-
-        candidate
-        |> Option.map (fun r -> r.Substring "#/$defs/".Length)
-        |> Option.filter (fun name ->
-            let target = defs.GetProperty name
-
-            match target.TryGetProperty "enum" with
-            | true, _ ->
-                match target.TryGetProperty "type" with
-                | true, t -> t.GetString() = "string"
-                | _ -> false
-            | _ -> false)
-
-    let enumValues (name: string) =
-        defs.GetProperty(name).GetProperty("enum").EnumerateArray()
-        |> Seq.map (fun v -> v.GetString())
-        |> List.ofSeq
-
-    // Same kind walk as buildRequiredFieldsTable, but keeping the spec element.
-    let kindSpecs =
-        let caseSpec (case: JsonElement) =
-            match case.TryGetProperty "allOf" with
-            | true, allOf ->
-                let parts = allOf.EnumerateArray() |> Seq.toArray
-
-                let kind =
-                    parts.[0].GetProperty("properties").GetProperty("$type").GetProperty("const").GetString()
-
-                // Same two allOf shapes as `caseEntry` above: hoisted-spec
-                // (resolve the ref) vs inline-record-plus-constraint (Phase 768's
-                // Switch — the record IS parts[0]).
-                match parts.[1].TryGetProperty "$ref" with
-                | true, r -> Some(kind, resolveRef (r.GetString()))
-                | _ -> Some(kind, parts.[0])
-            | _ ->
-                match case.TryGetProperty "properties" with
-                | true, props ->
-                    match props.TryGetProperty "$type" with
-                    | true, t ->
-                        match t.TryGetProperty "const" with
-                        | true, c -> Some(c.GetString(), case)
-                        | _ -> None
-                    | _ -> None
-                | _ -> None
-
-        [ "LayoutKind"; "DisplayKind"; "InputKind"; "VisKind"; "NodeKind" ]
-        |> List.collect (fun defName ->
-            defs.GetProperty(defName).GetProperty("oneOf").EnumerateArray()
-            |> Seq.choose caseSpec
-            |> List.ofSeq)
-
-    // (enum name → the kind.field sites that use it)
-    let usages =
-        [ for kind, spec in kindSpecs do
-              match spec.TryGetProperty "properties" with
-              | true, props ->
-                  for p in props.EnumerateObject() do
-                      if p.Name <> "$type" then
-                          match enumDefName p.Value with
-                          | Some enumName -> yield enumName, $"`{kind}.{p.Name}`"
-                          | None -> ()
-              | _ -> () ]
-        |> List.groupBy fst
-        |> List.map (fun (enumName, sites) -> enumName, sites |> List.map snd |> List.distinct |> List.sort)
-        |> List.sortBy fst
-
-    let allEnumNames =
-        [ for d in defs.EnumerateObject() do
-              match d.Value.TryGetProperty "enum" with
-              | true, _ ->
-                  match d.Value.TryGetProperty "type" with
-                  | true, t when t.GetString() = "string" -> d.Name
-                  | _ -> ()
-              | _ -> () ]
-        |> List.sort
-
-    let anchored = usages |> List.map fst |> Set.ofList
-    let nested = allEnumNames |> List.filter (fun n -> not (anchored.Contains n))
-
-    let fmtValues name =
-        enumValues name |> List.map (sprintf "`%s`") |> String.concat " · "
-
-    // Payload-DU discriminator vocabularies — oneOf defs whose cases carry a
-    // `$type` const (Binding, TextSource, CellFormat, TreeOp, …). The kind
-    // category defs are excluded: the kinds table above already owns them.
-    // Historical failure class: `body.$type: 'Query'` (a Binding case guessed
-    // into a TextSource slot), `weight.$type: 'Bold'`-style case guessing.
-    // Each case carries its REQUIRED payload fields (minus $type) — the Kimi
-    // smokes showed models learning the case names from the list but then
-    // guessing the payload keys (`Navigate` emitted with `href` instead of the
-    // required `route`, twice). Case name alone teaches half the contract.
-    let discriminatorDefs =
-        let excluded =
-            set [ "LayoutKind"; "DisplayKind"; "InputKind"; "VisKind"; "NodeKind" ]
-
-        let caseRequired (case: JsonElement) =
-            match case.TryGetProperty "required" with
-            | true, req ->
-                [ for e in req.EnumerateArray() do
-                      let name = e.GetString()
-
-                      if name <> "$type" then
-                          name ]
+                      if n <> "$type" then
+                          n ]
             | _ -> []
 
-        // A payload-DU case can be the inline-record-plus-constraint allOf shape
-        // (Phase 818's SetState, like Phase 768's Switch: `[record; oneOf]` — the
-        // record IS parts[0] and the trailing constraint carries no fields). Unwrap
-        // it so the case keeps its `$type` const and its required list; a flat case
-        // passes through unchanged.
-        let caseRecord (case: JsonElement) =
-            match case.TryGetProperty "allOf" with
-            | true, allOf -> allOf.EnumerateArray() |> Seq.head
-            | _ -> case
-
-        [ for d in defs.EnumerateObject() do
-              if not (excluded.Contains d.Name) then
-                  match d.Value.TryGetProperty "oneOf" with
-                  | true, oneOf ->
-                      let consts =
-                          [ for case in oneOf.EnumerateArray() |> Seq.map caseRecord do
-                                match case.TryGetProperty "properties" with
-                                | true, props ->
-                                    match props.TryGetProperty "$type" with
-                                    | true, t ->
-                                        match t.TryGetProperty "const" with
-                                        | true, c -> c.GetString(), caseRequired case
-                                        | _ -> ()
-                                    | _ -> ()
-                                | _ -> () ]
-
-                      if not (List.isEmpty consts) then
-                          d.Name, consts
-                  | _ -> () ]
-        |> List.sortBy fst
-
-    // Nested collection item shapes — kind-spec properties that are arrays of
-    // objects with their own `required` list (inline, or via items.$ref). The
-    // single largest historical MISSING_FIELD class lived here (columns[*].kind,
-    // items[*].kind, tabHeaders[*].label) — required fields the per-kind table
-    // cannot see because they sit one level down.
-    let nestedCollections =
-        let itemObj (prop: JsonElement) =
-            match prop.TryGetProperty "items" with
-            | true, items ->
-                let resolved =
-                    match items.TryGetProperty "$ref" with
-                    | true, r -> resolveRef (r.GetString())
-                    | _ -> items
-
-                match resolved.TryGetProperty "required" with
-                | true, req ->
-                    let required =
-                        [ for e in req.EnumerateArray() do
-                              e.GetString() ]
-
-                    let optional =
-                        match resolved.TryGetProperty "properties" with
-                        | true, props ->
-                            [ for p in props.EnumerateObject() do
-                                  if not (List.contains p.Name required) then
-                                      p.Name ]
-                            |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
-                        | _ -> []
-
-                    if List.isEmpty required then
-                        None
-                    else
-                        Some(required, optional)
-                | _ -> None
-            | _ -> None
-
-        [ for kind, spec in kindSpecs do
-              match spec.TryGetProperty "properties" with
-              | true, props ->
-                  for p in props.EnumerateObject() do
+        let props =
+            match record.TryGetProperty "properties" with
+            | true, props ->
+                [ for p in props.EnumerateObject() do
                       if p.Name <> "$type" then
-                          match itemObj p.Value with
-                          | Some(required, optional) -> yield kind, p.Name, required, optional
-                          | None -> ()
-              | _ -> () ]
-        |> List.sortBy (fun (k, f, _, _) -> k, f)
+                          p.Name, p.Value ]
+            | _ -> []
 
-    let fieldList =
-        function
-        | [] -> "—"
-        | fields -> fields |> List.map (sprintf "`%s`") |> String.concat ", "
+        let byName = dict props
 
-    [ yield "| Field(s) | Enum | Legal values — anything else is an `UNKNOWN_DU_CASE` reject |"
-      yield "|---|---|---|"
-      for enumName, sites in usages do
-          let siteList = String.concat ", " sites
-          yield $"| {siteList} | `{enumName}` | {fmtValues enumName} |"
-      if not (List.isEmpty nested) then
-          yield ""
-          yield "Closed vocabularies inside nested payloads (`Binding` / `CellFormat` / `Action` cases):"
-          yield ""
+        let optional =
+            props
+            |> List.map fst
+            |> List.filter (fun n -> not (List.contains n required))
+            |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
 
-          for n in nested do
-              yield $"- `{n}`: {fmtValues n}"
-      if not (List.isEmpty discriminatorDefs) then
-          yield ""
+        [ for n in required do
+              if byName.ContainsKey n then
+                  $"{n}: {renderType byName.[n]}"
+              else
+                  $"{n}: any"
+          for n in optional do
+              // Optional closure fields are suppressed: host-side handler slots the
+              // self-wiring rules forbid authoring (see the module doc). Required
+              // closure fields stay — the author must emit the sentinel there.
+              match renderType byName.[n] with
+              | "closure" -> ()
+              | ty -> $"{n}?: {ty}" ]
+        |> String.concat "; "
 
-          yield
-              "**`$type` discriminators are closed vocabularies too** — each of these takes exactly one of its listed cases (a `Binding` case in a `TextSource` slot, or an invented case name, is an `UNKNOWN_DU_CASE` reject). A case's REQUIRED payload fields ride in parentheses — use those exact key names (`Navigate(route)` means the key is `route`, not `href`/`url`):"
+    // Nested `oneOf` wrappers flatten into the parent union (TextSource's inner DU).
+    let rec altsOf (el: JsonElement) : JsonElement seq =
+        if hasProp "oneOf" el && not (hasProp "properties" el) && not (hasProp "allOf" el) then
+            el.GetProperty("oneOf").EnumerateArray() |> Seq.collect altsOf
+        else
+            Seq.singleton el
 
-          yield ""
+    let renderDecl (name: string) =
+        let d = getDef name
 
-          for name, consts in discriminatorDefs do
-              let cases =
-                  consts
-                  |> List.map (fun (n, required) ->
-                      match required with
-                      | [] -> $"`{n}`"
-                      | fields -> "`" + n + "(" + String.concat ", " fields + ")`")
-                  |> String.concat " · "
+        if isStringEnum d then
+            name + " = " + enumInline d
+        elif hasProp "oneOf" d then
+            let cases = altsOf d |> Seq.map renderAlternative |> List.ofSeq
+            name + " =\n" + (cases |> List.map (fun c -> "| " + c) |> String.concat "\n")
+        else
+            name + " { " + renderFields d + " }"
 
-              yield $"- `{name}.$type`: {cases}"
-      if not (List.isEmpty nestedCollections) then
-          yield ""
+    // Roots first (fixed order), then everything the rendering named, to a fixpoint.
+    let roots =
+        [ "Node"
+          "NodeKind"
+          "LayoutKind"
+          "DisplayKind"
+          "InputKind"
+          "VisKind"
+          "TreeOp" ]
 
-          yield
-              "**Nested collection items carry required fields of their own** — the per-kind table above stops at the kind's top level; each item in these arrays must ALSO carry its required fields (`MISSING_FIELD` on absence):"
+    let decls = System.Collections.Generic.Dictionary<string, string>()
 
-          yield ""
-          yield "| Collection | Each item requires | Optional per item |"
-          yield "|---|---|---|"
+    for r in roots do
+        decls.[r] <- renderDecl r
 
-          for kind, field, required, optional in nestedCollections do
-              yield $"| `{kind}.{field}[]` | {fieldList required} | {fieldList optional} |" ]
-    |> String.concat "\n"
+    let mutable added = true
+
+    while added do
+        added <- false
+
+        for n in namedRefs |> Seq.toArray do
+            if not (decls.ContainsKey n) then
+                decls.[n] <- renderDecl n
+                added <- true
+
+    let rest =
+        decls.Keys
+        |> Seq.filter (fun n -> not (List.contains n roots))
+        |> Seq.sortWith (fun a b -> String.CompareOrdinal(a, b))
+        |> List.ofSeq
+
+    let classOf (name: string) =
+        let d = getDef name
+
+        if isStringEnum d then 2
+        elif hasProp "oneOf" d then 0
+        else 1
+
+    let ordered = roots @ (rest |> List.sortBy (fun n -> classOf n)) // stable: keeps alpha within class
+
+    ordered |> List.map (fun n -> decls.[n]) |> String.concat "\n"
 
 // ── Managed marker blocks ────────────────────────────────────────────────────────
 // <!-- fuaran:example fixture=ID -->
@@ -617,29 +519,24 @@ let private markerRegex =
         RegexOptions.Singleline
     )
 
-// <!-- fuaran:required-fields -->
-// | Kind | Required … | Optional … |   (schema-derived; see buildRequiredFieldsTable)
-// <!-- /fuaran:required-fields -->
-let private tableRegex =
+// <!-- fuaran:signature-catalogue -->
+// ```ts
+// …declaration-style type surface…   (schema-derived; see buildSignatureCatalogue)
+// ```
+// <!-- /fuaran:signature-catalogue -->
+let private catalogueRegex =
     Regex(
-        @"<!-- fuaran:required-fields -->\r?\n(?<body>.*?)\r?\n<!-- /fuaran:required-fields -->",
+        @"<!-- fuaran:signature-catalogue -->\r?\n```ts\r?\n(?<body>.*?)\r?\n```\r?\n<!-- /fuaran:signature-catalogue -->",
         RegexOptions.Singleline
     )
 
-// <!-- fuaran:enum-vocab -->
-// | Field(s) | Enum | Legal values … |   (schema-derived; see buildEnumVocabTable)
-// <!-- /fuaran:enum-vocab -->
-let private vocabRegex =
-    Regex(@"<!-- fuaran:enum-vocab -->\r?\n(?<body>.*?)\r?\n<!-- /fuaran:enum-vocab -->", RegexOptions.Singleline)
-
 // `packSurface` marks a file that ships as part of the paid prompt prefix, and so is
-// subject to `--minify-examples`. The human-facing authoring guide is not one.
-let reconcileMarkdown (relPath: string) (expectTable: bool) (packSurface: bool) =
+// subject to the minified-example emission. The human-facing authoring guide is not one.
+let reconcileMarkdown (relPath: string) (expectCatalogue: bool) (packSurface: bool) =
     let minifyHere = packSurface && minifyExamples
     let path = Path.Combine(docsDir, relPath)
     let original = File.ReadAllText path
     let mutable matched = 0
-    let mutable tablesMatched = 0
 
     let rebuilt =
         markerRegex.Replace(
@@ -665,7 +562,7 @@ let reconcileMarkdown (relPath: string) (expectTable: bool) (packSurface: bool) 
                     // asserted when the caller asked for minified — a bare --check
                     // stays whitespace-indifferent, so it passes against either form.
                     reportDrift
-                        $"{relPath}: example '{id}' is structurally correct but not minified (run authoring-pack.fsx --write --minify-examples)"
+                        $"{relPath}: example '{id}' is structurally correct but not minified (run authoring-pack.fsx --write)"
 
                 // In --write we always re-emit the canonical form for the requested
                 // emission (which normalises whitespace too); in --check we leave the
@@ -674,50 +571,29 @@ let reconcileMarkdown (relPath: string) (expectTable: bool) (packSurface: bool) 
                 $"<!-- fuaran:example fixture={id} -->\n```json\n{newBody}\n```\n<!-- /fuaran:example -->"
         )
 
+    let mutable cataloguesMatched = 0
+
     let rebuilt =
-        tableRegex.Replace(
+        catalogueRegex.Replace(
             rebuilt,
             fun (m: Match) ->
-                tablesMatched <- tablesMatched + 1
+                cataloguesMatched <- cataloguesMatched + 1
                 let body = m.Groups.["body"].Value
-                let expected = buildRequiredFieldsTable ()
+                let expected = buildSignatureCatalogue ()
 
                 if normalizeEol body <> expected then
                     if not writeMode then
-                        reportDrift $"{relPath}: required-fields table diverges from wire-format-fixtures/schema.json"
+                        reportDrift $"{relPath}: signature catalogue diverges from wire-format-fixtures/schema.json"
 
                 let newBody = if writeMode then expected else body
-                $"<!-- fuaran:required-fields -->\n{newBody}\n<!-- /fuaran:required-fields -->"
-        )
-
-    let mutable vocabMatched = 0
-
-    let rebuilt =
-        vocabRegex.Replace(
-            rebuilt,
-            fun (m: Match) ->
-                vocabMatched <- vocabMatched + 1
-                let body = m.Groups.["body"].Value
-                let expected = buildEnumVocabTable ()
-
-                if normalizeEol body <> expected then
-                    if not writeMode then
-                        reportDrift $"{relPath}: enum-vocab table diverges from wire-format-fixtures/schema.json"
-
-                let newBody = if writeMode then expected else body
-                $"<!-- fuaran:enum-vocab -->\n{newBody}\n<!-- /fuaran:enum-vocab -->"
+                $"<!-- fuaran:signature-catalogue -->\n```ts\n{newBody}\n```\n<!-- /fuaran:signature-catalogue -->"
         )
 
     if matched = 0 then
         reportDrift $"{relPath}: no <!-- fuaran:example --> blocks found (marker contract broken?)"
 
-    if expectTable && tablesMatched = 0 then
-        reportDrift $"{relPath}: no <!-- fuaran:required-fields --> block found (marker contract broken?)"
-
-    // The pack system prompt carries the vocab block alongside the required-fields
-    // table (same expectTable file set) — a missing block is a broken contract.
-    if expectTable && vocabMatched = 0 then
-        reportDrift $"{relPath}: no <!-- fuaran:enum-vocab --> block found (marker contract broken?)"
+    if expectCatalogue && cataloguesMatched = 0 then
+        reportDrift $"{relPath}: no <!-- fuaran:signature-catalogue --> block found (marker contract broken?)"
 
     reconcileFile relPath path rebuilt
 
@@ -809,7 +685,7 @@ printfn
     (if minifyExamples then " (minified pack examples)" else "")
 
 // 1. Corpus-derived marker examples (+ the schema-derived required-fields table) in
-//    the managed markdown. Only the pack system prompt carries the table.
+//    the managed markdown. Only the pack system prompt carries the catalogue.
 reconcileMarkdown "AI_AUTHORING_GUIDE.md" false false
 reconcileMarkdown (Path.Combine("prompt-pack", "system-prompt.md")) true true
 
