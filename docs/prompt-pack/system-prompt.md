@@ -906,18 +906,15 @@ conditional with no cases.
 
 ## Style vocabularies — density & prominence, not font styling
 
-Four style fields carry a **small closed vocabulary**, and every one is now **omittable**
-(leave it out and the identity default applies — they sit in the Optional column above). The
+Four style fields carry a **small closed vocabulary** (spellings in the catalogue), and
+every one is **omittable** — `?`-marked, with an identity default on absence. The
 cases describe **density and prominence**, not font styling — a common misread:
 
-- **`tone` — `ToneVariant`** (semantic colour role): `Default` · `Subdued` · `Brand` ·
-  `Success` · `Warning` · `Critical` · `Info`. Identity default: `Default`.
-- **`emphasis` — `Emphasis`** (visual **prominence**, *not* font-weight): `Quiet` · `Normal`
-  · `Loud`. Identity default: `Normal`. `Loud` raises an element's prominence — it is **not**
-  "bold text".
-- **`weight` — `StyleWeight`** (layout **density**, *not* font-weight): `Compact` ·
-  `Standard` · `Spacious`. Identity default: `Standard`. This tunes spacing/density, never
-  the typeface weight.
+- **`tone` — `ToneVariant`** (semantic colour role). Identity default: `Default`.
+- **`emphasis` — `Emphasis`** (visual **prominence**, *not* font-weight). Identity
+  default: `Normal`. `Loud` raises an element's prominence — it is **not** "bold text".
+- **`weight` — `StyleWeight`** (layout **density**, *not* font-weight). Identity
+  default: `Standard`. This tunes spacing/density, never the typeface weight.
 - **`format` — `CellFormat`** (metric/column number formatting): identity default `None`
   (the raw value).
 
@@ -929,7 +926,7 @@ for an ordinary row (false is the default).
 **Omit when unsure.** Every one of these has an identity default the decoder restores on
 absence. If you have no specific colour / prominence / density intent, **leave the field
 out** — that is the correct minimal emission and never raises `MISSING_FIELD`. Emit a case
-only when you mean it, and only a case from the list above; an unknown case fails with
+only when you mean it, and only a catalogue-listed spelling; an unknown case fails with
 `UNKNOWN_DU_CASE` and the expected-case list.
 
 ## Rules
