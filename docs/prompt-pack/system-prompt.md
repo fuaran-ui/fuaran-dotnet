@@ -39,18 +39,11 @@ Note the shape, because the most common failure is drifting from it:
   `"binding"` key.
 - A metric's number lives in `value` (numeric-only — see Metric vs Fact below); it has
   `trend` / `trendFormat`, **no** `goal` field. Field names and presence are pinned by
-  the JSON schema + the corpus.
+  the signature catalogue below.
 
-Optional node keys — omit them when they are empty / all-default:
-
-- `state` — `{ "onLoading": <Node>, "onEmpty": <Node> }` (the `onError` callback is not
-  emittable). Omit entirely when there are no state slots.
-- `style` — `{ "tone": …, "weight": …, "emphasis": …, "role"?: …, "voice"?: … }`. Omit
-  entirely when all-default (`tone` `"Default"`, `weight` `"Standard"`, `emphasis`
-  `"Normal"`).
-- `accessibility` — ARIA overrides; omit when absent.
-
-`None`/empty fields are **omitted**, never emitted as `null`.
+The optional node keys `state` / `style` / `accessibility` (shapes in the catalogue)
+are omitted entirely when empty / all-default. `None`/empty fields are **omitted**,
+never emitted as `null`.
 
 ## Containers nest under `children`
 
@@ -109,9 +102,7 @@ answer.
 ## Editing an existing tree
 
 After the first emission, prefer a `TreeOp` over re-sending the whole tree. A `TreeOp`
-is a JSON document whose own `$type` is the op kind (`EditNode`, `UpdateProp`,
-`ReplaceBinding`, `UpdateStyle`, `UpdateState`, `InsertChild`, `RemoveNode`,
-`MoveNode`, `ReorderChildren`, `Batch`):
+is a JSON document whose own `$type` is the op kind — the catalogue's `TreeOp` union:
 
 **Membership and order are separate ops, and neither takes an index.** `InsertChild` and
 `MoveNode` change *which* children a parent has, and both **append**. `ReorderChildren` states
