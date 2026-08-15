@@ -672,11 +672,19 @@ let fewShot =
       "Edit the existing tree: put the markdown note above the metric in 'stack-1' by stating the order."
       // Cut 2026-08-15 (Phase 834 dedup — each renders as a system-prompt example
       // block, which the flip record shows is the operative surface):
-      //   lenient-filterable-static-dashboard-compact,
-      //   lenient-master-detail-preselected-compact, master-detail-multi-field
+      //   lenient-filterable-static-dashboard-compact, master-detail-multi-field
       //   (flip-4 named this exact entry as never read by the default posture),
-      //   switch-on-selection, empty-state-card, form-toggle,
-      //   now-environment-binding, lenient-scalar-transform-composition-compact.
+      //   empty-state-card, form-toggle, now-environment-binding.
+      // RESTORED 2026-08-15 (the charter's regression rule): the post-slim
+      // sweep regressed stress-001/003 on claude (judge c2 PARTIAL where the
+      // pre-slim sweep passed) — the three entries teaching exactly those
+      // intents come back:
+      "lenient-master-detail-preselected-compact",
+      "A support-ticket triage screen: a ticket grid with TCK-2041 selected by default, and a detail card showing the selected ticket."
+      "switch-on-selection",
+      "A ward dashboard: a grid of wards, and a status panel that changes with the selected ward — a critical ward shows an escalation callout, otherwise a normal-range note."
+      "lenient-scalar-transform-composition-compact",
+      "A triage dashboard over embedded ticket data: a badge counting the critical tickets, and a warning callout whose body is the selected ticket's alert text (TCK-2041 selected by default)."
       // progress-1: cut on the flip-3 verdict — "the few-shot addition was
       // redundant; no change at n=6" (Progress stays taught in prose).
       // 2026-08-01 n=3 review — 042/c3 (×3): every emission reached for a Fact
