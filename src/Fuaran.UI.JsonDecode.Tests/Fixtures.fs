@@ -583,7 +583,11 @@ let compositeTabsPanels: Node<obj> =
                 { Layout = BoxLayout.Grid(2, Option.None, Some 16)
                   Role = BoxRole.Card
                   Heading = Some(TextSource.Literal "This month")
-                  Children = [ metric; badge ] }
+                  // Sparkline + Badge rather than the fat shared `metric`: this tree is
+                  // meant to SUPERSEDE `tabs-explicit-1` as the pack's Tabs exemplar, so
+                  // it has to carry that fixture's leaf vocabulary, and Metric is already
+                  // exemplified several times over while Sparkline is exemplified once.
+                  Children = [ sparkline; badge ] }
             ))
             None
 
