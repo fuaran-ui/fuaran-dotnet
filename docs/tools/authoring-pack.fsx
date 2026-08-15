@@ -370,8 +370,8 @@ let buildSignatureCatalogue () =
                         "{ " + renderFields el + " }"
                     else
                         match el.TryGetProperty "additionalProperties" with
-                        | true, ap when ap.ValueKind <> JsonValueKind.True -> "{ [key]: " + renderType ap + " }"
-                        | true, _ -> "{ [key]: any }"
+                        | true, ap when ap.ValueKind <> JsonValueKind.True -> "{ [key]:" + renderType ap + " }"
+                        | true, _ -> "{ [key]:any }"
                         | _ -> "object"
                 | other -> other
             | _ -> "any"
@@ -433,18 +433,22 @@ let buildSignatureCatalogue () =
             |> List.filter (fun n -> not (List.contains n required))
             |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
 
+        // No space after the colon: measured in the o200k reference tokenizer, the
+        // colon-dense form saves ~135 tokens over the whole catalogue while the
+        // `; ` field separator saves almost nothing — so density is spent exactly
+        // where the tokenizer pays for it (the Phase 839 minification argument).
         [ for n in required do
               if byName.ContainsKey n then
-                  $"{n}: {renderType byName.[n]}"
+                  $"{n}:{renderType byName.[n]}"
               else
-                  $"{n}: any"
+                  $"{n}:any"
           for n in optional do
               // Optional closure fields are suppressed: host-side handler slots the
               // self-wiring rules forbid authoring (see the module doc). Required
               // closure fields stay — the author must emit the sentinel there.
               match renderType byName.[n] with
               | "closure" -> ()
-              | ty -> $"{n}?: {ty}" ]
+              | ty -> $"{n}?:{ty}" ]
         |> String.concat "; "
 
     // Nested `oneOf` wrappers flatten into the parent union (TextSource's inner DU).

@@ -133,7 +133,7 @@ Do not write a numeric position on any op. Bracket indices appear only inside `U
 
 The catalogue below is the COMPLETE type surface — every node kind, every field, every
 closed vocabulary — generated from the same schema the decoder enforces. How to read
-it: `Name { field: type; opt?: type }` declares an object — `?` marks a field you may
+it: `Name { field:type; opt?:type }` declares an object — `?` marks a field you may
 omit; every unmarked field is REQUIRED on every emission of that shape, and the
 decoder rejects an absent one with `MISSING_FIELD` and **never infers a default**,
 even when one seems obvious (a `Heading` without `variant`, a `Metric` without `value`
@@ -145,7 +145,7 @@ listed spelling exactly as written; a plausible synonym is an `UNKNOWN_DU_CASE`
 reject, and the same field name can carry a different vocabulary on different kinds
 (`variant` on a `Button` is not `variant` on a `Heading`), so read the owning
 declaration, not your prior. `str` / `num` / `int` / `bool` take the plain JSON value;
-`T[]` is an array; `{ [key]: T }` a string-keyed map; `any` any JSON value; `object`
+`T[]` is an array; `{ [key]:T }` a string-keyed map; `any` any JSON value; `object`
 an object whose shape prose elsewhere defines (the `Transform` columnar source).
 
 Two type names carry the envelope boundary, and getting it wrong is the single most
@@ -160,209 +160,209 @@ section), so omit it or emit the sentinel string `"<closure>"`.
 
 <!-- fuaran:signature-catalogue -->
 ```ts
-Node { id: str; kind: NodeKind; accessibility?: Accessibility; state?: StateBehaviour; style?: SemanticStyle }
+Node { id:str; kind:NodeKind; accessibility?:Accessibility; state?:StateBehaviour; style?:SemanticStyle }
 NodeKind =
 | LayoutKind
 | DisplayKind
 | InputKind
 | VisKind
-| Custom { componentId: str; moduleId: str; props: { [key]: any }; contentHash?: ContentHash; exposedNodeIds?: str[] }
-| ErrorBoundary { child: Node; fallback: Node }
-| Switch { cases: { child: Node; match: str }[]; default: Node; on?: Binding; stateKey?: str }
-| FragmentDecl { body: Node; name: str; effect?: EffectClass; holes?: HoleDecl[] }
-| FragmentRef { name: str; args?: { [key]: FragmentArg } }
-| Mount { capabilities: str[]; channel: GuestChannel; onBubble: closure; scopeId: str; inputs?: { [key]: FragmentArg } }
+| Custom { componentId:str; moduleId:str; props:{ [key]:any }; contentHash?:ContentHash; exposedNodeIds?:str[] }
+| ErrorBoundary { child:Node; fallback:Node }
+| Switch { cases:{ child:Node; match:str }[]; default:Node; on?:Binding; stateKey?:str }
+| FragmentDecl { body:Node; name:str; effect?:EffectClass; holes?:HoleDecl[] }
+| FragmentRef { name:str; args?:{ [key]:FragmentArg } }
+| Mount { capabilities:str[]; channel:GuestChannel; onBubble:closure; scopeId:str; inputs?:{ [key]:FragmentArg } }
 LayoutKind =
-| Box { children: Node[]; layout: BoxLayout; role: "Group"|"Card"|"Dashboard"|"Separator"; heading?: TextSource }
-| SplitPanel { children: Node[]; weight: num }
-| Tabs { children: Node[]; activeIndex?: Binding; activeTag?: Binding; orientation?: Orientation; tabHeaders?: TabHeader[]; tabTags?: str[] }
-| Stepper { activeStep: Binding; children: Node[] }
-| SummaryList { children: Node[]; heading?: TextSource }
-| Disclosure { children: Node[]; defaultOpen: bool; heading: TextSource; open: Binding }
-| Modal { children: Node[]; dismissable: bool; open: Binding; heading?: TextSource; onDismiss?: Action }
-| ScrollArea { children: Node[]; orientation: "Vertical"|"Horizontal"|"Both"; maxHeight?: int; maxWidth?: int }
+| Box { children:Node[]; layout:BoxLayout; role:"Group"|"Card"|"Dashboard"|"Separator"; heading?:TextSource }
+| SplitPanel { children:Node[]; weight:num }
+| Tabs { children:Node[]; activeIndex?:Binding; activeTag?:Binding; orientation?:Orientation; tabHeaders?:TabHeader[]; tabTags?:str[] }
+| Stepper { activeStep:Binding; children:Node[] }
+| SummaryList { children:Node[]; heading?:TextSource }
+| Disclosure { children:Node[]; defaultOpen:bool; heading:TextSource; open:Binding }
+| Modal { children:Node[]; dismissable:bool; open:Binding; heading?:TextSource; onDismiss?:Action }
+| ScrollArea { children:Node[]; orientation:"Vertical"|"Horizontal"|"Both"; maxHeight?:int; maxWidth?:int }
 DisplayKind =
-| Heading { level: int; text: TextSource; variant: "Standard"|"Eyebrow"|"Caption"|"Lead" }
-| Markdown { text: TextSource }
-| Metric { label: TextSource; value: Binding; emphasis?: Emphasis; format?: CellFormat; icon?: str; subtext?: TextSource; tone?: ToneVariant; trend?: Binding; trendFormat?: CellFormat; weight?: StyleWeight }
-| Badge { label: TextSource; variant: "Neutral"|"Brand"|"Success"|"Warning"|"Critical"|"Info" }
-| Sparkline { source: Binding }
-| Callout { body: TextSource; dismissable?: bool; heading?: TextSource; icon?: str; tone?: ToneVariant }
-| Progress { fraction: Binding; caveat?: TextSource; indeterminate?: bool; label?: TextSource; tone?: ToneVariant }
-| Skeleton { rows: int }
-| Icon { icon: str; label?: str; size?: "Small"|"Medium"|"Large"; tone?: ToneVariant }
-| LabelValueRow { label: TextSource; value: Binding; emphasis?: bool; format?: CellFormat; help?: TextSource }
-| Fact { label: TextSource; value: TextSource; emphasis?: bool; help?: TextSource; icon?: str; tone?: ToneVariant }
-| Link { download: bool; href: Binding; label: TextSource; protection?: "email"; rel?: str; target?: str }
-| Image { alt: TextSource; src: Binding; variant: "Default"|"Avatar"|"Rounded" }
-| List { items: TextSource[]; ordered: bool }
-| Toast { message: TextSource; open: Binding; dismissable?: bool; tone?: ToneVariant }
-| CodeBlock { code: str; copyable: bool; highlightLines: int[]; language: str; lineNumbers: bool }
-| Math { display: "Inline"|"Block"; source: str }
-| Drawing { shapes: Shape[]; style: DrawStyle; viewBox: ViewBox; description?: TextSource; title?: TextSource }
+| Heading { level:int; text:TextSource; variant:"Standard"|"Eyebrow"|"Caption"|"Lead" }
+| Markdown { text:TextSource }
+| Metric { label:TextSource; value:Binding; emphasis?:Emphasis; format?:CellFormat; icon?:str; subtext?:TextSource; tone?:ToneVariant; trend?:Binding; trendFormat?:CellFormat; weight?:StyleWeight }
+| Badge { label:TextSource; variant:"Neutral"|"Brand"|"Success"|"Warning"|"Critical"|"Info" }
+| Sparkline { source:Binding }
+| Callout { body:TextSource; dismissable?:bool; heading?:TextSource; icon?:str; tone?:ToneVariant }
+| Progress { fraction:Binding; caveat?:TextSource; indeterminate?:bool; label?:TextSource; tone?:ToneVariant }
+| Skeleton { rows:int }
+| Icon { icon:str; label?:str; size?:"Small"|"Medium"|"Large"; tone?:ToneVariant }
+| LabelValueRow { label:TextSource; value:Binding; emphasis?:bool; format?:CellFormat; help?:TextSource }
+| Fact { label:TextSource; value:TextSource; emphasis?:bool; help?:TextSource; icon?:str; tone?:ToneVariant }
+| Link { download:bool; href:Binding; label:TextSource; protection?:"email"; rel?:str; target?:str }
+| Image { alt:TextSource; src:Binding; variant:"Default"|"Avatar"|"Rounded" }
+| List { items:TextSource[]; ordered:bool }
+| Toast { message:TextSource; open:Binding; dismissable?:bool; tone?:ToneVariant }
+| CodeBlock { code:str; copyable:bool; highlightLines:int[]; language:str; lineNumbers:bool }
+| Math { display:"Inline"|"Block"; source:str }
+| Drawing { shapes:Shape[]; style:DrawStyle; viewBox:ViewBox; description?:TextSource; title?:TextSource }
 InputKind =
-| Form { fields: FormField[]; onSubmit: Action; submitLabel: TextSource; disabled?: Binding }
-| Filters { items: FilterSpec[] }
-| Button { label: TextSource; onClick: Action; variant: "Primary"|"Secondary"|"Tertiary"|"Destructive"; disabled?: Binding; icon?: str }
-| FileUpload { accept: str[]; label: TextSource; multiple: bool; onSelect: closure; disabled?: Binding }
-| Select { label: TextSource; source: Binding; value: Binding; disabled?: Binding; multiple?: bool; placeholder?: TextSource; values?: Binding }
+| Form { fields:FormField[]; onSubmit:Action; submitLabel:TextSource; disabled?:Binding }
+| Filters { items:FilterSpec[] }
+| Button { label:TextSource; onClick:Action; variant:"Primary"|"Secondary"|"Tertiary"|"Destructive"; disabled?:Binding; icon?:str }
+| FileUpload { accept:str[]; label:TextSource; multiple:bool; onSelect:closure; disabled?:Binding }
+| Select { label:TextSource; source:Binding; value:Binding; disabled?:Binding; multiple?:bool; placeholder?:TextSource; values?:Binding }
 VisKind =
-| DataGrid { columns: ColumnErased[]; source: Binding; editable?: bool; rowKeyField?: str; sortStateKey?: str; staticRows?: { headers: TextSource[]; rows: TextSource[][]; defaultSort?: { column: int; direction: "asc"|"desc" }; sortable?: bool } }
-| Chart { kind: "Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source: Binding; xField: str; yFields: str[]; stacked?: bool; title?: TextSource }
-| Map { centreLatitude: num; centreLongitude: num; source: Binding; zoom: int }
+| DataGrid { columns:ColumnErased[]; source:Binding; editable?:bool; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool } }
+| Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding; xField:str; yFields:str[]; stacked?:bool; title?:TextSource }
+| Map { centreLatitude:num; centreLongitude:num; source:Binding; zoom:int }
 TreeOp =
-| EditNode { newKind: NodeKind; target: str }
-| UpdateProp { path: str; target: str; value: any }
-| ReplaceBinding { binding: Binding; slot: str; target: str }
-| UpdateStyle { style: SemanticStyle; target: str }
-| UpdateState { state: StateBehaviour; target: str }
-| InsertChild { child: Node; parentId: str }
-| RemoveNode { target: str }
-| MoveNode { newParentId: str; target: str }
-| ReorderChildren { newOrder: str[]; parentId: str }
-| ReplaceRoot { node: Node }
-| Batch { ops: TreeOp[] }
+| EditNode { newKind:NodeKind; target:str }
+| UpdateProp { path:str; target:str; value:any }
+| ReplaceBinding { binding:Binding; slot:str; target:str }
+| UpdateStyle { style:SemanticStyle; target:str }
+| UpdateState { state:StateBehaviour; target:str }
+| InsertChild { child:Node; parentId:str }
+| RemoveNode { target:str }
+| MoveNode { newParentId:str; target:str }
+| ReorderChildren { newOrder:str[]; parentId:str }
+| ReplaceRoot { node:Node }
+| Batch { ops:TreeOp[] }
 Action =
 | Dispatch
-| Call { endpoint: str; into?: CallResultTarget }
-| Notify { channel: str; payload: any }
-| Navigate { route: str }
-| SetState { key: str; value?: any; valueFrom?: Binding }
-| AiTool { args: any; toolName: str }
-| Chain { ops: Action[] }
-| CommitLocal { nodeId: str }
-| WriteToClipboard { text: str }
-| ReadFileBody { encoding: "Text"|"Base64"|"DataUrl"; fileRef: str; onRead: closure }
-| Invoke { args: object[]; capabilityId: str }
+| Call { endpoint:str; into?:CallResultTarget }
+| Notify { channel:str; payload:any }
+| Navigate { route:str }
+| SetState { key:str; value?:any; valueFrom?:Binding }
+| AiTool { args:any; toolName:str }
+| Chain { ops:Action[] }
+| CommitLocal { nodeId:str }
+| WriteToClipboard { text:str }
+| ReadFileBody { encoding:"Text"|"Base64"|"DataUrl"; fileRef:str; onRead:closure }
+| Invoke { args:object[]; capabilityId:str }
 Binding =
-| Static { value?: any }
-| Query { name: str; dependsOn?: str[] }
-| Filter { name: str; defaultValue?: any }
-| Selection { nodeId: str; defaultValue?: any; field?: str }
-| State { key: str; defaultValue?: any }
-| Computed { fn: closure }
+| Static { value?:any }
+| Query { name:str; dependsOn?:str[] }
+| Filter { name:str; defaultValue?:any }
+| Selection { nodeId:str; defaultValue?:any; field?:str }
+| State { key:str; defaultValue?:any }
+| Computed { fn:closure }
 | Now
-| I18n { key: str; args?: { [key]: Binding } }
-| Local { flushOn: LocalFlushTrigger; format: closure; initialFrom: Binding; onCommit: closure; parse: closure }
-| Format { format: Format; locale: LocaleSource; source: Binding }
-| Transform { pipeline: any[]; source: object; params?: { from: Binding; name: str }[] }
-| Invoke { args: object[]; capabilityId: str }
+| I18n { key:str; args?:{ [key]:Binding } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding; name:str }[] }
+| Invoke { args:object[]; capabilityId:str }
 BoxLayout =
-| Flex { direction: Orientation; wrap: bool; gap?: int }
-| Grid { cols: int; gap?: int; templateColumns?: str }
+| Flex { direction:Orientation; wrap:bool; gap?:int }
+| Grid { cols:int; gap?:int; templateColumns?:str }
 | Auto
 CallResultTarget =
-| State { key: str }
-| Query { name: str }
+| State { key:str }
+| Query { name:str }
 CellFormat =
 | None
-| Number { decimals?: int }
-| Currency { code: str }
-| Percent { decimals?: int }
-| SignificantDigits { digits: int }
-| Date { format: str }
-| Duration { style: DurationStyle; unit: DurationUnit }
-| RelativeTime { unit: RelativeTimeUnit }
-| Custom { fn: closure }
+| Number { decimals?:int }
+| Currency { code:str }
+| Percent { decimals?:int }
+| SignificantDigits { digits:int }
+| Date { format:str }
+| Duration { style:DurationStyle; unit:DurationUnit }
+| RelativeTime { unit:RelativeTimeUnit }
+| Custom { fn:closure }
 CellKindErased =
 | Text
 | Numeric
 | Date
-| Editable { onEdit: closure }
-| Checkbox { get: closure; onToggle: closure }
-| Button { label: TextSource; onClick: closure }
-| ButtonGroup { buttons: { label: TextSource; onClick: closure }[] }
-| Link { hrefFn: closure; labelFn: closure }
-| Pill { labelFn: closure; toneFn: closure }
-| TonedPill { field: str; map: { [key]: ToneVariant }; default?: ToneVariant }
-| Progress { fractionFn: closure; labelFn: closure }
-| Custom { fn: closure }
+| Editable { onEdit:closure }
+| Checkbox { get:closure; onToggle:closure }
+| Button { label:TextSource; onClick:closure }
+| ButtonGroup { buttons:{ label:TextSource; onClick:closure }[] }
+| Link { hrefFn:closure; labelFn:closure }
+| Pill { labelFn:closure; toneFn:closure }
+| TonedPill { field:str; map:{ [key]:ToneVariant }; default?:ToneVariant }
+| Progress { fractionFn:closure; labelFn:closure }
+| Custom { fn:closure }
 ColumnWidth =
 | Auto
-| Fixed { pixels: int }
-| Flex { weight: num }
+| Fixed { pixels:int }
+| Flex { weight:num }
 CurveCommand =
-| MoveTo { to: DrawPoint }
-| LineTo { to: DrawPoint }
-| CubicTo { control1: DrawPoint; control2: DrawPoint; to: DrawPoint }
-| QuadraticTo { control: DrawPoint; to: DrawPoint }
+| MoveTo { to:DrawPoint }
+| LineTo { to:DrawPoint }
+| CubicTo { control1:DrawPoint; control2:DrawPoint; to:DrawPoint }
+| QuadraticTo { control:DrawPoint; to:DrawPoint }
 | Close
 FormFieldKind =
-| Text { value?: Binding }
-| Number { value?: Binding }
-| Range { max?: num; min?: num; step?: num; value?: any }
-| Checkbox { value?: Binding }
-| Toggle { value?: Binding }
-| Choice { options: Binding; value?: Binding }
-| RangedNumber { max?: num; min?: num; step?: num; value?: Binding }
-| SegmentedChoice { options: Binding; orientation: Orientation; value?: Binding }
-| TextArea { rows: int; value?: Binding }
-| Date { variant: DateVariant; max?: str; min?: str; step?: num; value?: Binding }
-| DateRange { variant: DateVariant; max?: str; min?: str; step?: num; value?: any }
+| Text { value?:Binding }
+| Number { value?:Binding }
+| Range { max?:num; min?:num; step?:num; value?:any }
+| Checkbox { value?:Binding }
+| Toggle { value?:Binding }
+| Choice { options:Binding; value?:Binding }
+| RangedNumber { max?:num; min?:num; step?:num; value?:Binding }
+| SegmentedChoice { options:Binding; orientation:Orientation; value?:Binding }
+| TextArea { rows:int; value?:Binding }
+| Date { variant:DateVariant; max?:str; min?:str; step?:num; value?:Binding }
+| DateRange { variant:DateVariant; max?:str; min?:str; step?:num; value?:any }
 Format =
-| Number { decimals?: int }
-| Currency { isoCode: str }
-| Percent { decimals?: int }
-| Date { dateStyle: "Short"|"Medium"|"Long"|"Full" }
-| RelativeTime { unit: RelativeTimeUnit }
-| Duration { style: DurationStyle; unit: DurationUnit }
+| Number { decimals?:int }
+| Currency { isoCode:str }
+| Percent { decimals?:int }
+| Date { dateStyle:"Short"|"Medium"|"Long"|"Full" }
+| RelativeTime { unit:RelativeTimeUnit }
+| Duration { style:DurationStyle; unit:DurationUnit }
 FragmentArg =
-| Int { value: int }
-| Float { value: num }
-| Bool { value: bool }
-| Str { value: str }
-| SlotArg { tree: Node }
+| Int { value:int }
+| Float { value:num }
+| Bool { value:bool }
+| Str { value:str }
+| SlotArg { tree:Node }
 HoleDecl =
-| Value { name: str; space: HoleValueSpace; default?: Scalar }
-| Slot { name: str; kindConstraint?: str }
-| Repeat { countSpace: HoleValueSpace; name: str }
+| Value { name:str; space:HoleValueSpace; default?:Scalar }
+| Slot { name:str; kindConstraint?:str }
+| Repeat { countSpace:HoleValueSpace; name:str }
 HoleValueSpace =
-| IntRange { max: int; min: int }
-| FloatRange { max: num; min: num }
-| StringLen { maxLen: int; minLen: int }
-| Enum { choices: str[] }
+| IntRange { max:int; min:int }
+| FloatRange { max:num; min:num }
+| StringLen { maxLen:int; minLen:int }
+| Enum { choices:str[] }
 | AnyString
 LocalFlushTrigger =
 | OnBlur
 | OnSubmit
 | OnCommitAction
-| OnDebounce { milliseconds: int }
+| OnDebounce { milliseconds:int }
 LocaleSource =
 | Ambient
-| Explicit { tag: str }
+| Explicit { tag:str }
 Scalar =
-| Int { value: int }
-| Float { value: num }
-| Bool { value: bool }
-| Str { value: str }
+| Int { value:int }
+| Float { value:num }
+| Bool { value:bool }
+| Str { value:str }
 Shape =
-| Group { children: Shape[]; style: DrawStyle }
-| Rectangle { height: num; style: DrawStyle; width: num; x: num; y: num; cornerRadius?: num }
-| Line { style: DrawStyle; x1: num; x2: num; y1: num; y2: num }
-| Polyline { points: DrawPoint[]; style: DrawStyle }
-| Polygon { points: DrawPoint[]; style: DrawStyle }
-| Curve { commands: CurveCommand[]; style: DrawStyle }
-| Circle { cx: num; cy: num; r: num; style: DrawStyle }
-| Ellipse { cx: num; cy: num; rx: num; ry: num; style: DrawStyle }
-| Label { style: DrawStyle; text: TextSource; x: num; y: num }
+| Group { children:Shape[]; style:DrawStyle }
+| Rectangle { height:num; style:DrawStyle; width:num; x:num; y:num; cornerRadius?:num }
+| Line { style:DrawStyle; x1:num; x2:num; y1:num; y2:num }
+| Polyline { points:DrawPoint[]; style:DrawStyle }
+| Polygon { points:DrawPoint[]; style:DrawStyle }
+| Curve { commands:CurveCommand[]; style:DrawStyle }
+| Circle { cx:num; cy:num; r:num; style:DrawStyle }
+| Ellipse { cx:num; cy:num; rx:num; ry:num; style:DrawStyle }
+| Label { style:DrawStyle; text:TextSource; x:num; y:num }
 TextSource =
 | str
-| Literal { text: str }
-| Bound { binding: Binding }
-| I18n { args: { [key]: any }; key: str }
-Accessibility { describedBy?: str; hidden?: Binding; label?: Binding; labelledBy?: str; liveRegion?: "polite"|"assertive"|"off"; role?: str }
-ColumnErased { kind: CellKindErased; label: str; field?: str; format?: CellFormat; width?: ColumnWidth }
-ContentHash { algorithm: str; hash: str; strictness: "StrictReplay"|"AdvisoryWarning"|"Enforced" }
-DrawPoint { x: num; y: num }
-DrawStyle { emphasis?: Emphasis; fill?: Binding; fontFamily?: str; fontSize?: num; markId?: str; opacity?: Binding; stroke?: Binding; strokeWidth?: Binding; textAnchor?: "Start"|"Middle"|"End" }
-EffectClass { determinism: "Deterministic"|"Clock"|"Random"|"Network"; hostEffect: "Pure"|"ReadsHost"|"WritesHost" }
-FilterSpec { kind: FormFieldKind; label: TextSource; name: str }
-FormField { id: str; kind: FormFieldKind; label: TextSource; required: bool; help?: TextSource }
-GuestChannel { direction: "OutOnly"|"TwoWay"; messageShape?: str }
-SemanticStyle { emphasis?: Emphasis; role?: "None"|"Eyebrow"|"Data"|"Lede"|"Caption"; tone?: ToneVariant; voice?: "Default"|"Display"|"Structural"; weight?: StyleWeight }
-StateBehaviour { onEmpty?: Node; onLoading?: Node }
-TabHeader { label: TextSource; disabled?: Binding; icon?: str }
-ViewBox { height: num; minX: num; minY: num; width: num }
+| Literal { text:str }
+| Bound { binding:Binding }
+| I18n { args:{ [key]:any }; key:str }
+Accessibility { describedBy?:str; hidden?:Binding; label?:Binding; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str }
+ColumnErased { kind:CellKindErased; label:str; field?:str; format?:CellFormat; width?:ColumnWidth }
+ContentHash { algorithm:str; hash:str; strictness:"StrictReplay"|"AdvisoryWarning"|"Enforced" }
+DrawPoint { x:num; y:num }
+DrawStyle { emphasis?:Emphasis; fill?:Binding; fontFamily?:str; fontSize?:num; markId?:str; opacity?:Binding; stroke?:Binding; strokeWidth?:Binding; textAnchor?:"Start"|"Middle"|"End" }
+EffectClass { determinism:"Deterministic"|"Clock"|"Random"|"Network"; hostEffect:"Pure"|"ReadsHost"|"WritesHost" }
+FilterSpec { kind:FormFieldKind; label:TextSource; name:str }
+FormField { id:str; kind:FormFieldKind; label:TextSource; required:bool; help?:TextSource }
+GuestChannel { direction:"OutOnly"|"TwoWay"; messageShape?:str }
+SemanticStyle { emphasis?:Emphasis; role?:"None"|"Eyebrow"|"Data"|"Lede"|"Caption"; tone?:ToneVariant; voice?:"Default"|"Display"|"Structural"; weight?:StyleWeight }
+StateBehaviour { onEmpty?:Node; onLoading?:Node }
+TabHeader { label:TextSource; disabled?:Binding; icon?:str }
+ViewBox { height:num; minX:num; minY:num; width:num }
 DateVariant = "Date"|"Time"|"DateTime"
 DurationStyle = "Compact"|"Clock"|"Long"
 DurationUnit = "Seconds"|"Minutes"|"Hours"
