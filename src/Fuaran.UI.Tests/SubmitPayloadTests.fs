@@ -75,6 +75,7 @@ let tests =
                         "draft"
                         (FormFieldKind.Text(
                             Some(
+                                // fuaran-validator: disable-next-line FUARAN042 — harvest-semantics fixture; the formatter is not under test
                                 binding.local
                                     (Binding.Static(Some "committed"))
                                     LocalFlushTrigger.OnSubmit
