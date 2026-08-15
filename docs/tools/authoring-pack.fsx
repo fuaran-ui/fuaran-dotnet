@@ -652,7 +652,11 @@ let fewShot =
       "query-dependson",
       "A revenue metric fed by a host 'orders' query that declares it depends on the status and region filters — the host re-runs the query when either filter changes."
       "discl-1", "A collapsible 'Additional entitlements' section, open by default, containing a short note."
-      "tabs-explicit-1", "A horizontal tab panel with explicit 'Overview' and 'Detail' headers, second tab active."
+      // tabs-explicit-1: cut 2026-08-15 (Phase 841 reinvestment). Superseded by the
+      // `composite-tabs-panels` system-prompt block, which is a strict SUPERSET of its
+      // rules (same headers/tags/activeTag surface, same Sparkline leaf) and additionally
+      // shows the containers-inside-a-wrapper composition this fixture's bare leaves
+      // could not. The teaching moves from few-shot onto the surface every posture reads.
       "custom-1", "Emit the host-registered custom 'trend-card' component from the 'analytics' module."
       "op-replacebinding",
       "Edit the existing tree: pin node 'metric-1' to a static figure of 99.5 by replacing its Source binding."
