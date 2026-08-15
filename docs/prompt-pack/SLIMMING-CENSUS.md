@@ -322,3 +322,144 @@ datum — the first uncached gpt cell billed 18,703 input tokens for a prefix th
 estimates at ~16,792 — shows the `chars / 4` estimator is close but not neutral across
 families. Sizing every future cut in the currency it actually spends is a separate piece
 of work in the harness, deliberately not done here.
+
+# Signature-catalogue census — Phase 838 (fuaran)
+
+**Date:** 2026-08-15. **Charter:** Phase 838 — the sanctioned revival of Phase 614's
+retire note ("restructure, not slice"). The pack's type-surface teaching re-encodes as
+a `.d.ts`-flavoured signature catalogue generated from the same `schema.json` the
+decoder enforces; prose that RESTATED type structure collapses to catalogue
+references; prose that teaches SEMANTICS stays verbatim (the 613 ablation proved the
+vocabulary teaching is distributed through it — nothing didactic was cut here).
+Human readability of the pack is waived (operator release 2026-08-15).
+
+**Method.** This census records BOTH currencies: bytes (the 834/839 ledgers' basis —
+their `chars/4` estimate is bytes-derived) and the **o200k_base reference tokenizer**
+(the 839 census's "not measured here" follow-up). The two disagree in SIGN on this
+restructure, which is the headline: declaration-style text tokenizes materially better
+than pipe-table markdown, so a byte-neutral swap is a real token cut. All measurements
+at LF-normalised file bytes.
+
+## Baseline (pre-restructure, `d69e3ff` — the 839 post-minification pack)
+
+| File | Bytes | o200k |
+|---|---|---|
+| `system-prompt.md` | 67,168 | 18,559 |
+| `few-shot.jsonl` | 13,816 | 3,730 |
+| **Pack total (taught prefix)** | **80,984** | **22,289** |
+
+## What the catalogue replaces
+
+| Artefact | Bytes | o200k | Notes |
+|---|---|---|---|
+| required-fields table (old, generated) | 3,052 | 970 | per-kind required/optional names + † marks; NO field types |
+| enum-vocab block (old, generated) | 6,599 | 2,029 | enums + discriminator case names + required-only payload fields + nested-collection table |
+| **Old generated total** | **9,651** | **2,999** | |
+| **Signature catalogue (new, generated)** | **10,284** | **2,886** | the COMPLETE typed surface: every field typed, optional payload-DU fields included, record shapes (`Accessibility`, `DrawStyle`, `SemanticStyle`, …) the tables never carried, spelling-complete on every closed vocabulary |
+
+The catalogue is **2,886 o200k against `schema.json`'s 20,683 (14.0%)** — inside the
+charter's 10–15% estimate — and **beats the two partial tables by 113 tokens while
+carrying strictly more constraint**. Spelling-completeness design (the measured
+mid-session catalogue-stub arm's one failure was an invented enum spelling): single-use
+enums inline their quoted values AT the use site; multi-use enums are declared once by
+name; only name-referenced defs emit, so dead vocabulary cannot ride. Optional
+`closure` fields are suppressed (host handler slots rules 6–9 forbid authoring);
+required closure slots stay. The `Transform` pipeline-step algebra is NOT in the
+catalogue — `schema.json` models `pipeline` as `any[]`, so the algebra's teaching
+stays where it already lives, in the kept Transform prose sections (hand-authoring it
+into the catalogue would break the zero-hand-maintained-content acceptance).
+
+## Per-slice ledger (one commit per slice — bisection/restore-ready)
+
+| Commit | Slice | What moved | file bytes | file o200k |
+|---|---|---|---|---|
+| — | baseline `d69e3ff` | | 67,168 | 18,559 |
+| `2dfe8c4` | catalogue swap | generator + notation paragraphs in; required-fields + enum-vocab tables + their framing prose out; `-Filter` retirement paragraph moved beside the catalogue verbatim; the three didactic subsections under the retired enum section promoted to `##` (text unchanged); minified emission made the generator DEFAULT | 69,013 | 18,790 |
+| `f4f1e73` | prose slice 1 | Badge-variant list (§Metric-vs-Fact), ToneVariant list (§toned pill), Icon size list (§Empty states) → catalogue references; every semantic clause kept | 68,958 | 18,760 |
+| `cc4e556` | prose slice 2 | §Style-vocabularies value enumerations → catalogue references; density-not-font / prominence-not-bold / bool-vs-enum trap / identity defaults / omit-when-unsure kept | 68,785 | 18,705 |
+| `57ba8d9` | prose slice 3 | Rules 3–5 restatements (Required/Optional-column vocabulary, literal-text restatement, schema-artefact authority pointer) → catalogue terms; `dateStyle` list; the two stray † marks | 68,244 | 18,547 |
+| `1d29278` | prose slice 4 | wire-shape optional-node-key bullets (restated `Node`/`StateBehaviour`/`SemanticStyle` + style identity defaults) and the Editing section's TreeOp name list → references | 67,796 | 18,406 |
+| `6af2460` | colon-dense emission | no space after the field colon: −135 o200k measured across the catalogue (the `; ` separator saves ~10 and was kept) — the 839 minification argument applied to the generated declarations | 67,356 | 18,270 |
+
+## Ledger (2026-08-15)
+
+| File | Baseline | Catalogue pack | Delta |
+|---|---|---|---|
+| `system-prompt.md` | 67,168 B / 18,559 o200k | 67,356 B / 18,270 o200k | +188 B / **−289 o200k (−1.6%)** |
+| `few-shot.jsonl` | 13,816 B / 3,730 o200k | 13,816 B / 3,730 o200k | 0 (untouched — exemplars are Phase 841's territory) |
+| **Pack total** | **80,984 B / 22,289 o200k** | **81,172 B / 22,000 o200k** | **+188 B / −289 o200k** |
+
+**The sign disagreement is the finding.** The bytes ledger says the restructure cost
++188 B; the reference tokenizer says it saved 289 tokens. Markdown pipe tables spend
+tokens on `|`, backticks and padding that declaration syntax does not, so the 834/839
+`chars/4` convention — adequate for measuring cuts WITHIN one encoding — mis-signs a
+re-encoding. Future pack-economics entries should quote o200k alongside bytes, as here.
+
+What the delta does NOT say: the catalogue did not merely re-encode the old tables —
+it completed them (full field typing, payload-DU optionals, previously untabled record
+shapes). The honest statement is: **strictly more type-surface teaching, spelling-
+complete, at −1.6% of the prefix**, with the model's authority pointer (rule 5) moved
+off the 20,683-token `schema.json` artefact onto the in-prompt catalogue — a host that
+was attaching the schema for reference can now drop it.
+
+### Considered and held
+
+- The Containers section's layout-primitive name list and the whole Transform op/fn
+  vocabulary prose — the former is a verified-flip section (direction-as-field), the
+  latter is not schema-derivable (see above); both kept whole.
+- The Duration unit/style value lists in §Dates — annotated with rendered forms
+  ("1h 22m" / "1:22:00"), which is semantics the catalogue cannot carry; kept.
+- Full-density brace/equals stripping in the catalogue (`Name{f:T}`) — a further
+  −21 o200k, rejected: it breaks the notation paragraph's declared reading form for
+  a fifth of the colon-dense win.
+- The pack's header comment still describes only the example-block discipline; the
+  catalogue's own markers + the generator header carry the do-not-hand-edit rule.
+  Left unchanged so the sweep-gate pack SHA is the shipped pack SHA.
+
+## Sweep gate (n=1, two families) — 2026-08-15
+
+**Verdict: no flip regression attributable to the restructure. Adopted.**
+
+Stress track, all 12 tasks × two families (`claude-opus-4-8@low`, `gpt-5.6-terra@low`)
+× the `fuaran` condition at n=1 — the same 24-cell shape as the 817/834/839 gates.
+The comparator is the Phase 839 minified arm run earlier the same day (window
+`20260815T0640Z`, pack `d69e3ff`); the catalogue arm is window `20260815T0902Z`
+against the pack at `6af2460` (verified in-flight: every cell's sent prompt carries
+the `fuaran:signature-catalogue` block and no retired table).
+
+| Arm | claude success | gpt success | Total | claude parse | gpt parse |
+|---|---|---|---|---|---|
+| Minified baseline (`0640Z`) | 6/12 | 6/12 | 12/24 | 12/12 | 10/12 |
+| Catalogue (`0902Z`) | 7/12 | 5/12 | **12/24** | 12/12 | 10/12 |
+
+Four cells changed verdict: two up (stress-001 claude judge, stress-002 gpt
+parse+judge), two down (stress-006 gpt, stress-007 gpt). Parse held exactly
+per family — 12/12 claude, 10/12 gpt, both arms.
+
+**The two down-flips do not bisect to a displaced prose section, stated carefully
+because that is the restore trigger.** stress-006 gpt failed `INVALID_JSON` (a raw
+bracket error at offset 799) while the judge scored the same emission 1.000 — no
+collapsed section taught JSON syntax; the strict-JSON rule is untouched. stress-007
+gpt parsed clean and lost on judge PARTIALs over `sortable`/`defaultSort` signalling —
+teaching that was KEPT whole (§Which tabular shape) and that the catalogue also
+carries; the 839 census records this same cell flipping in BOTH directions between
+same-day arms against byte-identical or whitespace-only-different prompts. Per the
+839 honesty rule: the instrument's same-prompt repeat error is ~33% of cells at n=1,
+against 4/24 ≈ 17% observed here — the A/B difference is smaller than the repeat
+error, so this gate demonstrates the absence of a LARGE regression and nothing finer.
+It is not evidence the catalogue helps, despite claude's +1. What would falsify
+adoption is a reproducible per-family degradation — a question for n ≥ 3 or the
+Tier-A/B mini-window, not this gate. Reversal of any single prose slice is one
+commit revert (the per-slice ledger above); reversal of the whole emission is
+`--pretty-examples`.
+
+**Cost of the gate:** one arm only — the baseline arm is reused from the same-day 839
+gate at zero marginal cost. Catalogue arm across 24 cells: 21,474 metered input +
+17,171 output tokens, 515,757 cache-read + 28,571 cache-create (prompt caching
+carries almost the whole prefix), ≈ $1–2 by the 839 gate's ≈$1.25 same-shape
+yardstick — well inside the $15 cap.
+
+**Epoch input (Phase 838):** pack SHA `6af2460`; `system-prompt.md` 67,356 B /
+18,270 o200k; `few-shot.jsonl` 13,816 B / 3,730 o200k; pack total 81,172 B /
+**22,000 o200k** (baseline `d69e3ff`: 80,984 B / 22,289 o200k). The catalogue block:
+10,284 B / 2,886 o200k = 14.0% of `schema.json`'s 20,683 o200k.
