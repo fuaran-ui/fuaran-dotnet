@@ -9,6 +9,27 @@
 //   dotnet fsi authoring-pack.fsx --write    # regenerate every corpus-derived surface
 //   dotnet fsi authoring-pack.fsx --check    # verify nothing drifted (exit 1 on drift)
 //
+// Either mode accepts `--minify-examples`, which emits the PROMPT-PACK example blocks
+// as minified JSON instead of the 2-space pretty form. The decoder is
+// whitespace-indifferent and the pack is a paid prefix, so the indentation buys a
+// machine reader nothing and costs tokens on every request. Scope + guarantees:
+//
+//   * It applies to prompt-pack/system-prompt.md ONLY. AI_AUTHORING_GUIDE.md is a
+//     human-facing document, is not part of the paid prefix, and stays pretty.
+//   * It is a WHITESPACE-ONLY transform over the corpus bytes (see `minifyJson`), not
+//     a re-serialisation. Key order, escaping and number formatting are the fixture's
+//     own — round-tripping through JsonSerializer is NOT byte-safe (it re-escapes
+//     embedded-JSON string payloads and re-formats some numbers), so a minified block
+//     is exactly the corpus bytes with insignificant whitespace removed.
+//   * few-shot.jsonl payloads are minified UNCONDITIONALLY, and always were: a JSONL
+//     record cannot carry a raw newline, so the embedded tree has to be compact
+//     whatever the flag says. The flag is a no-op there on a corpus that stores its
+//     fixtures compact (which it does) — it only rescues a pretty-stored fixture.
+//   * The drift check passes in either emission. Structural drift from the corpus is
+//     what `--check` asserts, and whitespace is explicitly not drift (`canonicalize`).
+//     `--check --minify-examples` additionally asserts the pack is IN the minified
+//     form, so the adopted emission can be pinned by the build once it is gated.
+//
 // Corpus-derived surfaces (cannot diverge from wire-format-fixtures/):
 //   * Marker blocks  <!-- fuaran:example fixture=ID -->```json …```<!-- /fuaran:example -->
 //     in the managed markdown files (the authoring guide + the pack system prompt).
@@ -42,13 +63,25 @@ let packDir = Path.Combine(docsDir, "prompt-pack")
 // ── Mode ───────────────────────────────────────────────────────────────────────
 let argv = fsi.CommandLineArgs |> Array.skip 1
 
+let private usage () =
+    eprintfn "usage: dotnet fsi authoring-pack.fsx (--write | --check) [--minify-examples]"
+    exit 2
+
 let writeMode =
     match argv |> Array.tryHead with
     | Some "--write" -> true
     | Some "--check" -> false
-    | _ ->
-        eprintfn "usage: dotnet fsi authoring-pack.fsx (--write | --check)"
-        exit 2
+    | _ -> usage ()
+
+// An unrecognised trailing argument is a typo, not a no-op: silently ignoring
+// `--minify-example` would emit the pretty form while the caller believed otherwise.
+match argv |> Array.skip 1 |> Array.filter (fun a -> a <> "--minify-examples") with
+| [||] -> ()
+| unknown ->
+    eprintfn "unknown argument(s): %s" (String.concat " " unknown)
+    usage ()
+
+let minifyExamples = argv |> Array.contains "--minify-examples"
 
 // ── Corpus index ─────────────────────────────────────────────────────────────────
 type FixtureMeta = { File: string; Decoder: string }
@@ -80,6 +113,50 @@ let private prettyOpts =
 let prettyJson (raw: string) =
     use doc = JsonDocument.Parse raw
     JsonSerializer.Serialize(doc.RootElement, prettyOpts)
+
+// Minified form for the paid prompt prefix: the corpus bytes with every INSIGNIFICANT
+// whitespace character removed and nothing else touched.
+//
+// Deliberately a scanner rather than `JsonSerializer.Serialize(…, WriteIndented=false)`.
+// A re-serialisation would silently rewrite content the corpus pins: it re-escapes
+// string payloads that themselves contain JSON (`nodes/btn-json-payloads.json` grows
+// 757 → 787 chars through STJ) and re-formats some number literals
+// (`nodes/code-1.json`, 156 → 152). Those are byte-parity changes against the
+// conformance corpus dressed up as a whitespace cut. A scanner cannot do that: text
+// inside string literals is copied verbatim (escapes included), so the output differs
+// from the input in whitespace alone, which is the whole claim being made.
+let minifyJson (raw: string) =
+    use doc = JsonDocument.Parse raw // parse first: never emit bytes we could not read
+    ignore doc
+
+    let sb = StringBuilder(raw.Length)
+    let mutable inString = false
+    let mutable escaped = false
+
+    for i in 0 .. raw.Length - 1 do
+        let c = raw[i]
+
+        if inString then
+            sb.Append c |> ignore
+
+            if escaped then
+                escaped <- false
+            elif c = '\\' then
+                escaped <- true
+            elif c = '"' then
+                inString <- false
+        else
+            match c with
+            | '"' ->
+                inString <- true
+                sb.Append c |> ignore
+            | ' '
+            | '\t'
+            | '\n'
+            | '\r' -> ()
+            | _ -> sb.Append c |> ignore
+
+    sb.ToString()
 
 // Normalise line endings to LF. The repo pins `eol=lf` (.gitattributes), but the
 // schema source lives in the workspace repo whose working tree may still carry CRLF;
@@ -555,7 +632,10 @@ let private tableRegex =
 let private vocabRegex =
     Regex(@"<!-- fuaran:enum-vocab -->\r?\n(?<body>.*?)\r?\n<!-- /fuaran:enum-vocab -->", RegexOptions.Singleline)
 
-let reconcileMarkdown (relPath: string) (expectTable: bool) =
+// `packSurface` marks a file that ships as part of the paid prompt prefix, and so is
+// subject to `--minify-examples`. The human-facing authoring guide is not one.
+let reconcileMarkdown (relPath: string) (expectTable: bool) (packSurface: bool) =
+    let minifyHere = packSurface && minifyExamples
     let path = Path.Combine(docsDir, relPath)
     let original = File.ReadAllText path
     let mutable matched = 0
@@ -570,15 +650,27 @@ let reconcileMarkdown (relPath: string) (expectTable: bool) =
                 let body = m.Groups.["body"].Value
                 let canonical = fixtureRaw id
 
+                let expectedBody =
+                    if minifyHere then
+                        minifyJson canonical
+                    else
+                        prettyJson canonical
+
                 if canonicalize body <> canonicalize canonical then
                     if not writeMode then
                         reportDrift
                             $"{relPath}: example '{id}' diverges from wire-format-fixtures/{(fixtureMeta id).File}"
+                elif minifyHere && not writeMode && normalizeEol body <> expectedBody then
+                    // Structurally identical but not in the adopted emission. Only
+                    // asserted when the caller asked for minified — a bare --check
+                    // stays whitespace-indifferent, so it passes against either form.
+                    reportDrift
+                        $"{relPath}: example '{id}' is structurally correct but not minified (run authoring-pack.fsx --write --minify-examples)"
 
-                // In --write we always re-emit the pretty canonical form (normalises
-                // whitespace too); in --check we leave the text as-is (the canonical
-                // compare above already decided pass/fail).
-                let newBody = if writeMode then prettyJson canonical else body
+                // In --write we always re-emit the canonical form for the requested
+                // emission (which normalises whitespace too); in --check we leave the
+                // text as-is — the compares above already decided pass/fail.
+                let newBody = if writeMode then expectedBody else body
                 $"<!-- fuaran:example fixture={id} -->\n```json\n{newBody}\n```\n<!-- /fuaran:example -->"
         )
 
@@ -700,18 +792,26 @@ let buildFewShotJsonl () =
         let meta = fixtureMeta id
         let promptJson = JsonSerializer.Serialize(prompt, prettyOpts)
         let idJson = JsonSerializer.Serialize(id)
-        // tree is the canonical compact fixture text, embedded verbatim as JSON.
-        $"{{\"prompt\":{promptJson},\"decoder\":\"{meta.Decoder}\",\"fixture\":{idJson},\"tree\":{fixtureRaw id}}}")
+        // The tree is the canonical fixture text, embedded verbatim as JSON — minified
+        // unconditionally, not under --minify-examples. A JSONL record is one line by
+        // definition, so a pretty-stored fixture would corrupt the file rather than
+        // merely cost tokens; the emission has no pretty variant to choose between.
+        // On a corpus that stores its fixtures compact this is byte-for-byte a no-op.
+        let tree = minifyJson (fixtureRaw id)
+        $"{{\"prompt\":{promptJson},\"decoder\":\"{meta.Decoder}\",\"fixture\":{idJson},\"tree\":{tree}}}")
     |> String.concat "\n"
     |> fun body -> body + "\n"
 
 // ── Run ──────────────────────────────────────────────────────────────────────────
-printfn "Fuaran authoring pack — %s mode" (if writeMode then "write" else "check")
+printfn
+    "Fuaran authoring pack — %s mode%s"
+    (if writeMode then "write" else "check")
+    (if minifyExamples then " (minified pack examples)" else "")
 
 // 1. Corpus-derived marker examples (+ the schema-derived required-fields table) in
 //    the managed markdown. Only the pack system prompt carries the table.
-reconcileMarkdown "AI_AUTHORING_GUIDE.md" false
-reconcileMarkdown (Path.Combine("prompt-pack", "system-prompt.md")) true
+reconcileMarkdown "AI_AUTHORING_GUIDE.md" false false
+reconcileMarkdown (Path.Combine("prompt-pack", "system-prompt.md")) true true
 
 // 2. Few-shot corpus.
 reconcileFile
