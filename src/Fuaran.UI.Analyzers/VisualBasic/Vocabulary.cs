@@ -18,7 +18,7 @@ internal static class Vocabulary
         // Layout (Phase 390: Box is the unified container; Dashboard/Stack/Grid/Card remain as Box-emitting element conveniences)
         "Box", "Dashboard", "Stack", "Grid", "SplitPanel", "Tabs", "Card", "Stepper", "SummaryList", "Disclosure", "Modal", "ScrollArea",
         // Display (Phase 459: Spacer retired → Box layout `gap`; Divider stays as a Box `Separator`-emitting element convenience)
-        "Heading", "Markdown", "Metric", "Fact", "Badge", "Sparkline", "Callout", "Progress", "Skeleton", "LabelValueRow", "Link", "Image", "List", "Divider", "Toast", "CodeBlock", "Math", "Drawing",
+        "Heading", "Markdown", "Metric", "Fact", "Badge", "Sparkline", "Callout", "Progress", "Skeleton", "Icon", "LabelValueRow", "Link", "Image", "List", "Divider", "Toast", "CodeBlock", "Math", "Drawing",
         // Input
         "Form", "Filters", "Button", "FileUpload", "Select", "MultiSelect",
         // Visualisation
@@ -72,6 +72,7 @@ internal static class Vocabulary
         Add("Callout", "id", "body", "heading", "tone", "icon", "dismissable");
         Add("Progress", "id", "fraction", "label", "caveat", "indeterminate", "tone");
         Add("Skeleton", "id", "rows");
+        Add("Icon", "id", "icon", "size", "tone", "label");
         b["LabelValueRow"] = WithFormat("id", "label", "value", "emphasis", "help");
         Add("Fact", "id", "label", "value", "icon", "tone", "emphasis", "help");
         Add("Link", "id", "href", "label", "rel", "target", "download");
