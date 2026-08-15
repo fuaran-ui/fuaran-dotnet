@@ -173,3 +173,152 @@ variants, TonedPill tone values, Icon sizes, Style-vocabulary enumerations, Rule
 Tier-A/B mini-window against this pack SHA; any flip regression restores the class by
 reverting its single commit. Then the evaluation-harness pin + the depth-cost re-measure
 (grok's cumulative-USD ratio is the sentinel).
+
+# Minification census — Phase 839 (fuaran)
+
+**Date:** 2026-08-15. **Charter:** Phase 839, task 1 — the `fuaran:example` blocks are
+pretty-printed at 2-space indent, which buys a machine reader nothing (the decoder is
+whitespace-indifferent) and is paid on every request. Emitted behind
+`authoring-pack.fsx --minify-examples` so the pretty↔minified diff is inspectable and
+the decision is reversible in one command.
+
+**Method.** Same estimator as the 834 census above (`chars / 4`), same section split (at
+every `##` / `###` heading), so the two ledgers compose. Reproduced as a check: this
+pass's per-section figures match the 834 census row-for-row where no cut landed between
+them (Preamble 198, Filters-must-be-WIRED 1,700, Rules 1,647, …), which is what licenses
+comparing the totals.
+
+## Baseline (pre-minification)
+
+Measured at `a6782c8`. **This is not the 834 ledger's post-slim row** — that row predates
+`a6782c8`, which restored three few-shot entries (+5,060 chars) under the charter's
+regression rule. The pack the reader actually pays for is the one below.
+
+| File | Chars | ~Tokens |
+|---|---|---|
+| `system-prompt.md` | 86,438 | 21,610 |
+| `few-shot.jsonl` | 13,816 | 3,454 |
+| **Pack total (taught prefix)** | **100,254** | **25,064** |
+
+## What the flag touches
+
+Only the 15 `fuaran:example` blocks in `system-prompt.md`. Two surfaces named in the
+charter turn out to need nothing:
+
+- **`few-shot.jsonl` is already minified — measured delta zero.** A JSONL record cannot
+  carry a raw newline, so its embedded trees were always the corpus's compact bytes. The
+  generator now minifies them unconditionally rather than assuming it, which is a
+  robustness fix with no byte change today (verified: a `--write` with no flag reports
+  `0 file(s) updated`).
+- **`AI_AUTHORING_GUIDE.md` is deliberately excluded.** It is read by humans and is not
+  part of the paid prefix, so minifying it would trade real legibility for no tokens.
+
+## system-prompt.md — per-section delta
+
+Fourteen sections carry an example block; eleven carry none and are unchanged (Preamble,
+Submitting a form, The node kinds, Transform embedded-data, Grids without a column count,
+Which tabular shape, Closure cells, Prompt-given data is `Static`, Dates and times, Closed
+enum vocabularies, Style vocabularies).
+
+| Section | ~Tok before | ~Tok after | Δ |
+|---|---|---|---|
+| The canonical wire shape | 558 | 520 | −38 |
+| Containers nest under `children` | 1,148 | 722 | −426 |
+| Actions on inputs | 157 | 133 | −24 |
+| Editing an existing tree | 403 | 395 | −8 |
+| Numbers vs text: `Metric` vs `Fact` | 934 | 926 | −8 |
+| Selected / pre-selected / derived state | 2,981 | 1,754 | **−1,227** |
+| Deriving ONE value — Transform in a scalar slot | 1,633 | 812 | **−821** |
+| Distinguishing rows by value — the toned pill | 1,095 | 820 | −275 |
+| Filters must be WIRED | 1,700 | 732 | **−968** |
+| "Today" is a binding | 961 | 512 | −449 |
+| Conditional rendering — `Switch` | 890 | 515 | −375 |
+| Empty states — Card `Box`, not `Callout` | 545 | 473 | −72 |
+| On/off controls — `Toggle` vs `Checkbox` | 422 | 369 | −53 |
+| Rules | 1,647 | 1,573 | −74 |
+| **Sum** | | | **−4,818** |
+
+The saving concentrates exactly where the deep worked examples are — the three idioms,
+the scalar-slot Transform, and the wired-filters section are 63% of it between them. No
+sentence of teaching is removed anywhere.
+
+## Ledger (2026-08-15)
+
+| File | Pretty | Minified | Delta |
+|---|---|---|---|
+| `system-prompt.md` | 86,438 ch / ~21,610 tok | 67,168 ch / ~16,792 tok | −19,270 ch / ~−4,818 tok (−22.3%) |
+| `few-shot.jsonl` | 13,816 ch / ~3,454 tok | 13,816 ch / ~3,454 tok | 0 |
+| **Pack total** | **100,254 ch / ~25,064 tok** | **80,984 ch / ~20,246 tok** | **−19,270 ch / ~−4,818 tok (−19.2%)** |
+
+**Cross-check, and it is the load-bearing one.** The 15 example blocks total 32,100 chars
+pretty and 12,830 minified: −19,270, identical to the whole-file delta to the byte. The
+transform therefore provably changed nothing outside the blocks — the census does not
+have to take the scanner's word for it.
+
+**For scale:** this one whitespace change is **1.3× the entire Phase 834 slim**
+(−4,818 tok against −3,650) and costs no teaching whatsoever, where 834 spent an audit
+of every accreted paragraph to reach its figure. The cheap win was in the formatting the
+whole time.
+
+### Why the emission is a scanner, not `WriteIndented = false`
+
+The obvious implementation is wrong in a way that would not have shown up in this ledger.
+Re-serialising a fixture through `JsonSerializer` rewrites content the conformance corpus
+pins: it re-escapes string payloads that themselves contain JSON
+(`nodes/btn-json-payloads.json` grows 757 → 787 chars) and re-formats some number
+literals (`nodes/code-1.json`, 156 → 152). Both would have ridden into the pack as byte
+changes against the corpus, dressed as a whitespace cut, and the drift check would have
+passed them — it compares canonicalised structure, and structure is exactly what those
+edits preserve. The generator therefore strips insignificant whitespace with a scanner
+that copies string-literal text verbatim, so "the diff is whitespace" is a property of
+the mechanism rather than a claim about it.
+
+### Reversibility
+
+`--minify-examples` is a pure toggle: re-running `authoring-pack.fsx --write` without it
+restores `system-prompt.md` byte-for-byte to `a6782c8` (verified by hash, not by
+inspection). A regression finding therefore costs one command, not a revert.
+
+## Sweep gate (n=1, two families) — 2026-08-15
+
+**Verdict: no flip regression. Adopted.**
+
+Stress track, all 12 tasks × two families (`claude-opus-4-8@low`, `gpt-5.6-terra@low`) ×
+the `fuaran` condition at n=1 — the same 24-cell shape as the 817 and 834 sweeps, so the
+arms are comparable. The pre-minification arm is the 834 post-slim sweep run earlier the
+same day (window `20260815T0014Z`–`0021Z`); `system-prompt.md` is byte-identical between
+that run and this pack's pretty form, so the two arms differ in whitespace and nothing
+else.
+
+| Arm | claude success | gpt success | Total | claude parse | gpt parse |
+|---|---|---|---|---|---|
+| Pretty (`20260815T0014Z`) | 7/12 | 4/12 | 11/24 | 12/12 | 9/12 |
+| Minified (`20260815T0640Z`) | 6/12 | 6/12 | **12/24** | 12/12 | 10/12 |
+
+Five cells changed verdict: three up (stress-003 claude, stress-006 gpt, stress-007 gpt),
+two down (stress-007 claude, stress-008 claude). Comprehension did not degrade on either
+family's decode gate — parse held at 12/12 on claude and rose 9 → 10 on gpt.
+
+**Why the two down-flips are not read as a minification effect, stated carefully because
+this is the whole judgement.** The corpus carries its own noise measurement: the 834
+restore re-probed stress-001/002/003 twenty minutes after the baseline against a
+**byte-identical** system prompt, and 2 of those 6 cells changed verdict (stress-002 gpt
+fail → pass, stress-003 claude fail → pass). A same-prompt repeat therefore flips ~33% of
+cells at n=1, against the 5/24 ≈ 21% observed across the pretty→minified change. The A/B
+difference is smaller than the instrument's own repeat error, so this sweep can show the
+absence of a large regression and nothing finer. It is not evidence that minification
+helps, despite the +1.
+
+What would falsify the adoption is a *reproducible* per-family degradation, which is a
+question for n ≥ 3 or the Tier-A/B mini-window, not for this gate. Reversal, if it comes
+to that, is `authoring-pack.fsx --write` with no flag.
+
+**Cost of the gate:** ≈ $1.25 of metered emission across 24 cells (prompt caching carries
+almost the whole prefix — 256k cache-read tokens against 85k cache-create on the claude
+arm), plus an unmetered judge leg.
+
+**Not measured here:** the pack's size in each family's *own* tokenizer. One incidental
+datum — the first uncached gpt cell billed 18,703 input tokens for a prefix this census
+estimates at ~16,792 — shows the `chars / 4` estimator is close but not neutral across
+families. Sizing every future cut in the currency it actually spends is a separate piece
+of work in the harness, deliberately not done here.
