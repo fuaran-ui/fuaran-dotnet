@@ -530,6 +530,95 @@ let tabsExplicitHeaders: Node<obj> =
         ))
         None
 
+/// Phase 841 — the composite structural-wrap fixture.
+///
+/// The rule→fixture coverage matrix (`docs/tools/coverage-matrix.json`) found
+/// `idiom:container-in-wrapper` exercised by ZERO fixtures in the whole corpus: no
+/// tree anywhere puts a container INSIDE a wrapper, so the commonest screen shape
+/// there is — a tabbed view whose panels are cards — had nothing an author could copy,
+/// and every wrapper fixture held bare leaves.
+///
+/// It is deliberately dense rather than minimal: one tree absorbs three thinly-covered
+/// classes so it can replace several sparse singles. Containers nested inside a `Tabs`
+/// wrapper; an explicit `Grid` box layout beside a `Flex` one; and controls arriving
+/// PRE-FILLED — a `Static` value on both the text and the choice field, which is the
+/// shape a prompt naming a default asks for and which no existing wrapper fixture
+/// shows. Every optional handler slot is omitted: this is the self-wiring emission
+/// shape, not the closure-authored one.
+let compositeTabsPanels: Node<obj> =
+    let nameField: FormField<obj> =
+        { Id = "displayName"
+          Label = TextSource.Literal "Display name"
+          Kind = FormFieldKind.Text(Some(Binding.Static(Some "Ada Lovelace")), Option.None)
+          Required = true
+          Help = Option.None }
+
+    let themeField: FormField<obj> =
+        { Id = "theme"
+          Label = TextSource.Literal "Theme"
+          Kind =
+            FormFieldKind.Choice(
+                Binding.Static(Some [ { Value = "light"; Label = "Light" }; { Value = "dark"; Label = "Dark" } ]),
+                Some(Binding.Static(Some "dark")),
+                Option.None
+            )
+          Required = true
+          Help = Option.None }
+
+    let preferencesForm: Node<obj> =
+        node
+            "preferences-form"
+            (NodeKind.Form(
+                { Fields = [ nameField; themeField ]
+                  OnSubmit = Action.Call("/api/preferences", Option.None, Option.None)
+                  SubmitLabel = TextSource.Literal "Save preferences"
+                  Disabled = Option.None }
+            ))
+            None
+
+    let overviewPanel: Node<obj> =
+        node
+            "overview-panel"
+            (NodeKind.Box(
+                { Layout = BoxLayout.Grid(2, Option.None, Some 16)
+                  Role = BoxRole.Card
+                  Heading = Some(TextSource.Literal "This month")
+                  Children = [ metric; badge ] }
+            ))
+            None
+
+    let settingsPanel: Node<obj> =
+        node
+            "settings-panel"
+            (NodeKind.Box(
+                { Layout = BoxLayout.Flex(Orientation.Vertical, false, Some 12)
+                  Role = BoxRole.Card
+                  Heading = Some(TextSource.Literal "Preferences")
+                  Children = [ preferencesForm ] }
+            ))
+            None
+
+    node
+        "composite-tabs-panels"
+        (NodeKind.Tabs(
+            { Orientation = Orientation.Horizontal
+              Children = [ overviewPanel; settingsPanel ]
+              ActiveIndex = Binding.Static(Some 0)
+              OnSelect = Option.None
+              TabHeaders =
+                Some
+                    [ { Label = TextSource.Literal "Overview"
+                        Icon = Some "chart-glyph"
+                        Disabled = Option.None }
+                      { Label = TextSource.Literal "Settings"
+                        Icon = Option.None
+                        Disabled = Some(Binding.Static(Some false)) } ]
+              TabTags = Some [ "overview"; "settings" ]
+              ActiveTag = Some(Binding.Static(Some "overview"))
+              OnSelectTag = Option.None }
+        ))
+        None
+
 let card: Node<obj> =
     node
         "card-1"
@@ -3432,6 +3521,7 @@ let allNodes: (string * Node<obj>) list =
       "Layout/SplitPanel", splitPanel
       "Layout/Tabs", tabs
       "Layout/Tabs (explicit headers + tags + activeTag)", tabsExplicitHeaders
+      "Layout/Tabs (composite — containers inside a wrapper, grid panel, pre-filled controls)", compositeTabsPanels
       "Layout/Card", card
       "Layout/Stepper", stepper
       "Layout/SummaryList", summaryList
