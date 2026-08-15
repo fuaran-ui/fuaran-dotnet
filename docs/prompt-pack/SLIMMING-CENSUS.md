@@ -463,3 +463,220 @@ yardstick — well inside the $15 cap.
 18,270 o200k; `few-shot.jsonl` 13,816 B / 3,730 o200k; pack total 81,172 B /
 **22,000 o200k** (baseline `d69e3ff`: 80,984 B / 22,289 o200k). The catalogue block:
 10,284 B / 2,886 o200k = 14.0% of `schema.json`'s 20,683 o200k.
+
+# Exemplar-coverage census — Phase 841 (fuaran)
+
+**Date:** 2026-08-15. **Charter:** Phase 841 — exemplar selection had never been asked
+whether a smaller set covers the same teaching, because it accreted one-per-lesson
+through the demand loop. Plus the **reinvestment doctrine** (operator direction
+2026-08-15, post-842): freed tokens are a QUALITY budget, so run the minimisation, then
+spend what it frees on the weakest-covered rules with observed failures. Ceiling: the
+pre-841 pack size; net growth needs operator approval.
+
+**Method.** Both currencies again (bytes + the **o200k_base** reference tokenizer), per
+the 838 finding that `chars/4` mis-signs a re-encoding. All figures at LF-normalised file
+bytes. The new instrument is a **generated rule→fixture coverage matrix**
+(`docs/tools/coverage-matrix.json`, 21.4 kB, produced and drift-checked by
+`authoring-pack.fsx`); the miner runs from it via `authoring-pack.fsx --mine`, which is
+read-only and writes nothing.
+
+## The rule inventory — 436 taught rules
+
+| Family | Count | Where it comes from |
+|---|---:|---|
+| `case:<Union>.<Case>` | 160 | `schema.json` — every `$type`-discriminated alternative |
+| `field:<Scope>.<name>` | 145 | `schema.json` — every OPTIONAL property |
+| `enum:<Enum>=<value>` | 102 | `schema.json` — every closed-vocabulary value |
+| `idiom:<name>` | 11 | authored predicates — teaching that is a composition, not a symbol |
+| `pipestep:` / `pipefn:` / `pipeop:` / `pipeagg:` | 18 | the corpus — `schema.json` models `pipeline` as `any[]` |
+
+Four modelling decisions carry the census, and each was made because the naive
+alternative measures the wrong thing:
+
+- **Required fields get no rule.** A fixture cannot carry a case without them, so
+  counting them would inflate every coverage figure with rules nothing can miss.
+- **Optional CLOSURE fields get no rule**, matching the 838 catalogue's own suppression
+  ("fields whose only correct emission is absence"). A model that rewarded an exemplar
+  for demonstrating `onChange` would be scoring the pack against the shape rules 6–9
+  forbid.
+- **A §16 alias is its own rule** (`alias:ToneVariant=Danger`), not the canonical value.
+  The exemplar's bytes are what the reader sees; crediting `Success` for a fixture that
+  spells `Danger` would count teaching that is not on the page.
+- **The pipeline algebra is enumerated from the corpus**, because the schema does not
+  constrain it — the same reason 838 could not put it in the catalogue.
+
+**The probe fired, which is why the numbers are trustworthy.** The walk runs in two modes
+off ONE traversal (enumerate vs observe), so an inventory rule and an observed rule are
+spelled by the same code; and any observed rule outside the inventory is a hard failure
+rather than a coverage finding. That check earned its place immediately: the first
+implementation did not descend from `NodeKind` into its four sub-unions, so no `Box` node
+ever matched a case and the walk returned a plausible-looking 30 rules where the answer
+was 137. It reported a tidy number and a wrong one — the class the estate's "verify the
+probe, not just the verdict" rule exists for.
+
+## Minimisation — the accreted set was already near-minimal, and that is the finding
+
+Two independent procedures were run and they agree at every stage: greedy set-cover from
+scratch (cost-weighted — new rules per minified byte, since bytes are what a prefix
+spends) with the 15 system-prompt blocks forced in, and a redundancy prune that drops any
+current exemplar whose removal leaves coverage unchanged.
+
+| Pass | Dropped | Why the 834 census had kept it |
+|---|---|---|
+| 1 | `markdown-1`, `lenient-grid-transform-param-compact` | both marked "unique" — true of the question that census could ask (unique among few-shot FIXTURES), not of whether the RULES are unique |
+| 2 | `op-insertchild`, `op-reorderchildren` | invisible until the coverage model learned to read the pack's hand-authored JSON blocks |
+
+Pass 2 is the more interesting one, and it is a correction to this instrument rather than
+to the 834 census. The matrix originally read only corpus-derived marker blocks, so
+§Editing's hand-authored `Batch` example — which inserts a child and then states the
+resulting order — did not exist as far as coverage was concerned. It cannot be a corpus
+fixture (it addresses ids belonging to the `composite-root` tree, and no fixture knows
+another fixture's ids), but it is teaching on the surface every posture reads. Counting
+it did two things at once: it proved two few-shot op entries redundant, and it withdrew
+the apparent gap in layout-reorganisation teaching that would otherwise have consumed a
+reinvestment admission. **A coverage model blind to a third of the pack's worked examples
+does not merely under-report; it misdirects the spend.**
+
+**Why the minimisation yield is small (4 entries, no dense-tree substitution).** The
+phase's premise was that one maximally-dense tree could replace ten sparse ones. Run
+against this pack, greedy-from-scratch reproduces the pruned current set byte-for-byte
+and never finds a denser substitution worth making. The reason is that the redundancy was
+already spent: Phase 834's dedup cut ten duplicate few-shot entries, and what remained was
+very nearly non-redundant. Set-cover confirms that independently, which is the useful
+result even though it is not the exciting one.
+
+**Two constraints on the miner, both deliberate.** It may not displace a system-prompt
+block (every one is caution-listed with its own flip record in the 834 census, and the
+default posture reads only that surface), and it may not introduce a lenient-accept
+fixture the pack does not already carry — admitting one would swap a canonical example
+for a §16 shorthand, which changes the taught DIALECT: a separate decision with its own
+evidence, not a side-effect of minimising a set.
+
+## Reinvestment — what the matrix confirmed, and what it did not
+
+| Target class | Matrix verdict | Disposition |
+|---|---|---|
+| Structural / wrap vocabulary | `idiom:container-in-wrapper` covered by **zero fixtures in the whole corpus**; `case:LayoutKind.Tabs` few-shot-only | **ADMITTED** — new composite fixture + system-prompt block |
+| Pre-filled default values | `idiom:prefilled-default` few-shot-only — never on the surface the default posture reads | **ADMITTED** — same tree, plus two clauses naming the lesson |
+| Layout reorganisation intent | apparently uncovered; that was the model's blind spot. §Editing already teaches `Batch` + `InsertChild` + `ReorderChildren` by worked example | **NOT ADMITTED** — the hole was already filled |
+| Unified search grouping | — | **NOT TAUGHT** — watch class; its pack-vs-rubric classification is still open |
+
+The zero-fixture finding is the one worth restating: every `Tabs` / `SplitPanel` /
+`Stepper` fixture in the corpus held bare leaves, so the commonest screen shape there is —
+a tabbed view whose panels are cards — had no conformance witness and nothing an author
+could copy, while the pack listed the wrapper primitives in prose and never once showed
+one holding a container. A measured mid-session arm failed on exactly that.
+
+**The composite fixture** (`composite-tabs-panels`, corpus `7d81eb7`) is deliberately
+dense so one tree absorbs several sparse singles: two `Box` cards inside a `Tabs` wrapper,
+one on an explicit `Grid` layout and one on `Flex`, holding a form whose text and choice
+fields both arrive PRE-FILLED with a `Static` value, every optional handler slot omitted.
+It was authored a second time to carry `Sparkline` rather than `Metric`, specifically so
+it would be a strict SUPERSET of `tabs-explicit-1` and could retire it — the phase's own
+thesis applied to the phase's own admission.
+
+## Ledger (2026-08-15)
+
+| Commit | Class | What moved | pack bytes | pack o200k |
+|---|---|---|---:|---:|
+| — | baseline `ae265f8` | the 838 catalogue pack | 81,172 | 22,000 |
+| `aa5d801` | tooling | coverage matrix + miner; no pack change | 81,172 | 22,000 |
+| `9bd2329` | minimisation 1 | `markdown-1`, `lenient-grid-transform-param-compact` | 80,296 | 21,777 |
+| `765dcb5` | minimisation 2 | miner reads hand-authored blocks; `op-insertchild`, `op-reorderchildren` | 79,561 | 21,579 |
+| `ed89b27` | reinvestment | `composite-tabs-panels` block + prose; `tabs-explicit-1` retired | 80,891 | 21,924 |
+
+| File | Baseline | Phase 841 | Delta |
+|---|---|---|---|
+| `system-prompt.md` | 67,356 B / 18,270 o200k | 69,340 B / 18,796 o200k | +1,984 B / +526 o200k |
+| `few-shot.jsonl` | 13,816 B / 3,730 o200k | 11,551 B / 3,128 o200k | −2,265 B / −602 o200k |
+| **Pack total** | **81,172 B / 22,000 o200k** | **80,891 B / 21,924 o200k** | **−281 B / −76 o200k** |
+
+**Budget arithmetic.** Freed by minimisation: 1,611 B / 421 o200k across four entries.
+Freed by the retirement the admission paid for itself (`tabs-explicit-1`): 654 B /
+181 o200k. Spent on the admission: 1,984 B / 526 o200k (the block's tree is 1,300 B /
+355 o200k; the remainder is the two teaching clauses). Net **−281 B / −76 o200k against
+the ceiling, on both currencies** — so the reinvestment needs no growth approval. The
+pack is smaller than it was and teaches more.
+
+| Coverage | Baseline | Phase 841 |
+|---|---:|---:|
+| exemplars (deduped fixtures) | 28 | 24 |
+| rules covered / 436 taught | 131 | **136** |
+| rules on the OPERATIVE surface (system prompt) | 99 | **116** |
+| rules exemplified only in few-shot | 32 | **20** |
+| `idiom:` rules left uncovered | 1 | **0** |
+
+Coverage preservation across the cuts is by construction, not by re-measurement: every cut
+was a prune output, and the prune only drops an entry whose removal leaves the covered set
+identical.
+
+## Sweep gate (n=1, two families) — 2026-08-15
+
+**Verdict: no flip regression attributable to Phase 841. Adopted.**
+
+Stress track, all 12 tasks × two families (`claude-opus-4-8@low`, `gpt-5.6-terra@low`) ×
+the `fuaran` condition at n=1 — the same 24-cell shape as the 817/834/839/838 gates. The
+comparator is the Phase 838 catalogue arm run earlier the same day (window
+`20260815T0902Z`, pack `6af2460`); this arm is window `20260815T0952Z` against the pack at
+`ed89b27`, verified in-flight: all 24 cells' sent prompts carry the
+`composite-tabs-panels` block and none carries the retired `tabs-explicit-1` few-shot
+entry.
+
+| Arm | claude success | gpt success | Total |
+|---|---|---|---|
+| Catalogue baseline (`0902Z`) | 7/12 | 5/12 | 12/24 |
+| Mined + reinvested (`0952Z`) | 5/12 | 6/12 | **11/24** |
+
+Three cells changed verdict: one up (stress-001 gpt), two down (stress-001 claude,
+stress-002 claude).
+
+**Neither down-flip bisects to a displaced exemplar, which is the restore trigger, and
+this was checked mechanism-first rather than by counting.** stress-002 claude failed at
+the PARSE gate — `INVALID_JSON at offset 742: expected ',' or '}' but found ']'` — while
+the judge returned YES on all four criteria: a semantically perfect emission that was
+syntactically malformed. Nothing cut in this phase taught JSON syntax, and the 838 census
+records the identical shape (stress-006 gpt, judge 1.000, raw bracket error). stress-001
+claude failed on judge c2 PARTIAL, over a derived count computed against a second inline
+copy of the data rather than a shared reference — teaching carried by
+`lenient-scalar-transform-composition-compact`, which is PINNED, untouched, and whose own
+tree uses two independent inline copies in exactly the way the rubric marked down. That
+is a standing pack-vs-rubric tension, not a Phase 841 effect. Neither cell involves Tabs,
+containers, markdown leaves, tree-edit ops, or filter-param grids — the five things this
+phase moved.
+
+Per the 839 honesty rule: the instrument's same-prompt repeat error is ~33% of cells at
+n=1 (the 834 restore re-probed three tasks against a byte-identical prompt and 2 of 6
+cells changed verdict), against 3/24 ≈ 12.5% observed here. **The A/B difference is well
+inside the instrument's own repeat error, so this gate demonstrates the absence of a LARGE
+regression and nothing finer.** It is not evidence that the mined pack is worse, despite
+the −1, any more than the 839 gate's +1 was evidence its change helped. What would falsify
+adoption is a reproducible per-family degradation — a question for n ≥ 3 or the Tier-A/B
+mini-window, not this gate.
+
+**Cost of the gate:** 22,000 metered input + 14,425 output tokens, 442,926 cache-read +
+117,832 cache-create across 24 cells, plus an unmetered judge leg (sonnet). ≈ $3–5 by the
+839 gate's same-shape yardstick — the cache-create figure is four times that arm's because
+this run started cold, which is where the difference sits. Well inside the $15 cap.
+
+**Epoch input (Phase 841):** pack SHA `ed89b27`; `system-prompt.md` 69,340 B / 18,796
+o200k; `few-shot.jsonl` 11,551 B / 3,128 o200k; pack total 80,891 B / **21,924 o200k**
+(baseline `ae265f8`: 81,172 B / 22,000 o200k). Corpus: `fuaran-ui-specification@7d81eb7`.
+Coverage 136 of 436 taught rules, 116 of them on the operative surface.
+
+### Considered and held
+
+- The five caution-listed few-shot entries that duplicate a system-prompt block
+  (`composite-root`, `metric-1`, `btn-1`, `op-replacebinding`, `badge-1`) cost 756 o200k
+  for zero additional rule coverage — measured here, deliberately not cut. Few-shot's job
+  includes the natural-language request PAIRING, which the coverage model does not score,
+  and the 834 census held them under the caution rule; cutting them on this instrument
+  alone would be scoring one dimension and paying in another.
+- Displacing a system-prompt block. The miner is forbidden from it by construction, and
+  the reason is the flip record rather than conservatism.
+- A second composite fixture. One idiom had zero coverage and now has one exemplar; the
+  rest of the unexemplified queue is vocabulary BREADTH (112 `case:` rules, mostly Drawing
+  shapes, Action variants and the Hole/Fragment surfaces), which is a different argument
+  about what a prompt pack is for and not something to spend a token budget on silently.
+- The `alias:` family as a teaching target. It is recorded so the model stays honest about
+  what an exemplar's bytes say, not because the pack should teach §16 shorthands — the
+  taught dialect is canonical, and that is Phase 840's territory.
