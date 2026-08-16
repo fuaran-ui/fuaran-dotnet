@@ -25,6 +25,10 @@ open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 open Fuaran.UI.OpStream.Abstractions
 
+/// The lowering's own round-half-up-to-2dp rule, so an expectation below can be
+/// written the way the lowering computes it rather than as a magic literal.
+let private r2 (x: float) : float = floor (x * 100.0 + 0.5) / 100.0
+
 /// One lowering case: a chart kind + fields + title + rows (x label, one y per
 /// series). `XNums = Some ns` replaces the string x labels with numeric x
 /// values (the Scatter arm's linear axis, Phase 636) — `Rows`' fst is then
@@ -298,7 +302,84 @@ let private cases: Case list =
           YFields = [ "units" ]
           Title = Some "Units shipped"
           UnitMode = Some "CompactPerTick"
-          Rows = [ "Q1", [ 4200.0 ]; "Q2", [ 9500.0 ]; "Q3", [ 6800.0 ]; "Q4", [ 7300.0 ] ] } ]
+          Rows = [ "Q1", [ 4200.0 ]; "Q2", [ 9500.0 ]; "Q3", [ 6800.0 ]; "Q4", [ 7300.0 ] ] }
+      // ── Phase 879 — deterministic text metrics ──
+      //
+      // Six cases, one per decision the pinned advance-width table now makes.
+      // The escalation pair is a genuine BOUNDARY: the two inputs differ by a
+      // single character, and that character is what moves the labels from the
+      // 30° tilt to the 90° vertical arm.
+      { plain with
+          // Legend pitch from name extents: two 29-character series names. On
+          // the retired flat 100 px pitch the second swatch landed on top of
+          // the first label; on per-entry pitch each entry occupies its own
+          // measured width.
+          Name = "bar-legend-long-names"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "monthly_recurring_revenue_gbp"; "annual_contract_value_gbp_est" ]
+          Title = Some "Long series names"
+          Rows = [ "Q1", [ 40.0; 90.0 ]; "Q2", [ 55.0; 80.0 ] ] }
+      { plain with
+          // Left-margin autosize: `Off` keeps every magnitude, so the ticks
+          // read `2,000,000` — nine characters that the fixed 64 px left margin
+          // clipped clean through.
+          Name = "bar-wide-ticks"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "revenue" ]
+          Title = Some "Revenue in full"
+          UnitMode = Some "Off"
+          Rows =
+              [ "Q1", [ 1250000.0 ]
+                "Q2", [ 1480000.0 ]
+                "Q3", [ 1100000.0 ]
+                "Q4", [ 1690000.0 ] ] }
+      { plain with
+          // Five categories: the labels' along-axis footprint at 30° fits the
+          // band pitch, so they stay tilted — and the bottom margin grows to
+          // hold the drop.
+          Name = "bar-tilt-five"
+          Kind = ChartKind.Bar
+          XField = "region"
+          YFields = [ "sales" ]
+          Title = Some "Sales by region"
+          Rows =
+              [ "North", [ 80.0 ]
+                "South", [ 130.0 ]
+                "East", [ 60.0 ]
+                "West", [ 95.0 ]
+                "Central", [ 110.0 ] ] }
+      { plain with
+          // Twenty categories: the same labels no longer pack at 30°, so the
+          // axis escalates to vertical — which packs one label per line height
+          // at any count.
+          Name = "bar-vertical-twenty"
+          Kind = ChartKind.Bar
+          XField = "week"
+          YFields = [ "signups" ]
+          Title = Some "Signups by week"
+          Rows = [ for i in 1..20 -> (sprintf "Wk %d" i), [ 40.0 + float ((i * 7) % 23) ] ] }
+      { plain with
+          // BOUNDARY, under: eight nine-character labels. 9 × 0.55 em × 13 px =
+          // 64.35 px; the footprint at 30° is 64.35·cos30 + 15.6·sin30 = 63.53,
+          // inside the 68.5 px band pitch — so the labels stay tilted.
+          Name = "bar-tilt-boundary"
+          Kind = ChartKind.Bar
+          XField = "code"
+          YFields = [ "count" ]
+          Title = Some "At the escalation boundary"
+          Rows = [ for i in 0..7 -> (sprintf "10000000%d" i), [ 20.0 + float (i * 9 % 70) ] ] }
+      { plain with
+          // BOUNDARY, over: the SAME eight labels with one more digit. 10 ×
+          // 0.55 em × 13 px = 71.5 px; the footprint is 69.72, past the same
+          // 68.5 px pitch — so the identical chart escalates to vertical.
+          Name = "bar-vertical-boundary"
+          Kind = ChartKind.Bar
+          XField = "code"
+          YFields = [ "count" ]
+          Title = Some "Past the escalation boundary"
+          Rows = [ for i in 0..7 -> (sprintf "100000000%d" i), [ 20.0 + float (i * 9 % 70) ] ] } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
 /// named the slot — the representation is the same `Map<string,obj>`).
@@ -356,15 +437,20 @@ let private loweredCase (name: string) : DrawingSpec =
 
 // ── Phase 876 readers — pull the axis strings back out of a lowered drawing ──
 //
-// The y tick labels are the only End-anchored labels the cartesian arms emit;
-// the axis-unit slot is the only Start-anchored, full-strength, Normal-weight
-// one (the visible title is Loud, the legend labels carry an opacity).
+// The y tick labels are the only UNROTATED End-anchored labels the cartesian
+// arms emit — Phase 879's tilted category labels are End-anchored too, and
+// carry a `Rotation`, which is what separates them here. The axis-unit slot is
+// the only Start-anchored, full-strength, Normal-weight one (the visible title
+// is Loud, the legend labels carry an opacity).
 
 let private yTickTexts (ds: DrawingSpec) : string list =
     ds.Shapes
     |> List.choose (fun sh ->
         match sh with
-        | Shape.Label(_, _, TextSource.Literal t, s) when s.TextAnchor = Some TextAnchor.End -> Some t
+        | Shape.Label(_, _, TextSource.Literal t, s) when
+            s.TextAnchor = Some TextAnchor.End && Option.isNone s.Rotation
+            ->
+            Some t
         | _ -> None)
 
 let private axisUnitLabel (ds: DrawingSpec) : string =
@@ -745,16 +831,16 @@ let chartLoweringTests =
               }
 
               test "the reserved ChartStyle fields are genuinely not consumed" {
-                  // LegendPosition / LabelTiltDegrees / the status triple are
-                  // declared (Phase 885) but read by no shipped lowering path —
-                  // setting them must change nothing until their phases land.
+                  // LegendPosition / the status triple are declared (Phase 885)
+                  // but read by no shipped lowering path — setting them must
+                  // change nothing until their phases land. `LabelTiltDegrees`
+                  // LEFT this set in Phase 879, which consumes it.
                   let enc (ds: DrawingSpec) : string =
                       CanonicalJson.encodeNode (Fuaran.drawingSpec "c" ds: Node<obj>)
 
                   let reserved =
                       { Charts.ChartStyle.defaults with
                           LegendPosition = Charts.ChartLegendPosition.Bottom
-                          LabelTiltDegrees = 90.0
                           PositiveColour = "#000001"
                           NegativeColour = "#000002"
                           NeutralColour = "#000003" }
@@ -936,4 +1022,182 @@ let chartLoweringTests =
                         "Advisors (10%)"
                         "Treasury (0%)" ]
                       "the NN% shape survives"
+              }
+
+              // ── Phase 879 — deterministic text metrics ──
+              //
+              // The goldens pin the whole picture; these pin the RULES in the
+              // one form a reader can check by hand against the table.
+              test "the advance-width table is the five pinned classes" {
+                  // The em sum accumulates left-to-right in floats, so compare
+                  // at the table's own precision rather than bit-for-bit.
+                  let em (s: string) =
+                      System.Math.Round(Charts.TextMetrics.advanceEmOf s, 6)
+
+                  let cls (count: float) (factor: float) = System.Math.Round(count * factor, 6)
+
+                  Expect.equal (em "iljI.,:;!| '") (cls 12.0 0.28) "the thin class"
+                  Expect.equal (em "\"()*-/\\[]{}frt") (cls 14.0 0.33) "the narrow class"
+                  Expect.equal (em "mMW%@") (cls 5.0 0.9) "the extra-wide class"
+                  Expect.equal (em "ABCDEFGHKNOPQRSTUVXYZw") (cls 22.0 0.7) "the wide class"
+                  // Digits, the remaining lowercase, `J`/`L`, and — the rule
+                  // that makes the table TOTAL — every unlisted character,
+                  // including non-ASCII.
+                  Expect.equal (em "0123456789") (cls 10.0 0.55) "digits default"
+                  Expect.equal (em "JL") (cls 2.0 0.55) "J and L are default-width, not wide"
+                  Expect.equal (em "£€漢…") (cls 4.0 0.55) "an unlisted character takes the default"
+
+                  // Width is the em sum times the size, rounded once.
+                  Expect.equal (Charts.TextMetrics.width 13.0 "0000") (r2 (13.0 * 2.2)) "width = size × em sum"
+                  Expect.equal (Charts.TextMetrics.width 13.0 "") 0.0 "an empty string is zero-wide"
+              }
+
+              test "truncation is deterministic and never yields an empty label" {
+                  let t = Charts.TextMetrics.truncateToWidth 13.0
+
+                  Expect.equal (t 1000.0 "already fits") "already fits" "a string within budget is untouched"
+
+                  // 10 digits = 5.5 em = 71.5 px. A 40 px budget leaves
+                  // 40 - 7.15 (the ellipsis) = 32.85 px ⇒ 4 digits (28.6 px);
+                  // a fifth would be 35.75.
+                  Expect.equal (t 40.0 "0123456789") "0123…" "the longest prefix that fits, plus the ellipsis"
+
+                  // Nothing fits ⇒ the bare ellipsis, never "".
+                  Expect.equal (t 1.0 "0123456789") "…" "a hopeless budget still yields a mark"
+                  Expect.equal (t 0.0 "x") "…" "a zero budget still yields a mark"
+              }
+
+              test "the fit predicate answers both axes (the Phase 881 gate)" {
+                  let fits = Charts.TextMetrics.fitsBox 13.0 1.2
+                  Expect.isTrue (fits 100.0 20.0 "short") "fits both ways"
+                  Expect.isFalse (fits 10.0 20.0 "short") "too wide"
+                  Expect.isFalse (fits 100.0 10.0 "short") "too short a box"
+              }
+
+              test "the left margin autosizes to the widest FORMATTED tick" {
+                  // `Off` prints full magnitudes, so the widest tick is
+                  // `1,000,000` = 4.41 em = 57.33 px; + the 12 px gap + 6 px
+                  // padding = 75.33, past the 64 px floor.
+                  let leftmost (ds: DrawingSpec) : float =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(x1, _, _, _, _) -> Some x1
+                          | _ -> None)
+                      |> List.min
+
+                  let wide = loweredCase "bar-wide-ticks"
+                  // The y-tick marks start `TickMarkLength` left of the spine.
+                  Expect.equal (leftmost wide) (r2 (75.33 - 5.0)) "the spine moved right to clear the tick column"
+
+                  // …and a short tick column leaves the floor alone.
+                  let narrow = loweredCase "bar-single"
+                  Expect.equal (leftmost narrow) (64.0 - 5.0) "a short column keeps the 64 px floor"
+              }
+
+              test "the legend pitch derives from each entry's own name extent" {
+                  let swatchXs (ds: DrawingSpec) : float list =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Rectangle(x, y, _, _, Some _, _) when y = 34.0 -> Some x
+                          | _ -> None)
+
+                  // "monthly_recurring_revenue_gbp" is 14.66 em = 190.58 px, so
+                  // entry 0 occupies 15 + 190.58 + 24 = 229.58 px.
+                  Expect.equal
+                      (swatchXs (loweredCase "bar-legend-long-names"))
+                      [ 64.0; r2 (64.0 + 229.58) ]
+                      "the second swatch clears the first label"
+
+                  // The short-name case is where the retired flat 100 px pitch
+                  // happened to look right; it no longer sits there.
+                  Expect.equal
+                      (swatchXs (loweredCase "bar-multi"))
+                      [ 64.0; r2 (64.0 + 15.0 + 32.24 + 24.0) ]
+                      "short names pack tighter than the retired pitch"
+              }
+
+              test "category labels tilt by default and escalate to vertical at the boundary" {
+                  let rotations (ds: DrawingSpec) : float list =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Label(_, _, _, s) -> s.Rotation
+                          | _ -> None)
+                      |> List.distinct
+
+                  // Tilt is the DEFAULT state, not a crowding fallback — five
+                  // roomy categories are still tilted.
+                  Expect.equal (rotations (loweredCase "bar-tilt-five")) [ -30.0 ] "the 30° tilt is the default"
+
+                  // Twenty categories no longer pack at 30°.
+                  Expect.equal (rotations (loweredCase "bar-vertical-twenty")) [ -90.0 ] "escalated to vertical"
+
+                  // The boundary pair: the SAME chart, one character longer.
+                  Expect.equal (rotations (loweredCase "bar-tilt-boundary")) [ -30.0 ] "just inside the band pitch"
+                  Expect.equal (rotations (loweredCase "bar-vertical-boundary")) [ -90.0 ] "one character past it"
+
+                  // A numeric scatter x axis stays horizontal — its ticks are
+                  // short by construction and belong centred on their value.
+                  Expect.equal (rotations (loweredCase "scatter-single")) [] "scatter x ticks are never rotated"
+              }
+
+              test "a host can opt out of the tilt entirely, and is not escalated instead" {
+                  let style =
+                      { Charts.ChartStyle.defaults with
+                          LabelTiltDegrees = 0.0 }
+
+                  let case = cases |> List.find (fun c -> c.Name = "bar-vertical-twenty")
+
+                  let ds =
+                      Charts.lowerWithStyle
+                          Charts.ChartLimits.defaults
+                          style
+                          (specOf case)
+                          (Seq.ofList (buildRows case))
+
+                  let rotated =
+                      ds.Shapes
+                      |> List.filter (function
+                          | Shape.Label(_, _, _, s) -> Option.isSome s.Rotation
+                          | _ -> false)
+
+                  Expect.isEmpty rotated "0° means horizontal, not 'escalate me'"
+              }
+
+              test "a pathological label is truncated rather than allowed to eat the plot" {
+                  // One 400-character category: the bottom margin cannot grow
+                  // past its ceiling, so the label truncates to what the ceiling
+                  // affords and the plot keeps its share of the canvas.
+                  let case =
+                      { plain with
+                          Name = "pathological"
+                          Kind = ChartKind.Bar
+                          XField = "name"
+                          YFields = [ "v" ]
+                          Rows = [ String.replicate 400 "x", [ 10.0 ]; "b", [ 20.0 ] ] }
+
+                  let ds = Charts.lower (specOf case) (Seq.ofList (buildRows case))
+
+                  let categoryText =
+                      ds.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Label(_, _, TextSource.Literal t, s) when Option.isSome s.Rotation -> Some t
+                          | _ -> None)
+
+                  Expect.isTrue (categoryText.EndsWith "…") "the label carries the truncation mark"
+                  Expect.isTrue (categoryText.Length < 400) "and is shorter than the input"
+
+                  // The bottom margin is capped at 35 % of the canvas height.
+                  let plotBottom =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(_, y1, _, y2, _) when y1 = y2 -> Some y1
+                          | _ -> None)
+                      |> List.max
+
+                  Expect.isTrue (plotBottom >= 400.0 - 0.35 * 400.0) "the plot keeps at least 65 % of the height"
               } ]

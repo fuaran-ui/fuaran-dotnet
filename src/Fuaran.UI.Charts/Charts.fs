@@ -19,6 +19,14 @@ module Fuaran.UI.Charts
 //              display-unit scaling. Ticks no longer print raw floats; see
 //              "The canonical invariant number formatter" below, which is the
 //              normative cross-host spec every conformant host reproduces.
+//  Phase 879 — DETERMINISTIC TEXT METRICS: a pinned per-character advance-width
+//              table (`TextMetrics`) that no host queries a font for. It drives
+//              the four layout decisions that were previously blind — legend
+//              pitch, left-margin autosize, the 30°-tilt→90°-vertical
+//              escalation for category labels, and the bottom margin the tilt
+//              needs — and exposes the fit predicate Phase 881's data labels
+//              will gate on. See "Deterministic text metrics" below, the
+//              normative cross-host spec.
 //
 //  `Chart` stays a SEMANTIC wire kind (D2). This module is the bounded layout
 //  engine that turns a resolved `ChartSpec` + data rows into a canonical
@@ -127,10 +135,27 @@ type ChartStyle =
         MarginTop: float
         /// Right margin.
         MarginRight: float
-        /// Bottom margin — x-axis category labels + the x-axis title.
+        /// Bottom margin — x-axis category labels + the x-axis title. Since
+        /// Phase 879 this is the **floor**, not the value: a tilted or vertical
+        /// category label needs room to fall into, so the lowering autosizes
+        /// between this floor and `MarginBottomMaxShare · Height`.
         MarginBottom: float
-        /// Left margin — right-aligned y-axis tick labels.
+        /// Left margin — right-aligned y-axis tick labels. Since Phase 879 this
+        /// is the **floor**, not the value: the lowering autosizes between it
+        /// and `MarginLeftMaxShare · Width` from the widest FORMATTED tick
+        /// label, so a seven-digit tick is no longer clipped by a fixed 64 px.
         MarginLeft: float
+        /// Ceiling on the autosized left margin, as a share of `Width`. A
+        /// pathological tick column is truncated with a deterministic ellipsis
+        /// rather than eating the plot.
+        MarginLeftMaxShare: float
+        /// Ceiling on the autosized bottom margin, as a share of `Height`.
+        /// Same posture: category labels truncate rather than eat the plot.
+        MarginBottomMaxShare: float
+        /// Breathing room between an autosized margin's content and the canvas
+        /// edge (or the axis title beyond it). Also absorbs the few percent by
+        /// which a real font differs from the `TextMetrics` table.
+        AxisLabelPadding: float
 
         // ── Series palette ──
         /// The categorical palette, indexed by series (or, on the Pie arm, by
@@ -182,6 +207,10 @@ type ChartStyle =
         TickFontSize: float
         /// Font size of the visible chart title.
         TitleFontSize: float
+        /// A line's height as a multiple of its font size (Phase 879) — the
+        /// vertical half of the `TextMetrics` estimate, used for the tilt
+        /// escalation's along-axis footprint and for `TextMetrics.fitsBox`.
+        TextLineHeightFactor: float
         /// Where the chart title sits along the plot's top edge.
         TitleAlignment: ChartTitleAlignment
         /// Baseline y of the visible chart title.
@@ -206,12 +235,23 @@ type ChartStyle =
         TickLabelBaselineDy: float
         /// Drop from the x-axis spine to the category / x-tick label baseline.
         CategoryLabelOffsetY: float
-        /// Rotation applied to crowded category labels.
-        ///
-        /// **Reserved — not yet consumed.** The shipped lowering draws category
-        /// labels horizontally; the tilt mechanics land with a later phase. The
-        /// default records the 2026-08-16 operator decision (30°).
+        /// The MAGNITUDE of the tilt applied to band-arm category labels
+        /// (Phase 879), in degrees. Tilt is the DEFAULT state — operator
+        /// doctrine: it is for LEGIBILITY, not a crowding fallback — so every
+        /// category label is tilted, and the lowering escalates to
+        /// `VerticalTiltDegrees` when the tilted labels no longer pack into the
+        /// band pitch. The lowering emits `DrawStyle.Rotation = -tilt`:
+        /// `Rotation` is clockwise (SVG's convention), and the tilt has to be
+        /// COUNTER-clockwise so the text falls AWAY from the axis rather than
+        /// climbing into the plot. `0.0` opts out entirely — labels stay
+        /// horizontal and `Middle`-anchored, and no escalation is considered.
         LabelTiltDegrees: float
+        /// The vertical arm of the escalation (Phase 879). At 90° a label
+        /// occupies one line-height along the axis whatever its length, so a
+        /// vertical axis packs at any category count. Emitted with the same
+        /// negative sign as the tilt, so the text reads bottom-up — the
+        /// convention the y-axis title already uses.
+        VerticalTiltDegrees: float
         // ── Display units (Phase 876) ──
         /// How the value axis states its display unit once scaling applies.
         AxisUnitMode: ChartAxisUnitMode
@@ -271,8 +311,14 @@ type ChartStyle =
         /// Which edge the legend occupies. **Reserved — not yet consumed** (see
         /// `ChartLegendPosition`).
         LegendPosition: ChartLegendPosition
-        /// Horizontal pitch between consecutive legend entries.
-        LegendPitchX: float
+        /// Horizontal padding after a legend entry's label, before the next
+        /// entry's swatch (Phase 879). The pitch itself is no longer a
+        /// constant: an entry occupies `LegendLabelOffsetX + the estimated
+        /// width of its series name + LegendEntryGap`, so a 30-character name
+        /// pushes its neighbour along instead of being written over by it.
+        /// (The retired `LegendPitchX` was a flat 100 px, which collided on any
+        /// name past ~12 characters.)
+        LegendEntryGap: float
         /// Top y of a legend swatch.
         LegendSwatchY: float
         /// Side length of a (square) legend swatch.
@@ -324,6 +370,13 @@ module ChartStyle =
           MarginRight = 28.0
           MarginBottom = 56.0
           MarginLeft = 64.0
+          // The autosize ceilings (Phase 879). 30 % / 35 % leave the plot the
+          // clear majority of the canvas in the worst case, and a chart whose
+          // labels want more than that has a data problem the layout should
+          // report by truncating, not absorb by shrinking the picture.
+          MarginLeftMaxShare = 0.3
+          MarginBottomMaxShare = 0.35
+          AxisLabelPadding = 6.0
           // Phase 875 palette v2 — 8 slots, fixed assignment order. Validated on
           // BOTH surfaces (light #fcfcfb, dark #1a1a19) against the OKLab gate
           // set: lightness band, chroma floor, adjacent-pair CVD ΔE (protan +
@@ -353,6 +406,7 @@ module ChartStyle =
           FontFamily = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
           TickFontSize = 13.0
           TitleFontSize = 18.0
+          TextLineHeightFactor = 1.2
           TitleAlignment = ChartTitleAlignment.Left
           TitleBaselineY = 22.0
           TargetTickCount = 5.0
@@ -361,6 +415,7 @@ module ChartStyle =
           TickLabelBaselineDy = 4.0
           CategoryLabelOffsetY = 20.0
           LabelTiltDegrees = 30.0
+          VerticalTiltDegrees = 90.0
           AxisUnitMode = ChartAxisUnitMode.Words
           DisplayUnitMinExponent = 6
           AxisTitleBottomOffset = 12.0
@@ -374,7 +429,7 @@ module ChartStyle =
           AreaFillOpacity = 0.12
           ScatterPointRadius = 4.0
           LegendPosition = ChartLegendPosition.Right
-          LegendPitchX = 100.0
+          LegendEntryGap = 24.0
           LegendSwatchY = 34.0
           LegendSwatchSize = 10.0
           LegendSwatchCornerRadius = 2.0
@@ -452,6 +507,160 @@ let private niceDomain (targetTicks: float) (lo: float) (hi: float) : float * fl
     let ticks = [ for i in 0..count -> r2 (niceLo + float i * step) ]
 
     niceLo, niceHi, step, ticks
+
+// ─── Deterministic text metrics (Phase 879) ──────────────────────────────────
+//
+// NORMATIVE CROSS-HOST SPEC (R2). Every conformant host reproduces this table
+// and these functions EXACTLY, byte-for-byte; the `chart-lowering/*` goldens pin
+// them through the margins, the legend pitch and the label rotations they
+// decide. `docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md` §4d carries the same table
+// as the language-neutral statement of it.
+//
+// THE APPROXIMATION IS THE SPEC. No host measures text: a headless Python or Go
+// emitter has no font engine, a browser's measurement depends on which of the
+// `FontFamily` stack's fonts actually resolved, and a lowering whose margins
+// depended on either would stop being deterministic — the one property (R2) the
+// whole corpus rests on. So the widths come from a FIXED table of per-character
+// advance widths expressed as a fraction of the font size (em factors), chosen
+// to approximate a typical sans-serif (the shipped `FontFamily`'s members all
+// sit near Helvetica's metrics). A real font will differ by a few percent; that
+// is accepted, and the padding constants absorb it.
+//
+//   1. FIVE WIDTH CLASSES, listed below. A character not named in a class takes
+//      the DEFAULT — which is also what every non-ASCII character takes, so the
+//      table is total over every string without enumerating Unicode.
+//   2. A STRING'S WIDTH is `fontSize · Σ advanceEm(ch)`, summed LEFT TO RIGHT
+//      (the order is part of the spec: float addition is not associative, and
+//      two hosts summing differently could round to different pixels), then
+//      `r2`-rounded exactly once at the end.
+//   3. A LINE'S HEIGHT is `fontSize · ChartStyle.TextLineHeightFactor`.
+//   4. TRUNCATION is deterministic: the longest character prefix whose width
+//      plus the ellipsis's still fits, then `…`. When not even one character
+//      fits, the result is the bare `…` (never the empty string — an empty
+//      label is indistinguishable from a missing one).
+
+[<RequireQualifiedAccess>]
+module TextMetrics =
+
+    /// `' . , : ; ! i j l I |` and the space — the stems and the punctuation.
+    [<Literal>]
+    let ThinEm = 0.28
+
+    /// `" ( ) * - / \ [ ] { } f r t` — narrow but not a bare stem.
+    [<Literal>]
+    let NarrowEm = 0.33
+
+    /// Digits, most lowercase, `J`, `L`, everything unlisted, and every
+    /// non-ASCII character.
+    [<Literal>]
+    let DefaultEm = 0.55
+
+    /// Uppercase (bar `I J L M W`) and lowercase `w`.
+    [<Literal>]
+    let WideEm = 0.70
+
+    /// `m M W % @` — the widest glyphs in a sans-serif.
+    [<Literal>]
+    let ExtraWideEm = 0.90
+
+    /// The truncation marker. One character, `DefaultEm` wide by the table's
+    /// own non-ASCII rule.
+    [<Literal>]
+    let Ellipsis = "…"
+
+    /// One character's advance width as a fraction of the font size. Total: an
+    /// unlisted character — punctuation, an accented letter, a CJK ideograph —
+    /// takes `DefaultEm`, so the table never has to enumerate Unicode.
+    let advanceEm (ch: char) : float =
+        match ch with
+        | ' '
+        | '!'
+        | '\''
+        | ','
+        | '.'
+        | ':'
+        | ';'
+        | 'I'
+        | 'i'
+        | 'j'
+        | 'l'
+        | '|' -> ThinEm
+        | '"'
+        | '('
+        | ')'
+        | '*'
+        | '-'
+        | '/'
+        | '\\'
+        | '['
+        | ']'
+        | '{'
+        | '}'
+        | 'f'
+        | 'r'
+        | 't' -> NarrowEm
+        | '%'
+        | '@'
+        | 'M'
+        | 'W'
+        | 'm' -> ExtraWideEm
+        | 'J'
+        | 'L' -> DefaultEm
+        | c when c >= 'A' && c <= 'Z' -> WideEm
+        | 'w' -> WideEm
+        | _ -> DefaultEm
+
+    /// A string's advance width in em — summed LEFT TO RIGHT (rule 2).
+    let advanceEmOf (text: string) : float =
+        let mutable acc = 0.0
+
+        for ch in text do
+            acc <- acc + advanceEm ch
+
+        acc
+
+    /// The estimated rendered width of `text` at `fontSize`, in drawing-space
+    /// px. `r2`-rounded once, at the end (rule 2).
+    let width (fontSize: float) (text: string) : float = r2 (fontSize * advanceEmOf text)
+
+    /// The estimated line height at `fontSize` (rule 3).
+    let lineHeight (fontSize: float) (lineHeightFactor: float) : float = r2 (fontSize * lineHeightFactor)
+
+    /// Does `text` fit a box `maxWidth` × `maxHeight` at `fontSize`? The
+    /// predicate Phase 881's data labels gate inside/outside/suppress on — a
+    /// single place the fit question is answered, so a label never disagrees
+    /// with the margin that made room for it.
+    let fitsBox (fontSize: float) (lineHeightFactor: float) (maxWidth: float) (maxHeight: float) (text: string) : bool =
+        width fontSize text <= maxWidth
+        && lineHeight fontSize lineHeightFactor <= maxHeight
+
+    /// The longest character prefix of `text` whose width stays within
+    /// `budget` at `fontSize` (rule 4's inner loop).
+    let rec private prefixWithin (fontSize: float) (budget: float) (text: string) (i: int) (accEm: float) : int =
+        if i >= text.Length then
+            i
+        else
+            let next = accEm + advanceEm text.[i]
+
+            if r2 (fontSize * next) <= budget then
+                prefixWithin fontSize budget text (i + 1) next
+            else
+                i
+
+    /// Deterministic ellipsis truncation to `maxWidth` (rule 4). A string that
+    /// already fits is returned unchanged — so a host that never hits a bound
+    /// never sees a `…`, and the goldens for such a chart are untouched.
+    let truncateToWidth (fontSize: float) (maxWidth: float) (text: string) : string =
+        if width fontSize text <= maxWidth then
+            text
+        else
+            let budget = maxWidth - width fontSize Ellipsis
+
+            if budget < 0.0 then
+                Ellipsis
+            else
+                let take = prefixWithin fontSize budget text 0 0.0
+                text.Substring(0, take) + Ellipsis
 
 // ─── The canonical invariant number formatter (Phase 876) ────────────────────
 //
@@ -911,13 +1120,12 @@ let private numericOf (row: Row) (field: string) : float =
 /// stacking is meaningless (`Line`, `Scatter`, `Pie`) is ignored — the flag
 /// only changes `Bar` / `Area` geometry.
 let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSpec =
-    // The plot rectangle, derived from the style's canvas + margins.
-    let plotX0 = style.MarginLeft
-    let plotX1 = style.Width - style.MarginRight
-    let plotY0 = style.MarginTop
-    let plotY1 = style.Height - style.MarginBottom
-    let plotW = plotX1 - plotX0
-    let plotH = plotY1 - plotY0
+    // ORDER IS LOAD-BEARING SINCE PHASE 879. The plot rectangle used to be the
+    // first thing computed, from four constant margins. It is now DERIVED from
+    // the text the chart is going to print — the widest formatted y tick decides
+    // the left margin, and the category labels' tilt decides the bottom one — so
+    // everything text-metric-shaped is computed first, the margins next, and the
+    // plot rectangle (and every scale over it) only then.
 
     // ARRAYS, not lists, for everything the nested series-by-point loops index
     // (Phase 790). F# list indexing is O(index), so `series.[j].[i]` inside a
@@ -991,12 +1199,6 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         formatValue valueFormat yDisplayUnit.Divisor yDisplayUnit.DropSymbol yStep v
         + yDisplayUnit.TickSuffix
 
-    let yScale (v: float) : float =
-        r2 (plotY1 - (v - niceLo) / (niceHi - niceLo) * plotH)
-
-    let bandW = if n > 0 then plotW / float n else plotW
-    let centreX (i: int) : float = r2 (plotX0 + bandW * (float i + 0.5))
-
     // ── Linear x-scale (Phase 636 — the Scatter arm's numeric x axis) ──
     // Scatter reads the x-field NUMERICALLY and plots on a linear x-domain (the
     // first non-band x-scale arm). The domain is NOT zero-anchored — a scatter's
@@ -1029,6 +1231,129 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // does not have pounds on both axes), and there is no second axis-unit slot
     // to state an x display unit in until the axis-title phase lands.
     let xTickText (v: float) : string = formatValue None 1.0 false xStep v
+
+    // ── Text-metric layout (Phase 879) ───────────────────────────────────────
+    //
+    // Everything below reads `TextMetrics` and nothing reads a font. The four
+    // decisions, in dependency order: the LEFT margin (from the widest formatted
+    // y tick), the band pitch that follows from it, the category-label TILT
+    // (from the widest category name against that pitch), and the BOTTOM margin
+    // the chosen tilt needs to fall into.
+
+    let tickSize = style.TickFontSize
+    let titleSize = style.TitleFontSize
+    let lineHeight = TextMetrics.lineHeight tickSize style.TextLineHeightFactor
+
+    let widestOf (texts: string seq) : float =
+        texts |> Seq.fold (fun acc t -> max acc (TextMetrics.width tickSize t)) 0.0
+
+    // ── Left margin ──
+    // The tick column must clear `TickLabelGap` from the spine and
+    // `AxisLabelPadding` from the canvas edge. The ceiling is a share of the
+    // canvas; a tick column that would breach it is TRUNCATED (never allowed to
+    // eat the plot), which is why the truncation budget is derived from the
+    // ceiling — a constant — and not from the margin it is about to decide.
+    let leftCeiling = style.MarginLeftMaxShare * style.Width
+
+    let tickTextBudget =
+        max 0.0 (leftCeiling - style.TickLabelGap - style.AxisLabelPadding)
+
+    let yTickLabelText (v: float) : string =
+        TextMetrics.truncateToWidth tickSize tickTextBudget (yTickText v)
+
+    let requiredLeft =
+        style.TickLabelGap
+        + widestOf (ticks |> List.map yTickLabelText)
+        + style.AxisLabelPadding
+
+    let marginLeft = r2 (max style.MarginLeft (min leftCeiling requiredLeft))
+
+    let plotX0 = marginLeft
+    let plotX1 = style.Width - style.MarginRight
+    let plotW = plotX1 - plotX0
+
+    let bandW = if n > 0 then plotW / float n else plotW
+    let centreX (i: int) : float = r2 (plotX0 + bandW * (float i + 0.5))
+
+    // ── Category-label tilt + its vertical escalation ──
+    // Only the BAND arms label categories: Scatter labels numeric x ticks (short
+    // by construction, left horizontal) and Pie has no x axis at all. Both must
+    // therefore contribute NO drop, or their bottom margin — and with it the
+    // pie's centre — would move for a decision they never take.
+    let drawsCategoryLabels =
+        not isScatter
+        && (match spec.Kind with
+            | ChartKind.Pie -> false
+            | _ -> true)
+
+    // A rotated label's footprint ALONG the axis is its width's horizontal
+    // projection plus the line height's: `w·cos θ + h·sin θ`. Escalate when the
+    // widest label's footprint at the tilt no longer fits the band pitch. At 90°
+    // the width term vanishes, so the vertical arm packs one label per line
+    // height at any category count — which is why it is the terminal arm and
+    // there is nothing to escalate to beyond it.
+    let radians (deg: float) : float = deg * System.Math.PI / 180.0
+
+    let alongAxisFootprint (deg: float) (w: float) : float =
+        w * cos (radians deg) + lineHeight * sin (radians deg)
+
+    let tiltDegrees =
+        if not drawsCategoryLabels || n = 0 || style.LabelTiltDegrees <= 0.0 then
+            // `LabelTiltDegrees = 0` is a host opting out of tilt entirely;
+            // honour it literally rather than escalating it to vertical.
+            0.0
+        elif alongAxisFootprint style.LabelTiltDegrees (widestOf categories) > bandW then
+            style.VerticalTiltDegrees
+        else
+            style.LabelTiltDegrees
+
+    // ── Bottom margin ──
+    // A tilted label falls `w·sin θ` below its anchor. Below the plot, top to
+    // bottom: the label offset, that drop, the padding, the x-axis title's own
+    // LINE (`AxisTitleBottomOffset` measures to its BASELINE, so the glyphs
+    // above that baseline need reserving separately — omitting this term let a
+    // long tilted label run into the title), and the title's inset from the
+    // canvas bottom. Same ceiling-then-truncate posture as the left margin —
+    // the budget comes from the ceiling, so the truncation that feeds the
+    // margin does not depend on the margin.
+    let sinTilt = sin (radians tiltDegrees)
+    let bottomCeiling = style.MarginBottomMaxShare * style.Height
+
+    let dropCeiling =
+        max
+            0.0
+            (bottomCeiling
+             - style.CategoryLabelOffsetY
+             - style.AxisLabelPadding
+             - lineHeight
+             - style.AxisTitleBottomOffset)
+
+    let categoryTextBudget = if sinTilt > 0.0 then dropCeiling / sinTilt else infinity
+
+    let categoryLabelText (c: string) : string =
+        TextMetrics.truncateToWidth tickSize categoryTextBudget c
+
+    let categoryTexts =
+        if drawsCategoryLabels then
+            categories |> Array.map categoryLabelText
+        else
+            [||]
+
+    let requiredBottom =
+        style.CategoryLabelOffsetY
+        + sinTilt * widestOf categoryTexts
+        + style.AxisLabelPadding
+        + lineHeight
+        + style.AxisTitleBottomOffset
+
+    let marginBottom = r2 (max style.MarginBottom (min bottomCeiling requiredBottom))
+
+    let plotY0 = style.MarginTop
+    let plotY1 = style.Height - marginBottom
+    let plotH = plotY1 - plotY0
+
+    let yScale (v: float) : float =
+        r2 (plotY1 - (v - niceLo) / (niceHi - niceLo) * plotH)
 
     let xScale (v: float) : float =
         r2 (plotX0 + (v - xNiceLo) / (xNiceHi - xNiceLo) * plotW)
@@ -1096,23 +1421,40 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
             yMarks @ xMarks
 
-    let tickSize = style.TickFontSize
-    let titleSize = style.TitleFontSize
-
     // y-axis tick labels — right-anchored (End) so the number column sits cleanly
-    // in the left margin, ending just before the axis.
+    // in the left margin, ending just before the axis. The text is the
+    // margin-bounded one (Phase 879): whatever the margin was sized for is
+    // exactly what gets drawn, so a truncation can never disagree with the room
+    // made for it.
     let yTickLabels =
         ticks
         |> List.map (fun t ->
             Shape.Label(
                 r2 (plotX0 - style.TickLabelGap),
                 r2 (yScale t + style.TickLabelBaselineDy),
-                TextSource.Literal(yTickText t),
+                TextSource.Literal(yTickLabelText t),
                 textStyle style (Some style.LabelOpacity) TextAnchor.End tickSize Emphasis.Normal
             ))
 
     // x-axis labels — band arms label each category under its band centre;
     // Scatter labels its numeric x-ticks along the linear axis (Phase 636).
+    //
+    // A tilted category label is `End`-anchored at the band centre and rotated
+    // NEGATIVELY (counter-clockwise, against `DrawStyle.Rotation`'s clockwise
+    // convention): the anchor is the pivot, so the text ENDS under the band's
+    // tick and runs back down-and-left, reading up-to-the-right into it. The
+    // opposite sign would swing the same text up into the plot area. At the
+    // vertical arm this degenerates to reading bottom-up — the y-axis title's
+    // convention. Scatter's numeric ticks stay horizontal + `Middle`: they are
+    // short by construction, and centring them on their tick is the correct
+    // reading of a value axis.
+    let tiltedLabelStyle =
+        let s =
+            textStyle style (Some style.LabelOpacity) TextAnchor.End tickSize Emphasis.Normal
+
+        { s with
+            Rotation = Some(r2 -tiltDegrees) }
+
     let xLabels =
         if isScatter then
             xTicks
@@ -1124,13 +1466,16 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                     textStyle style (Some style.LabelOpacity) TextAnchor.Middle tickSize Emphasis.Normal
                 ))
         else
-            categories
+            categoryTexts
             |> Array.mapi (fun i c ->
                 Shape.Label(
                     centreX i,
                     r2 (plotY1 + style.CategoryLabelOffsetY),
                     TextSource.Literal c,
-                    textStyle style (Some style.LabelOpacity) TextAnchor.Middle tickSize Emphasis.Normal
+                    (if tiltDegrees > 0.0 then
+                         tiltedLabelStyle
+                     else
+                         textStyle style (Some style.LabelOpacity) TextAnchor.Middle tickSize Emphasis.Normal)
                 ))
             |> Array.toList
 
@@ -1295,14 +1640,32 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
     // ── Legend (only when >1 series) — a swatch + series name per series ──
     //
-    // `ChartStyle.LegendPosition` is declared but NOT yet consumed: the legend
-    // is a horizontal row in the top margin whatever it says (Phase 875 wires
-    // the positioning).
+    // The pitch is PER ENTRY since Phase 879: an entry occupies its swatch-to-
+    // label offset, the estimated width of its own name, and the inter-entry
+    // gap, so entries are laid out cumulatively rather than on a fixed stride.
+    // A 30-character series name now pushes its neighbour along instead of
+    // being overwritten by it — which the retired flat 100 px pitch could not
+    // do past about twelve characters.
+    //
+    // `ChartStyle.LegendPosition` is still NOT consumed, and a long enough row
+    // still runs off the right edge: WHERE the legend sits and what happens
+    // when it overflows are one problem, and they land together in a later
+    // phase. Pitch alone is what deterministic metrics can fix, and it is
+    // fixed; the overflow is unchanged, deliberately.
+    let legendEntryWidth (j: int) : float =
+        style.LegendLabelOffsetX
+        + TextMetrics.width tickSize yFields.[j]
+        + style.LegendEntryGap
+
+    let legendX =
+        // Prefix sums — entry j starts where every earlier entry ended.
+        Array.init m id |> Array.scan (fun acc j -> acc + legendEntryWidth j) plotX0
+
     let legend =
         if m > 1 then
             [ for j in 0 .. m - 1 do
                   let colour = colourFor style j
-                  let lx = r2 (plotX0 + float j * style.LegendPitchX)
+                  let lx = r2 legendX.[j]
 
                   yield
                       Shape.Rectangle(
