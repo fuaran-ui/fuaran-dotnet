@@ -37,6 +37,7 @@ let private specOf (kind: ChartKind) (m: int) (stacked: bool) : ChartSpec<obj> =
       XField = "x"
       YFields = [ for j in 1..m -> sprintf "y%d" j ]
       Title = None
+      ValueFormat = None
       OnPointClick = None
       Stacked = stacked }
 

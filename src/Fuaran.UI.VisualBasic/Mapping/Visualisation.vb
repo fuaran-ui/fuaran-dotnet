@@ -20,6 +20,7 @@ Friend Module VisualisationMapping
                 .XField = If(HasAttr(el, "x-field"), Attr(el, "x-field"), ""),
                 .YFields = PipeList(Attr(el, "y-fields")),
                 .Title = OptText(el, "title"),
+                .ValueFormat = ReadValueFormat(el),
                 .Stacked = AttrBool(el, "stacked")})
 
         d("Table") = Function(el) Csharp.Fuaran.Table(

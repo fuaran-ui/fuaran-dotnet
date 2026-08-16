@@ -875,6 +875,10 @@ let private defs: (string * J) list =
             // match the decoder's tolerance of legacy wire that omits it.
             "stacked", boolean
             "title", ref "TextSource"
+            // `valueFormat` (Phase 876) — the value axis's number format,
+            // reusing the existing `Format` vocabulary; optional (absent means
+            // the lowering's canonical default rendering).
+            "valueFormat", ref "Format"
             "onPointClick", closure ]
 
       "MapMarker",

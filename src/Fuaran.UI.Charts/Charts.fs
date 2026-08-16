@@ -15,6 +15,10 @@ module Fuaran.UI.Charts
 //              `chart-lowering/*` goldens were regenerated once for the whole
 //              change-set. `defaults` remains the corpus-pinned form — it is no
 //              longer the pre-885 form.
+//  Phase 876 — AXIS NUMBER FORMATTING: the canonical invariant formatter +
+//              display-unit scaling. Ticks no longer print raw floats; see
+//              "The canonical invariant number formatter" below, which is the
+//              normative cross-host spec every conformant host reproduces.
 //
 //  `Chart` stays a SEMANTIC wire kind (D2). This module is the bounded layout
 //  engine that turns a resolved `ChartSpec` + data rows into a canonical
@@ -82,6 +86,32 @@ type ChartLegendPosition =
     | Right
     | Bottom
     | Left
+
+/// How a value axis states its DISPLAY UNIT once a large magnitude has been
+/// scaled by a power of ten (Phase 876).
+///
+/// The operator's doctrine: ticks stay short and comparable, and the unit is
+/// stated ONCE — so the axis reads `5` `10` `15` under a single "Millions"
+/// label rather than `5,000,000` on every gridline. Compact-per-tick (`12K` on
+/// each tick) is the deliberate opt-out from that doctrine, never the default.
+[<RequireQualifiedAccess>]
+type ChartAxisUnitMode =
+    /// One word in the axis-unit slot — "Thousands" / "Millions" / … (the
+    /// shipped default).
+    | Words
+    /// The word plus the value format's unit symbol — "Millions of £". Falls
+    /// back to `Words` when the spec declares no `Format.Currency`. The ticks
+    /// then DROP the currency symbol: the unit is stated once, in the label.
+    | WordsWithSymbol
+    /// The SI prefix plus the unit symbol — "M£" (or bare "M"). Same
+    /// symbol-drops-from-the-ticks rule as `WordsWithSymbol`.
+    | SIAbbreviation
+    /// No axis-unit label at all: every tick carries its own compact suffix
+    /// (`12K`, `4M`). The opt-in mode — short ticks at the cost of repeating
+    /// the unit `TargetTickCount` times.
+    | CompactPerTick
+    /// Never scale; every tick prints its full magnitude.
+    | Off
 
 /// The complete styling surface of a lowering: canvas, palette, ink, typography,
 /// tick + axis-label geometry, series geometry, legend geometry, and the pie
@@ -182,6 +212,19 @@ type ChartStyle =
         /// labels horizontally; the tilt mechanics land with a later phase. The
         /// default records the 2026-08-16 operator decision (30°).
         LabelTiltDegrees: float
+        // ── Display units (Phase 876) ──
+        /// How the value axis states its display unit once scaling applies.
+        AxisUnitMode: ChartAxisUnitMode
+        /// The smallest unit exponent that TRIGGERS display-unit scaling — the
+        /// operator's `unit > 3` gate, expressed as the first admissible unit.
+        /// At the shipped default (`6`) scaling begins at MILLIONS, so a
+        /// thousands-range axis still reads `12,500` in full; a host that wants
+        /// thousands scaling sets `3` and gets `12.5` under a "Thousands"
+        /// label. `CompactPerTick` is exempt — repeating a suffix per tick is
+        /// only worth doing from thousands up, so it gates at `3` regardless.
+        /// The admissible exponents are the prefix table's own: 3, 6, 9, 12, 15.
+        DisplayUnitMinExponent: int
+
         /// Distance from the canvas bottom to the x-axis title's baseline.
         AxisTitleBottomOffset: float
         /// x of the y-axis title (left-anchored, above the plot).
@@ -318,6 +361,8 @@ module ChartStyle =
           TickLabelBaselineDy = 4.0
           CategoryLabelOffsetY = 20.0
           LabelTiltDegrees = 30.0
+          AxisUnitMode = ChartAxisUnitMode.Words
+          DisplayUnitMinExponent = 6
           AxisTitleBottomOffset = 12.0
           AxisTitleLeftX = 8.0
           AxisTitleTopOffset = 12.0
@@ -391,9 +436,11 @@ let private niceNum (x: float) (roundIt: bool) : float =
 
         nf * (10.0 ** exp)
 
-/// A nice value domain + its tick values for `[lo, hi]`, targeting
-/// `targetTicks` ticks (`ChartStyle.TargetTickCount`).
-let private niceDomain (targetTicks: float) (lo: float) (hi: float) : float * float * float list =
+/// A nice value domain + its TICK STEP + its tick values for `[lo, hi]`,
+/// targeting `targetTicks` ticks (`ChartStyle.TargetTickCount`). The step is
+/// returned because the axis's decimal precision is derived from it
+/// (Phase 876) — precision follows the axis, not the data.
+let private niceDomain (targetTicks: float) (lo: float) (hi: float) : float * float * float * float list =
     let hi = if hi = lo then lo + 1.0 else hi
     let range = niceNum (hi - lo) false
     let step = niceNum (range / (targetTicks - 1.0)) true
@@ -404,11 +451,297 @@ let private niceDomain (targetTicks: float) (lo: float) (hi: float) : float * fl
 
     let ticks = [ for i in 0..count -> r2 (niceLo + float i * step) ]
 
-    niceLo, niceHi, ticks
+    niceLo, niceHi, step, ticks
 
-/// Format a tick value: whole → integer, else 2-dp trimmed. Matches the SVG
-/// coordinate form (`DrawingSvg.formatNum`) so ticks read consistently.
-let private tickLabel (v: float) : string = DrawingSvg.formatNum (r2 v)
+// ─── The canonical invariant number formatter (Phase 876) ────────────────────
+//
+// NORMATIVE CROSS-HOST SPEC (R2). Every conformant host reproduces these rules
+// exactly; the `chart-lowering/*` goldens pin them. The chart lowering does NOT
+// inherit the locale-aware rendering other surfaces give `Format` (that is
+// `Binding.Format`'s job, via `Intl` / `CultureInfo`): a chart's ticks are part
+// of a drawing whose bytes must be identical on every host, so the rendering
+// here is locale-INVARIANT by definition — period decimal separator, comma
+// thousands separator, no CLDR anywhere.
+//
+//   1. DECIMALS COME FROM THE TICK STEP, never from the data. `dpsOfStep`
+//      returns the smallest d ≤ 6 for which `step · 10^d` is an integer, so a
+//      step of 500 gives 0 dp (`12,500`) and a step of 0.25 gives 2 dp
+//      (`0.25`). Every tick on one axis therefore carries the same precision,
+//      which is what makes a column of numbers comparable.
+//   2. The BASE RENDER is round-half-up on the magnitude at that precision,
+//      the integer part grouped in threes with `,`, the fraction zero-padded
+//      to exactly d places, a leading `-` only when the rounded magnitude is
+//      non-zero (so a tick that rounds to zero never reads `-0`).
+//   3. The `Format` ARMS layer meaning over that base: `Percent` renders the
+//      ratio ×100 with a `%` suffix (the same ratio reading `Binding.Format`
+//      gives it) and derives its precision from the ×100 step; `Currency`
+//      prefixes the ISO code's symbol INSIDE the sign (`-£1,200`); `Number`
+//      may pin the precision explicitly. `Date` / `RelativeTime` / `Duration`
+//      are not value-axis formats — they fall through to the base render
+//      rather than inventing an axis semantics for them.
+//   4. DISPLAY-UNIT SCALING divides both the tick value and the step by 10ⁿ,
+//      so rule 1 keeps holding on the scaled numbers.
+
+/// Decimal places implied by a tick step: the smallest `d ≤ 6` for which
+/// `step · 10^d` is (within float tolerance) an integer. `0` for a degenerate
+/// step. The tolerance is relative, so it holds at any magnitude.
+let private dpsOfStep (step: float) : int =
+    let s = abs step
+
+    if s <= 0.0 || System.Double.IsNaN s || System.Double.IsInfinity s then
+        0
+    else
+        let rec probe (d: int) (scaled: float) =
+            if d >= 6 then
+                6
+            elif abs (scaled - floor (scaled + 0.5)) <= 1e-9 * (max 1.0 scaled) then
+                d
+            else
+                probe (d + 1) (scaled * 10.0)
+
+        probe 0 s
+
+/// Group an integral digit string in threes from the right with `,`.
+let private groupThousands (digits: string) : string =
+    let n = digits.Length
+
+    if n <= 3 then
+        digits
+    else
+        let head = n % 3
+        let groups = [ for i in head..3 .. n - 3 -> digits.Substring(i, 3) ]
+        let leading = if head > 0 then [ digits.Substring(0, head) ] else []
+        String.concat "," (leading @ groups)
+
+/// Render `v` with EXACTLY `dps` decimals — round-half-up on the magnitude,
+/// comma thousands separators, period decimal point, locale-invariant.
+let private renderFixed (dps: int) (v: float) : string =
+    if System.Double.IsNaN v || System.Double.IsInfinity v then
+        "0"
+    else
+        let d =
+            if dps < 0 then 0
+            elif dps > 6 then 6
+            else dps
+
+        let scale = 10.0 ** float d
+        // Round-half-up on the MAGNITUDE (not banker's rounding, and not
+        // half-away-from-zero on the signed value) — one rule, reproducible on
+        // every host's IEEE doubles.
+        let units = floor (abs v * scale + 0.5)
+        let intPart = floor (units / scale)
+        let fracPart = units - intPart * scale
+        let intStr = groupThousands (DrawingSvg.formatNum intPart)
+
+        let body =
+            if d = 0 then
+                intStr
+            else
+                let raw = DrawingSvg.formatNum fracPart
+                let pad = String.replicate (max 0 (d - raw.Length)) "0"
+                intStr + "." + pad + raw
+
+        if v < 0.0 && units > 0.0 then "-" + body else body
+
+/// ISO-4217 code → symbol, the invariant table (a superset of the codes the
+/// locale-aware `Formatting` module curates). An unlisted code renders as the
+/// code itself — deterministic, and never a wrong symbol.
+let private currencySymbols: Map<string, string> =
+    Map
+        [ "EUR", "€"
+          "USD", "$"
+          "GBP", "£"
+          "JPY", "¥"
+          "CNY", "¥"
+          "CHF", "CHF"
+          "AUD", "$"
+          "CAD", "$"
+          "NZD", "$"
+          "HKD", "$"
+          "SGD", "$"
+          "INR", "₹"
+          "KRW", "₩"
+          "BRL", "R$"
+          "RUB", "₽"
+          "ZAR", "R"
+          "SEK", "kr"
+          "NOK", "kr"
+          "DKK", "kr"
+          "PLN", "zł"
+          "CZK", "Kč"
+          "HUF", "Ft"
+          "TRY", "₺"
+          "MXN", "$"
+          "THB", "฿"
+          "ILS", "₪" ]
+
+let private currencySymbol (iso: string) : string =
+    match Map.tryFind iso currencySymbols with
+    | Some s -> s
+    | None -> iso
+
+/// The unit symbol a `Format` contributes to an axis-unit label — the currency
+/// symbol, or `""` for every other arm (a percentage's unit is already the `%`
+/// on each tick).
+let private formatUnitSymbol (fmt: Format option) : string =
+    match fmt with
+    | Some(Format.Currency iso) -> currencySymbol iso
+    | _ -> ""
+
+/// The ×100 a `Format.Percent` applies to BOTH the value and the step (so the
+/// step-derived precision is computed on what is actually printed).
+let private formatValueScale (fmt: Format option) : float =
+    match fmt with
+    | Some(Format.Percent _) -> 100.0
+    | _ -> 1.0
+
+/// Render one value-axis number. `divisor` is the display unit (`1.0` when no
+/// scaling applies); `dropSymbol` suppresses a currency symbol on the ticks
+/// because the axis-unit label already states it once; `step` is the axis's
+/// tick step, from which the precision derives.
+let private formatValue (fmt: Format option) (divisor: float) (dropSymbol: bool) (step: float) (v: float) : string =
+    let pct = formatValueScale fmt
+    let dv = v * pct / divisor
+    let ds = step * pct / divisor
+
+    let dps =
+        match fmt with
+        | Some(Format.Number(Some d))
+        | Some(Format.Percent(Some d)) -> d
+        | _ -> dpsOfStep ds
+
+    let body = renderFixed dps dv
+
+    match fmt with
+    | Some(Format.Percent _) -> body + "%"
+    | Some(Format.Currency iso) when not dropSymbol ->
+        let sym = currencySymbol iso
+
+        if body.StartsWith "-" then
+            "-" + sym + body.Substring 1
+        else
+            sym + body
+    | _ -> body
+
+// ─── Display units (Phase 876) ───────────────────────────────────────────────
+//
+// The operator's prefix table, transcribed: thresholds sit at 1 + 3k and the
+// selected threshold `t` for a magnitude of exponent `e` satisfies
+// `e - 1 ≤ t < e + 2`, giving the unit exponent `n = t - 1`. Each unit
+// therefore covers three exponents — Thousands for e ∈ {3,4,5}, Millions for
+// {6,7,8}, Billions for {9,10,11} — which is why a 12-million axis and a
+// 900-million axis both read in millions rather than flipping mid-range.
+
+/// The display-unit exponent for a magnitude: `n = 3·⌈(e-2)/3⌉` where
+/// `e = ⌊log₁₀|max| + ½⌋`. Clamped to the table's span.
+let private unitExponentOf (maxAbs: float) : int =
+    if maxAbs <= 0.0 || System.Double.IsNaN maxAbs || System.Double.IsInfinity maxAbs then
+        0
+    else
+        let e = int (floor (log10 maxAbs + 0.5))
+        let n = 3 * int (ceil (float (e - 2) / 3.0))
+
+        if n < -15 then -15
+        elif n > 15 then 15
+        else n
+
+/// The words form of a unit exponent (`""` outside the table's positive span).
+let private unitWords (n: int) : string =
+    match n with
+    | 3 -> "Thousands"
+    | 6 -> "Millions"
+    | 9 -> "Billions"
+    | 12 -> "Trillions"
+    | 15 -> "Quadrillions"
+    | _ -> ""
+
+/// The SI-prefix form of a unit exponent.
+let private unitSi (n: int) : string =
+    match n with
+    | 3 -> "k"
+    | 6 -> "M"
+    | 9 -> "G"
+    | 12 -> "T"
+    | 15 -> "P"
+    | _ -> ""
+
+/// The compact per-tick suffix of a unit exponent (the finance convention —
+/// `B` for billions, not SI's `G`).
+let private unitCompact (n: int) : string =
+    match n with
+    | 3 -> "K"
+    | 6 -> "M"
+    | 9 -> "B"
+    | 12 -> "T"
+    | 15 -> "Q"
+    | _ -> ""
+
+/// A resolved display unit for one value axis: the exponent, the divisor, the
+/// per-tick suffix, whether the ticks drop the currency symbol, and the axis
+/// unit label (`""` when the axis states no unit).
+type private DisplayUnit =
+    { Exponent: int
+      Divisor: float
+      TickSuffix: string
+      DropSymbol: bool
+      Label: string }
+
+let private noDisplayUnit: DisplayUnit =
+    { Exponent = 0
+      Divisor = 1.0
+      TickSuffix = ""
+      DropSymbol = false
+      Label = "" }
+
+/// Resolve the display unit for a value axis whose printed magnitudes peak at
+/// `maxAbs` (already through any `Format.Percent` ×100 — the unit follows what
+/// is PRINTED, not the raw datum).
+let private resolveDisplayUnit (style: ChartStyle) (fmt: Format option) (maxAbs: float) : DisplayUnit =
+    let n = unitExponentOf maxAbs
+
+    let threshold =
+        match style.AxisUnitMode with
+        | ChartAxisUnitMode.CompactPerTick -> 3
+        | _ -> style.DisplayUnitMinExponent
+
+    let admissible = n >= 3 && n >= threshold && unitWords n <> ""
+
+    if not admissible || style.AxisUnitMode = ChartAxisUnitMode.Off then
+        noDisplayUnit
+    else
+        let symbol = formatUnitSymbol fmt
+        let divisor = 10.0 ** float n
+
+        match style.AxisUnitMode with
+        | ChartAxisUnitMode.Words ->
+            { Exponent = n
+              Divisor = divisor
+              TickSuffix = ""
+              DropSymbol = false
+              Label = unitWords n }
+        | ChartAxisUnitMode.WordsWithSymbol ->
+            { Exponent = n
+              Divisor = divisor
+              TickSuffix = ""
+              DropSymbol = symbol <> ""
+              Label =
+                (if symbol = "" then
+                     unitWords n
+                 else
+                     unitWords n + " of " + symbol) }
+        | ChartAxisUnitMode.SIAbbreviation ->
+            { Exponent = n
+              Divisor = divisor
+              TickSuffix = ""
+              DropSymbol = symbol <> ""
+              Label = unitSi n + symbol }
+        | ChartAxisUnitMode.CompactPerTick ->
+            { Exponent = n
+              Divisor = divisor
+              TickSuffix = unitCompact n
+              DropSymbol = false
+              Label = "" }
+        | ChartAxisUnitMode.Off -> noDisplayUnit
 
 // ─── DrawStyle builders ──────────────────────────────────────────────────────
 //
@@ -641,8 +974,22 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // Bars + lines share a zero-anchored domain — deterministic + honest for
     // bars. Stacked domains come from the cumulative partial sums, so the axis
     // covers the stack totals, never a single series' range.
-    let niceLo, niceHi, ticks =
+    let niceLo, niceHi, yStep, ticks =
         niceDomain style.TargetTickCount (min 0.0 dataMin) (max 0.0 dataMax)
+
+    // ── Value-axis number formatting (Phase 876) ──
+    // The declared meaning (`ChartSpec.ValueFormat`) chooses the arms; the
+    // style chooses whether a large magnitude is stated once as a display unit;
+    // the tick STEP chooses the precision. The unit is resolved from the
+    // PRINTED magnitude, so a `Percent` axis is measured after its ×100.
+    let valueFormat = spec.ValueFormat
+
+    let yDisplayUnit =
+        resolveDisplayUnit style valueFormat (max (abs niceLo) (abs niceHi) * formatValueScale valueFormat)
+
+    let yTickText (v: float) : string =
+        formatValue valueFormat yDisplayUnit.Divisor yDisplayUnit.DropSymbol yStep v
+        + yDisplayUnit.TickSuffix
 
     let yScale (v: float) : float =
         r2 (plotY1 - (v - niceLo) / (niceHi - niceLo) * plotH)
@@ -666,14 +1013,22 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         else
             [||]
 
-    let xNiceLo, xNiceHi, xTicks =
+    let xNiceLo, xNiceHi, xStep, xTicks =
         if isScatter then
             if Array.isEmpty xValues then
                 niceDomain style.TargetTickCount 0.0 1.0
             else
                 niceDomain style.TargetTickCount (Array.min xValues) (Array.max xValues)
         else
-            0.0, 1.0, []
+            0.0, 1.0, 1.0, []
+
+    // The Scatter arm's x IS a value axis, so its ticks take the same canonical
+    // formatter (Phase 876) — thousands separators + step-derived decimals.
+    // `ValueFormat` is deliberately NOT applied to it: one declared meaning
+    // cannot be true of two different measures (a "height vs weight" scatter
+    // does not have pounds on both axes), and there is no second axis-unit slot
+    // to state an x display unit in until the axis-title phase lands.
+    let xTickText (v: float) : string = formatValue None 1.0 false xStep v
 
     let xScale (v: float) : float =
         r2 (plotX0 + (v - xNiceLo) / (xNiceHi - xNiceLo) * plotW)
@@ -752,7 +1107,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             Shape.Label(
                 r2 (plotX0 - style.TickLabelGap),
                 r2 (yScale t + style.TickLabelBaselineDy),
-                TextSource.Literal(tickLabel t),
+                TextSource.Literal(yTickText t),
                 textStyle style (Some style.LabelOpacity) TextAnchor.End tickSize Emphasis.Normal
             ))
 
@@ -765,7 +1120,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                 Shape.Label(
                     xScale t,
                     r2 (plotY1 + style.CategoryLabelOffsetY),
-                    TextSource.Literal(tickLabel t),
+                    TextSource.Literal(xTickText t),
                     textStyle style (Some style.LabelOpacity) TextAnchor.Middle tickSize Emphasis.Normal
                 ))
         else
@@ -786,6 +1141,12 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         else
             string (System.Char.ToUpper s.[0]) + s.Substring 1
 
+    // The top-left slot states the value axis's DISPLAY UNIT once ("Millions",
+    // "Millions of £", "M£") when scaling applies, and otherwise keeps the
+    // horizontal "Value" hint it has always carried. Placement is deliberately
+    // unchanged here — axis titles are the next phase's, and moving the slot
+    // and changing its text in one change-set would make either one
+    // unattributable in the goldens.
     let axisTitles =
         [ Shape.Label(
               r2 ((plotX0 + plotX1) / 2.0),
@@ -796,7 +1157,12 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
           Shape.Label(
               r2 style.AxisTitleLeftX,
               r2 (plotY0 - style.AxisTitleTopOffset),
-              TextSource.Literal "Value",
+              TextSource.Literal(
+                  if yDisplayUnit.Label = "" then
+                      "Value"
+                  else
+                      yDisplayUnit.Label
+              ),
               textStyle style None TextAnchor.Start tickSize Emphasis.Normal
           ) ]
 
@@ -1077,7 +1443,11 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                               styleFill (colourFor style i)
                           )
 
-                      let pct = DrawingSvg.formatNum (floor (fractions.[i] * 100.0 + 0.5))
+                      // Routed through the canonical formatter (Phase 876) —
+                      // one rounding + rendering rule for every number this
+                      // module prints. A share is a whole percent here, so the
+                      // shipped `NN%` shape is unchanged.
+                      let pct = formatValue None 1.0 false 1.0 (fractions.[i] * 100.0)
 
                       yield
                           Shape.Label(

@@ -5451,6 +5451,16 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             | None -> Ok None
             | Some _ -> Ok(Some(fun _ -> Action.Chain []))
 
+        // `valueFormat` (Phase 876): the VALUE axis's number format, reusing the
+        // existing `Format` vocabulary. Absent is the ordinary shape — the
+        // lowering's canonical default rendering still applies (thousands
+        // separators + step-derived decimals), which is lowering behaviour
+        // rather than wire state.
+        let valueFormatR: Result<Format option, DecodeError> =
+            match tryField fields "valueFormat" with
+            | None -> Ok None
+            | Some v -> decodeFormat (path + ".valueFormat") v |> Result.map Some
+
         // `stacked` (Phase 126): now carried on the wire. Absent (legacy wire
         // predating the field) decodes to the default `false`.
         let stackedR: Result<bool, DecodeError> =
@@ -5458,23 +5468,25 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             | None -> Ok false
             | Some v -> requireBool (path + ".stacked") v
 
-        match kindR, sourceR, xFieldR, yFieldsR, titleR, onPointClickR, stackedR with
-        | Ok kind, Ok source, Ok xField, Ok yFields, Ok title, Ok onPointClick, Ok stacked ->
+        match kindR, sourceR, xFieldR, yFieldsR, titleR, onPointClickR, stackedR, valueFormatR with
+        | Ok kind, Ok source, Ok xField, Ok yFields, Ok title, Ok onPointClick, Ok stacked, Ok valueFormat ->
             Ok
                 { Source = source
                   Kind = kind
                   XField = xField
                   YFields = yFields
                   Title = title
+                  ValueFormat = valueFormat
                   OnPointClick = onPointClick
                   Stacked = stacked }
-        | Error e, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _
-        | _, _, Error e, _, _, _, _
-        | _, _, _, Error e, _, _, _
-        | _, _, _, _, Error e, _, _
-        | _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _
+        | _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeMapSpec (path: string) (j: Json) : Result<MapSpec<obj>, DecodeError> =
     match requireObject path j with

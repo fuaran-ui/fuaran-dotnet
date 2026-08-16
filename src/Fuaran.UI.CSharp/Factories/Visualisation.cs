@@ -24,8 +24,8 @@ public static partial class Fuaran
         new(FsFactory.chart<object>(
             options.Id,
             // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
-            // Source, Stacked, XField, YFields, Title, OnPointClick), not the old
-            // Source-first hand order.
+            // Source, Stacked, XField, YFields, Title, ValueFormat,
+            // OnPointClick), not the old Source-first hand order.
             new FsGen.ChartSpec<object>(
                 options.Kind.ToFs(),
                 (options.Source ?? Binding.Static(Enumerable.Empty<FsRow>())).Inner,
@@ -33,6 +33,7 @@ public static partial class Fuaran
                 options.XField,
                 Fs.List(options.YFields ?? Enumerable.Empty<string>()),
                 options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsGen.TextSource>(),
+                options.ValueFormat is { } vf ? Fs.Some(vf.Inner) : Fs.None<FsGen.Format>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>
@@ -156,6 +157,14 @@ public sealed record ChartOptions
 
     /// <summary>An optional chart title.</summary>
     public Text? Title { get; init; }
+
+    /// <summary>
+    /// The value axis's number format (Phase 876) — reuses the same bounded
+    /// <see cref="LocaleFormat"/> vocabulary <see cref="Binding.Format"/> takes.
+    /// Absent leaves the lowering's canonical default rendering (thousands
+    /// separators + decimals derived from the tick step).
+    /// </summary>
+    public LocaleFormat? ValueFormat { get; init; }
 
     /// <summary>Whether bar/area series stack.</summary>
     public bool Stacked { get; init; }

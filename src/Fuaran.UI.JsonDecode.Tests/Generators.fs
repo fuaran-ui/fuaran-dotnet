@@ -841,6 +841,8 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         let! xField = genNonEmptyString
         let! yFields = genSmallList genNonEmptyString
         let! title = genOption genTextSource
+        // Phase 876 — the value axis's declared number format.
+        let! valueFormat = genOption genFormat
         let! stacked = genBool
 
         return
@@ -849,6 +851,7 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
               XField = xField
               YFields = yFields
               Title = title
+              ValueFormat = valueFormat
               OnPointClick = None
               Stacked = stacked }
     }

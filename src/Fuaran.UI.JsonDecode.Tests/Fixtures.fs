@@ -1899,10 +1899,38 @@ let chart: Node<obj> =
               XField = "month"
               YFields = [ "revenue"; "cost" ]
               Title = Some(TextSource.Literal "Channel mix")
+              // Absent (Phase 876) — the ordinary shape: no declared value
+              // meaning, so the lowering's canonical default rendering applies.
+              ValueFormat = None
               OnPointClick = None
               // Stacked = true (Phase 126) — exercises the now-carried
               // stacked-vs-grouped chart intent round-tripping.
               Stacked = true }
+        ))
+        None
+
+/// Phase 876 — `valueFormat`: the value axis's declared number format, reusing
+/// the existing `Format` vocabulary (no parallel formatting DU was minted). The
+/// PRESENT half of the pair (`chart-1` pins the absent half).
+let chartValueFormat: Node<obj> =
+    node
+        "chart-value-format"
+        (NodeKind.Chart(
+            { Source =
+                Binding.Static(
+                    Some(
+                        Seq.ofList
+                            [ (Map.ofList [ "month", box "Jan"; "revenue", box 12500000 ]: Row)
+                              Map.ofList [ "month", box "Feb"; "revenue", box 15200000 ] ]
+                    )
+                )
+              Kind = ChartKind.Bar
+              XField = "month"
+              YFields = [ "revenue" ]
+              Title = Some(TextSource.Literal "Revenue")
+              ValueFormat = Some(Format.Currency "GBP")
+              OnPointClick = None
+              Stacked = false }
         ))
         None
 
@@ -1960,6 +1988,7 @@ let chartStateRows: Node<obj> =
               XField = "month"
               YFields = [ "revenue" ]
               Title = None
+              ValueFormat = None
               OnPointClick = None
               Stacked = false }
         ))
@@ -2871,6 +2900,7 @@ let filterableStaticDashboard: Node<obj> =
                             XField = "month"
                             YFields = [ "retention" ]
                             Title = Some(TextSource.Literal "Retention")
+                            ValueFormat = None
                             OnPointClick = None
                             Stacked = false }
                       ))
@@ -3889,6 +3919,7 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Chart", chart
       "Visualisation/Grid (Phase 663/665 — editable State-sourced grid, typed rows on the wire)", gridEditableState
       "Visualisation/Chart (Phase 663/665 — chart on the editable grid's state key)", chartStateRows
+      "Visualisation/Chart (Phase 876 — valueFormat: the value axis's declared number format)", chartValueFormat
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
       "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey

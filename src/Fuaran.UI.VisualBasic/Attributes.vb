@@ -117,6 +117,16 @@ Friend Module Attributes
         Return Csharp.CellFormat.None
     End Function
 
+    ''' <summary>Read the value-axis number format from the value-format-* attribute
+    ''' family (Phase 876). Nothing when none is declared — the chart lowering then
+    ''' applies its canonical default rendering.</summary>
+    Friend Function ReadValueFormat(el As XElement) As Csharp.LocaleFormat?
+        If HasAttr(el, "value-format-currency") Then Return Csharp.LocaleFormat.Currency(Attr(el, "value-format-currency"))
+        If HasAttr(el, "value-format-number") Then Return Csharp.LocaleFormat.Number(OptInt(Attr(el, "value-format-number")))
+        If HasAttr(el, "value-format-percent") Then Return Csharp.LocaleFormat.Percent(OptInt(Attr(el, "value-format-percent")))
+        Return Nothing
+    End Function
+
     ''' <summary>Parse an optional integer (Nothing when the string is empty).</summary>
     Friend Function OptInt(value As String) As Integer?
         If String.IsNullOrEmpty(value) Then Return Nothing

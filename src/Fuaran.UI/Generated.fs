@@ -924,6 +924,16 @@ and ChartSpec<'Msg> =
       XField: string
       YFields: string list
       Title: TextSource option
+      // Phase 876 — the VALUE axis's number format, reusing the existing
+      // `Format` vocabulary (the Phase 819 family) rather than minting a
+      // parallel formatting DU. It is a SEMANTIC declaration ("these numbers
+      // are pounds / a ratio / two-decimal quantities"), which is why it is a
+      // wire field where `ChartStyle` is not (D8): appearance is the host's,
+      // meaning is the author's. Absent means "no declared meaning" — the
+      // lowering still applies its canonical default rendering (thousands
+      // separators + step-derived decimals), which is a LOWERING behaviour,
+      // not wire state. Omitted on the wire when absent.
+      ValueFormat: Format option
       OnPointClick: (Fuaran.Core.Row -> Action<'Msg>) option
     }
 
@@ -1631,7 +1641,7 @@ and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
     Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encChartSpec<'Msg> (s: ChartSpec<'Msg>) : JVal =
-    Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.ValueFormat |> Option.map (fun v -> "valueFormat", encFormat v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encMapSpec<'Msg> (s: MapSpec<'Msg>) : JVal =
     Canon.typed "Map" ([ Some("centreLatitude", JFloat s.CentreLatitude); Some("centreLongitude", JFloat s.CentreLongitude); Some("source", (encBinding (fun __xs -> JArr(List.map encMapMarker __xs))) s.Source); Some("zoom", JInt s.Zoom); (s.OnMarkerClick |> Option.map (fun v -> "onMarkerClick", JStr "<closure>")) ] |> List.choose id)
@@ -3101,8 +3111,9 @@ and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, string> =
     dReq "xField" __fs dStr |> Result.bind (fun xField ->
     dReq "yFields" __fs (dList dStr) |> Result.bind (fun yFields ->
     dOpt "title" __fs decTextSource |> Result.bind (fun title ->
+    dOpt "valueFormat" __fs decFormat |> Result.bind (fun valueFormat ->
     (dPresent "onPointClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onPointClick ->
-    Ok { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = title; OnPointClick = onPointClick }))))))))
+    Ok { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = title; ValueFormat = valueFormat; OnPointClick = onPointClick })))))))))
 
 and private decMapSpec (j: JVal) : Result<MapSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3349,7 +3360,7 @@ let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<
     { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkChart (id: string) (kind: ChartKind) (source: Binding<Fuaran.Core.Row seq>) (stacked: bool) (xField: string) (yFields: string list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; ValueFormat = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

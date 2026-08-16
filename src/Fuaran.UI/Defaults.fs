@@ -356,6 +356,7 @@ let chart<'Msg> : ChartSpec<'Msg> =
       XField = ""
       YFields = []
       Title = Option.None
+      ValueFormat = Option.None
       OnPointClick = Option.None
       Stacked = false }
 

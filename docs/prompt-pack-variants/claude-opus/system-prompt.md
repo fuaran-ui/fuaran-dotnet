@@ -249,8 +249,8 @@ InputKind =
 | FileUpload { accept:str[]; label:TextSource; multiple:bool; onSelect:closure; disabled?:Binding }
 | Select { label:TextSource; source:Binding; value:Binding; disabled?:Binding; multiple?:bool; placeholder?:TextSource; values?:Binding }
 VisKind =
-| DataGrid { columns:ColumnErased[]; source:Binding; editable?:bool; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool } }
-| Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding; xField:str; yFields:str[]; stacked?:bool; title?:TextSource }
+| DataGrid { columns:ColumnErased[]; source:Binding; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; pageSize?:int; pageStateKey?:str; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool } }
+| Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding; xField:str; yFields:str[]; stacked?:bool; title?:TextSource; valueFormat?:Format }
 | Map { centreLatitude:num; centreLongitude:num; source:Binding; zoom:int }
 TreeOp =
 | EditNode { newKind:NodeKind; target:str }
@@ -393,7 +393,7 @@ TextSource =
 | Bound { binding:Binding }
 | I18n { args:{ [key]:any }; key:str }
 Accessibility { describedBy?:str; hidden?:Binding; label?:Binding; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str }
-ColumnErased { kind:CellKindErased; label:str; field?:str; format?:CellFormat; width?:ColumnWidth }
+ColumnErased { kind:CellKindErased; label:str; editable?:bool; field?:str; format?:CellFormat; sortable?:bool; width?:ColumnWidth }
 ContentHash { algorithm:str; hash:str; strictness:"StrictReplay"|"AdvisoryWarning"|"Enforced" }
 DrawPoint { x:num; y:num }
 DrawStyle { emphasis?:Emphasis; fill?:Binding; fontFamily?:str; fontSize?:num; markId?:str; opacity?:Binding; rotation?:num; stroke?:Binding; strokeWidth?:Binding; textAnchor?:"Start"|"Middle"|"End" }

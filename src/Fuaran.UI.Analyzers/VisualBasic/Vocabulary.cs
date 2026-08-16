@@ -89,7 +89,10 @@ internal static class Vocabulary
         Add("MultiSelect", "id", "label", "values");
         Add("Filters", "id");
         Add("FileUpload", "id", "label", "accept", "multiple");
-        Add("Chart", "id", "source", "kind", "x-field", "y-fields", "title", "stacked");
+        // Phase 876 — the value-format-* family carries the value axis's number
+        // format (the `Format` vocabulary), the chart-side sibling of `format-*`.
+        Add("Chart", "id", "source", "kind", "x-field", "y-fields", "title", "stacked",
+            "value-format-currency", "value-format-number", "value-format-percent");
         Add("Table", "id");
         Add("Map", "id", "centre-lat", "centre-lng", "zoom");
         Add("DataGrid", "id", "source", "editable");
