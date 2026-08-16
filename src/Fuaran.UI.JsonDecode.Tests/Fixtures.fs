@@ -53,6 +53,12 @@ let private node (id: string) (kind: NodeKind<obj>) (accessibility: Accessibilit
       Motion = None
       ExtraAttributes = None }
 
+/// Phase 695 — a sample child reused in two slots of one composite fixture needs
+/// a distinct id in each: NodeIds are unique WITHIN a tree (`WIRE_FORMAT.md` §8),
+/// and `PreEmitValidate` refuses a tree that repeats one. Sharing the node value
+/// is still the point — only the identity varies.
+let private withId (id: string) (n: Node<obj>) : Node<obj> = { n with Id = id }
+
 // ─── Display fixtures ────────────────────────────────────────────────────
 
 let private metricSpec: MetricSpec =
@@ -639,7 +645,7 @@ let stepper: Node<obj> =
         "step-1"
         (NodeKind.Stepper(
             { ActiveStep = Binding.Static(Some 1)
-              Children = [ markdown; markdown ]
+              Children = [ markdown; withId "markdown-2" markdown ]
               // `Some` (Phase 692–694 swap) — the slot is optional now; Some
               // keeps the `"onSelect":"<closure>"` sentinel on the wire.
               OnSelect = Some(fun _ -> Action.Chain []) }
@@ -1588,7 +1594,7 @@ let controlsDeclarative: Node<obj> =
                 { Open = Binding.State("modalOpen", Some false)
                   Heading = Some(TextSource.Literal "Confirm")
                   Dismissable = true
-                  Children = [ markdown ]
+                  Children = [ withId "markdown-2" markdown ]
                   OnDismiss = Option.None }
             ))
             None
@@ -1600,7 +1606,7 @@ let controlsDeclarative: Node<obj> =
                 { Heading = TextSource.Literal "Advanced"
                   Open = Binding.State("advancedOpen", Some false)
                   OnToggle = Option.None
-                  Children = [ markdown ]
+                  Children = [ withId "markdown-3" markdown ]
                   DefaultOpen = false }
             ))
             None
@@ -1659,7 +1665,7 @@ let multiSelectClosure: Node<obj> =
                 { Heading = TextSource.Literal "Advanced"
                   Open = Binding.Static(Some false)
                   OnToggle = Some(fun _ -> placeholderChain)
-                  Children = [ markdown ]
+                  Children = [ withId "markdown-2" markdown ]
                   DefaultOpen = false }
             ))
             None
@@ -3159,7 +3165,7 @@ let composite: Node<obj> =
                           { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
                             Role = BoxRole.Card
                             Heading = Some(TextSource.Literal "Composite")
-                            Children = [ metric; labelValueRow ] }
+                            Children = [ withId "metric-2" metric; labelValueRow ] }
                       ))
                       None
                   stack ] }

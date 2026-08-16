@@ -122,8 +122,17 @@ let private writeManifest
     let sorted = entries |> List.sortBy (fun e -> e.Kind, e.Id)
     // Relaxed escaping keeps the human-readable descriptions clean (no
     // + / — noise) — this is a spec artefact a human reads.
+    //
+    // `NewLine = "\n"` is load-bearing on Windows. `Utf8JsonWriter` indents with
+    // `Environment.NewLine`, so a regen there wrote CRLF into the one corpus file
+    // that has newlines at all (every fixture is a single line). The corpus
+    // `.gitattributes` pins `eol=lf`, so git normalised it on commit and `git
+    // status` stayed clean — while consumers that byte-compare the WORKING TREE
+    // saw drift they could not fix: `fuaran-ts`'s bundled snapshot check reported
+    // "identical content, different line endings" and re-running its sync could
+    // not clear it, because the authority itself was the CRLF copy.
     let opts =
-        JsonWriterOptions(Indented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping)
+        JsonWriterOptions(Indented = true, NewLine = "\n", Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping)
 
     use stream = File.Create(Path.Combine(outputDir, "manifest.json"))
     use w = new Utf8JsonWriter(stream, opts)
