@@ -106,7 +106,7 @@ total row) and a stack (metric + note):
           "$type": "Box",
           "children": [
             {
-              "id": "metric-1",
+              "id": "metric-2",
               "kind": {
                 "$type": "Metric",
                 "format": {
