@@ -60,6 +60,7 @@
     <Compile Include="RelayTests.fs" />
     <Compile Include="RelayCorpusTests.fs" />
     <Compile Include="SanitizeTests.fs" />
+    <Compile Include="SanitizationCorpusTests.fs" />
     <!-- MarkdownTests pins Phase 292's deterministic GFM renderer
          (Fuaran.UI.Renderer.Markdown.toHtml) — the canonical-HTML contract
          every host reproduces byte-exact; the same pairs seed the cross-host

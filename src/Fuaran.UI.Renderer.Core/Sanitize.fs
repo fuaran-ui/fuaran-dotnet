@@ -185,6 +185,46 @@ let private rejectedUrlSchemes = Set.ofList [ "javascript"; "vbscript"; "file" ]
 
 let private trimAndLower (s: string) : string = s.Trim().ToLowerInvariant()
 
+/// §19 rule 1 — normalise a URL string exactly as the WHATWG URL Standard's basic
+/// URL parser does before it parses anything, ASCII-exact, in this order:
+///
+///   1. remove leading and trailing C0 control or space — ALL of U+0000–U+0020,
+///      not merely the whitespace subset;
+///   2. remove every U+0009 / U+000A / U+000D from anywhere in what remains.
+///
+/// This is deliberately NOT `String.Trim()`. A native trim answers a different
+/// question in every language — .NET, JS, Go and Rust leave U+001C–U+001F where
+/// Python removes them; JS keeps U+0085 where the other four drop it — and all of
+/// them remove non-ASCII whitespace (U+00A0, U+2028, …) that the parser keeps.
+/// The floor's whole purpose is that a tree vetted on one host is safe on
+/// another, so the normalisation has to be defined by the parser that will
+/// actually consume the string rather than by the host's standard library.
+///
+/// Step 2 is those three code points ONLY: the parser removes U+000B and U+000C
+/// at the edges (step 1) and KEEPS them in the interior, so `/<VT>/host/x` is an
+/// ordinary same-origin path and must stay one.
+let private normalizeUrlForFloor (s: string) : string =
+    let isC0OrSpace (c: char) = c <= ' '
+    let mutable lo = 0
+    let mutable hi = s.Length - 1
+
+    while lo <= hi && isC0OrSpace s[lo] do
+        lo <- lo + 1
+
+    while hi >= lo && isC0OrSpace s[hi] do
+        hi <- hi - 1
+
+    let sb = System.Text.StringBuilder(hi - lo + 1)
+
+    for i in lo..hi do
+        match s[i] with
+        | '\t'
+        | '\n'
+        | '\r' -> ()
+        | c -> sb.Append c |> ignore
+
+    sb.ToString()
+
 /// Split a URL into `(schemeOpt, rest)`. A URL without a `:` (e.g. a
 /// relative path, a fragment, an empty string) returns `(None, url)`.
 /// Whitespace and control chars inside the scheme region defeat the
@@ -251,7 +291,11 @@ let sanitizeUrl (url: string) : string option =
     if isNull url then
         None
     else
-        let trimmed = url.Trim()
+        // §19 rule 1 — the URL Standard's own pre-parse normalisation, NOT `.Trim()`.
+        // See `normalizeUrlForFloor`. Rule 1's output is also what gets EMITTED on
+        // acceptance, so an accepted URL carrying an interior tab loses it — which is
+        // what the browser would have parsed anyway.
+        let trimmed = normalizeUrlForFloor url
 
         if trimmed = "" then
             // Empty href / src — caller's choice; renderer passes it through
