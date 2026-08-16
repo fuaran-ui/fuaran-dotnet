@@ -259,6 +259,32 @@ type PreEmitDefect =
     /// mechanisms won by reading the tree. Carries the grid node's id and the
     /// key.
     | DoublePagedGrid of nodeId: string * pageStateKey: string
+    /// **FUARAN094 (Error)**. A bound grid's sort declaration cannot be
+    /// honoured (Phase 861). Three shapes, one code, because they are one
+    /// defect from the author's side — a sort that will not happen:
+    ///
+    ///  - a column declares `sortable: true` under a grid naming no
+    ///    `sortStateKey`, i.e. it tries to WIDEN a behaviour the grid never
+    ///    turned on (the charter's narrowing rule refuses this direction);
+    ///  - a column declares `sortable: true` with no `field`, so nothing
+    ///    identifies the row property to order by;
+    ///  - `defaultSort` names a column index outside the column set, or one
+    ///    the grid cannot sort.
+    ///
+    /// Carries the grid node's id and a typed reason, so the message names the
+    /// specific shape rather than the family.
+    | UnhonourableSort of nodeId: string * reason: SortDefect
+
+/// Why a sort declaration cannot be honoured (FUARAN094, Phase 861). Typed
+/// rather than a string so the three shapes stay enumerable and a fourth
+/// cannot be added by prose.
+and [<RequireQualifiedAccess>] SortDefect =
+    /// `sortable: true` on a column, but the grid names no `sortStateKey`.
+    | NoSortStateKey of columnLabel: string
+    /// `sortable: true` on a column with no `field` to order by.
+    | ColumnHasNoField of columnLabel: string
+    /// `defaultSort` names a column index outside the column set.
+    | DefaultSortColumnOutOfRange of column: int * columnCount: int
 
 /// Render a defect as its stable (code, severity, message) triple — the ONE
 /// projection every consumer shares (the .NET validator oracle, certification
@@ -455,6 +481,26 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "grid '%s' pages client-side on pageStateKey '%s' while its source is a query depending on that same key — the host already returns the page, so slicing it again would page the page; drop pageSize to let the host page, or drop the dependsOn to page client-side"
             nodeId
             pageStateKey
+    | PreEmitDefect.UnhonourableSort(nodeId, reason) ->
+        "FUARAN094",
+        DefectSeverity.Error,
+        (match reason with
+         | SortDefect.NoSortStateKey label ->
+             sprintf
+                 "grid '%s' column '%s' declares sortable=true but the grid names no sortStateKey — a column narrows a behaviour, it cannot turn one on; add sortStateKey to the grid or drop the column flag"
+                 nodeId
+                 label
+         | SortDefect.ColumnHasNoField label ->
+             sprintf
+                 "grid '%s' column '%s' declares sortable=true but has no field — nothing names the row property to order by; add field, or drop the flag and let the column render unsorted"
+                 nodeId
+                 label
+         | SortDefect.DefaultSortColumnOutOfRange(column, count) ->
+             sprintf
+                 "grid '%s' declares defaultSort on column %d but the grid has %d column(s) — the declared order can never be applied; point it at an existing column index"
+                 nodeId
+                 column
+                 count)
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -618,6 +664,28 @@ let private validateCore
             // can still declare paging that does not page. The decorative-pager
             // shape itself needs no rule — the pager is renderer-owned, so a
             // control writing state nothing reads is not authorable.
+            // FUARAN094 (Phase 861): a sort declaration that cannot be
+            // honoured. The narrowing rule is directional — a column may turn
+            // a behaviour OFF, never on — so `sortable: true` under a grid
+            // with no sort state key is refused rather than silently ignored.
+            for col in spec.Columns do
+                match col.Sortable with
+                | Some true when spec.SortStateKey.IsNone ->
+                    defects.Add(PreEmitDefect.UnhonourableSort(nodeIdStr, SortDefect.NoSortStateKey col.Label))
+                | Some true when col.Field.IsNone ->
+                    defects.Add(PreEmitDefect.UnhonourableSort(nodeIdStr, SortDefect.ColumnHasNoField col.Label))
+                | _ -> ()
+
+            match spec.DefaultSort with
+            | Some ds when ds.Column >= List.length spec.Columns ->
+                defects.Add(
+                    PreEmitDefect.UnhonourableSort(
+                        nodeIdStr,
+                        SortDefect.DefaultSortColumnOutOfRange(ds.Column, List.length spec.Columns)
+                    )
+                )
+            | _ -> ()
+
             match spec.PageSize, spec.PageStateKey with
             | Some _, None -> defects.Add(PreEmitDefect.PageSizeWithoutPageKey nodeIdStr)
             | Some _, Some key ->

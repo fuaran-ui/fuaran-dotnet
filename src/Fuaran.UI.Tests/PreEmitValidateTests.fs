@@ -32,6 +32,47 @@ let private dashboard id children : Node<Msg> =
 
 let private markdown id text : Node<Msg> = Fuaran.markdown id text
 
+/// Phase 861 — a bound grid with the sort declarations under test. Columns are
+/// `(label, field, sortable)`; a `rowKeyField` keeps FUARAN078 out of the way.
+let private sortGrid
+    (sortStateKey: string option)
+    (defaultSortColumn: int option)
+    (columns: (string * string option * bool option) list)
+    : Node<Msg> =
+    { Id = "sorted"
+      Kind =
+        NodeKind.DataGrid(
+            { SortStateKey = sortStateKey
+              PageSize = None
+              PageStateKey = None
+              DefaultSort =
+                defaultSortColumn
+                |> Option.map (fun c ->
+                    { Column = c
+                      Direction = SortDirection.Asc })
+              Source = Binding.Static(Some Seq.empty)
+              RowKey = None
+              RowKeyField = Some "id"
+              Columns =
+                columns
+                |> List.map (fun (label, field, sortable) ->
+                    { Label = label
+                      Value = None
+                      Field = field
+                      Sortable = sortable
+                      Format = CellFormat.None
+                      Kind = CellKindErased.Text
+                      Width = ColumnWidth.Auto })
+              OnRowClick = None
+              Editable = false
+              StaticRows = None }
+        )
+      State = None
+      Style = None
+      Accessibility = None
+      Motion = Defaults.Motion.none
+      ExtraAttributes = None }
+
 /// Phase 862 — a data-bound grid with the paging declarations under test and
 /// nothing else that could raise a defect (no columns, so no FUARAN077; a
 /// `rowKeyField`, so no FUARAN078). Built once so each test varies exactly the
@@ -47,6 +88,7 @@ let private pagedGrid
             { SortStateKey = None
               PageSize = pageSize
               PageStateKey = pageStateKey
+              DefaultSort = None
               Source = source
               RowKey = None
               RowKeyField = Some "id"
@@ -474,6 +516,7 @@ let tests =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            DefaultSort = None
                             Source = Binding.Static(Some Seq.empty)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -778,4 +821,62 @@ let tests =
                       | _ -> false)
 
               Expect.isEmpty doublePaged "a filter-driven query is not double paging"
+          }
+
+          // ─── Phase 861: a sort declaration that cannot be honoured. The
+          // narrowing rule is DIRECTIONAL — a column may turn a behaviour off,
+          // never on — so the widening attempt is refused rather than ignored.
+
+          test "FUARAN094: a column declaring sortable=true under a grid with no sortStateKey is refused" {
+              let grid = sortGrid None None [ ("Month", Some "month", Some true) ]
+
+              match PreEmitValidate.validate grid with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.UnhonourableSort("sorted", SortDefect.NoSortStateKey "Month"))
+                      "the widening attempt is reported"
+
+                  let code, severity, _ =
+                      describe (PreEmitDefect.UnhonourableSort("sorted", SortDefect.NoSortStateKey "Month"))
+
+                  Expect.equal code "FUARAN094" "stable code"
+                  Expect.equal severity DefectSeverity.Error "a sort that cannot happen is an error"
+              | Ok() -> failtest "Expected FUARAN094, got Ok"
+          }
+
+          test "FUARAN094: a defaultSort past the column set is refused" {
+              let grid = sortGrid (Some "s") (Some 5) [ ("Month", Some "month", None) ]
+
+              match PreEmitValidate.validate grid with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.UnhonourableSort("sorted", SortDefect.DefaultSortColumnOutOfRange(5, 1)))
+                      "the out-of-range declared order is reported"
+              | Ok() -> failtest "Expected FUARAN094, got Ok"
+          }
+
+          test "FUARAN094 go-red check: the honourable shapes are clean" {
+              // The rule must admit what it claims to admit. Two shapes that
+              // LOOK like the refused ones and are legitimate: a column opting
+              // OUT under a grid with no sort key (narrowing is always allowed,
+              // even to no effect), and a declared order with no sort key at
+              // all (an initial order without interactive re-sorting).
+              let optOut = sortGrid None None [ ("Month", Some "month", Some false) ]
+              let declaredOnly = sortGrid None (Some 0) [ ("Month", Some "month", None) ]
+
+              for g, label in [ optOut, "column opting out"; declaredOnly, "declared order, no sort key" ] do
+                  let defects =
+                      match PreEmitValidate.validate g with
+                      | Ok() -> []
+                      | Error ds -> ds
+
+                  let sortDefects =
+                      defects
+                      |> List.filter (function
+                          | PreEmitDefect.UnhonourableSort _ -> true
+                          | _ -> false)
+
+                  Expect.isEmpty sortDefects (sprintf "%s is legitimate" label)
           } ]

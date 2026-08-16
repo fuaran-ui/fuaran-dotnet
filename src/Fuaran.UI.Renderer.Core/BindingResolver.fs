@@ -968,6 +968,61 @@ let readSortDescriptor (sources: BindingSources) (key: string) : (int * SortDire
              | _ -> None)
         | _ -> None)
 
+/// Phase 861 — what the sort state key is SAYING, as three cases rather than
+/// two. `readSortDescriptor` above collapses "nothing written" and "written but
+/// not a sort" into `None`, which was right while the only alternative to a
+/// sort was the authored order. It stops being right once a grid can declare an
+/// initial order: the declared order applies when the user has not sorted, and
+/// the AUTHORED order must still be reachable by cycling past descending
+/// (Phase 801's ascending → descending → authored cycle, adopted for the bound
+/// path by operator decision 2026-08-16). Those are different states and the
+/// wire already distinguishes them — an absent key versus a key holding an
+/// object with no usable descriptor.
+type SortSlot =
+    /// The key holds nothing — the user has not sorted, so a declared
+    /// `defaultSort` applies.
+    | NotSorted
+    /// The key holds a usable descriptor.
+    | SortedBy of column: int * direction: SortDirection
+    /// The key holds something that is not a usable descriptor — which the
+    /// header cycle writes deliberately (an empty object) to mean "back to the
+    /// order the emitter wrote". A malformed value a host seeded lands here
+    /// too, and reading it as the authored order is the same
+    /// validate-rather-than-trust posture: never an arbitrary order.
+    | Cleared
+
+/// Read the sort state key as a three-way slot. Kept beside
+/// `readSortDescriptor` rather than replacing it: that function is the
+/// shipped 818 surface and other callers read it, so this widens the
+/// vocabulary without moving anyone's floor.
+let readSortSlot (sources: BindingSources) (key: string) : SortSlot =
+    match Map.tryFind key sources.State with
+    | None -> NotSorted
+    | Some _ ->
+        match readSortDescriptor sources key with
+        | Some(c, d) -> SortedBy(c, d)
+        | None -> Cleared
+
+/// The effective sort for a bound grid: the state slot decides, and a declared
+/// initial order fills only the not-yet-sorted case. A grid with no sort state
+/// key at all still honours its declared order — an initial presentation order
+/// without interactive re-sorting is a legitimate shape, exactly as it is for a
+/// static table.
+let effectiveSortDescriptor
+    (sortStateKey: string option)
+    (defaultSort: DefaultSort option)
+    (sources: BindingSources)
+    : (int * SortDirection) option =
+    let declared = defaultSort |> Option.map (fun d -> d.Column, d.Direction)
+
+    match sortStateKey with
+    | None -> declared
+    | Some key ->
+        match readSortSlot sources key with
+        | NotSorted -> declared
+        | SortedBy(c, d) -> Some(c, d)
+        | Cleared -> None
+
 let private cellSortRank (v: CellValue) : int =
     match v with
     | CellValue.Numeric _ -> 0

@@ -185,6 +185,14 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "staticRows defaultSort column -1 — a header index is non-negative; the schema says the same with minimum:0 (Phase 801)" }
+      { Id = "reject-wrongtype-grid-default-sort-column"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[],"defaultSort":{"column":-1,"direction":"asc"},"source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.defaultSort.column"
+        IsOp = false
+        Description =
+          "bound-grid defaultSort column -1 — the same non-negative bound the staticRows spelling carries, same record, same message (Phase 861)" }
       { Id = "reject-wrongtype-grid-page-size-zero"
         Json =
           """{"id":"x","kind":{"$type":"DataGrid","columns":[],"pageSize":0,"pageStateKey":"p","source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

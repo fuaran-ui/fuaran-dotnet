@@ -308,6 +308,7 @@ let sortStateKeyTests =
                   { Label = "c"
                     Value = None
                     Field = field
+                    Sortable = None
                     Format = CellFormat.None
                     Kind = CellKindErased.Text
                     Width = ColumnWidth.Auto }
@@ -348,6 +349,104 @@ let sortStateKeyTests =
 // instance (Phase 860's charter). Its own list rather than an addition to the
 // 818 one above: same rule, different behaviour, and a filter naming one
 // should not silently run the other.
+
+// ─── Phase 861 — sort on a data-bound grid: the per-column narrowing and the
+// declared initial order the shipped `sortStateKey` mechanism lacked.
+
+[<Tests>]
+let boundGridSortTests =
+    testList
+        "Phase 861 — bound-grid sort (sortable narrowing + defaultSort)"
+        [ test "a bound grid round-trips per-column sortable and a declared initial order" {
+              let wire =
+                  """{"id":"g1","kind":{"$type":"DataGrid","columns":[{"field":"month","kind":{"$type":"Text"},"label":"Month"},{"field":"note","kind":{"$type":"Text"},"label":"Note","sortable":false}],"defaultSort":{"column":0,"direction":"desc"},"rowKeyField":"month","sortStateKey":"ledger-sort","source":{"$type":"State","key":"ledger"}}}"""
+
+              let n = roundTrips "bound-sort grid" wire
+
+              match n.Kind with
+              | NodeKind.DataGrid g ->
+                  Expect.equal
+                      (g.DefaultSort |> Option.map (fun d -> d.Column, d.Direction))
+                      (Some(0, SortDirection.Desc))
+                      "the declared initial order decodes"
+
+                  Expect.equal
+                      (g.Columns |> List.map _.Sortable)
+                      [ None; Some false ]
+                      "absent inherits; an explicit false opts the column out"
+              | other -> failtestf "expected a DataGrid, got %A" other
+          }
+
+          test "the three-state slot separates 'not yet sorted' from 'back to authored'" {
+              // This separation is the whole of the operator's answer to charter
+              // question 4. Collapsing them — as the shipped two-way read does —
+              // makes the authored order unreachable: cycling past descending
+              // would clear the key, which means "not yet sorted", which
+              // re-applies defaultSort. The user would ask for the emitter's
+              // order and be handed the declared one.
+              let sources (v: obj option) =
+                  { BindingResolver.empty with
+                      State =
+                          match v with
+                          | Some x -> Map.ofList [ "sort", x ]
+                          | None -> Map.empty }
+
+              let declared: DefaultSort option =
+                  Some
+                      { Column = 1
+                        Direction = SortDirection.Desc }
+
+              Expect.equal
+                  (BindingResolver.effectiveSortDescriptor (Some "sort") declared (sources None))
+                  (Some(1, SortDirection.Desc))
+                  "nothing written ⇒ the declared initial order applies"
+
+              Expect.equal
+                  (BindingResolver.effectiveSortDescriptor
+                      (Some "sort")
+                      declared
+                      (sources (Some(box (JObj [ "column", JInt 0; "direction", JStr "asc" ])))))
+                  (Some(0, SortDirection.Asc))
+                  "a written descriptor wins over the declared order"
+
+              Expect.equal
+                  (BindingResolver.effectiveSortDescriptor (Some "sort") declared (sources (Some(box (JObj [])))))
+                  None
+                  "an empty descriptor is the authored order — the cycle's third state, NOT the declared one"
+
+              Expect.equal
+                  (BindingResolver.effectiveSortDescriptor None declared (sources None))
+                  (Some(1, SortDirection.Desc))
+                  "a declared order with no sort state key still applies — initial order without re-sorting"
+
+              Expect.equal
+                  (BindingResolver.effectiveSortDescriptor (Some "sort") None (sources None))
+                  None
+                  "no declaration and nothing written ⇒ authored order, exactly as before 861"
+          }
+
+          test "readSortSlot reports the three cases apart" {
+              let sources (v: obj option) =
+                  { BindingResolver.empty with
+                      State =
+                          match v with
+                          | Some x -> Map.ofList [ "sort", x ]
+                          | None -> Map.empty }
+
+              Expect.equal (BindingResolver.readSortSlot (sources None) "sort") BindingResolver.NotSorted "absent key"
+
+              Expect.equal
+                  (BindingResolver.readSortSlot (sources (Some(box (JObj [])))) "sort")
+                  BindingResolver.Cleared
+                  "present but not a usable descriptor"
+
+              Expect.equal
+                  (BindingResolver.readSortSlot
+                      (sources (Some(box (JObj [ "column", JInt 2; "direction", JStr "desc" ]))))
+                      "sort")
+                  (BindingResolver.SortedBy(2, SortDirection.Desc))
+                  "a usable descriptor"
+          } ]
 
 [<Tests>]
 let gridPaginationTests =

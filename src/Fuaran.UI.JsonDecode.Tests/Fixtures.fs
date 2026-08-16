@@ -1757,6 +1757,7 @@ let gridVis: Node<obj> =
         { Label = "Channel"
           Value = Some(fun _ -> CellValue.Empty)
           Field = None
+          Sortable = None
           Format = CellFormat.None
           Kind = CellKindErased.Text
           Width = ColumnWidth.Auto }
@@ -1767,6 +1768,7 @@ let gridVis: Node<obj> =
             { SortStateKey = None
               PageSize = None
               PageStateKey = None
+              DefaultSort = None
               Source =
                 // fuaran#665 — typed rows: a Static rows payload IS wire-representable
                 // (int cells ride rule 5's integer form). Mirrors Fuaran-Core's
@@ -1831,6 +1833,7 @@ let gridTonedPill: Node<obj> =
           // Phase 425 — no `value` closure: `Field` alone drives the projection.
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = kind
           Width = ColumnWidth.Auto }
@@ -1841,6 +1844,7 @@ let gridTonedPill: Node<obj> =
             { SortStateKey = None
               PageSize = None
               PageStateKey = None
+              DefaultSort = None
               Source = Binding.Transform(TransformSource.Data(source), [], None)
               RowKey = None
               RowKeyField = Some "id"
@@ -1917,6 +1921,7 @@ let gridEditableState: Node<obj> =
         { Label = label
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = kind
           Width = ColumnWidth.Auto }
@@ -1927,6 +1932,7 @@ let gridEditableState: Node<obj> =
             { SortStateKey = None
               PageSize = None
               PageStateKey = None
+              DefaultSort = None
               Source = Binding.State("planRows", Some(Seq.ofList planRows))
               RowKey = None
               RowKeyField = Some "month"
@@ -1991,6 +1997,7 @@ let gridTransform: Node<obj> =
             { SortStateKey = None
               PageSize = None
               PageStateKey = None
+              DefaultSort = None
               Source = Binding.Transform(TransformSource.Data(source), pipeline, None)
               RowKey = Some(fun _ -> "<closure>")
               RowKeyField = None
@@ -2024,6 +2031,7 @@ let gridTransformParam: Node<obj> =
             { SortStateKey = None
               PageSize = None
               PageStateKey = None
+              DefaultSort = None
               Source =
                 Binding.Transform(
                     TransformSource.Data(source),
@@ -2056,6 +2064,7 @@ let gridFieldNamed: Node<obj> =
         { Label = label
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = CellKindErased.Text
           Width = ColumnWidth.Auto }
@@ -2066,6 +2075,7 @@ let gridFieldNamed: Node<obj> =
             { SortStateKey = None
               PageSize = None
               PageStateKey = None
+              DefaultSort = None
               Source = Binding.Transform(TransformSource.Data(source), [], None)
               RowKey = None
               RowKeyField = Some "dept"
@@ -2103,6 +2113,7 @@ let masterDetailPreselected: Node<obj> =
         { Label = label
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = CellKindErased.Text
           Width = ColumnWidth.Auto }
@@ -2120,6 +2131,7 @@ let masterDetailPreselected: Node<obj> =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            DefaultSort = None
                             Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -2174,6 +2186,7 @@ let masterDetailPreselected: Node<obj> =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            DefaultSort = None
                             Source =
                               Binding.Transform(
                                   TransformSource.Data(source),
@@ -2246,6 +2259,7 @@ let masterDetailMultiField: Node<obj> =
         { Label = label
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = CellKindErased.Text
           Width = ColumnWidth.Auto }
@@ -2286,6 +2300,7 @@ let masterDetailMultiField: Node<obj> =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            DefaultSort = None
                             Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -2400,6 +2415,7 @@ let masterDetailPreselectedSecondRow: Node<obj> =
         { Label = label
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = CellKindErased.Text
           Width = ColumnWidth.Auto }
@@ -2428,6 +2444,7 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            DefaultSort = None
                             Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -2474,6 +2491,7 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            DefaultSort = None
                             Source =
                               Binding.Transform(TransformSource.Data(source), [ filterById ], Some [ ticketIdParam ])
                             RowKey = None
@@ -2553,6 +2571,7 @@ let nowEnvironmentBinding: Node<obj> =
         { Label = label
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = CellKindErased.Text
           Width = ColumnWidth.Auto }
@@ -2581,6 +2600,7 @@ let nowEnvironmentBinding: Node<obj> =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            DefaultSort = None
                             Source =
                               Binding.Transform(
                                   TransformSource.Data(source),
@@ -2651,6 +2671,7 @@ let scalarTransformComposition: Node<obj> =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            DefaultSort = None
                             Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -2658,12 +2679,14 @@ let scalarTransformComposition: Node<obj> =
                               [ { Label = "Ticket"
                                   Value = None
                                   Field = Some "id"
+                                  Sortable = None
                                   Format = CellFormat.None
                                   Kind = CellKindErased.Text
                                   Width = ColumnWidth.Auto }
                                 { Label = "Severity"
                                   Value = None
                                   Field = Some "severity"
+                                  Sortable = None
                                   Format = CellFormat.None
                                   Kind = CellKindErased.Text
                                   Width = ColumnWidth.Auto } ]
@@ -2796,6 +2819,7 @@ let filterableStaticDashboard: Node<obj> =
         { Label = label
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = CellKindErased.Text
           Width = ColumnWidth.Auto }
@@ -2833,6 +2857,7 @@ let filterableStaticDashboard: Node<obj> =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            DefaultSort = None
                             Source = filteredSource ()
                             RowKey = None
                             RowKeyField = Some "month"
@@ -2868,6 +2893,7 @@ let table: Node<obj> =
             { SortStateKey = None
               PageSize = None
               PageStateKey = None
+              DefaultSort = None
               Source = Binding.Static(Some Seq.empty)
               RowKey = None
               RowKeyField = None
@@ -2899,6 +2925,7 @@ let tableSortable: Node<obj> =
             { SortStateKey = None
               PageSize = None
               PageStateKey = None
+              DefaultSort = None
               Source = Binding.Static(Some Seq.empty)
               RowKey = None
               RowKeyField = None
@@ -3046,6 +3073,7 @@ let switchOnSelection: Node<obj> =
         { Label = label
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = CellKindErased.Text
           Width = ColumnWidth.Auto }
@@ -3063,6 +3091,7 @@ let switchOnSelection: Node<obj> =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            DefaultSort = None
                             Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -3534,6 +3563,43 @@ let badgeTransformLive: Node<obj> =
         ))
         None
 
+/// Phase 861 — sort on a DATA-BOUND grid: per-column `sortable` narrowing plus
+/// a declared initial order, reusing the `defaultSort` record and field name the
+/// `staticRows` path already carries (Phase 801). The middle column opts OUT —
+/// the declaration "implied by omission" could not previously express.
+let gridBoundSort: Node<obj> =
+    let col (label: string) (field: string) (sortable: bool option) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = sortable
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-bound-sort"
+        (NodeKind.DataGrid(
+            { SortStateKey = Some "ledger-sort"
+              PageSize = None
+              PageStateKey = None
+              DefaultSort =
+                Some
+                    { Column = 1
+                      Direction = SortDirection.Desc }
+              Source = Binding.State("ledger", Some(Seq.ofList planRows))
+              RowKey = None
+              RowKeyField = Some "month"
+              Columns =
+                [ col "Month" "month" None
+                  col "Revenue" "revenue" None
+                  col "Note" "note" (Some false) ]
+              OnRowClick = None
+              Editable = false
+              StaticRows = None }
+        ))
+        None
+
 /// Phase 862 — declarative pagination: `pageStateKey` names the State slot
 /// carrying `{"page": N}` (1-based) and `pageSize` how many rows a page holds.
 /// The pager that writes the key is renderer-owned, so the tree names the
@@ -3544,6 +3610,7 @@ let gridPaged: Node<obj> =
         { Label = label
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = kind
           Width = ColumnWidth.Auto }
@@ -3554,6 +3621,7 @@ let gridPaged: Node<obj> =
             { SortStateKey = None
               PageSize = Some 20
               PageStateKey = Some "members-page"
+              DefaultSort = None
               Source = Binding.State("members", Some(Seq.ofList planRows))
               RowKey = None
               RowKeyField = Some "month"
@@ -3575,6 +3643,7 @@ let gridPagedSorted: Node<obj> =
         { Label = label
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = kind
           Width = ColumnWidth.Auto }
@@ -3585,6 +3654,7 @@ let gridPagedSorted: Node<obj> =
             { SortStateKey = Some "ledger-sort"
               PageSize = Some 10
               PageStateKey = Some "ledger-page"
+              DefaultSort = None
               Source = Binding.State("ledger", Some(Seq.ofList planRows))
               RowKey = None
               RowKeyField = Some "month"
@@ -3624,6 +3694,7 @@ let gridSortStateKey: Node<obj> =
         { Label = label
           Value = None
           Field = Some field
+          Sortable = None
           Format = CellFormat.None
           Kind = kind
           Width = ColumnWidth.Auto }
@@ -3634,6 +3705,7 @@ let gridSortStateKey: Node<obj> =
             { SortStateKey = Some "inventory-sort"
               PageSize = None
               PageStateKey = None
+              DefaultSort = None
               Source = Binding.State("inventory", Some(Seq.ofList planRows))
               RowKey = None
               RowKeyField = Some "month"
@@ -3746,6 +3818,8 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
       "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey
+      "Visualisation/Grid (Phase 861 — bound-path sort: per-column sortable narrowing + a declared initial order)",
+      gridBoundSort
       "Visualisation/Grid (Phase 862 — pageStateKey + pageSize: declarative pagination, renderer-owned pager)",
       gridPaged
       "Visualisation/Grid (Phase 862 — paging and sorting composed: two behaviours, two state keys, one rule)",

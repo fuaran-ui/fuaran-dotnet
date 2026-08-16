@@ -77,6 +77,7 @@ let wireRoundTrips =
                   { Label = "Last seen"
                     Value = None
                     Field = Some "lastSeen"
+                    Sortable = None
                     Format = CellFormat.RelativeTime RelativeTimeUnit.Hour
                     Kind = CellKindErased.Numeric
                     Width = ColumnWidth.Auto }
@@ -88,6 +89,7 @@ let wireRoundTrips =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            DefaultSort = None
                             Source =
                               Binding.Static(Some(Seq.ofList [ (Map.ofList [ "lastSeen", box -3 ]: Fuaran.Core.Row) ]))
                             RowKey = None

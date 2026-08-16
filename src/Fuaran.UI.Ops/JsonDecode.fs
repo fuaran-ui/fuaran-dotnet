@@ -5130,6 +5130,13 @@ let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<ob
             requireFieldAliased path fields "label" [ "header"; "title" ] "column label string"
             |> Result.bind (requireString (path + ".label"))
 
+        // Phase 861 — per-column sort narrowing (Phase 860's charter rule: a
+        // column flag narrows a behaviour, never widens it). Absent = inherit.
+        let sortableR =
+            match tryField fields "sortable" with
+            | None -> Ok None
+            | Some sJ -> requireBool (path + ".sortable") sJ |> Result.map Some
+
         let widthR =
             match tryField fields "width" with
             | None -> Ok ColumnWidth.Auto
@@ -5144,20 +5151,22 @@ let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<ob
             | Some _ -> Some(fun (_: Row) -> CellValue.Empty)
             | None -> None
 
-        match formatR, kindR, labelR, widthR, fieldR with
-        | Ok format, Ok kind, Ok label, Ok width, Ok field ->
+        match formatR, kindR, labelR, widthR, fieldR, sortableR with
+        | Ok format, Ok kind, Ok label, Ok width, Ok field, Ok sortable ->
             Ok
                 { Label = label
                   Value = value
                   Field = field
+                  Sortable = sortable
                   Format = format
                   Kind = kind
                   Width = width }
-        | Error e, _, _, _, _
-        | _, Error e, _, _, _
-        | _, _, Error e, _, _
-        | _, _, _, Error e, _
-        | _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
 
 /// Phase 801 — `"asc"` / `"desc"`, closed. A value outside the pair is an
 /// `UNKNOWN_DU_CASE` (the bare-string-enum convention `decodeLiveRegion` sets),
@@ -5321,6 +5330,14 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
                 | JNumber n when n >= 1.0 && n = floor n -> Ok(Some(int n))
                 | _ -> wrongType (path + ".pageSize") "JSON number (integer page size of 1 or more)"
 
+        // Phase 861 — the bound path's declared INITIAL order, reusing the
+        // `DefaultSort` record and field name `staticRows` already carries
+        // (Phase 801). Same behaviour, same spelling — no twin record.
+        let defaultSortR =
+            match tryField fields "defaultSort" with
+            | None -> Ok None
+            | Some v -> decodeDefaultSort (path + ".defaultSort") v |> Result.map Some
+
         let pageStateKeyR =
             match tryField fields "pageStateKey" with
             | None -> Ok None
@@ -5344,6 +5361,7 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             sortStateKeyR,
             pageSizeR,
             pageStateKeyR,
+            defaultSortR,
             staticRowsR
         with
         | Ok columns,
@@ -5354,6 +5372,7 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
           Ok sortStateKey,
           Ok pageSize,
           Ok pageStateKey,
+          Ok defaultSort,
           Ok staticRows ->
             Ok
                 { Source = source
@@ -5362,19 +5381,21 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
                   SortStateKey = sortStateKey
                   PageSize = pageSize
                   PageStateKey = pageStateKey
+                  DefaultSort = defaultSort
                   Columns = columns
                   OnRowClick = onRowClick
                   Editable = editable
                   StaticRows = staticRows }
-        | Error e, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, DecodeError> =
     match requireObject path j with

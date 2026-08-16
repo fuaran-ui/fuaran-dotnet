@@ -559,10 +559,16 @@ let generatedLayerTests =
               //    That it lands here was predicted rather than discovered: 862
               //    mirrored 801's split deliberately, and this guard is what
               //    confirms the mirror held.
+              //  - a bound-grid `defaultSort.column` of -1 is the SAME defect as
+              //    the `staticRows` one two entries up, because Phase 861 reuses
+              //    that record rather than minting a twin. Its landing here is
+              //    the clearest evidence the reuse is real: a twin record would
+              //    have needed its own entry for its own reason.
               Expect.equal
                   policyOwned
                   [ "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
+                    "reject-wrongtype-grid-default-sort-column.json"
                     "reject-wrongtype-grid-page-size-zero.json"
                     "reject-wrongtype-static-sort-column.json" ]
                   "the policy-owned residue is exactly the shapes structure cannot judge"

@@ -4098,9 +4098,11 @@ and private renderGrid
             // the state-carried descriptor before rendering (runtime-side sort
             // — the author wires no Transform). No descriptor written yet ⇒
             // natural source order.
+            // Phase 861 — the effective order: the state slot decides, and a
+            // declared `defaultSort` fills only the not-yet-sorted case. A grid
+            // with no sort state key still honours a declared order.
             let sortDescriptor =
-                spec.SortStateKey
-                |> Option.bind (fun k -> BindingResolver.readSortDescriptor ctx.Sources k)
+                BindingResolver.effectiveSortDescriptor spec.SortStateKey spec.DefaultSort ctx.Sources
 
             let rows =
                 (match resolution with
@@ -4210,22 +4212,32 @@ and private renderGrid
                 // A field-less closure column is not sortable and renders
                 // without the affordance.
                 let sortableHeader (colIndex: int) (col: ColumnErased<'Msg>) : ReactElement =
-                    match spec.SortStateKey, col.Field with
-                    | Some sortKey, Some _ ->
+                    // Phase 861 — the column flag NARROWS, never widens: absent
+                    // inherits (sortable iff the column has a `field`), `false`
+                    // opts out. `true` cannot turn the affordance on where the
+                    // grid names no sort state key — FUARAN094 refuses that
+                    // pre-emit, and the renderer simply does not draw it.
+                    match spec.SortStateKey, col.Field, col.Sortable with
+                    | Some sortKey, Some _, (None | Some true) ->
                         let active =
                             match sortDescriptor with
                             | Some(c, d) when c = colIndex -> Some d
                             | _ -> None
 
+                        // Phase 801's three-state cycle, adopted for the bound
+                        // path: ascending → descending → AUTHORED. The third
+                        // state writes an empty descriptor rather than clearing
+                        // the key, because a cleared key means "not yet sorted"
+                        // and would re-apply `defaultSort` — the user would ask
+                        // for the emitter's order and be given the declared one.
                         let dispatchToggle () =
-                            let nextDirection =
+                            let next =
                                 match active with
-                                | Some SortDirection.Asc -> "desc"
-                                | _ -> "asc"
+                                | Some SortDirection.Asc -> JObj [ "column", JInt colIndex; "direction", JStr "desc" ]
+                                | Some SortDirection.Desc -> JObj []
+                                | None -> JObj [ "column", JInt colIndex; "direction", JStr "asc" ]
 
-                            let descriptor = JObj [ "column", JInt colIndex; "direction", JStr nextDirection ]
-
-                            runAction ctx (Action.SetState(sortKey, Some descriptor, None))
+                            runAction ctx (Action.SetState(sortKey, Some next, None))
 
                         Html.th
                             [ prop.className "fuaran-grid-header"

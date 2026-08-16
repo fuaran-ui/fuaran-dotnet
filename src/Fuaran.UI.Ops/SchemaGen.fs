@@ -812,6 +812,8 @@ let private defs: (string * J) list =
             "label", str
             "value", closure
             "field", str
+            // Phase 861 — per-column sort narrowing on the bound path.
+            "sortable", boolean
             "width", ref "ColumnWidth" ]
 
       "GridSpec",
@@ -832,6 +834,13 @@ let private defs: (string * J) list =
             // the pre-862 shape validates unchanged.
             "pageSize", JObj [ "type", JStr "integer"; "minimum", JInt 1 ]
             "pageStateKey", str
+            // Phase 861 — the bound path's declared initial order. Same record
+            // and same `minimum: 0` bound the `staticRows` spelling carries.
+            "defaultSort",
+            record
+                [ "column"; "direction" ]
+                [ "column", JObj [ "type", JStr "integer"; "minimum", JInt 0 ]
+                  "direction", enumDef [ "asc"; "desc" ] ]
             "source", ref "Binding"
             "onRowClick", closure
             // Phase 393 — the static read-only mode (folded in from the retired `Table`).
