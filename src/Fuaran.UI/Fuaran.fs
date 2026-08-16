@@ -811,6 +811,44 @@ module Column =
 
     let withWidth (width: ColumnWidth) (col: Column<'Msg>) : Column<'Msg> = { col with Width = width }
 
+// ─── Drawing style helpers (Phase 877) ───────────────────────────────────────
+
+/// Authoring helpers over `DrawStyle`. The record-with idiom
+/// (`{ Defaults.drawStyle with … }`) stays the general surface; these exist for
+/// the fields that carry a *discipline* a bare record update would let an author
+/// skip.
+[<RequireQualifiedAccess>]
+module drawStyle =
+    /// Round-half-up to 2 dp — the same deterministic rule the chart lowering
+    /// applies to coordinates, restated here so the language tier does not
+    /// depend on `Fuaran.UI.Charts`. Avoids banker's rounding and
+    /// platform float-print divergence, so every host reads the same bytes.
+    let private r2 (x: float) : float = floor (x * 100.0 + 0.5) / 100.0
+
+    /// Phase 877 — rotate a `Label`'s text by `degrees` CLOCKWISE about the
+    /// label's own anchor point, applying the canonical 2-dp rounding.
+    ///
+    /// Rounding is an AUTHORING discipline, not a codec rule: the wire carries
+    /// the value as authored and no host re-rounds on decode, so byte-parity
+    /// across the five conformant hosts needs no shared rounding implementation.
+    /// Rotating through this constructor is what keeps an emitted angle from
+    /// carrying float noise (`29.999999999999996`) that would differ per host's
+    /// shortest-round-trip printer.
+    ///
+    /// A non-finite angle is dropped rather than encoded — NaN / ±∞ have no
+    /// canonical wire form here, and an unrotated label is the honest fallback.
+    ///
+    ///   Defaults.drawStyle |> drawStyle.rotate -30.0
+    let rotate (degrees: float) (style: DrawStyle) : DrawStyle =
+        if System.Double.IsNaN degrees || System.Double.IsInfinity degrees then
+            { style with Rotation = None }
+        else
+            { style with
+                Rotation = Some(r2 degrees) }
+
+    /// Clear any rotation — the upright default. Encodes nothing (rule 4).
+    let upright (style: DrawStyle) : DrawStyle = { style with Rotation = None }
+
 // ─── Components — the `Fuaran.X` author surface ──────────────────────────────
 
 module Fuaran =

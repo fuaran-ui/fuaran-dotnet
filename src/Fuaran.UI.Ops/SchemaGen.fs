@@ -641,7 +641,9 @@ let private defs: (string * J) list =
             "emphasis", ref "Emphasis"
             "fontFamily", str
             // Phase 642 — keyed mark identity, optional.
-            "markId", str ]
+            "markId", str
+            // Phase 877 — `Label` text rotation in degrees, optional.
+            "rotation", number ]
 
       "CurveCommand",
       union

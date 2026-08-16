@@ -393,6 +393,31 @@ let rec private emitShape
             e.Add "\" y=\""
             e.Add(formatNum y)
             e.Add "\""
+
+            // Phase 877 — text rotation. Emitted HERE rather than in
+            // `styleAttrs` because the pivot is the label's own anchor point,
+            // which the style record does not know; `styleAttrs` is shared by
+            // every shape and stays position-free. Anchoring at (x, y) is what
+            // makes the rotation compose with `TextAnchor`: the text turns
+            // about the point it is aligned to, so a `Middle`-anchored tilted
+            // category label stays centred under its band and an `End`-anchored
+            // one still ends at the axis. Degrees, clockwise (SVG's own
+            // convention), so no sign conversion is needed on any host.
+            //
+            // A rotation on any OTHER shape is deliberately not emitted — the
+            // Phase 528.1 text fields are documented as ignored off `Label`,
+            // and SVG's `transform` would otherwise *move geometry*, making the
+            // one text field with side-effects elsewhere.
+            style.Rotation
+            |> Option.iter (fun deg ->
+                e.Add " transform=\"rotate("
+                e.Add(formatNum deg)
+                e.Add " "
+                e.Add(formatNum x)
+                e.Add " "
+                e.Add(formatNum y)
+                e.Add ")\"")
+
             e.Add(styleAttrs sources false style)
             e.Add ">"
             e.Add(escape (textOf text))

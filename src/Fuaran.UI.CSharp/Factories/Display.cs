@@ -186,7 +186,9 @@ public static partial class Fuaran
                 options.Description is { } dsc ? Fs.Some(dsc.Inner) : Fs.None<FsGen.TextSource>(),
                 Fs.List(options.Shapes ?? Enumerable.Empty<FsGen.Shape>()),
                 // Generated DrawStyle declaration order: Emphasis, Fill, FontFamily, FontSize,
-                // MarkId (Phase 642 — inherited default: none), Opacity, Stroke, StrokeWidth, TextAnchor.
+                // MarkId (Phase 642 — inherited default: none), Opacity, Rotation (Phase 877 —
+                // Label text rotation in degrees; inherited default: upright), Stroke,
+                // StrokeWidth, TextAnchor.
                 new FsGen.DrawStyle(
                     Fs.None<FsGen.Emphasis>(),
                     Fs.None<global::Fuaran.UI.Generated.Binding<string>>(),
@@ -194,6 +196,7 @@ public static partial class Fuaran
                     Fs.None<double>(),
                     Fs.None<string>(),
                     Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
+                    Fs.None<double>(),
                     Fs.None<global::Fuaran.UI.Generated.Binding<string>>(),
                     Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
                     Fs.None<FsGen.TextAnchor>()),

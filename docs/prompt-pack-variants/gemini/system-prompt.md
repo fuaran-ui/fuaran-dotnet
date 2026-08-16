@@ -368,7 +368,7 @@ Accessibility { describedBy?:str; hidden?:Binding; label?:Binding; labelledBy?:s
 ColumnErased { kind:CellKindErased; label:str; field?:str; format?:CellFormat; width?:ColumnWidth }
 ContentHash { algorithm:str; hash:str; strictness:"StrictReplay"|"AdvisoryWarning"|"Enforced" }
 DrawPoint { x:num; y:num }
-DrawStyle { emphasis?:Emphasis; fill?:Binding; fontFamily?:str; fontSize?:num; markId?:str; opacity?:Binding; stroke?:Binding; strokeWidth?:Binding; textAnchor?:"Start"|"Middle"|"End" }
+DrawStyle { emphasis?:Emphasis; fill?:Binding; fontFamily?:str; fontSize?:num; markId?:str; opacity?:Binding; rotation?:num; stroke?:Binding; strokeWidth?:Binding; textAnchor?:"Start"|"Middle"|"End" }
 EffectClass { determinism:"Deterministic"|"Clock"|"Random"|"Network"; hostEffect:"Pure"|"ReadsHost"|"WritesHost" }
 FilterSpec { kind:FormFieldKind; label:TextSource; name:str }
 FormField { id:str; kind:FormFieldKind; label:TextSource; required:bool; help?:TextSource }

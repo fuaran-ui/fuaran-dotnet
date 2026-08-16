@@ -241,7 +241,8 @@ let private bareDrawStyle: DrawStyle =
       FontSize = None
       Emphasis = None
       FontFamily = None
-      MarkId = None }
+      MarkId = None
+      Rotation = None }
 
 let private styledDraw (fill: string) (stroke: string) : DrawStyle =
     { bareDrawStyle with
@@ -315,6 +316,59 @@ let drawingMinimal: Node<obj> =
               Shapes = []
               Style = bareDrawStyle
               Title = None
+              Description = None }
+        ))
+        None
+
+let drawingRotatedLabels: Node<obj> =
+    // Phase 877 — `Label` rotation. Pins the optional `rotation` field
+    // cross-host over the three demands that motivated it, each with a
+    // different sign / magnitude / anchor pairing, plus the cases where the
+    // encoding is easy to get subtly wrong:
+    //
+    //   * a tilted category label      — -30°, Middle-anchored (the legibility
+    //                                    default of the chart-style doctrine);
+    //   * a vertical escalation        — -90°, End-anchored (the crowded case);
+    //   * a rotated y-axis title       — +90° (opposite sign — pins that the
+    //                                    convention is clockwise, not absolute);
+    //   * a 2-dp fractional angle      — 12.34°, exercising the canonical
+    //                                    rounding form on the wire (a whole
+    //                                    number would let a host that truncates
+    //                                    to integers pass by accident);
+    //   * an explicit 0°               — PRESENT-and-zero is not the same wire
+    //                                    shape as ABSENT, and a host that
+    //                                    conflates them (omit-when-falsy) round-
+    //                                    trips to different bytes. The whole
+    //                                    "absent = byte-unchanged" guarantee
+    //                                    rests on that distinction;
+    //   * a negative fractional angle  — -0.5°, the sign × fraction combination.
+    //
+    // The unrotated label at the end keeps an omit-the-field shape in the same
+    // fixture, so a host that emits `"rotation":null` fails here rather than
+    // silently in some later chart.
+    let rot (deg: float) (anchor: TextAnchor) : DrawStyle =
+        { labelTextStyle with
+            TextAnchor = Some anchor
+            Rotation = Some deg }
+
+    node
+        "drawing-rotated-labels"
+        (NodeKind.Drawing(
+            { ViewBox =
+                { MinX = 0.0
+                  MinY = 0.0
+                  Width = 200.0
+                  Height = 120.0 }
+              Shapes =
+                [ Shape.Label(30.0, 100.0, TextSource.Literal "Q1 2026", rot -30.0 TextAnchor.Middle)
+                  Shape.Label(70.0, 100.0, TextSource.Literal "Q2 2026", rot -90.0 TextAnchor.End)
+                  Shape.Label(8.0, 60.0, TextSource.Literal "Revenue", rot 90.0 TextAnchor.Middle)
+                  Shape.Label(110.0, 100.0, TextSource.Literal "Fractional", rot 12.34 TextAnchor.Start)
+                  Shape.Label(150.0, 100.0, TextSource.Literal "Explicit zero", rot 0.0 TextAnchor.Middle)
+                  Shape.Label(180.0, 100.0, TextSource.Literal "Hairline", rot -0.5 TextAnchor.End)
+                  Shape.Label(100.0, 20.0, TextSource.Literal "Upright", labelTextStyle) ]
+              Style = bareDrawStyle
+              Title = Some(TextSource.Literal "Rotated axis labels")
               Description = None }
         ))
         None
@@ -3514,6 +3568,7 @@ let allNodes: (string * Node<obj>) list =
       "Display/Math (block LaTeX)", math
       "Display/Drawing (all shapes + curve commands + styled bindings)", drawing
       "Display/Drawing (degenerate — empty)", drawingMinimal
+      "Display/Drawing (Phase 877 — rotated Labels, incl. explicit 0 and 2-dp fraction)", drawingRotatedLabels
       "Display/Sparkline", sparkline
       "Display/Skeleton", skeleton
       "Display/Callout", callout

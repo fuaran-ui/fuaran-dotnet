@@ -828,9 +828,19 @@ and TextAnchor = Generated.TextAnchor
 /// `FontFamily` apply only to `Label` text (ignored on other shapes): the
 /// alignment, the size in user-space px, the weight (reusing the `Emphasis`
 /// vocabulary — `Loud` → bold, `Quiet` → light), and the font-family stack (so a
-/// chart carries its own font — self-contained, no host CSS needed). Bindings
-/// (colour) are the one place a `Drawing` stays reactive — geometry + text
-/// metrics are static.
+/// chart carries its own font — self-contained, no host CSS needed).
+/// `Rotation` (Phase 877) is the clockwise text rotation in DEGREES about the
+/// label's own anchor point (`Shape.Label`'s `x` / `y`) — the renderer emits
+/// `transform="rotate(θ x y)"` on the `<text>` element, so the anchor is the
+/// pivot and `TextAnchor` keeps its meaning in the rotated frame. Like the
+/// other text fields it applies only to `Label` and is ignored on every other
+/// shape (the emitter never writes it elsewhere, so a rotation on a `Rectangle`
+/// is inert rather than silently transforming geometry). Omitted from the wire
+/// when `None` (rule 4) — a drawing that does not rotate is byte-unchanged.
+/// Authors set it through `drawStyle.rotate`, which applies the canonical 2-dp
+/// rounding; the wire value is taken as-authored, so no host re-rounds on
+/// decode. Bindings (colour) are the one place a `Drawing` stays reactive —
+/// geometry + text metrics are static.
 and DrawStyle = Generated.DrawStyle
 /// §4b — the closed, typed vector-graphics shape vocabulary for
 /// `NodeKind.Drawing` (Phase 524). Every case is wire-survivable and

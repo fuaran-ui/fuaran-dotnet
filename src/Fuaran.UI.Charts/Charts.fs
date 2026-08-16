@@ -349,7 +349,8 @@ let private baseStyle: DrawStyle =
       FontSize = None
       Emphasis = None
       FontFamily = None
-      MarkId = None }
+      MarkId = None
+      Rotation = None }
 
 /// Phase 642 — stamp a derivation-based mark identity onto a data-bearing
 /// shape's style: `series-field|category-key`, stable under row reorder and

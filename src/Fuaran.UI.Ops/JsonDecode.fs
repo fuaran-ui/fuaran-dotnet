@@ -3958,7 +3958,8 @@ let private emptyDrawStyle: DrawStyle =
       FontSize = None
       Emphasis = None
       FontFamily = None
-      MarkId = None }
+      MarkId = None
+      Rotation = None }
 
 let private decodeDrawPoint (path: string) (j: Json) : Result<DrawPoint, DecodeError> =
     match requireObject path j with
@@ -4068,7 +4069,16 @@ let private decodeDrawStyle (path: string) (j: Json) : Result<DrawStyle, DecodeE
             | None -> Ok None
             | Some v -> requireString (path + ".markId") v |> Result.map Some
 
-        match fillR, strokeR, strokeWidthR, opacityR, textAnchorR, fontSizeR, emphasisR, fontFamilyR, markIdR with
+        // Phase 877 — `Label` text rotation in degrees; optional, no default
+        // (absent = upright), so every pre-877 drawing decodes byte-unchanged.
+        let rotationR =
+            match tryField fields "rotation" with
+            | None -> Ok None
+            | Some v -> requireFloat (path + ".rotation") v |> Result.map Some
+
+        match
+            fillR, strokeR, strokeWidthR, opacityR, textAnchorR, fontSizeR, emphasisR, fontFamilyR, markIdR, rotationR
+        with
         | Ok fill,
           Ok stroke,
           Ok strokeWidth,
@@ -4077,7 +4087,8 @@ let private decodeDrawStyle (path: string) (j: Json) : Result<DrawStyle, DecodeE
           Ok fontSize,
           Ok emphasis,
           Ok fontFamily,
-          Ok markId ->
+          Ok markId,
+          Ok rotation ->
             Ok
                 { Fill = fill
                   Stroke = stroke
@@ -4087,16 +4098,18 @@ let private decodeDrawStyle (path: string) (j: Json) : Result<DrawStyle, DecodeE
                   FontSize = fontSize
                   Emphasis = emphasis
                   FontFamily = fontFamily
-                  MarkId = markId }
-        | Error e, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, Error e -> Error e
+                  MarkId = markId
+                  Rotation = rotation }
+        | Error e, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeCurveCommand (path: string) (j: Json) : Result<CurveCommand, DecodeError> =
     match requireObject path j with

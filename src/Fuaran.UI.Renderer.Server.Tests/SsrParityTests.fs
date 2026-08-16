@@ -490,6 +490,64 @@ let ssrParityTests =
               Expect.isFalse (contains "fuaran-link-protected" html) "protected classes absent"
           }
 
+          // Phase 877 — CSR/SSR parity for a rotated `Label`.
+          //
+          // Both renderers reach the drawing through the SAME shared emitter:
+          // `Fuaran.UI.Renderer/Render.fs` and `Fuaran.UI.Renderer.Server/Render.fs`
+          // each wrap `DrawingSvg.render ctx.Sources (renderText ctx) spec` in a
+          // `dangerouslySetInnerHTML` div, so the SVG payload is identical by
+          // construction rather than by two literals kept in step. What is NOT
+          // free — and is what this pins — is that the server tier splices that
+          // payload through VERBATIM: an escape, a re-serialisation, or an
+          // attribute-reordering pass anywhere in the SSR path would silently
+          // desynchronise the two tiers, and `transform="rotate(…)"` is exactly
+          // the kind of attribute such a pass mangles (parentheses + spaces).
+          //
+          // This is the strongest parity assertion expressible on .NET — the
+          // Feliz client renderer produces an opaque `ReactElement` with no
+          // string projection (see this file's header), so a byte-level
+          // client-vs-server diff cannot be written here at all.
+          test "rotated Label — the SSR payload is the shared emitter's bytes verbatim (Phase 877)" {
+              let rotatedSpec =
+                  { Defaults.drawing with
+                      ViewBox =
+                          { MinX = 0.0
+                            MinY = 0.0
+                            Width = 100.0
+                            Height = 50.0 }
+                      Shapes =
+                          [ Shape.Label(
+                                50.0,
+                                40.0,
+                                TextSource.Literal "Q1",
+                                { Defaults.drawStyle with
+                                    TextAnchor = Some TextAnchor.Middle
+                                    Rotation = Some -30.0 }
+                            ) ]
+                      Title = Some(TextSource.Literal "Tilted") }
+
+              let node = Fuaran.drawingSpec "dr-rot" rotatedSpec
+
+              // The shared emitter's own output — the exact string the CLIENT
+              // renderer hands to `dangerouslySetInnerHTML`.
+              let shared =
+                  DrawingSvg.render
+                      BindingResolver.empty
+                      (fun t ->
+                          match t with
+                          | TextSource.Literal s -> s
+                          | _ -> "?")
+                      rotatedSpec
+
+              let html = Render.render BindingResolver.empty node
+
+              Expect.isTrue
+                  (contains "transform=\"rotate(-30 50 40)\"" shared)
+                  "the shared emitter rotates about the label anchor"
+
+              Expect.isTrue (contains shared html) "server HTML embeds the shared SVG payload byte-for-byte"
+          }
+
           // The icon-contract lock: the icon NAME rides the `data-icon`
           // attribute of an EMPTY hook element and must never appear as
           // visible text content anywhere in the HTML.

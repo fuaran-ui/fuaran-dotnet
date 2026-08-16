@@ -21,7 +21,8 @@ let private noStyle: DrawStyle =
       FontSize = None
       Emphasis = None
       FontFamily = None
-      MarkId = None }
+      MarkId = None
+      Rotation = None }
 
 let private textOf (t: TextSource) : string =
     match t with
@@ -147,6 +148,61 @@ let drawingSvgTests =
                       "<text class=\"fuaran-drawing-label\" x=\"40\" y=\"12\" fill=\"#111\" text-anchor=\"end\" font-family=\"system-ui, sans-serif\" font-size=\"16px\" font-weight=\"700\">Title</text>"
                       svg)
                   "text presentation attrs in canonical order"
+          }
+
+          test "Label rotation emits transform=rotate anchored at the label position (Phase 877)" {
+              let rotated deg = { noStyle with Rotation = Some deg }
+
+              // The pivot is the label's own (x, y) — not the viewBox origin —
+              // so `TextAnchor` keeps its meaning in the rotated frame.
+              let svg =
+                  render (drawing [ Shape.Label(40.0, 12.0, TextSource.Literal "Q1", rotated -30.0) ] None)
+
+              Expect.isTrue
+                  (contains
+                      "<text class=\"fuaran-drawing-label\" x=\"40\" y=\"12\" transform=\"rotate(-30 40 12)\">Q1</text>"
+                      svg)
+                  "rotate(θ x y) anchored at the label position"
+
+              // Numbers go through `formatNum`, so a whole angle drops its
+              // decimal and a fractional one keeps the invariant shortest form —
+              // the same rule the coordinates use, culture-independent.
+              let frac =
+                  render (drawing [ Shape.Label(5.5, 2.25, TextSource.Literal "T", rotated 12.34) ] None)
+
+              Expect.isTrue (contains "transform=\"rotate(12.34 5.5 2.25)\"" frac) "fractional angle canonical form"
+
+              // An explicit 0° is PRESENT — it must still emit, because absent
+              // and zero are different wire shapes and the renderer must not
+              // re-introduce the conflation the codec is careful to avoid.
+              let zero =
+                  render (drawing [ Shape.Label(1.0, 2.0, TextSource.Literal "T", rotated 0.0) ] None)
+
+              Expect.isTrue (contains "transform=\"rotate(0 1 2)\"" zero) "explicit zero still emits"
+
+              // Absent rotation emits no transform at all — the byte-unchanged
+              // guarantee for every pre-877 drawing.
+              let upright =
+                  render (drawing [ Shape.Label(1.0, 2.0, TextSource.Literal "T", noStyle) ] None)
+
+              Expect.isFalse (contains "transform=" upright) "no rotation ⇒ no transform attribute"
+          }
+
+          test "Rotation on a non-Label shape is inert (Phase 877)" {
+              // The Phase 528.1 text fields are documented as ignored off
+              // `Label`. For rotation that is load-bearing rather than cosmetic:
+              // an SVG `transform` on a <rect> would MOVE GEOMETRY, so emitting
+              // it there would make this the one text field with side-effects
+              // elsewhere. The emitter never writes it off `Label`.
+              let svg =
+                  render (
+                      drawing
+                          [ Shape.Rectangle(0.0, 0.0, 10.0, 10.0, Option.None, { noStyle with Rotation = Some 45.0 })
+                            Shape.Circle(5.0, 5.0, 2.0, { noStyle with Rotation = Some 45.0 }) ]
+                          None
+                  )
+
+              Expect.isFalse (contains "transform=" svg) "rotation ignored on non-text shapes"
           }
 
           test "Label text is XML-escaped" {
