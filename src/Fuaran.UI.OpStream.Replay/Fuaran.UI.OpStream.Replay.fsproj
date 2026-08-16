@@ -24,6 +24,17 @@
     <!-- Phase 406: pre-406 -> Core-canonical chain-format migrator (re-chain in place). -->
     <Compile Include="ChainMigration.fs" />
   </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/. Same reason Fuaran.UI and
+       Fuaran.UI.Ops.Abstractions do it: this package was DLL-only, and a Fable
+       consumer reaching `TreeOpDiff.diff` through a PackageReference then
+       resolved `Node<'Msg>` through an assembly while everything around it came
+       from source — FS0074, "defined in an assembly that is not referenced".
+       Fuaran.UI.ServerDriven's own Fable-packed sources call into this one, so
+       any Fable consumer of THAT package hits it too; it surfaced the first time
+       one existed. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
