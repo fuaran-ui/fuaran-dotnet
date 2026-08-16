@@ -879,6 +879,12 @@ let private defs: (string * J) list =
             // reusing the existing `Format` vocabulary; optional (absent means
             // the lowering's canonical default rendering).
             "valueFormat", ref "Format"
+            // `xTitle` / `yTitle` / `subtitle` (Phase 878) — the axis names and
+            // the muted line under the title; all optional, since an absent
+            // axis title falls back to the capitalised field name.
+            "xTitle", ref "TextSource"
+            "yTitle", ref "TextSource"
+            "subtitle", ref "TextSource"
             "onPointClick", closure ]
 
       "MapMarker",

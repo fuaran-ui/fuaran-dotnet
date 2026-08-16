@@ -34,6 +34,9 @@ public static partial class Fuaran
                 Fs.List(options.YFields ?? Enumerable.Empty<string>()),
                 options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsGen.TextSource>(),
                 options.ValueFormat is { } vf ? Fs.Some(vf.Inner) : Fs.None<FsGen.Format>(),
+                options.XTitle is { } xt ? Fs.Some(xt.Inner) : Fs.None<FsGen.TextSource>(),
+                options.YTitle is { } yt ? Fs.Some(yt.Inner) : Fs.None<FsGen.TextSource>(),
+                options.Subtitle is { } st ? Fs.Some(st.Inner) : Fs.None<FsGen.TextSource>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>
@@ -165,6 +168,25 @@ public sealed record ChartOptions
     /// separators + decimals derived from the tick step).
     /// </summary>
     public LocaleFormat? ValueFormat { get; init; }
+
+    /// <summary>
+    /// The x-axis title (Phase 878). Absent falls back to the capitalised
+    /// <see cref="XField"/> name — the axis is never left nameless.
+    /// </summary>
+    public Text? XTitle { get; init; }
+
+    /// <summary>
+    /// The y-axis title (Phase 878), rendered rotated alongside the axis.
+    /// Absent falls back to the capitalised first <see cref="YFields"/> entry.
+    /// </summary>
+    public Text? YTitle { get; init; }
+
+    /// <summary>
+    /// A muted subtitle under the chart title (Phase 878) — the natural home
+    /// for a units statement. Declaring one suppresses the lowering's own
+    /// display-unit label, so the units are stated once.
+    /// </summary>
+    public Text? Subtitle { get; init; }
 
     /// <summary>Whether bar/area series stack.</summary>
     public bool Stacked { get; init; }

@@ -27,6 +27,16 @@ module Fuaran.UI.Charts
 //              needs — and exposes the fit predicate Phase 881's data labels
 //              will gate on. See "Deterministic text metrics" below, the
 //              normative cross-host spec.
+//  Phase 878 — AXIS TITLES + SUBTITLE. `ChartSpec` gained `XTitle` / `YTitle` /
+//              `Subtitle`, all optional and all default-ON in the sense that
+//              matters: an absent axis title falls back to the capitalised
+//              field name, so an axis is never nameless — which is what finally
+//              retired the hardcoded `"Value"` y-hint. The y title renders
+//              ROTATED in the left margin (whose autosize now reserves its
+//              line); the subtitle renders muted under the title (whose line
+//              the top margin reserves only when one is present). See "Axis
+//              titles + the display-unit slot" at the emission site for the
+//              three composition rules and the date-axis note.
 //
 //  `Chart` stays a SEMANTIC wire kind (D2). This module is the bounded layout
 //  engine that turns a resolved `ChartSpec` + data rows into a canonical
@@ -215,6 +225,13 @@ type ChartStyle =
         TitleAlignment: ChartTitleAlignment
         /// Baseline y of the visible chart title.
         TitleBaselineY: float
+        /// Font size of the subtitle (Phase 878). Deliberately BELOW
+        /// `TitleFontSize` — the subtitle is a qualifier on the title, and a
+        /// qualifier set at the same size competes with what it qualifies.
+        SubtitleFontSize: float
+        /// Baseline y of the subtitle — directly under the title, and sharing
+        /// its `TitleAlignment`, so the two read as one block.
+        SubtitleBaselineY: float
 
         // ── Ticks + axis labels ──
         /// Target number of y-axis ticks the `{1,2,5}·10ⁿ` nice-tick rule aims
@@ -267,10 +284,26 @@ type ChartStyle =
 
         /// Distance from the canvas bottom to the x-axis title's baseline.
         AxisTitleBottomOffset: float
-        /// x of the y-axis title (left-anchored, above the plot).
+        /// x of the DISPLAY-UNIT slot (left-anchored, above the plot). Since
+        /// Phase 878 this slot carries the Phase-876 unit label and nothing
+        /// else — the y axis's NAME moved to the rotated left-margin title.
         AxisTitleLeftX: float
-        /// Rise from the plot's top edge to the y-axis title's baseline.
+        /// Rise from the plot's top edge to the display-unit slot's baseline.
         AxisTitleTopOffset: float
+        /// x of the ROTATED y-axis title's baseline, measured from the canvas
+        /// LEFT EDGE (Phase 878) — not from the autosized margin, so the title
+        /// does not slide about as tick widths change. A rotated-by
+        /// `-YAxisTitleDegrees` label's ascenders extend LEFT of its baseline,
+        /// which is why this sits near the outer edge of the reserved band
+        /// rather than at it.
+        YAxisTitleOffsetX: float
+        /// The MAGNITUDE of the y-axis title's rotation, in degrees
+        /// (Phase 878). Emitted as `DrawStyle.Rotation = -YAxisTitleDegrees`:
+        /// `Rotation` is clockwise (SVG's convention), so the negative angle
+        /// reads BOTTOM-UP — the conventional treatment, and the same sign
+        /// convention `VerticalTiltDegrees` already uses. `0.0` leaves the
+        /// title horizontal.
+        YAxisTitleDegrees: float
 
         // ── Series geometry ──
         /// Share of a category band the bar group occupies (the rest is air).
@@ -409,6 +442,8 @@ module ChartStyle =
           TextLineHeightFactor = 1.2
           TitleAlignment = ChartTitleAlignment.Left
           TitleBaselineY = 22.0
+          SubtitleFontSize = 13.0
+          SubtitleBaselineY = 38.0
           TargetTickCount = 5.0
           TickLabelGap = 12.0
           TickMarkLength = 5.0
@@ -421,6 +456,8 @@ module ChartStyle =
           AxisTitleBottomOffset = 12.0
           AxisTitleLeftX = 8.0
           AxisTitleTopOffset = 12.0
+          YAxisTitleOffsetX = 18.0
+          YAxisTitleDegrees = 90.0
           BarGroupWidthFraction = 0.7
           BarWidthFraction = 0.9
           BarMaxThickness = 28.0
@@ -1242,10 +1279,64 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
     let tickSize = style.TickFontSize
     let titleSize = style.TitleFontSize
+    let subtitleSize = style.SubtitleFontSize
     let lineHeight = TextMetrics.lineHeight tickSize style.TextLineHeightFactor
 
     let widestOf (texts: string seq) : float =
         texts |> Seq.fold (fun acc t -> max acc (TextMetrics.width tickSize t)) 0.0
+
+    // ── Axis names + subtitle (Phase 878) ────────────────────────────────────
+    //
+    // Resolved HERE, before any margin, because both margins have to reserve a
+    // line for text whose presence is decided by these three fields — the left
+    // margin for the rotated y-axis title, the top margin for the subtitle. The
+    // same dependency Phase 879 established when the bottom margin started
+    // reserving the x-axis title's line.
+    let capitalise (s: string) =
+        if s.Length = 0 then
+            s
+        else
+            string (System.Char.ToUpper s.[0]) + s.Substring 1
+
+    /// An axis title: the author's own `TextSource` when declared, else the
+    /// capitalised field name — which is exactly what the x axis has always
+    /// drawn, now stated once and applied to both axes. `None` only where there
+    /// is no honest fallback: an empty field name, or a y axis carrying no
+    /// series at all.
+    let axisTitleOf (declared: TextSource option) (fallbackField: string) : TextSource option =
+        match declared with
+        | Some t -> Some t
+        | None when fallbackField = "" -> None
+        | None -> Some(TextSource.Literal(capitalise fallbackField))
+
+    let xTitle = axisTitleOf spec.XTitle spec.XField
+
+    // The y fallback is the capitalised FIRST y-field. It is the honest answer
+    // to "what is on this axis", where the retired `"Value"` literal named
+    // neither the measure nor its unit — and it makes ONE rule cover both axes
+    // rather than a rule for x and a constant for y. The multi-series chart is
+    // the case it serves least well; there the legend already names every
+    // series, and an author plotting genuinely different measures should
+    // declare `YTitle`, which is precisely why the field exists.
+    let yTitle =
+        axisTitleOf
+            spec.YTitle
+            (match spec.YFields with
+             | f :: _ -> f
+             | [] -> "")
+
+    // ── Top margin ──
+    // A subtitle takes one line under the visible title, and EVERYTHING below
+    // it in the top band moves down by exactly that line: the legend row, the
+    // display-unit slot, and the plot itself (so on the Pie arm the wedge
+    // centre moves too). Reserved only when a subtitle is present, so a chart
+    // without one keeps the pre-878 layout byte-for-byte.
+    let subtitleBand =
+        match spec.Subtitle with
+        | Some _ -> TextMetrics.lineHeight subtitleSize style.TextLineHeightFactor
+        | None -> 0.0
+
+    let marginTop = r2 (style.MarginTop + subtitleBand)
 
     // ── Left margin ──
     // The tick column must clear `TickLabelGap` from the spine and
@@ -1255,8 +1346,19 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // ceiling — a constant — and not from the margin it is about to decide.
     let leftCeiling = style.MarginLeftMaxShare * style.Width
 
+    // Phase 878 — the rotated y-axis title occupies one LINE of the left
+    // margin, outboard of the tick column. Only its line height (plus the
+    // padding beside it) is reserved here: the title is rotated, so its LENGTH
+    // runs vertically and is bounded against the plot height further down. That
+    // is what keeps this acyclic — exactly the shape Phase 879 gave the x-axis
+    // title's line in the bottom margin.
+    let yTitleBand =
+        match yTitle with
+        | Some _ -> lineHeight + style.AxisLabelPadding
+        | None -> 0.0
+
     let tickTextBudget =
-        max 0.0 (leftCeiling - style.TickLabelGap - style.AxisLabelPadding)
+        max 0.0 (leftCeiling - style.TickLabelGap - style.AxisLabelPadding - yTitleBand)
 
     let yTickLabelText (v: float) : string =
         TextMetrics.truncateToWidth tickSize tickTextBudget (yTickText v)
@@ -1265,6 +1367,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         style.TickLabelGap
         + widestOf (ticks |> List.map yTickLabelText)
         + style.AxisLabelPadding
+        + yTitleBand
 
     let marginLeft = r2 (max style.MarginLeft (min leftCeiling requiredLeft))
 
@@ -1348,7 +1451,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
     let marginBottom = r2 (max style.MarginBottom (min bottomCeiling requiredBottom))
 
-    let plotY0 = style.MarginTop
+    let plotY0 = marginTop
     let plotY1 = style.Height - marginBottom
     let plotH = plotY1 - plotY0
 
@@ -1479,37 +1582,95 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                 ))
             |> Array.toList
 
-    // ── Axis titles (a name on both axes) ──
-    let capitalise (s: string) =
-        if s.Length = 0 then
-            s
-        else
-            string (System.Char.ToUpper s.[0]) + s.Substring 1
+    // ── Axis titles + the display-unit slot (Phase 878) ──
+    //
+    // Three rules, and together they retire the hardcoded `"Value"`:
+    //
+    //   1. NAMES. The x title stays centred under the tick band (where it has
+    //      always been); the y title is ROTATED by `-YAxisTitleDegrees` in the
+    //      left margin, centred on the plot, reading BOTTOM-UP — the
+    //      conventional treatment, and the same sign convention Phase 879's
+    //      vertical category labels already use. Each falls back to its
+    //      capitalised field name, so an axis is never nameless.
+    //
+    //   2. UNITS KEEP THEIR OWN SLOT. The top-left label states the Phase-876
+    //      display unit and NOTHING else: with no scaling in play it is not
+    //      drawn at all, where it previously fell back to the literal `"Value"`
+    //      — a word naming neither the measure nor its unit, printed on every
+    //      chart in the corpus. Composing the unit INTO the rotated title
+    //      ("Revenue (Millions of £)") was the alternative and was rejected:
+    //      that concatenation is only expressible when the title is a
+    //      `Literal`, so a bound or i18n title would silently fall back to a
+    //      different layout — and a layout rule with a shape that depends on
+    //      which `TextSource` arm an author reached for is not a rule. Two
+    //      slots, always the same two, is what stays total.
+    //
+    //   3. DEDUPE. An explicit `Subtitle` SUPPRESSES the unit slot. The
+    //      subtitle is the author's own place to say "£m", and the machine
+    //      restating it two lines away is exactly the clutter this rule exists
+    //      to prevent — so the author's sentence wins. PRESENCE is the whole
+    //      test: no string comparison, which is what keeps the rule total over
+    //      every `TextSource` arm and identical on every host.
+    //
+    // A SELF-EVIDENT DATE AXIS SUPPRESSES ITS DEFAULT TITLE — an axis reading
+    // "Jan Feb Mar" does not need the word "Month" beneath it. The rule is
+    // recorded here and in `docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md` §4e, and
+    // is WIRED when Phase 882's temporal axis lands: nothing in the lowering
+    // can currently tell a date column from a string one, and inferring it from
+    // the label text would be a guess dressed as a rule. It will apply to the
+    // FALLBACK only — an explicit `XTitle` is the author overriding the
+    // default, and always draws.
 
-    // The top-left slot states the value axis's DISPLAY UNIT once ("Millions",
-    // "Millions of £", "M£") when scaling applies, and otherwise keeps the
-    // horizontal "Value" hint it has always carried. Placement is deliberately
-    // unchanged here — axis titles are the next phase's, and moving the slot
-    // and changing its text in one change-set would make either one
-    // unattributable in the goldens.
-    let axisTitles =
-        [ Shape.Label(
-              r2 ((plotX0 + plotX1) / 2.0),
-              r2 (style.Height - style.AxisTitleBottomOffset),
-              TextSource.Literal(capitalise spec.XField),
-              textStyle style None TextAnchor.Middle tickSize Emphasis.Normal
-          )
-          Shape.Label(
-              r2 style.AxisTitleLeftX,
-              r2 (plotY0 - style.AxisTitleTopOffset),
-              TextSource.Literal(
-                  if yDisplayUnit.Label = "" then
-                      "Value"
-                  else
-                      yDisplayUnit.Label
-              ),
-              textStyle style None TextAnchor.Start tickSize Emphasis.Normal
-          ) ]
+    /// Bound a title to the extent it runs along. Only a `Literal` can be
+    /// truncated — the text behind a `Bound` or `I18n` arm is not known here —
+    /// and that is the honest boundary: those pass through and may overrun,
+    /// which is a visible fact rather than a silently wrong measurement.
+    let boundText (fontSize: float) (extent: float) (t: TextSource) : TextSource =
+        match t with
+        | TextSource.Literal s -> TextSource.Literal(TextMetrics.truncateToWidth fontSize extent s)
+        | other -> other
+
+    let axisTitleStyle (anchor: TextAnchor) : DrawStyle =
+        textStyle style None anchor tickSize Emphasis.Normal
+
+    let xTitleShapes =
+        match xTitle with
+        | Some t ->
+            [ Shape.Label(
+                  r2 ((plotX0 + plotX1) / 2.0),
+                  r2 (style.Height - style.AxisTitleBottomOffset),
+                  boundText tickSize plotW t,
+                  axisTitleStyle TextAnchor.Middle
+              ) ]
+        | None -> []
+
+    let yTitleShapes =
+        match yTitle with
+        | Some t ->
+            let rotated =
+                { axisTitleStyle TextAnchor.Middle with
+                    Rotation = Some(r2 -style.YAxisTitleDegrees) }
+
+            // `Middle`-anchored at the plot's vertical centre: the anchor is
+            // the pivot, so the rotated text stays centred on the axis it
+            // names, whatever its length. The x is measured from the CANVAS
+            // edge, not the autosized margin, so the title does not slide as
+            // tick widths change.
+            [ Shape.Label(r2 style.YAxisTitleOffsetX, r2 ((plotY0 + plotY1) / 2.0), boundText tickSize plotH t, rotated) ]
+        | None -> []
+
+    let unitSlotShapes =
+        if yDisplayUnit.Label = "" || Option.isSome spec.Subtitle then
+            []
+        else
+            [ Shape.Label(
+                  r2 style.AxisTitleLeftX,
+                  r2 (plotY0 - style.AxisTitleTopOffset),
+                  TextSource.Literal yDisplayUnit.Label,
+                  axisTitleStyle TextAnchor.Start
+              ) ]
+
+    let axisTitles = xTitleShapes @ yTitleShapes @ unitSlotShapes
 
     // ── Series geometry ──
     let seriesShapes =
@@ -1670,7 +1831,11 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                   yield
                       Shape.Rectangle(
                           lx,
-                          style.LegendSwatchY,
+                          // Phase 878 — the legend row sits BELOW the subtitle,
+                          // so it moves down by the line the subtitle took.
+                          // `subtitleBand` is 0 without one, leaving the
+                          // pre-878 constants exactly where they were.
+                          r2 (style.LegendSwatchY + subtitleBand),
                           style.LegendSwatchSize,
                           style.LegendSwatchSize,
                           Some style.LegendSwatchCornerRadius,
@@ -1680,7 +1845,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                   yield
                       Shape.Label(
                           r2 (lx + style.LegendLabelOffsetX),
-                          style.LegendLabelBaselineY,
+                          r2 (style.LegendLabelBaselineY + subtitleBand),
                           TextSource.Literal yFields.[j],
                           textStyle style (Some style.LabelOpacity) TextAnchor.Start tickSize Emphasis.Normal
                       ) ]
@@ -1698,6 +1863,24 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         match spec.Title with
         | Some t ->
             [ Shape.Label(titleX, style.TitleBaselineY, t, textStyle style None titleAnchor titleSize Emphasis.Loud) ]
+        | None -> []
+
+    // ── Subtitle (Phase 878) — the muted line under the title ──
+    //
+    // MUTED (label-role opacity, not full-strength ink) and SMALLER than the
+    // title, sharing its x and its anchor, so the pair reads as one block and
+    // the subtitle is unmistakably subordinate. It draws independently of the
+    // title: an author who sets one and not the other gets what they asked
+    // for, and the top margin has already reserved the line either way.
+    let subtitleShapes =
+        match spec.Subtitle with
+        | Some s ->
+            [ Shape.Label(
+                  titleX,
+                  style.SubtitleBaselineY,
+                  boundText subtitleSize plotW s,
+                  textStyle style (Some style.LabelOpacity) titleAnchor subtitleSize Emphasis.Normal
+              ) ]
         | None -> []
 
     // ── Pie (Phase 638) — the polar arm: no cartesian chrome ──
@@ -1828,7 +2011,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // legend, chart title.
     let shapes =
         match spec.Kind with
-        | ChartKind.Pie -> pieShapes () @ titleShapes
+        | ChartKind.Pie -> pieShapes () @ titleShapes @ subtitleShapes
         | _ ->
             gridlines
             @ xGridlines
@@ -1841,6 +2024,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             @ seriesShapes
             @ legend
             @ titleShapes
+            @ subtitleShapes
 
     { ViewBox =
         { MinX = 0.0

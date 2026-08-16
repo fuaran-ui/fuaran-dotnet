@@ -91,8 +91,12 @@ internal static class Vocabulary
         Add("FileUpload", "id", "label", "accept", "multiple");
         // Phase 876 — the value-format-* family carries the value axis's number
         // format (the `Format` vocabulary), the chart-side sibling of `format-*`.
+        // Phase 878 — the axis names + the subtitle. Absent x-title / y-title
+        // fall back to the capitalised field name, so they are optional in the
+        // ordinary case rather than an opt-in.
         Add("Chart", "id", "source", "kind", "x-field", "y-fields", "title", "stacked",
-            "value-format-currency", "value-format-number", "value-format-percent");
+            "value-format-currency", "value-format-number", "value-format-percent",
+            "x-title", "y-title", "subtitle");
         Add("Table", "id");
         Add("Map", "id", "centre-lat", "centre-lng", "zoom");
         Add("DataGrid", "id", "source", "editable");

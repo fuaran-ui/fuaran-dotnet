@@ -51,11 +51,20 @@ type private Case =
         /// `axisUnitMode` purely so the corpus can pin every mode, and a host
         /// reads it into the style it lowers with, never into a spec.
         UnitMode: string option
+        /// Phase 878 — the axis NAMES and the muted subtitle (all three WIRE
+        /// fields: `ChartSpec.XTitle` / `.YTitle` / `.Subtitle`), carried in the
+        /// neutral input contract as plain strings beside `title`. Absent is
+        /// the ordinary shape — each axis falls back to its capitalised field
+        /// name — so the keys are OMITTED when `None` and the twenty pre-878
+        /// inputs stay byte-identical.
+        XTitle: string option
+        YTitle: string option
+        Subtitle: string option
         Rows: (string * float list) list
     }
 
-/// The default-shaped case — the four Phase-876 fields absent — so the twelve
-/// pre-876 cases stay readable.
+/// The default-shaped case — the Phase-876 and Phase-878 fields absent — so the
+/// twelve pre-876 cases stay readable.
 let private plain: Case =
     { Name = ""
       Kind = ChartKind.Bar
@@ -66,6 +75,9 @@ let private plain: Case =
       XNums = None
       ValueFormat = None
       UnitMode = None
+      XTitle = None
+      YTitle = None
+      Subtitle = None
       Rows = [] }
 
 /// The case's x cell values, boxed — numeric when `XNums` is set, else the
@@ -379,7 +391,71 @@ let private cases: Case list =
           XField = "code"
           YFields = [ "count" ]
           Title = Some "Past the escalation boundary"
-          Rows = [ for i in 0..7 -> (sprintf "100000000%d" i), [ 20.0 + float (i * 9 % 70) ] ] } ]
+          Rows = [ for i in 0..7 -> (sprintf "100000000%d" i), [ 20.0 + float (i * 9 % 70) ] ] }
+      // ── Phase 878 — axis titles + subtitle ──
+      { plain with
+          // ALL THREE SET, on a multi-series chart. Pins the whole feature at
+          // once: the explicit x title overriding the field-name fallback, the
+          // ROTATED y title in the (now wider) left margin, the muted subtitle
+          // under the 18 px title, the top margin growing by exactly that line,
+          // and the legend row moving down with it.
+          Name = "bar-axis-titles"
+          Kind = ChartKind.Bar
+          XField = "region"
+          YFields = [ "sales"; "target" ]
+          Title = Some "Sales vs target"
+          XTitle = Some "Sales region"
+          YTitle = Some "Value (£)"
+          Subtitle = Some "Rolling twelve months"
+          Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
+      { plain with
+          // NONE SET, with a display unit in play. The complement of the case
+          // above: both axes take their capitalised field names (`Quarter` /
+          // `Revenue` — never the retired `"Value"` literal), and with no
+          // subtitle to defer to, the display-unit slot draws as Phase 876
+          // shipped it.
+          Name = "bar-axis-titles-default"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "revenue" ]
+          Title = Some "Revenue"
+          ValueFormat = Some(Format.Currency "GBP")
+          UnitMode = Some "WordsWithSymbol"
+          Rows =
+              [ "Q1", [ 12500000.0 ]
+                "Q2", [ 15200000.0 ]
+                "Q3", [ 11800000.0 ]
+                "Q4", [ 17400000.0 ] ] }
+      { plain with
+          // THE DEDUPE RULE. Byte-for-byte the case above plus a subtitle that
+          // states the unit — so the display-unit slot is SUPPRESSED. The two
+          // goldens differ in exactly that label plus the subtitle's own line,
+          // which is what makes the rule readable from the corpus alone.
+          Name = "bar-subtitle-units"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "revenue" ]
+          Title = Some "Revenue"
+          ValueFormat = Some(Format.Currency "GBP")
+          UnitMode = Some "WordsWithSymbol"
+          Subtitle = Some "Millions of £"
+          Rows =
+              [ "Q1", [ 12500000.0 ]
+                "Q2", [ 15200000.0 ]
+                "Q3", [ 11800000.0 ]
+                "Q4", [ 17400000.0 ] ] }
+      { plain with
+          // LONG Y TITLE. The rotated title runs along the PLOT HEIGHT, so that
+          // — not the left margin's width — is the extent it truncates to. This
+          // one comfortably exceeds it and comes back ellipsised, pinning that
+          // the bound is the plot height rather than the canvas or the margin.
+          Name = "bar-long-y-title"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "revenue" ]
+          Title = Some "A very long axis name"
+          YTitle = Some "Monthly recurring revenue, net of refunds and credits, in pounds sterling at constant currency"
+          Rows = [ "Q1", [ 120.0 ]; "Q2", [ 150.0 ]; "Q3", [ 90.0 ]; "Q4", [ 175.0 ] ] } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
 /// named the slot — the representation is the same `Map<string,obj>`).
@@ -399,6 +475,9 @@ let private specOf (case: Case) : ChartSpec<obj> =
       YFields = case.YFields
       Title = case.Title |> Option.map TextSource.Literal
       ValueFormat = case.ValueFormat
+      XTitle = case.XTitle |> Option.map TextSource.Literal
+      YTitle = case.YTitle |> Option.map TextSource.Literal
+      Subtitle = case.Subtitle |> Option.map TextSource.Literal
       OnPointClick = None
       Stacked = case.Stacked }
 
@@ -466,6 +545,46 @@ let private axisUnitLabel (ds: DrawingSpec) : string =
         | _ -> None)
     |> Option.defaultValue ""
 
+// ── Phase 878 readers — pull the axis titles + subtitle back out ─────────────
+//
+// Each keys off the discriminator the LOWERING used to place the shape, so a
+// reader cannot drift into finding the wrong label. Axis titles are the only
+// FULL-STRENGTH (no opacity) `Normal`-weight labels: the visible chart title is
+// `Loud`, and every chrome label — ticks, categories, legend, subtitle —
+// carries `LabelOpacity`. Within that set, the y title is the rotated one.
+
+let private literalTexts (ds: DrawingSpec) : string list =
+    ds.Shapes
+    |> List.choose (fun sh ->
+        match sh with
+        | Shape.Label(_, _, TextSource.Literal t, _) -> Some t
+        | _ -> None)
+
+let private fullStrengthTitle (rotated: bool) (ds: DrawingSpec) : string =
+    ds.Shapes
+    |> List.tryPick (fun sh ->
+        match sh with
+        | Shape.Label(_, _, TextSource.Literal t, s) when
+            Option.isNone s.Opacity
+            && s.Emphasis = Some Emphasis.Normal
+            && s.TextAnchor = Some TextAnchor.Middle
+            && Option.isSome s.Rotation = rotated
+            ->
+            Some t
+        | _ -> None)
+    |> Option.defaultValue ""
+
+let private xAxisTitleOf (ds: DrawingSpec) : string = fullStrengthTitle false ds
+
+let private yAxisTitleOf (ds: DrawingSpec) : string = fullStrengthTitle true ds
+
+let private yAxisTitleRotation (ds: DrawingSpec) : float option =
+    ds.Shapes
+    |> List.tryPick (fun sh ->
+        match sh with
+        | Shape.Label(_, _, _, s) when Option.isNone s.Opacity && Option.isSome s.Rotation -> s.Rotation
+        | _ -> None)
+
 /// The neutral input contract (for the Phase 527 cross-host hosts).
 let private inputJson (case: Case) : string =
     let esc (s: string) =
@@ -524,8 +643,20 @@ let private inputJson (case: Case) : string =
         | None -> ""
         | Some m -> sprintf ",\"axisUnitMode\":\"%s\"" (esc m)
 
+    // Phase 878 — plain-string keys beside `title`, OMITTED when absent, so
+    // every input predating this phase is untouched.
+    let optText (key: string) (v: string option) =
+        match v with
+        | None -> ""
+        | Some s -> sprintf ",\"%s\":\"%s\"" key (esc s)
+
+    let titles =
+        optText "xTitle" case.XTitle
+        + optText "yTitle" case.YTitle
+        + optText "subtitle" case.Subtitle
+
     sprintf
-        "{\"kind\":\"%s\",\"xField\":\"%s\",\"yFields\":[%s],\"title\":%s,\"stacked\":%s%s%s,\"data\":[%s]}"
+        "{\"kind\":\"%s\",\"xField\":\"%s\",\"yFields\":[%s],\"title\":%s,\"stacked\":%s%s%s%s,\"data\":[%s]}"
         kind
         (esc case.XField)
         yFields
@@ -533,6 +664,7 @@ let private inputJson (case: Case) : string =
         (if case.Stacked then "true" else "false")
         valueFormat
         unitMode
+        titles
         rowsJson
 
 let private yTicksOf (name: string) : string list = yTickTexts (loweredCase name)
@@ -885,7 +1017,10 @@ let chartLoweringTests =
 
                   // …and a THOUSANDS-range axis is left alone at the default
                   // gate: the operator's `unit > 3` rule, so `12,500` survives.
-                  Expect.equal (axisUnitLabelOf "bar-thousands") "Value" "no unit label below the gate"
+                  // Since Phase 878 the slot is then EMPTY rather than falling
+                  // back to the literal `"Value"` — the axis's name lives in
+                  // the rotated y title, and the slot carries units or nothing.
+                  Expect.equal (axisUnitLabelOf "bar-thousands") "" "no unit label below the gate"
               }
 
               test "a host can lower the display-unit gate to reach Thousands" {
@@ -954,7 +1089,7 @@ let chartLoweringTests =
                       [ "0K"; "2K"; "4K"; "6K"; "8K"; "10K" ]
                       "the suffix repeats — the deliberate opt-out from the doctrine"
 
-                  Expect.equal (axisUnitLabelOf "bar-compact") "Value" "no unit label in compact mode"
+                  Expect.equal (axisUnitLabelOf "bar-compact") "" "no unit label in compact mode"
               }
 
               test "AxisUnitMode.Off never scales, however large the axis" {
@@ -976,7 +1111,7 @@ let chartLoweringTests =
                       [ "0"; "5,000,000"; "10,000,000"; "15,000,000"; "20,000,000" ]
                       "full magnitudes, grouped"
 
-                  Expect.equal (axisUnitLabel ds) "Value" "no unit label when nothing was scaled"
+                  Expect.equal (axisUnitLabel ds) "" "no unit label when nothing was scaled"
               }
 
               test "the Scatter x axis takes the same canonical formatter" {
@@ -1077,7 +1212,9 @@ let chartLoweringTests =
               test "the left margin autosizes to the widest FORMATTED tick" {
                   // `Off` prints full magnitudes, so the widest tick is
                   // `1,000,000` = 4.41 em = 57.33 px; + the 12 px gap + 6 px
-                  // padding = 75.33, past the 64 px floor.
+                  // padding = 75.33 — and, since Phase 878, + the rotated
+                  // y-title's band (one 15.6 px line + 6 px padding = 21.6) =
+                  // 96.93, past the 64 px floor.
                   let leftmost (ds: DrawingSpec) : float =
                       ds.Shapes
                       |> List.choose (fun sh ->
@@ -1088,7 +1225,7 @@ let chartLoweringTests =
 
                   let wide = loweredCase "bar-wide-ticks"
                   // The y-tick marks start `TickMarkLength` left of the spine.
-                  Expect.equal (leftmost wide) (r2 (75.33 - 5.0)) "the spine moved right to clear the tick column"
+                  Expect.equal (leftmost wide) (r2 (96.93 - 5.0)) "the spine moved right to clear the tick column"
 
                   // …and a short tick column leaves the floor alone.
                   let narrow = loweredCase "bar-single"
@@ -1119,11 +1256,17 @@ let chartLoweringTests =
               }
 
               test "category labels tilt by default and escalate to vertical at the boundary" {
+                  // CHROME labels only. Since Phase 878 the y-axis TITLE is
+                  // rotated too, and it is full-strength ink where every chrome
+                  // label carries `LabelOpacity` — so the opacity is what
+                  // separates "a label the tilt rule decided" from "the axis's
+                  // name". Without this filter the scatter assertion below
+                  // would read the title's -90 and call the x ticks rotated.
                   let rotations (ds: DrawingSpec) : float list =
                       ds.Shapes
                       |> List.choose (fun sh ->
                           match sh with
-                          | Shape.Label(_, _, _, s) -> s.Rotation
+                          | Shape.Label(_, _, _, s) when Option.isSome s.Opacity -> s.Rotation
                           | _ -> None)
                       |> List.distinct
 
@@ -1157,13 +1300,168 @@ let chartLoweringTests =
                           (specOf case)
                           (Seq.ofList (buildRows case))
 
+                  // Chrome labels only — the Phase-878 y-axis title is rotated
+                  // by its own rule and is not what this opt-out governs.
                   let rotated =
                       ds.Shapes
                       |> List.filter (function
-                          | Shape.Label(_, _, _, s) -> Option.isSome s.Rotation
+                          | Shape.Label(_, _, _, s) -> Option.isSome s.Rotation && Option.isSome s.Opacity
                           | _ -> false)
 
                   Expect.isEmpty rotated "0° means horizontal, not 'escalate me'"
+              }
+
+              // ── Phase 878 — axis titles + subtitle ──
+              //
+              // The readers below key off the same discriminators the lowering
+              // uses to place these shapes, so a test cannot pass by finding
+              // the wrong label: the y title is the ONLY rotated full-strength
+              // label, the x title the only unrotated full-strength `Middle`
+              // one on a band arm, and the subtitle the only muted label that
+              // is neither End-anchored nor sitting in the legend row.
+
+              test "an absent axis title falls back to the capitalised field name" {
+                  let ds = loweredCase "bar-axis-titles-default"
+
+                  Expect.equal (xAxisTitleOf ds) "Quarter" "the x title capitalises XField, as it always has"
+
+                  Expect.equal
+                      (yAxisTitleOf ds)
+                      "Revenue"
+                      "the y title capitalises the FIRST y-field — never the retired \"Value\" literal"
+
+                  // The retired literal is gone from the whole drawing, not
+                  // merely from the slot the readers look at.
+                  Expect.isFalse
+                      (literalTexts ds |> List.contains "Value")
+                      "no shape anywhere still prints the hardcoded hint"
+              }
+
+              test "an explicit axis title overrides the fallback, and the y title is rotated bottom-up" {
+                  let ds = loweredCase "bar-axis-titles"
+
+                  Expect.equal (xAxisTitleOf ds) "Sales region" "the declared x title wins over \"Region\""
+                  Expect.equal (yAxisTitleOf ds) "Value (£)" "the declared y title wins over \"Sales\""
+
+                  Expect.equal
+                      (yAxisTitleRotation ds)
+                      (Some -90.0)
+                      "negative = counter-clockwise = reads bottom-up, the y-axis convention"
+              }
+
+              test "a multi-series chart takes its y-title fallback from the FIRST y-field" {
+                  // `bar-multi` plots sales + target and declares no titles.
+                  Expect.equal (yAxisTitleOf (loweredCase "bar-multi")) "Sales" "the first series names the axis"
+              }
+
+              test "the subtitle is muted, smaller than the title, and directly under it" {
+                  let ds = loweredCase "bar-axis-titles"
+
+                  let subtitle =
+                      ds.Shapes
+                      |> List.tryPick (fun sh ->
+                          match sh with
+                          | Shape.Label(x, y, TextSource.Literal "Rolling twelve months", s) -> Some(x, y, s)
+                          | _ -> None)
+
+                  match subtitle with
+                  | None -> failtest "the subtitle did not render"
+                  | Some(x, y, s) ->
+                      Expect.equal s.FontSize (Some 13.0) "smaller than the 18 px title"
+
+                      // `Binding<float>` carries no equality constraint, so the
+                      // opacity is read out rather than compared wholesale.
+                      match s.Opacity with
+                      | Some(Binding.Static(Some o)) ->
+                          Expect.equal
+                              o
+                              Charts.ChartStyle.defaults.LabelOpacity
+                              "muted — label-role ink, not the title's full strength"
+                      | _ -> failtest "the subtitle carries no static opacity, so it is not muted at all"
+
+                      Expect.equal s.Emphasis (Some Emphasis.Normal) "the title carries the Loud weight, not this"
+                      Expect.equal y 38.0 "one line under the 22 px title baseline"
+
+                      // Left-aligned WITH the title: same x, same anchor.
+                      let titleX =
+                          ds.Shapes
+                          |> List.pick (fun sh ->
+                              match sh with
+                              | Shape.Label(tx, _, _, ts) when ts.Emphasis = Some Emphasis.Loud -> Some tx
+                              | _ -> None)
+
+                      Expect.equal x titleX "shares the title's x, so the pair reads as one block"
+                      Expect.equal s.TextAnchor (Some TextAnchor.Start) "and its alignment"
+              }
+
+              test "the top margin reserves the subtitle's line ONLY when one is present" {
+                  // `bar-subtitle-units` and `bar-axis-titles-default` are the
+                  // same chart but for the subtitle, so the plot's top edge is
+                  // the one thing that moves — by exactly one subtitle line
+                  // (13 px × 1.2 = 15.6), taking the legend row with it.
+                  let topOf (ds: DrawingSpec) : float =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(_, y1, _, _, _) -> Some y1
+                          | _ -> None)
+                      |> List.min
+
+                  let without = topOf (loweredCase "bar-axis-titles-default")
+                  let bare = topOf (loweredCase "bar-single")
+
+                  Expect.equal bare 64.0 "a chart with no subtitle keeps the pre-878 top margin exactly"
+                  Expect.equal without 64.0 "…and so does one that declares the other two fields"
+                  Expect.equal (topOf (loweredCase "bar-subtitle-units")) (r2 (64.0 + 15.6)) "one subtitle line lower"
+              }
+
+              test "an explicit subtitle suppresses the display-unit slot (the dedupe rule)" {
+                  // Both cases scale to millions under WordsWithSymbol, so both
+                  // HAVE a unit to state; only the one without a subtitle states
+                  // it. The ticks are identical, which is the point — dedupe
+                  // removes the repetition, never the scaling.
+                  Expect.equal
+                      (axisUnitLabelOf "bar-axis-titles-default")
+                      "Millions of £"
+                      "no subtitle — the lowering states the unit itself"
+
+                  Expect.equal
+                      (axisUnitLabelOf "bar-subtitle-units")
+                      ""
+                      "the author's subtitle said it; the machine does not repeat it"
+
+                  Expect.equal
+                      (yTicksOf "bar-subtitle-units")
+                      (yTicksOf "bar-axis-titles-default")
+                      "suppressing the label does not un-scale the axis"
+              }
+
+              test "a long y title truncates to the PLOT HEIGHT, the extent it runs along" {
+                  let ds = loweredCase "bar-long-y-title"
+                  let title = yAxisTitleOf ds
+
+                  Expect.stringEnds title "…" "it did not fit and came back ellipsised"
+
+                  // The bound is the plot height (400 − 64 top − the autosized
+                  // bottom margin), NOT the left margin's width — a rotated
+                  // title's length runs vertically.
+                  let plotH =
+                      let ys =
+                          ds.Shapes
+                          |> List.choose (fun sh ->
+                              match sh with
+                              | Shape.Line(_, y1, _, y2, _) when y1 = y2 -> Some y1
+                              | _ -> None)
+
+                      List.max ys - List.min ys
+
+                  Expect.isTrue
+                      (Charts.TextMetrics.width 13.0 title <= plotH)
+                      "the truncated title fits the plot height"
+
+                  Expect.isTrue
+                      (Charts.TextMetrics.width 13.0 (title.Substring(0, title.Length - 1) + "x…") > plotH)
+                      "…and is the LONGEST prefix that does — one character more overruns"
               }
 
               test "a pathological label is truncated rather than allowed to eat the plot" {

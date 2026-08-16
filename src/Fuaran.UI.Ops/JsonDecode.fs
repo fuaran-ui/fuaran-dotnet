@@ -5461,6 +5461,27 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             | None -> Ok None
             | Some v -> decodeFormat (path + ".valueFormat") v |> Result.map Some
 
+        // `xTitle` / `yTitle` / `subtitle` (Phase 878): the two axis NAMES and
+        // the muted line under the visible title. Absent is the ordinary shape
+        // — the lowering falls back to the capitalised field name on each axis,
+        // so an axis is never nameless, and the subtitle simply does not draw.
+        //
+        // Decoded as ONE triple rather than three more arms on the tuple match
+        // below: nine arms already sit at the edge of readability and three
+        // more would buy no precision, since each field still reports its own
+        // `path` in the error it raises.
+        let optTextSourceR (name: string) : Result<TextSource option, DecodeError> =
+            match tryField fields name with
+            | None -> Ok None
+            | Some v -> decodeTextSource (path + "." + name) v |> Result.map Some
+
+        let titlesR: Result<TextSource option * TextSource option * TextSource option, DecodeError> =
+            match optTextSourceR "xTitle", optTextSourceR "yTitle", optTextSourceR "subtitle" with
+            | Ok xTitle, Ok yTitle, Ok subtitle -> Ok(xTitle, yTitle, subtitle)
+            | Error e, _, _
+            | _, Error e, _
+            | _, _, Error e -> Error e
+
         // `stacked` (Phase 126): now carried on the wire. Absent (legacy wire
         // predating the field) decodes to the default `false`.
         let stackedR: Result<bool, DecodeError> =
@@ -5468,8 +5489,16 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             | None -> Ok false
             | Some v -> requireBool (path + ".stacked") v
 
-        match kindR, sourceR, xFieldR, yFieldsR, titleR, onPointClickR, stackedR, valueFormatR with
-        | Ok kind, Ok source, Ok xField, Ok yFields, Ok title, Ok onPointClick, Ok stacked, Ok valueFormat ->
+        match kindR, sourceR, xFieldR, yFieldsR, titleR, onPointClickR, stackedR, valueFormatR, titlesR with
+        | Ok kind,
+          Ok source,
+          Ok xField,
+          Ok yFields,
+          Ok title,
+          Ok onPointClick,
+          Ok stacked,
+          Ok valueFormat,
+          Ok(xTitle, yTitle, subtitle) ->
             Ok
                 { Source = source
                   Kind = kind
@@ -5477,16 +5506,20 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
                   YFields = yFields
                   Title = title
                   ValueFormat = valueFormat
+                  XTitle = xTitle
+                  YTitle = yTitle
+                  Subtitle = subtitle
                   OnPointClick = onPointClick
                   Stacked = stacked }
-        | Error e, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _
-        | _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeMapSpec (path: string) (j: Json) : Result<MapSpec<obj>, DecodeError> =
     match requireObject path j with

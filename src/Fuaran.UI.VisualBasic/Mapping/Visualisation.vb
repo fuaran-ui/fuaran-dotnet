@@ -21,6 +21,9 @@ Friend Module VisualisationMapping
                 .YFields = PipeList(Attr(el, "y-fields")),
                 .Title = OptText(el, "title"),
                 .ValueFormat = ReadValueFormat(el),
+                .XTitle = OptText(el, "x-title"),
+                .YTitle = OptText(el, "y-title"),
+                .Subtitle = OptText(el, "subtitle"),
                 .Stacked = AttrBool(el, "stacked")})
 
         d("Table") = Function(el) Csharp.Fuaran.Table(

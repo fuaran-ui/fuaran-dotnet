@@ -342,6 +342,9 @@ and mapChartSpec (f: 'a -> 'b) (spec: ChartSpec<'a>) : ChartSpec<'b> =
       YFields = spec.YFields
       Title = spec.Title
       ValueFormat = spec.ValueFormat
+      XTitle = spec.XTitle
+      YTitle = spec.YTitle
+      Subtitle = spec.Subtitle
       OnPointClick = spec.OnPointClick |> Option.map (fun g -> g >> mapAction f)
       Stacked = spec.Stacked }
 

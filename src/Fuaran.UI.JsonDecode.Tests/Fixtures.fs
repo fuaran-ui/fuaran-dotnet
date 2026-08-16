@@ -1902,6 +1902,12 @@ let chart: Node<obj> =
               // Absent (Phase 876) — the ordinary shape: no declared value
               // meaning, so the lowering's canonical default rendering applies.
               ValueFormat = None
+              // Absent (Phase 878) — likewise the ordinary shape: both axis
+              // titles fall back to their capitalised field names and no
+              // subtitle draws. `chart-axis-titles` pins the present half.
+              XTitle = None
+              YTitle = None
+              Subtitle = None
               OnPointClick = None
               // Stacked = true (Phase 126) — exercises the now-carried
               // stacked-vs-grouped chart intent round-tripping.
@@ -1929,6 +1935,40 @@ let chartValueFormat: Node<obj> =
               YFields = [ "revenue" ]
               Title = Some(TextSource.Literal "Revenue")
               ValueFormat = Some(Format.Currency "GBP")
+              XTitle = None
+              YTitle = None
+              Subtitle = None
+              OnPointClick = None
+              Stacked = false }
+        ))
+        None
+
+/// Phase 878 — `xTitle` / `yTitle` / `subtitle`: the axis NAMES and the muted
+/// line under the title. The PRESENT half of the pair (`chart-1` pins the
+/// absent half, where both axes fall back to their capitalised field names).
+/// The subtitle states the unit, which is also the shape that exercises the
+/// dedupe rule: an explicit subtitle suppresses the lowering's own
+/// display-unit slot.
+let chartAxisTitles: Node<obj> =
+    node
+        "chart-axis-titles"
+        (NodeKind.Chart(
+            { Source =
+                Binding.Static(
+                    Some(
+                        Seq.ofList
+                            [ (Map.ofList [ "quarter", box "Q1"; "revenue", box 12500000 ]: Row)
+                              Map.ofList [ "quarter", box "Q2"; "revenue", box 15200000 ] ]
+                    )
+                )
+              Kind = ChartKind.Bar
+              XField = "quarter"
+              YFields = [ "revenue" ]
+              Title = Some(TextSource.Literal "Revenue by quarter")
+              ValueFormat = Some(Format.Currency "GBP")
+              XTitle = Some(TextSource.Literal "Quarter")
+              YTitle = Some(TextSource.Literal "Revenue")
+              Subtitle = Some(TextSource.Literal "Millions of £")
               OnPointClick = None
               Stacked = false }
         ))
@@ -1989,6 +2029,9 @@ let chartStateRows: Node<obj> =
               YFields = [ "revenue" ]
               Title = None
               ValueFormat = None
+              XTitle = None
+              YTitle = None
+              Subtitle = None
               OnPointClick = None
               Stacked = false }
         ))
@@ -2901,6 +2944,9 @@ let filterableStaticDashboard: Node<obj> =
                             YFields = [ "retention" ]
                             Title = Some(TextSource.Literal "Retention")
                             ValueFormat = None
+                            XTitle = None
+                            YTitle = None
+                            Subtitle = None
                             OnPointClick = None
                             Stacked = false }
                       ))
@@ -3920,6 +3966,7 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Grid (Phase 663/665 — editable State-sourced grid, typed rows on the wire)", gridEditableState
       "Visualisation/Chart (Phase 663/665 — chart on the editable grid's state key)", chartStateRows
       "Visualisation/Chart (Phase 876 — valueFormat: the value axis's declared number format)", chartValueFormat
+      "Visualisation/Chart (Phase 878 — xTitle/yTitle/subtitle: the axis names + the muted subtitle)", chartAxisTitles
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
       "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey

@@ -443,7 +443,8 @@ internal sealed class ChartBuilder : NodeBuilder
         // no longer the `"<opaque>"` sentinel.
         var source = Bind.Static(_rows);
         // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
-        // Source, Stacked, XField, YFields, Title, ValueFormat, OnPointClick).
+        // Source, Stacked, XField, YFields, Title, ValueFormat, XTitle, YTitle,
+        // Subtitle, OnPointClick).
         return NodeKind<object>.NewChart(
             new ChartSpec<object>(
                 _kind,
@@ -453,6 +454,9 @@ internal sealed class ChartBuilder : NodeBuilder
                 _yFields,
                 _title,
                 Fs.None<Generated.Format>(),
+                Fs.None<Generated.TextSource>(),
+                Fs.None<Generated.TextSource>(),
+                Fs.None<Generated.TextSource>(),
                 Fs.None<FSharpFunc<FSharpMap<string, object>, FsAction>>()));
     }
 }
