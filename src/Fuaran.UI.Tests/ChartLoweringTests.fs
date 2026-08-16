@@ -466,4 +466,100 @@ let chartLoweringTests =
                   let grouped = Charts.lower { specOf case with Stacked = false } (rows ())
 
                   Expect.notEqual (enc stacked) (enc grouped) "Stacked must change Bar geometry"
+              }
+
+              // ── Phase 885 — ChartStyle as a lowering parameter ──
+              test "ChartStyle.defaults IS the corpus-pinned form — lowerWithStyle defaults ≡ lower" {
+                  let enc (ds: DrawingSpec) : string =
+                      CanonicalJson.encodeNode (Fuaran.drawingSpec "c" ds: Node<obj>)
+
+                  for case in cases do
+                      let viaLower = Charts.lower (specOf case) (Seq.ofList (buildRows case))
+
+                      let viaStyle =
+                          Charts.lowerWithStyle
+                              Charts.ChartLimits.defaults
+                              Charts.ChartStyle.defaults
+                              (specOf case)
+                              (Seq.ofList (buildRows case))
+
+                      Expect.equal
+                          (enc viaStyle)
+                          (enc viaLower)
+                          (sprintf "%s: the default style must reproduce the pinned lowering" case.Name)
+              }
+
+              test "a custom ChartStyle restyles the lowering — palette + title size flow through" {
+                  let case = cases |> List.find (fun c -> c.Name = "bar-multi")
+
+                  let custom =
+                      { Charts.ChartStyle.defaults with
+                          Palette = [| "#112233"; "#445566" |]
+                          TitleFontSize = 42.0
+                          Width = 800.0 }
+
+                  let styled =
+                      Charts.lowerWithStyle
+                          Charts.ChartLimits.defaults
+                          custom
+                          (specOf case)
+                          (Seq.ofList (buildRows case))
+
+                  let fills =
+                      styled.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Rectangle(_, _, _, _, _, s) ->
+                              match s.Fill with
+                              | Some(Binding.Static(Some c)) -> Some c
+                              | _ -> None
+                          | _ -> None)
+                      |> Set.ofList
+
+                  Expect.equal fills (Set.ofList [ "#112233"; "#445566" ]) "bars + swatches take the custom palette"
+
+                  let titleSizes =
+                      styled.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Label(_, _, _, s) when s.Emphasis = Some Emphasis.Loud -> s.FontSize
+                          | _ -> None)
+
+                  Expect.equal titleSizes [ 42.0 ] "the title carries the custom size"
+                  Expect.equal styled.ViewBox.Width 800.0 "the canvas takes the custom width"
+
+                  // …and the default style is untouched by the custom one.
+                  let byDefault = Charts.lower (specOf case) (Seq.ofList (buildRows case))
+                  Expect.equal byDefault.ViewBox.Width 640.0 "defaults unaffected by a host's style"
+              }
+
+              test "the reserved ChartStyle fields are genuinely not consumed" {
+                  // LegendPosition / LabelTiltDegrees / the status triple are
+                  // declared (Phase 885) but read by no shipped lowering path —
+                  // setting them must change nothing until their phases land.
+                  let enc (ds: DrawingSpec) : string =
+                      CanonicalJson.encodeNode (Fuaran.drawingSpec "c" ds: Node<obj>)
+
+                  let reserved =
+                      { Charts.ChartStyle.defaults with
+                          LegendPosition = Charts.ChartLegendPosition.Bottom
+                          LabelTiltDegrees = 90.0
+                          PositiveColour = "#000001"
+                          NegativeColour = "#000002"
+                          NeutralColour = "#000003" }
+
+                  for case in cases do
+                      let plain = Charts.lower (specOf case) (Seq.ofList (buildRows case))
+
+                      let withReserved =
+                          Charts.lowerWithStyle
+                              Charts.ChartLimits.defaults
+                              reserved
+                              (specOf case)
+                              (Seq.ofList (buildRows case))
+
+                      Expect.equal
+                          (enc withReserved)
+                          (enc plain)
+                          (sprintf "%s: a reserved field must not affect the lowering" case.Name)
               } ]

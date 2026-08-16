@@ -6,6 +6,13 @@ module Fuaran.UI.Charts
 //  Phase 636 — the Scatter arm (linear numeric x-scale, point marks).
 //  Phase 638 — the Pie arm (polar, cubic-approximated wedges; donut variant
 //              deferred to the next wire event — see the phase file).
+//  Phase 885 — `ChartStyle`: the styling surface as a LOWERING PARAMETER.
+//              Every styling constant this module used to bake inline now reads
+//              from a `ChartStyle` record threaded through the lowering.
+//              `ChartStyle.defaults` reproduces the pre-phase output
+//              byte-identically, so it stays the corpus-pinned form; a host
+//              passing its own style is a deliberate act off the conformance
+//              path. Style is NEVER a `ChartSpec` wire field (D8).
 //
 //  `Chart` stays a SEMANTIC wire kind (D2). This module is the bounded layout
 //  engine that turns a resolved `ChartSpec` + data rows into a canonical
@@ -30,55 +37,252 @@ open Fuaran.UI.Renderer
 // 692-694 swap), so DrawPoint literals build through this annotated helper.
 let inline private dp (x: float) (y: float) : DrawPoint = { X = x; Y = y }
 
-// ─── Layout constants (the fixed canonical drawing space) ────────────────────
-
-[<Literal>]
-let private W = 640.0
-
-[<Literal>]
-let private H = 400.0
-
-[<Literal>]
-let private marginTop = 64.0 // title + legend band
-
-[<Literal>]
-let private marginRight = 28.0
-
-[<Literal>]
-let private marginBottom = 56.0 // x-axis category labels + x-axis title
-
-[<Literal>]
-let private marginLeft = 64.0 // right-aligned y-axis tick labels
-
-let private plotX0 = marginLeft
-let private plotX1 = W - marginRight
-let private plotY0 = marginTop
-let private plotY1 = H - marginBottom
-let private plotW = plotX1 - plotX0
-let private plotH = plotY1 - plotY0
-
-/// A fixed, deterministic categorical palette (series index → colour).
-let private palette =
-    [| "#3366cc"; "#dc3912"; "#ff9900"; "#109618"; "#990099"; "#0099c6" |]
-
-let private colourFor (i: int) : string = palette.[i % palette.Length]
-
-// ─── Surface-relative ink (Phase 536 — theme-aware chart lowering, S4) ───────
+// ─── The styling surface (Phase 885) ─────────────────────────────────────────
 //
-// Structural + text ink is `currentColor` at a per-role opacity, so a lowered
-// chart inks from the surface's own text colour and is legible on a light OR a
-// dark surface without a CSS override (the rest of the renderer already themes
-// colour via inherited CSS — this lowering was the lone place that baked literal
-// hex). On a white surface with near-black text the chosen opacities reproduce
-// the prior palette within rounding: 0.12 ≈ `#e0e0e0` (grid), 0.66 ≈ `#555`
-// (labels), 0.8 ≈ `#333` (axis); titles ink full-strength (no opacity). Series
-// (categorical data) colours stay hex — they must stay distinct + read on both
-// surfaces. Theme is a lowering / render-time concern, never a `ChartSpec` wire
-// field. See `docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md` (S4).
-let private ink = "currentColor"
-let private axisOpacity = 0.8
-let private gridOpacity = 0.12
-let private labelOpacity = 0.66
+// Every styling constant the lowering used to bake inline lives here, in ONE
+// typed record threaded through the lowering — the `ChartLimits` precedent
+// (Phase 790) applied to appearance rather than cost. Two postures follow from
+// D8 and are load-bearing:
+//
+//   * Style is a LOWERING PARAMETER, never a `ChartSpec` wire field. A theme
+//     flip, a brand palette, or a house typography choice is the host's, made
+//     at render time; it must not rewrite a semantic node (D2/D6).
+//   * `ChartStyle.defaults` is CORPUS-PINNED. It reproduces the pre-885 output
+//     byte-identically, so the `chart-lowering/*` goldens — and the cross-host
+//     parity they certify (R2) — are untouched. A host passing its own style is
+//     a deliberate act off the conformance path, and its output is its own.
+
+/// Where the chart title sits along the plot's top edge.
+[<RequireQualifiedAccess>]
+type ChartTitleAlignment =
+    /// Flush with the plot's left edge (the shipped default).
+    | Left
+    /// Centred over the plot area.
+    | Centre
+    /// Flush with the plot's right edge.
+    | Right
+
+/// Which edge the series legend occupies.
+///
+/// **Reserved — not yet consumed.** The shipped lowering draws the legend as a
+/// horizontal row in the top margin regardless of this field; the positioning
+/// mechanics land with the default-style restyle (Phase 875). The default
+/// records the 2026-08-16 operator decision so the field is already right when
+/// that phase wires it.
+[<RequireQualifiedAccess>]
+type ChartLegendPosition =
+    | Top
+    | Right
+    | Bottom
+    | Left
+
+/// The complete styling surface of a lowering: canvas, palette, ink, typography,
+/// tick + axis-label geometry, series geometry, legend geometry, and the pie
+/// arm's polar geometry — plus the reserved slots named in their doc comments.
+type ChartStyle =
+    {
+        // ── Canvas (the fixed canonical drawing space) ──
+        /// Drawing-space width (the viewBox width).
+        Width: float
+        /// Drawing-space height (the viewBox height).
+        Height: float
+        /// Top margin — the title + legend band.
+        MarginTop: float
+        /// Right margin.
+        MarginRight: float
+        /// Bottom margin — x-axis category labels + the x-axis title.
+        MarginBottom: float
+        /// Left margin — right-aligned y-axis tick labels.
+        MarginLeft: float
+
+        // ── Series palette ──
+        /// The categorical palette, indexed by series (or, on the Pie arm, by
+        /// category) modulo its length. Series colours stay literal hex: they
+        /// must stay distinct AND read on a light or a dark surface, so they
+        /// cannot ink from `currentColor` the way the chrome does (D8).
+        Palette: string[]
+
+        // ── Surface-relative ink (Phase 536 — theme-aware chart lowering, S4) ──
+        //
+        // Structural + text ink is `currentColor` at a per-role opacity, so a
+        // lowered chart inks from the surface's own text colour and is legible
+        // on a light OR a dark surface without a CSS override (the rest of the
+        // renderer already themes colour via inherited CSS — this lowering was
+        // the lone place that baked literal hex). On a white surface with
+        // near-black text the default opacities reproduce the pre-536 palette
+        // within rounding: 0.12 ≈ `#e0e0e0` (grid), 0.66 ≈ `#555` (labels),
+        // 0.8 ≈ `#333` (axis); titles ink full-strength (no opacity).
+        /// The chrome's ink source — `currentColor` by default, so axes,
+        /// gridlines and labels inherit the surface's own text colour.
+        Ink: string
+        /// Per-role opacity for the axis spines.
+        AxisOpacity: float
+        /// Per-role opacity for the gridlines.
+        GridOpacity: float
+        /// Per-role opacity for tick / category / legend text.
+        LabelOpacity: float
+        /// Stroke width of the axis spines.
+        AxisStrokeWidth: float
+        /// Stroke width of the gridlines.
+        GridStrokeWidth: float
+        /// Stroke width of a series line (Line, and an Area band's edge).
+        SeriesStrokeWidth: float
+
+        // ── Typography ──
+        /// The chart's own font stack — carried in the wire (Phase 528.1), so a
+        /// lowered chart is self-contained + legible on every host without
+        /// host CSS.
+        FontFamily: string
+        /// Font size of tick labels, category labels, axis titles and legend text.
+        TickFontSize: float
+        /// Font size of the visible chart title.
+        TitleFontSize: float
+        /// Where the chart title sits along the plot's top edge.
+        TitleAlignment: ChartTitleAlignment
+        /// Baseline y of the visible chart title.
+        TitleBaselineY: float
+
+        // ── Ticks + axis labels ──
+        /// Target number of y-axis ticks the `{1,2,5}·10ⁿ` nice-tick rule aims
+        /// for (the gridline count follows).
+        TargetTickCount: float
+        /// Gap between the y-axis spine and the right edge of a tick label.
+        TickLabelGap: float
+        /// Baseline nudge that optically centres a tick label on its gridline.
+        TickLabelBaselineDy: float
+        /// Drop from the x-axis spine to the category / x-tick label baseline.
+        CategoryLabelOffsetY: float
+        /// Rotation applied to crowded category labels.
+        ///
+        /// **Reserved — not yet consumed.** The shipped lowering draws category
+        /// labels horizontally; the tilt mechanics land with a later phase. The
+        /// default records the 2026-08-16 operator decision (30°).
+        LabelTiltDegrees: float
+        /// Distance from the canvas bottom to the x-axis title's baseline.
+        AxisTitleBottomOffset: float
+        /// x of the y-axis title (left-anchored, above the plot).
+        AxisTitleLeftX: float
+        /// Rise from the plot's top edge to the y-axis title's baseline.
+        AxisTitleTopOffset: float
+
+        // ── Series geometry ──
+        /// Share of a category band the bar group occupies (the rest is air).
+        BarGroupWidthFraction: float
+        /// Share of its own slot a single bar occupies (the rest separates
+        /// neighbouring bars).
+        BarWidthFraction: float
+        /// Opacity of an area band's translucent fill. The gridlines stay
+        /// legible through the band; the full-strength Polyline edge on top
+        /// carries the categorical colour at full contrast.
+        AreaFillOpacity: float
+        /// Radius of a Scatter point mark.
+        ScatterPointRadius: float
+
+        // ── Legend geometry (the cartesian arms' horizontal top-margin row) ──
+        /// Which edge the legend occupies. **Reserved — not yet consumed** (see
+        /// `ChartLegendPosition`).
+        LegendPosition: ChartLegendPosition
+        /// Horizontal pitch between consecutive legend entries.
+        LegendPitchX: float
+        /// Top y of a legend swatch.
+        LegendSwatchY: float
+        /// Side length of a (square) legend swatch.
+        LegendSwatchSize: float
+        /// Corner radius of a legend swatch.
+        LegendSwatchCornerRadius: float
+        /// Gap from a swatch's left edge to its label's left edge.
+        LegendLabelOffsetX: float
+        /// Baseline y of a legend label.
+        LegendLabelBaselineY: float
+
+        // ── Pie geometry (the polar arm) ──
+        /// Wedge radius.
+        PieRadius: float
+        /// Inset from the canvas right edge to the pie legend's swatch column.
+        PieLegendOffsetX: float
+        /// Top y of the pie legend's first row.
+        PieLegendTopY: float
+        /// Vertical pitch between pie legend rows.
+        PieLegendPitchY: float
+        /// Baseline nudge from a pie legend row's top to its label baseline.
+        PieLegendLabelBaselineDy: float
+
+        // ── Status triple (reserved) ──
+        //
+        // A semantic triple DISTINCT from the categorical series palette: it
+        // encodes meaning (good / bad / neutral), not identity, so it must not
+        // be drawn from the palette's rotation. Reserved here for the variance
+        // and waterfall arms; **no shipped lowering path reads these three
+        // fields**, and a host setting them changes nothing today.
+        /// Reserved — favourable variance / gain.
+        PositiveColour: string
+        /// Reserved — adverse variance / loss.
+        NegativeColour: string
+        /// Reserved — no-change / baseline.
+        NeutralColour: string
+    }
+
+module ChartStyle =
+    /// The shipped default style — **corpus-pinned**. These values reproduce the
+    /// pre-885 lowering byte-identically, so the `chart-lowering/*` goldens and
+    /// the cross-host parity they certify are unaffected by this phase. Change
+    /// them only in a phase that regenerates the corpus (Phase 875).
+    let defaults: ChartStyle =
+        { Width = 640.0
+          Height = 400.0
+          MarginTop = 64.0
+          MarginRight = 28.0
+          MarginBottom = 56.0
+          MarginLeft = 64.0
+          Palette = [| "#3366cc"; "#dc3912"; "#ff9900"; "#109618"; "#990099"; "#0099c6" |]
+          Ink = "currentColor"
+          AxisOpacity = 0.8
+          GridOpacity = 0.12
+          LabelOpacity = 0.66
+          AxisStrokeWidth = 1.0
+          GridStrokeWidth = 1.0
+          SeriesStrokeWidth = 2.0
+          FontFamily = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+          TickFontSize = 13.0
+          TitleFontSize = 16.0
+          TitleAlignment = ChartTitleAlignment.Left
+          TitleBaselineY = 22.0
+          TargetTickCount = 5.0
+          TickLabelGap = 8.0
+          TickLabelBaselineDy = 4.0
+          CategoryLabelOffsetY = 20.0
+          LabelTiltDegrees = 30.0
+          AxisTitleBottomOffset = 12.0
+          AxisTitleLeftX = 8.0
+          AxisTitleTopOffset = 12.0
+          BarGroupWidthFraction = 0.7
+          BarWidthFraction = 0.9
+          AreaFillOpacity = 0.35
+          ScatterPointRadius = 4.0
+          LegendPosition = ChartLegendPosition.Right
+          LegendPitchX = 100.0
+          LegendSwatchY = 34.0
+          LegendSwatchSize = 10.0
+          LegendSwatchCornerRadius = 2.0
+          LegendLabelOffsetX = 15.0
+          LegendLabelBaselineY = 43.0
+          PieRadius = 130.0
+          PieLegendOffsetX = 168.0
+          PieLegendTopY = 70.0
+          PieLegendPitchY = 20.0
+          PieLegendLabelBaselineDy = 9.0
+          PositiveColour = "#109618"
+          NegativeColour = "#dc3912"
+          NeutralColour = "#999999" }
+
+/// Series index (or, on the Pie arm, category index) → colour. An empty palette
+/// inks series from the surface colour rather than failing — a style is host
+/// input, and a degenerate one must still lower.
+let private colourFor (style: ChartStyle) (i: int) : string =
+    if style.Palette.Length = 0 then
+        style.Ink
+    else
+        style.Palette.[i % style.Palette.Length]
 
 // ─── Deterministic numeric helpers ───────────────────────────────────────────
 
@@ -112,10 +316,10 @@ let private niceNum (x: float) (roundIt: bool) : float =
 
         nf * (10.0 ** exp)
 
-/// A nice value domain + its tick values for `[lo, hi]`, targeting ~5 ticks.
-let private niceDomain (lo: float) (hi: float) : float * float * float list =
+/// A nice value domain + its tick values for `[lo, hi]`, targeting
+/// `targetTicks` ticks (`ChartStyle.TargetTickCount`).
+let private niceDomain (targetTicks: float) (lo: float) (hi: float) : float * float * float list =
     let hi = if hi = lo then lo + 1.0 else hi
-    let targetTicks = 5.0
     let range = niceNum (hi - lo) false
     let step = niceNum (range / (targetTicks - 1.0)) true
     let niceLo = floor (lo / step) * step
@@ -132,10 +336,9 @@ let private niceDomain (lo: float) (hi: float) : float * float * float list =
 let private tickLabel (v: float) : string = DrawingSvg.formatNum (r2 v)
 
 // ─── DrawStyle builders ──────────────────────────────────────────────────────
-
-/// The chart's own font stack — carried in the wire (Phase 528.1), so a lowered
-/// chart is self-contained + legible on every host without host CSS.
-let private chartFont = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+//
+// Every builder that emits a colour, an opacity, a width or a font takes the
+// `ChartStyle` — there is no ambient styling constant left in this module.
 
 let private baseStyle: DrawStyle =
     { Fill = None
@@ -170,39 +373,41 @@ let private styleStroke (stroke: string) (width: float) : DrawStyle =
         Stroke = Some(Binding.Static(Some stroke))
         StrokeWidth = Some(Binding.Static(Some width)) }
 
-/// A translucent categorical fill (Phase 637 — area bands). The gridlines stay
-/// legible through the band; the series' full-strength Polyline edge on top
-/// carries the categorical colour at full contrast.
-[<Literal>]
-let private areaFillOpacity = 0.35
-
+/// A translucent categorical fill (Phase 637 — area bands); the opacity comes
+/// from `ChartStyle.AreaFillOpacity`.
 let private styleFillOpacity (fill: string) (opacity: float) : DrawStyle =
     { baseStyle with
         Fill = Some(Binding.Static(Some fill))
         Opacity = Some(Binding.Static(Some opacity)) }
 
-/// A surface-relative structural stroke (Phase 536): `currentColor` at a per-role
-/// opacity, so axis + gridlines ink from the surface's own text colour. Used for
-/// the chrome (axes, gridlines) — series lines keep their categorical hex.
-let private styleStrokeInk (opacity: float) (width: float) : DrawStyle =
+/// A surface-relative structural stroke (Phase 536): `ChartStyle.Ink` at a
+/// per-role opacity, so axis + gridlines ink from the surface's own text colour.
+/// Used for the chrome (axes, gridlines) — series lines keep their categorical hex.
+let private styleStrokeInk (style: ChartStyle) (opacity: float) (width: float) : DrawStyle =
     { baseStyle with
-        Stroke = Some(Binding.Static(Some ink))
+        Stroke = Some(Binding.Static(Some style.Ink))
         StrokeWidth = Some(Binding.Static(Some width))
         Opacity = Some(Binding.Static(Some opacity)) }
 
 let private emptyStyle: DrawStyle = baseStyle
 
-/// A text-label style (Phase 536): surface-relative ink (`currentColor`) + an
+/// A text-label style (Phase 536): surface-relative ink (`ChartStyle.Ink`) + an
 /// optional per-role opacity (`None` = full-strength, e.g. titles) + alignment +
-/// size + weight + the chart font.
-let private textStyle (opacity: float option) (anchor: TextAnchor) (size: float) (emphasis: Emphasis) : DrawStyle =
+/// size + weight + the style's font stack.
+let private textStyle
+    (style: ChartStyle)
+    (opacity: float option)
+    (anchor: TextAnchor)
+    (size: float)
+    (emphasis: Emphasis)
+    : DrawStyle =
     { baseStyle with
-        Fill = Some(Binding.Static(Some ink))
+        Fill = Some(Binding.Static(Some style.Ink))
         Opacity = opacity |> Option.map (Some >> Binding.Static)
         TextAnchor = Some anchor
         FontSize = Some size
         Emphasis = Some emphasis
-        FontFamily = Some chartFont }
+        FontFamily = Some style.FontFamily }
 
 // ─── Data extraction (over the resolved rows) ────────────────────────────────
 
@@ -251,7 +456,7 @@ type ChartRefusal =
 
 module ChartLimits =
     /// The shipped defaults. 32 series exceeds any legible categorical palette
-    /// (the palette itself has 6 colours) and 10 000 points is well past the
+    /// (the default palette has 6 colours) and 10 000 points is well past the
     /// 640×400 canvas's ability to distinguish marks — so a chart at these caps
     /// is already unreadable, and anything beyond them is cost, not information.
     let defaults: ChartLimits =
@@ -285,16 +490,26 @@ let private numericOf (row: Row) (field: string) : float =
 
 // ─── The lowering ─────────────────────────────────────────────────────────────
 
-/// The core lowering: an ALREADY-CAPPED row list to a canonical `DrawingSpec`.
-/// The public entry points (`lower` / `lowerWith` / `tryLower*`) apply the
-/// Phase-790 cost caps before this runs, so it never sees an over-budget input.
+/// The core lowering: an ALREADY-CAPPED row list to a canonical `DrawingSpec`,
+/// under an explicit `ChartStyle` (Phase 885 — every colour, size, weight and
+/// offset below reads from it). The public entry points (`lower` / `lowerWith` /
+/// `lowerWithStyle` / `tryLower*`) apply the Phase-790 cost caps before this
+/// runs, so it never sees an over-budget input.
 /// Lowered arms: `Bar` (grouped + stacked), `Line`, `Area` (overlaid +
 /// stacked), `Scatter` (linear numeric x), `Pie` (polar, single-series) —
 /// Phases 533 + 637 + 636 + 638. `Heatmap` produces an empty drawing (its
 /// lowering rule lands with its own phase). `Stacked = true` on a kind where
 /// stacking is meaningless (`Line`, `Scatter`, `Pie`) is ignored — the flag
 /// only changes `Bar` / `Area` geometry.
-let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSpec =
+let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSpec =
+    // The plot rectangle, derived from the style's canvas + margins.
+    let plotX0 = style.MarginLeft
+    let plotX1 = style.Width - style.MarginRight
+    let plotY0 = style.MarginTop
+    let plotY1 = style.Height - style.MarginBottom
+    let plotW = plotX1 - plotX0
+    let plotH = plotY1 - plotY0
+
     // ARRAYS, not lists, for everything the nested series-by-point loops index
     // (Phase 790). F# list indexing is O(index), so `series.[j].[i]` inside a
     // per-category × per-series loop made Pie roughly O(n²) and stacked bar
@@ -350,7 +565,8 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
     // Bars + lines share a zero-anchored domain — deterministic + honest for
     // bars. Stacked domains come from the cumulative partial sums, so the axis
     // covers the stack totals, never a single series' range.
-    let niceLo, niceHi, ticks = niceDomain (min 0.0 dataMin) (max 0.0 dataMax)
+    let niceLo, niceHi, ticks =
+        niceDomain style.TargetTickCount (min 0.0 dataMin) (max 0.0 dataMax)
 
     let yScale (v: float) : float =
         r2 (plotY1 - (v - niceLo) / (niceHi - niceLo) * plotH)
@@ -377,9 +593,9 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
     let xNiceLo, xNiceHi, xTicks =
         if isScatter then
             if Array.isEmpty xValues then
-                niceDomain 0.0 1.0
+                niceDomain style.TargetTickCount 0.0 1.0
             else
-                niceDomain (Array.min xValues) (Array.max xValues)
+                niceDomain style.TargetTickCount (Array.min xValues) (Array.max xValues)
         else
             0.0, 1.0, []
 
@@ -387,18 +603,20 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
         r2 (plotX0 + (v - xNiceLo) / (xNiceHi - xNiceLo) * plotW)
 
     // ── Axes + gridlines ──
+    let axisStyle = styleStrokeInk style style.AxisOpacity style.AxisStrokeWidth
+
     let axes =
-        [ Shape.Line(r2 plotX0, r2 plotY0, r2 plotX0, r2 plotY1, styleStrokeInk axisOpacity 1.0)
-          Shape.Line(r2 plotX0, r2 plotY1, r2 plotX1, r2 plotY1, styleStrokeInk axisOpacity 1.0) ]
+        [ Shape.Line(r2 plotX0, r2 plotY0, r2 plotX0, r2 plotY1, axisStyle)
+          Shape.Line(r2 plotX0, r2 plotY1, r2 plotX1, r2 plotY1, axisStyle) ]
 
     let gridlines =
         ticks
         |> List.map (fun t ->
             let y = yScale t
-            Shape.Line(r2 plotX0, y, r2 plotX1, y, styleStrokeInk gridOpacity 1.0))
+            Shape.Line(r2 plotX0, y, r2 plotX1, y, styleStrokeInk style style.GridOpacity style.GridStrokeWidth))
 
-    let tickSize = 13.0
-    let titleSize = 16.0
+    let tickSize = style.TickFontSize
+    let titleSize = style.TitleFontSize
 
     // y-axis tick labels — right-anchored (End) so the number column sits cleanly
     // in the left margin, ending just before the axis.
@@ -406,10 +624,10 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
         ticks
         |> List.map (fun t ->
             Shape.Label(
-                r2 (plotX0 - 8.0),
-                r2 (yScale t + 4.0),
+                r2 (plotX0 - style.TickLabelGap),
+                r2 (yScale t + style.TickLabelBaselineDy),
                 TextSource.Literal(tickLabel t),
-                textStyle (Some labelOpacity) TextAnchor.End tickSize Emphasis.Normal
+                textStyle style (Some style.LabelOpacity) TextAnchor.End tickSize Emphasis.Normal
             ))
 
     // x-axis labels — band arms label each category under its band centre;
@@ -420,18 +638,18 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
             |> List.map (fun t ->
                 Shape.Label(
                     xScale t,
-                    r2 (plotY1 + 20.0),
+                    r2 (plotY1 + style.CategoryLabelOffsetY),
                     TextSource.Literal(tickLabel t),
-                    textStyle (Some labelOpacity) TextAnchor.Middle tickSize Emphasis.Normal
+                    textStyle style (Some style.LabelOpacity) TextAnchor.Middle tickSize Emphasis.Normal
                 ))
         else
             categories
             |> Array.mapi (fun i c ->
                 Shape.Label(
                     centreX i,
-                    r2 (plotY1 + 20.0),
+                    r2 (plotY1 + style.CategoryLabelOffsetY),
                     TextSource.Literal c,
-                    textStyle (Some labelOpacity) TextAnchor.Middle tickSize Emphasis.Normal
+                    textStyle style (Some style.LabelOpacity) TextAnchor.Middle tickSize Emphasis.Normal
                 ))
             |> Array.toList
 
@@ -445,15 +663,15 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
     let axisTitles =
         [ Shape.Label(
               r2 ((plotX0 + plotX1) / 2.0),
-              r2 (H - 12.0),
+              r2 (style.Height - style.AxisTitleBottomOffset),
               TextSource.Literal(capitalise spec.XField),
-              textStyle None TextAnchor.Middle tickSize Emphasis.Normal
+              textStyle style None TextAnchor.Middle tickSize Emphasis.Normal
           )
           Shape.Label(
-              r2 8.0,
-              r2 (plotY0 - 12.0),
+              r2 style.AxisTitleLeftX,
+              r2 (plotY0 - style.AxisTitleTopOffset),
               TextSource.Literal "Value",
-              textStyle None TextAnchor.Start tickSize Emphasis.Normal
+              textStyle style None TextAnchor.Start tickSize Emphasis.Normal
           ) ]
 
     // ── Series geometry ──
@@ -462,11 +680,11 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
         | ChartKind.Bar when stacked ->
             // One full group-width bar per category; series stack as segments
             // between consecutive cumulative sums (Phase 637).
-            let groupW = bandW * 0.7
+            let groupW = bandW * style.BarGroupWidthFraction
 
             [ for i in 0 .. n - 1 do
                   let bx = r2 (plotX0 + bandW * float i + (bandW - groupW) / 2.0)
-                  let bw = r2 (groupW * 0.9)
+                  let bw = r2 (groupW * style.BarWidthFraction)
                   let cums = cumsFor i
 
                   for j in 0 .. m - 1 do
@@ -481,21 +699,21 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
                           bw,
                           hgt,
                           None,
-                          styleFill (colourFor j) |> withMark yFields.[j] categories.[i]
+                          styleFill (colourFor style j) |> withMark yFields.[j] categories.[i]
                       ) ]
         | ChartKind.Bar ->
-            let groupW = bandW * 0.7
+            let groupW = bandW * style.BarGroupWidthFraction
             let subW = if m > 0 then groupW / float m else groupW
             let baseY = yScale 0.0
 
             [ for j in 0 .. m - 1 do
-                  let colour = colourFor j
+                  let colour = colourFor style j
                   let values = series.[j]
 
                   for i in 0 .. n - 1 do
                       let v = values.[i]
                       let bx = r2 (plotX0 + bandW * float i + (bandW - groupW) / 2.0 + float j * subW)
-                      let bw = r2 (subW * 0.9)
+                      let bw = r2 (subW * style.BarWidthFraction)
                       let vy = yScale v
                       let top = min vy baseY
                       let hgt = r2 (abs (vy - baseY))
@@ -511,15 +729,20 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
                 let cums = Array.init n cumsFor
 
                 [ for j in 0 .. m - 1 do
-                      let colour = colourFor j
+                      let colour = colourFor style j
                       let yf = yFields.[j]
 
                       let upper = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale cums.[i].[j + 1]) ]
 
                       let lower = [ for i in n - 1 .. -1 .. 0 -> dp (centreX i) (yScale cums.[i].[j]) ]
 
-                      yield Shape.Polygon(upper @ lower, styleFillOpacity colour areaFillOpacity |> withSeriesMark yf)
-                      yield Shape.Polyline(upper, styleStroke colour 2.0 |> withSeriesMark yf) ]
+                      yield
+                          Shape.Polygon(
+                              upper @ lower,
+                              styleFillOpacity colour style.AreaFillOpacity |> withSeriesMark yf
+                          )
+
+                      yield Shape.Polyline(upper, styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf) ]
         | ChartKind.Area ->
             // Overlaid baseline-closed bands in palette order (painter's order:
             // later series draw over earlier); the translucent fill keeps the
@@ -530,7 +753,7 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
                 let baseY = yScale 0.0
 
                 [ for j in 0 .. m - 1 do
-                      let colour = colourFor j
+                      let colour = colourFor style j
                       let values = series.[j]
                       let yf = yFields.[j]
 
@@ -538,22 +761,22 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
 
                       let band = (dp (centreX 0) baseY :: points) @ [ dp (centreX (n - 1)) baseY ]
 
-                      yield Shape.Polygon(band, styleFillOpacity colour areaFillOpacity |> withSeriesMark yf)
-                      yield Shape.Polyline(points, styleStroke colour 2.0 |> withSeriesMark yf) ]
+                      yield Shape.Polygon(band, styleFillOpacity colour style.AreaFillOpacity |> withSeriesMark yf)
+                      yield Shape.Polyline(points, styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf) ]
         | ChartKind.Line ->
             [ for j in 0 .. m - 1 do
-                  let colour = colourFor j
+                  let colour = colourFor style j
                   let values = series.[j]
 
                   let points = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale values.[i]) ]
 
-                  Shape.Polyline(points, styleStroke colour 2.0 |> withSeriesMark yFields.[j]) ]
+                  Shape.Polyline(points, styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yFields.[j]) ]
         | ChartKind.Scatter ->
             // Fixed-radius point marks per datum (Phase 636). A non-numeric
             // x/y cell reads 0.0 (`numericOf`'s posture, shared with the other
             // arms) — grounded validation makes that loud upstream, not here.
             [ for j in 0 .. m - 1 do
-                  let colour = colourFor j
+                  let colour = colourFor style j
                   let values = series.[j]
                   let yf = yFields.[j]
 
@@ -561,33 +784,53 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
                       Shape.Circle(
                           xScale xValues.[i],
                           yScale values.[i],
-                          4.0,
+                          style.ScatterPointRadius,
                           styleFill colour |> withMark yf (DrawingSvg.formatNum xValues.[i])
                       ) ]
         | _ -> []
 
     // ── Legend (only when >1 series) — a swatch + series name per series ──
+    //
+    // `ChartStyle.LegendPosition` is declared but NOT yet consumed: the legend
+    // is a horizontal row in the top margin whatever it says (Phase 875 wires
+    // the positioning).
     let legend =
         if m > 1 then
             [ for j in 0 .. m - 1 do
-                  let colour = colourFor j
-                  let lx = r2 (plotX0 + float j * 100.0)
-                  yield Shape.Rectangle(lx, 34.0, 10.0, 10.0, Some 2.0, styleFill colour)
+                  let colour = colourFor style j
+                  let lx = r2 (plotX0 + float j * style.LegendPitchX)
+
+                  yield
+                      Shape.Rectangle(
+                          lx,
+                          style.LegendSwatchY,
+                          style.LegendSwatchSize,
+                          style.LegendSwatchSize,
+                          Some style.LegendSwatchCornerRadius,
+                          styleFill colour
+                      )
 
                   yield
                       Shape.Label(
-                          r2 (lx + 15.0),
-                          43.0,
+                          r2 (lx + style.LegendLabelOffsetX),
+                          style.LegendLabelBaselineY,
                           TextSource.Literal yFields.[j],
-                          textStyle (Some labelOpacity) TextAnchor.Start tickSize Emphasis.Normal
+                          textStyle style (Some style.LabelOpacity) TextAnchor.Start tickSize Emphasis.Normal
                       ) ]
         else
             []
 
     // ── Visible title (a Label — bigger + emphasised) + the a11y Title ──
+    let titleX, titleAnchor =
+        match style.TitleAlignment with
+        | ChartTitleAlignment.Left -> r2 plotX0, TextAnchor.Start
+        | ChartTitleAlignment.Centre -> r2 ((plotX0 + plotX1) / 2.0), TextAnchor.Middle
+        | ChartTitleAlignment.Right -> r2 plotX1, TextAnchor.End
+
     let titleShapes =
         match spec.Title with
-        | Some t -> [ Shape.Label(r2 plotX0, 22.0, t, textStyle None TextAnchor.Start titleSize Emphasis.Loud) ]
+        | Some t ->
+            [ Shape.Label(titleX, style.TitleBaselineY, t, textStyle style None titleAnchor titleSize Emphasis.Loud) ]
         | None -> []
 
     // ── Pie (Phase 638) — the polar arm: no cartesian chrome ──
@@ -617,7 +860,7 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
         else
             let cx = r2 ((plotX0 + plotX1) / 2.0)
             let cy = r2 ((plotY0 + plotY1) / 2.0)
-            let radius = 130.0
+            let radius = style.PieRadius
 
             let pt (a: float) : DrawPoint =
                 dp (r2 (cx + radius * cos a)) (r2 (cy + radius * sin a))
@@ -649,7 +892,7 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
                       let f = fractions.[i]
 
                       if f > 0.0 then
-                          let colour = colourFor i
+                          let colour = colourFor style i
                           let markStyle = styleFill colour |> withMark yf categories.[i]
 
                           if f >= 1.0 - 1e-9 then
@@ -668,19 +911,29 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
             // Vertical category legend on the right — categories take the
             // palette roles a cartesian chart gives its series.
             let pieLegend =
-                [ for i in 0 .. n - 1 do
-                      let ly = 70.0 + 20.0 * float i
+                let swatchX = style.Width - style.PieLegendOffsetX
 
-                      yield Shape.Rectangle(r2 (W - 168.0), r2 ly, 10.0, 10.0, Some 2.0, styleFill (colourFor i))
+                [ for i in 0 .. n - 1 do
+                      let ly = style.PieLegendTopY + style.PieLegendPitchY * float i
+
+                      yield
+                          Shape.Rectangle(
+                              r2 swatchX,
+                              r2 ly,
+                              style.LegendSwatchSize,
+                              style.LegendSwatchSize,
+                              Some style.LegendSwatchCornerRadius,
+                              styleFill (colourFor style i)
+                          )
 
                       let pct = DrawingSvg.formatNum (floor (fractions.[i] * 100.0 + 0.5))
 
                       yield
                           Shape.Label(
-                              r2 (W - 153.0),
-                              r2 (ly + 9.0),
+                              r2 (swatchX + style.LegendLabelOffsetX),
+                              r2 (ly + style.PieLegendLabelBaselineDy),
                               TextSource.Literal(sprintf "%s (%s%%)" categories.[i] pct),
-                              textStyle (Some labelOpacity) TextAnchor.Start tickSize Emphasis.Normal
+                              textStyle style (Some style.LabelOpacity) TextAnchor.Start tickSize Emphasis.Normal
                           ) ]
 
             segs @ pieLegend
@@ -704,32 +957,40 @@ let private lowerRows<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : DrawingSp
     { ViewBox =
         { MinX = 0.0
           MinY = 0.0
-          Width = W
-          Height = H }
+          Width = style.Width
+          Height = style.Height }
       Shapes = shapes
       Style = emptyStyle
       Title = spec.Title
       Description = None }
 
-/// The drawing a refused lowering produces (Phase 790): the same canvas, no
-/// shapes, and the refusal as the a11y `<desc>` — bounded output that says why
-/// it is empty rather than a blank picture that does not.
-let refusalDrawing<'Msg> (spec: ChartSpec<'Msg>) (refusal: ChartRefusal) : DrawingSpec =
+/// The drawing a refused lowering produces (Phase 790) under an explicit style:
+/// the style's canvas, no shapes, and the refusal as the a11y `<desc>` — bounded
+/// output that says why it is empty rather than a blank picture that does not.
+let refusalDrawingWithStyle<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (refusal: ChartRefusal) : DrawingSpec =
     { ViewBox =
         { MinX = 0.0
           MinY = 0.0
-          Width = W
-          Height = H }
+          Width = style.Width
+          Height = style.Height }
       Shapes = []
       Style = emptyStyle
       Title = spec.Title
       Description = Some(TextSource.Literal(describeRefusal refusal)) }
 
-/// Lower under explicit cost caps, refusing rather than doing unbounded work
-/// (Phase 790). The row source is read at most `MaxPointsPerSeries + 1` deep, so
-/// an over-budget — or unbounded — sequence is never materialised.
-let tryLowerWith<'Msg>
+/// The refusal drawing under the shipped default style.
+let refusalDrawing<'Msg> (spec: ChartSpec<'Msg>) (refusal: ChartRefusal) : DrawingSpec =
+    refusalDrawingWithStyle ChartStyle.defaults spec refusal
+
+/// Lower under explicit cost caps AND an explicit style (Phase 885), refusing
+/// rather than doing unbounded work (Phase 790). The two parameters compose:
+/// `ChartLimits` bounds the WORK, `ChartStyle` chooses the APPEARANCE, and
+/// neither is a `ChartSpec` wire field. The row source is read at most
+/// `MaxPointsPerSeries + 1` deep, so an over-budget — or unbounded — sequence is
+/// never materialised.
+let tryLowerWithStyle<'Msg>
     (limits: ChartLimits)
+    (style: ChartStyle)
     (spec: ChartSpec<'Msg>)
     (rows: Row seq)
     : Result<DrawingSpec, ChartRefusal> =
@@ -749,21 +1010,42 @@ let tryLowerWith<'Msg>
         if observed > limits.MaxPointsPerSeries then
             Error(TooManyPoints(observed, limits.MaxPointsPerSeries))
         else
-            Ok(lowerRows spec capped)
+            Ok(lowerRows style spec capped)
+
+/// Lower under explicit cost caps and the shipped default style, refusing rather
+/// than doing unbounded work (Phase 790).
+let tryLowerWith<'Msg>
+    (limits: ChartLimits)
+    (spec: ChartSpec<'Msg>)
+    (rows: Row seq)
+    : Result<DrawingSpec, ChartRefusal> =
+    tryLowerWithStyle limits ChartStyle.defaults spec rows
 
 /// Lower under the shipped default caps, surfacing a refusal typed.
 let tryLower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : Result<DrawingSpec, ChartRefusal> =
     tryLowerWith ChartLimits.defaults spec rows
 
-/// Lower under explicit caps; a refusal renders as the bounded refusal drawing.
-let lowerWith<'Msg> (limits: ChartLimits) (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
-    match tryLowerWith limits spec rows with
+/// Lower under explicit caps AND an explicit style (Phase 885); a refusal renders
+/// as the bounded refusal drawing, on the style's own canvas.
+let lowerWithStyle<'Msg>
+    (limits: ChartLimits)
+    (style: ChartStyle)
+    (spec: ChartSpec<'Msg>)
+    (rows: Row seq)
+    : DrawingSpec =
+    match tryLowerWithStyle limits style spec rows with
     | Ok drawing -> drawing
-    | Error refusal -> refusalDrawing spec refusal
+    | Error refusal -> refusalDrawingWithStyle style spec refusal
+
+/// Lower under explicit caps and the shipped default style; a refusal renders as
+/// the bounded refusal drawing.
+let lowerWith<'Msg> (limits: ChartLimits) (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
+    lowerWithStyle limits ChartStyle.defaults spec rows
 
 /// Lower a resolved `ChartSpec` + data rows to a canonical `DrawingSpec` under
-/// the shipped default cost caps (`ChartLimits.defaults`). An over-budget chart
-/// yields the refusal drawing; `tryLower` is the typed form for a caller that
-/// wants to handle the refusal itself.
+/// the shipped default cost caps (`ChartLimits.defaults`) and the shipped default
+/// style (`ChartStyle.defaults`) — the corpus-pinned form every conformant host
+/// reproduces. An over-budget chart yields the refusal drawing; `tryLower` is the
+/// typed form for a caller that wants to handle the refusal itself.
 let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
     lowerWith ChartLimits.defaults spec rows
