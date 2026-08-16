@@ -820,6 +820,8 @@ let private genGridSpec: Gen<GridSpec<obj>> =
 
         return
             { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
               Source = Binding.Static(Some Seq.empty)
               RowKey = Some(fun _ -> "<rowkey>")
               RowKeyField = None

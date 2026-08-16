@@ -1016,6 +1016,75 @@ let sortRowsByDescriptor
                      | SortDirection.Desc -> -c))
             |> List.map snd
 
+// ─── Data-bound grid pagination (Phase 862 — `pageStateKey` / `pageSize`) ────
+//
+// The second instance of the Phase-860 grid-behaviour rule, and it mirrors the
+// sort machinery above deliberately: the grid names a State key, the runtime
+// reads a validated descriptor from it, and the affordance that writes the key
+// is renderer-owned. One implementation serves the client renderer and any SSR
+// host, so two surfaces cannot disagree about which rows are on page 3.
+//
+// Who slices is decided by the SOURCE shape, never by a second declaration. A
+// `Binding.Query` whose `dependsOn` names the page key re-runs host-side on a
+// page change and already returns the page, so the grid must NOT slice again;
+// any other source resolves to the whole set and the grid slices it.
+
+/// Read the page descriptor carried at `key` in the State store: `{"page": N}`,
+/// 1-based. Validated rather than trusted — a malformed or absent descriptor
+/// reads as page 1, which is the honest default (never an arbitrary offset).
+let readPageDescriptor (sources: BindingSources) (key: string) : int =
+    Map.tryFind key sources.State
+    |> Option.bind jvalOfResolved
+    |> Option.bind (fun jv ->
+        match jv with
+        | JObj fields ->
+            fields
+            |> List.tryPick (function
+                | ("page", JInt i) when i >= 1 -> Some i
+                | ("page", JFloat f) when floor f = f && f >= 1.0 -> Some(int f)
+                | _ -> None)
+        | _ -> None)
+    |> Option.defaultValue 1
+
+/// Does this source page HOST-side for the given page key? True when the source
+/// is a `Query` declaring a `dependsOn` on that key — the query re-runs on a
+/// page change and hands back the page itself, so a client-side slice on top
+/// would page the page (FUARAN096 warns pre-emit).
+let sourceHostPagesOn (source: Binding<'T>) (pageKey: string) : bool =
+    match source with
+    | Binding.Query(_, _, Some deps) -> deps |> List.contains pageKey
+    | _ -> false
+
+/// How many pages a row count divides into at this page size. Always at least
+/// one, so an empty grid still reads as "page 1 of 1" rather than "of 0".
+let pageCountOf (pageSize: int) (rowCount: int) : int =
+    if pageSize <= 0 then
+        1
+    else
+        max 1 ((rowCount + pageSize - 1) / pageSize)
+
+/// The page actually shown, given where the user left the position and how many
+/// rows there now are. A page past the end clamps to the LAST page rather than
+/// rendering empty: the row count can shrink under a filter while the position
+/// stays put, and showing nothing there reads as data loss rather than as the
+/// end of the list. Single-sourced because the slice and the row-index offset
+/// the write-back path uses must agree — an off-by-one page between them would
+/// commit an edit to the wrong row.
+let clampPage (pageSize: int) (page: int) (rowCount: int) : int =
+    min (max 1 page) (pageCountOf pageSize rowCount)
+
+/// The rows on `page` (1-based) at `pageSize`, after clamping.
+let sliceRowsToPage (pageSize: int) (page: int) (rows: Row list) : Row list =
+    if pageSize <= 0 then
+        rows
+    else
+        let count = List.length rows
+        let clamped = clampPage pageSize page count
+
+        rows
+        |> List.skip (min count ((clamped - 1) * pageSize))
+        |> List.truncate pageSize
+
 /// Phase 750 — lower a `CellKindErased.TonedPill` for one row: the named field's
 /// text IS the pill's label, and its tone is the map's entry for that text, or
 /// `defaultTone` for a value the map does not mention.

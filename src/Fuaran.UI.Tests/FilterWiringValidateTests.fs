@@ -50,6 +50,8 @@ let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<
       Kind =
         NodeKind.DataGrid(
             { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
               Source = source
               RowKey = None
               RowKeyField = Some "dept"
@@ -195,6 +197,8 @@ let tests =
                     Kind =
                       NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source = Binding.Static(Some Seq.empty)
                             RowKey = None
                             RowKeyField = None

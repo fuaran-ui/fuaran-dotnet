@@ -343,3 +343,123 @@ let sortStateKeyTests =
                   [ "Jan"; "Feb"; "Mar" ]
                   "no descriptor ⇒ natural source order"
           } ]
+
+// ─── Phase 862 — declarative pagination, the grid-behaviour rule's second
+// instance (Phase 860's charter). Its own list rather than an addition to the
+// 818 one above: same rule, different behaviour, and a filter naming one
+// should not silently run the other.
+
+[<Tests>]
+let gridPaginationTests =
+    testList
+        "Phase 862 — declarative pagination (pageStateKey + pageSize)"
+        [ test "a paged grid round-trips pageStateKey + pageSize" {
+              let wire =
+                  """{"id":"g1","kind":{"$type":"DataGrid","columns":[{"field":"month","kind":{"$type":"Text"},"label":"Month"}],"pageSize":20,"pageStateKey":"members-page","rowKeyField":"month","source":{"$type":"State","key":"members"}}}"""
+
+              let n = roundTrips "paged grid" wire
+
+              match n.Kind with
+              | NodeKind.DataGrid g ->
+                  Expect.equal g.PageStateKey (Some "members-page") "the page key decodes"
+                  Expect.equal g.PageSize (Some 20) "the page size decodes"
+              | other -> failtestf "expected a DataGrid, got %A" other
+          }
+
+          test "readPageDescriptor validates rather than trusts, and defaults to page 1" {
+              let sources (v: obj) =
+                  { BindingResolver.empty with
+                      State = Map.ofList [ "page", v ] }
+
+              Expect.equal
+                  (BindingResolver.readPageDescriptor (sources (box (JObj [ "page", JInt 3 ]))) "page")
+                  3
+                  "a well-formed descriptor reads"
+
+              Expect.equal
+                  (BindingResolver.readPageDescriptor (sources (box (JObj [ "page", JInt 0 ]))) "page")
+                  1
+                  "page 0 is not a page — falls back to the first"
+
+              Expect.equal
+                  (BindingResolver.readPageDescriptor (sources (box (JStr "3"))) "page")
+                  1
+                  "a bare string is not the descriptor shape"
+
+              Expect.equal
+                  (BindingResolver.readPageDescriptor BindingResolver.empty "page")
+                  1
+                  "no state ⇒ page 1, the honest default"
+          }
+
+          test "sliceRowsToPage windows the rows, and clamps a page past the end to the last" {
+              let rows = [ for i in 1..25 -> (Map.ofList [ "n", box (string i) ]: Row) ]
+
+              let ns (rs: Row list) =
+                  rs |> List.map (fun r -> BindingResolver.projectRowFieldString r "n")
+
+              Expect.equal
+                  (BindingResolver.sliceRowsToPage 10 1 rows |> ns |> List.length)
+                  10
+                  "page 1 holds pageSize rows"
+
+              Expect.equal
+                  (BindingResolver.sliceRowsToPage 10 2 rows |> ns |> List.head)
+                  "11"
+                  "page 2 starts one page in"
+
+              Expect.equal
+                  (BindingResolver.sliceRowsToPage 10 3 rows |> ns)
+                  [ "21"; "22"; "23"; "24"; "25" ]
+                  "the last page is short, not padded"
+
+              // The row count can shrink under a filter while the position
+              // stays where the user left it. Showing nothing there reads as
+              // data loss rather than as the end of the list.
+              Expect.equal
+                  (BindingResolver.sliceRowsToPage 10 99 rows |> ns)
+                  [ "21"; "22"; "23"; "24"; "25" ]
+                  "a page past the end clamps to the last page rather than rendering empty"
+
+              Expect.equal (BindingResolver.pageCountOf 10 25) 3 "25 rows at 10 a page is 3 pages"
+              Expect.equal (BindingResolver.pageCountOf 10 0) 1 "an empty grid is page 1 of 1, never of 0"
+          }
+
+          test "clampPage agrees with sliceRowsToPage — the write-back offset cannot drift from the window" {
+              // These two must agree or a page-2 edit commits to a page-1 row:
+              // the renderer derives the row-index offset from `clampPage` and
+              // the visible rows from `sliceRowsToPage`.
+              let rows = [ for i in 1..25 -> (Map.ofList [ "n", box (string i) ]: Row) ]
+
+              for requested in [ 1; 2; 3; 4; 99 ] do
+                  let page = BindingResolver.clampPage 10 requested (List.length rows)
+                  let window = BindingResolver.sliceRowsToPage 10 requested rows
+                  let offset = (page - 1) * 10
+
+                  let firstByOffset = rows |> List.item offset
+                  let firstByWindow = List.head window
+
+                  Expect.equal
+                      (BindingResolver.projectRowFieldString firstByWindow "n")
+                      (BindingResolver.projectRowFieldString firstByOffset "n")
+                      (sprintf "page %d: the offset addresses the same first row the window shows" requested)
+          }
+
+          test "sourceHostPagesOn keys off the page key specifically" {
+              let q (deps: string list option) : Binding<Fuaran.Core.Row seq> =
+                  Binding.Query("members", (fun (_: obj) -> Seq.empty), deps)
+
+              Expect.isTrue
+                  (BindingResolver.sourceHostPagesOn (q (Some [ "members-page" ])) "members-page")
+                  "a query depending on the page key pages host-side"
+
+              Expect.isFalse
+                  (BindingResolver.sourceHostPagesOn (q (Some [ "region" ])) "members-page")
+                  "a query depending on something else does not"
+
+              Expect.isFalse (BindingResolver.sourceHostPagesOn (q None) "members-page") "no dependsOn, no host paging"
+
+              Expect.isFalse
+                  (BindingResolver.sourceHostPagesOn (Binding.State("members", None)) "members-page")
+                  "a state source never pages host-side"
+          } ]

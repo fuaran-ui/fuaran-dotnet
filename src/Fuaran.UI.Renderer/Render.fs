@@ -4108,7 +4108,36 @@ and private renderGrid
                  | _ -> [])
                 |> BindingResolver.sortRowsByDescriptor spec.Columns sortDescriptor
 
-            match rows, state.OnEmpty with
+            // Phase 862 — `pageStateKey` + `pageSize`: the grid shows one page
+            // at a time and owns the pager that moves between them. `hostPages`
+            // is the source-shape rule (a `Query` depending on the page key
+            // returns the page itself), in which case the pager still renders
+            // and drives the query but the grid does NOT slice again.
+            let pagination =
+                match spec.PageStateKey, spec.PageSize with
+                | Some key, Some size when size > 0 ->
+                    let hostPages = BindingResolver.sourceHostPagesOn spec.Source key
+                    let requested = BindingResolver.readPageDescriptor ctx.Sources key
+
+                    let page =
+                        if hostPages then
+                            max 1 requested
+                        else
+                            BindingResolver.clampPage size requested (List.length rows)
+
+                    Some(key, size, page, hostPages)
+                | _ -> None
+
+            // The rows this render actually paints. `rowOffset` is what makes
+            // the page-relative index the cell loop hands back addressable in
+            // the FULL set — without it a page-2 edit would commit to the
+            // matching row of page 1 (Phase 663's write-back indexes `rows`).
+            let pageRows, rowOffset =
+                match pagination with
+                | Some(_, size, page, false) -> BindingResolver.sliceRowsToPage size page rows, (page - 1) * size
+                | _ -> rows, 0
+
+            match pageRows, state.OnEmpty with
             | [], Some emptyNode -> render ctx emptyNode
             | _ ->
 
@@ -4149,14 +4178,19 @@ and private renderGrid
                 // re-renders with the edit. Any other source shape has no writable slot — a
                 // Transform pipeline is not invertible, Static/Query rows are host data — so
                 // the grid stays display-only (FUARAN090 warns pre-emit).
+                // Phase 862 — `rowIndex` arrives page-relative; `rowOffset`
+                // lifts it into the full sorted set so the whole rows value
+                // written back carries every row, not just this page's.
                 let editCommit: (int -> string -> obj -> unit) option =
                     match spec.Editable, spec.Source with
                     | true, Binding.State _ ->
                         Some(fun rowIndex field newValue ->
+                            let absolute = rowOffset + rowIndex
+
                             let newRows =
                                 rows
                                 |> List.mapi (fun i row ->
-                                    if i = rowIndex then
+                                    if i = absolute then
                                         updateRowField row field newValue
                                     else
                                         row)
@@ -4209,58 +4243,126 @@ and private renderGrid
                               prop.text col.Label ]
                     | _ -> Html.th [ prop.className "fuaran-grid-header"; prop.text col.Label ]
 
-                Html.table
-                    [ prop.className "fuaran-grid"
-                      prop.children
-                          [ Html.thead
-                                [ Html.tr
-                                      [ prop.children
-                                            [ for (colIndex, col) in List.indexed spec.Columns ->
-                                                  sortableHeader colIndex col ] ] ]
-                            Html.tbody
-                                [ prop.children
-                                      [ for (rowIndex, row) in List.indexed rows ->
-                                            let isSelected =
-                                                match selectedKey, rowKeyOf with
-                                                | Some sel, Some keyOf -> keyOf row = sel
-                                                | _ -> false
+                // Phase 862 — the pager. RENDERER-OWNED, which is the whole
+                // point of the Phase-860 rule: because the grid draws it, the
+                // control that writes the page state and the grid that reads it
+                // cannot come apart, so the decorative-pager shape (a button
+                // writing state nothing reads) is not authorable here.
+                // Host-paged grids cannot know the row total, so the pager
+                // degrades to previous/next with no page count — a stated limit
+                // of this cut, not an oversight.
+                let pager () : ReactElement =
+                    match pagination with
+                    | None -> Html.none
+                    | Some(pageKey, size, page, hostPages) ->
+                        let lastPage =
+                            if hostPages then
+                                None
+                            else
+                                Some(BindingResolver.pageCountOf size (List.length rows))
 
-                                            Html.tr
-                                                [ prop.className (
-                                                      if isSelected then
-                                                          "fuaran-grid-row fuaran-grid-row-selected"
-                                                      else
-                                                          "fuaran-grid-row"
-                                                  )
-                                                  prop.onClick (fun _ ->
-                                                      match spec.OnRowClick with
-                                                      | Some f -> runAction ctx (f row)
-                                                      | None -> SelectionStore.set parentNodeId (box row))
-                                                  prop.children
-                                                      [ for col in spec.Columns ->
-                                                            // Editable write-back applies only on the declarative
-                                                            // path — a Field-projected Text/Numeric cell with no
-                                                            // Value closure (a closure's projection need not
-                                                            // correspond to any row field, so there is nothing
-                                                            // sound to write). Date and the interactive cell
-                                                            // kinds keep their existing behaviour.
-                                                            let commit: (CellValue -> unit) option =
-                                                                match editCommit, col.Value, col.Field, col.Kind with
-                                                                | Some ec,
-                                                                  None,
-                                                                  Some field,
-                                                                  (CellKindErased.Text | CellKindErased.Numeric) ->
-                                                                    Some(fun cv ->
-                                                                        match cv with
-                                                                        | CellValue.Numeric f ->
-                                                                            ec rowIndex field (box f)
-                                                                        | CellValue.Text s -> ec rowIndex field (box s)
-                                                                        | _ -> ())
-                                                                | _ -> None
+                        let goTo (target: int) =
+                            runAction ctx (Action.SetState(pageKey, Some(JObj [ "page", JInt target ]), None))
 
-                                                            Html.td
-                                                                [ prop.className "fuaran-grid-cell"
-                                                                  prop.children [ renderGridCell ctx commit col row ] ] ] ] ] ] ] ]
+                        let atStart = page <= 1
+
+                        let atEnd =
+                            match lastPage with
+                            | Some last -> page >= last
+                            | None -> false
+
+                        let step (label: string) (target: int) (disabled: bool) =
+                            Html.button
+                                [ prop.className "fuaran-grid-pager-step"
+                                  prop.type' "button"
+                                  prop.disabled disabled
+                                  if not disabled then
+                                      prop.onClick (fun _ -> goTo target)
+                                  prop.text label ]
+
+                        Html.nav
+                            [ prop.className "fuaran-grid-pager"
+                              prop.custom ("aria-label", "Pagination")
+                              prop.children
+                                  [ step "Previous" (page - 1) atStart
+                                    Html.span
+                                        [ prop.className "fuaran-grid-pager-status"
+                                          // The page position changes without the
+                                          // surrounding layout moving, so a screen
+                                          // reader is told politely rather than
+                                          // left to discover it.
+                                          prop.custom ("aria-live", "polite")
+                                          prop.text (
+                                              match lastPage with
+                                              | Some last -> sprintf "Page %d of %d" page last
+                                              | None -> sprintf "Page %d" page
+                                          ) ]
+                                    step "Next" (page + 1) atEnd ] ]
+
+                let gridTable =
+                    Html.table
+                        [ prop.className "fuaran-grid"
+                          prop.children
+                              [ Html.thead
+                                    [ Html.tr
+                                          [ prop.children
+                                                [ for (colIndex, col) in List.indexed spec.Columns ->
+                                                      sortableHeader colIndex col ] ] ]
+                                Html.tbody
+                                    [ prop.children
+                                          [ for (rowIndex, row) in List.indexed pageRows ->
+                                                let isSelected =
+                                                    match selectedKey, rowKeyOf with
+                                                    | Some sel, Some keyOf -> keyOf row = sel
+                                                    | _ -> false
+
+                                                Html.tr
+                                                    [ prop.className (
+                                                          if isSelected then
+                                                              "fuaran-grid-row fuaran-grid-row-selected"
+                                                          else
+                                                              "fuaran-grid-row"
+                                                      )
+                                                      prop.onClick (fun _ ->
+                                                          match spec.OnRowClick with
+                                                          | Some f -> runAction ctx (f row)
+                                                          | None -> SelectionStore.set parentNodeId (box row))
+                                                      prop.children
+                                                          [ for col in spec.Columns ->
+                                                                // Editable write-back applies only on the declarative
+                                                                // path — a Field-projected Text/Numeric cell with no
+                                                                // Value closure (a closure's projection need not
+                                                                // correspond to any row field, so there is nothing
+                                                                // sound to write). Date and the interactive cell
+                                                                // kinds keep their existing behaviour.
+                                                                let commit: (CellValue -> unit) option =
+                                                                    match
+                                                                        editCommit, col.Value, col.Field, col.Kind
+                                                                    with
+                                                                    | Some ec,
+                                                                      None,
+                                                                      Some field,
+                                                                      (CellKindErased.Text | CellKindErased.Numeric) ->
+                                                                        Some(fun cv ->
+                                                                            match cv with
+                                                                            | CellValue.Numeric f ->
+                                                                                ec rowIndex field (box f)
+                                                                            | CellValue.Text s ->
+                                                                                ec rowIndex field (box s)
+                                                                            | _ -> ())
+                                                                    | _ -> None
+
+                                                                Html.td
+                                                                    [ prop.className "fuaran-grid-cell"
+                                                                      prop.children
+                                                                          [ renderGridCell ctx commit col row ] ] ] ] ] ] ] ]
+
+                match pagination with
+                | None -> gridTable
+                | Some _ ->
+                    // The paged grid gains ONE wrapper element; an unpaged grid
+                    // emits byte-identical DOM to before this phase.
+                    Html.div [ prop.className "fuaran-grid-paged"; prop.children [ gridTable; pager () ] ]
 
 and private renderGridCell
     (ctx: RenderContext<'Msg>)

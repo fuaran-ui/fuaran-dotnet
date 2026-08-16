@@ -32,6 +32,35 @@ let private dashboard id children : Node<Msg> =
 
 let private markdown id text : Node<Msg> = Fuaran.markdown id text
 
+/// Phase 862 — a data-bound grid with the paging declarations under test and
+/// nothing else that could raise a defect (no columns, so no FUARAN077; a
+/// `rowKeyField`, so no FUARAN078). Built once so each test varies exactly the
+/// axis it names.
+let private pagedGrid
+    (pageSize: int option)
+    (pageStateKey: string option)
+    (source: Binding<Fuaran.Core.Row seq>)
+    : Node<Msg> =
+    { Id = "paged"
+      Kind =
+        NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = pageSize
+              PageStateKey = pageStateKey
+              Source = source
+              RowKey = None
+              RowKeyField = Some "id"
+              Columns = []
+              OnRowClick = None
+              Editable = false
+              StaticRows = None }
+        )
+      State = None
+      Style = None
+      Accessibility = None
+      Motion = Defaults.Motion.none
+      ExtraAttributes = None }
+
 [<Tests>]
 let tests =
     testList
@@ -443,6 +472,8 @@ let tests =
                     Kind =
                       NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source = Binding.Static(Some Seq.empty)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -665,4 +696,86 @@ let tests =
               match PreEmitValidate.validate tree with
               | Ok() -> ()
               | Error defects -> failtestf "a tree exactly at MaxDepth was rejected: %A" defects
+          }
+
+          // ─── Phase 862: the two authored shapes that declare paging that
+          // does not page. The decorative-pager shape needs no rule — the pager
+          // is renderer-owned, so it cannot be wired to nothing.
+
+          test "FUARAN093: pageSize without pageStateKey is an error" {
+              let grid = pagedGrid (Some 20) None (Binding.Static(Some Seq.empty))
+
+              match PreEmitValidate.validate grid with
+              | Error defects ->
+                  Expect.contains defects (PreEmitDefect.PageSizeWithoutPageKey "paged") "the defect is raised"
+                  let code, severity, _ = describe (PreEmitDefect.PageSizeWithoutPageKey "paged")
+                  Expect.equal code "FUARAN093" "stable code"
+                  Expect.equal severity DefectSeverity.Error "a page size that pages nothing is dead intent"
+              | Ok() -> failtest "Expected FUARAN093, got Ok"
+          }
+
+          test "FUARAN093 go-red check: the same grid WITH a pageStateKey is clean" {
+              // The rule must admit what it claims to admit. Without this the
+              // test above passes for a validator that rejects every grid.
+              let grid =
+                  pagedGrid (Some 20) (Some "members-page") (Binding.Static(Some Seq.empty))
+
+              match PreEmitValidate.validate grid with
+              | Ok() -> ()
+              | Error defects -> failtestf "a correctly paged grid was rejected: %A" defects
+          }
+
+          test "FUARAN096: client-side paging over a query that already pages host-side warns" {
+              let hostPaged =
+                  Binding.Query("members", (fun (_: obj) -> Seq.empty), Some [ "members-page" ])
+
+              let grid = pagedGrid (Some 20) (Some "members-page") hostPaged
+
+              match PreEmitValidate.validate grid with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.DoublePagedGrid("paged", "members-page"))
+                      "the double-paging defect is raised"
+
+                  let code, severity, _ =
+                      describe (PreEmitDefect.DoublePagedGrid("paged", "members-page"))
+
+                  Expect.equal code "FUARAN096" "stable code"
+
+                  Expect.equal
+                      severity
+                      DefectSeverity.Warning
+                      "the renderer resolves this correctly, so it is a caution rather than a break"
+              | Ok() -> failtest "Expected FUARAN096, got Ok"
+          }
+
+          test "FUARAN096 go-red check: a query depending on some OTHER key does not warn" {
+              // The rule keys off the page key specifically. A query that
+              // depends on a filter is the ordinary shape and must not be
+              // reported as double-paged.
+              //
+              // Asserted as "no DoublePagedGrid" rather than "no defects at
+              // all": a bare grid naming a filter also trips FUARAN031's
+              // dangling-filter rule, which is orthogonal to paging. Widening
+              // this to a clean-tree assertion would make it fail for a reason
+              // that has nothing to do with what it tests — which is exactly
+              // what it did on first run, and is why it is written this way.
+              let filterDriven =
+                  Binding.Query("members", (fun (_: obj) -> Seq.empty), Some [ "region-filter" ])
+
+              let grid = pagedGrid (Some 20) (Some "members-page") filterDriven
+
+              let defects =
+                  match PreEmitValidate.validate grid with
+                  | Ok() -> []
+                  | Error ds -> ds
+
+              let doublePaged =
+                  defects
+                  |> List.filter (function
+                      | PreEmitDefect.DoublePagedGrid _ -> true
+                      | _ -> false)
+
+              Expect.isEmpty doublePaged "a filter-driven query is not double paging"
           } ]

@@ -185,6 +185,14 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "staticRows defaultSort column -1 — a header index is non-negative; the schema says the same with minimum:0 (Phase 801)" }
+      { Id = "reject-wrongtype-grid-page-size-zero"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[],"pageSize":0,"pageStateKey":"p","source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.pageSize"
+        IsOp = false
+        Description =
+          "grid pageSize 0 — a page of no rows names no page; the schema says the same with minimum:1 (Phase 862)" }
 
       // ─── UNKNOWN_DU_CASE ─────────────────────────────────────────────
       { Id = "reject-unknown-tone"

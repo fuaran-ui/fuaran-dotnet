@@ -550,10 +550,20 @@ let generatedLayerTests =
               //    so it is schema-invalid and stays out of `schemaInexpressibleRejects`
               //    — structure-inexpressible and schema-inexpressible are not the
               //    same set, and this fixture is the first to show the difference.
+              //  - a grid `pageSize` of 0 is the SAME class as the one above
+              //    (Phase 862): a value bound on a well-typed integer, which the
+              //    IDL cannot refine, so the generated decoder reads a plain
+              //    `int` and accepts while the policy decoder refuses. The
+              //    schema expresses it as `minimum: 1`, so it too is
+              //    schema-invalid and stays out of `schemaInexpressibleRejects`.
+              //    That it lands here was predicted rather than discovered: 862
+              //    mirrored 801's split deliberately, and this guard is what
+              //    confirms the mirror held.
               Expect.equal
                   policyOwned
                   [ "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
+                    "reject-wrongtype-grid-page-size-zero.json"
                     "reject-wrongtype-static-sort-column.json" ]
                   "the policy-owned residue is exactly the shapes structure cannot judge"
           } ]

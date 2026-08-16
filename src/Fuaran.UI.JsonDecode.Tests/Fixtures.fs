@@ -1765,6 +1765,8 @@ let gridVis: Node<obj> =
         "grid-1"
         (NodeKind.DataGrid(
             { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
               Source =
                 // fuaran#665 — typed rows: a Static rows payload IS wire-representable
                 // (int cells ride rule 5's integer form). Mirrors Fuaran-Core's
@@ -1837,6 +1839,8 @@ let gridTonedPill: Node<obj> =
         "grid-toned-pill"
         (NodeKind.DataGrid(
             { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
               Source = Binding.Transform(TransformSource.Data(source), [], None)
               RowKey = None
               RowKeyField = Some "id"
@@ -1921,6 +1925,8 @@ let gridEditableState: Node<obj> =
         "grid-editable-state"
         (NodeKind.DataGrid(
             { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
               Source = Binding.State("planRows", Some(Seq.ofList planRows))
               RowKey = None
               RowKeyField = Some "month"
@@ -1983,6 +1989,8 @@ let gridTransform: Node<obj> =
         "grid-transform"
         (NodeKind.DataGrid(
             { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
               Source = Binding.Transform(TransformSource.Data(source), pipeline, None)
               RowKey = Some(fun _ -> "<closure>")
               RowKeyField = None
@@ -2014,6 +2022,8 @@ let gridTransformParam: Node<obj> =
         "grid-transform-param"
         (NodeKind.DataGrid(
             { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
               Source =
                 Binding.Transform(
                     TransformSource.Data(source),
@@ -2054,6 +2064,8 @@ let gridFieldNamed: Node<obj> =
         "grid-field-named"
         (NodeKind.DataGrid(
             { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
               Source = Binding.Transform(TransformSource.Data(source), [], None)
               RowKey = None
               RowKeyField = Some "dept"
@@ -2106,6 +2118,8 @@ let masterDetailPreselected: Node<obj> =
                       "ticket-grid"
                       (NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -2158,6 +2172,8 @@ let masterDetailPreselected: Node<obj> =
                       "related-grid"
                       (NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source =
                               Binding.Transform(
                                   TransformSource.Data(source),
@@ -2268,6 +2284,8 @@ let masterDetailMultiField: Node<obj> =
                       "ticket-grid"
                       (NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -2408,6 +2426,8 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                       "ticket-grid"
                       (NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -2452,6 +2472,8 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                       "related-grid"
                       (NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source =
                               Binding.Transform(TransformSource.Data(source), [ filterById ], Some [ ticketIdParam ])
                             RowKey = None
@@ -2557,6 +2579,8 @@ let nowEnvironmentBinding: Node<obj> =
                       "overdue-grid"
                       (NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source =
                               Binding.Transform(
                                   TransformSource.Data(source),
@@ -2625,6 +2649,8 @@ let scalarTransformComposition: Node<obj> =
                       "scalar-ticket-grid"
                       (NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -2805,6 +2831,8 @@ let filterableStaticDashboard: Node<obj> =
                       "episode-grid"
                       (NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source = filteredSource ()
                             RowKey = None
                             RowKeyField = Some "month"
@@ -2838,6 +2866,8 @@ let table: Node<obj> =
         // Phase 393 — the static read-only table is now the `StaticRows` mode of `DataGrid`.
         NodeKind.DataGrid
             { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
               Source = Binding.Static(Some Seq.empty)
               RowKey = None
               RowKeyField = None
@@ -2867,6 +2897,8 @@ let tableSortable: Node<obj> =
         "table-sortable-1"
         (NodeKind.DataGrid
             { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
               Source = Binding.Static(Some Seq.empty)
               RowKey = None
               RowKeyField = None
@@ -3029,6 +3061,8 @@ let switchOnSelection: Node<obj> =
                       "ward-grid"
                       (NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source = Binding.Transform(TransformSource.Data(source), [], None)
                             RowKey = None
                             RowKeyField = Some "id"
@@ -3500,6 +3534,69 @@ let badgeTransformLive: Node<obj> =
         ))
         None
 
+/// Phase 862 — declarative pagination: `pageStateKey` names the State slot
+/// carrying `{"page": N}` (1-based) and `pageSize` how many rows a page holds.
+/// The pager that writes the key is renderer-owned, so the tree names the
+/// behaviour and never a control — which is why there is no pager node here to
+/// pair the grid with.
+let gridPaged: Node<obj> =
+    let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-paged"
+        (NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = Some 20
+              PageStateKey = Some "members-page"
+              Source = Binding.State("members", Some(Seq.ofList planRows))
+              RowKey = None
+              RowKeyField = Some "month"
+              Columns =
+                [ col "Month" "month" CellKindErased.Text
+                  col "Revenue" "revenue" CellKindErased.Numeric ]
+              OnRowClick = None
+              Editable = false
+              StaticRows = None }
+        ))
+        None
+
+/// Phase 862 — paging and sorting compose on one grid: two behaviours, two
+/// state keys, one rule. Present as a fixture because the pair is the shape the
+/// charter's "one rule, three instances" claim is actually cashed in, and a
+/// host that special-cased either would round-trip this one wrongly.
+let gridPagedSorted: Node<obj> =
+    let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-paged-sorted"
+        (NodeKind.DataGrid(
+            { SortStateKey = Some "ledger-sort"
+              PageSize = Some 10
+              PageStateKey = Some "ledger-page"
+              Source = Binding.State("ledger", Some(Seq.ofList planRows))
+              RowKey = None
+              RowKeyField = Some "month"
+              Columns =
+                [ col "Month" "month" CellKindErased.Text
+                  col "Revenue" "revenue" CellKindErased.Numeric ]
+              OnRowClick = None
+              Editable = false
+              StaticRows = None }
+        ))
+        None
+
 /// A derived state write: clicking the button writes the SELECTED row's `id`
 /// field to the `chosen-id` state slot — `valueFrom` evaluated at dispatch
 /// time, no closure, no literal.
@@ -3535,6 +3632,8 @@ let gridSortStateKey: Node<obj> =
         "grid-sort-state-key"
         (NodeKind.DataGrid(
             { SortStateKey = Some "inventory-sort"
+              PageSize = None
+              PageStateKey = None
               Source = Binding.State("inventory", Some(Seq.ofList planRows))
               RowKey = None
               RowKeyField = Some "month"
@@ -3647,6 +3746,10 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
       "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey
+      "Visualisation/Grid (Phase 862 — pageStateKey + pageSize: declarative pagination, renderer-owned pager)",
+      gridPaged
+      "Visualisation/Grid (Phase 862 — paging and sorting composed: two behaviours, two state keys, one rule)",
+      gridPagedSorted
       "Display/Badge (Phase 818 — LIVE State-sourced Transform: the Tier-D count badge, preserved source + initial snapshot)",
       badgeTransformLive
       "Input/Button (Phase 818 — SetState.valueFrom: a derived state write from the selected row's field)",

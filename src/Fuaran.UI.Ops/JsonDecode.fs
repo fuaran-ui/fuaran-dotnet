@@ -5305,6 +5305,27 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | None -> Ok None
             | Some fJ -> requireString (path + ".sortStateKey") fJ |> Result.map Some
 
+        // Phase 862 — declarative pagination, the same rule applied to the page
+        // position: `pageStateKey` names the State key carrying `{"page": N}`
+        // (1-based) and `pageSize` how many rows a page holds. The pager that
+        // writes the key is renderer-owned, so nothing here decodes a control.
+        // A page of zero or fewer rows names no page at all, and the slice it
+        // implies is either empty or divergent. Refused here and by the schema's
+        // `minimum: 1`, mirroring how 801's `defaultSort.column` is refused in
+        // both places at once.
+        let pageSizeR =
+            match tryField fields "pageSize" with
+            | None -> Ok None
+            | Some fJ ->
+                match fJ with
+                | JNumber n when n >= 1.0 && n = floor n -> Ok(Some(int n))
+                | _ -> wrongType (path + ".pageSize") "JSON number (integer page size of 1 or more)"
+
+        let pageStateKeyR =
+            match tryField fields "pageStateKey" with
+            | None -> Ok None
+            | Some fJ -> requireString (path + ".pageStateKey") fJ |> Result.map Some
+
         // Phase 393 — the static read-only mode. `staticRows` (optional, omitted for a
         // data-bound grid so existing fixtures stay byte-identical) carries the retired
         // `Table`'s `TextSource` header/row matrix; when present the renderer emits static
@@ -5314,24 +5335,46 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | None -> Ok None
             | Some sJ -> decodeStaticRows (path + ".staticRows") sJ |> Result.map Some
 
-        match columnsR, editableR, sourceR, onRowClickR, rowKeyFieldR, sortStateKeyR, staticRowsR with
-        | Ok columns, Ok editable, Ok source, Ok onRowClick, Ok rowKeyField, Ok sortStateKey, Ok staticRows ->
+        match
+            columnsR,
+            editableR,
+            sourceR,
+            onRowClickR,
+            rowKeyFieldR,
+            sortStateKeyR,
+            pageSizeR,
+            pageStateKeyR,
+            staticRowsR
+        with
+        | Ok columns,
+          Ok editable,
+          Ok source,
+          Ok onRowClick,
+          Ok rowKeyField,
+          Ok sortStateKey,
+          Ok pageSize,
+          Ok pageStateKey,
+          Ok staticRows ->
             Ok
                 { Source = source
                   RowKey = rowKey
                   RowKeyField = rowKeyField
                   SortStateKey = sortStateKey
+                  PageSize = pageSize
+                  PageStateKey = pageStateKey
                   Columns = columns
                   OnRowClick = onRowClick
                   Editable = editable
                   StaticRows = staticRows }
-        | Error e, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _
-        | _, _, Error e, _, _, _, _
-        | _, _, _, Error e, _, _, _
-        | _, _, _, _, Error e, _, _
-        | _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, DecodeError> =
     match requireObject path j with

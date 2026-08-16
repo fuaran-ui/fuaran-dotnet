@@ -825,6 +825,13 @@ let private defs: (string * J) list =
             // carrying the `{column, direction}` sort descriptor a data-bound
             // grid's runtime sorts by (and whose sortable headers write).
             "sortStateKey", str
+            // Phase 862 — declarative pagination. `pageStateKey` names the State
+            // key carrying `{"page": N}` (1-based); `pageSize` is the rows per
+            // page and carries `minimum: 1`, so the schema refuses a zero or
+            // negative page exactly where the validator does. Both optional, so
+            // the pre-862 shape validates unchanged.
+            "pageSize", JObj [ "type", JStr "integer"; "minimum", JInt 1 ]
+            "pageStateKey", str
             "source", ref "Binding"
             "onRowClick", closure
             // Phase 393 — the static read-only mode (folded in from the retired `Table`).

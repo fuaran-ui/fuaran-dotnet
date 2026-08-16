@@ -239,6 +239,26 @@ type PreEmitDefect =
     /// (`Binding.Static`); a bound href that resolves at runtime is left
     /// alone. Carries the link node's id.
     | ProtectedNonMailtoLink of nodeId: string
+    /// **FUARAN093 (Error)**. A `DataGrid` declares `pageSize` without a
+    /// `pageStateKey` (Phase 862). A page size names how large a page is; with
+    /// no key carrying the page POSITION there is no page to be on, so the grid
+    /// renders every row and the declaration is inert. This is the residual
+    /// authored form of the fake-affordance class the grid-behaviour charter
+    /// names — the class is otherwise structural (the pager is renderer-owned,
+    /// so it cannot be wired to nothing). Fix: add `pageStateKey`. Carries the
+    /// grid node's id.
+    | PageSizeWithoutPageKey of nodeId: string
+    /// **FUARAN096 (Warning)**. A `DataGrid` declares `pageStateKey` +
+    /// `pageSize` AND sources itself from a `Query` whose `dependsOn` names
+    /// that same key (Phase 862). The host already returns the page, so a
+    /// client-side slice on top would page the page — showing `pageSize` rows
+    /// of an already-`pageSize`-row result and losing the rest. The renderer
+    /// resolves this correctly (source shape decides who slices), so this is a
+    /// caution rather than a break: it is reported because the shape is almost
+    /// always a mis-wiring, and because the author cannot see which of the two
+    /// mechanisms won by reading the tree. Carries the grid node's id and the
+    /// key.
+    | DoublePagedGrid of nodeId: string * pageStateKey: string
 
 /// Render a defect as its stable (code, severity, message) triple — the ONE
 /// projection every consumer shares (the .NET validator oracle, certification
@@ -422,6 +442,19 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         sprintf
             "link '%s' sets protection=\"email\" on a non-mailto href — the Email strategy only protects a mailto: address, so the renderers ignore the flag (dead intent); drop the protection or point the href at mailto:<address>"
             nodeId
+    | PreEmitDefect.PageSizeWithoutPageKey nodeId ->
+        "FUARAN093",
+        DefectSeverity.Error,
+        sprintf
+            "grid '%s' declares pageSize but no pageStateKey — nothing carries the page position, so the grid renders every row and the page size is dead intent; add pageStateKey naming the State key the pager writes {\"page\":N} to"
+            nodeId
+    | PreEmitDefect.DoublePagedGrid(nodeId, pageStateKey) ->
+        "FUARAN096",
+        DefectSeverity.Warning,
+        sprintf
+            "grid '%s' pages client-side on pageStateKey '%s' while its source is a query depending on that same key — the host already returns the page, so slicing it again would page the page; drop pageSize to let the host page, or drop the dependsOn to page client-side"
+            nodeId
+            pageStateKey
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -580,6 +613,22 @@ let private validateCore
 
             if spec.Editable && not editableWritable then
                 defects.Add(PreEmitDefect.InertEditableGrid nodeIdStr)
+
+            // FUARAN093 / FUARAN096 (Phase 862): the two authored shapes that
+            // can still declare paging that does not page. The decorative-pager
+            // shape itself needs no rule — the pager is renderer-owned, so a
+            // control writing state nothing reads is not authorable.
+            match spec.PageSize, spec.PageStateKey with
+            | Some _, None -> defects.Add(PreEmitDefect.PageSizeWithoutPageKey nodeIdStr)
+            | Some _, Some key ->
+                let hostPages =
+                    match spec.Source with
+                    | Binding.Query(_, _, Some deps) -> deps |> List.contains key
+                    | _ -> false
+
+                if hostPages then
+                    defects.Add(PreEmitDefect.DoublePagedGrid(nodeIdStr, key))
+            | None, _ -> ()
         // Display kinds are leaves; future kind-specific invariants (e.g.
         // HeadingLevel ∈ [1..6]) land here.
         | NodeKind.Heading _

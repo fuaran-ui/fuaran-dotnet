@@ -183,6 +183,8 @@ let tests =
                       Kind =
                           NodeKind.DataGrid(
                               { SortStateKey = None
+                                PageSize = None
+                                PageStateKey = None
                                 Source = Binding.Static(Some Seq.empty)
                                 RowKey = Some(fun _ -> "")
                                 RowKeyField = None
@@ -222,6 +224,8 @@ let tests =
                       Kind =
                           NodeKind.DataGrid(
                               { SortStateKey = None
+                                PageSize = None
+                                PageStateKey = None
                                 Source = Binding.Static(Some Seq.empty)
                                 RowKey = Some(fun _ -> "")
                                 RowKeyField = None

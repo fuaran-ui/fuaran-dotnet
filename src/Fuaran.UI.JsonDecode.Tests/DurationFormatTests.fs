@@ -86,6 +86,8 @@ let wireRoundTrips =
                     Kind =
                       NodeKind.DataGrid(
                           { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
                             Source =
                               Binding.Static(Some(Seq.ofList [ (Map.ofList [ "lastSeen", box -3 ]: Fuaran.Core.Row) ]))
                             RowKey = None
