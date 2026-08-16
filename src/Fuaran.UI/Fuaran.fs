@@ -715,9 +715,11 @@ module Column =
           // (`Field = Some …`, `Value = None`) is produced on the decoded path.
           Value = Some col.Value
           Field = None
-          // Phase 861 — the typed author facade carries no sort narrowing; the
-          // flag is a decoded-path declaration, like `Field` beside it.
+          // Phase 861 / 863 — the typed author facade carries no per-column
+          // narrowing; both flags are decoded-path declarations, like `Field`
+          // beside them.
           Sortable = None
+          Editable = None
           Format = col.Format
           Kind =
             match col.Kind with
@@ -1281,6 +1283,7 @@ module Fuaran =
               PageSize = None
               PageStateKey = None
               DefaultSort = None
+              EditStateKey = None
               Columns = []
               OnRowClick = None
               Editable = false
@@ -1379,6 +1382,7 @@ module Fuaran =
               PageSize = None
               PageStateKey = None
               DefaultSort = None
+              EditStateKey = None
               Columns = spec.Columns |> List.map Column.erase
               OnRowClick = spec.OnRowClick
               Editable = spec.Editable

@@ -814,6 +814,8 @@ let private defs: (string * J) list =
             "field", str
             // Phase 861 — per-column sort narrowing on the bound path.
             "sortable", boolean
+            // Phase 863 — per-column editability narrowing.
+            "editable", boolean
             "width", ref "ColumnWidth" ]
 
       "GridSpec",
@@ -834,6 +836,8 @@ let private defs: (string * J) list =
             // the pre-862 shape validates unchanged.
             "pageSize", JObj [ "type", JStr "integer"; "minimum", JInt 1 ]
             "pageStateKey", str
+            // Phase 863 — the declared edit destination.
+            "editStateKey", str
             // Phase 861 — the bound path's declared initial order. Same record
             // and same `minimum: 0` bound the `staticRows` spelling carries.
             "defaultSort",

@@ -45,6 +45,7 @@ let private sortGrid
             { SortStateKey = sortStateKey
               PageSize = None
               PageStateKey = None
+              EditStateKey = None
               DefaultSort =
                 defaultSortColumn
                 |> Option.map (fun c ->
@@ -60,11 +61,52 @@ let private sortGrid
                       Value = None
                       Field = field
                       Sortable = sortable
+                      Editable = None
                       Format = CellFormat.None
                       Kind = CellKindErased.Text
                       Width = ColumnWidth.Auto })
               OnRowClick = None
               Editable = false
+              StaticRows = None }
+        )
+      State = None
+      Style = None
+      Accessibility = None
+      Motion = Defaults.Motion.none
+      ExtraAttributes = None }
+
+/// Phase 863 — a bound grid with the edit declarations under test. Columns are
+/// `(label, editable)`.
+let private editGrid
+    (gridEditable: bool)
+    (editStateKey: string option)
+    (source: Binding<Fuaran.Core.Row seq>)
+    (columns: (string * bool option) list)
+    : Node<Msg> =
+    { Id = "edited"
+      Kind =
+        NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = editStateKey
+              DefaultSort = None
+              Source = source
+              RowKey = None
+              RowKeyField = Some "id"
+              Columns =
+                columns
+                |> List.map (fun (label, editable) ->
+                    { Label = label
+                      Value = None
+                      Field = Some "note"
+                      Sortable = None
+                      Editable = editable
+                      Format = CellFormat.None
+                      Kind = CellKindErased.Text
+                      Width = ColumnWidth.Auto })
+              OnRowClick = None
+              Editable = gridEditable
               StaticRows = None }
         )
       State = None
@@ -88,6 +130,7 @@ let private pagedGrid
             { SortStateKey = None
               PageSize = pageSize
               PageStateKey = pageStateKey
+              EditStateKey = None
               DefaultSort = None
               Source = source
               RowKey = None
@@ -516,6 +559,7 @@ let tests =
                           { SortStateKey = None
                             PageSize = None
                             PageStateKey = None
+                            EditStateKey = None
                             DefaultSort = None
                             Source = Binding.Static(Some Seq.empty)
                             RowKey = None
@@ -879,4 +923,90 @@ let tests =
                           | _ -> false)
 
                   Expect.isEmpty sortDefects (sprintf "%s is legitimate" label)
+          }
+
+          // ─── Phase 863: the write side's twin. Same directional rule, and a
+          // second shape — an editable column with nowhere for the edit to go.
+
+          test "FUARAN095: a column declaring editable=true under a non-editable grid is refused" {
+              let grid = editGrid false None (Binding.State("rows", None)) [ ("Note", Some true) ]
+
+              match PreEmitValidate.validate grid with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.UneditableColumnDeclared("edited", "Note", EditDefect.GridNotEditable))
+                      "the widening attempt is reported"
+
+                  let code, severity, _ =
+                      describe (PreEmitDefect.UneditableColumnDeclared("edited", "Note", EditDefect.GridNotEditable))
+
+                  Expect.equal code "FUARAN095" "stable code"
+                  Expect.equal severity DefectSeverity.Error "an edit that cannot happen is an error"
+              | Ok() -> failtest "Expected FUARAN095, got Ok"
+          }
+
+          test "FUARAN095: an editable column with no reachable destination is refused" {
+              // Editable grid, editable column, but a Query source and no
+              // editStateKey — the decoded-and-inert shape census row #27 names.
+              let grid =
+                  editGrid true None (Binding.Query("rows", (fun (_: obj) -> Seq.empty), None)) [ ("Note", Some true) ]
+
+              match PreEmitValidate.validate grid with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.UneditableColumnDeclared("edited", "Note", EditDefect.NoReachableDestination))
+                      "the unreachable destination is reported"
+              | Ok() -> failtest "Expected FUARAN095, got Ok"
+          }
+
+          test "FUARAN095 go-red check: a declared editStateKey makes the same grid legitimate" {
+              // The one-field difference between this and the test above is the
+              // whole of what Phase 863 adds. It also pins the FUARAN090
+              // widening: a declared destination means the grid is no longer
+              // inert, so the older rule must stop firing too — otherwise 863
+              // would ship a field that reports itself as dead intent.
+              let grid =
+                  editGrid
+                      true
+                      (Some "stock-adjustments")
+                      (Binding.Query("rows", (fun (_: obj) -> Seq.empty), None))
+                      [ ("Note", Some true) ]
+
+              let defects =
+                  match PreEmitValidate.validate grid with
+                  | Ok() -> []
+                  | Error ds -> ds
+
+              Expect.isEmpty
+                  (defects
+                   |> List.filter (function
+                       | PreEmitDefect.UneditableColumnDeclared _ -> true
+                       | _ -> false))
+                  "a declared destination is reachable"
+
+              Expect.isEmpty
+                  (defects
+                   |> List.filter (function
+                       | PreEmitDefect.InertEditableGrid _ -> true
+                       | _ -> false))
+                  "FUARAN090 must not fire once a destination is declared"
+          }
+
+          test "FUARAN095 go-red check: a column opting OUT is always legitimate" {
+              let grid =
+                  editGrid false None (Binding.State("rows", None)) [ ("Note", Some false) ]
+
+              let defects =
+                  match PreEmitValidate.validate grid with
+                  | Ok() -> []
+                  | Error ds -> ds
+
+              Expect.isEmpty
+                  (defects
+                   |> List.filter (function
+                       | PreEmitDefect.UneditableColumnDeclared _ -> true
+                       | _ -> false))
+                  "narrowing is allowed even to no effect"
           } ]

@@ -5137,6 +5137,13 @@ let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<ob
             | None -> Ok None
             | Some sJ -> requireBool (path + ".sortable") sJ |> Result.map Some
 
+        // Phase 863 — per-column editability narrowing; absent inherits the
+        // grid-level flag.
+        let colEditableR =
+            match tryField fields "editable" with
+            | None -> Ok None
+            | Some eJ -> requireBool (path + ".editable") eJ |> Result.map Some
+
         let widthR =
             match tryField fields "width" with
             | None -> Ok ColumnWidth.Auto
@@ -5151,22 +5158,24 @@ let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<ob
             | Some _ -> Some(fun (_: Row) -> CellValue.Empty)
             | None -> None
 
-        match formatR, kindR, labelR, widthR, fieldR, sortableR with
-        | Ok format, Ok kind, Ok label, Ok width, Ok field, Ok sortable ->
+        match formatR, kindR, labelR, widthR, fieldR, sortableR, colEditableR with
+        | Ok format, Ok kind, Ok label, Ok width, Ok field, Ok sortable, Ok colEditable ->
             Ok
                 { Label = label
                   Value = value
                   Field = field
                   Sortable = sortable
+                  Editable = colEditable
                   Format = format
                   Kind = kind
                   Width = width }
-        | Error e, _, _, _, _, _
-        | _, Error e, _, _, _, _
-        | _, _, Error e, _, _, _
-        | _, _, _, Error e, _, _
-        | _, _, _, _, Error e, _
-        | _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 /// Phase 801 — `"asc"` / `"desc"`, closed. A value outside the pair is an
 /// `UNKNOWN_DU_CASE` (the bare-string-enum convention `decodeLiveRegion` sets),
@@ -5338,6 +5347,13 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | None -> Ok None
             | Some v -> decodeDefaultSort (path + ".defaultSort") v |> Result.map Some
 
+        // Phase 863 — the declared edit destination. Absent keeps Phase 663's
+        // shipped write-back-to-source behaviour exactly.
+        let editStateKeyR =
+            match tryField fields "editStateKey" with
+            | None -> Ok None
+            | Some eJ -> requireString (path + ".editStateKey") eJ |> Result.map Some
+
         let pageStateKeyR =
             match tryField fields "pageStateKey" with
             | None -> Ok None
@@ -5362,6 +5378,7 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             pageSizeR,
             pageStateKeyR,
             defaultSortR,
+            editStateKeyR,
             staticRowsR
         with
         | Ok columns,
@@ -5373,6 +5390,7 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
           Ok pageSize,
           Ok pageStateKey,
           Ok defaultSort,
+          Ok editStateKey,
           Ok staticRows ->
             Ok
                 { Source = source
@@ -5382,20 +5400,22 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
                   PageSize = pageSize
                   PageStateKey = pageStateKey
                   DefaultSort = defaultSort
+                  EditStateKey = editStateKey
                   Columns = columns
                   OnRowClick = onRowClick
                   Editable = editable
                   StaticRows = staticRows }
-        | Error e, _, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, DecodeError> =
     match requireObject path j with

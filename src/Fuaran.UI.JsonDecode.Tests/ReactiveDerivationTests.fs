@@ -309,6 +309,7 @@ let sortStateKeyTests =
                     Value = None
                     Field = field
                     Sortable = None
+                    Editable = None
                     Format = CellFormat.None
                     Kind = CellKindErased.Text
                     Width = ColumnWidth.Auto }

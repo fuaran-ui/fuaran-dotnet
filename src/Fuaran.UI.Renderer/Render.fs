@@ -4347,14 +4347,26 @@ and private renderGrid
                                                                 // correspond to any row field, so there is nothing
                                                                 // sound to write). Date and the interactive cell
                                                                 // kinds keep their existing behaviour.
+                                                                // Phase 863 — the column flag
+                                                                // NARROWS the grid-level
+                                                                // capability: an explicit `false`
+                                                                // is read-only, the declaration
+                                                                // "implied by omission" could not
+                                                                // make.
                                                                 let commit: (CellValue -> unit) option =
                                                                     match
-                                                                        editCommit, col.Value, col.Field, col.Kind
+                                                                        editCommit,
+                                                                        col.Value,
+                                                                        col.Field,
+                                                                        col.Kind,
+                                                                        col.Editable
                                                                     with
+                                                                    | _, _, _, _, Some false -> None
                                                                     | Some ec,
                                                                       None,
                                                                       Some field,
-                                                                      (CellKindErased.Text | CellKindErased.Numeric) ->
+                                                                      (CellKindErased.Text | CellKindErased.Numeric),
+                                                                      _ ->
                                                                         Some(fun cv ->
                                                                             match cv with
                                                                             | CellValue.Numeric f ->

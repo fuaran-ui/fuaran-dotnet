@@ -274,6 +274,29 @@ type PreEmitDefect =
     /// Carries the grid node's id and a typed reason, so the message names the
     /// specific shape rather than the family.
     | UnhonourableSort of nodeId: string * reason: SortDefect
+    /// **FUARAN095 (Error)**. A column is declared editable but has no
+    /// reachable destination (Phase 863) — the decoded-and-inert shape census
+    /// row #27 describes. Two shapes:
+    ///
+    ///  - a column declares `editable: true` under a grid whose own `editable`
+    ///    is false or absent: the widening direction the narrowing rule
+    ///    refuses, the write-side twin of FUARAN094's first shape;
+    ///  - the grid is editable and a column is editable, but nothing names
+    ///    where the edit goes: no `editStateKey`, and a `source` that is not a
+    ///    direct `Binding.State` for the 663 write-back to land in.
+    ///
+    /// The second is deliberately NARROWER than FUARAN090, which warns about
+    /// the same source shape at grid level. Where a column has explicitly
+    /// declared itself editable the author has said something specific that
+    /// cannot happen, so it is an Error rather than an advisory.
+    | UneditableColumnDeclared of nodeId: string * columnLabel: string * reason: EditDefect
+
+/// Why an editable column has nowhere to commit (FUARAN095, Phase 863).
+and [<RequireQualifiedAccess>] EditDefect =
+    /// The grid itself is not editable, so a column cannot turn editing on.
+    | GridNotEditable
+    /// No `editStateKey`, and the source is not a direct `Binding.State`.
+    | NoReachableDestination
 
 /// Why a sort declaration cannot be honoured (FUARAN094, Phase 861). Typed
 /// rather than a string so the three shapes stay enumerable and a fourth
@@ -501,6 +524,20 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
                  nodeId
                  column
                  count)
+    | PreEmitDefect.UneditableColumnDeclared(nodeId, columnLabel, reason) ->
+        "FUARAN095",
+        DefectSeverity.Error,
+        (match reason with
+         | EditDefect.GridNotEditable ->
+             sprintf
+                 "grid '%s' column '%s' declares editable=true but the grid is not editable — a column narrows a behaviour, it cannot turn one on; set editable on the grid, or drop the column flag"
+                 nodeId
+                 columnLabel
+         | EditDefect.NoReachableDestination ->
+             sprintf
+                 "grid '%s' column '%s' is editable but no destination is reachable — declare editStateKey, or source the grid from a direct {\"$type\":\"State\",\"key\":…} binding so the edit has somewhere to commit"
+                 nodeId
+                 columnLabel)
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -657,7 +694,11 @@ let private validateCore
                 | Binding.State _ -> true
                 | _ -> false
 
-            if spec.Editable && not editableWritable then
+            // Phase 863 widened what "writable" means: a declared
+            // `editStateKey` IS a destination, so a grid carrying one is no
+            // longer inert and FUARAN090 must not fire. Leaving it would report
+            // the very shape 863 added as dead intent.
+            if spec.Editable && not editableWritable && spec.EditStateKey.IsNone then
                 defects.Add(PreEmitDefect.InertEditableGrid nodeIdStr)
 
             // FUARAN093 / FUARAN096 (Phase 862): the two authored shapes that
@@ -685,6 +726,30 @@ let private validateCore
                     )
                 )
             | _ -> ()
+
+            // FUARAN095 (Phase 863): the write side's twin of FUARAN094. The
+            // destination is reachable when `editStateKey` names one, or when
+            // the 663 write-back can land in the grid's own State source.
+            let destinationReachable =
+                spec.EditStateKey.IsSome
+                || (match spec.Source with
+                    | Binding.State _ -> true
+                    | _ -> false)
+
+            for col in spec.Columns do
+                let columnEditable =
+                    match col.Editable with
+                    | Some v -> v
+                    | None -> spec.Editable
+
+                if col.Editable = Some true && not spec.Editable then
+                    defects.Add(
+                        PreEmitDefect.UneditableColumnDeclared(nodeIdStr, col.Label, EditDefect.GridNotEditable)
+                    )
+                elif col.Editable = Some true && columnEditable && not destinationReachable then
+                    defects.Add(
+                        PreEmitDefect.UneditableColumnDeclared(nodeIdStr, col.Label, EditDefect.NoReachableDestination)
+                    )
 
             match spec.PageSize, spec.PageStateKey with
             | Some _, None -> defects.Add(PreEmitDefect.PageSizeWithoutPageKey nodeIdStr)

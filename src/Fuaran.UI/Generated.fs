@@ -546,6 +546,13 @@ and ColumnErased<'Msg> =
       // declares no `sortStateKey` — a column cannot turn on a behaviour whose
       // state key does not exist. Omitted on the wire when absent.
       Sortable: bool option
+      // Phase 863 — per-column EDITABILITY narrowing, the same rule on the
+      // write side. Absent = inherit the grid-level `editable`. `false` makes
+      // this column read-only under a grid-level `true` — the declaration
+      // "read-only implied by omission" could not express. `true` is the
+      // inherited default made explicit and is an ERROR where the grid is not
+      // editable: a column narrows, never widens. Omitted when absent.
+      Editable: bool option
       Value: (Fuaran.Core.Row -> Fuaran.UI.HostPrelude.CellValue) option
       Width: ColumnWidth
     }
@@ -894,6 +901,15 @@ and DataGridSpec<'Msg> =
       // may declare it with no `sortStateKey` at all — an initial order
       // without interactive re-sorting, exactly as a static table may.
       DefaultSort: DefaultSort option
+      // Phase 863 — the DECLARED edit destination: the State key an edited
+      // cell's whole updated rows value is committed to. Absent keeps Phase
+      // 663's shipped behaviour exactly — write back to the grid's own
+      // `source` when that source is a direct `Binding.State`, display-only
+      // otherwise. Present, it names the destination explicitly, which is what
+      // census row #27 asked for: a decoded editable grid could not say where
+      // its edits land, because the only spelling was a closure erasing to
+      // `"<closure>"`. Omitted on the wire when absent.
+      EditStateKey: string option
       Source: Binding<Fuaran.Core.Row seq>
       StaticRows: StaticRows option
       OnRowClick: (Fuaran.Core.Row -> Action<'Msg>) option
@@ -1504,7 +1520,7 @@ and private encTabHeader (s: TabHeader) : JVal =
     JObj([ Some("label", encTextSource s.Label); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
 and private encColumnErased<'Msg> (s: ColumnErased<'Msg>) : JVal =
-    JObj([ (s.Field |> Option.map (fun v -> "field", JStr v)); (s.Sortable |> Option.map (fun v -> "sortable", JBool v)); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); Some("kind", encCellKindErased s.Kind); Some("label", JStr s.Label); (s.Value |> Option.map (fun v -> "value", JStr "<closure>")); (match s.Width with | ColumnWidth.Auto -> None | _ -> Some("width", encColumnWidth s.Width)) ] |> List.choose id)
+    JObj([ (s.Field |> Option.map (fun v -> "field", JStr v)); (s.Sortable |> Option.map (fun v -> "sortable", JBool v)); (s.Editable |> Option.map (fun v -> "editable", JBool v)); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); Some("kind", encCellKindErased s.Kind); Some("label", JStr s.Label); (s.Value |> Option.map (fun v -> "value", JStr "<closure>")); (match s.Width with | ColumnWidth.Auto -> None | _ -> Some("width", encColumnWidth s.Width)) ] |> List.choose id)
 
 and private encButtonGroupItem<'Msg> (s: ButtonGroupItem<'Msg>) : JVal =
     JObj([ Some("label", encTextSource s.Label); (s.OnClick |> Option.map (fun v -> "onClick", JStr "<closure>")) ] |> List.choose id)
@@ -1612,7 +1628,7 @@ and private encFiltersSpec<'Msg> (s: FiltersSpec<'Msg>) : JVal =
     Canon.typed "Filters" ([ Some("items", JArr(List.map encFilterSpec s.Items)) ] |> List.choose id)
 
 and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
-    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encChartSpec<'Msg> (s: ChartSpec<'Msg>) : JVal =
     Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
@@ -2775,12 +2791,13 @@ and private decColumnErased (j: JVal) : Result<ColumnErased<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dOpt "field" __fs dStr |> Result.bind (fun field ->
     dOpt "sortable" __fs dBool |> Result.bind (fun sortable ->
+    dOpt "editable" __fs dBool |> Result.bind (fun colEditable ->
     dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
     dReq "kind" __fs decCellKindErased |> Result.bind (fun kind ->
     dReq "label" __fs dStr |> Result.bind (fun label ->
     (dPresent "value" __fs |> Result.map (Option.map (fun () -> (fun _ -> Fuaran.UI.HostPrelude.CellValue.Empty)))) |> Result.bind (fun value ->
     dDef "width" __fs decColumnWidth (ColumnWidth.Auto) |> Result.bind (fun width ->
-    Ok { Field = field; Sortable = sortable; Format = format; Kind = kind; Label = label; Value = value; Width = width }))))))))
+    Ok { Field = field; Sortable = sortable; Editable = colEditable; Format = format; Kind = kind; Label = label; Value = value; Width = width })))))))))
 
 and private decButtonGroupItem (j: JVal) : Result<ButtonGroupItem<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3070,10 +3087,11 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, string> =
     dOpt "pageSize" __fs dInt |> Result.bind (fun pageSize ->
     dOpt "pageStateKey" __fs dStr |> Result.bind (fun pageStateKey ->
     dOpt "defaultSort" __fs decDefaultSort |> Result.bind (fun defaultSort ->
+    dOpt "editStateKey" __fs dStr |> Result.bind (fun editStateKey ->
     dReq "source" __fs (decBinding Fuaran.Core.RowCodec.decodeRows) |> Result.bind (fun source ->
     dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
     (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
-    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; Source = source; StaticRows = staticRows; OnRowClick = onRowClick }))))))))))))
+    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; EditStateKey = editStateKey; Source = source; StaticRows = staticRows; OnRowClick = onRowClick })))))))))))))
 
 and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3328,7 +3346,7 @@ let mkFilters (id: string) (items: FilterSpec<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Fuaran.Core.Row seq>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkChart (id: string) (kind: ChartKind) (source: Binding<Fuaran.Core.Row seq>) (stacked: bool) (xField: string) (yFields: string list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
