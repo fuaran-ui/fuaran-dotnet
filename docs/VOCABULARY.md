@@ -307,7 +307,7 @@ language-settled gate ([`LANGUAGE-SETTLED-CHECKLIST.md`](LANGUAGE-SETTLED-CHECKL
 |---|---|---|
 | **`Custom`-node usage in shipped case studies / demos** (the FUARAN054 "couldn't express" ledger) | Patterns a real translation had to drop to `NodeKind.Custom` to render | **No kind-forcing entry.** The consolidated multi-app harvest concludes every surfaced gap closed *additively* – an author-surface helper or a portability seam – and explicitly records **no `NodeKind.Custom` escape was needed** across the three structurally-distinct views exercised. |
 | **Real-app translation exercises** (three structurally-distinct consumer views: form-heavy, data-grid/upload/drill-down, selection-driven analysis) | Whether translating a real view forced a new core `NodeKind` / `Spec` / `Binding` / `Action` case | **No kind-forcing gap.** All harvested gaps were additive author-surface / portability-seam items (each shipped or recorded); **none forced a new core wire case.** This is precisely the settle-checklist item (b) signal. |
-| **Emission-eval failures** (canonical-prompt runs classified as *"no expressible tree – missing contract"* vs low quality) | Prompts the vocabulary cannot satisfy at all | **No recorded miss.** The kind-confusion metric and the release-gate emission micro-eval are the producing instruments; their first runs are landing now (the confusion metric is being built concurrently). No *"missing contract case"* outcome is on record. |
+| **Emission-eval failures** (canonical-prompt runs classified as *"no expressible tree – missing contract"* vs low quality) | Prompts the vocabulary cannot satisfy at all | **No recorded miss.** The kind-confusion metric and the release-gate emission micro-eval are the producing instruments. The confusion metric's first baseline landed 2026-08-16 (below); the release-gate eval's first canonical-set pass has not. No *"missing contract case"* outcome is on record from either. |
 
 ### The evidenced pre-launch batch
 
@@ -318,8 +318,21 @@ seam – not as a new kind.
 
 This is a **settle-positive** result, not a gap: an empty batch means the contract did not have to grow a
 structural case to express the real views exercised (settle-checklist items (b)/(c) point the same way).
-The batch stays **open** until the two still-landing instruments – the kind-confusion metric and the
-release-gate emission eval – produce their first full runs. If either surfaces a valid-but-unexpressible
+
+**Instrument status (updated 2026-08-16 – the batch verdict is unchanged).** One of the two
+still-landing instruments has now landed: the **kind-confusion metric captured its first live baseline**
+on 2026-08-16 – **12.5% valid-but-wrong-kind** (1 substitution over 8 scored prompts against
+`Fuaran.UI.Ops` 0.26.0, one cohort, one model), with a single substitution pair, `Toast → Callout`. The
+baseline carries a decoder + prompt-set + cohort provenance stamp, so a pre/post delta against it is
+attributable rather than merely comparable.
+
+**That result is not §1.1 demand evidence, and the distinction is the point.** A confusion is a
+*selection* error among kinds that all exist – the emission was valid, renderable, and reached for the
+wrong one of two kinds the language already has. It is evidence about **learnability**, which is what
+§3's confusion guard weighs, and it says nothing about expressibility. Only a *"no expressible tree –
+missing contract"* outcome feeds the §1.1 gate, and the first baseline produced none. So the batch stays
+**EMPTY**, and stays **open** on the remaining instrument – the release-gate emission eval's first
+canonical-set pass. If either surfaces a valid-but-unexpressible
 pattern that clears §1, that candidate feeds a follow-up feature-proposal pass, designed against the
 named real consumer, shipped with recipe + eval seeds, confusion-checked, and landed **before** the OSS
 flip (so it needs no post-1.0 profile bump) and before the IDL codegen's full-breadth migration (so the
@@ -328,10 +341,17 @@ and demand-paced.
 
 ### Re-run trigger
 
-Re-run this sweep (and update this appendix) when: the confusion metric's first baseline run lands; the
+Re-run this sweep (and update this appendix) when: ~~the confusion metric's first baseline run lands~~
+(**fired 2026-08-16** – swept, verdict unchanged, see the instrument-status note above); the
 release-gate emission eval completes its first canonical-set pass; or a fourth real-app translation
 exercise surfaces a gap. A non-empty batch result promotes to a feature-proposal pass under this
 charter's gates.
+
+**A confusion-metric re-run is not a sweep trigger on its own.** The trigger above is the metric's
+*first* baseline – the moment it stopped being an absent instrument. Subsequent runs measure a rate, and
+a rate cannot promote a candidate into the batch, because §1.1 asks whether a pattern is *expressible*
+and the metric only ever reports on patterns that were. A rising rate fires §3.3's merge review instead,
+which is a different gate with a different remedy (merge two near-synonyms; do not admit a third).
 
 ---
 
