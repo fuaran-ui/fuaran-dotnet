@@ -651,6 +651,24 @@ module Reliance =
     [<Literal>]
     let ImpliedNodeClose = "implied-node-close"
 
+    /// Counter id for an ACCEPTED uniqueness-gated over-close recovery
+    /// (fuaran#855): an over-closed document whose surplus closer admitted
+    /// exactly one deletion repair that decoded clean through the canonical
+    /// decoder. Distinct from the refusal counter below — the two are separate
+    /// measurements, not two readings of one.
+    [<Literal>]
+    let OverCloseUnique = "over-close-unique"
+
+    /// Counter id for a REFUSED over-close repair (fuaran#855): the document
+    /// matched the over-closed profile and the gate declined — zero clean
+    /// candidates, two or more, or an enumeration past the bounds. The refusal
+    /// is counted for the same reason the recovery is: a class that is
+    /// silently recovered stops generating demand signal, and a class that is
+    /// silently refused stops generating it too. A refused cell must stay
+    /// visible.
+    [<Literal>]
+    let OverCloseRefused = "over-close-refused"
+
     // Module-level mutable, justified: this IS the process-wide accounting
     // surface — the counter must survive across decode calls with no ambient
     // context to thread it through (`decodeNode` is a pure string -> Result
@@ -1031,6 +1049,255 @@ module private ImpliedNodeClose =
                             sb.Append ch |> ignore
 
                         Some(sb.ToString())
+
+// ─── Uniqueness-gated over-close recovery (fuaran#855) ────────────────────
+//
+// The MIRROR of the fuaran#850 class, with the sign of the defect reversed and
+// the default of the gate reversed with it. 850's emission owes a closer and
+// drops it; this one emits a closer it does not owe — `…}}}` where `}}` was
+// owed, one level past the node. Same boundary, opposite direction.
+//
+// The two are not symmetric problems, and the asymmetry is structural rather
+// than incidental. An OWED closer has exactly one legal home: when `]` arrives
+// with objects still open inside the array, the grammar admits precisely one
+// repair, which is why 850 could measure its recovery as determined. A SURPLUS
+// closer has as many candidate homes as there are enclosing levels, and every
+// choice re-assigns the fields that follow it to a different owner. Measured
+// over the stored instances of this class: on the grammar alone most admit two
+// to five distinct minimal-deletion repairs, and after decoding every candidate
+// through this very decoder, six of the first sixteen STILL admit two to five
+// repairs that each decode clean.
+//
+// What that ambiguity costs is field ownership, not node placement — which is
+// what makes it dangerous. On the worst measured cell the five clean repairs
+// produce the IDENTICAL node skeleton and differ only in which object owns the
+// five trailing fields; the LEFTMOST legal deletion — the obvious
+// implementation — buries all five inside a `Static` binding and renders a bare
+// unformatted number with no trend and no icon. That tree passes every gate.
+// The reliance counter can report THAT a coercion happened; it cannot report
+// that the coercion chose the right owner, and nothing downstream can either.
+//
+// CONTRACT — the same shape as 850, with the opposite default:
+//   - Attempted ONLY after `tryParse` fails with `INVALID_JSON` and after the
+//     850 recovery has declined (850 fails closed on over-closure, so the two
+//     never contend). Never on `LIMIT_EXCEEDED`, never on a document that
+//     parses — the happy path does not enter this code at all.
+//   - PROFILE-GATED: a string-aware structural scan must show the document
+//     NET over-closed by one or two closers, with the surplus uncompensated
+//     (the running minimum depth equals the final depth — a surplus that is
+//     later re-opened is a differently-shaped defect), and not cut inside a
+//     string.
+//   - DELETE-ONLY, BOUNDED: candidates are the document with one or two
+//     structural closers removed, enumerated exhaustively within stated bounds.
+//     Nothing is ever inserted, and no key, value or bracket is invented.
+//   - ACCEPT IFF EXACTLY ONE CANDIDATE DECODES CLEAN. Uniqueness is evaluated
+//     over the COMPLETE enumeration, de-duplicated by parsed value — two
+//     deletions inside one whitespace-interrupted closer run yield different
+//     strings and the identical document, and that is one repair, not two.
+//   - REFUSES BY DEFAULT: zero clean candidates, two or more, or an enumeration
+//     past the bounds all return the ORIGINAL error unchanged. An
+//     `INVALID_JSON` the demand loop can feed on is worth more than a wrong
+//     tree no counter can flag.
+//   - COUNTED BOTH WAYS: `Reliance.OverCloseUnique` on an acceptance,
+//     `Reliance.OverCloseRefused` on a refusal (see
+//     `docs/migrations/855-uniqueness-gated-overclose-recovery.md`).
+//
+// The failure-offset rule — "the repair lies in the contiguous closer run
+// ending at the first mismatch" — was measured on the same set and selects a
+// schema-clean repair in eleven of sixteen. It is used here for candidate
+// ORDERING ONLY, and it is worth being explicit that ordering CANNOT change the
+// verdict: uniqueness is a property of the whole enumeration, so a rule that
+// merely reorders it can never override the count. Five of sixteen have their
+// true repair outside that run, which is exactly why it is not the gate.
+
+module private OverClose =
+    /// The surplus this gate will consider. Every measured instance is one or
+    /// two; three would be a differently-shaped defect, not a deeper one.
+    [<Literal>]
+    let MaxSurplus = 2
+
+    /// Structural closers the enumeration will draw from. The largest measured
+    /// instance is a 34 KB document with 286.
+    [<Literal>]
+    let MaxCloserPositions = 512
+
+    /// Deletion sets enumerated. The largest measured instance needs 2,628
+    /// (a surplus of two over 73 closers); past this the gate refuses rather
+    /// than spending unbounded work on the failure path.
+    [<Literal>]
+    let MaxDeletionSets = 8192
+
+    /// Distinct parseable candidates decoded. The largest measured instance
+    /// yields five; a document yielding more than this is not the measured
+    /// class and the gate refuses rather than widening.
+    [<Literal>]
+    let MaxDistinctCandidates = 32
+
+    type Profile =
+        {
+            /// Surplus closers — 1 or 2 for every measured instance.
+            Surplus: int
+            /// Every structural closer position, ascending.
+            Closers: int[]
+            /// The contiguous closer run ending at the first mismatch
+            /// (whitespace-tolerant), inclusive. ORDERING ONLY.
+            RunLo: int
+            RunHi: int
+        }
+
+    /// String-aware structural scan. `Some profile` when the document is
+    /// over-closed by a net, uncompensated one or two closers and is not cut
+    /// inside a string; `None` otherwise — and a `None` here is NOT a refusal
+    /// of this class, it is a document that was never in it, so nothing is
+    /// counted for it.
+    ///
+    /// The FIRST STRUCTURAL MISMATCH is where a closer either finds no open
+    /// bracket at all or disagrees in kind with the innermost one — which for
+    /// this class is the surplus closer itself, since it pops the enclosing
+    /// `children[]` array with a `}`. It is the position the parser fails at,
+    /// recomputed here rather than recovered from the error message.
+    ///
+    /// A note on what is deliberately NOT checked. "No crossed brackets before
+    /// the mismatch" reads like a second gate and is in fact vacuous: the
+    /// mismatch IS the first crossing, so nothing can cross before it. Stating
+    /// it as an implemented condition would have been decoration, and an
+    /// earlier draft of this scan did exactly that — it evaluated crossing over
+    /// the whole document and so rejected every real instance of the class,
+    /// because the surplus closer is itself the crossing.
+    let profile (text: string) : Profile option =
+        if isNull text || text.Length = 0 then
+            None
+        else
+            let n = text.Length
+            let closers = ResizeArray<int>()
+            let opens = ResizeArray<char>()
+            let mutable i = 0
+            let mutable depth = 0
+            let mutable minDepth = 0
+            let mutable firstMismatch = -1
+            let mutable inString = false
+
+            while i < n do
+                let c = text[i]
+
+                if inString then
+                    if c = '\\' then
+                        i <- i + 1
+                    elif c = '"' then
+                        inString <- false
+                elif c = '"' then
+                    inString <- true
+                elif c = '{' || c = '[' then
+                    depth <- depth + 1
+                    opens.Add c
+                elif c = '}' || c = ']' then
+                    closers.Add i
+                    depth <- depth - 1
+
+                    if opens.Count = 0 then
+                        if firstMismatch < 0 then
+                            firstMismatch <- i
+                    else
+                        let opened = opens[opens.Count - 1]
+                        opens.RemoveAt(opens.Count - 1)
+
+                        if (opened = '{') <> (c = '}') && firstMismatch < 0 then
+                            firstMismatch <- i
+
+                    if depth < minDepth then
+                        minDepth <- depth
+
+                i <- i + 1
+
+            let surplus = -depth
+
+            if inString then
+                None // cut inside a string — the truncation fingerprint
+            elif depth >= 0 || minDepth <> depth then
+                // Not net over-closed, or the surplus is compensated by a later
+                // re-opening — a differently-shaped defect either way.
+                None
+            elif surplus > MaxSurplus then
+                None
+            elif firstMismatch < 0 then
+                None
+            else
+                // Walk back from the mismatch over the contiguous run of
+                // closers. Whitespace between them is part of the run — a
+                // pretty-printed emission separates its closers by newlines.
+                let mutable lo = firstMismatch
+                let mutable j = firstMismatch - 1
+                let mutable scanning = true
+
+                while scanning && j >= 0 do
+                    let c = text[j]
+
+                    if c = ' ' || c = '\t' || c = '\n' || c = '\r' then
+                        j <- j - 1
+                    elif c = '}' || c = ']' then
+                        lo <- j
+                        j <- j - 1
+                    else
+                        scanning <- false
+
+                Some
+                    { Surplus = surplus
+                      Closers = closers.ToArray()
+                      RunLo = lo
+                      RunHi = firstMismatch }
+
+    /// The candidate repaired documents, failure-run-first. `None` when a bound
+    /// is exceeded — which IS a refusal of a profile-matching document, so the
+    /// caller counts it.
+    let candidates (text: string) (p: Profile) : string[] option =
+        let m = p.Closers.Length
+
+        let sets =
+            if p.Surplus = 1 then
+                int64 m
+            else
+                int64 m * int64 (m - 1) / 2L
+
+        if m > MaxCloserPositions || sets > int64 MaxDeletionSets then
+            None
+        else
+            let result = ResizeArray<string>()
+            let inRun pos = pos >= p.RunLo && pos <= p.RunHi
+
+            // `b < 0` for a single deletion; otherwise `a < b`.
+            let emit (a: int) (b: int) =
+                let sb = System.Text.StringBuilder(text.Length)
+
+                if b < 0 then
+                    sb.Append(text.Substring(0, a)).Append(text.Substring(a + 1)) |> ignore
+                else
+                    sb
+                        .Append(text.Substring(0, a))
+                        .Append(text.Substring(a + 1, b - a - 1))
+                        .Append(text.Substring(b + 1))
+                    |> ignore
+
+                result.Add(sb.ToString())
+
+            // Two passes: the failure-run-touching sets first. Ordering only —
+            // the verdict is a count over the union of both passes.
+            for pass in 0..1 do
+                if p.Surplus = 1 then
+                    for x in 0 .. m - 1 do
+                        let a = p.Closers[x]
+
+                        if inRun a = (pass = 0) then
+                            emit a -1
+                else
+                    for x in 0 .. m - 2 do
+                        for y in x + 1 .. m - 1 do
+                            let a = p.Closers[x]
+                            let b = p.Closers[y]
+
+                            if (inRun a || inRun b) = (pass = 0) then
+                                emit a b
+
+            Some(result.ToArray())
 
 /// Parse a NODE payload with the fuaran#850 implied-node-close recovery. A
 /// document that parses takes the identical `tryParse` path (the recovery code
@@ -6902,6 +7169,84 @@ let private parseFailure (code: DecodeErrorCode, message: string) : Result<'a, D
             (Some "well-formed JSON object per the canonical-JSON shape")
 
 
+/// The fuaran#855 uniqueness gate, decode side. `Some tree` iff the document
+/// matched the over-closed profile and EXACTLY ONE de-duplicated candidate
+/// repair decoded clean through the canonical decoder; `None` in every other
+/// case, so the caller surfaces the original `INVALID_JSON` unchanged.
+///
+/// This lives beside `decodeNode` rather than with `OverClose` because
+/// uniqueness is a property the SCHEMA decides, not the grammar: on the grammar
+/// alone ten of the first sixteen measured instances are ambiguous, and it is
+/// decoding every candidate that narrows them to six. A gate written at the
+/// parse boundary would have had to guess exactly where the evidence says it
+/// must not.
+let private tryOverCloseUnique (json: string) : Result<Node<obj>, DecodeError> option =
+    match OverClose.profile json with
+    | None -> None // never in the class — not a refusal, so not counted
+    | Some p ->
+        let refuse () =
+            Reliance.record Reliance.OverCloseRefused
+            None
+
+        match OverClose.candidates json p with
+        | None -> refuse () // past the enumeration bounds
+        | Some cands ->
+            // De-duplicate on the PARSED VALUE: deleting either of two closers
+            // separated only by whitespace yields two different strings and one
+            // document, and counting that as two repairs would refuse a
+            // genuinely-unique cell.
+            let seen = ResizeArray<Json>()
+            let mutable clean = 0
+            let mutable accepted = None
+            let mutable overflow = false
+            let mutable i = 0
+
+            while not overflow && i < cands.Length do
+                match tryParse cands[i] with
+                | Ok j ->
+                    let mutable known = false
+
+                    for k in 0 .. seen.Count - 1 do
+                        if not known && seen[k] = j then
+                            known <- true
+
+                    if not known then
+                        seen.Add j
+
+                        if seen.Count > OverClose.MaxDistinctCandidates then
+                            overflow <- true
+                        else
+                            match decodeNodeAst (walkRoot ()) "$" j with
+                            | Ok tree ->
+                                clean <- clean + 1
+
+                                if clean = 1 then
+                                    accepted <- Some tree
+                            | Error _ -> ()
+                | Error _ -> ()
+
+                i <- i + 1
+
+            // The whole gate, in one line: exactly one, or nothing.
+            if overflow || clean <> 1 then
+                refuse ()
+            else
+                Reliance.record Reliance.OverCloseUnique
+                accepted |> Option.map Ok
+
+/// The shared node-decode spine: the ordinary parse, then the fuaran#850
+/// insert-only recovery, then the fuaran#855 uniqueness gate, then the original
+/// error. The two recoveries never contend — 850 fails closed on an over-closed
+/// document, which is precisely the profile 855 requires.
+let private decodeNodeCore (json: string) : Result<Node<obj>, DecodeError> =
+    match tryParseNodeWithRecovery json with
+    | Ok j -> decodeNodeAst (walkRoot ()) "$" j
+    | Error((DecodeErrorCode.INVALID_JSON, _) as failure) ->
+        match tryOverCloseUnique json with
+        | Some decoded -> decoded
+        | None -> parseFailure failure
+    | Error failure -> parseFailure failure
+
 /// Decode a canonical-JSON encoded `Node<'Msg>` payload into a `WireTree` —
 /// the storage-shape `Node<obj>` marked as wire-originated. The wire format is
 /// the output of `Fuaran.UI.OpStream.Abstractions.CanonicalJson.encodeNode`.
@@ -6914,21 +7259,13 @@ let private parseFailure (code: DecodeErrorCode, message: string) : Result<'a, D
 /// (`moduleMsgDecoder: JVal -> 'Msg`). Use `decodeNodeObj` for the raw
 /// `Node<obj>` when you are the reattachment / persistence boundary.
 let decodeNode (json: string) : Result<WireTree, DecodeError> =
-    let decoded =
-        match tryParseNodeWithRecovery json with
-        | Error failure -> parseFailure failure
-        | Ok j -> decodeNodeAst (walkRoot ()) "$" j
-
-    decoded |> Result.map WireTree.ofDecoded
+    decodeNodeCore json |> Result.map WireTree.ofDecoded
 
 /// Raw `Node<obj>` decode — the escape hatch for reattachment / persistence
 /// boundaries that need the unmarked tree (equivalent to
 /// `decodeNode json |> Result.map WireTree.reify`). Prefer `decodeNode`; this
 /// exists so those boundaries don't wrap-then-immediately-reify.
-let decodeNodeObj (json: string) : Result<Node<obj>, DecodeError> =
-    match tryParseNodeWithRecovery json with
-    | Error failure -> parseFailure failure
-    | Ok j -> decodeNodeAst (walkRoot ()) "$" j
+let decodeNodeObj (json: string) : Result<Node<obj>, DecodeError> = decodeNodeCore json
 
 /// Decode a canonical-JSON encoded `TreeOp<'Msg>` payload into the
 /// storage-shape `TreeOp<obj>`. Symmetric with

@@ -58,6 +58,12 @@
          suite (36/36 recover, 34/36 decode clean); the EOF-close
          counter-example is pinned so the wrong fix cannot return. -->
     <Compile Include="ImpliedNodeCloseRecoveryTests.fs" />
+    <!-- Phase 855 — uniqueness-gated over-close recovery: 850's mirror with
+         the opposite default. The 28 labelled emissions under
+         overclose-fixtures/ are the acceptance oracle (14 recover to their
+         committed intended tree, 14 refuse); the leftmost-legal deletion is
+         pinned as the wrong fix. -->
+    <Compile Include="OverCloseUniquenessTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -65,6 +71,11 @@
          Phase 850 recovery re-gate. Deliberately .txt: none of them is valid
          JSON — that is the point. -->
     <Content Include="recovery-fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The Phase 855 labelled set: 28 stored over-closed emissions, the 14
+         committed intended repairs, and the pinned leftmost-legal wrong fix.
+         Deliberately .txt — the emissions are not valid JSON, which is the
+         point, and the intended repairs sit beside them for diffability. -->
+    <Content Include="overclose-fixtures\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />

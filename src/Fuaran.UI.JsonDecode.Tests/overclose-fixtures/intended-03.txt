@@ -1,0 +1,988 @@
+{
+  "id": "energy-grid-root",
+  "kind": {
+    "$type": "Box",
+    "children": [
+      {
+        "id": "header-section",
+        "kind": {
+          "$type": "Box",
+          "children": [
+            {
+              "id": "main-heading",
+              "kind": {
+                "$type": "Heading",
+                "level": 1,
+                "text": "Energy Grid Monitor",
+                "variant": "Standard"
+              }
+            },
+            {
+              "id": "global-filters",
+              "kind": {
+                "$type": "Filters",
+                "items": [
+                  {
+                    "kind": {
+                      "$type": "SegmentedChoice",
+                      "options": {
+                        "$type": "Static",
+                        "value": [
+                          {
+                            "label": "Last 1 hour",
+                            "value": "1h"
+                          },
+                          {
+                            "label": "Last 24 hours",
+                            "value": "24h"
+                          },
+                          {
+                            "label": "Last 7 days",
+                            "value": "7d"
+                          }
+                        ]
+                      },
+                      "orientation": "Horizontal"
+                    },
+                    "label": "Time Window",
+                    "name": "timeWindow"
+                  }
+                ]
+              }
+            }
+          ],
+          "layout": {
+            "$type": "Flex",
+            "direction": "Vertical",
+            "gap": 16,
+            "wrap": false
+          },
+          "role": "Group"
+        }
+      },
+      {
+        "id": "region-tabs",
+        "kind": {
+          "$type": "Tabs",
+          "activeIndex": {
+            "$type": "State",
+            "defaultValue": 0,
+            "key": "region-tabs-active"
+          },
+          "children": [
+            {
+              "id": "tab-north-content",
+              "kind": {
+                "$type": "Box",
+                "children": [
+                  {
+                    "id": "north-gen",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "zap",
+                      "label": "Power Generation",
+                      "subtext": "Megawatts (MW)",
+                      "tone": "Brand",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              1200,
+                              1250,
+                              1230
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "id": "north-cons",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "activity",
+                      "label": "Power Consumption",
+                      "subtext": "Megawatts (MW)",
+                      "tone": "Info",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              1150,
+                              1100,
+                              1120
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "id": "north-outages",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "alert-triangle",
+                      "label": "Active Outages",
+                      "subtext": "Reported incidents",
+                      "tone": "Success",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              0,
+                              0,
+                              1
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "layout": {
+                  "$type": "Auto"
+                },
+                "role": "Dashboard"
+              }
+            },
+            {
+              "id": "tab-east-content",
+              "kind": {
+                "$type": "Box",
+                "children": [
+                  {
+                    "id": "east-gen",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "zap",
+                      "label": "Power Generation",
+                      "subtext": "Megawatts (MW)",
+                      "tone": "Brand",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              3100,
+                              3400,
+                              3350
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "id": "east-cons",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "activity",
+                      "label": "Power Consumption",
+                      "subtext": "Megawatts (MW)",
+                      "tone": "Info",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              3200,
+                              3550,
+                              3450
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "id": "east-outages",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "alert-triangle",
+                      "label": "Active Outages",
+                      "subtext": "Reported incidents",
+                      "tone": "Critical",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              1,
+                              2,
+                              4
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "layout": {
+                  "$type": "Auto"
+                },
+                "role": "Dashboard"
+              }
+            },
+            {
+              "id": "tab-south-content",
+              "kind": {
+                "$type": "Box",
+                "children": [
+                  {
+                    "id": "south-gen",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "zap",
+                      "label": "Power Generation",
+                      "subtext": "Megawatts (MW)",
+                      "tone": "Brand",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              2000,
+                              2100,
+                              2050
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "id": "south-cons",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "activity",
+                      "label": "Power Consumption",
+                      "subtext": "Megawatts (MW)",
+                      "tone": "Info",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              1950,
+                              2000,
+                              1980
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "id": "south-outages",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "alert-triangle",
+                      "label": "Active Outages",
+                      "subtext": "Reported incidents",
+                      "tone": "Warning",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              0,
+                              1,
+                              2
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "layout": {
+                  "$type": "Auto"
+                },
+                "role": "Dashboard"
+              }
+            },
+            {
+              "id": "tab-west-content",
+              "kind": {
+                "$type": "Box",
+                "children": [
+                  {
+                    "id": "west-gen",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "zap",
+                      "label": "Power Generation",
+                      "subtext": "Megawatts (MW)",
+                      "tone": "Brand",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              1700,
+                              1800,
+                              1780
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "id": "west-cons",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "activity",
+                      "label": "Power Consumption",
+                      "subtext": "Megawatts (MW)",
+                      "tone": "Info",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              1680,
+                              1750,
+                              1700
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "id": "west-outages",
+                    "kind": {
+                      "$type": "Metric",
+                      "format": {
+                        "$type": "Number"
+                      },
+                      "icon": "alert-triangle",
+                      "label": "Active Outages",
+                      "subtext": "Reported incidents",
+                      "tone": "Success",
+                      "value": {
+                        "$type": "Transform",
+                        "params": [
+                          {
+                            "from": {
+                              "$type": "Filter",
+                              "defaultValue": "24h",
+                              "name": "timeWindow"
+                            },
+                            "name": "tw"
+                          }
+                        ],
+                        "pipeline": [
+                          {
+                            "$type": "filter",
+                            "pred": {
+                              "$type": "binary",
+                              "left": {
+                                "$type": "col",
+                                "name": "window"
+                              },
+                              "op": "eq",
+                              "right": {
+                                "$type": "param",
+                                "name": "tw"
+                              }
+                            }
+                          },
+                          {
+                            "$type": "project",
+                            "cols": [
+                              {
+                                "a": "val",
+                                "b": "val"
+                              }
+                            ]
+                          },
+                          {
+                            "$type": "limit",
+                            "n": 1
+                          }
+                        ],
+                        "source": {
+                          "columns": {
+                            "val": [
+                              0,
+                              0,
+                              0
+                            ],
+                            "window": [
+                              "1h",
+                              "24h",
+                              "7d"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "layout": {
+                  "$type": "Auto"
+                },
+                "role": "Dashboard"
+              }
+            }
+          ],
+          "tabHeaders": [
+            {
+              "label": "North"
+            },
+            {
+              "label": "East"
+            },
+            {
+              "label": "South"
+            },
+            {
+              "label": "West"
+            }
+          ]
+        
+      }
+    }
+  ],
+  "layout": {
+    "$type": "Flex",
+    "direction": "Vertical",
+    "gap": 24,
+    "wrap": false
+  },
+  "role": "Group"
+}
+}

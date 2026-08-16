@@ -1203,3 +1203,42 @@ consumer that never touched the bounded path needs no change at all.
 
 A removal is a major-versus-minor question the pre-1.0 caveat settles: `Fuaran.UI.ServerDriven` is
 pre-1.0 and not in the Scope table above, and this ships as a minor bump on the 0.5.0 precedent.
+
+## Recorded change — 0.26.0, uniqueness-gated over-close recovery (fuaran#855)
+
+**`Fuaran.UI.Ops.JsonDecode` gains the MIRROR of the 0.24.0 recovery, with the opposite default.**
+The class is the same emission boundary with the sign reversed: a closer the emission does not owe
+(`…}}}` where `}}` was owed), closing one level past the node. 0.24.0 inserts what the grammar
+FORCES; this deletes what the grammar merely PERMITS, and the two are not symmetric problems — an
+owed closer has exactly one legal home, a surplus closer has as many as there are enclosing levels,
+and every choice re-assigns the fields that follow it to a different owner. Measured on the stored
+instances: after decoding every candidate through this decoder, six of the first sixteen still admit
+two to five repairs that EACH decode clean, differing only in silent field ownership. So the gate is
+uniqueness and the default is refusal. Full contract:
+[`docs/migrations/855-uniqueness-gated-overclose-recovery.md`](docs/migrations/855-uniqueness-gated-overclose-recovery.md).
+
+- **Additive decode behaviour — pre-1.0 minor** (the same 0.20.0 precedent). The gate is reached
+  only after the ordinary parse fails AND the 0.24.0 recovery declines, so every document that
+  decoded before decodes byte-identically, and every failure outside the over-closed profile keeps
+  its exact error. The newly-accepted inputs were rejections before.
+- **Accept iff EXACTLY ONE candidate decodes clean.** Candidates are the document with one or two
+  structural closers deleted, enumerated exhaustively within stated bounds (surplus ≤ 2, ≤ 512
+  closer positions, ≤ 8192 deletion sets, ≤ 32 distinct parseable candidates) and de-duplicated by
+  parsed value. Zero clean, two or more, or an enumeration past the bounds all return the ORIGINAL
+  `INVALID_JSON` unchanged. The failure-offset selection rule informs candidate ordering only and
+  cannot change the verdict — uniqueness is a property of the whole enumeration. `decodeOp` is
+  untouched (strict parse).
+- **New public surface: two counter ids on the existing `JsonDecode.Reliance`** —
+  `Reliance.OverCloseUnique` = `"over-close-unique"` (an acceptance) and `Reliance.OverCloseRefused`
+  = `"over-close-refused"` (a refusal). **Deliberately distinct**, and the refusal is counted for
+  the same reason the recovery is: a class that is silently recovered stops generating demand
+  signal, and one that is silently refused stops generating it too. Both strings are stable
+  identifiers (same footing as a `DecodeError` code).
+- **The wrong fix is pinned, not merely avoided.** The leftmost-legal deletion — the obvious
+  implementation — decodes perfectly clean on the worst measured cell while burying five trailing
+  fields inside a `Static` binding. It is committed as a negative fixture, so a future change that
+  reaches for leftmost-first fails the suite.
+- **Corpus / spec / host parity — staged, not shipped here**, on the 0.24.0 pattern. The in-repo
+  `overclose-fixtures/` labelled set (28 stored emissions, 14 with their committed intended repair)
+  is the acceptance record until then. The class must NOT be added to the `lenient-accept` corpus
+  family, which is for loss-free spelling normalisation only.

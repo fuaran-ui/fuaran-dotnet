@@ -222,8 +222,19 @@
          instead; the transport core (DomPatch / ClientEffect / Lowering /
          Validation / Driver / Channel) is untouched. The dependency runs
          one way (program -> UI, never back), which is what the split buys:
-         see that repo's DECISIONS.md D5. Pre-1.0 minor. -->
-    <Version>0.25.0</Version>
+         see that repo's DECISIONS.md D5. Pre-1.0 minor.
+
+         0.26.0 - fuaran#855 uniqueness-gated over-close recovery: 850's
+         mirror with the OPPOSITE default. On an INVALID_JSON node payload
+         that is net over-closed by one or two closers, the candidate
+         single/multi-deletion repairs are enumerated within stated bounds,
+         de-duplicated by parsed value and decoded; the repair is accepted
+         IFF EXACTLY ONE decodes clean, and refused - original error
+         unchanged - otherwise. Counted both ways under distinct
+         JsonDecode.Reliance ids ("over-close-unique", "over-close-refused").
+         Additive decode behaviour + additive public surface (pre-1.0
+         minor, the same precedent). -->
+    <Version>0.26.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
