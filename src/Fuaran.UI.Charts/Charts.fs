@@ -9,10 +9,12 @@ module Fuaran.UI.Charts
 //  Phase 885 — `ChartStyle`: the styling surface as a LOWERING PARAMETER.
 //              Every styling constant this module used to bake inline now reads
 //              from a `ChartStyle` record threaded through the lowering.
-//              `ChartStyle.defaults` reproduces the pre-phase output
-//              byte-identically, so it stays the corpus-pinned form; a host
-//              passing its own style is a deliberate act off the conformance
-//              path. Style is NEVER a `ChartSpec` wire field (D8).
+//              Style is NEVER a `ChartSpec` wire field (D8).
+//  Phase 875 — default chart style v2: the visible restyle. `ChartStyle.defaults`
+//              MOVED (palette, axis chrome, mark geometry, title size) and the
+//              `chart-lowering/*` goldens were regenerated once for the whole
+//              change-set. `defaults` remains the corpus-pinned form — it is no
+//              longer the pre-885 form.
 //
 //  `Chart` stays a SEMANTIC wire kind (D2). This module is the bounded layout
 //  engine that turns a resolved `ChartSpec` + data rows into a canonical
@@ -47,10 +49,12 @@ let inline private dp (x: float) (y: float) : DrawPoint = { X = x; Y = y }
 //   * Style is a LOWERING PARAMETER, never a `ChartSpec` wire field. A theme
 //     flip, a brand palette, or a house typography choice is the host's, made
 //     at render time; it must not rewrite a semantic node (D2/D6).
-//   * `ChartStyle.defaults` is CORPUS-PINNED. It reproduces the pre-885 output
-//     byte-identically, so the `chart-lowering/*` goldens — and the cross-host
-//     parity they certify (R2) — are untouched. A host passing its own style is
-//     a deliberate act off the conformance path, and its output is its own.
+//   * `ChartStyle.defaults` is CORPUS-PINNED — the `chart-lowering/*` goldens,
+//     and the cross-host parity they certify (R2), are its projection. Changing
+//     a default value is therefore a corpus event: regenerate the goldens and
+//     move every conformant host in the same change-set (Phase 875 did exactly
+//     that). A host passing its own style is a deliberate act off the
+//     conformance path, and its output is its own.
 
 /// Where the chart title sits along the plot's top edge.
 [<RequireQualifiedAccess>]
@@ -65,10 +69,13 @@ type ChartTitleAlignment =
 /// Which edge the series legend occupies.
 ///
 /// **Reserved — not yet consumed.** The shipped lowering draws the legend as a
-/// horizontal row in the top margin regardless of this field; the positioning
-/// mechanics land with the default-style restyle (Phase 875). The default
-/// records the 2026-08-16 operator decision so the field is already right when
-/// that phase wires it.
+/// single horizontal row in the top margin regardless of this field. Phase 875
+/// (which this comment previously named as the phase that would wire it) did
+/// the palette / chrome / geometry restyle and deliberately left legend LAYOUT
+/// alone — so the row still overflows the canvas past six entries, which the
+/// 8-slot palette v2 now makes reachable. Positioning and overflow are one
+/// problem and land together in a later phase; the default records the
+/// 2026-08-16 operator decision so the field is already right when it does.
 [<RequireQualifiedAccess>]
 type ChartLegendPosition =
     | Top
@@ -100,6 +107,14 @@ type ChartStyle =
         /// category) modulo its length. Series colours stay literal hex: they
         /// must stay distinct AND read on a light or a dark surface, so they
         /// cannot ink from `currentColor` the way the chrome does (D8).
+        ///
+        /// The shipped default is the Phase 875 validated 8-slot set — ONE hex
+        /// set that clears every hard gate on BOTH surfaces, which is what D8's
+        /// theme-invariance demands (a per-theme palette would make a series
+        /// colour a host-theme function, and the goldens carry one hex). The
+        /// ASSIGNMENT ORDER is load-bearing: the CVD and normal-vision gates are
+        /// measured over ADJACENT pairs, so re-ordering the array can drop a
+        /// passing set below the floor. Do not cycle or sort it.
         Palette: string[]
 
         // ── Surface-relative ink (Phase 536 — theme-aware chart lowering, S4) ──
@@ -147,7 +162,16 @@ type ChartStyle =
         /// for (the gridline count follows).
         TargetTickCount: float
         /// Gap between the y-axis spine and the right edge of a tick label.
+        /// Clears `TickMarkLength` — the tick mark occupies the first stretch of
+        /// that gap — so widening the mark without widening this crowds the
+        /// number column into it.
         TickLabelGap: float
+        /// Length of the small OUTSIDE tick marks on both axes (Phase 875):
+        /// y-axis marks run left from the spine, x-axis marks run down from it,
+        /// so neither eats plot area. Inked at axis strength, one per y tick and
+        /// one per category band centre (or per x tick on the Scatter arm).
+        /// `0.0` suppresses them.
+        TickMarkLength: float
         /// Baseline nudge that optically centres a tick label on its gridline.
         TickLabelBaselineDy: float
         /// Drop from the x-axis spine to the category / x-tick label baseline.
@@ -171,9 +195,31 @@ type ChartStyle =
         /// Share of its own slot a single bar occupies (the rest separates
         /// neighbouring bars).
         BarWidthFraction: float
+        /// Hard pixel ceiling on a single bar's thickness (Phase 875). The bar
+        /// takes the MIN of its band share and this cap, and is then centred in
+        /// its slot — so a chart with three categories gets three bars with air
+        /// around them rather than three slabs. Uncapped band-share alone made
+        /// bar thickness a function of category COUNT, which carries no meaning.
+        /// `infinity` restores the pre-875 uncapped behaviour.
+        BarMaxThickness: float
+        /// GEOMETRIC gap between consecutive segments of a stacked bar
+        /// (Phase 875) — the segment is shortened on the side facing the next
+        /// segment, so the separation is absence of ink, not a surface-coloured
+        /// stroke. A stroke would need to know the surface colour and would
+        /// therefore stop being theme-invariant; a gap never does. The topmost
+        /// segment keeps its full height, so the stack total stays honest.
+        StackSegmentGap: float
+        /// GEOMETRIC angular padding between pie wedges, in DEGREES
+        /// (Phase 875) — half is taken from each end of every wedge's sweep, for
+        /// the same reason `StackSegmentGap` is a gap rather than a stroke. A
+        /// wedge whose sweep is narrower than the padding is dropped rather than
+        /// inverted. A lone full-circle category is unaffected.
+        WedgeGapDegrees: float
         /// Opacity of an area band's translucent fill. The gridlines stay
         /// legible through the band; the full-strength Polyline edge on top
-        /// carries the categorical colour at full contrast.
+        /// carries the categorical colour at full contrast. Phase 875 dropped
+        /// this to a wash: at 0.35 two overlaid bands read as a third colour and
+        /// the chrome beneath them disappears.
         AreaFillOpacity: float
         /// Radius of a Scatter point mark.
         ScatterPointRadius: float
@@ -223,10 +269,11 @@ type ChartStyle =
     }
 
 module ChartStyle =
-    /// The shipped default style — **corpus-pinned**. These values reproduce the
-    /// pre-885 lowering byte-identically, so the `chart-lowering/*` goldens and
-    /// the cross-host parity they certify are unaffected by this phase. Change
-    /// them only in a phase that regenerates the corpus (Phase 875).
+    /// The shipped default style — **corpus-pinned**. The `chart-lowering/*`
+    /// goldens are this record's projection, and every conformant host
+    /// reproduces it, so changing a value here is a corpus event: regenerate the
+    /// fixtures and move the other hosts in the same change-set. Phase 875 is
+    /// the restyle that did so; Phase 885 is where the fields came from.
     let defaults: ChartStyle =
         { Width = 640.0
           Height = 400.0
@@ -234,7 +281,25 @@ module ChartStyle =
           MarginRight = 28.0
           MarginBottom = 56.0
           MarginLeft = 64.0
-          Palette = [| "#3366cc"; "#dc3912"; "#ff9900"; "#109618"; "#990099"; "#0099c6" |]
+          // Phase 875 palette v2 — 8 slots, fixed assignment order. Validated on
+          // BOTH surfaces (light #fcfcfb, dark #1a1a19) against the OKLab gate
+          // set: lightness band, chroma floor, adjacent-pair CVD ΔE (protan +
+          // deutan, Machado 2009 at severity 1.0), adjacent-pair normal-vision
+          // ΔE. Every slot sits in the INTERSECTION of the two lightness bands
+          // (OKLCH L 0.48–0.67), which is what lets one hex set serve both
+          // themes. Slot 1 is the brand loch hue (OKLCH h ≈ 228) with its chroma
+          // lifted to clear the 0.10 floor — the brand hex itself reads as grey
+          // to the gate. Predecessor (the 2008 Google Charts default) failed
+          // contrast in both themes and CVD-separated poorly.
+          Palette =
+            [| "#1a86ac" // loch blue
+               "#bf831c" // ochre
+               "#a51574" // magenta
+               "#21a766" // green
+               "#6454e5" // violet
+               "#af153d" // crimson
+               "#21a2b2" // teal
+               "#d3241b" |] // vermilion
           Ink = "currentColor"
           AxisOpacity = 0.8
           GridOpacity = 0.12
@@ -244,11 +309,12 @@ module ChartStyle =
           SeriesStrokeWidth = 2.0
           FontFamily = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
           TickFontSize = 13.0
-          TitleFontSize = 16.0
+          TitleFontSize = 18.0
           TitleAlignment = ChartTitleAlignment.Left
           TitleBaselineY = 22.0
           TargetTickCount = 5.0
-          TickLabelGap = 8.0
+          TickLabelGap = 12.0
+          TickMarkLength = 5.0
           TickLabelBaselineDy = 4.0
           CategoryLabelOffsetY = 20.0
           LabelTiltDegrees = 30.0
@@ -257,7 +323,10 @@ module ChartStyle =
           AxisTitleTopOffset = 12.0
           BarGroupWidthFraction = 0.7
           BarWidthFraction = 0.9
-          AreaFillOpacity = 0.35
+          BarMaxThickness = 28.0
+          StackSegmentGap = 2.0
+          WedgeGapDegrees = 0.75
+          AreaFillOpacity = 0.12
           ScatterPointRadius = 4.0
           LegendPosition = ChartLegendPosition.Right
           LegendPitchX = 100.0
@@ -271,8 +340,14 @@ module ChartStyle =
           PieLegendTopY = 70.0
           PieLegendPitchY = 20.0
           PieLegendLabelBaselineDy = 9.0
-          PositiveColour = "#109618"
-          NegativeColour = "#dc3912"
+          // Refreshed by Phase 875 alongside the palette: these three were the
+          // only survivors of the retired 2008 set, and leaving unvalidated
+          // hexes here would hand the variance/waterfall arm a palette that
+          // already failed its gates. They are drawn from the SAME validated
+          // set the categorical slots come from, but they are not slots — the
+          // rotation must never reach them (they encode meaning, not identity).
+          PositiveColour = "#21a766"
+          NegativeColour = "#d3241b"
           NeutralColour = "#999999" }
 
 /// Series index (or, on the Pie arm, category index) → colour. An empty palette
@@ -457,7 +532,7 @@ type ChartRefusal =
 
 module ChartLimits =
     /// The shipped defaults. 32 series exceeds any legible categorical palette
-    /// (the default palette has 6 colours) and 10 000 points is well past the
+    /// (the default palette has 8 colours) and 10 000 points is well past the
     /// 640×400 canvas's ability to distinguish marks — so a chart at these caps
     /// is already unreadable, and anything beyond them is cost, not information.
     let defaults: ChartLimits =
@@ -610,11 +685,61 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         [ Shape.Line(r2 plotX0, r2 plotY0, r2 plotX0, r2 plotY1, axisStyle)
           Shape.Line(r2 plotX0, r2 plotY1, r2 plotX1, r2 plotY1, axisStyle) ]
 
+    let gridStyle = styleStrokeInk style style.GridOpacity style.GridStrokeWidth
+
     let gridlines =
         ticks
         |> List.map (fun t ->
             let y = yScale t
-            Shape.Line(r2 plotX0, y, r2 plotX1, y, styleStrokeInk style style.GridOpacity style.GridStrokeWidth))
+            Shape.Line(r2 plotX0, y, r2 plotX1, y, gridStyle))
+
+    // Vertical gridlines — the Scatter arm only (Phase 875). A linear x-scale
+    // has readable x positions, so a reader traces a point back to an x value
+    // the same way the horizontal grid lets them trace a y value. A BAND x-axis
+    // has no such positions to trace (a category is a label, not a magnitude),
+    // so a vertical rule there would be decoration.
+    let xGridlines =
+        if isScatter then
+            xTicks
+            |> List.map (fun t -> Shape.Line(xScale t, r2 plotY0, xScale t, r2 plotY1, gridStyle))
+        else
+            []
+
+    // Zero baseline (Phase 875) — only when the domain CROSSES zero, where the
+    // sign of a value is a reading of the chart and the zero line is what the
+    // reader measures against. Drawn at axis strength, over the ordinary
+    // gridline it shares a y with, so it separates from the grid; when the
+    // domain does not cross zero the axis spine already IS the baseline and a
+    // second rule at the same strength would be noise.
+    let zeroLine =
+        if niceLo < 0.0 && niceHi > 0.0 then
+            let y = yScale 0.0
+            [ Shape.Line(r2 plotX0, y, r2 plotX1, y, axisStyle) ]
+        else
+            []
+
+    // Outside tick marks (Phase 875) — outside the plot on both axes, so the
+    // plot area stays ink-free and the marks tie each label to its position.
+    let tickMarks =
+        if style.TickMarkLength <= 0.0 then
+            []
+        else
+            let yMarks =
+                ticks
+                |> List.map (fun t ->
+                    let y = yScale t
+                    Shape.Line(r2 (plotX0 - style.TickMarkLength), y, r2 plotX0, y, axisStyle))
+
+            let xAt (x: float) =
+                Shape.Line(x, r2 plotY1, x, r2 (plotY1 + style.TickMarkLength), axisStyle)
+
+            let xMarks =
+                if isScatter then
+                    xTicks |> List.map (xScale >> xAt)
+                else
+                    [ for i in 0 .. n - 1 -> xAt (centreX i) ]
+
+            yMarks @ xMarks
 
     let tickSize = style.TickFontSize
     let titleSize = style.TitleFontSize
@@ -679,20 +804,28 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     let seriesShapes =
         match spec.Kind with
         | ChartKind.Bar when stacked ->
-            // One full group-width bar per category; series stack as segments
-            // between consecutive cumulative sums (Phase 637).
+            // One capped bar per category, centred in its band; series stack as
+            // segments between consecutive cumulative sums (Phase 637), each
+            // shortened by `StackSegmentGap` on the side facing the next segment
+            // so the boundaries read as gaps rather than colour changes
+            // (Phase 875).
             let groupW = bandW * style.BarGroupWidthFraction
+            let bw = r2 (min (groupW * style.BarWidthFraction) style.BarMaxThickness)
 
             [ for i in 0 .. n - 1 do
-                  let bx = r2 (plotX0 + bandW * float i + (bandW - groupW) / 2.0)
-                  let bw = r2 (groupW * style.BarWidthFraction)
+                  let bx = r2 (plotX0 + bandW * float i + (bandW - bw) / 2.0)
                   let cums = cumsFor i
 
                   for j in 0 .. m - 1 do
                       let y0 = yScale cums.[j]
                       let y1 = yScale cums.[j + 1]
-                      let top = min y0 y1
-                      let hgt = r2 (abs (y1 - y0))
+                      // The gap comes off the far side from the baseline, and
+                      // only where another segment follows — so the stack's
+                      // outer tip keeps its full height and the total stays
+                      // honest. `max 0.0` covers a segment thinner than the gap.
+                      let gap = if j < m - 1 then style.StackSegmentGap else 0.0
+                      let top = r2 (min y0 y1 + (if y1 < y0 then gap else 0.0))
+                      let hgt = r2 (max 0.0 (abs (y1 - y0) - gap))
 
                       Shape.Rectangle(
                           bx,
@@ -705,6 +838,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         | ChartKind.Bar ->
             let groupW = bandW * style.BarGroupWidthFraction
             let subW = if m > 0 then groupW / float m else groupW
+            let bw = r2 (min (subW * style.BarWidthFraction) style.BarMaxThickness)
             let baseY = yScale 0.0
 
             [ for j in 0 .. m - 1 do
@@ -713,8 +847,11 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
                   for i in 0 .. n - 1 do
                       let v = values.[i]
-                      let bx = r2 (plotX0 + bandW * float i + (bandW - groupW) / 2.0 + float j * subW)
-                      let bw = r2 (subW * style.BarWidthFraction)
+                      // Centre the (possibly capped) bar in its own sub-slot, so
+                      // a cap takes air off BOTH sides and the group stays
+                      // symmetric about the band centre.
+                      let slotX = plotX0 + bandW * float i + (bandW - groupW) / 2.0 + float j * subW
+                      let bx = r2 (slotX + (subW - bw) / 2.0)
                       let vy = yScale v
                       let top = min vy baseY
                       let hgt = r2 (abs (vy - baseY))
@@ -886,6 +1023,12 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             let starts = fractions |> Array.scan (+) 0.0
             let top = -System.Math.PI / 2.0
 
+            // Half the angular padding comes off each end of every wedge
+            // (Phase 875), so the separation is a sliver of absent ink — no
+            // surface colour is needed and the result is theme-invariant, which
+            // a stroked wedge border could not be.
+            let halfGap = style.WedgeGapDegrees * System.Math.PI / 360.0
+
             let segs =
                 let yf = yFields.[0]
 
@@ -897,17 +1040,24 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                           let markStyle = styleFill colour |> withMark yf categories.[i]
 
                           if f >= 1.0 - 1e-9 then
+                              // A lone 100% category is a circle — there is no
+                              // neighbour to separate from, so no padding.
                               yield Shape.Circle(cx, cy, radius, markStyle)
                           else
-                              let a0 = top + 2.0 * System.Math.PI * starts.[i]
-                              let a1 = top + 2.0 * System.Math.PI * starts.[i + 1]
+                              let a0 = top + 2.0 * System.Math.PI * starts.[i] + halfGap
+                              let a1 = top + 2.0 * System.Math.PI * starts.[i + 1] - halfGap
 
-                              let cmds =
-                                  [ CurveCommand.MoveTo(dp cx cy); CurveCommand.LineTo(pt a0) ]
-                                  @ arcCubics a0 a1
-                                  @ [ CurveCommand.Close ]
+                              // A wedge narrower than the padding is DROPPED
+                              // rather than drawn inverted — the alternative is
+                              // a sliver sweeping the wrong way round the
+                              // circle, which is a wrong picture, not a small one.
+                              if a1 > a0 then
+                                  let cmds =
+                                      [ CurveCommand.MoveTo(dp cx cy); CurveCommand.LineTo(pt a0) ]
+                                      @ arcCubics a0 a1
+                                      @ [ CurveCommand.Close ]
 
-                              yield Shape.Curve(cmds, markStyle) ]
+                                  yield Shape.Curve(cmds, markStyle) ]
 
             // Vertical category legend on the right — categories take the
             // palette roles a cartesian chart gives its series.
@@ -940,14 +1090,18 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             segs @ pieLegend
 
     // Pie is polar — no axes/gridlines/tick chrome; every other arm assembles
-    // the shared cartesian chrome in painter's order: gridlines, axes, y-tick +
-    // x labels, axis titles, series, legend, chart title.
+    // the shared cartesian chrome in painter's order: gridlines (h then v), the
+    // zero baseline, axes, tick marks, y-tick + x labels, axis titles, series,
+    // legend, chart title.
     let shapes =
         match spec.Kind with
         | ChartKind.Pie -> pieShapes () @ titleShapes
         | _ ->
             gridlines
+            @ xGridlines
+            @ zeroLine
             @ axes
+            @ tickMarks
             @ yTickLabels
             @ xLabels
             @ axisTitles

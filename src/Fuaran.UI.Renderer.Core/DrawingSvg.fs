@@ -297,6 +297,22 @@ let private styleAttrs (sources: BindingResolver.BindingSources) (defaultFillNon
 
     sb.ToString()
 
+/// Phase 875 — round line joins + caps on a STROKED path shape (`Polyline` /
+/// `Polygon` / `Curve`). A RENDERER default, not a wire field: `DrawStyle` gains
+/// nothing, no fixture changes shape, and every host emits the same two
+/// attributes from its own builder. SVG's initial `stroke-linejoin` is `miter`,
+/// which spikes at the acute vertices a data polyline routinely has — a visible
+/// artefact that carries no data.
+///
+/// Emitted only when the shape actually strokes, so a fill-only polygon (an area
+/// band) keeps its minimal attribute set. `Line` is deliberately excluded: a
+/// round cap on the axis and gridline rules would overhang each end by half the
+/// stroke width, lengthening chrome that is positioned exactly.
+let private strokeJoinAttrs (sources: BindingResolver.BindingSources) (style: DrawStyle) : string =
+    match style.Stroke |> Option.bind (BindingResolver.tryResolve sources) with
+    | Some _ -> " stroke-linejoin=\"round\" stroke-linecap=\"round\""
+    | None -> ""
+
 let rec private emitShape
     (e: Emitter)
     (sources: BindingResolver.BindingSources)
@@ -352,18 +368,21 @@ let rec private emitShape
             emitPoints e points
             e.Add "\""
             e.Add(styleAttrs sources true style)
+            e.Add(strokeJoinAttrs sources style)
             e.Add "/>"
         | Shape.Polygon(points, style) ->
             e.Add "<polygon class=\"fuaran-drawing-polygon\" points=\""
             emitPoints e points
             e.Add "\""
             e.Add(styleAttrs sources false style)
+            e.Add(strokeJoinAttrs sources style)
             e.Add "/>"
         | Shape.Curve(commands, style) ->
             e.Add "<path class=\"fuaran-drawing-curve\" d=\""
             emitPathD e commands
             e.Add "\""
             e.Add(styleAttrs sources true style)
+            e.Add(strokeJoinAttrs sources style)
             e.Add "/>"
         | Shape.Circle(cx, cy, r, style) ->
             e.Add "<circle class=\"fuaran-drawing-circle\" cx=\""
