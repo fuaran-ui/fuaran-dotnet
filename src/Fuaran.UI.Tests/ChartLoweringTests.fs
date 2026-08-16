@@ -60,6 +60,13 @@ type private Case =
         XTitle: string option
         YTitle: string option
         Subtitle: string option
+        /// Phase 880 — the legend's declared edge (a WIRE field:
+        /// `ChartSpec.LegendPosition`), carried in the neutral input contract
+        /// as the canonical enum string beside `title`. Absent means "the host
+        /// style's default" — which is now `Right` — so the key is OMITTED when
+        /// `None` and the pre-880 inputs stay byte-identical even though the
+        /// PICTURE they lower to has moved.
+        LegendPosition: string option
         Rows: (string * float list) list
     }
 
@@ -78,6 +85,7 @@ let private plain: Case =
       XTitle = None
       YTitle = None
       Subtitle = None
+      LegendPosition = None
       Rows = [] }
 
 /// The case's x cell values, boxed — numeric when `XNums` is set, else the
@@ -455,7 +463,86 @@ let private cases: Case list =
           YFields = [ "revenue" ]
           Title = Some "A very long axis name"
           YTitle = Some "Monthly recurring revenue, net of refunds and credits, in pounds sterling at constant currency"
-          Rows = [ "Q1", [ 120.0 ]; "Q2", [ 150.0 ]; "Q3", [ 90.0 ]; "Q4", [ 175.0 ] ] } ]
+          Rows = [ "Q1", [ 120.0 ]; "Q2", [ 150.0 ]; "Q3", [ 90.0 ]; "Q4", [ 175.0 ] ] }
+      // ── Phase 880 — legend placement ──
+      //
+      // The DEFAULT arm needs no case of its own: every pre-880 multi-series
+      // golden IS the right-hand column now, which is what a default flip
+      // means. These pin the arms an author has to ask for, plus the two cases
+      // the column arm introduces (the >6-entry chart that the top band could
+      // not hold, and the truncation bound).
+      { plain with
+          // EIGHT SERIES — the case the top band silently drew off-canvas past
+          // the sixth entry, and the reason the default moved. The column takes
+          // eight rows in 400 px of canvas without touching the plot's height,
+          // so nothing is clipped and nothing needs an overflow rule.
+          Name = "bar-legend-eight-series"
+          Kind = ChartKind.Bar
+          XField = "region"
+          YFields = [ "alpha"; "beta"; "gamma"; "delta"; "epsilon"; "zeta"; "eta"; "theta" ]
+          Title = Some "Eight series, one legend"
+          Rows =
+              [ "North", [ 80.0; 100.0; 60.0; 45.0; 92.0; 30.0; 71.0; 55.0 ]
+                "South", [ 130.0; 110.0; 75.0; 50.0; 64.0; 41.0; 88.0; 62.0 ] ] }
+      { plain with
+          // THE COLUMN'S BOUND. Two names far past `LegendColumnMaxShare` of
+          // the canvas: both come back ellipsised at the same budget, so the
+          // column is capped and the plot survives. `bar-legend-long-names`
+          // pins what the BAND does with the same problem (nothing — it packs
+          // at natural width and overflows), which is the contrast.
+          Name = "bar-legend-column-truncation"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields =
+              [ "monthly_recurring_revenue_gbp_constant_currency"
+                "monthly_recurring_revenue_gbp_reported_currency" ]
+          Title = Some "A column that cannot hold its names"
+          Rows = [ "Q1", [ 120.0; 118.0 ]; "Q2", [ 150.0; 147.0 ] ] }
+      { plain with
+          // TOP — the pre-880 band, now something an author asks for. Byte-for
+          // byte `bar-multi` but for the declared position, so the two goldens
+          // read as the before-and-after of the default flip.
+          Name = "bar-legend-top"
+          Kind = ChartKind.Bar
+          XField = "region"
+          YFields = [ "sales"; "target" ]
+          Title = Some "Sales vs target"
+          LegendPosition = Some "Top"
+          Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
+      { plain with
+          // BOTTOM — the band mirrored below the x-axis title, which is what
+          // the reserved band pushes UP. Declares an x title so the golden pins
+          // that the title rides above the legend rather than under it.
+          Name = "bar-legend-bottom"
+          Kind = ChartKind.Bar
+          XField = "region"
+          YFields = [ "sales"; "target" ]
+          Title = Some "Sales vs target"
+          XTitle = Some "Sales region"
+          LegendPosition = Some "Bottom"
+          Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
+      { plain with
+          // NONE — no legend box, and no space reserved for one either: the
+          // plot must be the full width, identical to a single-series chart's.
+          Name = "bar-legend-none"
+          Kind = ChartKind.Bar
+          XField = "region"
+          YFields = [ "sales"; "target" ]
+          Title = Some "Sales vs target"
+          LegendPosition = Some "None"
+          Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
+      { plain with
+          // PIE UNDER AN EXPLICIT TOP. The pie legend was the right-hand column
+          // this phase generalised; this is the proof the generalisation went
+          // both ways — the polar arm now takes a band like any other, `NN%`
+          // labels and all.
+          Name = "pie-legend-top"
+          Kind = ChartKind.Pie
+          XField = "department"
+          YFields = [ "share" ]
+          Title = Some "Budget share"
+          LegendPosition = Some "Top"
+          Rows = [ "Ops", [ 40.0 ]; "R&D", [ 35.0 ]; "Sales", [ 25.0 ] ] } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
 /// named the slot — the representation is the same `Map<string,obj>`).
@@ -468,6 +555,17 @@ let private buildRows (case: Case) : Row list =
 
         Map.ofList fields)
 
+/// The neutral input contract's `legendPosition` string → the wire value. The
+/// one place the mapping is written down on this host; the other hosts mirror
+/// it. Unlike `axisUnitMode` this IS a wire field, so the strings are the
+/// canonical enum names, not a harness convention.
+let private legendPositionOf (name: string) : ChartLegendPosition =
+    match name with
+    | "Top" -> ChartLegendPosition.Top
+    | "Bottom" -> ChartLegendPosition.Bottom
+    | "None" -> ChartLegendPosition.None
+    | _ -> ChartLegendPosition.Right
+
 let private specOf (case: Case) : ChartSpec<obj> =
     { Source = Binding.Static(Some(Seq.ofList (buildRows case)))
       Kind = case.Kind
@@ -478,6 +576,7 @@ let private specOf (case: Case) : ChartSpec<obj> =
       XTitle = case.XTitle |> Option.map TextSource.Literal
       YTitle = case.YTitle |> Option.map TextSource.Literal
       Subtitle = case.Subtitle |> Option.map TextSource.Literal
+      LegendPosition = case.LegendPosition |> Option.map legendPositionOf
       OnPointClick = None
       Stacked = case.Stacked }
 
@@ -585,6 +684,69 @@ let private yAxisTitleRotation (ds: DrawingSpec) : float option =
         | Shape.Label(_, _, _, s) when Option.isNone s.Opacity && Option.isSome s.Rotation -> s.Rotation
         | _ -> None)
 
+// ── Phase 880 readers — pull the legend + the plot rectangle back out ────────
+//
+// The SWATCH is the discriminator: a rounded-corner `Rectangle` is the legend's
+// and nothing else's on either arm (bars and stack segments carry no corner
+// radius), so these readers cannot drift onto series geometry. Order is emission
+// order, which is entry order.
+
+let private legendSwatches (ds: DrawingSpec) : (float * float) list =
+    ds.Shapes
+    |> List.choose (fun sh ->
+        match sh with
+        | Shape.Rectangle(x, y, _, _, Some _, _) -> Some(x, y)
+        | _ -> None)
+
+/// The legend's label texts. Every legend label is `Start`-anchored, muted, and
+/// unrotated — which separates them from tick labels (`End`), category labels
+/// (rotated), and the axis titles (full strength). The display-unit slot is the
+/// one other `Start`-anchored label and carries NO opacity, so it is excluded.
+let private legendTextsOf (ds: DrawingSpec) : string list =
+    ds.Shapes
+    |> List.choose (fun sh ->
+        match sh with
+        | Shape.Label(_, _, TextSource.Literal t, s) when
+            s.TextAnchor = Some TextAnchor.Start
+            && Option.isSome s.Opacity
+            && Option.isNone s.Rotation
+            ->
+            Some t
+        | _ -> None)
+
+/// The plot rectangle's right / bottom edges, read off the axis + gridline
+/// geometry: the horizontal rules span the plot's width and sit at its ticks.
+let private plotRight (ds: DrawingSpec) : float =
+    ds.Shapes
+    |> List.choose (fun sh ->
+        match sh with
+        | Shape.Line(_, y1, x2, y2, _) when y1 = y2 -> Some x2
+        | _ -> None)
+    |> List.max
+
+let private plotBottom (ds: DrawingSpec) : float =
+    ds.Shapes
+    |> List.choose (fun sh ->
+        match sh with
+        | Shape.Line(_, y1, _, y2, _) when y1 = y2 -> Some y1
+        | _ -> None)
+    |> List.max
+
+/// The x-axis title's baseline — the only full-strength, unrotated,
+/// `Middle`-anchored label (the visible chart title is `Loud`).
+let private xAxisTitleY (ds: DrawingSpec) : float =
+    ds.Shapes
+    |> List.pick (fun sh ->
+        match sh with
+        | Shape.Label(_, y, _, s) when
+            Option.isNone s.Opacity
+            && s.Emphasis = Some Emphasis.Normal
+            && s.TextAnchor = Some TextAnchor.Middle
+            && Option.isNone s.Rotation
+            ->
+            Some y
+        | _ -> None)
+
 /// The neutral input contract (for the Phase 527 cross-host hosts).
 let private inputJson (case: Case) : string =
     let esc (s: string) =
@@ -654,6 +816,9 @@ let private inputJson (case: Case) : string =
         optText "xTitle" case.XTitle
         + optText "yTitle" case.YTitle
         + optText "subtitle" case.Subtitle
+        // Phase 880 — same OMITTED-when-absent posture; the value is the
+        // canonical `ChartLegendPosition` enum string.
+        + optText "legendPosition" case.LegendPosition
 
     sprintf
         "{\"kind\":\"%s\",\"xField\":\"%s\",\"yFields\":[%s],\"title\":%s,\"stacked\":%s%s%s%s,\"data\":[%s]}"
@@ -963,16 +1128,16 @@ let chartLoweringTests =
               }
 
               test "the reserved ChartStyle fields are genuinely not consumed" {
-                  // LegendPosition / the status triple are declared (Phase 885)
-                  // but read by no shipped lowering path — setting them must
-                  // change nothing until their phases land. `LabelTiltDegrees`
-                  // LEFT this set in Phase 879, which consumes it.
+                  // The status triple is declared (Phase 885) but read by no
+                  // shipped lowering path — setting it must change nothing
+                  // until the variance/waterfall arms land. `LabelTiltDegrees`
+                  // LEFT this set in Phase 879 and `LegendPosition` in Phase
+                  // 880, both of which consume theirs.
                   let enc (ds: DrawingSpec) : string =
                       CanonicalJson.encodeNode (Fuaran.drawingSpec "c" ds: Node<obj>)
 
                   let reserved =
                       { Charts.ChartStyle.defaults with
-                          LegendPosition = Charts.ChartLegendPosition.Bottom
                           PositiveColour = "#000001"
                           NegativeColour = "#000002"
                           NeutralColour = "#000003" }
@@ -1232,25 +1397,39 @@ let chartLoweringTests =
                   Expect.equal (leftmost narrow) (64.0 - 5.0) "a short column keeps the 64 px floor"
               }
 
-              test "the legend pitch derives from each entry's own name extent" {
-                  let swatchXs (ds: DrawingSpec) : float list =
-                      ds.Shapes
-                      |> List.choose (fun sh ->
-                          match sh with
-                          | Shape.Rectangle(x, y, _, _, Some _, _) when y = 34.0 -> Some x
-                          | _ -> None)
+              test "the BAND legend's pitch derives from each entry's own name extent" {
+                  // Since Phase 880 the band is the `Top` / `Bottom` arms, not
+                  // the default — so the two cases are lowered under an
+                  // explicit `Top` to ask this question of the arm that still
+                  // answers it. The 879 rule and its numbers are unchanged.
+                  let swatchXs (name: string) : float list =
+                      let case =
+                          { (cases |> List.find (fun c -> c.Name = name)) with
+                              LegendPosition = Some "Top" }
+
+                      Charts.lowerWithStyle
+                          Charts.ChartLimits.defaults
+                          (styleOf case)
+                          (specOf case)
+                          (Seq.ofList (buildRows case))
+                      |> fun ds ->
+                          ds.Shapes
+                          |> List.choose (fun sh ->
+                              match sh with
+                              | Shape.Rectangle(x, y, _, _, Some _, _) when y = 34.0 -> Some x
+                              | _ -> None)
 
                   // "monthly_recurring_revenue_gbp" is 14.66 em = 190.58 px, so
                   // entry 0 occupies 15 + 190.58 + 24 = 229.58 px.
                   Expect.equal
-                      (swatchXs (loweredCase "bar-legend-long-names"))
+                      (swatchXs "bar-legend-long-names")
                       [ 64.0; r2 (64.0 + 229.58) ]
                       "the second swatch clears the first label"
 
                   // The short-name case is where the retired flat 100 px pitch
                   // happened to look right; it no longer sits there.
                   Expect.equal
-                      (swatchXs (loweredCase "bar-multi"))
+                      (swatchXs "bar-multi")
                       [ 64.0; r2 (64.0 + 15.0 + 32.24 + 24.0) ]
                       "short names pack tighter than the retired pitch"
               }
@@ -1498,4 +1677,239 @@ let chartLoweringTests =
                       |> List.max
 
                   Expect.isTrue (plotBottom >= 400.0 - 0.35 * 400.0) "the plot keeps at least 65 % of the height"
+              }
+
+              // ── Phase 880 — legend placement ──
+              //
+              // The goldens pin the pictures; these pin the RULES. The readers
+              // key off the swatch — a rounded-corner Rectangle is the legend's
+              // and nothing else's, on either arm — so a test cannot pass by
+              // finding a bar.
+
+              test "the DEFAULT legend is a vertical right-hand column, and it shrinks the plot" {
+                  let ds = loweredCase "bar-multi"
+
+                  Expect.equal
+                      (legendSwatches ds)
+                      [ 562.68, 64.0; 562.68, 84.0 ]
+                      "one row per series, top-aligned with the plot and pitched by LegendRowPitchY"
+
+                  // The column is taken off the PLOT, not off the right margin:
+                  // the single-series chart (which draws no legend) keeps the
+                  // full 640 − 28 width, and this one is short by the column.
+                  Expect.equal (plotRight (loweredCase "bar-single")) 612.0 "no legend, no column, full width"
+                  Expect.equal (plotRight ds) 546.68 "the plot ends where the column's gap begins"
+
+                  // …and the column's far edge lands ON the right margin, so
+                  // the margin is still exactly the clearance to the canvas.
+                  // "target" is the wider of the two names (2.64 em = 34.32 px).
+                  Expect.equal
+                      (r2 (546.68 + 16.0 + 15.0 + 34.32))
+                      (640.0 - 28.0)
+                      "column + gap + widest label = the margin"
+              }
+
+              test "rows are TOP-aligned, so adding a series never moves an existing row" {
+                  // Centring would make row j's y a function of the entry
+                  // count. Eight series must therefore start exactly where two
+                  // do — this is the object-constancy argument, in the one form
+                  // that can fail.
+                  let two = legendSwatches (loweredCase "bar-multi") |> List.map snd
+                  let eight = legendSwatches (loweredCase "bar-legend-eight-series") |> List.map snd
+
+                  Expect.equal (List.head two) (List.head eight) "the first row is where it always is"
+                  Expect.equal (List.truncate 2 eight) two "…and so is the second"
+              }
+
+              test "eight series legend themselves — the case the band could not hold" {
+                  let rows = legendSwatches (loweredCase "bar-legend-eight-series")
+
+                  Expect.equal (List.length rows) 8 "one row per palette slot"
+
+                  Expect.isTrue
+                      (rows |> List.forall (fun (x, y) -> x + 10.0 <= 640.0 && y + 10.0 <= 400.0))
+                      "every swatch is inside the canvas"
+
+                  // The contrast, in the one form that can fail. A band's width
+                  // is the SUM of its entries, so it overflows once the names
+                  // are long enough — silently, past x = 640, which is what the
+                  // Tidy-Up bundle recorded. A column's width is the MAX of its
+                  // entries (bounded by the ceiling) and its height is one
+                  // pitch per entry, so neither term grows without limit.
+                  // Realistic series names are what make the difference visible:
+                  // eight five-letter greek letters happen to fit the band, and
+                  // reading that as "the band is fine" is exactly the mistake.
+                  let realistic =
+                      { plain with
+                          Name = "eight-realistic"
+                          Kind = ChartKind.Bar
+                          XField = "region"
+                          YFields =
+                              [ for greek in [ "alpha"; "beta"; "gamma"; "delta"; "epsilon"; "zeta"; "eta"; "theta" ] ->
+                                    "monthly_" + greek ]
+                          Rows = [ "North", [ for i in 1..8 -> float (i * 10) ] ] }
+
+                  let banded =
+                      Charts.lower
+                          { specOf realistic with
+                              LegendPosition = Some Charts.ChartLegendPosition.Top }
+                          (Seq.ofList (buildRows realistic))
+                      |> legendSwatches
+
+                  Expect.isTrue
+                      (banded |> List.exists (fun (x, _) -> x + 10.0 > 640.0))
+                      "the band runs off the canvas — moving the DEFAULT is what fixed the default"
+
+                  let columned =
+                      Charts.lower (specOf realistic) (Seq.ofList (buildRows realistic))
+                      |> legendSwatches
+
+                  Expect.isTrue
+                      (columned |> List.forall (fun (x, y) -> x + 10.0 <= 640.0 && y + 10.0 <= 400.0))
+                      "…and the same eight names sit inside the canvas as a column"
+              }
+
+              test "an explicit position beats the style default, in both directions" {
+                  // The wire field wins over the style: `Top` on a chart the
+                  // style would have put on the right…
+                  Expect.equal
+                      (legendSwatches (loweredCase "bar-legend-top") |> List.map snd)
+                      [ 34.0; 34.0 ]
+                      "the declared Top puts both swatches in the one band row"
+
+                  // …and the style wins where the spec says nothing, which is
+                  // what makes the first assertion mean anything.
+                  let styled =
+                      { Charts.ChartStyle.defaults with
+                          LegendPosition = Charts.ChartLegendPosition.Top }
+
+                  let case = cases |> List.find (fun c -> c.Name = "bar-multi")
+
+                  let viaStyle =
+                      Charts.lowerWithStyle
+                          Charts.ChartLimits.defaults
+                          styled
+                          (specOf case)
+                          (Seq.ofList (buildRows case))
+
+                  Expect.equal
+                      (legendSwatches viaStyle |> List.map snd)
+                      [ 34.0; 34.0 ]
+                      "an absent spec value takes the style's"
+
+                  // …and an explicit `Right` on that same style overrides it
+                  // back, so the precedence is a rule rather than a coincidence
+                  // of which value happens to be the default.
+                  let overridden =
+                      Charts.lowerWithStyle
+                          Charts.ChartLimits.defaults
+                          styled
+                          { specOf case with
+                              LegendPosition = Some Charts.ChartLegendPosition.Right }
+                          (Seq.ofList (buildRows case))
+
+                  Expect.equal
+                      (legendSwatches overridden |> List.map snd)
+                      [ 64.0; 84.0 ]
+                      "the spec beats the style either way"
+              }
+
+              test "Bottom mirrors the band below the x-axis title, which moves up to make room" {
+                  let ds = loweredCase "bar-legend-bottom"
+                  let plain = loweredCase "bar-legend-top"
+
+                  Expect.equal (legendSwatches ds |> List.map snd) [ 378.4; 378.4 ] "the band is the canvas's last line"
+
+                  // The x title rides ABOVE the band — 15.6 px line + 6 px
+                  // padding = the 21.6 px it moved up by.
+                  Expect.equal (xAxisTitleY plain) 388.0 "the pre-880 baseline, 12 px off the canvas bottom"
+                  Expect.equal (xAxisTitleY ds) (r2 (388.0 - 21.6)) "…and one legend band higher when there is one"
+
+                  // The plot lost exactly the band and nothing else.
+                  Expect.equal (plotBottom ds) (r2 (plotBottom plain - 21.6)) "the band comes off the plot, once"
+                  Expect.equal (plotRight ds) (plotRight plain) "and takes no width — a band is not a column"
+              }
+
+              test "None draws no legend AND reserves no space for one" {
+                  let ds = loweredCase "bar-legend-none"
+
+                  Expect.isEmpty (legendSwatches ds) "no swatch anywhere"
+
+                  // The second half is the one worth pinning: a suppressed
+                  // legend that still shrank the plot would be the worst of
+                  // both. The multi-series chart must lay out exactly as the
+                  // single-series one does.
+                  Expect.equal (plotRight ds) 612.0 "the full width, as if there were one series"
+                  Expect.equal (plotBottom ds) (plotBottom (loweredCase "bar-legend-top")) "and the full height"
+              }
+
+              test "a single-series cartesian chart still draws no legend, whatever the position says" {
+                  // The pre-880 rule, preserved: the title names the series, so
+                  // a legend would repeat it. An explicit position does not
+                  // conjure one — and, since the position resolves to `None`
+                  // when there are no entries, it reserves nothing either.
+                  for pos in [ "Top"; "Right"; "Bottom"; "None" ] do
+                      let case =
+                          { (cases |> List.find (fun c -> c.Name = "bar-single")) with
+                              LegendPosition = Some pos }
+
+                      let ds = Charts.lower (specOf case) (Seq.ofList (buildRows case))
+
+                      Expect.isEmpty (legendSwatches ds) (sprintf "%s: one series needs no legend" pos)
+                      Expect.equal (plotRight ds) 612.0 (sprintf "%s: …and reserves no room for one" pos)
+              }
+
+              test "the pie legends its CATEGORIES — one series, and still a legend" {
+                  // The asymmetry is deliberate and is the reason the two
+                  // emitters could not simply be merged on the series count: a
+                  // pie's palette roles are its categories, so its legend is
+                  // over four things where its series count is one.
+                  Expect.equal
+                      (List.length (legendSwatches (loweredCase "pie-quarters")))
+                      4
+                      "four categories, four rows"
+
+                  Expect.equal
+                      (legendTextsOf (loweredCase "pie-quarters"))
+                      [ "N (25%)"; "E (25%)"; "S (25%)"; "W (25%)" ]
+                      "the shares survived the unification unchanged"
+              }
+
+              test "the pie honours an explicit position like every other arm" {
+                  let ds = loweredCase "pie-legend-top"
+
+                  Expect.equal (legendSwatches ds |> List.map snd) [ 34.0; 34.0; 34.0 ] "a band, on the polar arm"
+
+                  Expect.equal
+                      (legendTextsOf ds)
+                      [ "Ops (40%)"; "R&D (35%)"; "Sales (25%)" ]
+                      "…carrying the same NN% labels the column does"
+              }
+
+              test "a refused pie draws no legend either" {
+                  // A legend for a picture the lowering declined to draw would
+                  // be a claim about data it refused to show.
+                  let case =
+                      { (cases |> List.find (fun c -> c.Name = "pie-single")) with
+                          Rows = [ "A", [ 40.0 ]; "B", [ -10.0 ] ] }
+
+                  let ds = Charts.lower (specOf case) (Seq.ofList (buildRows case))
+                  Expect.isEmpty (legendSwatches ds) "no geometry, no legend"
+              }
+
+              test "the column truncates a pathological name rather than eating the plot" {
+                  let ds = loweredCase "bar-legend-column-truncation"
+                  let texts = legendTextsOf ds
+
+                  Expect.isTrue (texts |> List.forall (fun t -> t.EndsWith "…")) "both names came back ellipsised"
+
+                  // The bound is a share of the CANVAS (30 %), not of whatever
+                  // the plot has left — a budget derived from the thing it is
+                  // about to decide is how a layout loops.
+                  let columnW = 640.0 - 28.0 - plotRight ds
+                  Expect.isTrue (columnW <= 0.3 * 640.0) "the column is inside its ceiling"
+
+                  Expect.isTrue
+                      (plotRight ds - 64.0 > 0.5 * 640.0)
+                      "…so the plot keeps the clear majority of the canvas"
               } ]

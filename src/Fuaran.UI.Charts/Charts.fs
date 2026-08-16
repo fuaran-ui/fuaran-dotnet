@@ -37,6 +37,19 @@ module Fuaran.UI.Charts
 //              the top margin reserves only when one is present). See "Axis
 //              titles + the display-unit slot" at the emission site for the
 //              three composition rules and the date-axis note.
+//  Phase 880 — LEGEND PLACEMENT, and the default moved to the RIGHT. `ChartSpec`
+//              gained an optional `LegendPosition` (`Top | Right | Bottom |
+//              None`); `ChartStyle.LegendPosition` carries the default, and an
+//              explicit spec value beats it. The default `Right` arm is a
+//              VERTICAL COLUMN — one row per entry, width from Phase 879's
+//              metrics, the plot shrinking by it — which is what structurally
+//              retires the top band's overflow past ~6 entries rather than
+//              patching it. The pie arm's own right-hand legend WAS this shape
+//              already, so the two converged: one `legendEntries` list, one
+//              emitter, one set of constants, and the pie honours the position
+//              like every other arm. A single-SERIES cartesian chart still
+//              draws no legend (the title names the series); a single-series
+//              PIE still does, because its legend is over categories.
 //
 //  `Chart` stays a SEMANTIC wire kind (D2). This module is the bounded layout
 //  engine that turns a resolved `ChartSpec` + data rows into a canonical
@@ -88,22 +101,18 @@ type ChartTitleAlignment =
     /// Flush with the plot's right edge.
     | Right
 
-/// Which edge the series legend occupies.
+/// Which edge the series legend occupies — or `None`, which suppresses it.
 ///
-/// **Reserved — not yet consumed.** The shipped lowering draws the legend as a
-/// single horizontal row in the top margin regardless of this field. Phase 875
-/// (which this comment previously named as the phase that would wire it) did
-/// the palette / chrome / geometry restyle and deliberately left legend LAYOUT
-/// alone — so the row still overflows the canvas past six entries, which the
-/// 8-slot palette v2 now makes reachable. Positioning and overflow are one
-/// problem and land together in a later phase; the default records the
-/// 2026-08-16 operator decision so the field is already right when it does.
-[<RequireQualifiedAccess>]
-type ChartLegendPosition =
-    | Top
-    | Right
-    | Bottom
-    | Left
+/// **Consumed since Phase 880**, and now a WIRE vocabulary: the DU lives in the
+/// wire layer (`Fuaran.UI.Generated`) and is re-exported here so a style can
+/// name a default without the styling module owning the vocabulary. This
+/// abbreviation is the same type, so `ChartLegendPosition.Right` reads the same
+/// as it did when Phase 885 declared the field reserved.
+///
+/// Phase 885's `Left` case is retired: the left edge is the y axis's — the tick
+/// column and the rotated axis title are already there — and no lowering path
+/// ever consumed it, so nothing rendered changes.
+type ChartLegendPosition = Fuaran.UI.Types.ChartLegendPosition
 
 /// How a value axis states its DISPLAY UNIT once a large magnitude has been
 /// scaled by a power of ten (Phase 876).
@@ -340,19 +349,30 @@ type ChartStyle =
         /// Radius of a Scatter point mark.
         ScatterPointRadius: float
 
-        // ── Legend geometry (the cartesian arms' horizontal top-margin row) ──
-        /// Which edge the legend occupies. **Reserved — not yet consumed** (see
-        /// `ChartLegendPosition`).
+        // ── Legend geometry (Phase 880 — ONE legend, four placements) ──
+        //
+        // Both shapes are here because both are reachable from any arm: a
+        // horizontal BAND (the `Top` / `Bottom` arms — Phase 879's per-entry
+        // pitch) and a vertical COLUMN (`Right`, the default — one row per
+        // entry, the plot shrinking by the column's width). The pie arm draws
+        // through exactly these fields too since Phase 880; its own
+        // `PieLegend*` constants are retired.
+        /// Which edge the legend occupies when the `ChartSpec` does not say —
+        /// the DEFAULT, not the answer. An explicit `ChartSpec.LegendPosition`
+        /// beats it (Phase 880), because WHERE the legend goes is the author's
+        /// meaning where the geometry below is the host's.
         LegendPosition: ChartLegendPosition
-        /// Horizontal padding after a legend entry's label, before the next
-        /// entry's swatch (Phase 879). The pitch itself is no longer a
+        /// BAND arms only. Horizontal padding after a legend entry's label,
+        /// before the next entry's swatch (Phase 879). The pitch itself is no
         /// constant: an entry occupies `LegendLabelOffsetX + the estimated
-        /// width of its series name + LegendEntryGap`, so a 30-character name
+        /// width of its own name + LegendEntryGap`, so a 30-character name
         /// pushes its neighbour along instead of being written over by it.
         /// (The retired `LegendPitchX` was a flat 100 px, which collided on any
         /// name past ~12 characters.)
         LegendEntryGap: float
-        /// Top y of a legend swatch.
+        /// BAND arms only. Top y of a legend swatch in the TOP band, measured
+        /// from the canvas top. The `Bottom` band mirrors it from the canvas
+        /// bottom via `LegendLabelBaselineDy`, so it needs no second constant.
         LegendSwatchY: float
         /// Side length of a (square) legend swatch.
         LegendSwatchSize: float
@@ -360,20 +380,27 @@ type ChartStyle =
         LegendSwatchCornerRadius: float
         /// Gap from a swatch's left edge to its label's left edge.
         LegendLabelOffsetX: float
-        /// Baseline y of a legend label.
+        /// BAND arms only. Baseline y of a legend label in the TOP band.
         LegendLabelBaselineY: float
+        /// COLUMN arms only. Vertical pitch between legend rows.
+        LegendRowPitchY: float
+        /// COLUMN arms only (and the `Bottom` band). Baseline nudge from a
+        /// legend row's TOP to its label's baseline — the relation that lets a
+        /// row be placed by its top edge and still read as one line.
+        LegendLabelBaselineDy: float
+        /// COLUMN arms only. Gap between the plot's edge and the legend
+        /// column's swatches. The column's own trailing clearance to the canvas
+        /// edge is `MarginRight`, which is what it always was.
+        LegendColumnGap: float
+        /// Ceiling on the legend column's width, as a share of `Width`. Same
+        /// posture as the margin autosizes: a pathological series name is
+        /// truncated with the deterministic ellipsis rather than allowed to eat
+        /// the plot. The column is otherwise sized from the widest name.
+        LegendColumnMaxShare: float
 
         // ── Pie geometry (the polar arm) ──
         /// Wedge radius.
         PieRadius: float
-        /// Inset from the canvas right edge to the pie legend's swatch column.
-        PieLegendOffsetX: float
-        /// Top y of the pie legend's first row.
-        PieLegendTopY: float
-        /// Vertical pitch between pie legend rows.
-        PieLegendPitchY: float
-        /// Baseline nudge from a pie legend row's top to its label baseline.
-        PieLegendLabelBaselineDy: float
 
         // ── Status triple (reserved) ──
         //
@@ -472,11 +499,17 @@ module ChartStyle =
           LegendSwatchCornerRadius = 2.0
           LegendLabelOffsetX = 15.0
           LegendLabelBaselineY = 43.0
+          // The column arm's row geometry (Phase 880) — the retired
+          // `PieLegendPitchY` / `PieLegendLabelBaselineDy` values, kept
+          // unchanged and promoted to serve every arm: the pie legend was
+          // already the vertical right-hand shape this phase generalises, so
+          // adopting its numbers is what keeps the pie goldens honest rather
+          // than restyled by a layout change.
+          LegendRowPitchY = 20.0
+          LegendLabelBaselineDy = 9.0
+          LegendColumnGap = 16.0
+          LegendColumnMaxShare = 0.3
           PieRadius = 130.0
-          PieLegendOffsetX = 168.0
-          PieLegendTopY = 70.0
-          PieLegendPitchY = 20.0
-          PieLegendLabelBaselineDy = 9.0
           // Refreshed by Phase 875 alongside the palette: these three were the
           // only survivors of the retired 2008 set, and leaving unvalidated
           // hexes here would hand the variance/waterfall arm a palette that
@@ -1285,6 +1318,114 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     let widestOf (texts: string seq) : float =
         texts |> Seq.fold (fun acc t -> max acc (TextMetrics.width tickSize t)) 0.0
 
+    // ── Legend placement (Phase 880) ─────────────────────────────────────────
+    //
+    // ONE legend with four placements, resolved HERE — above the margins,
+    // because a `Right` legend's column width is an INPUT to the plot rectangle
+    // and a `Bottom` legend's band is an input to the bottom margin. Same
+    // acyclicity discipline the text metrics established: everything the layout
+    // reads is computed before the layout that reads it.
+    //
+    // The pie arm's shares are resolved here for the same reason: its legend
+    // labels carry them ("name (NN%)"), so they are layout input, not output.
+    let isPie =
+        match spec.Kind with
+        | ChartKind.Pie -> true
+        | _ -> false
+
+    let pieValues = if isPie && m = 1 then series.[0] else [||]
+
+    let pieTotal = Array.sum pieValues
+
+    // The Phase-638 bounded-v1 guard, unchanged and merely lifted: exactly one
+    // series, no negative value, a positive total. A refused pie draws no
+    // geometry AND no legend — a legend for a picture that was refused would be
+    // a claim about data the drawing declined to show.
+    let pieRefused =
+        isPie
+        && (m <> 1 || pieValues |> Array.exists (fun v -> v < 0.0) || pieTotal <= 0.0)
+
+    let pieFractions =
+        if isPie && not pieRefused then
+            pieValues |> Array.map (fun v -> v / pieTotal)
+        else
+            [||]
+
+    /// The legend's rows in draw order — `(colour, label)`. TWO sources, ONE
+    /// shape, which is what Phase 880 unified: the cartesian arms legend their
+    /// SERIES and only when there is more than one (with a single series the
+    /// title already names it — the pre-880 rule, preserved exactly), while the
+    /// pie arm legends its CATEGORIES, which is why a single-series pie legends
+    /// and a single-series bar does not. Before this phase these were two
+    /// separate emitters with two separate constant sets, and only one of them
+    /// could honour a position.
+    let legendEntries: (string * string)[] =
+        if isPie then
+            if pieRefused then
+                [||]
+            else
+                pieFractions
+                |> Array.mapi (fun i f ->
+                    // Routed through the canonical formatter (Phase 876) — one
+                    // rounding + rendering rule for every number this module
+                    // prints. A share is a whole percent, so the shipped `NN%`
+                    // shape is unchanged.
+                    let pct = formatValue None 1.0 false 1.0 (f * 100.0)
+                    colourFor style i, sprintf "%s (%s%%)" categories.[i] pct)
+        elif m > 1 then
+            Array.init m (fun j -> colourFor style j, yFields.[j])
+        else
+            [||]
+
+    /// The placement actually used: the author's explicit `ChartSpec` value
+    /// where there is one, else the host style's default. With no entries at
+    /// all the answer is `None` whatever either of them said — so an explicit
+    /// position on a single-series chart still draws nothing, and, more to the
+    /// point, reserves no space.
+    let legendPos =
+        if Array.isEmpty legendEntries then
+            ChartLegendPosition.None
+        else
+            spec.LegendPosition |> Option.defaultValue style.LegendPosition
+
+    /// COLUMN arms: the widest label decides the column, bounded by
+    /// `LegendColumnMaxShare` of the canvas and truncated beyond it — the
+    /// margin autosizes' posture, adopted for the same reason. A name with no
+    /// bound is a data problem the layout should report by truncating, not
+    /// absorb by shrinking the picture.
+    let legendNameBudget =
+        max
+            0.0
+            (style.LegendColumnMaxShare * style.Width
+             - style.LegendLabelOffsetX
+             - style.LegendColumnGap)
+
+    let legendTexts =
+        legendEntries
+        |> Array.map (fun (_, t) ->
+            match legendPos with
+            | ChartLegendPosition.Right -> TextMetrics.truncateToWidth tickSize legendNameBudget t
+            // The band arms pack at each entry's natural width and still run
+            // off the right edge past enough entries. Truncating there would
+            // not fix it (the overflow is in the SUM, not in one name), so the
+            // band is left as Phase 879 shipped it and the default moved.
+            | _ -> t)
+
+    let legendColumnW =
+        match legendPos with
+        | ChartLegendPosition.Right -> r2 (style.LegendColumnGap + style.LegendLabelOffsetX + widestOf legendTexts)
+        | _ -> 0.0
+
+    /// The `Bottom` band's height — one line plus its padding, reserved BELOW
+    /// everything the bottom margin's autosize already accounts for (the x-axis
+    /// title's line included), so the two computations never contend for the
+    /// same pixels. The exact mirror of `subtitleBand` at the top: one term
+    /// that shifts the whole band, present only when the arm is.
+    let legendBandH =
+        match legendPos with
+        | ChartLegendPosition.Bottom -> r2 (lineHeight + style.AxisLabelPadding)
+        | _ -> 0.0
+
     // ── Axis names + subtitle (Phase 878) ────────────────────────────────────
     //
     // Resolved HERE, before any margin, because both margins have to reserve a
@@ -1372,7 +1513,12 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     let marginLeft = r2 (max style.MarginLeft (min leftCeiling requiredLeft))
 
     let plotX0 = marginLeft
-    let plotX1 = style.Width - style.MarginRight
+    // Phase 880 — a `Right` legend takes its column off the plot, not off the
+    // right margin: the margin stays the clearance between the legend's widest
+    // label and the canvas edge, exactly as it was the clearance to the plot
+    // before. Every other placement leaves `legendColumnW = 0`, so the pre-880
+    // rectangle is recovered term-for-term.
+    let plotX1 = style.Width - style.MarginRight - legendColumnW
     let plotW = plotX1 - plotX0
 
     let bandW = if n > 0 then plotW / float n else plotW
@@ -1449,7 +1595,12 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         + lineHeight
         + style.AxisTitleBottomOffset
 
-    let marginBottom = r2 (max style.MarginBottom (min bottomCeiling requiredBottom))
+    // The `Bottom` legend's band is ADDED to the autosized margin rather than
+    // competing inside its ceiling: the ceiling exists to stop LABELS eating
+    // the plot, and the legend is not a label. So the picture shrinks by the
+    // band, and the tilt escalation still sees the budget it had.
+    let marginBottom =
+        r2 (legendBandH + max style.MarginBottom (min bottomCeiling requiredBottom))
 
     let plotY0 = marginTop
     let plotY1 = style.Height - marginBottom
@@ -1638,7 +1789,11 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         | Some t ->
             [ Shape.Label(
                   r2 ((plotX0 + plotX1) / 2.0),
-                  r2 (style.Height - style.AxisTitleBottomOffset),
+                  // Phase 880 — the x title rides ABOVE a `Bottom` legend band,
+                  // keeping its own inset from whatever is beneath it.
+                  // `legendBandH` is 0 on every other arm, so the pre-880
+                  // baseline is unchanged.
+                  r2 (style.Height - legendBandH - style.AxisTitleBottomOffset),
                   boundText tickSize plotW t,
                   axisTitleStyle TextAnchor.Middle
               ) ]
@@ -1799,58 +1954,104 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                       ) ]
         | _ -> []
 
-    // ── Legend (only when >1 series) — a swatch + series name per series ──
+    // ── Legend (Phase 880) — one entry list, four placements ──
     //
-    // The pitch is PER ENTRY since Phase 879: an entry occupies its swatch-to-
-    // label offset, the estimated width of its own name, and the inter-entry
-    // gap, so entries are laid out cumulatively rather than on a fixed stride.
-    // A 30-character series name now pushes its neighbour along instead of
-    // being overwritten by it — which the retired flat 100 px pitch could not
-    // do past about twelve characters.
+    // COLUMN (`Right`, the shipped default): one row per entry, each a swatch
+    // and its label, the plot already shrunk by the column above. Rows are
+    // TOP-ALIGNED with the plot rather than vertically centred, deliberately:
+    // centring makes row j's y a function of the entry COUNT, so adding a
+    // series moves every row that was already there — chrome sliding under a
+    // data refresh is precisely what this module's mark-identity rule exists to
+    // avoid, and there is no reason to reintroduce it for the legend. Reading
+    // order is also series order, which is the order the rows are in.
     //
-    // `ChartStyle.LegendPosition` is still NOT consumed, and a long enough row
-    // still runs off the right edge: WHERE the legend sits and what happens
-    // when it overflows are one problem, and they land together in a later
-    // phase. Pitch alone is what deterministic metrics can fix, and it is
-    // fixed; the overflow is unchanged, deliberately.
-    let legendEntryWidth (j: int) : float =
-        style.LegendLabelOffsetX
-        + TextMetrics.width tickSize yFields.[j]
-        + style.LegendEntryGap
+    // This is what structurally retires the overflow. A BAND's width is the SUM
+    // of its entries, so it runs off the canvas once the names are long enough
+    // or numerous enough, silently and with no ellipsis. A COLUMN's width is
+    // the MAX of its entries — bounded by `LegendColumnMaxShare` and truncated
+    // at it — and its height is one pitch per entry into 400 px of canvas.
+    // Neither term grows without limit, so the eight-slot palette's eight-series
+    // chart legends itself by construction rather than by luck of naming.
+    //
+    // BAND (`Top` / `Bottom`): Phase 879's horizontal row, entries laid out
+    // cumulatively from the plot's left edge at each entry's own natural width
+    // — unchanged for `Top`, which is the pre-880 shape every pre-880 golden
+    // pins. It still runs off the right edge past enough entries; that survives
+    // only on the arms an author asks for explicitly.
+    //
+    // The label styling is one expression for all four: chrome ink at
+    // `LabelOpacity`, `Start`-anchored, tick-sized.
+    let legendLabelStyle =
+        textStyle style (Some style.LabelOpacity) TextAnchor.Start tickSize Emphasis.Normal
 
-    let legendX =
-        // Prefix sums — entry j starts where every earlier entry ended.
-        Array.init m id |> Array.scan (fun acc j -> acc + legendEntryWidth j) plotX0
+    let legendRow (swatchX: float) (rowTop: float) (j: int) : Shape list =
+        [ Shape.Rectangle(
+              r2 swatchX,
+              r2 rowTop,
+              style.LegendSwatchSize,
+              style.LegendSwatchSize,
+              Some style.LegendSwatchCornerRadius,
+              styleFill (fst legendEntries.[j])
+          )
+          Shape.Label(
+              r2 (swatchX + style.LegendLabelOffsetX),
+              r2 (rowTop + style.LegendLabelBaselineDy),
+              TextSource.Literal legendTexts.[j],
+              legendLabelStyle
+          ) ]
 
     let legend =
-        if m > 1 then
-            [ for j in 0 .. m - 1 do
-                  let colour = colourFor style j
-                  let lx = r2 legendX.[j]
+        match legendPos with
+        | ChartLegendPosition.None -> []
+        | ChartLegendPosition.Right ->
+            let swatchX = plotX1 + style.LegendColumnGap
+
+            [ for j in 0 .. legendEntries.Length - 1 do
+                  yield! legendRow swatchX (plotY0 + style.LegendRowPitchY * float j) j ]
+        | ChartLegendPosition.Top
+        | ChartLegendPosition.Bottom ->
+            // Phase 878 — the TOP band sits BELOW the subtitle, so it moves
+            // down by the line the subtitle took; `subtitleBand` is 0 without
+            // one, leaving the pre-878 constants exactly where they were. The
+            // BOTTOM band mirrors from the canvas bottom off the band the
+            // margin already reserved, so it needs no constants of its own.
+            let swatchY, baselineY =
+                match legendPos with
+                | ChartLegendPosition.Bottom ->
+                    let rowTop = style.Height - legendBandH
+                    rowTop, rowTop + style.LegendLabelBaselineDy
+                | _ -> style.LegendSwatchY + subtitleBand, style.LegendLabelBaselineY + subtitleBand
+
+            let entryWidth (j: int) : float =
+                style.LegendLabelOffsetX
+                + TextMetrics.width tickSize legendTexts.[j]
+                + style.LegendEntryGap
+
+            // Prefix sums — entry j starts where every earlier entry ended.
+            let xs =
+                Array.init legendEntries.Length id
+                |> Array.scan (fun acc j -> acc + entryWidth j) plotX0
+
+            [ for j in 0 .. legendEntries.Length - 1 do
+                  let lx = r2 xs.[j]
 
                   yield
                       Shape.Rectangle(
                           lx,
-                          // Phase 878 — the legend row sits BELOW the subtitle,
-                          // so it moves down by the line the subtitle took.
-                          // `subtitleBand` is 0 without one, leaving the
-                          // pre-878 constants exactly where they were.
-                          r2 (style.LegendSwatchY + subtitleBand),
+                          r2 swatchY,
                           style.LegendSwatchSize,
                           style.LegendSwatchSize,
                           Some style.LegendSwatchCornerRadius,
-                          styleFill colour
+                          styleFill (fst legendEntries.[j])
                       )
 
                   yield
                       Shape.Label(
                           r2 (lx + style.LegendLabelOffsetX),
-                          r2 (style.LegendLabelBaselineY + subtitleBand),
-                          TextSource.Literal yFields.[j],
-                          textStyle style (Some style.LabelOpacity) TextAnchor.Start tickSize Emphasis.Normal
+                          r2 baselineY,
+                          TextSource.Literal legendTexts.[j],
+                          legendLabelStyle
                       ) ]
-        else
-            []
 
     // ── Visible title (a Label — bigger + emphasised) + the a11y Title ──
     let titleX, titleAnchor =
@@ -1898,14 +2099,15 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // last-ulp divergence cannot flip the 2 dp `r2` rounding except at exact
     // .005 boundaries, the same exposure `niceNum`'s `10.0 ** exp` already
     // carries.
+    //
+    // Phase 880 — this emits WEDGES ONLY. The pie's legend was the vertical
+    // right-hand column the cartesian arms have now converged on, so it is
+    // emitted by the shared `legend` above (from the shared `legendEntries`,
+    // which carry the shares) and honours `LegendPosition` like any other. The
+    // guard + the shares themselves were lifted above the margins, because the
+    // legend's width is layout input.
     let pieShapes () : Shape list =
-        let values = if m = 1 then series.[0] else [||]
-
-        let refused = m <> 1 || values |> Array.exists (fun v -> v < 0.0)
-
-        let total = Array.sum values
-
-        if refused || total <= 0.0 then
+        if pieRefused then
             []
         else
             let cx = r2 ((plotX0 + plotX1) / 2.0)
@@ -1931,8 +2133,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
                       CurveCommand.CubicTo(c1, c2, pt t1) ]
 
-            let fractions = values |> Array.map (fun v -> v / total)
-            let starts = fractions |> Array.scan (+) 0.0
+            let starts = pieFractions |> Array.scan (+) 0.0
             let top = -System.Math.PI / 2.0
 
             // Half the angular padding comes off each end of every wedge
@@ -1945,7 +2146,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                 let yf = yFields.[0]
 
                 [ for i in 0 .. n - 1 do
-                      let f = fractions.[i]
+                      let f = pieFractions.[i]
 
                       if f > 0.0 then
                           let colour = colourFor style i
@@ -1971,47 +2172,16 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
                                   yield Shape.Curve(cmds, markStyle) ]
 
-            // Vertical category legend on the right — categories take the
-            // palette roles a cartesian chart gives its series.
-            let pieLegend =
-                let swatchX = style.Width - style.PieLegendOffsetX
-
-                [ for i in 0 .. n - 1 do
-                      let ly = style.PieLegendTopY + style.PieLegendPitchY * float i
-
-                      yield
-                          Shape.Rectangle(
-                              r2 swatchX,
-                              r2 ly,
-                              style.LegendSwatchSize,
-                              style.LegendSwatchSize,
-                              Some style.LegendSwatchCornerRadius,
-                              styleFill (colourFor style i)
-                          )
-
-                      // Routed through the canonical formatter (Phase 876) —
-                      // one rounding + rendering rule for every number this
-                      // module prints. A share is a whole percent here, so the
-                      // shipped `NN%` shape is unchanged.
-                      let pct = formatValue None 1.0 false 1.0 (fractions.[i] * 100.0)
-
-                      yield
-                          Shape.Label(
-                              r2 (swatchX + style.LegendLabelOffsetX),
-                              r2 (ly + style.PieLegendLabelBaselineDy),
-                              TextSource.Literal(sprintf "%s (%s%%)" categories.[i] pct),
-                              textStyle style (Some style.LabelOpacity) TextAnchor.Start tickSize Emphasis.Normal
-                          ) ]
-
-            segs @ pieLegend
+            segs
 
     // Pie is polar — no axes/gridlines/tick chrome; every other arm assembles
     // the shared cartesian chrome in painter's order: gridlines (h then v), the
     // zero baseline, axes, tick marks, y-tick + x labels, axis titles, series,
-    // legend, chart title.
+    // legend, chart title. Since Phase 880 BOTH arms take the same `legend` in
+    // the same slot — geometry, then legend, then titles.
     let shapes =
         match spec.Kind with
-        | ChartKind.Pie -> pieShapes () @ titleShapes @ subtitleShapes
+        | ChartKind.Pie -> pieShapes () @ legend @ titleShapes @ subtitleShapes
         | _ ->
             gridlines
             @ xGridlines

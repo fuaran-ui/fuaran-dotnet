@@ -210,6 +210,7 @@ let private defs: (string * J) list =
       "StyleRole", enumDef [ "None"; "Eyebrow"; "Data"; "Lede"; "Caption" ]
       "FontVoice", enumDef [ "Default"; "Display"; "Structural" ]
       "ChartKind", enumDef [ "Line"; "Bar"; "Area"; "Pie"; "Scatter"; "Heatmap" ]
+      "ChartLegendPosition", enumDef [ "Top"; "Right"; "Bottom"; "None" ]
       "LiveRegionKind", enumDef [ "polite"; "assertive"; "off" ]
       "HashStrictness", enumDef [ "StrictReplay"; "AdvisoryWarning"; "Enforced" ]
       // Locale-aware formatting enums (Phase 102).
@@ -885,6 +886,10 @@ let private defs: (string * J) list =
             "xTitle", ref "TextSource"
             "yTitle", ref "TextSource"
             "subtitle", ref "TextSource"
+            // `legendPosition` (Phase 880) — which edge the legend occupies, or
+            // `None` to suppress it. Optional: absent means the host style's
+            // default (`Right`), never "no legend".
+            "legendPosition", ref "ChartLegendPosition"
             "onPointClick", closure ]
 
       "MapMarker",

@@ -108,6 +108,20 @@ Friend Module Attributes
         Throw New FuaranXmlException($"'{value}' is not a valid {GetType(T).Name} value.")
     End Function
 
+    ''' <summary>
+    ''' An OPTIONAL bounded enum attribute (Phase 880). Absent yields Nothing —
+    ''' which is not the same as a default: the consuming spec field is itself
+    ''' optional, and absence there means "the host's default", so inventing one
+    ''' here would erase the distinction the wire is carrying.
+    ''' </summary>
+    Friend Function OptEnum(Of T As Structure)(el As XElement, name As String) As T?
+        If Not HasAttr(el, name) Then Return Nothing
+        Dim raw = Attr(el, name)
+        Dim result As T = Nothing
+        If [Enum].TryParse(Of T)(raw, ignoreCase:=True, result) Then Return result
+        Throw New FuaranXmlException($"'{raw}' is not a valid {GetType(T).Name} value.")
+    End Function
+
     ''' <summary>Read the bounded cell-format from the format-* attribute family.</summary>
     Friend Function ReadFormat(el As XElement) As Csharp.CellFormat
         If HasAttr(el, "format-currency") Then Return Csharp.CellFormat.Currency(Attr(el, "format-currency"))

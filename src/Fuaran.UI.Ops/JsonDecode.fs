@@ -2032,6 +2032,15 @@ let private decodeChartKind (path: string) (j: Json) : Result<ChartKind, DecodeE
     | JString s -> unknownDuCase path s "Line | Bar | Area | Pie | Scatter | Heatmap"
     | _ -> wrongType path "JSON string (ChartKind)"
 
+let private decodeChartLegendPosition (path: string) (j: Json) : Result<ChartLegendPosition, DecodeError> =
+    match j with
+    | JString "Top" -> Ok ChartLegendPosition.Top
+    | JString "Right" -> Ok ChartLegendPosition.Right
+    | JString "Bottom" -> Ok ChartLegendPosition.Bottom
+    | JString "None" -> Ok ChartLegendPosition.None
+    | JString s -> unknownDuCase path s "Top | Right | Bottom | None"
+    | _ -> wrongType path "JSON string (ChartLegendPosition)"
+
 let private decodeAriaRole (path: string) (j: Json) : Result<AriaRole, DecodeError> =
     match j with
     | JString "button" -> Ok AriaRole.Button
@@ -5482,6 +5491,15 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             | _, Error e, _
             | _, _, Error e -> Error e
 
+        // `legendPosition` (Phase 880): WHERE the legend goes, or `None` to
+        // suppress it. Absent means the host style's default (`Right`) — NOT
+        // "no legend" — so the ordinary wire shape omits the key entirely and
+        // suppression has to be said out loud.
+        let legendPositionR: Result<ChartLegendPosition option, DecodeError> =
+            match tryField fields "legendPosition" with
+            | None -> Ok None
+            | Some v -> decodeChartLegendPosition (path + ".legendPosition") v |> Result.map Some
+
         // `stacked` (Phase 126): now carried on the wire. Absent (legacy wire
         // predating the field) decodes to the default `false`.
         let stackedR: Result<bool, DecodeError> =
@@ -5489,7 +5507,9 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             | None -> Ok false
             | Some v -> requireBool (path + ".stacked") v
 
-        match kindR, sourceR, xFieldR, yFieldsR, titleR, onPointClickR, stackedR, valueFormatR, titlesR with
+        match
+            kindR, sourceR, xFieldR, yFieldsR, titleR, onPointClickR, stackedR, valueFormatR, titlesR, legendPositionR
+        with
         | Ok kind,
           Ok source,
           Ok xField,
@@ -5498,7 +5518,8 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
           Ok onPointClick,
           Ok stacked,
           Ok valueFormat,
-          Ok(xTitle, yTitle, subtitle) ->
+          Ok(xTitle, yTitle, subtitle),
+          Ok legendPosition ->
             Ok
                 { Source = source
                   Kind = kind
@@ -5509,17 +5530,19 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
                   XTitle = xTitle
                   YTitle = yTitle
                   Subtitle = subtitle
+                  LegendPosition = legendPosition
                   OnPointClick = onPointClick
                   Stacked = stacked }
-        | Error e, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeMapSpec (path: string) (j: Json) : Result<MapSpec<obj>, DecodeError> =
     match requireObject path j with

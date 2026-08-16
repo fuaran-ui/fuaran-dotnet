@@ -1908,6 +1908,7 @@ let chart: Node<obj> =
               XTitle = None
               YTitle = None
               Subtitle = None
+              LegendPosition = None
               OnPointClick = None
               // Stacked = true (Phase 126) — exercises the now-carried
               // stacked-vs-grouped chart intent round-tripping.
@@ -1938,6 +1939,7 @@ let chartValueFormat: Node<obj> =
               XTitle = None
               YTitle = None
               Subtitle = None
+              LegendPosition = None
               OnPointClick = None
               Stacked = false }
         ))
@@ -1969,6 +1971,39 @@ let chartAxisTitles: Node<obj> =
               XTitle = Some(TextSource.Literal "Quarter")
               YTitle = Some(TextSource.Literal "Revenue")
               Subtitle = Some(TextSource.Literal "Millions of £")
+              LegendPosition = None
+              OnPointClick = None
+              Stacked = false }
+        ))
+        None
+
+/// Phase 880 — `legendPosition`: WHERE the legend sits. The PRESENT half of the
+/// pair (every other chart fixture pins the absent half, which means "the host
+/// style's default", not "no legend"). Two series, so the chart genuinely has a
+/// legend to place, and `Bottom` is chosen deliberately over the default
+/// `Right`: a fixture that names the value the style would have picked anyway
+/// cannot show that the wire field was read at all.
+let chartLegendPosition: Node<obj> =
+    node
+        "chart-legend-position"
+        (NodeKind.Chart(
+            { Source =
+                Binding.Static(
+                    Some(
+                        Seq.ofList
+                            [ (Map.ofList [ "region", box "North"; "sales", box 80; "target", box 100 ]: Row)
+                              Map.ofList [ "region", box "South"; "sales", box 130; "target", box 110 ] ]
+                    )
+                )
+              Kind = ChartKind.Bar
+              XField = "region"
+              YFields = [ "sales"; "target" ]
+              Title = Some(TextSource.Literal "Sales vs target")
+              ValueFormat = None
+              XTitle = None
+              YTitle = None
+              Subtitle = None
+              LegendPosition = Some ChartLegendPosition.Bottom
               OnPointClick = None
               Stacked = false }
         ))
@@ -2032,6 +2067,7 @@ let chartStateRows: Node<obj> =
               XTitle = None
               YTitle = None
               Subtitle = None
+              LegendPosition = None
               OnPointClick = None
               Stacked = false }
         ))
@@ -2947,6 +2983,7 @@ let filterableStaticDashboard: Node<obj> =
                             XTitle = None
                             YTitle = None
                             Subtitle = None
+                            LegendPosition = None
                             OnPointClick = None
                             Stacked = false }
                       ))
@@ -3967,6 +4004,7 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Chart (Phase 663/665 — chart on the editable grid's state key)", chartStateRows
       "Visualisation/Chart (Phase 876 — valueFormat: the value axis's declared number format)", chartValueFormat
       "Visualisation/Chart (Phase 878 — xTitle/yTitle/subtitle: the axis names + the muted subtitle)", chartAxisTitles
+      "Visualisation/Chart (Phase 880 — legendPosition: the legend's declared edge)", chartLegendPosition
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
       "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey

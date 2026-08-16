@@ -444,7 +444,7 @@ internal sealed class ChartBuilder : NodeBuilder
         var source = Bind.Static(_rows);
         // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
         // Source, Stacked, XField, YFields, Title, ValueFormat, XTitle, YTitle,
-        // Subtitle, OnPointClick).
+        // Subtitle, LegendPosition, OnPointClick).
         return NodeKind<object>.NewChart(
             new ChartSpec<object>(
                 _kind,
@@ -457,6 +457,7 @@ internal sealed class ChartBuilder : NodeBuilder
                 Fs.None<Generated.TextSource>(),
                 Fs.None<Generated.TextSource>(),
                 Fs.None<Generated.TextSource>(),
+                Fs.None<Generated.ChartLegendPosition>(),
                 Fs.None<FSharpFunc<FSharpMap<string, object>, FsAction>>()));
     }
 }

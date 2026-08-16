@@ -24,8 +24,9 @@ public static partial class Fuaran
         new(FsFactory.chart<object>(
             options.Id,
             // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
-            // Source, Stacked, XField, YFields, Title, ValueFormat,
-            // OnPointClick), not the old Source-first hand order.
+            // Source, Stacked, XField, YFields, Title, ValueFormat, XTitle,
+            // YTitle, Subtitle, LegendPosition, OnPointClick), not the old
+            // Source-first hand order.
             new FsGen.ChartSpec<object>(
                 options.Kind.ToFs(),
                 (options.Source ?? Binding.Static(Enumerable.Empty<FsRow>())).Inner,
@@ -37,6 +38,9 @@ public static partial class Fuaran
                 options.XTitle is { } xt ? Fs.Some(xt.Inner) : Fs.None<FsGen.TextSource>(),
                 options.YTitle is { } yt ? Fs.Some(yt.Inner) : Fs.None<FsGen.TextSource>(),
                 options.Subtitle is { } st ? Fs.Some(st.Inner) : Fs.None<FsGen.TextSource>(),
+                options.LegendPosition is { } lp
+                    ? Fs.Some(lp.ToFs())
+                    : Fs.None<FsGen.ChartLegendPosition>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>
@@ -187,6 +191,14 @@ public sealed record ChartOptions
     /// display-unit label, so the units are stated once.
     /// </summary>
     public Text? Subtitle { get; init; }
+
+    /// <summary>
+    /// Which edge the legend occupies (Phase 880), or
+    /// <see cref="ChartLegendPosition.None"/> to suppress it. Unset takes the
+    /// host style's default — a vertical column on the right — which is not the
+    /// same thing as no legend at all.
+    /// </summary>
+    public ChartLegendPosition? LegendPosition { get; init; }
 
     /// <summary>Whether bar/area series stack.</summary>
     public bool Stacked { get; init; }

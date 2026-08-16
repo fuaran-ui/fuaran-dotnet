@@ -107,6 +107,20 @@ public enum ChartKind
     Heatmap,
 }
 
+/// <summary>
+/// Which edge the chart legend occupies (Phase 880) — maps to the F#
+/// <c>ChartLegendPosition</c>. Leaving <c>ChartOptions.LegendPosition</c> unset
+/// takes the host style's default (<c>Right</c>); <c>None</c> suppresses the
+/// legend outright.
+/// </summary>
+public enum ChartLegendPosition
+{
+    Top,
+    Right,
+    Bottom,
+    None,
+}
+
 /// <summary>Icon display size (Phase 821) — <c>Medium</c> is the default.</summary>
 public enum IconSize
 {
@@ -180,6 +194,16 @@ internal static class EnumMap
             ChartKind.Scatter => FsGen.ChartKind.Scatter,
             ChartKind.Heatmap => FsGen.ChartKind.Heatmap,
             _ => FsGen.ChartKind.Line,
+        };
+
+    internal static FsGen.ChartLegendPosition ToFs(this ChartLegendPosition p) =>
+        p switch
+        {
+            ChartLegendPosition.Top => FsGen.ChartLegendPosition.Top,
+            ChartLegendPosition.Right => FsGen.ChartLegendPosition.Right,
+            ChartLegendPosition.Bottom => FsGen.ChartLegendPosition.Bottom,
+            ChartLegendPosition.None => FsGen.ChartLegendPosition.None,
+            _ => FsGen.ChartLegendPosition.Right,
         };
 
     internal static FsGen.ToneVariant ToFs(this Tone t) =>

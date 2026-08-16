@@ -979,6 +979,11 @@ and ChartSpec<'Msg> = Generated.ChartSpec<'Msg>
 
 and ChartKind = Generated.ChartKind
 
+/// Phase 880 — which edge the series legend occupies, or `None` to suppress it.
+/// A wire vocabulary (`ChartSpec.LegendPosition`); the geometry that realises it
+/// lives in `Fuaran.UI.Charts.ChartStyle`, which also carries the default.
+and ChartLegendPosition = Generated.ChartLegendPosition
+
 /// Author-facing carrier for a **static read-only table** (Phase 393). No longer a
 /// `VisKind` case of its own — `Fuaran.table` lowers it into the read-only mode of
 /// `NodeKind.DataGrid` (`GridSpec.StaticRows`), so one tabular kind owns both the

@@ -360,6 +360,7 @@ let chart<'Msg> : ChartSpec<'Msg> =
       XTitle = Option.None
       YTitle = Option.None
       Subtitle = Option.None
+      LegendPosition = Option.None
       OnPointClick = Option.None
       Stacked = false }
 

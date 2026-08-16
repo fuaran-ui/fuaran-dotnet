@@ -94,9 +94,12 @@ internal static class Vocabulary
         // Phase 878 — the axis names + the subtitle. Absent x-title / y-title
         // fall back to the capitalised field name, so they are optional in the
         // ordinary case rather than an opt-in.
+        // Phase 880 — `legend-position`: Top | Right | Bottom | None. Absent
+        // takes the host style's default (Right), so it is an override rather
+        // than a required declaration.
         Add("Chart", "id", "source", "kind", "x-field", "y-fields", "title", "stacked",
             "value-format-currency", "value-format-number", "value-format-percent",
-            "x-title", "y-title", "subtitle");
+            "x-title", "y-title", "subtitle", "legend-position");
         Add("Table", "id");
         Add("Map", "id", "centre-lat", "centre-lng", "zoom");
         Add("DataGrid", "id", "source", "editable");

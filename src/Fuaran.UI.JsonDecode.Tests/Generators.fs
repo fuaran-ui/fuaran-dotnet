@@ -170,6 +170,13 @@ let private genChartKind =
           ChartKind.Scatter
           ChartKind.Heatmap ]
 
+let private genChartLegendPosition =
+    Gen.elements
+        [ ChartLegendPosition.Top
+          ChartLegendPosition.Right
+          ChartLegendPosition.Bottom
+          ChartLegendPosition.None ]
+
 let private genAriaRole: Gen<AriaRole> =
     Gen.oneof
         [ Gen.elements
@@ -847,6 +854,9 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         let! xTitle = genOption genTextSource
         let! yTitle = genOption genTextSource
         let! subtitle = genOption genTextSource
+        // Phase 880 — which edge the legend occupies (absent = the host
+        // style's default, which is why the option arm matters here).
+        let! legendPosition = genOption genChartLegendPosition
         let! stacked = genBool
 
         return
@@ -859,6 +869,7 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
               XTitle = xTitle
               YTitle = yTitle
               Subtitle = subtitle
+              LegendPosition = legendPosition
               OnPointClick = None
               Stacked = stacked }
     }
