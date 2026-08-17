@@ -2458,6 +2458,17 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // honest, because the bars are at their true positions and the overlap is
     // the data's, not the layout's. `BarMaxThickness` already bounds the other
     // direction.
+    //
+    // A CONSEQUENCE, RECORDED RATHER THAN PATCHED: because the domain is the
+    // data's own extent, the first and last bars are centred ON the plot's
+    // edges, so each overhangs it by half its thickness (~7 px at the shipped
+    // constants — inside the canvas, never clipped; `bar-temporal-monthly` pins
+    // it). Padding the domain by half a pitch for the bar arms was the
+    // alternative and is worse: it would make the DOMAIN kind-dependent, so a
+    // Line and a Bar over identical rows would disagree about where a given date
+    // sits — two pictures of one dataset that cannot be read against each other.
+    // A mark's position is the datum; a bar's width is a legibility affordance,
+    // and the affordance is what yields at the edge.
 
     /// The x a datum's mark centres on.
     let xCentre (i: int) : float =
