@@ -67,6 +67,12 @@ type private Case =
         /// `None` and the pre-880 inputs stay byte-identical even though the
         /// PICTURE they lower to has moved.
         LegendPosition: string option
+        /// Phase 881 — whether the chart writes its values onto the picture (a
+        /// WIRE field: `ChartSpec.DataLabels`), carried in the neutral input
+        /// contract as the canonical enum string beside `title`. Absent means
+        /// `Off`, which is also the default, so the key is OMITTED when `None`
+        /// and every pre-881 input AND golden is byte-identical.
+        DataLabels: string option
         Rows: (string * float list) list
     }
 
@@ -86,6 +92,7 @@ let private plain: Case =
       YTitle = None
       Subtitle = None
       LegendPosition = None
+      DataLabels = None
       Rows = [] }
 
 /// The case's x cell values, boxed — numeric when `XNums` is set, else the
@@ -542,7 +549,123 @@ let private cases: Case list =
           YFields = [ "share" ]
           Title = Some "Budget share"
           LegendPosition = Some "Top"
-          Rows = [ "Ops", [ 40.0 ]; "R&D", [ 35.0 ]; "Sales", [ 25.0 ] ] } ]
+          Rows = [ "Ops", [ 40.0 ]; "R&D", [ 35.0 ]; "Sales", [ 25.0 ] ] }
+      // ── Phase 881 — selective data labels ──
+      //
+      // `Off` needs no case: every one of the fifty above IS the `Off` picture,
+      // and every one of their goldens is byte-unchanged by this phase, which
+      // is the regression guard the whole design rests on. These pin the arms
+      // `Ends` reaches, and the pair at the end pins the suppression boundary.
+      { plain with
+          // GROUPED BARS — every bar's own cap, each label centred on its bar
+          // and bounded by the sub-slot pitch that separates it from the next
+          // series' label. Byte-for-byte `bar-multi` but for the declared
+          // labels, so the two goldens read as the before-and-after.
+          Name = "bar-labels-grouped"
+          Kind = ChartKind.Bar
+          XField = "region"
+          YFields = [ "sales"; "target" ]
+          Title = Some "Sales vs target"
+          DataLabels = Some "Ends"
+          Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
+      { plain with
+          // STACKED BARS — the TOTAL at the stack cap and NOTHING else. Three
+          // series and three categories, so a per-segment rule would emit nine
+          // labels where this emits three; the golden's label count is what
+          // makes "interior segments carry no label" checkable from the corpus
+          // alone. Byte-for-byte `bar-stacked` but for the declared labels.
+          Name = "bar-labels-stacked"
+          Kind = ChartKind.Bar
+          XField = "sprint"
+          YFields = [ "done"; "doing"; "blocked" ]
+          Title = Some "Tickets by status"
+          Stacked = true
+          DataLabels = Some "Ends"
+          Rows = [ "S1", [ 12.0; 5.0; 3.0 ]; "S2", [ 18.0; 4.0; 0.0 ]; "S3", [ 9.0; 7.0; 2.0 ] ] }
+      { plain with
+          // LINE ENDPOINTS — one label per series at the LAST point, right of
+          // the endpoint and nudged up off the line. Two series whose final
+          // values are far apart in y, so both are admitted and the golden pins
+          // the ordinary case rather than the separation rule's.
+          Name = "line-labels-ends"
+          Kind = ChartKind.Line
+          XField = "day"
+          YFields = [ "cpu"; "mem" ]
+          Title = Some "Load by day"
+          DataLabels = Some "Ends"
+          Rows = [ "Mon", [ 20.0; 55.0 ]; "Tue", [ 35.0; 60.0 ]; "Wed", [ 28.0; 52.0 ] ] }
+      { plain with
+          // NEGATIVE CAPS — a zero-crossing domain, so two bars cap upward and
+          // two downward, and the golden pins that the below-cap placement is
+          // the exact mirror of the above-cap one rather than a second rule.
+          Name = "bar-labels-negative"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "variance" ]
+          Title = Some "Variance to plan"
+          DataLabels = Some "Ends"
+          Rows = [ "Q1", [ 12.0 ]; "Q2", [ -8.0 ]; "Q3", [ 5.0 ]; "Q4", [ -14.0 ] ] }
+      { plain with
+          // DISPLAY-UNIT AGREEMENT — the axis scales to millions, so the labels
+          // do too, at the axis's own step-derived precision. The value a label
+          // prints is the value the tick column would print at that height; the
+          // rounding that follows (12.5 M reading `13`) is the axis's rule, not
+          // a second one, and the alternative — a label more precise than its
+          // own axis — is what makes a chart disagree with itself.
+          Name = "bar-labels-millions"
+          Kind = ChartKind.Bar
+          XField = "region"
+          YFields = [ "revenue" ]
+          Title = Some "Revenue by region"
+          DataLabels = Some "Ends"
+          Rows =
+              [ "North", [ 12500000.0 ]
+                "South", [ 9800000.0 ]
+                "East", [ 15200000.0 ]
+                "West", [ 11100000.0 ] ] }
+      { plain with
+          // BOUNDARY, UNDER. `Off` scaling keeps the full magnitudes, so every
+          // label is the nine-character `1,250,000` — 4.41 em, 52.92 px at the
+          // 12 px label size. Six categories give a 85.85 px band and therefore
+          // a 56.09 px width budget, so every label is admitted.
+          Name = "bar-labels-fit-boundary"
+          Kind = ChartKind.Bar
+          XField = "month"
+          YFields = [ "revenue" ]
+          Title = Some "At the label-fit boundary"
+          UnitMode = Some "Off"
+          DataLabels = Some "Ends"
+          Rows =
+              [ "M1", [ 1250000.0 ]
+                "M2", [ 1480000.0 ]
+                "M3", [ 1100000.0 ]
+                "M4", [ 1690000.0 ]
+                "M5", [ 1320000.0 ]
+                "M6", [ 1550000.0 ] ] }
+      { plain with
+          // BOUNDARY, OVER. The SAME chart with ONE more category — a value
+          // inside the existing domain, so the ticks, the margins and the label
+          // texts are all unchanged and the band pitch is the only thing that
+          // moves. It moves to 73.58 px, the budget falls under the labels'
+          // 52.92 px + padding, and every label is SUPPRESSED. The golden
+          // therefore carries no labels at all: suppression is total per
+          // placement, deterministic, and visible as an absence rather than as
+          // a clipped or overlapped string.
+          Name = "bar-labels-suppress-boundary"
+          Kind = ChartKind.Bar
+          XField = "month"
+          YFields = [ "revenue" ]
+          Title = Some "Past the label-fit boundary"
+          UnitMode = Some "Off"
+          DataLabels = Some "Ends"
+          Rows =
+              [ "M1", [ 1250000.0 ]
+                "M2", [ 1480000.0 ]
+                "M3", [ 1100000.0 ]
+                "M4", [ 1690000.0 ]
+                "M5", [ 1320000.0 ]
+                "M6", [ 1550000.0 ]
+                "M7", [ 1400000.0 ] ] } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
 /// named the slot — the representation is the same `Map<string,obj>`).
@@ -566,6 +689,14 @@ let private legendPositionOf (name: string) : ChartLegendPosition =
     | "None" -> ChartLegendPosition.None
     | _ -> ChartLegendPosition.Right
 
+/// The neutral input contract's `dataLabels` string → the wire value. Two
+/// values, and the harness cannot spell a third because the vocabulary has
+/// none.
+let private dataLabelsOf (name: string) : ChartDataLabels =
+    match name with
+    | "Ends" -> ChartDataLabels.Ends
+    | _ -> ChartDataLabels.Off
+
 let private specOf (case: Case) : ChartSpec<obj> =
     { Source = Binding.Static(Some(Seq.ofList (buildRows case)))
       Kind = case.Kind
@@ -577,6 +708,7 @@ let private specOf (case: Case) : ChartSpec<obj> =
       YTitle = case.YTitle |> Option.map TextSource.Literal
       Subtitle = case.Subtitle |> Option.map TextSource.Literal
       LegendPosition = case.LegendPosition |> Option.map legendPositionOf
+      DataLabels = case.DataLabels |> Option.map dataLabelsOf
       OnPointClick = None
       Stacked = case.Stacked }
 
@@ -690,6 +822,22 @@ let private yAxisTitleRotation (ds: DrawingSpec) : float option =
 // and nothing else's on either arm (bars and stack segments carry no corner
 // radius), so these readers cannot drift onto series geometry. Order is emission
 // order, which is entry order.
+
+/// ── Phase 881 reader — pull the data labels back out ──────────────────────
+///
+/// The FONT SIZE is the discriminator: `DataLabelFontSize` (12) is used by no
+/// other shape the lowering emits — ticks, categories, legend rows and axis
+/// titles are all `TickFontSize` (13), the subtitle 13, the visible title 18 —
+/// so this reader cannot drift onto chrome. Order is emission order.
+let private dataLabelsOfDrawing (ds: DrawingSpec) : (float * float * string) list =
+    ds.Shapes
+    |> List.choose (fun sh ->
+        match sh with
+        | Shape.Label(x, y, TextSource.Literal t, s) when s.FontSize = Some 12.0 -> Some(x, y, t)
+        | _ -> None)
+
+let private dataLabelTextsOf (name: string) : string list =
+    dataLabelsOfDrawing (loweredCase name) |> List.map (fun (_, _, t) -> t)
 
 let private legendSwatches (ds: DrawingSpec) : (float * float) list =
     ds.Shapes
@@ -819,6 +967,8 @@ let private inputJson (case: Case) : string =
         // Phase 880 — same OMITTED-when-absent posture; the value is the
         // canonical `ChartLegendPosition` enum string.
         + optText "legendPosition" case.LegendPosition
+        // Phase 881 — likewise; the canonical `ChartDataLabels` enum string.
+        + optText "dataLabels" case.DataLabels
 
     sprintf
         "{\"kind\":\"%s\",\"xField\":\"%s\",\"yFields\":[%s],\"title\":%s,\"stacked\":%s%s%s%s,\"data\":[%s]}"
@@ -1912,4 +2062,200 @@ let chartLoweringTests =
                   Expect.isTrue
                       (plotRight ds - 64.0 > 0.5 * 640.0)
                       "…so the plot keeps the clear majority of the canvas"
+              }
+
+              // ── Phase 881 — selective data labels ──
+              //
+              // The goldens pin the pictures; these pin the RULES. The reader
+              // keys off `DataLabelFontSize`, which no other shape uses, so a
+              // test cannot pass by finding a tick.
+
+              test "OFF is the default AND what an absent field means — the pre-881 picture, byte-for-byte" {
+                  // THE REGRESSION GUARD, stated as an assertion rather than
+                  // left to the corpus. Every case that declares no labels must
+                  // draw none, and must lower to the same bytes with the field
+                  // absent as with it explicitly `Off`.
+                  let enc (ds: DrawingSpec) : string =
+                      CanonicalJson.encodeNode (Fuaran.drawingSpec "c" ds: Node<obj>)
+
+                  for case in cases do
+                      if Option.isNone case.DataLabels then
+                          Expect.isEmpty
+                              (dataLabelsOfDrawing (loweredCase case.Name))
+                              (sprintf "%s: an absent dataLabels drew a label" case.Name)
+
+                          let explicitlyOff =
+                              Charts.lowerWithStyle
+                                  Charts.ChartLimits.defaults
+                                  (styleOf case)
+                                  { specOf case with
+                                      DataLabels = Some Charts.ChartDataLabels.Off }
+                                  (Seq.ofList (buildRows case))
+
+                          Expect.equal
+                              (enc explicitlyOff)
+                              (enc (loweredCase case.Name))
+                              (sprintf "%s: explicit Off differs from absent" case.Name)
+              }
+
+              test "grouped bars label every cap; stacked bars label only the TOTAL" {
+                  // Three categories × two series = six caps…
+                  Expect.equal
+                      (dataLabelTextsOf "bar-labels-grouped")
+                      [ "80"; "130"; "60"; "100"; "110"; "90" ]
+                      "one label per bar, in series-then-category emission order"
+
+                  // …and three categories × three series = three labels, not
+                  // nine. This is what makes "interior segments carry no label"
+                  // a rule rather than a coincidence of the data.
+                  Expect.equal
+                      (dataLabelTextsOf "bar-labels-stacked")
+                      [ "20"; "22"; "18" ]
+                      "the stack total, once per category"
+              }
+
+              test "a label sits ABOVE a positive cap and BELOW a negative one" {
+                  let labels = dataLabelsOfDrawing (loweredCase "bar-labels-negative")
+
+                  Expect.equal
+                      (labels |> List.map (fun (_, _, t) -> t))
+                      [ "12"; "-8"; "5"; "-14" ]
+                      "every cap labelled, in category order"
+
+                  let yOf (t: string) =
+                      labels |> List.pick (fun (_, y, s) -> if s = t then Some y else None)
+
+                  // Canvas y grows downward, so "above the cap" is the smaller
+                  // number. The positive caps are higher than the negative ones
+                  // in the picture AND their labels are higher still, which is
+                  // the readable form of "the two placements are mirrors".
+                  Expect.isTrue (yOf "12" < yOf "-8") "the positive label is above the negative one"
+                  Expect.isTrue (yOf "5" < yOf "-14") "…and so is the smaller pair's"
+              }
+
+              test "lines label the LAST point of each series, right of the endpoint" {
+                  let ds = loweredCase "line-labels-ends"
+                  let labels = dataLabelsOfDrawing ds
+
+                  Expect.equal (labels |> List.map (fun (_, _, t) -> t)) [ "28"; "52" ] "the final cpu and mem values"
+
+                  // Both share the endpoint's x + the offset, and both sit
+                  // inside the plot's right edge — the legend column starts
+                  // there, and running into it is the collision the width
+                  // budget refuses.
+                  let xs = labels |> List.map (fun (x, _, _) -> x) |> List.distinct
+                  Expect.equal (List.length xs) 1 "one x for every endpoint label"
+
+                  Expect.isTrue
+                      (xs |> List.forall (fun x -> x < plotRight ds))
+                      "…and it is inside the plot, clear of the legend column"
+              }
+
+              test "labels agree with the AXIS — same display unit, same step-derived precision" {
+                  // The chart scales to millions, so the ticks read 0/5/10/…
+                  // and the labels read the same magnitudes at the same
+                  // precision. A label more precise than its own axis would be
+                  // a chart disagreeing with itself.
+                  Expect.equal (yTicksOf "bar-labels-millions") [ "0"; "5"; "10"; "15"; "20" ] "the axis is in millions"
+
+                  Expect.equal
+                      (dataLabelTextsOf "bar-labels-millions")
+                      [ "13"; "10"; "15"; "11" ]
+                      "…and so are the labels, at the axis's own precision"
+
+                  Expect.equal (axisUnitLabelOf "bar-labels-millions") "Millions" "stated once, in the unit slot"
+              }
+
+              test "the fit gate SUPPRESSES rather than clipping — the boundary, both sides" {
+                  // The pair differs by ONE category. Everything the labels
+                  // depend on but the band pitch is held constant: the seventh
+                  // value sits inside the existing domain, so the ticks, the
+                  // margins and the label texts are identical.
+                  Expect.equal
+                      (yTicksOf "bar-labels-fit-boundary")
+                      (yTicksOf "bar-labels-suppress-boundary")
+                      "same axis on both sides of the boundary"
+
+                  Expect.equal
+                      (dataLabelTextsOf "bar-labels-fit-boundary")
+                      [ "1,250,000"; "1,480,000"; "1,100,000"; "1,690,000"; "1,320,000"; "1,550,000" ]
+                      "six categories: every label is admitted"
+
+                  // …and one more category takes the pitch under the budget, so
+                  // the labels are ABSENT. Not truncated, not overlapped, not
+                  // relocated inside the bar — absent, with the values still on
+                  // the axis and still under the pointer.
+                  Expect.isEmpty
+                      (dataLabelsOfDrawing (loweredCase "bar-labels-suppress-boundary"))
+                      "seven categories: every label is suppressed"
+              }
+
+              test "endpoint labels that would overlap yield in series order" {
+                  // Two series ending at the SAME value share one baseline, so
+                  // the second cannot be drawn without writing over the first.
+                  // The earlier series keeps its number — deterministic, and
+                  // the same answer on every host.
+                  let case =
+                      { (cases |> List.find (fun c -> c.Name = "line-labels-ends")) with
+                          Rows = [ "Mon", [ 20.0; 55.0 ]; "Tue", [ 35.0; 60.0 ]; "Wed", [ 40.0; 40.0 ] ] }
+
+                  let ds = Charts.lower (specOf case) (Seq.ofList (buildRows case))
+
+                  Expect.equal
+                      (dataLabelsOfDrawing ds |> List.map (fun (_, _, t) -> t))
+                      [ "40" ]
+                      "one label where two would have collided"
+              }
+
+              test "scatter and pie carry no data labels, by decision" {
+                  // Recorded rather than merely absent: a scatter's ends are not
+                  // privileged points (its x is a value axis, so the last ROW
+                  // means nothing), and a pie's legend already carries the
+                  // shares.
+                  for name in [ "scatter-single"; "scatter-multi"; "pie-single"; "pie-quarters" ] do
+                      let case =
+                          { (cases |> List.find (fun c -> c.Name = name)) with
+                              DataLabels = Some "Ends" }
+
+                      let ds =
+                          Charts.lowerWithStyle
+                              Charts.ChartLimits.defaults
+                              (styleOf case)
+                              (specOf case)
+                              (Seq.ofList (buildRows case))
+
+                      Expect.isEmpty (dataLabelsOfDrawing ds) (sprintf "%s: Ends must draw nothing" name)
+              }
+
+              test "a data label wears LABEL-ROLE ink, never the series colour" {
+                  let ds = loweredCase "bar-labels-grouped"
+
+                  for sh in ds.Shapes do
+                      match sh with
+                      | Shape.Label(_, _, _, s) when s.FontSize = Some 12.0 ->
+                          let fill =
+                              match s.Fill with
+                              | Some(Binding.Static(Some c)) -> c
+                              | _ -> "<not a static colour>"
+
+                          let opacity =
+                              match s.Opacity with
+                              | Some(Binding.Static(Some o)) -> o
+                              | _ -> nan
+
+                          Expect.equal fill "currentColor" "inked from the surface, not the palette"
+                          Expect.equal opacity 0.66 "at the chrome label opacity"
+                      | _ -> ()
+              }
+
+              test "no data label ever moved a margin — the plot is where Off left it" {
+                  // The layout is decided before any label is placed, so a
+                  // labelled chart and its unlabelled twin must have the SAME
+                  // plot rectangle. This is why `Off` can be byte-identical
+                  // rather than merely similar.
+                  let labelled = loweredCase "bar-labels-grouped"
+                  let plainer = loweredCase "bar-multi"
+
+                  Expect.equal (plotRight labelled) (plotRight plainer) "same right edge"
+                  Expect.equal (plotBottom labelled) (plotBottom plainer) "same bottom edge"
               } ]

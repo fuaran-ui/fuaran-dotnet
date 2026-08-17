@@ -121,6 +121,19 @@ public enum ChartLegendPosition
     None,
 }
 
+/// <summary>
+/// Whether a chart writes its values onto the picture (Phase 881) — maps to the
+/// F# <c>ChartDataLabels</c>. Leaving <c>ChartOptions.DataLabels</c> unset means
+/// <c>Off</c>, which is also the default. There are only two values: <c>Ends</c>
+/// labels bar caps and line endpoints, and no member of this enum can ask for a
+/// label on every interior point.
+/// </summary>
+public enum ChartDataLabels
+{
+    Off,
+    Ends,
+}
+
 /// <summary>Icon display size (Phase 821) — <c>Medium</c> is the default.</summary>
 public enum IconSize
 {
@@ -204,6 +217,13 @@ internal static class EnumMap
             ChartLegendPosition.Bottom => FsGen.ChartLegendPosition.Bottom,
             ChartLegendPosition.None => FsGen.ChartLegendPosition.None,
             _ => FsGen.ChartLegendPosition.Right,
+        };
+
+    internal static FsGen.ChartDataLabels ToFs(this ChartDataLabels d) =>
+        d switch
+        {
+            ChartDataLabels.Ends => FsGen.ChartDataLabels.Ends,
+            _ => FsGen.ChartDataLabels.Off,
         };
 
     internal static FsGen.ToneVariant ToFs(this Tone t) =>

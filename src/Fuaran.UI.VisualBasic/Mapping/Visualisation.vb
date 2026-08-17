@@ -25,6 +25,7 @@ Friend Module VisualisationMapping
                 .YTitle = OptText(el, "y-title"),
                 .Subtitle = OptText(el, "subtitle"),
                 .LegendPosition = OptEnum(Of Csharp.ChartLegendPosition)(el, "legend-position"),
+                .DataLabels = OptEnum(Of Csharp.ChartDataLabels)(el, "data-labels"),
                 .Stacked = AttrBool(el, "stacked")})
 
         d("Table") = Function(el) Csharp.Fuaran.Table(

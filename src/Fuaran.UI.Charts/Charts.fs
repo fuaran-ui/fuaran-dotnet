@@ -50,6 +50,17 @@ module Fuaran.UI.Charts
 //              like every other arm. A single-SERIES cartesian chart still
 //              draws no legend (the title names the series); a single-series
 //              PIE still does, because its legend is over categories.
+//  Phase 881 — SELECTIVE DATA LABELS. `ChartSpec` gained an optional
+//              `DataLabels` (`Off | Ends`), absent = `Off` = the default, so
+//              every pre-881 golden is byte-unchanged. `Ends` writes the value
+//              at bar CAPS (a stacked bar's TOTAL only) and at LINE/AREA
+//              ENDPOINTS — and nowhere else: there is deliberately no
+//              all-points case, so the API cannot express a number on every
+//              interior point. Values run through Phase 876's formatter, so a
+//              label and a tick always agree; placement is gated by Phase
+//              879's `TextMetrics.fitsBox` and SUPPRESSED on no-fit, never
+//              clipped, overlapped, or moved inside a bar. No label reserves
+//              space, so nothing about the layout moved.
 //
 //  `Chart` stays a SEMANTIC wire kind (D2). This module is the bounded layout
 //  engine that turns a resolved `ChartSpec` + data rows into a canonical
@@ -113,6 +124,14 @@ type ChartTitleAlignment =
 /// column and the rotated axis title are already there — and no lowering path
 /// ever consumed it, so nothing rendered changes.
 type ChartLegendPosition = Fuaran.UI.Types.ChartLegendPosition
+
+/// Whether the chart writes its values onto the picture, and where (Phase 881).
+///
+/// A WIRE vocabulary (`ChartSpec.DataLabels`), re-exported here so this module
+/// can name it without owning it — the same shape `ChartLegendPosition` takes.
+/// `Off` is the default AND what an absent field means, so a pre-881 spec draws
+/// a pre-881 picture byte-for-byte.
+type ChartDataLabels = Fuaran.UI.Types.ChartDataLabels
 
 /// How a value axis states its DISPLAY UNIT once a large magnitude has been
 /// scaled by a power of ten (Phase 876).
@@ -398,6 +417,34 @@ type ChartStyle =
         /// the plot. The column is otherwise sized from the widest name.
         LegendColumnMaxShare: float
 
+        // ── Data-label geometry (Phase 881 — the `Ends` placements) ──
+        //
+        // The wire says WHETHER values are written onto the picture; these four
+        // say what that looks like and, through the fit gate, whether a given
+        // label survives. NONE of them feed a margin: a data label never makes
+        // the plot smaller, it either fits the room the picture already has or
+        // it is suppressed. That is what keeps `Off` byte-identical to the
+        // pre-881 layout rather than merely visually similar.
+        /// Font size of a data label. Deliberately a field of its own rather
+        /// than `TickFontSize`: a tick sits OUTSIDE the plot in a column of its
+        /// own, where a data label sits INSIDE it competing with the mark it
+        /// describes, so it is set one step smaller — subordinate to the shape,
+        /// which is what the reader is looking at first.
+        DataLabelFontSize: float
+        /// Clearance between a bar's cap and the nearest ink of its label, in
+        /// BOTH directions — above a positive cap, below a negative one. One
+        /// constant, so the two placements are exact mirrors.
+        DataLabelOffsetY: float
+        /// Clearance a label must keep from the plot edge, and half the
+        /// clearance it keeps from its neighbour's label. Feeds the fit gate
+        /// only; a label that cannot hold it is suppressed rather than moved.
+        DataLabelPadding: float
+        /// Gap from a line/area endpoint to the left edge of its label.
+        DataLabelEndOffsetX: float
+        /// Rise from a line/area endpoint to its label's baseline — the nudge
+        /// that takes the text off the line it belongs to.
+        DataLabelEndNudgeY: float
+
         // ── Pie geometry (the polar arm) ──
         /// Wedge radius.
         PieRadius: float
@@ -509,6 +556,14 @@ module ChartStyle =
           LegendLabelBaselineDy = 9.0
           LegendColumnGap = 16.0
           LegendColumnMaxShare = 0.3
+          // Phase 881 — one point below `TickFontSize`, and four small
+          // clearances. None of them is corpus-visible until a spec asks for
+          // `Ends`, because `Off` emits no label at all.
+          DataLabelFontSize = 12.0
+          DataLabelOffsetY = 5.0
+          DataLabelPadding = 2.0
+          DataLabelEndOffsetX = 6.0
+          DataLabelEndNudgeY = 5.0
           PieRadius = 130.0
           // Refreshed by Phase 875 alongside the palette: these three were the
           // only survivors of the retired 2008 set, and leaving unvalidated
@@ -1827,6 +1882,36 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
     let axisTitles = xTitleShapes @ yTitleShapes @ unitSlotShapes
 
+    // ── Bar geometry ──
+    //
+    // Hoisted out of the two Bar arms (Phase 881) because the cap labels have to
+    // land on the SAME caps the rectangles draw: one expression per quantity, so
+    // a label and its bar cannot disagree about where the bar is. The arithmetic
+    // is character-for-character what the arms computed inline before, which is
+    // why every golden is unmoved.
+    let barGroupW = bandW * style.BarGroupWidthFraction
+
+    /// The single capped bar of a STACKED category.
+    let stackedBarW =
+        r2 (min (barGroupW * style.BarWidthFraction) style.BarMaxThickness)
+
+    let stackedBarX (i: int) : float =
+        r2 (plotX0 + bandW * float i + (bandW - stackedBarW) / 2.0)
+
+    /// A grouped bar's own sub-slot within the band, and its capped thickness.
+    let groupedSubW = if m > 0 then barGroupW / float m else barGroupW
+
+    let groupedBarW =
+        r2 (min (groupedSubW * style.BarWidthFraction) style.BarMaxThickness)
+
+    let groupedBarX (i: int) (j: int) : float =
+        // Centre the (possibly capped) bar in its own sub-slot, so a cap takes
+        // air off BOTH sides and the group stays symmetric about the band centre.
+        let slotX =
+            plotX0 + bandW * float i + (bandW - barGroupW) / 2.0 + float j * groupedSubW
+
+        r2 (slotX + (groupedSubW - groupedBarW) / 2.0)
+
     // ── Series geometry ──
     let seriesShapes =
         match spec.Kind with
@@ -1836,11 +1921,10 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             // shortened by `StackSegmentGap` on the side facing the next segment
             // so the boundaries read as gaps rather than colour changes
             // (Phase 875).
-            let groupW = bandW * style.BarGroupWidthFraction
-            let bw = r2 (min (groupW * style.BarWidthFraction) style.BarMaxThickness)
+            let bw = stackedBarW
 
             [ for i in 0 .. n - 1 do
-                  let bx = r2 (plotX0 + bandW * float i + (bandW - bw) / 2.0)
+                  let bx = stackedBarX i
                   let cums = cumsFor i
 
                   for j in 0 .. m - 1 do
@@ -1863,9 +1947,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                           styleFill (colourFor style j) |> withMark yFields.[j] categories.[i]
                       ) ]
         | ChartKind.Bar ->
-            let groupW = bandW * style.BarGroupWidthFraction
-            let subW = if m > 0 then groupW / float m else groupW
-            let bw = r2 (min (subW * style.BarWidthFraction) style.BarMaxThickness)
+            let bw = groupedBarW
             let baseY = yScale 0.0
 
             [ for j in 0 .. m - 1 do
@@ -1874,11 +1956,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
                   for i in 0 .. n - 1 do
                       let v = values.[i]
-                      // Centre the (possibly capped) bar in its own sub-slot, so
-                      // a cap takes air off BOTH sides and the group stays
-                      // symmetric about the band centre.
-                      let slotX = plotX0 + bandW * float i + (bandW - groupW) / 2.0 + float j * subW
-                      let bx = r2 (slotX + (subW - bw) / 2.0)
+                      let bx = groupedBarX i j
                       let vy = yScale v
                       let top = min vy baseY
                       let hgt = r2 (abs (vy - baseY))
@@ -1953,6 +2031,180 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                           styleFill colour |> withMark yf (DrawingSvg.formatNum xValues.[i])
                       ) ]
         | _ -> []
+
+    // ── Data labels (Phase 881) — the values, written selectively ────────────
+    //
+    // `ChartSpec.DataLabels` has two states and no third: `Off` (the default,
+    // and what an absent field means) and `Ends`. There is deliberately NO
+    // all-points mode — a number on every interior point is the clutter this
+    // vocabulary exists to prevent, so the API cannot express it. `Ends` names
+    // the placements that read on their own:
+    //
+    //   * BARS label the CAP — above a positive cap, below a negative one, the
+    //     two placements exact mirrors of each other about the cap.
+    //   * A GROUPED bar labels every bar. A STACKED bar labels the TOTAL at the
+    //     stack cap and nothing else: an interior segment's own value is
+    //     unreadable against the segment above it, and the legend plus the
+    //     Phase-883 hover readout already serve it.
+    //   * LINES and AREA EDGES label the LAST point of each series, right of
+    //     the endpoint and nudged up off the line — the end of a series is the
+    //     value a reader is looking for, and it is the one point with clear air
+    //     beside it.
+    //   * SCATTER gets nothing in v1 (RECORDED DECISION, not an omission): a
+    //     scatter's "ends" are not privileged points. Its x axis is a value
+    //     axis, so the last row carries no meaning the first does not, and
+    //     labelling by row order would present an accident of the feed as a
+    //     reading of the chart. Whatever a scatter's labels turn out to be —
+    //     extremes, outliers, a named subset — it is a different rule, and one
+    //     that needs its own evidence.
+    //   * PIE is unchanged: its legend already carries `name (NN%)`.
+    //
+    // EVERY value goes through the axis's own formatter (`yTickText`), so a
+    // label and a tick agree by construction — same precision from the same
+    // tick step, and the same display-unit scaling, so a chart in millions
+    // labels in millions rather than restating the magnitude the axis just
+    // scaled away.
+    //
+    // NO LABEL EVER MOVES A MARGIN. The plot rectangle is decided long before
+    // this point and is not revisited: a label either fits the room the picture
+    // already has, or it is SUPPRESSED. That is what keeps `Off` byte-identical
+    // to the pre-881 layout, and it is also the honest posture — a value that
+    // cannot be written legibly is still on the axis and still under the
+    // pointer, where a clipped or overlapping one is a wrong picture.
+    let dataLabelsOn =
+        match spec.DataLabels with
+        | Some ChartDataLabels.Ends -> true
+        | _ -> false
+
+    let dataLabelSize = style.DataLabelFontSize
+
+    let dataLabelLine = TextMetrics.lineHeight dataLabelSize style.TextLineHeightFactor
+
+    let dataLabelStyle (anchor: TextAnchor) : DrawStyle =
+        // Label-role ink at the chrome opacity — NEVER the series colour. A
+        // value is a reading of the mark, not a second copy of its identity,
+        // and a coloured number would compete with the mark it describes (and
+        // would have to clear the surface contrast gate on its own, which the
+        // palette is not chosen for).
+        textStyle style (Some style.LabelOpacity) anchor dataLabelSize Emphasis.Normal
+
+    /// The single fit gate: `TextMetrics.fitsBox` (Phase 879) against the room
+    /// the placement actually has. No fit, no label — never a clip, never an
+    /// overlap, and never a fallback placement inside the bar (a label inside a
+    /// bar reads as part of the bar's colour, and the whole point of the cap
+    /// placement is that the number sits on the surface, not on the ink).
+    let dataLabel
+        (anchor: TextAnchor)
+        (x: float)
+        (baseline: float)
+        (maxWidth: float)
+        (maxHeight: float)
+        (text: string)
+        : Shape list =
+        if TextMetrics.fitsBox dataLabelSize style.TextLineHeightFactor maxWidth maxHeight text then
+            [ Shape.Label(r2 x, r2 baseline, TextSource.Literal text, dataLabelStyle anchor) ]
+        else
+            []
+
+    /// A value at a bar's cap, centred on `cx`. `pitch` is the distance to the
+    /// NEXT label's centre — the neighbouring bar's slot — so the width budget
+    /// is what separates two labels rather than what fits one bar: a label may
+    /// legitimately be wider than the bar it caps, and may not be wider than
+    /// the room between it and its neighbour.
+    let capLabel (cx: float) (pitch: float) (v: float) : Shape list =
+        let capY = yScale v
+        let maxWidth = max 0.0 (pitch - 2.0 * style.DataLabelPadding)
+
+        // The room in the direction the label goes, less the cap clearance and
+        // the plot-edge padding. Above for a positive cap, below for a negative
+        // one; `DataLabelOffsetY` is one constant used twice, so the two
+        // placements are mirrors and neither can drift from the other.
+        if v < 0.0 then
+            dataLabel
+                TextAnchor.Middle
+                cx
+                (capY + style.DataLabelOffsetY + dataLabelSize)
+                maxWidth
+                (plotY1 - capY - style.DataLabelOffsetY - style.DataLabelPadding)
+                (yTickText v)
+        else
+            dataLabel
+                TextAnchor.Middle
+                cx
+                (capY - style.DataLabelOffsetY)
+                maxWidth
+                (capY - plotY0 - style.DataLabelOffsetY - style.DataLabelPadding)
+                (yTickText v)
+
+    /// The series-endpoint labels, in series order. Two gates, and the second
+    /// is the vertical analogue of the cap labels' pitch: every endpoint label
+    /// shares one x, so the thing they can collide with is each other. A label
+    /// is admitted only when its line clears every ALREADY-ADMITTED label's by
+    /// the padding — series order decides who yields, which makes the outcome
+    /// deterministic and the earlier series the one that keeps its number.
+    let endpointLabels (valueAt: int -> float) : Shape list =
+        if n = 0 then
+            []
+        else
+            let px = centreX (n - 1)
+            let labelX = px + style.DataLabelEndOffsetX
+            // The width budget runs to the PLOT's right edge, not the canvas's:
+            // beyond it lies the legend column (or the right margin), and a
+            // label that ran into the legend would be exactly the collision the
+            // gate exists to refuse.
+            let maxWidth = max 0.0 (plotX1 - labelX - style.DataLabelPadding)
+
+            let mutable admitted: float list = []
+            let mutable shapes: Shape list = []
+
+            for j in 0 .. m - 1 do
+                let v = valueAt j
+                let baseline = yScale v - style.DataLabelEndNudgeY
+
+                let separated =
+                    admitted
+                    |> List.forall (fun b -> abs (b - baseline) >= dataLabelLine + style.DataLabelPadding)
+
+                if separated then
+                    let emitted =
+                        dataLabel
+                            TextAnchor.Start
+                            labelX
+                            baseline
+                            maxWidth
+                            (baseline - plotY0 - style.DataLabelPadding)
+                            (yTickText v)
+
+                    if not (List.isEmpty emitted) then
+                        admitted <- baseline :: admitted
+                        shapes <- shapes @ emitted
+
+            shapes
+
+    let dataLabelShapes =
+        if not dataLabelsOn then
+            []
+        else
+            match spec.Kind with
+            | ChartKind.Bar when stacked ->
+                // The TOTAL at the stack cap, once per category — `cumsFor i`'s
+                // last entry is the stack's own top, which is the value the
+                // whole bar's height means.
+                [ for i in 0 .. n - 1 do
+                      let cums = cumsFor i
+                      yield! capLabel (stackedBarX i + stackedBarW / 2.0) bandW cums.[m] ]
+            | ChartKind.Bar ->
+                [ for j in 0 .. m - 1 do
+                      for i in 0 .. n - 1 do
+                          yield! capLabel (groupedBarX i j + groupedBarW / 2.0) groupedSubW series.[j].[i] ]
+            | ChartKind.Area when stacked ->
+                // The band's own UPPER boundary is the edge that was drawn, so
+                // it is the cumulative value there — not the series' own datum,
+                // which is nowhere on the picture.
+                endpointLabels (fun j -> (cumsFor (n - 1)).[j + 1])
+            | ChartKind.Line
+            | ChartKind.Area -> endpointLabels (fun j -> series.[j].[n - 1])
+            | _ -> []
 
     // ── Legend (Phase 880) — one entry list, four placements ──
     //
@@ -2192,6 +2444,10 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             @ xLabels
             @ axisTitles
             @ seriesShapes
+            // Phase 881 — the values sit ON the series, so they are painted
+            // straight after it and before the legend: over their own marks,
+            // under nothing that would obscure them.
+            @ dataLabelShapes
             @ legend
             @ titleShapes
             @ subtitleShapes

@@ -97,9 +97,12 @@ internal static class Vocabulary
         // Phase 880 — `legend-position`: Top | Right | Bottom | None. Absent
         // takes the host style's default (Right), so it is an override rather
         // than a required declaration.
+        // Phase 881 — `data-labels`: Off | Ends. Absent means Off, which is
+        // also the default; `Ends` labels bar caps and line endpoints only, and
+        // there is deliberately no all-points value to spell.
         Add("Chart", "id", "source", "kind", "x-field", "y-fields", "title", "stacked",
             "value-format-currency", "value-format-number", "value-format-percent",
-            "x-title", "y-title", "subtitle", "legend-position");
+            "x-title", "y-title", "subtitle", "legend-position", "data-labels");
         Add("Table", "id");
         Add("Map", "id", "centre-lat", "centre-lng", "zoom");
         Add("DataGrid", "id", "source", "editable");

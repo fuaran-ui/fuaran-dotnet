@@ -984,6 +984,13 @@ and ChartKind = Generated.ChartKind
 /// lives in `Fuaran.UI.Charts.ChartStyle`, which also carries the default.
 and ChartLegendPosition = Generated.ChartLegendPosition
 
+/// Phase 881 — whether the chart writes its values onto the picture, and where.
+/// A wire vocabulary (`ChartSpec.DataLabels`) with exactly two states: `Off`
+/// (the default, and what an absent field means) and `Ends` — bar caps and line
+/// endpoints only. There is deliberately no all-points case, so no shape of the
+/// API can ask for a number on every interior point.
+and ChartDataLabels = Generated.ChartDataLabels
+
 /// Author-facing carrier for a **static read-only table** (Phase 393). No longer a
 /// `VisKind` case of its own — `Fuaran.table` lowers it into the read-only mode of
 /// `NodeKind.DataGrid` (`GridSpec.StaticRows`), so one tabular kind owns both the

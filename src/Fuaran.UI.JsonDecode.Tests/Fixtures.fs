@@ -1909,6 +1909,7 @@ let chart: Node<obj> =
               YTitle = None
               Subtitle = None
               LegendPosition = None
+              DataLabels = None
               OnPointClick = None
               // Stacked = true (Phase 126) — exercises the now-carried
               // stacked-vs-grouped chart intent round-tripping.
@@ -1940,6 +1941,7 @@ let chartValueFormat: Node<obj> =
               YTitle = None
               Subtitle = None
               LegendPosition = None
+              DataLabels = None
               OnPointClick = None
               Stacked = false }
         ))
@@ -1972,6 +1974,7 @@ let chartAxisTitles: Node<obj> =
               YTitle = Some(TextSource.Literal "Revenue")
               Subtitle = Some(TextSource.Literal "Millions of £")
               LegendPosition = None
+              DataLabels = None
               OnPointClick = None
               Stacked = false }
         ))
@@ -2004,6 +2007,39 @@ let chartLegendPosition: Node<obj> =
               YTitle = None
               Subtitle = None
               LegendPosition = Some ChartLegendPosition.Bottom
+              DataLabels = None
+              OnPointClick = None
+              Stacked = false }
+        ))
+        None
+
+/// Phase 881 — `dataLabels`: whether the values are written onto the picture.
+/// The PRESENT half of the pair; every other chart fixture pins the absent
+/// half, which means `Off` — and `Off` is also the default, so an absent field
+/// lowers to the pre-881 picture byte-for-byte. `Ends` is the only other value
+/// there is: the vocabulary carries no all-points case, by design.
+let chartDataLabels: Node<obj> =
+    node
+        "chart-data-labels"
+        (NodeKind.Chart(
+            { Source =
+                Binding.Static(
+                    Some(
+                        Seq.ofList
+                            [ (Map.ofList [ "quarter", box "Q1"; "revenue", box 120 ]: Row)
+                              Map.ofList [ "quarter", box "Q2"; "revenue", box 150 ] ]
+                    )
+                )
+              Kind = ChartKind.Bar
+              XField = "quarter"
+              YFields = [ "revenue" ]
+              Title = Some(TextSource.Literal "Revenue by quarter")
+              ValueFormat = None
+              XTitle = None
+              YTitle = None
+              Subtitle = None
+              LegendPosition = None
+              DataLabels = Some ChartDataLabels.Ends
               OnPointClick = None
               Stacked = false }
         ))
@@ -2068,6 +2104,7 @@ let chartStateRows: Node<obj> =
               YTitle = None
               Subtitle = None
               LegendPosition = None
+              DataLabels = None
               OnPointClick = None
               Stacked = false }
         ))
@@ -2984,6 +3021,7 @@ let filterableStaticDashboard: Node<obj> =
                             YTitle = None
                             Subtitle = None
                             LegendPosition = None
+                            DataLabels = None
                             OnPointClick = None
                             Stacked = false }
                       ))
@@ -4005,6 +4043,7 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Chart (Phase 876 — valueFormat: the value axis's declared number format)", chartValueFormat
       "Visualisation/Chart (Phase 878 — xTitle/yTitle/subtitle: the axis names + the muted subtitle)", chartAxisTitles
       "Visualisation/Chart (Phase 880 — legendPosition: the legend's declared edge)", chartLegendPosition
+      "Visualisation/Chart (Phase 881 — dataLabels: values written onto the picture)", chartDataLabels
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
       "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey

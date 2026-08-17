@@ -211,6 +211,7 @@ let private defs: (string * J) list =
       "FontVoice", enumDef [ "Default"; "Display"; "Structural" ]
       "ChartKind", enumDef [ "Line"; "Bar"; "Area"; "Pie"; "Scatter"; "Heatmap" ]
       "ChartLegendPosition", enumDef [ "Top"; "Right"; "Bottom"; "None" ]
+      "ChartDataLabels", enumDef [ "Off"; "Ends" ]
       "LiveRegionKind", enumDef [ "polite"; "assertive"; "off" ]
       "HashStrictness", enumDef [ "StrictReplay"; "AdvisoryWarning"; "Enforced" ]
       // Locale-aware formatting enums (Phase 102).
@@ -890,6 +891,10 @@ let private defs: (string * J) list =
             // `None` to suppress it. Optional: absent means the host style's
             // default (`Right`), never "no legend".
             "legendPosition", ref "ChartLegendPosition"
+            // `dataLabels` (Phase 881) — whether the values are written onto
+            // the picture. Optional: absent means `Off`, which is also the
+            // default. Two values only; there is no all-points mode by design.
+            "dataLabels", ref "ChartDataLabels"
             "onPointClick", closure ]
 
       "MapMarker",

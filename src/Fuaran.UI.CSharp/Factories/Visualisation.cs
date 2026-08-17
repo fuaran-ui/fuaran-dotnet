@@ -25,8 +25,8 @@ public static partial class Fuaran
             options.Id,
             // Generated ChartSpec ctor is Generated.fs declaration order (Kind,
             // Source, Stacked, XField, YFields, Title, ValueFormat, XTitle,
-            // YTitle, Subtitle, LegendPosition, OnPointClick), not the old
-            // Source-first hand order.
+            // YTitle, Subtitle, LegendPosition, DataLabels, OnPointClick), not
+            // the old Source-first hand order.
             new FsGen.ChartSpec<object>(
                 options.Kind.ToFs(),
                 (options.Source ?? Binding.Static(Enumerable.Empty<FsRow>())).Inner,
@@ -41,6 +41,9 @@ public static partial class Fuaran
                 options.LegendPosition is { } lp
                     ? Fs.Some(lp.ToFs())
                     : Fs.None<FsGen.ChartLegendPosition>(),
+                options.DataLabels is { } dl
+                    ? Fs.Some(dl.ToFs())
+                    : Fs.None<FsGen.ChartDataLabels>(),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>())));
 
     /// <summary>A static (non-data-bound) HTML table.</summary>
@@ -199,6 +202,14 @@ public sealed record ChartOptions
     /// same thing as no legend at all.
     /// </summary>
     public ChartLegendPosition? LegendPosition { get; init; }
+
+    /// <summary>
+    /// Whether the chart writes its values onto the picture (Phase 881).
+    /// <see cref="ChartDataLabels.Ends"/> labels bar caps and line endpoints
+    /// only — a stacked bar's total, never its interior segments. Unset means
+    /// <see cref="ChartDataLabels.Off"/>, which is also the default.
+    /// </summary>
+    public ChartDataLabels? DataLabels { get; init; }
 
     /// <summary>Whether bar/area series stack.</summary>
     public bool Stacked { get; init; }

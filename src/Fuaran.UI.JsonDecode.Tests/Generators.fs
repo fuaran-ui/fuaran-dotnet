@@ -177,6 +177,9 @@ let private genChartLegendPosition =
           ChartLegendPosition.Bottom
           ChartLegendPosition.None ]
 
+let private genChartDataLabels =
+    Gen.elements [ ChartDataLabels.Off; ChartDataLabels.Ends ]
+
 let private genAriaRole: Gen<AriaRole> =
     Gen.oneof
         [ Gen.elements
@@ -857,6 +860,9 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         // Phase 880 — which edge the legend occupies (absent = the host
         // style's default, which is why the option arm matters here).
         let! legendPosition = genOption genChartLegendPosition
+        // Phase 881 — whether the values are written onto the picture (absent
+        // = `Off`, which is also the default, so the option arm matters here).
+        let! dataLabels = genOption genChartDataLabels
         let! stacked = genBool
 
         return
@@ -870,6 +876,7 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
               YTitle = yTitle
               Subtitle = subtitle
               LegendPosition = legendPosition
+              DataLabels = dataLabels
               OnPointClick = None
               Stacked = stacked }
     }

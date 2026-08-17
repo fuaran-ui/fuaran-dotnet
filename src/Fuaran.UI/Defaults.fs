@@ -361,6 +361,7 @@ let chart<'Msg> : ChartSpec<'Msg> =
       YTitle = Option.None
       Subtitle = Option.None
       LegendPosition = Option.None
+      DataLabels = Option.None
       OnPointClick = Option.None
       Stacked = false }
 

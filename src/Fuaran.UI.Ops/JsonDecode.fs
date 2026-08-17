@@ -2041,6 +2041,13 @@ let private decodeChartLegendPosition (path: string) (j: Json) : Result<ChartLeg
     | JString s -> unknownDuCase path s "Top | Right | Bottom | None"
     | _ -> wrongType path "JSON string (ChartLegendPosition)"
 
+let private decodeChartDataLabels (path: string) (j: Json) : Result<ChartDataLabels, DecodeError> =
+    match j with
+    | JString "Off" -> Ok ChartDataLabels.Off
+    | JString "Ends" -> Ok ChartDataLabels.Ends
+    | JString s -> unknownDuCase path s "Off | Ends"
+    | _ -> wrongType path "JSON string (ChartDataLabels)"
+
 let private decodeAriaRole (path: string) (j: Json) : Result<AriaRole, DecodeError> =
     match j with
     | JString "button" -> Ok AriaRole.Button
@@ -5500,6 +5507,16 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             | None -> Ok None
             | Some v -> decodeChartLegendPosition (path + ".legendPosition") v |> Result.map Some
 
+        // `dataLabels` (Phase 881): whether the values are written onto the
+        // picture. Absent means `Off` — which is also the default — so the
+        // ordinary wire shape omits the key and lowers to the pre-881 picture
+        // byte-for-byte. `Ends` is the only other value there is: no shape of
+        // this vocabulary can request a label on every interior point.
+        let dataLabelsR: Result<ChartDataLabels option, DecodeError> =
+            match tryField fields "dataLabels" with
+            | None -> Ok None
+            | Some v -> decodeChartDataLabels (path + ".dataLabels") v |> Result.map Some
+
         // `stacked` (Phase 126): now carried on the wire. Absent (legacy wire
         // predating the field) decodes to the default `false`.
         let stackedR: Result<bool, DecodeError> =
@@ -5508,7 +5525,17 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
             | Some v -> requireBool (path + ".stacked") v
 
         match
-            kindR, sourceR, xFieldR, yFieldsR, titleR, onPointClickR, stackedR, valueFormatR, titlesR, legendPositionR
+            kindR,
+            sourceR,
+            xFieldR,
+            yFieldsR,
+            titleR,
+            onPointClickR,
+            stackedR,
+            valueFormatR,
+            titlesR,
+            legendPositionR,
+            dataLabelsR
         with
         | Ok kind,
           Ok source,
@@ -5519,7 +5546,8 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
           Ok stacked,
           Ok valueFormat,
           Ok(xTitle, yTitle, subtitle),
-          Ok legendPosition ->
+          Ok legendPosition,
+          Ok dataLabels ->
             Ok
                 { Source = source
                   Kind = kind
@@ -5531,18 +5559,20 @@ let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, De
                   YTitle = yTitle
                   Subtitle = subtitle
                   LegendPosition = legendPosition
+                  DataLabels = dataLabels
                   OnPointClick = onPointClick
                   Stacked = stacked }
-        | Error e, _, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeMapSpec (path: string) (j: Json) : Result<MapSpec<obj>, DecodeError> =
     match requireObject path j with
