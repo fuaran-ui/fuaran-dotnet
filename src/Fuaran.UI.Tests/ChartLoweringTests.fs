@@ -333,9 +333,17 @@ let private cases: Case list =
       // ── Phase 879 — deterministic text metrics ──
       //
       // Six cases, one per decision the pinned advance-width table now makes.
-      // The escalation pair is a genuine BOUNDARY: the two inputs differ by a
-      // single character, and that character is what moves the labels from the
-      // 30° tilt to the 90° vertical arm.
+      //
+      // Phase 903 RE-GROUNDED the rotation cases, because the ladder replaced
+      // the tilt-as-default reading and the old inputs no longer demonstrate
+      // what their names claimed. `bar-tilt-five`'s roomy compass labels fit
+      // their bands, so they now read FLAT — which is the correction's whole
+      // point, so the case was renamed `bar-flat-five` rather than retuned. The
+      // boundary pair kept its names and moved its DATA to four categories,
+      // where the band pitch is wide enough for all THREE rungs to be one
+      // character apart; `bar-flat-boundary` is the new lower step. Every rung
+      // is therefore pinned by a single-character difference from its
+      // neighbour, which is the property that makes these cases worth having.
       { plain with
           // Legend pitch from name extents: two 29-character series names. On
           // the retired flat 100 px pitch the second swatch landed on top of
@@ -363,10 +371,12 @@ let private cases: Case list =
                 "Q3", [ 1100000.0 ]
                 "Q4", [ 1690000.0 ] ] }
       { plain with
-          // Five categories: the labels' along-axis footprint at 30° fits the
-          // band pitch, so they stay tilted — and the bottom margin grows to
-          // hold the drop.
-          Name = "bar-tilt-five"
+          // FIVE ROOMY CATEGORIES — the operator's own example. The widest
+          // label ("Central", 42.77 px) fits comfortably inside the ~109 px band
+          // pitch, so since Phase 903 the axis reads FLAT: this is the case that
+          // proves a compass axis is not tilted for the sake of tilting. It was
+          // `bar-tilt-five` and asserted `-30°` until the correction.
+          Name = "bar-flat-five"
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "sales" ]
@@ -378,9 +388,10 @@ let private cases: Case list =
                 "West", [ 95.0 ]
                 "Central", [ 110.0 ] ] }
       { plain with
-          // Twenty categories: the same labels no longer pack at 30°, so the
-          // axis escalates to vertical — which packs one label per line height
-          // at any count.
+          // Twenty categories: at a 27 px band pitch nothing fits flat and
+          // nothing packs at 30°, so the axis escalates to the terminal rung —
+          // which takes one line height per label at any count. Unchanged by
+          // Phase 903, and the check that the ladder's top is where it was.
           Name = "bar-vertical-twenty"
           Kind = ChartKind.Bar
           XField = "week"
@@ -388,25 +399,37 @@ let private cases: Case list =
           Title = Some "Signups by week"
           Rows = [ for i in 1..20 -> (sprintf "Wk %d" i), [ 40.0 + float ((i * 7) % 23) ] ] }
       { plain with
-          // BOUNDARY, under: eight nine-character labels. 9 × 0.55 em × 13 px =
-          // 64.35 px; the footprint at 30° is 64.35·cos30 + 15.6·sin30 = 63.53,
-          // inside the 68.5 px band pitch — so the labels stay tilted.
+          // LADDER STEP 1 — FLAT. Four nineteen-character labels: 19 × 0.55 em ×
+          // 13 px = 135.85 px, inside the ~137 px band pitch, so every label
+          // fits its own band and the axis stays horizontal. One character
+          // shorter than `bar-tilt-boundary`.
+          Name = "bar-flat-boundary"
+          Kind = ChartKind.Bar
+          XField = "code"
+          YFields = [ "count" ]
+          Title = Some "At the flat-to-tilt boundary"
+          Rows = [ for i in 0..3 -> (String.replicate 18 "1" + string i), [ 20.0 + float (i * 9 % 70) ] ] }
+      { plain with
+          // LADDER STEP 2 — TILT. The SAME chart, one character longer: 20 ×
+          // 0.55 em × 13 px = 143.00 px, past the band pitch, so the flat rung
+          // fails — and the footprint at 30° is 143.00·cos30 + 15.6·sin30 =
+          // 131.64, inside it, so the whole axis rotates to 30°.
           Name = "bar-tilt-boundary"
           Kind = ChartKind.Bar
           XField = "code"
           YFields = [ "count" ]
-          Title = Some "At the escalation boundary"
-          Rows = [ for i in 0..7 -> (sprintf "10000000%d" i), [ 20.0 + float (i * 9 % 70) ] ] }
+          Title = Some "At the tilt-to-vertical boundary"
+          Rows = [ for i in 0..3 -> (String.replicate 19 "1" + string i), [ 20.0 + float (i * 9 % 70) ] ] }
       { plain with
-          // BOUNDARY, over: the SAME eight labels with one more digit. 10 ×
-          // 0.55 em × 13 px = 71.5 px; the footprint is 69.72, past the same
-          // 68.5 px pitch — so the identical chart escalates to vertical.
+          // LADDER STEP 3 — VERTICAL. One character longer again: 21 × 0.55 em ×
+          // 13 px = 150.15 px, whose 30° footprint is 137.83 — past the same
+          // pitch — so the identical chart escalates to the terminal rung.
           Name = "bar-vertical-boundary"
           Kind = ChartKind.Bar
           XField = "code"
           YFields = [ "count" ]
-          Title = Some "Past the escalation boundary"
-          Rows = [ for i in 0..7 -> (sprintf "100000000%d" i), [ 20.0 + float (i * 9 % 70) ] ] }
+          Title = Some "Past the tilt-to-vertical boundary"
+          Rows = [ for i in 0..3 -> (String.replicate 20 "1" + string i), [ 20.0 + float (i * 9 % 70) ] ] }
       // ── Phase 878 — axis titles + subtitle ──
       { plain with
           // ALL THREE SET, on a multi-series chart. Pins the whole feature at
@@ -1584,7 +1607,7 @@ let chartLoweringTests =
                       "short names pack tighter than the retired pitch"
               }
 
-              test "category labels tilt by default and escalate to vertical at the boundary" {
+              test "the category-label angle ladder is fit-driven and uniform per axis" {
                   // CHROME labels only. Since Phase 878 the y-axis TITLE is
                   // rotated too, and it is full-strength ink where every chrome
                   // label carries `LabelOpacity` — so the opacity is what
@@ -1599,16 +1622,22 @@ let chartLoweringTests =
                           | _ -> None)
                       |> List.distinct
 
-                  // Tilt is the DEFAULT state, not a crowding fallback — five
-                  // roomy categories are still tilted.
-                  Expect.equal (rotations (loweredCase "bar-tilt-five")) [ -30.0 ] "the 30° tilt is the default"
+                  // Phase 903 — the FLAT rung is the resting state. Five roomy
+                  // compass labels fit their bands, so nothing rotates. An empty
+                  // rotation list is the assertion: a flat label carries no
+                  // `Rotation` at all, not `Some 0.0`.
+                  Expect.equal (rotations (loweredCase "bar-flat-five")) [] "roomy categories read flat"
 
-                  // Twenty categories no longer pack at 30°.
+                  // Twenty categories fit at neither of the lower rungs.
                   Expect.equal (rotations (loweredCase "bar-vertical-twenty")) [ -90.0 ] "escalated to vertical"
 
-                  // The boundary pair: the SAME chart, one character longer.
-                  Expect.equal (rotations (loweredCase "bar-tilt-boundary")) [ -30.0 ] "just inside the band pitch"
-                  Expect.equal (rotations (loweredCase "bar-vertical-boundary")) [ -90.0 ] "one character past it"
+                  // THE LADDER, one character per step, on otherwise identical
+                  // charts. Each list has exactly ONE element, which is the
+                  // uniformity claim: an axis never mixes angles, so however many
+                  // categories it carries there is a single rotation to read.
+                  Expect.equal (rotations (loweredCase "bar-flat-boundary")) [] "19 chars fit the band"
+                  Expect.equal (rotations (loweredCase "bar-tilt-boundary")) [ -30.0 ] "20 chars need the tilt"
+                  Expect.equal (rotations (loweredCase "bar-vertical-boundary")) [ -90.0 ] "21 chars need vertical"
 
                   // A numeric scatter x axis stays horizontal — its ticks are
                   // short by construction and belong centred on their value.
@@ -1638,6 +1667,133 @@ let chartLoweringTests =
                           | _ -> false)
 
                   Expect.isEmpty rotated "0° means horizontal, not 'escalate me'"
+              }
+
+              test "the ladder's rung decides the ANCHOR, not just the angle" {
+                  // A flat category label is `Middle`-anchored ON the band
+                  // centre; a rotated one is `End`-anchored at the same point,
+                  // because the anchor is the pivot. Reading the anchor rather
+                  // than only the rotation is what catches a host that rotated
+                  // the text but left it centred — which draws the label
+                  // straddling its own band instead of falling away from it.
+                  let categoryAnchors (name: string) : (TextAnchor option * float option) list =
+                      // The category row is the LOWEST row of chrome labels: the
+                      // y ticks sit beside the plot and the axis titles carry no
+                      // opacity, so taking the maximum-y group is total without
+                      // depending on where any margin happened to land — which a
+                      // fixed y threshold is not, since the tilt moves the plot's
+                      // bottom edge.
+                      let chrome =
+                          loweredCase name
+                          |> fun ds -> ds.Shapes
+                          |> List.choose (fun sh ->
+                              match sh with
+                              | Shape.Label(_, y, _, s) when Option.isSome s.Opacity ->
+                                  Some(y, (s.TextAnchor, s.Rotation))
+                              | _ -> None)
+
+                      let lowest = chrome |> List.map fst |> List.max
+
+                      chrome |> List.filter (fst >> (=) lowest) |> List.map snd |> List.distinct
+
+                  Expect.equal
+                      (categoryAnchors "bar-flat-five")
+                      [ Some TextAnchor.Middle, None ]
+                      "the flat rung centres its labels"
+
+                  Expect.equal
+                      (categoryAnchors "bar-tilt-boundary")
+                      [ Some TextAnchor.End, Some -30.0 ]
+                      "the tilt rung pivots on the band centre"
+
+                  Expect.equal
+                      (categoryAnchors "bar-vertical-boundary")
+                      [ Some TextAnchor.End, Some -90.0 ]
+                      "so does the vertical rung"
+              }
+
+              // ── Phase 903 — band-boundary tick marks ──
+
+              test "a BAND axis ticks its n+1 boundaries; a continuous axis ticks its values" {
+                  // The x tick marks are the short vertical segments hanging
+                  // BELOW the x-axis spine — the only lines whose y-extent lies
+                  // entirely under `plotY1`, which is what separates them from
+                  // the gridlines, the spines and the bar geometry.
+                  let xMarkXs (name: string) : float list =
+                      let ds = loweredCase name
+
+                      let spineY =
+                          ds.Shapes
+                          |> List.choose (fun sh ->
+                              match sh with
+                              | Shape.Line(x1, y1, x2, y2, _) when y1 = y2 && x1 < x2 -> Some y1
+                              | _ -> None)
+                          |> List.max
+
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(x1, y1, x2, y2, _) when x1 = x2 && y1 = spineY && y2 > spineY -> Some x1
+                          | _ -> None)
+                      |> List.sort
+
+                  // FOUR bands ⇒ FIVE marks, at the boundaries: the first on the
+                  // y-axis spine, the last on the plot's right edge, and the band
+                  // pitch between each pair. The labels sit at the CENTRES, so no
+                  // mark shares an x with one — which is the whole change.
+                  let quarters = xMarkXs "bar-single"
+                  Expect.equal (List.length quarters) 5 "n+1 marks delimit n bands"
+
+                  let pitches =
+                      quarters
+                      |> List.pairwise
+                      |> List.map (fun (a, b) -> r2 (b - a))
+                      |> List.distinct
+
+                  Expect.equal (List.length pitches) 1 "the boundaries are evenly pitched"
+
+                  // The first boundary IS the y-axis spine, and the last IS the
+                  // plot's right edge — so the marks bracket the plot rather than
+                  // sitting inside it.
+                  let spineX =
+                      loweredCase "bar-single"
+                      |> fun ds -> ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(x1, _, x2, _, _) when x1 = x2 -> Some x1
+                          | _ -> None)
+                      |> List.min
+
+                  Expect.equal (List.head quarters) spineX "boundary 0 lands on the y-axis spine"
+
+                  // Twenty bands ⇒ twenty-one marks. The count follows the
+                  // categories, not the tick rule.
+                  Expect.equal (List.length (xMarkXs "bar-vertical-twenty")) 21 "the rule is n+1, at any n"
+
+                  // SCATTER is continuous: its x marks sit at the nice-tick
+                  // VALUES, so their count follows the tick rule and not the row
+                  // count. Six rows, and not six marks.
+                  let scatter = xMarkXs "scatter-single"
+                  Expect.isTrue (List.length scatter > 0) "the continuous axis still ticks"
+
+                  let scatterTickXs =
+                      loweredCase "scatter-single"
+                      |> fun ds -> ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          // Its x tick LABELS are the unrotated Middle-anchored
+                          // chrome labels below the plot.
+                          | Shape.Label(x, y, _, s) when
+                              Option.isSome s.Opacity
+                              && s.TextAnchor = Some TextAnchor.Middle
+                              && Option.isNone s.Rotation
+                              && y > 300.0
+                              ->
+                              Some x
+                          | _ -> None)
+                      |> List.sort
+
+                  Expect.equal scatter scatterTickXs "a continuous mark sits AT its label, not beside it"
               }
 
               // ── Phase 878 — axis titles + subtitle ──

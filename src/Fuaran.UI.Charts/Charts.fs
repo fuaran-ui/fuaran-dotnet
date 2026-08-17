@@ -61,6 +61,18 @@ module Fuaran.UI.Charts
 //              879's `TextMetrics.fitsBox` and SUPPRESSED on no-fit, never
 //              clipped, overlapped, or moved inside a bar. No label reserves
 //              space, so nothing about the layout moved.
+//  Phase 903 — TWO CORRECTIONS to shipped band-axis behaviour (operator,
+//              2026-08-17). (1) The category-label tilt becomes the MIDDLE RUNG
+//              of a fit-driven ladder rather than the resting state: labels are
+//              HORIZONTAL while every one fits its band, all rotate to
+//              `LabelTiltDegrees` when any does not, and all escalate to
+//              `VerticalTiltDegrees` when that no longer packs — uniform per
+//              axis, never mixed. (2) A BAND axis's outside tick marks move to
+//              the `n+1` band BOUNDARIES (the category-axis convention),
+//              delimiting the groups; labels stay centred in their bands. Ticks
+//              stay AT the value only where the axis is continuous — the y axis
+//              and Scatter's numeric x. No wire change; band-arm goldens moved
+//              once, across every conformant host, in one change-set.
 //
 //  `Chart` stays a SEMANTIC wire kind (D2). This module is the bounded layout
 //  engine that turns a resolved `ChartSpec` + data rows into a canonical
@@ -273,25 +285,30 @@ type ChartStyle =
         /// Length of the small OUTSIDE tick marks on both axes (Phase 875):
         /// y-axis marks run left from the spine, x-axis marks run down from it,
         /// so neither eats plot area. Inked at axis strength, one per y tick and
-        /// one per category band centre (or per x tick on the Scatter arm).
-        /// `0.0` suppresses them.
+        /// — since Phase 903 — one per BAND BOUNDARY on a category axis (`n+1`
+        /// for `n` bands, delimiting the groups rather than pointing at their
+        /// centres), or one per x tick on the Scatter arm, whose x is a
+        /// continuous value axis. `0.0` suppresses them.
         TickMarkLength: float
         /// Baseline nudge that optically centres a tick label on its gridline.
         TickLabelBaselineDy: float
         /// Drop from the x-axis spine to the category / x-tick label baseline.
         CategoryLabelOffsetY: float
-        /// The MAGNITUDE of the tilt applied to band-arm category labels
-        /// (Phase 879), in degrees. Tilt is the DEFAULT state — operator
-        /// doctrine: it is for LEGIBILITY, not a crowding fallback — so every
-        /// category label is tilted, and the lowering escalates to
-        /// `VerticalTiltDegrees` when the tilted labels no longer pack into the
-        /// band pitch. The lowering emits `DrawStyle.Rotation = -tilt`:
+        /// The MAGNITUDE of the MIDDLE RUNG of the band-arm category-label
+        /// angle ladder (Phase 879; the ladder itself Phase 903), in degrees.
+        /// The ladder is fit-driven and UNIFORM per axis: labels are horizontal
+        /// while every one of them fits its band, all rotate to this angle when
+        /// any does not, and all escalate to `VerticalTiltDegrees` when this
+        /// angle no longer packs into the band pitch either. (Phase 879 read the
+        /// tilt as the resting state; the operator's 2026-08-17 correction makes
+        /// it the middle rung.) The lowering emits `DrawStyle.Rotation = -tilt`:
         /// `Rotation` is clockwise (SVG's convention), and the tilt has to be
         /// COUNTER-clockwise so the text falls AWAY from the axis rather than
-        /// climbing into the plot. `0.0` opts out entirely — labels stay
-        /// horizontal and `Middle`-anchored, and no escalation is considered.
+        /// climbing into the plot. `0.0` opts out of rotation entirely — labels
+        /// stay horizontal and `Middle`-anchored at every label length, and no
+        /// escalation is considered.
         LabelTiltDegrees: float
-        /// The vertical arm of the escalation (Phase 879). At 90° a label
+        /// The terminal rung of the ladder (Phase 879). At 90° a label
         /// occupies one line-height along the axis whatever its length, so a
         /// vertical axis packs at any category count. Emitted with the same
         /// negative sign as the tilt, so the text reads bottom-up — the
@@ -1579,7 +1596,12 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     let bandW = if n > 0 then plotW / float n else plotW
     let centreX (i: int) : float = r2 (plotX0 + bandW * (float i + 0.5))
 
-    // ── Category-label tilt + its vertical escalation ──
+    /// The `i`th BAND BOUNDARY — `n` bands have `n+1` of them, boundary `0` at
+    /// the y-axis spine and boundary `n` at the plot's right edge. Phase 903's
+    /// category tick marks land here, where a label lands at `centreX`.
+    let boundaryX (i: int) : float = r2 (plotX0 + bandW * float i)
+
+    // ── The category-label ANGLE LADDER (Phase 903, correcting Phase 879) ──
     // Only the BAND arms label categories: Scatter labels numeric x ticks (short
     // by construction, left horizontal) and Pie has no x axis at all. Both must
     // therefore contribute NO drop, or their bottom margin — and with it the
@@ -1591,25 +1613,51 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             | _ -> true)
 
     // A rotated label's footprint ALONG the axis is its width's horizontal
-    // projection plus the line height's: `w·cos θ + h·sin θ`. Escalate when the
-    // widest label's footprint at the tilt no longer fits the band pitch. At 90°
-    // the width term vanishes, so the vertical arm packs one label per line
-    // height at any category count — which is why it is the terminal arm and
-    // there is nothing to escalate to beyond it.
+    // projection plus the line height's: `w·cos θ + h·sin θ`. At 0° that is the
+    // bare width (`cos 0 = 1`, `sin 0 = 0`, both exact on every IEEE-754 host,
+    // so the flat rung needs no special case); at 90° the width term vanishes,
+    // so the vertical arm packs one label per line height at any category count
+    // — which is why it is the terminal rung and there is nothing beyond it.
     let radians (deg: float) : float = deg * System.Math.PI / 180.0
 
     let alongAxisFootprint (deg: float) (w: float) : float =
         w * cos (radians deg) + lineHeight * sin (radians deg)
 
+    // THREE RUNGS, ONE PREDICATE, applied to the WIDEST label and therefore
+    // UNIFORMLY to the axis: flat while every label fits its band, 30° when it
+    // does not, vertical when 30° no longer packs either. Phase 879 read the
+    // tilt as the resting state and started at rung two; the operator's
+    // correction (2026-08-17) is that the tilt is the MIDDLE rung of a
+    // fit-driven ladder — "North South East West" is legible flat and should
+    // read flat. Deciding on the widest label rather than per-label is what
+    // keeps an axis from mixing angles, which reads as a defect however
+    // individually-correct each label's own angle would be.
+    //
+    // The decision is taken on the labels AS AUTHORED (Phase 879's rule, kept):
+    // `widestOf categories`, not `categoryTexts` — the truncation budget below
+    // is a function of the angle, so reading the truncated text here would be
+    // circular as well as wrong.
+    let widestCategory = widestOf categories
+
+    let packsAt (deg: float) : bool =
+        alongAxisFootprint deg widestCategory <= bandW
+
     let tiltDegrees =
         if not drawsCategoryLabels || n = 0 || style.LabelTiltDegrees <= 0.0 then
-            // `LabelTiltDegrees = 0` is a host opting out of tilt entirely;
-            // honour it literally rather than escalating it to vertical.
+            // `LabelTiltDegrees = 0` is FLAT-ALWAYS, not "the ladder with a
+            // flat rung": a host that zeroed the tilt angle named the one
+            // rotation the ladder is allowed to use, and escalating past that
+            // to vertical would override an explicit choice with a computed
+            // one. An author who wants the ladder leaves the default in place —
+            // which since Phase 903 already starts flat, so the opt-out costs
+            // nothing but the escalation it deliberately declines.
             0.0
-        elif alongAxisFootprint style.LabelTiltDegrees (widestOf categories) > bandW then
-            style.VerticalTiltDegrees
-        else
+        elif packsAt 0.0 then
+            0.0
+        elif packsAt style.LabelTiltDegrees then
             style.LabelTiltDegrees
+        else
+            style.VerticalTiltDegrees
 
     // ── Bottom margin ──
     // A tilted label falls `w·sin θ` below its anchor. Below the plot, top to
@@ -1709,6 +1757,15 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
     // Outside tick marks (Phase 875) — outside the plot on both axes, so the
     // plot area stays ink-free and the marks tie each label to its position.
+    //
+    // BAND vs CONTINUOUS (Phase 903). Where the axis is CONTINUOUS a tick marks
+    // a VALUE and sits at it: the y axis, and Scatter's numeric x. Where it is a
+    // BAND axis a tick DELIMITS a group, so the `n+1` marks land on the band
+    // BOUNDARIES and the label stays centred in the band between two of them —
+    // the category-axis convention every spreadsheet draws, and the honest one:
+    // a category has an extent, not a position, and a mark under its centre
+    // claims a coordinate the axis does not have. Phase 882's temporal axis
+    // inherits the continuous side of this split when it lands.
     let tickMarks =
         if style.TickMarkLength <= 0.0 then
             []
@@ -1723,10 +1780,9 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                 Shape.Line(x, r2 plotY1, x, r2 (plotY1 + style.TickMarkLength), axisStyle)
 
             let xMarks =
-                if isScatter then
-                    xTicks |> List.map (xScale >> xAt)
-                else
-                    [ for i in 0 .. n - 1 -> xAt (centreX i) ]
+                if isScatter then xTicks |> List.map (xScale >> xAt)
+                elif n = 0 then []
+                else [ for i in 0..n -> xAt (boundaryX i) ]
 
             yMarks @ xMarks
 
@@ -1748,13 +1804,19 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // x-axis labels — band arms label each category under its band centre;
     // Scatter labels its numeric x-ticks along the linear axis (Phase 636).
     //
-    // A tilted category label is `End`-anchored at the band centre and rotated
-    // NEGATIVELY (counter-clockwise, against `DrawStyle.Rotation`'s clockwise
-    // convention): the anchor is the pivot, so the text ENDS under the band's
-    // tick and runs back down-and-left, reading up-to-the-right into it. The
-    // opposite sign would swing the same text up into the plot area. At the
-    // vertical arm this degenerates to reading bottom-up — the y-axis title's
-    // convention. Scatter's numeric ticks stay horizontal + `Middle`: they are
+    // Every category label sits at its band CENTRE — including since Phase 903,
+    // when the tick marks moved to the boundaries: the label names the band, the
+    // marks delimit it, and that is the whole point of the split.
+    //
+    // The ANCHOR follows the ladder's rung. At the FLAT rung a label is
+    // `Middle`-anchored on the band centre — the ordinary reading of a centred
+    // caption, and the pre-879 convention this restores. At either ROTATED rung
+    // it is `End`-anchored at the same point and rotated NEGATIVELY
+    // (counter-clockwise, against `DrawStyle.Rotation`'s clockwise convention):
+    // the anchor is the pivot, so the text ENDS under the band centre and runs
+    // back down-and-left, reading up-to-the-right into it. The opposite sign
+    // would swing the same text up into the plot area. At the vertical rung this
+    // degenerates to reading bottom-up — the y-axis title's convention. Scatter's numeric ticks stay horizontal + `Middle`: they are
     // short by construction, and centring them on their tick is the correct
     // reading of a value axis.
     let tiltedLabelStyle =
