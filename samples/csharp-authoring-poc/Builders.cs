@@ -459,6 +459,7 @@ internal sealed class ChartBuilder : NodeBuilder
                 Fs.None<Generated.TextSource>(),
                 Fs.None<Generated.ChartLegendPosition>(),
                 Fs.None<Generated.ChartDataLabels>(),
+                Fs.None<Generated.ChartXScale>(),
                 Fs.None<FSharpFunc<FSharpMap<string, object>, FsAction>>()));
     }
 }

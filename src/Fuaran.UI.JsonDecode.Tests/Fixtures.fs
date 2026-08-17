@@ -1910,6 +1910,7 @@ let chart: Node<obj> =
               Subtitle = None
               LegendPosition = None
               DataLabels = None
+              XScale = None
               OnPointClick = None
               // Stacked = true (Phase 126) — exercises the now-carried
               // stacked-vs-grouped chart intent round-tripping.
@@ -1942,6 +1943,7 @@ let chartValueFormat: Node<obj> =
               Subtitle = None
               LegendPosition = None
               DataLabels = None
+              XScale = None
               OnPointClick = None
               Stacked = false }
         ))
@@ -1975,6 +1977,7 @@ let chartAxisTitles: Node<obj> =
               Subtitle = Some(TextSource.Literal "Millions of £")
               LegendPosition = None
               DataLabels = None
+              XScale = None
               OnPointClick = None
               Stacked = false }
         ))
@@ -2008,6 +2011,7 @@ let chartLegendPosition: Node<obj> =
               Subtitle = None
               LegendPosition = Some ChartLegendPosition.Bottom
               DataLabels = None
+              XScale = None
               OnPointClick = None
               Stacked = false }
         ))
@@ -2040,6 +2044,43 @@ let chartDataLabels: Node<obj> =
               Subtitle = None
               LegendPosition = None
               DataLabels = Some ChartDataLabels.Ends
+              XScale = None
+              OnPointClick = None
+              Stacked = false }
+        ))
+        None
+
+/// Phase 882 — `xScale`: what the x column MEANS. The PRESENT half of the pair
+/// (`Temporal`); every other chart fixture pins the absent half, which means
+/// `Category` — also the default, so an absent field lowers to the pre-882
+/// picture byte-for-byte. The x cells are canonical ISO-8601 dates, which is
+/// what makes the declaration groundable: a `Temporal` axis over a non-date
+/// column is a FUARAN097 refusal, not a silent coercion.
+let chartTemporalX: Node<obj> =
+    node
+        "chart-temporal-x"
+        (NodeKind.Chart(
+            { Source =
+                Binding.Static(
+                    Some(
+                        Seq.ofList
+                            [ (Map.ofList [ "day", box "2026-01-05"; "sessions", box 1200 ]: Row)
+                              Map.ofList [ "day", box "2026-01-12"; "sessions", box 1450 ]
+                              Map.ofList [ "day", box "2026-01-19"; "sessions", box 1310 ]
+                              Map.ofList [ "day", box "2026-01-26"; "sessions", box 1580 ] ]
+                    )
+                )
+              Kind = ChartKind.Line
+              XField = "day"
+              YFields = [ "sessions" ]
+              Title = Some(TextSource.Literal "Sessions by week")
+              ValueFormat = None
+              XTitle = None
+              YTitle = None
+              Subtitle = None
+              LegendPosition = None
+              DataLabels = None
+              XScale = Some ChartXScale.Temporal
               OnPointClick = None
               Stacked = false }
         ))
@@ -2105,6 +2146,7 @@ let chartStateRows: Node<obj> =
               Subtitle = None
               LegendPosition = None
               DataLabels = None
+              XScale = None
               OnPointClick = None
               Stacked = false }
         ))
@@ -3022,6 +3064,7 @@ let filterableStaticDashboard: Node<obj> =
                             Subtitle = None
                             LegendPosition = None
                             DataLabels = None
+                            XScale = None
                             OnPointClick = None
                             Stacked = false }
                       ))
@@ -4044,6 +4087,7 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Chart (Phase 878 — xTitle/yTitle/subtitle: the axis names + the muted subtitle)", chartAxisTitles
       "Visualisation/Chart (Phase 880 — legendPosition: the legend's declared edge)", chartLegendPosition
       "Visualisation/Chart (Phase 881 — dataLabels: values written onto the picture)", chartDataLabels
+      "Visualisation/Chart (Phase 882 — xScale: a temporal x-axis over ISO-8601 date cells)", chartTemporalX
       "Visualisation/Grid (static-table mode — staticRows; absorbed the retired Table kind)", table
       "Visualisation/Grid (Phase 801 — static-table mode declaring sort intent: sortable + defaultSort)", tableSortable
       "Visualisation/Grid (Phase 818 — sortStateKey: the data-bound grid-sort header affordance)", gridSortStateKey

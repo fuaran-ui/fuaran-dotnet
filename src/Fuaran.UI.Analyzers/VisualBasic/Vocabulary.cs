@@ -100,9 +100,12 @@ internal static class Vocabulary
         // Phase 881 — `data-labels`: Off | Ends. Absent means Off, which is
         // also the default; `Ends` labels bar caps and line endpoints only, and
         // there is deliberately no all-points value to spell.
+        // Phase 882 — `x-scale`: Category | Temporal. Absent means Category.
+        // `Temporal` declares ISO-8601 date cells and a continuous day-scale;
+        // the pre-emit validator refuses it over a non-date column (FUARAN097).
         Add("Chart", "id", "source", "kind", "x-field", "y-fields", "title", "stacked",
             "value-format-currency", "value-format-number", "value-format-percent",
-            "x-title", "y-title", "subtitle", "legend-position", "data-labels");
+            "x-title", "y-title", "subtitle", "legend-position", "data-labels", "x-scale");
         Add("Table", "id");
         Add("Map", "id", "centre-lat", "centre-lng", "zoom");
         Add("DataGrid", "id", "source", "editable");

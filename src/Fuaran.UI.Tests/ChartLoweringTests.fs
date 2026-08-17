@@ -73,6 +73,15 @@ type private Case =
         /// `Off`, which is also the default, so the key is OMITTED when `None`
         /// and every pre-881 input AND golden is byte-identical.
         DataLabels: string option
+        /// Phase 882 — what the x column MEANS (a WIRE field:
+        /// `ChartSpec.XScale`), carried in the neutral input contract as the
+        /// canonical enum string beside `title`. Absent means `Category`, which
+        /// is also the default, so the key is OMITTED when `None` and every
+        /// pre-882 input AND golden is byte-identical. `Temporal` cases carry
+        /// their x cells as canonical ISO-8601 date STRINGS in `Rows`' fst —
+        /// the same slot a category label uses, because that is exactly what a
+        /// `Cell.Date` presents to the lowering.
+        XScale: string option
         Rows: (string * float list) list
     }
 
@@ -93,6 +102,7 @@ let private plain: Case =
       Subtitle = None
       LegendPosition = None
       DataLabels = None
+      XScale = None
       Rows = [] }
 
 /// The case's x cell values, boxed — numeric when `XNums` is set, else the
@@ -101,6 +111,44 @@ let private xCells (case: Case) : obj list =
     match case.XNums with
     | Some ns -> ns |> List.map box
     | None -> case.Rows |> List.map (fst >> box)
+
+// ── Phase 882 — date runs for the temporal cases ─────────────────────────────
+//
+// A temporal case's x cells are canonical ISO-8601 date STRINGS in the same slot
+// a category label occupies, because that is exactly what a `Cell.Date` presents
+// to the lowering. They are GENERATED rather than hand-typed: thirty literal
+// dates would be thirty chances to typo a run that is supposed to be regular,
+// and the generation goes through `Charts.Temporal`'s own calendar arithmetic —
+// the same functions the lowering uses, so a case cannot describe a date the
+// lowering would read differently. The emitted `.input.json` pins the result, so
+// the other hosts still read literal dates.
+
+let private isoOf (day: int) : string =
+    let y, m, d = Charts.Temporal.civilFromDays day
+    sprintf "%04d-%02d-%02d" y m d
+
+/// `count` dates from `start` (ISO), stepping `stepDays` days.
+let private isoRun (start: string) (stepDays: int) (count: int) : string list =
+    let d0 = Charts.Temporal.tryParseDay start |> Option.defaultValue 0
+    [ for i in 0 .. count - 1 -> isoOf (d0 + i * stepDays) ]
+
+/// `count` MONTH STARTS from `(year, month)`.
+let private isoMonths (year: int) (month: int) (count: int) : string list =
+    let start = year * 12 + (month - 1)
+
+    [ for i in 0 .. count - 1 ->
+          let idx = start + i
+          isoOf (Charts.Temporal.daysFromCivil (idx / 12) (idx % 12 + 1) 1) ]
+
+/// `count` YEAR STARTS from `year`.
+let private isoYears (year: int) (count: int) : string list =
+    [ for i in 0 .. count - 1 -> isoOf (Charts.Temporal.daysFromCivil (year + i) 1 1) ]
+
+/// Pair each x with a value series. One rising-with-a-wobble series keeps every
+/// temporal case's DATA uninteresting on purpose — what these fixtures pin is the
+/// axis, and a distinctive series would only make the goldens harder to read.
+let private seriesOver (xs: string list) : (string * float list) list =
+    xs |> List.mapi (fun i x -> x, [ float (1000 + 25 * i + 60 * ((i * 3) % 4)) ])
 
 let private cases: Case list =
     [ { plain with
@@ -688,7 +736,161 @@ let private cases: Case list =
                 "M4", [ 1690000.0 ]
                 "M5", [ 1320000.0 ]
                 "M6", [ 1550000.0 ]
-                "M7", [ 1400000.0 ] ] } ]
+                "M7", [ 1400000.0 ] ] }
+
+      // ── Phase 882 — the temporal x-axis ──
+      //
+      // THREE GRANULARITY REGIMES first, one per label format, because that is
+      // the feature a reader checks by eye: a daily series reads
+      // `dd mmm yy`, a monthly one `mmm yy`, a decade `yyyy`. Then the FORMAT
+      // BOUNDARIES — four cases pinning the two rungs either side of each
+      // threshold, which is what "just above/below 27 and 365 days" means under
+      // a nominal-step rule: the ladder's rungs jump, so the boundary is not a
+      // span you can approach continuously but the PAIR OF ADJACENT RUNGS the
+      // threshold separates. Then the title override, the polar-free arms
+      // (scatter, stacked bar) that exercise the value-positioned geometry.
+      { plain with
+          // DAILY. 30 consecutive days: the day rungs 1 / 2 / 5 give 30 / 15 / 6
+          // ticks, so 5 DAYS is the first rung inside the 6-tick ceiling — the
+          // nominal 5 is under 27, so the labels are `dd mmm yy`.
+          Name = "line-temporal-daily"
+          Kind = ChartKind.Line
+          XField = "day"
+          YFields = [ "sessions" ]
+          Title = Some "Sessions by day"
+          XScale = Some "Temporal"
+          Rows = seriesOver (isoRun "2026-01-05" 1 30) }
+      { plain with
+          // MONTHLY, on the BAR arm — the arm whose geometry moves furthest,
+          // since each bar is centred on its own date rather than in a band. 24
+          // month starts span 699 days; the month rungs 1 / 2 / 3 give 24 / 12 /
+          // 8, so 6 MONTHS is the first inside the ceiling and the nominal 182.6
+          // reads `mmm yy`.
+          Name = "bar-temporal-monthly"
+          Kind = ChartKind.Bar
+          XField = "month"
+          YFields = [ "revenue" ]
+          Title = Some "Revenue by month"
+          XScale = Some "Temporal"
+          Rows = seriesOver (isoMonths 2026 1 24) }
+      { plain with
+          // YEARLY. Ten year starts span 3287 days; 1 YEAR gives 10 ticks and 2
+          // YEARS gives 5, so the nominal 730.5 reads `yyyy` — four characters,
+          // which is why a decade axis needs no tilt however many years it runs.
+          Name = "line-temporal-yearly"
+          Kind = ChartKind.Line
+          XField = "year"
+          YFields = [ "headcount" ]
+          Title = Some "Headcount by year"
+          XScale = Some "Temporal"
+          Rows = seriesOver (isoYears 2017 10) }
+      { plain with
+          // 27-DAY THRESHOLD, UNDER. Seven weekly points span 42 days: the 5-day
+          // rung gives 9 ticks and the 10-DAY rung gives 5, so the coarsest DAY
+          // rung is selected and its nominal 10 stays under 27 — `dd mmm yy`.
+          Name = "line-temporal-format-day-boundary"
+          Kind = ChartKind.Line
+          XField = "week"
+          YFields = [ "orders" ]
+          Title = Some "At the day-format boundary"
+          XScale = Some "Temporal"
+          Rows = seriesOver (isoRun "2026-03-02" 7 7) }
+      { plain with
+          // 27-DAY THRESHOLD, OVER. Six month starts span 151 days, which puts
+          // the 10-day rung at 16 ticks and the 1-MONTH rung at 6 — the first
+          // rung past the threshold, nominal 30.436875, so the SAME kind of
+          // chart one rung coarser drops the day and reads `mmm yy`.
+          Name = "line-temporal-format-month-boundary"
+          Kind = ChartKind.Line
+          XField = "month"
+          YFields = [ "orders" ]
+          Title = Some "Past the day-format boundary"
+          XScale = Some "Temporal"
+          Rows = seriesOver (isoMonths 2026 1 6) }
+      { plain with
+          // 365-DAY THRESHOLD, UNDER. 30 month starts span 882 days, which the
+          // 3-month rung overshoots and the 6-MONTH rung covers in 5 ticks —
+          // 182.6, the LAST nominal under 365, so an axis nearly three years
+          // wide still reads `mmm yy`.
+          Name = "line-temporal-format-halfyear-boundary"
+          Kind = ChartKind.Line
+          XField = "month"
+          YFields = [ "orders" ]
+          Title = Some "At the year-format boundary"
+          XScale = Some "Temporal"
+          Rows = seriesOver (isoMonths 2024 1 30) }
+      { plain with
+          // 365-DAY THRESHOLD, OVER. Six year starts span 1826 days, which puts
+          // the 6-month rung at 11 ticks and the 1-YEAR rung at 6 — the first
+          // nominal past 365 (365.2425, a mean Gregorian year), so the month
+          // disappears and only `yyyy` remains.
+          Name = "line-temporal-format-year-boundary"
+          Kind = ChartKind.Line
+          XField = "year"
+          YFields = [ "orders" ]
+          Title = Some "Past the year-format boundary"
+          XScale = Some "Temporal"
+          Rows = seriesOver (isoYears 2021 6) }
+      { plain with
+          // TITLE OVERRIDE (§4e, wired by 882). Every other temporal case omits
+          // `xTitle` and therefore draws NO x title — the date-axis suppression.
+          // This one declares it, and it draws: the rule suppresses the machine's
+          // FALLBACK, never the author's own words.
+          Name = "bar-temporal-x-title"
+          Kind = ChartKind.Bar
+          XField = "month"
+          YFields = [ "revenue" ]
+          Title = Some "Revenue by month"
+          XTitle = Some "Reporting month"
+          XScale = Some "Temporal"
+          Rows = seriesOver (isoMonths 2026 1 12) }
+      { plain with
+          // TEMPORAL + SCATTER — both axes continuous, which is the case that
+          // proves `isContinuousX` is a property and not an alias for Scatter:
+          // the x is read as DATES (not numerically), the marks are points, and
+          // the ticks are calendar-aligned.
+          Name = "scatter-temporal"
+          Kind = ChartKind.Scatter
+          XField = "day"
+          YFields = [ "latency" ]
+          Title = Some "Latency over time"
+          XScale = Some "Temporal"
+          Rows = seriesOver (isoRun "2026-02-01" 3 12) }
+      { plain with
+          // TEMPORAL + STACKED BAR — the stacked arm's own slot arithmetic over
+          // value-positioned bars, so `slotOriginX` is pinned on both bar arms
+          // rather than only the grouped one.
+          Name = "bar-temporal-stacked"
+          Kind = ChartKind.Bar
+          XField = "month"
+          YFields = [ "direct"; "partner" ]
+          Title = Some "Revenue by channel"
+          Stacked = true
+          XScale = Some "Temporal"
+          Rows =
+              isoMonths 2026 1 8
+              |> List.mapi (fun i x -> x, [ float (600 + 20 * i); float (300 + 35 * ((i * 3) % 5)) ]) }
+      { plain with
+          // THE LADDER, ON A TEMPORAL AXIS. Everything above rests FLAT, and that
+          // is not an accident of the data: the 6-tick ceiling plus a 9-character
+          // `dd mmm yy` label means the pitch is comfortable at the shipped
+          // canvas, so the ladder's escalation is REACHABLE only when something
+          // else has taken the width — here a wide unscaled y-tick column
+          // (`Off` display units on millions) plus a `Right` legend for two
+          // long-named series. §4g's arithmetic then applies unchanged: below a
+          // ~58 px pitch the 30° window is empty, so the axis steps straight
+          // from flat to VERTICAL. Pinning it is what makes "the ladder governs
+          // the tick labels too" a checked claim rather than a stated one.
+          Name = "line-temporal-vertical-labels"
+          Kind = ChartKind.Line
+          XField = "day"
+          YFields = [ "metropolitan northern region"; "outlying southern region" ]
+          Title = Some "A crowded date axis"
+          UnitMode = Some "Off"
+          XScale = Some "Temporal"
+          Rows =
+              isoRun "2026-01-05" 1 30
+              |> List.mapi (fun i x -> x, [ float (1250000 + 25000 * i); float (980000 + 31000 * i) ]) } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
 /// named the slot — the representation is the same `Map<string,obj>`).
@@ -720,6 +922,14 @@ let private dataLabelsOf (name: string) : ChartDataLabels =
     | "Ends" -> ChartDataLabels.Ends
     | _ -> ChartDataLabels.Off
 
+/// The neutral input contract's `xScale` string → the wire value (Phase 882).
+/// Two values, and an unrecognised string reads as `Category` — the default —
+/// so a harness typo degrades to today's behaviour rather than to a wrong axis.
+let private xScaleOf (name: string) : ChartXScale =
+    match name with
+    | "Temporal" -> ChartXScale.Temporal
+    | _ -> ChartXScale.Category
+
 let private specOf (case: Case) : ChartSpec<obj> =
     { Source = Binding.Static(Some(Seq.ofList (buildRows case)))
       Kind = case.Kind
@@ -732,6 +942,7 @@ let private specOf (case: Case) : ChartSpec<obj> =
       Subtitle = case.Subtitle |> Option.map TextSource.Literal
       LegendPosition = case.LegendPosition |> Option.map legendPositionOf
       DataLabels = case.DataLabels |> Option.map dataLabelsOf
+      XScale = case.XScale |> Option.map xScaleOf
       OnPointClick = None
       Stacked = case.Stacked }
 
@@ -992,6 +1203,8 @@ let private inputJson (case: Case) : string =
         + optText "legendPosition" case.LegendPosition
         // Phase 881 — likewise; the canonical `ChartDataLabels` enum string.
         + optText "dataLabels" case.DataLabels
+        // Phase 882 — likewise; the canonical `ChartXScale` enum string.
+        + optText "xScale" case.XScale
 
     sprintf
         "{\"kind\":\"%s\",\"xField\":\"%s\",\"yFields\":[%s],\"title\":%s,\"stacked\":%s%s%s%s,\"data\":[%s]}"
@@ -2414,4 +2627,418 @@ let chartLoweringTests =
 
                   Expect.equal (plotRight labelled) (plotRight plainer) "same right edge"
                   Expect.equal (plotBottom labelled) (plotBottom plainer) "same bottom edge"
+              }
+
+              // ── Phase 882 — the temporal x-axis ──
+              //
+              // The calendar arithmetic is tested DIRECTLY (it is a normative
+              // spec five hosts mirror, so its properties are worth asserting
+              // rather than inferring from pixel positions), and the lowering
+              // behaviour is read back off the drawing through the same
+              // discriminators the emitter used.
+
+              test "the calendar conversions are exact inverses across four centuries" {
+                  // The property that matters: `civilFromDays` and
+                  // `daysFromCivil` round-trip for EVERY day, including the
+                  // negative side of the epoch and the century leap rules. A
+                  // coprime stride samples all residues rather than a lattice.
+                  let mutable failures = 0
+
+                  for d in -100000..977..100000 do
+                      let y, m, dd = Charts.Temporal.civilFromDays d
+
+                      if Charts.Temporal.daysFromCivil y m dd <> d then
+                          failures <- failures + 1
+
+                  Expect.equal failures 0 "every sampled day round-trips"
+
+                  // The anchors, stated so a port has fixed points to check.
+                  Expect.equal (Charts.Temporal.civilFromDays 0) (1970, 1, 1) "day 0 is the epoch"
+                  Expect.equal (Charts.Temporal.daysFromCivil 1970 1 1) 0 "and back"
+                  Expect.equal (Charts.Temporal.daysFromCivil 1969 12 31) -1 "the day before is -1"
+
+                  // 2000 is a leap year (÷400), 1900 is not (÷100, not ÷400) —
+                  // the pair that a naive four-year rule gets wrong.
+                  Expect.isTrue (Charts.Temporal.isLeapYear 2000) "2000 is leap"
+                  Expect.isFalse (Charts.Temporal.isLeapYear 1900) "1900 is not"
+
+                  Expect.equal
+                      (Charts.Temporal.daysFromCivil 2000 3 1 - Charts.Temporal.daysFromCivil 2000 2 1)
+                      29
+                      "February 2000 has 29 days"
+
+                  Expect.equal
+                      (Charts.Temporal.daysFromCivil 1900 3 1 - Charts.Temporal.daysFromCivil 1900 2 1)
+                      28
+                      "February 1900 has 28"
+              }
+
+              test "the ISO date parser is strict, and a timestamp keeps only its date" {
+                  let ok (s: string) =
+                      Option.isSome (Charts.Temporal.tryParseDay s)
+
+                  Expect.isTrue (ok "2026-01-15") "the canonical form"
+                  Expect.isTrue (ok "2000-02-29") "a real leap day"
+
+                  // A timestamp's TIME-OF-DAY is discarded — the axis's unit is
+                  // the day, so 00:01 and 23:59 are the same value. That is the
+                  // whole of the time-zone policy, and it is why no host needs
+                  // one.
+                  Expect.equal
+                      (Charts.Temporal.tryParseDay "2026-01-15T10:30:00Z")
+                      (Charts.Temporal.tryParseDay "2026-01-15")
+                      "a timestamp reads as its UTC date"
+
+                  // Refused: an impossible calendar date, a locale spelling, a
+                  // bare year, and a plausible-looking near-miss. Admitting any
+                  // of them would be the string-sniffing this axis exists to
+                  // avoid.
+                  for bad in
+                      [ "1900-02-29"
+                        "2026-13-01"
+                        "2026-00-10"
+                        "2026-01-32"
+                        "15/01/2026"
+                        "2026"
+                        "" ] do
+                      Expect.isFalse (ok bad) (sprintf "'%s' is not a canonical ISO date" bad)
+
+                  // And an unparseable cell reads as the EPOCH rather than
+                  // throwing — the lowering stays total; FUARAN097 is the loud
+                  // part, upstream.
+                  Expect.equal (Charts.Temporal.dayOf "not a date") 0 "unparseable reads as day 0"
+              }
+
+              test "the tick ladder picks a calendar-nice step and formats to the granularity" {
+                  // The three regimes, read off the CHOSEN RUNG rather than off
+                  // the picture: one rung decides both the positions and the
+                  // format, so this is the single decision the fixtures then pin
+                  // in pixels.
+                  let stepOf (case: Case) =
+                      let days = case.Rows |> List.map (fst >> Charts.Temporal.dayOf) |> List.toArray
+
+                      let lo, hi = Charts.Temporal.domain days
+                      Charts.Temporal.chooseStep 6 lo hi
+
+                  let named (name: string) =
+                      stepOf (cases |> List.find (fun c -> c.Name = name))
+
+                  let expect (name: string) (unit: Charts.Temporal.Unit) (count: int) (sample: string) =
+                      let step = named name
+                      Expect.equal step.Unit unit (sprintf "%s: unit" name)
+                      Expect.equal step.Count count (sprintf "%s: count" name)
+
+                      let case = cases |> List.find (fun c -> c.Name = name)
+                      let first = Charts.Temporal.dayOf (fst (List.head case.Rows))
+
+                      Expect.equal (Charts.Temporal.label step first) sample (sprintf "%s: label shape" name)
+
+                  expect "line-temporal-daily" Charts.Temporal.Unit.Days 5 "05 Jan 26"
+                  expect "bar-temporal-monthly" Charts.Temporal.Unit.Months 6 "Jan 26"
+                  expect "line-temporal-yearly" Charts.Temporal.Unit.Years 2 "2017"
+
+                  // The FORMAT BOUNDARIES: the adjacent rungs the two thresholds
+                  // separate. 10 days is the last nominal under 27; one month
+                  // (30.436875) the first over. Six months (182.6) is the last
+                  // under 365; one year (365.2425) the first over. Under a
+                  // nominal-step rule these pairs ARE the boundary — a span
+                  // cannot approach a threshold continuously, because the rungs
+                  // jump.
+                  expect "line-temporal-format-day-boundary" Charts.Temporal.Unit.Days 10 "02 Mar 26"
+                  expect "line-temporal-format-month-boundary" Charts.Temporal.Unit.Months 1 "Jan 26"
+                  expect "line-temporal-format-halfyear-boundary" Charts.Temporal.Unit.Months 6 "Jan 24"
+                  expect "line-temporal-format-year-boundary" Charts.Temporal.Unit.Years 1 "2021"
+
+                  // The thresholds themselves, stated on the nominals so a port
+                  // can check the arithmetic without a fixture.
+                  let nominal u c =
+                      Charts.Temporal.nominalDays { Unit = u; Count = c }
+
+                  Expect.isTrue (nominal Charts.Temporal.Unit.Days 10 <= 27.0) "10 days is under the day threshold"
+
+                  Expect.isTrue
+                      (nominal Charts.Temporal.Unit.Months 1 > 27.0)
+                      "one month clears it (30.436875, the mean Gregorian month)"
+
+                  Expect.isTrue (nominal Charts.Temporal.Unit.Months 6 <= 365.0) "six months stays under the year one"
+
+                  Expect.isTrue
+                      (nominal Charts.Temporal.Unit.Years 1 > 365.0)
+                      "one year clears it (365.2425, the mean Gregorian year)"
+
+                  // Every rung's tick count fits the ceiling, and the ladder is
+                  // total: a millennium-wide domain still resolves, and it does
+                  // so without generating a tick per day on the way.
+                  let wide =
+                      Charts.Temporal.chooseStep
+                          6
+                          (Charts.Temporal.daysFromCivil 1000 1 1)
+                          (Charts.Temporal.daysFromCivil 2000 1 1)
+
+                  Expect.equal wide.Unit Charts.Temporal.Unit.Years "a millennium ticks in years"
+                  Expect.isTrue (wide.Count >= 200) "and in a coarse multiple of them"
+              }
+
+              test "the month and year rungs land on calendar boundaries, never on data offsets" {
+                  // The quarters fall out of the alignment rule rather than being
+                  // a case of their own: `(month-1) mod 3 = 0` IS Jan/Apr/Jul/Oct.
+                  let lo = Charts.Temporal.daysFromCivil 2026 1 15
+                  let hi = Charts.Temporal.daysFromCivil 2027 12 20
+
+                  let quarters =
+                      Charts.Temporal.ticks
+                          { Unit = Charts.Temporal.Unit.Months
+                            Count = 3 }
+                          lo
+                          hi
+                      |> List.map (fun d ->
+                          let y, m, dd = Charts.Temporal.civilFromDays d
+                          y, m, dd)
+
+                  Expect.isTrue
+                      (quarters |> List.forall (fun (_, m, d) -> d = 1 && (m - 1) % 3 = 0))
+                      "every quarter tick is a quarter-month's 1st"
+
+                  Expect.equal (List.head quarters) (2026, 4, 1) "the first is INSIDE the domain, not at its start"
+
+                  // A year rung anchors on the January 1 of years divisible by
+                  // the step — so a decade chart ticks 2020, 2030, not
+                  // 2021, 2031.
+                  let decades =
+                      Charts.Temporal.ticks
+                          { Unit = Charts.Temporal.Unit.Years
+                            Count = 10 }
+                          (Charts.Temporal.daysFromCivil 2013 6 1)
+                          (Charts.Temporal.daysFromCivil 2044 6 1)
+                      |> List.map (fun d ->
+                          let y, _, _ = Charts.Temporal.civilFromDays d
+                          y)
+
+                  Expect.equal decades [ 2020; 2030; 2040 ] "decades land on the decade"
+
+                  // A DAY rung steps from the domain's own start, because a
+                  // "nice" 5-day boundary does not exist.
+                  let fives =
+                      Charts.Temporal.ticks
+                          { Unit = Charts.Temporal.Unit.Days
+                            Count = 5 }
+                          100
+                          118
+
+                  Expect.equal fives [ 100; 105; 110; 115 ] "day ticks step from the first datum"
+              }
+
+              test "a temporal axis is CONTINUOUS — marks at the dates, labels centred on them" {
+                  // The same reader Phase 903's band/continuous test uses: the x
+                  // marks are the short segments hanging below the spine.
+                  let ds = loweredCase "line-temporal-daily"
+
+                  let spineY =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(x1, y1, x2, y2, _) when y1 = y2 && x1 < x2 -> Some y1
+                          | _ -> None)
+                      |> List.max
+
+                  let markXs =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Line(x1, y1, x2, y2, _) when x1 = x2 && y1 = spineY && y2 > spineY -> Some x1
+                          | _ -> None)
+                      |> List.sort
+
+                  // SIX ticks from thirty rows: the count follows the tick rule,
+                  // not the row count — which is the whole difference from a band
+                  // axis, where it would be thirty-one boundaries.
+                  Expect.equal (List.length markXs) 6 "the ladder's ticks, not the rows"
+
+                  let labelled =
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Label(x, y, TextSource.Literal t, s) when
+                              Option.isSome s.Opacity
+                              && s.TextAnchor = Some TextAnchor.Middle
+                              && Option.isNone s.Rotation
+                              && y > spineY
+                              ->
+                              Some(x, t)
+                          | _ -> None)
+                      |> List.sortBy fst
+
+                  Expect.equal (List.map fst labelled) markXs "a continuous label sits AT its mark, not beside it"
+
+                  Expect.equal
+                      (List.map snd labelled)
+                      [ "05 Jan 26"; "10 Jan 26"; "15 Jan 26"; "20 Jan 26"; "25 Jan 26"; "30 Jan 26" ]
+                      "and reads at the data's own granularity"
+
+                  // Vertical gridlines follow from the axis being continuous, so
+                  // a temporal BAR chart has them too — the rule is a property,
+                  // not a kind list.
+                  let verticalRules (name: string) =
+                      let d = loweredCase name
+
+                      d.Shapes
+                      |> List.filter (fun sh ->
+                          match sh with
+                          | Shape.Line(x1, y1, x2, y2, s) ->
+                              // The GRID opacity is the discriminator (0.12,
+                              // used by no other stroke); the axis spines and
+                              // the tick marks carry `AxisOpacity`.
+                              x1 = x2
+                              && y2 > y1
+                              && (match s.Opacity with
+                                  | Some(Binding.Static(Some o)) -> o = Charts.ChartStyle.defaults.GridOpacity
+                                  | _ -> false)
+                          | _ -> false)
+                      |> List.length
+
+                  Expect.equal (verticalRules "bar-temporal-monthly") 4 "a temporal bar axis rules its dates"
+                  Expect.equal (verticalRules "bar-single") 0 "a band axis has no positions to rule"
+              }
+
+              test "a date's position is its VALUE, so an irregular run is not evenly spaced" {
+                  // The point of a temporal axis over a band one: 1 Jan, 2 Jan
+                  // and 1 Feb are not three equal steps. A band axis would draw
+                  // them evenly and silently misstate the data.
+                  let case =
+                      { plain with
+                          Name = "probe"
+                          Kind = ChartKind.Line
+                          XField = "day"
+                          YFields = [ "v" ]
+                          XScale = Some "Temporal"
+                          Rows = [ "2026-01-01", [ 1.0 ]; "2026-01-02", [ 2.0 ]; "2026-02-01", [ 3.0 ] ] }
+
+                  let ds = Charts.lower (specOf case) (Seq.ofList (buildRows case))
+
+                  let pts =
+                      ds.Shapes
+                      |> List.pick (fun sh ->
+                          match sh with
+                          | Shape.Polyline(ps, _) -> Some ps
+                          | _ -> None)
+                      |> List.map (fun p -> p.X)
+
+                  match pts with
+                  | [ a; b; c ] ->
+                      // One day out of thirty-one: the second point sits hard
+                      // against the first, and the third at the far edge.
+                      Expect.isTrue (b - a < (c - b) / 10.0) "one day is a thirtieth of the span, and is drawn so"
+
+                      // The same rows as a CATEGORY axis space evenly — the
+                      // contrast that makes the feature worth having.
+                      let bandDs =
+                          Charts.lower (specOf { case with XScale = None }) (Seq.ofList (buildRows case))
+
+                      let bandPts =
+                          bandDs.Shapes
+                          |> List.pick (fun sh ->
+                              match sh with
+                              | Shape.Polyline(ps, _) -> Some ps
+                              | _ -> None)
+                          |> List.map (fun p -> p.X)
+
+                      match bandPts with
+                      | [ p; q; r ] -> Expect.equal (r2 (q - p)) (r2 (r - q)) "a band axis spaces them evenly"
+                      | _ -> failtest "expected three band points"
+                  | _ -> failtest "expected three temporal points"
+              }
+
+              test "a temporal axis suppresses its DEFAULT x-title, never an explicit one" {
+                  // §4e's rule, stated by Phase 878 and wired here. It
+                  // suppresses the machine's fallback: an axis reading "Jan Feb
+                  // Mar" does not need the word "Month" beneath it.
+                  Expect.equal (xAxisTitleOf (loweredCase "line-temporal-daily")) "" "no fallback title on a date axis"
+
+                  // The band twin of the same chart DOES title itself, so the
+                  // suppression is attributable to the scale and to nothing else.
+                  let case = cases |> List.find (fun c -> c.Name = "line-temporal-daily")
+
+                  let banded =
+                      Charts.lower (specOf { case with XScale = None }) (Seq.ofList (buildRows case))
+
+                  Expect.equal (xAxisTitleOf banded) "Day" "a category axis still falls back to the field name"
+
+                  // And an explicit title always draws — the author overriding
+                  // the default, which the rule never touches.
+                  Expect.equal
+                      (xAxisTitleOf (loweredCase "bar-temporal-x-title"))
+                      "Reporting month"
+                      "the author's own words survive the suppression"
+
+                  // The y axis is untouched: the rule is about the x axis's
+                  // self-evidence, not about titles in general.
+                  Expect.equal (yAxisTitleOf (loweredCase "line-temporal-daily")) "Sessions" "the y title is unaffected"
+              }
+
+              test "the label ladder governs a temporal axis's tick labels too" {
+                  // Every ordinary temporal fixture rests FLAT — six short date
+                  // labels in a comfortable pitch — and the crowded one
+                  // escalates. §4g's arithmetic is unchanged: below a ~58 px
+                  // pitch the 30° window is empty, so the step is flat →
+                  // vertical.
+                  // Keyed on the x-label BASELINE exactly — `plotY1 +
+                  // CategoryLabelOffsetY` — because the y axis's lowest tick
+                  // label also sits below the plot bottom, and a looser reader
+                  // picks it up and reports a flat axis whatever the x labels do.
+                  let rotations (name: string) =
+                      let ds = loweredCase name
+                      let baseline = r2 (plotBottom ds + Charts.ChartStyle.defaults.CategoryLabelOffsetY)
+
+                      ds.Shapes
+                      |> List.choose (fun sh ->
+                          match sh with
+                          | Shape.Label(_, y, _, s) when Option.isSome s.Opacity && y = baseline -> Some s.Rotation
+                          | _ -> None)
+                      |> List.distinct
+
+                  Expect.equal (rotations "line-temporal-daily") [ None ] "a roomy date axis reads flat"
+
+                  Expect.equal
+                      (rotations "line-temporal-vertical-labels")
+                      [ Some -90.0 ]
+                      "a crowded one goes vertical — uniformly, never a mix"
+              }
+
+              test "an absent xScale is byte-identical to an explicit Category" {
+                  // The stronger form the corpus cannot state: the default is not
+                  // merely similar to absence, it is the same bytes. Which is why
+                  // every pre-882 golden is unmoved.
+                  let enc (spec: ChartSpec<obj>) (rows: Row list) =
+                      let ds = Charts.lower spec (Seq.ofList rows)
+                      CanonicalJson.encodeNode (Fuaran.drawingSpec "c" ds: Node<obj>)
+
+                  for case in cases |> List.filter (fun c -> Option.isNone c.XScale) do
+                      let rows = buildRows case
+                      let baseSpec = specOf case
+
+                      Expect.equal
+                          (enc
+                              { baseSpec with
+                                  XScale = Some ChartXScale.Category }
+                              rows)
+                          (enc baseSpec rows)
+                          (sprintf "%s: Category must be indistinguishable from absent" case.Name)
+              }
+
+              test "a temporal declaration on a Pie is inert — the polar arm has no x axis" {
+                  // Dead intent the lowering cannot honour, neutralised rather
+                  // than half-applied: a pie's picture must not depend on a scale
+                  // it never reads.
+                  let case = cases |> List.find (fun c -> c.Name = "pie-quarters")
+                  let rows = buildRows case
+
+                  let enc (spec: ChartSpec<obj>) =
+                      CanonicalJson.encodeNode (Fuaran.drawingSpec "c" (Charts.lower spec (Seq.ofList rows)): Node<obj>)
+
+                  Expect.equal
+                      (enc
+                          { specOf case with
+                              XScale = Some ChartXScale.Temporal })
+                      (enc (specOf case))
+                      "a pie is unchanged by an x-scale declaration"
               } ]

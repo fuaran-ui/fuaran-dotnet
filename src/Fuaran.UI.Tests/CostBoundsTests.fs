@@ -43,6 +43,7 @@ let private specOf (kind: ChartKind) (m: int) (stacked: bool) : ChartSpec<obj> =
       Subtitle = None
       LegendPosition = None
       DataLabels = None
+      XScale = None
       OnPointClick = None
       Stacked = stacked }
 

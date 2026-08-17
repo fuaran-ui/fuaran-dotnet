@@ -134,6 +134,20 @@ public enum ChartDataLabels
     Ends,
 }
 
+/// <summary>
+/// What a chart's x column means (Phase 882) — maps to the F#
+/// <c>ChartXScale</c>. Leaving <c>ChartOptions.XScale</c> unset means
+/// <c>Category</c>, which is also the default. <c>Temporal</c> declares the
+/// column carries canonical ISO-8601 dates and puts the axis on a continuous
+/// day-scale; the pre-emit validator refuses the declaration over a non-date
+/// column (FUARAN097) rather than drawing a wrong picture.
+/// </summary>
+public enum ChartXScale
+{
+    Category,
+    Temporal,
+}
+
 /// <summary>Icon display size (Phase 821) — <c>Medium</c> is the default.</summary>
 public enum IconSize
 {
@@ -224,6 +238,13 @@ internal static class EnumMap
         {
             ChartDataLabels.Ends => FsGen.ChartDataLabels.Ends,
             _ => FsGen.ChartDataLabels.Off,
+        };
+
+    internal static FsGen.ChartXScale ToFs(this ChartXScale x) =>
+        x switch
+        {
+            ChartXScale.Temporal => FsGen.ChartXScale.Temporal,
+            _ => FsGen.ChartXScale.Category,
         };
 
     internal static FsGen.ToneVariant ToFs(this Tone t) =>

@@ -201,6 +201,32 @@ type ChartDataLabels =
     /// area edge.
     | Ends
 
+/// What a chart's x axis MEANS — the scale its x column is read on (Phase 882).
+///
+/// A WIRE vocabulary on the D8 line's semantic side: whether a column is a set
+/// of CATEGORIES or a run of DATES is a fact about the data the author is
+/// declaring, not an appearance choice. Where the ticks land, how they are
+/// formatted and how much margin they need are the host's, in `ChartStyle`.
+///
+/// DECLARED, NOT INFERRED, and that is the point of the field. The chart's data
+/// schema is statically known only for an embedded table with an empty pipeline,
+/// so an inferred axis would make one wire tree draw a band axis or a temporal
+/// one depending on where its rows came from; and sniffing the cell strings for
+/// an ISO-8601 shape is a guess dressed as a rule. Declaring it lets the
+/// pre-emit validator GROUND the claim instead (FUARAN097 refuses a temporal
+/// axis over a non-date column) — the author says what the column is, and the
+/// language refuses to be wrong about it quietly.
+[<RequireQualifiedAccess>]
+type ChartXScale =
+    /// Discrete categories, one band per row, in row order (the shipped
+    /// default, and what an absent field means).
+    | Category
+    /// Dates: the x column carries canonical ISO-8601 dates (`YYYY-MM-DD`, or a
+    /// timestamp whose time-of-day is discarded) and the axis is CONTINUOUS —
+    /// points sit at their date, ticks land on calendar boundaries, and the
+    /// tick labels adapt to the data's granularity.
+    | Temporal
+
 [<RequireQualifiedAccess>]
 type HashStrictness =
     | StrictReplay
@@ -1024,6 +1050,19 @@ and ChartSpec<'Msg> =
       // author is opting IN to. So an absent field is byte-identical to the
       // pre-881 wire and to the pre-881 picture.
       DataLabels: ChartDataLabels option
+      // Phase 882 — what the x column MEANS: discrete categories, or dates on a
+      // continuous temporal scale. Semantic in the same way (D8): whether a
+      // column is a set of categories or a run of dates is a fact about the
+      // data; the tick ladder, the label format and the margins that realise it
+      // are the host's, in `ChartStyle`.
+      //
+      // Absent means `Category`, which is also the shipped default, so an
+      // absent field is byte-identical to the pre-882 wire AND to the pre-882
+      // picture. `Temporal` is a DECLARATION the pre-emit validator grounds
+      // against the column type (FUARAN097) — never an inference from the data,
+      // which would make the same tree draw differently depending on where its
+      // rows came from.
+      XScale: ChartXScale option
       OnPointClick: (Fuaran.Core.Row -> Action<'Msg>) option
     }
 
@@ -1290,6 +1329,11 @@ let private encChartDataLabels (v: ChartDataLabels) : JVal =
     match v with
     | ChartDataLabels.Off -> JStr "Off"
     | ChartDataLabels.Ends -> JStr "Ends"
+
+let private encChartXScale (v: ChartXScale) : JVal =
+    match v with
+    | ChartXScale.Category -> JStr "Category"
+    | ChartXScale.Temporal -> JStr "Temporal"
 
 let private encHashStrictness (v: HashStrictness) : JVal =
     match v with
@@ -1743,7 +1787,7 @@ and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
     Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encChartSpec<'Msg> (s: ChartSpec<'Msg>) : JVal =
-    Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.ValueFormat |> Option.map (fun v -> "valueFormat", encFormat v)); (s.XTitle |> Option.map (fun v -> "xTitle", encTextSource v)); (s.YTitle |> Option.map (fun v -> "yTitle", encTextSource v)); (s.Subtitle |> Option.map (fun v -> "subtitle", encTextSource v)); (s.LegendPosition |> Option.map (fun v -> "legendPosition", encChartLegendPosition v)); (s.DataLabels |> Option.map (fun v -> "dataLabels", encChartDataLabels v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.ValueFormat |> Option.map (fun v -> "valueFormat", encFormat v)); (s.XTitle |> Option.map (fun v -> "xTitle", encTextSource v)); (s.YTitle |> Option.map (fun v -> "yTitle", encTextSource v)); (s.Subtitle |> Option.map (fun v -> "subtitle", encTextSource v)); (s.LegendPosition |> Option.map (fun v -> "legendPosition", encChartLegendPosition v)); (s.DataLabels |> Option.map (fun v -> "dataLabels", encChartDataLabels v)); (s.XScale |> Option.map (fun v -> "xScale", encChartXScale v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encMapSpec<'Msg> (s: MapSpec<'Msg>) : JVal =
     Canon.typed "Map" ([ Some("centreLatitude", JFloat s.CentreLatitude); Some("centreLongitude", JFloat s.CentreLongitude); Some("source", (encBinding (fun __xs -> JArr(List.map encMapMarker __xs))) s.Source); Some("zoom", JInt s.Zoom); (s.OnMarkerClick |> Option.map (fun v -> "onMarkerClick", JStr "<closure>")) ] |> List.choose id)
@@ -2028,6 +2072,12 @@ let private decChartDataLabels (j: JVal) : Result<ChartDataLabels, string> =
     | JStr "Off" -> Ok ChartDataLabels.Off
     | JStr "Ends" -> Ok ChartDataLabels.Ends
     | _ -> Error "not a ChartDataLabels"
+
+let private decChartXScale (j: JVal) : Result<ChartXScale, string> =
+    match j with
+    | JStr "Category" -> Ok ChartXScale.Category
+    | JStr "Temporal" -> Ok ChartXScale.Temporal
+    | _ -> Error "not a ChartXScale"
 
 let private decHashStrictness (j: JVal) : Result<HashStrictness, string> =
     match j with
@@ -3233,8 +3283,9 @@ and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, string> =
     dOpt "subtitle" __fs decTextSource |> Result.bind (fun subtitle ->
     dOpt "legendPosition" __fs decChartLegendPosition |> Result.bind (fun legendPosition ->
     dOpt "dataLabels" __fs decChartDataLabels |> Result.bind (fun dataLabels ->
+    dOpt "xScale" __fs decChartXScale |> Result.bind (fun xScale ->
     (dPresent "onPointClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onPointClick ->
-    Ok { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = title; ValueFormat = valueFormat; XTitle = xTitle; YTitle = yTitle; Subtitle = subtitle; LegendPosition = legendPosition; DataLabels = dataLabels; OnPointClick = onPointClick }))))))))))))))
+    Ok { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = title; ValueFormat = valueFormat; XTitle = xTitle; YTitle = yTitle; Subtitle = subtitle; LegendPosition = legendPosition; DataLabels = dataLabels; XScale = xScale; OnPointClick = onPointClick })))))))))))))))
 
 and private decMapSpec (j: JVal) : Result<MapSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3481,7 +3532,7 @@ let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<
     { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkChart (id: string) (kind: ChartKind) (source: Binding<Fuaran.Core.Row seq>) (stacked: bool) (xField: string) (yFields: string list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; ValueFormat = None; XTitle = None; YTitle = None; Subtitle = None; LegendPosition = None; DataLabels = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; ValueFormat = None; XTitle = None; YTitle = None; Subtitle = None; LegendPosition = None; DataLabels = None; XScale = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

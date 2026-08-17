@@ -362,6 +362,7 @@ let chart<'Msg> : ChartSpec<'Msg> =
       Subtitle = Option.None
       LegendPosition = Option.None
       DataLabels = Option.None
+      XScale = Option.None
       OnPointClick = Option.None
       Stacked = false }
 

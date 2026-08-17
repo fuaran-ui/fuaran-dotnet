@@ -180,6 +180,9 @@ let private genChartLegendPosition =
 let private genChartDataLabels =
     Gen.elements [ ChartDataLabels.Off; ChartDataLabels.Ends ]
 
+let private genChartXScale =
+    Gen.elements [ ChartXScale.Category; ChartXScale.Temporal ]
+
 let private genAriaRole: Gen<AriaRole> =
     Gen.oneof
         [ Gen.elements
@@ -863,6 +866,9 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         // Phase 881 — whether the values are written onto the picture (absent
         // = `Off`, which is also the default, so the option arm matters here).
         let! dataLabels = genOption genChartDataLabels
+        // Phase 882 — what the x column means (absent = `Category`, which is
+        // also the default, so the option arm matters here too).
+        let! xScale = genOption genChartXScale
         let! stacked = genBool
 
         return
@@ -877,6 +883,7 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
               Subtitle = subtitle
               LegendPosition = legendPosition
               DataLabels = dataLabels
+              XScale = xScale
               OnPointClick = None
               Stacked = stacked }
     }

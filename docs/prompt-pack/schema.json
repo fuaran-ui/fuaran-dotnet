@@ -158,6 +158,13 @@
         "Ends"
       ]
     },
+    "ChartXScale": {
+      "type": "string",
+      "enum": [
+        "Category",
+        "Temporal"
+      ]
+    },
     "LiveRegionKind": {
       "type": "string",
       "enum": [
@@ -3125,6 +3132,15 @@
       "required": [
         "kind",
         "label"
+      ],
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "readOnly"
+            ]
+          }
+        }
       ]
     },
     "GridSpec": {
@@ -3235,6 +3251,57 @@
       "required": [
         "columns",
         "source"
+      ],
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "currentPage"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "page"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "pageIndex"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "sortable"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "onEdit"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "behaviour"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "behavior"
+            ]
+          }
+        }
       ]
     },
     "ChartSpec": {
@@ -3278,6 +3345,9 @@
         },
         "dataLabels": {
           "$ref": "#/$defs/ChartDataLabels"
+        },
+        "xScale": {
+          "$ref": "#/$defs/ChartXScale"
         },
         "onPointClick": {
           "const": "<closure>"

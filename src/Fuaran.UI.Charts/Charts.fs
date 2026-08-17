@@ -73,6 +73,25 @@ module Fuaran.UI.Charts
 //              stay AT the value only where the axis is continuous — the y axis
 //              and Scatter's numeric x. No wire change; band-arm goldens moved
 //              once, across every conformant host, in one change-set.
+//  Phase 882 — THE TEMPORAL X-AXIS, the second non-band x-scale after the
+//              Phase-636 Scatter arm. `ChartSpec` gained an optional `XScale`
+//              (`Category | Temporal`); absent is `Category`, so every pre-882
+//              chart is byte-unchanged. `Temporal` is DECLARED, never inferred
+//              — the language grounds the declaration against the column type
+//              (FUARAN097) instead of sniffing the cell strings, because an
+//              inferred axis would make the same wire tree draw differently
+//              depending on where its rows came from. Dates map LINEARLY over
+//              days since 1970-01-01 (proleptic Gregorian, UTC, integer
+//              arithmetic this module owns — no host date type anywhere in the
+//              layout path); ticks land on calendar-nice boundaries drawn from
+//              a fixed ladder; the tick FORMAT follows the chosen rung's
+//              nominal length at the operator's thresholds (`> 365` days ⇒
+//              `yyyy`, `> 27` ⇒ `mmm yy`, else `dd mmm yy`). It takes the
+//              CONTINUOUS side of Phase 903's tick split — marks at the value,
+//              labels centred on them, vertical gridlines — and wires Phase
+//              878's date-axis rule: a temporal axis suppresses its DEFAULT
+//              x-title, never an explicit one. See "The temporal x-axis" below,
+//              the normative cross-host spec.
 //
 //  `Chart` stays a SEMANTIC wire kind (D2). This module is the bounded layout
 //  engine that turns a resolved `ChartSpec` + data rows into a canonical
@@ -1094,6 +1113,337 @@ let private resolveDisplayUnit (style: ChartStyle) (fmt: Format option) (maxAbs:
               Label = "" }
         | ChartAxisUnitMode.Off -> noDisplayUnit
 
+// ─── The temporal x-axis (Phase 882) ─────────────────────────────────────────
+//
+// NORMATIVE CROSS-HOST SPEC (R2), the same standing as the text metrics and the
+// number formatter above: every conformant host reproduces this module exactly,
+// and `docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md` §4h carries it as the
+// language-neutral statement. The `chart-lowering/*` goldens pin it.
+//
+// FIVE RULES, and each one exists to remove a way two hosts could disagree.
+//
+//   1. THE UNIT IS THE DAY, and a date is an INTEGER: days since 1970-01-01 in
+//      the PROLEPTIC GREGORIAN calendar. Nothing here reads a host date type, a
+//      locale, a time zone, or a clock — the conversions are the fixed integer
+//      algorithms below (Howard Hinnant's `days_from_civil` /
+//      `civil_from_days`, public domain), which are exact for every date they
+//      admit and need no leap-year table. A `Timestamp` cell's TIME-OF-DAY IS
+//      DISCARDED: the value is its UTC date. That is the whole of the axis's
+//      time-zone policy, and it is stated rather than inherited, because
+//      inheriting it from a host would make the picture depend on where it was
+//      drawn.
+//
+//      Integer division must TRUNCATE TOWARD ZERO (F#, Rust, Go and C all do;
+//      JavaScript needs `Math.trunc(a / b)`, Python needs a truncating helper
+//      rather than `//`, which floors). The two algorithms bias their operands
+//      into the non-negative range precisely so that truncation is the only
+//      convention they need.
+//
+//   2. THE DOMAIN IS THE DATA'S OWN EXTENT, UNEXPANDED — `[min, max]`, so the
+//      first and last points sit on the plot's edges. It is NOT snapped outward
+//      to a tick boundary (the value axis's `niceDomain` posture), because a
+//      calendar boundary is a coarse thing to round to: nicing a 30-day domain
+//      to whole months would add a month of empty plot at each end to make room
+//      for ticks nobody asked for. The ticks come to the domain instead. A
+//      degenerate domain (every row the same date, or no rows) becomes
+//      `[lo, lo+1]`, the same guard `niceDomain` applies for the same reason.
+//
+//   3. THE TICKS ARE CALENDAR-ALIGNED INSTANTS INSIDE THE DOMAIN, at a step
+//      drawn from a FIXED LADDER — the `{1,2,5}·10ⁿ` rule's analogue for units
+//      that are not decimal:
+//
+//        1, 2, 5, 10 DAYS · 1, 2, 3, 6 MONTHS · {1,2,5}·10ⁿ YEARS (n ≤ 6)
+//
+//      The chosen rung is the FIRST whose in-domain tick count fits the
+//      ceiling; the coarsest rung is the fallback nothing else fits. Day rungs
+//      step from the DOMAIN'S OWN START (a "nice" 2-day or 5-day boundary does
+//      not exist — days are uniform, so the honest anchor is the first datum);
+//      month rungs land on month starts where `(month-1) mod k = 0`, which
+//      makes `k = 3` the calendar quarters and `k = 6` January and July; year
+//      rungs land on the January 1 of years where `year mod k = 0`.
+//
+//      The ceiling is `TargetTickCount + 1` (6 at the shipped default) rather
+//      than `TargetTickCount` itself. The value axis's step is CONTINUOUS and
+//      can be tuned to hit a target; a calendar rung jumps by 2–3× and cannot,
+//      so rounding down a rung loses roughly half the ticks. Admitting the
+//      densest rung that still reads keeps the actual count in the 3–6 band.
+//      Counts are computed WITHOUT generating the ticks, so the ladder can be
+//      walked from its densest rung on a millennium-wide domain without
+//      unbounded work.
+//
+//   4. THE FORMAT FOLLOWS THE STEP'S NOMINAL LENGTH, at the operator's
+//      thresholds: `> 365` days ⇒ `yyyy`, `> 27` ⇒ `mmm yy`, else `dd mmm yy`.
+//      Nominal, not measured: a month is `365.2425 / 12 = 30.436875` days and a
+//      year `365.2425`, so the rung decides the format and the DATA cannot.
+//      Measuring the actual tick gaps instead would put the year rung's average
+//      at exactly 365.0 across a run of non-leap years (1900–1903, say) and
+//      flip a decade chart from `yyyy` to `mmm yy` on a property of the
+//      calendar nobody was asking about. The thresholds are calibrated for
+//      this: the 1-month rung clears 27 and the 6-month rung does not clear
+//      365, so each threshold separates two ADJACENT rungs.
+//
+//   5. THE MONTH NAMES ARE PART OF THE SPEC. English three-letter
+//      abbreviations, invariant, never a locale lookup — an i18n date axis is a
+//      different feature with its own vocabulary, and a chart whose golden bytes
+//      changed with the host's culture would not be certifiable at all.
+
+/// The calendar the temporal x-axis runs on, and the tick rule over it. Pure
+/// integer arithmetic over days since 1970-01-01 (proleptic Gregorian): no host
+/// date type, no locale, no time zone, no time-of-day.
+[<RequireQualifiedAccess>]
+module Temporal =
+
+    /// The English three-letter month abbreviations, in calendar order.
+    /// INVARIANT — part of the wire-visible spec (rule 5), never a locale lookup.
+    let monthNames =
+        [| "Jan"
+           "Feb"
+           "Mar"
+           "Apr"
+           "May"
+           "Jun"
+           "Jul"
+           "Aug"
+           "Sep"
+           "Oct"
+           "Nov"
+           "Dec" |]
+
+    /// The calendar unit a tick step counts in.
+    [<RequireQualifiedAccess>]
+    type Unit =
+        | Days
+        | Months
+        | Years
+
+    /// One rung of the ladder: `Count` of `Unit`.
+    type Step = { Unit: Unit; Count: int }
+
+    /// Gregorian leap year (proleptic — the rule applies to every year the
+    /// parser admits, with no historical exception).
+    let isLeapYear (y: int) : bool =
+        (y % 4 = 0 && y % 100 <> 0) || y % 400 = 0
+
+    /// Days in a month — the one place the calendar's irregularity is written
+    /// down, used by the PARSER only (the conversions below need no table).
+    let daysInMonth (y: int) (m: int) : int =
+        if m = 2 then (if isLeapYear y then 29 else 28)
+        elif m = 4 || m = 6 || m = 9 || m = 11 then 30
+        else 31
+
+    /// `(y, m, d)` → days since 1970-01-01. Hinnant's `days_from_civil`: exact
+    /// for every proleptic-Gregorian date, no leap table, integer-only.
+    /// Division truncates toward zero — the operands are biased so that is the
+    /// only convention needed (rule 1).
+    let daysFromCivil (year: int) (month: int) (day: int) : int =
+        let y = if month <= 2 then year - 1 else year
+        let era = (if y >= 0 then y else y - 399) / 400
+        let yoe = y - era * 400 // [0, 399]
+        let mp = if month > 2 then month - 3 else month + 9 // March-based month
+        let doy = (153 * mp + 2) / 5 + day - 1 // [0, 365]
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy // [0, 146096]
+        era * 146097 + doe - 719468
+
+    /// Days since 1970-01-01 → `(y, m, d)`. Hinnant's `civil_from_days`, the
+    /// exact inverse of `daysFromCivil`.
+    let civilFromDays (days: int) : int * int * int =
+        let z = days + 719468
+        let era = (if z >= 0 then z else z - 146096) / 146097
+        let doe = z - era * 146097 // [0, 146096]
+        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365 // [0, 399]
+        let y = yoe + era * 400
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100) // [0, 365]
+        let mp = (5 * doy + 2) / 153 // [0, 11], March-based
+        let d = doy - (153 * mp + 2) / 5 + 1 // [1, 31]
+        let m = if mp < 10 then mp + 3 else mp - 9 // [1, 12]
+        ((if m <= 2 then y + 1 else y), m, d)
+
+    /// Parse a canonical ISO-8601 date to days since epoch — `YYYY-MM-DD`,
+    /// optionally followed by `T…`, whose time-of-day is DISCARDED (rule 1).
+    /// STRICT by shape and by calendar: four digits, two, two, both hyphens, a
+    /// month in 1–12 and a day the month actually has. `None` for everything
+    /// else, including a locale spelling ("15/01/2026") and a bare year —
+    /// admitting either would be the string-sniffing this axis exists to avoid.
+    let tryParseDay (text: string) : int option =
+        let digits (start: int) (len: int) : int option =
+            let mutable ok = start + len <= text.Length
+            let mutable acc = 0
+
+            if ok then
+                for k in start .. start + len - 1 do
+                    let c = text.[k]
+
+                    if c >= '0' && c <= '9' then
+                        acc <- acc * 10 + (int c - int '0')
+                    else
+                        ok <- false
+
+            if ok then Some acc else None
+
+        if text.Length < 10 then
+            None
+        elif text.[4] <> '-' || text.[7] <> '-' then
+            None
+        elif text.Length > 10 && text.[10] <> 'T' then
+            None
+        else
+            match digits 0 4, digits 5 2, digits 8 2 with
+            | Some y, Some m, Some d when m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth y m ->
+                Some(daysFromCivil y m d)
+            | _ -> None
+
+    /// The day number a row's x cell carries, with an UNPARSEABLE cell reading
+    /// as the epoch. That mirrors `numericOf`'s posture for a non-numeric value
+    /// axis cell — the lowering stays total and the grounding rule (FUARAN097)
+    /// is what makes a non-date column loud, upstream, before any picture is
+    /// drawn. Silence here is not the design; refusing here would be.
+    let dayOf (text: string) : int =
+        match tryParseDay text with
+        | Some d -> d
+        | None -> 0
+
+    /// The step's NOMINAL length in days (rule 4) — a mean Gregorian month and
+    /// year, so the FORMAT is a property of the rung rather than of the data.
+    let nominalDays (step: Step) : float =
+        match step.Unit with
+        | Unit.Days -> float step.Count
+        | Unit.Months -> float step.Count * 30.436875 // 365.2425 / 12
+        | Unit.Years -> float step.Count * 365.2425
+
+    /// The ladder, ascending (rule 3). Written out rather than generated: it is
+    /// a pinned vocabulary five hosts mirror, and an explicit list cannot drift
+    /// on a difference of opinion about `pown`.
+    let ladder: Step list =
+        [ { Unit = Unit.Days; Count = 1 }
+          { Unit = Unit.Days; Count = 2 }
+          { Unit = Unit.Days; Count = 5 }
+          { Unit = Unit.Days; Count = 10 }
+          { Unit = Unit.Months; Count = 1 }
+          { Unit = Unit.Months; Count = 2 }
+          { Unit = Unit.Months; Count = 3 }
+          { Unit = Unit.Months; Count = 6 }
+          { Unit = Unit.Years; Count = 1 }
+          { Unit = Unit.Years; Count = 2 }
+          { Unit = Unit.Years; Count = 5 }
+          { Unit = Unit.Years; Count = 10 }
+          { Unit = Unit.Years; Count = 20 }
+          { Unit = Unit.Years; Count = 50 }
+          { Unit = Unit.Years; Count = 100 }
+          { Unit = Unit.Years; Count = 200 }
+          { Unit = Unit.Years; Count = 500 }
+          { Unit = Unit.Years; Count = 1000 }
+          { Unit = Unit.Years; Count = 2000 }
+          { Unit = Unit.Years; Count = 5000 }
+          { Unit = Unit.Years; Count = 10000 }
+          { Unit = Unit.Years; Count = 20000 }
+          { Unit = Unit.Years; Count = 50000 }
+          { Unit = Unit.Years; Count = 100000 }
+          { Unit = Unit.Years; Count = 200000 }
+          { Unit = Unit.Years; Count = 500000 }
+          { Unit = Unit.Years; Count = 1000000 }
+          { Unit = Unit.Years; Count = 2000000 }
+          { Unit = Unit.Years; Count = 5000000 } ]
+
+    /// Round an index UP to the next multiple of `k` (both non-negative).
+    let private ceilTo (k: int) (i: int) : int = (i + k - 1) / k * k
+
+    /// The aligned window a month rung covers: `(first aligned month index,
+    /// count)` over `[lo, hi]`, in month-index space (`year·12 + month - 1`).
+    /// Closed-form, so a count never generates a tick.
+    let private monthWindow (k: int) (lo: int) (hi: int) : int * int =
+        let y0, m0, d0 = civilFromDays lo
+        // A `lo` past the 1st means `lo`'s own month start is outside the domain.
+        let firstIdx = (y0 * 12 + m0 - 1) + (if d0 > 1 then 1 else 0)
+        let first = ceilTo k firstIdx
+        let y1, m1, _ = civilFromDays hi
+        // `hi`'s own month start is always inside the domain (its day ≥ 1).
+        let last = (y1 * 12 + m1 - 1) / k * k
+
+        if last < first then
+            first, 0
+        else
+            first, (last - first) / k + 1
+
+    /// The year rung's twin of `monthWindow`, in year space.
+    let private yearWindow (k: int) (lo: int) (hi: int) : int * int =
+        let y0, m0, d0 = civilFromDays lo
+        let firstYear = y0 + (if m0 = 1 && d0 = 1 then 0 else 1)
+        let first = ceilTo k firstYear
+        let y1, _, _ = civilFromDays hi
+        let last = y1 / k * k
+
+        if last < first then
+            first, 0
+        else
+            first, (last - first) / k + 1
+
+    /// How many `step`-aligned ticks fall in `[lo, hi]` — closed-form, never by
+    /// generation (rule 3), so walking the ladder is O(rungs) whatever the span.
+    let tickCount (step: Step) (lo: int) (hi: int) : int =
+        if hi < lo then
+            0
+        else
+            match step.Unit with
+            | Unit.Days -> (hi - lo) / step.Count + 1
+            | Unit.Months -> snd (monthWindow step.Count lo hi)
+            | Unit.Years -> snd (yearWindow step.Count lo hi)
+
+    /// The `step`-aligned ticks in `[lo, hi]`, ascending.
+    let ticks (step: Step) (lo: int) (hi: int) : int list =
+        if hi < lo then
+            []
+        else
+            match step.Unit with
+            | Unit.Days -> [ for i in 0 .. (hi - lo) / step.Count -> lo + i * step.Count ]
+            | Unit.Months ->
+                let first, count = monthWindow step.Count lo hi
+
+                [ for i in 0 .. count - 1 do
+                      let idx = first + i * step.Count
+                      daysFromCivil (idx / 12) (idx % 12 + 1) 1 ]
+            | Unit.Years ->
+                let first, count = yearWindow step.Count lo hi
+
+                [ for i in 0 .. count - 1 -> daysFromCivil (first + i * step.Count) 1 1 ]
+
+    /// The chosen rung: the FIRST whose in-domain tick count fits `maxTicks`,
+    /// else the coarsest (rule 3). Total — the ladder is never empty.
+    let chooseStep (maxTicks: int) (lo: int) (hi: int) : Step =
+        match ladder |> List.tryFind (fun s -> tickCount s lo hi <= maxTicks) with
+        | Some s -> s
+        | None -> List.last ladder
+
+    /// The domain: the data's own extent, unexpanded, with the degenerate guard
+    /// (rule 2). No rows ⇒ `[0, 1]` — the epoch day and the one after it, which
+    /// draws an axis rather than dividing by zero.
+    let domain (days: int[]) : int * int =
+        if days.Length = 0 then
+            0, 1
+        else
+            let lo = Array.min days
+            let hi = Array.max days
+            if hi = lo then lo, lo + 1 else lo, hi
+
+    let private pad (width: int) (v: int) : string =
+        let s = string v
+
+        if s.Length >= width then
+            s
+        else
+            String.replicate (width - s.Length) "0" + s
+
+    /// The tick label for `day` under `step` — the granularity-adaptive format
+    /// (rule 4). `yyyy` past a year, `mmm yy` past 27 days, else `dd mmm yy`.
+    let label (step: Step) (day: int) : string =
+        let y, m, d = civilFromDays day
+        let nominal = nominalDays step
+        let yy = pad 2 (y % 100)
+        let mmm = monthNames.[m - 1]
+
+        if nominal > 365.0 then pad 4 y
+        elif nominal > 27.0 then mmm + " " + yy
+        else pad 2 d + " " + mmm + " " + yy
+
 // ─── DrawStyle builders ──────────────────────────────────────────────────────
 //
 // Every builder that emits a colour, an opacity, a width or a font takes the
@@ -1351,20 +1701,84 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         | ChartKind.Scatter -> true
         | _ -> false
 
+    // ── Temporal x-scale (Phase 882 — the SECOND non-band x-scale) ──
+    //
+    // DECLARED, never inferred. `ChartSpec.XScale = Temporal` is the author
+    // saying "this column is dates"; the language then GROUNDS that claim
+    // against the statically-known column type (FUARAN097) wherever it can.
+    // Inference was the alternative and is wrong twice over: the schema is
+    // statically known only for an embedded table with an EMPTY pipeline
+    // (FUARAN086's window), so an inferred axis would make the same tree draw a
+    // band axis or a temporal one depending on where its rows came from — a
+    // picture that depends on data PROVENANCE — and sniffing the cell strings
+    // for an ISO-8601 shape is the guess-dressed-as-a-rule §4e refused. Absent
+    // is `Category`, which is every pre-882 chart, byte-for-byte.
+    //
+    // Pie is excluded because it HAS no x axis: a temporal declaration there is
+    // dead intent the polar arm cannot honour, and neutralising it here keeps
+    // the pie geometry free of a scale it never reads.
+    let isTemporal =
+        (match spec.XScale with
+         | Some ChartXScale.Temporal -> true
+         | _ -> false)
+        && (match spec.Kind with
+            | ChartKind.Pie -> false
+            | _ -> true)
+
+    /// Each row's x as a DAY NUMBER, read off the same string projection the
+    /// band arms label with — which is exactly the canonical ISO-8601 form a
+    /// `Cell.Date` / `Cell.Timestamp` carries through the row bridge. So the
+    /// mark identity below keeps the ISO string while the geometry uses the
+    /// integer, and neither has to be derived from the other.
+    let dayValues: int[] =
+        if isTemporal then
+            categories |> Array.map Temporal.dayOf
+        else
+            [||]
+
+    /// The x axis is CONTINUOUS (Phase 903's split) on exactly two arms: the
+    /// Scatter arm's numeric x and a temporal x. Everything keyed off this —
+    /// tick marks AT the value, vertical gridlines, marks placed by value rather
+    /// than by band index — follows from that one property rather than from a
+    /// list of kinds.
+    let isContinuousX = isScatter || isTemporal
+
     let xValues =
-        if isScatter then
+        if isTemporal then
+            dayValues |> Array.map float
+        elif isScatter then
             rows |> List.map (fun r -> numericOf r spec.XField) |> List.toArray
         else
             [||]
 
-    let xNiceLo, xNiceHi, xStep, xTicks =
-        if isScatter then
-            if Array.isEmpty xValues then
-                niceDomain style.TargetTickCount 0.0 1.0
-            else
-                niceDomain style.TargetTickCount (Array.min xValues) (Array.max xValues)
+    /// The chosen calendar rung, on a temporal axis only. ONE value decides both
+    /// the tick positions and the label format, so the two cannot disagree about
+    /// the axis's granularity.
+    let temporalStep: Temporal.Step option =
+        if isTemporal then
+            let lo, hi = Temporal.domain dayValues
+            Some(Temporal.chooseStep (int style.TargetTickCount + 1) lo hi)
         else
-            0.0, 1.0, 1.0, []
+            None
+
+    let xNiceLo, xNiceHi, xStep, xTicks =
+        match temporalStep with
+        | Some step ->
+            // The domain is the data's own extent (rule 2) — deliberately NOT
+            // nice-d outward — and the ticks are the calendar-aligned instants
+            // inside it. `xStep` carries the rung's NOMINAL length, which is
+            // what the label format reads.
+            let lo, hi = Temporal.domain dayValues
+
+            float lo, float hi, Temporal.nominalDays step, (Temporal.ticks step lo hi |> List.map float)
+        | None ->
+            if isScatter then
+                if Array.isEmpty xValues then
+                    niceDomain style.TargetTickCount 0.0 1.0
+                else
+                    niceDomain style.TargetTickCount (Array.min xValues) (Array.max xValues)
+            else
+                0.0, 1.0, 1.0, []
 
     // The Scatter arm's x IS a value axis, so its ticks take the same canonical
     // formatter (Phase 876) — thousands separators + step-derived decimals.
@@ -1372,7 +1786,14 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // cannot be true of two different measures (a "height vs weight" scatter
     // does not have pounds on both axes), and there is no second axis-unit slot
     // to state an x display unit in until the axis-title phase lands.
-    let xTickText (v: float) : string = formatValue None 1.0 false xStep v
+    //
+    // A TEMPORAL tick takes the calendar label instead (Phase 882) — the same
+    // one-formatter-per-axis discipline over a different vocabulary: the number
+    // formatter has nothing true to say about a date.
+    let xTickText (v: float) : string =
+        match temporalStep with
+        | Some step -> Temporal.label step (int v)
+        | None -> formatValue None 1.0 false xStep v
 
     // ── Text-metric layout (Phase 879) ───────────────────────────────────────
     //
@@ -1522,7 +1943,19 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         | None when fallbackField = "" -> None
         | None -> Some(TextSource.Literal(capitalise fallbackField))
 
-    let xTitle = axisTitleOf spec.XTitle spec.XField
+    /// Phase 882 wires §4e's date-axis rule: a SELF-EVIDENT DATE AXIS SUPPRESSES
+    /// ITS DEFAULT TITLE — an axis reading "Jan Feb Mar" does not need the word
+    /// "Date" beneath it. Two boundaries, both stated when the rule was written
+    /// down and both kept: it applies to the FALLBACK only (an explicit `XTitle`
+    /// is the author overriding the default and always draws), and it suppresses
+    /// the TITLE, never the axis. The declaration is what made it wirable —
+    /// nothing before 882 could tell a date column from a string one, which is
+    /// why 878 recorded the rule instead of shipping it.
+    let xTitle =
+        if isTemporal && Option.isNone spec.XTitle then
+            None
+        else
+            axisTitleOf spec.XTitle spec.XField
 
     // The y fallback is the capitalised FIRST y-field. It is the honest answer
     // to "what is on this axis", where the retired `"Value"` literal named
@@ -1601,16 +2034,60 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     /// category tick marks land here, where a label lands at `centreX`.
     let boundaryX (i: int) : float = r2 (plotX0 + bandW * float i)
 
-    // ── The category-label ANGLE LADDER (Phase 903, correcting Phase 879) ──
-    // Only the BAND arms label categories: Scatter labels numeric x ticks (short
-    // by construction, left horizontal) and Pie has no x axis at all. Both must
-    // therefore contribute NO drop, or their bottom margin — and with it the
+    // ── The x-axis-label ANGLE LADDER (Phase 903, correcting Phase 879) ──
+    // The BAND arms label categories; Pie has no x axis at all and Scatter
+    // labels numeric x ticks (short by construction, left horizontal). Both of
+    // those must contribute NO drop, or their bottom margin — and with it the
     // pie's centre — would move for a decision they never take.
     let drawsCategoryLabels =
         not isScatter
+        && not isTemporal
         && (match spec.Kind with
             | ChartKind.Pie -> false
             | _ -> true)
+
+    // Phase 882 — a TEMPORAL axis labels its TICKS, and the ladder applies to
+    // them: same three rungs, same footprint formula, measured against the TICK
+    // PITCH instead of the band pitch. A date label is not short by
+    // construction the way a numeric tick is (`15 Jan 26` against `150`), so
+    // leaving it always-flat would recreate exactly the overlap the ladder
+    // exists to resolve — and reusing the ladder rather than adding a second
+    // rule is what keeps one angle policy for the whole x axis.
+    let temporalTickTexts =
+        if isTemporal then
+            xTicks |> List.map xTickText |> List.toArray
+        else
+            [||]
+
+    /// Whether the x axis draws labels the ladder governs at all — the band
+    /// arms' categories or a temporal axis's ticks. Scatter and Pie: no.
+    let drawsXAxisLabels = drawsCategoryLabels || isTemporal
+
+    /// The pitch the ladder measures a label against: a band's width, or — on a
+    /// temporal axis — the SMALLEST pixel gap between consecutive ticks, since
+    /// calendar gaps are not uniform (28 to 31 days a month) and the tightest
+    /// pair is the one that has to fit. Computable here because it needs `plotW`
+    /// only, which the left margin has already fixed: the acyclicity Phase 879
+    /// established survives intact, with nothing reading the bottom margin the
+    /// ladder is about to decide.
+    let xLabelPitch =
+        if not isTemporal then
+            bandW
+        else
+            let span = xNiceHi - xNiceLo
+
+            match xTicks with
+            | []
+            | [ _ ] -> plotW
+            | ts ->
+                let minGap =
+                    List.zip (List.truncate (ts.Length - 1) ts) (List.tail ts)
+                    |> List.fold (fun acc (a, b) -> min acc (b - a)) span
+
+                plotW * minGap / span
+
+    /// The labels the ladder decides on, AS AUTHORED (see below).
+    let xLabelsAsAuthored = if isTemporal then temporalTickTexts else categories
 
     // A rotated label's footprint ALONG the axis is its width's horizontal
     // projection plus the line height's: `w·cos θ + h·sin θ`. At 0° that is the
@@ -1634,16 +2111,16 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // individually-correct each label's own angle would be.
     //
     // The decision is taken on the labels AS AUTHORED (Phase 879's rule, kept):
-    // `widestOf categories`, not `categoryTexts` — the truncation budget below
-    // is a function of the angle, so reading the truncated text here would be
-    // circular as well as wrong.
-    let widestCategory = widestOf categories
+    // `widestOf xLabelsAsAuthored`, not the truncated `xLabelTexts` — the
+    // truncation budget below is a function of the angle, so reading the
+    // truncated text here would be circular as well as wrong.
+    let widestXLabel = widestOf xLabelsAsAuthored
 
     let packsAt (deg: float) : bool =
-        alongAxisFootprint deg widestCategory <= bandW
+        alongAxisFootprint deg widestXLabel <= xLabelPitch
 
     let tiltDegrees =
-        if not drawsCategoryLabels || n = 0 || style.LabelTiltDegrees <= 0.0 then
+        if not drawsXAxisLabels || n = 0 || style.LabelTiltDegrees <= 0.0 then
             // `LabelTiltDegrees = 0` is FLAT-ALWAYS, not "the ladder with a
             // flat rung": a host that zeroed the tilt angle named the one
             // rotation the ladder is allowed to use, and escalating past that
@@ -1685,15 +2162,18 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     let categoryLabelText (c: string) : string =
         TextMetrics.truncateToWidth tickSize categoryTextBudget c
 
-    let categoryTexts =
-        if drawsCategoryLabels then
-            categories |> Array.map categoryLabelText
+    /// The x labels as DRAWN — the ladder's own labels, bounded by the drop
+    /// ceiling. Empty on the arms that draw none, so their bottom margin is
+    /// unmoved (Scatter's short numeric ticks are emitted separately, flat).
+    let xLabelTexts =
+        if drawsXAxisLabels then
+            xLabelsAsAuthored |> Array.map categoryLabelText
         else
             [||]
 
     let requiredBottom =
         style.CategoryLabelOffsetY
-        + sinTilt * widestOf categoryTexts
+        + sinTilt * widestOf xLabelTexts
         + style.AxisLabelPadding
         + lineHeight
         + style.AxisTitleBottomOffset
@@ -1712,8 +2192,14 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     let yScale (v: float) : float =
         r2 (plotY1 - (v - niceLo) / (niceHi - niceLo) * plotH)
 
-    let xScale (v: float) : float =
-        r2 (plotX0 + (v - xNiceLo) / (xNiceHi - xNiceLo) * plotW)
+    /// The x-scale before rounding. Split out by Phase 882 so the bar arms can
+    /// derive an UNROUNDED slot origin from it: rounding a centre and then
+    /// subtracting half a width would round twice, and the band arms' goldens
+    /// pin the single-rounding form.
+    let xScaleRaw (v: float) : float =
+        plotX0 + (v - xNiceLo) / (xNiceHi - xNiceLo) * plotW
+
+    let xScale (v: float) : float = r2 (xScaleRaw v)
 
     // ── Axes + gridlines ──
     let axisStyle = styleStrokeInk style style.AxisOpacity style.AxisStrokeWidth
@@ -1730,13 +2216,17 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             let y = yScale t
             Shape.Line(r2 plotX0, y, r2 plotX1, y, gridStyle))
 
-    // Vertical gridlines — the Scatter arm only (Phase 875). A linear x-scale
+    // Vertical gridlines — wherever the x axis is CONTINUOUS (Phase 875 for
+    // Scatter, extended to the temporal axis by Phase 882). A continuous scale
     // has readable x positions, so a reader traces a point back to an x value
     // the same way the horizontal grid lets them trace a y value. A BAND x-axis
     // has no such positions to trace (a category is a label, not a magnitude),
-    // so a vertical rule there would be decoration.
+    // so a vertical rule there would be decoration. Stating it as "continuous"
+    // rather than "Scatter" is what let the temporal axis inherit the behaviour
+    // instead of re-deciding it — including on a temporal BAR chart, where the
+    // rules read as date guides through the bars rather than as chrome.
     let xGridlines =
-        if isScatter then
+        if isContinuousX then
             xTicks
             |> List.map (fun t -> Shape.Line(xScale t, r2 plotY0, xScale t, r2 plotY1, gridStyle))
         else
@@ -1765,7 +2255,9 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // the category-axis convention every spreadsheet draws, and the honest one:
     // a category has an extent, not a position, and a mark under its centre
     // claims a coordinate the axis does not have. Phase 882's temporal axis
-    // inherits the continuous side of this split when it lands.
+    // TAKES the continuous side of this split: a date IS a position, so its
+    // marks sit at their dates and its labels are centred ON them — there are no
+    // boundaries to delimit, because there are no bands.
     let tickMarks =
         if style.TickMarkLength <= 0.0 then
             []
@@ -1780,7 +2272,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                 Shape.Line(x, r2 plotY1, x, r2 (plotY1 + style.TickMarkLength), axisStyle)
 
             let xMarks =
-                if isScatter then xTicks |> List.map (xScale >> xAt)
+                if isContinuousX then xTicks |> List.map (xScale >> xAt)
                 elif n = 0 then []
                 else [ for i in 0..n -> xAt (boundaryX i) ]
 
@@ -1819,12 +2311,24 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // degenerates to reading bottom-up — the y-axis title's convention. Scatter's numeric ticks stay horizontal + `Middle`: they are
     // short by construction, and centring them on their tick is the correct
     // reading of a value axis.
+    //
+    // Phase 882 — a TEMPORAL axis's labels sit at their TICKS (not at a band
+    // centre, because there are no bands) and take the ladder's rung and anchor
+    // exactly as the band arms do. So one expression covers "centred at the
+    // position the label names" on both, and the only thing that differs is
+    // which positions those are.
     let tiltedLabelStyle =
         let s =
             textStyle style (Some style.LabelOpacity) TextAnchor.End tickSize Emphasis.Normal
 
         { s with
             Rotation = Some(r2 -tiltDegrees) }
+
+    let xLabelStyle =
+        if tiltDegrees > 0.0 then
+            tiltedLabelStyle
+        else
+            textStyle style (Some style.LabelOpacity) TextAnchor.Middle tickSize Emphasis.Normal
 
     let xLabels =
         if isScatter then
@@ -1836,18 +2340,14 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                     TextSource.Literal(xTickText t),
                     textStyle style (Some style.LabelOpacity) TextAnchor.Middle tickSize Emphasis.Normal
                 ))
+        elif isTemporal then
+            List.zip xTicks (List.ofArray xLabelTexts)
+            |> List.map (fun (t, text) ->
+                Shape.Label(xScale t, r2 (plotY1 + style.CategoryLabelOffsetY), TextSource.Literal text, xLabelStyle))
         else
-            categoryTexts
+            xLabelTexts
             |> Array.mapi (fun i c ->
-                Shape.Label(
-                    centreX i,
-                    r2 (plotY1 + style.CategoryLabelOffsetY),
-                    TextSource.Literal c,
-                    (if tiltDegrees > 0.0 then
-                         tiltedLabelStyle
-                     else
-                         textStyle style (Some style.LabelOpacity) TextAnchor.Middle tickSize Emphasis.Normal)
-                ))
+                Shape.Label(centreX i, r2 (plotY1 + style.CategoryLabelOffsetY), TextSource.Literal c, xLabelStyle))
             |> Array.toList
 
     // ── Axis titles + the display-unit slot (Phase 878) ──
@@ -1944,6 +2444,35 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
     let axisTitles = xTitleShapes @ yTitleShapes @ unitSlotShapes
 
+    // ── Where a datum sits along x (Phase 882) ───────────────────────────────
+    //
+    // ONE pair of expressions the series geometry reads, and the band-vs-value
+    // difference lives here and nowhere else. On a band axis a datum sits at its
+    // band's INDEX; on a temporal axis it sits at its DATE — the same datum, a
+    // different question asked of the axis.
+    //
+    // The temporal slot keeps `bandW` as its PITCH — `plotW / n`, the average
+    // spacing — so a bar's thickness is decided by the same expression on both
+    // axes and a monthly bar chart looks like a bar chart rather than like a
+    // sequence of hairlines. With irregular dates two slots can overlap; that is
+    // honest, because the bars are at their true positions and the overlap is
+    // the data's, not the layout's. `BarMaxThickness` already bounds the other
+    // direction.
+
+    /// The x a datum's mark centres on.
+    let xCentre (i: int) : float =
+        if isTemporal then xScale xValues.[i] else centreX i
+
+    /// The UNROUNDED left edge of the slot a datum's bar geometry lays out in.
+    /// Unrounded because the bar arms round once, at the end — the band form is
+    /// `plotX0 + bandW·i` character-for-character, so every band golden is
+    /// unmoved.
+    let slotOriginX (i: int) : float =
+        if isTemporal then
+            xScaleRaw xValues.[i] - bandW / 2.0
+        else
+            plotX0 + bandW * float i
+
     // ── Bar geometry ──
     //
     // Hoisted out of the two Bar arms (Phase 881) because the cap labels have to
@@ -1958,7 +2487,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         r2 (min (barGroupW * style.BarWidthFraction) style.BarMaxThickness)
 
     let stackedBarX (i: int) : float =
-        r2 (plotX0 + bandW * float i + (bandW - stackedBarW) / 2.0)
+        r2 (slotOriginX i + (bandW - stackedBarW) / 2.0)
 
     /// A grouped bar's own sub-slot within the band, and its capped thickness.
     let groupedSubW = if m > 0 then barGroupW / float m else barGroupW
@@ -1969,8 +2498,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     let groupedBarX (i: int) (j: int) : float =
         // Centre the (possibly capped) bar in its own sub-slot, so a cap takes
         // air off BOTH sides and the group stays symmetric about the band centre.
-        let slotX =
-            plotX0 + bandW * float i + (bandW - barGroupW) / 2.0 + float j * groupedSubW
+        let slotX = slotOriginX i + (bandW - barGroupW) / 2.0 + float j * groupedSubW
 
         r2 (slotX + (groupedSubW - groupedBarW) / 2.0)
 
@@ -2037,9 +2565,9 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                       let colour = colourFor style j
                       let yf = yFields.[j]
 
-                      let upper = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale cums.[i].[j + 1]) ]
+                      let upper = [ for i in 0 .. n - 1 -> dp (xCentre i) (yScale cums.[i].[j + 1]) ]
 
-                      let lower = [ for i in n - 1 .. -1 .. 0 -> dp (centreX i) (yScale cums.[i].[j]) ]
+                      let lower = [ for i in n - 1 .. -1 .. 0 -> dp (xCentre i) (yScale cums.[i].[j]) ]
 
                       yield
                           Shape.Polygon(
@@ -2062,9 +2590,9 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                       let values = series.[j]
                       let yf = yFields.[j]
 
-                      let points = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale values.[i]) ]
+                      let points = [ for i in 0 .. n - 1 -> dp (xCentre i) (yScale values.[i]) ]
 
-                      let band = (dp (centreX 0) baseY :: points) @ [ dp (centreX (n - 1)) baseY ]
+                      let band = (dp (xCentre 0) baseY :: points) @ [ dp (xCentre (n - 1)) baseY ]
 
                       yield Shape.Polygon(band, styleFillOpacity colour style.AreaFillOpacity |> withSeriesMark yf)
                       yield Shape.Polyline(points, styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf) ]
@@ -2073,7 +2601,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                   let colour = colourFor style j
                   let values = series.[j]
 
-                  let points = [ for i in 0 .. n - 1 -> dp (centreX i) (yScale values.[i]) ]
+                  let points = [ for i in 0 .. n - 1 -> dp (xCentre i) (yScale values.[i]) ]
 
                   Shape.Polyline(points, styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yFields.[j]) ]
         | ChartKind.Scatter ->
@@ -2208,7 +2736,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
         if n = 0 then
             []
         else
-            let px = centreX (n - 1)
+            let px = xCentre (n - 1)
             let labelX = px + style.DataLabelEndOffsetX
             // The width budget runs to the PLOT's right edge, not the canvas's:
             // beyond it lies the legend column (or the right margin), and a

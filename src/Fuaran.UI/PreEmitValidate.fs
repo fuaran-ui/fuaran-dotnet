@@ -290,6 +290,22 @@ type PreEmitDefect =
     /// declared itself editable the author has said something specific that
     /// cannot happen, so it is an Error rather than an advisory.
     | UneditableColumnDeclared of nodeId: string * columnLabel: string * reason: EditDefect
+    /// **FUARAN097 (Error)**. A chart declares a TEMPORAL x-axis
+    /// (`ChartSpec.XScale = Temporal`, Phase 882) over an x column whose
+    /// statically-known type is not a date (`date` / `timestamp`) — the
+    /// declaration cannot be honoured, so every row's x would read as the epoch
+    /// and the chart would draw every point stacked on one date.
+    ///
+    /// The rule exists because the temporal axis is DECLARED rather than
+    /// inferred, and a declaration the data contradicts is exactly what a
+    /// grounded validator is for: the alternative postures were silent coercion
+    /// (a flat wrong picture) and inference from the cell strings (a guess
+    /// dressed as a rule). Fires only where the schema is statically known —
+    /// FUARAN086's window, an `Embedded` table with an EMPTY pipeline — so an
+    /// unknowable source passes ungrounded per the fuaran-core#90 rule: refuse
+    /// only what is PROVABLY wrong. Carries the chart node's id, the x field,
+    /// and the offending column-type tag.
+    | ChartTemporalXNotDate of nodeId: string * field: string * columnType: string
 
 /// Why an editable column has nowhere to commit (FUARAN095, Phase 863).
 and [<RequireQualifiedAccess>] EditDefect =
@@ -538,6 +554,14 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
                  "grid '%s' column '%s' is editable but no destination is reachable — declare editStateKey, or source the grid from a direct {\"$type\":\"State\",\"key\":…} binding so the edit has somewhere to commit"
                  nodeId
                  columnLabel)
+    | PreEmitDefect.ChartTemporalXNotDate(nodeId, field, columnType) ->
+        "FUARAN097",
+        DefectSeverity.Error,
+        sprintf
+            "chart '%s' declares a temporal x-axis over field '%s' of type '%s' — a date axis needs a date column, and every row's x would read as 1970-01-01; give the column type 'date' (canonical ISO-8601 YYYY-MM-DD cells), or drop xScale to plot the values as categories (Phase 882)"
+            nodeId
+            field
+            columnType
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -916,11 +940,37 @@ let private validateCore
                      | ColumnType.BoolType -> true
                      | _ -> false
 
+                 // FUARAN097 (Phase 882) — a temporal x-axis is a DECLARATION,
+                 // and this is where the language grounds it. `date` and
+                 // `timestamp` are both honoured (a timestamp's time-of-day is
+                 // discarded by the lowering, which is a documented narrowing,
+                 // not a mismatch); anything else cannot parse as a date, so
+                 // every row's x would read as the epoch.
+                 let temporalX =
+                     match spec.XScale with
+                     | Some ChartXScale.Temporal -> true
+                     | _ -> false
+
+                 let dated (t: ColumnType) : bool =
+                     match t with
+                     | ColumnType.DateType
+                     | ColumnType.TimestampType -> true
+                     | _ -> false
+
                  (match colType spec.XField with
                   | None -> defects.Add(PreEmitDefect.ChartFieldUngrounded(nodeIdStr, spec.XField))
                   | Some t ->
+                      if temporalX && not (dated t) then
+                          defects.Add(PreEmitDefect.ChartTemporalXNotDate(nodeIdStr, spec.XField, ColumnType.tag t))
+
+                      // FUARAN087's x arm is NARROWED by a temporal declaration:
+                      // a temporal Scatter reads its x as dates, so a date
+                      // column there is correct rather than "not numeric", and
+                      // FUARAN097 above is the rule that governs it. Without the
+                      // narrowing a correctly-authored time-series scatter would
+                      // raise a mismatch about the very column it declared.
                       match spec.Kind with
-                      | ChartKind.Scatter when not (numeric t) ->
+                      | ChartKind.Scatter when not (numeric t) && not temporalX ->
                           defects.Add(PreEmitDefect.ChartFieldTypeMismatch(nodeIdStr, spec.XField, ColumnType.tag t))
                       | _ -> ())
 

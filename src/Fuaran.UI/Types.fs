@@ -991,6 +991,13 @@ and ChartLegendPosition = Generated.ChartLegendPosition
 /// API can ask for a number on every interior point.
 and ChartDataLabels = Generated.ChartDataLabels
 
+/// Phase 882 — what a chart's x column MEANS: discrete `Category` bands (the
+/// default, and what an absent field means) or `Temporal` dates on a continuous
+/// day-scale. A wire vocabulary (`ChartSpec.XScale`) that is DECLARED rather
+/// than inferred, so the pre-emit validator can ground it against the column
+/// type (FUARAN097) instead of the lowering guessing from cell strings.
+and ChartXScale = Generated.ChartXScale
+
 /// Author-facing carrier for a **static read-only table** (Phase 393). No longer a
 /// `VisKind` case of its own — `Fuaran.table` lowers it into the read-only mode of
 /// `NodeKind.DataGrid` (`GridSpec.StaticRows`), so one tabular kind owns both the

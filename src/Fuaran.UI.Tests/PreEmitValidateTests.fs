@@ -733,6 +733,160 @@ let tests =
               | Ok() -> failtest "Expected ChartStackedMeaningless"
           }
 
+          // ── Phase 882 — the temporal axis's grounding rule (FUARAN097) ──
+          //
+          // The temporal axis is DECLARED, so the declaration is groundable —
+          // which is the whole reason it is a declaration rather than an
+          // inference. These are the accept/reject pair the rule turns on.
+
+          test "FUARAN097: a temporal x-axis over a non-date column is REFUSED, not coerced" {
+              let table: Fuaran.Core.Table =
+                  { Schema =
+                      [ "quarter", Fuaran.Core.ColumnType.StringType
+                        "revenue", Fuaran.Core.ColumnType.FloatType ]
+                    Columns = [] }
+
+              let bad: Node<Msg> =
+                  Fuaran.chart
+                      "cht"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Line
+                          Source =
+                              Binding.Transform(TransformSource.Data(Fuaran.Core.DataSource.Embedded table), [], None)
+                          XField = "quarter" // a STRING column under a date axis
+                          YFields = [ "revenue" ]
+                          XScale = Some ChartXScale.Temporal }
+
+              match PreEmitValidate.validate bad with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.ChartTemporalXNotDate("cht", "quarter", "string"))
+                      "a string column under a temporal axis is refused"
+
+                  let code, severity, message =
+                      describe (PreEmitDefect.ChartTemporalXNotDate("cht", "quarter", "string"))
+
+                  Expect.equal code "FUARAN097" "stable code"
+
+                  Expect.equal
+                      severity
+                      DefectSeverity.Error
+                      "an Error: silent coercion would draw every point on 1970-01-01"
+
+                  Expect.stringContains message "temporal x-axis" "the message names what was declared"
+                  Expect.stringContains message "drop xScale" "and states the two ways out"
+              | Ok() -> failtest "Expected ChartTemporalXNotDate"
+
+              // A NUMERIC column is refused for the same reason — the rule is
+              // "not a date", not "not a string": an int column of 20260115 is
+              // exactly the plausible near-miss a coercion would have swallowed.
+              let numericX: Node<Msg> =
+                  Fuaran.chart
+                      "cht2"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Line
+                          Source =
+                              Binding.Transform(
+                                  TransformSource.Data(
+                                      Fuaran.Core.DataSource.Embedded
+                                          { Schema =
+                                              [ "stamp", Fuaran.Core.ColumnType.IntType
+                                                "revenue", Fuaran.Core.ColumnType.FloatType ]
+                                            Columns = [] }
+                                  ),
+                                  [],
+                                  None
+                              )
+                          XField = "stamp"
+                          YFields = [ "revenue" ]
+                          XScale = Some ChartXScale.Temporal }
+
+              match PreEmitValidate.validate numericX with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.ChartTemporalXNotDate("cht2", "stamp", "int"))
+                      "an int column is not a date either"
+              | Ok() -> failtest "Expected ChartTemporalXNotDate for the int column"
+          }
+
+          test "FUARAN097 accepts date and timestamp columns, and stays silent where the schema is unknowable" {
+              let dated (t: Fuaran.Core.ColumnType) : Node<Msg> =
+                  Fuaran.chart
+                      "cht"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Line
+                          Source =
+                              Binding.Transform(
+                                  TransformSource.Data(
+                                      Fuaran.Core.DataSource.Embedded
+                                          { Schema = [ "day", t; "sessions", Fuaran.Core.ColumnType.FloatType ]
+                                            Columns = [] }
+                                  ),
+                                  [],
+                                  None
+                              )
+                          XField = "day"
+                          YFields = [ "sessions" ]
+                          XScale = Some ChartXScale.Temporal }
+
+              // BOTH date-ish types pass: a timestamp's time-of-day is discarded
+              // by the lowering, which is a documented narrowing rather than a
+              // type mismatch.
+              for t in [ Fuaran.Core.ColumnType.DateType; Fuaran.Core.ColumnType.TimestampType ] do
+                  match PreEmitValidate.validate (dated t) with
+                  | Ok() -> ()
+                  | Error defects -> failtestf "Expected Ok for a %A x column, got: %A" t defects
+
+              // A TEMPORAL SCATTER over a date column must not trip FUARAN087
+              // either: its x is read as dates, so "not numeric" is the wrong
+              // question. Without that narrowing a correctly-authored
+              // time-series scatter would be refused for the column it declared.
+              let temporalScatter: Node<Msg> =
+                  Fuaran.chart
+                      "sct"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Scatter
+                          Source =
+                              Binding.Transform(
+                                  TransformSource.Data(
+                                      Fuaran.Core.DataSource.Embedded
+                                          { Schema =
+                                              [ "day", Fuaran.Core.ColumnType.DateType
+                                                "latency", Fuaran.Core.ColumnType.FloatType ]
+                                            Columns = [] }
+                                  ),
+                                  [],
+                                  None
+                              )
+                          XField = "day"
+                          YFields = [ "latency" ]
+                          XScale = Some ChartXScale.Temporal }
+
+              match PreEmitValidate.validate temporalScatter with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok for a temporal scatter, got: %A" defects
+
+              // UNKNOWABLE SCHEMA: a host `Static` row source carries no schema,
+              // so the declaration passes ungrounded — the fuaran-core#90 rule,
+              // refuse only what is PROVABLY wrong. A validator that guessed
+              // here would refuse every legitimate bound date axis.
+              let ungrounded: Node<Msg> =
+                  Fuaran.chart
+                      "cht3"
+                      { Defaults.chart<Msg> with
+                          Kind = ChartKind.Line
+                          Source = Binding.Static(Some Seq.empty)
+                          XField = "day"
+                          YFields = [ "sessions" ]
+                          XScale = Some ChartXScale.Temporal }
+
+              match PreEmitValidate.validate ungrounded with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok for an unknowable source, got: %A" defects
+          }
+
           // ── Phase 781: the walk is depth-bounded ────────────────────────────
           //
           // This walk was plainly recursive with no counter. Measured, it dies on

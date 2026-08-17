@@ -250,7 +250,7 @@ InputKind =
 | Select { label:TextSource; source:Binding; value:Binding; disabled?:Binding; multiple?:bool; placeholder?:TextSource; values?:Binding }
 VisKind =
 | DataGrid { columns:ColumnErased[]; source:Binding; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; pageSize?:int; pageStateKey?:str; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool } }
-| Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding; xField:str; yFields:str[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xTitle?:TextSource; yTitle?:TextSource }
+| Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding; xField:str; yFields:str[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }
 | Map { centreLatitude:num; centreLongitude:num; source:Binding; zoom:int }
 TreeOp =
 | EditNode { newKind:NodeKind; target:str }
