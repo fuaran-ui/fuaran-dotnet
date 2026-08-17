@@ -242,7 +242,8 @@ let private bareDrawStyle: DrawStyle =
       Emphasis = None
       FontFamily = None
       MarkId = None
-      Rotation = None }
+      Rotation = None
+      Tip = None }
 
 let private styledDraw (fill: string) (stroke: string) : DrawStyle =
     { bareDrawStyle with
@@ -369,6 +370,96 @@ let drawingRotatedLabels: Node<obj> =
                   Shape.Label(100.0, 20.0, TextSource.Literal "Upright", labelTextStyle) ]
               Style = bareDrawStyle
               Title = Some(TextSource.Literal "Rotated axis labels")
+              Description = None }
+        ))
+        None
+
+let drawingTippedShapes: Node<obj> =
+    // Phase 883 — `DrawStyle.Tip`, the per-mark hover readout an emitter turns
+    // into an SVG `<title>` CHILD of the shape's own element. This fixture pins
+    // the field cross-host over the things that are easy to get subtly wrong:
+    //
+    //   * EVERY SHAPE, not just `Label`. Unlike the Phase 528.1 text cluster (and
+    //     unlike `Rotation`, which would move geometry off `Label`), a tip is
+    //     meaningful and inert on every shape — the marks a reader hovers are
+    //     bars, wedges and points. Rectangle / Circle / Curve / Polyline / Group
+    //     / Label all carry one here, so a host that wired the field into the
+    //     Label arm alone fails on the second shape rather than silently in some
+    //     later chart.
+    //   * A LITERAL AND A BOUND tip. The slot is a full `TextSource`, so the
+    //     canonical bare-string `Literal` form AND the tagged `Bound` envelope
+    //     both have to survive; a host that special-cased "tip is a string"
+    //     fails on the second.
+    //   * THE MIDDLE-DOT SEPARATOR (U+00B7) in the chart lowering's own
+    //     "Series · Category · value" shape — a non-ASCII character in a slot
+    //     every host escapes and re-encodes.
+    //   * HOSTILE TEXT. The tip is written into XML TEXT CONTENT and its source
+    //     is a category string straight off an untrusted data feed, so the
+    //     fixture carries a would-be script tag with all five escapable
+    //     characters (`& < > " '`). This is a CODEC fixture, so what it pins is
+    //     that the round-trip does not mangle those characters; the ESCAPING is
+    //     the emitter's obligation and is tested in each host's renderer suite.
+    //   * AN EXPLICITLY EMPTY tip. Present-and-empty is not the same wire shape
+    //     as ABSENT, and `if (tip)` / `if tip:` is the natural — and wrong — test
+    //     in the JavaScript and Python hosts. A host that omits it round-trips to
+    //     different bytes, exactly as an omitted explicit `rotation: 0` would.
+    //
+    // The untipped shape at the end keeps an omit-the-field shape in the same
+    // fixture, so a host that emits `"tip":null` fails here.
+    let tipped (t: string) : DrawStyle =
+        { bareDrawStyle with
+            Fill = Some(Binding.Static(Some "#3366cc"))
+            Tip = Some(TextSource.Literal t) }
+
+    node
+        "drawing-tipped-shapes"
+        (NodeKind.Drawing(
+            { ViewBox =
+                { MinX = 0.0
+                  MinY = 0.0
+                  Width = 200.0
+                  Height = 120.0 }
+              Shapes =
+                [ Shape.Rectangle(10.0, 40.0, 30.0, 60.0, None, tipped "revenue · Q1 2026 · 1,234,567.89")
+                  Shape.Circle(70.0, 60.0, 5.0, tipped "revenue · Q2 2026 · -0.5%")
+                  Shape.Curve(
+                      [ CurveCommand.MoveTo { X = 100.0; Y = 60.0 }
+                        CurveCommand.LineTo { X = 130.0; Y = 60.0 }
+                        CurveCommand.Close ],
+                      tipped "share · Other · £42.00"
+                  )
+                  Shape.Polyline(
+                      [ { X = 140.0; Y = 20.0 }; { X = 160.0; Y = 80.0 } ],
+                      { bareDrawStyle with
+                          Stroke = Some(Binding.Static(Some "#cc6633"))
+                          // A SERIES-level mark names the series and nothing
+                          // else: one element carries the whole line, so a
+                          // single `<title>` cannot honestly report one point.
+                          Tip = Some(TextSource.Literal "revenue") }
+                  )
+                  Shape.Group(
+                      [ Shape.Circle(170.0, 100.0, 3.0, bareDrawStyle) ],
+                      { bareDrawStyle with
+                          Tip = Some(TextSource.Bound(Binding.Static(Some "resolved at render time"))) }
+                  )
+                  Shape.Label(
+                      100.0,
+                      110.0,
+                      TextSource.Literal "Hover me",
+                      { labelTextStyle with
+                          Tip = Some(TextSource.Literal "<script>alert(\"xss\") & 'done'</script>") }
+                  )
+                  Shape.Ellipse(
+                      30.0,
+                      110.0,
+                      6.0,
+                      3.0,
+                      { bareDrawStyle with
+                          Tip = Some(TextSource.Literal "") }
+                  )
+                  Shape.Line(0.0, 0.0, 200.0, 0.0, bareDrawStyle) ]
+              Style = bareDrawStyle
+              Title = Some(TextSource.Literal "Tipped marks")
               Description = None }
         ))
         None
@@ -4008,6 +4099,8 @@ let allNodes: (string * Node<obj>) list =
       "Display/Drawing (all shapes + curve commands + styled bindings)", drawing
       "Display/Drawing (degenerate — empty)", drawingMinimal
       "Display/Drawing (Phase 877 — rotated Labels, incl. explicit 0 and 2-dp fraction)", drawingRotatedLabels
+      "Display/Drawing (Phase 883 — tipped shapes, incl. hostile text, Bound tip and explicit empty)",
+      drawingTippedShapes
       "Display/Sparkline", sparkline
       "Display/Skeleton", skeleton
       "Display/Callout", callout

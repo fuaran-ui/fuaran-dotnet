@@ -673,7 +673,11 @@ let private defs: (string * J) list =
             // Phase 642 — keyed mark identity, optional.
             "markId", str
             // Phase 877 — `Label` text rotation in degrees, optional.
-            "rotation", number ]
+            "rotation", number
+            // Phase 883 — the shape's hover readout, emitted as an SVG
+            // `<title>` child of the shape's own element; optional, and the one
+            // style field that applies to every shape rather than only `Label`.
+            "tip", ref "TextSource" ]
 
       "CurveCommand",
       union

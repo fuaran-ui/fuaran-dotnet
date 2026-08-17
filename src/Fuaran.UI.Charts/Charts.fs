@@ -1459,7 +1459,27 @@ let private baseStyle: DrawStyle =
       Emphasis = None
       FontFamily = None
       MarkId = None
-      Rotation = None }
+      Rotation = None
+      Tip = None }
+
+/// Phase 883 — the separator between the three parts of a hover readout. A
+/// middle dot with hair spaces of its own: it is not a character any series or
+/// category name is likely to contain (a hyphen, a slash and a comma all are),
+/// and it reads as a separator rather than as punctuation belonging to either
+/// side. Screen readers announce it as a pause, not as a word.
+[<Literal>]
+let private tipSeparator = " · "
+
+/// Phase 883 — stamp the hover readout onto a data-bearing shape's style. An
+/// EMPTY readout is dropped rather than encoded: an empty SVG `<title>`
+/// suppresses the native tooltip AND overrides the element's accessible name
+/// with nothing, which is worse than no title at all.
+let private withTip (text: string) (style: DrawStyle) : DrawStyle =
+    if text = "" then
+        style
+    else
+        { style with
+            Tip = Some(TextSource.Literal text) }
 
 /// Phase 642 — stamp a derivation-based mark identity onto a data-bearing
 /// shape's style: `series-field|category-key`, stable under row reorder and
@@ -1690,6 +1710,56 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     let yTickText (v: float) : string =
         formatValue valueFormat yDisplayUnit.Divisor yDisplayUnit.DropSymbol yStep v
         + yDisplayUnit.TickSuffix
+
+    // ── Hover readout (Phase 883) ────────────────────────────────────────────
+    //
+    // THE TIP IS WHERE FULL PRECISION LIVES. Phase 881 deferred label precision
+    // to here for a reason it wrote down: "a label more precise than its own
+    // axis is a chart disagreeing with itself". A printed data label therefore
+    // goes through `yTickText` — the axis's own formatter, the axis's step
+    // precision, the axis's display unit — and reads *roughly where*. The tip
+    // answers the different question, *what exactly is this*, so it takes the
+    // opposite three decisions, deliberately:
+    //
+    //   * UNSCALED by the display unit. An axis in millions scales once and
+    //     says so in its unit slot; a tooltip has no unit slot beside it, and
+    //     "1.2" with the "millions" three inches away is a number a reader can
+    //     misread. The tip prints the raw magnitude.
+    //   * THE DATUM'S OWN PRECISION, not the tick step's — the smallest number
+    //     of decimals that reproduces the value exactly (capped at 6, and
+    //     tolerant of float noise, so 0.1 + 0.2 reads "0.3" and not
+    //     "0.30000000000000004"). An author's EXPLICIT `Format.Number d` /
+    //     `Format.Percent d` still wins: a declared precision is a statement
+    //     about the data, not about the axis, so it holds in both places.
+    //   * THE CURRENCY SYMBOL IS KEPT. The ticks drop it because the axis-unit
+    //     label states it once; a tip stands alone and must say what it is.
+    //
+    // Everything else is the shared formatter (`formatValue`), so thousands
+    // grouping, the round-half-up rule, the `%` suffix and the sign placement
+    // are one implementation across ticks, labels and tips.
+    let tipValueText (v: float) : string = formatValue valueFormat 1.0 false v v
+
+    /// The readout for a PER-DATUM mark (a bar, a stack segment, a wedge, a
+    /// scatter point): "Series · Category · value". Both leading parts are
+    /// untrusted strings straight off the data feed — the renderer's XML escape
+    /// is what makes that safe, and it is audited (SANITIZATION.md).
+    ///
+    /// The series name is the FIELD name, matching the legend and `MarkId`
+    /// rather than the capitalised axis title: the legend is what a reader
+    /// cross-references a colour against, so the tip agrees with the legend.
+    let datumTip (seriesField: string) (categoryKey: string) (v: float) (style: DrawStyle) : DrawStyle =
+        withTip (seriesField + tipSeparator + categoryKey + tipSeparator + tipValueText v) style
+
+    /// The readout for a SERIES-LEVEL mark (a line, an area band or its edge).
+    /// THE TIP'S GRANULARITY FOLLOWS THE MARK'S IDENTITY GRANULARITY — Phase
+    /// 642 gives one `MarkId` to the whole polyline because one element IS the
+    /// whole series, and a single `<title>` on it cannot honestly name one
+    /// point's value: SVG resolves the tooltip per ELEMENT, so whichever value
+    /// was chosen would be reported for a hover anywhere along the line. The
+    /// series name is what that element actually is, so that is what it says.
+    /// Per-point readouts on a line need per-point elements, which is geometry
+    /// this phase does not add.
+    let seriesTip (seriesField: string) (style: DrawStyle) : DrawStyle = withTip seriesField style
 
     // ── Linear x-scale (Phase 636 — the Scatter arm's numeric x axis) ──
     // Scatter reads the x-field NUMERICALLY and plots on a linear x-domain (the
@@ -2545,7 +2615,16 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                           bw,
                           hgt,
                           None,
-                          styleFill (colourFor style j) |> withMark yFields.[j] categories.[i]
+                          // Phase 883 — a stack SEGMENT's tip carries its OWN
+                          // series value, never the running total. This is
+                          // where an interior segment finally gets a readout:
+                          // Phase 881 prints the stack TOTAL at the cap and
+                          // nothing else (an interior number is unreadable
+                          // against the segment above it) and pointed here for
+                          // the rest.
+                          styleFill (colourFor style j)
+                          |> withMark yFields.[j] categories.[i]
+                          |> datumTip yFields.[j] categories.[i] series.[j].[i]
                       ) ]
         | ChartKind.Bar ->
             let bw = groupedBarW
@@ -2562,7 +2641,16 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                       let top = min vy baseY
                       let hgt = r2 (abs (vy - baseY))
 
-                      Shape.Rectangle(bx, top, bw, hgt, None, styleFill colour |> withMark yFields.[j] categories.[i]) ]
+                      Shape.Rectangle(
+                          bx,
+                          top,
+                          bw,
+                          hgt,
+                          None,
+                          styleFill colour
+                          |> withMark yFields.[j] categories.[i]
+                          |> datumTip yFields.[j] categories.[i] v
+                      ) ]
         | ChartKind.Area when stacked ->
             // Cumulative bands, bottom band first (painter's order): band j fills
             // between boundary j (below) and boundary j+1 (above); its upper
@@ -2583,10 +2671,16 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                       yield
                           Shape.Polygon(
                               upper @ lower,
-                              styleFillOpacity colour style.AreaFillOpacity |> withSeriesMark yf
+                              styleFillOpacity colour style.AreaFillOpacity
+                              |> withSeriesMark yf
+                              |> seriesTip yf
                           )
 
-                      yield Shape.Polyline(upper, styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf) ]
+                      yield
+                          Shape.Polyline(
+                              upper,
+                              styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf |> seriesTip yf
+                          ) ]
         | ChartKind.Area ->
             // Overlaid baseline-closed bands in palette order (painter's order:
             // later series draw over earlier); the translucent fill keeps the
@@ -2605,8 +2699,19 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
                       let band = (dp (xCentre 0) baseY :: points) @ [ dp (xCentre (n - 1)) baseY ]
 
-                      yield Shape.Polygon(band, styleFillOpacity colour style.AreaFillOpacity |> withSeriesMark yf)
-                      yield Shape.Polyline(points, styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf) ]
+                      yield
+                          Shape.Polygon(
+                              band,
+                              styleFillOpacity colour style.AreaFillOpacity
+                              |> withSeriesMark yf
+                              |> seriesTip yf
+                          )
+
+                      yield
+                          Shape.Polyline(
+                              points,
+                              styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yf |> seriesTip yf
+                          ) ]
         | ChartKind.Line ->
             [ for j in 0 .. m - 1 do
                   let colour = colourFor style j
@@ -2614,7 +2719,12 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
                   let points = [ for i in 0 .. n - 1 -> dp (xCentre i) (yScale values.[i]) ]
 
-                  Shape.Polyline(points, styleStroke colour style.SeriesStrokeWidth |> withSeriesMark yFields.[j]) ]
+                  Shape.Polyline(
+                      points,
+                      styleStroke colour style.SeriesStrokeWidth
+                      |> withSeriesMark yFields.[j]
+                      |> seriesTip yFields.[j]
+                  ) ]
         | ChartKind.Scatter ->
             // Fixed-radius point marks per datum (Phase 636). A non-numeric
             // x/y cell reads 0.0 (`numericOf`'s posture, shared with the other
@@ -2629,7 +2739,14 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                           xScale xValues.[i],
                           yScale values.[i],
                           style.ScatterPointRadius,
-                          styleFill colour |> withMark yf (DrawingSvg.formatNum xValues.[i])
+                          styleFill colour
+                          |> withMark yf (DrawingSvg.formatNum xValues.[i])
+                          // The tip's middle part is the x cell as PROJECTED
+                          // (`categories.[i]`), not the mark id's canonical
+                          // numeric form: the id is for object constancy, the
+                          // tip is for a human, and on a temporal axis the
+                          // projection is the ISO date rather than a day count.
+                          |> datumTip yf categories.[i] values.[i]
                       ) ]
         | _ -> []
 
@@ -3003,7 +3120,17 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
 
                       if f > 0.0 then
                           let colour = colourFor style i
-                          let markStyle = styleFill colour |> withMark yf categories.[i]
+
+                          let markStyle =
+                              styleFill colour
+                              |> withMark yf categories.[i]
+                              // The wedge's own VALUE, not its share. The share
+                              // is already stated, once, in the legend entry
+                              // (`name (NN%)`); restating it here would make the
+                              // one number the pie does not otherwise print —
+                              // the magnitude behind the slice — the one number
+                              // still unreachable.
+                              |> datumTip yf categories.[i] pieValues.[i]
 
                           if f >= 1.0 - 1e-9 then
                               // A lone 100% category is a circle — there is no

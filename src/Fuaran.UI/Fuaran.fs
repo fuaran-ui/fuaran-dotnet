@@ -854,6 +854,32 @@ module drawStyle =
     /// Clear any rotation — the upright default. Encodes nothing (rule 4).
     let upright (style: DrawStyle) : DrawStyle = { style with Rotation = None }
 
+    /// Phase 883 — give a shape a hover-readable value: the renderer emits it
+    /// as an SVG `&lt;title&gt;` child of the shape's own element, which is both
+    /// the native browser tooltip and the element's accessible name. No script,
+    /// so it works in a static SSR page and under a screen reader alike.
+    ///
+    /// Applies to EVERY shape, not just `Label` — a tip is for the marks a
+    /// reader hovers (a bar, a wedge, a point). An EMPTY tip is dropped rather
+    /// than encoded: an empty `&lt;title&gt;` suppresses the tooltip AND
+    /// overrides the accessible name with nothing, which is strictly worse than
+    /// having no title at all.
+    ///
+    ///   Defaults.drawStyle |> drawStyle.tip "Revenue · Q1 · 1,234"
+    let tip (text: string) (style: DrawStyle) : DrawStyle =
+        if System.String.IsNullOrEmpty text then
+            { style with Tip = None }
+        else
+            { style with
+                Tip = Some(TextSource.Literal text) }
+
+    /// The `TextSource` form of `tip`, for a bound or i18n readout.
+    let tipFrom (text: TextSource) (style: DrawStyle) : DrawStyle = { style with Tip = Some text }
+
+    /// Clear any tip — the untipped default. Encodes nothing (rule 4), so the
+    /// shape keeps its self-closing element.
+    let untipped (style: DrawStyle) : DrawStyle = { style with Tip = None }
+
 // ─── Components — the `Fuaran.X` author surface ──────────────────────────────
 
 module Fuaran =

@@ -22,7 +22,8 @@ let private noStyle: DrawStyle =
       Emphasis = None
       FontFamily = None
       MarkId = None
-      Rotation = None }
+      Rotation = None
+      Tip = None }
 
 let private textOf (t: TextSource) : string =
     match t with
@@ -203,6 +204,171 @@ let drawingSvgTests =
                   )
 
               Expect.isFalse (contains "transform=" svg) "rotation ignored on non-text shapes"
+          }
+
+          test "Tip emits a <title> child on EVERY shape kind (Phase 883)" {
+              let tipped t =
+                  { noStyle with
+                      Tip = Some(TextSource.Literal t) }
+
+              // A tipped shape can no longer self-close — `<title>` is a CHILD.
+              // Each arm must name its own closing tag, and getting that wrong
+              // produces markup that still parses somewhere (a browser recovers
+              // from a mismatched close), so pin every one by exact bytes.
+              let svg =
+                  render (
+                      drawing
+                          [ Shape.Rectangle(0.0, 0.0, 10.0, 10.0, Option.None, tipped "rect")
+                            Shape.Line(0.0, 0.0, 1.0, 1.0, tipped "line")
+                            Shape.Polyline([ { X = 0.0; Y = 0.0 } ], tipped "polyline")
+                            Shape.Polygon([ { X = 0.0; Y = 0.0 } ], tipped "polygon")
+                            Shape.Curve([ CurveCommand.Close ], tipped "curve")
+                            Shape.Circle(5.0, 5.0, 2.0, tipped "circle")
+                            Shape.Ellipse(5.0, 5.0, 3.0, 2.0, tipped "ellipse") ]
+                          None
+                  )
+
+              Expect.isTrue
+                  (contains
+                      "<rect class=\"fuaran-drawing-rect\" x=\"0\" y=\"0\" width=\"10\" height=\"10\"><title>rect</title></rect>"
+                      svg)
+                  "rect"
+
+              Expect.isTrue
+                  (contains
+                      "<line class=\"fuaran-drawing-line\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><title>line</title></line>"
+                      svg)
+                  "line"
+
+              Expect.isTrue
+                  (contains
+                      "<polyline class=\"fuaran-drawing-polyline\" points=\"0,0\" fill=\"none\"><title>polyline</title></polyline>"
+                      svg)
+                  "polyline"
+
+              Expect.isTrue
+                  (contains
+                      "<polygon class=\"fuaran-drawing-polygon\" points=\"0,0\"><title>polygon</title></polygon>"
+                      svg)
+                  "polygon"
+
+              Expect.isTrue
+                  (contains "<path class=\"fuaran-drawing-curve\" d=\"Z\" fill=\"none\"><title>curve</title></path>" svg)
+                  "curve"
+
+              Expect.isTrue
+                  (contains
+                      "<circle class=\"fuaran-drawing-circle\" cx=\"5\" cy=\"5\" r=\"2\"><title>circle</title></circle>"
+                      svg)
+                  "circle"
+
+              Expect.isTrue
+                  (contains
+                      "<ellipse class=\"fuaran-drawing-ellipse\" cx=\"5\" cy=\"5\" rx=\"3\" ry=\"2\"><title>ellipse</title></ellipse>"
+                      svg)
+                  "ellipse"
+
+              // A `<title>` must be the FIRST child to be the accessible name —
+              // on a Group it precedes the nested shapes, on a Label it precedes
+              // the visible run.
+              let container =
+                  render (
+                      drawing
+                          [ Shape.Group([ Shape.Circle(5.0, 5.0, 2.0, noStyle) ], tipped "group")
+                            Shape.Label(1.0, 2.0, TextSource.Literal "visible", tipped "label") ]
+                          None
+                  )
+
+              Expect.isTrue
+                  (contains
+                      "<g class=\"fuaran-drawing-group\"><title>group</title><circle class=\"fuaran-drawing-circle\" cx=\"5\" cy=\"5\" r=\"2\"/></g>"
+                      container)
+                  "group title precedes the nested shapes"
+
+              Expect.isTrue
+                  (contains
+                      "<text class=\"fuaran-drawing-label\" x=\"1\" y=\"2\"><title>label</title>visible</text>"
+                      container)
+                  "label title precedes the visible run"
+          }
+
+          test "an untipped drawing is byte-unchanged — shapes still self-close (Phase 883)" {
+              // The whole additive guarantee: `Tip = None` must leave the pre-883
+              // bytes alone, self-closing tags included.
+              let svg =
+                  render (
+                      drawing
+                          [ Shape.Rectangle(0.0, 0.0, 10.0, 10.0, Option.None, noStyle)
+                            Shape.Circle(5.0, 5.0, 2.0, noStyle) ]
+                          None
+                  )
+
+              Expect.equal
+                  svg
+                  ("<svg class=\"fuaran-drawing\" role=\"img\" viewBox=\"0 0 200 100\">"
+                   + "<rect class=\"fuaran-drawing-rect\" x=\"0\" y=\"0\" width=\"10\" height=\"10\"/>"
+                   + "<circle class=\"fuaran-drawing-circle\" cx=\"5\" cy=\"5\" r=\"2\"/>"
+                   + "</svg>")
+                  "no tip ⇒ byte-identical self-closing output"
+
+              Expect.isFalse (contains "<title>" svg) "no tip ⇒ no title element anywhere"
+          }
+
+          test "Tip text is XML-escaped — the untrusted-category defence (Phase 883)" {
+              // The chart lowering builds a tip out of series + category strings
+              // taken straight off a data feed, and the builder emits RAW markup
+              // (it rides `dangerouslySetInnerHTML`), so this escape is the whole
+              // defence. All five escapable characters, in one string.
+              let hostile = "<script>alert(\"x\") & 'y'</script>"
+
+              let svg =
+                  render (
+                      drawing
+                          [ Shape.Rectangle(
+                                0.0,
+                                0.0,
+                                1.0,
+                                1.0,
+                                Option.None,
+                                { noStyle with
+                                    Tip = Some(TextSource.Literal hostile) }
+                            ) ]
+                          None
+                  )
+
+              Expect.isTrue
+                  (contains "<title>&lt;script&gt;alert(&quot;x&quot;) &amp; &#39;y&#39;&lt;/script&gt;</title>" svg)
+                  "hostile tip text is fully entity-escaped"
+
+              Expect.isFalse (contains "<script>" svg) "no live script tag survives"
+          }
+
+          test "an explicitly EMPTY tip still emits its title element (Phase 883)" {
+              // Present-and-empty is a distinct wire shape from absent, and the
+              // emitter must not re-introduce the conflation the codec avoids:
+              // an omit-when-falsy renderer would make two different trees emit
+              // the same bytes. (The chart lowering never AUTHORS an empty tip —
+              // `withTip` drops it, because an empty `<title>` suppresses the
+              // tooltip and blanks the accessible name — but a decoded tree can
+              // carry one and the renderer must be faithful to it.)
+              let svg =
+                  render (
+                      drawing
+                          [ Shape.Circle(
+                                1.0,
+                                1.0,
+                                1.0,
+                                { noStyle with
+                                    Tip = Some(TextSource.Literal "") }
+                            ) ]
+                          None
+                  )
+
+              Expect.isTrue
+                  (contains
+                      "<circle class=\"fuaran-drawing-circle\" cx=\"1\" cy=\"1\" r=\"1\"><title></title></circle>"
+                      svg)
+                  "explicit empty tip still emits the element"
           }
 
           test "Label text is XML-escaped" {

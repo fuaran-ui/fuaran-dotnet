@@ -188,7 +188,8 @@ public static partial class Fuaran
                 // Generated DrawStyle declaration order: Emphasis, Fill, FontFamily, FontSize,
                 // MarkId (Phase 642 — inherited default: none), Opacity, Rotation (Phase 877 —
                 // Label text rotation in degrees; inherited default: upright), Stroke,
-                // StrokeWidth, TextAnchor.
+                // StrokeWidth, TextAnchor, Tip (Phase 883 — the hover readout emitted as an SVG
+                // <title> child; inherited default: untipped).
                 new FsGen.DrawStyle(
                     Fs.None<FsGen.Emphasis>(),
                     Fs.None<global::Fuaran.UI.Generated.Binding<string>>(),
@@ -199,7 +200,8 @@ public static partial class Fuaran
                     Fs.None<double>(),
                     Fs.None<global::Fuaran.UI.Generated.Binding<string>>(),
                     Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
-                    Fs.None<FsGen.TextAnchor>()),
+                    Fs.None<FsGen.TextAnchor>(),
+                    Fs.None<FsGen.TextSource>()),
                 options.Title is { } t ? Fs.Some(t.Inner) : Fs.None<FsGen.TextSource>(),
                 // Generated ViewBox declares (Height, MinX, MinY, Width) — ctor is declaration order.
                 new FsGen.ViewBox(options.Height, options.MinX, options.MinY, options.Width))));

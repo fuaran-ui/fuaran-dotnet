@@ -841,6 +841,15 @@ and TextAnchor = Generated.TextAnchor
 /// rounding; the wire value is taken as-authored, so no host re-rounds on
 /// decode. Bindings (colour) are the one place a `Drawing` stays reactive —
 /// geometry + text metrics are static.
+/// `Tip` (Phase 883) is the shape's hover-readable text, emitted by the
+/// renderer as an SVG `&lt;title&gt;` CHILD of the shape's own element — the
+/// native browser tooltip and the element's accessible name, in one field and
+/// with no script. Unlike the text cluster above it applies to EVERY shape (a
+/// bar, a wedge, a point — the marks a reader hovers), which is why it is the
+/// one style field the emitter honours off `Label`. `DrawingSpec.Title` names
+/// the whole picture; `Tip` names one mark inside it. Omitted from the wire
+/// when `None` (rule 4), so a drawing that carries no tips is byte-unchanged
+/// and every shape keeps its self-closing element.
 and DrawStyle = Generated.DrawStyle
 /// §4b — the closed, typed vector-graphics shape vocabulary for
 /// `NodeKind.Drawing` (Phase 524). Every case is wire-survivable and

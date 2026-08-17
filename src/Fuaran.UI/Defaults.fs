@@ -248,7 +248,8 @@ let drawStyle: DrawStyle =
       Emphasis = Option.None
       FontFamily = Option.None
       MarkId = Option.None
-      Rotation = Option.None }
+      Rotation = Option.None
+      Tip = Option.None }
 
 /// An empty drawing over a unit-square viewBox (Phase 524). Authors set
 /// `ViewBox` + `Shapes`; a chart lowering (Phase 526) produces both.

@@ -548,6 +548,55 @@ let ssrParityTests =
               Expect.isTrue (contains shared html) "server HTML embeds the shared SVG payload byte-for-byte"
           }
 
+          // Phase 883 — the same parity argument as the rotation test above, on
+          // the seam most likely to break it. A tip is XML TEXT CONTENT inside a
+          // `<title>` CHILD, so the SSR path has two extra chances to interfere
+          // that an attribute did not: a re-escaping pass would double-encode
+          // `&amp;` into `&amp;amp;` (silently — the page still renders, the tooltip
+          // just reads wrong), and a well-meaning "tidy the markup" pass would
+          // re-close the now-open `<rect>` differently from the client.
+          test "tipped marks — the SSR payload is the shared emitter's bytes verbatim (Phase 883)" {
+              let tippedSpec =
+                  { Defaults.drawing with
+                      ViewBox =
+                          { MinX = 0.0
+                            MinY = 0.0
+                            Width = 100.0
+                            Height = 50.0 }
+                      Shapes =
+                          [ Shape.Rectangle(
+                                10.0,
+                                10.0,
+                                20.0,
+                                30.0,
+                                Option.None,
+                                { Defaults.drawStyle with
+                                    Tip = Some(TextSource.Literal "revenue · R&D · 1,234") }
+                            ) ]
+                      Title = Some(TextSource.Literal "Tipped") }
+
+              let node = Fuaran.drawingSpec "dr-tip" tippedSpec
+
+              let shared =
+                  DrawingSvg.render
+                      BindingResolver.empty
+                      (fun t ->
+                          match t with
+                          | TextSource.Literal s -> s
+                          | _ -> "?")
+                      tippedSpec
+
+              let html = Render.render BindingResolver.empty node
+
+              Expect.isTrue
+                  (contains "><title>revenue · R&amp;D · 1,234</title></rect>" shared)
+                  "the shared emitter opens the rect and closes it around the title"
+
+              Expect.isTrue (contains shared html) "server HTML embeds the shared SVG payload byte-for-byte"
+
+              Expect.isFalse (contains "&amp;amp;" html) "the SSR path does not re-escape the already-escaped tip"
+          }
+
           // The icon-contract lock: the icon NAME rides the `data-icon`
           // attribute of an EMPTY hook element and must never appear as
           // visible text content anywhere in the HTML.

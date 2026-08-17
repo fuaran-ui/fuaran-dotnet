@@ -3982,7 +3982,8 @@ let private emptyDrawStyle: DrawStyle =
       Emphasis = None
       FontFamily = None
       MarkId = None
-      Rotation = None }
+      Rotation = None
+      Tip = None }
 
 let private decodeDrawPoint (path: string) (j: Json) : Result<DrawPoint, DecodeError> =
     match requireObject path j with
@@ -4099,8 +4100,26 @@ let private decodeDrawStyle (path: string) (j: Json) : Result<DrawStyle, DecodeE
             | None -> Ok None
             | Some v -> requireFloat (path + ".rotation") v |> Result.map Some
 
+        // Phase 883 — the hover readout, a `TextSource` like `DrawingSpec.Title`;
+        // optional, no default (absent = untipped), so every pre-883 drawing
+        // decodes byte-unchanged and keeps its self-closing shape elements.
+        let tipR =
+            match tryField fields "tip" with
+            | None -> Ok None
+            | Some v -> decodeTextSource (path + ".tip") v |> Result.map Some
+
         match
-            fillR, strokeR, strokeWidthR, opacityR, textAnchorR, fontSizeR, emphasisR, fontFamilyR, markIdR, rotationR
+            fillR,
+            strokeR,
+            strokeWidthR,
+            opacityR,
+            textAnchorR,
+            fontSizeR,
+            emphasisR,
+            fontFamilyR,
+            markIdR,
+            rotationR,
+            tipR
         with
         | Ok fill,
           Ok stroke,
@@ -4111,7 +4130,8 @@ let private decodeDrawStyle (path: string) (j: Json) : Result<DrawStyle, DecodeE
           Ok emphasis,
           Ok fontFamily,
           Ok markId,
-          Ok rotation ->
+          Ok rotation,
+          Ok tip ->
             Ok
                 { Fill = fill
                   Stroke = stroke
@@ -4122,17 +4142,19 @@ let private decodeDrawStyle (path: string) (j: Json) : Result<DrawStyle, DecodeE
                   Emphasis = emphasis
                   FontFamily = fontFamily
                   MarkId = markId
-                  Rotation = rotation }
-        | Error e, _, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, _, Error e -> Error e
+                  Rotation = rotation
+                  Tip = tip }
+        | Error e, _, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeCurveCommand (path: string) (j: Json) : Result<CurveCommand, DecodeError> =
     match requireObject path j with

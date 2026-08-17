@@ -520,6 +520,7 @@ and DrawStyle =
       Stroke: Binding<string> option
       StrokeWidth: Binding<float> option
       TextAnchor: TextAnchor option
+      Tip: TextSource option
     }
 
 and InvokeArg =
@@ -1640,7 +1641,7 @@ and private encViewBox (s: ViewBox) : JVal =
     JObj([ Some("height", JFloat s.Height); Some("minX", JFloat s.MinX); Some("minY", JFloat s.MinY); Some("width", JFloat s.Width) ] |> List.choose id)
 
 and private encDrawStyle (s: DrawStyle) : JVal =
-    JObj([ (s.Emphasis |> Option.map (fun v -> "emphasis", encEmphasis v)); (s.Fill |> Option.map (fun v -> "fill", (encBinding JStr) v)); (s.FontFamily |> Option.map (fun v -> "fontFamily", JStr v)); (s.FontSize |> Option.map (fun v -> "fontSize", JFloat v)); (s.MarkId |> Option.map (fun v -> "markId", JStr v)); (s.Opacity |> Option.map (fun v -> "opacity", (encBinding JFloat) v)); (s.Rotation |> Option.map (fun v -> "rotation", JFloat v)); (s.Stroke |> Option.map (fun v -> "stroke", (encBinding JStr) v)); (s.StrokeWidth |> Option.map (fun v -> "strokeWidth", (encBinding JFloat) v)); (s.TextAnchor |> Option.map (fun v -> "textAnchor", encTextAnchor v)) ] |> List.choose id)
+    JObj([ (s.Emphasis |> Option.map (fun v -> "emphasis", encEmphasis v)); (s.Fill |> Option.map (fun v -> "fill", (encBinding JStr) v)); (s.FontFamily |> Option.map (fun v -> "fontFamily", JStr v)); (s.FontSize |> Option.map (fun v -> "fontSize", JFloat v)); (s.MarkId |> Option.map (fun v -> "markId", JStr v)); (s.Opacity |> Option.map (fun v -> "opacity", (encBinding JFloat) v)); (s.Rotation |> Option.map (fun v -> "rotation", JFloat v)); (s.Stroke |> Option.map (fun v -> "stroke", (encBinding JStr) v)); (s.StrokeWidth |> Option.map (fun v -> "strokeWidth", (encBinding JFloat) v)); (s.TextAnchor |> Option.map (fun v -> "textAnchor", encTextAnchor v)); (s.Tip |> Option.map (fun v -> "tip", encTextSource v)) ] |> List.choose id)
 
 and private encInvokeArg (s: InvokeArg) : JVal =
     JObj([ Some("addr", JStr s.Addr); Some("value", JStr s.Value) ] |> List.choose id)
@@ -2843,7 +2844,8 @@ and private decDrawStyle (j: JVal) : Result<DrawStyle, string> =
     dOpt "stroke" __fs (decBinding dStr) |> Result.bind (fun stroke ->
     dOpt "strokeWidth" __fs (decBinding dFloat) |> Result.bind (fun strokeWidth ->
     dOpt "textAnchor" __fs decTextAnchor |> Result.bind (fun textAnchor ->
-    Ok { Emphasis = emphasis; Fill = fill; FontFamily = fontFamily; FontSize = fontSize; MarkId = markId; Opacity = opacity; Rotation = rotation; Stroke = stroke; StrokeWidth = strokeWidth; TextAnchor = textAnchor })))))))))))
+    dOpt "tip" __fs decTextSource |> Result.bind (fun tip ->
+    Ok { Emphasis = emphasis; Fill = fill; FontFamily = fontFamily; FontSize = fontSize; MarkId = markId; Opacity = opacity; Rotation = rotation; Stroke = stroke; StrokeWidth = strokeWidth; TextAnchor = textAnchor; Tip = tip }))))))))))))
 
 and private decInvokeArg (j: JVal) : Result<InvokeArg, string> =
     dObj j |> Result.bind (fun __fs ->

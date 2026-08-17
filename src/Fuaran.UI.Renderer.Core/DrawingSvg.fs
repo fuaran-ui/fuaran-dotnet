@@ -313,6 +313,56 @@ let private strokeJoinAttrs (sources: BindingResolver.BindingSources) (style: Dr
     | Some _ -> " stroke-linejoin=\"round\" stroke-linecap=\"round\""
     | None -> ""
 
+// ─── Hover readout (Phase 883) ───────────────────────────────────────────────
+//
+// `DrawStyle.Tip` emits as an SVG `<title>` CHILD of the shape's own element.
+// That single element is both the native browser tooltip (no script, so it
+// works in a statically-served SSR page exactly as it does client-side) and the
+// element's ACCESSIBLE NAME, so a screen reader traversing the SVG reads the
+// same string a mouse user hovers. `<title>` must be the FIRST child to be the
+// accessible name, which is why every arm below emits it before any other
+// content.
+//
+// A tip is the one `DrawStyle` field the emitter honours on every shape rather
+// than only on `Label`: the marks a reader hovers are the bars, wedges and
+// points, and a `<title>` is inert geometry-wise on all of them (unlike
+// `Rotation`, whose off-`Label` emission would move geometry).
+//
+// The structural consequence: a tipped shape cannot stay self-closing —
+// `<rect …/>` becomes `<rect …><title>…</title></rect>`. An UNTIPPED shape is
+// emitted exactly as before, byte-for-byte, so the whole pre-883 corpus and
+// every untipped drawing are unchanged.
+//
+// The text is XML-escaped through the same `escape` the label text and the
+// drawing `<title>` / `<desc>` already use — the builder emits raw markup (it
+// rides `dangerouslySetInnerHTML`), so escaping here is the whole defence, and
+// the chart lowering feeds it UNTRUSTED series/category strings straight off
+// the data feed.
+let private emitTip (e: Emitter) (textOf: TextSource -> string) (style: DrawStyle) : unit =
+    style.Tip
+    |> Option.iter (fun t ->
+        e.Add "<title>"
+        e.Add(escape (textOf t))
+        e.Add "</title>")
+
+/// The tail of a shape element that carries no child content of its own:
+/// self-closing when untipped, an open/close pair wrapping the `<title>` when
+/// tipped.
+let private emitSelfClosing
+    (e: Emitter)
+    (textOf: TextSource -> string)
+    (style: DrawStyle)
+    (elementName: string)
+    : unit =
+    match style.Tip with
+    | None -> e.Add "/>"
+    | Some _ ->
+        e.Add ">"
+        emitTip e textOf style
+        e.Add "</"
+        e.Add elementName
+        e.Add ">"
+
 let rec private emitShape
     (e: Emitter)
     (sources: BindingResolver.BindingSources)
@@ -325,6 +375,7 @@ let rec private emitShape
             e.Add "<g class=\"fuaran-drawing-group\""
             e.Add(styleAttrs sources false style)
             e.Add ">"
+            emitTip e textOf style
 
             let mutable rest = children
 
@@ -350,7 +401,7 @@ let rec private emitShape
             e.Add "\""
             e.Add rx
             e.Add(styleAttrs sources false style)
-            e.Add "/>"
+            emitSelfClosing e textOf style "rect"
         | Shape.Line(x1, y1, x2, y2, style) ->
             e.Add "<line class=\"fuaran-drawing-line\" x1=\""
             e.Add(formatNum x1)
@@ -362,28 +413,28 @@ let rec private emitShape
             e.Add(formatNum y2)
             e.Add "\""
             e.Add(styleAttrs sources false style)
-            e.Add "/>"
+            emitSelfClosing e textOf style "line"
         | Shape.Polyline(points, style) ->
             e.Add "<polyline class=\"fuaran-drawing-polyline\" points=\""
             emitPoints e points
             e.Add "\""
             e.Add(styleAttrs sources true style)
             e.Add(strokeJoinAttrs sources style)
-            e.Add "/>"
+            emitSelfClosing e textOf style "polyline"
         | Shape.Polygon(points, style) ->
             e.Add "<polygon class=\"fuaran-drawing-polygon\" points=\""
             emitPoints e points
             e.Add "\""
             e.Add(styleAttrs sources false style)
             e.Add(strokeJoinAttrs sources style)
-            e.Add "/>"
+            emitSelfClosing e textOf style "polygon"
         | Shape.Curve(commands, style) ->
             e.Add "<path class=\"fuaran-drawing-curve\" d=\""
             emitPathD e commands
             e.Add "\""
             e.Add(styleAttrs sources true style)
             e.Add(strokeJoinAttrs sources style)
-            e.Add "/>"
+            emitSelfClosing e textOf style "path"
         | Shape.Circle(cx, cy, r, style) ->
             e.Add "<circle class=\"fuaran-drawing-circle\" cx=\""
             e.Add(formatNum cx)
@@ -393,7 +444,7 @@ let rec private emitShape
             e.Add(formatNum r)
             e.Add "\""
             e.Add(styleAttrs sources false style)
-            e.Add "/>"
+            emitSelfClosing e textOf style "circle"
         | Shape.Ellipse(cx, cy, rx, ry, style) ->
             e.Add "<ellipse class=\"fuaran-drawing-ellipse\" cx=\""
             e.Add(formatNum cx)
@@ -405,7 +456,7 @@ let rec private emitShape
             e.Add(formatNum ry)
             e.Add "\""
             e.Add(styleAttrs sources false style)
-            e.Add "/>"
+            emitSelfClosing e textOf style "ellipse"
         | Shape.Label(x, y, text, style) ->
             e.Add "<text class=\"fuaran-drawing-label\" x=\""
             e.Add(formatNum x)
@@ -439,6 +490,9 @@ let rec private emitShape
 
             e.Add(styleAttrs sources false style)
             e.Add ">"
+            // Before the visible run: `<title>` is the accessible name only as
+            // the FIRST child, and SVG does not render it either way.
+            emitTip e textOf style
             e.Add(escape (textOf text))
             e.Add "</text>"
 
