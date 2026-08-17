@@ -193,6 +193,42 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "bound-grid defaultSort column -1 — the same non-negative bound the staticRows spelling carries, same record, same message (Phase 861)" }
+      // Phase 863 — the grid-behaviour family's NEAR MISSES. Each of these
+      // decoded silently before: rule 2 tolerates unknown keys, so a model that
+      // reached for the wrong name got a tree that rendered while the
+      // declaration did nothing. The didactic names the canonical form.
+      { Id = "reject-nearmiss-grid-current-page"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[],"currentPage":1,"source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.currentPage"
+        IsOp = false
+        Description =
+          "grid 'currentPage' — the sharpest near miss: a LITERAL page number is not expressible, the position lives in State so a pager can move it (Phase 863)" }
+      { Id = "reject-nearmiss-grid-sortable"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[],"sortable":true,"source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.sortable"
+        IsOp = false
+        Description =
+          "grid-level 'sortable' — the staticRows spelling reached for on the bound path, where sortability is sortStateKey + per-column narrowing (Phase 863)" }
+      { Id = "reject-nearmiss-column-readonly"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[{"field":"note","kind":{"$type":"Text"},"label":"Note","readOnly":true}],"source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.columns[0].readOnly"
+        IsOp = false
+        Description =
+          "column 'readOnly' — named by the census row itself; deliberately NOT aliased to editable:false, because an inverting alias that guesses wrong makes a read-only column editable (Phase 863)" }
+      { Id = "reject-nearmiss-grid-behaviour-record"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","behaviour":{"page":{}},"columns":[],"source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.behaviour"
+        IsOp = false
+        Description =
+          "grid 'behaviour' record — charter option O1-C, rejected by design: three optional sibling fields, not a nested record (Phase 860 charter / 863)" }
       { Id = "reject-wrongtype-grid-page-size-zero"
         Json =
           """{"id":"x","kind":{"$type":"DataGrid","columns":[],"pageSize":0,"pageStateKey":"p","source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

@@ -564,10 +564,27 @@ let generatedLayerTests =
               //    that record rather than minting a twin. Its landing here is
               //    the clearest evidence the reuse is real: a twin record would
               //    have needed its own entry for its own reason.
+              //  - the four `nearmiss` fixtures (Phase 863) are a THIRD class,
+              //    distinct from both of the above. They are not a value bound
+              //    and not a sibling relation: they are an ENUMERATED refusal of
+              //    particular property NAMES, and the generated layer has no
+              //    notion of a name it should refuse — it decodes by field
+              //    lookup and an unread key is simply invisible to it. The
+              //    policy decoder refuses them didactically, naming the
+              //    canonical field. Note they are NOT schema-inexpressible: the
+              //    published schema forbids each name with
+              //    `not: { required: [...] }`, so they stay out of
+              //    `schemaInexpressibleRejects` — which is why this list and
+              //    that one keep drifting apart, and why both are named rather
+              //    than counted.
               Expect.equal
                   policyOwned
                   [ "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
+                    "reject-nearmiss-column-readonly.json"
+                    "reject-nearmiss-grid-behaviour-record.json"
+                    "reject-nearmiss-grid-current-page.json"
+                    "reject-nearmiss-grid-sortable.json"
                     "reject-wrongtype-grid-default-sort-column.json"
                     "reject-wrongtype-grid-page-size-zero.json"
                     "reject-wrongtype-static-sort-column.json" ]

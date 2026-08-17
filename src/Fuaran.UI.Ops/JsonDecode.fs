@@ -5109,6 +5109,41 @@ let private decodeCellKindErased
                 s
                 "Text | Numeric | Date | Editable | Checkbox | Button | ButtonGroup | Link | Pill | TonedPill | Progress | Custom"
 
+/// Phase 863 — decode-time didactics for the grid-behaviour family's NEAR
+/// MISSES (Phase 860's charter, its rejected-spellings deliverable).
+///
+/// Every shape below decoded SILENTLY before this: rule 2 tolerates unknown
+/// keys, so a model that reached for the wrong name got a tree that decoded,
+/// validated and rendered while the declaration did nothing. That is the
+/// fake-affordance failure in a new guise — the very class the charter's rule
+/// exists to foreclose — and tolerance is what hid it.
+///
+/// The narrowing is deliberate and bounded: an ENUMERATED set of names, each
+/// with an unambiguous canonical form to name. Rule 2's tolerance is preserved
+/// for everything else, which is what keeps it a didactic rather than a
+/// tightening. A name is only admitted here when accepting it would require
+/// GUESSING (`currentPage` as a literal position is not something the
+/// vocabulary can express at all) or when it is a rejected charter spelling.
+let private nearMiss (path: string) (found: string) (canonical: string) : Result<'a, DecodeError> =
+    err
+        DecodeErrorCode.WRONG_TYPE
+        (path + "." + found)
+        (sprintf "'%s' is not part of the grid vocabulary — it would be ignored, not honoured" found)
+        (Some canonical)
+
+/// Check an enumerated near-miss set, returning the first hit's didactic.
+let private checkNearMisses
+    (path: string)
+    (fields: Map<string, Json>)
+    (candidates: (string * string) list)
+    : Result<unit, DecodeError> =
+    candidates
+    |> List.tryPick (fun (name, canonical) ->
+        match tryField fields name with
+        | Some _ -> Some(nearMiss path name canonical)
+        | None -> None)
+    |> Option.defaultValue (Ok())
+
 let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -5153,6 +5188,18 @@ let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<ob
             | None -> Ok None
             | Some sJ -> requireBool (path + ".sortable") sJ |> Result.map Some
 
+        // Phase 863 — the column's one near miss. `readOnly` is what a model
+        // reaches for when it means the opposite of editable, and the census
+        // row named it directly ("no explicit `readOnly`/`editable:false` is
+        // declared"). It is NOT aliased to `editable: false`: an inverting
+        // alias silently flips a boolean's sense, and a wrong guess there makes
+        // a read-only column editable.
+        let colNearMissR =
+            checkNearMisses
+                path
+                fields
+                [ "readOnly", "editable: false — the column flag NARROWS the grid's editable capability" ]
+
         // Phase 863 — per-column editability narrowing; absent inherits the
         // grid-level flag.
         let colEditableR =
@@ -5174,8 +5221,8 @@ let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<ob
             | Some _ -> Some(fun (_: Row) -> CellValue.Empty)
             | None -> None
 
-        match formatR, kindR, labelR, widthR, fieldR, sortableR, colEditableR with
-        | Ok format, Ok kind, Ok label, Ok width, Ok field, Ok sortable, Ok colEditable ->
+        match formatR, kindR, labelR, widthR, fieldR, sortableR, colEditableR, colNearMissR with
+        | Ok format, Ok kind, Ok label, Ok width, Ok field, Ok sortable, Ok colEditable, Ok() ->
             Ok
                 { Label = label
                   Value = value
@@ -5185,13 +5232,14 @@ let private decodeColumnErased (path: string) (j: Json) : Result<ColumnErased<ob
                   Format = format
                   Kind = kind
                   Width = width }
-        | Error e, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _
-        | _, _, Error e, _, _, _, _
-        | _, _, _, Error e, _, _, _
-        | _, _, _, _, Error e, _, _
-        | _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _
+        | _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, Error e -> Error e
 
 /// Phase 801 — `"asc"` / `"desc"`, closed. A value outside the pair is an
 /// `UNKNOWN_DU_CASE` (the bare-string-enum convention `decodeLiveRegion` sets),
@@ -5363,6 +5411,36 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | None -> Ok None
             | Some v -> decodeDefaultSort (path + ".defaultSort") v |> Result.map Some
 
+        // Phase 863 — the grid's near misses, each naming the canonical form.
+        // Four shapes: three the census recorded models reaching for, and one
+        // the charter rejected by design (O1-C, the nested `behaviour` record).
+        //
+        // `currentPage` / `page` / `pageIndex` are the sharpest of them. The
+        // census row reads "the DataGrid's source Query carries no
+        // page/currentPage reference", and a model emitting a LITERAL page
+        // number is asking for something the vocabulary cannot express at all —
+        // the position lives in state so a control can move it. Accepting it
+        // would mean guessing; ignoring it is what produced the ×11
+        // fake-affordance cluster.
+        let gridNearMissR =
+            checkNearMisses
+                path
+                fields
+                [ "currentPage",
+                  "pageStateKey — the page POSITION lives in State as {\"page\": N} so the pager can move it; a literal page number is not expressible"
+                  "page",
+                  "pageStateKey — the page POSITION lives in State as {\"page\": N} so the pager can move it; a literal page number is not expressible"
+                  "pageIndex",
+                  "pageStateKey — the page POSITION lives in State as {\"page\": N}, 1-based (not a zero-based index)"
+                  "sortable",
+                  "sortStateKey on the grid + sortable on each COLUMN — grid-wide sortable is the staticRows spelling; a data-bound grid narrows per column"
+                  "onEdit",
+                  "editStateKey — the edit DESTINATION is a State key on the grid; onEdit is a per-cell host closure and carries no destination across the wire"
+                  "behaviour",
+                  "sibling fields on the grid (sortStateKey / pageStateKey / pageSize / editStateKey / defaultSort) — grid behaviour is not a nested record"
+                  "behavior",
+                  "sibling fields on the grid (sortStateKey / pageStateKey / pageSize / editStateKey / defaultSort) — grid behaviour is not a nested record" ]
+
         // Phase 863 — the declared edit destination. Absent keeps Phase 663's
         // shipped write-back-to-source behaviour exactly.
         let editStateKeyR =
@@ -5395,7 +5473,8 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             pageStateKeyR,
             defaultSortR,
             editStateKeyR,
-            staticRowsR
+            staticRowsR,
+            gridNearMissR
         with
         | Ok columns,
           Ok editable,
@@ -5407,7 +5486,8 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
           Ok pageStateKey,
           Ok defaultSort,
           Ok editStateKey,
-          Ok staticRows ->
+          Ok staticRows,
+          Ok() ->
             Ok
                 { Source = source
                   RowKey = rowKey
@@ -5421,17 +5501,18 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
                   OnRowClick = onRowClick
                   Editable = editable
                   StaticRows = staticRows }
-        | Error e, _, _, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeChartSpec (path: string) (j: Json) : Result<ChartSpec<obj>, DecodeError> =
     match requireObject path j with

@@ -169,6 +169,33 @@ let private record (required: string list) (props: (string * J) list) : J =
 
     JObj fields
 
+/// Phase 863 — forbid an ENUMERATED set of near-miss property names on a
+/// record, as `allOf: [{ "not": { "required": ["<name>"] } }, …]`.
+///
+/// This is the schema half of the decoder's near-miss didactics. The schema
+/// deliberately does NOT set `additionalProperties: false` (see the header —
+/// it mirrors the decoder's rule-2 tolerance of unknown keys), so a bare
+/// property-name check is the only way to say "not this one" without
+/// abandoning that tolerance wholesale. The corpus contract requires every
+/// reject fixture to fail the schema as well as the decoder, and "must not
+/// carry property X" is trivially expressible in Draft 2020-12 — so a
+/// near-miss belongs here rather than in the schema-inexpressible exemption
+/// list, which is reserved for rules the dialect genuinely cannot state (a
+/// relation between two sibling values).
+let private forbidding (names: string list) (r: J) : J =
+    match r, names with
+    | _, [] -> r
+    | JObj fields, _ ->
+        JObj(
+            fields
+            @ [ "allOf",
+                JArr(
+                    names
+                    |> List.map (fun n -> JObj [ "not", JObj [ "required", JArr [ JStr n ] ] ])
+                ) ]
+        )
+    | _ -> r
+
 /// One `$type`-discriminated DU branch (WIRE_FORMAT.md §3). `$type` is pinned
 /// by `const`, so an unrecognised discriminator matches no branch.
 let private duCase (disc: string) (required: string list) (props: (string * J) list) : J =
@@ -805,7 +832,10 @@ let private defs: (string * J) list =
       // Phase 425 — `value` (closure) + `field` (declarative row-property name) are sibling optional
       // slots (both out of `required`); likewise `rowKey` + `rowKeyField` on the grid.
       "ColumnErased",
-      record
+      // Phase 863 — `readOnly` is the column's one near miss; the decoder
+      // refuses it didactically rather than aliasing it to `editable: false`.
+      forbidding [ "readOnly" ]
+      <| record
           // Phase 460 — `format`/`width` omitted-when-default (CellFormat.None / ColumnWidth.Auto);
           // out of `required`, they stay in `props`.
           [ "kind"; "label" ]
@@ -821,7 +851,19 @@ let private defs: (string * J) list =
             "width", ref "ColumnWidth" ]
 
       "GridSpec",
-      record
+      // Phase 863 — the grid's near-miss set, refused here as it is at decode.
+      // `sortable` is forbidden at GRID level only: it is a real field one
+      // level down on `staticRows`, which is exactly why a model reaches for it
+      // here.
+      forbidding
+          [ "currentPage"
+            "page"
+            "pageIndex"
+            "sortable"
+            "onEdit"
+            "behaviour"
+            "behavior" ]
+      <| record
           [ "columns"; "source" ]
           [ "columns", arrayOf (ref "ColumnErased")
             "editable", boolean
