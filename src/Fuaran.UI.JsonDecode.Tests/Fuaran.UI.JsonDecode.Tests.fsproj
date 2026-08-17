@@ -22,6 +22,7 @@
          Fuaran.UI.OpStream.Abstractions/Elicitation.fs. Must precede
          Corpus.fs (the emitter proves its laws at emit time). -->
     <Compile Include="ElicitationFixtures.fs" />
+    <Compile Include="DefectVocabulary.fs" />
     <Compile Include="Corpus.fs" />
     <Compile Include="RoundTripTests.fs" />
     <Compile Include="ElicitationTests.fs" />
