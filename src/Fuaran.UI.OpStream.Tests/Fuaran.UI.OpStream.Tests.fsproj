@@ -37,6 +37,10 @@
          payload — the deterministic pin behind the probabilistic cross-host
          fuzz gate that found `stateBehaviourAppender` bypassing it. -->
     <Compile Include="CanonicalFormOpTests.fs" />
+    <!-- Phase 889: the user-action record, its redaction default (the poison
+         test), and its durable SQLite log. -->
+    <Compile Include="ActionInvocationTests.fs" />
+    <Compile Include="ActionLogPrivacyTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

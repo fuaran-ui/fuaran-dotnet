@@ -5,6 +5,7 @@ open Fuaran.UI.Types
 open Fuaran.UI.Ops.Introspect
 open Fuaran.UI.ServerDriven.Validation
 open Fuaran.UI.ServerDriven.Driver
+open Fuaran.UI.Ops.ActionInvocation
 
 module SubmitPayload = Fuaran.UI.Renderer.SubmitPayload
 
@@ -169,6 +170,11 @@ let step
     (ev: LiveEvent)
     : LiveSession<'Model, 'Msg> * StepOutput =
     let rejected reason =
+        // Phase 889 — the form-submit leg has its OWN G1 call, so a denial here
+        // never reaches `Driver.step` and would otherwise be the one dispatch
+        // denial in the estate that goes unrecorded.
+        Driver.recordRejection session.Services ev reason
+
         session,
         { Patches = []
           Effects = []
@@ -212,8 +218,23 @@ let step
                 | [] ->
                     // Valid — flush the buffered Local fields (gated), then the
                     // form's OnSubmit, in one atomic diff/patch.
-                    let fieldActions =
-                        commitActions form ev.Payload |> List.filter session.Services.CanDispatch
+                    //
+                    // Phase 889 — partition rather than filter: a field whose
+                    // `OnCommit` the gate refuses is a DENIAL, and dropping it
+                    // silently is exactly the "a denial is recorded, not
+                    // dropped" case. The permitted list is byte-identical to the
+                    // pre-889 `List.filter`.
+                    let permittedFields, refusedFields =
+                        commitActions form ev.Payload |> List.partition session.Services.CanDispatch
+
+                    for refused in refusedFields do
+                        Driver.recordInvocation
+                            session.Services
+                            ev
+                            (ActionOutcome.Denied("dispatch denied by host policy: " + describeAction refused))
+                            refused
+
+                    let fieldActions = permittedFields
 
                     // Phase 820 — submit-payload semantics: the harvested field
                     // values ride the OnSubmit action. A `Notify` gains them
@@ -232,6 +253,16 @@ let step
                         @ [ for a in Option.toList submitAction -> a, Some(SubmitPayload.callBody fields) ]
 
                     let s2, out = applyResolvedActionsWithSubmitBody session ev.NodeId pairs
+
+                    // Emitted AFTER the fold, one record per dispatched action.
+                    // A submit that flushes N buffered fields IS N+1 actions;
+                    // the shared `(NodeId, event)` site is what ties them back
+                    // to the one gesture.
+                    for a in fieldActions do
+                        Driver.recordInvocation session.Services ev ActionOutcome.Dispatched a
+
+                    for a in Option.toList submitAction do
+                        Driver.recordInvocation session.Services ev ActionOutcome.Dispatched a
                     // Clear stale field-error attributes only when validation is
                     // active (so the non-validating 152 path's patch set is unchanged).
                     let clear =
@@ -252,7 +283,18 @@ let step
                 | Some field ->
                     match Map.tryFind fieldId ev.Payload |> Option.bind (fieldFlushAction field) with
                     | Some action when session.Services.CanDispatch action ->
-                        applyResolvedActions session ev.NodeId [ action ]
+                        let result = applyResolvedActions session ev.NodeId [ action ]
+                        Driver.recordInvocation session.Services ev ActionOutcome.Dispatched action
+                        result
+                    | Some action ->
+                        // The explicit per-field flush, refused by the gate.
+                        Driver.recordInvocation
+                            session.Services
+                            ev
+                            (ActionOutcome.Denied("dispatch denied by host policy: " + describeAction action))
+                            action
+
+                        noChange ()
                     | _ -> noChange ()
                 | None -> noChange ()
             | _ -> Driver.step session ev

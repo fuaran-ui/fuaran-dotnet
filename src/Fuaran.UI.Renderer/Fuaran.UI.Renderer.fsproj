@@ -92,6 +92,14 @@
          per-node guard + ErrorBoundary catches via the optional
          IFuaranTelemetrySink threaded through RenderContext. -->
     <ProjectReference Include="..\Fuaran.UI.Telemetry.Abstractions\Fuaran.UI.Telemetry.Abstractions.fsproj" />
+    <!-- Phase 889: the user-action record + IActionInvocationSink the dispatch
+         gate emits through. Already in this project's graph transitively (the
+         telemetry contract above references it), declared explicitly because a
+         direct `open` on a transitive reference is how a later, innocent-looking
+         reference removal turns into an unexplained build break. NOT the full
+         Fuaran.UI.Ops: the apply engine stays out of the renderer's Fable graph
+         for the layering reason the header records. -->
+    <ProjectReference Include="..\Fuaran.UI.Ops.Abstractions\Fuaran.UI.Ops.Abstractions.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

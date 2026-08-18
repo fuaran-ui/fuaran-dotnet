@@ -42,6 +42,9 @@
     <!-- DispatchGateTests pins Phase 119's IFuaranRuntime.CanDispatch seam
          via Render.applyDispatchGate (allow-by-default + deny path). -->
     <Compile Include="DispatchGateTests.fs" />
+    <!-- Phase 889: the client-side gate OUTCOMES the user-action record is
+         built from, plus the cross-tier correlation-key pin. -->
+    <Compile Include="ActionInvocationClientTests.fs" />
     <Compile Include="CustomIsolationTests.fs" />
     <!-- DebugGlobalTests pins Phase 90's window.__fuaran introspection surface
          (the pure, both-pipelines helpers: kindName / extractBindingSlots /

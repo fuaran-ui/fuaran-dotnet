@@ -1242,3 +1242,62 @@ uniqueness and the default is refusal. Full contract:
   `overclose-fixtures/` labelled set (28 stored emissions, 14 with their committed intended repair)
   is the acceptance record until then. The class must NOT be added to the `lenient-accept` corpus
   family, which is for loss-free spelling normalisation only.
+
+## Recorded breaking change — 0.29.0, the user-action record (fuaran#889)
+
+**What it is.** The op stream records what the AI AUTHORED; nothing recorded what a USER did.
+`ActionInvocation` closes that: one record per dispatched user gesture, carrying the `Action`
+constructor, the `(NodeId, DOM event name)` pair, the outcome (dispatched / denied / failed), the
+affordance's provenance, the dispatch path and the Phase 330 interaction id, with a sink seam and a
+durable SQLite log.
+
+**Why it is not on `IFuaranTelemetrySink`.** Phase 866's charter settles that a trigger may point at
+the `Action` vocabulary and nothing else, so a user action is never a `TreeOp` and cannot ride
+`IOpStreamSink`'s `OpRecord`. It gets `IActionInvocationSink` — a NEW interface, so no existing
+implementer is touched. Adding a seventh member to `IFuaranTelemetrySink` would have cost every
+direct implementer a stub (Phase 330 measured 8 in this repo and 11 downstream) to reach a tier that
+ships no durable implementation at all.
+
+**Additive (no consumer edit):** the `Fuaran.UI.Ops.ActionInvocation` module (the record,
+`ActionCaptureMode` / `ActionOutcome` / `DispatchPath` / `AffordanceProvenance`,
+`IActionInvocationSink`, `ActionInvocationSink.noop` / `Collector`); `ActionInvocationSqliteSink` in
+`Fuaran.UI.OpStream.Sqlite` (its own `action_invocation` table, NOT `op_stream`); the render entry
+`Render.renderWithSourcesSinkContextAndActionSink`; and the `Result`-returning gate variants
+`Render.applyDispatchGateOutcome` / `treeStateWriteOutcome` / `treeNavigateOutcome` (the existing
+`unit`-returning three now delegate to them, behaviour and diagnostics byte-identical).
+
+**Breaking — two required record fields, the 0.5.0 shape exactly:**
+
+```fsharp
+// 0.28.0
+{ Sources = …; SessionContext = Map.empty }
+
+// 0.29.0 — every RenderContext literal names both new fields
+{ Sources = …; SessionContext = Map.empty; ActionSink = None; CurrentNodeId = None }
+```
+
+`RenderContext.ActionSink : IActionInvocationSink option` is the recording seam; `None` is the
+shipped default at every convenience entry and records nothing. `RenderContext.CurrentNodeId :
+string option` is set once per node by `render` (only when a sink is wired, so an unrecorded render
+pays no per-node record copy) — there is no other route to the node a handler belongs to, because
+`runAction` is handed the resolved `Action` and nothing else.
+
+`DriverServices` gains a required `ActionRecording : ActionRecordingServices option`. `None` — what
+`DriverServices.create` / `createPermissive` supply — records nothing; a host builds its services
+with `{ create render with … }` and is unaffected. Its `CorrelationContext` is a THUNK read per
+step, not a value: `DriverServices` is built once per connection while the interaction id changes
+every turn, so a captured map would stamp the first turn's id onto every later one.
+
+**Behavioural change, deliberate.** `Validation.describeAction` now delegates to
+`ActionInvocation.describe`, and `Navigate` prints its PATH rather than the whole route. That text
+reaches a host's logger through `RejectReason.describe`, and a route's query string carries user
+data — the pre-889 spelling leaked precisely what a log-safe describer exists to withhold.
+
+**Privacy posture, and it inverts what a reader might assume.** The default capture mode is
+`Redacted`: the action CONSTRUCTOR and the author-declared name that identifies it, never a payload
+VALUE. `PayloadBearing` is a per-host opt-in declared on the SINK, so wiring a destination and
+opting into payload values are two separate acts and neither is reached by omission. **The end user
+is not the opt-in party** — this is host-side instrumentation, and obtaining a user's consent where
+the host is user-facing is the host's obligation, which the redaction default does not discharge.
+Retention is likewise the host's: an append-only sink is the retention boundary, and a policy baked
+into a wire record is one every host inherits and none can change.

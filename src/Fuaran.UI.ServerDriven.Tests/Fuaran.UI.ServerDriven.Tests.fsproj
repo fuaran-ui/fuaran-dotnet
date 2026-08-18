@@ -18,6 +18,9 @@
     <Compile Include="NavigationTests.fs" />
     <Compile Include="InteractionTelemetryTests.fs" />
     <Compile Include="DomPatchCorpusTests.fs" />
+    <!-- Phase 889: the server-driven user-action emission point (Driver.step
+         + the form-submit leg's own G1 call). -->
+    <Compile Include="ActionInvocationDriverTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

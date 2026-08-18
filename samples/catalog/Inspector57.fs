@@ -225,7 +225,10 @@ let private renderTreeAfter (tree: Node<unit>) : ReactElement =
           Fragments = Map.empty
           ExpandingFragments = Set.empty
           Scope = None
-          SessionContext = Map.empty }
+          SessionContext = Map.empty
+          // Phase 889 — no user-action recording in the samples.
+          ActionSink = None
+          CurrentNodeId = None }
 
     Render.render ctx tree
 

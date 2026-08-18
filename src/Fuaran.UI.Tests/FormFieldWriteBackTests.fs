@@ -41,7 +41,10 @@ let private makeCtx () : Render.RenderContext<Msg> =
       Fragments = Map.empty
       ExpandingFragments = Set.empty
       Scope = None
-      SessionContext = Map.empty }
+      SessionContext = Map.empty
+      // Phase 889 — recording off, the default at every shipped entry point.
+      ActionSink = None
+      CurrentNodeId = None }
 
 // Annotated constructors, not bare record literals: `{ Min = _; Max = _ }`
 // otherwise infers as `NumberFieldConstraints` (same labels, `float option`

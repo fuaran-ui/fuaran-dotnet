@@ -3,6 +3,7 @@ module Fuaran.UI.ServerDriven.Driver
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
+open Fuaran.UI.Ops.ActionInvocation
 open Fuaran.UI.OpStream.Replay
 open Fuaran.UI.ServerDriven.Validation
 
@@ -81,6 +82,39 @@ type DriverServices<'Msg> =
         /// stream-open. Defaults to no-op in `create` (the transport-free core
         /// has nowhere to log).
         OnReject: RejectReason -> unit
+        /// Phase 889 — the USER-ACTION record seam. `None` (the `create`
+        /// default) records nothing, so an unconfigured host keeps no
+        /// user-action log at all.
+        ///
+        /// Separate from `OnApply`, and the difference is the whole phase:
+        /// `OnApply` carries the `TreeOp`s the re-render PRODUCED — what the
+        /// authoring channel did — while this carries the gesture that caused
+        /// them. Phase 866 settled that a user action is never a `TreeOp`, so
+        /// the two cannot share a record or a sink.
+        ActionRecording: ActionRecordingServices option
+    }
+
+/// The Phase 889 user-action recording seam, as one optional field on
+/// `DriverServices` rather than two.
+and ActionRecordingServices =
+    {
+        /// Where records land. Carries its own `CaptureMode`, so opting into
+        /// payload values is a second host act, separate from wiring a sink.
+        Sink: IActionInvocationSink
+        /// The host's opaque correlation context (Phase 330), read PER STEP and
+        /// never captured.
+        ///
+        /// A THUNK, not a value, and that is load-bearing: `DriverServices` is
+        /// built once per connection while the interaction id changes every turn,
+        /// so a captured map would stamp the first interaction's id onto every
+        /// later step — a correlation worse than none, because it looks right.
+        /// This is the same defect 330 fixed on the client host's options bag.
+        ///
+        /// **Deliberately NOT a field on `LiveEvent`.** That is the untrusted
+        /// inbound wire type, so an id arriving there would be client-CHOSEN
+        /// data, not host provenance. `ConnId` is likewise not a substitute: it
+        /// identifies a connection, not an interaction.
+        CorrelationContext: unit -> Map<string, string>
     }
 
 module DriverServices =
@@ -99,7 +133,8 @@ module DriverServices =
           InterpretHostEffect = fun _ -> None
           InterpretSubmitCall = None
           OnApply = ignore
-          OnReject = ignore }
+          OnReject = ignore
+          ActionRecording = None }
 
     /// **The named opt-in back to the pre-0.14.0 allow-everything gate**
     /// (Phase 782). Identical to `create` except that `CanDispatch` permits
@@ -247,6 +282,55 @@ let applyResolvedActions
     : LiveSession<'Model, 'Msg> * StepOutput =
     applyResolvedActionsWithSubmitBody session nodeId [ for a in actions -> a, None ]
 
+// ─── Phase 889 — the server-driven user-action emission point ───────────────
+//
+// `interpret` is the analogue of the client's `runAction` and is the WRONG site
+// for two independent reasons: it is reached only for PERMITTED actions, so a
+// denial — which this phase requires to be as recordable as a success — never
+// arrives there at all; and it recurses through `Action.Chain`, so a record
+// minted inside it would yield N records for one gesture. Emission belongs one
+// level up, at an entry that sees both the deny branch and the dispatch branch
+// and treats a chain as one invocation.
+
+/// The site for one inbound event: node + DOM event name + the host's
+/// interaction id, read from the correlation context PER STEP.
+let private siteFor (services: DriverServices<'Msg>) (ev: LiveEvent) : ActionInvocation.Site option =
+    services.ActionRecording
+    |> Option.map (fun rec_ ->
+        ActionInvocation.serverSite
+            ev.NodeId
+            ev.Event
+            (Map.tryFind ActionInvocation.interactionIdKey (rec_.CorrelationContext())))
+
+/// Record one gesture whose `Action` is in hand.
+let recordInvocation
+    (services: DriverServices<'Msg>)
+    (ev: LiveEvent)
+    (outcome: ActionOutcome)
+    (action: Action<'Msg>)
+    : unit =
+    match services.ActionRecording, siteFor services ev with
+    | Some rec_, Some site -> ActionInvocation.emit (Some rec_.Sink) site outcome action
+    | _ -> ()
+
+/// Record one gesture whose `Action` is NOT in hand — a G1 rejection carries
+/// only the log-safe description the gate produced.
+///
+/// Only `DispatchDenied` becomes a record: it is the sole reject class where an
+/// action was resolved and then refused. A forged node id or an illegitimate
+/// event never resolved to an action at all, so an `ActionInvocation` for it
+/// would have nothing to name — those stay on the always-on Phase 212
+/// `OnReject` audit sink, which is where a boundary breach belongs.
+let recordRejection (services: DriverServices<'Msg>) (ev: LiveEvent) (reason: RejectReason) : unit =
+    match services.ActionRecording, siteFor services ev, reason with
+    | Some rec_, Some site, RejectReason.DispatchDenied(_, description) ->
+        ActionInvocation.emitDescribed
+            (Some rec_.Sink)
+            site
+            (ActionOutcome.Denied("dispatch denied by host policy: " + description))
+            description
+    | _ -> ()
+
 /// Step the session with one untrusted inbound event. Validates (G1), runs the
 /// resolved action through `update`, re-renders, diffs, lowers — returning the
 /// updated session + the patch / effect output. On G1 rejection the session is
@@ -254,6 +338,8 @@ let applyResolvedActions
 let step (session: LiveSession<'Model, 'Msg>) (ev: LiveEvent) : LiveSession<'Model, 'Msg> * StepOutput =
     match validate session.Services.CanDispatch session.Tree ev with
     | Error reason ->
+        recordRejection session.Services ev reason
+
         session,
         { Patches = []
           Effects = []
@@ -261,9 +347,20 @@ let step (session: LiveSession<'Model, 'Msg>) (ev: LiveEvent) : LiveSession<'Mod
     | Ok { Action = None } ->
         // Legitimate but no server-resolvable action (e.g. a browser-held file
         // select, or a buffered form-field change under policy (b)) — no state
-        // change, no patches.
+        // change, no patches. Nothing to record: there is no action.
         session,
         { Patches = []
           Effects = []
           Rejected = None }
-    | Ok { Action = Some action } -> applyResolvedActions session ev.NodeId [ action ]
+    | Ok { Action = Some action } ->
+        // Emit AFTER the fold, so the record carries the outcome that actually
+        // happened rather than the one we expected. A throwing host closure is
+        // recorded as `Failed` and RE-RAISED — recording must not change what
+        // the transport sees.
+        try
+            let result = applyResolvedActions session ev.NodeId [ action ]
+            recordInvocation session.Services ev ActionOutcome.Dispatched action
+            result
+        with ex ->
+            recordInvocation session.Services ev (ActionOutcome.Failed ex.Message) action
+            reraise ()

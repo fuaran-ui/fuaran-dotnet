@@ -17,6 +17,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Types.fs" />
+    <!-- Phase 889: the user-action record + its sink seam. Here rather than on
+         the telemetry tier because a user action is not a TreeOp (Phase 866
+         Q2), so it can ride neither IOpStreamSink nor a seventh
+         IFuaranTelemetrySink member. Fable-clean: no IO, no clock. -->
+    <Compile Include="ActionInvocation.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />

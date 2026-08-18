@@ -266,19 +266,16 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
 
 /// A short, log-safe description of an `Action` for the dispatch-denied reason
 /// (the action *constructor*, never payload values).
+///
+/// Phase 889 moved the implementation to `Fuaran.UI.Ops.ActionInvocation.describe`
+/// and this delegates, so the reject sink and the user-action record cannot
+/// drift into two different notions of "log-safe". The move carries ONE
+/// behaviour change, deliberate: `Navigate` now prints its PATH, not the whole
+/// route. A route's query string carries user data, and this text lands in a
+/// host's logger through `RejectReason.describe` — so the pre-889 spelling was
+/// leaking exactly what a log-safe describer exists to withhold.
 let describeAction (a: Action<'Msg>) : string =
-    match a with
-    | Action.Dispatch _ -> "Dispatch"
-    | Action.Call(ep, _, _) -> sprintf "Call(%s)" ep
-    | Action.Notify(ch, _) -> sprintf "Notify(%s)" ch
-    | Action.Navigate r -> sprintf "Navigate(%s)" r
-    | Action.SetState(k, _, _) -> sprintf "SetState(%s)" k
-    | Action.AiTool(t, _) -> sprintf "AiTool(%s)" t
-    | Action.Chain _ -> "Chain"
-    | Action.CommitLocal id -> sprintf "CommitLocal(%s)" id
-    | Action.WriteToClipboard _ -> "WriteToClipboard"
-    | Action.ReadFileBody(_, _, _, _) -> "ReadFileBody"
-    | Action.Invoke(c, _) -> sprintf "Invoke(%s)" c
+    Fuaran.UI.Ops.ActionInvocation.ActionInvocation.describe a
 
 /// Validate one untrusted inbound event against the current tree + the host
 /// dispatch policy. `canDispatch` is the injected gate — the host maps the

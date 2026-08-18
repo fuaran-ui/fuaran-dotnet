@@ -163,7 +163,10 @@ let private aiEvalRenderCtx () : Render.RenderContext<obj> =
       Fragments = Map.empty
       ExpandingFragments = Set.empty
       Scope = None
-      SessionContext = Map.empty }
+      SessionContext = Map.empty
+      // Phase 889 — no user-action recording in the samples.
+      ActionSink = None
+      CurrentNodeId = None }
 
 let private aiEvalView (model: AiEvalModel) (dispatch: AiEvalMsg -> unit) : ReactElement =
     React.Fragment
@@ -226,7 +229,10 @@ let private parityView () : ReactElement =
                     Fragments = Map.empty
                     ExpandingFragments = Set.empty
                     Scope = None
-                    SessionContext = Map.empty }
+                    SessionContext = Map.empty
+                    // Phase 889 — no user-action recording in the samples.
+                    ActionSink = None
+                    CurrentNodeId = None }
 
               Html.div
                   [ prop.id ("parity-fuaran-" + p.Id)

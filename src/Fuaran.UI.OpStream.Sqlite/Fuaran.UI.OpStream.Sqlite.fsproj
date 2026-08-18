@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.OpStream.Sqlite</PackageId>
-    <Description>SQLite-backed IOpStreamSink — Microsoft.Data.Sqlite-driven durable op-stream. Companion to Fuaran.UI.OpStream.Abstractions. Apache-2.0 licensed.</Description>
+    <Description>SQLite-backed durable sinks — the Microsoft.Data.Sqlite-driven IOpStreamSink (the AI-authoring op stream) and the IActionInvocationSink user-action log, in separate tables. Companion to Fuaran.UI.OpStream.Abstractions. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>fuaran;op-stream;sink;sqlite</PackageTags>
   </PropertyGroup>
@@ -13,6 +13,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="SqliteSink.fs" />
+    <!-- Phase 889: the durable user-action log. Its own table, NOT op_stream —
+         a user action is not a TreeOp (Phase 866 Q2), so it cannot ride an
+         OpRecord. Shares this package for the SQLite driver and the local-file
+         posture, nothing else. -->
+    <Compile Include="ActionInvocationSqliteSink.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />

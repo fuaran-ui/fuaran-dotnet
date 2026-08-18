@@ -49,7 +49,10 @@ let private renderCtx: Render.RenderContext<unit> =
       Fragments = Map.empty
       ExpandingFragments = Set.empty
       Scope = None
-      SessionContext = Map.empty }
+      SessionContext = Map.empty
+      // Phase 889 — no user-action recording in the samples.
+      ActionSink = None
+      CurrentNodeId = None }
 
 let private sample (entry: Matrix.KindEntry) : ReactElement =
     let node = entry.Build(ToneVariant.Brand, StyleWeight.Standard, Emphasis.Normal)

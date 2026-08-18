@@ -239,7 +239,10 @@ let private renderContext (locale: LocaleOption) : Render.RenderContext<unit> =
       Fragments = Map.empty
       ExpandingFragments = Set.empty
       Scope = None
-      SessionContext = Map.empty }
+      SessionContext = Map.empty
+      // Phase 889 — no user-action recording in the samples.
+      ActionSink = None
+      CurrentNodeId = None }
 
 // ─── Side-nav ────────────────────────────────────────────────────────────
 

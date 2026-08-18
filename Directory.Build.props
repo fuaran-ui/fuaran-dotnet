@@ -233,8 +233,27 @@
          unchanged - otherwise. Counted both ways under distinct
          JsonDecode.Reliance ids ("over-close-unique", "over-close-refused").
          Additive decode behaviour + additive public surface (pre-1.0
-         minor, the same precedent). -->
-    <Version>0.28.0</Version>
+         minor, the same precedent).
+
+         0.29.0 - fuaran#889 the user-action record: `ActionInvocation` +
+         `IActionInvocationSink` (a NEW interface, so no existing implementer
+         is touched) + the durable `ActionInvocationSqliteSink`. BREAKING on
+         two record surfaces, the 0.5.0 shape exactly: `Render.RenderContext`
+         gains required `ActionSink` + `CurrentNodeId` fields, and
+         `DriverServices` gains a required `ActionRecording` field - a host
+         constructing either record literally stops compiling until it names
+         them (`None` everywhere reproduces 0.28.0 behaviour exactly). Also
+         behavioural: `Validation.describeAction` delegates to
+         `ActionInvocation.describe`, so a dispatch-denied reject reason now
+         prints `Navigate`'s PATH rather than its whole route. Pre-1.0 so it
+         rides a minor bump; consumers repin. See STABILITY.md.
+
+         (Authored against 0.27.0 as 0.28.0; renumbered on rebase because a
+         concurrent session had already released 0.28.0 for the accessible
+         chart root summary. Two sessions minting the same version is the
+         same class of collision as two minting the same phase number - the
+         fix is to renumber, never to share the slot.) -->
+    <Version>0.29.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -47,6 +47,10 @@ open Feliz
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Telemetry.Abstractions
+// Phase 889 — the user-action record + its sink seam. Already in this project's
+// Fable graph via Telemetry.Abstractions; referenced explicitly so the
+// dependency is declared where it is used.
+open Fuaran.UI.Ops.ActionInvocation
 
 // ─── Correlation IDs for renderer-emitted error payloads ───────────────────
 //
@@ -294,6 +298,23 @@ type RenderContext<'Msg> =
         /// Contract: never hashed, never on the wire, host-filled, opaque
         /// keys.
         SessionContext: Map<string, string>
+        /// Phase 889 — the user-action record sink. `None` (the default at
+        /// every convenience entry point) records nothing and costs nothing:
+        /// an unconfigured host keeps no user-action log at all, which is the
+        /// posture a privacy-classed log has to ship with.
+        ///
+        /// The sink also declares its own `CaptureMode`, so wiring a
+        /// destination and opting into payload VALUES are two separate host
+        /// acts and neither is reached by omission.
+        ActionSink: IActionInvocationSink option
+        /// Phase 889 — the id of the node whose subtree is being rendered, set
+        /// once per node by `render` so a handler closure created underneath it
+        /// carries the node it belongs to. There is no other route: `runAction`
+        /// is handed the resolved `Action`, never the node.
+        ///
+        /// Set ONLY when `ActionSink` is wired — an unrecorded render pays no
+        /// per-node record copy (GP 13).
+        CurrentNodeId: string option
     }
 
 // ─── Text-source rendering — handles i18n + bound text ─────────────────────
@@ -458,17 +479,27 @@ let rec private containsUnwiredAction (action: Action<'Msg>) : bool =
 /// Default runtimes allow everything, so an ungated host behaves exactly as
 /// before. Public so tests can pin the allow / deny behaviour without a
 /// browser render (`runAction` is private + render is Fable-only).
+let applyDispatchGateOutcome
+    (runtime: Runtime.IFuaranRuntime)
+    (descriptor: Runtime.ActionDescriptor)
+    (effect: unit -> unit)
+    : Result<unit, string> =
+    if runtime.CanDispatch descriptor then
+        effect ()
+        Ok()
+    else
+        let reason =
+            sprintf "dispatch denied by policy gate: %s" (Runtime.ActionDescriptor.describe descriptor)
+
+        runtime.Warn("[Fuaran] " + reason)
+        Error reason
+
 let applyDispatchGate
     (runtime: Runtime.IFuaranRuntime)
     (descriptor: Runtime.ActionDescriptor)
     (effect: unit -> unit)
     : unit =
-    if runtime.CanDispatch descriptor then
-        effect ()
-    else
-        runtime.Warn(
-            sprintf "[Fuaran] dispatch denied by policy gate: %s" (Runtime.ActionDescriptor.describe descriptor)
-        )
+    applyDispatchGateOutcome runtime descriptor effect |> ignore
 
 /// Perform a TREE-ORIGINATED write to the State channel, refusing any key under
 /// the host-reserved namespace (Phase 782). Every State write that originates in
@@ -483,16 +514,22 @@ let applyDispatchGate
 ///
 /// Public so the .NET tests can pin the decision without a browser render
 /// (precedent: `applyDispatchGate`).
-let treeStateWrite (runtime: Runtime.IFuaranRuntime) (key: string) (write: unit -> unit) : unit =
+let treeStateWriteOutcome (runtime: Runtime.IFuaranRuntime) (key: string) (write: unit -> unit) : Result<unit, string> =
     if StateKeys.isHostReserved key then
-        runtime.Warn(
+        let reason =
             sprintf
-                "[Fuaran] State write refused — key '%s' is under the host-reserved '%s' namespace and is not addressable from a rendered tree."
+                "State write refused — key '%s' is under the host-reserved '%s' namespace and is not addressable from a rendered tree."
                 key
                 StateKeys.HostReservedPrefix
-        )
+
+        runtime.Warn("[Fuaran] " + reason)
+        Error reason
     else
         write ()
+        Ok()
+
+let treeStateWrite (runtime: Runtime.IFuaranRuntime) (key: string) (write: unit -> unit) : unit =
+    treeStateWriteOutcome runtime key write |> ignore
 
 /// Perform a TREE-DECLARED navigation (Phase 782): sanitise the route, then
 /// gate it, then hand the SANITISED route to the host router.
@@ -513,18 +550,52 @@ let treeStateWrite (runtime: Runtime.IFuaranRuntime) (key: string) (write: unit 
 ///
 /// Public so the .NET tests can pin the decision without a browser render
 /// (precedent: `applyDispatchGate`).
-let treeNavigate (runtime: Runtime.IFuaranRuntime) (route: string) (navigate: string -> unit) : unit =
+let treeNavigateOutcome
+    (runtime: Runtime.IFuaranRuntime)
+    (route: string)
+    (navigate: string -> unit)
+    : Result<unit, string> =
     match Sanitize.sanitizeUrl route with
-    | None -> runtime.Warn(sprintf "[Fuaran] Action.Navigate refused — route is not a safe URL: %s" route)
+    | None ->
+        runtime.Warn(sprintf "[Fuaran] Action.Navigate refused — route is not a safe URL: %s" route)
+        // The RECORDED reason carries the scrubbed path, not the raw route: a
+        // Phase 889 record is durable and a route's query string is user data.
+        // The `Warn` above keeps the full route because a diagnostic a
+        // developer reads in their own console is a different surface from a
+        // log that outlives the session.
+        Error(sprintf "Action.Navigate refused — route is not a safe URL: %s" (ActionInvocation.routePath route))
     | Some safeRoute ->
-        applyDispatchGate runtime (Runtime.ActionDescriptor.Navigate safeRoute) (fun () -> navigate safeRoute)
+        applyDispatchGateOutcome runtime (Runtime.ActionDescriptor.Navigate safeRoute) (fun () -> navigate safeRoute)
 
-let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =
+let treeNavigate (runtime: Runtime.IFuaranRuntime) (route: string) (navigate: string -> unit) : unit =
+    treeNavigateOutcome runtime route navigate |> ignore
+
+/// The recursive action interpreter. NOT the emission point — see
+/// `runActionAs` below and the `Chain` note there.
+///
+/// `denied` accumulates every gate refusal observed anywhere in the (possibly
+/// chained) interpretation, so the single OUTER emission point can classify the
+/// gesture without consulting any gate a second time. Refusals are collected
+/// rather than short-circuited because `Chain` genuinely runs its remaining
+/// arms after one is refused, and a record that reported only the first would
+/// mis-describe the gesture.
+let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list ref) (action: Action<'Msg>) : unit =
+    let note (r: Result<unit, string>) : unit =
+        match r with
+        | Ok() -> ()
+        | Error reason -> denied.Value <- reason :: denied.Value
+
+    let gate (descriptor: Runtime.ActionDescriptor) (effect: unit -> unit) : unit =
+        note (applyDispatchGateOutcome ctx.Runtime descriptor effect)
+
+    let stateWrite (key: string) (write: unit -> unit) : unit =
+        note (treeStateWriteOutcome ctx.Runtime key write)
+
     match action with
     | Action.Dispatch msg -> ctx.Dispatch msg
     | Action.Chain actions ->
         for a in actions do
-            runAction ctx a
+            runActionCore ctx denied a
     | Action.Call(ep, onResult, into) ->
         // Bare endpoint string since the swap; the `IFuaranRuntime` seam keeps
         // its `ApiEndpoint` wrapper, so re-wrap at the boundary.
@@ -538,7 +609,7 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
         // `Call` implementation surfaces it (the default BrowserRuntime warns)
         // and the target slot stays unwritten, so readers keep their
         // `OnLoading` surface rather than showing a silent wrong value.
-        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.Call ep) (fun () ->
+        gate (Runtime.ActionDescriptor.Call ep) (fun () ->
             match onResult, into with
             | Some f, _ -> ctx.Runtime.Call(endpoint, (fun raw -> ctx.Dispatch(f raw)))
             | None, Some target ->
@@ -550,7 +621,7 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
                             // Scope-aware routing mirrors `Action.SetState` (Phase 266);
                             // host-reserved keys are refused (Phase 782) — the response
                             // target is as tree-declared as an `Action.SetState` key is.
-                            treeStateWrite ctx.Runtime key (fun () ->
+                            stateWrite key (fun () ->
                                 match ctx.Scope with
                                 | Some scopeId -> (StateStore.forScope scopeId).Set(key, raw)
                                 | None -> StateStore.set key raw)
@@ -561,11 +632,10 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
         // Phase 782 — `Notify` publishes onto a host-addressable channel, so it
         // is gated like every other outbound effect. Before 782 it reached the
         // runtime with no gate consultation at all.
-        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.Notify channel) (fun () ->
-            ctx.Runtime.Notify(channel, payload))
+        gate (Runtime.ActionDescriptor.Notify channel) (fun () -> ctx.Runtime.Notify(channel, payload))
     // Phase 782 — sanitise-then-gate on the ACTION path, not only where an
     // href/src is rendered. See `treeNavigate`.
-    | Action.Navigate route -> treeNavigate ctx.Runtime route (fun safe -> ctx.Runtime.Navigate safe)
+    | Action.Navigate route -> note (treeNavigateOutcome ctx.Runtime route (fun safe -> ctx.Runtime.Navigate safe))
     | Action.SetState(key, value, valueFrom) ->
         // Phase 782 — gated, and host-reserved keys refused. Scope-aware routing
         // (Phase 266): a guest rendered under `Some scopeId` writes to its own
@@ -578,8 +648,8 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
         // guard the literal path runs under. An unresolved / unliftable source
         // performs NO write and warns — a derived write must never silently
         // write a wrong value.
-        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.SetState key) (fun () ->
-            treeStateWrite ctx.Runtime key (fun () ->
+        gate (Runtime.ActionDescriptor.SetState key) (fun () ->
+            stateWrite key (fun () ->
                 let payload: JVal option =
                     match valueFrom, value with
                     | Some b, _ ->
@@ -616,8 +686,7 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
                          (StateStore.forScope scopeId).Set(key, raw)
                      | None -> ctx.Runtime.SetState(key, jv))))
     | Action.AiTool(toolName, args) ->
-        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.AiTool toolName) (fun () ->
-            ctx.Runtime.InvokeAiTool(toolName, args))
+        gate (Runtime.ActionDescriptor.AiTool toolName) (fun () -> ctx.Runtime.InvokeAiTool(toolName, args))
     | Action.CommitLocal nodeId ->
         // Dispatch a DOM CustomEvent on window keyed on the
         // node id; the corresponding LocalBinding's useEffect listener
@@ -630,7 +699,7 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
         // was missed, but dispatching a window event IS a host-observable effect:
         // anything listening on `fuaran-commit-local-*` is reachable from a
         // decoded tree that names the right node id.
-        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.CommitLocal nodeId) (fun () ->
+        gate (Runtime.ActionDescriptor.CommitLocal nodeId) (fun () ->
             let eventName = sprintf "fuaran-commit-local-%s" nodeId
             let evt = Browser.Dom.window.document.createEvent "CustomEvent"
             evt.initEvent (eventName, false, true)
@@ -639,8 +708,7 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
         // Phase 782 — gated. The clipboard is a cross-application channel: a
         // decoded tree writing it can plant content a user later pastes
         // somewhere with authority.
-        applyDispatchGate ctx.Runtime Runtime.ActionDescriptor.WriteToClipboard (fun () ->
-            ctx.Runtime.WriteToClipboard(text))
+        gate Runtime.ActionDescriptor.WriteToClipboard (fun () -> ctx.Runtime.WriteToClipboard(text))
     | Action.ReadFileBody(fileRef, fileHandle, encoding, onRead) ->
         // Default-deny by shape (FGP 3): consult the policy gate before the
         // host reads the file. On allow, the runtime reads the blob (async at
@@ -650,7 +718,7 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
         // `IFuaranRuntime` seam keeps its `FileRef` record, so rebuild it at
         // the boundary. An absent `onRead` still reads (host effects fire) but
         // dispatches nothing.
-        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.ReadFileBody fileRef) (fun () ->
+        gate (Runtime.ActionDescriptor.ReadFileBody fileRef) (fun () ->
             let file: FileRef = { Id = fileRef; Handle = fileHandle }
 
             let dispatchRead =
@@ -665,8 +733,66 @@ let rec private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : un
         // closest gate surface for a named host invocation). v1 surfaces the invocation via the
         // runtime diagnostic; a host wires real capability dispatch + Phase-27 replay through the
         // AiTools registry.
-        applyDispatchGate ctx.Runtime (Runtime.ActionDescriptor.AiTool capabilityId) (fun () ->
+        gate (Runtime.ActionDescriptor.AiTool capabilityId) (fun () ->
             ctx.Runtime.Warn(sprintf "[Fuaran] capability invoke (no host dispatch wired): %s" capabilityId))
+
+
+/// **The single client-side emission point** (Phase 889). One record per user
+/// gesture, at the outer entry, with the outcome the interpretation actually
+/// produced.
+///
+/// Why the outer entry and not inside the interpreter: `runActionCore` recurses
+/// through `Action.Chain`, so emitting inside it would yield N records for one
+/// gesture with no way to tell a chain from N clicks. A chain is ONE
+/// invocation, and the default redaction mode renders it as the bare `Chain`
+/// with no constituents — a deliberate decision, not something inherited from
+/// the log-safe helper.
+///
+/// The Phase 330 interaction id is read from `ctx.SessionContext` PER DISPATCH,
+/// never captured: the host's context is rebuilt per render because the id
+/// changes every turn, and a cached id stamps the first interaction's id onto
+/// every later one — a correlation worse than none, because it looks right.
+///
+/// A throwing effect is recorded as `Failed` and then RE-RAISED. Recording must
+/// not change what the renderer propagates to React.
+let private runActionAs (provenance: AffordanceProvenance) (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =
+    match ctx.ActionSink with
+    | None ->
+        // Recording off — the shipped default. No ref cell, no site, no record.
+        runActionCore ctx (ref []) action
+    | Some _ ->
+        let denied = ref []
+
+        let site =
+            ActionInvocation.clientSite provenance ctx.CurrentNodeId (Map.tryFind promptIdKey ctx.SessionContext)
+
+        let outcome =
+            try
+                runActionCore ctx denied action
+
+                match List.rev denied.Value with
+                | [] -> ActionOutcome.Dispatched
+                | reasons -> ActionOutcome.Denied(String.concat "; " reasons)
+            with ex ->
+                ActionInvocation.emit ctx.ActionSink site (ActionOutcome.Failed ex.Message) action
+                reraise ()
+
+        ActionInvocation.emit ctx.ActionSink site outcome action
+
+/// Interpret a TREE-DECLARED action — the shape every authored handler takes.
+let private runAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =
+    runActionAs AffordanceProvenance.TreeDeclared ctx action
+
+/// Interpret a RENDERER-SYNTHESISED action — Phase 860's O2-A / Phase 866's
+/// general rule, where the wire names a capability and the renderer draws the
+/// affordance and dispatches an existing `Action` through this same gate.
+///
+/// Separate from `runAction` for exactly one reason and it is not cosmetic: the
+/// resulting records genuinely answer "what did the user do" (they clicked a
+/// sort header) but they are NOT actions any author or model emitted. A corpus
+/// that cannot tell them apart attributes renderer behaviour to the emitter.
+let private runSynthesisedAction (ctx: RenderContext<'Msg>) (action: Action<'Msg>) : unit =
+    runActionAs AffordanceProvenance.RendererSynthesised ctx action
 
 // ─── Control write-back default (Phase 426) ─────────────────────────────────
 //
@@ -2732,7 +2858,9 @@ let rec private renderKind
                       // The host's correlation context follows the guest: a
                       // failure inside a mounted region belongs to the same
                       // interaction as the render that mounted it (Phase 330).
-                      SessionContext = ctx.SessionContext }
+                      SessionContext = ctx.SessionContext
+                      ActionSink = ctx.ActionSink
+                      CurrentNodeId = ctx.CurrentNodeId }
 
                 // Route through the late-bound hook (a function *value*), not a
                 // direct call into the recursive `render` group at type obj —
@@ -4237,7 +4365,7 @@ and private renderGrid
                                 | Some SortDirection.Desc -> JObj []
                                 | None -> JObj [ "column", JInt colIndex; "direction", JStr "asc" ]
 
-                            runAction ctx (Action.SetState(sortKey, Some next, None))
+                            runSynthesisedAction ctx (Action.SetState(sortKey, Some next, None))
 
                         Html.th
                             [ prop.className "fuaran-grid-header"
@@ -4274,7 +4402,9 @@ and private renderGrid
                                 Some(BindingResolver.pageCountOf size (List.length rows))
 
                         let goTo (target: int) =
-                            runAction ctx (Action.SetState(pageKey, Some(JObj [ "page", JInt target ]), None))
+                            runSynthesisedAction
+                                ctx
+                                (Action.SetState(pageKey, Some(JObj [ "page", JInt target ]), None))
 
                         let atStart = page <= 1
 
@@ -4794,6 +4924,18 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // wrapper erased at the tree level).
     let id = node.Id
 
+    // Phase 889 — stamp the node onto the context the handler closures below
+    // capture, so a user-action record can name the node the gesture was
+    // attached to. `runAction` receives the resolved `Action` and nothing else,
+    // so there is no other route to it.
+    //
+    // Guarded on the sink being wired: this is the per-node hot path and an
+    // unrecorded render must not pay a record copy per node per frame (GP 13).
+    let ctx =
+        match ctx.ActionSink with
+        | Some _ -> { ctx with CurrentNodeId = Some id }
+        | None -> ctx
+
     // Project Node.Accessibility into HTML aria-* / role
     // attributes via the shared `accessibilityAttributes` helper (testable
     // in isolation). `prop.custom` emits the kebab-case attribute name
@@ -4931,7 +5073,9 @@ let renderWithSources
           Fragments = collectFragments Map.empty node
           ExpandingFragments = Set.empty
           Scope = None
-          SessionContext = Map.empty }
+          SessionContext = Map.empty
+          ActionSink = None
+          CurrentNodeId = None }
         node
 
 /// Convenience entry point that pre-wires the optional
@@ -4958,7 +5102,9 @@ let renderWithSourcesAndSink
           Fragments = collectFragments Map.empty node
           ExpandingFragments = Set.empty
           Scope = None
-          SessionContext = Map.empty }
+          SessionContext = Map.empty
+          ActionSink = None
+          CurrentNodeId = None }
         node
 
 /// Correlation-aware render entry (Phase 330). As `renderWithSourcesAndSink`,
@@ -4994,7 +5140,49 @@ let renderWithSourcesSinkAndContext
           Fragments = collectFragments Map.empty node
           ExpandingFragments = Set.empty
           Scope = None
-          SessionContext = sessionContext }
+          SessionContext = sessionContext
+          ActionSink = None
+          CurrentNodeId = None }
+        node
+
+/// User-action-recording render entry (Phase 889). As
+/// `renderWithSourcesSinkAndContext`, plus the `IActionInvocationSink` every
+/// gesture dispatched inside this tree is recorded through.
+///
+/// A separate entry point for the same reason 330 added one: a host with no
+/// user-action log should not have to write `None` at a call site that never
+/// had the concept, and `None` here IS `renderWithSourcesSinkAndContext`. It is
+/// also what makes recording an explicit host act — the four entry points above
+/// pass `None`, so an unconfigured host records nothing.
+///
+/// The sink carries its own `CaptureMode`, so opting into payload VALUES is a
+/// second, separate decision from wiring a destination. The default sinks are
+/// redacted. **The end user is not the opt-in party**: this is host-side
+/// instrumentation, and where the host is user-facing, obtaining the user's
+/// consent is the host's obligation, which shipping a redaction default does
+/// not discharge.
+let renderWithSourcesSinkContextAndActionSink
+    (sources: BindingResolver.BindingSources)
+    (runtime: Runtime.IFuaranRuntime)
+    (telemetrySink: IFuaranTelemetrySink)
+    (sessionContext: Map<string, string>)
+    (actionSink: IActionInvocationSink option)
+    (dispatch: 'Msg -> unit)
+    (node: Node<'Msg>)
+    : ReactElement =
+    render
+        { Sources = sources
+          Runtime = runtime
+          VisAdapter = VisAdapter.noOp<'Msg>
+          Dispatch = dispatch
+          TelemetrySink = Some telemetrySink
+          InErrorBoundary = false
+          Fragments = collectFragments Map.empty node
+          ExpandingFragments = Set.empty
+          Scope = None
+          SessionContext = sessionContext
+          ActionSink = actionSink
+          CurrentNodeId = None }
         node
 
 /// Scope-aware render entry (Phase 266, §4o). Renders `node` under an explicit
@@ -5026,7 +5214,9 @@ let renderWithSourcesInScope
           Fragments = collectFragments Map.empty node
           ExpandingFragments = Set.empty
           Scope = Some scopeId
-          SessionContext = Map.empty }
+          SessionContext = Map.empty
+          ActionSink = None
+          CurrentNodeId = None }
         node
 
 /// Scope-aware render entry WITH a telemetry sink — `renderWithSourcesInScope`
@@ -5072,7 +5262,9 @@ let renderWithSourcesInScopeAndSink
           Fragments = collectFragments Map.empty node
           ExpandingFragments = Set.empty
           Scope = Some scopeId
-          SessionContext = Map.empty }
+          SessionContext = Map.empty
+          ActionSink = None
+          CurrentNodeId = None }
         node
 
 // ─── State-reactive render (Phase 106) ─────────────────────────────────────

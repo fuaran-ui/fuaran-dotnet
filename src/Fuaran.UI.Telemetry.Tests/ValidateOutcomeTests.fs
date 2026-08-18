@@ -147,9 +147,19 @@ let openSurfaceInvariantTests =
 
               let root = IO.Path.GetFullPath(IO.Path.Combine(__SOURCE_DIRECTORY__, "..", ".."))
 
+              // Phase 889 EXTENDED THE SCAN. The correlation id now also rides
+              // `ActionInvocation.InteractionId`, whose home is
+              // `Fuaran.UI.Ops.Abstractions` — outside the two directories
+              // above, so the invariant would have been asserted in prose here
+              // and enforced nowhere. The token list is unchanged; only the
+              // reach is. Note the go-red companion below still scans
+              // Telemetry.Abstractions specifically, which is deliberate: it
+              // proves the discovery mechanism, and one directory is enough
+              // for that.
               let shippedDirs =
                   [ IO.Path.Combine(root, "src", "Fuaran.UI.Telemetry.Abstractions")
-                    IO.Path.Combine(root, "src", "Fuaran.UI.Telemetry.Default") ]
+                    IO.Path.Combine(root, "src", "Fuaran.UI.Telemetry.Default")
+                    IO.Path.Combine(root, "src", "Fuaran.UI.Ops.Abstractions") ]
 
               let offences =
                   shippedDirs

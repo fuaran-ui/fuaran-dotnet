@@ -477,7 +477,10 @@ let view (model: Model) (dispatch: Msg -> unit) =
           Fragments = Map.empty
           ExpandingFragments = Set.empty
           Scope = None
-          SessionContext = Map.empty }
+          SessionContext = Map.empty
+          // Phase 889 — no user-action recording in the samples.
+          ActionSink = None
+          CurrentNodeId = None }
 
     // Phase 90 — register the in-page introspection REPL over the live tree.
     // `debug = true` here means "opt in"; `DebugGlobal.shouldRegister` still
