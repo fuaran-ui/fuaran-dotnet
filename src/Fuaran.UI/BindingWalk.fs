@@ -1,4 +1,4 @@
-module Fuaran.UI.BindingWalk
+﻿module Fuaran.UI.BindingWalk
 
 // ============================================================================
 //  Cross-tree binding collection for validation (Phase 427; the shared walk
@@ -332,8 +332,8 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         // place of the body — a real reader the walk never descended into.
         match n.State with
         | Some sb ->
-            sb.OnEmpty |> Option.iter (walk false)
-            sb.OnLoading |> Option.iter (walk false)
+            sb.OnEmpty |> Option.iter (walk inUses)
+            sb.OnLoading |> Option.iter (walk inUses)
         | None -> ()
 
         // Phase 692 — one exhaustive match over the flat vocabulary, where this
@@ -491,11 +491,19 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             // that stood here still described the `StateKey: string` field that change
             // retired. Its state reads are collected (a button writing the key a Switch
             // selects on is the canonical HONEST affordance, so missing this surface
-            // alone would false-warn on the most idiomatic shape in the language), but
-            // deliberately NOT into `Uses` — see `StateKeyFacts`. The case children +
-            // default are walked so their own bindings are captured.
+            // alone would false-warn on the most idiomatic shape in the language).
+            //
+            // Tidy-Up follow-on — 932 routed this to `recordStateOf`, i.e. into the
+            // state projection but deliberately NOT into `Uses`, because widening `Uses`
+            // is a behaviour change outside an additive Warning rule's remit. It now
+            // goes through `record` into BOTH: 768 made `On` any `Binding`, so a
+            // `Binding.Selection` selector is a Selection READ and a dangling one is
+            // FUARAN070's own case. Measured before landing — the full suite stays
+            // green, and reverting this line reddens exactly the Switch-selector probe
+            // in `PreEmitValidateTests`. The case children + default are walked so
+            // their own bindings are captured.
             | NodeKind.Switch spec ->
-                recordStateOf (usesOfBinding spec.On)
+                record inUses readerId (usesOfBinding spec.On)
                 [], (spec.Cases |> List.map _.Child) @ [ spec.Default ]
             | NodeKind.FragmentDecl spec -> [], [ spec.Body ]
             // Custom props are JVal literals, not bindings; a FragmentRef carries
@@ -523,7 +531,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
     and walkSlotArgs (args: Map<string, FragmentArg<'Msg>>) =
         for KeyValue(_, arg) in args do
             match arg with
-            | FragmentArg.SlotArg tree -> walk false tree
+            | FragmentArg.SlotArg tree -> walk true tree
             | _ -> ()
 
     walk true root

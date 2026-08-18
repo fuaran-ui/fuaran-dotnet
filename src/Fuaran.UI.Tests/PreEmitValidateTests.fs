@@ -1,4 +1,4 @@
-module Fuaran.UI.Tests.PreEmitValidate
+﻿module Fuaran.UI.Tests.PreEmitValidate
 
 open Expecto
 open Fuaran.UI
@@ -534,6 +534,114 @@ let tests =
                       (PreEmitDefect.SelectionOverNonProducer("detail", "summary"))
                       "SelectionOverNonProducer surfaced with reader + non-producer target"
               | Ok() -> failtest "Expected FUARAN071 defect, got Ok"
+          }
+
+          // ── Tidy-Up (Phase 932 follow-on) — the three read surfaces the shared
+          // walk missed. Each of these trees passed validation BEFORE the
+          // `BindingWalk` widening, because the reader sat somewhere `collect`
+          // never descended into with `inUses` set. A dangling `Binding.Selection`
+          // is the probe: FUARAN070 fires only if the walk actually reached it.
+          //
+          // The suite could not answer the blast-radius question on its own —
+          // `PreEmitValidateTests` contained no `StateBehaviour` and no `SlotArg`
+          // tree at all, so a green gate over the old walk was vacuous for two of
+          // the three. These are that coverage.
+
+          test "validate flags FUARAN070 for a dangling Selection inside a StateBehaviour OnEmpty subtree" {
+              let orphan =
+                  Fuaran.metric
+                      "empty-detail"
+                      { Defaults.metric with
+                          Label = TextSource.Literal "Selected"
+                          Value = Binding.Selection("no-such-grid", (fun (raw: obj) -> unbox raw), None, None) }
+
+              let body =
+                  { markdown "body" "Body" with
+                      State =
+                          Some
+                              { OnEmpty = Some orphan
+                                OnError = None
+                                OnLoading = None } }
+
+              match PreEmitValidate.validate (dashboard "root" [ body ]) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.DanglingSelection("empty-detail", "no-such-grid"))
+                      "an OnEmpty subtree is a real reader — the walk must descend into it"
+              | Ok() -> failtest "Expected FUARAN070 from the OnEmpty subtree, got Ok"
+          }
+
+          test "validate flags FUARAN070 for a dangling Selection inside an OnLoading subtree" {
+              let orphan =
+                  Fuaran.metric
+                      "loading-detail"
+                      { Defaults.metric with
+                          Label = TextSource.Literal "Selected"
+                          Value = Binding.Selection("no-such-grid", (fun (raw: obj) -> unbox raw), None, None) }
+
+              let body =
+                  { markdown "body" "Body" with
+                      State =
+                          Some
+                              { OnEmpty = None
+                                OnError = None
+                                OnLoading = Some orphan } }
+
+              match PreEmitValidate.validate (dashboard "root" [ body ]) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.DanglingSelection("loading-detail", "no-such-grid"))
+                      "OnLoading is the sibling surface — both arms or neither"
+              | Ok() -> failtest "Expected FUARAN070 from the OnLoading subtree, got Ok"
+          }
+
+          test "validate flags FUARAN070 for a dangling Selection inside a FragmentArg.SlotArg subtree" {
+              let orphan =
+                  Fuaran.metric
+                      "slot-detail"
+                      { Defaults.metric with
+                          Label = TextSource.Literal "Selected"
+                          Value = Binding.Selection("no-such-grid", (fun (raw: obj) -> unbox raw), None, None) }
+
+              let refNode =
+                  { Fuaran.fragmentRef "ref1" "card" with
+                      Kind =
+                          NodeKind.FragmentRef
+                              { Name = "card"
+                                Args = Some(Map.ofList [ "slot", FragmentArg.SlotArg orphan ]) } }
+
+              match PreEmitValidate.validate (dashboard "root" [ refNode ]) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.DanglingSelection("slot-detail", "no-such-grid"))
+                      "a whole Node passed as a slot argument is not invisible to validation"
+              | Ok() -> failtest "Expected FUARAN070 from the SlotArg subtree, got Ok"
+          }
+
+          test "validate flags FUARAN070 for a Switch whose SELECTOR is a dangling Selection" {
+              // Phase 768 made `On` any Binding precisely so a branch could follow
+              // the clicked row with no writer (closing 032/c6). That makes the
+              // selector a Selection READ, and a dangling one is FUARAN070's case.
+              let sw =
+                  Fuaran.switch
+                      "sw"
+                      { Defaults.switch<Msg> with
+                          On = Binding.Selection("no-such-grid", (fun (raw: obj) -> unbox (raw: obj)), None, None)
+                          Cases =
+                              [ { Match = "on"
+                                  Child = markdown "sw-on" "on" } ]
+                          Default = markdown "sw-off" "off" }
+
+              match PreEmitValidate.validate (dashboard "root" [ sw ]) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.DanglingSelection("sw", "no-such-grid"))
+                      "the Switch selector is a read, not a literal — the four-phase-stale comment's cost"
+              | Ok() -> failtest "Expected FUARAN070 from the Switch selector, got Ok"
           }
 
           // ── FUARAN072 / FUARAN073 — Call result-target checks (Phase 428) ──

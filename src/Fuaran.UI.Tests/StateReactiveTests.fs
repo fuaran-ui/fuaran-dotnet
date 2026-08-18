@@ -136,6 +136,63 @@ let tests =
                   "accessibility Label binding contributes its state key"
           }
 
+          // ── the grid's three `*StateKey` slots ───────────────────────────
+          // Tidy-Up (Phase 932 finding): `sortStateKey` gained its subscription
+          // in Phase 818 and `pageStateKey` — added by Phase 862 and read at
+          // render time through `BindingResolver.readPageDescriptor` — simply
+          // never gained the same line, so a pager write moved the page position
+          // in State and nothing on screen followed it.
+          //
+          // This test pins all THREE slots at once, because the interesting
+          // content is the asymmetry: sort and page subscribe, edit does not.
+          // `editStateKey` is a write DESTINATION with no reader anywhere in the
+          // renderer, so subscribing it would be a subscription to a key this
+          // walk cannot show anyone reads.
+          test "collectStateKeys subscribes a grid's sortStateKey AND pageStateKey, but not editStateKey" {
+              let grid: Node<Msg> =
+                  { Id = "orders"
+                    Kind =
+                      NodeKind.DataGrid(
+                          { Source = binding.state "orders-rows" Seq.empty
+                            SortStateKey = Some "orders-sort"
+                            PageSize = Some 25
+                            PageStateKey = Some "orders-page"
+                            EditStateKey = Some "orders-edit"
+                            DefaultSort = None
+                            RowKey = None
+                            RowKeyField = Some "id"
+                            Columns =
+                              [ { Label = "Id"
+                                  Value = None
+                                  Field = Some "id"
+                                  Sortable = Some true
+                                  Editable = None
+                                  Format = CellFormat.None
+                                  Kind = CellKindErased.Text
+                                  Width = ColumnWidth.Auto } ]
+                            OnRowClick = None
+                            Editable = false
+                            StaticRows = None }
+                      )
+                    State = None
+                    Style = None
+                    Accessibility = None
+                    Motion = Defaults.Motion.none
+                    ExtraAttributes = None }
+
+              Expect.equal
+                  (Render.collectStateKeys grid)
+                  (Set.ofList [ "orders-rows"; "orders-sort"; "orders-page" ])
+                  "source + sortStateKey + pageStateKey subscribe; editStateKey (a write destination) does not"
+
+              // Both slots are STATE-channel reads, so neither may leak onto the
+              // filter channel — the `, channel` guard on each arm is what stops
+              // it, and without this line dropping that guard stays green.
+              Expect.isEmpty
+                  (Render.collectFilterKeys grid |> Set.toList)
+                  "the grid's state slots contribute nothing to the filter channel"
+          }
+
           // ── StateStore.subscribeKeys — the re-render trigger ─────────────
           test "two subscribers for the same key BOTH fire on a single set" {
               let mutable a = 0

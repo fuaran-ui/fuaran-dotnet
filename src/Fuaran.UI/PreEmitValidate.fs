@@ -1184,7 +1184,7 @@ let private validateCore
             if
                 unread
                 && not (StateKeyPolicy.isHostReserved key)
-                && reported.Add(writerNodeId + " " + key)
+                && reported.Add(writerNodeId + "\u0000" + key)
             then
                 defects.Add(PreEmitDefect.SetStateNoReader(writerNodeId, key))
 

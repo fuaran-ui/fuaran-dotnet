@@ -1345,6 +1345,21 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
             @ (match g.SortStateKey, channel with
                | Some k, StateChannel -> [ k ]
                | _ -> [])
+            // The identical argument for `pageStateKey` (Phase 862), which this
+            // arm simply never gained: `renderGrid` reads the requested page off
+            // the State channel via `BindingResolver.readPageDescriptor`, so a
+            // pager click's write must re-render the grid or the page position
+            // moves in State and nothing on screen follows it.
+            //
+            // `editStateKey` is deliberately NOT here, and the asymmetry is the
+            // point: it is a write DESTINATION with no reader anywhere in the
+            // renderer (Phase 932 established this) — an edit COMMITS there. A
+            // tree that shows its edits does so because the author points the
+            // grid's `source` at the same key, and THAT read is subscribed
+            // through `source`, on this arm's first line.
+            @ (match g.PageStateKey, channel with
+               | Some k, StateChannel -> [ k ]
+               | _ -> [])
             @ (match g.StaticRows with
                | Some sr ->
                    (sr.Headers |> List.collect (keysOfText channel))
