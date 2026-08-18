@@ -234,7 +234,7 @@
          JsonDecode.Reliance ids ("over-close-unique", "over-close-refused").
          Additive decode behaviour + additive public surface (pre-1.0
          minor, the same precedent). -->
-    <Version>0.27.0</Version>
+    <Version>0.28.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
