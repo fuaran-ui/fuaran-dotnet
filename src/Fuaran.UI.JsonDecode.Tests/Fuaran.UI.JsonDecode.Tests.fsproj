@@ -65,6 +65,16 @@
          committed intended tree, 14 refuse); the leftmost-legal deletion is
          pinned as the wrong fix. -->
     <Compile Include="OverCloseUniquenessTests.fs" />
+    <!-- Phase 779 — decoder robustness fuzz. DecoderFuzz.fs is the driver
+         (deterministic PRNG, corpus-seeded mutation + structure-aware
+         generation, the four invariants, minimisation, repro persistence);
+         DecoderFuzzTests.fs is the gate-resident bounded run PLUS the go-red
+         self-test that proves the harness can fail; FuzzEvidence.fs renders the
+         published note the long run regenerates. Must follow Corpus.fs — the
+         seed pool and the near-miss vocabulary are read from the corpus. -->
+    <Compile Include="DecoderFuzz.fs" />
+    <Compile Include="FuzzEvidence.fs" />
+    <Compile Include="DecoderFuzzTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
