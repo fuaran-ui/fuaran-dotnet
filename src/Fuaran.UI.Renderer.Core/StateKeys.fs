@@ -39,21 +39,19 @@ module Fuaran.UI.Renderer.StateKeys
 /// `Action.SetState`, a covered control's write-back default, or a
 /// `Call … into State` target — naming a key under this prefix is refused and
 /// recorded; only host code writing its store directly can populate it.
+//  Phase 932 — the DEFINITION moved down to `Fuaran.UI.StateKeyPolicy` so the
+//  pre-emit validator (a lower tier, FSharp.Core-only) reads the same policy
+//  rather than restating it. This module re-exports it unchanged: every caller's
+//  spelling still works, and there is still exactly one prefix.
 [<Literal>]
-let HostReservedPrefix = "host."
+let HostReservedPrefix = Fuaran.UI.StateKeyPolicy.HostReservedPrefix
 
-// `isHostReserved` null-tests a `string` parameter, because a hand-built or
-// wire-decoded record can carry a null the type says cannot exist. F# 10's
-// nullness checker rejects that test on a non-nullable `string` (FS3261). This
-// project declares `<Nullable>disable</Nullable>`, but under Fable that property
-// is the ENTRY project's: a nullable-enabled entry transpiles this source with
-// nullness ON and the file stops compiling. The file-scoped suppression makes the
-// posture travel with the source, matching the precedent in Sanitize.fs +
-// Markdown.fs. Do NOT drop the `isNull` guard — it is the contract.
-#nowarn "3261"
+// The null-test posture, and the FS3261 suppression it needs under a
+// nullable-enabled Fable entry project, moved with the implementation to
+// `Fuaran.UI.StateKeyPolicy` — the guard is stated once, where it runs.
 
 /// True when `key` names a host-reserved slot (see [[HostReservedPrefix]]).
 /// Total on null: an absent key is not "privileged", it is malformed, and that
 /// is a different refusal in a different place.
 let isHostReserved (key: string) : bool =
-    not (isNull key) && key.StartsWith HostReservedPrefix
+    Fuaran.UI.StateKeyPolicy.isHostReserved key

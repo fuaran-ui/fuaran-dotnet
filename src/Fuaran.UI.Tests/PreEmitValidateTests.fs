@@ -32,6 +32,53 @@ let private dashboard id children : Node<Msg> =
 
 let private markdown id text : Node<Msg> = Fuaran.markdown id text
 
+// ─── Phase 932 fixtures — FUARAN098, a `SetState` writing an unread key ───
+
+/// A button whose click writes `key`, standing beside whatever `readers` the test
+/// wants. The button is the only writer; what reads the key — if anything — is
+/// the variable under test.
+let private setStateTree (key: string) (readers: Node<Msg> list) : Node<Msg> =
+    let writer =
+        Fuaran.button
+            "writer"
+            { Defaults.button<Msg> with
+                Label = TextSource.Literal "Go"
+                OnClick = Action.SetState(key, Some(Fuaran.Core.JBool true), None) }
+
+    dashboard "root" (writer :: readers)
+
+/// Only the FUARAN098 defects. The fixtures deliberately carry unrelated shapes
+/// (a bare grid, a default-cased switch), so asserting `Ok()` would couple these
+/// tests to rules they are not about.
+let private noReaderDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.SetStateNoReader _ -> true
+            | _ -> false)
+
+/// The plainest possible reader: a metric bound to `key` on the State channel.
+let private stateReader (id: string) (key: string) : Node<Msg> =
+    Fuaran.metric
+        id
+        { Defaults.metric with
+            Label = TextSource.Literal "M"
+            Value = Binding.State(key, Some 0.0) }
+
+/// A `Switch` whose branch SELECTOR reads `key` — a `Binding` since Phase 768,
+/// and the read surface a naive rule misses.
+let private switchReader (id: string) (key: string) : Node<Msg> =
+    Fuaran.switch
+        id
+        { Defaults.switch<Msg> with
+            On = Binding.State(key, None)
+            Cases =
+                [ { Match = "on"
+                    Child = markdown (id + "-on") "on" } ]
+            Default = markdown (id + "-off") "off" }
+
 /// Phase 861 — a bound grid with the sort declarations under test. Columns are
 /// `(label, field, sortable)`; a `rowKeyField` keeps FUARAN078 out of the way.
 let private sortGrid
@@ -1163,4 +1210,80 @@ let tests =
                        | PreEmitDefect.UneditableColumnDeclared _ -> true
                        | _ -> false))
                   "narrowing is allowed even to no effect"
+          }
+
+          // ─── Phase 932: FUARAN098 — a `SetState` writing a key nothing reads.
+          // 866's fake-affordance property over the authored tree. Every test
+          // below has a go-red partner in which the SAME write IS read, because a
+          // rule that fires on everything is indistinguishable from one that
+          // works right up until someone writes a legitimate tree.
+
+          test "FUARAN098: a SetState writing a key nothing reads warns" {
+              let tree = setStateTree "draft" [ markdown "copy" "nothing reads it" ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  Expect.contains defects (PreEmitDefect.SetStateNoReader("writer", "draft")) "the defect is raised"
+
+                  let code, severity, _ = describe (PreEmitDefect.SetStateNoReader("writer", "draft"))
+
+                  Expect.equal code "FUARAN098" "stable code"
+
+                  Expect.equal
+                      severity
+                      DefectSeverity.Warning
+                      "a key may legitimately be written for a HOST to read, which is why this cannot be an Error"
+              | Ok() -> failtest "Expected FUARAN098, got Ok"
+          }
+
+          test "FUARAN098 go-red check: a plain State-bound reader clears it" {
+              let tree = setStateTree "draft" [ stateReader "shown" "draft" ]
+              Expect.isEmpty (noReaderDefects tree) "a bound reader makes the write real"
+          }
+
+          test "FUARAN098 go-red check: a Switch SELECTOR counts as a reader" {
+              // The regression that matters most. `SwitchSpec.On` became a
+              // Binding in Phase 768, and the shared walk still described it as a
+              // literal string — so a button driving a Switch, the canonical
+              // honest affordance in this language, would have been reported as
+              // fake.
+              let tree = setStateTree "tab" [ switchReader "sw" "tab" ]
+              Expect.isEmpty (noReaderDefects tree) "the branch selector reads the key"
+          }
+
+          test "FUARAN098 go-red check: a grid's pageStateKey counts as a reader" {
+              // A plain STRING the renderer reads, with no Binding to see.
+              let tree =
+                  setStateTree
+                      "members-page"
+                      [ pagedGrid (Some 20) (Some "members-page") (Binding.Static(Some Seq.empty)) ]
+
+              Expect.isEmpty (noReaderDefects tree) "the pager reads the key it is named with"
+          }
+
+          test "FUARAN098: a host-reserved key is exempt" {
+              // Such a write is REFUSED at dispatch on every path (Phase 782), so
+              // its defect is that it is unaddressable, not that it is unread —
+              // a different finding, in a different place. Exempted through the
+              // guard's own prefix rather than a second list beside it.
+              let tree =
+                  setStateTree (StateKeyPolicy.HostReservedPrefix + "secret") [ markdown "copy" "x" ]
+
+              Expect.isEmpty (noReaderDefects tree) "the host-reserved namespace is not this rule's business"
+          }
+
+          test "FUARAN098: an OPAQUE reader stands the rule down for the whole tree" {
+              // A `Computed` closure is handed the entire state bag, so absence
+              // of a visible read proves nothing. Refuse only what is PROVABLY
+              // wrong (the fuaran-core#90 rule).
+              let opaque =
+                  Fuaran.metric
+                      "computed"
+                      { Defaults.metric with
+                          Label = TextSource.Literal "M"
+                          Value = Binding.Computed(fun _ -> 0.0) }
+
+              let tree = setStateTree "draft" [ opaque ]
+
+              Expect.isEmpty (noReaderDefects tree) "an unprovable claim is not a finding"
           } ]

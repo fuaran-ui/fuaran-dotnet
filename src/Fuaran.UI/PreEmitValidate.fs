@@ -306,6 +306,30 @@ type PreEmitDefect =
     /// only what is PROVABLY wrong. Carries the chart node's id, the x field,
     /// and the offending column-type tag.
     | ChartTemporalXNotDate of nodeId: string * field: string * columnType: string
+    /// **FUARAN098 (Warning)**. An `Action.SetState` writes a state key that
+    /// NOTHING in the tree reads (Phase 932) — the general form of the fake
+    /// affordance [Phase 866](../../roadmap/phases/866-affordance-to-op-charter.md)
+    /// chartered and [Phase 860](../../roadmap/phases/860-grid-behaviour-vocabulary-charter.md)
+    /// deferred to it: a gesture the user can perform that changes nothing they
+    /// can see. 866's property is that a declared affordance is real iff the node
+    /// hosting the gesture also consumes its effect, or names in its own payload
+    /// the slot that does; this is the residual authored shape, the tiers above
+    /// and below it being structural and unenforceable respectively.
+    ///
+    /// **WARNING rather than Error, and that is load-bearing.** A key may
+    /// legitimately be written for a HOST to read, and the validator cannot see
+    /// the host. An Error would make a legal composition unshippable; a Warning
+    /// that is occasionally wrong is useful, whereas an Error that is
+    /// occasionally wrong gets suppressed, and a suppressed rule protects
+    /// nothing. For the same reason the rule stands down entirely on a tree
+    /// holding an OPAQUE reader (`Binding.Computed`, `NodeKind.Custom`), where
+    /// the absence of a read proves nothing. Host-reserved keys are exempt via
+    /// the Phase 782 prefix — such a write is REFUSED at dispatch, so its defect
+    /// is that it is unaddressable, not that it is unread.
+    ///
+    /// Carries the writing node's id and the key. What counts as a READ is
+    /// enumerated on `BindingWalk.StateKeyFacts`, not left to the reader.
+    | SetStateNoReader of nodeId: string * key: string
 
 /// Why an editable column has nowhere to commit (FUARAN095, Phase 863).
 and [<RequireQualifiedAccess>] EditDefect =
@@ -562,6 +586,14 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             field
             columnType
+    | PreEmitDefect.SetStateNoReader(nodeId, key) ->
+        "FUARAN098",
+        DefectSeverity.Warning,
+        sprintf
+            "'%s' writes state key '%s' but nothing in the tree reads it — the gesture runs and the user sees no change (a fake affordance); bind a reader to {\"$type\":\"State\",\"key\":\"%s\"}, select a Switch on it, or name it as a grid's sortStateKey/pageStateKey. If the key is written for the HOST to read, this warning is expected and can be ignored (Phase 932)"
+            nodeId
+            key
+            key
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -1125,6 +1157,36 @@ let private validateCore
 
         if ws.Length > 1 then
             defects.Add(PreEmitDefect.DuplicateWriteBackKey(key, ws)))
+
+    // ── FUARAN098 — a `SetState` writing a key nothing reads (Phase 932) ──
+    // 866's fake-affordance property, middle enforcement tier. The top tier is
+    // structural (the renderer owns each admitted affordance, so its two ends
+    // cannot be mis-paired) and the bottom is unenforceable and named as such
+    // (`Notify` on a dead channel, `Invoke` of an unregistered capability, both
+    // crossing the host boundary). This is the authored shape in between.
+    //
+    // The rule reasons from the ABSENCE of a read, so it stands down wherever
+    // absence is not evidence: a `Binding.Computed` closure is handed the whole
+    // state bag, and a registered `Custom` renderer is host code that may read
+    // anything. Under either, "nothing reads this key" is unprovable rather than
+    // false, and the fuaran-core#90 rule applies — refuse only what is PROVABLY
+    // wrong.
+    if not facts.StateKeys.OpaqueReader then
+        let reported = System.Collections.Generic.HashSet<string>()
+
+        for (writerNodeId, key) in facts.StateKeys.Writes do
+            // Host-reserved keys are exempt through the Phase 782 guard's own
+            // prefix rather than a second list beside it: a write there is
+            // REFUSED at dispatch on every path, so its defect is that it is
+            // unaddressable, not that it is unread.
+            let unread = not (Set.contains key facts.StateKeys.Reads)
+
+            if
+                unread
+                && not (StateKeyPolicy.isHostReserved key)
+                && reported.Add(writerNodeId + " " + key)
+            then
+                defects.Add(PreEmitDefect.SetStateNoReader(writerNodeId, key))
 
     if defects.Count = 0 then
         Ok()

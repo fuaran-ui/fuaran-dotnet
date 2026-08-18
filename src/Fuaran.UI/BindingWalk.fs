@@ -43,6 +43,13 @@ type BindingUse =
     | Query of name: string * dependsOn: string list
     | TransformParamFilter of name: string
     | TransformParam of name: string * referenced: bool
+    /// A `Binding.Computed` read (Phase 932). The closure is handed the WHOLE
+    /// `BindingContext.State` bag, so WHICH keys it reads is unknowable
+    /// statically. Recorded as a usage rather than dropped, so a rule reasoning
+    /// from the ABSENCE of a read can tell "nothing reads this key" apart from
+    /// "this tree cannot be analysed" — the difference between a finding and a
+    /// false accusation.
+    | Computed
 
 /// One observed usage tagged with the id of the node whose spec reads it.
 type NodeBindingUse = { Reader: string; Use: BindingUse }
@@ -57,6 +64,66 @@ type CallUse =
       HasOnResult: bool
       Into: CallResultTarget option }
 
+/// The State-channel projection **FUARAN098** runs on (Phase 932) — which keys
+/// the tree WRITES with `Action.SetState`, and which it can be shown to READ.
+///
+/// **What counts as a READ, enumerated rather than assumed.** The rule reasons
+/// from the ABSENCE of a read, so an under-broad definition does not merely miss
+/// findings — it manufactures false ones, which is how a Warning-severity rule
+/// gets suppressed and stops protecting anything. The eight surfaces:
+///
+///  1. `Binding.State(k, _)` in ANY binding-bearing slot, recursing exactly as
+///     `usesOfBinding` does — through `Local.initialFrom`, `Format.source`,
+///     `I18n` args, and a `Transform`'s `params[].From`. This is the obvious
+///     case and by volume the overwhelming majority.
+///  2. A `Switch`'s branch SELECTOR, `SwitchSpec.On` — a `Binding` since
+///     Phase 768, not the `StateKey: string` several stale comments still
+///     describe. A button writing the key a `Switch` selects on is the canonical
+///     honest affordance, so missing this surface alone would false-warn on the
+///     single most idiomatic shape in the language.
+///  3. A `DataGrid`'s `SortStateKey` and `PageStateKey` — plain STRINGS, not
+///     bindings, and genuinely read (`BindingResolver.readSortSlot` /
+///     `readPageDescriptor`). `EditStateKey` is deliberately NOT here: it is a
+///     write DESTINATION with no reader anywhere in the renderer, so counting it
+///     would mask real defects.
+///  4. A `FormField` whose `FormFieldKind` value slot is `None` — the Phase 694
+///     auto-bind reads `Binding.State(field.Id, _)` with nothing in the tree to
+///     see. Already covered by `usesOfFormFieldKind`'s implicit-use argument.
+///  5. An `Action.SetState`'s own `valueFrom` binding: a write whose value
+///     derives from another key READS that key.
+///  6. A `StateBehaviour` subtree — `OnEmpty` / `OnLoading` are wire-encoded
+///     child nodes that render in place of the body and may read anything.
+///  7. A `FragmentArg.SlotArg` subtree passed through `FragmentRef.Args` or
+///     `Mount.Inputs`.
+///  8. `Accessibility.Label` / `Hidden`, `Drawing`'s `DrawStyle` colour
+///     bindings and `Shape.Label` text — ordinary binding slots, listed because
+///     the two tree walks in this estate have each historically missed one of
+///     them while covering the other.
+///
+/// Where a surface could not be decided, it is counted AS A READ: over-counting
+/// costs a missed finding, under-counting costs a false accusation, and only one
+/// of those kills the rule. `Mount.Inputs` is the live instance — a guest renders
+/// in an isolated `StateStore.forScope`, so its INTERIOR reads no host key, but a
+/// `SlotArg` handed to it is host-authored and its scope at render time is not
+/// settled by the type. It is counted.
+type StateKeyFacts =
+    {
+        /// Every `Action.SetState` reachable from a wire-survivable action slot
+        /// (`Button.OnClick` / `Form.OnSubmit` / `Modal.OnDismiss`, recursing
+        /// `Chain`), as (writing node id, key). Closure-held handlers are
+        /// invisible by construction — the walk sees what the wire sees.
+        Writes: (string * string) list
+        /// Every state key the tree can be SHOWN to read, per the eight surfaces
+        /// above.
+        Reads: Set<string>
+        /// True when the tree holds a reader whose state access cannot be seen —
+        /// a `Binding.Computed` closure (handed the whole state bag) or a
+        /// `NodeKind.Custom` node (whose registered host renderer may read
+        /// anything). Under either, the absence of a read PROVES nothing, so
+        /// FUARAN098 stands down for the whole tree rather than guessing.
+        OpaqueReader: bool
+    }
+
 /// The tree-wide facts `PreEmitValidate`'s cross-tree checks run on.
 type TreeBindingFacts =
     {
@@ -70,6 +137,14 @@ type TreeBindingFacts =
         /// selection PRODUCER — a `Visualisation` kind (the grid's Phase 427
         /// default row-click write; charts/tables/maps via host closures).
         Nodes: Map<string, bool>
+        /// The State-channel read/write projection FUARAN098 runs on (Phase 932).
+        /// Held BESIDE `Uses` rather than folded into it: the consumption-union
+        /// rules (FUARAN070–076) are tuned to the surfaces `Uses` covers today,
+        /// and widening that set would newly fire five shipped Error-severity
+        /// rules on trees that pass now — a behaviour change well outside an
+        /// additive Warning rule's remit. The gaps in `Uses` are real and are
+        /// filed as their own work; see `TIDY-UP.md`.
+        StateKeys: StateKeyFacts
     }
 
 /// Binding usages read by a single binding, recursing into a `Local` binding's
@@ -108,9 +183,11 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
                     | other -> other)
 
             BindingUse.TransformParam(p.Name, Set.contains p.Name referenced) :: sourceUses)
+    // Phase 932 — `Computed` reads the whole state bag through a closure, so it
+    // is an OPAQUE read, not an absent one. See `BindingUse.Computed`.
+    | Binding.Computed _ -> [ BindingUse.Computed ]
     | Binding.Invoke _
-    | Binding.Static _
-    | Binding.Computed _ -> []
+    | Binding.Static _ -> []
 
 /// Binding usages read by a `TextSource`. `Literal` carries none; `Bound`
 /// defers to its binding; `TextSource.I18n` args are `JVal` literals.
@@ -190,15 +267,53 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
     let calls = ResizeArray<CallUse>()
     let nodes = System.Collections.Generic.Dictionary<string, bool>()
 
-    let record (readerId: string) (found: BindingUse list) =
+    // ── The Phase 932 State-channel projection (see `StateKeyFacts`) ──
+    let stateReads = System.Collections.Generic.HashSet<string>()
+    let stateWrites = ResizeArray<string * string>()
+    let mutable opaqueReader = false
+
+    /// Fold usages into the STATE projection only. Every read surface reaches
+    /// this, including the ones deliberately kept out of `Uses`.
+    let recordStateOf (found: BindingUse list) =
         for u in found do
-            uses.Add { Reader = readerId; Use = u }
+            match u with
+            | BindingUse.State k -> stateReads.Add k |> ignore
+            | BindingUse.Computed -> opaqueReader <- true
+            | _ -> ()
 
-    let recordCalls (readerId: string) (action: Action<'Msg>) =
-        for c in callsOfAction readerId action do
-            calls.Add c
+    // `inUses` is false while walking a subtree that contributes STATE facts but
+    // must not widen `Uses` / `Calls` / `Nodes` — a `StateBehaviour` branch or a
+    // `SlotArg` argument tree. Those subtrees were never walked here before, so
+    // feeding them into the consumption-union checks would change five shipped
+    // rules' verdicts as a side-effect of adding a Warning.
+    let record (inUses: bool) (readerId: string) (found: BindingUse list) =
+        recordStateOf found
 
-    let rec walk (n: Node<'Msg>) =
+        if inUses then
+            for u in found do
+                uses.Add { Reader = readerId; Use = u }
+
+    /// Every `SetState` reachable from a wire-survivable action slot: the key is
+    /// a WRITE, and a `valueFrom` deriving the written value is itself a READ.
+    let rec recordStateAction (readerId: string) (action: Action<'Msg>) =
+        match action with
+        | Action.SetState(key, _, valueFrom) ->
+            stateWrites.Add(readerId, key)
+
+            match valueFrom with
+            | Some b -> recordStateOf (usesOfBinding b)
+            | None -> ()
+        | Action.Chain actions -> actions |> List.iter (recordStateAction readerId)
+        | _ -> ()
+
+    let recordCalls (inUses: bool) (readerId: string) (action: Action<'Msg>) =
+        recordStateAction readerId action
+
+        if inUses then
+            for c in callsOfAction readerId action do
+                calls.Add c
+
+    let rec walk (inUses: bool) (n: Node<'Msg>) =
         let readerId = n.Id
 
         let isProducer =
@@ -206,10 +321,19 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeCategory.Visualisation -> true
             | _ -> false
 
-        nodes[readerId] <- isProducer
+        if inUses then
+            nodes[readerId] <- isProducer
 
         match n.Accessibility with
-        | Some a -> record readerId (usesOfBindingOpt a.Label @ usesOfBindingOpt a.Hidden)
+        | Some a -> record inUses readerId (usesOfBindingOpt a.Label @ usesOfBindingOpt a.Hidden)
+        | None -> ()
+
+        // A `StateBehaviour` branch is a wire-encoded child node rendered in
+        // place of the body — a real reader the walk never descended into.
+        match n.State with
+        | Some sb ->
+            sb.OnEmpty |> Option.iter (walk false)
+            sb.OnLoading |> Option.iter (walk false)
         | None -> ()
 
         // Phase 692 — one exhaustive match over the flat vocabulary, where this
@@ -235,7 +359,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 (usesOfBinding s.ActiveIndex @ usesOfBindingOpt s.ActiveTag @ headerUses), s.Children
             | NodeKind.Modal s ->
                 // Modal's OnDismiss is the wire-survivable Action slot (Phase 428).
-                s.OnDismiss |> Option.iter (recordCalls readerId)
+                s.OnDismiss |> Option.iter (recordCalls inUses readerId)
                 (usesOfTextOpt s.Heading @ usesOfBinding s.Open), s.Children
             | NodeKind.ScrollArea s -> [], s.Children
             // ── Display ──
@@ -296,7 +420,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.Button b ->
                 let uses =
                     // OnClick is a wire-survivable Action slot (Phase 428).
-                    recordCalls readerId b.OnClick
+                    recordCalls inUses readerId b.OnClick
                     usesOfText b.Label @ usesOfTextOpt b.Tooltip @ usesOfBindingOpt b.Disabled
 
                 uses, []
@@ -314,7 +438,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.Form f ->
                 let uses =
                     // OnSubmit is a wire-survivable Action slot (Phase 428).
-                    recordCalls readerId f.OnSubmit
+                    recordCalls inUses readerId f.OnSubmit
 
                     let fieldUses =
                         f.Fields
@@ -328,8 +452,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 uses, []
             | NodeKind.Filters spec ->
                 let uses =
-                    for fs in spec.Items do
-                        declaredFilters.Add(readerId, fs.Name)
+                    if inUses then
+                        for fs in spec.Items do
+                            declaredFilters.Add(readerId, fs.Name)
 
                     spec.Items
                     |> List.collect (fun (fs: FilterSpec<_>) ->
@@ -339,6 +464,14 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 uses, []
             // ── Visualisation ──
             | NodeKind.DataGrid g ->
+                // Phase 932 — `sortStateKey` / `pageStateKey` are plain STRINGS the
+                // renderer READS (`readSortSlot` / `readPageDescriptor`), so they are
+                // state reads with no `Binding` for the walk to see. `editStateKey` is
+                // a write DESTINATION with no reader anywhere in the renderer, and
+                // counting it would mask the very defect this rule looks for.
+                g.SortStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
+                g.PageStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
+
                 let uses =
                     // Phase 393 — a static read-only grid carries its cells as `TextSource`
                     // in `StaticRows`; a data-bound grid carries a `Source` binding.
@@ -354,23 +487,52 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.Map m -> usesOfBinding m.Source, []
             // ── Structural ──
             | NodeKind.ErrorBoundary spec -> [], [ spec.Child; spec.Fallback ]
-            // The StateKey is a literal string (not a Binding), so it records no
-            // filter/query use here; the case children + default are walked so their
-            // own bindings are captured.
-            | NodeKind.Switch spec -> [], (spec.Cases |> List.map _.Child) @ [ spec.Default ]
+            // Phase 932 — the branch SELECTOR is a BINDING since Phase 768; the comment
+            // that stood here still described the `StateKey: string` field that change
+            // retired. Its state reads are collected (a button writing the key a Switch
+            // selects on is the canonical HONEST affordance, so missing this surface
+            // alone would false-warn on the most idiomatic shape in the language), but
+            // deliberately NOT into `Uses` — see `StateKeyFacts`. The case children +
+            // default are walked so their own bindings are captured.
+            | NodeKind.Switch spec ->
+                recordStateOf (usesOfBinding spec.On)
+                [], (spec.Cases |> List.map _.Child) @ [ spec.Default ]
             | NodeKind.FragmentDecl spec -> [], [ spec.Body ]
             // Custom props are JVal literals, not bindings; a FragmentRef carries
             // no body; a Mount guest owns its own scoped stores.
-            | NodeKind.Custom _
-            | NodeKind.FragmentRef _
-            | NodeKind.Mount _ -> [], []
+            | NodeKind.Custom _ ->
+                // Phase 932 — a REGISTERED custom renderer is host code that may read
+                // any state key, so the tree can no longer be shown to read nothing.
+                opaqueReader <- true
+                [], []
+            | NodeKind.FragmentRef spec ->
+                spec.Args |> Option.iter walkSlotArgs
+                [], []
+            | NodeKind.Mount spec ->
+                // A guest's INTERIOR reads no host key (it renders under an isolated
+                // `StateStore.forScope`), but a `SlotArg` handed to it is host-authored
+                // and its render-time scope is not settled by the type. Counted as a
+                // read: over-counting costs a missed finding, under-counting costs a
+                // false accusation.
+                spec.Inputs |> Option.iter walkSlotArgs
+                [], []
 
-        record readerId directUses
-        children |> List.iter walk
+        record inUses readerId directUses
+        children |> List.iter (walk inUses)
 
-    walk root
+    and walkSlotArgs (args: Map<string, FragmentArg<'Msg>>) =
+        for KeyValue(_, arg) in args do
+            match arg with
+            | FragmentArg.SlotArg tree -> walk false tree
+            | _ -> ()
+
+    walk true root
 
     { Uses = List.ofSeq uses
       DeclaredFilters = List.ofSeq declaredFilters
       Calls = List.ofSeq calls
-      Nodes = nodes |> Seq.fold (fun acc (KeyValue(k, v)) -> Map.add k v acc) Map.empty }
+      Nodes = nodes |> Seq.fold (fun acc (KeyValue(k, v)) -> Map.add k v acc) Map.empty
+      StateKeys =
+        { Writes = List.ofSeq stateWrites
+          Reads = Set.ofSeq stateReads
+          OpaqueReader = opaqueReader } }
