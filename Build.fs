@@ -320,6 +320,88 @@ let private registerTargets () =
             printfn "Fuaran.UI.Validator: %s" project
             dotnet [ "run"; "--project"; validatorProject; "-c"; "Release"; "--"; project ] repoRoot)
 
+    // ─── Publication gate: a tagged pack must BE the tagged version ─────
+    //
+    // Deliberately NOT "refuse to pack an untagged version". Packing untagged
+    // versions to the shared local feed IS the workspace's inner loop — that is
+    // what the feed exists for — so a blanket refusal here would break every
+    // consumer's iteration to prevent a publication mistake.
+    //
+    // What it refuses instead is the pair of publication-shaped packs that can
+    // put wrong or unreleasable bytes on nuget.org, where nothing can be taken
+    // back (a version can be unlisted, never deleted):
+    //
+    //   1. Running AT a tag whose name disagrees with <Version>. The workflow
+    //      packs whatever <Version> says at the tagged commit, so `v0.26.0` on a
+    //      tree reading 0.27.0 publishes 0.27.0 — a version nobody released,
+    //      under a tag that names another. Permanent, and invisible until a
+    //      consumer restores it.
+    //   2. Packing to a publication output dir with no tag ref at all — which is
+    //      what `workflow_dispatch` on a BRANCH does. That is documented as the
+    //      "re-run against an existing tag" escape hatch; dispatched against a
+    //      tag it satisfies rule 1 and passes, dispatched against a branch it
+    //      would publish an untagged head, so it is refused here rather than
+    //      discovered on the registry.
+    //
+    // Both read GITHUB_REF_TYPE / GITHUB_REF_NAME rather than `git tag`: the
+    // publish workflow checks out at the default depth, where the local tag list
+    // is not a reliable witness to what has been released.
+    let declaredVersion () =
+        let props = Path.Combine(repoRoot, "Directory.Build.props")
+
+        if File.Exists props then
+            let text = File.ReadAllText props
+
+            let m =
+                System.Text.RegularExpressions.Regex.Match(text, "<Version>([^<]+)</Version>")
+
+            if m.Success then Some(m.Groups[1].Value.Trim()) else None
+        else
+            None
+
+    let envVar name =
+        match System.Environment.GetEnvironmentVariable(name: string) with
+        | null
+        | "" -> None
+        | v -> Some v
+
+    let assertPublishablePack (packingToPublicationDir: bool) =
+        let refType = envVar "GITHUB_REF_TYPE"
+        let refName = envVar "GITHUB_REF_NAME"
+        let allowUntagged = (envVar "FUARAN_PACK_ALLOW_UNTAGGED").IsSome
+
+        match declaredVersion () with
+        | None -> ()
+        | Some version ->
+            match refType, refName with
+            | Some "tag", Some tag ->
+                let expected = "v" + version
+
+                if tag <> expected then
+                    failwithf
+                        "Pack REFUSED: building at tag '%s' but <Version> is %s (expected tag '%s').
+                         The pack takes its version from Directory.Build.props, not from the tag, so this
+                         would publish %s under a tag naming another version — permanently, since nuget.org
+                         versions can be unlisted but never deleted.
+                         Either move the tag to a commit whose <Version> is %s, or tag %s."
+                        tag
+                        version
+                        expected
+                        version
+                        (tag.TrimStart 'v')
+                        expected
+            | _ ->
+                if packingToPublicationDir && not allowUntagged then
+                    failwithf
+                        "Pack REFUSED: packing to a publication output (FUARAN_PACK_OUTPUT) with no release
+                         tag — <Version> is %s and this build is not running at a tag.
+                         Publication is the tag gesture: `git tag v%s && git push origin v%s`.
+                         (Dispatching the publish workflow against a BRANCH lands here; dispatch it against
+                         the tag instead. Set FUARAN_PACK_ALLOW_UNTAGGED=1 only for a local scratch pack.)"
+                        version
+                        version
+                        version
+
     Target.create "Pack" (fun _ ->
         // Default: the workspace-shared inner-loop feed, so a local `-t Pack`
         // keeps shadowing released packages for downstream consumers exactly as
@@ -333,11 +415,15 @@ let private registerTargets () =
         // reaches ~1900 packs, nearly all of them private. Packing to a
         // repo-local dir makes the push step's input this repo's own output by
         // construction.
+        let defaultFeed = Path.Combine(repoRoot, "..", "..", "..", "local-nuget-feed")
+
         let feed =
             match System.Environment.GetEnvironmentVariable "FUARAN_PACK_OUTPUT" with
             | null
-            | "" -> Path.Combine(repoRoot, "..", "..", "..", "local-nuget-feed")
+            | "" -> defaultFeed
             | dir -> dir
+
+        assertPublishablePack (feed <> defaultFeed)
 
         for project in packableProjects do
             dotnet [ "pack"; project; "-c"; "Release"; "-o"; feed ] repoRoot)
