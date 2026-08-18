@@ -890,7 +890,80 @@ let private cases: Case list =
           XScale = Some "Temporal"
           Rows =
               isoRun "2026-01-05" 1 30
-              |> List.mapi (fun i x -> x, [ float (1250000 + 25000 * i); float (980000 + 31000 * i) ]) } ]
+              |> List.mapi (fun i x -> x, [ float (1250000 + 25000 * i); float (980000 + 31000 * i) ]) }
+      // ── The formatter's rule-5 regimes — the two cases that reach them ──
+      //
+      // No other `chart-lowering/*` fixture has a magnitude anywhere near the
+      // notation switch, which is exactly why the Phase 876 wave shipped a
+      // formatter that grouped an EXPONENT form and the byte-parity corpus
+      // certified it green: a corpus can only pin the values it exercises.
+      //
+      // TWO cases, because the two regimes cannot share an axis. Above ~1e18 a
+      // grouped tick is wider than the 30 %-of-canvas left-margin ceiling and
+      // TRUNCATES to `…`, and the `r2` geometry rounding (`⌊x·100+½⌋/100`)
+      // stops being exact once `x·100` passes 2^53, so a 1e21 y-domain would
+      // pin a truncated `999,999,999,999,999,90…` — deterministic and
+      // cross-host identical, but pinning the margin rule rather than the
+      // formatter. So the BAR case takes the axis regime it can print in full,
+      // and the ≥1e21 regime rides a PIE, which has no value axis to truncate
+      // and whose wedge tips carry the raw datum untouched by `r2`.
+      { plain with
+          // `axisUnitMode = Off` is load-bearing. Every other mode scales the
+          // axis into its display unit first (`Quadrillions` is the table's top
+          // rung, so even a 1e21 axis reads in the low thousands), and a scaled
+          // axis can never print a raw magnitude — so `Off` is the ONLY axis
+          // regime that reaches rule 5. The tips reach it regardless: Phase
+          // 883's decision 1 prints them unscaled, which is what made this
+          // wrong-in-practice rather than wrong-in-theory.
+          //
+          //   1.5e15 — above `formatNum`'s int64 fast-path bound but BELOW the
+          //            notation switch. Every host was already correct here and
+          //            its bytes must not move; this datum is the control that
+          //            says so, and the reason the bundle's "at or above 1e15"
+          //            framing is a magnitude too low.
+          //   9e16   — the last regime still positional on every host.
+          //   1.8e17
+          //   2.5e17 — past the .NET `"R"` switch (the Fable, Python and Rust
+          //            hosts mirror it). Pre-fix these read `1.8E,+17` /
+          //            `2.5E,+17` on four hosts while the TypeScript host —
+          //            positional to 1e21 — read them correctly. Divergence,
+          //            not merely ugliness.
+          Name = "bar-huge-magnitudes"
+          Kind = ChartKind.Bar
+          XField = "instrument"
+          YFields = [ "notional" ]
+          Title = Some "Notional outstanding"
+          UnitMode = Some "Off"
+          Rows =
+              [ "Swaps", [ 1.5e15 ]
+                "Options", [ 9.0e16 ]
+                "Futures", [ 1.8e17 ]
+                "Forwards", [ 2.5e17 ] ] }
+      { plain with
+          // The regime past JavaScript's own switch, where pre-fix ALL FOUR
+          // hosts were wrong AND still disagreed with each other — `1E,+21`
+          // against `1e,+21`, the exponent letter's CASE being the whole of the
+          // difference. A pie has no value axis, so nothing here is truncated
+          // and nothing goes through `r2`: the wedge tip prints `pieValues.[i]`
+          // exactly as the row carried it.
+          //
+          //   5e20    — still positional in JavaScript, already scientific in
+          //             the .NET layout: the divergence, isolated.
+          //   1e21    — a single mantissa digit, zero-padded to 22 places.
+          //   2.25e21
+          //   3.75e21 — a MULTI-digit mantissa, so the padding is pinned as
+          //             `exp + 1 − digits` and not as a fixed count.
+          Name = "pie-huge-magnitudes"
+          Kind = ChartKind.Pie
+          XField = "instrument"
+          YFields = [ "notional" ]
+          Title = Some "Notional by instrument"
+          UnitMode = Some "Off"
+          Rows =
+              [ "Swaps", [ 5.0e20 ]
+                "Options", [ 1.0e21 ]
+                "Futures", [ 2.25e21 ]
+                "Forwards", [ 3.75e21 ] ] } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
 /// named the slot — the representation is the same `Map<string,obj>`).
@@ -1221,6 +1294,34 @@ let private inputJson (case: Case) : string =
 let private yTicksOf (name: string) : string list = yTickTexts (loweredCase name)
 
 let private axisUnitLabelOf (name: string) : string = axisUnitLabel (loweredCase name)
+
+/// Every Phase-883 hover readout in the lowered Drawing, in emission order.
+/// `Tip` rides `DrawStyle`, so this walks the shape tree rather than filtering
+/// one arm — a tip on a group, a bar or a wedge all count.
+let private tipsOf (name: string) : string list =
+    let rec walk (sh: Shape) : string list =
+        let styleOf =
+            match sh with
+            | Shape.Group(_, s)
+            | Shape.Rectangle(_, _, _, _, _, s)
+            | Shape.Line(_, _, _, _, s)
+            | Shape.Polyline(_, s)
+            | Shape.Polygon(_, s)
+            | Shape.Curve(_, s)
+            | Shape.Circle(_, _, _, s)
+            | Shape.Ellipse(_, _, _, _, s)
+            | Shape.Label(_, _, _, s) -> s
+
+        let here =
+            match styleOf.Tip with
+            | Some(TextSource.Literal t) -> [ t ]
+            | _ -> []
+
+        match sh with
+        | Shape.Group(children, _) -> here @ (children |> List.collect walk)
+        | _ -> here
+
+    (loweredCase name).Shapes |> List.collect walk
 
 let private tryFindFixtures () : string option =
     let rec climb (dir: DirectoryInfo) =
@@ -1641,6 +1742,62 @@ let chartLoweringTests =
                       "the suffix repeats — the deliberate opt-out from the doctrine"
 
                   Expect.equal (axisUnitLabelOf "bar-compact") "" "no unit label in compact mode"
+              }
+
+              test "rule 5 — the integer part is positional at every magnitude, on every host" {
+                  // The regime BELOW the notation switch is the control: these
+                  // bytes were already right on all four hosts and must not
+                  // move. `1e15` is `formatNum`'s int64 fast-path bound, not the
+                  // notation switch — the window between them was never broken.
+                  Expect.equal
+                      (tipsOf "bar-huge-magnitudes" |> List.item 0)
+                      "notional · Swaps · 1,500,000,000,000,000"
+                      "1.5e15 is above the int64 fast path and below the notation switch — unchanged"
+
+                  // Past the .NET `"R"` switch (1e17), where the F#, Python and
+                  // Rust hosts used to hand `groupThousands` a `2.5E+17` and get
+                  // `2.5E,+17` back, while the TypeScript host — positional to
+                  // 1e21 — got this. The fix makes every host agree HERE.
+                  Expect.equal
+                      (tipsOf "bar-huge-magnitudes" |> List.item 3)
+                      "notional · Forwards · 250,000,000,000,000,000"
+                      "2.5e17 expands rather than grouping an exponent"
+
+                  // Past JavaScript's switch too, so pre-fix all four hosts were
+                  // wrong AND disagreed (`1E,+21` against `1e,+21`). No axis
+                  // here — a pie's wedge tip prints the raw datum.
+                  Expect.equal
+                      (tipsOf "pie-huge-magnitudes")
+                      [ "notional · Swaps · 500,000,000,000,000,000,000"
+                        "notional · Options · 1,000,000,000,000,000,000,000"
+                        "notional · Futures · 2,250,000,000,000,000,000,000"
+                        "notional · Forwards · 3,750,000,000,000,000,000,000" ]
+                      "a single mantissa digit zero-pads to exp+1 places, and so does a multi-digit one"
+
+                  // The AXIS reaches the switch too, because `Off` is the only
+                  // mode that does not scale a large magnitude away first.
+                  Expect.equal
+                      (yTicksOf "bar-huge-magnitudes")
+                      [ "0"
+                        "100,000,000,000,000,000"
+                        "200,000,000,000,000,000"
+                        "300,000,000,000,000,000" ]
+                      "the ticks are grouped digits, never a grouped exponent"
+
+                  // The SHAPE of the defect, stated so a future regression fails
+                  // on the shape and not only on these literals: no rendered
+                  // MAGNITUDE may carry an exponent marker at all. Only the
+                  // number is checked — a tip's leading series and category are
+                  // untrusted feed strings and `Futures` legitimately has an `e`
+                  // in it.
+                  let magnitudes =
+                      (tipsOf "bar-huge-magnitudes" @ tipsOf "pie-huge-magnitudes"
+                       |> List.map (fun t -> t.Substring(t.LastIndexOf " · " + 3)))
+                      @ yTicksOf "bar-huge-magnitudes"
+
+                  Expect.isTrue
+                      (magnitudes |> List.forall (fun t -> not (t.Contains "E" || t.Contains "e")))
+                      "no rendered magnitude carries an exponent marker"
               }
 
               test "AxisUnitMode.Off never scales, however large the axis" {

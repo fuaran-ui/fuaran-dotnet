@@ -851,6 +851,39 @@ module TextMetrics =
 //      rather than inventing an axis semantics for them.
 //   4. DISPLAY-UNIT SCALING divides both the tick value and the step by 10ⁿ,
 //      so rule 1 keeps holding on the scaled numbers.
+//   5. THE INTEGER PART IS RENDERED IN POSITIONAL NOTATION AT EVERY MAGNITUDE,
+//      by an expansion this module owns — never by inheriting a host's default
+//      double→string switch. Grouping walks decimal digits, so handing it an
+//      exponent form corrupts it silently: `groupThousands "1E+17"` is
+//      `"1E,+17"`. And the hosts do not agree on WHEN that form appears — the
+//      .NET `"R"` layout (which the Fable, Python and Rust hosts mirror, and
+//      which `WIRE_FORMAT.md` §5 pins) goes scientific once the leading-digit
+//      exponent passes 16, i.e. at 1e17, while JavaScript's
+//      `Number.prototype.toString` stays positional until 1e21. So above 1e17
+//      four hosts drew a grouped exponent and one drew correctly-grouped
+//      digits: the same chart, different bytes. `expandToFixed` therefore
+//      re-lays any `d[.ddd]E±NN` mantissa/exponent pair (JavaScript's
+//      lower-case `e+NN` included) as its digits zero-padded to `exp + 1`
+//      places, and leaves an already-positional form untouched — so every host
+//      groups the same digit string and no output below 1e17 moves.
+//
+//      NOTE the threshold: it is 1e17, not the 1e15 that appears in
+//      `DrawingSvg.formatNum`. That constant bounds the exact `int64`
+//      fast path, not the notation switch, and the window between them —
+//      1e15 ≤ |v| < 1e17 — was always rendered positionally and correctly by
+//      all four hosts.
+//
+//      The expansion is over the SHORTEST-ROUND-TRIP digits, which is the
+//      canonical decimal identity of the double (the same one rule 5 of the
+//      wire format pins), NOT the double's exact binary value. So 1e21 reads
+//      `1,000,000,000,000,000,000,000` rather than its exact expansion
+//      `999,999,999,999,999,916,000`. That is deliberate on both counts: the
+//      shortest round-trip is the number the wire already says this value is,
+//      and it is computable on every host without arbitrary-precision
+//      arithmetic, which an exact expansion is not.
+//
+//      Only the INTEGER part needs this. The fraction part is bounded by
+//      `10^d ≤ 10^6` by rule 1's cap, so it can never reach an exponent form.
 
 /// Decimal places implied by a tick step: the smallest `d ≤ 6` for which
 /// `step · 10^d` is (within float tolerance) an integer. `0` for a degenerate
@@ -883,6 +916,43 @@ let private groupThousands (digits: string) : string =
         let leading = if head > 0 then [ digits.Substring(0, head) ] else []
         String.concat "," (leading @ groups)
 
+/// Expand a canonical round-trip number form into POSITIONAL notation (rule 5).
+/// `s` is whatever the host's shortest-round-trip formatter produced for a
+/// non-negative INTEGER-valued double: positional at small magnitudes, and
+/// `d[.ddd]E±NN` — or JavaScript's lower-case `e+NN` — above whichever
+/// magnitude that host switches at. Total by construction: a form carrying no
+/// exponent is returned unchanged, as is the negative-exponent form an integer
+/// part cannot produce.
+let private expandToFixed (s: string) : string =
+    let eIdx =
+        let upper = s.IndexOf 'E'
+        if upper >= 0 then upper else s.IndexOf 'e'
+
+    if eIdx < 0 then
+        s
+    else
+        let mant = s.Substring(0, eIdx)
+        let exp = int (s.Substring(eIdx + 1))
+
+        if exp < 0 then
+            s
+        else
+            let dot = mant.IndexOf '.'
+
+            let digits =
+                if dot < 0 then
+                    mant
+                else
+                    mant.Substring(0, dot) + mant.Substring(dot + 1)
+
+            // An integer-valued double's shortest round-trip always has at
+            // least as many places as digits; the guard keeps the function
+            // total rather than describing a reachable case.
+            if digits.Length >= exp + 1 then
+                digits
+            else
+                digits + String.replicate (exp + 1 - digits.Length) "0"
+
 /// Render `v` with EXACTLY `dps` decimals — round-half-up on the magnitude,
 /// comma thousands separators, period decimal point, locale-invariant.
 let private renderFixed (dps: int) (v: float) : string =
@@ -901,7 +971,9 @@ let private renderFixed (dps: int) (v: float) : string =
         let units = floor (abs v * scale + 0.5)
         let intPart = floor (units / scale)
         let fracPart = units - intPart * scale
-        let intStr = groupThousands (DrawingSvg.formatNum intPart)
+        // Rule 5 — expand before grouping. `formatNum` alone would hand the
+        // grouper an exponent form above the host's own switch magnitude.
+        let intStr = groupThousands (expandToFixed (DrawingSvg.formatNum intPart))
 
         let body =
             if d = 0 then
