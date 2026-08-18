@@ -234,7 +234,10 @@ it is built). A reservation is a pre-decision, not a commitment to ship.
 
 **Legend – disposition:** **Variant** (a case on an existing spec DU – §2) · **Composition** (built from
 existing kinds – §1.2) · **Role** (a `Box`/existing-kind semantic role) · **Kind** (a genuine
-irreducible primitive, reserved pending demand) · **Covered** (already expressible today).
+irreducible primitive, reserved pending demand) · **Covered** (already expressible today) ·
+**Host chrome** (the capability belongs to the host application, and the language names it nowhere –
+added 2026-08-18 by the affordance→op charter, Phase 866, which needed a way to record a *decline*
+that is a positive design position rather than a deferral).
 
 ### Navigation cluster
 
@@ -285,11 +288,29 @@ irreducible primitive, reserved pending demand) · **Covered** (already expressi
 | New chart types (`Gauge` / `Funnel` / `Heatmap` / `Treemap` / `Sankey`) | **Variant** | `ChartKind` variants, one and all. |
 | `StatusPill` / conditional row emphasis | **Variant** (shipped) | Shipped as `CellKindErased.TonedPill` at 0.11.0 (Phase 750): `field` + a value→`ToneVariant` `map` + an omit-when-default `default`. Admitted on 26 usage-evaluation occurrences of one intent across three prompt families and three providers, every one a partial. **Irreducible in the strongest available sense** — not "no composition expresses it" but "no wire spelling exists at all": the pre-existing `Pill` case's tone is a `'row -> ToneVariant` closure, which erases to `"<closure>"`, so the rule could not be *said* rather than being awkward to say. Cost: one variant + a `Map` field, no new kind, no new class vocabulary (it renders through the existing `fuaran-grid-cell-pill` / `fuaran-pill-<tone>` hooks). Confusion-delta: measured as the three canaries' criteria moving off PARTIAL in the next cohort — the pack change supersedes the current baseline by design. |
 
+### Interaction / affordance cluster (added 2026-08-18 — the affordance→op charter, Phase 866)
+
+The cluster the taxonomy lacked: how a **user gesture** reaches an effect. Its governing ruling is one
+sentence and it decides every row below — *a user gesture is not named on the wire; the wire names a
+capability on the node that both hosts the gesture and consumes its effect, and the renderer owns the
+affordance, dispatching through the existing dispatch gate.* Two rows reduce under it; two are **Host
+chrome**, and those two are the point of recording the cluster at all — a decline whose reasoning is
+written down is what stops the next proposal re-deriving it.
+
+| Reserved name | Disposition | Ruling |
+|---|---|---|
+| `DragReorder` / `RowReorder` | **Composition / renderer-owned affordance** | Not a kind and not a new `Action` verb. A reorder is a write of the collection the node already reads, so it is a capability flag on the grid that reorders (`reorderable`), whose destination is the grid's existing edit destination (`editStateKey`, else the source's own state key) — the Phase 863 field reused, never a second write path. The gesture itself has no wire name: the renderer draws the drag handle **and its keyboard equivalent**, which is part of the affordance rather than a follow-up. Admitted on ×20 cross-family task-qualified sightings (2026-08-15), ranked last of its cohort by the Phase 856 baseline read. See the affordance→op charter (Phase 866). |
+| `ChartSelection` / `Crossfilter` | **Covered — on a renderer default** | Not a kind, not a variant, **no wire change at all**. Chart-driven selection is the Phase 818 read rule (any read slot may take a `Binding`, and `Binding.Selection` reads what a node publishes) plus the Phase 427 write default (a node whose click handler is absent publishes under its own `NodeId`) extended from `DataGrid` to `Chart`. Crossfilter falls out of the same mechanism with no coordination vocabulary. The existing `ChartSpec.onPointClick` closure sits beside it, untouched, and continues not to survive decode. **Zoom and brush are NOT covered by this ruling** and are separately out: zoom is view state with no cross-node consumer, brush is a range whose value is not a row and which has no demand evidence. |
+| `Undo` / `Redo` | **Host chrome** | Not an `Action` case. The op-stream's inverse ops are real and certified, and they invert **tree** ops — the AI's authoring channel. Every user gesture the language admits writes *state*, and a state write has no op representation at all, so an `Action.Undo` would either do nothing or undo an authoring op the user never performed: a fake affordance minted at the vocabulary level, in the one place a mistake cannot be withdrawn cheaply (§4.2). A host that owns a history owns its control. **Reopen condition:** a durable *user*-action record exists (Phase 889); only then is "invert a recorded user action" a question with an answer. |
+| `KeyboardShortcut` / `Hotkey` | **Host chrome** | Not a kind, not a field, not an `Action`. The language's keyboard posture is already complete and deliberate: **widget-local WAI-ARIA interaction, renderer-owned, named nowhere on the wire** (roving tablist focus, radiogroup arrow cycling, grid key handling). A wire vocabulary would buy a per-host binding table, platform normalisation (⌘ vs Ctrl, `key` vs `code`, IME state), a conflict-resolution policy against the host's and the browser's own chords, a discoverability obligation (an undiscoverable shortcut is another fake affordance), and a trust question — a decoded tree from an untrusted emitter capturing document-level keystrokes is a keylogger-shaped capability. Against that, §1.1 evidence is **nil**: the demand row's own text records that its probe was never authored, so the intent has never been observed firing. Application-global chords belong to the host, which already owns the seams to dispatch into the tree. **Reopen condition:** a stress-authored cross-family sighting — and even then the first question is whether the demand is widget-local a11y the renderer already owes. |
+
 **Reading of the taxonomy:** of ~20 reserved candidates, the overwhelming majority resolve to
 **variant / composition / role / covered** – only `NavBar`/`Menu`, a single consolidated `Media`, and a
 provisional `Tree` and `Calendar` are even *reserved* as genuine kinds, and each is admission-gated on
 §1 demand evidence. That distribution is the charter's thesis made concrete: **most vocabulary demand is
-not a new kind.**
+not a new kind.** The interaction cluster added in 2026-08 sharpens it a second way: of four intents
+that each arrived as a filed gap, two resolved to an existing mechanism and two resolved to *nothing at
+all* — **most vocabulary demand is not vocabulary.**
 
 ---
 
