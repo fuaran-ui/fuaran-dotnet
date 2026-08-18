@@ -46,6 +46,7 @@ param(
     [switch] $SkipBuild,
     [switch] $SkipTests,
     [switch] $Validate,
+    [switch] $SkipPublishCheck,
     [switch] $Demo
 )
 
@@ -132,6 +133,63 @@ if ($Validate) {
         Write-Host "Fuaran.UI.Validator: $($project.FullName)" -ForegroundColor DarkGray
         dotnet run --no-build --project $validatorProject -c Release -- $project.FullName
         if ($LASTEXITCODE -ne 0) { Write-Error "Validator failed on $($project.FullName) (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
+    }
+}
+
+# ─── Publish readiness: is the public channel behind <Version>? ──────
+# The packages restore from nuget.org for every consumer outside this
+# workspace — including eval-suite's free-tier CI, which builds against the
+# RELEASED packages and has no local feed. Publication is triggered by a `v*`
+# tag (see .github/workflows/publish-packages.yml), so a <Version> bump that
+# is never tagged leaves those consumers pinning a version that exists only
+# on the machine that packed it.
+#
+# That is not hypothetical: <Version> ran 0.18.0 -> 0.26.0 between 2026-08-13
+# and 2026-08-16 with no tag pushed after v0.18.0, and eval-suite's every-PR
+# conformance gate was red on NU1102 for five days as a result — 60
+# consecutive failing runs, whose cause was a wall of "Unable to find package"
+# lines rather than anything naming the omission.
+#
+# WARN, never fail: the commit that bumps <Version> legitimately precedes its
+# tag, so a hard gate here would block the very change it is asking for. The
+# point is that the gap is stated at the moment it opens, not discovered days
+# later in a consumer's CI.
+if (-not $SkipPublishCheck) {
+    Write-Step "Publish readiness (<Version> vs the newest v* tag)"
+
+    $propsPath = Join-Path $PSScriptRoot "Directory.Build.props"
+    $versionMatch = Select-String -Path $propsPath -Pattern '<Version>([^<]+)</Version>' | Select-Object -First 1
+
+    if (-not $versionMatch) {
+        Write-Host "Could not read <Version> from Directory.Build.props - skipping." -ForegroundColor DarkGray
+    }
+    else {
+        $version = $versionMatch.Matches[0].Groups[1].Value.Trim()
+
+        # Sort tags by VERSION, not by creation date: a re-pushed or
+        # back-dated tag would otherwise read as the newest.
+        $tagged = @(git tag --list "v*" 2>$null | ForEach-Object { $_.TrimStart("v") } |
+            Where-Object { $_ -as [version] } | Sort-Object { [version] $_ })
+        $newestTag = if ($tagged.Count -gt 0) { $tagged[-1] } else { $null }
+
+        if ($null -eq $newestTag) {
+            Write-Host "No v* tag in this repo yet - nothing published." -ForegroundColor Yellow
+        }
+        elseif (($version -as [version]) -and ([version] $version) -gt ([version] $newestTag)) {
+            Write-Host ""
+            Write-Host "  <Version> is $version; the newest tag is v$newestTag." -ForegroundColor Yellow
+            Write-Host "  Consumers that restore from nuget.org cannot see $version - they will fail" -ForegroundColor Yellow
+            Write-Host "  with NU1102, naming every package rather than the missing tag." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "  Publish it with the release gesture (the tag IS the trigger):" -ForegroundColor Yellow
+            Write-Host "      git tag v$version" -ForegroundColor Cyan
+            Write-Host "      git push origin v$version" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "  Deliberately holding a version back is fine - re-run with -SkipPublishCheck." -ForegroundColor DarkGray
+        }
+        else {
+            Write-Host "v$newestTag published; <Version> is $version - the public channel is current." -ForegroundColor Green
+        }
     }
 }
 
