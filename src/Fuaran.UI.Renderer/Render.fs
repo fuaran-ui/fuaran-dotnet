@@ -1665,6 +1665,52 @@ let clearGuestSeam () : unit = guestSeam <- None
 /// one before replacing it.
 let currentGuestSeam () : GuestSeam option = guestSeam
 
+/// Phase 933 — the chart point-click DECISION, lifted out of the DOM handler in
+/// `renderChart` so the behaviour is reachable without a browser.
+///
+/// The handler around it is irreducibly Fable-side (it reads `event.target` and
+/// walks to the nearest `data-fuaran-mark`); everything that decides what a
+/// point click MEANS is here, and is what the Phase 933 tests exercise.
+///
+/// `dispatch` is the caller's `runAction ctx` — passed as a function rather than
+/// taking the `RenderContext` so this stays independent of the render loop.
+let chartPointClick<'Msg>
+    (dispatch: Action<'Msg> -> unit)
+    (nodeId: string)
+    (spec: ChartSpec<'Msg>)
+    (rows: Row list)
+    (markId: string)
+    : unit =
+    match Fuaran.UI.Charts.rowOfMarkId spec rows markId with
+    // A mark that resolves to no row: a SERIES-level mark (Line / Area draw one
+    // polyline per series, so there is no datum under the pointer), or data that
+    // has moved on since the SVG was painted. Both are no-ops, never a guess.
+    | None -> ()
+    | Some row ->
+        match spec.OnPointClick with
+        // CLOSURE WINS — Phase 427's rule, unchanged. A host that supplied
+        // `OnPointClick` in-process dispatches exactly as before and never
+        // touches the store. The default below is for the DECODED case, where
+        // the slot arrives `None` because a callback cannot cross the wire
+        // (`WireSurvivability`: `NodeKind.Chart -> None // OnPointClick
+        // selection host-only`) — which is why every decoded chart's point
+        // click was inert before this phase.
+        | Some f -> dispatch (f row)
+        // THE UNGATED WRITE, and why it is acceptable — recorded at the call
+        // site because a later reader will otherwise read the asymmetry as a
+        // defect (866).
+        //
+        // This calls `SelectionStore.set` DIRECTLY rather than going through
+        // `runAction`, so it is not subject to the gate every dispatched
+        // `Action` passes. The charter judged that acceptable on ONE property:
+        // a node may publish only under its OWN `NodeId`. Unlike `SetState`,
+        // whose key space is SHARED — an ungated write there could clobber a key
+        // belonging to any other node — the blast radius here is the chart
+        // itself, and the worst a malformed chart can do is misreport its own
+        // selection. The identical property is what makes 427's grid write safe;
+        // it is a property of the DESTINATION, not of who is writing.
+        | None -> SelectionStore.set nodeId (box row)
+
 let rec private renderKind
     (ctx: RenderContext<'Msg>)
     (parentNodeId: string)
@@ -4723,9 +4769,45 @@ and private renderChart
                 // lowering + Drawing builder). The lowered-kind set is
                 // `Charts.isLowered` — the single source of truth (636/637/638
                 // arms included), so this branch never drifts from the engine.
+                // Phase 933 — the POINT-SELECTION DEFAULT: Phase 427's write
+                // default, extended from `DataGrid` to `Chart` exactly as the
+                // affordance charter (866) admitted census #22 — as a REDIRECT,
+                // with no new wire vocabulary at all. A chart whose
+                // `OnPointClick` is `None` publishes the clicked datum under its
+                // OWN `NodeId`, so no key is declared anywhere; every
+                // `Binding.Selection` reader of this chart then re-renders with
+                // the row, and crossfilter falls out of 818's read rule rather
+                // than being wired.
+                //
+                // Why the click is DELEGATED rather than per-point: this branch
+                // emits the lowered Drawing as a raw SVG string, so there is no
+                // per-mark React element to attach to. One handler on the
+                // container maps `event.target` back to a datum through Phase
+                // 642's `data-fuaran-mark`, which has been in the emitted markup
+                // since 642 — so nothing about the rendered SVG changes here,
+                // and no golden moves.
+                //
+                // Scope, deliberately: POINT SELECTION ONLY. 866 dispositioned
+                // chart ZOOM and BRUSH separately and left both OUT; neither is
+                // reachable from this handler and neither should be added under
+                // this heading.
+                let pointRows = List.ofSeq rows
+
                 Html.div
-                    [ prop.dangerouslySetInnerHTML (
-                          DrawingSvg.render ctx.Sources (renderText ctx) (Fuaran.UI.Charts.lower spec rows)
+                    [ prop.onClick (fun (ev: Browser.Types.MouseEvent) ->
+                          let clicked = ev.target :?> Browser.Types.Element
+                          // Chrome (axes, gridlines, labels, the legend) carries
+                          // no mark, so a click on it resolves to nothing and
+                          // this is a no-op — the chart is not one big button.
+                          match clicked.closest "[data-fuaran-mark]" with
+                          | None -> ()
+                          | Some marked ->
+                              let markId = marked.getAttribute "data-fuaran-mark"
+
+                              if not (isNull markId) then
+                                  chartPointClick (runAction ctx) parentNodeId spec pointRows markId)
+                      prop.dangerouslySetInnerHTML (
+                          DrawingSvg.render ctx.Sources (renderText ctx) (Fuaran.UI.Charts.lower spec pointRows)
                       ) ]
             | _ ->
                 // Unresolved data, or a chart kind whose lowering rule has not

@@ -1791,6 +1791,99 @@ let private numericOf (row: Row) (field: string) : float =
     | CellValue.Bool b -> if b then 1.0 else 0.0
     | _ -> 0.0
 
+
+// ─── Phase 933 — mark identity, read backwards ────────────────────────────────
+//
+// The renderer's first-party chart path emits the lowered `DrawingSpec` as a
+// RAW SVG STRING (`dangerouslySetInnerHTML`), so there is no per-point React
+// element to hang a click handler on. A point click is therefore a single
+// DELEGATED handler on the container that maps the clicked element back to a
+// datum — and the only per-datum identity in the emitted markup is Phase 642's
+// `data-fuaran-mark`, which `withMark` writes and `DrawingSvg` renders.
+//
+// The inverse of that write lives HERE, beside the write, because the mark-id
+// FORMAT is this module's own. A copy of the parse in the renderer would be a
+// second definition of the format, free to drift from the one that produces it.
+//
+// NOTE: nothing about the emitted SVG changes. This reads an attribute that has
+// shipped since Phase 642; no golden moves, and no wire field is involved.
+
+/// Phase 933 — the x-key each row contributes to a data-bearing mark id, in the
+/// SAME form the lowering stamps, index-aligned with `rows`.
+///
+/// This MIRRORS four bindings inside `lowerRows` (`categories`, `isTemporal`,
+/// `dayValues`, `xValues`) which are local to that function and cannot be
+/// called from outside it. The mirror is not held by this comment: the test
+/// `every per-datum mark id the lowering emits is reproduced by markCategoryKeys`
+/// lowers a real chart per arm and pins the two against each other, so a change
+/// to either derivation goes red rather than silently un-selecting the chart.
+let markCategoryKeys<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : string[] =
+    let rowList = List.ofSeq rows
+
+    // The band arms' key: the x cell AS PROJECTED, one per ROW and NOT deduped,
+    // so equality against it recovers exactly one row (the first, where a
+    // category repeats — a repeat is the author's ambiguity, not ours).
+    let categories =
+        rowList
+        |> List.map (fun r -> BindingResolver.projectRowFieldString r spec.XField)
+        |> List.toArray
+
+    let isTemporal =
+        (match spec.XScale with
+         | Some ChartXScale.Temporal -> true
+         | _ -> false)
+        && (match spec.Kind with
+            | ChartKind.Pie -> false
+            | _ -> true)
+
+    match spec.Kind with
+    // Scatter alone keys its marks by the CANONICAL NUMERIC x rather than the
+    // projection (`withMark yf (DrawingSvg.formatNum xValues.[i])`) — and under
+    // a temporal x-scale that numeric is the DAY NUMBER, not the cell. Matching
+    // a scatter mark as though it were a projection finds nothing at all, which
+    // presents as "charts do not select" rather than as a defect, so the arm is
+    // reproduced here in its own form.
+    | ChartKind.Scatter ->
+        let xValues =
+            if isTemporal then
+                categories |> Array.map (fun c -> float (Temporal.dayOf c))
+            else
+                rowList |> List.map (fun r -> numericOf r spec.XField) |> List.toArray
+
+        xValues |> Array.map DrawingSvg.formatNum
+    | _ -> categories
+
+/// Phase 933 — the INVERSE of `withMark`: given the `data-fuaran-mark` id read
+/// off a clicked SVG element, recover the row the mark was derived from.
+///
+/// Three shapes reach here, matching the three the lowering emits:
+///
+///   * `"<seriesField>|<categoryKey>"` — a PER-DATUM mark (the Bar arms, Pie,
+///     and Scatter). Resolvable, and the case this exists for.
+///   * `"<seriesField>"` — a SERIES-level mark (`withSeriesMark`: Line and Area
+///     draw one polyline that IS the whole series). It carries no per-datum
+///     identity, so there is no datum to publish and this returns `None`. That
+///     is a real limit of the shipped mark vocabulary rather than an omission
+///     here — recovering a point from a polyline click needs geometric
+///     hit-testing, which no attribute in the markup can supply.
+///   * anything else (chrome: axes, gridlines, labels, legend) never carries a
+///     mark at all, so it never reaches this function.
+///
+/// The split is at the FIRST `|`: the series part is a FIELD NAME, while the
+/// category part is whatever the x cell projected to and may itself contain a
+/// separator.
+let rowOfMarkId<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) (markId: string) : Row option =
+    let cut = markId.IndexOf "|"
+
+    if cut < 0 then
+        None
+    else
+        let categoryKey = markId.Substring(cut + 1)
+        let rowList = List.ofSeq rows
+
+        markCategoryKeys spec rowList
+        |> Array.tryFindIndex (fun k -> k = categoryKey)
+        |> Option.bind (fun i -> List.tryItem i rowList)
 // ─── The lowering ─────────────────────────────────────────────────────────────
 
 /// The core lowering: an ALREADY-CAPPED row list to a canonical `DrawingSpec`,
