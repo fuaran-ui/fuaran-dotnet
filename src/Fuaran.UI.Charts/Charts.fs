@@ -1687,6 +1687,98 @@ let describeRefusal (r: ChartRefusal) : string =
     | TooManyPoints(atLeast, limit) ->
         sprintf "Chart not rendered: at least %d data points exceeds the limit of %d per series." atLeast limit
 
+// ─── The accessible summary (Phase 921) ──────────────────────────────────────
+//
+// NORMATIVE CROSS-HOST SPEC, the same standing as the text metrics, the number
+// formatter and the temporal calendar above: every conformant host reproduces
+// this grammar exactly, the `chart-lowering/*` goldens pin it, and
+// `docs/CHARTS-DRAWING-PRIMITIVE-DESIGN.md` §4i carries the language-neutral
+// statement.
+//
+// WHY IT EXISTS. Phase 532's R3 gave the drawing root `role="img"` — the right
+// answer for a chart read as one graphic, because it stops a reader announcing
+// several hundred meaningless `<rect>`s. Phase 883's per-mark `<title>` is that
+// element's accessible name, but an assistive technology presents a `role="img"`
+// element as a SINGLE graphic and does not traverse into its children, so those
+// names are never announced. Operator decision 2026-08-18 (Option 2): the root
+// keeps `role="img"`, and the lowering generates a deterministic SUMMARY as the
+// drawing's `Description` — announced today, on every host, with no structural
+// change. The per-mark `<title>`s remain what they actually are: the sighted
+// pointer's affordance.
+//
+// IT IS A LOWERING RULE LIKE EVERY OTHER ONE HERE. Generated from the resolved
+// `ChartSpec` + rows, canonical strings only, the pinned formatter, no host
+// locale, no clock — so the same wire tree yields byte-identical summaries
+// everywhere and the corpus can certify it. That is also why the TITLE is not
+// part of it: `ChartSpec.Title` is a `TextSource`, which a bound or i18n arm
+// resolves only at RENDER time, and a summary that carried the title only for
+// the `Literal` arm would announce a different thing depending on how the title
+// was authored. The title is composed in front of the summary by the renderer's
+// root wiring instead (`DrawingSvg`, Phase 921), where every `TextSource` arm
+// resolves — so the announced string is "<title>. <summary>" for every arm, and
+// the two artefacts stay what SVG says they are: `<title>` names, `<desc>`
+// describes.
+
+/// The clause separator + terminator. Periods, not commas: a screen reader
+/// pauses at a sentence boundary, and four comma-spliced clauses read as one
+/// long run-on.
+[<Literal>]
+let private summaryClauseSeparator = ". "
+
+/// At most this many series are NAMED before the summary folds the rest into a
+/// count. Four is the legibility bound, not a technical one: a name list is
+/// announced serially, and past four the reader has lost the first one before
+/// the last arrives — the count is then the more useful statement.
+[<Literal>]
+let private summaryMaxSeriesNamed = 4
+
+/// The per-NAME character cap (a series field, a category label). Untrusted
+/// strings straight off the data feed; a single 4 000-character category would
+/// otherwise be the whole summary.
+[<Literal>]
+let private summaryMaxNameChars = 32
+
+/// The whole summary's character cap — the outer bound the per-name caps and
+/// the series folding already keep it well inside. It exists so the bound is a
+/// PROPERTY of the grammar rather than a consequence of its parts.
+[<Literal>]
+let private summaryMaxChars = 320
+
+/// Truncate to at most `maxChars`, marking the cut with the ellipsis.
+///
+/// The cut NEVER splits a UTF-16 surrogate pair: a boundary landing between a
+/// high and a low surrogate moves one unit earlier. Without that rule an
+/// emoji-bearing category name would produce a lone surrogate — which is not a
+/// valid string on any host, and which the three hosts counting differently
+/// (UTF-16 units in F#/TS, scalar values in Python/Rust) would cut in three
+/// different places.
+let private clampText (maxChars: int) (s: string) : string =
+    if s.Length <= maxChars then
+        s
+    else
+        let cut = maxChars - 1
+
+        let cut =
+            if cut > 0 && System.Char.IsHighSurrogate s.[cut - 1] then
+                cut - 1
+            else
+                cut
+
+        s.Substring(0, cut) + TextMetrics.Ellipsis
+
+/// The chart's kind in words — the summary's opening clause. `Stacked` earns a
+/// word only on the two arms where it changes the geometry (the same rule the
+/// lowering itself applies), so a `Stacked = true` Line does not announce a
+/// stacking that was ignored.
+let private summaryKindWords (kind: ChartKind) (stacked: bool) : string =
+    match kind with
+    | ChartKind.Bar -> if stacked then "Stacked bar chart" else "Bar chart"
+    | ChartKind.Line -> "Line chart"
+    | ChartKind.Area -> if stacked then "Stacked area chart" else "Area chart"
+    | ChartKind.Scatter -> "Scatter chart"
+    | ChartKind.Pie -> "Pie chart"
+    | ChartKind.Heatmap -> "Heatmap chart"
+
 let private numericOf (row: Row) (field: string) : float =
     match BindingResolver.projectRowFieldValue row field with
     // Non-finite guard (Phase 640): NaN/Infinity would poison every domain
@@ -3319,6 +3411,121 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
             @ titleShapes
             @ subtitleShapes
 
+    // ── The accessible summary (Phase 921) ───────────────────────────────────
+    //
+    // The grammar is stated once, at the section head above and normatively in
+    // §4i; what follows is its four clauses in order. Every string it reads is
+    // either a canonical constant, a field/category name off the data feed (each
+    // clamped), or a number through the axis's own Phase-876 formatter — so it
+    // is deterministic, host-invariant, and bounded.
+    let accessibleSummary: string option =
+        // A REFUSED PIE announces nothing, for exactly the reason Phase 880 gave
+        // when it stopped emitting the refused pie's legend: "a legend for a
+        // picture that was refused would be a claim about data the drawing
+        // declined to show". A summary is the same claim, in words.
+        if pieRefused then
+            None
+        else
+            let namedSeries =
+                yFields
+                |> Array.truncate summaryMaxSeriesNamed
+                |> Array.map (clampText summaryMaxNameChars)
+                |> String.concat ", "
+
+            let seriesClause =
+                if m = 0 then
+                    "no series"
+                elif m > summaryMaxSeriesNamed then
+                    string m
+                    + " series: "
+                    + namedSeries
+                    + ", and "
+                    + string (m - summaryMaxSeriesNamed)
+                    + " more"
+                else
+                    string m + " series: " + namedSeries
+
+            // The extent clause follows the X AXIS's own kind, not the chart's:
+            // a band axis has categories and states its first and last, while a
+            // continuous axis (Phase 903's split — the Scatter arm's numeric x
+            // and Phase 882's temporal x) has a DOMAIN and states its endpoints
+            // through that axis's own tick formatter. So a temporal chart reads
+            // "Jan 26 to Dec 26" in the format its ticks are already drawn in,
+            // and the summary can never disagree with the picture about how a
+            // date is written.
+            let extentClause =
+                if isContinuousX then
+                    if n = 0 then
+                        "no points"
+                    else
+                        (if n = 1 then "1 point: " else string n + " points: ")
+                        + xTickText xNiceLo
+                        + " to "
+                        + xTickText xNiceHi
+                elif n = 0 then
+                    "no categories"
+                elif n = 1 then
+                    "1 category: " + clampText summaryMaxNameChars categories.[0]
+                else
+                    string n
+                    + " categories: "
+                    + clampText summaryMaxNameChars categories.[0]
+                    + " to "
+                    + clampText summaryMaxNameChars categories.[n - 1]
+
+            // The peak is the largest SINGLE DATUM — never a stacked total,
+            // because the clause names one series at one category and a total
+            // belongs to neither. Ties resolve to the earliest category, then
+            // the earliest series (a strict `>` scanned category-major), which
+            // is the axis's own reading order.
+            //
+            // Its NUMBER takes the value axis's rendering: the Phase-876
+            // formatter at the axis's step precision, plus the axis's display
+            // unit stated in the axis's own words. The chart says one thing in
+            // one vocabulary. (Phase 883's tip takes the opposite three
+            // decisions — unscaled, the datum's own precision, currency symbol
+            // kept — because a tooltip stands alone with no unit slot beside it.
+            // A summary is not alone: it names the unit itself.)
+            //
+            // Its CATEGORY is the datum's own label, verbatim — not the axis
+            // format, even on a temporal axis. The extent clause has already
+            // stated how the axis writes a date; this clause has to identify one
+            // point, and "Mar 26" identifies a month where "2026-03-15"
+            // identifies the datum.
+            let peakClause =
+                if n = 0 || m = 0 then
+                    []
+                else
+                    let mutable bi = 0
+                    let mutable bj = 0
+                    let mutable bv = series.[0].[0]
+
+                    for i in 0 .. n - 1 do
+                        for j in 0 .. m - 1 do
+                            if series.[j].[i] > bv then
+                                bv <- series.[j].[i]
+                                bi <- i
+                                bj <- j
+
+                    let unitSuffix =
+                        if yDisplayUnit.Label = "" then
+                            ""
+                        else
+                            " " + yDisplayUnit.Label
+
+                    [ "Peak "
+                      + clampText summaryMaxNameChars yFields.[bj]
+                      + " at "
+                      + clampText summaryMaxNameChars categories.[bi]
+                      + ", "
+                      + yTickText bv
+                      + unitSuffix ]
+
+            let clauses =
+                [ summaryKindWords spec.Kind stacked; seriesClause; extentClause ] @ peakClause
+
+            Some(clampText summaryMaxChars (String.concat summaryClauseSeparator clauses + "."))
+
     { ViewBox =
         { MinX = 0.0
           MinY = 0.0
@@ -3327,7 +3534,7 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
       Shapes = shapes
       Style = emptyStyle
       Title = spec.Title
-      Description = None }
+      Description = accessibleSummary |> Option.map TextSource.Literal }
 
 /// The drawing a refused lowering produces (Phase 790) under an explicit style:
 /// the style's canvas, no shapes, and the refusal as the a11y `<desc>` — bounded

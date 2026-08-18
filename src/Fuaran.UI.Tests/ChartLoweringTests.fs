@@ -1020,7 +1020,48 @@ let private cases: Case list =
               [ "Swaps", [ 5.0e20 ]
                 "Options", [ 1.0e21 ]
                 "Futures", [ 2.25e21 ]
-                "Forwards", [ 3.75e21 ] ] } ]
+                "Forwards", [ 3.75e21 ] ] }
+      // ── Phase 921 — the accessible summary's two variable-length arms ──
+      //
+      // Every other grammar arm is already covered by the cases above: the kind
+      // words by one fixture per kind, the temporal extent by the four
+      // `*-temporal-*` cases (which state their domain in the 882 label format),
+      // the display-unit suffix by `bar-millions` / `bar-currency-millions` /
+      // `bar-compact`, the un-folded series list by the three four-series legend
+      // cases and the folded one by `bar-legend-eight-series`. These two pin
+      // what nothing else does.
+      { plain with
+          // THE FOLDING BOUNDARY. Four series are named in full (the legend
+          // cases above); FIVE is the first count that folds, and it folds to
+          // exactly "and 1 more" — the singular the count arithmetic produces
+          // rather than a special case, which is worth pinning precisely
+          // because a one-off `n − 4` bug reads perfectly at every other count.
+          Name = "bar-summary-fold-boundary"
+          Kind = ChartKind.Bar
+          XField = "region"
+          YFields = [ "alpha"; "beta"; "gamma"; "delta"; "epsilon" ]
+          Title = Some "Five series, one folded"
+          Rows =
+              [ "North", [ 80.0; 100.0; 60.0; 45.0; 92.0 ]
+                "South", [ 130.0; 110.0; 75.0; 50.0; 64.0 ] ] }
+      { plain with
+          // HOSTILE + OVERLONG TEXT. The summary is built from series-field and
+          // category strings taken straight off the data feed, so it carries
+          // exactly the untrusted-string exposure Phase 883's `<title>` does.
+          // Two properties in one case: markup metacharacters survive into the
+          // `Description` as DATA (the renderer's XML escape is what makes them
+          // inert — pinned on the render side), and a name past the 32-character
+          // cap comes back clamped with the ellipsis, in both the series list
+          // and the peak clause.
+          Name = "bar-summary-hostile-text"
+          Kind = ChartKind.Bar
+          XField = "region"
+          YFields = [ "monthly_recurring_revenue_in_pounds_sterling" ]
+          Title = Some "Hostile labels"
+          Rows =
+              [ "<script>alert('x')</script>", [ 80.0 ]
+                "North & \"South\"", [ 130.0 ]
+                "a region name comfortably past the clamp", [ 60.0 ] ] } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
 /// named the slot — the representation is the same `Map<string,obj>`).
@@ -1379,6 +1420,14 @@ let private tipsOf (name: string) : string list =
         | _ -> here
 
     (loweredCase name).Shapes |> List.collect walk
+
+/// Phase 921 — the lowered Drawing's generated accessible summary (its
+/// `Description`). `""` when the lowering generated none, which is the refused
+/// pie and nothing else.
+let private summaryOf (name: string) : string =
+    match (loweredCase name).Description with
+    | Some(TextSource.Literal t) -> t
+    | _ -> ""
 
 let private tryFindFixtures () : string option =
     let rec climb (dir: DirectoryInfo) =
@@ -3316,4 +3365,196 @@ let chartLoweringTests =
                               XScale = Some ChartXScale.Temporal })
                       (enc (specOf case))
                       "a pie is unchanged by an x-scale declaration"
+              }
+
+              // ── Phase 921 — the accessible summary ──
+              //
+              // The goldens above already pin the summary byte-for-byte on every
+              // fixture (it is a field of the Drawing they encode). These pin
+              // the GRAMMAR's arms by name, so a rewrite that keeps the goldens
+              // passing by regenerating them still has to answer for each rule.
+
+              test "every lowered chart carries a summary, and it opens with the kind" {
+                  let expectations =
+                      [ "bar-single", "Bar chart"
+                        "bar-stacked", "Stacked bar chart"
+                        "line-single", "Line chart"
+                        "area-single", "Area chart"
+                        "area-stacked", "Stacked area chart"
+                        "scatter-single", "Scatter chart"
+                        "pie-single", "Pie chart" ]
+
+                  for name, kindWords in expectations do
+                      let summary = summaryOf name
+
+                      Expect.stringStarts summary (kindWords + ".") (name + ": the opening clause is the kind")
+                      Expect.stringEnds summary "." (name + ": the summary is terminated")
+              }
+
+              test "the series clause names up to four, then folds to a count" {
+                  Expect.stringContains (summaryOf "bar-multi") "2 series: sales, target" "two series are both named"
+
+                  Expect.stringContains
+                      (summaryOf "bar-legend-band-packs")
+                      "4 series: support_revenue, training_revenue, product_revenue, usage_revenue."
+                      "four is the last count named in full — no fold, and the clause simply ends"
+
+                  Expect.stringContains
+                      (summaryOf "bar-summary-fold-boundary")
+                      "5 series: alpha, beta, gamma, delta, and 1 more"
+                      "five is the first count that folds — and the remainder is singular"
+
+                  Expect.stringContains
+                      (summaryOf "bar-legend-eight-series")
+                      "8 series: alpha, beta, gamma, delta, and 4 more"
+                      "eight folds to the same four names plus a count"
+
+                  Expect.stringContains (summaryOf "bar-single") "1 series: revenue" "a single series is named"
+              }
+
+              test "the extent clause follows the X AXIS's kind, not the chart's" {
+                  // A band axis states its first and last CATEGORY…
+                  Expect.stringContains
+                      (summaryOf "bar-multi")
+                      "3 categories: North to East"
+                      "a band axis states the category extent"
+
+                  // …a continuous axis states its DOMAIN, in that axis's own
+                  // tick format — the 882 calendar label on a temporal axis, the
+                  // 876 number formatter on the Scatter arm's numeric x.
+                  let temporal = summaryOf "line-temporal-yearly"
+
+                  Expect.stringContains temporal " points: " temporal
+
+                  Expect.isTrue
+                      (temporal.Contains "2010 to " || temporal.Contains " to 20")
+                      ("dates in the axis's own format: " + temporal)
+
+                  Expect.stringContains (summaryOf "scatter-single") " points: " "a numeric x axis states a point count"
+              }
+
+              test "the peak names ONE datum, through the value axis's own rendering" {
+                  // `bar-multi` — target 110 at South is the largest single
+                  // value (sales peaks at 130… which is larger, so THAT is the
+                  // peak). The clause names the series, the category and the
+                  // number in the axis's format.
+                  Expect.stringContains (summaryOf "bar-multi") "Peak sales at South, 130" "the largest single datum"
+
+                  // A STACKED chart's peak is still a datum, never the stack
+                  // total — the clause names one series at one category, and a
+                  // total belongs to neither.
+                  let stacked = summaryOf "bar-stacked"
+                  Expect.stringContains stacked "Peak " "a stacked chart still names its peak datum"
+
+                  Expect.isFalse
+                      (stacked.Contains "Peak sales at North, 3")
+                      "the peak is not a cumulative total (a 3-digit North total would be)"
+
+                  // The DISPLAY UNIT is stated in the axis's own words, so the
+                  // summary and the axis agree about the magnitude.
+                  Expect.stringContains
+                      (summaryOf "bar-millions")
+                      " Millions"
+                      "the axis's display unit is stated in the summary"
+              }
+
+              test "names are clamped, and hostile text survives as DATA" {
+                  let summary = summaryOf "bar-summary-hostile-text"
+
+                  // The 32-character clamp bites in both the series list and the
+                  // peak clause, and marks the cut.
+                  Expect.stringContains
+                      summary
+                      "1 series: monthly_recurring_revenue_in_po…"
+                      "an overlong series name is clamped with the ellipsis"
+
+                  Expect.stringContains
+                      summary
+                      "a region name comfortably past …"
+                      "an overlong category name is clamped too"
+
+                  // The clamp is exactly 32 units INCLUDING the ellipsis — the
+                  // one property a "roughly this long" cap would not have.
+                  Expect.equal "monthly_recurring_revenue_in_po…".Length 32 "the clamped name is exactly at the cap"
+
+                  // The markup metacharacters are carried verbatim — escaping is
+                  // the RENDERER's job (`DrawingSvg.escape`), and doing it here
+                  // would double-escape.
+                  Expect.stringContains summary "<script>" "hostile text is carried as data, unescaped"
+
+                  Expect.isTrue (summary.Length <= 320) "the whole summary is inside its cap"
+              }
+
+              test "a REFUSED pie announces nothing — the Phase 880 legend rule, in words" {
+                  // A refused pie draws no geometry and no legend, because
+                  // either would be a claim about data the drawing declined to
+                  // show. A summary is the same claim.
+                  let case = cases |> List.find (fun c -> c.Name = "pie-single")
+
+                  let refused =
+                      Charts.lower
+                          { specOf case with
+                              YFields = [ "value"; "other" ] }
+                          (Seq.ofList (
+                              buildRows
+                                  { case with
+                                      YFields = [ "value"; "other" ]
+                                      Rows = [ "A", [ 1.0; 2.0 ]; "B", [ 3.0; 4.0 ] ] }
+                          ))
+
+                  Expect.isNone refused.Description "a refused pie carries no summary"
+
+                  // …matching the geometry it already declined to draw: no
+                  // wedges (a `Curve` or a lone-100% `Circle`) and no legend
+                  // swatch (a rounded `Rectangle`). The chart title still draws
+                  // — a refusal is not an untitled picture.
+                  let claimShapes =
+                      refused.Shapes
+                      |> List.filter (fun sh ->
+                          match sh with
+                          | Shape.Curve _
+                          | Shape.Circle _
+                          | Shape.Rectangle(_, _, _, _, Some _, _) -> true
+                          | _ -> false)
+
+                  Expect.isEmpty claimShapes "…and no wedge or legend row, as before"
+              }
+
+              test "a REFUSED lowering keeps its refusal description — the summary never overwrites it" {
+                  // Phase 790's refusal drawing says why it is empty. That text
+                  // is the one thing the reader needs, so the summary must not
+                  // displace it — and it cannot, because the summary is
+                  // generated inside `lowerRows`, which a refusal never reaches.
+                  let case = cases |> List.find (fun c -> c.Name = "bar-multi")
+
+                  let refusal =
+                      Charts.tryLowerWith
+                          { Charts.ChartLimits.defaults with
+                              MaxSeries = 1 }
+                          (specOf case)
+                          (Seq.ofList (buildRows case))
+
+                  match refusal with
+                  | Error r ->
+                      match (Charts.refusalDrawing (specOf case) r).Description with
+                      | Some(TextSource.Literal t) ->
+                          Expect.equal
+                              t
+                              (Charts.describeRefusal r)
+                              "the refusal drawing announces the refusal, not a summary"
+                      | other -> failtestf "expected the refusal text, got %A" other
+                  | Ok _ -> failtest "expected a series-cap refusal"
+              }
+
+              test "the summary is a LITERAL — never a binding the reader cannot resolve" {
+                  // The whole point of generating it in the lowering is that it
+                  // is canonical, host-invariant text. A bound description would
+                  // reintroduce exactly the render-time variability the title
+                  // has (and is why the title is composed by the renderer's root
+                  // wiring instead of being baked in here).
+                  for case in cases do
+                      match (loweredCase case.Name).Description with
+                      | None
+                      | Some(TextSource.Literal _) -> ()
+                      | Some other -> failtestf "%s: the summary is not a literal (%A)" case.Name other
               } ]

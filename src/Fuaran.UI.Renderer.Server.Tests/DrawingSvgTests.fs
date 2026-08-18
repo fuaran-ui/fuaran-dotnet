@@ -74,6 +74,99 @@ let drawingSvgTests =
               Expect.isTrue (contains "<desc>A bar chart</desc>" svg) "desc"
           }
 
+          // ── Phase 921 — the root's ANNOUNCED accessible name ──
+          //
+          // `role="img"` presents the drawing as one graphic and does not
+          // traverse into it, and `<desc>` is not uniformly mapped to the
+          // accessible description (Chromium has never exposed it). So the
+          // description is announced by `aria-label`, which every assistive
+          // technology reads unconditionally — the pattern a labelled
+          // `Display.Icon` already uses on this renderer.
+
+          test "a described root carries aria-label composing title + description (Phase 921)" {
+              let svg =
+                  render
+                      { drawing [] (Some(TextSource.Literal "Sales vs target")) with
+                          Description = Some(TextSource.Literal "Bar chart. 2 series: sales, target.") }
+
+              Expect.equal
+                  svg
+                  ("<svg class=\"fuaran-drawing\" role=\"img\" viewBox=\"0 0 200 100\" "
+                   + "aria-label=\"Sales vs target. Bar chart. 2 series: sales, target.\">"
+                   + "<title>Sales vs target</title>"
+                   + "<desc>Bar chart. 2 series: sales, target.</desc></svg>")
+                  "title, terminated, then the description — and both children survive unchanged"
+          }
+
+          test "the title is terminated only when it needs to be (Phase 921)" {
+              let withDesc (t: string) =
+                  render
+                      { drawing [] (Some(TextSource.Literal t)) with
+                          Description = Some(TextSource.Literal "D.") }
+
+              Expect.isTrue
+                  (contains "aria-label=\"Ends in a period. D.\"" (withDesc "Ends in a period."))
+                  "period kept"
+
+              Expect.isTrue (contains "aria-label=\"Really? D.\"" (withDesc "Really?")) "question mark kept"
+
+              Expect.isTrue (contains "aria-label=\"Now! D.\"" (withDesc "Now!")) "exclamation kept"
+
+              Expect.isTrue (contains "aria-label=\"Plain. D.\"" (withDesc "Plain")) "otherwise a period is added"
+
+              // An EMPTY title contributes nothing rather than a bare period.
+              Expect.isTrue
+                  (contains "aria-label=\"D.\"" (withDesc ""))
+                  "an empty title is not terminated into punctuation"
+          }
+
+          test "a title-only root is byte-identical to pre-921 (Phase 921)" {
+              // The `<title>` child is already the accessible name, so there is
+              // nothing for `aria-label` to add — and every drawing authored
+              // before this phase keeps its exact bytes.
+              let svg = render (drawing [] (Some(TextSource.Literal "Bars")))
+
+              Expect.equal
+                  svg
+                  "<svg class=\"fuaran-drawing\" role=\"img\" viewBox=\"0 0 200 100\"><title>Bars</title></svg>"
+                  "no description ⇒ no aria-label"
+
+              Expect.isFalse (contains "aria-label" (render (drawing [] None))) "…and none on a bare root either"
+          }
+
+          test "a description-only root announces the description alone (Phase 921)" {
+              let svg =
+                  render
+                      { drawing [] None with
+                          Description = Some(TextSource.Literal "One filled circle.") }
+
+              Expect.equal
+                  svg
+                  ("<svg class=\"fuaran-drawing\" role=\"img\" viewBox=\"0 0 200 100\" aria-label=\"One filled circle.\">"
+                   + "<desc>One filled circle.</desc></svg>")
+                  "no title to compose in front"
+          }
+
+          test "hostile title/description text is inert in the aria-label ATTRIBUTE (Phase 921)" {
+              // The builder emits raw markup, so its own XML escape is the whole
+              // defence — and an attribute value needs the quote entities the
+              // element-content path also emits. The chart lowering feeds this
+              // seam untrusted series and category strings straight off the data
+              // feed (SANITIZATION.md).
+              let svg =
+                  render
+                      { drawing [] (Some(TextSource.Literal "a\"b")) with
+                          Description = Some(TextSource.Literal "<script>alert('x') & \"y\"</script>") }
+
+              Expect.isTrue
+                  (contains
+                      ("aria-label=\"a&quot;b. &lt;script&gt;alert(&#39;x&#39;) &amp; &quot;y&quot;&lt;/script&gt;\"")
+                      svg)
+                  "every metacharacter is entity-escaped inside the attribute"
+
+              Expect.isFalse (contains "<script>" svg) "no raw markup survives anywhere"
+          }
+
           test "Rectangle with cornerRadius + resolved style attrs" {
               let styled: DrawStyle =
                   { noStyle with
@@ -447,6 +540,13 @@ let drawingSvgTests =
 
               Expect.isTrue (contains "not rendered" markup) "the refusal says why it is empty"
               Expect.isFalse (contains "<polyline" markup) "no partial geometry is emitted"
+
+              // Phase 921 — and the refusal is ANNOUNCED, not merely present. A
+              // reason only a `<desc>` carries is a reason a screen-reader user
+              // never hears, which on an empty picture is the whole message.
+              Expect.isTrue
+                  (contains "aria-label=\"Drawing not rendered:" markup)
+                  "the refusal reaches the accessible name too"
           }
 
           test "an in-budget drawing is unaffected by the ceiling (Phase 790)" {

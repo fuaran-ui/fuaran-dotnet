@@ -14,7 +14,10 @@ module Fuaran.UI.Renderer.DrawingSvg
 //  Class vocabulary (parity-locked across hosts — Lock B extracts these literals
 //  from the F# renderer source): `fuaran-drawing` (the <svg>) +
 //  `fuaran-drawing-{group,rect,line,polyline,polygon,curve,circle,ellipse,label}`.
-//  a11y (R3): `role="img"` + optional `<title>` / `<desc>` on the drawing root.
+//  a11y (R3): `role="img"` + optional `<title>` / `<desc>` on the drawing root,
+//  plus (Phase 921) an `aria-label` composing the two whenever a `<desc>` is
+//  present — the attribute is what actually gets the description ANNOUNCED
+//  under `role="img"`.
 //
 //  The builder emits raw markup (it rides `dangerouslySetInnerHTML`), so it
 //  XML-escapes text/attribute content itself — the renderer's auto-escaping is
@@ -496,6 +499,66 @@ let rec private emitShape
             e.Add(escape (textOf text))
             e.Add "</text>"
 
+// ─── The root's announced accessible name (Phase 921) ────────────────────────
+//
+// `role="img"` (Phase 532's R3) presents the drawing as ONE graphic, and that is
+// the posture the operator confirmed on 2026-08-18. What it does NOT do on its
+// own is get `<desc>` announced. The SVG accessible-name mapping puts `<title>`
+// on the name reliably; `<desc>` maps to the accessible DESCRIPTION, which is
+// (a) not implemented uniformly — Chromium has never exposed it — and (b) a
+// verbosity-gated announcement even where it is. So the value the markup has
+// carried since Phase 525 is one a reader cannot reach, which is exactly what
+// the 2026-08-18 CONFLICTS-AND-GAPS entry recorded.
+//
+// The fix is `aria-label` on the root, carrying the TITLE and the DESCRIPTION
+// composed into one string. It is the accessible NAME, which every assistive
+// technology announces unconditionally for a `role="img"` element, and it is the
+// pattern the renderer already uses for a labelled `Display.Icon`.
+//
+// WHY NOT `aria-labelledby` / `aria-describedby` — the textbook answer. Both
+// reference elements BY ID, and this builder has no id to give: its whole input
+// is a `DrawingSpec`, several drawings routinely share one document, and any id
+// it minted would have to be both unique per page and byte-identical across five
+// hosts. A counter is not deterministic, a content hash is not free, and
+// widening the signature to thread the node id is a public-API and cross-host
+// change on every emitter for an attribute `aria-label` already discharges.
+//
+// The composition is TITLE first, then DESCRIPTION, because that is the order
+// the two artefacts are meant to be read in — and it is what lets the chart
+// lowering's generated summary (Phase 921) stay title-free while the announced
+// string still opens with the chart's name. The title is terminated with a
+// period unless it already ends in sentence punctuation, so the reader hears two
+// sentences rather than one run-on.
+//
+// Emitted ONLY when a `Description` is present: a drawing carrying just a
+// `<title>` is already named by it, so every pre-921 title-only drawing is
+// byte-identical. The `<title>` and `<desc>` children are unchanged and still
+// emitted — `<title>` remains the native hover tooltip, and `<desc>` remains the
+// SVG-native artefact for the hosts and tools that do read it.
+let private terminateTitle (t: string) : string =
+    if t = "" then
+        ""
+    else
+        match t.[t.Length - 1] with
+        | '.'
+        | '!'
+        | '?' -> t
+        | _ -> t + "."
+
+/// The composed accessible name, or `""` when the root emits no `aria-label`.
+let private rootAriaLabel (textOf: TextSource -> string) (title: TextSource option) (description: TextSource option) =
+    match description with
+    | None -> ""
+    | Some d ->
+        let descText = textOf d
+
+        let composed =
+            match title |> Option.map (textOf >> terminateTitle) with
+            | Some t when t <> "" -> t + " " + descText
+            | _ -> descText
+
+        " aria-label=\"" + escape composed + "\""
+
 let private viewBoxAttr (vb: ViewBox) : string =
     formatNum vb.MinX
     + " "
@@ -525,6 +588,7 @@ let tryRenderWithLimit
     e.Add "<svg class=\"fuaran-drawing\" role=\"img\" viewBox=\""
     e.Add(viewBoxAttr spec.ViewBox)
     e.Add "\""
+    e.Add(rootAriaLabel textOf spec.Title spec.Description)
     e.Add(styleAttrs sources false spec.Style)
     e.Add ">"
 
@@ -572,12 +636,18 @@ let render (sources: BindingResolver.BindingSources) (textOf: TextSource -> stri
     match tryRender sources textOf spec with
     | Ok svg -> svg
     | Error(OutputTooLarge limit) ->
-        "<svg class=\"fuaran-drawing\" role=\"img\" viewBox=\""
-        + viewBoxAttr spec.ViewBox
-        + "\"><desc>"
-        + escape (
+        let reason =
             "Drawing not rendered: emitted markup exceeds the limit of "
             + string limit
             + " characters."
-        )
+
+        // Phase 921 — the refusal is the one thing this markup says, so it takes
+        // the same `aria-label` wiring the ordinary root does. A refusal a
+        // reader cannot hear is an empty picture with no explanation.
+        "<svg class=\"fuaran-drawing\" role=\"img\" viewBox=\""
+        + viewBoxAttr spec.ViewBox
+        + "\" aria-label=\""
+        + escape reason
+        + "\"><desc>"
+        + escape reason
         + "</desc></svg>"
