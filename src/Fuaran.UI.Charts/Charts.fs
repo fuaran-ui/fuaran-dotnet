@@ -92,6 +92,15 @@ module Fuaran.UI.Charts
 //              878's date-axis rule: a temporal axis suppresses its DEFAULT
 //              x-title, never an explicit one. See "The temporal x-axis" below,
 //              the normative cross-host spec.
+//  2026-08-18 — THE BAND OVERFLOW RULE (operator decision). An explicit `Top` or
+//              `Bottom` legend whose entries do not pack into one band row FALLS
+//              BACK TO THE RIGHT-HAND COLUMN. `LegendPosition.Top`/`Bottom` now
+//              read "band if it fits, column if it cannot" — the author's intent
+//              (a VISIBLE legend) is honoured either way, and the wire is
+//              unchanged. The column never loses information, never grows the
+//              band unboundedly, and reuses shipped layout; a second row and a
+//              refusal were both considered and declined. See "Legend placement"
+//              at the emission site for the predicate and the alternatives.
 //
 //  `Chart` stays a SEMANTIC wire kind (D2). This module is the bounded layout
 //  engine that turns a resolved `ChartSpec` + data rows into a canonical
@@ -1953,114 +1962,6 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     let widestOf (texts: string seq) : float =
         texts |> Seq.fold (fun acc t -> max acc (TextMetrics.width tickSize t)) 0.0
 
-    // ── Legend placement (Phase 880) ─────────────────────────────────────────
-    //
-    // ONE legend with four placements, resolved HERE — above the margins,
-    // because a `Right` legend's column width is an INPUT to the plot rectangle
-    // and a `Bottom` legend's band is an input to the bottom margin. Same
-    // acyclicity discipline the text metrics established: everything the layout
-    // reads is computed before the layout that reads it.
-    //
-    // The pie arm's shares are resolved here for the same reason: its legend
-    // labels carry them ("name (NN%)"), so they are layout input, not output.
-    let isPie =
-        match spec.Kind with
-        | ChartKind.Pie -> true
-        | _ -> false
-
-    let pieValues = if isPie && m = 1 then series.[0] else [||]
-
-    let pieTotal = Array.sum pieValues
-
-    // The Phase-638 bounded-v1 guard, unchanged and merely lifted: exactly one
-    // series, no negative value, a positive total. A refused pie draws no
-    // geometry AND no legend — a legend for a picture that was refused would be
-    // a claim about data the drawing declined to show.
-    let pieRefused =
-        isPie
-        && (m <> 1 || pieValues |> Array.exists (fun v -> v < 0.0) || pieTotal <= 0.0)
-
-    let pieFractions =
-        if isPie && not pieRefused then
-            pieValues |> Array.map (fun v -> v / pieTotal)
-        else
-            [||]
-
-    /// The legend's rows in draw order — `(colour, label)`. TWO sources, ONE
-    /// shape, which is what Phase 880 unified: the cartesian arms legend their
-    /// SERIES and only when there is more than one (with a single series the
-    /// title already names it — the pre-880 rule, preserved exactly), while the
-    /// pie arm legends its CATEGORIES, which is why a single-series pie legends
-    /// and a single-series bar does not. Before this phase these were two
-    /// separate emitters with two separate constant sets, and only one of them
-    /// could honour a position.
-    let legendEntries: (string * string)[] =
-        if isPie then
-            if pieRefused then
-                [||]
-            else
-                pieFractions
-                |> Array.mapi (fun i f ->
-                    // Routed through the canonical formatter (Phase 876) — one
-                    // rounding + rendering rule for every number this module
-                    // prints. A share is a whole percent, so the shipped `NN%`
-                    // shape is unchanged.
-                    let pct = formatValue None 1.0 false 1.0 (f * 100.0)
-                    colourFor style i, sprintf "%s (%s%%)" categories.[i] pct)
-        elif m > 1 then
-            Array.init m (fun j -> colourFor style j, yFields.[j])
-        else
-            [||]
-
-    /// The placement actually used: the author's explicit `ChartSpec` value
-    /// where there is one, else the host style's default. With no entries at
-    /// all the answer is `None` whatever either of them said — so an explicit
-    /// position on a single-series chart still draws nothing, and, more to the
-    /// point, reserves no space.
-    let legendPos =
-        if Array.isEmpty legendEntries then
-            ChartLegendPosition.None
-        else
-            spec.LegendPosition |> Option.defaultValue style.LegendPosition
-
-    /// COLUMN arms: the widest label decides the column, bounded by
-    /// `LegendColumnMaxShare` of the canvas and truncated beyond it — the
-    /// margin autosizes' posture, adopted for the same reason. A name with no
-    /// bound is a data problem the layout should report by truncating, not
-    /// absorb by shrinking the picture.
-    let legendNameBudget =
-        max
-            0.0
-            (style.LegendColumnMaxShare * style.Width
-             - style.LegendLabelOffsetX
-             - style.LegendColumnGap)
-
-    let legendTexts =
-        legendEntries
-        |> Array.map (fun (_, t) ->
-            match legendPos with
-            | ChartLegendPosition.Right -> TextMetrics.truncateToWidth tickSize legendNameBudget t
-            // The band arms pack at each entry's natural width and still run
-            // off the right edge past enough entries. Truncating there would
-            // not fix it (the overflow is in the SUM, not in one name), so the
-            // band is left as Phase 879 shipped it and the default moved.
-            | _ -> t)
-
-    let legendColumnW =
-        match legendPos with
-        | ChartLegendPosition.Right -> r2 (style.LegendColumnGap + style.LegendLabelOffsetX + widestOf legendTexts)
-        | _ -> 0.0
-
-    /// The `Bottom` band's height — one line plus its padding, reserved BELOW
-    /// everything the bottom margin's autosize already accounts for (the x-axis
-    /// title's line included), so the two computations never contend for the
-    /// same pixels. The exact mirror of `subtitleBand` at the top: one term
-    /// that shifts the whole band, present only when the arm is.
-    let legendBandH =
-        match legendPos with
-        | ChartLegendPosition.Bottom -> r2 (lineHeight + style.AxisLabelPadding)
-        | _ -> 0.0
-
     // ── Axis names + subtitle (Phase 878) ────────────────────────────────────
     //
     // Resolved HERE, before any margin, because both margins have to reserve a
@@ -2160,6 +2061,174 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     let marginLeft = r2 (max style.MarginLeft (min leftCeiling requiredLeft))
 
     let plotX0 = marginLeft
+
+    // ── Legend placement (Phase 880; BAND overflow fallback 2026-08-18) ──────
+    //
+    // ONE legend with four placements, resolved HERE — AFTER the left margin,
+    // whose `plotX0` is where a band packs FROM, and before the plot's right
+    // edge, because a `Right` legend's column width is an INPUT to the plot
+    // rectangle and a `Bottom` legend's band is an input to the bottom margin.
+    // Same acyclicity discipline the text metrics established: everything the
+    // layout reads is computed before the layout that reads it. Phase 880
+    // resolved this block above ALL the margins; the overflow rule moved it
+    // below the LEFT one, because that is where the band's available width
+    // comes from. Nothing between the two reads the legend, so the block moved
+    // whole and not one term of it changed.
+    //
+    // The pie arm's shares are resolved here for the same reason: its legend
+    // labels carry them ("name (NN%)"), so they are layout input, not output.
+    let isPie =
+        match spec.Kind with
+        | ChartKind.Pie -> true
+        | _ -> false
+
+    let pieValues = if isPie && m = 1 then series.[0] else [||]
+
+    let pieTotal = Array.sum pieValues
+
+    // The Phase-638 bounded-v1 guard, unchanged and merely lifted: exactly one
+    // series, no negative value, a positive total. A refused pie draws no
+    // geometry AND no legend — a legend for a picture that was refused would be
+    // a claim about data the drawing declined to show.
+    let pieRefused =
+        isPie
+        && (m <> 1 || pieValues |> Array.exists (fun v -> v < 0.0) || pieTotal <= 0.0)
+
+    let pieFractions =
+        if isPie && not pieRefused then
+            pieValues |> Array.map (fun v -> v / pieTotal)
+        else
+            [||]
+
+    /// The legend's rows in draw order — `(colour, label)`. TWO sources, ONE
+    /// shape, which is what Phase 880 unified: the cartesian arms legend their
+    /// SERIES and only when there is more than one (with a single series the
+    /// title already names it — the pre-880 rule, preserved exactly), while the
+    /// pie arm legends its CATEGORIES, which is why a single-series pie legends
+    /// and a single-series bar does not. Before this phase these were two
+    /// separate emitters with two separate constant sets, and only one of them
+    /// could honour a position.
+    let legendEntries: (string * string)[] =
+        if isPie then
+            if pieRefused then
+                [||]
+            else
+                pieFractions
+                |> Array.mapi (fun i f ->
+                    // Routed through the canonical formatter (Phase 876) — one
+                    // rounding + rendering rule for every number this module
+                    // prints. A share is a whole percent, so the shipped `NN%`
+                    // shape is unchanged.
+                    let pct = formatValue None 1.0 false 1.0 (f * 100.0)
+                    colourFor style i, sprintf "%s (%s%%)" categories.[i] pct)
+        elif m > 1 then
+            Array.init m (fun j -> colourFor style j, yFields.[j])
+        else
+            [||]
+
+    /// The placement the author ASKED FOR: their explicit `ChartSpec` value
+    /// where there is one, else the host style's default. With no entries at
+    /// all the answer is `None` whatever either of them said — so an explicit
+    /// position on a single-series chart still draws nothing, and, more to the
+    /// point, reserves no space.
+    let requestedPos =
+        if Array.isEmpty legendEntries then
+            ChartLegendPosition.None
+        else
+            spec.LegendPosition |> Option.defaultValue style.LegendPosition
+
+    /// A BAND entry's PITCH: the swatch's label offset, the label's own natural
+    /// width, and the gap before the next entry. Read by the overflow predicate
+    /// AND by the band emitter far below — one expression, deliberately, so the
+    /// rule can never decide against geometry the drawing does not use. The name
+    /// is the untruncated one, because a band never truncates.
+    let bandEntryWidth (t: string) : float =
+        style.LegendLabelOffsetX + TextMetrics.width tickSize t + style.LegendEntryGap
+
+    /// The width a BAND has to pack into: from the plot's left edge, where the
+    /// band starts, to the plot's right edge — which on a band arm is the canvas
+    /// less the right margin, since a band reserves no column and
+    /// `legendColumnW` is 0 there by construction. So the term is not circular,
+    /// and it is the PLOT's width rather than the canvas-minus-declared-margins
+    /// width: the band packs from `plotX0`, the autosized left margin, not from
+    /// `style.MarginLeft`.
+    let bandAvailableW = style.Width - style.MarginRight - plotX0
+
+    /// **The BAND overflow rule (operator decision, 2026-08-18).** An explicit
+    /// `Top` or `Bottom` legend whose entries do not pack into one band row
+    /// FALLS BACK TO THE RIGHT-HAND COLUMN. A band's width is the SUM of its
+    /// entries, so it runs off the canvas once the names are long enough or
+    /// numerous enough — and truncating any one name cannot fix a sum, which is
+    /// why Phase 879's per-entry natural pitch and Phase 880's repositioning
+    /// both left it standing.
+    ///
+    /// The column never loses information, never grows the band unboundedly, and
+    /// reuses layout that already shipped. The two alternatives were considered
+    /// and DECLINED: a second row grows the reserved band and moves the plot
+    /// rectangle with the entry COUNT (chrome sliding under a data refresh, the
+    /// thing this module's mark-identity rule exists to avoid); a refusal past a
+    /// computed entry count loses the legend entirely, when the author's intent —
+    /// a visible legend — is honourable at a different edge. So `Top`/`Bottom`
+    /// mean "band if it fits, column if it cannot"; the wire is unchanged.
+    ///
+    /// The comparison is against the packed sum INCLUDING the last entry's
+    /// trailing `LegendEntryGap`, exactly as the emitter computes it — that gap
+    /// is the clearance to the right margin, so a legend whose ink would fit but
+    /// whose clearance would not is treated as overflowing. Strict `>`, so an
+    /// exact fit stays a band. And the fallback is UNIFORM: the whole legend
+    /// moves, never a split across two edges.
+    let bandOverflows =
+        match requestedPos with
+        | ChartLegendPosition.Top
+        | ChartLegendPosition.Bottom -> (legendEntries |> Array.sumBy (fun (_, t) -> bandEntryWidth t)) > bandAvailableW
+        | _ -> false
+
+    /// The placement actually used.
+    let legendPos =
+        if bandOverflows then
+            ChartLegendPosition.Right
+        else
+            requestedPos
+
+    /// COLUMN arms: the widest label decides the column, bounded by
+    /// `LegendColumnMaxShare` of the canvas and truncated beyond it — the
+    /// margin autosizes' posture, adopted for the same reason. A name with no
+    /// bound is a data problem the layout should report by truncating, not
+    /// absorb by shrinking the picture.
+    let legendNameBudget =
+        max
+            0.0
+            (style.LegendColumnMaxShare * style.Width
+             - style.LegendLabelOffsetX
+             - style.LegendColumnGap)
+
+    let legendTexts =
+        legendEntries
+        |> Array.map (fun (_, t) ->
+            match legendPos with
+            | ChartLegendPosition.Right -> TextMetrics.truncateToWidth tickSize legendNameBudget t
+            // A BAND arm packs at each entry's NATURAL width and never
+            // truncates: the overflow it can suffer is in the SUM, not in one
+            // name, so truncating would cost information without fixing
+            // anything. A band that cannot pack falls back to the column above
+            // — and then this arm is `Right`, so the budget applies after all.
+            | _ -> t)
+
+    let legendColumnW =
+        match legendPos with
+        | ChartLegendPosition.Right -> r2 (style.LegendColumnGap + style.LegendLabelOffsetX + widestOf legendTexts)
+        | _ -> 0.0
+
+    /// The `Bottom` band's height — one line plus its padding, reserved BELOW
+    /// everything the bottom margin's autosize already accounts for (the x-axis
+    /// title's line included), so the two computations never contend for the
+    /// same pixels. The exact mirror of `subtitleBand` at the top: one term
+    /// that shifts the whole band, present only when the arm is.
+    let legendBandH =
+        match legendPos with
+        | ChartLegendPosition.Bottom -> r2 (lineHeight + style.AxisLabelPadding)
+        | _ -> 0.0
+
     // Phase 880 — a `Right` legend takes its column off the plot, not off the
     // right margin: the margin stays the clearance between the legend's widest
     // label and the canvas edge, exactly as it was the clearance to the plot
@@ -3018,8 +3087,10 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     // BAND (`Top` / `Bottom`): Phase 879's horizontal row, entries laid out
     // cumulatively from the plot's left edge at each entry's own natural width
     // — unchanged for `Top`, which is the pre-880 shape every pre-880 golden
-    // pins. It still runs off the right edge past enough entries; that survives
-    // only on the arms an author asks for explicitly.
+    // pins. A band that cannot PACK into the plot's width no longer runs off the
+    // edge: `bandOverflows` above sends the whole legend to the column instead
+    // (operator decision, 2026-08-18), so by the time this arm is reached the
+    // entries are known to fit.
     //
     // The label styling is one expression for all four: chrome ink at
     // `LabelOpacity`, `Start`-anchored, tick-sized.
@@ -3064,15 +3135,11 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
                     rowTop, rowTop + style.LegendLabelBaselineDy
                 | _ -> style.LegendSwatchY + subtitleBand, style.LegendLabelBaselineY + subtitleBand
 
-            let entryWidth (j: int) : float =
-                style.LegendLabelOffsetX
-                + TextMetrics.width tickSize legendTexts.[j]
-                + style.LegendEntryGap
-
-            // Prefix sums — entry j starts where every earlier entry ended.
+            // Prefix sums — entry j starts where every earlier entry ended, at
+            // the same `bandEntryWidth` the overflow rule measured against.
             let xs =
                 Array.init legendEntries.Length id
-                |> Array.scan (fun acc j -> acc + entryWidth j) plotX0
+                |> Array.scan (fun acc j -> acc + bandEntryWidth legendTexts.[j]) plotX0
 
             [ for j in 0 .. legendEntries.Length - 1 do
                   let lx = r2 xs.[j]

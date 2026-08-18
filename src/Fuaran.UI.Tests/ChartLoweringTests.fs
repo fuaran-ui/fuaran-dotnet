@@ -565,9 +565,10 @@ let private cases: Case list =
       { plain with
           // THE COLUMN'S BOUND. Two names far past `LegendColumnMaxShare` of
           // the canvas: both come back ellipsised at the same budget, so the
-          // column is capped and the plot survives. `bar-legend-long-names`
-          // pins what the BAND does with the same problem (nothing — it packs
-          // at natural width and overflows), which is the contrast.
+          // column is capped and the plot survives. The contrast is
+          // `bar-legend-band-packs` / `-band-overflow-column` below: a BAND
+          // never truncates, because its overflow is in the SUM and not in any
+          // one name — it falls back to this column instead.
           Name = "bar-legend-column-truncation"
           Kind = ChartKind.Bar
           XField = "quarter"
@@ -609,6 +610,62 @@ let private cases: Case list =
           Title = Some "Sales vs target"
           LegendPosition = Some "None"
           Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
+      // ── The BAND overflow rule (operator decision, 2026-08-18) ──
+      //
+      // A boundary PAIR, minimally different: the same four series, the same
+      // rows, the same declared `Top` — and ONE character of difference in the
+      // last field name. Below the boundary the band packs and draws as Phase
+      // 879 shipped it; one character past it the WHOLE legend falls back to
+      // the Phase-880 right-hand column.
+      //
+      // The arithmetic, so a host porting this can check its own numbers rather
+      // than trusting the golden: an entry's band pitch is `LegendLabelOffsetX
+      // (15) + width(name) + LegendEntryGap (24)` at the 13 px tick size, and
+      // the band's available width is `Width (640) - MarginRight (28) - plotX0
+      // (64, unautosized here — the ticks are three characters)` = 548. The four
+      // names below pack to 542.23; pluralising the last one adds one
+      // DefaultEm character (7.15 px) for 549.38, which is past it. So the pair
+      // straddles the predicate by 5.77 px on one side and 1.38 px on the
+      // other, and nothing else about the two cases differs.
+      { plain with
+          // PACKS — 542.23 <= 548. The band, unchanged.
+          Name = "bar-legend-band-packs"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "support_revenue"; "training_revenue"; "product_revenue"; "usage_revenue" ]
+          Title = Some "Revenue by line"
+          LegendPosition = Some "Top"
+          Rows = [ "Q1", [ 80.0; 45.0; 130.0; 22.0 ]; "Q2", [ 92.0; 51.0; 118.0; 30.0 ] ] }
+      { plain with
+          // OVERFLOWS — 549.38 > 548, from the single trailing `s`. The legend
+          // is the right-hand COLUMN: the plot shrinks by `legendColumnW`, the
+          // top band reserves nothing, and no entry is lost. Names are well
+          // inside `LegendColumnMaxShare`, so nothing is ellipsised either —
+          // this pins the FALLBACK, not the column's own bound (that is
+          // `bar-legend-column-truncation`).
+          Name = "bar-legend-band-overflow-column"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "support_revenue"; "training_revenue"; "product_revenue"; "usage_revenues" ]
+          Title = Some "Revenue by line"
+          LegendPosition = Some "Top"
+          Rows = [ "Q1", [ 80.0; 45.0; 130.0; 22.0 ]; "Q2", [ 92.0; 51.0; 118.0; 30.0 ] ] }
+      { plain with
+          // THE BOTTOM ARM'S FALLBACK, which is NOT redundant with the one
+          // above: `Bottom` is the only placement that reserves a band in the
+          // MARGIN, pushing the x-axis title up by one line plus its padding
+          // (`bar-legend-bottom` pins that), and the fallback must give that
+          // back. This case is `bar-legend-band-overflow-column` with ONE key
+          // changed — `Bottom` for `Top` — so its golden must come out
+          // BYTE-IDENTICAL to that one: a fallen-back band reserves nothing at
+          // either edge, and the fallback is uniform across both.
+          Name = "bar-legend-band-bottom-overflow-column"
+          Kind = ChartKind.Bar
+          XField = "quarter"
+          YFields = [ "support_revenue"; "training_revenue"; "product_revenue"; "usage_revenues" ]
+          Title = Some "Revenue by line"
+          LegendPosition = Some "Bottom"
+          Rows = [ "Q1", [ 80.0; 45.0; 130.0; 22.0 ]; "Q2", [ 92.0; 51.0; 118.0; 30.0 ] ] }
       { plain with
           // PIE UNDER AN EXPLICIT TOP. The pie legend was the right-hand column
           // this phase generalised; this is the proof the generalisation went
@@ -2407,14 +2464,21 @@ let chartLoweringTests =
                       "every swatch is inside the canvas"
 
                   // The contrast, in the one form that can fail. A band's width
-                  // is the SUM of its entries, so it overflows once the names
-                  // are long enough — silently, past x = 640, which is what the
-                  // Tidy-Up bundle recorded. A column's width is the MAX of its
-                  // entries (bounded by the ceiling) and its height is one
-                  // pitch per entry, so neither term grows without limit.
-                  // Realistic series names are what make the difference visible:
-                  // eight five-letter greek letters happen to fit the band, and
+                  // is the SUM of its entries, so it cannot hold them once the
+                  // names are long enough — which is what the Tidy-Up bundle
+                  // recorded. A column's width is the MAX of its entries
+                  // (bounded by the ceiling) and its height is one pitch per
+                  // entry, so neither term grows without limit. Realistic series
+                  // names are what make the difference visible: eight
+                  // five-letter greek letters happen to fit the band, and
                   // reading that as "the band is fine" is exactly the mistake.
+                  //
+                  // Since the 2026-08-18 overflow rule the band no longer draws
+                  // off-canvas here — it FALLS BACK to the column — so what this
+                  // asserts is that the two routes reach the same picture: an
+                  // explicit `Top` these names cannot pack into, and the plain
+                  // default, lower identically. That is the strongest available
+                  // statement of "the fallback IS the column, not a copy of it".
                   let realistic =
                       { plain with
                           Name = "eight-realistic"
@@ -2433,8 +2497,8 @@ let chartLoweringTests =
                       |> legendSwatches
 
                   Expect.isTrue
-                      (banded |> List.exists (fun (x, _) -> x + 10.0 > 640.0))
-                      "the band runs off the canvas — moving the DEFAULT is what fixed the default"
+                      (banded |> List.forall (fun (x, y) -> x + 10.0 <= 640.0 && y + 10.0 <= 400.0))
+                      "an explicit Top these names cannot pack falls back inside the canvas"
 
                   let columned =
                       Charts.lower (specOf realistic) (Seq.ofList (buildRows realistic))
@@ -2443,6 +2507,60 @@ let chartLoweringTests =
                   Expect.isTrue
                       (columned |> List.forall (fun (x, y) -> x + 10.0 <= 640.0 && y + 10.0 <= 400.0))
                       "…and the same eight names sit inside the canvas as a column"
+
+                  Expect.equal banded columned "the fallback IS the column — same code path, same geometry"
+              }
+
+              test "the BAND overflow rule — one character decides the edge (operator, 2026-08-18)" {
+                  // The boundary pair, in the one form that can fail. The two
+                  // cases differ by a single trailing `s` in the last field
+                  // name: 542.23 px of packed band on one side of 548, 549.38
+                  // on the other.
+                  let packs = loweredCase "bar-legend-band-packs"
+                  let falls = loweredCase "bar-legend-band-overflow-column"
+
+                  Expect.equal
+                      (legendSwatches packs |> List.map snd)
+                      [ 34.0; 34.0; 34.0; 34.0 ]
+                      "below the boundary all four swatches share the one band row"
+
+                  Expect.equal
+                      (legendSwatches falls |> List.map snd)
+                      [ 64.0; 84.0; 104.0; 124.0 ]
+                      "one character past it they are a column, one LegendRowPitchY apart"
+
+                  // Four entries, still four — the column loses nothing, which
+                  // is the whole argument against refusing.
+                  Expect.equal (List.length (legendSwatches falls)) 4 "no entry is dropped by the fallback"
+
+                  // And the fallback's structural consequences: the column
+                  // comes off the PLOT (the band took none), and every swatch
+                  // is inside the canvas where the band's fourth would not have
+                  // been.
+                  Expect.equal (plotRight packs) 612.0 "a band takes no width"
+                  Expect.isTrue (plotRight falls < 612.0) "…and the column it falls back to does"
+
+                  Expect.isTrue
+                      (legendSwatches falls
+                       |> List.forall (fun (x, y) -> x + 10.0 <= 640.0 && y + 10.0 <= 400.0))
+                      "every swatch is on the canvas"
+
+                  // The `Bottom` arm's fallback gives back the band it reserved
+                  // in the MARGIN — the one thing the `Top` fallback cannot
+                  // show. Its case differs from the `Top` one by that single
+                  // key, so the two must lower to the SAME picture: the plot
+                  // keeps its full height and the x title returns to its
+                  // unreserved baseline (`bar-legend-bottom` pins it 21.6 px
+                  // higher when the band IS drawn).
+                  let bottom = loweredCase "bar-legend-band-bottom-overflow-column"
+
+                  Expect.equal (plotBottom bottom) (plotBottom falls) "a fallen-back Bottom reserves no band"
+                  Expect.equal (xAxisTitleY bottom) 388.0 "…so the x title sits at its unreserved baseline"
+
+                  Expect.equal
+                      (legendSwatches bottom)
+                      (legendSwatches falls)
+                      "both band arms fall back to the same column — the rule is uniform"
               }
 
               test "an explicit position beats the style default, in both directions" {
