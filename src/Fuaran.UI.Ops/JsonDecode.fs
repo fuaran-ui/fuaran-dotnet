@@ -1249,7 +1249,28 @@ module private OverClose =
     /// The candidate repaired documents, failure-run-first. `None` when a bound
     /// is exceeded — which IS a refusal of a profile-matching document, so the
     /// caller counts it.
-    let candidates (text: string) (p: Profile) : string[] option =
+    ///
+    /// **Lazy on purpose.** A surplus of two enumerates every unordered pair of
+    /// deletions, so the candidate COUNT is quadratic in the closer positions —
+    /// `m(m-1)/2`, up to `MaxDeletionSets` — and each candidate is a full copy
+    /// of the document. Materialising them all at once therefore costs
+    /// `sets x length`, which at the bounds is hundreds of megabytes of live
+    /// string before a single one is parsed: 8,128 candidates of a 34 KB
+    /// document is ~527 MiB, and the largest MEASURED instance (73 closers, a
+    /// surplus of two) is 2,628 candidates.
+    ///
+    /// That cost lands on the SUCCESS path, not just a pathological one. The
+    /// caller must see the whole enumeration to decide uniqueness — a second
+    /// clean decode is what turns an acceptance into a refusal — so it cannot
+    /// stop early, and a document that recovers pays in full.
+    ///
+    /// Yielding one at a time makes the peak `O(length)` instead. It does NOT
+    /// change the verdict, and that is the point: same candidates, same order,
+    /// same count, so every accept/refuse is bit-for-bit what the eager form
+    /// gave. Only the work stays quadratic; the memory no longer is. The bound
+    /// check below is still EAGER — it is arithmetic on the closer count, so a
+    /// refusal past the bounds is decided before anything is generated.
+    let candidates (text: string) (p: Profile) : string seq option =
         let m = p.Closers.Length
 
         let sets =
@@ -1261,11 +1282,10 @@ module private OverClose =
         if m > MaxCloserPositions || sets > int64 MaxDeletionSets then
             None
         else
-            let result = ResizeArray<string>()
             let inRun pos = pos >= p.RunLo && pos <= p.RunHi
 
             // `b < 0` for a single deletion; otherwise `a < b`.
-            let emit (a: int) (b: int) =
+            let repaired (a: int) (b: int) =
                 let sb = System.Text.StringBuilder(text.Length)
 
                 if b < 0 then
@@ -1277,27 +1297,29 @@ module private OverClose =
                         .Append(text.Substring(b + 1))
                     |> ignore
 
-                result.Add(sb.ToString())
+                sb.ToString()
 
             // Two passes: the failure-run-touching sets first. Ordering only —
             // the verdict is a count over the union of both passes.
-            for pass in 0..1 do
-                if p.Surplus = 1 then
-                    for x in 0 .. m - 1 do
-                        let a = p.Closers[x]
+            Some(
+                seq {
+                    for pass in 0..1 do
+                        if p.Surplus = 1 then
+                            for x in 0 .. m - 1 do
+                                let a = p.Closers[x]
 
-                        if inRun a = (pass = 0) then
-                            emit a -1
-                else
-                    for x in 0 .. m - 2 do
-                        for y in x + 1 .. m - 1 do
-                            let a = p.Closers[x]
-                            let b = p.Closers[y]
+                                if inRun a = (pass = 0) then
+                                    yield repaired a -1
+                        else
+                            for x in 0 .. m - 2 do
+                                for y in x + 1 .. m - 1 do
+                                    let a = p.Closers[x]
+                                    let b = p.Closers[y]
 
-                            if (inRun a || inRun b) = (pass = 0) then
-                                emit a b
-
-            Some(result.ToArray())
+                                    if (inRun a || inRun b) = (pass = 0) then
+                                        yield repaired a b
+                }
+            )
 
 /// Parse a NODE payload with the fuaran#850 implied-node-close recovery. A
 /// document that parses takes the identical `tryParse` path (the recovery code
@@ -7529,10 +7551,17 @@ let private tryOverCloseUnique (json: string) : Result<Node<obj>, DecodeError> o
             let mutable clean = 0
             let mutable accepted = None
             let mutable overflow = false
-            let mutable i = 0
 
-            while not overflow && i < cands.Length do
-                match tryParse cands[i] with
+            // `cands` is lazy, so each repaired document is built, parsed and
+            // dropped before the next exists — see `OverClose.candidates`. The
+            // enumerator is stepped by hand rather than with `Seq.iter` because
+            // the overflow guard must stop GENERATION, not merely skip the
+            // remaining items: a `for` over the sequence would go on building
+            // full document copies after the verdict is already settled.
+            use e = cands.GetEnumerator()
+
+            while not overflow && e.MoveNext() do
+                match tryParse e.Current with
                 | Ok j ->
                     let mutable known = false
 
@@ -7554,8 +7583,6 @@ let private tryOverCloseUnique (json: string) : Result<Node<obj>, DecodeError> o
                                     accepted <- Some tree
                             | Error _ -> ()
                 | Error _ -> ()
-
-                i <- i + 1
 
             // The whole gate, in one line: exactly one, or nothing.
             if overflow || clean <> 1 then
