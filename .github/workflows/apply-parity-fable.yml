@@ -1,4 +1,4 @@
-name: Apply-parity Fable lane
+﻿name: Apply-parity Fable lane
 
 # Phase 192 cross-pipeline apply-parity gate — the Fable half, automated.
 #
@@ -31,6 +31,31 @@ on:
   pull_request:
 
 jobs:
+  # Phase 945 — the generated-layer drift guard. The sync script's -Check leg
+  # existed since Phase 671 with a docstring saying "Used by CI / the drift
+  # guard"; nothing ever ran it, and the artefacts drifted for five days to a
+  # build-breaking 292 lines before a phase tripped over the wreck. This job is
+  # the one step that was always missing. fuaran-core is public, so the second
+  # checkout needs no token; the sync script resolves it at ../../../Fuaran-Core
+  # relative to its own directory, which the two checkout paths reproduce.
+  generated-layer-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fuaran-dotnet
+        uses: actions/checkout@v4
+        with:
+          path: Fuaran-UI/fuaran-dotnet
+
+      - name: Checkout fuaran-core (the generated layer's source of truth)
+        uses: actions/checkout@v4
+        with:
+          repository: fuaran-ui/fuaran-core
+          path: Fuaran-Core
+
+      - name: Generated.fs matches Core's emission
+        shell: pwsh
+        run: pwsh Fuaran-UI/fuaran-dotnet/scripts/sync-generated-layer.ps1 -Check
+
   fable-parity:
     runs-on: ubuntu-latest
     steps:

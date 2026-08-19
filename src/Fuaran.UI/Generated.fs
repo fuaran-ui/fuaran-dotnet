@@ -12,8 +12,7 @@ type HeadingVariant =
 
 /// Phase 812 — anti-scraper render strategy for a `Link`. `Email` marks a
 /// `mailto:` link whose address must not appear in plaintext in emitted HTML
-/// (the renderers own the emission strategy; hand-added ahead of the IDL
-/// backfill — see roadmap Phase 802).
+/// (the renderers own the emission strategy).
 [<RequireQualifiedAccess>]
 type LinkProtection =
     | Email
@@ -115,8 +114,7 @@ type RelativeTimeUnit =
     | Year
 
 /// Phase 819 — how `Format.Duration` / `CellFormat.Duration` interpret the
-/// numeric source: the unit the raw float counts (hand-added ahead of the
-/// IDL backfill — see the Phase 812 `LinkProtection` precedent above).
+/// numeric source: the unit the raw float counts.
 [<RequireQualifiedAccess>]
 type DurationUnit =
     | Seconds
@@ -124,8 +122,7 @@ type DurationUnit =
     | Hours
 
 /// Phase 819 — presentation style for a duration: `Compact` "1h 20m",
-/// `Clock` "1:20:00", `Long` "1 hour 20 minutes" (hand-added ahead of the
-/// IDL backfill — see the Phase 812 `LinkProtection` precedent above).
+/// `Clock` "1:20:00", `Long` "1 hour 20 minutes".
 [<RequireQualifiedAccess>]
 type DurationStyle =
     | Compact
@@ -133,8 +130,7 @@ type DurationStyle =
     | Long
 
 /// Phase 821 — size class for the standalone `Icon` display kind; `Medium`
-/// is the default and is omitted on the wire (hand-added ahead of the IDL
-/// backfill — see the Phase 812 `LinkProtection` precedent above).
+/// is the default and is omitted on the wire.
 [<RequireQualifiedAccess>]
 type IconSize =
     | Small
@@ -305,8 +301,8 @@ and [<RequireQualifiedAccess>] Binding<'T> =
     | Filter of name: string * defaultValue: 'T option
     | Selection of nodeId: string * accessor: (obj -> 'T) * defaultValue: 'T option * field: string option
     | State of key: string * defaultValue: 'T option
-    | Computed of fn: (obj -> 'T)
     | Now of accessor: (obj -> 'T)
+    | Computed of fn: (obj -> 'T)
     | Local of flushOn: LocalFlushTrigger * format: ('T -> string) * initialFrom: Binding<'T> * onCommit: ('T -> obj) option * parse: (string -> Result<'T, string>)
     | Format of source: Binding<float> * format: Format * locale: LocaleSource
     | I18n of key: string * args: Map<string, Binding<JVal>> option
@@ -325,12 +321,10 @@ and [<RequireQualifiedAccess>] CellFormat =
     | SignificantDigits of digits: int
     | Date of format: string
     /// Phase 819 — trendable duration cells: the raw float counts `unit`s,
-    /// rendered per `style` (hand-added ahead of the IDL backfill — the
-    /// Phase 812 `LinkProtection` precedent).
+    /// rendered per `style`.
     | Duration of unit: DurationUnit * style: DurationStyle
     /// Phase 819 — cell-vocabulary parity with `Format.RelativeTime`: the
-    /// raw float is a signed count of `unit` (hand-added ahead of the IDL
-    /// backfill — the Phase 812 `LinkProtection` precedent).
+    /// raw float is a signed count of `unit`.
     | RelativeTime of unit: RelativeTimeUnit
     | Custom of fn: (Fuaran.UI.HostPrelude.CellValue -> string)
 
@@ -362,8 +356,7 @@ and [<RequireQualifiedAccess>] Format =
     | Date of dateStyle: DateStyle
     | RelativeTime of unit: RelativeTimeUnit
     /// Phase 819 — locale-independent duration formatting: the numeric
-    /// source counts `unit`s, rendered per `style` (hand-added ahead of the
-    /// IDL backfill — the Phase 812 `LinkProtection` precedent).
+    /// source counts `unit`s, rendered per `style`.
     | Duration of unit: DurationUnit * style: DurationStyle
 
 and [<RequireQualifiedAccess>] LocaleSource =
@@ -578,19 +571,6 @@ and TransformParam =
       Name: string
     }
 
-/// Phase 818 — a `Binding.Transform`'s source slot (hand-added ahead of the
-/// IDL backfill — the Phase 812 `LinkProtection` precedent). `Data` is the
-/// canonical columnar / `ref` source (the pre-818 shape, byte-identical on the
-/// wire). `Live` preserves a binding-shaped source (State / Selection / Query)
-/// verbatim so a runtime re-evaluates the Transform with subscription
-/// semantics when the binding's channel changes; `initial` is the decode-time
-/// snapshot table derived from the binding's carried default data (never
-/// encoded — the binding IS the wire form), which SSR / diagnostic evaluation
-/// reads, byte-identical to the Phase-815 snapshot for the same input.
-and [<RequireQualifiedAccess>] TransformSource =
-    | Data of source: Fuaran.Core.DataSource
-    | Live of binding: Binding<JVal> * initial: Fuaran.Core.DataSource
-
 and RangePair =
     {
       Max: float
@@ -613,9 +593,6 @@ and TabHeader =
 and ColumnErased<'Msg> =
     {
       Field: string option
-      Format: CellFormat
-      Kind: CellKindErased<'Msg>
-      Label: string
       // Phase 861 — per-column sort NARROWING on the bound path (Phase 860's
       // charter rule: a column flag narrows a behaviour, never widens it).
       // Absent = inherit, i.e. sortable iff the column has a `field` and the
@@ -631,6 +608,9 @@ and ColumnErased<'Msg> =
       // inherited default made explicit and is an ERROR where the grid is not
       // editable: a column narrows, never widens. Omitted when absent.
       Editable: bool option
+      Format: CellFormat
+      Kind: CellKindErased<'Msg>
+      Label: string
       Value: (Fuaran.Core.Row -> Fuaran.UI.HostPrelude.CellValue) option
       Width: ColumnWidth
     }
@@ -690,8 +670,7 @@ and SkeletonSpec =
 
 // Display
 /// Phase 821 — the standalone icon-only display kind: a decorative or
-/// labelled glyph with no Button / Image envelope (hand-added ahead of the
-/// IDL backfill — the Phase 812 `LinkProtection` precedent). `Icon` names a
+/// labelled glyph with no Button / Image envelope. `Icon` names a
 /// glyph from the existing icon vocabulary (the `data-icon` hook); `Label =
 /// None` is decorative (`aria-hidden="true"`), `Some` is meaningful
 /// (`role="img"` + `aria-label`).
@@ -988,6 +967,13 @@ and DataGridSpec<'Msg> =
       // its edits land, because the only spelling was a closure erasing to
       // `"<closure>"`. Omitted on the wire when absent.
       EditStateKey: string option
+      // Phase 934 — declarative row reorder. Omit-when-false, matching its nearest
+      // sibling `editable`: for an affordance flag "not stated" and "explicitly off"
+      // are the same state, so an option would carry a distinction the renderer
+      // cannot act on. The reordered rows commit to `editStateKey` above — a reorder
+      // IS a write of the whole updated rows value, so it needs no destination of
+      // its own.
+      Reorderable: bool
       Source: Binding<Fuaran.Core.Row seq>
       StaticRows: StaticRows option
       OnRowClick: (Fuaran.Core.Row -> Action<'Msg>) option
@@ -1187,12 +1173,28 @@ and Node<'Msg> =
       Style: SemanticStyle option
     }
 
+/// Phase 818 — a `Binding.Transform`'s source slot. `Data` is the
+/// canonical columnar / `ref` source (the pre-818 shape, byte-identical on the
+/// wire). `Live` preserves a binding-shaped source (State / Selection / Query)
+/// verbatim so a runtime re-evaluates the Transform with subscription
+/// semantics when the binding's channel changes; `initial` is the decode-time
+/// snapshot table derived from the binding's carried default data (never
+/// encoded — the binding IS the wire form), which SSR / diagnostic evaluation
+/// reads, byte-identical to the Phase-815 snapshot for the same input.
+and [<RequireQualifiedAccess>] TransformSource =
+    | Data of source: Fuaran.Core.DataSource
+    | Live of binding: Binding<JVal> * initial: Fuaran.Core.DataSource
+
 let private encHeadingVariant (v: HeadingVariant) : JVal =
     match v with
     | HeadingVariant.Standard -> JStr "Standard"
     | HeadingVariant.Eyebrow -> JStr "Eyebrow"
     | HeadingVariant.Caption -> JStr "Caption"
     | HeadingVariant.Lead -> JStr "Lead"
+
+let private encLinkProtection (v: LinkProtection) : JVal =
+    match v with
+    | LinkProtection.Email -> JStr "email"
 
 let private encBadgeVariant (v: BadgeVariant) : JVal =
     match v with
@@ -1290,7 +1292,7 @@ let private encRelativeTimeUnit (v: RelativeTimeUnit) : JVal =
     | RelativeTimeUnit.Month -> JStr "Month"
     | RelativeTimeUnit.Year -> JStr "Year"
 
-// Phase 819 — Duration format enums (hand-added ahead of the IDL backfill).
+// Phase 819 — Duration format enums.
 let private encDurationUnit (v: DurationUnit) : JVal =
     match v with
     | DurationUnit.Seconds -> JStr "Seconds"
@@ -1303,7 +1305,7 @@ let private encDurationStyle (v: DurationStyle) : JVal =
     | DurationStyle.Clock -> JStr "Clock"
     | DurationStyle.Long -> JStr "Long"
 
-// Phase 821 — Icon size class (hand-added ahead of the IDL backfill).
+// Phase 821 — Icon size class.
 let private encIconSize (v: IconSize) : JVal =
     match v with
     | IconSize.Small -> JStr "Small"
@@ -1463,16 +1465,12 @@ and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     | Binding.Filter (name, defaultValue) -> Canon.typed "Filter" ([ Some("name", JStr name); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
     | Binding.Selection (nodeId, accessor, defaultValue, field) -> Canon.typed "Selection" ([ Some("nodeId", JStr nodeId); None; (defaultValue |> Option.map (fun v -> "defaultValue", encT v)); (field |> Option.map (fun v -> "field", JStr v)) ] |> List.choose id)
     | Binding.State (key, defaultValue) -> Canon.typed "State" ([ Some("key", JStr key); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
+    | Binding.Now accessor -> Canon.typed "Now" ([ None ] |> List.choose id)
     | Binding.Computed fn -> Canon.typed "Computed" [ "fn", JStr "<closure>" ]
-    | Binding.Now accessor -> Canon.typed "Now" []
     | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>") ] |> List.choose id)
     | Binding.Format (source, format, locale) -> Canon.typed "Format" [ "source", (encBinding JFloat) source; "format", encFormat format; "locale", encLocaleSource locale ]
     | Binding.I18n (key, args) -> Canon.typed "I18n" ([ Some("key", JStr key); (args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (encBinding id) v))) v)) ] |> List.choose id)
-    // Phase 818 — a `Data` source keeps the Core columnar encoding
-    // byte-identical; a `Live` source re-encodes the preserved binding itself
-    // (one wire dialect — the State/Selection/Query-shaped source round-trips
-    // byte-for-byte; the derived `initial` snapshot is never encoded).
-    | Binding.Transform (source, pipeline, ``params``) -> Canon.typed "Transform" ([ Some("source", (match source with | TransformSource.Data ds -> Fuaran.Core.ColumnCodec.encodeJson ds | TransformSource.Live (b, _) -> (encBinding id) b)); Some("pipeline", JArr(List.map Fuaran.Core.DataFrameCodec.encodeTransform pipeline)); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
+    | Binding.Transform (source, pipeline, ``params``) -> Canon.typed "Transform" ([ Some("source", encTransformSource source); Some("pipeline", JArr(List.map Fuaran.Core.DataFrameCodec.encodeTransform pipeline)); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
     | Binding.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
 
 and private encCellFormat (v: CellFormat) : JVal =
@@ -1483,7 +1481,7 @@ and private encCellFormat (v: CellFormat) : JVal =
     | CellFormat.Percent decimals -> Canon.typed "Percent" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
     | CellFormat.SignificantDigits digits -> Canon.typed "SignificantDigits" [ "digits", JInt digits ]
     | CellFormat.Date format -> Canon.typed "Date" [ "format", JStr format ]
-    | CellFormat.Duration (unit, style) -> Canon.typed "Duration" [ "style", encDurationStyle style; "unit", encDurationUnit unit ]
+    | CellFormat.Duration (unit, style) -> Canon.typed "Duration" [ "unit", encDurationUnit unit; "style", encDurationStyle style ]
     | CellFormat.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
     | CellFormat.Custom fn -> Canon.typed "Custom" [ "fn", JStr "<closure>" ]
 
@@ -1500,7 +1498,7 @@ and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     | Action.Notify (channel, payload) -> Canon.typed "Notify" [ "channel", JStr channel; "payload", id payload ]
     // Phase 818 — `value` / `valueFrom` are XOR siblings; each is emitted only
     // when present (Canon sorts keys, so the field order stays alphabetical).
-    | Action.SetState (key, value, valueFrom) -> Canon.typed "SetState" ([ Some("key", JStr key); (value |> Option.map (fun v -> "value", v)); (valueFrom |> Option.map (fun b -> "valueFrom", (encBinding id) b)) ] |> List.choose id)
+    | Action.SetState (key, value, valueFrom) -> Canon.typed "SetState" ([ Some("key", JStr key); (value |> Option.map (fun v -> "value", id v)); (valueFrom |> Option.map (fun v -> "valueFrom", (encBinding id) v)) ] |> List.choose id)
     | Action.AiTool (toolName, args) -> Canon.typed "AiTool" [ "toolName", JStr toolName; "args", id args ]
 
 and private encCallResultTarget (v: CallResultTarget) : JVal =
@@ -1515,7 +1513,7 @@ and private encFormat (v: Format) : JVal =
     | Format.Percent decimals -> Canon.typed "Percent" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
     | Format.Date dateStyle -> Canon.typed "Date" [ "dateStyle", encDateStyle dateStyle ]
     | Format.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
-    | Format.Duration (unit, style) -> Canon.typed "Duration" [ "style", encDurationStyle style; "unit", encDurationUnit unit ]
+    | Format.Duration (unit, style) -> Canon.typed "Duration" [ "unit", encDurationUnit unit; "style", encDurationStyle style ]
 
 and private encLocaleSource (v: LocaleSource) : JVal =
     match v with
@@ -1703,11 +1701,11 @@ and private encMathSpec (s: MathSpec) : JVal =
 and private encSkeletonSpec (s: SkeletonSpec) : JVal =
     Canon.typed "Skeleton" ([ Some("rows", JInt s.Rows) ] |> List.choose id)
 
-// Phase 821 — Icon display kind (hand-added ahead of the IDL backfill).
+// Phase 821 — Icon display kind.
 // `size` omitted-when-`Medium`, `tone` omitted-when-`Default`, `label`
 // omitted-when-`None` (decorative).
 and private encIconSpec (s: IconSpec) : JVal =
-    Canon.typed "Icon" ([ Some("icon", JStr s.Icon); (s.Label |> Option.map (fun v -> "label", JStr v)); (if s.Size = IconSize.Medium then None else Some("size", encIconSize s.Size)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)) ] |> List.choose id)
+    Canon.typed "Icon" ([ Some("icon", JStr s.Icon); (if s.Size = IconSize.Medium then None else Some("size", encIconSize s.Size)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Label |> Option.map (fun v -> "label", JStr v)) ] |> List.choose id)
 
 and private encListSpec (s: ListSpec) : JVal =
     Canon.typed "List" ([ Some("items", JArr(List.map encTextSource s.Items)); Some("ordered", JBool s.Ordered) ] |> List.choose id)
@@ -1716,7 +1714,7 @@ and private encImageSpec (s: ImageSpec) : JVal =
     Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); Some("variant", encImageVariant s.Variant) ] |> List.choose id)
 
 and private encLinkSpec (s: LinkSpec) : JVal =
-    Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun p -> "protection", JStr (match p with LinkProtection.Email -> "email"))) ] |> List.choose id)
+    Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun v -> "protection", encLinkProtection v)) ] |> List.choose id)
 
 and private encCalloutSpec (s: CalloutSpec) : JVal =
     Canon.typed "Callout" ([ Some("body", encTextSource s.Body); (if s.Dismissable = false then None else Some("dismissable", JBool s.Dismissable)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)) ] |> List.choose id)
@@ -1785,7 +1783,7 @@ and private encFiltersSpec<'Msg> (s: FiltersSpec<'Msg>) : JVal =
     Canon.typed "Filters" ([ Some("items", JArr(List.map encFilterSpec s.Items)) ] |> List.choose id)
 
 and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
-    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); (if s.Reorderable = false then None else Some("reorderable", JBool s.Reorderable)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encChartSpec<'Msg> (s: ChartSpec<'Msg>) : JVal =
     Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.ValueFormat |> Option.map (fun v -> "valueFormat", encFormat v)); (s.XTitle |> Option.map (fun v -> "xTitle", encTextSource v)); (s.YTitle |> Option.map (fun v -> "yTitle", encTextSource v)); (s.Subtitle |> Option.map (fun v -> "subtitle", encTextSource v)); (s.LegendPosition |> Option.map (fun v -> "legendPosition", encChartLegendPosition v)); (s.DataLabels |> Option.map (fun v -> "dataLabels", encChartDataLabels v)); (s.XScale |> Option.map (fun v -> "xScale", encChartXScale v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
@@ -1811,6 +1809,15 @@ and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =
 and private encMountSpec<'Msg> (s: MountSpec<'Msg>) : JVal =
     Canon.typed "Mount" ([ Some("capabilities", JArr(List.map JStr s.Capabilities)); Some("channel", encGuestChannel s.Channel); (s.Inputs |> Option.map (fun v -> "inputs", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)); (s.OnBubble |> Option.map (fun v -> "onBubble", JStr "<closure>")); Some("scopeId", JStr s.ScopeId) ] |> List.choose id)
 
+// Phase 818 — a `Data` source keeps the Core columnar encoding byte-identical; a
+// `Live` source re-encodes the preserved binding itself (one wire dialect — the
+// State/Selection/Query-shaped source round-trips byte-for-byte; the derived
+// `initial` snapshot is never encoded).
+and private encTransformSource (s: TransformSource) : JVal =
+    match s with
+    | TransformSource.Data ds -> Fuaran.Core.ColumnCodec.encodeJson ds
+    | TransformSource.Live (b, _) -> (encBinding id) b
+
 let encodeNode (n: Node<'Msg>) : string = Canon.render (encNode n)
 
 /// JVal-level accessors (Phase 694) — for host codecs that splice generated
@@ -1821,13 +1828,13 @@ let encodeNodeKindJson (k: NodeKind<'Msg>) : JVal = encNodeKind k
 
 let encodeStateBehaviourJson (s: StateBehaviour<'Msg>) : JVal = encStateBehaviour s
 
-// Phase 818 — JVal-level accessor for a data-shaped Action (hand-added; the
+let encodeSemanticStyleJson (s: SemanticStyle) : JVal = encSemanticStyle s
+
+// Phase 818 — JVal-level accessor for a data-shaped Action (the
 // `encodeNodeKindJson` precedent): the server resume script re-encodes a
 // `SetState` whose payload is a `valueFrom` Binding through the canonical
 // encoder rather than growing a second hand-rolled binding encoder.
 let encodeActionJson (a: Action<'Msg>) : JVal = encAction a
-
-let encodeSemanticStyleJson (s: SemanticStyle) : JVal = encSemanticStyle s
 
 let private dObj (j: JVal) : Result<(string * JVal) list, string> =
     match j with
@@ -1916,6 +1923,11 @@ let private decHeadingVariant (j: JVal) : Result<HeadingVariant, string> =
     | JStr "Caption" -> Ok HeadingVariant.Caption
     | JStr "Lead" -> Ok HeadingVariant.Lead
     | _ -> Error "not a HeadingVariant"
+
+let private decLinkProtection (j: JVal) : Result<LinkProtection, string> =
+    match j with
+    | JStr "email" -> Ok LinkProtection.Email
+    | _ -> Error "not a LinkProtection"
 
 let private decBadgeVariant (j: JVal) : Result<BadgeVariant, string> =
     match j with
@@ -2027,7 +2039,7 @@ let private decRelativeTimeUnit (j: JVal) : Result<RelativeTimeUnit, string> =
     | JStr "Year" -> Ok RelativeTimeUnit.Year
     | _ -> Error "not a RelativeTimeUnit"
 
-// Phase 819 — Duration format enums (hand-added ahead of the IDL backfill).
+// Phase 819 — Duration format enums.
 let private decDurationUnit (j: JVal) : Result<DurationUnit, string> =
     match j with
     | JStr "Seconds" -> Ok DurationUnit.Seconds
@@ -2042,7 +2054,7 @@ let private decDurationStyle (j: JVal) : Result<DurationStyle, string> =
     | JStr "Long" -> Ok DurationStyle.Long
     | _ -> Error "not a DurationStyle"
 
-// Phase 821 — Icon size class (hand-added ahead of the IDL backfill).
+// Phase 821 — Icon size class.
 let private decIconSize (j: JVal) : Result<IconSize, string> =
     match j with
     | JStr "Small" -> Ok IconSize.Small
@@ -2259,16 +2271,16 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             dReq "key" __fs dStr |> Result.bind (fun key ->
             dOpt "defaultValue" __fs decT |> Result.bind (fun defaultValue ->
             Ok(Binding.State(key, defaultValue))))
+        // Identity accessor (the Phase 427 Selection fix replayed): the
+        // host-furnished instant is already the wire-shaped string, so a
+        // decoded reader receives it as-is; a value-discarding placeholder
+        // would make every decoded `Now` resolve to nothing.
+        | "Now" ->
+            Ok ((fun (raw: obj) -> unbox raw)) |> Result.bind (fun accessor ->
+            Ok(Binding.Now(accessor)))
         | "Computed" ->
             Ok ((fun _ -> Unchecked.defaultof<'T>)) |> Result.bind (fun fn ->
             Ok(Binding.Computed(fn)))
-        | "Now" ->
-            // Identity accessor (the Phase 427 Selection fix replayed): the
-            // host-furnished instant is already the wire-shaped string, so a
-            // decoded reader receives it as-is; a value-discarding placeholder
-            // would make every decoded `Now` resolve to nothing.
-            Ok ((fun (raw: obj) -> unbox raw)) |> Result.bind (fun accessor ->
-            Ok(Binding.Now(accessor)))
         | "Local" ->
             dReq "flushOn" __fs decLocalFlushTrigger |> Result.bind (fun flushOn ->
             Ok ((fun _ -> "")) |> Result.bind (fun format ->
@@ -2285,15 +2297,15 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
             dReq "key" __fs dStr |> Result.bind (fun key ->
             dOpt "args" __fs (dMap (decBinding dJson)) |> Result.bind (fun args ->
             Ok(Binding.I18n(key, args))))
+        // Phase 818 — a binding-shaped source (State / Selection / Query
+        // `$type`) is preserved as `TransformSource.Live`; the initial
+        // snapshot derives from the binding's carried default data via the
+        // host-prelude helpers (a State source must carry data — the
+        // Phase-815 posture; Selection/Query fall back to the empty
+        // table). Anything else decodes through Core's columnar codec as
+        // before, byte-identical.
         | "Transform" ->
-            // Phase 818 — a binding-shaped source (State / Selection / Query
-            // `$type`) is preserved as `TransformSource.Live`; the initial
-            // snapshot derives from the binding's carried default data via the
-            // host-prelude helpers (a State source must carry data — the
-            // Phase-815 posture; Selection/Query fall back to the empty
-            // table). Anything else decodes through Core's columnar codec as
-            // before, byte-identical.
-            dReq "source" __fs (fun __j -> decTransformSource __j) |> Result.bind (fun source ->
+            dReq "source" __fs decTransformSource |> Result.bind (fun source ->
             dReq "pipeline" __fs (dList (fun __j -> Fuaran.Core.DataFrameCodec.decodeTransform __j |> Result.mapError string)) |> Result.bind (fun pipeline ->
             dOpt "params" __fs (dList decTransformParam) |> Result.bind (fun ``params`` ->
             Ok(Binding.Transform(source, pipeline, ``params``)))))
@@ -2378,11 +2390,11 @@ and private decAction (j: JVal) : Result<Action<obj>, string> =
             dReq "payload" __fs dJson |> Result.bind (fun payload ->
             Ok(Action.Notify(channel, payload))))
         | "SetState" ->
-            // Phase 818 — value XOR valueFrom (a literal, or a Binding
-            // evaluated at dispatch time); exactly one must be present.
             dReq "key" __fs dStr |> Result.bind (fun key ->
             dOpt "value" __fs dJson |> Result.bind (fun value ->
             dOpt "valueFrom" __fs (decBinding dJson) |> Result.bind (fun valueFrom ->
+            // Phase 818 — value XOR valueFrom (a literal, or a Binding
+            // evaluated at dispatch time); exactly one must be present.
             match value, valueFrom with
             | Some _, Some _ -> Error "SetState carries both 'value' and 'valueFrom' — exactly one is allowed ('value' is a literal; 'valueFrom' derives the written value from a Binding at dispatch time)"
             | None, None -> Error "SetState requires 'value' (a literal JSON value) or 'valueFrom' (a Binding evaluated at dispatch time)"
@@ -2902,50 +2914,6 @@ and private decTransformParam (j: JVal) : Result<TransformParam, string> =
     dReq "name" __fs dStr |> Result.bind (fun name ->
     Ok { From = from; Name = name })))
 
-// Phase 818 — the Transform source slot (hand-added ahead of the IDL
-// backfill). A `$type` of State / Selection / Query preserves the binding as
-// `TransformSource.Live` with the initial snapshot derived from its carried
-// default data (`Fuaran.UI.HostPrelude.TransformLive`); a State source with no
-// data is refused through the columnar codec so the didactic names the missing
-// canonical field (the Phase-815 posture). Every other shape decodes through
-// Core's columnar codec unchanged.
-and private decTransformSource (j: JVal) : Result<TransformSource, string> =
-    let asData (v: JVal) : Result<TransformSource, string> =
-        Fuaran.Core.ColumnCodec.decodeJson v |> Result.map TransformSource.Data |> Result.mapError string
-
-    match j with
-    | JObj fields ->
-        match fields |> List.tryFind (fun (k, _) -> k = "$type") with
-        | Some(_, JStr(("State" | "Selection" | "Query") as tag)) ->
-            decBinding dJson j |> Result.bind (fun b ->
-                let carried =
-                    match b with
-                    | Binding.State(_, dv) -> dv
-                    | Binding.Selection(_, _, dv, _) -> dv
-                    | _ -> None
-
-                match carried, tag with
-                | Some data, "State" ->
-                    // A State source's carried data IS the initial snapshot —
-                    // it must decode as a table (the Phase-815 posture).
-                    Fuaran.UI.HostPrelude.TransformLive.initialSource data
-                    |> Result.map (fun initial -> TransformSource.Live(b, initial))
-                    |> Result.mapError Fuaran.Core.ColumnCodec.errorString
-                | Some data, _ ->
-                    // A Selection default may legitimately be a scalar / row
-                    // shape rather than a table; fall back to the empty
-                    // initial (the runtime evaluation stays loud on mismatch).
-                    match Fuaran.UI.HostPrelude.TransformLive.initialSource data with
-                    | Ok initial -> Ok(TransformSource.Live(b, initial))
-                    | Error _ -> Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource))
-                | None, "State" ->
-                    // No carried data: surface the columnar codec's own
-                    // missing-field didactic (byte-identical to pre-818).
-                    asData j
-                | None, _ -> Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource)))
-        | _ -> asData j
-    | _ -> asData j
-
 and private decRangePair (j: JVal) : Result<RangePair, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "max" __fs dFloat |> Result.bind (fun max ->
@@ -2969,13 +2937,13 @@ and private decColumnErased (j: JVal) : Result<ColumnErased<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dOpt "field" __fs dStr |> Result.bind (fun field ->
     dOpt "sortable" __fs dBool |> Result.bind (fun sortable ->
-    dOpt "editable" __fs dBool |> Result.bind (fun colEditable ->
+    dOpt "editable" __fs dBool |> Result.bind (fun editable ->
     dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
     dReq "kind" __fs decCellKindErased |> Result.bind (fun kind ->
     dReq "label" __fs dStr |> Result.bind (fun label ->
     (dPresent "value" __fs |> Result.map (Option.map (fun () -> (fun _ -> Fuaran.UI.HostPrelude.CellValue.Empty)))) |> Result.bind (fun value ->
     dDef "width" __fs decColumnWidth (ColumnWidth.Auto) |> Result.bind (fun width ->
-    Ok { Field = field; Sortable = sortable; Editable = colEditable; Format = format; Kind = kind; Label = label; Value = value; Width = width })))))))))
+    Ok { Field = field; Sortable = sortable; Editable = editable; Format = format; Kind = kind; Label = label; Value = value; Width = width })))))))))
 
 and private decButtonGroupItem (j: JVal) : Result<ButtonGroupItem<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3025,7 +2993,7 @@ and private decSkeletonSpec (j: JVal) : Result<SkeletonSpec, string> =
     dReq "rows" __fs dInt |> Result.bind (fun rows ->
     Ok { Rows = rows }))
 
-// Phase 821 — Icon display kind (hand-added ahead of the IDL backfill).
+// Phase 821 — Icon display kind.
 and private decIconSpec (j: JVal) : Result<IconSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "icon" __fs dStr |> Result.bind (fun icon ->
@@ -3056,12 +3024,6 @@ and private decLinkSpec (j: JVal) : Result<LinkSpec, string> =
     dOpt "target" __fs dStr |> Result.bind (fun target ->
     dOpt "protection" __fs decLinkProtection |> Result.bind (fun protection ->
     Ok { Href = href; Label = label; Download = download; Rel = rel; Target = target; Protection = protection })))))))
-
-and private decLinkProtection (j: JVal) : Result<LinkProtection, string> =
-    match j with
-    | JStr "email" -> Ok LinkProtection.Email
-    | JStr other -> Error ("unknown LinkProtection case: " + other)
-    | _ -> Error "expected a LinkProtection string"
 
 and private decCalloutSpec (j: JVal) : Result<CalloutSpec, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3266,10 +3228,11 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, string> =
     dOpt "pageStateKey" __fs dStr |> Result.bind (fun pageStateKey ->
     dOpt "defaultSort" __fs decDefaultSort |> Result.bind (fun defaultSort ->
     dOpt "editStateKey" __fs dStr |> Result.bind (fun editStateKey ->
+    dDef "reorderable" __fs dBool (false) |> Result.bind (fun reorderable ->
     dReq "source" __fs (decBinding Fuaran.Core.RowCodec.decodeRows) |> Result.bind (fun source ->
     dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
     (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
-    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; EditStateKey = editStateKey; Source = source; StaticRows = staticRows; OnRowClick = onRowClick })))))))))))))
+    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; EditStateKey = editStateKey; Reorderable = reorderable; Source = source; StaticRows = staticRows; OnRowClick = onRowClick }))))))))))))))
 
 and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3348,6 +3311,49 @@ and private decMountSpec (j: JVal) : Result<MountSpec<obj>, string> =
     (dPresent "onBubble" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onBubble ->
     dReq "scopeId" __fs dStr |> Result.bind (fun scopeId ->
     Ok { Capabilities = capabilities; Channel = channel; Inputs = inputs; OnBubble = onBubble; ScopeId = scopeId }))))))
+
+// Phase 818 — the Transform source slot. A `$type` of State / Selection / Query preserves the binding as
+// `TransformSource.Live` with the initial snapshot derived from its carried
+// default data (`Fuaran.UI.HostPrelude.TransformLive`); a State source with no
+// data is refused through the columnar codec so the didactic names the missing
+// canonical field (the Phase-815 posture). Every other shape decodes through
+// Core's columnar codec unchanged.
+and private decTransformSource (j: JVal) : Result<TransformSource, string> =
+    let asData (v: JVal) : Result<TransformSource, string> =
+        Fuaran.Core.ColumnCodec.decodeJson v |> Result.map TransformSource.Data |> Result.mapError string
+
+    match j with
+    | JObj fields ->
+        match fields |> List.tryFind (fun (k, _) -> k = "$type") with
+        | Some(_, JStr(("State" | "Selection" | "Query") as tag)) ->
+            decBinding dJson j |> Result.bind (fun b ->
+                let carried =
+                    match b with
+                    | Binding.State(_, dv) -> dv
+                    | Binding.Selection(_, _, dv, _) -> dv
+                    | _ -> None
+
+                match carried, tag with
+                | Some data, "State" ->
+                    // A State source's carried data IS the initial snapshot —
+                    // it must decode as a table (the Phase-815 posture).
+                    Fuaran.UI.HostPrelude.TransformLive.initialSource data
+                    |> Result.map (fun initial -> TransformSource.Live(b, initial))
+                    |> Result.mapError Fuaran.Core.ColumnCodec.errorString
+                | Some data, _ ->
+                    // A Selection default may legitimately be a scalar / row
+                    // shape rather than a table; fall back to the empty
+                    // initial (the runtime evaluation stays loud on mismatch).
+                    match Fuaran.UI.HostPrelude.TransformLive.initialSource data with
+                    | Ok initial -> Ok(TransformSource.Live(b, initial))
+                    | Error _ -> Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource))
+                | None, "State" ->
+                    // No carried data: surface the columnar codec's own
+                    // missing-field didactic (byte-identical to pre-818).
+                    asData j
+                | None, _ -> Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource)))
+        | _ -> asData j
+    | _ -> asData j
 
 /// Structural decode. The policy layer (diagnostics, §16 lenient-accept,
 /// the reject set) composes ABOVE this — see the Phase 672 note in the generator.
@@ -3455,6 +3461,9 @@ let mkMath (id: string) (source: string) (display: MathDisplay) : Node<'Msg> =
 let mkSkeleton (id: string) (rows: int) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Skeleton { Rows = rows }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
+let mkIcon (id: string) (icon: string) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Icon { Icon = icon; Size = IconSize.Medium; Tone = ToneVariant.Default; Label = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+
 let mkList (id: string) (items: TextSource list) (ordered: bool) : Node<'Msg> =
     { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
@@ -3531,7 +3540,7 @@ let mkFilters (id: string) (items: FilterSpec<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Fuaran.Core.Row seq>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Reorderable = false; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkChart (id: string) (kind: ChartKind) (source: Binding<Fuaran.Core.Row seq>) (stacked: bool) (xField: string) (yFields: string list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; ValueFormat = None; XTitle = None; YTitle = None; Subtitle = None; LegendPosition = None; DataLabels = None; XScale = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

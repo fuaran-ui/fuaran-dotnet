@@ -1,4 +1,4 @@
-module Fuaran.UI.Tests.StateReactive
+﻿module Fuaran.UI.Tests.StateReactive
 
 // ============================================================================
 //  Phase 106 — state-channel-driven live re-render of all `Binding.State`
@@ -172,6 +172,7 @@ let tests =
                                   Width = ColumnWidth.Auto } ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       )
                     State = None

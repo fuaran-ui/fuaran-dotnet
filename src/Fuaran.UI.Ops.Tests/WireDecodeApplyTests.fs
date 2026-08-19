@@ -1,4 +1,4 @@
-module Fuaran.UI.Ops.Tests.WireDecodeApply
+﻿module Fuaran.UI.Ops.Tests.WireDecodeApply
 
 // ============================================================================
 //  Regression coverage for the wire-decode → apply round-trip on the
@@ -201,6 +201,7 @@ let tests =
                                       Width = ColumnWidth.Auto } ]
                                 OnRowClick = None
                                 Editable = false
+                                Reorderable = false
                                 StaticRows = None }
                           ) }
 
@@ -246,6 +247,7 @@ let tests =
                                       Width = ColumnWidth.Auto } ]
                                 OnRowClick = None
                                 Editable = false
+                                Reorderable = false
                                 StaticRows = None }
                           ) }
 

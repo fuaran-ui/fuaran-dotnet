@@ -1,4 +1,4 @@
-module Fuaran.UI.NodeMap
+﻿module Fuaran.UI.NodeMap
 
 // ============================================================================
 //  Node.mapMsg — structural relabel of a Node tree's message type (Phase 268).
@@ -295,6 +295,7 @@ and mapGridSpec (f: 'a -> 'b) (spec: GridSpec<'a>) : GridSpec<'b> =
       PageStateKey = spec.PageStateKey
       DefaultSort = spec.DefaultSort
       EditStateKey = spec.EditStateKey
+      Reorderable = spec.Reorderable
       Columns = spec.Columns |> List.map (mapColumnErased f)
       OnRowClick = spec.OnRowClick |> Option.map (fun g -> g >> mapAction f)
       Editable = spec.Editable

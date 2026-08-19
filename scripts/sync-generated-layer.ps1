@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 <#
 .SYNOPSIS
     Sync the IDL-generated structural layer from Fuaran-Core into this tier.
@@ -53,7 +53,15 @@ if ($Check) {
     }
     $current = Get-Content -Raw $target
     if ($current -ne $emitted) {
-        Write-Error "src/Fuaran.UI/Generated.fs is STALE vs Fuaran-Core's UiGenerated.fs. Re-run: pwsh ./scripts/sync-generated-layer.ps1"
+        # Phase 945 — say which way the drift runs before advising. Between 818 and
+        # 945 this advice was actively harmful: the tier was AHEAD (hand-added
+        # regions Core could not emit), and re-running the sync erased 292 lines and
+        # broke the build. Under the declared-support model any tier-side lead is a
+        # defect by definition, but the remedy differs by direction and the guard
+        # should name both rather than assume.
+        Write-Error ("src/Fuaran.UI/Generated.fs differs from Fuaran-Core's UiGenerated.fs.`n" +
+            "  If Core moved (an IDL / UiIdlSupport change was regenerated there): re-run pwsh ./scripts/sync-generated-layer.ps1 to adopt it.`n" +
+            "  If the TIER copy was edited: do NOT sync over it - Generated.fs is generated output, and content it needs that Core cannot emit belongs in Fuaran-Core's UiIdlSupport.fs (docs / splices / refines / kind projections), regenerated there and then synced.")
         exit 1
     }
     Write-Host "Generated.fs is in sync with Fuaran-Core's IDL-generated layer."

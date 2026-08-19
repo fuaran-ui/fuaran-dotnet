@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.Fixtures
+﻿module Fuaran.UI.JsonDecode.Tests.Fixtures
 
 // ============================================================================
 //  Round-trip fixture corpus.
@@ -1878,6 +1878,7 @@ let gridVis: Node<obj> =
               Columns = [ col ]
               OnRowClick = None
               Editable = false
+              Reorderable = false
               StaticRows = None }
         ))
         None
@@ -1968,6 +1969,7 @@ let gridTonedPill: Node<obj> =
                       )) ]
               OnRowClick = None
               Editable = false
+              Reorderable = false
               StaticRows = None }
         ))
         None
@@ -2218,6 +2220,7 @@ let gridEditableState: Node<obj> =
                   col "Revenue" "revenue" CellKindErased.Numeric ]
               OnRowClick = None
               Editable = true
+              Reorderable = false
               StaticRows = None }
         ))
         None
@@ -2289,6 +2292,7 @@ let gridTransform: Node<obj> =
               Columns = []
               OnRowClick = None
               Editable = false
+              Reorderable = false
               StaticRows = None }
         ))
         None
@@ -2331,6 +2335,7 @@ let gridTransformParam: Node<obj> =
               Columns = []
               OnRowClick = None
               Editable = false
+              Reorderable = false
               StaticRows = None }
         ))
         None
@@ -2370,6 +2375,7 @@ let gridFieldNamed: Node<obj> =
               Columns = [ fieldCol "Dept" "dept"; fieldCol "Amount" "amount" ]
               OnRowClick = None
               Editable = false
+              Reorderable = false
               StaticRows = None }
         ))
         None
@@ -2428,6 +2434,7 @@ let masterDetailPreselected: Node<obj> =
                             Columns = [ fieldCol "Ticket" "id"; fieldCol "Priority" "priority" ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       ))
                       None
@@ -2506,6 +2513,7 @@ let masterDetailPreselected: Node<obj> =
                             Columns = [ fieldCol "Ticket" "id"; fieldCol "Priority" "priority" ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       ))
                       None ] }
@@ -2603,6 +2611,7 @@ let masterDetailMultiField: Node<obj> =
                                 fieldCol "Assignee" "assignee" ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       ))
                       None
@@ -2749,6 +2758,7 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                                 fieldCol "Note" "note" ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       ))
                       None
@@ -2798,6 +2808,7 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                                 fieldCol "Note" "note" ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       ))
                       None
@@ -2923,6 +2934,7 @@ let nowEnvironmentBinding: Node<obj> =
                                 fieldCol "Days overdue" "daysOverdue" ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       ))
                       None ] }
@@ -2993,6 +3005,7 @@ let scalarTransformComposition: Node<obj> =
                                   Width = ColumnWidth.Auto } ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       ))
                       None
@@ -3174,6 +3187,7 @@ let filterableStaticDashboard: Node<obj> =
                             Columns = [ fieldCol "Month" "month"; fieldCol "Retention" "retention" ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       ))
                       None ] }
@@ -3201,6 +3215,7 @@ let table: Node<obj> =
         // Phase 393 — the static read-only table is now the `StaticRows` mode of `DataGrid`.
         NodeKind.DataGrid
             { SortStateKey = None
+              Reorderable = false
               PageSize = None
               PageStateKey = None
               EditStateKey = None
@@ -3234,6 +3249,7 @@ let tableSortable: Node<obj> =
         "table-sortable-1"
         (NodeKind.DataGrid
             { SortStateKey = None
+              Reorderable = false
               PageSize = None
               PageStateKey = None
               EditStateKey = None
@@ -3412,6 +3428,7 @@ let switchOnSelection: Node<obj> =
                             Columns = [ fieldCol "Ward" "id"; fieldCol "Status" "status" ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       ))
                       None
@@ -3912,6 +3929,7 @@ let gridBoundSort: Node<obj> =
                   col "Note" "note" (Some false) ]
               OnRowClick = None
               Editable = false
+              Reorderable = false
               StaticRows = None }
         ))
         None
@@ -3949,6 +3967,7 @@ let gridDeclaredEdit: Node<obj> =
                   col "Note" "note" (Some false) ]
               OnRowClick = None
               Editable = true
+              Reorderable = false
               StaticRows = None }
         ))
         None
@@ -3985,6 +4004,7 @@ let gridPaged: Node<obj> =
                   col "Revenue" "revenue" CellKindErased.Numeric ]
               OnRowClick = None
               Editable = false
+              Reorderable = false
               StaticRows = None }
         ))
         None
@@ -4020,6 +4040,7 @@ let gridPagedSorted: Node<obj> =
                   col "Revenue" "revenue" CellKindErased.Numeric ]
               OnRowClick = None
               Editable = false
+              Reorderable = false
               StaticRows = None }
         ))
         None
@@ -4073,6 +4094,7 @@ let gridSortStateKey: Node<obj> =
                   col "Revenue" "revenue" CellKindErased.Numeric ]
               OnRowClick = None
               Editable = false
+              Reorderable = false
               StaticRows = None }
         ))
         None

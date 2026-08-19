@@ -1,4 +1,4 @@
-module Fuaran.UI.Tests.DeadOnDecode
+﻿module Fuaran.UI.Tests.DeadOnDecode
 
 // ============================================================================
 //  Phase 430 — the slot capability table + the dead-on-decode lint.
@@ -104,6 +104,7 @@ let tests =
                                   Width = ColumnWidth.Auto } ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       ))
 
@@ -185,6 +186,7 @@ let tests =
                                   Width = ColumnWidth.Auto } ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       ))
 

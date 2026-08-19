@@ -1,4 +1,4 @@
-module Fuaran.UI.Ops.JsonDecode
+﻿module Fuaran.UI.Ops.JsonDecode
 
 // ============================================================================
 //  Structural decoder for the canonical-JSON wire form
@@ -5388,6 +5388,13 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | None -> Ok false
             | Some v -> requireBool (path + ".editable") v
 
+        // Phase 934 — `reorderable`, the same omitted-when-false convention as
+        // `editable` directly above (and the same IDL spelling: omit-at-false).
+        let reorderableR =
+            match tryField fields "reorderable" with
+            | None -> Ok false
+            | Some v -> requireBool (path + ".reorderable") v
+
         let sourceR =
             requireFieldAliased path fields "source" [ "data"; "rows" ] "Binding<Row seq> Source"
             |> Result.bind (decodeRowSeq (path + ".source"))
@@ -5517,7 +5524,8 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
           Ok editStateKey,
           Ok staticRows,
           Ok() ->
-            Ok
+            reorderableR
+            |> Result.map (fun reorderable ->
                 { Source = source
                   RowKey = rowKey
                   RowKeyField = rowKeyField
@@ -5529,7 +5537,8 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
                   Columns = columns
                   OnRowClick = onRowClick
                   Editable = editable
-                  StaticRows = staticRows }
+                  Reorderable = reorderable
+                  StaticRows = staticRows })
         | Error e, _, _, _, _, _, _, _, _, _, _, _
         | _, Error e, _, _, _, _, _, _, _, _, _, _
         | _, _, Error e, _, _, _, _, _, _, _, _, _

@@ -1,4 +1,4 @@
-module Fuaran.UI.Tests.FilterWiringValidate
+﻿module Fuaran.UI.Tests.FilterWiringValidate
 
 // ============================================================================
 //  The consolidated 421/424/425 validator follow-up: the cross-tree filter
@@ -68,6 +68,7 @@ let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<
                     Width = ColumnWidth.Auto } ]
               OnRowClick = None
               Editable = editable
+              Reorderable = false
               StaticRows = None }
         )
       State = None
@@ -219,6 +220,7 @@ let tests =
                                   Width = ColumnWidth.Auto } ]
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       )
                     State = None

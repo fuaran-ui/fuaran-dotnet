@@ -1,4 +1,4 @@
-namespace Fuaran.UI
+﻿namespace Fuaran.UI
 
 open Fuaran.Core
 
@@ -1310,6 +1310,7 @@ module Fuaran =
               PageStateKey = None
               DefaultSort = None
               EditStateKey = None
+              Reorderable = false
               Columns = []
               OnRowClick = None
               Editable = false
@@ -1409,6 +1410,7 @@ module Fuaran =
               PageStateKey = None
               DefaultSort = None
               EditStateKey = None
+              Reorderable = false
               Columns = spec.Columns |> List.map Column.erase
               OnRowClick = spec.OnRowClick
               Editable = spec.Editable

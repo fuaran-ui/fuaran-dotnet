@@ -114,6 +114,7 @@ let private sortGrid
                       Width = ColumnWidth.Auto })
               OnRowClick = None
               Editable = false
+              Reorderable = false
               StaticRows = None }
         )
       State = None
@@ -154,6 +155,7 @@ let private editGrid
                       Width = ColumnWidth.Auto })
               OnRowClick = None
               Editable = gridEditable
+              Reorderable = false
               StaticRows = None }
         )
       State = None
@@ -185,6 +187,7 @@ let private pagedGrid
               Columns = []
               OnRowClick = None
               Editable = false
+              Reorderable = false
               StaticRows = None }
         )
       State = None
@@ -722,6 +725,7 @@ let tests =
                             Columns = []
                             OnRowClick = None
                             Editable = false
+                            Reorderable = false
                             StaticRows = None }
                       )
                     State = None
