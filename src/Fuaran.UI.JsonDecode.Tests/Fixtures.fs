@@ -3972,6 +3972,49 @@ let gridDeclaredEdit: Node<obj> =
         ))
         None
 
+/// Phase 934 — declarative row reorder: `reorderable` (omit-when-false, as
+/// `editable`) asks the renderer for its drag + keyboard row-move affordance,
+/// and the moved rows commit as the WHOLE updated rows value to the same
+/// destination an edit uses — `editStateKey` here, the Phase-663 State-source
+/// floor otherwise. One collection, one destination; a reorder IS an edit of
+/// the row order.
+let gridReorderable: Node<obj> =
+    let col (label: string) (field: string) (kind: CellKindErased<obj>) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = kind
+          Width = ColumnWidth.Auto }
+
+    let sprintRows: Row list =
+        [ Map.ofList [ "task", box "Design"; "rank", box 1 ]
+          Map.ofList [ "task", box "Build"; "rank", box 2 ]
+          Map.ofList [ "task", box "Verify"; "rank", box 3 ] ]
+
+    node
+        "grid-reorderable"
+        (NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = Some "sprint-order"
+              DefaultSort = None
+              Source = Binding.State("sprint-order", Some(Seq.ofList sprintRows))
+              RowKey = None
+              RowKeyField = Some "task"
+              Columns =
+                [ col "Task" "task" CellKindErased.Text
+                  col "Rank" "rank" CellKindErased.Numeric ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = true
+              StaticRows = None }
+        ))
+        None
+
 /// Phase 862 — declarative pagination: `pageStateKey` names the State slot
 /// carrying `{"page": N}` (1-based) and `pageSize` how many rows a page holds.
 /// The pager that writes the key is renderer-owned, so the tree names the
@@ -4209,6 +4252,8 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Grid (Phase 861 — bound-path sort: per-column sortable narrowing + a declared initial order)",
       gridBoundSort
       "Visualisation/Grid (Phase 863 — declared edit destination + per-column read-only narrowing)", gridDeclaredEdit
+      "Visualisation/Grid (Phase 934 — declarative row reorder: omit-when-false flag; edits and reorders share one destination)",
+      gridReorderable
       "Visualisation/Grid (Phase 862 — pageStateKey + pageSize: declarative pagination, renderer-owned pager)",
       gridPaged
       "Visualisation/Grid (Phase 862 — paging and sorting composed: two behaviours, two state keys, one rule)",

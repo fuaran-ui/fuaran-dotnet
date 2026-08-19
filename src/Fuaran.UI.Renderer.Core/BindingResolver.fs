@@ -1160,3 +1160,57 @@ let tonedPillOf
     let label = projectRowFieldString row field
     let tone = toneMap |> Map.tryFind label |> Option.defaultValue defaultTone
     label, tone
+
+/// Phase 934 — where a REORDER commits, resolved by the same precedence the
+/// grid's edit path uses, so one collection has one destination:
+///
+///   1. a declared `editStateKey` wins — a reorder IS an edit of the row
+///      order, and writing it anywhere else would give the grid two
+///      destinations for the same collection;
+///   2. else the Phase-663 floor: the grid's own `source` when that source is
+///      a DIRECT `Binding.State` (the only source shape with a writable slot);
+///   3. else NONE — and the caller must not draw the affordance at all. A
+///      Transform pipeline is not invertible and Static/Query rows are host
+///      data, so a handle over them would be a gesture with no destination:
+///      exactly the fake-affordance class Phase 866 charters against, and the
+///      reason this returns an option rather than a no-op writer.
+let reorderDestination
+    (reorderable: bool)
+    (editStateKey: string option)
+    (source: Binding<Row seq>)
+    : Binding<Row seq> option =
+    if not reorderable then
+        None
+    else
+        match editStateKey with
+        | Some key -> Some(Binding.State(key, None))
+        | None ->
+            match source with
+            | Binding.State _ -> Some source
+            | _ -> None
+
+/// Phase 934 — move the row at `fromIndex` to `toIndex` (both absolute in the
+/// full set). Out-of-range either side, or a no-move, returns the list
+/// UNCHANGED — the caller writes the result back wholesale, so "invalid move
+/// writes nothing new" and "invalid move is refused" are the same behaviour,
+/// with no partial state in between.
+let moveRow (fromIndex: int) (toIndex: int) (rows: 'a list) : 'a list =
+    let count = List.length rows
+
+    if
+        fromIndex = toIndex
+        || fromIndex < 0
+        || fromIndex >= count
+        || toIndex < 0
+        || toIndex >= count
+    then
+        rows
+    else
+        let item = List.item fromIndex rows
+
+        let without =
+            List.mapi (fun i r -> i, r) rows
+            |> List.filter (fun (i, _) -> i <> fromIndex)
+            |> List.map snd
+
+        (List.truncate toIndex without) @ (item :: List.skip toIndex without)

@@ -1,4 +1,4 @@
-module Fuaran.UI.Ops.SchemaGen
+﻿module Fuaran.UI.Ops.SchemaGen
 
 // ============================================================================
 //  Canonical wire-format JSON Schema generator (Draft 2020-12).
@@ -887,6 +887,8 @@ let private defs: (string * J) list =
             "pageStateKey", str
             // Phase 863 — the declared edit destination.
             "editStateKey", str
+            // Phase 934 — declarative row reorder; omit-when-false, as `editable`.
+            "reorderable", JObj [ "type", JStr "boolean" ]
             // Phase 861 — the bound path's declared initial order. Same record
             // and same `minimum: 0` bound the `staticRows` spelling carries.
             "defaultSort",

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -141,6 +141,7 @@
     <Compile Include="DeadOnDecodeTests.fs" />
     <!-- GridDisplayTests pins Phase 425's row-field projection contract. -->
     <Compile Include="GridDisplayTests.fs" />
+    <Compile Include="GridReorderTests.fs" />
     <!-- StateStoreScopingTests pins Phase 128's reset () test-isolation seam
          (clears the single-process store + subscriber list between cases). -->
     <Compile Include="StateStoreScopingTests.fs" />

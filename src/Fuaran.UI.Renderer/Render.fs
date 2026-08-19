@@ -1,4 +1,4 @@
-module Fuaran.UI.Renderer.Render
+﻿module Fuaran.UI.Renderer.Render
 
 // FS0067 ("this type test or downcast will always hold") fires under the Fable
 // pipeline on the DOM downcasts this renderer needs for the .NET pipeline (e.g.
@@ -1725,6 +1725,14 @@ let chartPointClick<'Msg>
         // selection. The identical property is what makes 427's grid write safe;
         // it is a property of the DESTINATION, not of who is writing.
         | None -> SelectionStore.set nodeId (box row)
+
+/// Phase 934 — the in-flight row drag's source (grid NodeId + ABSOLUTE row
+/// index). Module-level because HTML5 drag state must survive between two
+/// independent event handlers on two different elements; keyed by the grid's
+/// own id so a drop on one grid can never consume a drag begun on another.
+/// Client-only by construction — SSR renders the handle, but no event ever
+/// fires there.
+let mutable private gridDragSource: (string * int) option = None
 
 let rec private renderKind
     (ctx: RenderContext<'Msg>)
@@ -4389,6 +4397,104 @@ and private renderGrid
                             writeBackTo ctx spec.Source (Some(box (Seq.ofList newRows))))
                     | _ -> None
 
+                // Phase 934 — declarative row reorder. The DESTINATION resolves by
+                // the same precedence the edit path uses (a declared
+                // `editStateKey` wins; else the Phase-663 State-source floor;
+                // else NO affordance — a handle over host data would be a
+                // gesture with no destination, the fake-affordance class Phase
+                // 866 charters against). The write is the WHOLE moved rows
+                // value through `writeBackTo`, i.e. the same `treeStateWrite`
+                // gate + host-reserved-key guard + Phase-889 invocation record
+                // every tree-originated state write crosses — a reorder IS an
+                // edit of the row order, so it mints no second destination and
+                // crosses no softer gate.
+                //
+                // Suppressed while a sort descriptor is IN EFFECT (user-written
+                // or `defaultSort`): the sort re-imposes its order on the next
+                // render, so a drag would visibly snap back — an affordance
+                // that lies. Clear the sort, and the handles return.
+                let reorderCommit: (int -> int -> unit) option =
+                    match sortDescriptor with
+                    | Some _ -> None
+                    | None ->
+                        BindingResolver.reorderDestination spec.Reorderable spec.EditStateKey spec.Source
+                        |> Option.map (fun dest ->
+                            fun (fromAbs: int) (toAbs: int) ->
+                                let moved = BindingResolver.moveRow fromAbs toAbs rows
+
+                                // `moveRow` returns the SAME list instance for an
+                                // out-of-range or no-op move; writing it back
+                                // would churn every reader for nothing.
+                                if not (obj.ReferenceEquals(moved, rows)) then
+                                    writeBackTo ctx dest (Some(box (Seq.ofList moved))))
+
+                // The handle is a real <button>: focusable, keyboard-activatable
+                // and screen-reader announced with no ARIA re-plumbing. Keyboard
+                // is arrow keys on the focused handle — the current pattern for
+                // list reorder (`aria-grabbed` is deprecated and deliberately
+                // absent); pointer is native HTML5 drag onto any row.
+                let reorderCellFor (rowIndex: int) : ReactElement list =
+                    match reorderCommit with
+                    | None -> []
+                    | Some commit ->
+                        let absolute = rowOffset + rowIndex
+                        let total = List.length rows
+
+                        [ Html.td
+                              [ prop.className "fuaran-grid-reorder-cell"
+                                prop.children
+                                    [ Html.button
+                                          [ prop.className "fuaran-grid-reorder-handle"
+                                            prop.type' "button"
+                                            prop.custom ("data-reorder-handle", string absolute)
+                                            prop.draggable true
+                                            prop.custom (
+                                                "aria-label",
+                                                sprintf
+                                                    "Reorder row %d of %d — drag, or press an arrow key to move it"
+                                                    (absolute + 1)
+                                                    total
+                                            )
+                                            prop.custom ("aria-keyshortcuts", "ArrowUp ArrowDown")
+                                            prop.onDragStart (fun _ -> gridDragSource <- Some(parentNodeId, absolute))
+                                            prop.onDragEnd (fun _ -> gridDragSource <- None)
+                                            prop.onKeyDown (fun (e: Browser.Types.KeyboardEvent) ->
+                                                match e.key with
+                                                | "ArrowUp" ->
+                                                    e.preventDefault ()
+                                                    commit absolute (absolute - 1)
+                                                | "ArrowDown" ->
+                                                    e.preventDefault ()
+                                                    commit absolute (absolute + 1)
+                                                | _ -> ())
+                                            prop.text "\u28ff" ] ] ] ]
+
+                let reorderHeaderCells: ReactElement list =
+                    match reorderCommit with
+                    | None -> []
+                    | Some _ ->
+                        [ Html.th
+                              [ prop.className "fuaran-grid-reorder-header"
+                                prop.custom ("scope", "col")
+                                prop.custom ("aria-label", "Reorder") ] ]
+
+                // Phase 934 — the drop-target props a row gains while a reorder
+                // is possible; `preventDefault` on dragover is what marks the
+                // row droppable to the browser, and the drop consumes only a
+                // drag begun on THIS grid.
+                let reorderRowProps (rowIndex: int) : IReactProperty list =
+                    match reorderCommit with
+                    | None -> []
+                    | Some commit ->
+                        [ prop.onDragOver (fun e -> e.preventDefault ())
+                          prop.onDrop (fun e ->
+                              match gridDragSource with
+                              | Some(sourceGrid, sourceIndex) when sourceGrid = parentNodeId ->
+                                  e.preventDefault ()
+                                  gridDragSource <- None
+                                  commit sourceIndex (rowOffset + rowIndex)
+                              | _ -> ()) ]
+
                 // Phase 818 — the sortable-header affordance for a
                 // `sortStateKey` grid. A header whose column declares a
                 // `field` renders as a sortable affordance (the Phase-801
@@ -4508,9 +4614,11 @@ and private renderGrid
                           prop.children
                               [ Html.thead
                                     [ Html.tr
-                                          [ prop.children
-                                                [ for (colIndex, col) in List.indexed spec.Columns ->
-                                                      sortableHeader colIndex col ] ] ]
+                                          [ prop.children (
+                                                reorderHeaderCells
+                                                @ [ for (colIndex, col) in List.indexed spec.Columns ->
+                                                        sortableHeader colIndex col ]
+                                            ) ] ]
                                 Html.tbody
                                     [ prop.children
                                           [ for (rowIndex, row) in List.indexed pageRows ->
@@ -4519,7 +4627,50 @@ and private renderGrid
                                                     | Some sel, Some keyOf -> keyOf row = sel
                                                     | _ -> false
 
-                                                Html.tr
+                                                // Phase 934 — the cell list is hoisted so the row can
+                                                // prepend the reorder handle without re-shaping the
+                                                // (unchanged) per-cell body below.
+                                                let bodyCells: ReactElement list =
+                                                    [ for col in spec.Columns ->
+                                                          // Editable write-back applies only on the declarative
+                                                          // path — a Field-projected Text/Numeric cell with no
+                                                          // Value closure (a closure's projection need not
+                                                          // correspond to any row field, so there is nothing
+                                                          // sound to write). Date and the interactive cell
+                                                          // kinds keep their existing behaviour.
+                                                          // Phase 863 — the column flag
+                                                          // NARROWS the grid-level
+                                                          // capability: an explicit `false`
+                                                          // is read-only, the declaration
+                                                          // "implied by omission" could not
+                                                          // make.
+                                                          let commit: (CellValue -> unit) option =
+                                                              match
+                                                                  editCommit,
+                                                                  col.Value,
+                                                                  col.Field,
+                                                                  col.Kind,
+                                                                  col.Editable
+                                                              with
+                                                              | _, _, _, _, Some false -> None
+                                                              | Some ec,
+                                                                None,
+                                                                Some field,
+                                                                (CellKindErased.Text | CellKindErased.Numeric),
+                                                                _ ->
+                                                                  Some(fun cv ->
+                                                                      match cv with
+                                                                      | CellValue.Numeric f ->
+                                                                          ec rowIndex field (box f)
+                                                                      | CellValue.Text s -> ec rowIndex field (box s)
+                                                                      | _ -> ())
+                                                              | _ -> None
+
+                                                          Html.td
+                                                              [ prop.className "fuaran-grid-cell"
+                                                                prop.children [ renderGridCell ctx commit col row ] ] ]
+
+                                                Html.tr (
                                                     [ prop.className (
                                                           if isSelected then
                                                               "fuaran-grid-row fuaran-grid-row-selected"
@@ -4529,48 +4680,10 @@ and private renderGrid
                                                       prop.onClick (fun _ ->
                                                           match spec.OnRowClick with
                                                           | Some f -> runAction ctx (f row)
-                                                          | None -> SelectionStore.set parentNodeId (box row))
-                                                      prop.children
-                                                          [ for col in spec.Columns ->
-                                                                // Editable write-back applies only on the declarative
-                                                                // path — a Field-projected Text/Numeric cell with no
-                                                                // Value closure (a closure's projection need not
-                                                                // correspond to any row field, so there is nothing
-                                                                // sound to write). Date and the interactive cell
-                                                                // kinds keep their existing behaviour.
-                                                                // Phase 863 — the column flag
-                                                                // NARROWS the grid-level
-                                                                // capability: an explicit `false`
-                                                                // is read-only, the declaration
-                                                                // "implied by omission" could not
-                                                                // make.
-                                                                let commit: (CellValue -> unit) option =
-                                                                    match
-                                                                        editCommit,
-                                                                        col.Value,
-                                                                        col.Field,
-                                                                        col.Kind,
-                                                                        col.Editable
-                                                                    with
-                                                                    | _, _, _, _, Some false -> None
-                                                                    | Some ec,
-                                                                      None,
-                                                                      Some field,
-                                                                      (CellKindErased.Text | CellKindErased.Numeric),
-                                                                      _ ->
-                                                                        Some(fun cv ->
-                                                                            match cv with
-                                                                            | CellValue.Numeric f ->
-                                                                                ec rowIndex field (box f)
-                                                                            | CellValue.Text s ->
-                                                                                ec rowIndex field (box s)
-                                                                            | _ -> ())
-                                                                    | _ -> None
-
-                                                                Html.td
-                                                                    [ prop.className "fuaran-grid-cell"
-                                                                      prop.children
-                                                                          [ renderGridCell ctx commit col row ] ] ] ] ] ] ] ]
+                                                          | None -> SelectionStore.set parentNodeId (box row)) ]
+                                                    @ reorderRowProps rowIndex
+                                                    @ [ prop.children (reorderCellFor rowIndex @ bodyCells) ]
+                                                ) ] ] ] ]
 
                 match pagination with
                 | None -> gridTable
