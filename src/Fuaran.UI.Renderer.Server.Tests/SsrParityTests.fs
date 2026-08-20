@@ -462,6 +462,114 @@ let ssrParityTests =
                           (sprintf "%s: expected token '%s' in server HTML" f.Name token)
           }
 
+          // ── Phase 951 — WHERE the projection lands ────────────────────────
+          //
+          // The fixture vocabulary above asserts PRESENCE, so it cannot tell a
+          // `role="link"` on the wrapper from one on the anchor — which is
+          // exactly the defect D4 fixes. These tests split the emitted HTML at
+          // the wrapper's own `>` and assert against each element separately,
+          // so the lock is placement-sensitive rather than presence-sensitive.
+          let a11yNode (node: Node<obj>) =
+              node
+              |> Node.withAccessibility (
+                  Some
+                      { Defaults.Accessibility.empty with
+                          Role = Some AriaRole.Link
+                          Label = Some(Binding.Static(Some "Home")) }
+              )
+              |> Node.withExtraAttribute "aria-current" "page"
+              |> Node.withExtraAttribute "data-test-hook" "nav"
+
+          /// The wrapper's own open tag — everything up to its first `>`.
+          let wrapperTag (html: string) =
+              html.Substring(0, html.IndexOf('>') + 1)
+
+          test "Link — the a11y projection and aria-* extras land on the <a>, not the wrapper (Phase 951)" {
+              let html =
+                  Render.render BindingResolver.empty (a11yNode (Fuaran.link "lk" "/home" "Home"))
+
+              let wrapper = wrapperTag html
+
+              Expect.isFalse (contains "role=" wrapper) "role must not sit on the wrapper div"
+              Expect.isFalse (contains "aria-label" wrapper) "aria-label must not sit on the wrapper div"
+              Expect.isFalse (contains "aria-current" wrapper) "an aria-* extra must not sit on the wrapper div"
+
+              // The data-* half is ADDRESSING and stays with data-fuaran-node-id.
+              Expect.isTrue (contains "data-test-hook=\"nav\"" wrapper) "a data-* extra stays on the wrapper div"
+              Expect.isTrue (contains "data-fuaran-node-id=\"lk\"" wrapper) "the node address stays on the wrapper div"
+
+              let anchor = html.Substring(html.IndexOf("<a "))
+              let anchorTag = anchor.Substring(0, anchor.IndexOf('>') + 1)
+
+              Expect.isTrue (contains "role=\"link\"" anchorTag) "role lands on the anchor"
+              Expect.isTrue (contains "aria-label=\"Home\"" anchorTag) "aria-label lands on the anchor"
+              Expect.isTrue (contains "aria-current=\"page\"" anchorTag) "the aria-* extra follows the projection"
+              Expect.isFalse (contains "data-test-hook" anchorTag) "a data-* extra does not follow the projection"
+          }
+
+          test "Button — the a11y projection lands on the <button> (Phase 951)" {
+              let node =
+                  a11yNode (
+                      Fuaran.button
+                          "btn"
+                          { Defaults.button<obj> with
+                              Label = TextSource.Literal "Go" }
+                  )
+
+              let html = Render.render BindingResolver.empty node
+              Expect.isFalse (contains "aria-label" (wrapperTag html)) "aria-label must not sit on the wrapper div"
+
+              let btn = html.Substring(html.IndexOf("<button"))
+              let btnTag = btn.Substring(0, btn.IndexOf('>') + 1)
+              Expect.isTrue (contains "aria-label=\"Home\"" btnTag) "aria-label lands on the button"
+              Expect.isTrue (contains "aria-current=\"page\"" btnTag) "the aria-* extra follows the projection"
+          }
+
+          test "Image — the a11y projection lands on the <img> (Phase 951)" {
+              let node =
+                  a11yNode (
+                      Fuaran.imageSpec
+                          "img"
+                          { Defaults.image with
+                              Src = Binding.Static(Some "/a.png")
+                              Alt = TextSource.Literal "Alt" }
+                  )
+
+              let html = Render.render BindingResolver.empty node
+              Expect.isFalse (contains "aria-label" (wrapperTag html)) "aria-label must not sit on the wrapper div"
+
+              let img = html.Substring(html.IndexOf("<img"))
+              Expect.isTrue (contains "aria-label=\"Home\"" img) "aria-label lands on the img"
+          }
+
+          // The other half of the rule: a kind whose body is NOT the semantic
+          // element keeps the whole projection — a11y AND both halves of the
+          // extras — on the wrapper, in the pre-951 order.
+          test "a non-forwarding kind keeps the whole projection on the wrapper (Phase 951)" {
+              let html = Render.render BindingResolver.empty (a11yNode (Fuaran.markdown "md" "x"))
+              let wrapper = wrapperTag html
+
+              Expect.isTrue (contains "role=\"link\"" wrapper) "role stays on the wrapper for a non-forwarding kind"
+              Expect.isTrue (contains "aria-label=\"Home\"" wrapper) "aria-label stays on the wrapper"
+              Expect.isTrue (contains "aria-current=\"page\"" wrapper) "an aria-* extra stays on the wrapper"
+              Expect.isTrue (contains "data-test-hook=\"nav\"" wrapper) "a data-* extra stays on the wrapper"
+          }
+
+          // The protected-email Link variant: an entity-encoded opaque anchor
+          // string, so the projection lands on the wrap <span> — the only
+          // element that arm owns in BOTH tiers (D4's stated limit). Pinned so
+          // the limit is a recorded behaviour rather than an accident.
+          test "protected-email Link — the projection lands on the wrap span (Phase 951)" {
+              let html =
+                  Render.render BindingResolver.empty (a11yNode (Fuaran.emailLink "plk" "u@e.com" "u@e.com"))
+
+              Expect.isFalse (contains "aria-label" (wrapperTag html)) "aria-label must not sit on the wrapper div"
+
+              let span = html.Substring(html.IndexOf("<span"))
+              let spanTag = span.Substring(0, span.IndexOf('>') + 1)
+              Expect.isTrue (contains "aria-label=\"Home\"" spanTag) "aria-label lands on the wrap span"
+          }
+
           // Guard that the lock actually bites: a token NOT in the vocabulary
           // must be absent (proves contains-assertions aren't vacuously true).
           test "the parity lock is not vacuous — a bogus class is absent" {

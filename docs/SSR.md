@@ -203,6 +203,17 @@ How parity is locked on .NET:
 `NodeKind` or changing a `fuaran-*` class name extends the parity corpus in the
 same change-set – add a fixture with the node's canonical class+ARIA tokens.
 
+**Where the ARIA lands (Phase 951 / `docs/DECISIONS.md` D4).** The projection is
+one function on both tiers, but its TARGET is per-kind: a kind whose body is the
+node's semantic element – `Link` (`<a>`), `Button` (`<button>`), `Image`
+(`<img>`) – carries `role` / `aria-*` on that element, and the `aria-*` half of
+`ExtraAttributes` follows it there; the `data-*` half stays on the wrapper with
+`data-fuaran-node-id`. Every other kind keeps the whole projection on the
+wrapper. `Accessibility.forwardsToSemanticElement` is the predicate, shared by
+both tiers, so the placement cannot fork between them – and a fixture that pins
+an `aria-*` token for one of those three kinds is pinning it on the body element,
+not on the wrapper.
+
 ### The uniform icon hook (icon-contract)
 
 Every icon-bearing spec (tab header / Fact / Metric / Callout / Button) renders

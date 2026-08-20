@@ -204,6 +204,65 @@ let tests =
               Expect.contains attrs ("role", "combobox") "Custom role string emitted verbatim"
           }
 
+          // ── Phase 951 — WHERE the projection lands (docs/DECISIONS.md D4) ──
+          //
+          // The predicate is kind-level and shared by every F# renderer, so it
+          // is the one place the placement rule can be asserted as pure F#.
+          test "forwardsToSemanticElement admits exactly Link / Button / Image" {
+              let forwards (n: Node<Msg>) =
+                  Accessibility.forwardsToSemanticElement n.Kind
+
+              Expect.isTrue (forwards (Fuaran.link "lk" "/x" "X")) "Link's body IS the <a>"
+
+              Expect.isTrue
+                  (forwards (
+                      Fuaran.button
+                          "btn"
+                          { Defaults.button<Msg> with
+                              Label = TextSource.Literal "Go" }
+                  ))
+                  "Button's body IS the <button>"
+
+              Expect.isTrue
+                  (forwards (
+                      Fuaran.imageSpec
+                          "img"
+                          { Defaults.image with
+                              Src = Binding.Static(Some "/a.png")
+                              Alt = TextSource.Literal "A" }
+                  ))
+                  "Image's body IS the <img>"
+
+              // A container body — the wrapper keeps the projection.
+              Expect.isFalse
+                  (forwards (
+                      Fuaran.stack
+                          "stk"
+                          { Defaults.stack<Msg> with
+                              Children = [] }
+                  ))
+                  "a container kind does not forward"
+
+              // The deliberate non-member: a form field's control is not the
+              // body root, and its <label> already names it (D4 condition 3).
+              Expect.isFalse
+                  (forwards (
+                      Fuaran.select
+                          "sel"
+                          { Defaults.select<Msg> with
+                              Label = TextSource.Literal "Pick" }
+                  ))
+                  "a form-field kind does not forward — the <label> already names the control"
+          }
+
+          test "partitionExtraAttributes splits data-* (wrapper) from aria-* (projection)" {
+              let dataHalf, ariaHalf =
+                  Accessibility.partitionExtraAttributes [ "aria-current", "page"; "data-hook", "nav"; "data-x", "1" ]
+
+              Expect.equal dataHalf [ "data-hook", "nav"; "data-x", "1" ] "data-* stays with the node address"
+              Expect.equal ariaHalf [ "aria-current", "page" ] "aria-* follows the a11y projection"
+          }
+
           test "Existing seed-component tests still pass — Accessibility default is None on stack but Some on button" {
               // Smoke check that the additive change preserved
               // session-2 + session-3a assertions: Fuaran.dashboard still

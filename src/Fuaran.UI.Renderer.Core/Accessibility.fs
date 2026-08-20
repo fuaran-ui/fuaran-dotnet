@@ -20,6 +20,12 @@ module Fuaran.UI.Renderer.Accessibility
 //  `aria-labelledby` / `aria-describedby` carry the referenced Node's HTML
 //  `id` — same string the `render` function emits as `prop.id` (the
 //  `NodeId`'s inner string).
+//
+//  WHERE the projection lands is a separate question from what it contains,
+//  and `forwardsToSemanticElement` below is the answer: see `docs/DECISIONS.md`
+//  D4 (2026-08-20). Until then every renderer emitted the projection on the
+//  node's wrapper `<div>` unconditionally, which put `role` / `aria-*` on a
+//  non-interactive container for a kind whose body IS the semantic element.
 // ============================================================================
 
 open Fuaran.UI.Types
@@ -83,3 +89,49 @@ let accessibilityAttributes
 
         [ labelAttr; labelledByAttr; describedByAttr; roleAttr; liveAttr; hiddenAttr ]
         |> List.choose id
+
+/// Does this kind render a body that IS the node's semantic element — so the
+/// a11y projection belongs on the body, not on the wrapper `<div>`?
+///
+/// Three conditions, all required (`docs/DECISIONS.md` D4):
+///
+///  1. the body is a SINGLE root element — not a container of siblings, not a
+///     label-wrapped control;
+///  2. that element carries native semantics of its own (an interactive role,
+///     or a graphic), so `role` / `aria-*` on an ancestor `<div>` is announced
+///     against the wrong node;
+///  3. the element IS the node — nothing else in the body competes for the
+///     accessible name.
+///
+/// `Link` (`<a>`), `Button` (`<button>`) and `Image` (`<img>`) satisfy all
+/// three. The form-field kinds deliberately do NOT: `Select` renders
+/// `<label><span>…</span><select></label>`, so the control is not the body root
+/// (1) and the wrapping `<label>` already supplies an accessible name (3) — a
+/// forwarded `aria-label` would compete with it. Field-level targeting needs a
+/// per-kind target selector, not this predicate.
+///
+/// Kind-level by construction: the wrapper must decide before the body is
+/// rendered, and the only thing it has then is the `NodeKind`. Where an arm has
+/// a runtime branch (the protected-email `Link`), the ARM owns placement within
+/// its own body — see the `Link` arm in either renderer.
+let forwardsToSemanticElement (kind: NodeKind<'Msg>) : bool =
+    match kind with
+    | NodeKind.Link _
+    | NodeKind.Button _
+    | NodeKind.Image _ -> true
+    | _ -> false
+
+/// Split already-sanitised `ExtraAttributes` pairs into the half that stays on
+/// the wrapper and the half that follows the a11y projection: `(data-*, aria-*)`.
+///
+/// `data-*` is ADDRESSING — it sits beside `data-fuaran-node-id`, which is what
+/// layout observers, DOM-snapshot hooks and the in-page introspection surface
+/// scan for, so moving it would move the node's address. An `aria-*` hatch is an
+/// accessibility attribute and belongs wherever the accessibility attributes go;
+/// that half is the whole of the `aria-current` defect D4 records.
+///
+/// Only consulted for a kind that forwards — elsewhere both halves land on the
+/// wrapper in the Map's key-sorted order, exactly as before.
+let partitionExtraAttributes (pairs: (string * string) list) : (string * string) list * (string * string) list =
+    pairs
+    |> List.partition (fun (k, _) -> not (k.StartsWith("aria-", System.StringComparison.Ordinal)))

@@ -10,6 +10,66 @@ consequence.
 
 ---
 
+## 2026-08-20 — D4: the accessibility projection targets the node's semantic element, not its wrapper
+
+**Decided.** A node's `Accessibility` projection — and the `aria-*` half of `ExtraAttributes` — is
+emitted on the node's **semantic element**: the single element the kind body renders, when that
+element rather than the wrapper carries the node's semantics. The set is closed and currently three
+kinds: `Link` (`<a>`), `Button` (`<button>`), `Image` (`<img>`). Every other kind keeps the
+projection on the wrapper `<div>`, unchanged.
+
+Membership is a property of the body, tested by three conditions that must all hold:
+
+1. the body is a **single root element** — not a container of siblings, not a label-wrapped control;
+2. that element carries **native semantics of its own** (an interactive role, or a graphic), so a
+   `role` / `aria-*` on an ancestor `<div>` is announced against the wrong node;
+3. the element **is** the node — nothing else in the body competes for the accessible name.
+
+Before this, every renderer had exactly one a11y emission site and it was the wrapper, with no seam
+by which a kind could opt in: `renderKind` was never passed `node.Accessibility` in any tier. So the
+placement was not a per-kind decision that happened to be wrong for `Link` — it was a uniform
+architecture that had never been asked the question. The observable cost: a nav projection marking
+the current page with an `aria-current` extra-attribute put it on the wrapper `<div>`, and the host
+had to reach the anchor with a descendant CSS selector; and `AriaRole.Link` / `AriaRole.Button` on a
+node whose body already renders an `<a>` / `<button>` announced two interactive elements where the
+author declared one.
+
+**Rejected — a per-kind opt-in list.** It has no falsifier: a kind joins when someone remembers, and
+nothing tells a reviewer whether a new kind belongs. Stating the rule as a property of the body means
+the vocabulary charter (`VOCABULARY.md`) can answer it once, at admission, for every kind that
+follows.
+
+**Rejected — including the form-field kinds** (a tempting reading of "the body is the semantic
+element"). `Select` renders `<label><span>…</span><select></label>`: the control is not the body root
+(condition 1) and the wrapping `<label>` already supplies an accessible name (condition 3), so a
+forwarded `aria-label` would compete with the one the author wrote. Field-level targeting is a
+different feature — it needs a per-kind target selector, not this predicate — and is deliberately not
+in this rule.
+
+**`ExtraAttributes` splits by prefix, deliberately.** `data-*` stays on the wrapper because it is
+addressing: it sits beside `data-fuaran-node-id`, which layout observers, DOM-snapshot hooks and the
+in-page introspection surface scan for, and moving it would move the node's address. `aria-*` follows
+the projection, because an `aria-*` hatch is an accessibility attribute and belongs where the
+accessibility attributes are — that half is the whole of the `aria-current` defect above. On a
+non-forwarding kind the split is unobservable: both halves land on the wrapper, in the same
+key-sorted order as before.
+
+**Two limits, stated rather than assumed away.** The protected-email `Link` variant renders an
+entity-encoded opaque anchor string on the server tier, so the projection lands on its wrap `<span>`
+— the only element that arm owns in *both* tiers, and client/server parity outranks reaching one
+tier's anchor; writing attribute names into a `dangerouslySetInnerHTML` payload would open a new
+injection seam and was declined. And the predicate is **kind-level** by construction, because the
+wrapper must decide before the body is rendered and the only thing it has then is the `NodeKind`;
+where an arm has a runtime branch, the arm owns placement within its own body.
+
+**Consequence.** Breaking for consumers pinning rendered DOM — host CSS or DOM-snapshot tests
+selecting `role` / `aria-*` on a `Link` / `Button` / `Image` wrapper now find them one level in. The
+wire is untouched: no field, no encoding and no fixture moves, and a decoded tree renders the same
+information at a different address. Every conformant host that emits DOM owes the same placement, or
+the emitted DOM forks by host.
+
+---
+
 ## 2026-07-28 — D3: the IDL reaches full `Binding` parity by hosting foreign codecs, not by re-modelling them
 
 **Decided.** The generated `Binding<'T>` now carries every case the hand-written encoder can emit

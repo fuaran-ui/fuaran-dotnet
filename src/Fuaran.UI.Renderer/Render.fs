@@ -338,6 +338,12 @@ let accessibilityAttributes
     : (string * string) list =
     Accessibility.accessibilityAttributes sources a11y
 
+/// Attribute pairs → Feliz props. Phase 951 routes the pairs to the wrapper or
+/// to the kind body before either becomes an `IReactProperty`, so the mapping
+/// is shared rather than inlined at the one former emission site.
+let private toProps (pairs: (string * string) list) : IReactProperty list =
+    pairs |> List.map (fun (k, v) -> prop.custom (k, v))
+
 // ─── Text-source rendering — handles i18n + bound text ─────────────────────
 
 let private renderText (ctx: RenderContext<'Msg>) (text: TextSource) : string =
@@ -1739,6 +1745,11 @@ let rec private renderKind
     (parentNodeId: string)
     (state: StateBehaviour<'Msg>)
     (kind: NodeKind<'Msg>)
+    // Phase 951 — the node's a11y projection, for the kinds that carry it on
+    // their own semantic element. `[]` for every other kind, which is every arm
+    // below except `Link` / `Button` / `Image`. See
+    // `Accessibility.forwardsToSemanticElement` + `docs/DECISIONS.md` D4.
+    (semanticAttrs: (string * string) list)
     : ReactElement =
     match kind with
     // -- Layout --
@@ -2364,17 +2375,25 @@ let rec private renderKind
             // SSR document did not already reveal), so the real href is set
             // directly; the wrapper span + protected class mirror the SSR
             // structure so the post-entity-decode DOMs are identical.
-            Html.span
-                [ prop.className "fuaran-link-protected-wrap"
-                  prop.children
-                      [ Html.a
-                            [ prop.className "fuaran-link fuaran-link-protected"
-                              prop.href safeHref
-                              prop.text (renderText ctx spec.Label) ] ] ]
+            // Phase 951 — the projection lands on the wrap `<span>`, not on the
+            // inner anchor: the SSR twin builds that anchor as an entity-encoded
+            // opaque string and cannot reach inside it, and client/server parity
+            // outranks reaching one tier's anchor. See `docs/DECISIONS.md` D4.
+            Html.span (
+                [ prop.className "fuaran-link-protected-wrap" ]
+                @ toProps semanticAttrs
+                @ [ prop.children
+                        [ Html.a
+                              [ prop.className "fuaran-link fuaran-link-protected"
+                                prop.href safeHref
+                                prop.text (renderText ctx spec.Label) ] ] ]
+            )
         | _ ->
             Html.a (
                 [ prop.className "fuaran-link"; prop.href safeHref ]
                 @ optionalAttrs
+                // Phase 951 — the node's a11y projection lands on the anchor.
+                @ toProps semanticAttrs
                 @ [ prop.text (renderText ctx spec.Label) ]
             )
     | NodeKind.Image spec ->
@@ -2392,10 +2411,13 @@ let rec private renderKind
             | ImageVariant.Avatar -> "fuaran-image fuaran-image-avatar"
             | ImageVariant.Rounded -> "fuaran-image fuaran-image-rounded"
 
-        Html.img
+        // Phase 951 — the a11y projection lands on the `<img>` itself.
+        Html.img (
             [ prop.className variantClass
               prop.src safeSrc
               prop.alt (renderText ctx spec.Alt) ]
+            @ toProps semanticAttrs
+        )
     | NodeKind.List spec ->
         // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
         let items =
@@ -2522,7 +2544,7 @@ let rec private renderKind
         else
             Html.span (containerProps @ content)
     // -- Input --
-    | NodeKind.Button spec -> renderButton ctx spec
+    | NodeKind.Button spec -> renderButton ctx spec semanticAttrs
     | NodeKind.Select spec -> renderSelect ctx spec
     | NodeKind.Form spec -> renderForm ctx spec
     | NodeKind.Filters spec -> renderFilters ctx spec.Items
@@ -3183,7 +3205,12 @@ and private renderSparkline (ctx: RenderContext<'Msg>) (spec: SparklineSpec) : R
 
 // ─── Inputs ────────────────────────────────────────────────────────────────
 
-and private renderButton (ctx: RenderContext<'Msg>) (spec: ButtonSpec<'Msg>) : ReactElement =
+and private renderButton
+    (ctx: RenderContext<'Msg>)
+    (spec: ButtonSpec<'Msg>)
+    // Phase 951 — the node's a11y projection, emitted on the `<button>` itself.
+    (semanticAttrs: (string * string) list)
+    : ReactElement =
     let unwired = containsUnwiredAction spec.OnClick
 
     // Once a runtime is supplied the "unwired" hint is just a UI cue —
@@ -3217,7 +3244,7 @@ and private renderButton (ctx: RenderContext<'Msg>) (spec: ButtonSpec<'Msg>) : R
         |> Option.bind (BindingResolver.tryResolve ctx.Sources)
         |> Option.defaultValue false
 
-    Html.button
+    Html.button (
         [ prop.className className
           // The uniform icon hook: an icon-bearing button wraps its label as a
           // text node beside the hook; an icon-less button keeps the plain
@@ -3231,6 +3258,8 @@ and private renderButton (ctx: RenderContext<'Msg>) (spec: ButtonSpec<'Msg>) : R
           if isDisabled then
               prop.disabled true
           prop.onClick (fun _ -> runAction ctx spec.OnClick) ]
+        @ toProps semanticAttrs
+    )
 
 and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : ReactElement =
     let options = resolveOptions ctx spec.Source
@@ -5154,9 +5183,8 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // in isolation). `prop.custom` emits the kebab-case attribute name
     // verbatim — React 16+ accepts `aria-*` props this way without
     // case-conversion gymnastics.
-    let a11yProps: IReactProperty list =
+    let a11yPairs: (string * string) list =
         accessibilityAttributes ctx.Sources node.Accessibility
-        |> List.map (fun (k, v) -> prop.custom (k, v))
 
     // Append the motion-token class to the outer wrapper
     // when `Node.Motion` is `Some token`. Defaults to no class (the
@@ -5182,14 +5210,24 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // safety check before emission. Iteration order is the Map's natural
     // ordering (key-sorted) so the emitted attribute list is deterministic
     // across re-renders.
-    let extraAttrs: IReactProperty list =
+    let extraPairs: (string * string) list =
         match node.ExtraAttributes with
-        | Some attrs ->
-            attrs
-            |> Sanitize.sanitizeExtraAttributes
-            |> Map.toList
-            |> List.map (fun (k, v) -> prop.custom (k, v))
+        | Some attrs -> attrs |> Sanitize.sanitizeExtraAttributes |> Map.toList
         | None -> []
+
+    // Phase 951 — route the projection. A kind whose body IS the node's
+    // semantic element takes the a11y attributes (plus the `aria-*` half of
+    // `ExtraAttributes`) onto that element; the wrapper keeps only the `data-*`
+    // addressing half, beside `data-fuaran-node-id`. Every other kind is
+    // unchanged: a11y then extras, on the wrapper, in that order. Parity-locked
+    // with the server renderer via the shared predicate — see
+    // `Accessibility.forwardsToSemanticElement` + `docs/DECISIONS.md` D4.
+    let wrapperAttrs, semanticAttrs =
+        if Accessibility.forwardsToSemanticElement node.Kind then
+            let dataExtras, ariaExtras = Accessibility.partitionExtraAttributes extraPairs
+            dataExtras, a11yPairs @ ariaExtras
+        else
+            a11yPairs @ extraPairs, []
 
     // Per-node render guard. A throwing leaf-body renderer
     // (binding accessor crash, malformed spec, etc.) is caught here so
@@ -5211,7 +5249,12 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
             // the old all-`None` slots record, so materialise
             // `Defaults.stateBehaviour` for the per-Kind dispatch (identical
             // slot behaviour for decoded trees).
-            renderKind ctx id (node.State |> Option.defaultValue Fuaran.UI.Defaults.stateBehaviour) node.Kind
+            renderKind
+                ctx
+                id
+                (node.State |> Option.defaultValue Fuaran.UI.Defaults.stateBehaviour)
+                node.Kind
+                semanticAttrs
         with ex when not ctx.InErrorBoundary ->
             let corrId =
                 emitRenderFailureWithContext
@@ -5229,28 +5272,26 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // ResizeObserver on mount); it is independent of the HTML `id` so id-handling
     // changes don't break layout addressing.
     //
-    // The common case — no a11y, no extras — is a 4-element literal (no append,
-    // no ResizeArray). Only when a11y or extras are present do we build via a
-    // ResizeArray, replacing the old 4-way `List.append` that copied the base
-    // list 2-3x per node per frame even when both were empty. Order is
-    // load-bearing (id, node-id, class, a11y, extras, children) and identical in
-    // both branches. Perf primitive: do not "simplify" back to a `@` chain.
+    // The common case — nothing left to carry on the wrapper — is a 4-element
+    // literal (no append, no ResizeArray). Only when the wrapper has attributes
+    // do we build via a ResizeArray, replacing the old 4-way `List.append` that
+    // copied the base list 2-3x per node per frame even when both were empty.
+    // Order is load-bearing (id, node-id, class, attrs, children) and identical
+    // in both branches. Perf primitive: do not "simplify" back to a `@` chain.
     let wrapperProps: IReactProperty list =
-        match a11yProps, extraAttrs with
-        | [], [] ->
+        match wrapperAttrs with
+        | [] ->
             [ prop.id id
               prop.custom ("data-fuaran-node-id", id)
               prop.className className
               prop.children [ kindBody ] ]
         | _ ->
-            let props =
-                ResizeArray<IReactProperty>(4 + List.length a11yProps + List.length extraAttrs)
+            let props = ResizeArray<IReactProperty>(4 + List.length wrapperAttrs)
 
             props.Add(prop.id id)
             props.Add(prop.custom ("data-fuaran-node-id", id))
             props.Add(prop.className className)
-            props.AddRange a11yProps
-            props.AddRange extraAttrs
+            props.AddRange(toProps wrapperAttrs)
             props.Add(prop.children [ kindBody ])
             List.ofSeq props
 

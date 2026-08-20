@@ -215,11 +215,15 @@ let private collectFragments (acc: Map<string, Node<obj>>) (node: Node<obj>) : M
 
 // ─── Accessibility + node attribute helpers ─────────────────────────────────
 
-let private a11yProps (ctx: ServerRenderContext) (a11y: Accessibility option) : IReactProperty list =
-    Accessibility.accessibilityAttributes ctx.Sources a11y
-    |> List.map (fun (k, v) -> prop.custom (k, v))
+/// Attribute pairs, not props: Phase 951 routes them to the wrapper or to the
+/// kind body before either becomes an `IReactProperty`.
+let private toProps (pairs: (string * string) list) : IReactProperty list =
+    pairs |> List.map (fun (k, v) -> prop.custom (k, v))
 
-let private extraAttrProps (node: Node<obj>) : IReactProperty list =
+let private a11yPairs (ctx: ServerRenderContext) (a11y: Accessibility option) : (string * string) list =
+    Accessibility.accessibilityAttributes ctx.Sources a11y
+
+let private extraAttrPairs (node: Node<obj>) : (string * string) list =
     match node.ExtraAttributes with
     | Some attrs ->
         attrs
@@ -239,7 +243,6 @@ let private extraAttrProps (node: Node<obj>) : IReactProperty list =
         // escaping, is the response: HTML cannot escape an illegal character in
         // an attribute name (see `Sanitize.isSafeAttributeName`).
         |> List.filter (fun (k, _) -> Sanitize.isSafeAttributeName k)
-        |> List.map (fun (k, v) -> prop.custom (k, v))
     | None -> []
 
 // ─── The renderer ───────────────────────────────────────────────────────────
@@ -294,29 +297,40 @@ and private renderNodeCore (depth: int) (ctx: ServerRenderContext) (node: Node<o
         | Some motion -> baseClassName + " fuaran-motion-" + Theme.motionVar motion
         | None -> baseClassName
 
-    let kindBody = renderKind depth ctx id node.State node.Kind
+    let a11y = a11yPairs ctx node.Accessibility
+    let extras = extraAttrPairs node
 
-    let a11y = a11yProps ctx node.Accessibility
-    let extras = extraAttrProps node
+    // Phase 951 — route the projection. A kind whose body IS the node's
+    // semantic element takes the a11y attributes (plus the `aria-*` half of
+    // `ExtraAttributes`) onto that element; the wrapper keeps only the `data-*`
+    // addressing half. Every other kind is unchanged: a11y then extras, on the
+    // wrapper, in that order. See `Accessibility.forwardsToSemanticElement`.
+    let wrapperAttrs, semanticAttrs =
+        if Accessibility.forwardsToSemanticElement node.Kind then
+            let dataExtras, ariaExtras = Accessibility.partitionExtraAttributes extras
+            dataExtras, a11y @ ariaExtras
+        else
+            a11y @ extras, []
+
+    let kindBody = renderKind depth ctx id node.State node.Kind semanticAttrs
 
     // Per-node wrapper props — parity-locked with the Fable renderer's shape.
-    // Common case (no a11y, no extras) is a 4-element literal; otherwise a
+    // Common case (nothing to carry) is a 4-element literal; otherwise a
     // ResizeArray, not the old 4-way `List.append`. Order is load-bearing
-    // (id, node-id, class, a11y, extras, children). Do not "simplify" to `@`.
+    // (id, node-id, class, attrs, children). Do not "simplify" to `@`.
     let wrapperProps: IReactProperty list =
-        match a11y, extras with
-        | [], [] ->
+        match wrapperAttrs with
+        | [] ->
             [ prop.id id
               prop.custom ("data-fuaran-node-id", id)
               prop.className className
               prop.children [ kindBody ] ]
         | _ ->
-            let props = ResizeArray<IReactProperty>(4 + List.length a11y + List.length extras)
+            let props = ResizeArray<IReactProperty>(4 + List.length wrapperAttrs)
             props.Add(prop.id id)
             props.Add(prop.custom ("data-fuaran-node-id", id))
             props.Add(prop.className className)
-            props.AddRange a11y
-            props.AddRange extras
+            props.AddRange(toProps wrapperAttrs)
             props.Add(prop.children [ kindBody ])
             List.ofSeq props
 
@@ -341,6 +355,10 @@ and private renderKind
     (parentNodeId: string)
     (state: StateBehaviour<obj> option)
     (kind: NodeKind<obj>)
+    // Phase 951 — the node's a11y projection, for the kinds that carry it on
+    // their own semantic element. `[]` for every other kind, which is every
+    // arm below except `Link` / `Button` / `Image`.
+    (semanticAttrs: (string * string) list)
     : ReactElement =
     match kind with
     // -- Layout --
@@ -893,9 +911,18 @@ and private renderKind
                 + entityEncode (renderText ctx spec.Label)
                 + "</a>"
 
-            Html.span
+            // Phase 951 — the anchor here is an entity-encoded opaque string,
+            // so the projection lands on the wrap `<span>`: the only element
+            // this arm owns in BOTH tiers, and parity with the client (which
+            // does build a real `<a>`) outranks reaching one tier's anchor.
+            // Writing attribute names into the raw-HTML string would open a new
+            // injection seam in a `dangerouslySetInnerHTML` payload — declined
+            // here, recorded in `docs/DECISIONS.md` D4.
+            Html.span (
                 [ prop.className "fuaran-link-protected-wrap"
                   prop.dangerouslySetInnerHTML anchor ]
+                @ toProps semanticAttrs
+            )
         | _ ->
             Html.a (
                 [ prop.className "fuaran-link"; prop.href safeHref ]
@@ -909,6 +936,8 @@ and private renderKind
                        [ prop.custom ("download", "") ]
                    else
                        [])
+                // Phase 951 — the node's a11y projection lands on the anchor.
+                @ toProps semanticAttrs
                 @ [ prop.text (renderText ctx spec.Label) ]
             )
     | NodeKind.Image spec ->
@@ -923,10 +952,13 @@ and private renderKind
             | ImageVariant.Avatar -> "fuaran-image fuaran-image-avatar"
             | ImageVariant.Rounded -> "fuaran-image fuaran-image-rounded"
 
-        Html.img
+        // Phase 951 — the a11y projection lands on the `<img>` itself.
+        Html.img (
             [ prop.className variantClass
               prop.src safeSrc
               prop.alt (renderText ctx spec.Alt) ]
+            @ toProps semanticAttrs
+        )
     | NodeKind.List spec ->
         let items =
             spec.Items
@@ -1078,6 +1110,8 @@ and private renderKind
                | Some t -> [ prop.title (renderText ctx t) ]
                | None -> [])
             @ commitProps
+            // Phase 951 — the a11y projection lands on the `<button>` itself.
+            @ toProps semanticAttrs
             @ (if isDisabled then [ prop.disabled true ] else [])
         )
     | NodeKind.Select spec ->
