@@ -105,8 +105,56 @@ Everything above detects **accidental corruption, truncation and reordering**. N
 evidence, for the reason in the section above: the chain is unkeyed, so a writer edits a record,
 recomputes the chain from that point, and every check here passes. Verifying on read closes the gap
 between what the chain claims and what the code does; it does not change what the chain claims.
-These call sites are, however, exactly where a keyed MAC or a signature over the chain head would
-plug in.
+These call sites are, however, exactly where a signature over the chain position plugs in — which is
+the next section.
+
+## Segment attestation — a signature beside the chain (opt-in)
+
+`Fuaran.UI.OpStream.Abstractions/Attestation.fs` (Phase 789) adds the property the unkeyed chain
+cannot have, **without changing the chain**: a host may sign a **segment attestation** — an ECDSA
+P-256 / SHA-256 signature (`ecdsa-p256-sha256-v1`) over a canonical claim binding the algorithm, the
+chain format version, the stream id, a sequence range `[fromSeq, toSeq]`, the range's chain anchor,
+and its head. A verifier re-walks the records from the **signed** anchor and compares the walked head
+to the **signed** head. An editor with store write access can still rewrite records and recompute
+every digest, but the stored attestation covers the old head, and verification answers
+`HeadMismatch` — the records shown are not the records attested. Stripping the attestation yields
+`Unattested`, never `Attested`, so the attack degrades to visible denial rather than silent forgery.
+
+The claim is conditional, and every condition is checkable: **where a stream carries a segment
+attestation, and where the verifier trusts the signing key, alteration by a party without that key
+is detected.** The unconditional sentence "the op-stream is tamper-evident" is still never true,
+because the boundaries below are structural:
+
+- **The chain itself is unchanged** — unkeyed SHA-256, `chainFormatVersion` 2, byte-identical across
+  every host. Attestation is additive and opt-in; the default is the *named*
+  `AttestationSigner.unattested`, and every store predating the mechanism is honestly `Unattested`.
+- **It does not defend against the key holder.** A compromised signer signs its own forgery.
+- **It does not prove a user authored anything.** The key is host-held; the claim is "this host
+  accepted these records". A browser never signs — any script on the origin can *use* a
+  non-extractable key, so a browser cannot hold an issued identity.
+- **It does not prove completeness.** An op never appended leaves no trace.
+- **`signedAt` is asserted by the signer.** It is bound inside the signed claim (a store-writer
+  cannot alter it), but a hostile *signer* can backdate — so revocation boundaries are a
+  co-operative-failure mechanism.
+- **The required-or-not policy lives with the verifier, never the store** — a store that could
+  declare "attestation required" could have that declaration stripped by the same adversary.
+- **Vouching for pre-attestation history is a permanently distinct claim tier** (`Adopted = true`,
+  surfaced as a warning): "I vouch for this after the fact", never "this was witnessed when
+  produced". No historical signature is ever minted.
+
+Verification is **offline by construction**: `Evidence.verify` takes the bundle plus the verifier's
+own key directory — no service, no database, no private key — and returns a typed verdict
+(`Attested` / `Unattested` / `ChainBroken` / `HeadMismatch` / `SignatureInvalid` / `UnknownKey` /
+`RangeMismatch` / `UnsupportedChainFormat`), never a boolean. A bundle's own `Keys` field is a
+convenience for a verifier that has established those keys by another route; it is never read by
+verification, because a bundle carrying its own trust root proves only that it agrees with itself.
+
+Signing uses **platform implementations only** — the BCL's `ECDsa` on .NET (WebCrypto's ECDSA is the
+browser verification route when it lands). No hand-rolled ECDSA signer, ever: nonce generation stays
+with the platform. The canonical descriptor/claim encodings are pinned cross-host artefacts with
+golden vectors in `wire-format-fixtures/attestation/descriptor-corpus.json`; the algorithm id is a
+field, so a future primitive (`ed25519-v1` is reserved) is a new registered id, never a format
+change.
 
 ## Why one pure-F# implementation, not the BCL on .NET
 

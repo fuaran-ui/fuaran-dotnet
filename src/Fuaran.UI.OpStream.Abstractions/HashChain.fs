@@ -35,12 +35,14 @@ open Fuaran.UI.Ops.Types
 //  the hash too.
 //
 //  Detecting an edit by someone with write access needs a secret the writer does
-//  not have — a keyed MAC, or a signature over the chain head. That is the
-//  signing seam (Core's `IAttestationSink`, Phase 320), deliberately host-side
-//  so the key never enters this portable package; until a host wires it the
-//  property here is corruption detection. See `CRYPTO.md`, and keep every
-//  description of this chain — in docs, doc comments and error text — inside
-//  that boundary.
+//  not have — a signature over the chain POSITION. That is the segment-
+//  attestation seam beside this file (`Attestation.fs`, Phase 789, over Core's
+//  Phase-320 `IAttestationSink` precedent): opt-in, additive, the key held
+//  host-side so it never enters this portable package. The chain here stays
+//  unkeyed and its own property stays corruption detection — for any stream a
+//  host has not attested (the default), that is the WHOLE property. See
+//  `CRYPTO.md`, and keep every description of this chain — in docs, doc
+//  comments and error text — inside that boundary.
 // ============================================================================
 
 module HashChain =

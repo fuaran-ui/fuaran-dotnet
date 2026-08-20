@@ -24,6 +24,12 @@
          Compiled before HashChain.fs (which delegates computeHash to it). -->
     <Compile Include="StreamEntry.fs" />
     <Compile Include="HashChain.fs" />
+    <!-- Phase 789: segment attestation — signed evidence beside the unkeyed
+         chain. Attestation.fs is the portable vocabulary + seams (both
+         pipelines); AttestationEcdsa.fs is the .NET ECDSA P-256 provider,
+         fenced out of Fable entirely. -->
+    <Compile Include="Attestation.fs" />
+    <Compile Include="AttestationEcdsa.fs" />
     <Compile Include="IOpStreamSink.fs" />
     <Compile Include="Checkpoint.fs" />
     <!-- Phase 267: the guest-<scopeId> op-stream keying convention (§4o). -->

@@ -24,6 +24,8 @@
          linear sinks). Go-red proofs — each corrupts a real record in a real
          store, the Sqlite ones by UPDATEing the database file. -->
     <Compile Include="VerifyOnReadTests.fs" />
+    <!-- Phase 789: segment attestation — descriptor corpus + forgery verdicts. -->
+    <Compile Include="AttestationTests.fs" />
     <Compile Include="ConcurrencyTests.fs" />
     <Compile Include="SqliteTests.fs" />
     <Compile Include="TreeDiffTests.fs" />
