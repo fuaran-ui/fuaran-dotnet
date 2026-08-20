@@ -10,6 +10,49 @@ consequence.
 
 ---
 
+## 2026-08-20 — D5: this tier owns its vocabulary; Fuaran.Core ships only the engine
+
+**Decided.** The IDL **engine** is a package — `Fuaran.Core.Idl`, distributed from Fuaran.Core 0.4.0
+alongside the rest of the spine. A **vocabulary** — the `Idl` value describing this language's kinds,
+unions, enums and records — is not something the engine's repo distributes. It is data belonging to
+the domain whose contract it describes, and for the UI wire model that domain is this repo.
+Fuaran.Core's DECISIONS.md D14 states the same rule from the other side.
+
+**Rejected: a shared vocabularies package.** The UI vocabulary sitting in a `Fuaran.Core.*` package
+would make every kind this language admits a release of the substrate repo, put one release cadence
+across every domain's wire, and bake a single domain's name into the substrate's identity
+permanently. `VOCABULARY.md`'s admission gates are written and enforced here; the artefact they
+govern should not live where the gate does not run.
+
+**The consequence for a second domain, which is the point.** Before 0.4.0 the engine was
+`IsPackable=false`, so no workspace could consume it and this tier was necessarily the only domain
+using it — via a byte-copy of the generated artefact out of the substrate repo's own test project.
+That is not a distribution mechanism; it is the absence of one. Any domain can now
+`PackageReference` the engine, declare an `Idl`, and generate its structural layer without either
+the declaration or the output passing through anyone else's repo.
+
+**What has NOT moved yet, stated plainly rather than implied.** `uiIdl` and its declared-support
+record are still in Fuaran.Core's test project, because they are also that repo's only full-scale
+engine-certification fixture — seven suites read them to certify corpus byte-parity, the
+compiled-codegen drift guard, the schema leg, the op leg, the diff classifier and the cross-host
+fuzz. Neither route out is sound today: a package dependency from the substrate onto this tier
+closes a cycle in the feed (this tier already depends on `Fuaran.Core.Idl`), and a compile-link
+across a sibling checkout would make that repo's build depend on a checkout it does not control.
+Nor can `idl.json` stand in for the declaration — `Artifact` renders, it does not parse, and the
+generator needs the declared-support record and the host prelude besides.
+
+So the vocabulary's arrival here is staged, and `scripts/sync-generated-layer.ps1` is **demoted
+rather than retired**: its default is now the drift check, and the byte-copy is behind an explicit
+`-Adopt`. The copy stops being the mechanism and becomes an opt-in adoption step — which also
+removes a live hazard, since a bare run of the old script once erased 292 lines of a tier that was
+legitimately ahead. The check is enforced on every push by `apply-parity-fable.yml`, so the two
+copies stay pinned rather than trusted.
+
+**When it retires.** Once the vocabulary lands here, the check becomes an in-process
+regenerate-and-compare against the packaged engine, with no sibling checkout involved at all. The
+`.fantomasignore` entry for `src/Fuaran.UI/Generated.fs` survives that change unaltered — the file
+is generated output either way.
+
 ## 2026-08-20 — D4: the accessibility projection targets the node's semantic element, not its wrapper
 
 **Decided.** A node's `Accessibility` projection — and the `aria-*` half of `ExtraAttributes` — is
