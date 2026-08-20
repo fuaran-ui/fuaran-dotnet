@@ -8,7 +8,9 @@
 //  precedence the edit path uses (declared `editStateKey` wins; else the
 //  Phase-663 State-source floor; else NONE, and the renderer draws no handle
 //  at all — a gesture with no destination is the fake-affordance class Phase
-//  866 charters against).
+//  866 charters against). Both verbs now resolve through ONE function
+//  (`gridWriteDestination`), and the `editDestination` list at the foot of this
+//  file is Phase 863's half of the same decision.
 //
 //  `moveRow` is the MECHANICS — the whole-list move whose result is written
 //  back wholesale. An invalid move returns the SAME list instance, which the
@@ -108,4 +110,68 @@ let tests =
                         Expect.isTrue
                             (obj.ReferenceEquals(moved, original))
                             (sprintf "move %d->%d out of range must be identity" fromIdx toIdx)
+                } ]
+
+          // ── Phase 863's half of the SAME decision ────────────────────────
+          // The reorder destination above and the edit destination below are
+          // one rule with two gates, because both write the whole updated rows
+          // value of one collection. Until this pass the renderer resolved the
+          // edit destination inline as the Phase-663 floor alone, so a grid
+          // DECLARING `editStateKey` over a `Query` source — the corner
+          // `nodes/grid-declared-edit.json` pins, and one FUARAN090's 863
+          // widening already reports as live — rendered with no inputs at all.
+          // These cases pin the two ends of the fix: the declared key acts, and
+          // an undeclared grid is unchanged.
+          testList
+              "editDestination"
+              [ test "not editable resolves to no destination whatever else is declared" {
+                    Expect.isNone
+                        (BindingResolver.editDestination false (Some "stock-adjustments") stateSource)
+                        "editable=false must yield None — a non-editable grid renders spans, as before"
+                }
+
+                test "a declared editStateKey makes a Query-sourced grid writable — 863's whole point" {
+                    match BindingResolver.editDestination true (Some "stock-adjustments") querySource with
+                    | Some(Binding.State(key, None)) ->
+                        Expect.equal key "stock-adjustments" "the declared destination key"
+                    | other -> failtestf "expected State(stock-adjustments, None), got %A" other
+                }
+
+                test "a declared editStateKey WINS over the source, so one collection has one destination" {
+                    match BindingResolver.editDestination true (Some "stock-adjustments") stateSource with
+                    | Some(Binding.State(key, None)) ->
+                        Expect.equal key "stock-adjustments" "the declared key, not the source's own"
+                    | other -> failtestf "expected the declared key to win, got %A" other
+                }
+
+                test "no declared key falls to the Phase-663 floor — the shipped behaviour, unchanged" {
+                    match BindingResolver.editDestination true None stateSource with
+                    | Some(Binding.State(key, _)) -> Expect.equal key "sprint-order" "the source's own key"
+                    | other -> failtestf "expected the State source itself, got %A" other
+                }
+
+                test "no declared key over a non-State source refuses — display-only, as FUARAN090 warns" {
+                    Expect.isNone
+                        (BindingResolver.editDestination true None querySource)
+                        "no writable slot: the grid stays display-only rather than committing nowhere"
+                }
+
+                test "edit and reorder resolve the SAME destination for the same declaration" {
+                    // The single-destination property stated as a test rather
+                    // than as a comment: if the two ever diverge, one grid gains
+                    // two destinations for one collection and this goes red.
+                    // Compared through `describe` because `Binding` carries
+                    // functions and so supports no equality constraint.
+                    let describe (d: Binding<Row seq> option) =
+                        match d with
+                        | None -> "none"
+                        | Some(Binding.State(key, _)) -> "state:" + key
+                        | Some other -> sprintf "other:%A" other
+
+                    for key in [ None; Some "sprint-order" ] do
+                        for label, source in [ "State", stateSource; "Query", querySource ] do
+                            Expect.equal
+                                (describe (BindingResolver.editDestination true key source))
+                                (describe (BindingResolver.reorderDestination true key source))
+                                (sprintf "edit and reorder must agree for key=%A over a %s source" key label)
                 } ] ]

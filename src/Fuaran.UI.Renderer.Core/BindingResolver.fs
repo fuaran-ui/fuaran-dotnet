@@ -1161,33 +1161,62 @@ let tonedPillOf
     let tone = toneMap |> Map.tryFind label |> Option.defaultValue defaultTone
     label, tone
 
-/// Phase 934 — where a REORDER commits, resolved by the same precedence the
-/// grid's edit path uses, so one collection has one destination:
+/// Phase 934 / Phase 863 — where a WHOLE-ROWS write commits. Stated ONCE
+/// because a grid's two whole-rows writers — an edited cell and a reordered
+/// row — are writes of the same collection, and two copies of this rule is
+/// exactly how one grid comes to have two destinations:
 ///
-///   1. a declared `editStateKey` wins — a reorder IS an edit of the row
-///      order, and writing it anywhere else would give the grid two
-///      destinations for the same collection;
+///   1. a declared `editStateKey` wins. Phase 863 added it so a *decoded*
+///      grid could say where its writes land at all (the only previous
+///      spelling was a host closure, which crosses the wire as `"<closure>"`);
 ///   2. else the Phase-663 floor: the grid's own `source` when that source is
 ///      a DIRECT `Binding.State` (the only source shape with a writable slot);
 ///   3. else NONE — and the caller must not draw the affordance at all. A
 ///      Transform pipeline is not invertible and Static/Query rows are host
-///      data, so a handle over them would be a gesture with no destination:
-///      exactly the fake-affordance class Phase 866 charters against, and the
-///      reason this returns an option rather than a no-op writer.
+///      data, so an input or a drag handle over them would be a gesture with
+///      no destination: exactly the fake-affordance class Phase 866 charters
+///      against, and the reason this returns an option rather than a no-op
+///      writer.
+let gridWriteDestination (editStateKey: string option) (source: Binding<Row seq>) : Binding<Row seq> option =
+    match editStateKey with
+    | Some key -> Some(Binding.State(key, None))
+    | None ->
+        match source with
+        | Binding.State _ -> Some source
+        | _ -> None
+
+/// Phase 934 — where a REORDER commits: the shared grid destination above,
+/// drawn only where the grid declares itself reorderable.
 let reorderDestination
     (reorderable: bool)
     (editStateKey: string option)
     (source: Binding<Row seq>)
     : Binding<Row seq> option =
-    if not reorderable then
-        None
+    if reorderable then
+        gridWriteDestination editStateKey source
     else
-        match editStateKey with
-        | Some key -> Some(Binding.State(key, None))
-        | None ->
-            match source with
-            | Binding.State _ -> Some source
-            | _ -> None
+        None
+
+/// Phase 863 — where an EDITED CELL commits: the shared grid destination
+/// above, drawn only where the grid declares itself editable.
+///
+/// Before this, the renderer resolved the edit destination inline as "the
+/// grid's own source, when that source is `State`" — the Phase-663 floor and
+/// nothing else. So a grid that *declared* `editStateKey` over a `Query`
+/// source decoded, passed pre-emit validation (FUARAN090 was widened by 863
+/// precisely because a declared destination is a real one) and then rendered
+/// with no inputs at all: a declaration that reads as live everywhere except
+/// where it is supposed to act. Routing both writers through one function is
+/// what keeps that from recurring per-affordance.
+let editDestination
+    (editable: bool)
+    (editStateKey: string option)
+    (source: Binding<Row seq>)
+    : Binding<Row seq> option =
+    if editable then
+        gridWriteDestination editStateKey source
+    else
+        None
 
 /// Phase 934 — move the row at `fromIndex` to `toIndex` (both absolute in the
 /// full set). Out-of-range either side, or a no-move, returns the list

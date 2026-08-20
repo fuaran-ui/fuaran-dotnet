@@ -4371,19 +4371,23 @@ and private renderGrid
                     | None -> None
 
                 // Phase 663 — the grid write-back floor (the Phase 426 control default replayed
-                // for the grid): `Editable = true` over a DIRECT `Binding.State` source commits
-                // an edited cell as the WHOLE updated rows value to the state key, so every
-                // other reader of that key (a Chart sourced on the same `$state` entry)
-                // re-renders with the edit. Any other source shape has no writable slot — a
-                // Transform pipeline is not invertible, Static/Query rows are host data — so
-                // the grid stays display-only (FUARAN090 warns pre-emit).
+                // for the grid): an editable grid commits an edited cell as the WHOLE updated
+                // rows value, so every other reader of that key (a Chart sourced on the same
+                // `$state` entry) re-renders with the edit.
+                // Phase 863 — WHERE it commits is `BindingResolver.editDestination`, the same
+                // precedence the reorder path resolves through: a declared `editStateKey` wins,
+                // else the 663 floor (the grid's own `State` source), else no destination and
+                // no input. That is what makes a declared destination act — a `Query`-sourced
+                // grid naming `editStateKey` has a writable slot, which is exactly the corner
+                // `nodes/grid-declared-edit.json` pins and which 863's widening of FUARAN090
+                // already tells authors is live.
                 // Phase 862 — `rowIndex` arrives page-relative; `rowOffset`
                 // lifts it into the full sorted set so the whole rows value
                 // written back carries every row, not just this page's.
                 let editCommit: (int -> string -> obj -> unit) option =
-                    match spec.Editable, spec.Source with
-                    | true, Binding.State _ ->
-                        Some(fun rowIndex field newValue ->
+                    BindingResolver.editDestination spec.Editable spec.EditStateKey spec.Source
+                    |> Option.map (fun dest ->
+                        fun (rowIndex: int) (field: string) (newValue: obj) ->
                             let absolute = rowOffset + rowIndex
 
                             let newRows =
@@ -4394,8 +4398,7 @@ and private renderGrid
                                     else
                                         row)
 
-                            writeBackTo ctx spec.Source (Some(box (Seq.ofList newRows))))
-                    | _ -> None
+                            writeBackTo ctx dest (Some(box (Seq.ofList newRows))))
 
                 // Phase 934 — declarative row reorder. The DESTINATION resolves by
                 // the same precedence the edit path uses (a declared
