@@ -205,6 +205,12 @@
          guest passes the host's capability policy, not just an
          orchestration-driven one). -->
     <Compile Include="RenderEntrySeamTests.fs" />
+    <!-- Phase 443 — the structural predicate library over Node trees: the five
+         query classes over the shared corpus, the algebra laws by exhaustive
+         enumeration, and the delegation seam onto the shipped
+         signature-searchable pattern bank (which the predicate library composes
+         with and never reimplements). -->
+    <Compile Include="StructuralQueryTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -222,6 +228,12 @@
          engine + the op-stream canonical-JSON encoder it keys over. -->
     <ProjectReference Include="..\Fuaran.UI.Memo\Fuaran.UI.Memo.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <!-- Phase 443 — StructuralQueryTests wires the predicate library's
+         delegation seam onto the REAL signature-searchable pattern bank, so the
+         "a routed query is answered by the shipped surface" claim is asserted
+         against that surface rather than a stand-in. The reference runs
+         tests -> bank -> tier; the tier itself still references neither. -->
+    <ProjectReference Include="..\Fuaran.UI.FastPath\Fuaran.UI.FastPath.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />

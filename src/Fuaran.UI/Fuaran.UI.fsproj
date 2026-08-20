@@ -60,6 +60,13 @@
     <Compile Include="QuerySource.fs" />
     <Compile Include="QueryRefine.fs" />
     <Compile Include="RetrievalSource.fs" />
+    <!-- Structural predicates over decoded `Node` trees — the query surface for
+         searching a CORPUS of applications (kind / binding / shape / style /
+         behaviour terms, and/or/not, descendant + ancestor scoping, match
+         traces). Reads `Types.fs` and reuses `BindingWalk.fs` for the binding
+         class rather than re-walking the spec vocabulary; holds no signature
+         search of its own (see the module's `Delegation`). -->
+    <Compile Include="StructuralQuery.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
