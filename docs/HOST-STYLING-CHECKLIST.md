@@ -67,11 +67,15 @@ Lifted out of hardcoded pixels in Phase 12.H so consumers can override compact /
 | `--fuaran-radius-full` | `9999px` | pills, badges |
 | `--fuaran-border-width` | `1px` | every bordered surface |
 
-### 1.4b Component extension points (14 variables)
+### 1.4b Component extension points (14 variables) — fallback-only by design
 
-These are per-component knobs the reference stylesheet binds at `:root` alongside the scales above. They were **fallback-only until 2026-08-21** — referenced by the component rules as `var(--X, fallback)` but never declared — which made them undiscoverable from the sheet itself: a host reading `:root` could not tell that the code pane's colours or the modal's backdrop were overridable at all. Declaring them changed no rendered value; every reference value below is the fallback the component rule already carried.
+These are per-component knobs a host may re-bind, and they are the one group the reference stylesheet does **not** declare at `:root`: each exists only as the fallback in its own `var(--X, fallback)` site. That made them effectively undiscoverable — a host reading `:root` could not tell that the code pane's colours or the modal's backdrop were overridable at all — which is why they are enumerated here.
 
-| Variable | Reference value | Used by |
+**Why they are not simply declared at `:root`** (checked 2026-08-21, having first tried it): the reference sheet's `:root` block is **bijective with the typed `Theme` record**, and `ThemeTests`' "covers every `--fuaran-*` variable" test asserts the correspondence in *both* directions — a variable in `:root` that `Theme.toCss` does not emit fails the suite, as does the reverse. So declaring these fourteen is not a stylesheet edit at all; it is a decision to take them into the typed theme surface, which reaches the `Theme` record and its parser, the four byte-identical CSS copies, the theme-manifest bridge, and the brand re-bind. Worth doing deliberately; not something to slip in as tidying.
+
+Re-binding one works exactly as for any other token — set it at your app shell and the `var()` site picks it up, the fallback being what applies when you do not.
+
+| Variable | Fallback value (the effective default) | Used by |
 |---|---|---|
 | `--fuaran-font-mono` | `ui-monospace, "SF Mono", Menlo, Consolas, monospace` | code pane, inline code |
 | `--fuaran-code-bg` | `#1e1e2e` | code-pane surface |
