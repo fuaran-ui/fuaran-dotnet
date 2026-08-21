@@ -67,6 +67,27 @@ Lifted out of hardcoded pixels in Phase 12.H so consumers can override compact /
 | `--fuaran-radius-full` | `9999px` | pills, badges |
 | `--fuaran-border-width` | `1px` | every bordered surface |
 
+### 1.4b Component extension points (14 variables)
+
+These are per-component knobs the reference stylesheet binds at `:root` alongside the scales above. They were **fallback-only until 2026-08-21** — referenced by the component rules as `var(--X, fallback)` but never declared — which made them undiscoverable from the sheet itself: a host reading `:root` could not tell that the code pane's colours or the modal's backdrop were overridable at all. Declaring them changed no rendered value; every reference value below is the fallback the component rule already carried.
+
+| Variable | Reference value | Used by |
+|---|---|---|
+| `--fuaran-font-mono` | `ui-monospace, "SF Mono", Menlo, Consolas, monospace` | code pane, inline code |
+| `--fuaran-code-bg` | `#1e1e2e` | code-pane surface |
+| `--fuaran-code-fg` | `#cdd6f4` | code-pane text |
+| `--fuaran-code-copy-bg` | `#313244` | code-pane copy button |
+| `--fuaran-code-copy-border` | `#45475a` | code-pane copy button border |
+| `--fuaran-avatar-size` | `40px` | avatar width + height |
+| `--fuaran-disclosure-summary-padding` | `var(--fuaran-space-md, 12px) var(--fuaran-space-lg, 16px)` | disclosure `<summary>` padding |
+| `--fuaran-modal-backdrop` | `rgba(0, 0, 0, 0.5)` | modal scrim |
+| `--fuaran-modal-max-width` | `560px` | modal dialog width cap |
+| `--fuaran-toast-max-width` | `360px` | toast width cap |
+| `--fuaran-shadow-lg` | `0 10px 15px -3px rgba(0, 0, 0, 0.1)` | raised surfaces (popover, toast) |
+| `--fuaran-shadow-xl` | `0 20px 25px -5px rgba(0, 0, 0, 0.1)` | modal dialog |
+| `--fuaran-z-modal` | `1000` | modal stacking order |
+| `--fuaran-z-toast` | `1100` | toast stacking order |
+
 ### 1.5 Pending (Phase 12.K)
 
 `StyleWeight` and `Emphasis` variants on `SemanticStyle` currently emit `fuaran-weight-{compact|standard|spacious}` and `fuaran-emphasis-{quiet|normal|loud}` classes but the reference CSS provides no rules for them yet. Phase 12.K's typed `Theme.toCss` emitter will fill in the variable surface (compact / spacious mappings against the spacing scale; quiet / loud mappings against border-width + shadow). The class hooks are documented in Section 2.0 below so Tailwind-JIT-shaped consumers can pre-safelist them now.
