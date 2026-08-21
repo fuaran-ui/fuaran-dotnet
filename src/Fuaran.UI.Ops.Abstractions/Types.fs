@@ -137,20 +137,25 @@ type TreeOp<'Msg> =
     /// OnError slots).
     | UpdateState of NodeId * StateBehaviour<'Msg>
 
-    /// Insert a child under the addressed parent at `position`. `position`
-    /// is 0-indexed; `position = parent.Children.Length` appends. Parents
-    /// without a `Children` field (every Display / Input / Visualisation
-    /// kind) surface `ChildlessKind`.
+    /// Append a child to the addressed parent's `Children`. The op carries
+    /// no ordinal — the 681–687 wave removed `position` from every
+    /// structural op — so insertion is always an append; ordering is
+    /// `ReorderChildren`'s job, and expressing "insert at index n" means
+    /// appending and then reordering. Parents without a `Children` field
+    /// (every Display / Input / Visualisation kind) surface `ChildlessKind`.
     | InsertChild of parentId: NodeId * child: Node<'Msg>
 
     /// Remove the addressed node from its parent's `Children`. Cannot
     /// remove the root.
     | RemoveNode of NodeId
 
-    /// Move the addressed node to a new parent at `newPosition`. Source
-    /// and target parents must both exist and both have a `Children`
-    /// field. Moving a node inside its own subtree surfaces `KindMismatch`
-    /// (would create a cycle).
+    /// Move the addressed node, appending it to the new parent's
+    /// `Children`. Positionless like `InsertChild` above: there is no
+    /// `newPosition` field, so the node lands last and a required order is
+    /// expressed with a following `ReorderChildren`. Source and target
+    /// parents must both exist and both have a `Children` field. Moving a
+    /// node inside its own subtree surfaces `KindMismatch` (would create a
+    /// cycle).
     | MoveNode of NodeId * newParentId: NodeId
 
     /// Reorder the addressed parent's children. `newOrder` must list
@@ -196,7 +201,14 @@ type ApplyErrorCode =
     /// / Visualisation node is childless). InsertChild / RemoveNode (of
     /// a leaf parent) / MoveNode / ReorderChildren cannot target it.
     | ChildlessKind
-    /// `position` is outside the valid range (`0 ≤ position ≤ parent.Children.Length`).
+    /// A nested DATA path's list index is outside its list
+    /// (`0 ≤ i < list.Length` — e.g. `Columns[5].Label` on a 3-column grid);
+    /// `Hint.Suggestion` carries the valid range. NOT a structural-op
+    /// position: the 681–687 wave removed `position` from `InsertChild` and
+    /// `MoveNode`, so a structural insert has no ordinal to be wrong about.
+    /// Contained collections whose items have no identity keep their
+    /// ordinals, which is why this case remains live and normative
+    /// (WIRE_FORMAT.md §3.4).
     | PositionOutOfRange
     /// `newOrder` is not a permutation of the parent's current child IDs
     /// (missing / extra / unknown IDs).
