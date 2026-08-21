@@ -273,4 +273,9 @@
     <PackageProjectUrl>https://github.com/fuaran-ui/fuaran-dotnet</PackageProjectUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
   </PropertyGroup>
+  <PropertyGroup>
+    <!-- CI restores from an empty local feed and falls through to nuget.org, so a package version
+         that exists only in a machine-local feed is NU1102 here. -->
+    <FuaranRestorePath>public</FuaranRestorePath>
+  </PropertyGroup>
 </Project>
