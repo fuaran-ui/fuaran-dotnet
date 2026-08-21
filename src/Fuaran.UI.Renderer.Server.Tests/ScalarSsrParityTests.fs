@@ -33,25 +33,44 @@ let private contains (needle: string) (haystack: string) =
     haystack.Contains(needle, System.StringComparison.Ordinal)
 
 /// Walk up from the test assembly until the workspace `wire-format-fixtures/`
-/// corpus is found (a sibling of the `fuaran-dotnet/` repo).
-let private corpusRoot () : string =
+/// corpus is found (a sibling of the `fuaran-dotnet/` repo). `None` when it is
+/// not there — a bare single-repo clone, or a git worktree checked out
+/// somewhere else in the filesystem.
+///
+/// Returning an option rather than throwing is load-bearing. This was
+/// `failwith`-on-absent, bound at module level, so the throw happened in the
+/// TYPE INITIALIZER: the runtime wrapped it in a `TargetInvocationException`
+/// and took the WHOLE test assembly down, reporting "every server-render test
+/// is broken" where the truth was "these few tests need the workspace
+/// checkout". A missing input degrades to a skip; it never masks the tests
+/// beside it.
+let private tryCorpusRoot () : string option =
     let rec walk (dir: DirectoryInfo) =
         if isNull dir then
-            failwith "wire-format-fixtures/ not found walking up — the Fuaran workspace checkout is required."
+            None
         else
             let candidate = Path.Combine(dir.FullName, "wire-format-fixtures", "manifest.json")
 
             if File.Exists candidate then
-                Path.Combine(dir.FullName, "wire-format-fixtures")
+                Some(Path.Combine(dir.FullName, "wire-format-fixtures"))
             else
                 walk dir.Parent
 
     walk (DirectoryInfo(AppContext.BaseDirectory))
 
-let private root = corpusRoot ()
+let private root = tryCorpusRoot ()
+
+/// The corpus directory, or a SKIP for this one test. Never a failure: absence
+/// of the workspace corpus is a statement about the checkout, not about the code.
+let private corpusDir () : string =
+    match root with
+    | Some r -> r
+    | None ->
+        skiptest
+            "wire-format-fixtures/ not found walking up from the test assembly — this scalar SSR parity test needs the workspace checkout (skipped in a bare single-repo clone or a worktree elsewhere)"
 
 let private decodeFixture (name: string) : Node<obj> =
-    let json = File.ReadAllText(Path.Combine(root, "nodes", name + ".json"))
+    let json = File.ReadAllText(Path.Combine(corpusDir (), "nodes", name + ".json"))
 
     match JsonDecode.decodeNodeObj json with
     | Ok node -> node

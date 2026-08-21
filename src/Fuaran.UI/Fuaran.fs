@@ -1222,6 +1222,20 @@ module Fuaran =
     let progress (id: string) (spec: ProgressSpec) : Node<'Msg> =
         buildNode id (NodeKind.Progress(spec)) Defaults.Accessibility.progress
 
+    /// `Badge` and `Sparkline` had no smart constructor while every other
+    /// `NodeKind` did — a §11 step-6 omission, which left callers building them
+    /// from bare `Node` records and so re-deciding the envelope
+    /// (`State` / `Style` / `Motion` / `Accessibility`) by hand each time. Both
+    /// take the shape every sibling display kind takes, with
+    /// `Defaults.Accessibility.none` for the same reason `markdown` / `skeleton`
+    /// / `icon` do: neither kind carries an a11y contract of its own beyond what
+    /// the renderer emits.
+    let badge (id: string) (spec: BadgeSpec) : Node<'Msg> =
+        buildNode id (NodeKind.Badge(spec)) Defaults.Accessibility.none
+
+    let sparkline (id: string) (spec: SparklineSpec) : Node<'Msg> =
+        buildNode id (NodeKind.Sparkline(spec)) Defaults.Accessibility.none
+
     let skeleton (id: string) (rows: int) : Node<'Msg> =
         buildNode id (NodeKind.Skeleton({ Rows = rows })) Defaults.Accessibility.none
 

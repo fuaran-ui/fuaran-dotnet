@@ -20,24 +20,37 @@ open Fuaran.UI.Ops.Types
 
 /// Walk up from the test assembly until the workspace `wire-format-fixtures/`
 /// corpus is found (a sibling of the `fuaran-dotnet/` repo).
-let private corpusRoot () : string =
+/// `None` when the corpus is not there — a bare single-repo clone, or a git
+/// worktree checked out elsewhere in the filesystem.
+///
+/// Returning an option rather than throwing is load-bearing: bound at module
+/// level, a throw here happens in the TYPE INITIALIZER, so the runtime wraps it
+/// in a `TargetInvocationException` and takes the WHOLE test assembly down —
+/// reporting every op-stream test as broken where the truth is that these few
+/// need the workspace checkout. A missing input degrades to a skip; it never
+/// masks the tests beside it.
+let private tryCorpusRoot () : string option =
     let rec walk (dir: DirectoryInfo) =
         if isNull dir then
-            failwith "wire-format-fixtures/ not found walking up — the Fuaran workspace checkout is required."
+            None
         else
             let candidate = Path.Combine(dir.FullName, "wire-format-fixtures", "manifest.json")
 
             if File.Exists candidate then
-                Path.Combine(dir.FullName, "wire-format-fixtures")
+                Some(Path.Combine(dir.FullName, "wire-format-fixtures"))
             else
                 walk dir.Parent
 
     walk (DirectoryInfo(AppContext.BaseDirectory))
 
-let private root = corpusRoot ()
+let private root = tryCorpusRoot ()
 
 let private readFixture (rel: string) =
-    File.ReadAllText(Path.Combine(root, rel))
+    match root with
+    | Some r -> File.ReadAllText(Path.Combine(r, rel))
+    | None ->
+        skiptest
+            "wire-format-fixtures/ not found walking up from the test assembly — this chain-corpus test needs the workspace checkout (skipped in a bare single-repo clone or a worktree elsewhere)"
 
 let private actorOf (e: JsonElement) : Actor =
     match e.GetProperty("kind").GetString() with

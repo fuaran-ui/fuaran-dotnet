@@ -114,9 +114,18 @@ let private expectCaught (subject: DecoderFuzz.Subject) (iterations: int) (expec
         expectedClass
         (sprintf "'%s' should be caught as %s; saw %A" subject.Name expectedClass classes)
 
+// Sequenced deliberately. Every test in this list drives the harness with
+// `selfTestBudgets`, whose 100 ms soft time budget exists so the slow mutant
+// need only sleep briefly — a budget that small is measuring the machine as
+// much as the decoder, and running these concurrently with the rest of the
+// suite adds exactly the CPU contention that makes it measure the machine.
+// Sequencing removes the contention; the timeout exclusion in the inverse pin
+// below removes the residual sensitivity. Both are needed: sequencing alone
+// still leaves a cold-JIT first decode able to breach 100 ms.
 [<Tests>]
 let goRedSelfTest =
-    testList
+    testSequenced
+    <| testList
         "Fuaran.UI.Ops.JsonDecode — fuzz harness go-red self-test (Phase 779)"
         [ test "invariant 1 (totality): an escaping exception is caught" {
               // The defect class the threat-model claim is actually about: a
@@ -188,10 +197,30 @@ let goRedSelfTest =
               let stats =
                   DecoderFuzz.run [ DecoderFuzz.nodeSubject ] selfTestBudgets selfTestConfig gateSeed 400 false
 
+              // TIME verdicts are excluded here, and the exclusion is the fix for
+              // a long-standing intermittent red (isolation-passes + suite-fails —
+              // the signature of a wall-clock assertion, not of a decoder defect).
+              // `selfTestBudgets` sets SoftTimeMs to 100 so the SLOW MUTANT need
+              // only sleep briefly; that tiny budget is a lever for the mutant, it
+              // was never a claim about the real decoder. The same gate run
+              // routinely reports a max decode in the hundreds of milliseconds
+              // (693 ms on the run that motivated this), so on a loaded machine
+              // the unmutated decoder trips a 100 ms budget through no fault of
+              // its own and this test goes red for a reason no one can reproduce
+              // in isolation.
+              //
+              // The time invariant is NOT dropped — it is asserted where it means
+              // something: the bounded run below measures the real decoder against
+              // `defaultBudgets` (3 s), which is a budget chosen for the decoder
+              // rather than for a mutant's convenience.
+              let substantive =
+                  stats.Counterexamples
+                  |> List.filter (fun c -> DecoderFuzz.verdictClass c.Verdict <> "timeout")
+                  |> List.map (fun c -> DecoderFuzz.describeVerdict c.Verdict)
+
               Expect.isEmpty
-                  (stats.Counterexamples
-                   |> List.map (fun c -> DecoderFuzz.describeVerdict c.Verdict))
-                  "the unmutated decoder must be clean over the same inputs the mutants ran on"
+                  substantive
+                  "the unmutated decoder must be clean over the same inputs the mutants ran on (wall-clock timeouts against the mutant-sized 100 ms budget excluded — see the bounded run for the real time invariant)"
           } ]
 
 // ─── Minimiser + repro persistence ──────────────────────────────────────────
