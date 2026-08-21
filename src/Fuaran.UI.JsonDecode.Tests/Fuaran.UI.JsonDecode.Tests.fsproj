@@ -28,7 +28,9 @@
          co-emits it beside schema.json. -->
     <Compile Include="RenderFidelityArtifact.fs" />
     <Compile Include="Corpus.fs" />
+    <Compile Include="CorpusEmitEolTests.fs" />
     <Compile Include="RoundTripTests.fs" />
+    <Compile Include="SelectionDerivedValueTests.fs" />
     <Compile Include="ElicitationTests.fs" />
     <Compile Include="RejectFixtureTests.fs" />
     <Compile Include="LenientIngestTests.fs" />

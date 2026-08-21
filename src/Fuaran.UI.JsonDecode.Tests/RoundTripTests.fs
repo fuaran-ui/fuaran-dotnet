@@ -418,9 +418,12 @@ let wireTreeMarker =
 //  (`related-grid` yields 1 row; `detail-note` reads "Search index stale", not
 //  "Payment gateway timeout"; `detail-ticket` resolves rather than NotResolved)
 //  need a Transform EVALUATOR, which lives in `Fuaran.UI.Renderer.Core`
-//  (`BindingResolver.evalTransformFrame`) — a tier this codec-level test
-//  project deliberately does not reference. That evaluation leg belongs in a
-//  suite that already depends on Renderer.Core.
+//  (`BindingResolver`). This project DOES reference that tier — the codec-level
+//  framing above predates the reference — so the evaluation leg now sits beside
+//  these guards in `SelectionDerivedValueTests.fs`. The two are complementary
+//  and neither subsumes the other: these pin that the fixture still SAYS
+//  something interesting, that one pins that a host DERIVES the right answer
+//  from it.
 [<Tests>]
 let nonFirstRowSelectionIntent =
     let fixtureId = "master-detail-preselected-second-row"
