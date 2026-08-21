@@ -267,8 +267,23 @@
          incremental evaluator, an added conformance family), so the whole
          solution compiles against them unchanged and no managed API, wire
          shape or emission moves here. The DELIVERED CONTENT does, and
-         delivered content never rides a same-version repack. -->
-    <Version>0.31.0</Version>
+         delivered content never rides a same-version repack.
+
+         0.32.0 - additive public surface in Fuaran.UI.Renderer: the
+         declared-affordance provider seam (Fuaran.UI.Renderer.Affordances - a
+         registration point + vocabulary that holds no declarations of its own),
+         `window.__fuaran.getAffordances(moduleId?)` on the debug surface
+         (surface version 0.1.0 -> 0.2.0), and the relay's `read.affordances`
+         entry point, which advances the RELAY PROFILE to relay@1.1. Nothing is
+         removed or retyped. The one existing-shape change is a field added to
+         `Relay.RelaySurface`, which is DEBUG-only / unstable and excluded from
+         semver (STABILITY.md); `Relay.surfaceOf` fills it, so a host that
+         builds its surface the supported way is unaffected. All 24 shipped
+         relay@1.0 corpus fixtures pass unchanged against the 1.1 peer - the
+         negotiation change (a peer now answers `hello` at the highest profile
+         the CLIENT accepts, rather than only at its own) is what keeps that
+         true. -->
+    <Version>0.32.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

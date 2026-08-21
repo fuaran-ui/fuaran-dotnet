@@ -62,6 +62,14 @@
          postMessage transport is pure F#. -->
     <Compile Include="RelayTests.fs" />
     <Compile Include="RelayCorpusTests.fs" />
+    <!-- The declared-affordance provider seam (Affordances.fs) and the relay's
+         `read.affordances` entry point (relay@1.1). Pins the seam's three
+         owned properties (total / filtered / isolated), the wire projection of
+         every declared part, deny-by-absence for an unknown-or-withheld module
+         id, and — the part a minor bump lives or dies on — that a relay@1.0
+         client is still SERVED at 1.0 and is neither offered nor served the 1.1
+         entry point. Sequenced: the provider registry is page-global. -->
+    <Compile Include="AffordancesTests.fs" />
     <Compile Include="SanitizeTests.fs" />
     <Compile Include="SanitizationCorpusTests.fs" />
     <!-- MarkdownTests pins Phase 292's deterministic GFM renderer

@@ -64,8 +64,15 @@ open Fuaran.UI.Telemetry.Abstractions
 /// Schema version of the `window.__fuaran` shape — independent of the
 /// renderer package's semver (the global is debug-only / unstable). Mirrors
 /// the TS `DEBUG_GLOBAL_VERSION`.
+///
+/// **0.2.0** adds `getAffordances(moduleId?)` — the declared natural-language
+/// command surface, served from whatever affordance providers the host
+/// registered (`Affordances.fs`). Additive: every 0.1.0 member is unchanged, so
+/// a console session written against 0.1.0 keeps working. The TS mirror does
+/// not carry the member yet, which is why the two surface versions differ; the
+/// method names and payload shapes they DO share stay parity-locked.
 [<Literal>]
-let Version = "0.1.0"
+let Version = "0.2.0"
 
 /// True iff this assembly was compiled under a DEBUG build. A Release pack
 /// sets it `false`, which makes `shouldRegister` constant-false so the whole
@@ -665,6 +672,7 @@ let helpText =
     + "  .getRenderedDom(id)       live DOM geometry (x/y/size + overflow/hidden flags)\n"
     + "  .inspectTree()            recursive structural snapshot of the whole tree\n"
     + "  .findNodes(kind)          ids of every node whose kind === <kind>\n"
+    + "  .getAffordances(mod?)     declared natural-language commands, values + aliases\n"
     + "  .apply(op)                policy-gated TreeOp mutation (JSON string or object; default-deny)\n"
     + "  .treeRevision()           opaque token identifying the current tree state\n"
     + "  .subscribe(cb)            committed-tree-change signal; returns an unsubscribe fn\n"
@@ -856,6 +864,93 @@ let private opToJson (op: obj) : string =
 [<Emit("$0($1)")>]
 let private invokeJsCallback (callback: obj) (argument: obj) : unit = jsNative
 
+// ─── getAffordances — the declared command surface as a console POJO ────────
+//
+// The same enumeration the relay's `read.affordances` carries (`Affordances.fs`
+// is the seam; this is one of its two projections). Camel-cased and
+// array-materialised like every other member here, so `JSON.stringify` of a
+// console read and the relay payload are the same document.
+//
+// A page with no registered provider answers `{ modules: [] }` — well-formed,
+// never an error, so "this page declares nothing" and "this page is broken"
+// stay distinguishable.
+
+let private commandToObj (command: Affordances.DeclaredCommand) : obj =
+    createObj
+        [ "phrase", box command.Phrase
+          "effect", box (Affordances.CommandEffect.toWire command.Effect) ]
+
+let private commandsToArray (commands: Affordances.DeclaredCommand list) : obj =
+    commands |> List.map commandToObj |> Array.ofList |> box
+
+/// The optional halves of a bound are OMITTED when absent rather than emitted
+/// as `null`: a half-open range is a real declaration, and a `null` end reads to
+/// a client as a bound it must handle rather than one that was never made.
+let private optionalNumber (name: string) (value: float option) : (string * obj) list =
+    match value with
+    | Some v -> [ name, box v ]
+    | None -> []
+
+let private optionalInt (name: string) (value: int option) : (string * obj) list =
+    match value with
+    | Some v -> [ name, box v ]
+    | None -> []
+
+let private valueHintToObj (hint: Affordances.ValueHint) : obj =
+    match hint with
+    | Affordances.ValueHint.OneOf values -> createObj [ "kind", box "oneOf"; "values", box (Array.ofList values) ]
+    | Affordances.ValueHint.NumberRange(min, max, step) ->
+        createObj (
+            [ "kind", box "numberRange" ]
+            @ optionalNumber "min" min
+            @ optionalNumber "max" max
+            @ optionalNumber "step" step
+        )
+    | Affordances.ValueHint.TextLength(minLength, maxLength) ->
+        createObj (
+            [ "kind", box "textLength" ]
+            @ optionalInt "minLength" minLength
+            @ optionalInt "maxLength" maxLength
+        )
+
+let private fieldAffordanceToObj (field: Affordances.FieldAffordance) : obj =
+    let aliases =
+        field.Aliases
+        |> List.map (fun (alias, canonical) -> createObj [ "alias", box alias; "value", box canonical ])
+        |> Array.ofList
+
+    createObj (
+        [ "id", box field.Id
+          "shape", box (Affordances.FieldShape.toWire field.Shape)
+          "controllable", box field.Controllable
+          "commands", commandsToArray field.Commands
+          "aliases", box aliases ]
+        @ (match field.Values with
+           | Some hint -> [ "values", valueHintToObj hint ]
+           | None -> [])
+        @ (match field.Description with
+           | Some text -> [ "description", box text ]
+           | None -> [])
+    )
+
+let private moduleAffordanceToObj (m: Affordances.ModuleAffordance) : obj =
+    createObj
+        [ "id", box m.Id
+          "active", box m.Active
+          "fields", box (m.Fields |> List.map fieldAffordanceToObj |> Array.ofList)
+          "commands", commandsToArray m.Commands ]
+
+let private enumerationToObj (enumeration: Affordances.AffordanceEnumeration) : obj =
+    createObj [ "modules", box (enumeration.Modules |> List.map moduleAffordanceToObj |> Array.ofList) ]
+
+/// `undefined` / `null` / a non-string argument all mean "the whole page". A
+/// console caller types `getAffordances()`; the narrowing form is opt-in.
+let private moduleFilterOf (argument: obj) : string option =
+    if isJsString argument then
+        Some(unbox<string> argument)
+    else
+        None
+
 // ─── Build + register the `window.__fuaran` surface ─────────────────────────
 //
 // `buildGlobal` closes over the CURRENT tree + sources, so re-registering each
@@ -912,6 +1007,13 @@ let buildGlobalWith
           "getRenderedDom", box (System.Func<string, obj>(fun id -> geometryObj id))
           "inspectTree", box (System.Func<obj>(fun () -> treeIntrospectionToObj (inspectTree tree)))
           "findNodes", box (System.Func<string, obj>(fun kind -> box (Array.ofList (findNodesByKind kind tree))))
+          // Served from the registered providers, NOT from the tree: what a
+          // page declares it understands is the host's declaration, and this
+          // surface relays it rather than inferring it.
+          "getAffordances",
+          box (
+              System.Func<obj, obj>(fun moduleId -> enumerationToObj (Affordances.enumerate (moduleFilterOf moduleId)))
+          )
           "apply", box (System.Func<obj, obj>(fun op -> applyResultToObj (applyResult runtime options (opToJson op))))
           "help", box (System.Func<obj>(fun () -> box helpText)) ]
 

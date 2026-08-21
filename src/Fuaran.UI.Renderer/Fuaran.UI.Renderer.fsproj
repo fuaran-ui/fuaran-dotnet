@@ -50,6 +50,14 @@
          surface is rebuilt every render), so it compiles first and depends on
          nothing but FSharp.Core. -->
     <Compile Include="ChangeHub.fs" />
+    <!-- The declared-affordance provider seam — the registration point through
+         which a host publishes its natural-language command declarations to the
+         in-page surface and the relay's read.affordances entry point. Holds no
+         declarations of its own and knows nothing about how a host models a
+         field, so it compiles on FSharp.Core alone, before DebugGlobal (which
+         projects it onto the console) and Relay (which projects it onto the
+         wire). -->
+    <Compile Include="Affordances.fs" />
     <!-- Phase 90 — in-page introspection REPL (window.__fuaran). Pure
          wire-shape helpers (kindName / extractBindingSlots / resolveSlot /
          childNodes) compile on both pipelines; geometry + POJO + window

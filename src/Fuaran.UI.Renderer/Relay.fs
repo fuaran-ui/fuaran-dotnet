@@ -9,7 +9,7 @@ module Fuaran.UI.Renderer.Relay
 //  script — can inspect, and where the host permits edit, a live Fuaran UI.
 //
 //  The contract is specified language-neutrally in the wire-format
-//  specification repository (`DEVTOOLS_RELAY.md`, profile `relay@1.0`) with an
+//  specification repository (`DEVTOOLS_RELAY.md`, profile `relay@1.1`) with an
 //  executable fixture family beside it; this module is written to that document
 //  and pinned against those fixtures by the .NET test runner. Section
 //  references in the comments below are to that document. F# is the SECOND
@@ -49,9 +49,17 @@ open Fable.Core
 open Fable.Core.JsInterop
 #endif
 
-/// The relay profile this peer speaks.
+/// The relay profile this peer speaks — the HIGHEST it can serve. A client that
+/// accepts only an earlier minor of the same major is answered at that minor
+/// (§6.3, and see `selectProfile`), so advancing this is additive for every
+/// existing client.
 [<Literal>]
-let Profile = "relay@1.0"
+let Profile = "relay@1.1"
+
+/// The profile the read set below was closed at. `read.affordances` is the
+/// `relay@1.1` addition; everything else is `relay@1.0`.
+[<Literal>]
+let private AffordancesMinor = 1
 
 /// The envelope field whose presence marks a message as a relay message
 /// (§3.2 check 4, §4). `$`-prefixed to mark it spec-reserved.
@@ -214,6 +222,12 @@ type RelaySurface =
         ResolveSlot: string -> string -> SlotLookup
         Geometry: string -> DebugGlobal.NodeGeometry option
         FindNodes: string -> string list
+        /// `relay@1.1` — the page's DECLARED natural-language command surface,
+        /// optionally narrowed to one module. Served from whatever affordance
+        /// providers the host registered, never derived from the tree; a page
+        /// with none answers the empty enumeration, which is a well-formed
+        /// answer and not an error (§7.6).
+        Affordances: string option -> Affordances.AffordanceEnumeration
         /// The host's gated apply, taking the canonical JSON this peer produced
         /// from the client's structured op (§8.2).
         Apply: string -> DebugGlobal.ApplyResult
@@ -318,8 +332,50 @@ let isForeignProfile (token: string) : bool =
     | Some(name, major, _), Some(ownName, ownMajor, _) -> name <> ownName || major <> ownMajor
     | _ -> true
 
+/// This peer's own minor. `0` is unreachable — `Profile` is a well-formed
+/// literal — but a total read is preferable to an exception in a page peer.
+let private ownMinor =
+    match parseProfile Profile with
+    | Some(_, _, minor) -> minor
+    | None -> 0
+
+/// The minor a peer should answer a message at: the sender's, clamped to this
+/// peer's own. A `Behind` sender (a newer minor than ours) is served at ours,
+/// which is exactly what "proceed" means in §5.2 — we cannot serve what we do
+/// not implement, and the sender is obliged to tolerate the absence (§10.2).
+let private effectiveMinor (token: string) : int =
+    match parseProfile token with
+    | Some(_, _, minor) -> min minor ownMinor
+    | None -> 0
+
+/// §6.3 — the profile named in `hello.ok` MUST be one the client listed in
+/// `accepts`. This picks the HIGHEST profile that is both acceptable to the
+/// client and speakable by this peer (same name + major, minor ≤ ours); `None`
+/// when the client accepts nothing we can speak, which is the `FOREIGN_PROFILE`
+/// case.
+///
+/// **This is what makes a minor bump additive rather than breaking.** Answering
+/// only with `Profile` would refuse every client whose `accepts` predates our
+/// newest minor — the entire population a backward-compatible bump exists to
+/// keep serving. Within a major we are a strict superset of every earlier
+/// minor, so serving one is honest, and it is the session profile the client
+/// then holds us to.
+let private selectProfile (accepts: string list) : string option =
+    accepts
+    |> List.choose (fun token ->
+        match parseProfile token, parseProfile Profile with
+        | Some(name, major, minor), Some(ownName, ownMajor, _) when
+            name = ownName && major = ownMajor && minor <= ownMinor
+            ->
+            Some(minor, token)
+        | _ -> None)
+    |> function
+        | [] -> None
+        | candidates -> candidates |> List.maxBy fst |> snd |> Some
+
 // ─── The closed request-type set (§4.2) ─────────────────────────────────────
 
+/// The `relay@1.0` read set.
 let private readTypes =
     [ "read.nodeState"
       "read.bindingValue"
@@ -327,8 +383,15 @@ let private readTypes =
       "read.tree"
       "read.findNodes" ]
 
+/// Reads added after `relay@1.0`, paired with the minor that introduced each.
+/// Keeping the minor beside the name is what lets `capabilitiesFor` answer a
+/// client at the profile it negotiated instead of advertising entry points that
+/// do not exist in the profile it speaks.
+let private versionedReadTypes = [ AffordancesMinor, "read.affordances" ]
+
 let private requestTypes =
     "hello" :: "apply" :: "subscribe" :: "unsubscribe" :: readTypes
+    @ (versionedReadTypes |> List.map snd)
 
 /// The capability gating a request type. Every gated type is NAMED for its
 /// capability, so authorisation is a set-membership test rather than a lookup
@@ -450,6 +513,75 @@ let private bindingValuePayload (resolution: DebugGlobal.SlotResolution) : (stri
           "expression", RelayValue.Str "$none"
           "source", RelayValue.Str "Static" ]
 
+// ─── §7.6 `read.affordances` — the declared command surface ─────────────────
+//
+// The relay's second projection of `Affordances.fs` (the console's is
+// `DebugGlobal.enumerationToObj`), and the same document in both. Every
+// OPTIONAL part is omitted rather than nulled: a half-open numeric bound is a
+// real declaration, and a `null` end reads to a client as a bound it must
+// handle rather than one that was never made (§10.2 makes absence the cheap
+// case).
+
+let private commandValue (command: Affordances.DeclaredCommand) : RelayValue =
+    RelayValue.Obj
+        [ "phrase", RelayValue.Str command.Phrase
+          "effect", RelayValue.Str(Affordances.CommandEffect.toWire command.Effect) ]
+
+let private optionalNum (name: string) (value: float option) : (string * RelayValue) list =
+    match value with
+    | Some v -> [ name, RelayValue.Num v ]
+    | None -> []
+
+let private valueHintValue (hint: Affordances.ValueHint) : RelayValue =
+    match hint with
+    | Affordances.ValueHint.OneOf values ->
+        RelayValue.Obj
+            [ "kind", RelayValue.Str "oneOf"
+              "values", RelayValue.Arr(values |> List.map RelayValue.Str) ]
+    | Affordances.ValueHint.NumberRange(min, max, step) ->
+        RelayValue.Obj(
+            [ "kind", RelayValue.Str "numberRange" ]
+            @ optionalNum "min" min
+            @ optionalNum "max" max
+            @ optionalNum "step" step
+        )
+    | Affordances.ValueHint.TextLength(minLength, maxLength) ->
+        RelayValue.Obj(
+            [ "kind", RelayValue.Str "textLength" ]
+            @ optionalNum "minLength" (minLength |> Option.map float)
+            @ optionalNum "maxLength" (maxLength |> Option.map float)
+        )
+
+let private fieldAffordanceValue (field: Affordances.FieldAffordance) : RelayValue =
+    RelayValue.Obj(
+        [ "id", RelayValue.Str field.Id
+          "shape", RelayValue.Str(Affordances.FieldShape.toWire field.Shape)
+          "controllable", RelayValue.Bool field.Controllable
+          "commands", RelayValue.Arr(field.Commands |> List.map commandValue)
+          "aliases",
+          RelayValue.Arr(
+              field.Aliases
+              |> List.map (fun (alias, canonical) ->
+                  RelayValue.Obj [ "alias", RelayValue.Str alias; "value", RelayValue.Str canonical ])
+          ) ]
+        @ (match field.Values with
+           | Some hint -> [ "values", valueHintValue hint ]
+           | None -> [])
+        @ (match field.Description with
+           | Some text -> [ "description", RelayValue.Str text ]
+           | None -> [])
+    )
+
+let private moduleAffordanceValue (m: Affordances.ModuleAffordance) : RelayValue =
+    RelayValue.Obj
+        [ "id", RelayValue.Str m.Id
+          "active", RelayValue.Bool m.Active
+          "fields", RelayValue.Arr(m.Fields |> List.map fieldAffordanceValue)
+          "commands", RelayValue.Arr(m.Commands |> List.map commandValue) ]
+
+let private affordancesPayload (enumeration: Affordances.AffordanceEnumeration) : (string * RelayValue) list =
+    [ "modules", RelayValue.Arr(enumeration.Modules |> List.map moduleAffordanceValue) ]
+
 let private geometryPayload (geometry: DebugGlobal.NodeGeometry) : (string * RelayValue) list =
     [ "x", RelayValue.Num geometry.X
       "y", RelayValue.Num geometry.Y
@@ -473,7 +605,12 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
     let subscriptions = ResizeArray<string * (unit -> unit)>()
     let mutable subscriptionCounter = 0
 
-    let capabilities () : string list =
+    /// The capabilities this peer offers AT a given profile minor. A capability
+    /// introduced after the negotiated minor is not advertised and not served:
+    /// its request type does not exist in the profile the client speaks, so
+    /// advertising it would name an entry point the client's own contract says
+    /// is not there. A client that wants it re-handshakes at the higher minor.
+    let capabilitiesFor (minor: int) : string list =
         if not options.OptedIn then
             []
         else
@@ -483,8 +620,15 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
                 let offerApply = defaultArg options.OfferApply surface.CanApply
 
                 readTypes
+                @ (versionedReadTypes
+                   |> List.filter (fun (since, _) -> since <= minor)
+                   |> List.map snd)
                 @ (if offerApply then [ "apply" ] else [])
                 @ (if options.OfferSubscribe then [ "subscribe" ] else [])
+
+    /// Everything this peer can serve, at its own highest profile — what
+    /// `RelayPeer.Capabilities` reports to a host inspecting its own wiring.
+    let capabilities () : string list = capabilitiesFor ownMinor
 
     // ── read entry points (§7) ──────────────────────────────────────────────
 
@@ -569,6 +713,25 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
                 id
                 (requestType + ".ok")
                 [ "nodeIds", RelayValue.Arr(surface.FindNodes kind |> List.map RelayValue.Str) ]
+
+    /// §7.6 — page-wide with an absent `moduleId`, module-scoped with one.
+    ///
+    /// An unknown module id answers the EMPTY enumeration rather than a
+    /// refusal, and that is a security property rather than a convenience: a
+    /// `MODULE_NOT_FOUND` refusal would let a client tell a module that does
+    /// not exist from one a provider deliberately withheld, which is exactly
+    /// what deny-by-absence exists to prevent. It is also the honest answer, on
+    /// the same reasoning `read.findNodes` (§7.5) answers `[]` for a kind it
+    /// does not recognise.
+    ///
+    /// A present-but-non-string `moduleId` IS refused (`MALFORMED_MESSAGE`):
+    /// that is a client defect, not a question with the answer "none".
+    let readAffordances (surface: RelaySurface) id requestType payload =
+        match RelayValue.field "moduleId" payload with
+        | None -> response id (requestType + ".ok") (affordancesPayload (surface.Affordances None))
+        | Some(RelayValue.Str moduleId) ->
+            response id (requestType + ".ok") (affordancesPayload (surface.Affordances(Some moduleId)))
+        | Some _ -> malformed id requestType "moduleId must be a string when present." "payload.moduleId"
 
     // ── apply (§8) ──────────────────────────────────────────────────────────
 
@@ -752,10 +915,13 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
                                         )
                                     | Some accepts ->
                                         // The profile named in `hello.ok` MUST be
-                                        // one the client listed (§6.3).
-                                        if
-                                            not (accepts |> List.exists (fun a -> RelayValue.asString a = Some Profile))
-                                        then
+                                        // one the client listed (§6.3) — and the
+                                        // HIGHEST such profile this peer can
+                                        // speak, so a client that predates our
+                                        // newest minor is served rather than
+                                        // refused (see `selectProfile`).
+                                        match selectProfile (accepts |> List.choose RelayValue.asString) with
+                                        | None ->
                                             Some(
                                                 refusalWith
                                                     id
@@ -766,7 +932,7 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
                                                         [ "received", RelayValue.Str clientProfile
                                                           "supported", RelayValue.Arr [ RelayValue.Str Profile ] ])
                                             )
-                                        else
+                                        | Some negotiated ->
                                             Some(
                                                 response
                                                     id
@@ -774,9 +940,17 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
                                                     [ "host", RelayValue.Str HostName
                                                       "hostVersion", RelayValue.Str options.HostVersion
                                                       "surfaceVersion", RelayValue.Str surface.SurfaceVersion
-                                                      "profile", RelayValue.Str Profile
+                                                      "profile", RelayValue.Str negotiated
+                                                      // Advertised at the NEGOTIATED
+                                                      // profile, not ours: naming an
+                                                      // entry point the client's own
+                                                      // profile does not define tells
+                                                      // it something it cannot use.
                                                       "capabilities",
-                                                      RelayValue.Arr(capabilities () |> List.map RelayValue.Str)
+                                                      RelayValue.Arr(
+                                                          capabilitiesFor (effectiveMinor negotiated)
+                                                          |> List.map RelayValue.Str
+                                                      )
                                                       "treeRevision", RelayValue.Str(surface.TreeRevision()) ]
                                             )
                                 // A type outside the closed set is
@@ -800,8 +974,15 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
                                     // Re-checked per request: capability
                                     // advertisement is discovery, not a security
                                     // boundary, and a client is not a trusted
-                                    // component (§11.3).
-                                    if not (List.contains capability (capabilities ())) then
+                                    // component (§11.3). Checked at the minor the
+                                    // REQUEST declares, so a 1.0 envelope asking
+                                    // for a 1.1 entry point is refused with the
+                                    // same CAPABILITY_ABSENT it would get from a
+                                    // 1.0 peer — the answer does not depend on
+                                    // which peer happened to receive it.
+                                    if
+                                        not (List.contains capability (capabilitiesFor (effectiveMinor clientProfile)))
+                                    then
                                         Some(
                                             refusalWith
                                                 id
@@ -820,6 +1001,7 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
                                         | "read.bindingValue" -> Some(readBindingValue surface id requestType payload)
                                         | "read.renderedDom" -> Some(readRenderedDom surface id requestType payload)
                                         | "read.findNodes" -> Some(readFindNodes surface id requestType payload)
+                                        | "read.affordances" -> Some(readAffordances surface id requestType payload)
                                         | "apply" -> Some(applyOp surface id requestType payload)
                                         | "subscribe" -> Some(subscribe surface id requestType payload)
                                         | "unsubscribe" -> Some(unsubscribe id requestType payload)
@@ -866,6 +1048,11 @@ let surfaceOf
             | Some node -> SlotLookup.Slot(DebugGlobal.resolveSlot sources node.Kind slot, wireKindName node.Kind)
       Geometry = DebugGlobal.readGeometry
       FindNodes = fun kind -> findNodesByWireKind kind tree
+      // Read PER CALL from the provider registry, never captured: providers are
+      // registered once at host install and the surface is rebuilt on every
+      // render, so a captured enumeration would be the one from the render that
+      // happened to precede the registration.
+      Affordances = Affordances.enumerate
       Apply = DebugGlobal.applyResult runtime options }
 
 // ─── The published live surface ─────────────────────────────────────────────
