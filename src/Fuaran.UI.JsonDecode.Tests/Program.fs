@@ -12,6 +12,17 @@ let main argv =
     | "--emit-corpus" :: dir :: _ ->
         Corpus.emit dir
         0
+    // Phase 442 — write ONLY the render-fidelity manifest into a corpus
+    // directory:
+    //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-fidelity <dir>
+    // `--emit-corpus` co-emits it, so this exists for the declaration-only
+    // change: the fidelity table moved, no fixture did, and regenerating the
+    // whole corpus to publish one artefact would put unrelated churn in a
+    // shared repo.
+    | "--emit-fidelity" :: dir :: _ ->
+        RenderFidelityArtifact.write dir
+        printfn "Emitted %s to %s" RenderFidelityArtifact.fileName dir
+        0
     // Phase 101 cross-host fuzz-sample exchange. `--emit-fuzz-samples <dir>
     // <count>` writes F#-canonical generated samples; `--check-fuzz-samples
     // <dir> [host]` validates the <host>-canonical samples that host's emitter

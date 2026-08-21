@@ -23,6 +23,10 @@
          Corpus.fs (the emitter proves its laws at emit time). -->
     <Compile Include="ElicitationFixtures.fs" />
     <Compile Include="DefectVocabulary.fs" />
+    <!-- Phase 442 — the render-fidelity manifest artefact, generated from the
+         `Fuaran.UI.RenderFidelity` declaration. Must precede Corpus.fs, which
+         co-emits it beside schema.json. -->
+    <Compile Include="RenderFidelityArtifact.fs" />
     <Compile Include="Corpus.fs" />
     <Compile Include="RoundTripTests.fs" />
     <Compile Include="ElicitationTests.fs" />
@@ -31,6 +35,10 @@
     <Compile Include="TransformSourceLeniencyTests.fs" />
     <Compile Include="StyleOmitDefaultTests.fs" />
     <Compile Include="SchemaConformanceTests.fs" />
+    <!-- Phase 442 — the render-fidelity manifest's completeness rule (one row
+         per canonical wire kind, proven to fail on a probe kind), the
+         fixture-pin existence check, and the stale-artefact guard. -->
+    <Compile Include="RenderFidelityTests.fs" />
     <!-- Phase 101 — generative / property-based wire-format fuzzer:
          FsCheck generators (Generators.fs) + idempotence + DU-arm coverage
          properties (IdempotenceProperties.fs). -->

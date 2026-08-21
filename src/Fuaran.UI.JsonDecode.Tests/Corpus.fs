@@ -494,6 +494,16 @@ let emit (outputDir: string) : unit =
 
     File.WriteAllText(Path.Combine(outputDir, "validator", "defect-vocabulary.json"), DefectVocabulary.toJson ())
 
+    // Co-emit the per-NodeKind RENDER-FIDELITY manifest (Phase 442). A fourth
+    // question again: `schema.json` asks what is legal, `idl.json` what the
+    // vocabulary is, `defect-vocabulary.json` what a validator may refuse — and
+    // this one, for a given kind, which render tiers exist, what the
+    // parity-checked fallback pins, and what is declared client-only rich. It
+    // is generated from the `Fuaran.UI.RenderFidelity` declaration and changes
+    // no wire byte. `--emit-fidelity <dir>` writes only this file, for the case
+    // where the fixtures are not being regenerated.
+    RenderFidelityArtifact.write outputDir
+
     // The canonical NodeKind enumeration is the set of true wire `kind.$type`
     // discriminators over the node round-trip fixtures — extracted from the
     // *encoded* bytes, NOT `Kind.name` (which is a display tag that diverges from

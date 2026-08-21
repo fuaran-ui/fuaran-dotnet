@@ -1,7 +1,8 @@
 # Fuaran wire format – moved
 
 The canonical, language-neutral wire-format specification lives in the
-**`fuaran-specification`** repository, alongside the JSON Schema and the executable
+**`fuaran-specification`** repository, alongside the JSON Schema, the generated
+render-fidelity manifest (`render-fidelity.json` — spec §13), and the executable
 conformance corpus it is certified by:
 
 - In a side-by-side workspace checkout: [`../../wire-format-fixtures/WIRE_FORMAT.md`](../../wire-format-fixtures/WIRE_FORMAT.md)

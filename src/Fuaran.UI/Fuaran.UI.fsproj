@@ -56,6 +56,11 @@
     <Compile Include="SlotCapability.fs" />
     <Compile Include="WireSurvivability.fs" />
     <Compile Include="DeadOnDecode.fs" />
+    <!-- Phase 442: the per-NodeKind render-fidelity declaration (which tiers
+         exist, what the parity-checked fallback pins, what is declared
+         client-only rich) + the badge derivation consumers read instead of
+         hand-annotating. Depends only on Types.fs. -->
+    <Compile Include="RenderFidelity.fs" />
     <Compile Include="QueryBinding.fs" />
     <Compile Include="QuerySource.fs" />
     <Compile Include="QueryRefine.fs" />
