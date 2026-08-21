@@ -252,8 +252,14 @@
          concurrent session had already released 0.28.0 for the accessible
          chart root summary. Two sessions minting the same version is the
          same class of collision as two minting the same phase number - the
-         fix is to renumber, never to share the slot.) -->
-    <Version>0.29.0</Version>
+         fix is to renumber, never to share the slot.)
+
+         0.30.0 - dependency floor: the Fuaran.Core.* substrate pins move
+         0.3.0 -> 0.6.0, so every published Fuaran.UI.* package ships a
+         higher Core dependency floor. No managed API, wire shape or
+         emission changes - but the DELIVERED CONTENT moves, and delivered
+         content never rides a same-version repack. -->
+    <Version>0.30.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
