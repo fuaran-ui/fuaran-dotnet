@@ -33,7 +33,9 @@ module Fuaran.UI.Renderer.Server.Render
 //   - Client-library visualisations (`Chart` / `Map` / `DataGrid`) render a
 //     deterministic placeholder + data attributes for later hydration, never a
 //     blank.
-//   - Markdown renders real HTML via Markdig (not the degraded `<pre>`).
+//   - Markdown renders real HTML via the shared deterministic GFM renderer
+//     (`.Core` `Markdown.toHtml`, Phase 292 — which retired the server-side
+//     Markdig), not the degraded `<pre>`.
 //
 //  The document shell (`<html>` / `<head>` / meta / JSON-LD) and the reference
 //  CSS stay host-owned; this renderer emits the body-fragment HTML only.

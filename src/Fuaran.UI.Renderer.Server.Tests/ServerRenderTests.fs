@@ -6,8 +6,9 @@ module Fuaran.UI.Renderer.Server.Tests.ServerRenderTests
 //  The server renderer emits an HTML string on plain .NET. Unlike the Feliz
 //  client renderer (whose .NET-side ReactElement is opaque), the server output
 //  IS a string, so these tests assert directly on the emitted HTML: the shared
-//  class vocabulary, real anchors, real Markdig markdown (not the degraded
-//  <pre>), the Theme :root block, and the client-library SSR placeholders.
+//  class vocabulary, real anchors, real markdown from the shared deterministic
+//  GFM renderer (Phase 292 retired the server-side Markdig) — not the degraded
+//  <pre> — the Theme :root block, and the client-library SSR placeholders.
 //  Class + ARIA parity with the Feliz renderer is locked separately by the
 //  Phase 142 conformance corpus.
 // ============================================================================
