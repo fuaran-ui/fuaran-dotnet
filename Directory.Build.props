@@ -258,8 +258,17 @@
          0.3.0 -> 0.6.0, so every published Fuaran.UI.* package ships a
          higher Core dependency floor. No managed API, wire shape or
          emission changes - but the DELIVERED CONTENT moves, and delivered
-         content never rides a same-version repack. -->
-    <Version>0.30.0</Version>
+         content never rides a same-version repack.
+
+         0.31.0 - dependency floor, same axis as 0.30.0: the Fuaran.Core.*
+         substrate pins move 0.6.0 -> 0.11.0. The intervening Core releases
+         are additive on every surface this tier consumes (a read-side
+         opt-in on the Wire strand, the columnar delta vocabulary and its
+         incremental evaluator, an added conformance family), so the whole
+         solution compiles against them unchanged and no managed API, wire
+         shape or emission moves here. The DELIVERED CONTENT does, and
+         delivered content never rides a same-version repack. -->
+    <Version>0.31.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
