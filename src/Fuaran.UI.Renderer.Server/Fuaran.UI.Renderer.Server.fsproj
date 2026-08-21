@@ -18,6 +18,10 @@
   <ItemGroup>
     <Compile Include="Registry.fs" />
     <Compile Include="Render.fs" />
+    <!-- Email.fs — the Phase 441 email-safe Display-subset projection. After
+         Render.fs (it reuses that module's assembly-internal text + number
+         projection, so a digest cannot disagree with the page it links to). -->
+    <Compile Include="Email.fs" />
     <Compile Include="Hydration.fs" />
     <Compile Include="Resume.fs" />
   </ItemGroup>

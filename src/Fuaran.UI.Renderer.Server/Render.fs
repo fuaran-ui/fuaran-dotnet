@@ -64,7 +64,11 @@ type ServerRenderContext =
 
 // ─── Text + value helpers ──────────────────────────────────────────────────
 
-let private renderText (ctx: ServerRenderContext) (text: TextSource) : string =
+// `internal`, not `private`: the email projection (`Email.fs`) resolves its
+// TextSources through THIS function rather than a copy, so an email digest and
+// the SSR document cannot disagree about what a bound label says. Assembly-
+// internal, so no public API surface changes.
+let internal renderText (ctx: ServerRenderContext) (text: TextSource) : string =
     match text with
     | TextSource.Literal s -> s
     | TextSource.Bound binding ->
@@ -98,7 +102,10 @@ let private renderText (ctx: ServerRenderContext) (text: TextSource) : string =
 
 /// Mirrors the client `formatNumber` (the `CellFormat` projection) so a Metric /
 /// LabelValueRow value reads identically server- and client-side.
-let private formatNumber (format: CellFormat) (value: float) : string =
+/// `internal` for the same reason as `renderText` above — the email projection
+/// formats a Metric / LabelValueRow value through this exact function, so the
+/// figure in a digest reads identically to the figure on the page.
+let internal formatNumber (format: CellFormat) (value: float) : string =
     match format with
     | CellFormat.None -> string value
     | CellFormat.Number(Some decimals) -> value.ToString("F" + string decimals)
@@ -196,7 +203,7 @@ let private fragmentChildren (node: Node<obj>) : Node<obj> list =
 /// Insertion order is preserved against the previous fold: children are pushed
 /// in reverse so they pop left-to-right, and a later `Map.add` for the same
 /// fragment name wins exactly as it did before.
-let private collectFragments (acc: Map<string, Node<obj>>) (node: Node<obj>) : Map<string, Node<obj>> =
+let internal collectFragments (acc: Map<string, Node<obj>>) (node: Node<obj>) : Map<string, Node<obj>> =
     let pending = System.Collections.Generic.Stack<Node<obj>>()
     pending.Push node
     let mutable result = acc

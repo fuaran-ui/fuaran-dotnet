@@ -14,6 +14,12 @@
     <!-- ScalarSsrParityTests certifies the Phase 629/632 scalar-resolution path
          on SSR against the wire-format corpus fixtures that exercise it. -->
     <Compile Include="ScalarSsrParityTests.fs" />
+    <!-- EmailProjectionTests pins Phase 441's email-safe Display-subset
+         projection: the scope line against the render-fidelity manifest, the
+         byte-pinned golden corpus under email-corpus/, and the
+         email-hostile-construct lint (including a planted-construct test, so a
+         clean lint run is evidence rather than silence). -->
+    <Compile Include="EmailProjectionTests.fs" />
     <Compile Include="HydrationTests.fs" />
     <Compile Include="IslandsTests.fs" />
     <!-- CustomContractServerTests pins Phase 164's server twin of the typed

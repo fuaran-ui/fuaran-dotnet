@@ -390,6 +390,145 @@ pre-baked into a `CellKind.Text` column as decorated strings sort only as well a
 the annotation-stripping happens to manage. Let the cell kind carry the type and
 the renderer carry the formatting; sorting then follows for free.
 
+## Email-safe render projection — the Display subset (Phase 441)
+
+`Fuaran.UI.Renderer.Server.Email` is a **second projection of the same tree**,
+aimed at the most hostile render target in computing: HTML email. No
+JavaScript, no external stylesheet, no flexbox or grid worth relying on, and a
+rendering engine per client — Outlook on Windows still lays out through Word.
+A scheduled digest is therefore not a fork of the application; it is another
+emission of it.
+
+```fsharp
+open Fuaran.UI.Renderer.Server
+
+// The content column, for a host's own <body> or a mock-inbox frame:
+let fragment = Email.renderStatic tree
+
+// A complete, sendable document (doctype, meta, <title>):
+let opts = { Email.defaults with LiveUrl = Some "https://acme.example/report" }
+let message = Email.renderDocument opts "Monday briefing" BindingResolver.empty tree
+
+// The structural gate, over any emitted HTML:
+let findings : Email.LintFinding list = Email.lint message
+```
+
+### The scope line
+
+**This is the feature, not a limitation of it.** The projection is bounded hard
+to the **Display subset** — the kinds that carry information rather than
+interaction. Everything interactive projects to a **labelled "open live" link**.
+A `<button>` in an inbox is a control that looks live and cannot be; a `<form>`
+that posts nowhere is worse than an absent one. **The projection never emits a
+half-working control.**
+
+| Disposition | Kinds |
+|---|---|
+| **Rendered** (the Display subset) | Heading · Metric · Fact · LabelValueRow · Badge · Callout · List · Link · Image · Markdown · Progress · CodeBlock · Math · Toast (open) · DataGrid (`staticRows`) |
+| **Structural** (children render; the node carries layout only) | Box (all roles) · SplitPanel · SummaryList · Disclosure · ScrollArea · ErrorBoundary · Switch · FragmentRef |
+| **Open-live link** (never a control) | Button · Form · Select · FileUpload · Filters · Tabs · Stepper · Modal · Chart · Map · Sparkline · Drawing · Custom · Mount · DataGrid (client-library form) |
+| **Omitted** (nothing a static digest can convey) | Icon · Skeleton · FragmentDecl · Toast (closed) |
+
+`Email.scope` is that table **in code**, one row per canonical wire kind with the
+reason attached, and it is what the renderer and the tests agree on — this
+rendering is for a reader. Six declarations in it are narrower than the SSR
+answer, deliberately:
+
+- **Math** renders its **escaped LaTeX source**, not the MathML floor. MathML is
+  correct in a browser and blank in Outlook; readable source beats invisible
+  mathematics.
+- **Chart** and **Drawing** link out rather than emitting SVG, which Word's
+  engine does not draw. A broken picture is worse than a link.
+- **Disclosure** renders **expanded**. `<details>` is inert in Outlook, so a
+  collapsed section is content the reader never learns exists.
+- **ScrollArea** renders in full — an email has no clipping, and hidden content
+  is lost content.
+- **Toast**, when closed, is **omitted rather than `[hidden]`**. `[hidden]` is
+  not honoured everywhere, and a notification leaking into a digest it was
+  closed in is a disclosure bug, not a cosmetic one.
+- **Tabs** links out rather than rendering the active panel. A digest that
+  silently drops the other panels misrepresents how much it contains.
+
+**The interactive set is derived, not restated.** `Email.interactiveWireKinds`
+reads the Phase 442 render-fidelity manifest (`Fuaran.UI.RenderFidelity`) and
+takes every kind whose `RichTier` is `Behavioural` — which means precisely
+"renders inert server-side, gains its behaviour at hydration". The conformance
+corpus asserts each of those has an open-live row in `Email.scope`, and that
+`scope` covers every kind in the manifest. **A new interactive `NodeKind`
+therefore fails the build rather than silently shipping a dead button to an
+inbox.**
+
+### What is guaranteed
+
+- **Table-based layout, inline styles only.** No flex, no grid, no positioning,
+  no classes keyed to a stylesheet that will not arrive. A `Box` with a
+  `Grid(cols)` layout becomes an *N*-across table row — the KPI row a digest
+  opens with, which is exactly the shape flex and grid cannot express here.
+- **Determinism.** Same tree + same options ⇒ same bytes. No clock, no id
+  minting, no iteration over an unordered collection. Text resolves through the
+  SSR renderer's own `renderText` and figures through its own `formatNumber`, so
+  a digest and the page it links to cannot disagree about what a number says.
+- **Byte-pinned fixtures.** Goldens live in
+  [`Fuaran.UI.Renderer.Server.Tests/email-corpus/`](../src/Fuaran.UI.Renderer.Server.Tests/email-corpus/)
+  and are compared byte-for-byte, with determinism asserted separately (a golden
+  that matches proves equality with the file, not with the next render).
+  Regenerate deliberately with `FUARAN_APPROVE_EMAIL_CORPUS=1`, and read the
+  diff — a changed golden is a changed email.
+
+> **These fixtures are IN-REPO, and deliberately not in the shared wire-format
+> corpus.** That corpus is the cross-host *wire* oracle; the email projection is
+> a .NET-side render target no other host implements, so putting fixtures there
+> would assert a conformance obligation on hosts that have no such projection.
+> Same discipline (Phase 142), different scope.
+
+### Client-matrix validation — findings recorded, not hidden
+
+**Status: the structural half ships; real-client validation is outstanding.**
+
+What **is** automated is the falsifiable half. `Email.lint` scans emitted HTML
+for constructs the client matrix is already known to break on, and the corpus
+runs it over every fixture:
+
+| Code | Catches |
+|---|---|
+| `EMAIL-FLEX` / `EMAIL-GRID` | `display:flex`, `display:grid`, `flex-direction`, `grid-template`, `gap:` |
+| `EMAIL-POSITION` | `position: fixed / absolute / sticky` |
+| `EMAIL-EXTERNAL-CSS` | `<link>`, `<style>`, `@import`, `var(--…)` |
+| `EMAIL-SCRIPT` | `<script>`, `javascript:`, inline `on*=` handlers |
+| `EMAIL-CONTROL` | `<form>`, `<button>`, `<input>`, `<select>`, `<textarea>` |
+| `EMAIL-EMBED` | `<iframe>`, `<svg>`, `<canvas>`, `<video>`, `<audio>`, `<object>`, `<embed>` |
+| `EMAIL-DIV-LAYOUT` | any `<div>` — this projection lays out entirely in tables, so one is evidence of an unaudited emission path |
+| `EMAIL-ENTITY-QUOTE` | `&apos;` / `&#39;` inside a style attribute, which HTML4-era mail parsers print literally instead of decoding |
+
+**A clean lint is not a claim of email-safety; a dirty one is proof of the
+opposite.** The asymmetry is the point, and it is why the corpus also plants a
+hostile construct and asserts the lint goes red on it — a scanner that has never
+failed is not evidence.
+
+The intended matrix, and its honest status:
+
+| Client | Layout engine | Status |
+|---|---|---|
+| Outlook 2016 / 2019 / 2021 / Microsoft 365, Windows | Word | **Pending** — the bar; tables + inline styles are chosen for it |
+| Outlook (new) / Outlook.com | Chromium-derived web | **Pending** |
+| Outlook for Mac | WebKit | **Pending** |
+| Gmail web | Gmail sanitiser | **Pending** — strips `<style>`; the inline-only rule is aimed here |
+| Gmail Android / iOS | Gmail sanitiser | **Pending** |
+| Apple Mail, macOS / iOS | WebKit | **Pending** |
+| Yahoo / AOL web | Yahoo sanitiser | **Pending** |
+| Thunderbird | Gecko | **Pending** |
+
+**Pending means pending.** Reaching a real-client test service (Litmus, Email on
+Acid, or an equivalent) is a network-dependent, credentialed step that has not
+been run, so no row above may be reported as passing. The rows are the declared
+target list; the lint is what is currently enforced. When the matrix is run,
+record the findings **in this table** — including the failures. A degradation
+that is written down is a known limit; one that is quietly fixed in a fixture is
+a surprise waiting for the next reader.
+
+Until then, **the mock inbox is the guaranteed-good rendering**, which is what
+the demo shows.
+
 ## Isomorphic hydration (Phase 143)
 
 "Server render for first paint + SEO, hydrate for interactivity, one canonical
