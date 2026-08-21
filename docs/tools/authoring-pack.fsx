@@ -628,6 +628,52 @@ let private markerRegex =
         RegexOptions.Singleline
     )
 
+// The managed-block regex above is the ONLY thing that sees an example, and it
+// requires the fence: a marker PAIR enclosing no ```json block matches nothing,
+// so `--write` emits no content for it and `--check` passes over it in silence.
+// That is a gate that cannot fail on the commonest authoring mistake — adding
+// the markers first and expecting the writer to fill the body — and it was hit
+// live (Phase 750, 2026-07-30), caught only by someone reading the diff.
+//
+// So malformed pairs are found structurally rather than by regex-that-must-match:
+// walk the OPEN markers in order and decide, for each, whether the managed
+// rewriter could possibly have seen it.
+let private openMarkerRegex =
+    Regex(@"<!-- fuaran:example fixture=(?<id>[A-Za-z0-9._-]+) -->")
+
+[<Literal>]
+let private closeMarker = "<!-- /fuaran:example -->"
+
+/// A well-formed body: the fenced ```json block the managed regex requires, and
+/// nothing else of substance between the markers.
+let private fencedJsonBodyRegex =
+    Regex(@"^\r?\n```json\r?\n.*\r?\n```\r?\n$", RegexOptions.Singleline)
+
+/// Every `fuaran:example` marker the managed-block rewriter cannot see, with the
+/// reason. An empty list means every opening marker is part of a pair the
+/// rewriter will process.
+let private malformedExampleMarkers (text: string) : (string * string) list =
+    [ for m in openMarkerRegex.Matches text do
+          let id = m.Groups.["id"].Value
+          let rest = text.Substring(m.Index + m.Length)
+          let closeIdx = rest.IndexOf(closeMarker, StringComparison.Ordinal)
+          let nextOpen = openMarkerRegex.Match rest
+
+          if closeIdx < 0 then
+              yield id, $"the opening marker has no matching `{closeMarker}`"
+          elif nextOpen.Success && nextOpen.Index < closeIdx then
+              yield id, "a second opening marker appears before this one closes (markers do not nest)"
+          else
+              let between = rest.Substring(0, closeIdx)
+
+              if not (fencedJsonBodyRegex.IsMatch between) then
+                  yield
+                      id,
+                      (if between.Trim() = "" then
+                           "the marker pair encloses no fenced ```json block"
+                       else
+                           "the marker pair encloses no well-formed fenced ```json block") ]
+
 // <!-- fuaran:signature-catalogue -->
 // ```ts
 // …declaration-style type surface…   (schema-derived; see buildSignatureCatalogue)
@@ -697,6 +743,20 @@ let reconcileMarkdown (relPath: string) (expectCatalogue: bool) (packSurface: bo
                 let newBody = if writeMode then expected else body
                 $"<!-- fuaran:signature-catalogue -->\n```ts\n{newBody}\n```\n<!-- /fuaran:signature-catalogue -->"
         )
+
+    // Reported in BOTH modes, unlike the drift compares above: a malformed pair is
+    // not something `--write` can fix — the writer has no body to re-emit — so a
+    // silent `--write` would leave the author believing the example landed. In
+    // write mode the verdict block ignores accumulated drift, hence the direct
+    // stderr line here as well.
+    for id, reason in malformedExampleMarkers original do
+        let msg =
+            $"{relPath}: example '{id}' — {reason}. The managed-block rewriter cannot see this pair, so --write emits nothing for it and --check would otherwise pass over it in silence. Add the fenced ```json body (any content — --write replaces it with the canonical fixture)."
+
+        if writeMode then
+            eprintfn "WARNING — %s" msg
+        else
+            reportDrift msg
 
     if matched = 0 then
         reportDrift $"{relPath}: no <!-- fuaran:example --> blocks found (marker contract broken?)"
