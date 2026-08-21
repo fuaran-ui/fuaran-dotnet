@@ -24,7 +24,7 @@ A Fuaran tree is a recursive `Node<'Msg>` record. Every node carries four fields
 | Field | Type | Required | Purpose |
 |---|---|---|---|
 | `Id` | `NodeId` (string-newtype) | ✅ | Stable identifier across turns. Reused on re-emit. |
-| `Kind` | `NodeKind<'Msg>` (DU) | ✅ | What this node renders as (Box / Metric / Markdown / Button / Table / ...). |
+| `Kind` | `NodeKind<'Msg>` (DU) | ✅ | What this node renders as (Box / Metric / Markdown / Button / DataGrid / ...). |
 | `State` | `StateBehaviour<'Msg>` | ✅ | Required slots: `OnLoading`, `OnEmpty`, `OnError`. Always present (the type system enforces this). |
 | `Style` | `SemanticStyle` | ✅ | Tone × Weight × Emphasis cube. Use `SemanticStyle.Default` if you don't have an opinion. |
 
@@ -34,12 +34,12 @@ A Fuaran tree is a recursive `Node<'Msg>` record. Every node carries four fields
 Fuaran.metric "metric-1" {
     Defaults.metric with
         Label = TextSource.Literal "Revenue"
-        Source = Binding.Static 1234.5
+        Value = Binding.Static(Some 1234.5)
         Format = CellFormat.Currency "GBP"
         Tone = ToneVariant.Brand
         Icon = Some(IconSource.Named "trending-up")
         Subtext = Some(TextSource.Literal "vs last month")
-        Trend = Some(Binding.Static 0.07)
+        Trend = Some(Binding.Static(Some 0.07))
         TrendFormat = Some(CellFormat.Percent 1)
 }
 ```
@@ -362,7 +362,7 @@ Authoring example (a canonical metric-selector shape):
 |---|---|---|
 | `Fuaran.grid` (in `Visualisation`) | `DataGrid` | AG Grid-backed editable table. |
 | `Fuaran.chart` | `Chart` | AG Charts-backed chart. |
-| `Fuaran.table` | `Table` | Simple HTML table. |
+| `Fuaran.table` | `DataGrid` (`staticRows` mode) | Simple read-only HTML table. Phase 393 retired the separate `Table` kind: `Fuaran.table` is an authoring shorthand that lowers into `NodeKind.DataGrid` with a `staticRows` payload, so **there is no `"$type": "Table"` on the wire** — emit `DataGrid`. |
 | `Fuaran.map` | `Map` | Geographic map with markers. |
 
 ### Structural kinds
@@ -527,7 +527,7 @@ When Fuaran's typed shape can't express what you need – complex animations bey
 1. **You emit the slot; the host owns the rendering.** Don't author what the rendered shape looks like – that's the developer's `RegisterCustomRenderer` call.
 2. **`moduleId` + `componentId` are stable identifiers.** Treat them like database column names: don't rename without coordinating with the host.
 3. **Props are AI-opaque from the host's perspective too.** Pass the data the renderer needs; the host's renderer function decides how to interpret it.
-4. **DO NOT use `Custom` as a generic catch-all.** If the same idea could be expressed with `Metric` / `Box` (a `Card` or `Group` role) / `Table`, use those. `Custom` exists for genuine vocabulary gaps, not for bypassing the typed-tree contract.
+4. **DO NOT use `Custom` as a generic catch-all.** If the same idea could be expressed with `Metric` / `Box` (a `Card` or `Group` role) / `DataGrid`, use those. `Custom` exists for genuine vocabulary gaps, not for bypassing the typed-tree contract.
 
 ### `ExtraAttributes` is NOT for you
 
@@ -1283,7 +1283,7 @@ The "Pattern shift" framing (`flex justify-between` per row vs Metric cards) fla
 | **`Disclosure`** | The section's open/closed state is part of the user's interaction model. Examples: "Show advanced", "Additional individual entitlements", FAQ entries, optional sub-form sections most users won't fill in. | One bordered container with a click-to-toggle summary; body hidden until opened. |
 | **`Box` (`role: Card`)** | The content is always visible. Cards group related content; disclosures hide it behind a click. | One bordered container, always-visible body. |
 
-Pair with `binding.state` + `OnToggle` when the host's model needs to know whether the section is open (URL deep-linking, server-persisted preferences). Otherwise leave `Open = Binding.Static false` and use `DefaultOpen` to seed the initial state – HTML's native `<details>` element handles the toggle without React state.
+Pair with `binding.state` + `OnToggle` when the host's model needs to know whether the section is open (URL deep-linking, server-persisted preferences). Otherwise leave `Open = Binding.Static(Some false)` and use `DefaultOpen` to seed the initial state – HTML's native `<details>` element handles the toggle without React state.
 
 Multiple disclosures can be open simultaneously – distinct from `Tabs` (at most one active panel). Don't pick `Disclosure` to hack tab-like behaviour; pick `Tabs`.
 

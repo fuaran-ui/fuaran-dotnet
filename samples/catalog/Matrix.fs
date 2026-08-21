@@ -569,7 +569,7 @@ let private demoSummaryList (tone, weight, emphasis) : Node<unit> =
 let private demoDisclosure (tone, weight, emphasis) : Node<unit> =
     // Default closed, with a single nested-disclosure
     // child so the catalog exercises the accordion-in-accordion case.
-    // `Open = Binding.Static false` keeps the renderer's
+    // `Open = Binding.Static(Some false)` keeps the renderer's
     // controlled-mode path on the happy path; `DefaultOpen = true` opens
     // the OUTER disclosure on initial mount before the binding resolves —
     // operators see the nested case at a glance.
