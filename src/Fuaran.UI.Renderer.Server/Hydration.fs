@@ -129,3 +129,24 @@ let renderWithIslands (sources: BindingResolver.BindingSources) (node: Node<obj>
         |> String.concat ""
 
     staticHtml + scripts
+
+/// `renderWithIslands` under an EXPLICIT destination policy (Phase 1026).
+///
+/// A separate entry rather than leaving the islands path on the ambient
+/// default: a host that declares an egress policy and gets it honoured on the
+/// static, hydratable and fragment paths but silently NOT here would have a
+/// policy whose meaning depends on the render mode — worse than one it cannot
+/// set at all, because it reads as working.
+let renderWithIslandsAndEgress
+    (egressPolicy: Sanitize.EgressPolicy)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : string =
+    let staticHtml = Render.renderWithEgress egressPolicy Registry.empty sources node
+
+    let scripts =
+        collectIslands node
+        |> List.map (fun (id, islandNode) -> Render.htmlView (islandScriptElement id islandNode))
+        |> String.concat ""
+
+    staticHtml + scripts

@@ -228,6 +228,16 @@ type EmailOptions =
         /// The inline font stack. Every text element carries it, because email
         /// has no cascade to inherit from.
         FontStack: string
+        /// Phase 1026 — the destination policy every TREE-AUTHORED `href` /
+        /// `src` in the projection is checked against. Defaults to
+        /// `Sanitize.denyNonLocalEgress`.
+        ///
+        /// `LiveUrl` above is deliberately NOT subject to it: that URL is
+        /// supplied by the host in this very record, so checking a host's own
+        /// declaration against the host's own allowlist tests nothing and would
+        /// make the common case ("point at my app") fail unless the host
+        /// remembered to allowlist itself.
+        EgressPolicy: Sanitize.EgressPolicy
     }
 
 /// The conventional defaults: no live surface declared, a 600px column, and a
@@ -242,7 +252,8 @@ type EmailOptions =
 let defaults: EmailOptions =
     { LiveUrl = None
       MaxWidthPx = 600
-      FontStack = "-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }
+      FontStack = "-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+      EgressPolicy = Sanitize.denyNonLocalEgress }
 
 // ─── The inline style vocabulary ────────────────────────────────────────────
 //
@@ -814,12 +825,20 @@ and private renderKind
             Html.ul [ prop.custom ("style", listStyle); prop.children items ]
 
     | NodeKind.Link spec ->
-        // The one genuine interaction an email has. `Sanitize.sanitizeUrlOrBlank`
-        // is the same gate the SSR anchor passes through.
+        // The one genuine interaction an email has, and it passes the same gate
+        // the SSR anchor does — Phase 1026's ambient destination policy, read
+        // off the shared `ServerRenderContext`.
         let resolvedHref =
             BindingResolver.tryResolve ctx.Sources spec.Href |> Option.defaultValue ""
 
-        let safeHref = Sanitize.sanitizeUrlOrBlank resolvedHref
+        // The refusal ATTRIBUTE is deliberately dropped here where the SSR
+        // anchor keeps it: `data-*` attributes do not survive the sanitisers
+        // most mail clients run, so emitting one would put a marker in the
+        // document that cannot be relied on to arrive. The refusal itself is
+        // not dropped — `safeHref` still becomes `egressRefusalUrl`, which is
+        // the part that stops the destination being reached.
+        let safeHref, _ =
+            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Hyperlink resolvedHref
 
         // A protected email link entity-encodes its address so no plaintext
         // address sits in the document source. That defence is aimed at
@@ -836,8 +855,14 @@ and private renderKind
         let resolvedSrc =
             BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
 
+        // Phase 1026 — `Media`, and in a digest this is precisely the tracking
+        // pixel: an undeclared `src` here is fetched by each recipient's client
+        // on open, reporting that this named person read this message.
+        let safeSrc, _ =
+            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
+
         Html.img
-            [ prop.src (Sanitize.sanitizeUrlOrBlank resolvedSrc)
+            [ prop.src safeSrc
               prop.alt (text spec.Alt)
               prop.custom ("border", "0")
               prop.custom ("style", "display:block;max-width:100%;height:auto;border:0;outline:none;") ]
@@ -1095,7 +1120,9 @@ let lint (html: string) : LintFinding list =
 /// Render a tree to an email-safe body fragment — the content column, ready to
 /// drop inside a host's own `<body>` or a mock-inbox frame.
 let renderWith (opts: EmailOptions) (sources: BindingResolver.BindingSources) (node: Node<obj>) : string =
-    let ctx = Render.mkContext sources node
+    // Phase 1026 — the projection's tree-authored destinations are checked
+    // against the policy the host declared in `opts`.
+    let ctx = Render.mkContextWithEgress opts.EgressPolicy Registry.empty sources node
     let body = renderNode opts 1 ctx node
 
     let column =

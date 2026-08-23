@@ -134,16 +134,48 @@ let tests =
               let runtime = GatingRuntime(fun _ -> true)
               let mutable navigated = None
 
+              // Phase 1026 — `permissiveEgress` isolates the SCHEME floor here:
+              // the policy admits every destination, so a refusal can only have
+              // come from the floor, which is what this test is about.
               let outcome =
-                  Render.treeNavigateOutcome runtime "javascript:steal()?token=SECRETVALUE" (fun r ->
-                      navigated <- Some r)
+                  Render.treeNavigateOutcome
+                      runtime
+                      Sanitize.permissiveEgress
+                      "javascript:steal()?token=SECRETVALUE"
+                      (fun r -> navigated <- Some r)
 
               Expect.isNone navigated "nothing navigated"
 
               match outcome with
               | Error reason ->
                   Expect.isFalse (reason.Contains "SECRETVALUE") "the recorded reason carries no query string"
-                  Expect.stringContains reason "not a safe URL" "and still says what happened"
+                  Expect.stringContains reason "not safe to render" "and still says what happened"
+              | Ok() -> failtest "expected a refusal"
+          }
+
+          test "Phase 1026 — an UNDECLARED origin is refused, and the reason names the host, not the path" {
+              // The complement of the test above: the URL is perfectly safe by
+              // the scheme floor, and the DEFAULT policy still refuses it —
+              // which is the whole of what 1026 changed. The recorded reason
+              // must name the host (so an operator can act) and never the query
+              // (which is where an exfiltrated payload sits).
+              let runtime = GatingRuntime(fun _ -> true)
+              let mutable navigated = None
+
+              let outcome =
+                  Render.treeNavigateOutcome
+                      runtime
+                      Sanitize.denyNonLocalEgress
+                      "https://collector.example/collect?token=SECRETVALUE"
+                      (fun r -> navigated <- Some r)
+
+              Expect.isNone navigated "an undeclared origin never reaches the host router"
+
+              match outcome with
+              | Error reason ->
+                  Expect.isFalse (reason.Contains "SECRETVALUE") "the recorded reason carries no query string"
+                  Expect.stringContains reason "collector.example" "it names the host that was refused"
+                  Expect.stringContains reason "route" "and the class it was refused for"
               | Ok() -> failtest "expected a refusal"
           }
 

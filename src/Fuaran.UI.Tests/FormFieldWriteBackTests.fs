@@ -44,7 +44,10 @@ let private makeCtx () : Render.RenderContext<Msg> =
       SessionContext = Map.empty
       // Phase 889 — recording off, the default at every shipped entry point.
       ActionSink = None
-      CurrentNodeId = None }
+      CurrentNodeId = None
+      // Phase 1026 — hand-built test tree; the scheme floor is what these
+      // cases exercise, so the policy is deliberately not the variable.
+      EgressPolicy = Sanitize.permissiveEgress }
 
 // Annotated constructors, not bare record literals: `{ Min = _; Max = _ }`
 // otherwise infers as `NumberFieldConstraints` (same labels, `float option`

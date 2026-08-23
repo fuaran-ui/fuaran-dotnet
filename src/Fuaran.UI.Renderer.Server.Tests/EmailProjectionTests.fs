@@ -130,8 +130,25 @@ type private Fixture =
       Options: Email.EmailOptions
       Node: Node<obj> }
 
-let private liveOpts =
+/// Phase 1026 — every fixture below points at `example.invalid`, and the
+/// ambient default refuses an undeclared origin. So the corpus's options
+/// DECLARE it, which is deliberately the shape a real host writes rather than a
+/// blanket `permissiveEgress`: the goldens then pin the ALLOWED path, and a
+/// regression in the allowlist shows up as refusals across the corpus instead
+/// of being masked by a policy that permits everything.
+///
+/// An empty class list means EVERY class (`allowOrigin`'s ergonomic reading),
+/// which is what a digest needs — it carries `Link` hrefs and `Image` srcs both.
+let private declaredEgress =
+    Sanitize.denyNonLocalEgress
+    |> Sanitize.allowOrigin (Sanitize.HostSuffix "example.invalid") []
+
+let private baseOpts =
     { Email.defaults with
+        EgressPolicy = declaredEgress }
+
+let private liveOpts =
+    { baseOpts with
         LiveUrl = Some "https://example.invalid/report" }
 
 /// The KPI row a digest opens with — three metrics across, which is precisely
@@ -290,22 +307,22 @@ let private interactive: Node<obj> =
 
 let private fixtures: Fixture list =
     [ { Name = "kpi-row"
-        Options = Email.defaults
+        Options = baseOpts
         Node = kpiRow }
       { Name = "briefing"
         Options = liveOpts
         Node = briefing }
       { Name = "display-subset"
-        Options = Email.defaults
+        Options = baseOpts
         Node = displaySubset }
       { Name = "containers"
-        Options = Email.defaults
+        Options = baseOpts
         Node = containers }
       { Name = "open-live"
         Options = liveOpts
         Node = interactive }
       { Name = "open-live-no-url"
-        Options = Email.defaults
+        Options = baseOpts
         Node = interactive } ]
 
 let private renderFixture (f: Fixture) : string =

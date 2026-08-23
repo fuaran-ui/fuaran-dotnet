@@ -51,17 +51,38 @@ type FuaranGiraffeOptions =
         Theme: Theme option
         /// Render cache (default `RenderCache.none`, a zero-cost pass-through).
         Cache: IFuaranRenderCache
+        /// Phase 1026 — the destination policy every `href` / `src` this host
+        /// emits is checked against. Defaults to `Sanitize.denyNonLocalEgress`,
+        /// so an SSR host that declares nothing serves documents pointing
+        /// nowhere but its own origin.
+        ///
+        /// This is the field a Giraffe host sets to declare its egress:
+        ///
+        /// ```fsharp
+        /// { FuaranGiraffeOptions.create with
+        ///     EgressPolicy =
+        ///         Sanitize.denyNonLocalEgress
+        ///         |> Sanitize.allowOrigin (Sanitize.HostSuffix "cdn.example") [ Sanitize.EgressClass.Media ] }
+        /// ```
+        ///
+        /// It is folded into the ETag (and therefore the render CACHE KEY),
+        /// because two policies render the same tree to different documents:
+        /// without it, a cache populated under one policy would serve that
+        /// document to a request rendering under another.
+        EgressPolicy: Sanitize.EgressPolicy
     }
 
 [<RequireQualifiedAccess>]
 module FuaranGiraffeOptions =
     /// Default options — empty binding sources, no Custom renderers, no theme,
-    /// no cache. Record-`with` the fields the host supplies.
+    /// no cache, and no declared egress. Record-`with` the fields the host
+    /// supplies.
     let create: FuaranGiraffeOptions =
         { Sources = BindingResolver.empty
           Customs = ServerRegistry.empty
           Theme = None
-          Cache = RenderCache.none }
+          Cache = RenderCache.none
+          EgressPolicy = Sanitize.denyNonLocalEgress }
 
 [<AutoOpen>]
 module Handlers =
@@ -94,6 +115,22 @@ module Handlers =
         | Some theme -> Theme.toCss theme
         | None -> ""
 
+    /// The deterministic OPTIONS contribution to the ETag: the theme CSS, plus
+    /// the canonical projection of the destination policy (Phase 1026).
+    ///
+    /// The policy belongs in the cache key because it changes the OUTPUT: the
+    /// same tree renders a live `href` under one policy and
+    /// `about:blank#fuaran-egress-refused` under another. Omitting it would let
+    /// a document rendered under a permissive policy be served, from cache, to a
+    /// request whose host had since narrowed it — a stale-cache bug that
+    /// presents as an egress-policy failure, which is the worst way to meet one.
+    ///
+    /// `Sanitize.encodeEgressPolicy` is canonical and sorted, so it is stable
+    /// across runs for the same policy — an ETag input has to be, or every
+    /// process restart invalidates every cached page.
+    let private optionsSig (opts: FuaranGiraffeOptions) : string =
+        themeCss opts + "|" + Sanitize.encodeEgressPolicy opts.EgressPolicy
+
     /// A deterministic signature of the shell + render mode (`sprintf "%A"` over
     /// the shell record is stable across runs for the same value). `Fragment`
     /// renders carry no shell.
@@ -107,7 +144,8 @@ module Handlers =
 
     /// Emit the body fragment for a render mode.
     let private bodyFor (opts: FuaranGiraffeOptions) (mode: BodyMode) (node: Node<obj>) : string =
-        let fragment = Server.renderWith opts.Customs opts.Sources node
+        let fragment =
+            Server.renderWithEgress opts.EgressPolicy opts.Customs opts.Sources node
 
         match mode with
         | Static
@@ -121,7 +159,7 @@ module Handlers =
             // Static page with per-island boundary wrappers + one embedded
             // hydrate `<script>` per `Node.asIsland` subtree (Phase 163). Zero
             // islands ⇒ inert static HTML, no hydrate script.
-            ServerHydration.renderWithIslands opts.Sources node
+            ServerHydration.renderWithIslandsAndEgress opts.EgressPolicy opts.Sources node
 
     /// Write the document/fragment with the strong ETag + `If-None-Match` → 304;
     /// the render cache is consulted before render and populated after.
@@ -159,7 +197,7 @@ module Handlers =
     /// shell HTML.
     let fuaranPage (opts: FuaranGiraffeOptions) (shell: DocumentShell) (node: Node<obj>) : HttpHandler =
         let etag =
-            Etag.compute (CanonicalJson.encodeNode node) (themeCss opts) (shellSig Static (Some shell))
+            Etag.compute (CanonicalJson.encodeNode node) (optionsSig opts) (shellSig Static (Some shell))
 
         let render () =
             Document.render shell (themeBlock opts + bodyFor opts Static node)
@@ -171,7 +209,7 @@ module Handlers =
     /// interactivity. Parity (Phase 142) keeps the mount mismatch-free.
     let fuaranHydratablePage (opts: FuaranGiraffeOptions) (shell: DocumentShell) (node: Node<obj>) : HttpHandler =
         let etag =
-            Etag.compute (CanonicalJson.encodeNode node) (themeCss opts) (shellSig Hydratable (Some shell))
+            Etag.compute (CanonicalJson.encodeNode node) (optionsSig opts) (shellSig Hydratable (Some shell))
 
         let render () =
             Document.render shell (themeBlock opts + bodyFor opts Hydratable node)
@@ -185,7 +223,7 @@ module Handlers =
     /// `Renderer.Hydration.hydrateIslands` to attach exactly those subtrees.
     let fuaranIslandsPage (opts: FuaranGiraffeOptions) (shell: DocumentShell) (node: Node<obj>) : HttpHandler =
         let etag =
-            Etag.compute (CanonicalJson.encodeNode node) (themeCss opts) (shellSig Islands (Some shell))
+            Etag.compute (CanonicalJson.encodeNode node) (optionsSig opts) (shellSig Islands (Some shell))
 
         let render () =
             Document.render shell (themeBlock opts + bodyFor opts Islands node)
@@ -197,7 +235,7 @@ module Handlers =
     /// cache apply identically.
     let fuaranFragment (opts: FuaranGiraffeOptions) (node: Node<obj>) : HttpHandler =
         let etag =
-            Etag.compute (CanonicalJson.encodeNode node) (themeCss opts) (shellSig Fragment None)
+            Etag.compute (CanonicalJson.encodeNode node) (optionsSig opts) (shellSig Fragment None)
 
         let render () = bodyFor opts Fragment node
 

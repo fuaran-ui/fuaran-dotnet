@@ -214,18 +214,21 @@ let tests =
                   let runtime = GatingRuntime(fun _ -> true) // gate WIDE OPEN
                   let reached = ResizeArray<string>()
 
-                  Render.treeNavigate (runtime :> IFuaranRuntime) route reached.Add
+                  Render.treeNavigate (runtime :> IFuaranRuntime) Sanitize.permissiveEgress route reached.Add
 
                   Expect.equal reached.Count 0 (sprintf "'%s' never reaches the host router" route)
                   Expect.equal runtime.Warnings.Count 1 (sprintf "'%s' refusal is recorded" route)
 
-                  Expect.stringContains runtime.Warnings[0] "not a safe URL" "the diagnostic says why it was refused"
+                  Expect.stringContains
+                      runtime.Warnings[0]
+                      "not safe to render"
+                      "the diagnostic says why it was refused"
 
               // A legitimate route reaches the router, SANITISED (trimmed), and
               // only when the gate allows it.
               let ok = GatingRuntime(fun _ -> true)
               let okReached = ResizeArray<string>()
-              Render.treeNavigate (ok :> IFuaranRuntime) "  /reports/42  " okReached.Add
+              Render.treeNavigate (ok :> IFuaranRuntime) Sanitize.permissiveEgress "  /reports/42  " okReached.Add
               Expect.equal (List.ofSeq okReached) [ "/reports/42" ] "an ordinary route arrives sanitised"
               Expect.equal ok.Warnings.Count 0 "no diagnostic for a safe allowed route"
 
@@ -233,7 +236,7 @@ let tests =
               // second way to say yes.
               let denied = GatingRuntime(fun _ -> false)
               let deniedReached = ResizeArray<string>()
-              Render.treeNavigate (denied :> IFuaranRuntime) "/reports/42" deniedReached.Add
+              Render.treeNavigate (denied :> IFuaranRuntime) Sanitize.permissiveEgress "/reports/42" deniedReached.Add
               Expect.equal deniedReached.Count 0 "a safe route is still gated"
               Expect.stringContains denied.Warnings[0] "denied by policy gate" "the gate, not the sanitiser, refused"
           }

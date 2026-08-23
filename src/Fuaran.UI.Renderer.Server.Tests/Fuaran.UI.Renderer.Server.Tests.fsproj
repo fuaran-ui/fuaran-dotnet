@@ -11,6 +11,7 @@
     <Compile Include="ServerRenderTests.fs" />
     <Compile Include="DrawingSvgTests.fs" />
     <Compile Include="SsrParityTests.fs" />
+    <Compile Include="EgressRenderTests.fs" />
     <!-- ScalarSsrParityTests certifies the Phase 629/632 scalar-resolution path
          on SSR against the wire-format corpus fixtures that exercise it. -->
     <Compile Include="ScalarSsrParityTests.fs" />

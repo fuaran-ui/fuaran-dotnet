@@ -92,6 +92,19 @@ type DriverServices<'Msg> =
         /// them. Phase 866 settled that a user action is never a `TreeOp`, so
         /// the two cannot share a record or a sink.
         ActionRecording: ActionRecordingServices option
+        /// Phase 1026 — the destination policy the driver checks every
+        /// tree-declared route against, the driver-path twin of
+        /// `RenderContext.EgressPolicy`. Defaults to
+        /// `Sanitize.denyNonLocalEgress` in `create`; `createPermissive` opens
+        /// it alongside the dispatch gate, on the reasoning its own doc gives —
+        /// a constructor named for opting out of one default should not leave a
+        /// host quietly holding another.
+        ///
+        /// This seam matters more than the renderer's, not less: the driver
+        /// ships a `ClientEffect.Navigate` that the client shim hands straight
+        /// to whatever router the host wired, so an undeclared destination here
+        /// is a navigation that HAPPENS rather than a link someone might click.
+        EgressPolicy: Fuaran.UI.Renderer.Sanitize.EgressPolicy
     }
 
 /// The Phase 889 user-action recording seam, as one optional field on
@@ -134,14 +147,25 @@ module DriverServices =
           InterpretSubmitCall = None
           OnApply = ignore
           OnReject = ignore
-          ActionRecording = None }
+          ActionRecording = None
+          EgressPolicy = Fuaran.UI.Renderer.Sanitize.denyNonLocalEgress }
 
     /// **The named opt-in back to the pre-0.14.0 allow-everything gate**
-    /// (Phase 782). Identical to `create` except that `CanDispatch` permits
-    /// every action.
+    /// (Phase 782), and — since Phase 1026 — to unrestricted egress with it.
+    /// Identical to `create` except that `CanDispatch` permits every action and
+    /// `EgressPolicy` permits every destination.
+    ///
+    /// Opening both is deliberate. A host reaching for a constructor whose name
+    /// says "permissive" is declaring that it trusts the trees it drives;
+    /// leaving the destination policy closed underneath that would produce a
+    /// host that believes it has opted out and has not, and the failure would
+    /// surface as a route mysteriously not firing rather than as a policy
+    /// decision anyone made. A host that wants one and not the other says so:
+    /// `{ createPermissive render with EgressPolicy = Sanitize.denyNonLocalEgress }`.
     let createPermissive (renderFragment: Node<'Msg> -> string) : DriverServices<'Msg> =
         { create renderFragment with
-            CanDispatch = fun _ -> true }
+            CanDispatch = fun _ -> true
+            EgressPolicy = Fuaran.UI.Renderer.Sanitize.permissiveEgress }
 
 /// One connection's live state: the server-held model + the Elmish loop + the
 /// current rendered tree (the diff baseline) + the injected services.
@@ -194,10 +218,19 @@ let rec private interpret
     // unsafe scheme emitted here is a `javascript:`-URL sink on the client. A
     // refused route emits NO effect rather than a neutered one: `about:blank` is
     // a navigation the author did not ask for.
+    // Phase 1026 — and the DESTINATION is checked here too, not only the
+    // scheme. The floor alone left an unconfigured driver shipping a navigation
+    // to any well-formed host a decoded tree named, which is an open redirect
+    // the host performs on the tree's say-so.
     | Action.Navigate route ->
-        match Fuaran.UI.Renderer.Sanitize.sanitizeUrl route with
-        | Some safe -> [], [ ClientEffect.Navigate safe ]
-        | None -> [], []
+        match
+            Fuaran.UI.Renderer.Sanitize.checkDestination
+                services.EgressPolicy
+                Fuaran.UI.Renderer.Sanitize.EgressClass.Route
+                route
+        with
+        | Fuaran.UI.Renderer.Sanitize.EgressVerdict.Allowed safe -> [], [ ClientEffect.Navigate safe ]
+        | _ -> [], []
     | Action.WriteToClipboard text -> [], [ ClientEffect.WriteToClipboard text ]
     | Action.ReadFileBody(_, _, encoding, _) ->
         let enc =

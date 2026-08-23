@@ -315,6 +315,40 @@ type RenderContext<'Msg> =
         /// Set ONLY when `ActionSink` is wired — an unrecorded render pays no
         /// per-node record copy (GP 13).
         CurrentNodeId: string option
+        /// Phase 1026 — the AMBIENT destination policy. Every `href`, `src` and
+        /// route the renderer emits from this tree is checked against it, with
+        /// no caller opt-in anywhere on the path.
+        ///
+        /// Phase 897 shipped the policy *available*: the seam functions existed
+        /// and every emission site still called `sanitizeUrlOrBlank`, so a
+        /// decoded tree's egress was policy-checked only where a host had
+        /// remembered to ask. A guarantee that holds where it is remembered is
+        /// not a guarantee, which is why this field is on the record every
+        /// renderer call already threads rather than a parameter on the
+        /// emission helpers.
+        ///
+        /// **The default is `Sanitize.denyNonLocalEgress` at every convenience
+        /// entry point**, on the same argument as the dispatch gate's: an
+        /// emission cannot declare its own egress, so absent a host's
+        /// declaration it gets none. `Sanitize.permissiveEgress` is reached BY
+        /// NAME, so a grep for `permissiveEgress` finds every host that has
+        /// opted back out — the permissive choice is visible in the host's own
+        /// source instead of inherited silently.
+        ///
+        /// Two consequences a host meets on adoption, both deliberate. A
+        /// `mailto:` / `tel:` href is REFUSED under the default
+        /// (`AllowNonNetwork = false`): those are egress channels with no host
+        /// for a rule to name, so they can only be permitted wholesale, and
+        /// permitting them by omission is the failure this default exists to
+        /// prevent. And same-origin destinations are ALLOWED
+        /// (`AllowLocal = true`), so ordinary in-app links and assets render
+        /// unchanged — the default denies leaving, not linking.
+        ///
+        /// A refused destination RENDERS as a refusal
+        /// (`Sanitize.egressRefusalUrl` + `Sanitize.egressRefusalAttribute`),
+        /// never as a silent neuter: "nothing happened" and "this was refused"
+        /// are different facts, and only one of them is debuggable.
+        EgressPolicy: Sanitize.EgressPolicy
     }
 
 // ─── Text-source rendering — handles i18n + bound text ─────────────────────
@@ -556,25 +590,47 @@ let treeStateWrite (runtime: Runtime.IFuaranRuntime) (key: string) (write: unit 
 ///
 /// Public so the .NET tests can pin the decision without a browser render
 /// (precedent: `applyDispatchGate`).
+/// Phase 1026 — the policy parameter is what makes this AMBIENT rather than
+/// available. The scheme floor alone answers "is this route safe to have"; it
+/// has nothing to say about "is this destination one the composition declared",
+/// and only the second question closes an open redirect to an attacker's host.
+/// A refusal here emits nothing at all rather than navigating to
+/// `about:blank` — unlike an `href`, where the anchor must stay structurally
+/// valid, a navigation the author never asked for is not an improvement on a
+/// refused one.
 let treeNavigateOutcome
     (runtime: Runtime.IFuaranRuntime)
+    (policy: Sanitize.EgressPolicy)
     (route: string)
     (navigate: string -> unit)
     : Result<unit, string> =
-    match Sanitize.sanitizeUrl route with
-    | None ->
-        runtime.Warn(sprintf "[Fuaran] Action.Navigate refused — route is not a safe URL: %s" route)
-        // The RECORDED reason carries the scrubbed path, not the raw route: a
-        // Phase 889 record is durable and a route's query string is user data.
-        // The `Warn` above keeps the full route because a diagnostic a
-        // developer reads in their own console is a different surface from a
-        // log that outlives the session.
-        Error(sprintf "Action.Navigate refused — route is not a safe URL: %s" (ActionInvocation.routePath route))
-    | Some safeRoute ->
+    match Sanitize.checkDestination policy Sanitize.EgressClass.Route route with
+    | Sanitize.EgressVerdict.Allowed safeRoute ->
         applyDispatchGateOutcome runtime (Runtime.ActionDescriptor.Navigate safeRoute) (fun () -> navigate safeRoute)
+    | refused ->
+        // `describeEgressVerdict` carries the CLASS and — where there is one —
+        // the HOST, never the path or query, which is exactly where an
+        // exfiltrated payload would be sitting. The `Warn` may carry the raw
+        // route because a diagnostic a developer reads in their own console is
+        // a different surface from a log that outlives the session; the
+        // RECORDED reason keeps the scrubbed path, because a Phase 889 record
+        // is durable and a route's query string is user data.
+        runtime.Warn(sprintf "[Fuaran] Action.Navigate refused — %s: %s" (Sanitize.describeEgressVerdict refused) route)
 
-let treeNavigate (runtime: Runtime.IFuaranRuntime) (route: string) (navigate: string -> unit) : unit =
-    treeNavigateOutcome runtime route navigate |> ignore
+        Error(
+            sprintf
+                "Action.Navigate refused — %s: %s"
+                (Sanitize.describeEgressVerdict refused)
+                (ActionInvocation.routePath route)
+        )
+
+let treeNavigate
+    (runtime: Runtime.IFuaranRuntime)
+    (policy: Sanitize.EgressPolicy)
+    (route: string)
+    (navigate: string -> unit)
+    : unit =
+    treeNavigateOutcome runtime policy route navigate |> ignore
 
 /// The recursive action interpreter. NOT the emission point — see
 /// `runActionAs` below and the `Chain` note there.
@@ -641,7 +697,8 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         gate (Runtime.ActionDescriptor.Notify channel) (fun () -> ctx.Runtime.Notify(channel, payload))
     // Phase 782 — sanitise-then-gate on the ACTION path, not only where an
     // href/src is rendered. See `treeNavigate`.
-    | Action.Navigate route -> note (treeNavigateOutcome ctx.Runtime route (fun safe -> ctx.Runtime.Navigate safe))
+    | Action.Navigate route ->
+        note (treeNavigateOutcome ctx.Runtime ctx.EgressPolicy route (fun safe -> ctx.Runtime.Navigate safe))
     | Action.SetState(key, value, valueFrom) ->
         // Phase 782 — gated, and host-reserved keys refused. Scope-aware routing
         // (Phase 266): a guest rendered under `Some scopeId` writes to its own
@@ -2349,14 +2406,25 @@ let rec private renderKind
     | NodeKind.Fact spec -> renderFact ctx spec
     | NodeKind.Link spec ->
         // A real `<a href>` — crawlable + works with JS disabled. `href`
-        // resolves the binding then passes through `Sanitize.sanitizeUrlOrBlank`
-        // (blocks javascript:/vbscript:/raw data:; rejected URLs collapse to
-        // `about:blank` so the anchor stays structurally valid). `rel` /
-        // `target` emit when set; `download` emits a bare boolean attribute.
+        // resolves the binding then passes through the ambient destination
+        // policy (Phase 1026): the scheme floor blocks
+        // javascript:/vbscript:/raw data:, and the origin allowlist then
+        // decides whether this tree may point at that host AT ALL. A refused
+        // href renders as `about:blank#fuaran-egress-refused` carrying the
+        // class + host, so the refusal is visible in the document rather than
+        // only in the logs. `rel` / `target` emit when set; `download` emits a
+        // bare boolean attribute.
+        //
+        // `Download` is deliberately NOT the class here even when
+        // `spec.Download` is set: the class names the SINK the browser reaches,
+        // and a `download` anchor is still a hyperlink the user must act on.
+        // Scoping it separately would let a policy that denied hyperlinks admit
+        // the same destination by flipping one boolean on the tree.
         let resolvedHref =
             BindingResolver.tryResolve ctx.Sources spec.Href |> Option.defaultValue ""
 
-        let safeHref = Sanitize.sanitizeUrlOrBlank resolvedHref
+        let safeHref, egressAttrs =
+            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Hyperlink resolvedHref
 
         let optionalAttrs: IReactProperty list =
             [ match spec.Rel with
@@ -2394,16 +2462,28 @@ let rec private renderKind
                 @ optionalAttrs
                 // Phase 951 — the node's a11y projection lands on the anchor.
                 @ toProps semanticAttrs
+                // Phase 1026 — the refusal marker rides the element that
+                // carries the refused href, so a reader of the DOM sees WHY
+                // this anchor points at `about:blank`. Empty on an allow.
+                @ toProps egressAttrs
                 @ [ prop.text (renderText ctx spec.Label) ]
             )
     | NodeKind.Image spec ->
-        // Phase 287 — real `<img>`; `src` resolves then passes through
-        // `Sanitize.sanitizeUrlOrBlank` (blocks javascript:/vbscript:/file:);
-        // `alt` is mandatory; `variant` appends an Avatar / Rounded class.
+        // Phase 287 — real `<img>`; `alt` is mandatory; `variant` appends an
+        // Avatar / Rounded class.
+        //
+        // Phase 1026 — `src` is the `Media` class, and it is the one that
+        // matters most: the browser fetches it with NO user act, so RENDERING
+        // the tree IS the request. `https://collector.example/?s=<bound state>`
+        // passes every scheme check in `Sanitize` — allowlisted scheme,
+        // well-formed host, no script anywhere — and exfiltrates on sight. Only
+        // the origin allowlist closes it, which is why the ambient default
+        // denies rather than waiting to be asked.
         let resolvedSrc =
             BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
 
-        let safeSrc = Sanitize.sanitizeUrlOrBlank resolvedSrc
+        let safeSrc, egressAttrs =
+            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
 
         let variantClass =
             match spec.Variant with
@@ -2417,6 +2497,7 @@ let rec private renderKind
               prop.src safeSrc
               prop.alt (renderText ctx spec.Alt) ]
             @ toProps semanticAttrs
+            @ toProps egressAttrs
         )
     | NodeKind.List spec ->
         // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
@@ -2951,7 +3032,15 @@ let rec private renderKind
                       // interaction as the render that mounted it (Phase 330).
                       SessionContext = ctx.SessionContext
                       ActionSink = ctx.ActionSink
-                      CurrentNodeId = ctx.CurrentNodeId }
+                      CurrentNodeId = ctx.CurrentNodeId
+                      // Phase 1026 — the guest INHERITS the host's egress
+                      // policy. A Mount guest is composed by a host-side loader
+                      // but its tree is not thereby more trusted than the tree
+                      // that mounted it, and a guest able to widen the policy it
+                      // renders under would make the ambient default reachable
+                      // around. Narrowing for a guest is a host act, available
+                      // by constructing the guest context directly.
+                      EgressPolicy = ctx.EgressPolicy }
 
                 // Route through the late-bound hook (a function *value*), not a
                 // direct call into the recursive `render` group at type obj —
@@ -4848,15 +4937,20 @@ and private renderGridCell
                                   | Some f -> runAction ctx (f row)
                                   | None -> ()) ] ] ]
     | CellKindErased.Link(href, label) ->
-        // Pass through `Sanitize.sanitizeUrlOrBlank` so a
-        // `javascript:` / `vbscript:` / unknown-scheme href emitted from
-        // an AI-supplied row accessor renders as `about:blank` instead
-        // of executing. Same-origin relative paths and the http/https/
-        // mailto/tel allowlist pass through unchanged.
-        Html.a
+        // Phase 1026 — the ambient destination policy, same as the `Link` node.
+        // Worth stating that this call site is not an afterthought: the href
+        // here comes from a ROW ACCESSOR over bound data, so a single decoded
+        // tree emits one per row, and a grid pointed at attacker-influenced
+        // rows is the highest-volume egress surface the renderer has.
+        let safeHref, egressAttrs =
+            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Hyperlink (href row)
+
+        Html.a (
             [ prop.className "fuaran-grid-cell-link"
-              prop.href (Sanitize.sanitizeUrlOrBlank (href row))
+              prop.href safeHref
               prop.text (renderText ctx (label row)) ]
+            @ toProps egressAttrs
+        )
     | CellKindErased.Pill(label, tone) ->
         Html.span
             [ prop.className (sprintf "fuaran-grid-cell-pill fuaran-pill-%s" (Theme.toneVar (tone row)))
@@ -5329,7 +5423,61 @@ let renderWithSources
           Scope = None
           SessionContext = Map.empty
           ActionSink = None
-          CurrentNodeId = None }
+          CurrentNodeId = None
+          // Phase 1026 — default-deny. A host that needs a wider posture
+          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
+          // constructing the `RenderContext` directly), so the opt-out is
+          // visible in the host's own source.
+          EgressPolicy = Sanitize.denyNonLocalEgress }
+        node
+
+/// `renderWithSources` with an EXPLICIT destination policy (Phase 1026) — the
+/// named opt-out from the ambient default-deny.
+///
+/// A separate entry point rather than an optional parameter, and named rather
+/// than inferred, for the reason every other gate inversion in this codebase is:
+/// a grep for `permissiveEgress` (or for this function) finds every host that
+/// has widened its egress, so the choice is visible in the host's own source
+/// instead of inherited silently. Passing `Sanitize.denyNonLocalEgress` here is
+/// exactly `renderWithSources`.
+///
+/// Three postures a host reaches for, in descending order of how much they
+/// should have to justify:
+///
+///   - `Sanitize.denyNonLocalEgress |> Sanitize.allowOrigin (Sanitize.HostSuffix "cdn.example") [ Sanitize.EgressClass.Media ]`
+///     — the shape to prefer. Declares WHAT may be reached and FOR WHAT, and
+///     stays default-deny for everything else.
+///   - `Sanitize.denyNonLocalEgress` with `AllowNonNetwork = true` — the
+///     narrowest fix for a surface whose only external destination is a
+///     `mailto:` / `tel:` link.
+///   - `Sanitize.permissiveEgress` — every destination, for a HAND-AUTHORED
+///     tree where the author is the trust boundary. Correct for a catalog or a
+///     sample; wrong for anything that renders a decoded tree.
+///
+/// Hosts that need a policy AND a telemetry sink / session context / action
+/// sink construct the `RenderContext` record directly — it is public, and
+/// minting a sixth entry-point permutation per field is the combinatorial
+/// growth this family is already close to.
+let renderWithSourcesAndEgress
+    (sources: BindingResolver.BindingSources)
+    (egressPolicy: Sanitize.EgressPolicy)
+    (dispatch: 'Msg -> unit)
+    (node: Node<'Msg>)
+    : ReactElement =
+    render
+        { Sources = sources
+          Runtime = Runtime.diagnostic
+          VisAdapter = VisAdapter.noOp<'Msg>
+          Dispatch = dispatch
+          TelemetrySink = None
+          InErrorBoundary = false
+          Fragments = collectFragments Map.empty node
+          ExpandingFragments = Set.empty
+          Scope = None
+          SessionContext = Map.empty
+          ActionSink = None
+          CurrentNodeId = None
+          EgressPolicy = egressPolicy }
         node
 
 /// Convenience entry point that pre-wires the optional
@@ -5358,7 +5506,12 @@ let renderWithSourcesAndSink
           Scope = None
           SessionContext = Map.empty
           ActionSink = None
-          CurrentNodeId = None }
+          CurrentNodeId = None
+          // Phase 1026 — default-deny. A host that needs a wider posture
+          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
+          // constructing the `RenderContext` directly), so the opt-out is
+          // visible in the host's own source.
+          EgressPolicy = Sanitize.denyNonLocalEgress }
         node
 
 /// Correlation-aware render entry (Phase 330). As `renderWithSourcesAndSink`,
@@ -5396,7 +5549,12 @@ let renderWithSourcesSinkAndContext
           Scope = None
           SessionContext = sessionContext
           ActionSink = None
-          CurrentNodeId = None }
+          CurrentNodeId = None
+          // Phase 1026 — default-deny. A host that needs a wider posture
+          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
+          // constructing the `RenderContext` directly), so the opt-out is
+          // visible in the host's own source.
+          EgressPolicy = Sanitize.denyNonLocalEgress }
         node
 
 /// User-action-recording render entry (Phase 889). As
@@ -5436,7 +5594,12 @@ let renderWithSourcesSinkContextAndActionSink
           Scope = None
           SessionContext = sessionContext
           ActionSink = actionSink
-          CurrentNodeId = None }
+          CurrentNodeId = None
+          // Phase 1026 — default-deny. A host that needs a wider posture
+          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
+          // constructing the `RenderContext` directly), so the opt-out is
+          // visible in the host's own source.
+          EgressPolicy = Sanitize.denyNonLocalEgress }
         node
 
 /// Scope-aware render entry (Phase 266, §4o). Renders `node` under an explicit
@@ -5470,7 +5633,12 @@ let renderWithSourcesInScope
           Scope = Some scopeId
           SessionContext = Map.empty
           ActionSink = None
-          CurrentNodeId = None }
+          CurrentNodeId = None
+          // Phase 1026 — default-deny. A host that needs a wider posture
+          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
+          // constructing the `RenderContext` directly), so the opt-out is
+          // visible in the host's own source.
+          EgressPolicy = Sanitize.denyNonLocalEgress }
         node
 
 /// Scope-aware render entry WITH a telemetry sink — `renderWithSourcesInScope`
@@ -5518,7 +5686,12 @@ let renderWithSourcesInScopeAndSink
           Scope = Some scopeId
           SessionContext = Map.empty
           ActionSink = None
-          CurrentNodeId = None }
+          CurrentNodeId = None
+          // Phase 1026 — default-deny. A host that needs a wider posture
+          // reaches for it BY NAME (`renderWithSourcesAndEgress`, or by
+          // constructing the `RenderContext` directly), so the opt-out is
+          // visible in the host's own source.
+          EgressPolicy = Sanitize.denyNonLocalEgress }
         node
 
 // ─── State-reactive render (Phase 106) ─────────────────────────────────────

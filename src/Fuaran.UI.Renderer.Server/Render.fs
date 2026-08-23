@@ -62,6 +62,23 @@ type ServerRenderContext =
         /// for a public surface cannot invoke a renderer registered for a
         /// privileged one — the server twin of the client's `RenderContext.Scope`.
         Scope: string option
+        /// Phase 1026 — the ambient destination policy, the server twin of the
+        /// client's `RenderContext.EgressPolicy`. Same default
+        /// (`Sanitize.denyNonLocalEgress`), same reasoning, same
+        /// reached-by-name opt-out.
+        ///
+        /// **It has to move with the client's, not after it.** The two tiers'
+        /// emitted DOM is parity-locked (`SsrParityTests`, `docs/SSR.md` "SSR
+        /// parity contract"), so a policy that refused an origin on one tier and
+        /// admitted it on the other would not be a partial adoption — it would
+        /// be a parity defect, and the tier that admitted it would be the one a
+        /// crawler reads.
+        ///
+        /// If anything the server side is the sharper of the two: an SSR
+        /// document is emitted once and read by every visitor, so an undeclared
+        /// `Image.src` in a decoded tree becomes a request from each of their
+        /// browsers, carrying each of their IP addresses and referers.
+        EgressPolicy: Sanitize.EgressPolicy
     }
 
 // ─── Text + value helpers ──────────────────────────────────────────────────
@@ -896,7 +913,11 @@ and private renderKind
         let resolvedHref =
             BindingResolver.tryResolve ctx.Sources spec.Href |> Option.defaultValue ""
 
-        let safeHref = Sanitize.sanitizeUrlOrBlank resolvedHref
+        // Phase 1026 — the ambient destination policy; the client tier's `Link`
+        // arm makes the identical call with the identical class, which is what
+        // keeps the two emitted hrefs parity-locked.
+        let safeHref, egressAttrs =
+            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Hyperlink resolvedHref
 
         match spec.Protection with
         | Some LinkProtection.Email when safeHref.StartsWith("mailto:", System.StringComparison.Ordinal) ->
@@ -947,13 +968,18 @@ and private renderKind
                        [])
                 // Phase 951 — the node's a11y projection lands on the anchor.
                 @ toProps semanticAttrs
+                // Phase 1026 — the refusal marker rides the element carrying
+                // the refused href. Empty on an allow.
+                @ toProps egressAttrs
                 @ [ prop.text (renderText ctx spec.Label) ]
             )
     | NodeKind.Image spec ->
         let resolvedSrc =
             BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
 
-        let safeSrc = Sanitize.sanitizeUrlOrBlank resolvedSrc
+        // Phase 1026 — `Media`: the class the browser fetches with no user act.
+        let safeSrc, egressAttrs =
+            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
 
         let variantClass =
             match spec.Variant with
@@ -967,6 +993,7 @@ and private renderKind
               prop.src safeSrc
               prop.alt (renderText ctx spec.Alt) ]
             @ toProps semanticAttrs
+            @ toProps egressAttrs
         )
     | NodeKind.List spec ->
         let items =
@@ -1904,7 +1931,29 @@ let mkContextWith
     { Sources = sources
       Fragments = collectFragments Map.empty node
       Customs = customs
-      Scope = None }
+      Scope = None
+      // Phase 1026 — default-deny, reached-by-name opt-out
+      // (`mkContextWithEgress`). This is the server tier's single context choke
+      // point, so the default lands on every entry point below by construction
+      // rather than by each one remembering it.
+      EgressPolicy = Sanitize.denyNonLocalEgress }
+
+/// `mkContextWith` with an EXPLICIT destination policy (Phase 1026) — the named
+/// opt-out from the ambient default-deny, and the server twin of the client's
+/// `renderWithSourcesAndEgress`.
+///
+/// The policy a Giraffe host declares arrives here; see
+/// `FuaranGiraffeOptions.EgressPolicy`. A host composing this tier directly
+/// builds its policy with `Sanitize.allowOrigin` and passes it in. Passing
+/// `Sanitize.denyNonLocalEgress` is exactly `mkContextWith`.
+let mkContextWithEgress
+    (egressPolicy: Sanitize.EgressPolicy)
+    (customs: Registry.ServerCustomRendererRegistry)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : ServerRenderContext =
+    { mkContextWith customs sources node with
+        EgressPolicy = egressPolicy }
 
 /// Build a `ServerRenderContext` under a named render SCOPE (Phase 783) —
 /// Custom-renderer lookup is then constrained to renderers registered for that
@@ -1948,6 +1997,17 @@ let renderWith
     (node: Node<obj>)
     : string =
     Render.htmlView (renderNode 1 (mkContextWith customs sources node) node)
+
+/// `renderWith` under an EXPLICIT destination policy (Phase 1026) — the named
+/// opt-out for a host composing this tier without going through the Giraffe
+/// handlers (which carry `FuaranGiraffeOptions.EgressPolicy` instead).
+let renderWithEgress
+    (egressPolicy: Sanitize.EgressPolicy)
+    (customs: Registry.ServerCustomRendererRegistry)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : string =
+    Render.htmlView (renderNode 1 (mkContextWithEgress egressPolicy customs sources node) node)
 
 /// Render under a named render SCOPE with a host-supplied registry (Phase 783).
 /// Only renderers registered for `scope` are reachable from the tree.

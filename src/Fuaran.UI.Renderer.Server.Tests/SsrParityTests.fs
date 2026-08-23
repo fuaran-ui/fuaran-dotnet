@@ -46,6 +46,21 @@ open Fuaran.UI.Renderer.Server
 let private contains (needle: string) (haystack: string) =
     haystack.Contains(needle, System.StringComparison.Ordinal)
 
+/// Render for THIS corpus (Phase 1026).
+///
+/// The corpus asks a question about the class + ARIA vocabulary, so it renders
+/// under a policy that admits every destination. That is not a weakening: the
+/// ambient default-deny has its own dedicated corpus in `EgressRenderTests`,
+/// and leaving it switched on here would mean a class-name regression and an
+/// egress-policy change produced the same failure output — a corpus that cannot
+/// say which of two things broke is worth much less than two that can.
+///
+/// Several fixtures below are `mailto:` links, which the DEFAULT policy refuses
+/// (`AllowNonNetwork = false`); rendering them under `permissiveEgress` is what
+/// keeps them testing the anchor shape rather than the policy.
+let private renderHtml (sources: BindingResolver.BindingSources) (node: Node<obj>) : string =
+    Render.renderWithEgress Sanitize.permissiveEgress Registry.empty sources node
+
 /// A parity fixture: a canonical node + the `fuaran-*` classes / ARIA tokens the
 /// server HTML must carry for it (the golden body vocabulary).
 type private Fixture =
@@ -439,7 +454,7 @@ let ssrParityTests =
           // change to the shared class vocabulary is caught for BOTH tiers.
           test "every fixture's outer wrapper uses the shared Theme.nodeClassName" {
               for f in fixtures do
-                  let html = Render.render BindingResolver.empty f.Node
+                  let html = renderHtml BindingResolver.empty f.Node
 
                   let expectedOuter =
                       Theme.nodeClassName f.Node.Kind (f.Node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
@@ -454,7 +469,7 @@ let ssrParityTests =
           // fails here.
           test "every fixture's server HTML carries its golden class+ARIA tokens" {
               for f in fixtures do
-                  let html = Render.render BindingResolver.empty f.Node
+                  let html = renderHtml BindingResolver.empty f.Node
 
                   for token in f.Expected do
                       Expect.isTrue
@@ -486,7 +501,7 @@ let ssrParityTests =
 
           test "Link — the a11y projection and aria-* extras land on the <a>, not the wrapper (Phase 951)" {
               let html =
-                  Render.render BindingResolver.empty (a11yNode (Fuaran.link "lk" "/home" "Home"))
+                  renderHtml BindingResolver.empty (a11yNode (Fuaran.link "lk" "/home" "Home"))
 
               let wrapper = wrapperTag html
 
@@ -516,7 +531,7 @@ let ssrParityTests =
                               Label = TextSource.Literal "Go" }
                   )
 
-              let html = Render.render BindingResolver.empty node
+              let html = renderHtml BindingResolver.empty node
               Expect.isFalse (contains "aria-label" (wrapperTag html)) "aria-label must not sit on the wrapper div"
 
               let btn = html.Substring(html.IndexOf("<button"))
@@ -535,7 +550,7 @@ let ssrParityTests =
                               Alt = TextSource.Literal "Alt" }
                   )
 
-              let html = Render.render BindingResolver.empty node
+              let html = renderHtml BindingResolver.empty node
               Expect.isFalse (contains "aria-label" (wrapperTag html)) "aria-label must not sit on the wrapper div"
 
               let img = html.Substring(html.IndexOf("<img"))
@@ -546,7 +561,7 @@ let ssrParityTests =
           // element keeps the whole projection — a11y AND both halves of the
           // extras — on the wrapper, in the pre-951 order.
           test "a non-forwarding kind keeps the whole projection on the wrapper (Phase 951)" {
-              let html = Render.render BindingResolver.empty (a11yNode (Fuaran.markdown "md" "x"))
+              let html = renderHtml BindingResolver.empty (a11yNode (Fuaran.markdown "md" "x"))
               let wrapper = wrapperTag html
 
               Expect.isTrue (contains "role=\"link\"" wrapper) "role stays on the wrapper for a non-forwarding kind"
@@ -561,7 +576,7 @@ let ssrParityTests =
           // the limit is a recorded behaviour rather than an accident.
           test "protected-email Link — the projection lands on the wrap span (Phase 951)" {
               let html =
-                  Render.render BindingResolver.empty (a11yNode (Fuaran.emailLink "plk" "u@e.com" "u@e.com"))
+                  renderHtml BindingResolver.empty (a11yNode (Fuaran.emailLink "plk" "u@e.com" "u@e.com"))
 
               Expect.isFalse (contains "aria-label" (wrapperTag html)) "aria-label must not sit on the wrapper div"
 
@@ -573,7 +588,7 @@ let ssrParityTests =
           // Guard that the lock actually bites: a token NOT in the vocabulary
           // must be absent (proves contains-assertions aren't vacuously true).
           test "the parity lock is not vacuous — a bogus class is absent" {
-              let html = Render.render BindingResolver.empty (Fuaran.link "lk" "/x" "X")
+              let html = renderHtml BindingResolver.empty (Fuaran.link "lk" "/x" "X")
               Expect.isFalse (contains "fuaran-not-a-real-class" html) "a non-existent class must not appear"
           }
 
@@ -583,7 +598,7 @@ let ssrParityTests =
           // mailto: with JavaScript disabled.
           test "protected email link emits no plaintext address" {
               let html =
-                  Render.render BindingResolver.empty (Fuaran.emailLink "plk" "user@example.com" "user@example.com")
+                  renderHtml BindingResolver.empty (Fuaran.emailLink "plk" "user@example.com" "user@example.com")
 
               Expect.isFalse (contains "user@example.com" html) "plaintext address must be absent"
               Expect.isFalse (contains "mailto:" html) "plaintext mailto: prefix must be absent"
@@ -592,7 +607,7 @@ let ssrParityTests =
 
           test "an unprotected mailto link still emits the plain anchor" {
               let html =
-                  Render.render BindingResolver.empty (Fuaran.link "lk" "mailto:user@example.com" "Email us")
+                  renderHtml BindingResolver.empty (Fuaran.link "lk" "mailto:user@example.com" "Email us")
 
               Expect.isTrue (contains "href=\"mailto:user@example.com\"" html) "plain mailto anchor unchanged"
               Expect.isFalse (contains "fuaran-link-protected" html) "protected classes absent"
@@ -647,7 +662,7 @@ let ssrParityTests =
                           | _ -> "?")
                       rotatedSpec
 
-              let html = Render.render BindingResolver.empty node
+              let html = renderHtml BindingResolver.empty node
 
               Expect.isTrue
                   (contains "transform=\"rotate(-30 50 40)\"" shared)
@@ -694,7 +709,7 @@ let ssrParityTests =
                           | _ -> "?")
                       tippedSpec
 
-              let html = Render.render BindingResolver.empty node
+              let html = renderHtml BindingResolver.empty node
 
               Expect.isTrue
                   (contains "><title>revenue · R&amp;D · 1,234</title></rect>" shared)
@@ -710,7 +725,7 @@ let ssrParityTests =
           // visible text content anywhere in the HTML.
           test "icon names ride data-icon and never leak as text content" {
               for f in fixtures do
-                  let html = Render.render BindingResolver.empty f.Node
+                  let html = renderHtml BindingResolver.empty f.Node
 
                   for token in f.Expected do
                       if token.StartsWith("data-icon=\"", System.StringComparison.Ordinal) then

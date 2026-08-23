@@ -93,6 +93,32 @@ The following are covered by the semver rules above:
 - **The render-entry family and the axes each one pins.** `render` (the general `RenderContext` entry) plus the convenience entries `renderWithSources` / `renderWithSourcesAndSink` / `renderWithSourcesSinkAndContext` / `renderWithSourcesInScope` / `renderWithSourcesInScopeAndSink`, and the composing wrappers `renderWithTheme` / `renderStateReactive`. **Which `RenderContext` axis an entry PINS is part of the contract, not an implementation detail** – a host picks its entry by exactly that. Adding an entry is additive; changing an existing entry's pinned axis (giving `renderWithSources` a real runtime, say, or pinning a sink where a host supplies one) is a behavioural change to every consumer of that entry and bumps accordingly. The full grid is [`docs/RENDER-ENTRIES.md`](docs/RENDER-ENTRIES.md).
 - **`GuestSeam` – the host-pluggable `Mount` guest capability seam.** `GuestSeamContext` (`ScopeId` / `Capabilities` / `Channel`), the `GuestSeam` record (`WrapRuntime` / `GateBubble`), and `installGuestSeam` / `clearGuestSeam` / `currentGuestSeam`. **CHANGED in 0.15.0 (Phase 783), and the previous sentence said this would be breaking — it is.** The no-seam default used to hand the guest the host runtime and an unwrapped bubble; it now hands it a `Runtime.UnprivilegedGuestRuntime` (every capability refused, refusals recorded) and an `OutOnly` channel. A guest is foreign content and `MountSpec.Capabilities` is "a request, not a grant", so a host that installed no policy granting a mounted guest everything the host could do was the inverse of the declared posture. `GuestSeamContext` gains `DeclaredDirection` and `GuestSeam` gains `GrantTwoWay` — both breaking record changes for a host constructing them literally. `TwoWay` is now a host grant; a decoded mount is clamped to `OutOnly` and the downgrade is recorded.
 - The `Sanitize` module's policy contract – `sanitizeExtraAttributes`, `sanitizeUrl` / `sanitizeUrlOrBlank`, `sanitizeMarkdownHtml` (Phase 56). Tightening the policy (rejecting an attribute key or URL scheme previously accepted) is a behavioural change to renderer output and counts as a minor-version bump; loosening it (accepting an attribute key or URL scheme previously rejected) is additive. The injection-safety contract is documented separately in [`SANITIZATION.md`](SANITIZATION.md), which the renderer leans on as the source of truth for which inputs are neutralised at render time.
+- **The destination policy is AMBIENT as of 0.33.0 (Phase 1026) — BREAKING, on both axes at once.**
+  Phase 897 shipped the typed origin allowlist (`Sanitize.EgressPolicy` / `EgressClass` /
+  `checkDestination` / `sanitizeUrlForEgress`) and left every emission site calling
+  `sanitizeUrlOrBlank`, so the policy decided nothing unless a caller asked. 1026 puts it on the
+  record every render already threads, and routes every `href` / `src` / tree-declared route through
+  it.
+  - **Type-breaking:** `RenderContext<'Msg>`, `ServerRenderContext`, `DriverServices<'Msg>`,
+    `Email.EmailOptions` and `FuaranGiraffeOptions` each gain a required `EgressPolicy` field — a
+    recompile for any host constructing them literally. `Render.treeNavigate` /
+    `treeNavigateOutcome` gain a policy parameter.
+  - **Behaviour-breaking, and the larger half:** the default is `Sanitize.denyNonLocalEgress`, so a
+    host that declares nothing renders `about:blank#fuaran-egress-refused` — plus a
+    `data-fuaran-egress-refused` marker naming the class and the host — wherever a tree pointed at an
+    undeclared origin. Same-origin destinations are unaffected: the default denies *leaving*, not
+    *linking*. **`mailto:` / `tel:` are refused by default** (`AllowNonNetwork = false`), which is the
+    consequence an adopting host meets first.
+  - Per the Phase 782 precedent above, the permissive posture is reached BY NAME:
+    `Sanitize.permissiveEgress`, `renderWithSourcesAndEgress`, `Render.renderWithEgress`,
+    `mkContextWithEgress`, `Hydration.renderWithIslandsAndEgress`, and
+    `DriverServices.createPermissive` (which now opens egress alongside the dispatch gate). Full
+    adoption guide:
+    [`docs/migrations/1026-ambient-destination-policy.md`](docs/migrations/1026-ambient-destination-policy.md).
+  - **Not covered, deliberately:** markdown link / image destinations still pass the scheme floor
+    only — `Markdown.toHtml` is pinned by a canonical cross-host corpus, so threading a policy
+    through it is a wire-adjacent change rather than a call-site adoption. Recorded in the migration
+    note and in the escape-hatch inventory's Hatch 1.
 
 ### `Fuaran.UI.Ops`
 - The `TreeOp<'Msg>` DU (the §4g op vocabulary).

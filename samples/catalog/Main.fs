@@ -166,7 +166,11 @@ let private aiEvalRenderCtx () : Render.RenderContext<obj> =
       SessionContext = Map.empty
       // Phase 889 — no user-action recording in the samples.
       ActionSink = None
-      CurrentNodeId = None }
+      CurrentNodeId = None
+      // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
+      // boundary, so the permissive posture is correct and is reached BY NAME.
+      // A host rendering a DECODED tree must not copy this line.
+      EgressPolicy = Sanitize.permissiveEgress }
 
 let private aiEvalView (model: AiEvalModel) (dispatch: AiEvalMsg -> unit) : ReactElement =
     React.Fragment
@@ -232,7 +236,11 @@ let private parityView () : ReactElement =
                     SessionContext = Map.empty
                     // Phase 889 — no user-action recording in the samples.
                     ActionSink = None
-                    CurrentNodeId = None }
+                    CurrentNodeId = None
+                    // Phase 1026 — a HAND-AUTHORED tree, where the author is the trust
+                    // boundary, so the permissive posture is correct and is reached BY NAME.
+                    // A host rendering a DECODED tree must not copy this line.
+                    EgressPolicy = Sanitize.permissiveEgress }
 
               Html.div
                   [ prop.id ("parity-fuaran-" + p.Id)
