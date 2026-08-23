@@ -41,5 +41,37 @@ security posture is documented explicitly:
 - **Dispatch gating:** interactive dispatch is default-deny — a tree cannot invoke a host action
   the host did not register. A bypass of that gate is in scope.
 
+## Where arbitrary behaviour enters
+
+A typed tree is a closed artefact, but a rendered one reaches a host, and the host is where the
+guarantees stop. Rather than leave that implicit, the places arbitrary behaviour enters this
+library's surface are enumerated:
+
+- **The host-call and effect seam** (`IFuaranRuntime.CanDispatch` over the closed `ActionDescriptor`
+  set). Registered, gated before the effect runs, deny-by-default in every shipped runtime, with the
+  permissive posture reachable only by name. What the gate decides is *whether* an effect runs; the
+  host's own performer is unconstrained once admitted.
+- **The custom-renderer registry** (`NodeKind.Custom`). Scope-keyed with no cross-scope fallback, and
+  content-hashed against the registered renderer. `ContentHash` is drift detection between the tree
+  and the registry, never authentication of the tree — a match proves only that whoever wrote the
+  tree knew the registered renderer's hash. The renderer's output is deliberately unpoliced; see
+  [`SANITIZATION.md`](SANITIZATION.md) for the host's escaping contract.
+- **The guest boundary** (`NodeKind.Mount`). A guest renders under its own scope, and its declared
+  channel direction is a *request*: the renderer clamps every rendered mount to `OutOnly` and records
+  the downgrade, with two-way messaging granted host-side. Scope separates registries and state keys;
+  it does not separate memory or authority.
+
+Two shipped defaults fail open, stated here rather than left to be discovered. The `Custom`
+content-hash **host floor** defaults to `AdvisoryWarning` — a mismatch warns and renders — because a
+tree with no hash is the common legitimate case and an enforcing default would refuse most existing
+`Custom` nodes on upgrade; enforcement is a host act, via
+`CustomHash.installCustomHashFloor`. And the state-channel **host-reserved prefix** closes only keys
+named under `host.`: a host-owned key that predates the convention keeps its exposure until it is
+renamed, and nothing detects one.
+
+A hatch that is enumerated with its mediation stated is a design position; one found later is a
+defect. If you find a route into host-affecting behaviour that is not on this list, that gap is
+itself in scope and we would like to hear about it.
+
 Custom renderers registered by a **host** run with the host's trust — issues in host-supplied
 custom-renderer code belong with the host application, not this repo.
