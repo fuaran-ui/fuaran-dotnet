@@ -327,6 +327,480 @@ let sanitizeUrl (url: string) : string option =
 let sanitizeUrlOrBlank (url: string) : string =
     sanitizeUrl url |> Option.defaultValue "about:blank"
 
+// ─── Destination policy — typed egress allowlists ──────────────────────────
+//
+//  Everything above answers "is this URL SAFE TO HAVE". Nothing above answers
+//  "is this DESTINATION one the composition declared", and only the second
+//  question closes exfiltration. `https://collector.example/?s=<bound state>`
+//  passes every check in this file: the scheme is allowlisted, the host is
+//  well-formed, there is no script anywhere in it. Put it in an `Image.src`
+//  and the browser contacts it with NO user act at all — rendering IS the
+//  request — carrying whatever the tree interpolated into the query string.
+//
+//  So the floor gains a second, orthogonal gate: a scheme allowlist says what
+//  a URL may BE, and an origin allowlist says where it may GO. Both are
+//  positive lists; neither substitutes for the other, and this one runs after
+//  the other because there is no point asking where an unsafe URL points.
+//
+//  Two shapes are deliberate and worth stating, because both look like
+//  omissions:
+//
+//    - A rule names a HOST, never a scheme and never a path. Scheme is already
+//      reduced to the allowlisted set above, and every "scheme wildcard"
+//      spelling anyone reaches for (`*://`, `http*://`, `https?://`) parses
+//      differently on different hosts — which makes the wildcard itself the
+//      vulnerability. Path scoping is likewise refused: a path is not a
+//      security boundary, and a policy that appears to bound one invites
+//      reliance on a bound it does not have.
+//    - The policy is HOST-CONSTRUCTED and ENCODE-ONLY. There is a canonical
+//      projection (`encodeEgressPolicy`) so a composition can publish its
+//      declared egress for review and diff, and there is deliberately NO
+//      decoder — see that function's note. A policy a tree could supply is a
+//      policy a hostile tree can widen, which is not a policy.
+
+/// The classes of destination a rule can be scoped to. Closed by construction:
+/// a policy can say something only about a class this DU can name.
+[<RequireQualifiedAccess>]
+type EgressClass =
+    /// A rendered `href` the user must ACT on — a link, a markdown anchor.
+    | Hyperlink
+    /// A rendered `src` the browser fetches with NO user act: an image, a
+    /// stylesheet, a media element. THE exfiltration class — a destination
+    /// here is contacted merely by rendering the tree, which is why it is
+    /// scoped separately from `Hyperlink` rather than folded in with it.
+    | Media
+    /// A navigation the tree asks for (`Action.Navigate`, `PushState`).
+    | Route
+    /// A file download the tree asks for.
+    | Download
+    /// A file READ the tree asks for. It carries no URL of its own — see
+    /// the note on the effect seam's classification — but it is scoped here
+    /// so a policy can speak about it in the same vocabulary.
+    | FileRead
+
+module EgressClass =
+
+    /// Stable lowercase name — the wire spelling, and what a refusal records.
+    let name (cls: EgressClass) : string =
+        match cls with
+        | EgressClass.Hyperlink -> "hyperlink"
+        | EgressClass.Media -> "media"
+        | EgressClass.Route -> "route"
+        | EgressClass.Download -> "download"
+        | EgressClass.FileRead -> "fileRead"
+
+    /// Every class, in wire order. Used by `allowOrigin` when a rule is
+    /// declared without a class scope (which means "every class").
+    let all: EgressClass list =
+        [ EgressClass.Hyperlink
+          EgressClass.Media
+          EgressClass.Route
+          EgressClass.Download
+          EgressClass.FileRead ]
+
+    /// Parse a wire spelling. Case-insensitive on the caller's behalf; an
+    /// unknown name is `None` rather than a silently-ignored rule, because a
+    /// policy that quietly drops a class it did not understand is broader than
+    /// the one its author wrote.
+    let parse (s: string) : EgressClass option =
+        if isNull s then
+            None
+        else
+            let k = s.Trim().ToLowerInvariant()
+            all |> List.tryFind (fun c -> (name c).ToLowerInvariant() = k)
+
+/// One allowed destination. Hosts only — no scheme, no port, no path.
+type EgressOrigin =
+    /// Exactly this host. `example.com` matches `example.com` and nothing
+    /// else — not `a.example.com`, not `notexample.com`.
+    | ExactHost of host: string
+    /// This host and any subdomain of it. `example.com` matches
+    /// `example.com` and `a.b.example.com`; it never matches
+    /// `notexample.com`, because the match requires a label boundary. This is
+    /// the "registrable suffix" spelling — a suffix, not a substring, and not
+    /// a wildcard.
+    | HostSuffix of suffix: string
+
+/// One rule: an origin, and the classes it is declared FOR.
+type EgressRule =
+    {
+        Origin: EgressOrigin
+        /// The classes this origin is allowed for. An EMPTY list allows no
+        /// class — a rule that names nothing permits nothing, which is the
+        /// only reading consistent with a positive list. Use
+        /// `EgressClass.all` to mean "every class".
+        Classes: EgressClass list
+    }
+
+/// A typed egress allowlist.
+type EgressPolicy =
+    {
+        Rules: EgressRule list
+        /// When `true`, EVERY network origin is permitted and `Rules` is not
+        /// consulted at all.
+        ///
+        /// This is the escape hatch, and it is a FIELD rather than the absence
+        /// of rules on purpose: an empty allowlist must read as "nothing is
+        /// declared", never as "everything is fine". Those are opposite
+        /// postures and the empty list is what a half-built policy looks like,
+        /// so conflating them would make the failure mode of forgetting to
+        /// declare anything indistinguishable from deciding not to. It is
+        /// `false` in `denyNonLocalEgress` and `true` only in
+        /// `permissiveEgress`, which is named so reaching it is greppable.
+        AllowAnyOrigin: bool
+        /// Whether SAME-ORIGIN destinations (a relative path, a fragment, an
+        /// empty URL) are permitted. `true` in both shipped policies: a tree
+        /// pointing at its own host has not left, and denying it would make
+        /// ordinary in-app links unrenderable. A host serving several tenants
+        /// from one origin sets this `false` and declares what it means.
+        AllowLocal: bool
+        /// Whether destinations with no network host (`mailto:`, `tel:`) are
+        /// permitted. `false` by default: `mailto:` IS an egress channel — a
+        /// body parameter carries arbitrary text off the machine — and it has
+        /// no host for a rule to name, so it cannot be allowlisted, only
+        /// permitted wholesale.
+        AllowNonNetwork: bool
+    }
+
+/// What a URL resolves to, once the scheme floor has accepted it.
+[<RequireQualifiedAccess>]
+type Destination =
+    /// Same-origin: a relative path, a fragment, an empty URL.
+    | Local
+    /// An absolute network destination at this host — lowercased, with
+    /// userinfo, port and any trailing dot removed.
+    | Remote of host: string
+    /// A scheme with no network host for a rule to name (`mailto:`, `tel:`).
+    | NonNetwork of scheme: string
+    /// The scheme floor rejected the URL, or it declares a network scheme with
+    /// no extractable host.
+    | Rejected
+
+/// Why a destination was refused, or that it was not.
+[<RequireQualifiedAccess>]
+type EgressVerdict =
+    /// Accepted. Carries the NORMALISED URL to emit — the same string
+    /// `sanitizeUrl` would have returned, so an accepting call site needs no
+    /// second pass.
+    | Allowed of url: string
+    /// `sanitizeUrl` rejected it before policy was ever consulted.
+    | UnsafeUrl
+    /// A network destination whose host this policy does not declare for this
+    /// class. Carries the HOST ONLY — never the path or query, which is
+    /// exactly where an exfiltrated payload would be sitting.
+    | UndeclaredOrigin of host: string * cls: EgressClass
+    /// A same-origin destination under a policy that denies local egress.
+    | LocalDenied of cls: EgressClass
+    /// A hostless scheme under a policy that denies non-network egress.
+    | NonNetworkDenied of scheme: string * cls: EgressClass
+
+/// Network schemes — the ones that reach a host a rule can name. A scheme the
+/// floor allows but that is absent here (`mailto`, `tel`) is `NonNetwork`.
+let private networkSchemes = Set.ofList [ "http"; "https"; "ftp"; "sftp" ]
+
+/// Lowercase, trim, and drop a single trailing root dot (`example.com.` and
+/// `example.com` are the same host to a resolver, so they must be the same
+/// host to a policy — otherwise the dotted spelling walks straight past an
+/// exact rule).
+let private normalizeHost (h: string) : string =
+    if isNull h then
+        ""
+    else
+        let t = h.Trim().ToLowerInvariant()
+
+        if t.EndsWith(".", StringComparison.Ordinal) then
+            t.Substring(0, t.Length - 1)
+        else
+            t
+
+/// Extract the host from an absolute URL's authority, WHATWG-style: `\` counts
+/// as `/` when locating the authority, userinfo before the LAST `@` is
+/// discarded, a port is dropped, and an IPv6 literal keeps its brackets.
+///
+/// The `LastIndexOf '@'` is load-bearing rather than fussy: `https://good.example@evil.example/x`
+/// is a request to `evil.example`, and a naive first-`@` split reads it as the
+/// opposite — which is the classic credential-confusion spelling an allowlist
+/// exists to refuse.
+let private authorityHost (url: string) : string option =
+    let colon = url.IndexOf ':'
+
+    if colon < 0 then
+        None
+    else
+        let mutable i = colon + 1
+        let mutable slashes = 0
+
+        while i < url.Length && (url[i] = '/' || url[i] = '\\') do
+            slashes <- slashes + 1
+            i <- i + 1
+
+        if slashes < 2 then
+            None
+        else
+            let start = i
+            let mutable j = i
+
+            let isAuthorityEnd (c: char) =
+                c = '/' || c = '\\' || c = '?' || c = '#'
+
+            while j < url.Length && not (isAuthorityEnd url[j]) do
+                j <- j + 1
+
+            let authority = url.Substring(start, j - start)
+
+            let afterUserInfo =
+                let at = authority.LastIndexOf '@'
+
+                if at >= 0 then authority.Substring(at + 1) else authority
+
+            if afterUserInfo = "" then
+                None
+            elif afterUserInfo.StartsWith("[", StringComparison.Ordinal) then
+                let close = afterUserInfo.IndexOf ']'
+
+                if close < 0 then
+                    None
+                else
+                    Some(afterUserInfo.Substring(0, close + 1).ToLowerInvariant())
+            else
+                let port = afterUserInfo.IndexOf ':'
+
+                let h =
+                    if port >= 0 then
+                        afterUserInfo.Substring(0, port)
+                    else
+                        afterUserInfo
+
+                let n = normalizeHost h
+                if n = "" then None else Some n
+
+/// Resolve a URL to the destination a policy reasons about. Runs the scheme
+/// floor FIRST — there is nothing to say about where an unsafe URL points.
+let classifyDestination (url: string) : Destination =
+    match sanitizeUrl url with
+    | None -> Destination.Rejected
+    | Some safe ->
+        if safe = "" then
+            Destination.Local
+        else
+            match extractScheme safe with
+            // No scheme reaching here is same-origin: `sanitizeUrl` has
+            // already refused every protocol-relative spelling, which is the
+            // one schemeless shape that leaves the origin.
+            | None, _ -> Destination.Local
+            | Some scheme, _ when networkSchemes.Contains scheme ->
+                match authorityHost safe with
+                | Some h -> Destination.Remote h
+                | None -> Destination.Rejected
+            | Some scheme, _ -> Destination.NonNetwork scheme
+
+/// Does this rule's origin match this host?
+let private originMatches (origin: EgressOrigin) (host: string) : bool =
+    match origin with
+    | ExactHost h ->
+        let h = normalizeHost h
+        h <> "" && h = host
+    | HostSuffix s ->
+        let s = normalizeHost s
+        s <> "" && (host = s || host.EndsWith("." + s, StringComparison.Ordinal))
+
+/// Is this host declared for this class by this policy?
+let isDeclaredOrigin (policy: EgressPolicy) (cls: EgressClass) (host: string) : bool =
+    let host = normalizeHost host
+
+    host <> ""
+    && (policy.AllowAnyOrigin
+        || policy.Rules
+           |> List.exists (fun r -> List.contains cls r.Classes && originMatches r.Origin host))
+
+/// The whole check: scheme floor, then destination policy, for one class.
+let checkDestination (policy: EgressPolicy) (cls: EgressClass) (url: string) : EgressVerdict =
+    match classifyDestination url with
+    | Destination.Rejected -> EgressVerdict.UnsafeUrl
+    | Destination.Local ->
+        if policy.AllowLocal then
+            EgressVerdict.Allowed(sanitizeUrl url |> Option.defaultValue "")
+        else
+            EgressVerdict.LocalDenied cls
+    | Destination.NonNetwork scheme ->
+        if policy.AllowNonNetwork then
+            EgressVerdict.Allowed(sanitizeUrl url |> Option.defaultValue "")
+        else
+            EgressVerdict.NonNetworkDenied(scheme, cls)
+    | Destination.Remote host ->
+        if isDeclaredOrigin policy cls host then
+            EgressVerdict.Allowed(sanitizeUrl url |> Option.defaultValue "")
+        else
+            EgressVerdict.UndeclaredOrigin(host, cls)
+
+/// Log-safe description of a verdict. Carries the HOST and the CLASS, never
+/// the URL — the same discipline the effect seam's denial record keeps, and for
+/// the same reason: a refusal record outlives the session, and the query string
+/// of a refused exfiltration attempt is the payload itself.
+let describeEgressVerdict (v: EgressVerdict) : string =
+    match v with
+    | EgressVerdict.Allowed _ -> "destination allowed"
+    | EgressVerdict.UnsafeUrl -> "destination refused: the URL is not safe to render"
+    | EgressVerdict.UndeclaredOrigin(host, cls) ->
+        sprintf "destination refused: origin '%s' is not declared for '%s' egress" host (EgressClass.name cls)
+    | EgressVerdict.LocalDenied cls ->
+        sprintf "destination refused: this policy denies same-origin '%s' egress" (EgressClass.name cls)
+    | EgressVerdict.NonNetworkDenied(scheme, cls) ->
+        sprintf
+            "destination refused: scheme '%s' has no origin to declare for '%s' egress"
+            scheme
+            (EgressClass.name cls)
+
+/// The `href` / `src` a REFUSED destination renders as.
+///
+/// Deliberately NOT the bare `about:blank` that `sanitizeUrlOrBlank` emits: a
+/// silent neuter is indistinguishable from an authoring mistake, and the whole
+/// point of the 782 posture is that "nothing happened" and "this was refused"
+/// are different facts. The fragment is inert in every browser and greppable in
+/// a rendered document.
+[<Literal>]
+let egressRefusalUrl = "about:blank#fuaran-egress-refused"
+
+/// The attribute name an emission site attaches beside a refused destination.
+/// Passes `isSafeAttributeName` and the `data-` prefix rule by construction, so
+/// it survives `sanitizeExtraAttributes` unchanged.
+[<Literal>]
+let egressRefusalAttribute = "data-fuaran-egress-refused"
+
+/// The refusal marker for a verdict, or `None` when the destination was
+/// allowed. The VALUE names the class and — where there is one — the host; it
+/// never carries the URL, for the reason `describeEgressVerdict` gives.
+let egressRefusalMarker (v: EgressVerdict) : (string * string) option =
+    match v with
+    | EgressVerdict.Allowed _ -> None
+    | EgressVerdict.UnsafeUrl -> Some(egressRefusalAttribute, "unsafe-url")
+    | EgressVerdict.UndeclaredOrigin(host, cls) -> Some(egressRefusalAttribute, EgressClass.name cls + ":" + host)
+    | EgressVerdict.LocalDenied cls -> Some(egressRefusalAttribute, EgressClass.name cls + ":local")
+    | EgressVerdict.NonNetworkDenied(scheme, cls) -> Some(egressRefusalAttribute, EgressClass.name cls + ":" + scheme)
+
+/// The one-call render seam: the URL to emit, plus the attributes that record a
+/// refusal in the document itself. An emission site adopts this by replacing its
+/// `sanitizeUrlOrBlank` call and splicing the returned attribute list — which is
+/// the whole adoption, per call site.
+let sanitizeUrlForEgress (policy: EgressPolicy) (cls: EgressClass) (url: string) : string * (string * string) list =
+    let verdict = checkDestination policy cls url
+
+    match verdict with
+    | EgressVerdict.Allowed safe -> safe, []
+    | refused ->
+        egressRefusalUrl,
+        (match egressRefusalMarker refused with
+         | Some kv -> [ kv ]
+         | None -> [])
+
+// ─── Shipped policies ──────────────────────────────────────────────────────
+
+/// Deny every destination that leaves the origin.
+///
+/// THE DEFAULT FOR A DECODED (WIRE) TREE. An emission cannot declare its own
+/// egress, so absent a host's declaration it gets none — the same
+/// default-deny-then-reach-for-permissive-by-name inversion the dispatch gate
+/// and the effect registry already take.
+let denyNonLocalEgress: EgressPolicy =
+    { Rules = []
+      AllowAnyOrigin = false
+      AllowLocal = true
+      AllowNonNetwork = false }
+
+/// Permit every destination.
+///
+/// The posture for a HAND-AUTHORED tree, where the author is the trust
+/// boundary. Named rather than default so reaching it is a deliberate,
+/// greppable act — the pattern every other gate inversion in this codebase
+/// follows.
+let permissiveEgress: EgressPolicy =
+    { Rules = []
+      AllowAnyOrigin = true
+      AllowLocal = true
+      AllowNonNetwork = true }
+
+/// Declare an origin for a set of classes. An empty class list is taken as
+/// EVERY class — the ergonomic reading of "allow this origin", distinct from
+/// an `EgressRule` whose `Classes` is empty, which permits nothing. The two
+/// readings are deliberately split across the constructor and the record: the
+/// record is data and says exactly what it lists; the helper is a convenience
+/// and says what a caller writing one line means.
+let allowOrigin (origin: EgressOrigin) (classes: EgressClass list) (policy: EgressPolicy) : EgressPolicy =
+    let classes = if List.isEmpty classes then EgressClass.all else classes
+
+    { policy with
+        Rules = policy.Rules @ [ { Origin = origin; Classes = classes } ] }
+
+/// Whether a policy permits anything beyond its own origin. Cheap answer to the
+/// question a manifest reader asks first.
+let hasNonLocalEgress (policy: EgressPolicy) : bool =
+    policy.AllowAnyOrigin
+    || policy.AllowNonNetwork
+    || policy.Rules |> List.exists (fun r -> not (List.isEmpty r.Classes))
+
+// ─── Manifest projection ───────────────────────────────────────────────────
+
+let private jsonEscape (s: string) : string =
+    let sb = System.Text.StringBuilder(s.Length + 2)
+
+    for ch in s do
+        match ch with
+        | '"' -> sb.Append "\\\"" |> ignore
+        | '\\' -> sb.Append "\\\\" |> ignore
+        | '\n' -> sb.Append "\\n" |> ignore
+        | '\r' -> sb.Append "\\r" |> ignore
+        | '\t' -> sb.Append "\\t" |> ignore
+        | c when int c < 0x20 -> sb.Append("\\u").Append((int c).ToString("x4")) |> ignore
+        | c -> sb.Append c |> ignore
+
+    sb.ToString()
+
+let private jsonString (s: string) : string = "\"" + jsonEscape s + "\""
+
+/// Canonical, deterministic JSON projection of a policy — the field a
+/// composition manifest carries so declared egress is reviewable and diffable
+/// beside everything else the composition may do.
+///
+/// Deterministic by sorting: rules by `(match, origin)` and classes by their
+/// wire order, so two runs over the same policy produce the same bytes and a
+/// manifest diff shows a policy change rather than a list reshuffle.
+///
+/// **Encode only, and that is the design rather than an omission.** There is no
+/// decoder here and there must not be one on this seam: a policy that can
+/// arrive as data is a policy a hostile emission can widen, and an allowlist
+/// that its own subject can edit is not an allowlist. A policy is constructed
+/// by the HOST, in host code. This projection exists so a reviewer can read
+/// what the host declared — not so a tree can declare it.
+let encodeEgressPolicy (policy: EgressPolicy) : string =
+    let ruleJson (r: EgressRule) =
+        let matchKind, origin =
+            match r.Origin with
+            | ExactHost h -> "exact", normalizeHost h
+            | HostSuffix s -> "suffix", normalizeHost s
+
+        let classes =
+            EgressClass.all
+            |> List.filter (fun c -> List.contains c r.Classes)
+            |> List.map (EgressClass.name >> jsonString)
+            |> String.concat ","
+
+        (matchKind, origin),
+        sprintf "{\"classes\":[%s],\"match\":%s,\"origin\":%s}" classes (jsonString matchKind) (jsonString origin)
+
+    let rules =
+        policy.Rules
+        |> List.map ruleJson
+        |> List.sortBy fst
+        |> List.map snd
+        |> String.concat ","
+
+    sprintf
+        "{\"allowAnyOrigin\":%b,\"allowLocal\":%b,\"allowNonNetwork\":%b,\"rules\":[%s]}"
+        policy.AllowAnyOrigin
+        policy.AllowLocal
+        policy.AllowNonNetwork
+        rules
+
 // ─── Markdown raw-HTML sanitization ────────────────────────────────────────
 
 /// Strip `<script>` / `<iframe>` / `<object>` / `<embed>` / `<link>` /

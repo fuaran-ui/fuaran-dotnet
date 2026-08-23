@@ -219,6 +219,10 @@
          signature-searchable pattern bank (which the predicate library composes
          with and never reimplements). -->
     <Compile Include="StructuralQueryTests.fs" />
+    <!-- Phase 897 — the destination policy beside the scheme floor: whether a
+         URL is safe to HAVE is a different question from whether its
+         destination was DECLARED. -->
+    <Compile Include="EgressPolicyTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
