@@ -106,6 +106,20 @@ let clientEffectTests =
                   "file read"
           }
 
+          test "control characters: short forms for \\n \\r \\t, \\u00XX for the rest" {
+              Expect.equal
+                  (ClientEffect.encode (ClientEffect.WriteToClipboard "a\tb\nc"))
+                  """{"kind":"WriteToClipboard","text":"a\tb\nc"}"""
+                  "the three common controls keep their short escapes"
+
+              // U+0001 / U+001F have no short form — emitting them raw would be
+              // invalid JSON, so they must come out as \u00XX.
+              Expect.equal
+                  (ClientEffect.encode (ClientEffect.WriteToClipboard "a\u0001b\u001Fc"))
+                  "{\"kind\":\"WriteToClipboard\",\"text\":\"a\\u0001b\\u001fc\"}"
+                  "other C0 controls escape as \\u00XX, never raw"
+          }
+
           test "encodeList wraps a JSON array; kind discriminators are stable" {
               Expect.equal
                   (ClientEffect.encodeList [ ClientEffect.Focus "a"; ClientEffect.Navigate "/x" ])

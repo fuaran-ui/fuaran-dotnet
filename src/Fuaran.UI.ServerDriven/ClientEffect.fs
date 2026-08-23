@@ -45,8 +45,24 @@ type ClientEffect =
 
 module ClientEffect =
 
+    // The three common control characters keep their short escapes; every other
+    // control character (U+0000–U+001F) is escaped as \u00XX — a raw control byte
+    // inside a JSON string is invalid JSON, so this is a validity requirement,
+    // not a style choice.
     let private esc (s: string) : string =
-        s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t")
+        let sb = System.Text.StringBuilder(s.Length)
+
+        for ch in s do
+            match ch with
+            | '\\' -> sb.Append "\\\\" |> ignore
+            | '"' -> sb.Append "\\\"" |> ignore
+            | '\n' -> sb.Append "\\n" |> ignore
+            | '\r' -> sb.Append "\\r" |> ignore
+            | '\t' -> sb.Append "\\t" |> ignore
+            | c when c < ' ' -> sb.Append(sprintf "\\u%04x" (int c)) |> ignore
+            | c -> sb.Append c |> ignore
+
+        sb.ToString()
 
     let private q (s: string) : string = "\"" + esc s + "\""
 
