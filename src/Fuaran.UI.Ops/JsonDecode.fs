@@ -337,6 +337,11 @@ let private parseNumberRaw (s: ParseState) : Result<float, string> =
 /// True when entering one more level of syntactic nesting would exceed
 /// `MaxJsonDepth`. Callers that pass this increment `Depth` and decrement it on
 /// the way out; callers that do not never incremented, so nothing to undo.
+///
+/// **Call it before deciding the composite is empty** (Phase 792). An empty
+/// `{}` / `[]` returns without incrementing, so testing it after the empty arm
+/// leaves the innermost level of a nested payload uncounted — and that level is
+/// always the empty one. §21.1 counts every `{` and `[`, empty or not.
 let private wouldExceedDepth (s: ParseState) : bool =
     s.Depth >= Fuaran.UI.WireLimits.MaxJsonDepth
 
@@ -376,11 +381,18 @@ and private parseObjectValue (s: ParseState) : Result<Json, string> =
     | Ok() ->
         skipWs s
 
-        if peek s = '}' then
+        // The depth check comes BEFORE the empty-object arm, and the ordering is
+        // the whole of Phase 792's boundary fix. It used to sit after it, so an
+        // EMPTY composite returned without ever being counted — and the
+        // innermost level of a `[[[…]]]` payload is always the empty one. The
+        // effect was an off-by-one: a document nesting 257 levels was accepted,
+        // because only its 256 non-empty levels were ever measured. §21.1 counts
+        // every `{` and `[`, empty or not.
+        if wouldExceedDepth s then
+            limitError s depthLimitMessage
+        elif peek s = '}' then
             advance s
             Ok(JObject Map.empty)
-        elif wouldExceedDepth s then
-            limitError s depthLimitMessage
         else
             s.Depth <- s.Depth + 1
             let mutable acc: (string * Json) list = []
@@ -436,11 +448,12 @@ and private parseArrayValue (s: ParseState) : Result<Json, string> =
     | Ok() ->
         skipWs s
 
-        if peek s = ']' then
+        // Ordering as in `parseObjectValue` above — see the note there.
+        if wouldExceedDepth s then
+            limitError s depthLimitMessage
+        elif peek s = ']' then
             advance s
             Ok(JArray [])
-        elif wouldExceedDepth s then
-            limitError s depthLimitMessage
         else
             s.Depth <- s.Depth + 1
             let mutable acc: Json list = []
