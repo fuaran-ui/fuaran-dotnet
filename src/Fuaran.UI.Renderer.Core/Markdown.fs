@@ -55,9 +55,38 @@ module Fuaran.UI.Renderer.Markdown
 //
 //  SANITIZATION: the renderer escapes by construction — every text run is
 //  HTML-escaped, raw HTML never passes through, and every link/image URL goes
-//  through `Sanitize.sanitizeUrlOrBlank`. The `Sanitize.sanitizeMarkdownHtml`
+//  through the scheme floor. The `Sanitize.sanitizeMarkdownHtml`
 //  contract (SANITIZATION.md) is still applied as defence-in-depth, but its
 //  surface is now far smaller (no library output to police). See SANITIZATION.md.
+//
+//  DESTINATION POLICY (Phase 1032). The scheme floor answers "is this URL safe
+//  to have"; it does not answer "is this destination one the composition
+//  declared". `toHtmlWithEgress` consults a `Sanitize.EgressPolicy` for every
+//  link (`EgressClass.Hyperlink`) and image (`EgressClass.Media`) destination,
+//  and a refused one renders the Phase 1026 refusal shape — the inert
+//  `about:blank#fuaran-egress-refused` href plus a `data-fuaran-egress-refused`
+//  marker naming the class and the host, never the path or the query.
+//
+//  `toHtml` SURVIVES AS THE PERMISSIVE CASE — `toHtmlWithEgress
+//  Sanitize.permissiveEgress`, byte-for-byte. Three reasons, and they are the
+//  same reasons every other posture inversion here is reached BY NAME:
+//    * the corpus is a cross-host byte-parity contract, so flipping the pure
+//      function's default would rewrite existing fixtures in five hosts in one
+//      act — a mass churn is exactly where a real divergence hides;
+//    * `toHtml` is published surface on an Apache-2.0 package, and a host
+//      author who wants the pure function should reach it deliberately rather
+//      than meet a silent behaviour swap;
+//    * keeping it named makes an unpolicied markdown render greppable, which is
+//      the property the refusal shape exists to give.
+//  What makes the guarantee AMBIENT is not this function's default but the
+//  renderer call sites: the client tier, the SSR tier and the email projection
+//  all pass their context's `EgressPolicy`, whose own default denies.
+//
+//  THE SCHEME FLOOR'S OWN ANSWER IS UNCHANGED. A URL the floor rejects
+//  (`javascript:`, an unknown scheme, a protocol-relative reference) still
+//  renders the bare `about:blank` it has rendered since Phase 292, with no
+//  marker — see `markdownDestination` for why that is a decision rather than an
+//  inconsistency.
 // ============================================================================
 
 open System
@@ -108,6 +137,55 @@ let escapeHtml (s: string) : string =
             | c -> sb.Append c |> ignore
 
         sb.ToString()
+
+// ─── Destination policy at the link / image seam ────────────────────────────
+
+/// The `href` / `src` a markdown destination emits under `policy`, plus the
+/// refusal markers to splice in as trailing attributes.
+///
+/// Three verdict groups, and the middle one is a deliberate decision rather
+/// than an oversight:
+///
+///   * ALLOWED — the normalised URL, no marker. Identical to what
+///     `Sanitize.sanitizeUrlOrBlank` returned before this seam existed, so a
+///     permissive render is byte-for-byte what it always was.
+///   * UNSAFE (the SCHEME FLOOR refused) — the bare `about:blank`, no marker.
+///     The floor's answer is a different fact from a policy refusal: it says
+///     "this URL is not safe to render at all", it has said it in that exact
+///     spelling in every conformant host since Phase 292, and it is pinned by
+///     the shared sanitization corpus. Re-spelling it here would churn that
+///     corpus inside a change about EGRESS — mixing two decisions into one set
+///     of bytes, which is where a genuine divergence hides. The floor is
+///     unchanged; only the questions it never asked get the new shape.
+///   * REFUSED BY POLICY — the Phase 1026 refusal: the inert
+///     `about:blank#fuaran-egress-refused` plus a marker naming the class and,
+///     where there is one, the host. Never the path or the query: the query
+///     string of a refused exfiltration attempt is the payload itself.
+let private markdownDestination
+    (policy: Sanitize.EgressPolicy)
+    (cls: Sanitize.EgressClass)
+    (url: string)
+    : string * (string * string) list =
+    match Sanitize.checkDestination policy cls url with
+    | Sanitize.EgressVerdict.Allowed safe -> safe, []
+    | Sanitize.EgressVerdict.UnsafeUrl -> "about:blank", []
+    | refused ->
+        Sanitize.egressRefusalUrl,
+        (match Sanitize.egressRefusalMarker refused with
+         | Some kv -> [ kv ]
+         | None -> [])
+
+/// Render refusal markers as trailing HTML attributes. Emitted LAST on the
+/// element so an adopting host's diff against the pre-1032 bytes is a pure
+/// suffix — every attribute that was there is still where it was.
+let private egressAttrs (markers: (string * string) list) : string =
+    let sb = StringBuilder()
+
+    for (k, v) in markers do
+        sb.Append(' ').Append(k).Append("=\"").Append(escapeHtml v).Append('"')
+        |> ignore
+
+    sb.ToString()
 
 // ─── Entity decoding (common subset; the rest is DEFERRED) ──────────────────
 
@@ -334,7 +412,7 @@ let private isSchemeChar (c: char) : bool =
     || c = '-'
 
 /// Try an autolink `<scheme:...>` or `<email>` at `text[i]` (`<`).
-let private scanAutolink (text: string) (i: int) : (Inline * int) option =
+let private scanAutolink (policy: Sanitize.EgressPolicy) (text: string) (i: int) : (Inline * int) option =
     let close = text.IndexOf('>', i)
 
     if close < 0 then
@@ -366,10 +444,47 @@ let private scanAutolink (text: string) (i: int) : (Inline * int) option =
                 && body.IndexOf '@' > 0
 
             if looksUri then
-                let safe = Sanitize.sanitizeUrlOrBlank body
-                Some(Raw("<a href=\"" + escapeHtml safe + "\">" + escapeHtml body + "</a>"), close + 1)
+                let safe, markers = markdownDestination policy Sanitize.EgressClass.Hyperlink body
+
+                Some(
+                    Raw(
+                        "<a href=\""
+                        + escapeHtml safe
+                        + "\""
+                        + egressAttrs markers
+                        + ">"
+                        + escapeHtml body
+                        + "</a>"
+                    ),
+                    close + 1
+                )
             elif looksEmail then
-                Some(Raw("<a href=\"mailto:" + escapeHtml body + "\">" + escapeHtml body + "</a>"), close + 1)
+                // An email autolink has no URL of its own — the `mailto:` is
+                // the renderer's, so the policy is asked about the destination
+                // the renderer is about to emit. On acceptance the ORIGINAL
+                // bytes are emitted rather than the normalised form, so a
+                // permissive render is unchanged to the byte.
+                match Sanitize.checkDestination policy Sanitize.EgressClass.Hyperlink ("mailto:" + body) with
+                | Sanitize.EgressVerdict.Allowed _ ->
+                    Some(Raw("<a href=\"mailto:" + escapeHtml body + "\">" + escapeHtml body + "</a>"), close + 1)
+                | refused ->
+                    let markers =
+                        match Sanitize.egressRefusalMarker refused with
+                        | Some kv -> [ kv ]
+                        | None -> []
+
+                    Some(
+                        Raw(
+                            "<a href=\""
+                            + escapeHtml Sanitize.egressRefusalUrl
+                            + "\""
+                            + egressAttrs markers
+                            + ">"
+                            + escapeHtml body
+                            + "</a>"
+                        ),
+                        close + 1
+                    )
             else
                 None
 
@@ -450,8 +565,9 @@ let private scanInlineDestination (text: string) (start: int) : (string * string
 
 // Forward reference: parseInlines is recursive (link text is parsed as inlines).
 // Declared via a mutable ref so the tokenizer can call back into it.
-let mutable private parseInlinesRef: (Map<string, string * string option> -> string -> Inline list) =
-    fun _ _ -> []
+let mutable private parseInlinesRef
+    : (Sanitize.EgressPolicy -> Map<string, string * string option> -> string -> Inline list) =
+    fun _ _ _ -> []
 
 /// Find the index of the matching `]` for a `[` at `open0`, honouring
 /// backslash escapes and nested brackets. Returns -1 if unbalanced.
@@ -520,7 +636,7 @@ let rec private plainText (nodes: Inline list) : string =
 
 /// Detect a GFM bare-URL autolink (`http://`, `https://`, `www.`) at a word
 /// boundary starting at `i`. Returns `Some (Inline, nextIndex)` or None.
-let private scanBareAutolink (text: string) (i: int) : (Inline * int) option =
+let private scanBareAutolink (policy: Sanitize.EgressPolicy) (text: string) (i: int) : (Inline * int) option =
     let n = text.Length
 
     let starts (p: string) =
@@ -561,13 +677,29 @@ let private scanBareAutolink (text: string) (i: int) : (Inline * int) option =
         else
             let raw = text.Substring(i, j - i)
             let href = if raw.StartsWith "www." then "http://" + raw else raw
-            let safe = Sanitize.sanitizeUrlOrBlank href
-            Some(Raw("<a href=\"" + escapeHtml safe + "\">" + escapeHtml raw + "</a>"), j)
+            let safe, markers = markdownDestination policy Sanitize.EgressClass.Hyperlink href
+
+            Some(
+                Raw(
+                    "<a href=\""
+                    + escapeHtml safe
+                    + "\""
+                    + egressAttrs markers
+                    + ">"
+                    + escapeHtml raw
+                    + "</a>"
+                ),
+                j
+            )
 
 /// Tokenize an inline string into a token list, resolving code spans,
 /// autolinks, links, images, escapes, entities, and breaks; delimiter runs
 /// of `* _ ~` become `TDelim` for the emphasis pass.
-let private tokenize (refs: Map<string, string * string option>) (text: string) : ResizeArray<Tok> =
+let private tokenize
+    (policy: Sanitize.EgressPolicy)
+    (refs: Map<string, string * string option>)
+    (text: string)
+    : ResizeArray<Tok> =
     let toks = ResizeArray<Tok>()
     let n = text.Length
     let mutable i = 0
@@ -611,7 +743,7 @@ let private tokenize (refs: Map<string, string * string option>) (text: string) 
                 pending.Append c |> ignore
                 i <- i + 1
         | '<' ->
-            match scanAutolink text i with
+            match scanAutolink policy text i with
             | Some(node, nxt) ->
                 flush ()
                 toks.Add(TNode node)
@@ -635,8 +767,8 @@ let private tokenize (refs: Map<string, string * string option>) (text: string) 
                     match scanInlineDestination text (close + 2) with
                     | Some(url, titleOpt, after) ->
                         flush ()
-                        let alt = plainText (parseInlinesRef refs labelText)
-                        let safe = Sanitize.sanitizeUrlOrBlank url
+                        let alt = plainText (parseInlinesRef policy refs labelText)
+                        let safe, markers = markdownDestination policy Sanitize.EgressClass.Media url
 
                         let titleAttr =
                             match titleOpt with
@@ -652,6 +784,7 @@ let private tokenize (refs: Map<string, string * string option>) (text: string) 
                                     + escapeHtml alt
                                     + "\""
                                     + titleAttr
+                                    + egressAttrs markers
                                     + " />"
                                 )
                             )
@@ -678,8 +811,8 @@ let private tokenize (refs: Map<string, string * string option>) (text: string) 
                     match Map.tryFind (normLabel refLabel) refs with
                     | Some(url, titleOpt) ->
                         flush ()
-                        let alt = plainText (parseInlinesRef refs labelText)
-                        let safe = Sanitize.sanitizeUrlOrBlank url
+                        let alt = plainText (parseInlinesRef policy refs labelText)
+                        let safe, markers = markdownDestination policy Sanitize.EgressClass.Media url
 
                         let titleAttr =
                             match titleOpt with
@@ -695,6 +828,7 @@ let private tokenize (refs: Map<string, string * string option>) (text: string) 
                                     + escapeHtml alt
                                     + "\""
                                     + titleAttr
+                                    + egressAttrs markers
                                     + " />"
                                 )
                             )
@@ -716,15 +850,28 @@ let private tokenize (refs: Map<string, string * string option>) (text: string) 
 
                 let makeLink url titleOpt =
                     flush ()
-                    let inner = renderInlinesImpl (parseInlinesRef refs labelText)
-                    let safe = Sanitize.sanitizeUrlOrBlank url
+                    let inner = renderInlinesImpl (parseInlinesRef policy refs labelText)
+                    let safe, markers = markdownDestination policy Sanitize.EgressClass.Hyperlink url
 
                     let titleAttr =
                         match titleOpt with
                         | Some t -> " title=\"" + escapeHtml t + "\""
                         | None -> ""
 
-                    toks.Add(TNode(Raw("<a href=\"" + escapeHtml safe + "\"" + titleAttr + ">" + inner + "</a>")))
+                    toks.Add(
+                        TNode(
+                            Raw(
+                                "<a href=\""
+                                + escapeHtml safe
+                                + "\""
+                                + titleAttr
+                                + egressAttrs markers
+                                + ">"
+                                + inner
+                                + "</a>"
+                            )
+                        )
+                    )
 
                 if close + 1 < n && text[close + 1] = '(' then
                     match scanInlineDestination text (close + 2) with
@@ -811,7 +958,7 @@ let private tokenize (refs: Map<string, string * string option>) (text: string) 
             (let p = prevChar () in i = 0 || isUnicodeWhitespace p || p = '(' || p = '*' || p = '_' || p = '~')
             ->
             // GFM bare-URL autolink (http(s):// / www.) at a word boundary.
-            match scanBareAutolink text i with
+            match scanBareAutolink policy text i with
             | Some(node, nxt) ->
                 flush ()
                 toks.Add(TNode node)
@@ -931,14 +1078,22 @@ let private processEmphasis (toks: ResizeArray<Tok>) : Inline list =
           | TDelim _ -> () ]
 
 /// Public inline parser: string → Inline list. Used recursively for link text.
-let private parseInlines (refs: Map<string, string * string option>) (text: string) : Inline list =
-    text |> tokenize refs |> processEmphasis
+let private parseInlines
+    (policy: Sanitize.EgressPolicy)
+    (refs: Map<string, string * string option>)
+    (text: string)
+    : Inline list =
+    text |> tokenize policy refs |> processEmphasis
 
 // Wire the forward reference now that parseInlines exists.
 parseInlinesRef <- parseInlines
 
-let private renderInline (refs: Map<string, string * string option>) (text: string) : string =
-    parseInlines refs text |> renderInlinesImpl
+let private renderInline
+    (policy: Sanitize.EgressPolicy)
+    (refs: Map<string, string * string option>)
+    (text: string)
+    : string =
+    parseInlines policy refs text |> renderInlinesImpl
 
 // ─── Block parsing ──────────────────────────────────────────────────────────
 
@@ -1448,19 +1603,34 @@ let private alignAttr (a: Align) : string =
     | Center -> " align=\"center\""
     | Right -> " align=\"right\""
 
-let rec private renderBlocks (refs: Map<string, string * string option>) (blocks: Block list) : string =
+let rec private renderBlocks
+    (policy: Sanitize.EgressPolicy)
+    (refs: Map<string, string * string option>)
+    (blocks: Block list)
+    : string =
     let sb = StringBuilder()
 
     for b in blocks do
-        sb.Append(renderBlock refs b) |> ignore
+        sb.Append(renderBlock policy refs b) |> ignore
 
     sb.ToString()
 
-and private renderBlock (refs: Map<string, string * string option>) (b: Block) : string =
+and private renderBlock
+    (policy: Sanitize.EgressPolicy)
+    (refs: Map<string, string * string option>)
+    (b: Block)
+    : string =
     match b with
     | ThematicBreak -> "<hr />\n"
-    | Heading(lvl, txt) -> "<h" + string lvl + ">" + renderInline refs txt + "</h" + string lvl + ">\n"
-    | Paragraph txt -> "<p>" + renderInline refs txt + "</p>\n"
+    | Heading(lvl, txt) ->
+        "<h"
+        + string lvl
+        + ">"
+        + renderInline policy refs txt
+        + "</h"
+        + string lvl
+        + ">\n"
+    | Paragraph txt -> "<p>" + renderInline policy refs txt + "</p>\n"
     | FencedCode(lang, content) ->
         let cls =
             if lang = "" then
@@ -1470,7 +1640,7 @@ and private renderBlock (refs: Map<string, string * string option>) (b: Block) :
 
         "<pre><code" + cls + ">" + escapeHtml content + "\n</code></pre>\n"
     | IndentedCode content -> "<pre><code>" + escapeHtml content + "\n</code></pre>\n"
-    | BlockQuote inner -> "<blockquote>\n" + renderBlocks refs inner + "</blockquote>\n"
+    | BlockQuote inner -> "<blockquote>\n" + renderBlocks policy refs inner + "</blockquote>\n"
     | Table(headers, aligns, rows) ->
         let sb = StringBuilder()
         sb.Append "<table class=\"fuaran-table\"><thead><tr>" |> ignore
@@ -1483,7 +1653,7 @@ and private renderBlock (refs: Map<string, string * string option>) (b: Block) :
                 .Append("<th class=\"fuaran-table-header\"")
                 .Append(alignAttr a)
                 .Append(">")
-                .Append(renderInline refs h)
+                .Append(renderInline policy refs h)
                 .Append("</th>")
             |> ignore)
 
@@ -1500,7 +1670,7 @@ and private renderBlock (refs: Map<string, string * string option>) (b: Block) :
                     .Append("<td class=\"fuaran-table-cell\"")
                     .Append(alignAttr a)
                     .Append(">")
-                    .Append(renderInline refs cell)
+                    .Append(renderInline policy refs cell)
                     .Append("</td>")
                 |> ignore
 
@@ -1508,7 +1678,7 @@ and private renderBlock (refs: Map<string, string * string option>) (b: Block) :
 
         sb.Append "</tbody></table>\n" |> ignore
         sb.ToString()
-    | BulletList(tight, items) -> "<ul>\n" + renderItems refs tight items + "</ul>\n"
+    | BulletList(tight, items) -> "<ul>\n" + renderItems policy refs tight items + "</ul>\n"
     | OrderedList(startNum, tight, items) ->
         let startAttr =
             if startNum = 1 then
@@ -1516,9 +1686,14 @@ and private renderBlock (refs: Map<string, string * string option>) (b: Block) :
             else
                 " start=\"" + string startNum + "\""
 
-        "<ol" + startAttr + ">\n" + renderItems refs tight items + "</ol>\n"
+        "<ol" + startAttr + ">\n" + renderItems policy refs tight items + "</ol>\n"
 
-and private renderItems (refs: Map<string, string * string option>) (tight: bool) (items: ListItem list) : string =
+and private renderItems
+    (policy: Sanitize.EgressPolicy)
+    (refs: Map<string, string * string option>)
+    (tight: bool)
+    (items: ListItem list)
+    : string =
     let sb = StringBuilder()
 
     for item in items do
@@ -1540,26 +1715,41 @@ and private renderItems (refs: Map<string, string * string option>) (tight: bool
                 item.Blocks
                 |> List.map (fun blk ->
                     match blk with
-                    | Paragraph txt -> renderInline refs txt
-                    | other -> "\n" + renderBlock refs other)
+                    | Paragraph txt -> renderInline policy refs txt
+                    | other -> "\n" + renderBlock policy refs other)
                 |> String.concat ""
 
             sb.Append("<li" + liClass + ">" + checkbox + inner + "</li>\n") |> ignore
         else
-            sb.Append("<li" + liClass + ">\n" + checkbox + renderBlocks refs item.Blocks + "</li>\n")
+            sb.Append(
+                "<li"
+                + liClass
+                + ">\n"
+                + checkbox
+                + renderBlocks policy refs item.Blocks
+                + "</li>\n"
+            )
             |> ignore
 
     sb.ToString()
 
 // ─── Public entry point ─────────────────────────────────────────────────────
 
-/// Render a GFM markdown `source` string to deterministic HTML. The output is
-/// the cross-host byte-parity contract — every Fuaran host (F#/Fable,
-/// `Renderer.Server`, TS, Python) reproduces it exactly. Safe to feed to
-/// `dangerouslySetInnerHTML` / a raw-HTML sink: escaped by construction, raw
-/// HTML never passes through, URLs sanitized. The result still passes through
+/// Render a GFM markdown `source` string to deterministic HTML, consulting
+/// `policy` for every link (`Hyperlink`) and image (`Media`) destination.
+///
+/// The output is the cross-host byte-parity contract — every Fuaran host
+/// (F#/Fable, `Renderer.Server`, TS, Go, Rust, Python) reproduces it exactly,
+/// under the same policy. Safe to feed to `dangerouslySetInnerHTML` / a
+/// raw-HTML sink: escaped by construction, raw HTML never passes through, URLs
+/// pass the scheme floor. The result still passes through
 /// `Sanitize.sanitizeMarkdownHtml` as defence-in-depth (now a near-no-op).
-let toHtml (source: string) : string =
+///
+/// **This is the entry point a host rendering a DECODED tree wants**, with
+/// `Sanitize.denyNonLocalEgress` or its own declaration. The renderer tiers
+/// call it with their context's `EgressPolicy`, so a decoded markdown body no
+/// longer reaches an undeclared origin without any caller opt-in on the path.
+let toHtmlWithEgress (policy: Sanitize.EgressPolicy) (source: string) : string =
     if isNull source || source = "" then
         ""
     else
@@ -1573,5 +1763,19 @@ let toHtml (source: string) : string =
         let rawLines = normalized.Split('\n')
         let refs, lines = extractRefDefs rawLines
         let blocks = parseBlocks lines
-        let html = renderBlocks refs blocks
+        let html = renderBlocks policy refs blocks
         Sanitize.sanitizeMarkdownHtml html
+
+/// Render a GFM markdown `source` string to deterministic HTML under the
+/// PERMISSIVE destination policy — every destination the scheme floor accepts
+/// is emitted as authored.
+///
+/// This is the pure `string -> string` form the corpus has pinned since Phase
+/// 292, and it is unchanged to the byte. It is the correct entry point for a
+/// HAND-AUTHORED body, where the author is the trust boundary. For a DECODED
+/// body it is not: reach `toHtmlWithEgress` with a policy. Naming the
+/// permissive posture rather than defaulting to it is the same inversion
+/// `Sanitize.permissiveEgress` and `Runtime.permissive` take — an unpolicied
+/// render should be visible in the host's own source.
+let toHtml (source: string) : string =
+    toHtmlWithEgress Sanitize.permissiveEgress source

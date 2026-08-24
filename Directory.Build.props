@@ -282,8 +282,29 @@
          relay@1.0 corpus fixtures pass unchanged against the 1.1 peer - the
          negotiation change (a peer now answers `hello` at the highest profile
          the CLIENT accepts, rather than only at its own) is what keeps that
-         true. -->
-    <Version>0.34.0</Version>
+         true.
+
+         0.35.0 - fuaran#1032 markdown egress coverage. BREAKING RENDERING
+         BEHAVIOUR under the default policy, and additive on the public
+         surface. `Markdown.toHtmlWithEgress` is new; the pure
+         `Markdown.toHtml` survives UNCHANGED as the permissive case
+         (`toHtmlWithEgress permissiveEgress`, byte-for-byte across the whole
+         cross-host corpus). What moves is the three RENDERER call sites -
+         client, SSR, email - which now pass their context's `EgressPolicy`,
+         whose default denies. So a decoded markdown body whose link or image
+         names an undeclared origin renders
+         `about:blank#fuaran-egress-refused` plus a
+         `data-fuaran-egress-refused` marker where it previously rendered the
+         destination. This closes the one gap 0.33.0 disclosed in three
+         places. The scheme floor's own answer is deliberately unchanged - a
+         URL the floor rejects is still the bare `about:blank`, no marker.
+
+         (Authored against 0.33.0 as 0.34.0; renumbered because 0.34.0 had
+         already been cut for the additive validator findings. A breaking
+         rendering change folded into a minor whose declared content says
+         "additive" would misdescribe the slot, and the slot is what a
+         consumer reads.) -->
+    <Version>0.35.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

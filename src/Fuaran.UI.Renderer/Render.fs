@@ -2358,10 +2358,13 @@ let rec private renderKind
         | _ -> Html.h6 props
     | NodeKind.Markdown spec ->
         // Phase 292: one deterministic GFM renderer in Renderer.Core. The same
-        // `Markdown.toHtml` runs on Fable (client) and .NET (Renderer.Server),
-        // so SSR↔CSR output is byte-identical by construction (was: npm `marked`
-        // here, Markdig server-side — two different renders of the same node).
-        let html = Markdown.toHtml (renderText ctx spec.Text)
+        // `Markdown.toHtmlWithEgress` runs on Fable (client) and .NET
+        // (Renderer.Server), so SSR↔CSR output is byte-identical by construction
+        // (was: npm `marked` here, Markdig server-side — two different renders
+        // of the same node). Phase 1032: the context's destination policy now
+        // reaches the markdown body's own link and image destinations, which the
+        // scheme floor alone never decided.
+        let html = Markdown.toHtmlWithEgress ctx.EgressPolicy (renderText ctx spec.Text)
 
         Html.div [ prop.className "fuaran-markdown"; prop.dangerouslySetInnerHTML html ]
     | NodeKind.Metric spec -> renderMetric ctx parentNodeId state spec

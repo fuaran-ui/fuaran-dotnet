@@ -115,10 +115,39 @@ The following are covered by the semver rules above:
     `DriverServices.createPermissive` (which now opens egress alongside the dispatch gate). Full
     adoption guide:
     [`docs/migrations/1026-ambient-destination-policy.md`](docs/migrations/1026-ambient-destination-policy.md).
-  - **Not covered, deliberately:** markdown link / image destinations still pass the scheme floor
-    only — `Markdown.toHtml` is pinned by a canonical cross-host corpus, so threading a policy
-    through it is a wire-adjacent change rather than a call-site adoption. Recorded in the migration
-    note and in the escape-hatch inventory's Hatch 1.
+  - **Not covered at 0.33.0, deliberately; CLOSED in 0.35.0** — markdown link / image destinations
+    passed the scheme floor only, because `Markdown.toHtml` is pinned by a canonical cross-host
+    corpus and threading a policy through it is a wire-adjacent change rather than a call-site
+    adoption. Done as its own act below.
+- **Markdown destinations are policy-checked as of 0.35.0 (Phase 1032) — BREAKING rendering
+  behaviour under the default policy, additive on the public surface.** The gap 0.33.0 disclosed is
+  closed, in the same three places it was opened.
+  - **Additive:** `Markdown.toHtmlWithEgress : EgressPolicy -> string -> string` is new. The pure
+    `Markdown.toHtml` is UNCHANGED and is now defined as the permissive case — `toHtmlWithEgress
+    Sanitize.permissiveEgress`, byte-for-byte over the whole cross-host corpus. It survives rather
+    than flipping its default because that corpus is a five-host byte-parity contract: changing the
+    pure function would rewrite existing fixtures in every host in one act, and a mass churn is
+    exactly where a real divergence hides. It is the right entry point for a HAND-AUTHORED body,
+    where the author is the trust boundary.
+  - **Behaviour-breaking, and the point:** the three renderer call sites — client, SSR, and the
+    email projection — pass their context's `EgressPolicy`, whose default denies. A decoded markdown
+    body whose link or image names an undeclared origin now renders
+    `about:blank#fuaran-egress-refused` plus a `data-fuaran-egress-refused` marker naming the class
+    and the host, where it previously rendered the destination. `mailto:` in a markdown body is
+    refused by the same default, for the same reason, and a same-origin destination is untouched.
+  - **The scheme floor's own answer is deliberately unchanged.** A URL the floor rejects
+    (`javascript:`, an unknown scheme, a protocol-relative reference) still renders the bare
+    `about:blank` with NO marker. That refusal is a different fact from a policy refusal and is
+    pinned by the shared `sanitization/` corpus; re-spelling it inside a change about egress would
+    churn that corpus where a genuine divergence could hide.
+  - **The email projection drops the marker and keeps the refusal**, exactly as its `Link` and
+    `Image` projections already did: `data-*` attributes do not survive the sanitisers most mail
+    clients run, so a marker there is a signal that cannot be relied on to arrive.
+  - **Cross-host:** this is a wire-adjacent forward-coupling event, not a local change. The refusal
+    shape, the class assignment and the named corpus policies are specified language-neutrally in
+    the wire format's §14.1, and the shared markdown corpus carries policied fixtures every
+    conformant host renders. Full adoption guide:
+    [`docs/migrations/1032-markdown-egress.md`](docs/migrations/1032-markdown-egress.md).
 
 ### `Fuaran.UI.Ops`
 - The `TreeOp<'Msg>` DU (the §4g op vocabulary).

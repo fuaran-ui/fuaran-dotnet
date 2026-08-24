@@ -735,9 +735,14 @@ and private renderKind
         | 5 -> Html.h5 props
         | _ -> Html.h6 props
     | NodeKind.Markdown spec ->
+        // Phase 1032 — the markdown body's own link/image destinations are
+        // policy-checked with the same `ctx.EgressPolicy` the href/src emission
+        // sites use. The two tiers' emitted DOM is parity-locked, so this call
+        // and the client's must pass the same policy or the parity corpus is the
+        // thing that breaks.
         Html.div
             [ prop.className "fuaran-markdown"
-              prop.dangerouslySetInnerHTML (Markdown.toHtml (renderText ctx spec.Text)) ]
+              prop.dangerouslySetInnerHTML (Markdown.toHtmlWithEgress ctx.EgressPolicy (renderText ctx spec.Text)) ]
     | NodeKind.Metric spec ->
         // Phase 632 — the Metric value is a scalar slot: a `Binding.Transform`
         // resolves to its 1×1 result cell (a global aggregate / row-field

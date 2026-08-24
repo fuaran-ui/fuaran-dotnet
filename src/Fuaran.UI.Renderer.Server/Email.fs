@@ -385,13 +385,55 @@ let private headingStyle (opts: EmailOptions) (level: int) (variant: HeadingVari
     | HeadingVariant.Lead -> textStyle opts "font-size:18px;line-height:26px;font-weight:400;"
     | HeadingVariant.Standard -> textStyle opts ("font-size:" + size + ";line-height:1.3;font-weight:" + weight + ";")
 
+/// Drop the `data-fuaran-egress-refused` markers the markdown renderer attaches
+/// to a refused destination, leaving the refused `href` / `src` itself in place.
+///
+/// The same rule the `Link` and `Image` projections above keep, applied to the
+/// one surface that emits its attributes as a string rather than as props:
+/// `data-*` attributes do not survive the sanitisers most mail clients run, so a
+/// marker here is a signal that cannot be relied on to arrive. The refusal is
+/// NOT dropped — the destination is still `egressRefusalUrl`, which is the half
+/// that stops it being reached.
+///
+/// String surgery over a KNOWN shape, in the same place and for the same reason
+/// as the checkbox substitution below it: the marker's value is a class name and
+/// a normalised host, so it never contains a quote, and the renderer emits the
+/// attribute in exactly one spelling.
+let private stripEgressMarkers (html: string) : string =
+    let needle = " " + Sanitize.egressRefusalAttribute + "=\""
+    let mutable s = html
+    let mutable go = true
+
+    while go do
+        let i = s.IndexOf(needle, System.StringComparison.Ordinal)
+
+        if i < 0 then
+            go <- false
+        else
+            let close = s.IndexOf('"', i + needle.Length)
+
+            if close < 0 then
+                go <- false
+            else
+                s <- s.Remove(i, close + 1 - i)
+
+    s
+
 /// Markdown, made email-safe. The GFM renderer escapes raw HTML by
 /// construction, so its output is a closed tag set — with one exception worth
 /// naming: a task-list item emits a disabled `<input type="checkbox">`, which is
 /// a form control (invisible in several clients, and against this projection's
 /// own rule). It is substituted for a ballot glyph, which every client draws.
-let private emailSafeMarkdown (markdownText: string) : string =
-    let html = Sanitize.sanitizeMarkdownHtml (Markdown.toHtml markdownText)
+///
+/// Phase 1032: the body's own link and image destinations are policy-checked
+/// with the digest's declared policy, with the marker stripped per the rule
+/// above. A digest is the surface where an undeclared markdown image IS the
+/// tracking pixel, so leaving this one unchecked would have been the largest
+/// remaining hole rather than the smallest.
+let private emailSafeMarkdown (policy: Sanitize.EgressPolicy) (markdownText: string) : string =
+    let html =
+        Sanitize.sanitizeMarkdownHtml (Markdown.toHtmlWithEgress policy markdownText)
+        |> stripEgressMarkers
 
     html
         .Replace("<input class=\"fuaran-task-checkbox\" checked=\"\" disabled=\"\" type=\"checkbox\" /> ", "&#9745; ")
@@ -637,7 +679,7 @@ and private renderKind
             [ Html.tr
                   [ Html.td
                         [ prop.custom ("style", textStyle opts "font-size:15px;line-height:22px;")
-                          prop.dangerouslySetInnerHTML (emailSafeMarkdown (text spec.Text)) ] ] ]
+                          prop.dangerouslySetInnerHTML (emailSafeMarkdown ctx.EgressPolicy (text spec.Text)) ] ] ]
 
     | NodeKind.Metric spec ->
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value

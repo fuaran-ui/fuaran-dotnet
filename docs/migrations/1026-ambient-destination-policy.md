@@ -153,12 +153,16 @@ as an egress-policy failure — the worst way to meet one.
 
 The inventory's value is that it is complete, so:
 
-- **Markdown link and image destinations are not policy-checked.** `Markdown.toHtml` is a pure
-  `string -> string` function pinned by a canonical cross-host corpus, so threading a policy through
-  it is a cross-host wire-adjacent change rather than a call-site adoption. Markdown destinations
-  still pass the scheme floor (`sanitizeUrlOrBlank`), which is where they were before 1026. **If you
-  render decoded markdown, this is a live gap** — treat the markdown body as an egress surface and
-  sanitise upstream.
+- ~~**Markdown link and image destinations are not policy-checked.**~~ **CLOSED by
+  [Phase 1032](1032-markdown-egress.md) in 0.35.0.** It was a live gap at 0.33.0, for the reason
+  recorded here: `Markdown.toHtml` is a pure `string -> string` function pinned by a canonical
+  cross-host corpus, so threading a policy through it was a wire-adjacent forward-coupling event
+  rather than a call-site adoption, and doing it quietly inside 1026 would have been the wrong act.
+  It was done as its own act instead — the renderer tiers pass `ctx.EgressPolicy` into markdown, a
+  refused markdown destination renders the same refusal shape as every other, and the cross-host
+  corpus pins it in every conformant host. **If you are pinned to 0.33.x this bullet still describes
+  your version**: treat a decoded markdown body as an egress surface and sanitise upstream until you
+  adopt 0.35.0.
 - **`Fuaran.UI.Giraffe.DocumentShell`** (canonical link, stylesheet hrefs, script srcs) is
   host-authored document furniture, not tree-authored, and is unchanged.
 - **`EmailOptions.LiveUrl`** is supplied by the host in that same record, so it is not checked

@@ -92,10 +92,21 @@ The HTML string `toHtml` returns is the contract every host reproduces exactly:
 - **TS / Python:** `@fuaran-ui/renderer` and `fuaran_py.renderer` implement the same renderer,
   verified byte-identical against the corpus.
 - **Sanitization:** the renderer **escapes by construction** – every text run is HTML-escaped, raw
-  HTML never passes through, and every link/image URL goes through `Sanitize.sanitizeUrlOrBlank`
+  HTML never passes through, and every link/image URL goes through the scheme floor
   (so `javascript:` collapses to `about:blank`). The `Sanitize.sanitizeMarkdownHtml` contract
   ([SANITIZATION.md](../SANITIZATION.md)) is still applied as defence-in-depth, but its surface is
   now far smaller (no third-party library output to police). See [SANITIZATION.md](../SANITIZATION.md).
+- **Destination policy (0.35.0, Phase 1032):** the scheme floor answers *is this URL safe to have*;
+  it does not answer *is this destination one the composition declared*. `Markdown.toHtmlWithEgress`
+  consults a `Sanitize.EgressPolicy` for every link (`Hyperlink`) and image (`Media`) destination,
+  and a refused one renders `about:blank#fuaran-egress-refused` plus a `data-fuaran-egress-refused`
+  marker naming the class and the host — never the path or the query. The renderer tiers pass their
+  context's policy, whose default denies, so a **decoded** body is covered without a caller opt-in.
+  **`Markdown.toHtml` is unchanged** and is the permissive case by definition, for a hand-authored
+  body where the author is the trust boundary. The floor's own answer is likewise unchanged: a URL
+  it rejects is still the bare `about:blank`, with no marker. Specified language-neutrally in the
+  wire format's §14.1; adoption guide in
+  [`migrations/1032-markdown-egress.md`](migrations/1032-markdown-egress.md).
 
 ## Conformance corpus + the cross-host gate
 

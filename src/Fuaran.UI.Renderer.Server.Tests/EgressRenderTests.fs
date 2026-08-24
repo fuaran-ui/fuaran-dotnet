@@ -283,4 +283,104 @@ let egressRenderTests =
 
               Expect.isTrue (contains Sanitize.egressRefusalUrl html) "a nested href is refused too"
               Expect.isFalse (contains "SECRETVALUE" html) "and leaks nothing"
+          }
+
+          // ─── Markdown (Phase 1032) — the gap 1026 disclosed, closed ──────────
+          //
+          //  The cross-host corpus pins what `Markdown.toHtmlWithEgress` RENDERS
+          //  under a named policy. What it structurally cannot pin is that the
+          //  RENDERER hands it a policy at all: a host could ship a perfect
+          //  policy-taking markdown function and go on calling the pure one, and
+          //  every corpus fixture would still pass. That is what these test.
+
+          test "a decoded markdown body's link is refused under the DEFAULT context" {
+              let html =
+                  Render.render BindingResolver.empty (Fuaran.markdown "md" ("[the report](" + undeclared + ")"))
+
+              Expect.isTrue (contains Sanitize.egressRefusalUrl html) "the markdown anchor's href is the refusal URL"
+
+              Expect.isTrue (contains "hyperlink:collector.example" html) "marked with the class and the host"
+              Expect.isFalse (contains "SECRETVALUE" html) "the query reaches neither the href nor the marker"
+              Expect.isFalse (contains "/collect" html) "and neither does the path"
+              Expect.isTrue (contains "the report" html) "the link TEXT survives — a refusal is not a deletion"
+          }
+
+          test "a markdown IMAGE is refused as Media — the arm that fetches on sight" {
+              let html =
+                  Render.render BindingResolver.empty (Fuaran.markdown "md" ("![chart](" + undeclared + ")"))
+
+              Expect.isTrue (contains Sanitize.egressRefusalUrl html) "the img src is the refusal URL"
+              Expect.isTrue (contains "media:collector.example" html) "marked MEDIA, not hyperlink"
+              Expect.isTrue (contains "alt=\"chart\"" html) "the alt text survives"
+              Expect.isFalse (contains "SECRETVALUE" html) "nothing of the destination reaches the document"
+          }
+
+          test "ALLOW twin — a same-origin markdown link renders untouched under the same default" {
+              let html =
+                  Render.render BindingResolver.empty (Fuaran.markdown "md" "[the guide](/guide#top)")
+
+              Expect.isTrue (contains "href=\"/guide#top\"" html) "an in-app markdown link is unaffected"
+              Expect.isFalse (contains Sanitize.egressRefusalAttribute html) "and carries no refusal marker"
+          }
+
+          test "ALLOW twin — a DECLARED origin renders untouched inside markdown" {
+              let policy =
+                  Sanitize.denyNonLocalEgress
+                  |> Sanitize.allowOrigin (Sanitize.ExactHost "docs.example") [ Sanitize.EgressClass.Hyperlink ]
+
+              let html =
+                  Render.renderWithEgress
+                      policy
+                      Registry.empty
+                      BindingResolver.empty
+                      (Fuaran.markdown "md" "[the guide](https://docs.example/g)")
+
+              Expect.isTrue (contains "href=\"https://docs.example/g\"" html) "the declared destination is emitted"
+              Expect.isFalse (contains Sanitize.egressRefusalAttribute html) "with no refusal marker"
+          }
+
+          test "go-red self-test: the SAME markdown renders the destination under permissiveEgress" {
+              // Without this, a bug that neutered every markdown href for an
+              // unrelated reason would read above as a policy triumph.
+              let node = Fuaran.markdown "md" ("[the report](" + undeclared + ")")
+
+              let html =
+                  Render.renderWithEgress Sanitize.permissiveEgress Registry.empty BindingResolver.empty node
+
+              Expect.isTrue (contains "collector.example/collect" html) "permissive emits the destination"
+              Expect.isFalse (contains Sanitize.egressRefusalAttribute html) "and carries no marker"
+          }
+
+          test "the pure `Markdown.toHtml` IS the permissive case, byte-for-byte" {
+              // The property the whole toHtml-survives decision rests on. If it
+              // ever diverges, the corpus's unpolicied fixtures stop meaning what
+              // five host gates assert they mean.
+              let sources =
+                  [ "[a](" + undeclared + ")"
+                    "![a](" + undeclared + ")"
+                    "<https://collector.example/x>"
+                    "<person@collector.example>"
+                    "see https://collector.example/x now"
+                    "[a](mailto:x@collector.example)"
+                    "[a](javascript:alert(1))"
+                    "[a](/local#f)" ]
+
+              for src in sources do
+                  Expect.equal
+                      (Markdown.toHtml src)
+                      (Markdown.toHtmlWithEgress Sanitize.permissiveEgress src)
+                      ("toHtml must equal the permissive render for: " + src)
+          }
+
+          test "the SCHEME FLOOR's own answer is unchanged — bare about:blank, no marker" {
+              // A URL the floor rejects is a different fact from a policy
+              // refusal, and it has rendered this way since Phase 292 in every
+              // conformant host. Re-spelling it inside an egress change would
+              // churn the sanitization corpus where a real divergence could hide.
+              let html =
+                  Render.render BindingResolver.empty (Fuaran.markdown "md" "[click](javascript:alert(1))")
+
+              Expect.isTrue (contains "href=\"about:blank\"" html) "the floor still collapses it to bare about:blank"
+
+              Expect.isFalse (contains Sanitize.egressRefusalAttribute html) "and attaches no policy-refusal marker"
           } ]
