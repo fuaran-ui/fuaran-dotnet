@@ -122,6 +122,44 @@ type StateKeyFacts =
         /// anything). Under either, the absence of a read PROVES nothing, so
         /// FUARAN098 stands down for the whole tree rather than guessing.
         OpaqueReader: bool
+        /// Every state key the tree can be shown to WRITE, from EVERY write
+        /// surface — not only `Action.SetState`. Held BESIDE `Writes` rather
+        /// than replacing it: `Writes` is the (writer, key) list FUARAN098
+        /// iterates, and widening it would newly fire a shipped Warning on
+        /// trees that pass today. The surfaces counted here:
+        ///
+        ///  1. `Action.SetState`'s key, reachable from a wire-survivable slot.
+        ///  2. `Action.Call`'s `into: State <key>` result target.
+        ///  3. A control's WRITE-BACK slot bound to `Binding.State(k, _)` —
+        ///     `Select.value` / `.values`, `Tabs.activeIndex` / `.activeTag`,
+        ///     `Stepper.activeStep`, `Disclosure.open`, `Modal.open`,
+        ///     `Toast.open`, and every `FormField` value slot. The renderer
+        ///     writes these back when no handler is supplied.
+        ///  4. A `FormField` whose value slot is `None` — the Phase 694
+        ///     auto-bind writes back to `State(field.Id)`.
+        ///  5. A `DataGrid`'s `sortStateKey` / `pageStateKey` / `editStateKey`
+        ///     — plain STRINGS the renderer writes with no `Binding` to see,
+        ///     and an editable grid whose `source` is a direct `Binding.State`
+        ///     (the Phase 663 commit destination).
+        WriteKeys: Set<string>
+        /// True when the tree holds a writer whose DESTINATION cannot be seen —
+        /// the write-side twin of `OpaqueReader`, and the reason FUARAN103 can
+        /// afford to be a finding at all. A closure produces an arbitrary
+        /// `Action` at dispatch time, so it may write any key: a control's
+        /// `onChange` / `onToggle` / `onSelect` / `onDismiss` handler, a
+        /// grid's closure-bearing cell kinds, a `Binding.Local`'s `onCommit`,
+        /// an `Action.Call`'s `onResult`, and the host-crossing actions
+        /// (`Dispatch` / `Invoke` / `AiTool` / `CommitLocal` / `ReadFileBody`).
+        /// So are a `NodeKind.Custom` node's registered renderer and a `Mount`
+        /// guest. Under any of them the absence of a write proves nothing.
+        OpaqueWriter: bool
+        /// Every `NodeKind.Switch` whose branch SELECTOR (`SwitchSpec.On`, a
+        /// `Binding` since Phase 768) reads a state key, as (switch node id,
+        /// key). Collected explicitly rather than recovered from `Uses`: a
+        /// Switch node's accessibility slots are State-bindable too, so a
+        /// reader-tagged `State` use on a Switch does not identify the
+        /// selector, and the rule that reasons about it must not guess.
+        SwitchSelectors: (string * string) list
     }
 
 /// The tree-wide facts `PreEmitValidate`'s cross-tree checks run on.
@@ -257,6 +295,65 @@ let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse 
     | Action.Invoke _ -> []
 
 
+/// The State key a WRITE-BACK slot commits to, and whether committing also runs
+/// host code that may write elsewhere. A slot holding any other binding shape
+/// gives the renderer's write-back default nowhere to write — the FUARAN069
+/// inert-control condition — so it contributes no write. A `Local` buffers and
+/// commits to whatever it re-syncs FROM, so its destination is `initialFrom`'s;
+/// its `onCommit` hook is host code layered on top of that.
+let rec writeBackTargetOf<'T> (binding: Binding<'T>) : string option * bool =
+    match binding with
+    | Binding.State(key, _) -> Some key, false
+    | Binding.Local(_, _, initialFrom, onCommit, _) ->
+        let key, opaque = writeBackTargetOf initialFrom
+        key, opaque || onCommit.IsSome
+    | _ -> None, false
+
+/// The write-side facts of one `FormFieldKind`'s value slot.
+type FormFieldWrite =
+    {
+        /// The State key an explicit value binding commits to.
+        Target: string option
+        /// True when the value slot is ABSENT, so the Phase 694 auto-bind
+        /// decides the destination from the field's own id (in a form) or the
+        /// FilterStore (on a chip) — a distinction only the caller can make.
+        SlotAbsent: bool
+        /// True when a change handler, or a `Local`'s `onCommit`, may write
+        /// somewhere this walk cannot see.
+        Opaque: bool
+    }
+
+/// `writeBackTargetOf` over a `FormFieldKind`'s value slot, plus its handler.
+/// One arm per case so a new field kind is a compile error here rather than a
+/// silently-uncounted writer — the same forward-coupling posture the read walk
+/// takes in `usesOfFormFieldKind`.
+let formFieldWriteFacts<'Msg> (kind: FormFieldKind<'Msg>) : FormFieldWrite =
+    let slot v hasHandler =
+        match v with
+        | Some b ->
+            let target, opaque = writeBackTargetOf b
+
+            { Target = target
+              SlotAbsent = false
+              Opaque = opaque || hasHandler }
+        | None ->
+            { Target = None
+              SlotAbsent = true
+              Opaque = hasHandler }
+
+    match kind with
+    | FormFieldKind.Text(v, h) -> slot v h.IsSome
+    | FormFieldKind.Number(v, h) -> slot v h.IsSome
+    | FormFieldKind.Checkbox(v, h) -> slot v h.IsSome
+    | FormFieldKind.Toggle(v, h) -> slot v h.IsSome
+    | FormFieldKind.TextArea(v, h, _) -> slot v h.IsSome
+    | FormFieldKind.RangedNumber(v, h, _, _, _) -> slot v h.IsSome
+    | FormFieldKind.Range(v, h, _, _, _) -> slot v h.IsSome
+    | FormFieldKind.Choice(_, v, h) -> slot v h.IsSome
+    | FormFieldKind.SegmentedChoice(_, v, h, _) -> slot v h.IsSome
+    | FormFieldKind.Date(v, h, _, _, _, _) -> slot v h.IsSome
+    | FormFieldKind.DateRange(v, h, _, _, _, _) -> slot v h.IsSome
+
 /// Collect the tree-wide binding facts for `node` (see `TreeBindingFacts`),
 /// descending through layout children, error-boundary subtrees, and
 /// fragment-decl bodies (`FragmentRef` carries no body; a `Mount` guest is an
@@ -271,6 +368,35 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
     let stateReads = System.Collections.Generic.HashSet<string>()
     let stateWrites = ResizeArray<string * string>()
     let mutable opaqueReader = false
+
+    // ── The write-side projection FUARAN103 runs on ──
+    let stateWriteKeys = System.Collections.Generic.HashSet<string>()
+    let switchSelectors = ResizeArray<string * string>()
+    let mutable opaqueWriter = false
+
+    /// A closure produces an arbitrary `Action` at dispatch time, so it may
+    /// write any key. Seeing one stands the write-side rule down for the whole
+    /// tree — over-counting an opaque writer costs a missed finding, and the
+    /// alternative costs a false accusation of a tree that is perfectly correct.
+    let noteOpaqueIf (present: bool) =
+        if present then
+            opaqueWriter <- true
+
+    /// Fold one `writeBackTargetOf` result into the write projection.
+    let noteWriteBack (target: string option, opaque: bool) =
+        target |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
+        noteOpaqueIf opaque
+
+    /// A `FormFieldKind`'s value slot is a write-back DESTINATION.
+    /// `implicitKey` is what the Phase 694 auto-bind writes when the slot is
+    /// ABSENT: the field's own id inside a form, and NOTHING on a filter chip,
+    /// whose channel is the FilterStore rather than the State store.
+    let recordFormFieldWrites (implicitKey: string option) (kind: FormFieldKind<'Msg>) =
+        let facts = formFieldWriteFacts kind
+        noteWriteBack (facts.Target, facts.Opaque)
+
+        if facts.SlotAbsent then
+            implicitKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
 
     /// Fold usages into the STATE projection only. Every read surface reaches
     /// this, including the ones deliberately kept out of `Uses`.
@@ -299,12 +425,30 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         match action with
         | Action.SetState(key, _, valueFrom) ->
             stateWrites.Add(readerId, key)
+            stateWriteKeys.Add key |> ignore
 
             match valueFrom with
             | Some b -> recordStateOf (usesOfBinding b)
             | None -> ()
         | Action.Chain actions -> actions |> List.iter (recordStateAction readerId)
-        | _ -> ()
+        // A declared result target names its destination; an `onResult` closure
+        // does not, and may write anything at all.
+        | Action.Call(_, onResult, into) ->
+            match into with
+            | Some(CallResultTarget.State key) -> stateWriteKeys.Add key |> ignore
+            | _ -> ()
+
+            noteOpaqueIf onResult.IsSome
+        // The host-crossing arms. Each hands control to code the tree cannot
+        // see, which may write the store directly.
+        | Action.Dispatch _
+        | Action.Invoke _
+        | Action.AiTool _
+        | Action.CommitLocal _
+        | Action.ReadFileBody _ -> opaqueWriter <- true
+        | Action.Navigate _
+        | Action.Notify _
+        | Action.WriteToClipboard _ -> ()
 
     let recordCalls (inUses: bool) (readerId: string) (action: Action<'Msg>) =
         recordStateAction readerId action
@@ -346,9 +490,19 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.Box s -> usesOfTextOpt s.Heading, s.Children
             | NodeKind.SplitPanel s -> [], s.Children
             | NodeKind.SummaryList s -> usesOfTextOpt s.Heading, s.Children
-            | NodeKind.Stepper s -> usesOfBinding s.ActiveStep, s.Children
-            | NodeKind.Disclosure s -> (usesOfText s.Heading @ usesOfBinding s.Open), s.Children
+            | NodeKind.Stepper s ->
+                noteWriteBack (writeBackTargetOf s.ActiveStep)
+                noteOpaqueIf s.OnSelect.IsSome
+                usesOfBinding s.ActiveStep, s.Children
+            | NodeKind.Disclosure s ->
+                noteWriteBack (writeBackTargetOf s.Open)
+                noteOpaqueIf s.OnToggle.IsSome
+                (usesOfText s.Heading @ usesOfBinding s.Open), s.Children
             | NodeKind.Tabs s ->
+                noteWriteBack (writeBackTargetOf s.ActiveIndex)
+                s.ActiveTag |> Option.iter (writeBackTargetOf >> noteWriteBack)
+                noteOpaqueIf (s.OnSelect.IsSome || s.OnSelectTag.IsSome)
+
                 let headerUses =
                     match s.TabHeaders with
                     | Some headers ->
@@ -360,6 +514,8 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.Modal s ->
                 // Modal's OnDismiss is the wire-survivable Action slot (Phase 428).
                 s.OnDismiss |> Option.iter (recordCalls inUses readerId)
+                // A dismissable modal's close gesture writes its own `open` slot.
+                noteWriteBack (writeBackTargetOf s.Open)
                 (usesOfTextOpt s.Heading @ usesOfBinding s.Open), s.Children
             | NodeKind.ScrollArea s -> [], s.Children
             // ── Display ──
@@ -384,7 +540,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.Link l -> usesOfBinding l.Href @ usesOfText l.Label, []
             | NodeKind.Image i -> usesOfBinding i.Src @ usesOfText i.Alt, []
             | NodeKind.List l -> l.Items |> List.collect usesOfText, []
-            | NodeKind.Toast t -> usesOfText t.Message @ usesOfBinding t.Open, []
+            | NodeKind.Toast t ->
+                noteWriteBack (writeBackTargetOf t.Open)
+                usesOfText t.Message @ usesOfBinding t.Open, []
             | NodeKind.CodeBlock _ -> [], []
             | NodeKind.Math _ -> [], []
             | NodeKind.Drawing d ->
@@ -424,8 +582,14 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                     usesOfText b.Label @ usesOfTextOpt b.Tooltip @ usesOfBindingOpt b.Disabled
 
                 uses, []
-            | NodeKind.FileUpload fu -> usesOfText fu.Label @ usesOfBindingOpt fu.Disabled, []
+            | NodeKind.FileUpload fu ->
+                noteOpaqueIf fu.OnSelect.IsSome
+                usesOfText fu.Label @ usesOfBindingOpt fu.Disabled, []
             | NodeKind.Select s ->
+                noteWriteBack (writeBackTargetOf s.Value)
+                s.Values |> Option.iter (writeBackTargetOf >> noteWriteBack)
+                noteOpaqueIf (s.OnChange.IsSome || s.OnChangeMulti.IsSome)
+
                 let uses =
                     usesOfText s.Label
                     @ usesOfBinding s.Source
@@ -443,6 +607,8 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                     let fieldUses =
                         f.Fields
                         |> List.collect (fun field ->
+                            recordFormFieldWrites (Some field.Id) field.Kind
+
                             usesOfText field.Label
                             @ usesOfTextOpt field.Help
                             @ usesOfFormFieldKind (Some(BindingUse.State field.Id)) field.Kind)
@@ -458,6 +624,10 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
 
                     spec.Items
                     |> List.collect (fun (fs: FilterSpec<_>) ->
+                        // No implicit key: an absent value slot on a chip
+                        // auto-binds to the FILTER store, not the State store.
+                        recordFormFieldWrites None fs.Kind
+
                         usesOfText fs.Label
                         @ usesOfFormFieldKind (Some(BindingUse.Filter fs.Name)) fs.Kind)
 
@@ -471,6 +641,38 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 // counting it would mask the very defect this rule looks for.
                 g.SortStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
                 g.PageStateKey |> Option.iter (fun k -> stateReads.Add k |> ignore)
+
+                // The write side of the same three slots: a header click writes
+                // the sort descriptor, the pager writes the page descriptor, and
+                // an edited cell commits to `editStateKey` — or, absent one, back
+                // to a directly-State-bound `source` (Phase 663).
+                g.SortStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
+                g.PageStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
+                g.EditStateKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
+
+                if g.Editable && g.EditStateKey.IsNone then
+                    noteWriteBack (writeBackTargetOf g.Source)
+
+                // A row-click handler is a closure over the row: an arbitrary
+                // action per row, so an arbitrary write.
+                noteOpaqueIf g.OnRowClick.IsSome
+
+                // A closure-bearing cell produces an arbitrary `Action` per row,
+                // so it may write any key. The value-only cell kinds cannot.
+                for col in g.Columns do
+                    match col.Kind with
+                    | CellKindErased.Editable onEdit -> noteOpaqueIf onEdit.IsSome
+                    | CellKindErased.Checkbox(_, onToggle) -> noteOpaqueIf onToggle.IsSome
+                    | CellKindErased.Button(_, onClick) -> noteOpaqueIf onClick.IsSome
+                    | CellKindErased.ButtonGroup _
+                    | CellKindErased.Custom _ -> opaqueWriter <- true
+                    | CellKindErased.Text
+                    | CellKindErased.Numeric
+                    | CellKindErased.Date
+                    | CellKindErased.Link _
+                    | CellKindErased.Pill _
+                    | CellKindErased.TonedPill _
+                    | CellKindErased.Progress _ -> ()
 
                 let uses =
                     // Phase 393 — a static read-only grid carries its cells as `TextSource`
@@ -504,6 +706,14 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             // their own bindings are captured.
             | NodeKind.Switch spec ->
                 record inUses readerId (usesOfBinding spec.On)
+
+                // The selector, recorded EXPLICITLY for FUARAN103: a Switch's
+                // accessibility slots are State-bindable too, so a reader-tagged
+                // State use on this node does not identify the branch selector.
+                match spec.On with
+                | Binding.State(key, _) -> switchSelectors.Add(readerId, key)
+                | _ -> ()
+
                 [], (spec.Cases |> List.map _.Child) @ [ spec.Default ]
             | NodeKind.FragmentDecl spec -> [], [ spec.Body ]
             // Custom props are JVal literals, not bindings; a FragmentRef carries
@@ -511,7 +721,10 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.Custom _ ->
                 // Phase 932 — a REGISTERED custom renderer is host code that may read
                 // any state key, so the tree can no longer be shown to read nothing.
+                // It may equally WRITE any key, which is the same argument on the
+                // other channel.
                 opaqueReader <- true
+                opaqueWriter <- true
                 [], []
             | NodeKind.FragmentRef spec ->
                 spec.Args |> Option.iter walkSlotArgs
@@ -521,7 +734,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 // `StateStore.forScope`), but a `SlotArg` handed to it is host-authored
                 // and its render-time scope is not settled by the type. Counted as a
                 // read: over-counting costs a missed finding, under-counting costs a
-                // false accusation.
+                // false accusation. The same holds on the write channel — a guest
+                // is another tree entirely, and this walk never sees its body.
+                opaqueWriter <- true
                 spec.Inputs |> Option.iter walkSlotArgs
                 [], []
 
@@ -543,4 +758,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
       StateKeys =
         { Writes = List.ofSeq stateWrites
           Reads = Set.ofSeq stateReads
-          OpaqueReader = opaqueReader } }
+          OpaqueReader = opaqueReader
+          WriteKeys = Set.ofSeq stateWriteKeys
+          OpaqueWriter = opaqueWriter
+          SwitchSelectors = List.ofSeq switchSelectors } }

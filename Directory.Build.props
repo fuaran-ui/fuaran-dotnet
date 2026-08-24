@@ -283,7 +283,7 @@
          negotiation change (a peer now answers `hello` at the highest profile
          the CLIENT accepts, rather than only at its own) is what keeps that
          true. -->
-    <Version>0.33.1</Version>
+    <Version>0.34.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -330,6 +330,54 @@ type PreEmitDefect =
     /// Carries the writing node's id and the key. What counts as a READ is
     /// enumerated on `BindingWalk.StateKeyFacts`, not left to the reader.
     | SetStateNoReader of nodeId: string * key: string
+    /// **FUARAN102 (Warning)**. A labelled datum names the CURRENT instant in
+    /// its own words — "today", "last updated", "current date" — and states a
+    /// hardcoded ISO-8601 calendar date beside it, where the host-furnished
+    /// `Binding.Now` is what the author meant. A candidate finding: the tree
+    /// renders a date that was true when it was written and is wrong from the
+    /// next day onward, silently, with nothing to notice it.
+    ///
+    /// **The heuristic is deliberately narrow, and the narrowing is the
+    /// design.** It requires BOTH halves on one node — a present-tense cue AND
+    /// a bare date literal — because either alone is ordinary: a historical
+    /// date carries no cue ("Founded 1994-03-02"), and a cue with no date is
+    /// prose. That pairing is also what makes the "obviously-historical"
+    /// distinction without consulting a clock, which is the point: the
+    /// validator is pure and Fable-portable, and a rule whose verdict changed
+    /// with the calendar would pass in CI today and fail in CI next quarter for
+    /// no reason a reader could reconstruct. Few false positives beats
+    /// coverage; a Warning that is occasionally wrong gets suppressed, and a
+    /// suppressed rule protects nothing.
+    ///
+    /// Scoped to the "one labelled datum" kinds — `Fact`, `Metric`, `Badge`,
+    /// `Callout`, `Heading`, `LabelValueRow`. `Markdown` and `List` are
+    /// deliberately OUT: long-form prose is exactly where a legitimately
+    /// historical date sits next to a present-tense sentence.
+    ///
+    /// Carries the node id and the literal that holds the date.
+    | DateLiteralWhereNowPlausible of nodeId: string * literal: string
+    /// **FUARAN103 (Warning)**. A `NodeKind.Switch` selects its branch on a
+    /// state key that NOTHING in the tree can write (Phase 768) — the read-side
+    /// twin of FUARAN098's fake affordance, and the shape every emission in
+    /// this rule's source cluster had: a `Switch` correctly expressing "show a
+    /// different branch when X changes", wired to an X no emittable surface
+    /// could ever set, so one branch renders forever.
+    ///
+    /// Distinct from FUARAN083, which catches the EMPTY key — a malformed
+    /// selector rather than an unreachable one.
+    ///
+    /// **WARNING, and it stands down under any opaque writer.** A host may
+    /// write the key directly, and the validator cannot see the host; more
+    /// sharply, any closure in the tree — a control's `onChange`, a grid's
+    /// button cell, an `Action.Dispatch` — produces an arbitrary action at
+    /// dispatch time and may write anything. `BindingWalk.StateKeyFacts`
+    /// enumerates both the write surfaces counted and the opacity that silences
+    /// the rule, so neither is left to the reader. Host-reserved keys (the
+    /// Phase 782 prefix) are exempt: those are the host's to write by
+    /// definition.
+    ///
+    /// Carries the switch node's id and the key.
+    | SwitchKeyNoWriter of nodeId: string * key: string
 
 /// Why an editable column has nowhere to commit (FUARAN095, Phase 863).
 and [<RequireQualifiedAccess>] EditDefect =
@@ -594,11 +642,182 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             key
             key
+    | PreEmitDefect.DateLiteralWhereNowPlausible(nodeId, literal) ->
+        "FUARAN102",
+        DefectSeverity.Warning,
+        sprintf
+            "'%s' names the current instant and states a hardcoded date: \"%s\" — the value was true when it was written and is wrong from the next day onward; bind the slot to {\"$type\":\"Now\"} (with a Format binding for the display shape) so the host furnishes the instant. If the date is genuinely historical, reword the label so it does not read as the present"
+            nodeId
+            literal
+    | PreEmitDefect.SwitchKeyNoWriter(nodeId, key) ->
+        "FUARAN103",
+        DefectSeverity.Warning,
+        sprintf
+            "switch '%s' selects on state key '%s' but nothing in the tree can write it — one branch renders forever; give the key a writer (an Action.SetState on a button, a Call with into: {\"$type\":\"State\",\"key\":\"%s\"}, or a control write-back slot bound to it), or select on the binding that already changes (a Selection, a Filter, a Query). If the key is written by the HOST, this warning is expected and can be ignored"
+            nodeId
+            key
+            key
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
 /// `validate` passes a no-op; `validateWithRegistry` passes the registry's
 /// schema check. One walk, so the two entry points can never drift.
+
+// ── FUARAN102 — a hardcoded date where the host's instant was meant ──
+//
+// Everything below is ASCII-only character scanning on purpose: `Fuaran.UI` is
+// Fable-compiled and FSharp.Core-only, and the cues this rule matches are ASCII
+// phrases. Hand-rolling the scan keeps one behaviour across every host tier
+// rather than inheriting a runtime's culture rules, which is the same reasoning
+// the canonical encoder is hand-written.
+
+let private isAsciiDigit (c: char) = c >= '0' && c <= '9'
+
+let private isWordChar (c: char) =
+    isAsciiDigit c || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+
+let private lowerAscii (c: char) =
+    if c >= 'A' && c <= 'Z' then char (int c + 32) else c
+
+/// True when an ISO-8601 calendar date (`YYYY-MM-DD`) starts at `i` — four
+/// digits, a hyphen, a month in 01–12, a hyphen, a day in 01–31 — with no digit
+/// immediately either side, so a part number like `12345-67-890` is not a date.
+/// The day is range-checked but not calendar-checked: a validator that refused
+/// `2026-02-30` here would be answering a different question.
+let private isoDateAt (s: string) (i: int) : bool =
+    let digitsAt start count =
+        start + count <= s.Length
+        && (let mutable ok = true
+
+            for k in start .. start + count - 1 do
+                if not (isAsciiDigit s[k]) then
+                    ok <- false
+
+            ok)
+
+    let twoDigitValue start =
+        (int s[start] - int '0') * 10 + (int s[start + 1] - int '0')
+
+    i + 10 <= s.Length
+    && digitsAt i 4
+    && s[i + 4] = '-'
+    && digitsAt (i + 5) 2
+    && s[i + 7] = '-'
+    && digitsAt (i + 8) 2
+    && (let month = twoDigitValue (i + 5)
+        let day = twoDigitValue (i + 8)
+        month >= 1 && month <= 12 && day >= 1 && day <= 31)
+    && (i = 0 || not (isAsciiDigit s[i - 1]))
+    && (i + 10 = s.Length || not (isAsciiDigit s[i + 10]))
+
+/// The first ISO-8601 date `s` holds, if any.
+let private isoDateIn (s: string) : string option =
+    // `IsNullOrEmpty` rather than `isNull`: a hand-built or wire-decoded record
+    // can carry a null the type says cannot exist, and this spelling states that
+    // without a file-scoped nullness suppression.
+    if System.String.IsNullOrEmpty s then
+        None
+    else
+        let mutable found = None
+        let mutable i = 0
+
+        while found.IsNone && i + 10 <= s.Length do
+            if isoDateAt s i then
+                found <- Some(s.Substring(i, 10))
+
+            i <- i + 1
+
+        found
+
+/// Phrases that name the CURRENT instant rather than a stated one. Deliberately
+/// small: a bare "now" is excluded because "Now available — 2026-09-01" is a
+/// future event, not a stale clock, and one such false positive costs more than
+/// several missed findings. "as of" alone is excluded for the same reason — it
+/// prefaces a historical cut-off at least as often as a live one.
+let private nowCuePhrases =
+    [| "current date"
+       "date generated"
+       "generated on"
+       "last updated"
+       "right now"
+       "as of now" |]
+
+/// Single-word cues, matched on word boundaries so "today" catches "today's"
+/// and does not catch a longer word that happens to contain it.
+let private nowCueWords = [| "today" |]
+
+let private containsAt (haystack: string) (needle: string) (i: int) =
+    i + needle.Length <= haystack.Length
+    && (let mutable ok = true
+
+        for k in 0 .. needle.Length - 1 do
+            if lowerAscii haystack[i + k] <> needle[k] then
+                ok <- false
+
+        ok)
+
+/// True when `s` names the current instant in its own words.
+let private carriesNowCue (s: string) : bool =
+    if System.String.IsNullOrEmpty s then
+        false
+    else
+        let mutable hit = false
+        let mutable i = 0
+
+        while not hit && i < s.Length do
+            for phrase in nowCuePhrases do
+                if containsAt s phrase i then
+                    hit <- true
+
+            for word in nowCueWords do
+                if
+                    containsAt s word i
+                    && (i = 0 || not (isWordChar s[i - 1]))
+                    && (i + word.Length = s.Length || not (isWordChar s[i + word.Length]))
+                then
+                    hit <- true
+
+            i <- i + 1
+
+        hit
+
+/// The LITERAL text of a "one labelled datum" node — the kinds whose whole
+/// purpose is to state a value beside its name, which is where a stale hardcoded
+/// date does its damage. `Markdown` and `List` are deliberately absent: long-form
+/// prose is exactly where a legitimately historical date sits beside a
+/// present-tense sentence, and the rule would stop being trustworthy there.
+let private datumLiterals (kind: NodeKind<'Msg>) : string list =
+    let lit (t: TextSource) =
+        match t with
+        | TextSource.Literal s -> [ s ]
+        | TextSource.Bound _
+        | TextSource.I18n _ -> []
+
+    let litOpt (t: TextSource option) =
+        match t with
+        | Some t -> lit t
+        | None -> []
+
+    match kind with
+    | NodeKind.Heading h -> lit h.Text
+    | NodeKind.Badge b -> lit b.Label
+    | NodeKind.Callout c -> litOpt c.Heading @ lit c.Body
+    | NodeKind.Fact f -> lit f.Label @ lit f.Value @ litOpt f.Help
+    | NodeKind.Metric m -> lit m.Label @ litOpt m.Subtext
+    | NodeKind.LabelValueRow r -> lit r.Label @ litOpt r.Help
+    | _ -> []
+
+/// FUARAN102's verdict for one node: the offending literal when the node both
+/// names the current instant and states a hardcoded date. A `Now`-bound slot
+/// carries no literal at all, so it cannot reach this.
+let private staleDateLiteral (kind: NodeKind<'Msg>) : string option =
+    let literals = datumLiterals kind
+
+    if literals |> List.exists carriesNowCue then
+        literals |> List.tryFind (fun s -> (isoDateIn s).IsSome)
+    else
+        None
+
 /// A binding the Phase 426 control write-back default can write to: directly
 /// `Binding.State` (the renderer writes the StateStore slot) or
 /// `Binding.Filter` (the FilterStore slot). Any other shape gives an omitted
@@ -660,6 +879,14 @@ let private validateCore
 
     and walkBody (n: Node<'Msg>) =
         recordNodeId n.Id
+
+        // FUARAN102 (Phase 765) — a labelled datum that names the current
+        // instant and states a hardcoded date. Per-node and purely lexical; the
+        // scope and the deliberate narrowing are on the defect case.
+        match staleDateLiteral n.Kind with
+        | Some literal -> defects.Add(PreEmitDefect.DateLiteralWhereNowPlausible(n.Id, literal))
+        | None -> ()
+
         // Per-kind: check kind-specific invariants + enumerate children.
         match n.Kind with
         // -- Layout --
@@ -1187,6 +1414,30 @@ let private validateCore
                 && reported.Add(writerNodeId + "\u0000" + key)
             then
                 defects.Add(PreEmitDefect.SetStateNoReader(writerNodeId, key))
+
+    // ── FUARAN103 — a `Switch` selecting on a key nothing can write (Phase 768) ──
+    // The read-side twin of the rule above, and the shape every emission in its
+    // source cluster had. It reasons from the ABSENCE of a write, so it stands
+    // down wherever absence is not evidence: any closure in the tree produces an
+    // arbitrary action at dispatch time, a registered `Custom` renderer is host
+    // code, and a `Mount` guest is a tree this walk never sees. Under any of
+    // them the fuaran-core#90 rule applies — refuse only what is PROVABLY wrong.
+    if not facts.StateKeys.OpaqueWriter then
+        let reportedSwitch = System.Collections.Generic.HashSet<string>()
+
+        for (switchNodeId, key) in facts.StateKeys.SwitchSelectors do
+            // A host-reserved key (Phase 782) is the host's to write by
+            // definition, so its absence from the tree's writers is expected
+            // rather than a defect — the same exemption FUARAN098 takes, for
+            // the mirror-image reason. An EMPTY key is FUARAN083's case, not
+            // this one; reporting both would say the same thing twice.
+            if
+                key <> ""
+                && not (Set.contains key facts.StateKeys.WriteKeys)
+                && not (StateKeyPolicy.isHostReserved key)
+                && reportedSwitch.Add(switchNodeId + " " + key)
+            then
+                defects.Add(PreEmitDefect.SwitchKeyNoWriter(switchNodeId, key))
 
     if defects.Count = 0 then
         Ok()

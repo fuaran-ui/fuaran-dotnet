@@ -59,6 +59,41 @@ let private noReaderDefects (tree: Node<Msg>) : PreEmitDefect list =
             | PreEmitDefect.SetStateNoReader _ -> true
             | _ -> false)
 
+// ─── FUARAN102 fixtures — a hardcoded date where `Now` was meant ───
+
+/// A `Fact` — the plainest "one labelled datum" node — with both slots under
+/// test. `Now`-bound values are expressed by passing a bound `TextSource`.
+let private fact (id: string) (label: TextSource) (value: TextSource) : Node<Msg> =
+    let node: Node<Msg> = Fuaran.fact id "" ""
+
+    { node with
+        Kind =
+            NodeKind.Fact(
+                { Defaults.fact with
+                    Label = label
+                    Value = value }
+            ) }
+
+let private staleDateDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.DateLiteralWhereNowPlausible _ -> true
+            | _ -> false)
+
+// ─── FUARAN103 fixtures — a `Switch` on a key nothing can write ───
+
+let private noWriterDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.SwitchKeyNoWriter _ -> true
+            | _ -> false)
+
 /// The plainest possible reader: a metric bound to `key` on the State channel.
 let private stateReader (id: string) (key: string) : Node<Msg> =
     Fuaran.metric
@@ -477,7 +512,17 @@ let tests =
                                   Child = markdown "c2" "two" } ]
                           Default = markdown "def" "none" }
 
-              let tree = dashboard "root" [ switchNode ]
+              // The button is not incidental: a `Switch` selecting on a key
+              // nothing can write is itself a finding (FUARAN103), so a fixture
+              // asserting a CLEAN tree has to be a complete one.
+              let writer =
+                  Fuaran.button
+                      "set-view"
+                      { Defaults.button<Msg> with
+                          Label = TextSource.Literal "Details"
+                          OnClick = Action.SetState("view", Some(Fuaran.Core.JStr "details"), None) }
+
+              let tree = dashboard "root" [ writer; switchNode ]
 
               match PreEmitValidate.validate tree with
               | Ok() -> ()
@@ -1398,4 +1443,174 @@ let tests =
               let tree = setStateTree "draft" [ opaque ]
 
               Expect.isEmpty (noReaderDefects tree) "an unprovable claim is not a finding"
+          }
+
+          // ─── Phase 765: FUARAN102 — a hardcoded date where `Now` was meant.
+          // The heuristic is deliberately conservative, so most of these tests
+          // are go-red partners: what it must NOT say is the larger half of what
+          // makes a candidate finding worth reading.
+
+          test "FUARAN102: a present-tense label beside a hardcoded date warns" {
+              let tree =
+                  dashboard "root" [ fact "asof" (TextSource.Literal "Today") (TextSource.Literal "2026-08-24") ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.DateLiteralWhereNowPlausible("asof", "2026-08-24"))
+                      "the defect is raised, carrying the offending literal"
+
+                  let code, severity, _ =
+                      describe (PreEmitDefect.DateLiteralWhereNowPlausible("asof", "2026-08-24"))
+
+                  Expect.equal code "FUARAN102" "stable code"
+
+                  Expect.equal
+                      severity
+                      DefectSeverity.Warning
+                      "a candidate finding — the author may have meant the stated date"
+              | Ok() -> failtest "Expected FUARAN102, got Ok"
+          }
+
+          test "FUARAN102: the cue and the date may share one literal" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ fact "asof" (TextSource.Literal "Status") (TextSource.Literal "Last updated 2026-08-24") ]
+
+              Expect.equal
+                  (staleDateDefects tree)
+                  [ PreEmitDefect.DateLiteralWhereNowPlausible("asof", "Last updated 2026-08-24") ]
+                  "one node, one finding, whichever slot carries the pairing"
+          }
+
+          test "FUARAN102 go-red check: a Now-bound value clears it" {
+              // The shipped remedy. A `Now` binding carries no literal at all, so
+              // the rule cannot reach it — which is the whole reason the check is
+              // lexical rather than semantic.
+              let nowValue = TextSource.Bound(Binding.Now(fun _ -> ""))
+
+              let tree = dashboard "root" [ fact "asof" (TextSource.Literal "Today") nowValue ]
+              Expect.isEmpty (staleDateDefects tree) "the host furnishes the instant — nothing to warn about"
+          }
+
+          test "FUARAN102 go-red check: a date with no present-tense cue is silent" {
+              // An obviously-historical date. The distinction is made by the CUE,
+              // not by comparing against a clock: the validator is pure, and a
+              // rule whose verdict moved with the calendar would pass in CI today
+              // and fail next quarter for no reconstructable reason.
+              let tree =
+                  dashboard "root" [ fact "founded" (TextSource.Literal "Founded") (TextSource.Literal "1994-03-02") ]
+
+              Expect.isEmpty (staleDateDefects tree) "a stated historical date is exactly what a Fact is for"
+          }
+
+          test "FUARAN102 go-red check: a present-tense cue with no date is silent" {
+              let tree =
+                  dashboard "root" [ fact "asof" (TextSource.Literal "Today") (TextSource.Literal "17 open") ]
+
+              Expect.isEmpty (staleDateDefects tree) "half the pairing is ordinary prose"
+          }
+
+          test "FUARAN102 go-red check: a digit run that is not a date is silent" {
+              // `12345-67-890` has the shape and none of the semantics: the month
+              // is out of range and the neighbours are digits.
+              let tree =
+                  dashboard "root" [ fact "part" (TextSource.Literal "Today") (TextSource.Literal "12345-67-890") ]
+
+              Expect.isEmpty (staleDateDefects tree) "a part number is not a date"
+          }
+
+          test "FUARAN102 go-red check: prose is out of scope" {
+              // `Markdown` is deliberately not a covered kind — long-form prose is
+              // where a legitimately historical date sits beside a present-tense
+              // sentence, and firing there would make the rule untrustworthy.
+              let tree =
+                  dashboard "root" [ markdown "copy" "Today we are still shipping what we planned on 2026-01-05." ]
+
+              Expect.isEmpty (staleDateDefects tree) "narrative is not a labelled datum"
+          }
+
+          // ─── Phase 768: FUARAN103 — a `Switch` selecting on a key nothing can
+          // write. Every test has a go-red partner in which the same selector IS
+          // writable, because the rule reasons from an ABSENCE and an absence is
+          // only evidence where the walk can see everything.
+
+          test "FUARAN103: a Switch on a key nothing writes warns" {
+              let tree = dashboard "root" [ switchReader "sw" "occupancyTier" ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.SwitchKeyNoWriter("sw", "occupancyTier"))
+                      "the defect is raised"
+
+                  let code, severity, _ =
+                      describe (PreEmitDefect.SwitchKeyNoWriter("sw", "occupancyTier"))
+
+                  Expect.equal code "FUARAN103" "stable code"
+
+                  Expect.equal
+                      severity
+                      DefectSeverity.Warning
+                      "the HOST may write the key, and the validator cannot see the host"
+              | Ok() -> failtest "Expected FUARAN103, got Ok"
+          }
+
+          test "FUARAN103 go-red check: a SetState writer clears it" {
+              // The canonical honest affordance: a button writes the key the
+              // Switch selects on.
+              let tree = setStateTree "tab" [ switchReader "sw" "tab" ]
+              Expect.isEmpty (noWriterDefects tree) "a declared writer makes the branch reachable"
+          }
+
+          test "FUARAN103 go-red check: a control write-back slot counts as a writer" {
+              // A Select bound to the key writes it back when no handler is
+              // supplied — a writer with no `Action` anywhere in the tree.
+              let picker =
+                  Fuaran.select
+                      "picker"
+                      { Defaults.select<Msg> with
+                          Label = TextSource.Literal "Tier"
+                          Source = Binding.Static(Some [])
+                          Value = Binding.State("tier", None) }
+
+              let tree = dashboard "root" [ picker; switchReader "sw" "tier" ]
+              Expect.isEmpty (noWriterDefects tree) "the write-back default writes the slot it is bound to"
+          }
+
+          test "FUARAN103 go-red check: an OPAQUE writer stands the rule down" {
+              // A grid's row-click handler is a closure over the row: an arbitrary
+              // action, so an arbitrary write. Under it the absence of a visible
+              // writer proves nothing, and refusing an unprovable claim is how a
+              // Warning stays worth reading.
+              let grid = sortGrid None None [ ("Ward", Some "ward", None) ]
+
+              let opaqueGrid =
+                  match grid.Kind with
+                  | NodeKind.DataGrid spec ->
+                      { grid with
+                          Kind =
+                              NodeKind.DataGrid
+                                  { spec with
+                                      OnRowClick = Some(fun _ -> Action.Navigate "/x") } }
+                  | _ -> grid
+
+              let tree = dashboard "root" [ opaqueGrid; switchReader "sw" "occupancyTier" ]
+              Expect.isEmpty (noWriterDefects tree) "an unprovable claim is not a finding"
+          }
+
+          test "FUARAN103: a host-reserved key is exempt" {
+              let tree =
+                  dashboard "root" [ switchReader "sw" (StateKeyPolicy.HostReservedPrefix + "theme") ]
+
+              Expect.isEmpty (noWriterDefects tree) "the host writes its own namespace by definition"
+          }
+
+          test "FUARAN103 go-red check: an EMPTY key is FUARAN083's case, not this one" {
+              let tree = dashboard "root" [ switchReader "sw" "" ]
+
+              Expect.isEmpty (noWriterDefects tree) "a malformed selector and an unreachable one are different findings"
           } ]
