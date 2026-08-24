@@ -323,6 +323,73 @@ let moveOpTests =
                   "legal drop"
           } ]
 
+// ─── Unit tests: reorderOp ───────────────────────────────────────────────────
+
+[<Tests>]
+let reorderOpTests =
+    testList
+        "Placement.reorderOp"
+        [ test "a changed order becomes one bare ReorderChildren the engine accepts" {
+              let t = fixture ()
+              let ids = [ NodeId "c"; NodeId "a"; NodeId "b" ]
+
+              match Placement.reorderOp (NodeId "left") [ NodeId "a"; NodeId "b"; NodeId "c" ] ids with
+              | Some(TreeOp.ReorderChildren(parent, order) as op) ->
+                  Expect.equal parent (NodeId "left") "the parent it was given"
+                  Expect.equal order ids "the order it was given, verbatim"
+                  // Checked against the REAL apply engine, never a re-derivation.
+                  Expect.equal (childIdsIn (applied op t) "left") [ "c"; "a"; "b" ] "the tree ends up in that order"
+              | other -> failtestf "expected Some ReorderChildren, got %A" other
+          }
+
+          test "an UNCHANGED order emits nothing at all" {
+              // The identity-drop, which is the reason this helper is worth
+              // packaging: a ReorderChildren restating the existing order is
+              // accepted by the engine and changes nothing, so it lands in the
+              // op-stream as an edit that never happened.
+              let same = [ NodeId "a"; NodeId "b"; NodeId "c" ]
+
+              Expect.isNone
+                  (Placement.reorderOp (NodeId "left") same same: TreeOp<obj> option)
+                  "no op for an order that is already what was asked for"
+          }
+
+          test "the drop is by ORDER, not by set membership" {
+              // A permutation of the same ids is a real change and must survive;
+              // proving the previous test passes because the ORDERS matched, not
+              // because the helper compares sets or lengths.
+              let current = [ NodeId "a"; NodeId "b" ]
+              let swapped = [ NodeId "b"; NodeId "a" ]
+
+              Expect.isSome
+                  (Placement.reorderOp (NodeId "left") current swapped: TreeOp<obj> option)
+                  "the same ids in a different order is a change"
+          }
+
+          test "a single child is always identity, and an empty parent likewise" {
+              Expect.isNone
+                  (Placement.reorderOp (NodeId "left") [ NodeId "a" ] [ NodeId "a" ]: TreeOp<obj> option)
+                  "one child cannot be reordered"
+
+              Expect.isNone (Placement.reorderOp (NodeId "left") [] []: TreeOp<obj> option) "nor can none"
+          }
+
+          test "a PARTIAL order is emitted and refused by the engine, not by the helper" {
+              // The stated contract: the permutation obligation is the caller's,
+              // and the apply engine is the enforcer. Asserting the refusal here
+              // pins the division of labour rather than leaving it as prose —
+              // and shows what a caller that gets it wrong actually sees.
+              let t = fixture ()
+              let partial_ = [ NodeId "a"; NodeId "b" ]
+
+              match Placement.reorderOp (NodeId "left") [ NodeId "a"; NodeId "b"; NodeId "c" ] partial_ with
+              | Some op ->
+                  match Apply.apply op t with
+                  | Error e -> Expect.equal e.Code ApplyErrorCode.OrderingMismatch "the engine refuses a partial order"
+                  | Ok _ -> failtest "expected the apply engine to refuse a partial order"
+              | None -> failtest "the helper drops only the IDENTITY order, never a wrong one"
+          } ]
+
 // ─── Unit tests: nudgeOp ─────────────────────────────────────────────────────
 
 [<Tests>]

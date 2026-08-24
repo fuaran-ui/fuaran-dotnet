@@ -286,6 +286,41 @@ module Placement =
 
                     Ok(TreeOp.ReorderChildren(NodeId parent.Id, reordered))
 
+    /// The op an ORDER-LEVEL reorder becomes: an arbitrary whole permutation of
+    /// a parent's children, stated as one bare `ReorderChildren` — or `None`
+    /// when `desired` is already the order the children are in.
+    ///
+    /// **Why this exists beside the verbs above rather than inside them.** Every
+    /// other verb here is `Node<'Msg>`-typed and anchor-relative: it takes the
+    /// tree, finds the parent, and expresses ONE node's movement relative to a
+    /// sibling. That is the right shape for a drag, a keyboard nudge, a paste.
+    /// It is the wrong shape for a caller that has already computed the whole
+    /// order it wants and holds no `Node<'Msg>` tree to hand — a structural
+    /// rewriter working over a skeleton, say. Such callers were re-deriving the
+    /// same two lines, and the interesting one is the second.
+    ///
+    /// **The identity-drop is the point.** Emitting a `ReorderChildren` that
+    /// restates the existing order is not wrong, exactly — the apply engine
+    /// accepts it and the tree is unchanged — but it puts a no-op in the
+    /// op-stream, where it reads as an edit that happened, replays as one, and
+    /// shows up in a diff a human is asked to review. Dropping it is the whole
+    /// reason the two lines are worth packaging, and it is the leg a
+    /// re-derivation is most likely to omit.
+    ///
+    /// **The permutation obligation is the CALLER's**, and deliberately so.
+    /// `ReorderChildren` requires the full sibling id set — a partial list is
+    /// refused by the apply engine as `OrderingMismatch`, and rightly, since a
+    /// partial order is not one. This helper takes `current` rather than a tree
+    /// precisely so it needs no traversal, which means it also has no way to
+    /// verify membership beyond what it was handed; checking `desired` against
+    /// `current` alone would prove nothing a caller sorting `current` did not
+    /// already know. The engine remains the enforcer.
+    let reorderOp (parentId: NodeId) (current: NodeId list) (desired: NodeId list) : TreeOp<'Msg> option =
+        if desired = current then
+            None
+        else
+            Some(TreeOp.ReorderChildren(parentId, desired))
+
     // ─── Clone verbs ─────────────────────────────────────────────────────────
 
     /// Rewrite every id in `incoming` that collides with an id in `targetRoot`
