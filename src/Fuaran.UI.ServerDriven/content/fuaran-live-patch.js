@@ -302,12 +302,30 @@
     function dispatch(el, type, target) {
       markPending(el); // QW1
       if (type === "click" && el.hasAttribute(OPTIMISTIC)) el.setAttribute(OPTIMISTIC_ACTIVE, ""); // QW4
-      send({
+      var ack = send({
         nodeId: el.getAttribute(ATTR),
         event: type,
         payload: payloadFor(el, target, type),
         lastSeq: getSeq()
       });
+      // Clear THIS element's pending mark when the server acknowledges the
+      // event (or the POST fails). Without this, an event that produces no
+      // patch frame — a rejected noise click, a no-op fold — left the mark
+      // (and its `pointer-events: none` styling) in place FOREVER: one click
+      // into a form field greyed the form and made its own submit button
+      // unclickable, cascading the same dead grey up the ancestor chain as
+      // each blocked click landed one node higher. Pending now means
+      // "in flight": milliseconds for a no-op, the full turn for a real one
+      // (where the anti-double-dispatch lock is exactly what QW1 wanted).
+      // A frame that re-renders the node meanwhile already cleared it
+      // (`clearTransient`); removing from a detached old node is harmless.
+      if (ack && ack.then) {
+        var clear = function () {
+          el.removeAttribute(PENDING);
+          el.removeAttribute(OPTIMISTIC_ACTIVE);
+        };
+        ack.then(clear, clear);
+      }
     }
 
     ["click", "change", "input", "submit"].forEach(function (type) {
@@ -366,7 +384,12 @@
         return es;
       },
       send: function (event) {
-        fetch(config.sendUrl, {
+        // Returns the POST's promise so `dispatch` can clear the pending mark
+        // on acknowledgement — by the 204 the server has fully processed the
+        // event (frames were already pushed on the stream). An adapter that
+        // cannot report acknowledgement may return nothing; pending then
+        // clears only on the next inbound frame (the pre-ack behaviour).
+        return fetch(config.sendUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(event),
@@ -387,7 +410,7 @@
 
   function start(config, adapterFactory) {
     var adapter = (adapterFactory || sseAdapter)(config);
-    var send = function (event) { if (current) current.adapter.send(event); };
+    var send = function (event) { if (current) return current.adapter.send(event); };
     if (current && current.stream && current.stream.close) {
       try { current.stream.close(); } catch (_) {}
     }
