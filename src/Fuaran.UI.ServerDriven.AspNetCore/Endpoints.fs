@@ -64,12 +64,19 @@ open Fuaran.UI.ServerDriven.Driver
 /// (`conn.EnableDurability(store, userId = principal)`), stamping the audit
 /// journal's `OpRecord.UserId` with the real user instead of a placeholder.
 /// Defaults to a no-op (the plain 152 path).
+/// `MaxBodyBytes` (Phase 787) caps ONE inbound POST body. Phase 211 introduced
+/// this cap as a literal inside the handler; it is a config field now for the
+/// same reason `LiveWsConfig` carries one — a budget written inside a handler
+/// cannot be compared with the other transport's, so parity between them was
+/// unassertable. Defaults to `LiveLimits.defaultMaxInboundBytes` (1 MB), the
+/// single place both transports read it from.
 type LiveAppConfig<'Model, 'Msg> =
     { StreamPath: string
       EventPath: string
       CookieName: string
       Secret: byte[]
       ResolvePrincipal: HttpContext -> string
+      MaxBodyBytes: int64
       MakeSession: unit -> LiveSession<'Model, 'Msg>
       ConfigureConnection: string -> LiveConnection<'Model, 'Msg> -> unit }
 
@@ -91,6 +98,7 @@ let defaultConfig (makeSession: unit -> LiveSession<'Model, 'Msg>) : LiveAppConf
       CookieName = "fuaran-conn"
       Secret = ConnToken.freshSecret ()
       ResolvePrincipal = defaultResolvePrincipal
+      MaxBodyBytes = LiveLimits.defaultMaxInboundBytes
       MakeSession = makeSession
       ConfigureConnection = fun _ _ -> () }
 
@@ -238,7 +246,7 @@ let private eventHandler
             // over-cap Content-Length is rejected outright; bodies with no declared
             // length fall through to the read (the StreamReader path) — those are
             // bounded by Kestrel's own MaxRequestBodySize.
-            let maxBodyBytes = 1L * 1024L * 1024L
+            let maxBodyBytes = config.MaxBodyBytes
 
             match ctx.Request.ContentLength |> Option.ofNullable with
             | Some len when len > maxBodyBytes -> ctx.Response.StatusCode <- 413 // Payload Too Large

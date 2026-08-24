@@ -66,7 +66,9 @@ type RejectReason =
     | UnknownNode of nodeId: string
     /// (b) The event is not one the node's kind accepts.
     | IllegitimateEvent of nodeId: string * event: string * kind: string
-    /// (c) The payload is out of the node's value space.
+    /// (c) The payload is out of the node's value space. `detail` says WHICH
+    /// bound was missed, never the submitted value — see the redaction note on
+    /// `describe`.
     | PayloadOutOfBounds of nodeId: string * detail: string
     /// (d) The resolved action was denied by the host dispatch policy gate.
     | DispatchDenied of nodeId: string * action: string
@@ -74,6 +76,23 @@ type RejectReason =
 module RejectReason =
     /// A short, audit-log-shaped description (no payload values — those may be
     /// sensitive; the reason + node id + kind are the safe-to-log surface).
+    ///
+    /// **Phase 787 — that promise is now kept by CONSTRUCTION rather than by
+    /// discipline.** It used to be false: `PayloadOutOfBounds` built its `detail`
+    /// by interpolating the client's submitted value, and the SSE backend logs
+    /// every rejection by default, so end-user form input reached an always-on
+    /// host log through a function whose own doc comment said it could not. The
+    /// three bounds checks below now name the bound that was missed and withhold
+    /// the value that missed it, so there is no redaction step here to forget —
+    /// the value never enters the reason.
+    ///
+    /// An author-declared NAME is deliberately still carried (a filter's name,
+    /// a node id): that is grade B in `docs/ACTION-LOG-PRIVACY.md`'s vocabulary
+    /// and is what makes the line diagnosable at all. What is withheld is grade
+    /// C — anything the user typed or chose. A host that needs the offending
+    /// value while developing logs the inbound event itself; that is a
+    /// deliberate host opt-in at wiring time, which is the same party
+    /// `ActionCaptureMode` puts the choice to.
     let describe (r: RejectReason) : string =
         match r with
         | RejectReason.UnknownNode id -> sprintf "unknown node '%s' (stale or forged id)" id
@@ -148,7 +167,8 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
             if options |> List.exists (fun o -> o.Value = chosen) then
                 Ok()
             else
-                Error(RejectReason.PayloadOutOfBounds(ev.NodeId, sprintf "'%s' not among the select's options" chosen))
+                // Phase 787 — the chosen value is the user's; name the bound, not it.
+                Error(RejectReason.PayloadOutOfBounds(ev.NodeId, "submitted value is not among the select's options"))
         // Dynamic option source, or a clear-to-none change: accept (bounds
         // enforced at interpret time against live binding sources).
         | _ -> Ok()
@@ -163,7 +183,9 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
         | Some name ->
             match spec.Items |> List.tryFind (fun f -> f.Name = name) with
             | None ->
-                Error(RejectReason.PayloadOutOfBounds(ev.NodeId, sprintf "'%s' not among the node's filters" name))
+                // Phase 787 — an UNMATCHED name is client-supplied text, not an
+                // author-declared one, so it is withheld like any other value.
+                Error(RejectReason.PayloadOutOfBounds(ev.NodeId, "named filter is not declared on this node"))
             | Some f ->
                 let checkOptions (options: Binding<SelectOption list>) =
                     match options, selectValue ev.Payload with
@@ -171,10 +193,13 @@ let private boundsCheck (node: Node<'Msg>) (ev: LiveEvent) : Result<unit, Reject
                         if opts |> List.exists (fun o -> o.Value = chosen) then
                             Ok()
                         else
+                            // Phase 787 — `name` matched a declared filter, so it is
+                            // author-declared (grade B) and stays; `chosen` is the
+                            // user's and goes.
                             Error(
                                 RejectReason.PayloadOutOfBounds(
                                     ev.NodeId,
-                                    sprintf "'%s' not among filter '%s' options" chosen name
+                                    sprintf "submitted value is not among filter '%s' options" name
                                 )
                             )
                     // Dynamic option source, or a clear-to-none change: accept.

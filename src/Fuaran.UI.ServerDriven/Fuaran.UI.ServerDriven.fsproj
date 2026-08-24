@@ -25,6 +25,8 @@
     <Compile Include="DomPatch.fs" />
     <Compile Include="ClientEffect.fs" />
     <Compile Include="Lowering.fs" />
+    <Compile Include="LiveLimits.fs" />
+    <Compile Include="ConnToken.fs" />
     <Compile Include="Validation.fs" />
     <Compile Include="Inbound.fs" />
     <Compile Include="Driver.fs" />

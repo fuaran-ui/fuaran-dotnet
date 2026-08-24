@@ -237,9 +237,73 @@ let tests =
           }
 
           // ── reject-reason descriptions are log-safe (no payload values) ──
-          test "reject reasons describe without leaking payload" {
-              let d =
-                  RejectReason.describe (RejectReason.PayloadOutOfBounds("sel", "'zzz' not among the select's options"))
+          //
+          // Phase 787. The previous test here HAND-CONSTRUCTED a reason carrying
+          // `'zzz' not among the select's options` and asserted only that the
+          // node id survived — so it passed while `describe` was echoing the very
+          // value its doc comment promised to withhold. The poison now goes in
+          // through `validate`, the way a user's input actually arrives, and the
+          // assertion is about what comes OUT.
+          //
+          // The idiom is `docs/ACTION-LOG-PRIVACY.md`'s poison scan: a
+          // distinctive string in every value position, asserted absent from the
+          // describer — and the fixture proved non-vacuous, so a scan that
+          // stopped feeding poison (or a describer that returned nothing) cannot
+          // pass by saying nothing at all.
+          test "PayloadOutOfBounds describes without leaking the submitted value" {
+              let poison = "PZN-4f1c-payload-poison"
 
-              Expect.stringContains d "sel" "names the node"
+              let describeReject label r =
+                  match r with
+                  | Error(reason: RejectReason) -> RejectReason.describe reason
+                  | other -> failtestf "%s — expected a reject, got %A" label other
+
+              // (1) a select value outside its static options.
+              let selDetail =
+                  validate allow tree (ev "sel" "change" [ "value", LiveValue.Str poison ])
+                  |> describeReject "select bounds"
+
+              // (2) a filter NAME the node does not declare — client-supplied text,
+              //     not an author-declared name, so it is withheld too.
+              let ghostDetail =
+                  validate allow tree (ev "flt" "change" [ "name", LiveValue.Str poison; "value", LiveValue.Str "a" ])
+                  |> describeReject "forged filter name"
+
+              // (3) a segmented filter value outside its declared options.
+              let fltDetail =
+                  validate
+                      allow
+                      tree
+                      (ev "flt" "change" [ "name", LiveValue.Str "region"; "value", LiveValue.Str poison ])
+                  |> describeReject "filter option bounds"
+
+              for label, d in
+                  [ "select bounds", selDetail
+                    "forged filter name", ghostDetail
+                    "filter option bounds", fltDetail ] do
+                  Expect.isFalse (d.Contains poison) (label + " — the submitted value must not reach the log line")
+
+              // Non-vacuity, both halves. The describers still SAY something
+              // diagnosable — the node id on all three, and the author-declared
+              // filter name on the one where it is grade B — so a describer that
+              // returned "" would fail here rather than pass the poison check by
+              // emitting nothing.
+              for label, d in
+                  [ "select bounds", selDetail
+                    "forged filter name", ghostDetail
+                    "filter option bounds", fltDetail ] do
+                  Expect.isTrue (d.Length > 0) (label + " — describe must not be empty")
+
+              Expect.stringContains selDetail "sel" "select reject names the node"
+              Expect.stringContains ghostDetail "flt" "forged-name reject names the node"
+              Expect.stringContains fltDetail "region" "the author-declared filter name is grade B and stays"
+
+              // And the poison really was in the input — so this test cannot pass
+              // by feeding an event that never carried it.
+              let fed = ev "sel" "change" [ "value", LiveValue.Str poison ]
+
+              Expect.equal
+                  (Map.tryFind "value" fed.Payload)
+                  (Some(LiveValue.Str poison))
+                  "the fixture carries the poison"
           } ]

@@ -1362,3 +1362,59 @@ is not the opt-in party** — this is host-side instrumentation, and obtaining a
 the host is user-facing is the host's obligation, which the redaction default does not discharge.
 Retention is likewise the host's: an append-only sink is the retention boundary, and a policy baked
 into a wire record is one every host inherits and none can change.
+
+## Recorded change — 0.35.0, the WebSocket transport reaches the SSE transport's security posture (Phase 787)
+
+**The behavioural half is a break for existing WebSocket hosts, and it is the point of the change.**
+`GET /live/ws` previously accepted any upgrade: no principal was resolved, no token was checked, and
+the fragment accumulator had no cap. It now refuses — **401, before the socket is accepted** — unless
+the request carries a connection token that verifies against the resolved principal. A client that
+simply opened the socket must now mint first.
+
+**Migration (client).** Fetch the token, then connect:
+
+```js
+await fetch("/live/ws-token", { credentials: "same-origin" })
+const ws = new WebSocket(`wss://${location.host}/live/ws`)
+```
+
+`mapFuaranLiveWebSocket` maps the mint endpoint itself, so no host wiring changes. The split exists
+because a WebSocket upgrade is one request that both opens and authorises the session: there is no
+second request to gate the way the SSE backend gates its `POST`, so the token has to exist before the
+handshake or there is nothing to check.
+
+Refusing **pre-accept** is load-bearing rather than stylistic. Once `AcceptWebSocketAsync` has run the
+response is committed as a 101 and there is no status code left to send, so a post-accept check could
+only close an already-established socket.
+
+**Additive record fields, on the established pre-1.0 minor-add precedent.**
+
+- `LiveWsConfig` gains `TokenPath`, `CookieName`, `Secret`, `ResolvePrincipal` and `MaxMessageBytes`.
+  Its `Path` and `MakeSession` are unchanged, and `defaultWsConfig` fills all five — a host that
+  builds its config through that function needs no edit.
+- `LiveAppConfig` gains `MaxBodyBytes`, defaulting to the same shared constant. Phase 211 introduced
+  the SSE cap as a literal inside the handler; a budget written inside a handler cannot be compared
+  with the other transport's, so parity between them was unassertable. A host constructing either
+  record with a bare literal recompiles; `{ defaultConfig … with … }` is unaffected.
+
+**`ConnToken` moved to the transport-agnostic core** — `Fuaran.UI.ServerDriven.ConnToken`, so both
+transports gate on ONE implementation rather than a copy each. `Fuaran.UI.ServerDriven.AspNetCore.ConnToken`
+remains as a forwarding module, so a host that referenced the old path keeps compiling; new code
+should call the core module. The module is server-only (`HMACSHA256` has no Fable mapping) and sits
+under `#if !FABLE_COMPILER`, so the client shim's transpile passes over it. The new
+`Fuaran.UI.ServerDriven.LiveLimits` holds the shared inbound budget and is Fable-clean.
+
+**Why a shared implementation rather than a second correct copy.** A per-backend copy is how the two
+postures diverged in the first place: Phase 211 hardened SSE and the WebSocket backend received none
+of it, while its own config comment claimed the parity it lacked. The two packages still reference
+neither each other nor anything new — what they share, they share through the core — and a
+transport-parity test now compares the two configs against each other, so a third transport that
+skips the posture fails a test rather than shipping quietly.
+
+**Also in this change, and unrelated to the transports.** `RejectReason.PayloadOutOfBounds` no longer
+echoes the client's submitted value into its detail string. The three bounds checks in `Validation.fs`
+name the bound that was missed and withhold the value that missed it, so `RejectReason.describe`
+keeps its own doc comment's promise by construction. The reject reason's SHAPE is unchanged — the
+detail text is not part of the contract — but a host asserting on that text in a test will see it
+change. The census entry is `docs/ACTION-LOG-PRIVACY.md`.
+

@@ -95,11 +95,36 @@ this is the sentence that says so.
 | `ServerDriven.AspNetCore/Endpoints.fs` — `logReject` | B | for the dispatch-denied class |
 | `ServerDriven.WebSocket/Endpoints.fs` — the receive loop | A | connection id and exception message; the raw body is not logged |
 
-**One open finding, adjacent rather than in scope.** `RejectReason.PayloadOutOfBounds` echoes the
-user's chosen value into its detail string, which reaches the always-on host log. It is an inbound
-**event** value rather than an `Action` payload, so it is outside this census's subject — but it
-lands in the same log line, and the function's own doc comment promises no payload values. Recorded
-here so the next reader finds it already known rather than rediscovering it.
+**That open finding is now CLOSED** (Phase 787). `RejectReason.PayloadOutOfBounds` used to echo the
+user's chosen value into its detail string, which reached the always-on host log — an inbound
+**event** value rather than an `Action` payload, so outside this census's subject, but landing in the
+same log line through a function whose own doc comment promised no payload values. The three bounds
+checks in `Validation.fs` now name the bound that was missed and withhold the value that missed it,
+so the reason never carries it and there is no redaction step to forget.
+
+| site | grade | note |
+|---|---|---|
+| `ServerDriven/Validation.fs` — `boundsCheck`, the select-options leg | B | names the bound; the submitted value is withheld |
+| `ServerDriven/Validation.fs` — `boundsCheck`, the unknown-filter-name leg | B | the name is withheld too: an UNMATCHED name is client-supplied text, not an author-declared one |
+| `ServerDriven/Validation.fs` — `boundsCheck`, the filter-options leg | B | the filter name MATCHED a declared filter, so it is author-declared and stays; the chosen value goes |
+
+**The distinction that leg-two turns on is worth keeping.** A filter name is grade B when it names a
+filter the node declares and grade C when it does not — same field, same type, and the grade depends
+on whether the lookup succeeded. Withholding it in the failing branch is not excess caution: that
+branch is reached precisely when the string came from the client and matched nothing the author
+wrote.
+
+A host that wants the offending value while developing logs the inbound event itself. That is a
+deliberate host opt-in at wiring time — the same party, and the same shape, as `ActionCaptureMode`.
+
+Covered by a poison scan in `Fuaran.UI.ServerDriven.Tests/ValidationTests.fs`, on the idiom described
+under "The scans": poison in the submitted value, driven through `validate` rather than
+hand-constructed, asserted absent from `describe`, and proved non-vacuous by also asserting the
+describers still name the node id and the author-declared filter name. **The test it replaced passed
+throughout the leak** — it built a reason carrying `'zzz' not among the select's options` by hand and
+checked only that the node id survived, so it asserted the leak rather than catching it. Worth
+recording as a shape, not just an incident: a describer test that constructs its own input is testing
+the formatter, not the pipeline, and only the pipeline knows where the user's value entered.
 
 ## Introspection, validation and tooling — clean
 

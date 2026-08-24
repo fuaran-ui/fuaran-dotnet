@@ -7,11 +7,23 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="WsTests.fs" />
+    <Compile Include="TransportParityTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI.ServerDriven.WebSocket\Fuaran.UI.ServerDriven.WebSocket.fsproj" />
     <ProjectReference Include="..\Fuaran.UI.ServerDriven\Fuaran.UI.ServerDriven.fsproj" />
+    <!-- Phase 787 — the transport-parity test is the one place that must see
+         BOTH live backends at once, so it is the only reference from the WS
+         side to the SSE side. Test-only: the WS PACKAGE takes no dependency
+         on backend 1, which is the property the parity test exists to keep
+         honest (a shared posture proven by assertion, not by coupling). -->
+    <ProjectReference Include="..\Fuaran.UI.ServerDriven.AspNetCore\Fuaran.UI.ServerDriven.AspNetCore.fsproj" />
+  </ItemGroup>
+  <!-- Phase 787 - the resolver-parity test builds a DefaultHttpContext to drive
+       both transports' principal resolvers through the same input. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />
