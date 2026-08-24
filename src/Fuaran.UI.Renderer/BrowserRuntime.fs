@@ -132,8 +132,13 @@ type BrowserRuntime(layoutObserver: ILayoutObserver option, allowAll: bool) =
             StateStore.set key (jsonValueToObj value)
 
         member _.InvokeAiTool(toolName, args) =
-            let raw = jsonValueToObj args
-            consoleInfo (sprintf "[Fuaran] Action.AiTool(%s) called with args: %s" toolName (jsonStringify raw))
+            // The TOOL NAME only. This is the happy path, not a failure path, so
+            // it ran on every invocation — and an AI-tool argument bag is
+            // whatever the user typed. A console line is a developer diagnostic,
+            // but it is also the surface a screen recording, a support bundle or
+            // a browser-extension log captures verbatim.
+            ignore (jsonValueToObj args)
+            consoleInfo (sprintf "[Fuaran] Action.AiTool(%s) called." toolName)
 
         member _.WriteToClipboard(text) = writeClipboard text |> ignore
 

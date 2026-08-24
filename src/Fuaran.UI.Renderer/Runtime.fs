@@ -295,7 +295,13 @@ module ActionDescriptor =
     let describe (descriptor: ActionDescriptor) : string =
         match descriptor with
         | ActionDescriptor.Call endpoint -> sprintf "Call(%s)" endpoint
-        | ActionDescriptor.Navigate route -> sprintf "Navigate(%s)" route
+        // PATH only. This label reaches a `Warn` line AND — through the
+        // devtools apply gate — `DenyTelemetry.Reason`, which a host may
+        // persist. A route's query string is user data, so the same scrubber
+        // the durable action record uses applies here rather than a second
+        // spelling of the same intent.
+        | ActionDescriptor.Navigate route ->
+            sprintf "Navigate(%s)" (Fuaran.UI.Ops.ActionInvocation.ActionInvocation.routePath route)
         | ActionDescriptor.AiTool toolName -> sprintf "AiTool(%s)" toolName
         | ActionDescriptor.ReadFileBody fileId -> sprintf "ReadFileBody(%s)" fileId
         | ActionDescriptor.ApplyTreeOp summary -> sprintf "ApplyTreeOp(%s)" summary
@@ -482,7 +488,12 @@ type DiagnosticRuntime() =
             eprintfn "[Fuaran] Action.Notify(%s) reached the runtime with no notification substrate wired." channel
 
         member _.Navigate(route) =
-            eprintfn "[Fuaran] Action.Navigate(%s) reached the runtime with no router substrate wired." route
+            // Path only: this is the DEFAULT runtime an unconfigured host gets,
+            // so its stderr is the likeliest place a query string is captured
+            // by something that outlives the session.
+            eprintfn
+                "[Fuaran] Action.Navigate(%s) reached the runtime with no router substrate wired."
+                (Fuaran.UI.Ops.ActionInvocation.ActionInvocation.routePath route)
 
         member _.SetState(key, _) =
             eprintfn "[Fuaran] Action.SetState(%s) reached the runtime with no state-store substrate wired." key
@@ -593,7 +604,10 @@ type UnprivilegedGuestRuntime(host: IFuaranRuntime, scopeId: string) =
     interface IFuaranRuntime with
         member _.Call(ApiEndpoint endpoint, _) = refuse (sprintf "Call(%s)" endpoint)
         member _.Notify(channel, _) = refuse (sprintf "Notify(%s)" channel)
-        member _.Navigate(route) = refuse (sprintf "Navigate(%s)" route)
+
+        member _.Navigate(route) =
+            refuse (sprintf "Navigate(%s)" (Fuaran.UI.Ops.ActionInvocation.ActionInvocation.routePath route))
+
         member _.SetState(key, _) = refuse (sprintf "SetState(%s)" key)
         member _.InvokeAiTool(toolName, _) = refuse (sprintf "AiTool(%s)" toolName)
         member _.WriteToClipboard(_) = refuse "WriteToClipboard"
