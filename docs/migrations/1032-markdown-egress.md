@@ -133,10 +133,26 @@ fails the `denyNonLocal` ones.
 
 ## What this still does NOT cover
 
-- **Each non-F# host exposes the seam; wiring it into that host's own render context is separate.**
-  The other conformant hosts implement the policy and the policy-taking markdown entry point, and
-  pass the corpus. Making the policy *ambient* on their render contexts is the 1026-shaped act for
-  each of them, and it has not been done.
+- **Each non-F# host exposed the seam; wiring it into that host's own render context was separate —
+  NOT covered at 0.35.0, deliberately; CLOSED by Phase 1037.** Each of the other four conformant
+  hosts has since taken the 1026-shaped act for itself: a policy field on its own render context
+  defaulting to the deny-non-local policy, its `href` / `src` / markdown call sites consulting it
+  with no caller opt-in, and the permissive posture reachable only by name. Each host's corpus
+  dispatch grew an AMBIENT leg beside the seam-level one, rendering the policied fixtures as a
+  markdown NODE through that host's default-constructed entry point — which matters because the
+  seam-level leg structurally cannot see this gap: under a perturbed default on one host it stayed
+  entirely green while the ambient leg failed on eleven fixtures. Three differences are declared
+  rather than smoothed over: two hosts emit no tree-declared route and no per-row grid link, so the
+  `route` class has no emission site there; one keeps its bounded-loop navigation on the scheme
+  floor alone, because that interpreter's predicate is fixed by a separate wire specification; and
+  at a node call site the floor's own refusal now renders the refusal shape with an `unsafe-url`
+  marker, where it previously rendered a bare `about:blank`. That last is not a change to the floor
+  — its answer inside a markdown body is unchanged, and still the bare form, for the reason
+  ["The scheme floor's own answer is unchanged"](#the-scheme-floors-own-answer-is-unchanged) gives
+  above. The two coexist by scope: markdown internals keep the bare form because those bytes are
+  pinned by the shared corpus; a node call site that already consults the policy renders every
+  refusal one way, because splitting them by which gate refused would make the `javascript:` URL —
+  the more dangerous case — the one that renders as an ordinary blank.
 - **`Fuaran.UI.Giraffe.DocumentShell`**, **`EmailOptions.LiveUrl`**, and **registered performers**
   are unchanged and unreached — see 1026's own list, which still holds for everything except the
   markdown bullet.
