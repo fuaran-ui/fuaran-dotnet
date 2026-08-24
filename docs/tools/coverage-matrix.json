@@ -76,6 +76,7 @@
     "grid-field-named": [143,406],
     "grid-paged": [143],
     "grid-paged-sorted": [143],
+    "grid-reorderable": [143],
     "grid-sort-state-key": [143],
     "grid-toned-pill": [143,406],
     "grid-transform": [143,398,406,410,411,414,415,416,419,421,422,425],

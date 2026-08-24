@@ -75,6 +75,7 @@ open System.Text
 open System.Text.Json
 open System.Text.RegularExpressions
 open System.Text.Encodings.Web
+open System.Xml.Linq
 
 // ── Paths ──────────────────────────────────────────────────────────────────────
 let scriptDir = __SOURCE_DIRECTORY__ //                       fuaran-dotnet/docs/tools
@@ -3752,6 +3753,42 @@ if mineMode then
 
     exit 0
 
+// ── Pack-manifest language stamp ─────────────────────────────────────────────────
+// The committed pack records which language version it was regenerated against, as a
+// `languageVersion` field in prompt-pack/manifest.json — the one honest evidence the
+// downstream version-freshness pre-flight can read (a stamp written at regeneration
+// time, never inferred from mtimes or taught vocabulary). Read the way that checker
+// reads the producer side: the FIRST <Version> element in Directory.Build.props wins
+// (XML-parsed, so version strings inside historical bump commentary cannot match).
+let languageVersion =
+    let propsPath = Path.Combine(fuaranDir, "Directory.Build.props")
+    let doc = XDocument.Load propsPath
+
+    match doc.Descendants(XName.Get "Version") |> Seq.tryHead with
+    | Some v -> v.Value.Trim()
+    | None -> failwithf "%s declares no <Version> — cannot stamp the pack manifest" propsPath
+
+/// The manifest with its `languageVersion` stamped to the repo's current <Version>.
+/// A targeted text rewrite, not a re-serialisation: every other byte of the manifest
+/// stays exactly as authored (the minifier's scanner argument, applied to one field).
+let buildStampedPackManifest () =
+    let raw = normalizeEol (File.ReadAllText(Path.Combine(packDir, "manifest.json")))
+    use doc = JsonDocument.Parse raw // parse first: never rewrite bytes we could not read
+    ignore doc
+    let field = $"\"languageVersion\": \"{languageVersion}\""
+
+    if Regex.IsMatch(raw, "\"languageVersion\"\\s*:") then
+        Regex.Replace(raw, "\"languageVersion\"\\s*:\\s*\"[^\"]*\"", field)
+    else
+        // First stamp: anchor directly under the wireFormatVersion line, so the two
+        // version facts the manifest carries sit together.
+        let anchor = Regex.Match(raw, "\"wireFormatVersion\"\\s*:\\s*\"[^\"]*\",\\n")
+
+        if not anchor.Success then
+            failwith "prompt-pack/manifest.json: no wireFormatVersion line to anchor the languageVersion stamp"
+
+        raw.Insert(anchor.Index + anchor.Length, $"  {field},\n")
+
 printfn
     "Fuaran authoring pack — %s mode%s%s%s"
     (if writeMode then "write" else "check")
@@ -3836,6 +3873,15 @@ else
         (Path.Combine("prompt-pack", "schema.json"))
         (Path.Combine(packDir, "schema.json"))
         (File.ReadAllText schemaSrcPath)
+
+    // 3b. Pack manifest — the languageVersion stamp. Reconciled by the DEFAULT run so
+    //     the every-commit drift gate pins it: a <Version> bump without a pack regen
+    //     fails --check rather than leaving the committed pack claiming a language it
+    //     no longer derives from.
+    reconcileFile
+        (Path.Combine("prompt-pack", "manifest.json"))
+        (Path.Combine(packDir, "manifest.json"))
+        (buildStampedPackManifest ())
 
     // 4. Rule→fixture coverage matrix (Phase 841). Tooling output, not pack content — it
     //    is the mining evidence, so it lives beside the generator rather than in the paid
