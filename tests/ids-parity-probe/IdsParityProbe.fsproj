@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Cross-pipeline VALUE probe for the renderer's deterministic correlation ids (Phase 960).
+    Deliberately NOT in Fuaran.sln and NOT wired into the FAKE gate: it needs a Node runtime, and
+    the default gate stays dependency-free. Run it with ./run-parity-probe.ps1.
+
+    It exists because a Fable step in any CI gate is a COMPILE gate, and a compile cannot disagree
+    about a number. `Ids.deterministicCorrelationId` carried a naive FNV-1a multiply whose JS
+    lowering silently diverged from .NET on most seeds (precision lost past 2^53 inside the
+    multiply) behind a fully green suite — the same class the public Fuaran.Core repo measured and
+    fixed with its split-half `mul32`. This project is the only thing in the repo that can catch
+    that class for the correlation-id path, so it is kept rather than reconstructed.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <!-- Match Fuaran.UI.Renderer.Core's nullness posture so the transpiled
+         graph compiles identically here. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fable.Core" />
+  </ItemGroup>
+</Project>

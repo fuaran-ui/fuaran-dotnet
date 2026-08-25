@@ -42,4 +42,30 @@ let idsTests =
           test "empty seed is total (FNV offset basis, no throw)" {
               let id = Ids.deterministicCorrelationId ""
               Expect.equal id.Length 8 "empty seed still yields a well-formed id"
+          }
+
+          // Pinned FNV-1a vectors (Phase 960). These pin the VALUE, not just the
+          // shape, so a reintroduced naive multiply is caught by a number rather
+          // than a compile. The "a" pair is the measured divergence pair: the
+          // canonical .NET value vs the value a naive `uint32 *` produces under
+          // Fable's float-backed numerics (precision lost past 2^53 inside the
+          // multiply). On .NET both the naive and split-half multiplies agree, so
+          // these vectors also prove the mul32 transform changed nothing here —
+          // the cross-pipeline half of the claim is measured by
+          // tests/ids-parity-probe/, which this suite cannot reach.
+          test "pinned vector: empty seed is the FNV-1a offset basis" {
+              Expect.equal
+                  (Ids.deterministicCorrelationId "")
+                  "811c9dc5"
+                  "FNV-1a(\"\") = offset basis 2166136261 = 0x811c9dc5"
+          }
+
+          test "pinned vector: \"a\" is the canonical FNV-1a value, not the naive-Fable one" {
+              let id = Ids.deterministicCorrelationId "a"
+              Expect.equal id "e40c292c" "canonical .NET FNV-1a(\"a\")"
+
+              Expect.notEqual
+                  id
+                  "e40c2930"
+                  "e40c2930 is the value a naive multiply produces under Fable — seeing it here means the split-half multiply was removed"
           } ]
