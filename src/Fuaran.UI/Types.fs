@@ -913,6 +913,53 @@ and SelectOption = Generated.SelectOption
 and FormSpec<'Msg> = Generated.FormSpec<'Msg>
 
 and FormField<'Msg> = Generated.FormField<'Msg>
+
+/// Phase 864 — a field's declared constraint: the ACCEPTED SET, where
+/// `FormFieldKind` names the CONTROL. Every slot is optional and the whole
+/// record is optional on `FormField`, so a form authored before the addition is
+/// byte-identical on the wire.
+///
+/// **It carries no numeric or temporal bound.** `RangedNumber` already carries
+/// `Min`/`Max` and `Date` already carries `Min`/`Max`; the vocabulary charter's
+/// reuse rule is that the rule slot never duplicates a bound the control
+/// already carries, because two sources for one bound are free to disagree
+/// (FUARAN101 warns where an author writes both).
+///
+/// What a declared rule OBLIGES is a normative host obligation stated as a
+/// semantic invariant rather than DOM parity (`WIRE_FORMAT.md` §22's pattern): a
+/// host that draws a submit affordance must not submit while a rule is unmet,
+/// and must show which field is unmet. It is **not** a security boundary —
+/// client enforcement is an affordance, and the declared constraints are
+/// re-checked server-side by the runtime form validator, which is where the
+/// trust floor actually sits.
+and FieldRule = Generated.FieldRule
+
+/// Phase 864 — the cross-field predicate, and the reason it needed almost no
+/// new vocabulary. `Against` is a `Binding`, per the reactive-derivation rule
+/// that any read slot may take one; the Phase 596 auto-bind already stores every
+/// form field's value in State under the field's own id, so
+/// `Binding.State("hireStartDate", None)` reads the sibling field with no
+/// addressing syntax of its own.
+///
+/// Six operators, one operand, and deliberately nothing else — no boolean
+/// combinators, no arithmetic, no nesting. Ordering follows the `DateRange`
+/// precedent: same-variant ISO-8601 strings compare lexicographically in
+/// chronological order, so a date comparison is an ordinal string compare with
+/// no parsing and no locale. A comparison between values of different shapes is
+/// UNMET rather than an error — a half-filled form is a normal state.
+and CompareRule = Generated.CompareRule
+
+/// Phase 864 — the named input format a `FieldRule` accepts, lower-case on the
+/// wire. Three cases and no more: the others HTML offers (`password`, `search`,
+/// `number`, `color`) carry no demand evidence, and `number` would collide with
+/// `RangedNumber` and re-open the reuse rule.
+///
+/// Distinct from `Format`, which is a `Binding` case about OUTPUT presentation.
+/// This is about which values are ACCEPTED on input.
+and TextFormat = Generated.TextFormat
+
+/// Phase 864 — the comparison a cross-field `CompareRule` makes.
+and CompareOp = Generated.CompareOp
 // Every value-carrying event handler is optional (Phase 426 — the control write-back
 // default, generalising `FilterKind.onChange`'s Phase 423 mechanics). A `Some` closure
 // dispatches on change exactly as before (F#-authored apps unchanged; `"<closure>"`

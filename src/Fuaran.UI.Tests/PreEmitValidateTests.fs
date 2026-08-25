@@ -114,6 +114,54 @@ let private switchReader (id: string) (key: string) : Node<Msg> =
                     Child = markdown (id + "-on") "on" } ]
             Default = markdown (id + "-off") "off" }
 
+// ─── Phase 864 fixtures — the declared-rule family (FUARAN099/100/101) ───
+//
+// Every rule below reasons about a slot the author DECLARED, so the fixtures
+// are all forms carrying a `Rule`. The three codes divide by what the walk can
+// know: FUARAN099 is decidable from the tree alone (an Error), the other two
+// turn on what a host might honour (Warnings).
+
+let private ruleDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.CompareKeyUnreachable _
+            | PreEmitDefect.RuleSlotUnhonourable _
+            | PreEmitDefect.CompareDuplicatesBound _ -> true
+            | _ -> false)
+
+/// A rule carrying only the slots a test sets. Every slot optional, so the
+/// builder starts from "constrains nothing" and each fixture adds exactly one
+/// thing — which keeps a fixture's defect attributable to the slot it declared.
+let private emptyRule: FieldRule =
+    { Compare = None
+      Format = None
+      MaxLength = None
+      Message = None
+      MinLength = None
+      Pattern = None }
+
+/// A form of `fields`, State-bound so nothing here trips FUARAN069 as well and
+/// muddies the assertion.
+let private ruleForm (fields: FormField<Msg> list) : Node<Msg> =
+    Fuaran.form
+        "frm"
+        { Defaults.form<Msg> with
+            Fields = fields }
+
+let private ruleField (id: string) (kind: FormFieldKind<Msg>) (rule: FieldRule option) : FormField<Msg> =
+    { Defaults.formField<Msg> with
+        Id = id
+        Kind = kind
+        Rule = rule }
+
+/// The plainest writable text control: State-bound under its own id, which is
+/// also what makes it OWN that key for FUARAN099's purposes.
+let private textKind (id: string) : FormFieldKind<Msg> =
+    FormFieldKind.Text(Some(Binding.State(id, Some "")), None)
+
 /// Phase 861 — a bound grid with the sort declarations under test. Columns are
 /// `(label, field, sortable)`; a `rowKeyField` keeps FUARAN078 out of the way.
 let private sortGrid
@@ -1613,4 +1661,230 @@ let tests =
               let tree = dashboard "root" [ switchReader "sw" "" ]
 
               Expect.isEmpty (noWriterDefects tree) "a malformed selector and an unreachable one are different findings"
+          }
+
+          // ─── Phase 864: FUARAN099/100/101 — the declared-rule family. Every
+          // test has a go-red partner, because all three reason from something
+          // the author did NOT do (name a reachable key, pick a control that can
+          // honour the slot, leave the bound in one place) and an absence is only
+          // evidence where the walk can see everything.
+
+          test "FUARAN099: a compare against a key no field owns and nothing writes is an Error" {
+              let rule =
+                  { emptyRule with
+                      Compare =
+                          Some
+                              { Against = Binding.State("hireStartDate", None)
+                                Op = CompareOp.Gte } }
+
+              let tree =
+                  dashboard "root" [ ruleForm [ ruleField "end-date" (textKind "end-date") (Some rule) ] ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.CompareKeyUnreachable("frm", "end-date", "hireStartDate"))
+                      "the defect is raised"
+
+                  let code, severity, _ =
+                      describe (PreEmitDefect.CompareKeyUnreachable("frm", "end-date", "hireStartDate"))
+
+                  Expect.equal code "FUARAN099" "stable code"
+
+                  Expect.equal
+                      severity
+                      DefectSeverity.Error
+                      "a dangling state key is decidable from the tree alone, so it is refused rather than warned"
+              | Ok() -> failtest "Expected FUARAN099, got Ok"
+          }
+
+          test "FUARAN099 go-red check: a sibling field owning the key clears it" {
+              // The canonical cross-field shape: the operand names a sibling
+              // field's id, and the auto-bind puts that field's value in State
+              // under exactly that key.
+              let rule =
+                  { emptyRule with
+                      Compare =
+                          Some
+                              { Against = Binding.State("start-date", None)
+                                Op = CompareOp.Gte } }
+
+              let tree =
+                  dashboard
+                      "root"
+                      [ ruleForm
+                            [ ruleField "start-date" (textKind "start-date") None
+                              ruleField "end-date" (textKind "end-date") (Some rule) ] ]
+
+              Expect.isEmpty (ruleDefects tree) "the sibling's value is what the predicate reads"
+          }
+
+          test "FUARAN099 go-red check: a host-reserved key is exempt" {
+              let rule =
+                  { emptyRule with
+                      Compare =
+                          Some
+                              { Against = Binding.State(StateKeyPolicy.HostReservedPrefix + "tenant", None)
+                                Op = CompareOp.Eq } }
+
+              let tree =
+                  dashboard "root" [ ruleForm [ ruleField "tenant" (textKind "tenant") (Some rule) ] ]
+
+              Expect.isEmpty (ruleDefects tree) "the host writes its own namespace by definition"
+          }
+
+          test "FUARAN100: a format on a TextArea is dead intent and warns" {
+              let rule =
+                  { emptyRule with
+                      Format = Some TextFormat.Email }
+
+              let kind = FormFieldKind.TextArea(Some(Binding.State("notes", Some "")), None, 4)
+
+              let tree = dashboard "root" [ ruleForm [ ruleField "notes" kind (Some rule) ] ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  let expected =
+                      PreEmitDefect.RuleSlotUnhonourable("frm", "notes", RuleSlot.Format, "TextArea")
+
+                  Expect.contains defects expected "the defect is raised"
+
+                  let code, severity, _ = describe expected
+                  Expect.equal code "FUARAN100" "stable code"
+
+                  Expect.equal
+                      severity
+                      DefectSeverity.Warning
+                      "the projection is the host's, so refusing the tree would decide it for every host"
+              | Ok() -> failtest "Expected FUARAN100, got Ok"
+          }
+
+          test "FUARAN100: a pattern on a Checkbox is dead intent and warns" {
+              let rule =
+                  { emptyRule with
+                      Pattern = Some "[0-9]+" }
+
+              let kind = FormFieldKind.Checkbox(Some(Binding.State("agree", Some false)), None)
+
+              let tree = dashboard "root" [ ruleForm [ ruleField "agree" kind (Some rule) ] ]
+
+              Expect.contains
+                  (ruleDefects tree)
+                  (PreEmitDefect.RuleSlotUnhonourable("frm", "agree", RuleSlot.Pattern, "Checkbox"))
+                  "a checkbox has no string to match"
+          }
+
+          test "FUARAN100 go-red check: the same slots on a Text control are honourable" {
+              let rule =
+                  { emptyRule with
+                      Format = Some TextFormat.Email
+                      Pattern = Some ".+@example\\.com"
+                      MinLength = Some 3
+                      MaxLength = Some 64 }
+
+              let tree =
+                  dashboard "root" [ ruleForm [ ruleField "email" (textKind "email") (Some rule) ] ]
+
+              Expect.isEmpty (ruleDefects tree) "Text honours every string-shaped slot"
+          }
+
+          test "FUARAN100 go-red check: a length pair on a TextArea is honourable — only `format` is not" {
+              let rule =
+                  { emptyRule with
+                      MinLength = Some 10
+                      MaxLength = Some 500 }
+
+              let kind = FormFieldKind.TextArea(Some(Binding.State("notes", Some "")), None, 4)
+
+              let tree = dashboard "root" [ ruleForm [ ruleField "notes" kind (Some rule) ] ]
+
+              Expect.isEmpty (ruleDefects tree) "a textarea has a length; it has no input type"
+          }
+
+          test "FUARAN101: a literal compare duplicating the control's own min warns" {
+              let rule =
+                  { emptyRule with
+                      Compare =
+                          Some
+                              { Against = Binding.Static(Some(Fuaran.Core.JFloat 1.0))
+                                Op = CompareOp.Gte } }
+
+              let kind =
+                  FormFieldKind.RangedNumber(Some(Binding.State("qty", Some 1.0)), None, Some 1.0, Some 99.0, None)
+
+              let tree = dashboard "root" [ ruleForm [ ruleField "qty" kind (Some rule) ] ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  let expected =
+                      PreEmitDefect.CompareDuplicatesBound("frm", "qty", "RangedNumber.min")
+
+                  Expect.contains defects expected "the defect is raised"
+
+                  let code, severity, _ = describe expected
+                  Expect.equal code "FUARAN101" "stable code"
+
+                  Expect.equal
+                      severity
+                      DefectSeverity.Warning
+                      "a literal operand is legal — it is just the shape that collapses the rule/bound distinction"
+              | Ok() -> failtest "Expected FUARAN101, got Ok"
+          }
+
+          test "FUARAN101 go-red check: a BINDING operand is the whole point and never warns" {
+              // The distinction the rule exists to protect: a rule slot does not
+              // duplicate a control bound BECAUSE its operand reads something
+              // that changes, where the control's bound is a literal.
+              let rule =
+                  { emptyRule with
+                      Compare =
+                          Some
+                              { Against = Binding.State("floor", None)
+                                Op = CompareOp.Gte } }
+
+              let kind =
+                  FormFieldKind.RangedNumber(Some(Binding.State("qty", Some 1.0)), None, Some 1.0, Some 99.0, None)
+
+              let tree =
+                  dashboard
+                      "root"
+                      [ ruleForm [ ruleField "floor" (textKind "floor") None; ruleField "qty" kind (Some rule) ] ]
+
+              Expect.isEmpty (ruleDefects tree) "reading a sibling is what the rule slot is for"
+          }
+
+          test "FUARAN101 go-red check: a literal compare on a control with NO bound is not a duplicate" {
+              let rule =
+                  { emptyRule with
+                      Compare =
+                          Some
+                              { Against = Binding.Static(Some(Fuaran.Core.JFloat 1.0))
+                                Op = CompareOp.Gte } }
+
+              let kind =
+                  FormFieldKind.RangedNumber(Some(Binding.State("qty", Some 1.0)), None, None, None, None)
+
+              let tree = dashboard "root" [ ruleForm [ ruleField "qty" kind (Some rule) ] ]
+
+              Expect.isEmpty (ruleDefects tree) "there is no second source to disagree with"
+          }
+
+          test "FUARAN101 go-red check: the OPPOSITE bound is not the one duplicated" {
+              // `gte` names a lower bound, so a control declaring only `max`
+              // duplicates nothing — the rule is direction-aware rather than
+              // firing on the mere presence of any bound.
+              let rule =
+                  { emptyRule with
+                      Compare =
+                          Some
+                              { Against = Binding.Static(Some(Fuaran.Core.JFloat 1.0))
+                                Op = CompareOp.Gte } }
+
+              let kind =
+                  FormFieldKind.RangedNumber(Some(Binding.State("qty", Some 1.0)), None, None, Some 99.0, None)
+
+              let tree = dashboard "root" [ ruleForm [ ruleField "qty" kind (Some rule) ] ]
+
+              Expect.isEmpty (ruleDefects tree) "a lower-bound compare and an upper bound are different claims"
           } ]

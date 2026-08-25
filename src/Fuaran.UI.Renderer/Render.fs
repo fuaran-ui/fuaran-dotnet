@@ -1669,6 +1669,288 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
     // the mount unchanged (same posture as FragmentRef / Custom).
     | NodeKind.Mount _ -> kind
 
+// ─── Declared field rules (`FormField.Rule`, Phase 864) ────────────────────
+//
+// WIRE_FORMAT splits the obligation a declared rule carries by host class.
+// This renderer is a RENDERING HOST — it draws the form's submit affordance —
+// so it MUST NOT submit while a declared rule is unmet, and MUST make visible
+// which field is unmet. It is NOT a security boundary: client enforcement is
+// an affordance, and a host that accepts submissions re-checks every declared
+// constraint server-side (`Fuaran.UI.ServerDriven.FormValidation` is that
+// floor on the server-driven tier).
+//
+// The work splits between the DOM and this module:
+//
+//   • `format` / `pattern` / `minLength` / `maxLength` project into the
+//     platform's OWN constraint attributes on the control (`type`, `pattern`,
+//     `minlength`, `maxlength`) — the same attributes the static/SSR emitter
+//     writes, so browser, static projection and native surface agree without a
+//     second definition of the rule.
+//   • `compare` has NO HTML equivalent, which the specification states out
+//     loud. It is emitted as a `data-fuaran-field-compare` DECLARATION so a
+//     reader can see it was not silently dropped, and enforced by the submit
+//     gate in `renderForm`. **RECORDED KNOWN LIMIT: that attribute is a
+//     declaration, not a constraint — no platform machinery reads it.**
+//
+// `pattern` is deliberately NOT evaluated in F# here. This file is
+// Fable-compiled and uses `System.Text.RegularExpressions` nowhere; the
+// specification chose HTML `pattern` semantics (ECMA-262 source, implicitly
+// anchored to the whole value) precisely so the browser's own check is the one
+// definition. Native constraint validation runs BEFORE the `submit` event is
+// dispatched at all, so an unmet `pattern` never reaches the gate below — the
+// attribute is emitted and the browser enforces it.
+
+[<RequireQualifiedAccess>]
+module private FieldRules =
+
+    /// Whitespace test written by enumeration rather than through
+    /// `Char.IsWhiteSpace`, so the semantics are identical on both pipelines.
+    let private hasWhitespace (s: string) : bool =
+        s |> Seq.exists (fun c -> c = ' ' || c = '\t' || c = '\n' || c = '\r')
+
+    /// The `format` check, DELIBERATELY structural rather than authoritative.
+    /// The attribute projection puts `type=email` / `url` / `tel` on the
+    /// control and the browser's native check is what actually gates a
+    /// user-typed value; this mirrors the SHAPE of that check so the gate also
+    /// covers a programmatically-seeded value (several native checks apply only
+    /// once a control is user-dirty). An RFC 5322 email validator is not what
+    /// this is for — it rejects deliverable addresses and accepts undeliverable
+    /// ones, and the rule slot is not a security boundary.
+    let private matchesFormat (fmt: TextFormat) (s: string) : bool =
+        match fmt with
+        // Exactly the shape `<input type=email>` demands: one `@`, something
+        // either side of it, no whitespace.
+        | TextFormat.Email ->
+            let parts = s.Split('@')
+            parts.Length = 2 && parts[0] <> "" && parts[1] <> "" && not (hasWhitespace s)
+        // `<input type=url>` demands an ABSOLUTE URL — a scheme and a body. The
+        // scheme set is deliberately not enumerated: the control does not
+        // enumerate one either.
+        | TextFormat.Url -> not (hasWhitespace s) && s.Contains "://" && not (s.StartsWith "://")
+        // `<input type=tel>` enforces NOTHING natively, because telephone
+        // formats vary worldwide. Claiming a shape here would make the gate and
+        // the projected attribute disagree, which is the one outcome the
+        // shared-attribute design exists to prevent.
+        | TextFormat.Tel -> true
+
+    /// Ordinal comparison of two harvested values, or `None` when the two are
+    /// not comparable. WIRE_FORMAT: same-variant ISO-8601 strings compare
+    /// lexicographically in chronological order (the `DateRange` ordering,
+    /// borrowed wholesale — an ordinal string compare, no parsing, no locale);
+    /// numbers compare numerically; **a comparison between values of different
+    /// shapes is UNMET, not an error.**
+    let private compareValues (lhs: JVal) (rhs: JVal) : int option =
+        let asFloat v =
+            match v with
+            | JInt i -> Some(float i)
+            | JFloat f -> Some f
+            | _ -> None
+
+        match lhs, rhs with
+        | JStr x, JStr y ->
+            Some(
+                if x < y then -1
+                elif x > y then 1
+                else 0
+            )
+        | (JInt _ | JFloat _), (JInt _ | JFloat _) ->
+            match asFloat lhs, asFloat rhs with
+            | Some x, Some y ->
+                Some(
+                    if x < y then -1
+                    elif x > y then 1
+                    else 0
+                )
+            | _ -> None
+        | _ -> None
+
+    /// Does `lhs <op> rhs` hold? Anything not comparable is UNMET (`false`).
+    let private meets (op: CompareOp) (lhs: JVal) (rhs: JVal) : bool =
+        match op, lhs, rhs with
+        // Booleans carry equality but no ordering. The specification defines
+        // ordering for numbers and same-variant ISO-8601 strings only, so an
+        // ordering operator over booleans is UNMET rather than given an
+        // invented order — claiming less than an order nobody wrote down.
+        | CompareOp.Eq, JBool x, JBool y -> x = y
+        | CompareOp.Neq, JBool x, JBool y -> x <> y
+        | _, JBool _, _
+        | _, _, JBool _ -> false
+        | _ ->
+            match compareValues lhs rhs with
+            | None -> false
+            | Some c ->
+                match op with
+                | CompareOp.Eq -> c = 0
+                | CompareOp.Neq -> c <> 0
+                | CompareOp.Lt -> c < 0
+                | CompareOp.Lte -> c <= 0
+                | CompareOp.Gt -> c > 0
+                | CompareOp.Gte -> c >= 0
+
+    /// The first unmet slot of one field's declared rule, as its message.
+    /// `values` is the form's own submit harvest (`SubmitPayload.harvestFields`
+    /// keyed by field id) — the same values the submit would carry, read
+    /// exactly as this renderer's own controls read them.
+    let unmet (resolveText: TextSource -> string) (values: Map<string, JVal>) (field: FormField<'Msg>) : string option =
+        match field.Rule with
+        | None -> None
+        | Some rule ->
+            let value = Map.tryFind field.Id values
+
+            let text =
+                match value with
+                | Some(JStr s) -> Some s
+                | _ -> None
+
+            // An EMPTY value is not length- or format-checked. That is exactly
+            // what the browser does with `minlength` / `type=email` on a
+            // control the author did not mark required, and the whole point of
+            // projecting into the platform's attributes is that the two agree.
+            // `required` is the slot that makes emptiness a failure.
+            //
+            // Length rules read a STRING value only: a rule never duplicates a
+            // bound its control already holds, so a numeric control's bounds are
+            // `RangedNumber`'s `min`/`max`, not a length.
+            let lengthAndFormat =
+                match text with
+                | Some s when s <> "" ->
+                    [ (match rule.MinLength with
+                       | Some n when s.Length < n -> Some(sprintf "Must be at least %d characters." n)
+                       | _ -> None)
+                      (match rule.MaxLength with
+                       | Some n when s.Length > n -> Some(sprintf "Must be at most %d characters." n)
+                       | _ -> None)
+                      (match rule.Format with
+                       | Some fmt when not (matchesFormat fmt s) ->
+                           Some(
+                               match fmt with
+                               | TextFormat.Email -> "Enter an email address."
+                               | TextFormat.Url -> "Enter a URL."
+                               | TextFormat.Tel -> "Enter a telephone number."
+                           )
+                       | _ -> None) ]
+                    |> List.tryPick id
+                | _ -> None
+
+            let compareUnmet =
+                match rule.Compare with
+                | None -> None
+                | Some cmp ->
+                    match cmp.Against with
+                    | Binding.State(key, _) ->
+                        match value, Map.tryFind key values with
+                        | Some l, Some r when meets cmp.Op l r -> None
+                        | _ -> Some "This value does not match the field it is compared against."
+                    // RECORDED KNOWN LIMIT — only a `State`-keyed operand is
+                    // read on this tier, which is the shape WIRE_FORMAT
+                    // describes ("a form field with no `value` already
+                    // auto-binds `State(<its own id>)`, so
+                    // `{"$type":"State","key":"<sibling field id>"}` reads a
+                    // sibling with no addressing vocabulary of its own"). Any
+                    // other binding shape is NOT evaluated and is reported here
+                    // rather than blocked: refusing a submit over an operand we
+                    // did not read would claim a check we did not perform.
+                    | _ -> None
+
+            [ lengthAndFormat; compareUnmet ]
+            |> List.tryPick id
+            |> Option.map (fun generated ->
+                // The authored `message` is the prose shown when SOME slot is
+                // unmet — one message per rule, not per slot — so it replaces
+                // the generated sentence wholesale when present.
+                match rule.Message with
+                | Some ts -> resolveText ts
+                | None -> generated)
+
+    /// The control `type` a `format` rule selects for a text input. Absent
+    /// rule / absent `format` leaves the pre-864 `text`, byte-identically.
+    let textInputType (rule: FieldRule option) : string =
+        match rule |> Option.bind (fun r -> r.Format) with
+        | Some TextFormat.Email -> "email"
+        | Some TextFormat.Url -> "url"
+        | Some TextFormat.Tel -> "tel"
+        | None -> "text"
+
+    /// The platform's own constraint attributes for a declared rule.
+    /// `withPattern` is false on controls where HTML's `pattern` does not apply
+    /// (`<textarea>` has no `pattern` attribute), so the emitter never writes an
+    /// attribute the platform ignores.
+    let constraintAttrs (withPattern: bool) (rule: FieldRule option) : IReactProperty list =
+        match rule with
+        | None -> []
+        | Some r ->
+            [ if withPattern then
+                  match r.Pattern with
+                  | Some p -> prop.pattern p
+                  | None -> ()
+              match r.MinLength with
+              | Some n -> prop.minLength n
+              | None -> ()
+              match r.MaxLength with
+              | Some n -> prop.maxLength n
+              | None -> ()
+              // RECORDED KNOWN LIMIT — `compare` has no HTML equivalent, and
+              // faking one would imply coverage the platform does not provide.
+              // The declaration is emitted so it is visible in the DOM and so
+              // the submit gate's decision is inspectable; the gate, not this
+              // attribute, is what enforces it.
+              match r.Compare with
+              | Some c ->
+                  let opText =
+                      match c.Op with
+                      | CompareOp.Eq -> "eq"
+                      | CompareOp.Neq -> "neq"
+                      | CompareOp.Lt -> "lt"
+                      | CompareOp.Lte -> "lte"
+                      | CompareOp.Gt -> "gt"
+                      | CompareOp.Gte -> "gte"
+
+                  let againstText =
+                      match c.Against with
+                      | Binding.State(key, _) -> key
+                      | _ -> ""
+
+                  prop.custom ("data-fuaran-field-compare", opText + ":" + againstText)
+              | None -> () ]
+
+    /// Mark / clear the unmet fields in the DOM. `data-fuaran-field-error` is
+    /// the SAME marker the server-driven tier's field-error patches use
+    /// (`FormValidation.lower`), so a host's existing CSS hook surfaces a
+    /// client-gate failure and a server-validation failure identically — no new
+    /// class vocabulary, which is parity-locked with the TS renderer. The
+    /// `aria-invalid` companion is what makes the unmet field visible to a
+    /// screen reader, and the first unmet field is focused so the failure is
+    /// visible without any host styling at all.
+    let markUnmet (errors: (string * string) list) (allFieldIds: string list) : unit =
+#if FABLE_COMPILER
+        let errorById = Map.ofList errors
+
+        for fieldId in allFieldIds do
+            let el = Browser.Dom.document.getElementById fieldId
+
+            if not (isNull el) then
+                match Map.tryFind fieldId errorById with
+                | Some message ->
+                    el.setAttribute ("data-fuaran-field-error", message)
+                    el.setAttribute ("aria-invalid", "true")
+                | None ->
+                    el.removeAttribute "data-fuaran-field-error"
+                    el.removeAttribute "aria-invalid"
+
+        match errors with
+        | (firstId, _) :: _ ->
+            let el = Browser.Dom.document.getElementById firstId
+
+            if not (isNull el) then
+                el.focus ()
+        | [] -> ()
+#else
+        // .NET-side no-op — `Browser.Dom` is meaningless under `dotnet build`
+        // (the same posture the tab-focus helper takes).
+        ignore errors
+        ignore allFieldIds
+#endif
+
 // ─── Per-Kind body renderers ───────────────────────────────────────────────
 
 // State-slot dispatch is inlined at each data-bound per-Kind renderer
@@ -3536,7 +3818,30 @@ and private renderForm (ctx: RenderContext<'Msg>) (spec: FormSpec<'Msg>) : React
               // payload slot; the server-driven tier delivers the Call body
               // through its `InterpretSubmitCall` seam (SERVER_DRIVEN.md).
               let fields = SubmitPayload.harvestFields ctx.Sources spec.Fields
-              runAction ctx (SubmitPayload.attachToAction fields spec.OnSubmit))
+
+              // Phase 864 — the declared-rule submit GATE. A rendering host
+              // MUST NOT run the form's action while a declared rule is unmet,
+              // and MUST make visible which field is unmet. The gate runs over
+              // exactly the values the submit would have carried, so what is
+              // checked and what would have been sent cannot diverge.
+              //
+              // The submit button is deliberately NOT disabled: disabling it
+              // removes the gesture that reveals WHICH field is unmet, which is
+              // the second half of the obligation. Native HTML makes the same
+              // choice for its own constraint attributes — and note those run
+              // even earlier, before this event is dispatched at all, so an
+              // unmet `pattern` / `type` is already blocked by the browser.
+              let values = Map.ofList fields
+
+              let unmet =
+                  spec.Fields
+                  |> List.choose (fun f -> FieldRules.unmet (renderText ctx) values f |> Option.map (fun m -> f.Id, m))
+
+              FieldRules.markUnmet unmet [ for f in spec.Fields -> f.Id ]
+
+              match unmet with
+              | [] -> runAction ctx (SubmitPayload.attachToAction fields spec.OnSubmit)
+              | _ -> ())
           prop.children formChildren ]
 
 and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) : ReactElement =
@@ -3583,6 +3888,26 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                     onCommit
                     |> Option.iter (fun oc -> runAction ctx (unbox<Action<'Msg>> (oc parsed)))
 
+                // Phase 864 RECORDED KNOWN LIMIT — the Local-bound text field
+                // renders through `LocalBindings.localTextInput`, whose
+                // parameter record carries no attribute-passthrough slot, so a
+                // declared rule's constraint ATTRIBUTES are not projected onto
+                // this control. Two consequences, stated separately because
+                // they are not equally severe:
+                //   • `format` / `minLength` / `maxLength` lose the browser's
+                //     per-keystroke enforcement but ARE still gated at submit —
+                //     the harvest resolves a Local field's value like any
+                //     other, so the "MUST NOT submit" half holds.
+                //   • `pattern` is gated by NEITHER: the attribute is absent
+                //     here, and the gate deliberately does not evaluate regex
+                //     on this tier (see the `FieldRules` header). A `pattern`
+                //     rule on a Local-bound text field is therefore enforced
+                //     only by the server-side re-check
+                //     (`Fuaran.UI.ServerDriven.FormValidation`), which is the
+                //     non-bypassable floor in any case — but this tier does not
+                //     meet its own obligation for that one combination, and
+                //     saying so is better than implying coverage.
+                // Closing it needs an attribute slot on `localTextInput`.
                 LocalBindings.localTextInput
                     {| nodeId = fieldNodeId
                        fieldId = field.Id
@@ -3596,13 +3921,20 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
             | _ ->
                 let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
-                Html.input
+                // Phase 864 — `format` retypes the control (`email` / `url` /
+                // `tel`) and `pattern` / `minLength` / `maxLength` ride the
+                // platform's own attributes, so the BROWSER enforces them. An
+                // absent rule leaves `type=text` and emits nothing, so a form
+                // authored before 864 renders byte-identically.
+                Html.input (
                     [ prop.className "fuaran-form-input"
-                      prop.type'.text
+                      prop.type' (FieldRules.textInputType field.Rule)
                       prop.id field.Id
                       prop.required field.Required
                       prop.value current
                       prop.onChange (fun (v: string) -> handle onChange value (Some(box v)) v) ]
+                    @ FieldRules.constraintAttrs true field.Rule
+                )
         | FormFieldKind.Number(value, onChange) ->
             let value =
                 value
@@ -3819,13 +4151,18 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
 
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
 
-            Html.textarea
+            // Phase 864 — `minLength` / `maxLength` project onto the textarea;
+            // `pattern` does NOT (HTML has no `pattern` on `<textarea>`), so it
+            // is not emitted rather than emitted and ignored.
+            Html.textarea (
                 [ prop.className "fuaran-form-textarea"
                   prop.id field.Id
                   prop.required field.Required
                   prop.rows rows
                   prop.value current
                   prop.onChange (fun (v: string) -> handle onChange value (Some(box v)) v) ]
+                @ FieldRules.constraintAttrs false field.Rule
+            )
         | FormFieldKind.SegmentedChoice(options, value, onChange, orientation) ->
             // Visible-options exclusive-choice input. Horizontal
             // emits a `role="radiogroup"` of `role="radio"` buttons styled

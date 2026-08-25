@@ -116,6 +116,35 @@ have chosen.** Precedents already in the tree:
   not new `NodeKind`s.
 - Format/enum cases (`Format`, `DateStyle`) grow inside their DUs.
 
+### 2.1 Below the variant line – spec-record FIELD additions
+
+There is a **third** tier under the two above, and it was left implicit until the form-validation
+charter (Phase 864) had to choose between it and a variant. A new **field on an existing spec
+record** – `StaticRows.sortable`, `GridSpec.pageStateKey`, `FormField.rule` – adds *no* choice at
+all: the consumer has already selected the kind and already selected the case, and the field is an
+optional refinement it may ignore entirely. On the confusion axis this tier is **free**, which is
+strictly cheaper than a variant's *scoped* disambiguation.
+
+On the **wire-coupling** axis it is *not* free, and it is not cheaper than a variant either: §11's
+forward-coupling rule is stated over the whole wire contract, so a field addition still costs
+encoder + decoder + schema + corpus + every host in the roster, in one change-set. What it skips is
+the §11.2 **vocabulary attestation** – `manifest.formFieldKinds` and `manifest.kinds` enumerate
+*cases*, so a host that has never met a new field is not named by any manifest, and only the fixture
+catches it. That is the tier's one genuine disadvantage and a proposal choosing it must say so.
+
+**The rule for choosing between the three:**
+
+> A **kind** names a structural primitive. A **variant** names a different CONTROL or SHAPE within a
+> kind the consumer already chose. A **field** names a REFINEMENT of a control that is otherwise
+> unchanged. Where a pattern would read equally well as a variant or a field, prefer the **field** –
+> it is the only one of the three that adds nothing to the working-memory tax.
+
+The trap this rule exists to catch is a real one and it is counter-intuitive in the other direction:
+*widening an existing case* is more expensive than adding a new one. Adding a field to a DU **case**
+changes that case's arity, so every existing pattern match on it stops compiling; adding a new case
+leaves them all alone and raises an `FS0025` only where a match is exhaustive. So "just put it on
+`Text`" is the most expensive of the three spellings, not the cheapest.
+
 **The quiet-churn caveat.** A variant is *not* free. Per [`WIRE_FORMAT.md` §11](WIRE_FORMAT.md#11-forward-coupling-rule-load-bearing),
 adding a case to *any* wire DU – `NodeKind` **or** a spec-record variant like `FormFieldKind` /
 `ChartKind` – carries the identical forward-coupling cost: encoder + decoder + schema + corpus + every
@@ -212,9 +241,14 @@ matters:
 
 ## 5. How this charter binds phase authoring
 
-Any development plan that **changes the kind set** – an addition, a variant addition, a merge, or a
-retirement – cites this charter and satisfies its gates in the plan body: the demand evidence (§1.1), the
+Any development plan that **changes the wire vocabulary** – a kind addition, a variant addition, a
+**spec-record field addition** (§2.1), a merge, or a retirement – cites this charter and satisfies its
+gates in the plan body: the demand evidence (§1.1), the
 irreducibility statement (§1.2), the cost acknowledgment (§1.3), and the pre/post confusion delta (§3.2).
+A field addition's §1.2 argument is the one that most often goes unwritten, because the §2/§2.1 redirect
+looks like it *is* the argument – it is not. The redirect says why the pattern is not a kind; §1.2 still
+has to say why the pattern needs the wire at all, and a field whose only justification is that it was
+cheap to add is a field with no evidence behind it.
 [`STABILITY.md`](../STABILITY.md) links this charter from its stability policy so the two documents stay
 in agreement: STABILITY.md governs the *version-bump* classification of a kind change; this charter
 governs *whether the change is admitted at all*. A plan that adds a kind without clearing this charter is
@@ -305,13 +339,36 @@ written down is what stops the next proposal re-deriving it.
 | `Undo` / `Redo` | **Host chrome** | Not an `Action` case. The op-stream's inverse ops are real and certified, and they invert **tree** ops — the AI's authoring channel. Every user gesture the language admits writes *state*, and a state write has no op representation at all, so an `Action.Undo` would either do nothing or undo an authoring op the user never performed: a fake affordance minted at the vocabulary level, in the one place a mistake cannot be withdrawn cheaply (§4.2). A host that owns a history owns its control. **Reopen condition:** a durable *user*-action record exists (Phase 889); only then is "invert a recorded user action" a question with an answer. |
 | `KeyboardShortcut` / `Hotkey` | **Host chrome** | Not a kind, not a field, not an `Action`. The language's keyboard posture is already complete and deliberate: **widget-local WAI-ARIA interaction, renderer-owned, named nowhere on the wire** (roving tablist focus, radiogroup arrow cycling, grid key handling). A wire vocabulary would buy a per-host binding table, platform normalisation (⌘ vs Ctrl, `key` vs `code`, IME state), a conflict-resolution policy against the host's and the browser's own chords, a discoverability obligation (an undiscoverable shortcut is another fake affordance), and a trust question — a decoded tree from an untrusted emitter capturing document-level keystrokes is a keylogger-shaped capability. Against that, §1.1 evidence is **nil**: the demand row's own text records that its probe was never authored, so the intent has never been observed firing. Application-global chords belong to the host, which already owns the seams to dispatch into the tree. **Reopen condition:** a stress-authored cross-family sighting — and even then the first question is whether the demand is widget-local a11y the renderer already owes. |
 
+### Form-constraint cluster (added 2026-08-21 — the form-validation charter, Phase 864)
+
+The cluster the taxonomy lacked on the *input* side: how a form says what it will ACCEPT. Its
+governing ruling is one sentence — *a `FormFieldKind` case names a CONTROL, a rule names an ACCEPTED
+SET, and the renderer's choice of `<input type="email">` is that set's HTML projection rather than a
+second place the wire says the same thing.* One row is **admitted** as a §2.1 field addition, three
+are **redirected** to it, and one is **out**. The point of recording the redirects is that each was
+independently proposed as a variant, and the reasoning that declined them is not otherwise written
+down anywhere a reader would find it.
+
+| Reserved name | Disposition | Ruling |
+|---|---|---|
+| `FieldRule` / per-field constraint | **Field** (shipped 2026-08-21) | Admitted as `FormField.rule`, an optional non-discriminated record carrying `format` / `pattern` / `minLength` / `maxLength` / `compare` / `message` — a §2.1 field addition, no new case in any discriminator family. **§1.1 demand evidence:** one stress-authored task's constraint criteria, ×20 task-qualified sightings across two of them plus ten on a third, cross-family and cross-provider. Verbatim: *"email format rule only appears in help text … no format/pattern constraint"* (×10); *"no cross-field constraint referencing hireStartDate is declared anywhere in the form"* — **ten straight NOs**, the strongest single-criterion evidence in the set (×10); *"email uses generic `$type:Text` with no email-specific kind or format attribute"* (×10, on emissions that DID reach `RangedNumber` for a numeric bound and `Date` for the dates, so the residue is narrower than "no constraint vocabulary"). Every one of the twenty restated the rule as **help text**, which is the failure mode the admission has to beat rather than merely improve on. **§1.2 irreducibility:** `required` was the entire constraint vocabulary, so a format, a pattern, a length bound and a cross-field predicate had exactly one expressible home — prose a host cannot act on. Not a composition (`Switch` conditions a *subtree*; it does not constrain a value); not a role; not a fragment. Reuse was checked first and bounded the scope: `RangedNumber` already carries `min`/`max` and `Date` already carries `min`/`max`, so **the rule slot mints no numeric or temporal bound of its own** — the residue was format, pattern, length and the cross-field operand. **Why a field and not a variant** (the charter's headline departure): a `FormattedText` case beside `Text` manufactures one more instance of the exact error class §1's preamble names — valid-but-wrong-kind selection — and the worst-behaved instance, because `Text` for an email field is *not wrong*, only less specific, so nothing can call it. A field adds no choice to get wrong. It also matches how the demand actually arrives: the models already emit `{"$type":"Text"}`, so a key added beside `help` is the gesture they already perform, where substituting a discriminator requires knowing the alternative exists before the emission begins. **§1.3 carrying cost, in full:** renderer × every host tier (the constraint attributes and the submit refusal); no new `fuaran-*` class vocabulary (invalid-field marking rides the shipped field-error hooks); accessibility curation *is* required and is not defaulted (`aria-invalid` / `aria-describedby` wiring to the rule's own message); the §11 wire tax in full — IDL, generated codec, policy decoder, schema, corpus, every codec host in the roster; a three-code validator family (FUARAN099/100/101) in every host that carries one; eval + pack coverage so a model learns to reach for it; and the working-memory tax, which is the one line this row can honestly claim to have *minimised* rather than paid. It also gives up §11.2 **vocabulary attestation** — a manifest enumerates cases, not fields, so a host that never adopts `rule` is named by no manifest and only the fixture catches it. That loss is the strongest argument for the variant spelling and it was accepted deliberately: attestation catches a host lagging on adoption, a coordination problem with an owner, whereas the confusion tax is paid by every emission forever. **§3 confusion delta:** structurally **zero** against the existing nine `FormFieldKind` cases — the change adds no case, so there is no new pair for the metric to score and the pre/post baseline is unchanged by construction. That is a stronger claim than a small measured delta, and it is the reason the spelling was chosen. The residual risk is on a different axis and is measured elsewhere: whether an author reaches for `rule` or falls back to `help` prose, read as the flip measure on the three criteria above at the pack-teaching sweep. |
+| `EmailField` / `UrlField` / `TelField` | **Field** (redirected) | Not three cases, and not one case with a nested enum either. The `Media` row above already pre-ruled the three-siblings shape ("reserve **one** … with a variant DU … not two kinds"); the single-case spelling then failed the confusion test in the row above. Both land as `rule.format`, a bare-string enum of `email` / `url` / `tel`. `password`, `search`, `number` and `color` are HTML input types with **no §1.1 evidence** and are *reserved, not admitted* — `number` in particular would collide with `RangedNumber` and re-open the reuse rule. |
+| `PatternField` / `RegexField` | **Field** (redirected) | `rule.pattern`, an ECMA-262 source implicitly anchored to the whole value — the HTML `pattern` semantics exactly, so the browser, the static projection and every host agree without a second definition. Deliberately not carried on a format case: an email field with an *additional* corporate-domain pattern is real, so a pattern has to reach any control, which means the record. |
+| `CrossFieldRule` / `FormPredicate` | **Field** (redirected — and mostly a reuse) | Not a new construct. A rule's comparison operand is a read slot, and the reactive-derivation charter's one rule (any read slot may take a `Binding`) already says what a read slot may hold; the auto-bind rule already puts every form field's value in State under the field's own id. So a cross-field predicate is an ordinary per-field rule whose operand is `{"$type":"State","key":"<sibling field id>"}`, with no coordination vocabulary at all. Six operators, one operand, **no boolean combinators, no arithmetic, no expression language** — the standing rejection is unchanged by the slot being a predicate rather than a value. Rejected sibling spelling: letting `Date.min` / `RangedNumber.max` accept a `Binding`, which reaches only controls that already have bounds (so "confirm password equals password" stays inexpressible), conflates a *selectable range* with an *accepted set*, and re-types five slots where one suffices. |
+| `FieldError` / a validation-state slot on the wire | **Host chrome** | Not a field. An error is a **state**, not a declaration: an emitter would be authoring the outcome of a validation it has not performed over values it has not seen, and a decoded tree carrying an error message would replay a stale failure on every mount. Surfacing an unmet rule belongs to the host's own form feedback, which already exists on the server-driven path. **Reopen condition:** none foreseeable — the shape is wrong rather than unevidenced. |
+
 **Reading of the taxonomy:** of ~20 reserved candidates, the overwhelming majority resolve to
 **variant / composition / role / covered** – only `NavBar`/`Menu`, a single consolidated `Media`, and a
 provisional `Tree` and `Calendar` are even *reserved* as genuine kinds, and each is admission-gated on
 §1 demand evidence. That distribution is the charter's thesis made concrete: **most vocabulary demand is
 not a new kind.** The interaction cluster added in 2026-08 sharpens it a second way: of four intents
 that each arrived as a filed gap, two resolved to an existing mechanism and two resolved to *nothing at
-all* — **most vocabulary demand is not vocabulary.**
+all* — **most vocabulary demand is not vocabulary.** The form-constraint cluster added in 2026-08
+sharpens it a third time, and this one cuts *inside* the redirect: of five intents that each arrived
+proposed as a `FormFieldKind` variant, four resolved to a single optional **field** on a record and
+one resolved to host chrome. Not one earned a case. So — **most vocabulary demand that survives the
+kind test is not a case either**, which is the sentence §2.1 exists to make checkable rather than
+lucky.
 
 ---
 

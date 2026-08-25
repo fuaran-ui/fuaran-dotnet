@@ -92,11 +92,23 @@ let private acceptTest (e: Corpus.FixtureEntry) : Test =
 ///   is a well-formed object by every shape rule the schema states. The
 ///   unwrap-payload requirement is decoder policy.
 ///
+/// - `reject-fieldrule-length-unordered` (Phase 864): `FieldRule` must satisfy
+///   `minLength <= maxLength` — the `reject-daterange-unordered` rule above,
+///   applied to a length pair, and inexpressible for the identical reason.
+///   Note its two SIBLING refusals are NOT here and must not be added: "a rule
+///   must constrain something" is an `anyOf` over five property names, and the
+///   `validation` / `constraints` / `validate` near miss is a `not: required`,
+///   so both are stated in the schema and both fail it. Only the relation
+///   between two values escapes the dialect.
+///
 /// Each entry is asserted schema-VALID below — the INVERSE pin. If the schema
 /// ever gains the power to refuse one of these, this test fails and the list
 /// shrinks deliberately rather than the exemption quietly outliving its reason.
 let private schemaInexpressibleRejects: Set<string> =
-    set [ "reject-daterange-unordered"; "reject-transform-source-empty-wrapper" ]
+    set
+        [ "reject-daterange-unordered"
+          "reject-transform-source-empty-wrapper"
+          "reject-fieldrule-length-unordered" ]
 
 let private rejectTest (e: Corpus.FixtureEntry) : Test =
     if schemaInexpressibleRejects.Contains e.Id then

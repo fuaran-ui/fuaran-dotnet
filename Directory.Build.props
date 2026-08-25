@@ -304,7 +304,12 @@
          rendering change folded into a minor whose declared content says
          "additive" would misdescribe the slot, and the slot is what a
          consumer reads.) -->
-    <Version>0.35.0</Version>
+    <!-- 0.36.0 (Phase 864): FormField gains the optional `Rule` slot. Additive
+         on the WIRE — an omitted rule is byte-identical to 0.35.0 — and a
+         construction-site break in F# and C#, since a record field addition
+         forces every literal. Minor, per the 801 precedent for the identical
+         shape; see STABILITY.md "Recorded change — 0.36.0". -->
+    <Version>0.36.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

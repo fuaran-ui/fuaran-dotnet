@@ -114,13 +114,18 @@ public sealed class FormField
     private FormField(FsGen.FormField<object> inner) => Inner = inner;
 
     private static FormField Make(string id, Text label, FsGen.FormFieldKind<object> kind, bool required, Text? help) =>
-        // Generated FormField declares (Id, Kind, Label, Required, Help) — ctor is declaration order.
+        // Generated FormField declares (Id, Kind, Label, Required, Help, Rule) — ctor is
+        // declaration order. Phase 864 added the Rule slot; the veneer does not author a
+        // rule (see the charter's §11-step-6 ruling — a spec-record FIELD binds neither
+        // veneer, and authoring a rule from C#/VB is tracked as its own follow-up), so it
+        // passes None and a C#-authored field is unconstrained beyond `required`.
         new(new FsGen.FormField<object>(
             id,
             kind,
             label.Inner,
             required,
-            help is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>()));
+            help is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
+            Fs.None<FsGen.FieldRule>()));
 
     /// <summary>A text field.</summary>
     public static FormField Text(string id, Text label, string initial = "", bool required = false, Text? help = null) =>

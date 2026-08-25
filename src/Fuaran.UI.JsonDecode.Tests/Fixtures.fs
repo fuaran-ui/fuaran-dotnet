@@ -702,7 +702,8 @@ let compositeTabsPanels: Node<obj> =
           Label = TextSource.Literal "Display name"
           Kind = FormFieldKind.Text(Some(Binding.Static(Some "Ada Lovelace")), Option.None)
           Required = true
-          Help = Option.None }
+          Help = Option.None
+          Rule = None }
 
     let themeField: FormField<obj> =
         { Id = "theme"
@@ -714,7 +715,8 @@ let compositeTabsPanels: Node<obj> =
                 Option.None
             )
           Required = true
-          Help = Option.None }
+          Help = Option.None
+          Rule = None }
 
     let preferencesForm: Node<obj> =
         node
@@ -862,21 +864,24 @@ let formAllFields: Node<obj> =
           Label = TextSource.Literal "Name"
           Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Some(fun _ -> placeholderChain))
           Required = true
-          Help = Some(TextSource.Literal "Full legal name") }
+          Help = Some(TextSource.Literal "Full legal name")
+          Rule = None }
 
     let numberField: FormField<obj> =
         { Id = "age"
           Label = TextSource.Literal "Age"
           Kind = FormFieldKind.Number(Some(Binding.Static(Some 0.0)), Some(fun _ -> placeholderChain))
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     let checkboxField: FormField<obj> =
         { Id = "agree"
           Label = TextSource.Literal "I agree"
           Kind = FormFieldKind.Checkbox(Some(Binding.Static(Some false)), Some(fun _ -> placeholderChain))
           Required = true
-          Help = None }
+          Help = None
+          Rule = None }
 
     let choiceField: FormField<obj> =
         { Id = "tier"
@@ -888,14 +893,16 @@ let formAllFields: Node<obj> =
                 Some(fun _ -> placeholderChain)
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     let textareaField: FormField<obj> =
         { Id = "notes"
           Label = TextSource.Literal "Notes"
           Kind = FormFieldKind.TextArea(Some(Binding.Static(Some "")), Some(fun _ -> placeholderChain), 5)
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     node
         "form-1"
@@ -928,7 +935,8 @@ let formRangedNumber: Node<obj> =
                 Some 1.0
             )
           Required = true
-          Help = None }
+          Help = None
+          Rule = None }
 
     let minOnlyField: FormField<obj> =
         { Id = "years"
@@ -942,7 +950,8 @@ let formRangedNumber: Node<obj> =
                 None
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     let noBoundsField: FormField<obj> =
         { Id = "amount"
@@ -956,7 +965,8 @@ let formRangedNumber: Node<obj> =
                 None
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     node
         "form-ranged"
@@ -1038,7 +1048,8 @@ let formSegmentedChoice: Node<obj> =
                 Orientation.Horizontal
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     let verticalField: FormField<obj> =
         { Id = "tier"
@@ -1051,7 +1062,8 @@ let formSegmentedChoice: Node<obj> =
                 Orientation.Vertical
             )
           Required = true
-          Help = None }
+          Help = None
+          Rule = None }
 
     node
         "form-segmented"
@@ -1098,7 +1110,8 @@ let formDate: Node<obj> =
                 None
             )
           Required = true
-          Help = None }
+          Help = None
+          Rule = None }
 
     let timeField: FormField<obj> =
         { Id = "alarm"
@@ -1113,7 +1126,8 @@ let formDate: Node<obj> =
                 Some 60.0
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     let dateTimeField: FormField<obj> =
         { Id = "meeting"
@@ -1128,7 +1142,8 @@ let formDate: Node<obj> =
                 None
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     node
         "form-date"
@@ -1166,7 +1181,8 @@ let formDateRange: Node<obj> =
                 None
             )
           Required = true
-          Help = None }
+          Help = None
+          Rule = None }
 
     // Handler-free (Phase 426) — `onChange` is omitted on the wire and the
     // renderer writes the changed pair back to the value slot.
@@ -1183,7 +1199,8 @@ let formDateRange: Node<obj> =
                 Some 900.0
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     let windowField: FormField<obj> =
         { Id = "window"
@@ -1204,7 +1221,8 @@ let formDateRange: Node<obj> =
                 None
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     node
         "form-date-range"
@@ -1511,21 +1529,24 @@ let formDeclarative: Node<obj> =
           Label = TextSource.Literal "Name"
           Kind = FormFieldKind.Text(Some(Binding.State("profileName", Some "")), Option.None)
           Required = true
-          Help = None }
+          Help = None
+          Rule = None }
 
     let numberField: FormField<obj> =
         { Id = "profile-age"
           Label = TextSource.Literal "Age"
           Kind = FormFieldKind.Number(Some(Binding.State("profileAge", Some 0.0)), Option.None)
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     let checkboxField: FormField<obj> =
         { Id = "profile-agree"
           Label = TextSource.Literal "I agree"
           Kind = FormFieldKind.Checkbox(Some(Binding.State("profileAgree", Some false)), Option.None)
           Required = true
-          Help = None }
+          Help = None
+          Rule = None }
 
     let choiceField: FormField<obj> =
         { Id = "profile-tier"
@@ -1537,7 +1558,8 @@ let formDeclarative: Node<obj> =
                 Option.None
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     node
         "form-declarative"
@@ -1618,7 +1640,8 @@ let formToggle: Node<obj> =
                 Option.None
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     // The contrast case: consent stays a Checkbox. Both in one fixture so the
     // corpus shows a reader WHEN each applies, not merely that both exist.
@@ -1631,12 +1654,141 @@ let formToggle: Node<obj> =
                 Option.None
             )
           Required = true
-          Help = None }
+          Help = None
+          Rule = None }
 
     node
         "form-toggle"
         (NodeKind.Form(
             { Fields = [ toggleField; consentField ]
+              OnSubmit = Action.Chain []
+              SubmitLabel = TextSource.Literal "Save"
+              Disabled = Option.None }
+        ))
+        None
+
+/// Phase 864 — the declared constraint vocabulary, in the shape the charter's
+/// §7 worked examples name. Four fields carry the four ways a rule can arrive:
+/// a `format` alone, a `pattern` with a `message`, a length pair, and the
+/// CROSS-FIELD predicate — a `compare` whose operand is `Binding.State` reading
+/// the sibling field by its own id, which is the whole cross-field mechanism
+/// (the Phase 596 auto-bind already stores every field's value under that key,
+/// so no addressing vocabulary is minted).
+///
+/// The fifth field is the control that carries NO rule, and it is here on
+/// purpose: `rule` is `Optional` rather than omit-default, so a field without
+/// one must encode with no `rule` key at all — which is what makes every
+/// pre-864 form fixture byte-unchanged.
+let formFieldRules: Node<obj> =
+    let emailField: FormField<obj> =
+        { Id = "work-email"
+          Label = TextSource.Literal "Work email"
+          Kind =
+            FormFieldKind.Text(
+                Some(Binding.State("work-email", Some Fuaran.UI.Defaults.ControlValueDefaults.text)),
+                Option.None
+            )
+          Required = true
+          Help = None
+          Rule =
+            Some
+                { Compare = None
+                  Format = Some TextFormat.Email
+                  MaxLength = None
+                  Message = None
+                  MinLength = None
+                  Pattern = None } }
+
+    // `pattern` beside a `message`: the prose does not disappear when the rule
+    // is declared, it moves inside the rule, where a host shows it AT the moment
+    // the rule is unmet rather than permanently.
+    let postcodeField: FormField<obj> =
+        { Id = "postcode"
+          Label = TextSource.Literal "Postcode"
+          Kind =
+            FormFieldKind.Text(
+                Some(Binding.State("postcode", Some Fuaran.UI.Defaults.ControlValueDefaults.text)),
+                Option.None
+            )
+          Required = true
+          Help = None
+          Rule =
+            Some
+                { Compare = None
+                  Format = None
+                  MaxLength = None
+                  Message = Some(TextSource.Literal "Enter a UK postcode, e.g. EH1 1YZ")
+                  MinLength = None
+                  Pattern = Some "[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}" } }
+
+    let usernameField: FormField<obj> =
+        { Id = "username"
+          Label = TextSource.Literal "Username"
+          Kind =
+            FormFieldKind.Text(
+                Some(Binding.State("username", Some Fuaran.UI.Defaults.ControlValueDefaults.text)),
+                Option.None
+            )
+          Required = true
+          Help = None
+          Rule =
+            Some
+                { Compare = None
+                  Format = None
+                  MaxLength = Some 24
+                  Message = None
+                  MinLength = Some 3
+                  Pattern = None } }
+
+    let startDateField: FormField<obj> =
+        { Id = "hire-start-date"
+          Label = TextSource.Literal "Start date"
+          Kind =
+            FormFieldKind.Date(
+                Some(Binding.State("hire-start-date", Some Fuaran.UI.Defaults.ControlValueDefaults.date)),
+                Option.None,
+                DateVariant.Date,
+                None,
+                None,
+                None
+            )
+          Required = true
+          Help = None
+          Rule = None }
+
+    // The cross-field predicate, and the reason it needed almost no new
+    // vocabulary. `gte` against `State("hire-start-date")` is the exact intent
+    // the ×10 `stress-004/c3` sighting cluster restated as help text every time.
+    let endDateField: FormField<obj> =
+        { Id = "hire-end-date"
+          Label = TextSource.Literal "End date"
+          Kind =
+            FormFieldKind.Date(
+                Some(Binding.State("hire-end-date", Some Fuaran.UI.Defaults.ControlValueDefaults.date)),
+                Option.None,
+                DateVariant.Date,
+                None,
+                None,
+                None
+            )
+          Required = true
+          Help = None
+          Rule =
+            Some
+                { Compare =
+                    Some
+                        { Against = Binding.State("hire-start-date", Option.None)
+                          Op = CompareOp.Gte }
+                  Format = None
+                  MaxLength = None
+                  Message = Some(TextSource.Literal "End date must be on or after the start date")
+                  MinLength = None
+                  Pattern = None } }
+
+    node
+        "form-field-rules"
+        (NodeKind.Form(
+            { Fields = [ emailField; postcodeField; usernameField; startDateField; endDateField ]
               OnSubmit = Action.Chain []
               SubmitLabel = TextSource.Literal "Save"
               Disabled = Option.None }
@@ -1656,7 +1808,8 @@ let formDeclarativeMinimal: Node<obj> =
                 Option.None
             )
           Required = true
-          Help = None }
+          Help = None
+          Rule = None }
 
     let numberField: FormField<obj> =
         { Id = "party-size"
@@ -1667,7 +1820,8 @@ let formDeclarativeMinimal: Node<obj> =
                 Option.None
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     let choiceField: FormField<obj> =
         { Id = "seating"
@@ -1683,7 +1837,8 @@ let formDeclarativeMinimal: Node<obj> =
                 Option.None
             )
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     let dateField: FormField<obj> =
         { Id = "visit-date"
@@ -1698,7 +1853,8 @@ let formDeclarativeMinimal: Node<obj> =
                 None
             )
           Required = true
-          Help = None }
+          Help = None
+          Rule = None }
 
     node
         "form-declarative-minimal"
@@ -3752,7 +3908,8 @@ let formLocalText: Node<obj> =
           Label = TextSource.Literal "Salary"
           Kind = FormFieldKind.Text(Some localFloat, Some(fun _ -> placeholderChain))
           Required = false
-          Help = None }
+          Help = None
+          Rule = None }
 
     node
         "form-local-1"
@@ -3781,7 +3938,8 @@ let formLocalDebounce: Node<obj> =
           Label = TextSource.Literal "Email"
           Kind = FormFieldKind.Text(Some localDebounce, Some(fun _ -> placeholderChain))
           Required = true
-          Help = None }
+          Help = None
+          Rule = None }
 
     node
         "form-local-debounce"
@@ -4212,6 +4370,8 @@ let allNodes: (string * Node<obj>) list =
       "Input/Select (multi-select — list value)", multiSelect
       "Input/Form (Phase 426 — handler-free write-back fields, State-bound)", formDeclarative
       "Input/Form (Phase 596 — symmetric auto-bind, omitted-value fields)", formDeclarativeMinimal
+      "Input/Form (Phase 864 — declared field rules: format / pattern / length pair / cross-field compare)",
+      formFieldRules
       "Layout/Stack (Phase 426 — declarative tabs + modal + disclosure + select, handlers omitted)", controlsDeclarative
       "Layout/Stack (Phase 426 — closure-authored onSelectTag / onToggle / onChangeMulti sentinels)", multiSelectClosure
       "Layout/Stack (Phase 428 — Action.Call result targets: closure / into State / into Query)", callInto

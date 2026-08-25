@@ -4704,6 +4704,175 @@ let private decodeFormFieldKind
             | _, _, _, _, Error e -> Error e
         | Ok s -> unknownDuCase path s wrongFormFieldKindHint
 
+// ─── Phase 864 — the declared per-field constraint ───────────────────────────
+//
+// `FormFieldKind` names the CONTROL; `FormField.rule` names the ACCEPTED SET.
+// Everything here is the POLICY layer above the generated structural decoder:
+// the enum didactics, the two well-formedness refusals, and the near-miss set.
+
+let private decodeTextFormat (path: string) (j: Json) : Result<TextFormat, DecodeError> =
+    match j with
+    | JString "email" -> Ok TextFormat.Email
+    | JString "url" -> Ok TextFormat.Url
+    | JString "tel" -> Ok TextFormat.Tel
+    | JString s -> unknownDuCase path s "email | url | tel"
+    | _ -> wrongType path "JSON string (TextFormat)"
+
+let private decodeCompareOp (path: string) (j: Json) : Result<CompareOp, DecodeError> =
+    match j with
+    | JString "eq" -> Ok CompareOp.Eq
+    | JString "neq" -> Ok CompareOp.Neq
+    | JString "lt" -> Ok CompareOp.Lt
+    | JString "lte" -> Ok CompareOp.Lte
+    | JString "gt" -> Ok CompareOp.Gt
+    | JString "gte" -> Ok CompareOp.Gte
+    | JString s -> unknownDuCase path s "eq | neq | lt | lte | gt | gte"
+    | _ -> wrongType path "JSON string (CompareOp)"
+
+/// The cross-field operand. `against` is a `Binding` — that is the entire
+/// cross-field mechanism rather than an accident of typing: the reactive-
+/// derivation rule says any read slot may take a Binding, and the Phase 596
+/// auto-bind already puts every form field's value in State under the field's
+/// own id, so `{"$type":"State","key":"<sibling id>"}` reads the sibling with no
+/// coordination vocabulary at all.
+let private decodeCompareRule (path: string) (j: Json) : Result<CompareRule, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let opR =
+            requireField path fields "op" "CompareOp"
+            |> Result.bind (decodeCompareOp (path + ".op"))
+
+        let againstR =
+            requireField path fields "against" "Binding"
+            |> Result.bind (decodeBindingJVal (path + ".against"))
+
+        match opR, againstR with
+        | Ok op, Ok against -> Ok({ Op = op; Against = against }: CompareRule)
+        | Error e, _
+        | _, Error e -> Error e
+
+/// A field's declared constraint. Every slot is optional at the STRUCTURAL
+/// level, and two shapes are refused here as POLICY:
+///
+///  - a rule with every slot absent. A rule that constrains nothing is a
+///    defect, not a no-op: it decodes, validates and renders while declaring
+///    nothing, which is exactly the fake-affordance shape the near-miss rule
+///    also forecloses — arriving through an empty object instead of a wrong key.
+///  - `minLength` above `maxLength`. This is the `DateRangePair` ordered-pair
+///    rule applied to a length pair: an inverted bound admits no value at all,
+///    so the field can never be submitted and the form is dead on arrival.
+///
+/// Neither is expressible in the IDL (both are relations between slots, not
+/// shapes), which is why they live here beside the `from <= to` check rather
+/// than in the structural layer.
+let private decodeFieldRule (path: string) (j: Json) : Result<FieldRule, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let formatR =
+            match tryField fields "format" with
+            | None -> Ok None
+            | Some v -> decodeTextFormat (path + ".format") v |> Result.map Some
+
+        let patternR =
+            match tryField fields "pattern" with
+            | None -> Ok None
+            | Some v -> requireString (path + ".pattern") v |> Result.map Some
+
+        let minLengthR =
+            match tryField fields "minLength" with
+            | None -> Ok None
+            | Some v -> requireInt (path + ".minLength") v |> Result.map Some
+
+        let maxLengthR =
+            match tryField fields "maxLength" with
+            | None -> Ok None
+            | Some v -> requireInt (path + ".maxLength") v |> Result.map Some
+
+        let compareR =
+            match tryField fields "compare" with
+            | None -> Ok None
+            | Some v -> decodeCompareRule (path + ".compare") v |> Result.map Some
+
+        let messageR =
+            match tryField fields "message" with
+            | None -> Ok None
+            | Some v -> decodeTextSource (path + ".message") v |> Result.map Some
+
+        match formatR, patternR, minLengthR, maxLengthR, compareR, messageR with
+        | Ok format, Ok pattern, Ok minLength, Ok maxLength, Ok compare, Ok message ->
+            let rule: FieldRule =
+                { Compare = compare
+                  Format = format
+                  MaxLength = maxLength
+                  Message = message
+                  MinLength = minLength
+                  Pattern = pattern }
+
+            // `message` alone does NOT make a rule: it is the prose shown when
+            // some other slot is unmet, so a rule carrying only a message is the
+            // help-text failure wearing the new vocabulary's clothes.
+            let constrains =
+                format.IsSome
+                || pattern.IsSome
+                || minLength.IsSome
+                || maxLength.IsSome
+                || compare.IsSome
+
+            if not constrains then
+                err
+                    DecodeErrorCode.WRONG_TYPE
+                    path
+                    "a rule that constrains nothing is a defect, not a no-op — declare at least one of format / pattern / minLength / maxLength / compare, or omit 'rule' entirely"
+                    (Some "FieldRule with at least one constraint slot")
+            else
+                match minLength, maxLength with
+                | Some lo, Some hi when lo > hi ->
+                    err
+                        DecodeErrorCode.WRONG_TYPE
+                        path
+                        (sprintf
+                            "minLength %d is above maxLength %d — an inverted length bound admits no value at all, so the field could never be submitted"
+                            lo
+                            hi)
+                        (Some "minLength <= maxLength")
+                | _ -> Ok rule
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
+
+/// The `FormField` near-miss set (Phase 864, the Phase 863 discipline applied to
+/// the rule slot). Small and enumerated for the same reason the grid's is: rule
+/// 2's tolerance of unknown keys is right for a field a future profile may add
+/// and wrong for a near miss of one that exists, because the tree then decodes
+/// and renders while the constraint does nothing. That silence is worse here
+/// than anywhere else in the vocabulary — the failure this phase exists to fix
+/// is authors putting the rule in help text, and a guessed key that no-ops is a
+/// direct route back to it.
+let private formFieldNearMisses =
+    [ "validation", "rule"; "constraints", "rule"; "validate", "rule" ]
+
+let private formFieldNearMiss (path: string) (fields: Map<string, Json>) : Result<unit, DecodeError> =
+    formFieldNearMisses
+    |> List.tryPick (fun (name, canonical) ->
+        match tryField fields name with
+        | Some _ ->
+            Some(
+                err
+                    DecodeErrorCode.WRONG_TYPE
+                    (path + "." + name)
+                    (sprintf
+                        "'%s' is not part of the form vocabulary — it would be ignored, not honoured, and the field would accept anything"
+                        name)
+                    (Some canonical)
+            )
+        | None -> None)
+    |> Option.defaultValue (Ok())
+
 let private decodeFormField (path: string) (j: Json) : Result<FormField<obj>, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -4735,19 +4904,31 @@ let private decodeFormField (path: string) (j: Json) : Result<FormField<obj>, De
             | None -> Ok None
             | Some v -> decodeTextSource (path + ".help") v |> Result.map Some
 
-        match idR, kindR, labelR, requiredR, helpR with
-        | Ok id, Ok kind, Ok label, Ok required, Ok help ->
+        // Phase 864 — the near-miss check runs BEFORE the rule decode, so a
+        // field carrying both `validation` and a well-formed `rule` still names
+        // the ignored key rather than passing silently.
+        let ruleR =
+            formFieldNearMiss path fields
+            |> Result.bind (fun () ->
+                match tryField fields "rule" with
+                | None -> Ok None
+                | Some v -> decodeFieldRule (path + ".rule") v |> Result.map Some)
+
+        match idR, kindR, labelR, requiredR, helpR, ruleR with
+        | Ok id, Ok kind, Ok label, Ok required, Ok help, Ok rule ->
             Ok
                 { Id = id
                   Label = label
                   Kind = kind
                   Required = required
-                  Help = help }
-        | Error e, _, _, _, _
-        | _, Error e, _, _, _
-        | _, _, Error e, _, _
-        | _, _, _, Error e, _
-        | _, _, _, _, Error e -> Error e
+                  Help = help
+                  Rule = rule }
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
 
 let private decodeFormSpec (path: string) (j: Json) : Result<FormSpec<obj>, DecodeError> =
     match requireObject path j with

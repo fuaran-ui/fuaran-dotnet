@@ -1517,7 +1517,18 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                 v
                 |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.text))
 
-            "text", (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
+            // Phase 864 — a declared `format` rule retypes the control so the
+            // BROWSER enforces it (`<input type=email|url|tel>`). Absent, the
+            // control stays `text` and the emitted markup is byte-identical to
+            // a pre-864 tree.
+            let t =
+                match field.Rule |> Option.bind (fun r -> r.Format) with
+                | Some TextFormat.Email -> "email"
+                | Some TextFormat.Url -> "url"
+                | Some TextFormat.Tel -> "tel"
+                | None -> "text"
+
+            t, (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
         | FormFieldKind.Number(v, _) ->
             let v =
                 v
@@ -1625,18 +1636,71 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                             @ constraintAttrs
                         ) ] ]
         | _ ->
+            // Phase 864 — a static emitter MUST project a declared rule into
+            // the platform's OWN constraint attributes, so the platform (here,
+            // the browser receiving this HTML) is what enforces it: `pattern`
+            // carries ECMA-262 source with HTML `pattern` semantics, and
+            // `minlength` / `maxlength` are the native length bounds. `type` is
+            // handled above, at the `controlType` computation.
+            //
+            // RECORDED KNOWN LIMIT — `compare` has NO HTML equivalent. It is
+            // emitted as a `data-fuaran-field-compare` DECLARATION (matching the
+            // client renderer's marker) so a reader can see the constraint was
+            // not silently dropped, and it is NOT claimed as coverage: nothing
+            // in the platform reads that attribute, and this emitter produces
+            // inert markup with no gate of its own. A cross-field comparison is
+            // enforced by a rendering host's submit gate and, non-bypassably, by
+            // the server-side re-check (`Fuaran.UI.ServerDriven.FormValidation`).
+            let ruleAttrs =
+                match field.Rule with
+                | None -> []
+                | Some r ->
+                    [ match r.Pattern with
+                      // `<textarea>` has no `pattern` attribute in HTML — emit
+                      // nothing rather than an attribute the platform ignores.
+                      | Some p when controlType <> "textarea" -> prop.custom ("pattern", p)
+                      | _ -> ()
+                      match r.MinLength with
+                      | Some n -> prop.custom ("minlength", string n)
+                      | None -> ()
+                      match r.MaxLength with
+                      | Some n -> prop.custom ("maxlength", string n)
+                      | None -> ()
+                      match r.Compare with
+                      | Some c ->
+                          let opText =
+                              match c.Op with
+                              | CompareOp.Eq -> "eq"
+                              | CompareOp.Neq -> "neq"
+                              | CompareOp.Lt -> "lt"
+                              | CompareOp.Lte -> "lte"
+                              | CompareOp.Gt -> "gt"
+                              | CompareOp.Gte -> "gte"
+
+                          let againstText =
+                              match c.Against with
+                              | Binding.State(key, _) -> key
+                              | _ -> ""
+
+                          prop.custom ("data-fuaran-field-compare", opText + ":" + againstText)
+                      | None -> () ]
+
             match controlType with
             | "textarea" ->
-                Html.textarea
+                Html.textarea (
                     [ prop.className "fuaran-form-field-control"
                       prop.custom ("data-fuaran-field", field.Id)
                       prop.value valueText ]
+                    @ ruleAttrs
+                )
             | _ ->
-                Html.input
+                Html.input (
                     [ prop.className "fuaran-form-field-control"
                       prop.custom ("data-fuaran-field", field.Id)
                       prop.custom ("type", controlType)
                       prop.value valueText ]
+                    @ ruleAttrs
+                )
 
     Html.label
         [ prop.className "fuaran-form-field"

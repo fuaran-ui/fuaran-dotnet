@@ -230,6 +230,9 @@ let private defs: (string * J) list =
       "ImageVariant", enumDef [ "Default"; "Avatar"; "Rounded" ]
       "ScrollOrientation", enumDef [ "Vertical"; "Horizontal"; "Both" ]
       "DateVariant", enumDef [ "Date"; "Time"; "DateTime" ]
+      // Phase 864 — both lower-case on the wire, the `LinkProtection` posture.
+      "TextFormat", enumDef [ "email"; "url"; "tel" ]
+      "CompareOp", enumDef [ "eq"; "neq"; "lt"; "lte"; "gt"; "gte" ]
       "MathDisplay", enumDef [ "Inline"; "Block" ]
       "ToneVariant", enumDef [ "Default"; "Subdued"; "Brand"; "Success"; "Warning"; "Critical"; "Info" ]
       "StyleWeight", enumDef [ "Compact"; "Standard"; "Spacious" ]
@@ -768,14 +771,56 @@ let private defs: (string * J) list =
       // ── Input specs ───────────────────────────────────────────────────────
       "SelectOption", record [ "label"; "value" ] [ "label", ref "TextSource"; "value", str ]
 
+      // Phase 864 — the declared per-field constraint. `FormFieldKind` names the
+      // CONTROL; `rule` names the ACCEPTED SET.
+      "CompareRule", record [ "against"; "op" ] [ "against", ref "Binding"; "op", ref "CompareOp" ]
+
+      // Two of the decoder's three refusals are expressible here and both are
+      // stated rather than exempted. `anyOf` over the five constraint slots is
+      // "a rule must constrain something" — a rule carrying only `message` is
+      // the help-text failure wearing the new vocabulary's clothes, and it fails
+      // the schema exactly as it fails the decoder. The THIRD refusal
+      // (`minLength` above `maxLength`) is a relation between two sibling
+      // values, which the dialect genuinely cannot state — so it, and only it,
+      // joins `schemaInexpressibleRejects` beside the `DateRange` ordered-pair
+      // rule it is modelled on.
+      "FieldRule",
+      (match
+          record
+              []
+              [ "compare", ref "CompareRule"
+                "format", ref "TextFormat"
+                "maxLength", integer
+                "message", ref "TextSource"
+                "minLength", integer
+                "pattern", str ]
+       with
+       | JObj fields ->
+           JObj(
+               fields
+               @ [ "anyOf",
+                   JArr(
+                       [ "format"; "pattern"; "minLength"; "maxLength"; "compare" ]
+                       |> List.map (fun n -> JObj [ "required", JArr [ JStr n ] ])
+                   ) ]
+           )
+       | other -> other)
+
       "FormField",
-      record
-          [ "id"; "kind"; "label"; "required" ]
-          [ "id", str
-            "kind", ref "FormFieldKind"
-            "label", ref "TextSource"
-            "required", boolean
-            "help", ref "TextSource" ]
+      // `validation` / `constraints` / `validate` are the enumerated near misses
+      // of `rule` (the Phase 863 discipline). Forbidden by name rather than by
+      // `additionalProperties: false`, so rule 2's tolerance of genuinely-unknown
+      // keys survives.
+      forbidding
+          [ "validation"; "constraints"; "validate" ]
+          (record
+              [ "id"; "kind"; "label"; "required" ]
+              [ "id", str
+                "kind", ref "FormFieldKind"
+                "label", ref "TextSource"
+                "required", boolean
+                "help", ref "TextSource"
+                "rule", ref "FieldRule" ])
 
       "FormSpec",
       record

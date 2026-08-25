@@ -244,7 +244,11 @@ and mapFormField (f: 'a -> 'b) (field: FormField<'a>) : FormField<'b> =
       Label = field.Label
       Kind = mapFormFieldKind f field.Kind
       Required = field.Required
-      Help = field.Help }
+      Help = field.Help
+      // Phase 864 — `FieldRule` is 'Msg-free by construction (its only binding
+      // slot is `Binding<JVal>`), so the map carries it across unchanged rather
+      // than needing a `mapFieldRule` companion.
+      Rule = field.Rule }
 
 and mapFormFieldKind (f: 'a -> 'b) (kind: FormFieldKind<'a>) : FormFieldKind<'b> =
     // Handlers are optional (Phase 426) — map through the Option, so a `None`

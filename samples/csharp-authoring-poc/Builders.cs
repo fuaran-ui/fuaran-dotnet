@@ -347,8 +347,11 @@ internal sealed class FieldBuilder
     public FieldBuilder Required(bool required = true) { _required = required; return this; }
     public FieldBuilder Help(string text) { _help = Fs.Some(Txt.Literal(text)); return this; }
 
-    // Generated FormField declares (Id, Kind, Label, Required, Help) — ctor is declaration order.
-    public FsGen.FormField<object> Build() => new(_id, _kind, _label, _required, _help);
+    // Generated FormField declares (Id, Kind, Label, Required, Help, Rule) — ctor is
+    // declaration order. Phase 864's Rule slot is not authorable from this POC (the
+    // charter rules §11 step 6 does not bind for a spec-record field), so it passes None.
+    public FsGen.FormField<object> Build() =>
+        new(_id, _kind, _label, _required, _help, Fs.None<FsGen.FieldRule>());
 
     private static FSharpFunc<TArg, FsAction> NoOp<TArg>() => Fs.Func<TArg, FsAction>(_ => Defaults.PlaceholderChain);
 

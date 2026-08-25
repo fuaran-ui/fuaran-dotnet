@@ -318,7 +318,11 @@ let formField<'Msg> : FormField<'Msg> =
       Label = emptyLiteral
       Kind = FormFieldKind.Text(Some(Binding.Static(Some "")), Option.None)
       Required = false
-      Help = Option.None }
+      Help = Option.None
+      // Phase 864 — an unconstrained field. `required` is the pre-existing
+      // degenerate rule and stays above; everything else a field may demand of
+      // its value lives in `Rule`, and the default is to demand nothing.
+      Rule = Option.None }
 
 /// `NumberFieldConstraints` default — all three bounds absent.
 /// Authors who want the canonical `FormFieldKind.Number` shape (no bounds)

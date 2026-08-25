@@ -586,10 +586,28 @@ let generatedLayerTests =
               //    it. (Its sibling `reject-limit-json-depth*` fixtures stay
               //    on the structural side — they exceed the JSON reader's own
               //    depth ceiling, so the parse itself fails.)
+              //  - the three `FieldRule` fixtures (Phase 864) land here for
+              //    reasons ALREADY on this list, which is the interesting part:
+              //    the rule slot minted no new class of policy defect. An
+              //    inverted `minLength`/`maxLength` pair is the `DateRange`
+              //    sibling-relation class, and `validation` on a `FormField` is
+              //    the `nearmiss` enumerated-name class. Only
+              //    `reject-fieldrule-empty` is a shade of its own — "at least
+              //    one of these six keys is present" is a relation over the
+              //    ABSENCE of siblings rather than their values — and note the
+              //    SCHEMA can state it (`anyOf` over the five constraint slots),
+              //    so like the near misses it is structure-inexpressible and
+              //    schema-expressible, and stays out of
+              //    `schemaInexpressibleRejects`. Its length-pair sibling goes
+              //    the other way and joins that list beside `DateRange`, which
+              //    is the two sets pulling apart on one phase's three fixtures.
               Expect.equal
                   policyOwned
                   [ "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
+                    "reject-fieldrule-empty.json"
+                    "reject-fieldrule-length-unordered.json"
+                    "reject-formfield-near-miss-validation.json"
                     "reject-limit-node-depth.json"
                     "reject-nearmiss-column-readonly.json"
                     "reject-nearmiss-grid-behaviour-record.json"

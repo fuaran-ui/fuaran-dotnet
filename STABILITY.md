@@ -1418,3 +1418,100 @@ keeps its own doc comment's promise by construction. The reject reason's SHAPE i
 detail text is not part of the contract — but a host asserting on that text in a test will see it
 change. The census entry is `docs/ACTION-LOG-PRIVACY.md`.
 
+
+---
+
+## Recorded change — 0.36.0, the declared field rule (fuaran#864)
+
+**Additive wire vocabulary, and additive in the strict sense: no existing emission changes bytes.**
+`FormField` gains one OPTIONAL slot, `rule`, carrying the constraint the field declares over its
+value. Omitted ⇒ exactly the 0.35.0 wire. The full `--emit-corpus` regeneration moved no pre-existing
+fixture payload by a single byte; it added one node fixture, three reject fixtures, and the
+corresponding `manifest.json` / `schema.json` / `idl.json` entries. `nodes/form-declarative-minimal.json`
+is the anchor for that claim and is deliberately left declaring nothing.
+
+**Why it exists, in one line:** `required` was the entire constraint vocabulary, so every constraint
+that is not "this field must be filled in" — a format, a pattern, a length, a comparison against a
+sibling field — had exactly one place to go, the help text, and that is precisely where every observed
+emission put it.
+
+**A rule names an ACCEPTED SET; `FormFieldKind` names a CONTROL.** That one sentence is why this is a
+record field and not a new `FormFieldKind` case, and the reasoning is in the vocabulary charter
+([`docs/VOCABULARY.md`](docs/VOCABULARY.md) §2.1 + the form-constraint cluster). A `FormattedText`
+case beside `Text` would manufacture one more instance of valid-but-wrong-kind selection — the worst
+kind, because `Text` for an email field is not *wrong*, only less specific, so nothing can call it.
+A field adds no choice to get wrong, and the confusion delta against the existing nine
+`FormFieldKind` cases is structurally zero.
+
+**The rule slot carries no numeric or temporal bound, and that is a rule rather than an omission.**
+`RangedNumber` and `Date`/`DateRange` already carry `min`/`max`; a rule never duplicates a bound its
+control already holds, because two sources for one bound are free to disagree. `compare` is not a
+duplicate of them precisely because its operand is a `Binding` where theirs is a literal — which is
+also the whole cross-field mechanism, since a form field's value already lives in State under its own
+id and so `{"$type":"State","key":"<sibling id>"}` reads it with no addressing syntax of its own.
+
+**Additive public surface (each a *minor* event per the Semver note above).**
+
+- Generated types: `Fuaran.UI.Generated.FieldRule` / `CompareRule` (records) and `TextFormat`
+  (`Email`/`Url`/`Tel`) / `CompareOp` (`Eq`/`Neq`/`Lt`/`Lte`/`Gt`/`Gte`), re-exposed as the matching
+  `Fuaran.UI.Types.*`. Modelled in the IDL, so they are generator output, never hand-written.
+- `Generated.FormField` gains `Rule: FieldRule option`. **A record field addition breaks construction
+  sites** — every `{ Id = …; Kind = …; Label = …; Required = …; Help = … }` literal needs the new
+  field. Compiler-forced, and the count is knowable (thirty-eight sites in this repo, all in tests,
+  samples and the C# veneer). Pattern matches over the record are unaffected. `Defaults.formField`
+  supplies `None`.
+- `JsonDecode.DecodeErrorCode` is **unchanged** — no new code was needed; all three refusals are
+  `WRONG_TYPE`.
+- `PreEmitValidate.PreEmitDefect` gains three cases and one reason DU (`RuleSlot`). `describe` is
+  exhaustive, so the codes cannot ship without their messages.
+
+**Wire contract.** `"rule"?: {"compare"?: {"against": <Binding>, "op": "eq"|"neq"|"lt"|"lte"|"gt"|"gte"},
+"format"?: "email"|"url"|"tel", "maxLength"?: <int>, "message"?: <TextSource>, "minLength"?: <int>,
+"pattern"?: <string>}`. Three decode rejections, all `WRONG_TYPE`: a `rule` with every constraint slot
+absent (a rule that constrains nothing is a defect, not a no-op, and a `message` alone is the help-text
+failure wearing the new vocabulary's clothes); a `minLength` above its `maxLength` (the `DateRange`
+ordered-pair rule on a length pair); and `validation` / `constraints` / `validate` on a `FormField`,
+refused by name and pointed at `rule` (the near-miss narrowing of rule 2). The published schema states
+the first and the third — an `anyOf` over the five constraint slots, and a `not: required` per near
+miss — so both fixtures are schema-invalid as well as decoder-rejected. The SECOND is a relation
+between two sibling values, which Draft 2020-12 cannot express, so it joins
+`schemaInexpressibleRejects` beside `reject-daterange-unordered` for the identical reason. Corpus:
+`nodes/form-field-rules.json`, `reject/reject-fieldrule-empty.json`,
+`reject/reject-fieldrule-length-unordered.json`, `reject/reject-formfield-near-miss-validation.json`.
+
+**A declared rule is a normative obligation, and it is NOT a security boundary.** `WIRE_FORMAT.md`
+states it as a semantic invariant rather than DOM or byte parity (the §22 pattern) and splits it by
+host class: a codec host round-trips it, a rendering host must not submit while a rule is unmet and
+must show which field is unmet, and a static emitter projects it into the platform's own constraint
+attributes and records a known limit where the platform has none (`compare` has none in HTML). Client
+enforcement is an affordance; the trust floor is the server-side re-check in
+`Fuaran.UI.ServerDriven.FormValidation.enforceDeclared`, which the rule joins rather than inventing a
+second enforcement layer beside.
+
+**Validator.** Three new pre-emit codes, one Error and two Warnings, and the asymmetry is the
+refuse-only-what-is-provably-wrong rule rather than an inconsistency. `FUARAN099` (Error) — a
+`compare` reading a state key no field owns and nothing in the tree writes; decidable from the tree
+alone, and it stands down under an opaque writer exactly as `FUARAN103` does. `FUARAN100` (Warning) —
+a rule slot the control cannot honour, a `pattern` on a `Checkbox` or a `format` on a `TextArea`;
+warned rather than refused because the projection is the host's. `FUARAN101` (Warning) — a `compare`
+against a literal duplicating a bound the control already carries; the enforcement half of the reuse
+rule above.
+
+**Host adoption.** The F# reference, the shared corpus and the TypeScript tier land together; the
+Python, Go and Rust codec legs follow by fixture (the 725 / 730–733 / 801 precedent). The reference is
+the only host implementing the three validator codes, so no cross-host message-parity entry applies —
+that artefact is scoped to codes at least two non-reference hosts implement.
+
+**Native surfaces are NOT compiler-forced by this change, and that is the finding rather than an
+omission.** The reject-corpus floor and the `FormFieldKind.DateRange` precedent both turn on a new
+CASE in a closed enum — Swift switches every case with no `default:` and Kotlin's `when` over a sealed
+enum is an exhaustiveness error. This change adds no case, so neither host's switch moves and neither
+default-deny floor is touched. What they owe instead is a decode-side projection of an optional record
+field, which is a strictly smaller obligation.
+
+**Authoring veneers not extended.** The C# fluent factory and the VB XML mapping still author a field
+without the rule slot, and both pass `None` at the construction site the new record field forced.
+`WIRE_FORMAT.md` §11 step 6 is written for `NodeKind` additions and its gates pin KINDS, so a
+spec-record FIELD addition binds neither veneer and neither gate fails — the 801 ruling, applied
+unchanged. Exposing the slot there is a follow-up, recorded here so it reads as a decision rather than
+an oversight.

@@ -97,6 +97,21 @@ type DateVariant =
     | DateTime
 
 [<RequireQualifiedAccess>]
+type TextFormat =
+    | Email
+    | Url
+    | Tel
+
+[<RequireQualifiedAccess>]
+type CompareOp =
+    | Eq
+    | Neq
+    | Lt
+    | Lte
+    | Gt
+    | Gte
+
+[<RequireQualifiedAccess>]
 type DateStyle =
     | Short
     | Medium
@@ -549,6 +564,22 @@ and StaticRows =
       Sortable: bool option
     }
 
+and CompareRule =
+    {
+      Against: Binding<JVal>
+      Op: CompareOp
+    }
+
+and FieldRule =
+    {
+      Compare: CompareRule option
+      Format: TextFormat option
+      MaxLength: int option
+      Message: TextSource option
+      MinLength: int option
+      Pattern: string option
+    }
+
 and FormField<'Msg> =
     {
       Id: string
@@ -556,6 +587,7 @@ and FormField<'Msg> =
       Label: TextSource
       Required: bool
       Help: TextSource option
+      Rule: FieldRule option
     }
 
 and FilterSpec<'Msg> =
@@ -1275,6 +1307,21 @@ let private encDateVariant (v: DateVariant) : JVal =
     | DateVariant.Time -> JStr "Time"
     | DateVariant.DateTime -> JStr "DateTime"
 
+let private encTextFormat (v: TextFormat) : JVal =
+    match v with
+    | TextFormat.Email -> JStr "email"
+    | TextFormat.Url -> JStr "url"
+    | TextFormat.Tel -> JStr "tel"
+
+let private encCompareOp (v: CompareOp) : JVal =
+    match v with
+    | CompareOp.Eq -> JStr "eq"
+    | CompareOp.Neq -> JStr "neq"
+    | CompareOp.Lt -> JStr "lt"
+    | CompareOp.Lte -> JStr "lte"
+    | CompareOp.Gt -> JStr "gt"
+    | CompareOp.Gte -> JStr "gte"
+
 let private encDateStyle (v: DateStyle) : JVal =
     match v with
     | DateStyle.Short -> JStr "Short"
@@ -1656,8 +1703,14 @@ and private encDefaultSort (s: DefaultSort) : JVal =
 and private encStaticRows (s: StaticRows) : JVal =
     JObj([ (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); Some("headers", JArr(List.map encTextSource s.Headers)); Some("rows", JArr(List.map (fun __xs -> JArr(List.map encTextSource __xs)) s.Rows)); (s.Sortable |> Option.map (fun v -> "sortable", JBool v)) ] |> List.choose id)
 
+and private encCompareRule (s: CompareRule) : JVal =
+    JObj([ Some("against", (encBinding id) s.Against); Some("op", encCompareOp s.Op) ] |> List.choose id)
+
+and private encFieldRule (s: FieldRule) : JVal =
+    JObj([ (s.Compare |> Option.map (fun v -> "compare", encCompareRule v)); (s.Format |> Option.map (fun v -> "format", encTextFormat v)); (s.MaxLength |> Option.map (fun v -> "maxLength", JInt v)); (s.Message |> Option.map (fun v -> "message", encTextSource v)); (s.MinLength |> Option.map (fun v -> "minLength", JInt v)); (s.Pattern |> Option.map (fun v -> "pattern", JStr v)) ] |> List.choose id)
+
 and private encFormField<'Msg> (s: FormField<'Msg>) : JVal =
-    JObj([ Some("id", JStr s.Id); Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("required", JBool s.Required); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
+    JObj([ Some("id", JStr s.Id); Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("required", JBool s.Required); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Rule |> Option.map (fun v -> "rule", encFieldRule v)) ] |> List.choose id)
 
 and private encFilterSpec<'Msg> (s: FilterSpec<'Msg>) : JVal =
     JObj([ Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("name", JStr s.Name) ] |> List.choose id)
@@ -2019,6 +2072,23 @@ let private decDateVariant (j: JVal) : Result<DateVariant, string> =
     | JStr "Time" -> Ok DateVariant.Time
     | JStr "DateTime" -> Ok DateVariant.DateTime
     | _ -> Error "not a DateVariant"
+
+let private decTextFormat (j: JVal) : Result<TextFormat, string> =
+    match j with
+    | JStr "email" -> Ok TextFormat.Email
+    | JStr "url" -> Ok TextFormat.Url
+    | JStr "tel" -> Ok TextFormat.Tel
+    | _ -> Error "not a TextFormat"
+
+let private decCompareOp (j: JVal) : Result<CompareOp, string> =
+    match j with
+    | JStr "eq" -> Ok CompareOp.Eq
+    | JStr "neq" -> Ok CompareOp.Neq
+    | JStr "lt" -> Ok CompareOp.Lt
+    | JStr "lte" -> Ok CompareOp.Lte
+    | JStr "gt" -> Ok CompareOp.Gt
+    | JStr "gte" -> Ok CompareOp.Gte
+    | _ -> Error "not a CompareOp"
 
 let private decDateStyle (j: JVal) : Result<DateStyle, string> =
     match j with
@@ -2892,6 +2962,22 @@ and private decStaticRows (j: JVal) : Result<StaticRows, string> =
     dOpt "sortable" __fs dBool |> Result.bind (fun sortable ->
     Ok { DefaultSort = defaultSort; Headers = headers; Rows = rows; Sortable = sortable })))))
 
+and private decCompareRule (j: JVal) : Result<CompareRule, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "against" __fs (decBinding dJson) |> Result.bind (fun against ->
+    dReq "op" __fs decCompareOp |> Result.bind (fun op ->
+    Ok { Against = against; Op = op })))
+
+and private decFieldRule (j: JVal) : Result<FieldRule, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dOpt "compare" __fs decCompareRule |> Result.bind (fun compare ->
+    dOpt "format" __fs decTextFormat |> Result.bind (fun format ->
+    dOpt "maxLength" __fs dInt |> Result.bind (fun maxLength ->
+    dOpt "message" __fs decTextSource |> Result.bind (fun message ->
+    dOpt "minLength" __fs dInt |> Result.bind (fun minLength ->
+    dOpt "pattern" __fs dStr |> Result.bind (fun pattern ->
+    Ok { Compare = compare; Format = format; MaxLength = maxLength; Message = message; MinLength = minLength; Pattern = pattern })))))))
+
 and private decFormField (j: JVal) : Result<FormField<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "id" __fs dStr |> Result.bind (fun id ->
@@ -2899,7 +2985,8 @@ and private decFormField (j: JVal) : Result<FormField<obj>, string> =
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
     dReq "required" __fs dBool |> Result.bind (fun required ->
     dOpt "help" __fs decTextSource |> Result.bind (fun help ->
-    Ok { Id = id; Kind = kind; Label = label; Required = required; Help = help }))))))
+    dOpt "rule" __fs decFieldRule |> Result.bind (fun rule ->
+    Ok { Id = id; Kind = kind; Label = label; Required = required; Help = help; Rule = rule })))))))
 
 and private decFilterSpec (j: JVal) : Result<FilterSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->

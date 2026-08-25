@@ -465,4 +465,54 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.columns[0].kind.map.Delayed"
         IsOp = false
         Description =
-          "TonedPill tone-map value outside ToneVariant — the message names the seven legal tones (Phase 750)" } ]
+          "TonedPill tone-map value outside ToneVariant — the message names the seven legal tones (Phase 750)" }
+
+      // ─── FieldRule well-formedness (Phase 864) ───────────────────────────
+      //
+      // Three refusals, and each is a relation BETWEEN slots rather than a
+      // shape, which is why none of them is expressible in the IDL and all
+      // three live in the policy decoder beside the DateRange `from <= to`
+      // check above.
+      //
+      // (1) A rule with every slot absent. A rule that constrains nothing is a
+      // defect and not a no-op: it decodes, validates and renders while
+      // declaring nothing, so the author believes a constraint is in force and
+      // the field accepts anything. `message` alone does not rescue it — the
+      // message is the prose shown when some OTHER slot is unmet, so a
+      // message-only rule is precisely the help-text failure this phase exists
+      // to fix, wearing the new vocabulary's clothes.
+      { Id = "reject-fieldrule-empty"
+        Json =
+          """{"id":"f1","kind":{"$type":"Form","fields":[{"id":"email","kind":{"$type":"Text"},"label":"Work email","required":true,"rule":{"message":"Must be a valid email"}}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].rule"
+        IsOp = false
+        Description = "FieldRule declaring no constraint — a message alone is not a rule (Phase 864)" }
+
+      // (2) An inverted length pair. The DateRange ordered-pair rule above,
+      // applied to a length bound: `minLength` over `maxLength` admits no value
+      // at all, so the field can never be submitted and the form is dead on
+      // arrival. Same didactic posture — the message names the two numbers and
+      // says what the inversion costs.
+      { Id = "reject-fieldrule-length-unordered"
+        Json =
+          """{"id":"f1","kind":{"$type":"Form","fields":[{"id":"username","kind":{"$type":"Text"},"label":"Username","required":true,"rule":{"minLength":24,"maxLength":3}}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].rule"
+        IsOp = false
+        Description = "FieldRule minLength above maxLength — the ordered-pair rule on a length pair (Phase 864)" }
+
+      // (3) The near miss. Rule 2's tolerance of unknown keys is right for a
+      // field a future profile may add and wrong for a near miss of one that
+      // exists: the tree decodes and renders while the constraint does nothing,
+      // and silence is worse here than anywhere else in the vocabulary, because
+      // the failure this phase exists to fix is authors putting the rule
+      // somewhere a host cannot act on. `validation` / `constraints` /
+      // `validate` are refused by name and pointed at `rule`.
+      { Id = "reject-formfield-near-miss-validation"
+        Json =
+          """{"id":"f1","kind":{"$type":"Form","fields":[{"id":"email","kind":{"$type":"Text"},"label":"Work email","required":true,"validation":{"format":"email"}}],"onSubmit":{"$type":"Dispatch"},"submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].validation"
+        IsOp = false
+        Description = "'validation' near-miss on a FormField — the canonical key is 'rule' (Phase 864)" } ]

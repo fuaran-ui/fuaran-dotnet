@@ -142,7 +142,8 @@ let nodeMapTests =
                           Some(fun (s: string) -> Action.Dispatch s.Length)
                       )
                     Required = false
-                    Help = None }
+                    Help = None
+                    Rule = None }
 
               let node: Node<int> =
                   Fuaran.form

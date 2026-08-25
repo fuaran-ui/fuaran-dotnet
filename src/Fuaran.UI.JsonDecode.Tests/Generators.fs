@@ -617,7 +617,8 @@ let private genFormFields: Gen<FormField<obj> list> =
               Label = label
               Kind = kind
               Required = false
-              Help = None }
+              Help = None
+              Rule = None }
 
         return
             // Phase 426: cover both the `Some` closure (byte-stable `"<closure>"`) and the `None`

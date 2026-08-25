@@ -378,6 +378,61 @@ type PreEmitDefect =
     ///
     /// Carries the switch node's id and the key.
     | SwitchKeyNoWriter of nodeId: string * key: string
+    /// **FUARAN099 (Error)**. A `FieldRule.compare` reads a `State` key that no
+    /// field in the enclosing form owns and nothing in the tree writes (Phase
+    /// 864) — the predicate can never be satisfied or unsatisfied, only absent,
+    /// so the field it guards is unconstrained while reading as constrained.
+    ///
+    /// **ERROR, where its two siblings are Warnings, and the asymmetry is the
+    /// fuaran-core#90 rule rather than an inconsistency.** A dangling state key
+    /// is decidable from the tree ALONE: the form's own fields are in hand, the
+    /// tree's writers are in hand, and a cross-field predicate that names
+    /// neither is wrong on the evidence the walk already holds. The other two
+    /// rules turn on what a HOST might honour, which the walk cannot see.
+    ///
+    /// It still stands down under an opaque writer, for the same reason
+    /// FUARAN103 does: any closure in the tree produces an arbitrary action at
+    /// dispatch time, so "nothing writes this key" stops being provable.
+    /// Host-reserved keys (the Phase 782 prefix) are exempt — the host's to
+    /// write by definition.
+    ///
+    /// Carries the form node's id, the field declaring the rule, and the key.
+    | CompareKeyUnreachable of nodeId: string * fieldId: string * key: string
+    /// **FUARAN100 (Warning)**. A `FieldRule` slot the field's control cannot
+    /// honour (Phase 864) — a `pattern` on a `Checkbox`, a `format` on a
+    /// `TextArea`. Dead intent: the author declared a constraint, the tree
+    /// carries it, and no renderer has anywhere to put it.
+    ///
+    /// **WARNING rather than Error**, because the projection is the host's:
+    /// a native surface may honour a length bound on a control an HTML renderer
+    /// cannot, and refusing the tree outright would decide that for every host.
+    ///
+    /// Carries the form node's id, the field id, the slot, and the control name.
+    | RuleSlotUnhonourable of nodeId: string * fieldId: string * slot: RuleSlot * control: string
+    /// **FUARAN101 (Warning)**. A `FieldRule.compare` against a LITERAL that
+    /// duplicates a bound the control already carries (Phase 864) — a `gte`
+    /// against a static number on a `RangedNumber` that already declares `min`.
+    /// Two sources for one bound, free to disagree, and nothing decides which
+    /// wins.
+    ///
+    /// This is the enforcement half of the charter's reuse rule — the rule slot
+    /// never duplicates a bound the control already holds — and the reason
+    /// `compare` is not itself a duplicate is that its operand is a `Binding`
+    /// where the control's bound is a literal. A `Binding.Static` in the slot is
+    /// still LEGAL; it is precisely the shape that collapses that distinction,
+    /// which is why it warns rather than being refused at decode.
+    ///
+    /// Carries the form node's id, the field id, and the duplicated bound.
+    | CompareDuplicatesBound of nodeId: string * fieldId: string * bound: string
+
+/// Which `FieldRule` slot a control cannot honour (FUARAN100, Phase 864).
+/// Typed rather than a string so the honourable set stays enumerable: a slot
+/// added to `FieldRule` without a decision here will not compile.
+and [<RequireQualifiedAccess>] RuleSlot =
+    | Format
+    | Pattern
+    | MinLength
+    | MaxLength
 
 /// Why an editable column has nowhere to commit (FUARAN095, Phase 863).
 and [<RequireQualifiedAccess>] EditDefect =
@@ -657,6 +712,35 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             key
             key
+    | PreEmitDefect.CompareKeyUnreachable(nodeId, fieldId, key) ->
+        "FUARAN099",
+        DefectSeverity.Error,
+        sprintf
+            "form '%s' field '%s' compares against state key '%s', but no field in the form owns that key and nothing in the tree writes it — the predicate can never be met or unmet, only absent, so the field reads as constrained and is not; point 'against' at a sibling field's id (a form field's value lives in State under its own id), or give the key a writer"
+            nodeId
+            fieldId
+            key
+    | PreEmitDefect.RuleSlotUnhonourable(nodeId, fieldId, slot, control) ->
+        "FUARAN100",
+        DefectSeverity.Warning,
+        sprintf
+            "form '%s' field '%s' declares %s on a %s control, which cannot honour it — the constraint is carried and never applied (dead intent); move the rule to a text control, or drop the slot. If a host you target DOES honour it, this warning is expected and can be ignored"
+            nodeId
+            fieldId
+            (match slot with
+             | RuleSlot.Format -> "rule.format"
+             | RuleSlot.Pattern -> "rule.pattern"
+             | RuleSlot.MinLength -> "rule.minLength"
+             | RuleSlot.MaxLength -> "rule.maxLength")
+            control
+    | PreEmitDefect.CompareDuplicatesBound(nodeId, fieldId, bound) ->
+        "FUARAN101",
+        DefectSeverity.Warning,
+        sprintf
+            "form '%s' field '%s' compares against a LITERAL while its control already declares %s — two sources for one bound, free to disagree, and nothing decides which wins; drop the compare and keep the control's bound, or make the operand read something that changes ({\"$type\":\"State\",\"key\":\"<sibling field id>\"}), which is what the rule slot is for"
+            nodeId
+            fieldId
+            bound
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -839,6 +923,13 @@ let private validateCore
     // Phase 596 (FUARAN085) — (stateKey, nodeId, fieldId) per handler-free
     // form-field write-back; duplicates surface post-walk.
     let writeBackKeys = ResizeArray<string * string * string>()
+    // Phase 864 (FUARAN099) — (nodeId, fieldId, key) per `FieldRule.compare`
+    // reading a `Binding.State`, paired with the set of keys the ENCLOSING form
+    // itself owns. Both are collected here and judged post-walk, because the
+    // second half of the question ("nothing in the tree writes it") is only
+    // answerable once the whole tree has been seen.
+    let compareStateReads = ResizeArray<string * string * string>()
+    let formOwnedStateKeys = System.Collections.Generic.HashSet<string>()
     let nodeIdCounts = System.Collections.Generic.Dictionary<string, int>()
 
     let recordNodeId (raw: string) =
@@ -1109,6 +1200,109 @@ let private validateCore
                  | FormFieldKind.SegmentedChoice(_, value, oc, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Date(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.DateRange(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone)
+
+                // ── Phase 864 — the declared-rule family (FUARAN099/100/101) ──
+                //
+                // A field OWNS a state key when the key is its own id (the
+                // auto-bind puts its value there) or its value binding names
+                // one directly. Recorded for every field, rule or no rule,
+                // because a compare on field A is satisfied by field B's
+                // ownership and the two are seen in either order.
+                formOwnedStateKeys.Add field.Id |> ignore
+
+                let recordOwnedKey (value: Binding<'v> option) =
+                    match value with
+                    | Some(Binding.State(key, _)) -> formOwnedStateKeys.Add key |> ignore
+                    | _ -> ()
+
+                (match field.Kind with
+                 | FormFieldKind.Text(value, _) -> recordOwnedKey value
+                 | FormFieldKind.Number(value, _) -> recordOwnedKey value
+                 | FormFieldKind.Checkbox(value, _) -> recordOwnedKey value
+                 | FormFieldKind.Toggle(value, _) -> recordOwnedKey value
+                 | FormFieldKind.Choice(_, value, _) -> recordOwnedKey value
+                 | FormFieldKind.TextArea(value, _, _) -> recordOwnedKey value
+                 | FormFieldKind.RangedNumber(value, _, _, _, _) -> recordOwnedKey value
+                 | FormFieldKind.Range(value, _, _, _, _) -> recordOwnedKey value
+                 | FormFieldKind.SegmentedChoice(_, value, _, _) -> recordOwnedKey value
+                 | FormFieldKind.Date(value, _, _, _, _, _) -> recordOwnedKey value
+                 | FormFieldKind.DateRange(value, _, _, _, _, _) -> recordOwnedKey value)
+
+                match field.Rule with
+                | None -> ()
+                | Some rule ->
+                    // What this control can honour. `compare` is absent from the
+                    // table on purpose: it is a comparison of the field's VALUE,
+                    // which every control has. The name is the one a message
+                    // shows the author, so it is the wire discriminator.
+                    let control, honoursFormat, honoursTextBounds =
+                        match field.Kind with
+                        | FormFieldKind.Text _ -> "Text", true, true
+                        | FormFieldKind.TextArea _ -> "TextArea", false, true
+                        | FormFieldKind.Number _ -> "Number", false, false
+                        | FormFieldKind.Checkbox _ -> "Checkbox", false, false
+                        | FormFieldKind.Toggle _ -> "Toggle", false, false
+                        | FormFieldKind.Choice _ -> "Choice", false, false
+                        | FormFieldKind.RangedNumber _ -> "RangedNumber", false, false
+                        | FormFieldKind.Range _ -> "Range", false, false
+                        | FormFieldKind.SegmentedChoice _ -> "SegmentedChoice", false, false
+                        | FormFieldKind.Date _ -> "Date", false, false
+                        | FormFieldKind.DateRange _ -> "DateRange", false, false
+
+                    let unhonourable (slot: RuleSlot) =
+                        defects.Add(PreEmitDefect.RuleSlotUnhonourable(nodeIdStr, field.Id, slot, control))
+
+                    if rule.Format.IsSome && not honoursFormat then
+                        unhonourable RuleSlot.Format
+
+                    if rule.Pattern.IsSome && not honoursTextBounds then
+                        unhonourable RuleSlot.Pattern
+
+                    if rule.MinLength.IsSome && not honoursTextBounds then
+                        unhonourable RuleSlot.MinLength
+
+                    if rule.MaxLength.IsSome && not honoursTextBounds then
+                        unhonourable RuleSlot.MaxLength
+
+                    match rule.Compare with
+                    | None -> ()
+                    | Some cmp ->
+                        match cmp.Against with
+                        | Binding.State(key, _) when key <> "" -> compareStateReads.Add(nodeIdStr, field.Id, key)
+                        | Binding.Static _ ->
+                            // FUARAN101 — the operand is a literal, so the only
+                            // question is whether the control already declares
+                            // the equivalent bound. `gte`/`gt` duplicate a
+                            // lower bound, `lte`/`lt` an upper one; `eq`/`neq`
+                            // duplicate neither and are silent.
+                            let lower, upper =
+                                match field.Kind with
+                                | FormFieldKind.RangedNumber(_, _, mn, mx, _) ->
+                                    (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
+                                | FormFieldKind.Range(_, _, mn, mx, _) ->
+                                    (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
+                                | FormFieldKind.Date(_, _, _, mn, mx, _) ->
+                                    (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
+                                | FormFieldKind.DateRange(_, _, _, mn, mx, _) ->
+                                    (if mn.IsSome then Some "min" else None), (if mx.IsSome then Some "max" else None)
+                                | _ -> None, None
+
+                            let duplicated =
+                                match cmp.Op with
+                                | CompareOp.Gt
+                                | CompareOp.Gte -> lower
+                                | CompareOp.Lt
+                                | CompareOp.Lte -> upper
+                                | CompareOp.Eq
+                                | CompareOp.Neq -> None
+
+                            match duplicated with
+                            | Some bound ->
+                                defects.Add(
+                                    PreEmitDefect.CompareDuplicatesBound(nodeIdStr, field.Id, control + "." + bound)
+                                )
+                            | None -> ()
+                        | _ -> ()
 
                 // An OMITTED value slot is always live: the Phase 596 auto-bind
                 // gives the write-back default `$state.<field id>` to write to.
@@ -1438,6 +1632,32 @@ let private validateCore
                 && reportedSwitch.Add(switchNodeId + " " + key)
             then
                 defects.Add(PreEmitDefect.SwitchKeyNoWriter(switchNodeId, key))
+
+    // ── FUARAN099 — a cross-field compare naming a key nothing can reach (Phase 864) ──
+    //
+    // The predicate's operand is a read, and a read of a key that no form field
+    // owns and no writer in the tree sets is not a comparison that fails — it is
+    // a comparison that never happens, on a field the author believes is
+    // constrained.
+    //
+    // It reasons from an ABSENCE, so it takes the same stand-down FUARAN103
+    // does: any closure in the tree writes arbitrary keys at dispatch time, so
+    // under an opaque writer "nothing writes this" is unprovable rather than
+    // false, and the fuaran-core#90 rule applies. `formOwnedStateKeys` is
+    // deliberately tree-wide rather than per-form: a compare that reads a key
+    // owned by a DIFFERENT form is unusual, not wrong, and refusing it here
+    // would be the walk deciding a layout question.
+    if not facts.StateKeys.OpaqueWriter then
+        let reportedCompare = System.Collections.Generic.HashSet<string>()
+
+        for (formNodeId, fieldId, key) in compareStateReads do
+            if
+                not (formOwnedStateKeys.Contains key)
+                && not (Set.contains key facts.StateKeys.WriteKeys)
+                && not (StateKeyPolicy.isHostReserved key)
+                && reportedCompare.Add(formNodeId + " " + fieldId + " " + key)
+            then
+                defects.Add(PreEmitDefect.CompareKeyUnreachable(formNodeId, fieldId, key))
 
     if defects.Count = 0 then
         Ok()
