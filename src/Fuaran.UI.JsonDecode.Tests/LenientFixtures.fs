@@ -360,6 +360,20 @@ let all: LenientFixture list =
         Description =
           "Envelope-confusion coercions, BOTH directions (2026-07-17 launch-eval evidence) — a bare scalar where a Binding is expected coerces to `Static` (`fraction: 0.65`), and a Static envelope where a PLAIN value is expected unwraps (`indeterminate: {\"$type\":\"Static\",\"value\":false}`). Unambiguous both ways; `null` and untyped objects stay strict." }
 
+      // ─── fuaran#957 — the Accessibility trait's Binding slots ────────────
+      // The same bare-scalar rule as the fixture above, pinned AT THE TRAIT
+      // POSITION: two hosts independently mis-read `accessibility.label` as a
+      // bare-string-only field (dropping the canonical Static envelope), so
+      // the ruling that the trait's `label`/`hidden` are ordinary Binding
+      // slots — general rule, no positional carve-out — gets its own vector.
+      { Id = "lenient-shape-a11y-label-bare-scalar"
+        LenientJson =
+          """{"id":"len-a11y","kind":{"$type":"Markdown","text":"Site body"},"accessibility":{"hidden":false,"label":"Home navigation"}}"""
+        VerboseJson =
+          """{"id":"len-a11y","kind":{"$type":"Markdown","text":"Site body"},"accessibility":{"hidden":{"$type":"Static","value":false},"label":{"$type":"Static","value":"Home navigation"}}}"""
+        Description =
+          "fuaran#957 ruling — the Accessibility trait's `label` (Binding<string>) and `hidden` (Binding<bool>) are ordinary Binding slots: a bare string / bool coerces to `Static` per the general §3.6 scalar rule (decode-only, canonical envelope on re-encode). Pinned at this position because two hosts once implemented the slot as bare-string-ONLY — the opposite error." }
+
       { Id = "lenient-shape-params-map"
         LenientJson =
           """{"id":"len-params","kind":{"$type":"DataGrid","columns":[],"editable":false,"rowKey":"<closure>","source":{"$type":"Transform","params":{"stockLevel":{"$type":"Filter","name":"stockLevel"},"warehouse":{"$type":"Filter","name":"warehouse"}},"pipeline":[],"source":{"columns":{"sku":{"validity":[true],"values":["A-1"]}},"schema":[{"name":"sku","type":"string"}]}}}}"""
