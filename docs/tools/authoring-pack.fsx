@@ -226,13 +226,21 @@ let fixtureRaw (id: string) =
     (File.ReadAllText(Path.Combine(fixturesDir, (fixtureMeta id).File))).Trim()
 
 // ── JSON helpers ─────────────────────────────────────────────────────────────────
+// §21's shape-limit fixtures nest past System.Text.Json's default 64-level reader
+// ceiling (`nodes/limit-node-depth-at-max.json` exists precisely to sit AT the
+// node-depth maximum, corpus bc5fcc0), so every parse that can receive fixture
+// bytes takes these options. 512 clears the §21 ceiling with headroom while still
+// bounding a hostile input; without this, the whole `--check` gate throws on the
+// first deep fixture it reads.
+let private deepJson = JsonDocumentOptions(MaxDepth = 512)
+
 // Pretty form for human-facing docs: indented, with `<closure>` / `<opaque>` left
 // literal (the relaxed encoder keeps `<` `>` unescaped, matching the canonical wire).
 let private prettyOpts =
-    JsonSerializerOptions(WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping)
+    JsonSerializerOptions(WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping, MaxDepth = 512)
 
 let prettyJson (raw: string) =
-    use doc = JsonDocument.Parse raw
+    use doc = JsonDocument.Parse(raw, deepJson)
     JsonSerializer.Serialize(doc.RootElement, prettyOpts)
 
 // Minified form for the paid prompt prefix: the corpus bytes with every INSIGNIFICANT
@@ -247,7 +255,7 @@ let prettyJson (raw: string) =
 // inside string literals is copied verbatim (escapes included), so the output differs
 // from the input in whitespace alone, which is the whole claim being made.
 let minifyJson (raw: string) =
-    use doc = JsonDocument.Parse raw // parse first: never emit bytes we could not read
+    use doc = JsonDocument.Parse(raw, deepJson) // parse first: never emit bytes we could not read
     ignore doc
 
     let sb = StringBuilder(raw.Length)
@@ -290,7 +298,7 @@ let normalizeEol (s: string) =
 // in source order, leaves verbatim. Whitespace / indentation differences do not count
 // as drift — only a genuine structural divergence from the corpus does.
 let canonicalize (raw: string) =
-    use doc = JsonDocument.Parse raw
+    use doc = JsonDocument.Parse(raw, deepJson)
     let sb = StringBuilder()
 
     let rec go (el: JsonElement) =
@@ -1212,7 +1220,7 @@ let rec private rw (key: string) (node: JNode) : JNode =
 /// one-dialect purity property — an emitted block is invariant under its own
 /// transform, so no canonical spelling a taught family covers can survive in it.
 let toDialect (raw: string) : string =
-    use doc = JsonDocument.Parse raw
+    use doc = JsonDocument.Parse(raw, deepJson)
     let mutable ast = ofElement doc.RootElement
     let mutable go = true
     let mutable iterations = 0
@@ -2417,7 +2425,7 @@ let private candidateFixtures =
 
 let private rulesFor (id: string) : Set<string> =
     let meta = fixtureMeta id
-    use doc = JsonDocument.Parse(fixtureRaw id)
+    use doc = JsonDocument.Parse(fixtureRaw id, deepJson)
     let root = doc.RootElement
     let rootDef = if meta.Decoder = "op" then "TreeOp" else "Node"
     Set.union (schemaRules rootDef (Some root)) (idiomRules root)

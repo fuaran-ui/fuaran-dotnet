@@ -577,10 +577,20 @@ let generatedLayerTests =
               //    `schemaInexpressibleRejects` — which is why this list and
               //    that one keep drifting apart, and why both are named rather
               //    than counted.
+              //  - a node tree nested past the §21 node-depth ceiling
+              //    (`reject-limit-node-depth`, corpus bc5fcc0) is a GLOBAL
+              //    bound over the whole tree, not a property of any node the
+              //    generated decoder reads: each level is individually
+              //    well-shaped, and the generated layer has no depth counter.
+              //    The policy decoder's §21 shape-limit enforcement refuses
+              //    it. (Its sibling `reject-limit-json-depth*` fixtures stay
+              //    on the structural side — they exceed the JSON reader's own
+              //    depth ceiling, so the parse itself fails.)
               Expect.equal
                   policyOwned
                   [ "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
+                    "reject-limit-node-depth.json"
                     "reject-nearmiss-column-readonly.json"
                     "reject-nearmiss-grid-behaviour-record.json"
                     "reject-nearmiss-grid-current-page.json"
