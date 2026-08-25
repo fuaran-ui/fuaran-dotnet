@@ -1271,13 +1271,33 @@ let rec collectKeys<'Msg> (channel: KeyChannel) (node: Node<'Msg>) : Set<string>
         | Some a -> keysOfBindingOpt channel a.Label @ keysOfBindingOpt channel a.Hidden
         | None -> []
 
+    // Phase 936 — a `StateBehaviour` branch is a wire-encoded child node
+    // rendered in place of the body, so a binding inside it is a real reader
+    // that must be SUBSCRIBED exactly as the body's readers are. Until this
+    // descent existed, such a binding was validated (`BindingWalk` descends
+    // since 7052ede) but never subscribed — the `PageStateKey` shape: a write
+    // moved the key in State and nothing on screen followed. Subscribing the
+    // union of body + branches over-subscribes only while a branch is not
+    // showing, and a spurious re-render is a no-op where a missed one is a
+    // stale surface. `OnError` is a CLOSURE producing its node at error time;
+    // its output is statically invisible to every walk in the estate (it is
+    // also not wire-encodable, so decoded trees never carry one).
+    let stateBehaviourKeys =
+        match node.State with
+        | Some sb ->
+            let ofSlot slot =
+                slot |> Option.map (collectKeys channel) |> Option.defaultValue Set.empty
+
+            Set.union (ofSlot sb.OnEmpty) (ofSlot sb.OnLoading)
+        | None -> Set.empty
+
     let directKeys, children = kindKeys channel node.Kind
 
     let childKeys =
         children
         |> List.fold (fun acc child -> Set.union acc (collectKeys channel child)) Set.empty
 
-    Set.union (Set.ofList (a11yKeys @ directKeys)) childKeys
+    Set.union (Set.ofList (a11yKeys @ directKeys)) (Set.union stateBehaviourKeys childKeys)
 
 /// This node's own (non-descendant) reactive keys for `channel`, paired with its child `Node`s for
 /// `collectKeys` to recurse into.
@@ -1355,7 +1375,38 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
         // are wired with the real SVG renderer in Phase 525.
 
         __v, []
-    | NodeKind.Drawing _ -> [], []
+    | NodeKind.Drawing d ->
+        // Phase 936 — the reactive slots the analysis walk (`BindingWalk`) has
+        // collected since Phase 524 and this walk never gained: the `DrawStyle`
+        // colour/width/opacity bindings (recursing `Group` nesting), `Label`
+        // text, and the drawing's `Title` / `Description`. The Math arm's old
+        // "wired with the real SVG renderer in Phase 525" note never happened —
+        // a state-bound fill rendered once and never followed its key.
+        let keysOfDrawStyle (st: DrawStyle) =
+            keysOfBindingOpt channel st.Fill
+            @ keysOfBindingOpt channel st.Stroke
+            @ keysOfBindingOpt channel st.StrokeWidth
+            @ keysOfBindingOpt channel st.Opacity
+
+        let rec keysOfShape (sh: Shape) =
+            match sh with
+            | Shape.Group(children, st) -> (children |> List.collect keysOfShape) @ keysOfDrawStyle st
+            | Shape.Rectangle(_, _, _, _, _, st) -> keysOfDrawStyle st
+            | Shape.Line(_, _, _, _, st) -> keysOfDrawStyle st
+            | Shape.Polyline(_, st) -> keysOfDrawStyle st
+            | Shape.Polygon(_, st) -> keysOfDrawStyle st
+            | Shape.Curve(_, st) -> keysOfDrawStyle st
+            | Shape.Circle(_, _, _, st) -> keysOfDrawStyle st
+            | Shape.Ellipse(_, _, _, _, st) -> keysOfDrawStyle st
+            | Shape.Label(_, _, text, st) -> keysOfText channel text @ keysOfDrawStyle st
+
+        let __v =
+            keysOfDrawStyle d.Style
+            @ (d.Shapes |> List.collect keysOfShape)
+            @ keysOfTextOpt channel d.Title
+            @ keysOfTextOpt channel d.Description
+
+        __v, []
     // -- Input --
     | NodeKind.Button b ->
         let __v =

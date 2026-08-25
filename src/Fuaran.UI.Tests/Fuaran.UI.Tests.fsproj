@@ -113,6 +113,12 @@
          of the state-channel live re-render; the React re-render itself is
          browser-only). -->
     <Compile Include="StateReactiveTests.fs" />
+    <!-- WalkConformanceTests is Phase 936's executable census: one fixture per
+         binding-slot class, each pinning what BindingWalk must READ and what
+         Render.collectKeys must SUBSCRIBE, plus the two-sided containment
+         assertion that makes a slot wired into one walk and not the other a
+         red test rather than a comment violation. -->
+    <Compile Include="WalkConformanceTests.fs" />
     <!-- FilterReactiveTests pins Phase 423's collectFilterKeys / filterKeysOfBinding
          walk + the FilterStore ($filters twin of StateStore) — the .NET-testable
          half of the filter-channel live re-render. -->
