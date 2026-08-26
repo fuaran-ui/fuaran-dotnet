@@ -153,6 +153,10 @@
     <Compile Include="FilterWiringValidateTests.fs" />
     <!-- DeadOnDecodeTests pins Phase 430's slot capability table + lint. -->
     <Compile Include="DeadOnDecodeTests.fs" />
+    <!-- Phase 924 — the decode-side inertness report, and (the load-bearing
+         half) the two-way completeness seam that keeps its verdict table keyed
+         by names WireSurvivability and SlotCapability own. -->
+    <Compile Include="AffordanceInertnessTests.fs" />
     <!-- GridDisplayTests pins Phase 425's row-field projection contract. -->
     <Compile Include="GridDisplayTests.fs" />
     <Compile Include="GridReorderTests.fs" />

@@ -72,6 +72,12 @@
          class rather than re-walking the spec vocabulary; holds no signature
          search of its own (see the module's `Delegation`). -->
     <Compile Include="StructuralQuery.fs" />
+    <!-- Phase 924: the decode-side inertness report — which of a DECODED
+         tree's affordances are inert, derived from WireSurvivability's verdicts
+         and SlotCapability's postures rather than a second list. Compiles last
+         because it reads BindingWalk (the Computed arm), DeadOnDecode (the
+         twin-bearing arm) and StructuralQuery (the containment relation). -->
+    <Compile Include="AffordanceInertness.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

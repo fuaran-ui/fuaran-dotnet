@@ -60,6 +60,15 @@ let all: SlotCapability list =
       row "TabsSpec.onSelectTag" SlotPosture.WriteBack "426"
       row "DisclosureSpec.onToggle" SlotPosture.WriteBack "426"
       row "GridSpec.onRowClick" SlotPosture.WriteBack "427"
+      // Phase 933 extended the 427 write default from `DataGrid` to `Chart`: a
+      // chart whose `onPointClick` is omitted publishes the clicked datum under
+      // its OWN NodeId. So this slot stopped being a sanctioned escape and
+      // became an override, exactly as `GridSpec.onRowClick` is — the row it
+      // now mirrors. It read `HostOnlyByDesign "point-click selection semantics
+      // unshipped"` until Phase 924's sweep, which is why a decoded chart
+      // carrying the sentinel was the one dead affordance the lint beside this
+      // table stayed silent about.
+      row "ChartSpec.onPointClick" SlotPosture.WriteBack "933"
 
       // ── Field-name display floors (425) ──
       row "ColumnErased.value" SlotPosture.FieldName "425"
@@ -102,11 +111,6 @@ let all: SlotCapability list =
               "mirrors Tabs but the ActiveStep write-back default has not shipped — a candidate follow-up, tracked as host-only until then")
           "—"
       row
-          "ChartSpec.onPointClick"
-          (SlotPosture.HostOnlyByDesign
-              "point-click selection semantics unshipped (the grid is the 427 selection producer); host wiring required")
-          "—"
-      row
           "MapSpec.onMarkerClick"
           (SlotPosture.HostOnlyByDesign "marker-click selection semantics unshipped; host wiring required")
           "—"
@@ -132,7 +136,7 @@ let all: SlotCapability list =
       row
           "StateBehaviour.onError"
           (SlotPosture.HostOnlyByDesign
-              "the ErrorPayload → Node callback is host render policy; decoded trees fall back to the default error surface")
+              "the ErrorPayload → Node callback is host render policy. It is STILL host-only, but the decoded consequence recorded here was wrong until Phase 924's sweep read the decoder: a decoded `onError` is a placeholder node whose text is the `<closure>` sentinel, NOT a fallback to a default error surface. `AffordanceInertness` carries the corrected verdict")
           "—"
       row
           "CellFormat.Custom.fn"

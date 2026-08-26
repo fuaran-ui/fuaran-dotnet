@@ -232,9 +232,19 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         )
 
                 []
-            | NodeKind.Chart _
+            | NodeKind.Chart c ->
+                // Phase 933 gave `onPointClick` a write-back default (publish
+                // the clicked datum under the chart's own NodeId), so the slot
+                // became an override rather than a host escape — see the
+                // capability row. A present sentinel is therefore dead AND
+                // suppresses that default, which is precisely FUARAN080's
+                // subject. The write-back needs no writable value binding, for
+                // the same reason `GridSpec.onRowClick` does not: the node
+                // writes its OWN id.
+                handler nodeId "ChartSpec.onPointClick" c.OnPointClick.IsSome true "$selection (its own NodeId)"
+                []
             | NodeKind.Map _ ->
-                () // click handlers are HostOnlyByDesign rows
+                () // marker clicks are still a HostOnlyByDesign row
                 []
             // -- Structural --
             | NodeKind.ErrorBoundary spec -> [ spec.Child; spec.Fallback ]

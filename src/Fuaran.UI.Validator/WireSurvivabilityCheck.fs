@@ -23,6 +23,16 @@ module Fuaran.UI.Validator.WireSurvivabilityCheck
 //  validator's deliberate v1 boundary — `AstWalker.fs`). Those stay with the
 //  runtime `DeadOnDecode` lint (FUARAN080/081), which has the decoded tree in
 //  hand; this build-time check owns the syntactically-unambiguous `Computed`.
+//
+//  The DECODE-SIDE twin is `Fuaran.UI.AffordanceInertness` (Phase 924), and the
+//  departure from this module's shape is deliberate rather than an omission.
+//  This check parses SOURCE and warns an AUTHOR before an emission exists; that
+//  one takes a decoded `Node` tree and tells a CONSUMER which of the affordances
+//  it is already holding do nothing. Neither can do the other's job: an author's
+//  closures are real, so running this module's judgement over an F#-authored
+//  tree is a false accusation, and by the time a tree has crossed the wire there
+//  is no source left to parse and nothing left to refuse. Both read
+//  `WireSurvivability`; only that table is shared.
 // ============================================================================
 
 open System.IO
