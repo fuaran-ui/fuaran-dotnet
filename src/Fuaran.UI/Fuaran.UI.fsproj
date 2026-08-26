@@ -50,6 +50,13 @@
          tree-wide checks (dangling Selection; the 421/424/425 filter
          consumption union) run on. Depends only on Types.fs. -->
     <Compile Include="BindingWalk.fs" />
+    <!-- Phase 1020: the host-declared decode-time kind admission policy
+         (WIRE_FORMAT.md §23) + the wire-discriminator projection of a kind.
+         Lives here rather than beside the decoder because BOTH ends need it —
+         `Fuaran.UI.Ops.JsonDecode` enforces it and `PreEmitValidate` lints
+         against it — and Ops depends on this package, never the reverse.
+         Depends only on Types.fs. -->
+    <Compile Include="KindPolicy.fs" />
     <Compile Include="PreEmitValidate.fs" />
     <!-- Phase 430: the slot capability table + the dead-on-decode lint (the
          declarative-floor un-regression pair). Depend only on Types.fs. -->

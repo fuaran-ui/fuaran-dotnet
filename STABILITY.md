@@ -1555,3 +1555,71 @@ forbidding by name rather than by `additionalProperties: false`, so the schema a
 **Native surfaces are unaffected, and that is a finding rather than an omission.** `fuaran-swift` and
 `fuaran-kt` carry **no `TreeOp` decoder at all** — they hand canonical op JSON to the Rust core, which
 owns op decoding — so the Rust leg is their adoption. Neither repo needed a change.
+
+---
+
+## Recorded change — 0.38.0, the host-declared kind admission policy (fuaran#1020)
+
+**Additive on every axis, and the wire does not move.** No fixture payload changed, no encoder path
+changed, and `--emit-corpus` regenerated the corpus byte-for-byte apart from the derived
+`validator/defect-vocabulary.json` entry for the one new defect below. The mechanism is a NEW OPTIONAL
+ARGUMENT at the decode boundary; a decoder given nothing behaves exactly as 0.37.0 did.
+
+**Why it exists.** Every escape hatch in the vocabulary is registration-gated at RENDER time, so an
+application that registers no custom renderers and installs no guest seam is closed by omission. That
+closure is invisible — nothing states it, so nothing can check or claim it — and it is not monotone:
+it stops holding the day an unrelated registration lands elsewhere in the process, with no change to
+any tree. A declared policy makes the closure a checkable property of the deployment and the refusal
+an attributable event.
+
+**The new specification section is [`WIRE_FORMAT.md` §23](../wire-format-fixtures/WIRE_FORMAT.md),
+and §22 is unqualified by it.** A tree carrying a hostile payload is still a valid wire document that
+a default decoder MUST NOT reject; §23 narrows one HOST'S acceptance, never the vocabulary.
+Conformance for every other family is measured with no policy declared, so a document refused under a
+policy is not thereby malformed.
+
+**Additive public surface (each a *minor* event per the Semver note above).**
+
+- New module `Fuaran.UI.KindPolicy`: `DecodePolicy` (identity + `Admission`), `Admission`
+  (`AdmitAll` / `AdmitOnly of Set<string>`), the `DecodePolicy` companion
+  (`admitAll` / `admitting` / `excludingFrom` / `admits` / `narrows` / `hint`), and `wireKindName`.
+  It sits in `Fuaran.UI` rather than beside the decoder because both ends consume it and
+  `Fuaran.UI.Ops` depends on this package, never the reverse — the same placement argument
+  `WireLimits` carries.
+- `JsonDecode` gains `decodeNodeWithPolicy` / `decodeNodeObjWithPolicy` / `decodeOpWithPolicy`, plus
+  `hatchNodeKinds` and `JsonDecode.Policy.{closedProfile, excluding}`. **The three existing entry
+  points are unchanged in signature and behaviour** — they are these three at `DecodePolicy.admitAll`,
+  which makes "the default is unchanged" a property of the code rather than a claim about it.
+  Sibling entry points rather than an optional parameter because F# optional parameters exist only on
+  type members: defaulting in place would mean reshaping the whole decoder module into a class, a
+  break on every consumer, to buy syntax. The TypeScript host, whose language has the construct, may
+  take the optional-argument form; what the hosts owe each other is the same behaviour on the same
+  bytes, not the same arity.
+- `JsonDecode.DecodeErrorCode` gains **`KIND_NOT_ADMITTED`** — the eighth code, on the 0.28.0
+  `LIMIT_EXCEEDED` precedent (a new code is a minor event here; changing an existing code string is
+  not). It is unreachable without a declared policy, and it is deliberately NOT `WRONG_NODE_KIND`:
+  that code means the vocabulary has no such kind, this one means the kind exists and this deployment
+  declines it, and an author repairs them differently.
+- `PreEmitValidate` gains `KindNotAdmitted` → **FUARAN104 (Warning)** plus `validateWithPolicy` and
+  `validateWithRegistryAndPolicy`. Advisory at the authoring end by design: an authoring host may
+  legitimately build a tree for a different deployment under a different policy, and the decode
+  boundary is where a policy is enforced. `validate` and `validateWithRegistry` declare no policy, so
+  the finding is unreachable through them.
+
+**The recommended closed profile excludes `Custom` and `Mount`, and closes nothing else.** Those are
+the two kinds through which host-supplied behaviour enters a rendered tree. A kind gate does not reach
+the action vocabulary, a declared field rule's pattern, a renderer's output, or anything a host
+registers outside a tree — §23.5 states the limit, because a partial closure read as a total one is
+worse than none.
+
+**Ops are gated on the same terms.** A kind reaches a `TreeOp` through a node-bearing arm and through
+`EditNode`'s replacement kind; both refuse. A policy enforced only on the initial tree would be a
+property of the first decode rather than a closure.
+
+**Host adoption.** The F# reference and the shared corpus land together; the
+[`decode-policy/`](../wire-format-fixtures/decode-policy/) family is hand-authored (the
+`sanitization/` posture) rather than emitted, because a case pairs a document with a DECLARATION the
+document does not carry, which the generated reject machinery structurally cannot express. §23 is
+**optional** for a host — unlike §21 or §22 — so a host that has not implemented it declares the
+family not-applicable with a reason rather than being non-conformant. The TypeScript leg is filed
+separately.

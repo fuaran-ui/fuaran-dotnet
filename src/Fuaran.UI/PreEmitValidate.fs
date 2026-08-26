@@ -39,6 +39,7 @@ module Fuaran.UI.PreEmitValidate
 
 open Fuaran.Core
 open Fuaran.UI.Types
+open Fuaran.UI.KindPolicy
 
 /// A pre-emit defect surfaced by `validate`. Stable, AI-friendly
 /// discriminator (camelCase rendering at the docs boundary).
@@ -57,6 +58,18 @@ type PreEmitDefect =
     /// A `Custom` node has an empty `moduleId` or `componentId` string.
     /// The wire-form `kind: "Custom"` envelope needs both to dispatch.
     | EmptyCustomKindIdentifier of moduleId: string * componentId: string
+    /// **FUARAN104 (Warning)**. A node's kind is outside the admitted set of the
+    /// policy this walk was given (WIRE_FORMAT §23). Carries the node id, the
+    /// node's WIRE discriminator, and the policy identity. Phase 1020.
+    ///
+    /// **Advisory, and the severity is the point.** The decode boundary is where
+    /// a policy is ENFORCED; this is the authoring end telling an author that a
+    /// tree they are about to emit will be refused by the deployment they named.
+    /// It is an Error nowhere, because an authoring host may legitimately
+    /// construct a tree for a *different* deployment under a *different* policy,
+    /// and a walk cannot know which. Reported per offending node rather than
+    /// once per tree: the author repairs each of them.
+    | KindNotAdmitted of nodeId: string * kind: string * policy: string
     /// **FUARAN047 (Error)**. A `TabsSpec` carries
     /// `TabHeaders = Some hs` whose length does not equal `Children.Length`.
     /// The renderer aligns headers 1:1 with children by index; mismatched
@@ -473,6 +486,10 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         "FUARAN-EMPTY-CUSTOM",
         DefectSeverity.Error,
         sprintf "Custom node has empty moduleId='%s' / componentId='%s'" m c
+    | PreEmitDefect.KindNotAdmitted(nodeId, kind, policy) ->
+        "FUARAN104",
+        DefectSeverity.Warning,
+        sprintf "node '%s' is a '%s', which decode policy '%s' does not admit" nodeId kind policy
     | PreEmitDefect.CustomPropSchemaViolation(nodeId, moduleId, componentId, propDefects) ->
         "FUARAN068",
         DefectSeverity.Error,
@@ -916,6 +933,7 @@ let private isWriteBackTarget (binding: Binding<'T>) : bool =
     | _ -> false
 
 let private validateCore
+    (policy: DecodePolicy)
     (customCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option)
     (node: Node<'Msg>)
     : Result<unit, PreEmitDefect list> =
@@ -970,6 +988,16 @@ let private validateCore
 
     and walkBody (n: Node<'Msg>) =
         recordNodeId n.Id
+
+        // FUARAN104 (Phase 1020) — the decode-time admission policy, mirrored
+        // at the authoring end. Guarded on `narrows` so the shipped default
+        // costs one branch per tree rather than a set lookup per node, and so
+        // the defect is unreachable for every caller that declares nothing.
+        if DecodePolicy.narrows policy then
+            let wireKind = wireKindName n.Kind
+
+            if not (DecodePolicy.admits policy wireKind) then
+                defects.Add(PreEmitDefect.KindNotAdmitted(n.Id, wireKind, policy.Identity))
 
         // FUARAN102 (Phase 765) — a labelled datum that names the current
         // instant and states a hardcoded date. Per-node and purely lexical; the
@@ -1668,7 +1696,8 @@ let private validateCore
 /// Returns `Ok ()` on a clean tree; `Error defects` carries every defect
 /// found (NOT short-circuited on the first one) so the AI can repair the
 /// tree in a single turn rather than discovering defects one at a time.
-let validate (node: Node<'Msg>) : Result<unit, PreEmitDefect list> = validateCore (fun _ _ _ _ -> None) node
+let validate (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
+    validateCore DecodePolicy.admitAll (fun _ _ _ _ -> None) node
 
 /// `validate` + custom-prop schema enforcement (**FUARAN068**): every
 /// `NodeKind.Custom` whose `(moduleId, componentId)` is registered has its
@@ -1680,6 +1709,38 @@ let validate (node: Node<'Msg>) : Result<unit, PreEmitDefect list> = validateCor
 /// keeps calling the plain `validate`.
 let validateWithRegistry (registry: CustomRegistry) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
     validateCore
+        DecodePolicy.admitAll
+        (fun nodeId moduleId componentId props ->
+            match registry.ValidateProps(moduleId, componentId, props) with
+            | [] -> None
+            | propDefects -> Some(PreEmitDefect.CustomPropSchemaViolation(nodeId, moduleId, componentId, propDefects)))
+        node
+
+/// `validate` + the **FUARAN104** kind-admission lint (Phase 1020): every node
+/// whose wire discriminator falls outside `policy` is reported, so an authoring
+/// host learns before emit that the deployment it names will refuse the tree.
+///
+/// **Advisory here; the decode boundary is the enforcement point.** A tree that
+/// passes this has not been admitted by anything — it has merely not been
+/// refused by a walk the emitter chose to run. The claim "this deployment's wire
+/// boundary admits no escape hatches" is made by
+/// `JsonDecode.decodeNodeWithPolicy`, on the receiving side, over bytes rather
+/// than over a tree the same process built.
+let validateWithPolicy (policy: DecodePolicy) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
+    validateCore policy (fun _ _ _ _ -> None) node
+
+/// `validateWithRegistry` + the kind-admission lint — the both-declared form.
+/// A profile that excludes only part of the guest boundary (`Mount` but not
+/// `Custom`, say) still wants its registered custom kinds prop-checked, and
+/// making the host pick one of the two walks would leave whichever it dropped
+/// unrun.
+let validateWithRegistryAndPolicy
+    (registry: CustomRegistry)
+    (policy: DecodePolicy)
+    (node: Node<'Msg>)
+    : Result<unit, PreEmitDefect list> =
+    validateCore
+        policy
         (fun nodeId moduleId componentId props ->
             match registry.ValidateProps(moduleId, componentId, props) with
             | [] -> None

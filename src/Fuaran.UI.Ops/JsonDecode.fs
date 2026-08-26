@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.Ops.JsonDecode
+module Fuaran.UI.Ops.JsonDecode
 
 // ============================================================================
 //  Structural decoder for the canonical-JSON wire form
@@ -80,6 +80,7 @@
 open System
 open Fuaran.Core
 open Fuaran.UI.Types
+open Fuaran.UI.KindPolicy
 open Fuaran.UI.Ops.Types
 
 // ─── DecodeError surface ─────────────────────────────────────────────────
@@ -116,6 +117,21 @@ type DecodeErrorCode =
     /// limit and the observed value so a repairing author knows which bound to
     /// come back under.
     | LIMIT_EXCEEDED
+    /// The document names a kind the HOST'S DECLARED decode policy does not
+    /// admit (WIRE_FORMAT §23). Phase 1020.
+    ///
+    /// Deliberately distinct from `WRONG_NODE_KIND`, which says the vocabulary
+    /// has no such kind. This one says the kind exists and THIS DEPLOYMENT does
+    /// not take it — a different fact with a different remedy, and conflating
+    /// them would send a repairing author to invent a spelling that is already
+    /// correct. It is also the reason the code exists at all rather than reusing
+    /// the older one: a refusal that cannot be told apart from a malformed
+    /// emission is not an auditable event.
+    ///
+    /// Raised ONLY when a host supplied a narrowing policy. With no policy the
+    /// code is unreachable, which is what keeps §22's "a decoder owes nothing"
+    /// true of the default decoder.
+    | KIND_NOT_ADMITTED
 
 module DecodeErrorCode =
     let toString (code: DecodeErrorCode) : string =
@@ -127,6 +143,7 @@ module DecodeErrorCode =
         | DecodeErrorCode.WRONG_NODE_KIND -> "WRONG_NODE_KIND"
         | DecodeErrorCode.EMPTY_NODE_ID -> "EMPTY_NODE_ID"
         | DecodeErrorCode.LIMIT_EXCEEDED -> "LIMIT_EXCEEDED"
+        | DecodeErrorCode.KIND_NOT_ADMITTED -> "KIND_NOT_ADMITTED"
 
 /// AI-recoverable decode-time failure. Mirrors the §4d AI-recovery JSON
 /// envelope vocabulary from `Fuaran.UI.Ops.ErrorRender` so eval gate-1
@@ -1492,6 +1509,51 @@ let knownFormFieldKinds =
 /// reason (a hand-written copy drifts, and a hint that names the wrong set is
 /// worse than none).
 let wrongFormFieldKindHint = String.concat " | " knownFormFieldKinds
+
+// ─── Named decode policies (WIRE_FORMAT §23) ──────────────────────────────
+
+/// The kinds through which host-supplied behaviour enters a rendered tree — the
+/// guest boundary, and the only part of that boundary a KIND gate can reach.
+///
+/// `Custom` selects a host-registered renderer by a name taken off the wire;
+/// `Mount` composes a guest tree under its own scope through a host-side loader.
+/// Neither carries the behaviour itself — wire decoding constructs no closures —
+/// which is exactly why omission alone does not close them: the tree still
+/// SELECTS, and the selection becomes live the moment something registers.
+///
+/// Declared here, beside the vocabulary it is a subset of, so that classifying a
+/// new kind as a hatch and adding it to the wire vocabulary happen in one file.
+/// A test pins it as a subset of `knownNodeKinds` — a misspelt entry is a set
+/// difference that removes nothing, and so would silently admit the very kind it
+/// names — and a second pins the resulting profile against the corpus.
+let hatchNodeKinds = [ "Custom"; "Mount" ]
+
+/// Named policies over the vocabulary above. Separate from the generic
+/// combinators in `Fuaran.UI.KindPolicy` because a NAMED profile is only
+/// meaningful against a vocabulary, and the vocabulary lives here.
+module Policy =
+
+    /// The recommended profile for an application that uses no escape hatches:
+    /// every recognised kind except `Custom` and `Mount`.
+    ///
+    /// **What it closes, precisely.** The guest boundary, and nothing else. A
+    /// decoded tree under this profile cannot name a host-registered renderer
+    /// and cannot compose a guest. That is one of the inventory's hatches; the
+    /// others are out of a kind gate's reach BY CONSTRUCTION and this profile
+    /// must not be read as touching them — the host-call / effect seam is
+    /// reached by actions rather than kinds, native surfaces sit under companion
+    /// packages, code generation and host composition extension points never
+    /// appear in a tree at all, and a declared field rule is a slot on `Form` /
+    /// `Filters`, which this profile admits. Closing those is a different
+    /// mechanism at a different seam.
+    let closedProfile: DecodePolicy =
+        DecodePolicy.excludingFrom "closed-no-escape-hatches" knownNodeKinds hatchNodeKinds
+
+    /// Admit everything the decoder recognises EXCEPT the named kinds. The
+    /// exclusion is resolved against `knownNodeKinds` at construction, so a kind
+    /// added to the language later is not admitted by a policy declared today.
+    let excluding (identity: string) (kinds: string seq) : DecodePolicy =
+        DecodePolicy.excludingFrom identity knownNodeKinds kinds
 
 // ─── Internal helpers ─────────────────────────────────────────────────────
 
@@ -6177,10 +6239,23 @@ let private decodeEffectClass (path: string) (j: Json) : Result<EffectClass, Dec
 /// but the `ref` cell inside is shared by reference, so every position sees the
 /// same running total. A plain mutable field would NOT work here: `{ w with … }`
 /// copies it, and each branch would then count only its own subtree.
-type private Walk = { Depth: int; Nodes: int ref }
+///
+/// Phase 1020 adds the host's declared admission policy to the same record, for
+/// the same reason the two budget fields share it: the policy is needed at ONE
+/// site (`decodeNodeKind`, at the discriminator) that sits twenty-five recursion
+/// levels below the entry point, and `descend` / `atRoot` copy the record, so it
+/// reaches that site with no new parameter on any of them. It is per-document
+/// and immutable, unlike either budget field.
+type private Walk =
+    { Depth: int
+      Nodes: int ref
+      Policy: DecodePolicy }
 
-/// A fresh budget for one document. Depth 1 is the root node.
-let private walkRoot () : Walk = { Depth = 1; Nodes = ref 0 }
+/// A fresh budget for one document, under `policy`. Depth 1 is the root node.
+let private walkRoot (policy: DecodePolicy) : Walk =
+    { Depth = 1
+      Nodes = ref 0
+      Policy = policy }
 
 /// One level further down, same document-wide node budget.
 let private descend (w: Walk) : Walk = { w with Depth = w.Depth + 1 }
@@ -6633,6 +6708,20 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
         // sync with the four inner decoders, the encoder, and SchemaGen — the
         // §11 forward-coupling surface. An unrecognised discriminator falls
         // through to WRONG_NODE_KIND below.
+        //
+        // Phase 1020 — the host's declared admission policy is consulted FIRST,
+        // before any family decoder runs, which is the whole economy of the
+        // mechanism: a refused kind costs the discriminator read and nothing
+        // else. The guard is narrowed to kinds the vocabulary RECOGNISES so an
+        // unknown discriminator still reports WRONG_NODE_KIND — under a policy
+        // as without one — because "no such kind" and "not admitted here" are
+        // different facts and the author repairs them differently.
+        | Ok s when List.contains s knownNodeKinds && not (DecodePolicy.admits w.Policy s) ->
+            err
+                DecodeErrorCode.KIND_NOT_ADMITTED
+                (path + ".$type")
+                (sprintf "node kind '%s' is not admitted by decode policy '%s'" s w.Policy.Identity)
+                (Some(DecodePolicy.hint w.Policy))
         | Ok s when List.contains s layoutNodeKinds ->
             // Phase 692 — the family decoders now build flat NodeKind cases
             // directly; the category wrappers they used to re-wrap into are gone.
@@ -7766,7 +7855,7 @@ let private parseFailure (code: DecodeErrorCode, message: string) : Result<'a, D
 /// decoding every candidate that narrows them to six. A gate written at the
 /// parse boundary would have had to guess exactly where the evidence says it
 /// must not.
-let private tryOverCloseUnique (json: string) : Result<Node<obj>, DecodeError> option =
+let private tryOverCloseUnique (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> option =
     match OverClose.profile json with
     | None -> None // never in the class — not a refusal, so not counted
     | Some p ->
@@ -7809,7 +7898,12 @@ let private tryOverCloseUnique (json: string) : Result<Node<obj>, DecodeError> o
                         if seen.Count > OverClose.MaxDistinctCandidates then
                             overflow <- true
                         else
-                            match decodeNodeAst (walkRoot ()) "$" j with
+                            // The candidate repairs decode under the SAME policy
+                            // as the original document. A recovery path that
+                            // decoded under admit-all would let a malformed
+                            // emission carry in a kind the policy refuses — the
+                            // repair would be the bypass.
+                            match decodeNodeAst (walkRoot policy) "$" j with
                             | Ok tree ->
                                 clean <- clean + 1
 
@@ -7829,11 +7923,11 @@ let private tryOverCloseUnique (json: string) : Result<Node<obj>, DecodeError> o
 /// insert-only recovery, then the fuaran#855 uniqueness gate, then the original
 /// error. The two recoveries never contend — 850 fails closed on an over-closed
 /// document, which is precisely the profile 855 requires.
-let private decodeNodeCore (json: string) : Result<Node<obj>, DecodeError> =
+let private decodeNodeCore (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> =
     match tryParseNodeWithRecovery json with
-    | Ok j -> decodeNodeAst (walkRoot ()) "$" j
+    | Ok j -> decodeNodeAst (walkRoot policy) "$" j
     | Error((DecodeErrorCode.INVALID_JSON, _) as failure) ->
-        match tryOverCloseUnique json with
+        match tryOverCloseUnique policy json with
         | Some decoded -> decoded
         | None -> parseFailure failure
     | Error failure -> parseFailure failure
@@ -7850,13 +7944,14 @@ let private decodeNodeCore (json: string) : Result<Node<obj>, DecodeError> =
 /// (`moduleMsgDecoder: JVal -> 'Msg`). Use `decodeNodeObj` for the raw
 /// `Node<obj>` when you are the reattachment / persistence boundary.
 let decodeNode (json: string) : Result<WireTree, DecodeError> =
-    decodeNodeCore json |> Result.map WireTree.ofDecoded
+    decodeNodeCore DecodePolicy.admitAll json |> Result.map WireTree.ofDecoded
 
 /// Raw `Node<obj>` decode — the escape hatch for reattachment / persistence
 /// boundaries that need the unmarked tree (equivalent to
 /// `decodeNode json |> Result.map WireTree.reify`). Prefer `decodeNode`; this
 /// exists so those boundaries don't wrap-then-immediately-reify.
-let decodeNodeObj (json: string) : Result<Node<obj>, DecodeError> = decodeNodeCore json
+let decodeNodeObj (json: string) : Result<Node<obj>, DecodeError> =
+    decodeNodeCore DecodePolicy.admitAll json
 
 /// Decode a canonical-JSON encoded `TreeOp<'Msg>` payload into the
 /// storage-shape `TreeOp<obj>`. Symmetric with
@@ -7864,4 +7959,39 @@ let decodeNodeObj (json: string) : Result<Node<obj>, DecodeError> = decodeNodeCo
 let decodeOp (json: string) : Result<TreeOp<obj>, DecodeError> =
     match tryParse json with
     | Error failure -> parseFailure failure
-    | Ok j -> decodeTreeOpAst (walkRoot ()) "$" j
+    | Ok j -> decodeTreeOpAst (walkRoot DecodePolicy.admitAll) "$" j
+
+// ─── Policy-bearing entry points (WIRE_FORMAT §23) ────────────────────────
+//
+// Sibling entry points rather than an optional parameter on the three above,
+// and the reason is a language constraint rather than a preference: F# optional
+// parameters exist only on TYPE MEMBERS, so defaulting `decodeNode` in place
+// would mean converting this module's public functions into members of a class
+// — a breaking reshape of the entire decoder surface, on every host that
+// consumes it, to buy syntactic sugar. The TS host, whose language does have
+// the construct, takes the optional-argument form there; what the two hosts owe
+// each other is the same BEHAVIOUR on the same bytes, not the same arity.
+//
+// The three above are exactly these three at `DecodePolicy.admitAll`, which is
+// what keeps "the default is unchanged" a property of the code rather than a
+// claim about it: there is one decode path, entered at two arities.
+
+/// `decodeNode` under a host-declared admission policy: a tree naming a kind
+/// outside `policy` is refused with `KIND_NOT_ADMITTED` at the offending
+/// `kind.$type`, naming the kind and the policy. Every other outcome — success,
+/// and every other refusal — is byte-for-byte what `decodeNode` produces.
+let decodeNodeWithPolicy (policy: DecodePolicy) (json: string) : Result<WireTree, DecodeError> =
+    decodeNodeCore policy json |> Result.map WireTree.ofDecoded
+
+/// `decodeNodeObj` under a host-declared admission policy.
+let decodeNodeObjWithPolicy (policy: DecodePolicy) (json: string) : Result<Node<obj>, DecodeError> =
+    decodeNodeCore policy json
+
+/// `decodeOp` under a host-declared admission policy. An op carries node kinds
+/// two ways — a node-bearing arm's tree, and `EditNode`'s replacement kind — and
+/// both are gated, because an op stream that could introduce a refused kind into
+/// an admitted tree would make the policy a property of the first decode only.
+let decodeOpWithPolicy (policy: DecodePolicy) (json: string) : Result<TreeOp<obj>, DecodeError> =
+    match tryParse json with
+    | Error failure -> parseFailure failure
+    | Ok j -> decodeTreeOpAst (walkRoot policy) "$" j

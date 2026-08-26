@@ -66,6 +66,13 @@
          §21). Every hostile payload is built as a STRING: a nested F# value
          would overflow while constructing the input and prove nothing. -->
     <Compile Include="LimitTests.fs" />
+    <!-- Phase 1020 — the host-declared kind admission policy (WIRE_FORMAT §23).
+         Drives the hand-authored decode-policy/ corpus family (paired
+         admit/refuse outcomes over the SAME bytes), the go-red probe that
+         proves the refusals are the policy's doing, the default-unchanged pin,
+         the op-side gating, and the PreEmitValidate mirror. Must follow
+         Corpus.fs — the vocabulary pin reads the emitted corpus. -->
+    <Compile Include="DecodePolicyTests.fs" />
     <Compile Include="ArithmeticCauseTests.fs" />
     <Compile Include="ProgressFieldCellTests.fs" />
     <!-- Phase 819/821 — Duration + cell RelativeTime formats and the Icon

@@ -309,7 +309,15 @@
          construction-site break in F# and C#, since a record field addition
          forces every literal. Minor, per the 801 precedent for the identical
          shape; see STABILITY.md "Recorded change — 0.36.0". -->
-    <Version>0.37.0</Version>
+    <!-- 0.38.0 (Phase 1020): the host-declared kind admission policy
+         (WIRE_FORMAT §23). Additive everywhere — a new `Fuaran.UI.KindPolicy`
+         module, three sibling `*WithPolicy` decode entry points, an eighth
+         `DecodeErrorCode`, and FUARAN104. The wire does not move and the three
+         existing decode entry points are unchanged: they are the new ones at
+         `DecodePolicy.admitAll`. Its own version rather than a repack of
+         0.37.0, per the same-version-repack rule; see STABILITY.md "Recorded
+         change — 0.38.0". -->
+    <Version>0.38.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
