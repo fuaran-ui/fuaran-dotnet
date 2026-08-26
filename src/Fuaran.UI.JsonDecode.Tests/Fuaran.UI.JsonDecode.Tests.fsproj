@@ -28,6 +28,15 @@
          co-emits it beside schema.json. -->
     <Compile Include="RenderFidelityArtifact.fs" />
     <Compile Include="Corpus.fs" />
+    <!-- Phase 699 — WIRE_FORMAT.md's mechanical tables as marker-block
+         projections over idl.json (Phase 696) + manifest.json, with the
+         hand-annotation columns the IDL cannot know carried in
+         spec-annotations.json. Reads and writes ONLY the spec document: it is
+         deliberately NOT part of Corpus.emit, so a prose reconciliation never
+         drags fixture churn behind it. SpecProjectionTests.fs is the drift
+         guard the repo gate + the cross-host workflow run. -->
+    <Compile Include="SpecProjection.fs" />
+    <Compile Include="SpecProjectionTests.fs" />
     <Compile Include="CorpusEmitEolTests.fs" />
     <Compile Include="RoundTripTests.fs" />
     <Compile Include="SelectionDerivedValueTests.fs" />

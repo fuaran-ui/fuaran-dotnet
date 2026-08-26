@@ -19,6 +19,43 @@ let main argv =
     // change: the fidelity table moved, no fixture did, and regenerating the
     // whole corpus to publish one artefact would put unrelated churn in a
     // shared repo.
+    // Phase 699 — regenerate / verify WIRE_FORMAT.md's marker-block
+    // projections against idl.json + manifest.json:
+    //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --project-spec <dir>
+    //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --check-spec  <dir>
+    // Deliberately NOT part of `--emit-corpus`: the corpus emitter deletes and
+    // rewrites the payload directories, and a prose reconciliation must not be
+    // able to move a fixture byte.
+    | "--project-spec" :: dir :: _ ->
+        try
+            if SpecProjection.write dir then
+                printfn "Reconciled %s/%s from idl.json + manifest.json" dir SpecProjection.specFileName
+            else
+                printfn "%s/%s already matches its generated sources" dir SpecProjection.specFileName
+
+            0
+        with SpecProjection.ProjectionDefect messages ->
+            for m in messages do
+                eprintfn "PROJECTION DEFECT — %s" m
+
+            1
+    | "--check-spec" :: dir :: _ ->
+        try
+            match SpecProjection.check dir with
+            | [] ->
+                printfn "%s/%s is in sync with idl.json + manifest.json" dir SpecProjection.specFileName
+                0
+            | drift ->
+                for d in drift do
+                    eprintfn "SPEC DRIFT — %s" d
+
+                eprintfn "Regenerate with: --project-spec %s" dir
+                1
+        with SpecProjection.ProjectionDefect messages ->
+            for m in messages do
+                eprintfn "PROJECTION DEFECT — %s" m
+
+            1
     | "--emit-fidelity" :: dir :: _ ->
         RenderFidelityArtifact.write dir
         printfn "Emitted %s to %s" RenderFidelityArtifact.fileName dir
