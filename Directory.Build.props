@@ -309,7 +309,7 @@
          construction-site break in F# and C#, since a record field addition
          forces every literal. Minor, per the 801 precedent for the identical
          shape; see STABILITY.md "Recorded change — 0.36.0". -->
-    <Version>0.36.0</Version>
+    <Version>0.37.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

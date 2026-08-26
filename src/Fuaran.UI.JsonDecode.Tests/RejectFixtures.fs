@@ -361,7 +361,7 @@ let all: RejectFixture list =
         Description = "UpdateProp missing path" }
       { Id = "reject-op-insertchild-missing-parentid"
         Json =
-          """{"$type":"InsertChild","position":0,"child":{"id":"new","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}}"""
+          """{"$type":"InsertChild","child":{"id":"new","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}}"""
         ExpectedCode = DecodeErrorCode.MISSING_FIELD
         ExpectedPath = "$.parentId"
         IsOp = true
@@ -380,11 +380,38 @@ let all: RejectFixture list =
         Description = "Op missing $type entirely" }
       { Id = "reject-op-insertchild-empty-childid"
         Json =
-          """{"$type":"InsertChild","parentId":"x","position":0,"child":{"id":"","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}}"""
+          """{"$type":"InsertChild","parentId":"x","child":{"id":"","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}}"""
         ExpectedCode = DecodeErrorCode.EMPTY_NODE_ID
         ExpectedPath = "$.child.id"
         IsOp = true
         Description = "InsertChild child carries empty id" }
+
+      // ─── the RETIRED positional slot (Phase 687) ──────────────────────────
+      //
+      // Phase 681 removed `position` / `newPosition`; 681–686 left every
+      // decoder accepting and ignoring it so the hosts could adopt
+      // independently. These two fixtures are the window's close: the field is
+      // now refused BY NAME, which is the only way to close it — the tolerance
+      // was silence (these decoders read named fields and ignore the rest), so
+      // there was never a read to delete.
+      //
+      // Both payloads are otherwise WELL-FORMED, deliberately. A fixture that
+      // also lacked a required field would pass whether the host checked the
+      // retired name first or merely happened to fail earlier, and would
+      // certify nothing about the refusal.
+      { Id = "reject-op-insertchild-retired-position"
+        Json =
+          """{"$type":"InsertChild","parentId":"x","position":0,"child":{"id":"new","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.position"
+        IsOp = true
+        Description = "InsertChild carries the retired 'position' — the migration window is closed (Phase 687)" }
+      { Id = "reject-op-movenode-retired-newposition"
+        Json = """{"$type":"MoveNode","newParentId":"q","newPosition":2,"target":"n"}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.newPosition"
+        IsOp = true
+        Description = "MoveNode carries the retired 'newPosition' — the migration window is closed (Phase 687)" }
 
       // ─── null in structured JVal positions (rule 12: no null on the wire) ──
       //

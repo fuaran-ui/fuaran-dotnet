@@ -7274,6 +7274,43 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
 /// smuggle a thousand times the ceiling.
 let private atRoot (w: Walk) : Walk = { w with Depth = 1 }
 
+/// The RETIRED positional slot on `InsertChild` / `MoveNode` (Phase 687, closing
+/// the window Phase 681 opened).
+///
+/// Phase 681 removed the field and 681–686 left every decoder ACCEPTING AND
+/// IGNORING it, so a stored v1 emission still applied while the hosts adopted
+/// independently. Silence was the whole mechanism: these decoders read named
+/// fields and ignore the rest, so *not reading it* was the tolerance. That is
+/// also why closing the window cannot be done by deletion — removing a read that
+/// never existed changes nothing, and the field would go on decoding silently
+/// forever. The close is therefore an explicit refusal BY NAME, on the
+/// `checkNearMisses` pattern and for its reason: a key that no-ops is worse than
+/// one that fails, because the op decodes, applies, and puts the node somewhere
+/// other than where the ordinal asked.
+///
+/// The check runs BEFORE the required-field decode, mirroring the Phase 864
+/// FormField ordering, so an op carrying both a retired ordinal and some other
+/// defect names the ordinal rather than reporting a defect the author would fix
+/// without ever learning the field is gone. That ordering is fixed across all
+/// five hosts, so which defect surfaces first is deterministic.
+let private retiredPositionalField
+    (path: string)
+    (fields: Map<string, Json>)
+    (name: string)
+    (opKind: string)
+    : Result<unit, DecodeError> =
+    match tryField fields name with
+    | Some _ ->
+        err
+            DecodeErrorCode.WRONG_TYPE
+            (path + "." + name)
+            (sprintf
+                "'%s' was removed from the wire format — %s appends, and order is stated by naming ids with ReorderChildren"
+                name
+                opKind)
+            (Some "a Batch of the structural op followed by ReorderChildren")
+    | None -> Ok()
+
 let rec private decodeTreeOpAst (w: Walk) (path: string) (j: Json) : Result<TreeOp<obj>, DecodeError> =
     if w.Depth > Fuaran.UI.WireLimits.MaxDepth then
         err
@@ -7396,45 +7433,48 @@ and private decodeTreeOpAstCore (w: Walk) (path: string) (j: Json) : Result<Tree
             | Error e, _
             | _, Error e -> Error e
         | Ok "InsertChild" ->
-            let parentR =
-                requireField path fields "parentId" "parent NodeId"
-                |> Result.bind (requireString (path + ".parentId"))
-                |> Result.map NodeId
+            // Phase 687 CLOSED the migration window Phase 681 opened: a legacy
+            // `position` is now a decode error rather than an ignored field.
+            // See `retiredPositionalField` for why the close is a refusal by
+            // name, and why it is bound ahead of the field decodes below rather
+            // than evaluated beside them.
+            retiredPositionalField path fields "position" "InsertChild"
+            |> Result.bind (fun () ->
+                let parentR =
+                    requireField path fields "parentId" "parent NodeId"
+                    |> Result.bind (requireString (path + ".parentId"))
+                    |> Result.map NodeId
 
-            let childR =
-                requireField path fields "child" "child Node object"
-                |> Result.bind (decodeNodeAst (atRoot w) (path + ".child"))
+                let childR =
+                    requireField path fields "child" "child Node object"
+                    |> Result.bind (decodeNodeAst (atRoot w) (path + ".child"))
 
-            // A legacy `position` is ACCEPTED AND IGNORED for the migration window
-            // (phase 681): five hosts adopt independently, and a stored v1 emission
-            // must still apply — as an append, since order is now ReorderChildren's.
-            // The tolerance is a migration mechanism, not a choice offered to an
-            // author: nothing that teaches the wire mentions the field. Phase 687
-            // closes the window and makes it a decode error.
-            match parentR, childR with
-            | Ok parent, Ok child -> Ok(TreeOp.InsertChild(parent, child))
-            | Error e, _
-            | _, Error e -> Error e
+                match parentR, childR with
+                | Ok parent, Ok child -> Ok(TreeOp.InsertChild(parent, child))
+                | Error e, _
+                | _, Error e -> Error e)
         | Ok "RemoveNode" ->
             requireField path fields "target" "target NodeId"
             |> Result.bind (requireString (path + ".target"))
             |> Result.map (fun s -> TreeOp.RemoveNode(NodeId s))
         | Ok "MoveNode" ->
-            let targetR =
-                requireField path fields "target" "target NodeId"
-                |> Result.bind (requireString (path + ".target"))
-                |> Result.map NodeId
+            // Legacy `newPosition` is a decode error — see the InsertChild note.
+            retiredPositionalField path fields "newPosition" "MoveNode"
+            |> Result.bind (fun () ->
+                let targetR =
+                    requireField path fields "target" "target NodeId"
+                    |> Result.bind (requireString (path + ".target"))
+                    |> Result.map NodeId
 
-            let newParentR =
-                requireField path fields "newParentId" "new parent NodeId"
-                |> Result.bind (requireString (path + ".newParentId"))
-                |> Result.map NodeId
+                let newParentR =
+                    requireField path fields "newParentId" "new parent NodeId"
+                    |> Result.bind (requireString (path + ".newParentId"))
+                    |> Result.map NodeId
 
-            // Legacy `newPosition` accepted and ignored — see the InsertChild note.
-            match targetR, newParentR with
-            | Ok target, Ok newParent -> Ok(TreeOp.MoveNode(target, newParent))
-            | Error e, _
-            | _, Error e -> Error e
+                match targetR, newParentR with
+                | Ok target, Ok newParent -> Ok(TreeOp.MoveNode(target, newParent))
+                | Error e, _
+                | _, Error e -> Error e)
         | Ok "ReorderChildren" ->
             let parentR =
                 requireField path fields "parentId" "parent NodeId"

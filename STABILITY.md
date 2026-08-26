@@ -380,10 +380,10 @@ collection whose members have identity. It stays legitimate exactly where identi
 `Columns[i]`, `Fields[i]`, `TabHeaders[i]` and the other bounded payload collections inside a single
 node are contained data, not tree structure, and are unaffected.
 
-**Migration.** A `0.3.x` emission still decodes: the decoder accepts and ignores a legacy
-`position` / `newPosition`, applying the op as an append. That is a migration mechanism for the
-hosts adopting independently, not a supported authoring form — the encoder never writes the field,
-and the tolerance is removed once every host is positionless (`fuaran#687`).
+**Migration.** A `0.3.x` emission decoded for the length of a migration window: the decoder accepted
+and ignored a legacy `position` / `newPosition`, applying the op as an append. That was a migration
+mechanism for the hosts adopting independently, not a supported authoring form — the encoder never
+wrote the field. **The window is now CLOSED — see 0.37.0 below.**
 
 ## Recorded breaking change — 0.5.0, the opaque correlation slot + the validate telemetry leg
 
@@ -1515,3 +1515,43 @@ without the rule slot, and both pass `None` at the construction site the new rec
 spec-record FIELD addition binds neither veneer and neither gate fails — the 801 ruling, applied
 unchanged. Exposing the slot there is a follow-up, recorded here so it reads as a decision rather than
 an oversight.
+
+## Recorded breaking change — 0.37.0, the retired positional slot becomes a decode error (fuaran#687)
+
+The close of the migration window 0.4.0 opened. `JsonDecode.decodeOp` now **REFUSES** a legacy
+`position` on `InsertChild` and `newPosition` on `MoveNode`, returning `WRONG_TYPE` at `$.position` /
+`$.newPosition` with a didactic naming `ReorderChildren`. Through 0.4.0–0.36.x the field was accepted
+and ignored so the five hosts could adopt independently; every host is now positionless and no
+emitter in the estate produces it, so the tolerance is withdrawn.
+
+**Breaking by the wire test, not the API test.** No type, DU arity or signature moves — the change is
+entirely in what the decoder accepts. A persisted `0.3.x` op-stream that was still replaying through
+the tolerance stops replaying, which is precisely the point: it was applying as an append, so it was
+already not doing what its ordinal asked.
+
+**Closing the window meant ADDING a refusal, not removing an acceptance — and that asymmetry is the
+whole design.** The decoder reads named fields and ignores the rest, so *not reading* `position` was
+the tolerance; there was never a read to delete. A host that merely stopped mentioning the field
+would have gone on accepting it forever, indistinguishable from one that had never adopted. The
+refusal is therefore explicit and BY NAME, on the enumerated-near-miss pattern (`checkNearMisses`,
+0.31.0's `FormField` rule slot): §2 rule 2's tolerance of genuinely-unknown keys survives, because a
+slot a future profile may add must stay addable.
+
+**The refusal is ordered AHEAD of the required-field decode**, matching the `FormField` near-miss
+ordering, so an op carrying both a retired ordinal and another defect names the ordinal. Without
+that, an author would fix the other defect and meet this one only on the next run. The ordering is
+fixed identically across all five hosts, so which defect surfaces first is deterministic.
+
+**Host adoption.** The F# reference, the shared corpus and the TypeScript, Python, Go and Rust codec
+legs land together — a decoder that still accepts the field while the corpus calls it a reject is
+non-conformant, so this is not a fixture-follows precedent. Two new reject fixtures
+(`reject-op-insertchild-retired-position`, `reject-op-movenode-retired-newposition`) certify it; both
+payloads are otherwise well-formed, deliberately, so a host that merely fails them earlier for some
+other reason certifies nothing.
+
+**`schema.json` mirrors it structurally** — each op case gains `allOf: [{ not: { required: [<field>] }}]`,
+forbidding by name rather than by `additionalProperties: false`, so the schema and the decoders agree.
+
+**Native surfaces are unaffected, and that is a finding rather than an omission.** `fuaran-swift` and
+`fuaran-kt` carry **no `TreeOp` decoder at all** — they hand canonical op JSON to the Rust core, which
+owns op decoding — so the Rust leg is their adoption. Neither repo needed a change.

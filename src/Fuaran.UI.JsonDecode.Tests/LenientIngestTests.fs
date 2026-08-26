@@ -57,38 +57,54 @@ let tests =
 
 
 [<Tests>]
-let legacyPositionTests =
-    // Phase 681's MIGRATION WINDOW. `InsertChild` / `MoveNode` lost their integer
-    // position (they append; `ReorderChildren` states order). Five hosts adopt
-    // independently, so the decoder ACCEPTS AND IGNORES the legacy field for now —
-    // a stored v1 emission still applies, as an append.
+let retiredPositionTests =
+    // Phase 687 — the CLOSE of the migration window Phase 681 opened.
     //
-    // The tolerance is a migration mechanism, not a second dialect offered to an
-    // author: nothing that teaches the wire mentions the field, and phase 687
-    // turns this into a decode error once every host is positionless.
+    // `InsertChild` / `MoveNode` lost their integer position (they append;
+    // `ReorderChildren` states order by naming ids). Through 681–686 the decoder
+    // ACCEPTED AND IGNORED the legacy field so five hosts could adopt
+    // independently. Every host is now positionless and no emitter in reach
+    // produces the field, so the tolerance is withdrawn: it is a decode error.
+    //
+    // These tests are the going-red half of that change. The window's own tests
+    // asserted the field was silently dropped; keeping them alongside would have
+    // meant asserting both readings at once, so they were REWRITTEN rather than
+    // added to — the accept case is not a thing that still holds.
     testList
-        "legacy positional ops (681 migration window)"
-        [ test "InsertChild with a legacy `position` decodes, and the field is dropped" {
+        "retired positional ops (687 — the window is closed)"
+        [ test "InsertChild with a retired `position` is refused by name" {
               let legacy =
                   """{"$type":"InsertChild","child":{"id":"n","kind":{"$type":"Markdown","text":"x"}},"parentId":"p","position":3}"""
 
               match JsonDecode.decodeOp legacy with
-              | Error e -> failtestf "legacy InsertChild refused during the migration window: %A" e
-              | Ok op ->
-                  Expect.stringContains (CanonicalJson.encodeOp op) "\"parentId\":\"p\"" "parent survives"
-
-                  Expect.isFalse
-                      ((CanonicalJson.encodeOp op).Contains "position")
-                      "re-encoding drops the field — one wire dialect, not two"
+              | Ok _ -> failtest "the retired `position` was accepted — the migration window is closed"
+              | Error e ->
+                  Expect.equal e.Code "WRONG_TYPE" "refused as WRONG_TYPE, the near-miss family's code"
+                  Expect.equal e.Path "$.position" "the error names the retired field, not some downstream defect"
+                  Expect.stringContains e.Message "ReorderChildren" "the didactic names what to use instead"
           }
 
-          test "MoveNode with a legacy `newPosition` decodes, and the field is dropped" {
+          test "MoveNode with a retired `newPosition` is refused by name" {
               let legacy =
                   """{"$type":"MoveNode","newParentId":"q","newPosition":2,"target":"n"}"""
 
               match JsonDecode.decodeOp legacy with
-              | Error e -> failtestf "legacy MoveNode refused during the migration window: %A" e
-              | Ok op -> Expect.isFalse ((CanonicalJson.encodeOp op).Contains "Position") "re-encoding drops the field"
+              | Ok _ -> failtest "the retired `newPosition` was accepted — the migration window is closed"
+              | Error e ->
+                  Expect.equal e.Code "WRONG_TYPE" "refused as WRONG_TYPE"
+                  Expect.equal e.Path "$.newPosition" "the error names the retired field"
+          }
+
+          test "the retired field is named ahead of any other defect in the same op" {
+              // The ordering is fixed across all five hosts (see
+              // `retiredPositionalField`): an author who also omitted a required
+              // field must still learn that the ordinal is gone, rather than
+              // fixing the other defect and meeting this one on the next run.
+              let both = """{"$type":"InsertChild","position":0}"""
+
+              match JsonDecode.decodeOp both with
+              | Ok _ -> failtest "an op missing `parentId` AND carrying `position` decoded"
+              | Error e -> Expect.equal e.Path "$.position" "the retired field wins over the missing required field"
           }
 
           test "the positionless form is what the encoder emits" {

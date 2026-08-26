@@ -1274,9 +1274,21 @@ let private defs: (string * J) list =
                 [ "binding", ref "Binding"; "slot", str; "target", str ]
             duCase "UpdateStyle" [ "style"; "target" ] [ "style", ref "SemanticStyle"; "target", str ]
             duCase "UpdateState" [ "state"; "target" ] [ "state", ref "StateBehaviour"; "target", str ]
-            duCase "InsertChild" [ "child"; "parentId" ] [ "child", ref "Node"; "parentId", str ]
+            // `position` / `newPosition` are the RETIRED positional slots (Phase
+            // 681 removed them, Phase 687 closed the accept-and-ignore window).
+            // Forbidden BY NAME for the same reason the `FormField` near misses
+            // are: rule 2's tolerance of genuinely-unknown keys has to survive,
+            // so `additionalProperties: false` is the wrong instrument. This is
+            // the structural mirror of the decoders' `retiredPositionalField`
+            // refusal — the schema and the hosts must agree, or a payload the
+            // corpus calls a reject validates clean here.
+            forbidding
+                [ "position" ]
+                (duCase "InsertChild" [ "child"; "parentId" ] [ "child", ref "Node"; "parentId", str ])
             duCase "RemoveNode" [ "target" ] [ "target", str ]
-            duCase "MoveNode" [ "newParentId"; "target" ] [ "newParentId", str; "target", str ]
+            forbidding
+                [ "newPosition" ]
+                (duCase "MoveNode" [ "newParentId"; "target" ] [ "newParentId", str; "target", str ])
             duCase "ReorderChildren" [ "newOrder"; "parentId" ] [ "newOrder", arrayOf str; "parentId", str ]
             duCase "ReplaceRoot" [ "node" ] [ "node", ref "Node" ]
             duCase "Batch" [ "ops" ] [ "ops", arrayOf (ref "TreeOp") ] ] ]
