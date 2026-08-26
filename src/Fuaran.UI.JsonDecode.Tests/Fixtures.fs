@@ -4300,6 +4300,169 @@ let gridSortStateKey: Node<obj> =
         ))
         None
 
+// ─── Accessibility-trait family (Phase 955) ─────────────────────────────
+//
+// The `accessibility` node slot (WIRE_FORMAT §3.1) had NO corpus fixture at
+// all before this family: every `"role"` in the corpus was a `BoxSpec` role,
+// so the trait's six slots were exercised nowhere and the wire-to-host leg of
+// the ARIA projection was host-invented rather than corpus-certified. Three
+// independent findings converged on the same hole — an entire projection slot
+// (`hidden` → `aria-hidden`) was missing from two hosts with every conformance
+// gate green, and both native surfaces were covered only by hand-built nodes.
+//
+// What the family pins, and why each piece is here rather than folded into a
+// smaller set:
+//
+//  * **All six slots in one payload** (`a11y-wrapper-all-slots`) — slot
+//    independence and canonical key order are only assertable when every slot
+//    is present at once. `labelledBy` / `describedBy` name REAL sibling ids in
+//    the same tree, so a host that resolves the reference has something to
+//    resolve; a dangling id would certify the string and not the reference.
+//  * **Both `Binding` forms of `label` and `hidden`** — `Static` here, `State`
+//    on the state-bound wrapper. The two are the same slot and different
+//    decode paths, and the defect that raised this family was precisely a host
+//    reading one form only.
+//  * **Both role classes** — a named lower-case role (`region` / `alert` /
+//    `button`, which decode to closed `AriaRole` cases) and a deliberately
+//    MIXED-CASE custom role (`doc-pageFooter`). The custom arm is verbatim
+//    passthrough, so a host that lower-cases or folds it silently rewrites an
+//    author's role — the exact fold bug that motivated naming this case.
+//  * **All three `liveRegion` tokens** — `polite`, `off`, `assertive`.
+//  * **Both placement shapes** — the trait on an ordinary wrapper kind (Box)
+//    and on the semantic-element kinds (`Link`, `Button`, `Image`), because a
+//    placement-sensitive consumer projects them differently and needs both.
+
+/// The maximal shape: every one of the six slots populated at once, on an
+/// ordinary wrapper. `hidden` is an explicit `Static false` — distinct on the
+/// wire from an omitted `hidden`, and a host that collapses the two loses the
+/// author's explicit "this is NOT hidden".
+let a11yWrapperAllSlots: Node<obj> =
+    node
+        "a11y-wrapper-all-slots"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children = [ withId "a11y-wrapper-heading" heading; withId "a11y-wrapper-note" markdown ] }
+        ))
+        (Some
+            { Label = Some(Binding.Static(Some "Channel performance summary"))
+              LabelledBy = Some "a11y-wrapper-heading"
+              DescribedBy = Some "a11y-wrapper-note"
+              Role = Some AriaRole.Region
+              LiveRegion = Some LiveRegionKind.Polite
+              Hidden = Some(Binding.Static(Some false)) })
+
+/// The bound shape: `label` and `hidden` as `State` bindings rather than
+/// literals, plus the mixed-case custom role and the `off` live-region token.
+/// A collapsed footer whose accessible name and hidden-ness both follow host
+/// state is the ordinary reason these slots are bindings at all.
+let a11yWrapperStateBound: Node<obj> =
+    node
+        "a11y-wrapper-state-bound"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Horizontal, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children = [ withId "a11y-footer-note" markdown ] }
+        ))
+        (Some
+            { Label = Some(Binding.State("footerLabel", Some "Site footer"))
+              LabelledBy = None
+              DescribedBy = None
+              // Mixed case on purpose: `AriaRole.Custom` is verbatim
+              // passthrough, so this fixture goes red on any host that folds
+              // case anywhere along the wire-to-attribute path.
+              Role = Some(AriaRole.Custom "doc-pageFooter")
+              LiveRegion = Some LiveRegionKind.Off
+              Hidden = Some(Binding.State("footerCollapsed", Some false)) })
+
+/// The announcement shape: a named role plus the `assertive` token, the
+/// combination a host must project as `role="alert"` + `aria-live="assertive"`.
+let a11yAlertAssertive: Node<obj> =
+    node
+        "a11y-alert-assertive"
+        (NodeKind.Callout(
+            { Tone = ToneVariant.Critical
+              Heading = Some(TextSource.Literal "Upload failed")
+              Body = TextSource.Literal "The file exceeded the size limit."
+              Icon = Some "alert"
+              Dismissable = true }
+        ))
+        (Some
+            { Label = None
+              LabelledBy = None
+              DescribedBy = None
+              Role = Some AriaRole.Alert
+              LiveRegion = Some LiveRegionKind.Assertive
+              Hidden = None })
+
+/// Semantic element 1 of 3 — the accessible name OVERRIDING the visible text.
+/// The canonical "Read more" link: the trait's `label` is what a screen reader
+/// announces, and a host that renders the visible label into `aria-label` (or
+/// drops the slot) is indistinguishable from a conformant one without this.
+let a11yLinkLabelled: Node<obj> =
+    node
+        "a11y-link-labelled"
+        (NodeKind.Link(
+            { Href = Binding.Static(Some "/reports/2026-annual.pdf")
+              Label = TextSource.Literal "Read more"
+              Rel = None
+              Target = None
+              Download = false
+              Protection = None }
+        ))
+        (Some
+            { Label = Some(Binding.Static(Some "Read the 2026 annual report (PDF)"))
+              LabelledBy = None
+              DescribedBy = None
+              Role = None
+              LiveRegion = None
+              Hidden = None })
+
+/// Semantic element 2 of 3 — an explicit named role on a kind that already has
+/// a native one. Redundant by intent: the trait's `role` must win over whatever
+/// element the host chose, and only a case where the two DISAGREE about which
+/// wins would be observable, so pinning agreement is the honest first step.
+let a11yButtonNamed: Node<obj> =
+    node
+        "a11y-button-named"
+        (NodeKind.Button(
+            { Label = TextSource.Literal "Refresh"
+              OnClick = placeholderChain
+              Variant = ButtonVariant.Secondary
+              Icon = Some "refresh"
+              Tooltip = None
+              Disabled = None }
+        ))
+        (Some
+            { Label = Some(Binding.Static(Some "Refresh revenue figures"))
+              LabelledBy = None
+              DescribedBy = None
+              Role = Some AriaRole.Button
+              LiveRegion = None
+              Hidden = None })
+
+/// Semantic element 3 of 3 — the decorative image: empty `alt` plus
+/// `hidden: Static true`, the `aria-hidden` projection slot that was missing
+/// from two hosts entirely. `Static true` is the second of the two `hidden`
+/// binding forms this family pins (the State form is on the bound wrapper).
+let a11yImageDecorative: Node<obj> =
+    node
+        "a11y-image-decorative"
+        (NodeKind.Image(
+            { Src = Binding.Static(Some "/img/section-divider.svg")
+              Alt = TextSource.Literal ""
+              Variant = ImageVariant.Default }
+        ))
+        (Some
+            { Label = None
+              LabelledBy = None
+              DescribedBy = None
+              Role = None
+              LiveRegion = None
+              Hidden = Some(Binding.Static(Some true)) })
+
 // ─── Public collections ─────────────────────────────────────────────────
 
 /// Phase 380 — the certified fragment library's wire fixtures: for every
@@ -4458,7 +4621,16 @@ let allNodes: (string * Node<obj>) list =
       "Mount (§4o — out-only, default-deny, zero-input degenerate)", mountMinimal
       "Mount (§4o — capabilities + TwoWay message shape + value/slot inputs)", mountFull
       "Composite (Dashboard ⊃ Card ⊃ Metric + Stack)", composite
-      "Binding.Format (number/currency/percent/date/relativeTime across locales)", formatBindings ]
+      "Binding.Format (number/currency/percent/date/relativeTime across locales)", formatBindings
+      "Accessibility (Phase 955 — all six trait slots at once on a wrapper; Static label, named role, polite)",
+      a11yWrapperAllSlots
+      "Accessibility (Phase 955 — State-bound label + hidden, mixed-case custom role doc-pageFooter, off)",
+      a11yWrapperStateBound
+      "Accessibility (Phase 955 — the announcement pair: role alert + liveRegion assertive)", a11yAlertAssertive
+      "Accessibility (Phase 955 — Link: the accessible name overriding the visible 'Read more' text)", a11yLinkLabelled
+      "Accessibility (Phase 955 — Button: an explicit named role on a kind that already has a native one)",
+      a11yButtonNamed
+      "Accessibility (Phase 955 — Image: the decorative shape, empty alt + hidden Static true)", a11yImageDecorative ]
     @ stdlibFragments
 
 let opReplaceRoot: TreeOp<obj> = TreeOp.ReplaceRoot composite

@@ -515,4 +515,93 @@ let all: RejectFixture list =
         ExpectedCode = DecodeErrorCode.WRONG_TYPE
         ExpectedPath = "$.kind.fields[0].validation"
         IsOp = false
-        Description = "'validation' near-miss on a FormField — the canonical key is 'rule' (Phase 864)" } ]
+        Description = "'validation' near-miss on a FormField — the canonical key is 'rule' (Phase 864)" }
+
+      // ─── Accessibility trait (Phase 955) ─────────────────────────────────
+      //
+      // Enumerated against the trait's DECLARATION in WIRE_FORMAT §3.1 — one
+      // vector per shape the six slots can be malformed in — rather than
+      // against any host's current behaviour, which is the whole reason the
+      // family exists: two hosts read `label` as a bare string only, and their
+      // own fixtures authored that shape, so nothing was red anywhere.
+      //
+      // The pair that carries the most weight is the last two. §3.1's 2026-08-25
+      // ruling makes the trait's `Binding` slots ordinary `Binding` slots, so
+      // the §3.6 bare-scalar coercion applies — `"hidden": true` is legal
+      // shorthand for `{"$type":"Static","value":true}`. That leniency is about
+      // SHAPE and not about TYPE, and the distinction is invisible until
+      // something pins it: `"hidden": "yes"` takes the same lenient arm and must
+      // still be refused, because a `Binding<bool>` slot's Static parser is
+      // `requireBool`. Without this vector a host could implement "any scalar
+      // becomes Static" and pass every fixture in the corpus.
+
+      // (1) The closed token set. `liveRegion` is one of exactly three strings;
+      // `aria-live`'s real HTML vocabulary is the same three, so a near miss
+      // here is an author reaching for a token that does not exist rather than a
+      // typo, and UNKNOWN_DU_CASE (which names the legal set) is the didactic
+      // refusal rather than a bare WRONG_TYPE.
+      { Id = "reject-a11y-liveregion-unknown"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"accessibility":{"liveRegion":"urgent"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.accessibility.liveRegion"
+        IsOp = false
+        Description =
+          "accessibility.liveRegion outside the closed set — the message names polite | assertive | off (Phase 955)" }
+
+      // (2) The same slot, wrong JSON kind. Distinct from (1) on purpose: a
+      // non-string is not a near miss of a token, so it is WRONG_TYPE and not
+      // UNKNOWN_DU_CASE, and a host that collapses the two loses the difference
+      // between "no such token" and "not a token at all".
+      { Id = "reject-a11y-liveregion-nonstring"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"accessibility":{"liveRegion":true}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility.liveRegion"
+        IsOp = false
+        Description = "accessibility.liveRegion not a JSON string (Phase 955)" }
+
+      // (3) `role` is the OPEN slot — any string decodes, as `AriaRole.Custom`
+      // verbatim — so a non-string is the only way to malform it, and pinning
+      // that is what stops a host from stringifying a number and inventing a
+      // role the author never wrote.
+      { Id = "reject-a11y-role-nonstring"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"accessibility":{"role":42}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility.role"
+        IsOp = false
+        Description =
+          "accessibility.role not a JSON string — the slot is open to any role NAME, not to any value (Phase 955)" }
+
+      // (4) The NodeId-reference slots. One vector covers the class: `labelledBy`
+      // and `describedBy` are the same decoder at two keys.
+      { Id = "reject-a11y-labelledby-nonstring"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"accessibility":{"labelledBy":["h1"]}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility.labelledBy"
+        IsOp = false
+        Description = "accessibility.labelledBy not a NodeId string (Phase 955)" }
+
+      // (5) The trait itself. `accessibility` is an object or absent; a bare
+      // string there is the shape an author reaches for when they think the slot
+      // IS the label ("accessibility": "Home"), which is why it earns a vector of
+      // its own rather than being left to the per-slot cases above.
+      { Id = "reject-a11y-not-object"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"accessibility":"Home"}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility"
+        IsOp = false
+        Description = "accessibility is not an object — the trait is a record, not a bare label (Phase 955)" }
+
+      // (6) The lenient-shape / strict-type boundary, per the preamble above.
+      { Id = "reject-a11y-hidden-nonbool"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"accessibility":{"hidden":"yes"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility.hidden"
+        IsOp = false
+        Description =
+          "accessibility.hidden bare scalar of the wrong type — §3.6 leniency is about SHAPE, not type (Phase 955)" } ]
