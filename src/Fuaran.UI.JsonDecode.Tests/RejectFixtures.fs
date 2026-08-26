@@ -631,4 +631,103 @@ let all: RejectFixture list =
         ExpectedPath = "$.accessibility.hidden"
         IsOp = false
         Description =
-          "accessibility.hidden bare scalar of the wrong type — §3.6 leniency is about SHAPE, not type (Phase 955)" } ]
+          "accessibility.hidden bare scalar of the wrong type — §3.6 leniency is about SHAPE, not type (Phase 955)" }
+
+      // ─── The NUMERIC `Binding<'T>` slots (Phase 1064) ─────────────────────
+      //
+      //  Phase 955/956 closed the SCALAR half of a general defect: five hosts
+      //  named a typed `Binding` decoder at every string / bool slot and checked
+      //  nothing, so `{"href": 7}` decoded. The fix landed at the mechanism, and
+      //  the six a11y vectors above are what pins it. The NUMERIC positions the
+      //  reference host types the same way — `decodeBindingFloat` at
+      //  `Metric.value` / `Metric.trend` / `LabelValueRow.value` /
+      //  `Progress.fraction` / `Drawing.strokeWidth` / `Drawing.opacity` / the
+      //  Number + RangedNumber control values, and `decodeBindingInt` at
+      //  `Tabs.activeIndex` / `Stepper.activeStep` — had NO fixture at all, so a
+      //  host tightening them had nothing to be measured against.
+      //
+      //  The family below is enumerated against §7's accept sets, not against
+      //  any host's current behaviour, and the enumeration is the point:
+      //
+      //    a FLOAT slot accepts  { JSON number } ∪ { "NaN", "Infinity", "-Infinity" }
+      //    an INT   slot accepts { JSON number }                     (§7, truncating)
+      //
+      //  So "a string at a numeric slot rejects" is FALSE at a float slot and
+      //  TRUE at an int slot, and a vector written the naive way would have
+      //  contradicted the three §5/§7 sentinel ACCEPT fixtures Phase 1063 landed
+      //  (`drawing-nonfinite-sentinels`, `spark-nonfinite-sentinel`,
+      //  `metric-nonfinite-sentinel`) on the same corpus days earlier. Each
+      //  vector below is therefore a MEMBER OF THE COMPLEMENT of one of those two
+      //  sets — the wrong JSON kind, a string outside the sentinel set, a
+      //  correctly-spelled sentinel at the slot class that has none, and a
+      //  sentinel whose CASE is wrong.
+      //
+      //  Both `Binding` shapes are covered on purpose: the `Static` envelope and
+      //  the §3.6 bare scalar reach the slot's parser by different arms, and a
+      //  host that types one and not the other passes half a family.
+
+      // (1) FLOAT — a string outside the sentinel set, behind the `Static`
+      // envelope. The plainest statement of the boundary §7 draws: the accept
+      // set is three named tokens, not "strings that might parse".
+      { Id = "reject-binding-float-string"
+        Json =
+          """{"id":"n1","kind":{"$type":"Metric","format":{"$type":"None"},"label":{"$type":"Literal","text":"L"},"value":{"$type":"Static","value":"lots"}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.value"
+        IsOp = false
+        Description =
+          "Binding<float> Static payload is a non-sentinel string — §7's float accept set is JSON number plus exactly \"NaN\" / \"Infinity\" / \"-Infinity\" (Phase 1064)" }
+
+      // (2) FLOAT — a sentinel spelled in the wrong CASE, arriving through the
+      // §3.6 bare-scalar arm. The sharpest vector in the family: it is one
+      // `ToLowerInvariant` away from a fixture that must ACCEPT, so a host that
+      // case-folds the sentinel comparison passes (1) and fails here. It also
+      // proves the bare-scalar coercion routes through the slot's own parser
+      // rather than round-tripping the scalar untouched.
+      { Id = "reject-binding-float-sentinel-case"
+        Json = """{"id":"n1","kind":{"$type":"Progress","fraction":"nan"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fraction"
+        IsOp = false
+        Description =
+          "Binding<float> bare scalar is a MIS-CASED sentinel (\"nan\") — §7's three tokens are exact, and a case-folding host would accept a document no encoder emits (Phase 1064)" }
+
+      // (3) FLOAT — the wrong JSON kind entirely. A bool is not coercible to a
+      // number under any rule in §7, and it is the value a host's untyped
+      // pass-through would carry straight into a numeric render slot.
+      { Id = "reject-binding-float-bool"
+        Json =
+          """{"id":"n1","kind":{"$type":"Metric","format":{"$type":"None"},"label":{"$type":"Literal","text":"L"},"trend":{"$type":"Static","value":true},"value":{"$type":"Static","value":1.0}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.trend"
+        IsOp = false
+        Description =
+          "Binding<float> Static payload is a JSON boolean — a second float slot on the same spec, so a host guarding `value` and not `trend` is caught (Phase 1064)" }
+
+      // (4) INT — the wrong JSON kind, at the slot whose §3.6 bare-scalar arm the
+      // lenient profile explicitly cites (`activeIndex: 1`). The leniency admits
+      // the SHAPE; the slot's `Binding<int>` still governs the value.
+      { Id = "reject-binding-int-bool"
+        Json =
+          """{"id":"n1","kind":{"$type":"Tabs","activeIndex":{"$type":"Static","value":true},"children":[{"id":"m1","kind":{"$type":"Markdown","text":"x"}}]}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.activeIndex"
+        IsOp = false
+        Description =
+          "Binding<int> Static payload is a JSON boolean — §7 gives an integer slot no non-numeric form (Phase 1064)" }
+
+      // (5) INT — a CORRECTLY-spelled non-finite sentinel at an integer slot.
+      // The vector that makes the two accept sets distinguishable rather than
+      // merely stated: §7 confines the sentinels to a float slot, an integer slot
+      // truncates a parsed number and has no representation for NaN at all, and
+      // Phase 1063's published schema widened only the float slot for exactly
+      // this reason. A host that implements "accept the three tokens wherever a
+      // number is expected" passes every fixture in the corpus except this one.
+      { Id = "reject-binding-int-sentinel-string"
+        Json =
+          """{"id":"n1","kind":{"$type":"Stepper","activeStep":{"$type":"Static","value":"NaN"},"children":[{"id":"m1","kind":{"$type":"Markdown","text":"x"}}]}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.activeStep"
+        IsOp = false
+        Description =
+          "Binding<int> Static payload is a §7 non-finite sentinel — the sentinels are FLOAT-slot only; an integer slot has no non-finite form (Phase 1064)" } ]
