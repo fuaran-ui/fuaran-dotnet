@@ -162,8 +162,20 @@ module Stdlib =
                  else
                      Some effect) }
 
-    let private reference<'Msg> (name: string) (args: (string * FragmentArg<'Msg>) list) : Node<'Msg> =
-        { Fuaran.fragmentRef (refIdOf name) name with
+    /// Apply a fragment: a `FragmentRef` at a caller-chosen node id, binding the
+    /// given holes.
+    ///
+    /// **The node id is the hygiene prefix**, not decoration. `FragmentApply`
+    /// namespaces an inserted slot subtree's ids by the ref site and keys each
+    /// bound value at `<refId>.<holeName>`, so two applications of one fragment
+    /// on the same page keep their slots and their values apart precisely
+    /// because their ids differ. Giving both the same id is how they capture
+    /// each other.
+    ///
+    /// The declaration must be present in the emitted tree for the ref to
+    /// resolve — declare once near the root, apply as often as you like.
+    let apply<'Msg> (nodeId: string) (name: string) (args: (string * FragmentArg<'Msg>) list) : Node<'Msg> =
+        { Fuaran.fragmentRef nodeId name with
             Kind =
                 NodeKind.FragmentRef
                     { Name = name
@@ -172,6 +184,10 @@ module Stdlib =
                              Option.None
                          else
                              Some(Map.ofList args)) } }
+
+    /// The `Example` application, at the fragment's own reserved ref id.
+    let private reference<'Msg> (name: string) (args: (string * FragmentArg<'Msg>) list) : Node<'Msg> =
+        apply (refIdOf name) name args
 
     // ════════════════════════════════════════════════════════════════════════
     //  1. labelled-metric-row — a label and its figure on one line.

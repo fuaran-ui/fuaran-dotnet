@@ -348,6 +348,43 @@ let tests =
                                         v)
                     } ]
 
+          test "apply builds a ref at the caller's id — the id is what keeps two applications apart" {
+              let f = List.head library
+
+              let a = Stdlib.apply<unit> "left" f.Name [ "label", FragmentArg.Str "Left" ]
+
+              let b = Stdlib.apply<unit> "right" f.Name [ "label", FragmentArg.Str "Right" ]
+
+              Expect.equal a.Id "left" "apply honours the caller's node id"
+              Expect.equal b.Id "right" "apply honours the caller's node id"
+
+              Expect.notEqual
+                  a.Id
+                  b.Id
+                  "two applications of one fragment must carry distinct ids — the id is the hygiene prefix, so sharing it is how they capture each other"
+
+              match a.Kind, b.Kind with
+              | NodeKind.FragmentRef sa, NodeKind.FragmentRef sb ->
+                  Expect.equal sa.Name f.Name "apply targets the named fragment"
+                  Expect.equal sb.Name f.Name "apply targets the named fragment"
+                  // `FragmentArg` carries a `Node`, which holds closures and so
+                  // supports no equality constraint — compare the bound scalar,
+                  // which is the part this test is about.
+                  let labelOf (spec: FragmentRefSpec<unit>) =
+                      match spec.Args |> Option.defaultValue Map.empty |> Map.tryFind "label" with
+                      | Some(FragmentArg.Str s) -> s
+                      | _ -> "<unbound>"
+
+                  Expect.notEqual (labelOf sa) (labelOf sb) "the two applications bind different arguments"
+              | _ -> failtest "apply must build a FragmentRef"
+
+              // A zero-arg application carries the degenerate wire shape.
+              match (Stdlib.apply<unit> "bare" f.Name []).Kind with
+              | NodeKind.FragmentRef spec ->
+                  Expect.isNone spec.Args "a zero-arg ref omits `args` rather than carrying an empty map"
+              | _ -> failtest "apply must build a FragmentRef"
+          }
+
           test "lookup by name finds every fragment and refuses one that is not there" {
               for f in library do
                   match Stdlib.tryFind<unit> f.Name with
