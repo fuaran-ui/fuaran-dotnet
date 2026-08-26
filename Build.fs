@@ -86,6 +86,15 @@ let private giraffeTestProject =
 let private contentTestProject =
     Path.Combine(repoRoot, "src", "Fuaran.UI.Content.Tests", "Fuaran.UI.Content.Tests.fsproj")
 
+// Phase 380 — the certified fragment library. Drives every entry in
+// `Stdlib.all` through the Phase 359 certification floor (valid-for-all-bindings
+// over each fragment's hole-space) plus the template / reference consistency
+// checks. Corpus-independent — the wire fixtures for the same fragments live in
+// the shared corpus and are gated by the JsonDecode suite; this one runs
+// unconditionally, single-repo checkout included.
+let private fragmentsTestProject =
+    Path.Combine(repoRoot, "src", "Fuaran.UI.Fragments.Tests", "Fuaran.UI.Fragments.Tests.fsproj")
+
 // Page-set layer (SitePage + SiteCheck + Nav projection + RenderPlan + static-
 // export planning). Pure + corpus-independent — runs unconditionally.
 let private siteTestProject =
@@ -199,6 +208,11 @@ let private packableProjects =
       // canonical round-trip). Graduated out of the fuaran-ui.io docs site; no
       // Renderer / Giraffe / Markdig dependency.
       "Fuaran.UI.Content"
+      // Phase 380 — the certified fragment library: a curated set of
+      // parameterised FragmentDecls (typed holes, declared effect classes,
+      // corpus fixtures), certified valid-for-all-bindings before it ships.
+      // Fable-clean — Fuaran.UI only, no renderer / ops / validator dependency.
+      "Fuaran.UI.Fragments"
       // The page-set layer for pure-SSR sites (page model + frontmatter +
       // route derivation + SiteCheck gate + RenderPlan + auto-nav + static
       // export) and its Giraffe host adapter — Giraffe isolated to the
@@ -271,6 +285,7 @@ let private registerTargets () =
         dotnet [ "run"; "--project"; serverDrivenWebSocketTestProject; "-c"; "Release" ] repoRoot
         dotnet [ "run"; "--project"; giraffeTestProject; "-c"; "Release" ] repoRoot
         dotnet [ "run"; "--project"; contentTestProject; "-c"; "Release" ] repoRoot
+        dotnet [ "run"; "--project"; fragmentsTestProject; "-c"; "Release" ] repoRoot
         dotnet [ "run"; "--project"; siteTestProject; "-c"; "Release" ] repoRoot
         dotnet [ "run"; "--project"; cleanRoomTestProject; "-c"; "Release" ] repoRoot
         dotnet [ "run"; "--project"; catalogTestProject; "-c"; "Release" ] repoRoot

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Inherits the transitive FSharp.Compiler.Service ref from
+         Fuaran.UI.Validator (the certification harness lives there); the same
+         over-strict NU1608 FSharp.Core pin applies as in that project. -->
+    <NoWarn>$(NoWarn);NU1608</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="StdlibCertificationTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.Fragments\Fuaran.UI.Fragments.fsproj" />
+    <!-- The certification floor. The dependency runs THIS way only: the library
+         itself never references the validator, which is what keeps it
+         Fable-clean. -->
+    <ProjectReference Include="..\Fuaran.UI.Validator\Fuaran.UI.Validator.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>

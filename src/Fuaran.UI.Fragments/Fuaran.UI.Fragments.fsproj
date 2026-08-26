@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Fragments</PackageId>
+    <Description>The certified fragment library for Fuaran UI — a curated set of parameterised FragmentDecls (typed holes over bounded value-spaces, declared two-axis effect classes, wire round-trip fixtures in the shared conformance corpus) for the composite shapes consumer apps keep re-deriving: a labelled metric row, a KPI strip, a filter bar, a confirm/cancel pair, an empty-state panel, a section header, a metric card, a loading placeholder. Every fragment is certified valid-for-all-bindings by the recipe-certification floor before it ships. APPLICATION-SPACE composition: fragments are reusable composition for consumer apps, content packs and pattern banks — they are not a second language vocabulary and never gate or substitute for NodeKind admission. FSharp.Core + Fuaran.UI only (Fable-clean; no renderer, ops or host dependency). Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;fragments;composition;wire-format;certification</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Stdlib.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Fuaran.UI ONLY. The certification harness lives in Fuaran.UI.Validator
+         (a build-time FCS tool, not Fable-distributed) and reaches IN to this
+         library from the test tier; nothing here reaches out to it. Keeping the
+         dependency one-way is what lets the library stay Fable-clean. -->
+    <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+</Project>
