@@ -108,6 +108,12 @@
     <!-- Phase 819 — the shared duration decomposition under test
          (DurationFormatTests.fs) lives in the renderer spine. -->
     <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <!-- Phase 380 — the certified fragment library. The stdlib fixtures are
+         generated FROM `Stdlib.all` rather than transcribed beside it, so the
+         corpus and the library cannot drift: a fragment whose declaration or
+         representative application changes moves its fixture bytes in the same
+         emit, and the round-trip gate is then the thing that notices. -->
+    <ProjectReference Include="..\Fuaran.UI.Fragments\Fuaran.UI.Fragments.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- The WIRE_FORMAT §15 envelope/tolerance family (EnvelopeFixtures.fs) drives

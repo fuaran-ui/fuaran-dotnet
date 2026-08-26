@@ -129,13 +129,38 @@ module Stdlib =
     /// the slot, which `FragmentApply` replaces with the bound subtree.
     let private slotMarker<'Msg> (id: string) (slot: string) : Node<'Msg> = Fuaran.fragmentRef id slot
 
+    /// Build a declaration in the CANONICAL wire shape.
+    ///
+    /// Both optional fields carry a degenerate form the wire format specifies as
+    /// the one form for that meaning: a zero-hole decl omits `holes`, and — the
+    /// one that is easy to get wrong — a **pure-deterministic decl omits
+    /// `effect`** (`WIRE_FORMAT.md`, "Parameterised fragments": "Omitted when
+    /// pure-deterministic"). The F# type carries `Effect` as an option and
+    /// encodes `Some x` verbatim, so nothing here stops an author writing the
+    /// redundant explicit default — it decodes to the same meaning, and the F#
+    /// host round-trips it happily.
+    ///
+    /// It is still WRONG, and this is not a stylistic preference: a host that
+    /// normalises to the specified form re-encodes the redundant default away
+    /// and its byte-comparison fails. Caught exactly that way — the first cut of
+    /// these fixtures wrote `Some pureDeterministic` and six of them broke the
+    /// Rust host's conformance leg while the F# one stayed green, because F# is
+    /// the encoder that produced the bytes it was checking against. `Stdlib.all`
+    /// pins the rule in the suite so the shape cannot come back.
     let private decl<'Msg> (name: string) (body: Node<'Msg>) (holes: HoleDecl list) (effect: EffectClass) : Node<'Msg> =
         Fuaran.fragmentDecl
             (declIdOf name)
             { Name = name
               Body = body
               Holes = (if List.isEmpty holes then Option.None else Some holes)
-              Effect = Some effect }
+              Effect =
+                (if
+                     effect.HostEffect = HostEffect.Pure
+                     && effect.Determinism = DeterminismSource.Deterministic
+                 then
+                     Option.None
+                 else
+                     Some effect) }
 
     let private reference<'Msg> (name: string) (args: (string * FragmentArg<'Msg>) list) : Node<'Msg> =
         { Fuaran.fragmentRef (refIdOf name) name with

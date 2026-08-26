@@ -184,6 +184,43 @@ let tests =
           }
 
           testList
+              "the declaration is in the CANONICAL wire shape — a pure-deterministic effect is OMITTED"
+              [ for f in library ->
+                    test f.Name {
+                        // `WIRE_FORMAT.md`, "Parameterised fragments": `effect`
+                        // is "Omitted when pure-deterministic". The F# type
+                        // carries it as an option and encodes `Some x` verbatim,
+                        // so the redundant explicit default is expressible here
+                        // and round-trips through THIS host without complaint —
+                        // which is exactly why it needs a test rather than care.
+                        // A host that normalises to the specified form
+                        // re-encodes the default away and its corpus
+                        // byte-comparison fails; the first cut of these fixtures
+                        // did precisely that to the Rust host while every F#
+                        // suite stayed green, because F# is the encoder that
+                        // produced the bytes it was checking against.
+                        let spec = declSpecOf f
+
+                        match spec.Effect with
+                        | Some e ->
+                            Expect.isFalse
+                                (isPureDeterministic e)
+                                (sprintf
+                                    "fragment '%s' declares an EXPLICIT pure-deterministic effect; the canonical wire form omits it (WIRE_FORMAT, Parameterised fragments)"
+                                    f.Name)
+                        | Option.None -> ()
+
+                        // The same rule from the other side: a zero-hole decl
+                        // omits `holes` rather than carrying an empty list.
+                        match spec.Holes with
+                        | Some hs ->
+                            Expect.isNonEmpty
+                                hs
+                                (sprintf "fragment '%s' carries an empty hole list; the canonical form omits it" f.Name)
+                        | Option.None -> ()
+                    } ]
+
+          testList
               "TOTALITY (invariant 1) — every repeat count is bounded"
               [ for f in library ->
                     test f.Name {

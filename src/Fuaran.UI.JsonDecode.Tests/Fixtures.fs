@@ -4302,6 +4302,27 @@ let gridSortStateKey: Node<obj> =
 
 // ─── Public collections ─────────────────────────────────────────────────
 
+/// Phase 380 — the certified fragment library's wire fixtures: for every
+/// fragment in `Fuaran.UI.Fragments.Stdlib.all`, its DECLARATION and one
+/// representative APPLICATION.
+///
+/// Generated from the library rather than transcribed beside it, deliberately.
+/// The library's promise is that every conformant host carries it identically,
+/// and a hand-copied fixture makes that promise about a copy: a fragment whose
+/// declaration changed would keep certifying against the new shape while the
+/// corpus went on pinning the old one, and nothing would be red. Derived this
+/// way, a change moves the fixture bytes in the same emit and the round-trip
+/// gate is what notices.
+///
+/// These add no new wire vocabulary — they are ordinary `FragmentDecl` /
+/// `FragmentRef` nodes over hole and argument shapes the `frag-decl-param` /
+/// `frag-ref-args` pair already exercises in every host.
+let stdlibFragments: (string * Node<obj>) list =
+    Fuaran.UI.Fragments.Stdlib.all<obj>
+    |> List.collect (fun f ->
+        [ sprintf "FragmentDecl (stdlib '%s' — %s)" f.Name f.Summary, f.Decl
+          sprintf "FragmentRef (stdlib '%s' — a representative application)" f.Name, f.Example ])
+
 let allNodes: (string * Node<obj>) list =
     [ "Display/Heading", heading
       "Display/Markdown (Phase 147 Role=Data + Voice=Display)", styleRoleVoice
@@ -4438,6 +4459,7 @@ let allNodes: (string * Node<obj>) list =
       "Mount (§4o — capabilities + TwoWay message shape + value/slot inputs)", mountFull
       "Composite (Dashboard ⊃ Card ⊃ Metric + Stack)", composite
       "Binding.Format (number/currency/percent/date/relativeTime across locales)", formatBindings ]
+    @ stdlibFragments
 
 let opReplaceRoot: TreeOp<obj> = TreeOp.ReplaceRoot composite
 

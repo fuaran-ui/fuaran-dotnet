@@ -121,6 +121,18 @@ Four things, and the last is not optional:
    corpus in the same change-set. A fragment that is in the library but not in the corpus is one the
    other hosts do not carry, and the library's promise is that they all carry it identically.
 
+One trap on step 4, worth knowing before you hit it. The wire format specifies a **canonical** form
+for the declaration's optional fields: a zero-hole decl omits `holes`, and a **pure-deterministic
+decl omits `effect`**. The F# type carries `Effect` as an option and encodes `Some x` verbatim, so
+the redundant explicit default is expressible, decodes to the same meaning, and round-trips through
+this host without a murmur. It is still wrong — a host that normalises to the specified form
+re-encodes the default away and its byte-comparison against the corpus fails. The first cut of these
+fixtures did exactly that: six of them broke a sibling host's conformance leg while every suite here
+stayed green, because this host is the encoder that produced the bytes it was checking against.
+`decl` builds the canonical shape and the suite pins it, so this particular shape cannot come back —
+but the lesson generalises past the one field, and a green local gate is not evidence about the
+other hosts.
+
 Before any of that, ask whether the shape you are naming is genuinely a *composite of existing
 kinds*. If the answer is that it wants to be a kind, this library is the wrong place and
 [`../../docs/VOCABULARY.md`](../../docs/VOCABULARY.md) is the right one.
