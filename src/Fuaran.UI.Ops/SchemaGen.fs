@@ -34,8 +34,12 @@
 //    - Bare-string enums (Orientation, ToneVariant, …) encode as
 //      `{ "type":"string", "enum":[…] }`.
 //    - Closure-bearing slots (§4) encode as the const `"<closure>"`.
-//    - Opaque Binding.Static values (§5) are `true` (any JSON) — the schema
-//      intentionally does not constrain content the encoder cannot decompose.
+//    - `Binding<'T>` is emitted ONCE PER INSTANTIATED ELEMENT TYPE (Phase 1068)
+//      — `Binding_float`, `Binding_str`, `Binding_list_SelectOption`, … — so a
+//      slot's `Static` payload is constrained by the type the slot declares.
+//      The two element types that stay `true` (any JSON) are the §5 abstentions
+//      the encoder genuinely cannot decompose: a structured JSON payload and a
+//      HOSTED row feed.
 //    - Optional (None-omitted) fields are absent from `required`; the schema
 //      does not set `additionalProperties:false`, matching the decoder's
 //      tolerance of unknown keys (rule 2 / field-lookup-by-name).
@@ -223,6 +227,98 @@ let private duCase (disc: string) (required: string list) (props: (string * J) l
 /// A DU position — `oneOf` of its branches.
 let private union (branches: J list) : J = JObj [ "oneOf", JArr branches ]
 
+/// A `Binding<'T>` slot (Phase 1068) — a `$ref` to the definition instantiated
+/// at `elem`, not to one shared type-erased `Binding`. `elem` is the element
+/// type's mangled name (`str` / `float` / `list_SelectOption` / …), spelled the
+/// same way the IDL's own schema leg mangles a type argument so the two
+/// artefacts' `$defs` carry the same names for the same instantiations.
+let private binding (elem: string) : J = ref ("Binding_" + elem)
+
+/// One `Binding<'T>` definition, instantiated at a single element type
+/// (Phase 1068). Every `'T`-typed wire slot — `Static.value` and the three
+/// `defaultValue`s — carries `elem` rather than the any-JSON envelope the single
+/// shared definition had to use. That envelope was not a limit of the dialect:
+/// the element type is present in the IDL at every slot, and discarding it left
+/// the published schema unable to refuse a boolean at `Metric.trend` or a §7
+/// sentinel at the integer `Stepper.activeStep` (Phase 1064 measured all four).
+///
+/// `self` is this instantiation's own `$defs` name: `Local.initialFrom` is a
+/// `Binding<'T>` at the SAME element type, so it points back here. The two
+/// slots that are NOT at `'T` keep their own fixed instantiations —
+/// `Format.source` is always `Binding<float>` and `I18n.args` always
+/// `Binding<JSON>` — which is the polymorphic recursion the IDL declares.
+///
+/// Two element types stay any-JSON on purpose, and that is abstention rather
+/// than erasure: a JSON payload position (§ rule 12) and a HOSTED slot (grid /
+/// chart row feeds) carry content the wire deliberately does not decompose —
+/// "don't constrain content the encoder doesn't decompose" (§5 / §13). What
+/// changed is that they are now *named* abstentions at their own slots instead
+/// of every slot inheriting one.
+let private bindingDef (self: string) (elem: J) : J =
+    union
+        // Phase 677 — `value` is OPTIONAL: absence is structural, so a binding
+        // carrying no value omits the key rather than emitting JSON null (for
+        // which the wire model has no case).
+        [ duCase "Static" [] [ "value", elem ]
+          // `dependsOn` (Phase 421) is optional (omitted-when-empty) — the declared filter edge.
+          duCase "Query" [ "name" ] [ "dependsOn", arrayOf str; "name", str ]
+          duCase "Filter" [ "name" ] [ "defaultValue", elem; "name", str ]
+          // `defaultValue` (0.2.9, Phase 629) is optional — yielded until the
+          // user first selects a row; the Filter.defaultValue convention.
+          // `field` (0.2.10, Phase 632) is optional — the declarative
+          // row-field projection off the clicked row.
+          duCase "Selection" [ "nodeId" ] [ "defaultValue", elem; "field", str; "nodeId", str ]
+          // Phase 677 — `defaultValue` is OPTIONAL for the same reason as `Static.value`.
+          duCase "State" [ "key" ] [ "defaultValue", elem; "key", str ]
+          duCase "Computed" [ "fn" ] [ "fn", closure ]
+          // Phase 765 — `Now` carries NO wire fields: the instant is furnished
+          // by the host at resolve time, never serialised. `{"$type":"Now"}`
+          // is the whole form.
+          duCase "Now" [] []
+          duCase
+              "I18n"
+              [ "key" ]
+              [ "args", JObj [ "type", JStr "object"; "additionalProperties", binding "json" ]
+                "key", str ]
+          duCase
+              "Local"
+              [ "flushOn"; "format"; "initialFrom"; "onCommit"; "parse" ]
+              [ "flushOn", ref "LocalFlushTrigger"
+                "format", closure
+                "initialFrom", ref self
+                "onCommit", closure
+                "parse", closure ]
+          // Locale-aware formatted binding (Phase 102). `source` is always a
+          // Binding<float>; `format` / `locale` are the bounded DUs.
+          duCase
+              "Format"
+              [ "format"; "locale"; "source" ]
+              [ "format", ref "Format"
+                "locale", ref "LocaleSource"
+                "source", binding "float" ]
+          // Declarative dataframe transform (Phase 282 — the Compute layer). `source` (a
+          // Fuaran.Core.DataSource object) + `pipeline` (a Fuaran.Core Transform-step array) are
+          // Fuaran.Core values whose detailed shape is owned + certified by Fuaran.Core's own
+          // codec; the host schema describes them structurally (array / object) without re-deriving
+          // Core's algebra schema — the same "don't constrain content the encoder doesn't
+          // decompose" posture as an obj-erased JSON payload (§5 / §13).
+          // `params` (Phase 424) is optional (omitted-when-empty) — each entry binds a `ColExpr.Param`
+          // name to a scalar `Binding` source; absent leaves the Phase 282 shape byte-identical.
+          // `source` (Phase 818) is EITHER a Fuaran.Core DataSource object OR a live
+          // binding-shaped source (`{"$type":"State"|"Selection"|"Query",…}` — preserved for
+          // subscription-semantics re-evaluation); both are objects, so the structural
+          // `object_` posture above covers the widened slot without re-deriving either shape.
+          duCase
+              "Transform"
+              [ "pipeline"; "source" ]
+              [ "params", arrayOf (record [ "from"; "name" ] [ "from", binding "json"; "name", str ])
+                "pipeline", arrayOf anyJson
+                "source", object_ ]
+          // Invoke a host-registered compute capability (Phase 283). `capabilityId` references a
+          // capability in the host registry; `args` are scalar `(addr, value)` pairs validated
+          // host-side against the capability signature. The body is never on the wire.
+          duCase "Invoke" [ "args"; "capabilityId" ] [ "args", arrayOf object_; "capabilityId", str ] ]
+
 /// A `$type`-discriminated branch whose spec fields are hoisted to the top level
 /// — the flat wire carries no `spec` wrapper (WIRE_FORMAT.md §3.2). The value
 /// must validate as the spec record AND carry the `$type` const, so we `allOf`
@@ -288,83 +384,40 @@ let private defs: (string * J) list =
                 [ str
                   union
                       [ duCase "Literal" [ "text" ] [ "text", str ]
-                        duCase "Bound" [ "binding" ] [ "binding", ref "Binding" ]
+                        duCase "Bound" [ "binding" ] [ "binding", binding "str" ]
                         duCase "I18n" [ "args"; "key" ] [ "args", jsonValueMap; "key", str ] ] ] ]
 
-      // ── Binding<'T> (§3.3) ────────────────────────────────────────────────
-      // Static.value / State.defaultValue are obj-erased (§5) → any JSON.
-      // Phase 429: the slot-typed payloads (options / values / series /
-      // markers) have typed wire forms (WIRE_FORMAT §"Typed Static
-      // payloads"), but `Binding` is one generic definition shared by every
-      // slot, so the schema keeps the any-JSON envelope; `SelectOption`
-      // below already names the element record shape. fuaran#665: grid/chart
-      // ROWS join the typed payloads — an array of row objects with scalar
-      // cells (the legacy `"<opaque>"` sentinel stays decode-accepted) — and
-      // ride the same shared any-JSON envelope here.
-      "Binding",
-      union
-          // Phase 677 — `value` is OPTIONAL: absence is structural, so a binding
-          // carrying no value omits the key rather than emitting JSON null (for
-          // which the wire model has no case).
-          [ duCase "Static" [] [ "value", anyJson ]
-            // `dependsOn` (Phase 421) is optional (omitted-when-empty) — the declared filter edge.
-            duCase "Query" [ "name" ] [ "dependsOn", arrayOf str; "name", str ]
-            duCase "Filter" [ "name" ] [ "defaultValue", anyJson; "name", str ]
-            // `defaultValue` (0.2.9, Phase 629) is optional — yielded until the
-            // user first selects a row; the Filter.defaultValue convention.
-            // `field` (0.2.10, Phase 632) is optional — the declarative
-            // row-field projection off the clicked row.
-            duCase "Selection" [ "nodeId" ] [ "defaultValue", anyJson; "field", str; "nodeId", str ]
-            // Phase 677 — `defaultValue` is OPTIONAL for the same reason as `Static.value`.
-            duCase "State" [ "key" ] [ "defaultValue", anyJson; "key", str ]
-            duCase "Computed" [ "fn" ] [ "fn", closure ]
-            // Phase 765 — `Now` carries NO wire fields: the instant is furnished
-            // by the host at resolve time, never serialised. `{"$type":"Now"}`
-            // is the whole form.
-            duCase "Now" [] []
-            duCase
-                "I18n"
-                [ "key" ]
-                [ "args", JObj [ "type", JStr "object"; "additionalProperties", ref "Binding" ]
-                  "key", str ]
-            duCase
-                "Local"
-                [ "flushOn"; "format"; "initialFrom"; "onCommit"; "parse" ]
-                [ "flushOn", ref "LocalFlushTrigger"
-                  "format", closure
-                  "initialFrom", ref "Binding"
-                  "onCommit", closure
-                  "parse", closure ]
-            // Locale-aware formatted binding (Phase 102). `source` is always a
-            // Binding<float>; `format` / `locale` are the bounded DUs.
-            duCase
-                "Format"
-                [ "format"; "locale"; "source" ]
-                [ "format", ref "Format"
-                  "locale", ref "LocaleSource"
-                  "source", ref "Binding" ]
-            // Declarative dataframe transform (Phase 282 — the Compute layer). `source` (a
-            // Fuaran.Core.DataSource object) + `pipeline` (a Fuaran.Core Transform-step array) are
-            // Fuaran.Core values whose detailed shape is owned + certified by Fuaran.Core's own
-            // codec; the host schema describes them structurally (array / object) without re-deriving
-            // Core's algebra schema — the same "don't constrain content the encoder doesn't
-            // decompose" posture as obj-erased `Static.value` (§5 / §13).
-            // `params` (Phase 424) is optional (omitted-when-empty) — each entry binds a `ColExpr.Param`
-            // name to a scalar `Binding` source; absent leaves the Phase 282 shape byte-identical.
-            // `source` (Phase 818) is EITHER a Fuaran.Core DataSource object OR a live
-            // binding-shaped source (`{"$type":"State"|"Selection"|"Query",…}` — preserved for
-            // subscription-semantics re-evaluation); both are objects, so the structural
-            // `object_` posture above covers the widened slot without re-deriving either shape.
-            duCase
-                "Transform"
-                [ "pipeline"; "source" ]
-                [ "params", arrayOf (record [ "from"; "name" ] [ "from", ref "Binding"; "name", str ])
-                  "pipeline", arrayOf anyJson
-                  "source", object_ ]
-            // Invoke a host-registered compute capability (Phase 283). `capabilityId` references a
-            // capability in the host registry; `args` are scalar `(addr, value)` pairs validated
-            // host-side against the capability signature. The body is never on the wire.
-            duCase "Invoke" [ "args"; "capabilityId" ] [ "args", arrayOf object_; "capabilityId", str ] ]
+      // ── Binding<'T> (§3.3) — ONE DEFINITION PER INSTANTIATED ELEMENT TYPE ─
+      //
+      // Phase 1068. Every `Binding` slot used to be one `$ref` to a single
+      // type-erased `#/$defs/Binding` whose `Static` arm was `"value": true`,
+      // so a boolean at `Metric.trend`, a non-sentinel string at
+      // `Metric.value` and a §7 sentinel at the integer `Stepper.activeStep`
+      // were all structurally well-formed by every rule the schema stated
+      // while the decoder refused all four (Phase 1064's measurement, pinned
+      // inversely so the finding could not go quiet). The element type was
+      // never lost on the way — the IDL carries it at every slot — so this
+      // was expressible in Draft 2020-12 and simply not expressed.
+      //
+      // Phase 429's typed `Static` payloads (options / values / series /
+      // markers) and fuaran#665's grid/chart ROW feeds are what these
+      // instantiations name: the element record shapes (`SelectOption`,
+      // `MapMarker`) were already defined below and are now REACHED from
+      // their slots rather than sitting beside them. The rows feed stays
+      // any-JSON — see `bindingDef` for why that is abstention, not erasure.
+      //
+      // Names are sorted so this block reads as an enumeration; the `$defs`
+      // object is order-free (resolution is by name).
+      "Binding_bool", bindingDef "Binding_bool" boolean
+      "Binding_float", bindingDef "Binding_float" number
+      "Binding_hosted", bindingDef "Binding_hosted" anyJson
+      "Binding_int", bindingDef "Binding_int" integer
+      "Binding_json", bindingDef "Binding_json" anyJson
+      "Binding_list_MapMarker", bindingDef "Binding_list_MapMarker" (arrayOf (ref "MapMarker"))
+      "Binding_list_SelectOption", bindingDef "Binding_list_SelectOption" (arrayOf (ref "SelectOption"))
+      "Binding_list_float", bindingDef "Binding_list_float" (arrayOf number)
+      "Binding_list_str", bindingDef "Binding_list_str" (arrayOf str)
+      "Binding_str", bindingDef "Binding_str" str
 
       "LocalFlushTrigger",
       union
@@ -398,7 +451,7 @@ let private defs: (string * J) list =
             JObj
                 [ "allOf",
                   JArr
-                      [ duCase "SetState" [ "key" ] [ "key", str; "value", jsonValue; "valueFrom", ref "Binding" ]
+                      [ duCase "SetState" [ "key" ] [ "key", str; "value", jsonValue; "valueFrom", binding "json" ]
                         JObj
                             [ "oneOf",
                               JArr
@@ -465,8 +518,8 @@ let private defs: (string * J) list =
       // `FilterKind` treatment, generalised).
       "FormFieldKind",
       union
-          [ duCase "Text" [] [ "onChange", closure; "value", ref "Binding" ]
-            duCase "Number" [] [ "onChange", closure; "value", ref "Binding" ]
+          [ duCase "Text" [] [ "onChange", closure; "value", binding "str" ]
+            duCase "Number" [] [ "onChange", closure; "value", binding "float" ]
             duCase
                 "Range"
                 []
@@ -475,14 +528,19 @@ let private defs: (string * J) list =
                   "min", number
                   "max", number
                   "step", number ]
-            duCase "Checkbox" [] [ "onToggle", closure; "value", ref "Binding" ]
-            duCase "Toggle" [] [ "onToggle", closure; "value", ref "Binding" ]
-            duCase "Choice" [ "options" ] [ "onChange", closure; "options", ref "Binding"; "value", ref "Binding" ]
+            duCase "Checkbox" [] [ "onToggle", closure; "value", binding "bool" ]
+            duCase "Toggle" [] [ "onToggle", closure; "value", binding "bool" ]
+            duCase
+                "Choice"
+                [ "options" ]
+                [ "onChange", closure
+                  "options", binding "list_SelectOption"
+                  "value", binding "str" ]
             duCase
                 "RangedNumber"
                 []
                 [ "onChange", closure
-                  "value", ref "Binding"
+                  "value", binding "float"
                   "min", number
                   "max", number
                   "step", number ]
@@ -490,15 +548,15 @@ let private defs: (string * J) list =
                 "SegmentedChoice"
                 [ "options"; "orientation" ]
                 [ "onChange", closure
-                  "options", ref "Binding"
+                  "options", binding "list_SelectOption"
                   "orientation", ref "Orientation"
-                  "value", ref "Binding" ]
-            duCase "TextArea" [ "rows" ] [ "onChange", closure; "rows", integer; "value", ref "Binding" ]
+                  "value", binding "str" ]
+            duCase "TextArea" [ "rows" ] [ "onChange", closure; "rows", integer; "value", binding "str" ]
             duCase
                 "Date"
                 [ "variant" ]
                 [ "onChange", closure
-                  "value", ref "Binding"
+                  "value", binding "str"
                   "variant", ref "DateVariant"
                   "min", str
                   "max", str
@@ -559,10 +617,10 @@ let private defs: (string * J) list =
           [ "emphasis", ref "Emphasis"
             "format", ref "CellFormat"
             "label", ref "TextSource"
-            "value", ref "Binding"
+            "value", binding "float"
             "tone", ref "ToneVariant"
             "weight", ref "StyleWeight"
-            "trend", ref "Binding"
+            "trend", binding "float"
             "trendFormat", ref "CellFormat"
             "icon", str
             "subtext", ref "TextSource" ]
@@ -579,7 +637,7 @@ let private defs: (string * J) list =
       "LinkSpec",
       record
           [ "download"; "href"; "label" ]
-          [ "href", ref "Binding"
+          [ "href", binding "str"
             "label", ref "TextSource"
             "download", boolean
             "rel", str
@@ -591,7 +649,7 @@ let private defs: (string * J) list =
       "ImageSpec",
       record
           [ "alt"; "src"; "variant" ]
-          [ "alt", ref "TextSource"; "src", ref "Binding"; "variant", ref "ImageVariant" ]
+          [ "alt", ref "TextSource"; "src", binding "str"; "variant", ref "ImageVariant" ]
 
       "ListSpec", record [ "items"; "ordered" ] [ "items", arrayOf (ref "TextSource"); "ordered", boolean ]
 
@@ -602,7 +660,7 @@ let private defs: (string * J) list =
           [ "message"; "open" ]
           [ "dismissable", boolean
             "message", ref "TextSource"
-            "open", ref "Binding"
+            "open", binding "bool"
             "tone", ref "ToneVariant" ]
 
       "CodeBlockSpec",
@@ -616,7 +674,7 @@ let private defs: (string * J) list =
 
       "MathSpec", record [ "display"; "source" ] [ "display", ref "MathDisplay"; "source", str ]
 
-      "SparklineSpec", record [ "source" ] [ "source", ref "Binding" ]
+      "SparklineSpec", record [ "source" ] [ "source", binding "list_float" ]
 
 
       "SkeletonSpec", record [ "rows" ] [ "rows", integer ]
@@ -640,7 +698,7 @@ let private defs: (string * J) list =
       record
           // Phase 460 — `tone` omitted-when-default; out of `required`, stays in `props`.
           [ "fraction" ]
-          [ "fraction", ref "Binding"
+          [ "fraction", binding "float"
             "indeterminate", boolean
             "tone", ref "ToneVariant"
             "label", ref "TextSource"
@@ -654,7 +712,7 @@ let private defs: (string * J) list =
           [ "emphasis", boolean
             "format", ref "CellFormat"
             "label", ref "TextSource"
-            "value", ref "Binding"
+            "value", binding "float"
             "help", ref "TextSource" ]
 
       "FactSpec",
@@ -683,10 +741,10 @@ let private defs: (string * J) list =
       "DrawStyle",
       record
           []
-          [ "fill", ref "Binding"
-            "stroke", ref "Binding"
-            "strokeWidth", ref "Binding"
-            "opacity", ref "Binding"
+          [ "fill", binding "str"
+            "stroke", binding "str"
+            "strokeWidth", binding "float"
+            "opacity", binding "float"
             // Text-only fields (Phase 528.1), all optional.
             "textAnchor", ref "TextAnchor"
             "fontSize", number
@@ -792,7 +850,7 @@ let private defs: (string * J) list =
 
       // Phase 864 — the declared per-field constraint. `FormFieldKind` names the
       // CONTROL; `rule` names the ACCEPTED SET.
-      "CompareRule", record [ "against"; "op" ] [ "against", ref "Binding"; "op", ref "CompareOp" ]
+      "CompareRule", record [ "against"; "op" ] [ "against", binding "json"; "op", ref "CompareOp" ]
 
       // Two of the decoder's three refusals are expressible here and both are
       // stated rather than exempted. `anyOf` over the five constraint slots is
@@ -847,7 +905,7 @@ let private defs: (string * J) list =
           [ "fields", arrayOf (ref "FormField")
             "onSubmit", ref "Action"
             "submitLabel", ref "TextSource"
-            "disabled", ref "Binding" ]
+            "disabled", binding "bool" ]
 
       "FilterSpec",
       record [ "kind"; "label"; "name" ] [ "kind", ref "FormFieldKind"; "label", ref "TextSource"; "name", str ]
@@ -859,7 +917,7 @@ let private defs: (string * J) list =
             "onClick", ref "Action"
             "variant", ref "ButtonVariant"
             "icon", str
-            "disabled", ref "Binding" ]
+            "disabled", binding "bool" ]
 
       "SelectSpec",
       record
@@ -870,14 +928,14 @@ let private defs: (string * J) list =
           [ "label"; "source"; "value" ]
           [ "label", ref "TextSource"
             "onChange", closure
-            "source", ref "Binding"
-            "value", ref "Binding"
+            "source", binding "list_SelectOption"
+            "value", binding "str"
             "placeholder", ref "TextSource"
-            "disabled", ref "Binding"
+            "disabled", binding "bool"
             // Phase 291 — multi-select. Optional in the schema (omitted when
             // single-select), matching the decoder's tolerance.
             "multiple", boolean
-            "values", ref "Binding"
+            "values", binding "list_str"
             "onChangeMulti", closure ]
 
       "FileUploadSpec",
@@ -887,7 +945,7 @@ let private defs: (string * J) list =
             "label", ref "TextSource"
             "multiple", boolean
             "onSelect", closure
-            "disabled", ref "Binding" ]
+            "disabled", binding "bool" ]
 
       "InputKind",
       union
@@ -960,7 +1018,7 @@ let private defs: (string * J) list =
                 [ "column"; "direction" ]
                 [ "column", JObj [ "type", JStr "integer"; "minimum", JInt 0 ]
                   "direction", enumDef [ "asc"; "desc" ] ]
-            "source", ref "Binding"
+            "source", binding "hosted"
             "onRowClick", closure
             // Phase 393 — the static read-only mode (folded in from the retired `Table`).
             // Phase 801 — plus the optional declarative sort intent. `column` carries
@@ -983,7 +1041,7 @@ let private defs: (string * J) list =
       record
           [ "kind"; "source"; "xField"; "yFields" ]
           [ "kind", ref "ChartKind"
-            "source", ref "Binding"
+            "source", binding "hosted"
             "xField", str
             "yFields", arrayOf str
             // `stacked` (Phase 126) is now carried; optional in the schema to
@@ -1022,7 +1080,7 @@ let private defs: (string * J) list =
           [ "centreLatitude"; "centreLongitude"; "source"; "zoom" ]
           [ "centreLatitude", number
             "centreLongitude", number
-            "source", ref "Binding"
+            "source", binding "list_MapMarker"
             "zoom", integer
             "onMarkerClick", closure ]
 
@@ -1055,7 +1113,7 @@ let private defs: (string * J) list =
 
       "SplitPanelSpec", record [ "children"; "weight" ] [ "children", arrayOf (ref "Node"); "weight", number ]
 
-      "TabHeader", record [ "label" ] [ "label", ref "TextSource"; "icon", str; "disabled", ref "Binding" ]
+      "TabHeader", record [ "label" ] [ "label", ref "TextSource"; "icon", str; "disabled", binding "bool" ]
 
       "TabsSpec",
       record
@@ -1068,17 +1126,17 @@ let private defs: (string * J) list =
             // `onSelect` / `onSelectTag` (Phase 426) are optional closures —
             // present as the sentinel when closure-authored, omitted for the
             // declarative (write-back) shape.
-            "activeIndex", ref "Binding"
+            "activeIndex", binding "int"
             "onSelect", closure
             "tabHeaders", arrayOf (ref "TabHeader")
             "tabTags", arrayOf str
-            "activeTag", ref "Binding"
+            "activeTag", binding "str"
             "onSelectTag", closure ]
 
       "StepperSpec",
       record
           [ "activeStep"; "children" ]
-          [ "activeStep", ref "Binding"
+          [ "activeStep", binding "int"
             "children", arrayOf (ref "Node")
             // `onSelect` is now carried; optional in the schema to match the
             // decoder's tolerance of legacy wire that omits it (the closure
@@ -1096,7 +1154,7 @@ let private defs: (string * J) list =
           [ "children", arrayOf (ref "Node")
             "defaultOpen", boolean
             "heading", ref "TextSource"
-            "open", ref "Binding"
+            "open", binding "bool"
             "onToggle", closure ]
 
       "ModalSpec",
@@ -1108,7 +1166,7 @@ let private defs: (string * J) list =
           [ "children", arrayOf (ref "Node")
             "dismissable", boolean
             "onDismiss", ref "Action"
-            "open", ref "Binding"
+            "open", binding "bool"
             "heading", ref "TextSource" ]
 
       "ScrollAreaSpec",
@@ -1215,7 +1273,7 @@ let private defs: (string * J) list =
                             [ "cases", arrayOf (record [ "child"; "match" ] [ "child", ref "Node"; "match", str ])
                               "default", ref "Node"
                               "stateKey", str
-                              "on", ref "Binding" ]
+                              "on", binding "str" ]
                         JObj
                             [ "anyOf",
                               JArr
@@ -1264,12 +1322,12 @@ let private defs: (string * J) list =
       "Accessibility",
       record
           []
-          [ "label", ref "Binding"
+          [ "label", binding "str"
             "labelledBy", str
             "describedBy", str
             "role", ref "AriaRole"
             "liveRegion", ref "LiveRegionKind"
-            "hidden", ref "Binding" ]
+            "hidden", binding "bool" ]
 
       "Node",
       // `state` and `style` are optional on the flat wire — omitted when empty /
@@ -1290,7 +1348,7 @@ let private defs: (string * J) list =
             duCase
                 "ReplaceBinding"
                 [ "binding"; "slot"; "target" ]
-                [ "binding", ref "Binding"; "slot", str; "target", str ]
+                [ "binding", binding "json"; "slot", str; "target", str ]
             duCase "UpdateStyle" [ "style"; "target" ] [ "style", ref "SemanticStyle"; "target", str ]
             duCase "UpdateState" [ "state"; "target" ] [ "state", ref "StateBehaviour"; "target", str ]
             // `position` / `newPosition` are the RETIRED positional slots (Phase

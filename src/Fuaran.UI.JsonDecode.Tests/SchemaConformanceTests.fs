@@ -110,60 +110,28 @@ let private schemaInexpressibleRejects: Set<string> =
           "reject-transform-source-empty-wrapper"
           "reject-fieldrule-length-unordered" ]
 
-/// Reject fixtures the emitted schema **could** express and does not, because
-/// `Binding<'T>` is emitted ONCE, type-erased. A separate list from
-/// `schemaInexpressibleRejects` above ON PURPOSE: that one is a statement about
-/// the DIALECT ("Draft 2020-12 has no keyword relating two sibling values"), and
-/// folding a modelling decision into it would quietly turn a finding into a law.
-///
-/// The fact, measured by Phase 1064: every `Binding` slot in `schema.json` is
-/// `{"$ref":"#/$defs/Binding"}`, and that single definition's `Static` arm is
-/// `"value": true` — any JSON at all. The element type is NOT lost on the way:
-/// `idl.json` carries `Metric.value` as
-/// `{"$type":"union","args":[{"$type":"float"}],"name":"Binding"}`, and the
-/// generator discards `args` when it emits the `$ref`. So the four fixtures
-/// below — a boolean and a non-sentinel string at a `Binding<float>` slot, a
-/// boolean and a §7 sentinel at a `Binding<int>` slot — are structurally
-/// well-formed by every rule the schema states, while the decoder refuses all
-/// four. (Their sibling `reject-binding-float-sentinel-case` is NOT here: it
-/// reaches the slot through §3.6's bare-scalar arm, which the schema never
-/// modelled, so the schema refuses it on shape.)
-///
-/// Closing it means emitting one `$def` per instantiated element type and
-/// pointing each slot at its own — in BOTH artefacts that state the rule, the
-/// tier's `SchemaGen` and the IDL's `schemaOf` (the Phase 1063 lesson: they are
-/// one rule written twice and must move together). That is a schema-generator
-/// change with its own blast radius across every published Binding slot, not a
-/// host-decoder change, so Phase 1064 measured it and left it — see the
-/// "Type the published schema's `Binding` slots" Tidy-Up bundle.
-///
-/// Asserted schema-VALID below, exactly like the set above: when the generator
-/// gains per-slot Binding types this test goes red and the list shrinks
-/// deliberately.
-let private schemaTypeErasedBindingRejects: Set<string> =
-    set
-        [ "reject-binding-float-bool"
-          "reject-binding-float-string"
-          "reject-binding-int-bool"
-          "reject-binding-int-sentinel-string" ]
+// Phase 1068 — `schemaTypeErasedBindingRejects` is GONE, and its deletion is the
+// point rather than a tidy-up. Phase 1064 found four reject fixtures the emitted
+// schema *could* express and did not, because `Binding<'T>` was emitted ONCE,
+// type-erased: every slot was `{"$ref":"#/$defs/Binding"}` and that definition's
+// `Static` arm was `"value": true` — any JSON at all. They were kept in their own
+// named set rather than folded into `schemaInexpressibleRejects` above, because
+// that list is a statement about the DIALECT and a modelling decision filed there
+// would quietly have become a law; and they were pinned INVERSELY — asserted
+// schema-VALID — so the exemption could not outlive its reason.
+//
+// It did not. `SchemaGen` now emits one `$def` per instantiated element type
+// (`Binding_float`, `Binding_int`, `Binding_str`, …) and points each slot at its
+// own, as does the IDL's schema leg in the same change-set. The four —
+// `reject-binding-float-bool`, `reject-binding-float-string`,
+// `reject-binding-int-bool`, `reject-binding-int-sentinel-string` — are refused
+// by the published schema now and take the ORDINARY reject path below, which is
+// the assertion that matters. Their sibling `reject-binding-float-sentinel-case`
+// was never on the list: it reaches the slot through §3.6's bare-scalar arm,
+// which the schema never modelled, so the schema always refused it on shape.
 
 let private rejectTest (e: Corpus.FixtureEntry) : Test =
-    if schemaTypeErasedBindingRejects.Contains e.Id then
-        testCase
-            (sprintf "reject — %s (%s) — decoder-only rule, the schema's Binding is type-erased" e.Description e.Id)
-            (fun () ->
-                let wire = Corpus.readPayload corpusRoot e.InputFile
-
-                match validate wire with
-                | Some true -> ()
-                | Some false ->
-                    failtestf
-                        "the schema now REFUSES '%s' — the published Binding slots have gained their element type; remove it from schemaTypeErasedBindingRejects\n  input: %s"
-                        e.Id
-                        wire
-                | None ->
-                    failtestf "exempt reject-fixture '%s' is not parseable JSON — it belongs in the ordinary set" e.Id)
-    elif schemaInexpressibleRejects.Contains e.Id then
+    if schemaInexpressibleRejects.Contains e.Id then
         testCase
             (sprintf "reject — %s (%s) — decoder-only rule, schema cannot express it" e.Description e.Id)
             (fun () ->
