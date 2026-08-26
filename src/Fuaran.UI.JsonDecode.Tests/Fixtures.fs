@@ -465,6 +465,90 @@ let drawingTippedShapes: Node<obj> =
         None
 
 
+// ─── Non-finite sentinel fixtures (Phase 1063) ───────────────────────────
+//
+// `WIRE_FORMAT.md` §5 requires every host to EMIT the quoted `"NaN"` /
+// `"Infinity"` / `"-Infinity"` sentinels for a non-finite number, and §7
+// requires a decoder to ACCEPT them back **at a float slot**. Until Phase 1062
+// that property held on some hosts and not others, so `decode → encode →
+// decode` did not close on a document carrying a non-finite number and one
+// host's canonical output was undecodable on another. §20's matrix note called
+// it a round-trip hole; a Go fuzz leg then reached it unprompted within ~1,500
+// generated inputs. These three fixtures are what stops it reopening silently.
+//
+// THREE fixtures, not one, and the reason is the per-slot-class measurement
+// Phase 1062 took: the two lagging hosts each accepted the sentinels at SOME
+// float slots and not others (Go's `floatStatic` accepted where its
+// `expectNumber` refused), so "the host accepts sentinels" was never a
+// well-formed claim. One fixture per distinct decoder path:
+//
+//   * a TYPED FLOAT SCALAR, including one inside a nested shape — the path most
+//     hosts route through a single plain-number choke point serving ~35 slots;
+//   * a float SEQUENCE ELEMENT — the same choke point on most hosts, a separate
+//     one on some, and the case a scalar fixture cannot reach;
+//   * a float behind a BINDING's `Static` ENVELOPE — the one class every host
+//     already handled, kept precisely so a regression there is visible rather
+//     than assumed impossible.
+//
+// These are ACCEPT cases. The counterexample policy's usual "land a reject
+// fixture" does not apply: the defect was a conformant document being REFUSED,
+// so the pin is that it decodes. The integer boundary is pinned separately by
+// the corpus's two existing integer controls, which must keep refusing.
+
+/// All three sentinels at typed float scalars (the `viewBox`), plus one at a
+/// nested shape coordinate (`Circle.cx`). A host whose float guard sits at the
+/// spec-record level but not inside `shapes` passes the first and fails the
+/// second, which is why both are in one fixture.
+let drawingNonfiniteSentinels: Node<obj> =
+    node
+        "drawing-nonfinite-sentinels"
+        (NodeKind.Drawing(
+            { ViewBox =
+                { MinX = System.Double.NegativeInfinity
+                  MinY = System.Double.NaN
+                  Width = System.Double.PositiveInfinity
+                  Height = 120.0 }
+              Shapes = [ Shape.Circle(System.Double.NaN, 50.0, 20.0, bareDrawStyle) ]
+              Style = bareDrawStyle
+              Title = Some(TextSource.Literal "Non-finite sentinels at typed float slots")
+              Description = None }
+        ))
+        None
+
+/// A float SEQUENCE element. All three sentinels sit among finite neighbours,
+/// so a host that special-cases a wholly-non-finite array — or that decides the
+/// element type from the first element — is caught rather than flattered.
+let sparklineNonfiniteSentinel: Node<obj> =
+    node
+        "spark-nonfinite-sentinel"
+        (NodeKind.Sparkline(
+            { Source =
+                Binding.Static(
+                    Some
+                        [ 1.0
+                          System.Double.NaN
+                          3.0
+                          System.Double.PositiveInfinity
+                          System.Double.NegativeInfinity
+                          5.0 ]
+                ) }
+        ))
+        None
+
+/// A float behind a `Binding.Static` envelope, at two slots of one spec
+/// (`value` and `trend`). The envelope path is the one class that was already
+/// conformant on all five hosts when the hole was measured — pinned so that
+/// stays a fact rather than an assumption.
+let metricNonfiniteSentinel: Node<obj> =
+    node
+        "metric-nonfinite-sentinel"
+        (NodeKind.Metric(
+            { metricSpec with
+                Value = Binding.Static(Some System.Double.PositiveInfinity)
+                Trend = Some(Binding.Static(Some System.Double.NaN)) }
+        ))
+        None
+
 let skeleton: Node<obj> = node "skel-1" (NodeKind.Skeleton({ Rows = 3 })) None
 
 let callout: Node<obj> =
@@ -4509,6 +4593,12 @@ let allNodes: (string * Node<obj>) list =
       "Display/Drawing (Phase 883 — tipped shapes, incl. hostile text, Bound tip and explicit empty)",
       drawingTippedShapes
       "Display/Sparkline", sparkline
+      "Display/Drawing (Phase 1063 — §5/§7 non-finite sentinels at typed float scalars and a nested shape coordinate)",
+      drawingNonfiniteSentinels
+      "Display/Sparkline (Phase 1063 — §5/§7 non-finite sentinels as float SEQUENCE elements)",
+      sparklineNonfiniteSentinel
+      "Display/Metric (Phase 1063 — §5/§7 non-finite sentinels behind a Binding.Static envelope)",
+      metricNonfiniteSentinel
       "Display/Skeleton", skeleton
       "Display/Callout", callout
       "Display/Progress", progress

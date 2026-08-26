@@ -125,7 +125,26 @@ let private typed (t: string) : J = JObj [ "type", JStr t ]
 
 let private str = typed "string"
 let private integer = typed "integer"
-let private number = typed "number"
+
+/// A float slot (WIRE_FORMAT.md §5 / §7) — a JSON number, OR one of the three
+/// quoted non-finite sentinels. JSON has no literal for NaN or an infinity, so
+/// §5 spells them as strings and §7 requires a decoder to accept them back
+/// **at a float slot**; a schema that said `type: number` here would refuse the
+/// canonical output of every conformant host, which is the accept-fixtures-
+/// validate-against-schema leg's whole point.
+///
+/// `integer` above is deliberately NOT widened, for the same reason the
+/// decoder's integer path is not: §7 stops at the float slot, and the corpus
+/// carries two integer controls (`Heading.level`, `Map.zoom`) that pin the
+/// refusal. Widening both would have made the fixture that proves the boundary
+/// pass for the wrong reason.
+let private number =
+    JObj
+        [ "anyOf",
+          JArr
+              [ typed "number"
+                JObj [ "enum", JArr [ JStr "NaN"; JStr "Infinity"; JStr "-Infinity" ] ] ] ]
+
 let private boolean = typed "boolean"
 let private object_ = typed "object"
 

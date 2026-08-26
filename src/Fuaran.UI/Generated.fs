@@ -1451,6 +1451,22 @@ let private encSortDirection (v: SortDirection) : JVal =
     | SortDirection.Asc -> JStr "asc"
     | SortDirection.Desc -> JStr "desc"
 
+// WIRE_FORMAT §5 — a non-finite double has no JSON *number* spelling, so it rides as
+// one of the three quoted sentinel strings, which §7 requires a decoder to read back
+// AT A FLOAT SLOT (`dFloat` below; `dInt` is deliberately not widened — §7 stops at
+// the float slot, and an integer slot has no sentinel).
+//
+// Building the `JStr` HERE rather than leaving `Canon.render` to spell a non-finite
+// `JFloat` is what keeps the emitted `JVal` renderable by the GUARDED
+// `Fuaran.Core.Wire.tryRender`, which refuses a non-finite `JFloat` outright. The core
+// wire model still has no non-finite float — the sentinel is a string, which it carries
+// perfectly — so this widens the generated float slot's spelling, not the model.
+let private encFloat (f: float) : JVal =
+    if System.Double.IsNaN f then JStr "NaN"
+    elif System.Double.IsPositiveInfinity f then JStr "Infinity"
+    elif System.Double.IsNegativeInfinity f then JStr "-Infinity"
+    else JFloat f
+
 let rec private encNodeKind (k: NodeKind<'Msg>) : JVal =
     match k with
     | NodeKind.Heading s -> encHeadingSpec s
@@ -1515,7 +1531,7 @@ and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     | Binding.Now accessor -> Canon.typed "Now" ([ None ] |> List.choose id)
     | Binding.Computed fn -> Canon.typed "Computed" [ "fn", JStr "<closure>" ]
     | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>") ] |> List.choose id)
-    | Binding.Format (source, format, locale) -> Canon.typed "Format" [ "source", (encBinding JFloat) source; "format", encFormat format; "locale", encLocaleSource locale ]
+    | Binding.Format (source, format, locale) -> Canon.typed "Format" [ "source", (encBinding encFloat) source; "format", encFormat format; "locale", encLocaleSource locale ]
     | Binding.I18n (key, args) -> Canon.typed "I18n" ([ Some("key", JStr key); (args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (encBinding id) v))) v)) ] |> List.choose id)
     | Binding.Transform (source, pipeline, ``params``) -> Canon.typed "Transform" ([ Some("source", encTransformSource source); Some("pipeline", JArr(List.map Fuaran.Core.DataFrameCodec.encodeTransform pipeline)); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
     | Binding.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
@@ -1583,22 +1599,22 @@ and private encLayoutMode (v: LayoutMode) : JVal =
 and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     match v with
     | FormFieldKind.Text (value, onChange) -> Canon.typed "Text" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
-    | FormFieldKind.Number (value, onChange) -> Canon.typed "Number" ([ (value |> Option.map (fun v -> "value", (encBinding JFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Number (value, onChange) -> Canon.typed "Number" ([ (value |> Option.map (fun v -> "value", (encBinding encFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
     | FormFieldKind.Checkbox (value, onToggle) -> Canon.typed "Checkbox" ([ (value |> Option.map (fun v -> "value", (encBinding JBool) v)); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
     | FormFieldKind.Toggle (value, onToggle) -> Canon.typed "Toggle" ([ (value |> Option.map (fun v -> "value", (encBinding JBool) v)); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
     | FormFieldKind.Choice (options, value, onChange) -> Canon.typed "Choice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
     | FormFieldKind.TextArea (value, onChange, rows) -> Canon.typed "TextArea" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("rows", JInt rows) ] |> List.choose id)
-    | FormFieldKind.RangedNumber (value, onChange, min, max, step) -> Canon.typed "RangedNumber" ([ (value |> Option.map (fun v -> "value", (encBinding JFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", JFloat v)); (max |> Option.map (fun v -> "max", JFloat v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
-    | FormFieldKind.Range (value, onChange, min, max, step) -> Canon.typed "Range" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", JFloat v)); (max |> Option.map (fun v -> "max", JFloat v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
+    | FormFieldKind.RangedNumber (value, onChange, min, max, step) -> Canon.typed "RangedNumber" ([ (value |> Option.map (fun v -> "value", (encBinding encFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.Range (value, onChange, min, max, step) -> Canon.typed "Range" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
     | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("orientation", encOrientation orientation) ] |> List.choose id)
-    | FormFieldKind.Date (value, onChange, variant, min, max, step) -> Canon.typed "Date" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
-    | FormFieldKind.DateRange (value, onChange, variant, min, max, step) -> Canon.typed "DateRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<DateRangePair>) -> match v with | Binding.Static(Some p) -> encDateRangePair p | __other -> encBinding encDateRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", JFloat v)) ] |> List.choose id)
+    | FormFieldKind.Date (value, onChange, variant, min, max, step) -> Canon.typed "Date" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.DateRange (value, onChange, variant, min, max, step) -> Canon.typed "DateRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<DateRangePair>) -> match v with | Binding.Static(Some p) -> encDateRangePair p | __other -> encBinding encDateRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
 
 and private encColumnWidth (v: ColumnWidth) : JVal =
     match v with
     | ColumnWidth.Auto -> Canon.typed "Auto" [  ]
     | ColumnWidth.Fixed pixels -> Canon.typed "Fixed" [ "pixels", JInt pixels ]
-    | ColumnWidth.Flex weight -> Canon.typed "Flex" [ "weight", JFloat weight ]
+    | ColumnWidth.Flex weight -> Canon.typed "Flex" [ "weight", encFloat weight ]
 
 and private encCellKindErased<'Msg> (v: CellKindErased<'Msg>) : JVal =
     match v with
@@ -1618,7 +1634,7 @@ and private encCellKindErased<'Msg> (v: CellKindErased<'Msg>) : JVal =
 and private encHoleValueSpace (v: HoleValueSpace) : JVal =
     match v with
     | HoleValueSpace.IntRange (min, max) -> Canon.typed "IntRange" [ "min", JInt min; "max", JInt max ]
-    | HoleValueSpace.FloatRange (min, max) -> Canon.typed "FloatRange" [ "min", JFloat min; "max", JFloat max ]
+    | HoleValueSpace.FloatRange (min, max) -> Canon.typed "FloatRange" [ "min", encFloat min; "max", encFloat max ]
     | HoleValueSpace.StringLen (minLen, maxLen) -> Canon.typed "StringLen" [ "minLen", JInt minLen; "maxLen", JInt maxLen ]
     | HoleValueSpace.Enum choices -> Canon.typed "Enum" [ "choices", JArr(List.map JStr choices) ]
     | HoleValueSpace.AnyString -> Canon.typed "AnyString" [  ]
@@ -1626,7 +1642,7 @@ and private encHoleValueSpace (v: HoleValueSpace) : JVal =
 and private encScalar (v: Scalar) : JVal =
     match v with
     | Scalar.Int value -> Canon.typed "Int" [ "value", JInt value ]
-    | Scalar.Float value -> Canon.typed "Float" [ "value", JFloat value ]
+    | Scalar.Float value -> Canon.typed "Float" [ "value", encFloat value ]
     | Scalar.Bool value -> Canon.typed "Bool" [ "value", JBool value ]
     | Scalar.Str value -> Canon.typed "Str" [ "value", JStr value ]
 
@@ -1639,7 +1655,7 @@ and private encHoleDecl (v: HoleDecl) : JVal =
 and private encFragmentArg<'Msg> (v: FragmentArg<'Msg>) : JVal =
     match v with
     | FragmentArg.Int value -> Canon.typed "Int" [ "value", JInt value ]
-    | FragmentArg.Float value -> Canon.typed "Float" [ "value", JFloat value ]
+    | FragmentArg.Float value -> Canon.typed "Float" [ "value", encFloat value ]
     | FragmentArg.Bool value -> Canon.typed "Bool" [ "value", JBool value ]
     | FragmentArg.Str value -> Canon.typed "Str" [ "value", JStr value ]
     | FragmentArg.SlotArg tree -> Canon.typed "SlotArg" [ "tree", encNode tree ]
@@ -1655,14 +1671,14 @@ and private encCurveCommand (v: CurveCommand) : JVal =
 and private encShape (v: Shape) : JVal =
     match v with
     | Shape.Group (children, style) -> Canon.typed "Group" [ "children", JArr(List.map encShape children); "style", encDrawStyle style ]
-    | Shape.Rectangle (x, y, width, height, cornerRadius, style) -> Canon.typed "Rectangle" ([ Some("x", JFloat x); Some("y", JFloat y); Some("width", JFloat width); Some("height", JFloat height); (cornerRadius |> Option.map (fun v -> "cornerRadius", JFloat v)); Some("style", encDrawStyle style) ] |> List.choose id)
-    | Shape.Line (x1, y1, x2, y2, style) -> Canon.typed "Line" [ "x1", JFloat x1; "y1", JFloat y1; "x2", JFloat x2; "y2", JFloat y2; "style", encDrawStyle style ]
+    | Shape.Rectangle (x, y, width, height, cornerRadius, style) -> Canon.typed "Rectangle" ([ Some("x", encFloat x); Some("y", encFloat y); Some("width", encFloat width); Some("height", encFloat height); (cornerRadius |> Option.map (fun v -> "cornerRadius", encFloat v)); Some("style", encDrawStyle style) ] |> List.choose id)
+    | Shape.Line (x1, y1, x2, y2, style) -> Canon.typed "Line" [ "x1", encFloat x1; "y1", encFloat y1; "x2", encFloat x2; "y2", encFloat y2; "style", encDrawStyle style ]
     | Shape.Polyline (points, style) -> Canon.typed "Polyline" [ "points", JArr(List.map encDrawPoint points); "style", encDrawStyle style ]
     | Shape.Polygon (points, style) -> Canon.typed "Polygon" [ "points", JArr(List.map encDrawPoint points); "style", encDrawStyle style ]
     | Shape.Curve (commands, style) -> Canon.typed "Curve" [ "commands", JArr(List.map encCurveCommand commands); "style", encDrawStyle style ]
-    | Shape.Circle (cx, cy, r, style) -> Canon.typed "Circle" [ "cx", JFloat cx; "cy", JFloat cy; "r", JFloat r; "style", encDrawStyle style ]
-    | Shape.Ellipse (cx, cy, rx, ry, style) -> Canon.typed "Ellipse" [ "cx", JFloat cx; "cy", JFloat cy; "rx", JFloat rx; "ry", JFloat ry; "style", encDrawStyle style ]
-    | Shape.Label (x, y, text, style) -> Canon.typed "Label" [ "x", JFloat x; "y", JFloat y; "text", encTextSource text; "style", encDrawStyle style ]
+    | Shape.Circle (cx, cy, r, style) -> Canon.typed "Circle" [ "cx", encFloat cx; "cy", encFloat cy; "r", encFloat r; "style", encDrawStyle style ]
+    | Shape.Ellipse (cx, cy, rx, ry, style) -> Canon.typed "Ellipse" [ "cx", encFloat cx; "cy", encFloat cy; "rx", encFloat rx; "ry", encFloat ry; "style", encDrawStyle style ]
+    | Shape.Label (x, y, text, style) -> Canon.typed "Label" [ "x", encFloat x; "y", encFloat y; "text", encTextSource text; "style", encDrawStyle style ]
 
 and private encSemanticStyle (s: SemanticStyle) : JVal =
     JObj([ (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (if s.Role = StyleRole.None then None else Some("role", encStyleRole s.Role)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Voice = FontVoice.Default then None else Some("voice", encFontVoice s.Voice)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)) ] |> List.choose id)
@@ -1680,13 +1696,13 @@ and private encGuestChannel (s: GuestChannel) : JVal =
     JObj([ Some("direction", encChannelDirection s.Direction); (s.MessageShape |> Option.map (fun v -> "messageShape", JStr v)) ] |> List.choose id)
 
 and private encDrawPoint (s: DrawPoint) : JVal =
-    JObj([ Some("x", JFloat s.X); Some("y", JFloat s.Y) ] |> List.choose id)
+    JObj([ Some("x", encFloat s.X); Some("y", encFloat s.Y) ] |> List.choose id)
 
 and private encViewBox (s: ViewBox) : JVal =
-    JObj([ Some("height", JFloat s.Height); Some("minX", JFloat s.MinX); Some("minY", JFloat s.MinY); Some("width", JFloat s.Width) ] |> List.choose id)
+    JObj([ Some("height", encFloat s.Height); Some("minX", encFloat s.MinX); Some("minY", encFloat s.MinY); Some("width", encFloat s.Width) ] |> List.choose id)
 
 and private encDrawStyle (s: DrawStyle) : JVal =
-    JObj([ (s.Emphasis |> Option.map (fun v -> "emphasis", encEmphasis v)); (s.Fill |> Option.map (fun v -> "fill", (encBinding JStr) v)); (s.FontFamily |> Option.map (fun v -> "fontFamily", JStr v)); (s.FontSize |> Option.map (fun v -> "fontSize", JFloat v)); (s.MarkId |> Option.map (fun v -> "markId", JStr v)); (s.Opacity |> Option.map (fun v -> "opacity", (encBinding JFloat) v)); (s.Rotation |> Option.map (fun v -> "rotation", JFloat v)); (s.Stroke |> Option.map (fun v -> "stroke", (encBinding JStr) v)); (s.StrokeWidth |> Option.map (fun v -> "strokeWidth", (encBinding JFloat) v)); (s.TextAnchor |> Option.map (fun v -> "textAnchor", encTextAnchor v)); (s.Tip |> Option.map (fun v -> "tip", encTextSource v)) ] |> List.choose id)
+    JObj([ (s.Emphasis |> Option.map (fun v -> "emphasis", encEmphasis v)); (s.Fill |> Option.map (fun v -> "fill", (encBinding JStr) v)); (s.FontFamily |> Option.map (fun v -> "fontFamily", JStr v)); (s.FontSize |> Option.map (fun v -> "fontSize", encFloat v)); (s.MarkId |> Option.map (fun v -> "markId", JStr v)); (s.Opacity |> Option.map (fun v -> "opacity", (encBinding encFloat) v)); (s.Rotation |> Option.map (fun v -> "rotation", encFloat v)); (s.Stroke |> Option.map (fun v -> "stroke", (encBinding JStr) v)); (s.StrokeWidth |> Option.map (fun v -> "strokeWidth", (encBinding encFloat) v)); (s.TextAnchor |> Option.map (fun v -> "textAnchor", encTextAnchor v)); (s.Tip |> Option.map (fun v -> "tip", encTextSource v)) ] |> List.choose id)
 
 and private encInvokeArg (s: InvokeArg) : JVal =
     JObj([ Some("addr", JStr s.Addr); Some("value", JStr s.Value) ] |> List.choose id)
@@ -1695,7 +1711,7 @@ and private encSelectOption (s: SelectOption) : JVal =
     JObj([ Some("label", JStr s.Label); Some("value", JStr s.Value) ] |> List.choose id)
 
 and private encMapMarker (s: MapMarker) : JVal =
-    JObj([ Some("label", JStr s.Label); Some("latitude", JFloat s.Latitude); Some("longitude", JFloat s.Longitude) ] |> List.choose id)
+    JObj([ Some("label", JStr s.Label); Some("latitude", encFloat s.Latitude); Some("longitude", encFloat s.Longitude) ] |> List.choose id)
 
 and private encDefaultSort (s: DefaultSort) : JVal =
     JObj([ Some("column", JInt s.Column); Some("direction", encSortDirection s.Direction) ] |> List.choose id)
@@ -1719,7 +1735,7 @@ and private encTransformParam (s: TransformParam) : JVal =
     JObj([ Some("from", (encBinding id) s.From); Some("name", JStr s.Name) ] |> List.choose id)
 
 and private encRangePair (s: RangePair) : JVal =
-    JObj([ Some("max", JFloat s.Max); Some("min", JFloat s.Min) ] |> List.choose id)
+    JObj([ Some("max", encFloat s.Max); Some("min", encFloat s.Min) ] |> List.choose id)
 
 and private encDateRangePair (s: DateRangePair) : JVal =
     JObj([ Some("from", JStr s.From); Some("to", JStr s.To) ] |> List.choose id)
@@ -1773,19 +1789,19 @@ and private encCalloutSpec (s: CalloutSpec) : JVal =
     Canon.typed "Callout" ([ Some("body", encTextSource s.Body); (if s.Dismissable = false then None else Some("dismissable", JBool s.Dismissable)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)) ] |> List.choose id)
 
 and private encProgressSpec (s: ProgressSpec) : JVal =
-    Canon.typed "Progress" ([ Some("fraction", (encBinding JFloat) s.Fraction); (if s.Indeterminate = false then None else Some("indeterminate", JBool s.Indeterminate)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Label |> Option.map (fun v -> "label", encTextSource v)); (s.Caveat |> Option.map (fun v -> "caveat", encTextSource v)) ] |> List.choose id)
+    Canon.typed "Progress" ([ Some("fraction", (encBinding encFloat) s.Fraction); (if s.Indeterminate = false then None else Some("indeterminate", JBool s.Indeterminate)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Label |> Option.map (fun v -> "label", encTextSource v)); (s.Caveat |> Option.map (fun v -> "caveat", encTextSource v)) ] |> List.choose id)
 
 and private encMetricSpec (s: MetricSpec) : JVal =
-    Canon.typed "Metric" ([ Some("label", encTextSource s.Label); Some("value", (encBinding JFloat) s.Value); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)); (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (s.Trend |> Option.map (fun v -> "trend", (encBinding JFloat) v)); (s.TrendFormat |> Option.map (fun v -> "trendFormat", encCellFormat v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Subtext |> Option.map (fun v -> "subtext", encTextSource v)) ] |> List.choose id)
+    Canon.typed "Metric" ([ Some("label", encTextSource s.Label); Some("value", (encBinding encFloat) s.Value); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)); (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (s.Trend |> Option.map (fun v -> "trend", (encBinding encFloat) v)); (s.TrendFormat |> Option.map (fun v -> "trendFormat", encCellFormat v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Subtext |> Option.map (fun v -> "subtext", encTextSource v)) ] |> List.choose id)
 
 and private encLabelValueRowSpec (s: LabelValueRowSpec) : JVal =
-    Canon.typed "LabelValueRow" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); Some("label", encTextSource s.Label); Some("value", (encBinding JFloat) s.Value); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
+    Canon.typed "LabelValueRow" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); Some("label", encTextSource s.Label); Some("value", (encBinding encFloat) s.Value); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
 
 and private encFactSpec (s: FactSpec) : JVal =
     Canon.typed "Fact" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); Some("label", encTextSource s.Label); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); Some("value", encTextSource s.Value) ] |> List.choose id)
 
 and private encSparklineSpec (s: SparklineSpec) : JVal =
-    Canon.typed "Sparkline" ([ Some("source", (encBinding (fun __xs -> JArr(List.map JFloat __xs))) s.Source) ] |> List.choose id)
+    Canon.typed "Sparkline" ([ Some("source", (encBinding (fun __xs -> JArr(List.map encFloat __xs))) s.Source) ] |> List.choose id)
 
 and private encCodeBlockSpec (s: CodeBlockSpec) : JVal =
     Canon.typed "CodeBlock" ([ Some("code", JStr s.Code); Some("copyable", JBool s.Copyable); Some("highlightLines", JArr(List.map JInt s.HighlightLines)); Some("language", JStr s.Language); Some("lineNumbers", JBool s.LineNumbers) ] |> List.choose id)
@@ -1800,7 +1816,7 @@ and private encBoxSpec<'Msg> (s: BoxSpec<'Msg>) : JVal =
     Canon.typed "Box" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); Some("layout", encLayoutMode s.Layout); Some("role", encBoxRole s.Role) ] |> List.choose id)
 
 and private encSplitPanelSpec<'Msg> (s: SplitPanelSpec<'Msg>) : JVal =
-    Canon.typed "SplitPanel" ([ Some("children", JArr(List.map encNode s.Children)); Some("weight", JFloat s.Weight) ] |> List.choose id)
+    Canon.typed "SplitPanel" ([ Some("children", JArr(List.map encNode s.Children)); Some("weight", encFloat s.Weight) ] |> List.choose id)
 
 and private encSummaryListSpec<'Msg> (s: SummaryListSpec<'Msg>) : JVal =
     Canon.typed "SummaryList" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)) ] |> List.choose id)
@@ -1842,7 +1858,7 @@ and private encChartSpec<'Msg> (s: ChartSpec<'Msg>) : JVal =
     Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.ValueFormat |> Option.map (fun v -> "valueFormat", encFormat v)); (s.XTitle |> Option.map (fun v -> "xTitle", encTextSource v)); (s.YTitle |> Option.map (fun v -> "yTitle", encTextSource v)); (s.Subtitle |> Option.map (fun v -> "subtitle", encTextSource v)); (s.LegendPosition |> Option.map (fun v -> "legendPosition", encChartLegendPosition v)); (s.DataLabels |> Option.map (fun v -> "dataLabels", encChartDataLabels v)); (s.XScale |> Option.map (fun v -> "xScale", encChartXScale v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encMapSpec<'Msg> (s: MapSpec<'Msg>) : JVal =
-    Canon.typed "Map" ([ Some("centreLatitude", JFloat s.CentreLatitude); Some("centreLongitude", JFloat s.CentreLongitude); Some("source", (encBinding (fun __xs -> JArr(List.map encMapMarker __xs))) s.Source); Some("zoom", JInt s.Zoom); (s.OnMarkerClick |> Option.map (fun v -> "onMarkerClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "Map" ([ Some("centreLatitude", encFloat s.CentreLatitude); Some("centreLongitude", encFloat s.CentreLongitude); Some("source", (encBinding (fun __xs -> JArr(List.map encMapMarker __xs))) s.Source); Some("zoom", JInt s.Zoom); (s.OnMarkerClick |> Option.map (fun v -> "onMarkerClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encCustomSpec (s: CustomSpec) : JVal =
     Canon.typed "Custom" ([ Some("moduleId", JStr s.ModuleId); Some("componentId", JStr s.ComponentId); Some("props", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, id v))) s.Props); (s.ContentHash |> Option.map (fun v -> "contentHash", encContentHash v)); (s.ExposedNodeIds |> Option.map (fun v -> "exposedNodeIds", JArr(List.map JStr v))) ] |> List.choose id)
@@ -1915,10 +1931,18 @@ let private dBool (j: JVal) : Result<bool, string> =
     | _ -> Error "expected a bool"
 
 // A whole-valued float renders without a decimal point, so it parses back as JInt.
+// WIRE_FORMAT §7 — a float slot also accepts the three quoted non-finite sentinels, which
+// is how §5 spells a number JSON has no literal for. The value decodes to the FLOAT, never
+// to the string: a host that answered the string would hand a consumer a different tree on
+// the second decode while the bytes stayed identical. `dInt` is NOT widened — §7 stops at
+// the float slot.
 let private dFloat (j: JVal) : Result<float, string> =
     match j with
     | JFloat f -> Ok f
     | JInt i -> Ok(float i)
+    | JStr "NaN" -> Ok System.Double.NaN
+    | JStr "Infinity" -> Ok System.Double.PositiveInfinity
+    | JStr "-Infinity" -> Ok System.Double.NegativeInfinity
     | _ -> Error "expected a number"
 
 let private dUnit (_: JVal) : Result<unit, string> = Ok()
