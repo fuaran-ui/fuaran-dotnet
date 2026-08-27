@@ -197,19 +197,24 @@ let badgeDerivation =
                       expected
                       (sprintf "%s: the rich segment's presence must follow the declared tier" r.Kind))
 
-          testCase "the four shipped fidelity contracts are represented" (fun () ->
+          testCase "the five shipped fidelity contracts are represented" (fun () ->
               // Phases 289 (overlay/scroll) / 290 (CodeBlock) / 292 (Markdown) /
-              // 293 (Math): the rows this phase exists to transcribe. Each must
-              // be sensitive, and each must be pinned by a fixture.
-              for kind in [ "Modal"; "Toast"; "ScrollArea"; "CodeBlock"; "Markdown"; "Math" ] do
+              // 293 (Math) / 1079 (Image): the rows this phase exists to
+              // transcribe. Each must be sensitive, and each must be pinned by a
+              // fixture.
+              for kind in [ "Modal"; "Toast"; "ScrollArea"; "CodeBlock"; "Markdown"; "Math"; "Image" ] do
                   match tryFind kind with
                   | None -> failtestf "%s has no fidelity row" kind
                   | Some r ->
                       Expect.isTrue r.Sensitive (sprintf "%s carries a shipped fidelity contract" kind)
                       Expect.isNonEmpty r.Fixtures (sprintf "%s must name the fixture pinning its fallback" kind)
 
-              // The three kinds whose rich tier is a client-only DOM change.
-              for kind in [ "CodeBlock"; "Markdown"; "Math" ] do
+              // The four kinds whose rich tier is a client-only DOM change.
+              // `Image` joins them at Phase 1079: the overlay is appended to the
+              // document by an enhancement pass and is emitted by no renderer,
+              // so it sits on exactly the side of the line KaTeX and syntax
+              // highlighting sit on.
+              for kind in [ "CodeBlock"; "Markdown"; "Math"; "Image" ] do
                   match tryFind kind |> Option.map (fun r -> r.Rich) with
                   | Some(RichTier.ClientOnly _) -> ()
                   | other -> failtestf "%s must declare a ClientOnly rich tier, got %A" kind other

@@ -379,7 +379,7 @@
          the 0.36.0 / 0.39.0 / 0.40.0 / 0.41.0 / 0.42.0 / 0.43.0 precedent.
          Minor, per the record-widening dispensation. See STABILITY.md
          "Recorded change — 0.44.0". -->
-    <Version>0.44.0</Version>
+    <Version>0.45.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

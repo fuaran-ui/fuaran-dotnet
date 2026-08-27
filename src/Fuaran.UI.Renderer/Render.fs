@@ -1395,10 +1395,20 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
     // a candidate resolved from a query re-renders when that query moves, on
     // exactly the terms the primary `src` does. Missing them would leave a
     // responsive image serving stale renditions from a live source.
+    //
+    // Phase 1079 closes the same omission for `Caption`, which Phase 1078
+    // introduced and neither 1078 nor 1080 collected. A caption is a
+    // `TextSource`, so it can be `Bound`/`I18n` over live sources exactly as
+    // `Alt` can — and `Alt` has always been collected here. The two slots take
+    // the same values from the same resolver, so a caption that never
+    // re-rendered while the alt text beside it did was a defect of omission
+    // rather than a design choice. `keysOfTextOpt` is the existing helper for
+    // the optional case (the `FormField.Help` arm above uses it).
     | NodeKind.Image i ->
         keysOfBinding channel i.Src
         @ (i.SrcSet |> List.collect (fun e -> keysOfBinding channel e.Src))
-        @ keysOfText channel i.Alt,
+        @ keysOfText channel i.Alt
+        @ keysOfTextOpt channel i.Caption,
         []
     | NodeKind.List l -> l.Items |> List.collect (keysOfText channel), []
     | NodeKind.Toast t ->
@@ -2941,16 +2951,41 @@ let rec private renderKind
                 @ toProps egressAttrs
             )
 
+        // Phase 1079 — the expansion affordance, byte-parity with the server
+        // arm. The CLIENT renderer emits the same inert anchor the server does
+        // and attaches nothing: the overlay is a separate, opt-in,
+        // post-hydration pass over `[data-fuaran-expandable]` (see
+        // `content/fuaran-image-expand.js` and the TS
+        // `@fuaran-ui/renderer/enhance-expandable` twin), exactly the
+        // deterministic-floor / client-only-enhancement split `CodeBlock` and
+        // `Math` already run on. Wiring an `onClick` here instead would put
+        // behaviour in the parity-checked output and give the no-JS reader
+        // nothing, which is the two defects this shape exists to avoid at once.
+        //
+        // A refused `src` emits no anchor, for the reason the server arm states
+        // at length: an affordance that cannot be honoured is worse than none.
+        let expandable =
+            if spec.Expandable && safeSrc <> "" && List.isEmpty egressAttrs then
+                Html.a
+                    [ prop.className "fuaran-image-expand"
+                      prop.href safeSrc
+                      prop.custom ("data-fuaran-expandable", "")
+                      prop.children [ img ] ]
+            else
+                img
+
         // Phase 1078 — the caption, byte-parity with the server arm (a
         // hydration mismatch here is a rendering defect, not a cosmetic one).
-        // `None` returns the `<img>` UNTOUCHED — no wrapper exists to differ.
+        // `None` returns the emission UNTOUCHED — no wrapper exists to differ.
+        // Phase 1079 — `<figure>` wraps `<a>` wraps `<img>`: the caption sits
+        // OUTSIDE the link target. See the server arm for why.
         match spec.Caption with
-        | None -> img
+        | None -> expandable
         | Some caption ->
             Html.figure
                 [ prop.className "fuaran-image-figure"
                   prop.children
-                      [ img
+                      [ expandable
                         Html.figcaption
                             [ prop.className "fuaran-image-figure-caption"
                               prop.text (renderText ctx caption) ] ] ]

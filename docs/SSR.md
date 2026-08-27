@@ -79,7 +79,7 @@ when present.
 | **Layout.Tabs** | Static `role="tablist"` + the active panel, ARIA-complete. Keyboard nav + tab-switch are client-only (inert server-side). |
 | **Layout.Disclosure** | Native `<details>`/`<summary>`; the `open` attribute reflects the resolved `Open` binding (falling back to `DefaultOpen`). |
 | **Display** – Heading / Markdown / Metric / Badge / Callout / Progress / Spacer / Skeleton / LabelValueRow | Full structural HTML. `Metric` / `Progress` / `LabelValueRow` render their resolved + formatted value. |
-| **Display.Image** (Phase 287) | Real `<img>`; `src` sanitised (`javascript:`/`vbscript:`/`file:`/unknown → `about:blank`); `alt` always emitted; `fuaran-image-avatar`/`-rounded` per variant. |
+| **Display.Image** (Phases 287 / 1077–1080) | Real `<img>`; `src` sanitised (`javascript:`/`vbscript:`/`file:`/unknown → `about:blank`); `alt` always emitted; `fuaran-image-avatar`/`-rounded` per variant; the `fit`/`aspectRatio` presentation classes and `loading="lazy"`; `srcset` + `sizes` from a non-empty candidate list. Under `expandable`, the `<img>` is wrapped in a **real `<a href>`** to the full-size asset marked `data-fuaran-expandable` – the in-page overlay is a **client-only** post-hydration enhancement over that link, outside the parity output (see "Expandable images" below). A `caption` wraps the whole emission in `<figure>`/`<figcaption>`. |
 | **Display.List** (Phase 287) | `<ol>`/`<ul>` (`fuaran-list-ordered`/`-unordered`) of `<li class="fuaran-list-item">`. |
 | **Display.Divider** (Phase 287) | `<hr class="fuaran-divider-horizontal">`, a labelled `role="separator"` rule, or a vertical `role="separator" aria-orientation="vertical"` rule. |
 | **Display.Toast** (Phase 289) | Overlay contract (below): always emitted, `role="status"` + `aria-live="polite"`, `[hidden]` when `open` is false. |
@@ -332,6 +332,64 @@ with any highlighter).
 This is the same shape as the overlay contract (deterministic structure pinned,
 behaviour layered on after) – see `SsrParityTests.fs` (the `CodeBlock` / `Math`
 fixtures assert only the bare floor).
+
+### Expandable images (Phase 1079)
+
+`Image.expandable` is the third kind on this page whose render splits into a deterministic floor and
+a client-only enhancement — and unlike `CodeBlock`'s highlighting and `Math`'s KaTeX, the floor here
+is not merely *readable* without the enhancement, it is **fully functional**:
+
+1. **The floor (parity-checked, emitted by all four renderers).** The `<img>` is wrapped in
+
+   ```html
+   <a class="fuaran-image-expand" href="{the sanitised src}" data-fuaran-expandable>…</a>
+   ```
+
+   A reader with no JavaScript clicks the picture and the browser opens the full-size asset in its
+   own viewer. Nothing about that path depends on hydration, on a script loading, or on the
+   enhancement existing. This is the acceptance criterion of the phase and the reason the wire slot
+   is a `bool` rather than an `Action`: the declaration says the asset is reachable, and the anchor
+   is what makes it so.
+
+2. **The enhancement (client-only, OUTSIDE every parity comparison).** A post-hydration pass over
+   `[data-fuaran-expandable]` upgrades the link into an in-page overlay and suppresses the
+   navigation. Two implementations ship, both reading the same attribute and emitting the same
+   `.fuaran-image-lightbox` markup: the packaged, dependency-free
+   [`content/fuaran-image-expand.js`](../src/Fuaran.UI.Renderer/content/fuaran-image-expand.js)
+   (the `fuaran-reference-tables.js` shape — one `<script src>`, ES5, no build step) and the
+   `@fuaran-ui/renderer/enhance-expandable` module (the `enhance-math` shape, for hosts already
+   carrying the npm packages). Neither is emitted by any renderer, so neither can cause a hydration
+   mismatch or a cross-host divergence.
+
+**The overlay honours the Modal contract above, in full.** It is a dialog, so it owes what the
+declarative `Modal` node owes and the enhancement is not a second, weaker dialog on the same page:
+`role="dialog"` + `aria-modal="true"`; `aria-label` taken from the image's own `alt`, so it announces
+the picture rather than announcing "dialog"; a **focus trap** across its two focusable elements;
+`Escape` (and a backdrop click) to dismiss; **focus restored** to the anchor that opened it, so a
+reader tabbing through a gallery keeps their place; and the rest of `document.body` marked
+`aria-hidden` while it is open, restored to its prior value on close rather than blanket-removed.
+Point 4 of the overlay contract — "focus management is additive + client-only" — is exactly what
+licenses all of this: it is behaviour, not structure, so it cannot move the hydrated DOM.
+
+**Two emission rules are the renderer's, not the enhancement's**, and both are pinned by
+`SsrParityTests.fs`:
+
+- A `src` the **egress floor refused** emits **no anchor at all** (and no marker attribute). The
+  `<img>`'s `src` must exist, so it collapses to the refusal URL; an anchor has no such obligation,
+  and `<a href="about:blank">` is precisely the dead control this design exists to avoid. The image
+  still renders with its refusal marker.
+- With a `caption`, the nesting is `<figure>` → `<a>` → `<img>`, with `<figcaption>` as the
+  **anchor's sibling**. The caption is outside the link target: it is prose a reader selects and
+  quotes, not a second click surface, and interactive content inside the element whose job is to
+  *label* the image inverts the `<figure>`/`<figcaption>` relationship.
+
+With `srcSet`, the candidates stay on the `<img>` (renditions of the thumbnail, sized for the layout
+box) while the anchor targets the primary `src` (the full asset). A host that put a candidate behind
+the link would pass every structural check and defeat the feature.
+
+The reference stylesheet carries the `.fuaran-image-expand` and `.fuaran-image-lightbox*` rules, so
+the overlay is themed by the same tokens as everything around it rather than by inline styles the
+enhancement wrote.
 
 ## Sortable rendered tables
 

@@ -1093,21 +1093,70 @@ and private renderKind
                 @ toProps egressAttrs
             )
 
-        // Phase 1078 — the caption. `None` returns the `<img>` UNTOUCHED, which
-        // is the acceptance criterion expressed as control flow rather than as
-        // a claim: there is no wrapper to be byte-identical to, because there is
-        // no wrapper. `Some` wraps it in the semantic pair, which is the whole
-        // point — an ad-hoc `Text` sibling carried the same pixels and no
-        // binding, so assistive technology read it as the next paragraph.
-        // Nothing moves onto the `<figure>`: the a11y projection, the egress
-        // marker and the sanitised `src` all stay on the element they describe.
+        // Phase 1079 — the expansion affordance. Three decisions, all of them
+        // visible in these six lines.
+        //
+        // THE BASELINE IS A REAL LINK, not a marked-up control waiting for
+        // script. `<a href="{the sanitised primary src}">` around the `<img>`
+        // means a reader with no JavaScript — a crawler, a text browser, a
+        // locked-down enterprise client, a hydration that failed — clicks the
+        // thumbnail and gets the full-size asset in the browser's own viewer.
+        // The `data-fuaran-expandable` marker is what the enhancement tier
+        // reads; it is a marker on a WORKING link, never the mechanism itself.
+        // The attribute is VALUELESS because the slot is a bool whose `false`
+        // is the absence of the attribute — unlike `data-fuaran-sortable`,
+        // which carries a value precisely because a table has three states
+        // (unstated / exempt / affirmative) under a host's broad default.
+        //
+        // A REFUSED `src` EMITS NO ANCHOR. This is the srcSet rule turned on
+        // the affordance: the `<img>`'s `src` must exist, so it collapses to
+        // the refusal URL, but an anchor has no such obligation, and a link to
+        // `about:blank` is exactly the dead control this design exists to
+        // avoid. The image still renders — with its refusal marker — and the
+        // reader is simply not offered an expansion that could not work.
+        //
+        // NOTHING CROSSES THE DISPATCH GATE. There is no `Action`, no handler,
+        // no `onClick` in the emitted markup. The expansion is presentation:
+        // the wire declares that the asset is reachable, the anchor makes it
+        // reachable, and the overlay is a rendering choice the client tier
+        // makes over that anchor.
+        let expandable =
+            if spec.Expandable && safeSrc <> "" && List.isEmpty egressAttrs then
+                Html.a
+                    [ prop.className "fuaran-image-expand"
+                      prop.href safeSrc
+                      prop.custom ("data-fuaran-expandable", "")
+                      prop.children [ img ] ]
+            else
+                img
+
+        // Phase 1078 — the caption. `None` returns the emission UNTOUCHED,
+        // which is the acceptance criterion expressed as control flow rather
+        // than as a claim: there is no wrapper to be byte-identical to, because
+        // there is no wrapper. `Some` wraps it in the semantic pair, which is
+        // the whole point — an ad-hoc `Text` sibling carried the same pixels
+        // and no binding, so assistive technology read it as the next
+        // paragraph. Nothing moves onto the `<figure>`: the a11y projection,
+        // the egress marker and the sanitised `src` all stay on the element
+        // they describe.
+        //
+        // Phase 1079 — the NESTING, stated once here and mirrored in the other
+        // three renderers: `<figure>` wraps `<a>` wraps `<img>`. The caption is
+        // OUTSIDE the link target, which is the composition decision rather
+        // than an ordering accident. A `<figcaption>` inside the anchor would
+        // make the caption's own text a click target for the expansion, and a
+        // caption is prose a reader selects, quotes and reads — sometimes
+        // several lines of it — not a second button. It would also put
+        // interactive content inside the element whose job is to LABEL the
+        // image, which is the relationship `<figure>`/`<figcaption>` exists to
+        // express.
         match spec.Caption with
-        | None -> img
+        | None -> expandable
         | Some caption ->
             Html.figure
                 [ prop.className "fuaran-image-figure"
                   prop.children
-                      [ img
+                      [ expandable
                         Html.figcaption
                             [ prop.className "fuaran-image-figure-caption"
                               prop.text (renderText ctx caption) ] ] ]

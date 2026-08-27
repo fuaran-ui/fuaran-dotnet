@@ -3949,8 +3949,19 @@ let private decodeImageSpec (path: string) (j: Json) : Result<ImageSpec, DecodeE
                     xs
                     |> traverseIndexed (fun i el -> decodeSrcSetEntry (sprintf "%s.srcSet[%d]" path i) el)
 
-        match srcR, altR, variantR, fitR, aspectR, loadingR, srcSetR, captionR with
-        | Ok src, Ok alt, Ok variant, Ok fit, Ok aspect, Ok loading, Ok srcSet, Ok caption ->
+        // Phase 1079 — `expandable` is an ordinary omit-at-default bool, so an
+        // absent key is `false` and the pre-phase document is unaffected. A
+        // present non-boolean is a `WRONG_TYPE`, not a truthiness coercion:
+        // `"expandable":"true"` is a host guessing, and a slot that guessed
+        // back would let two conformant hosts disagree about whether a document
+        // declares an affordance.
+        let expandableR =
+            match tryField fields "expandable" with
+            | None -> Ok false
+            | Some v -> requireBool (path + ".expandable") v
+
+        match srcR, altR, variantR, fitR, aspectR, loadingR, srcSetR, expandableR, captionR with
+        | Ok src, Ok alt, Ok variant, Ok fit, Ok aspect, Ok loading, Ok srcSet, Ok expandable, Ok caption ->
             Ok
                 { Src = src
                   Alt = alt
@@ -3959,15 +3970,17 @@ let private decodeImageSpec (path: string) (j: Json) : Result<ImageSpec, DecodeE
                   AspectRatio = aspect
                   Loading = loading
                   SrcSet = srcSet
+                  Expandable = expandable
                   Caption = caption }
-        | Error e, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _
-        | _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeListSpec (path: string) (j: Json) : Result<ListSpec, DecodeError> =
     match requireObject path j with

@@ -445,6 +445,19 @@ let all: LenientFixture list =
           """{"id":"len-image-srcset","kind":{"$type":"Image","alt":"Fishing boats moored at first light","src":{"$type":"Static","value":"/harbour.jpg"},"variant":"Default"}}"""
         Description =
           "Image — an explicitly EMPTY `srcSet` decodes and canonicalises away to the omitted form (Phase 1080). Absent and `[]` denote the same document, so an image that declares no alternate renditions costs no key on the wire" }
+      // Phase 1079 — `"expandable":false` is the plainest instance of the
+      // omit-at-default law and the one most likely to be emitted by accident:
+      // a host that serialises its record wholesale writes every field, and a
+      // bool's `false` is the field it will not think to skip. It decodes
+      // (read-compat) and canonicalises to the omitted form, so a document that
+      // declares no expansion is byte-identical whichever way it was written.
+      { Id = "lenient-image-explicit-expandable-false"
+        LenientJson =
+          """{"id":"len-image-expandable","kind":{"$type":"Image","alt":"Fishing boats moored at first light","expandable":false,"src":{"$type":"Static","value":"/harbour.jpg"},"variant":"Default"}}"""
+        VerboseJson =
+          """{"id":"len-image-expandable","kind":{"$type":"Image","alt":"Fishing boats moored at first light","src":{"$type":"Static","value":"/harbour.jpg"},"variant":"Default"}}"""
+        Description =
+          "Image — an explicit `expandable: false` decodes and canonicalises away to the omitted form (Phase 1079). `false` is the identity: not declaring an expansion and declaring that there is none are the same document" }
       { Id = "lenient-shape-static-envelope-plain-scalars"
         LenientJson =
           """{"id":"len-env","kind":{"$type":"LabelValueRow","emphasis":{"$type":"Static","value":true},"label":"Total","value":{"$type":"Static","value":42.0}}}"""

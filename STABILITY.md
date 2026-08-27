@@ -2042,3 +2042,76 @@ explicit `[]` canonicalising to the omitted form — the missing-list-field deco
 directions), `reject/reject-image-srcset-nonpositive-width` (`width: 0` on the second entry, refused
 at `$.kind.srcSet[1].width`), and `reject/reject-image-srcset-null` (a present `null`, refused —
 absence already has a spelling).
+
+## Recorded change — 0.45.0, `ImageSpec.Expandable` (fuaran#1079)
+
+**Additive, and additive on both boundaries.** `ImageSpec` gains `Expandable: bool`, defaulting to
+`false` and omitted from the wire at that default. A document written before this release decodes to
+`Expandable = false`, re-encodes to the bytes it already had, and renders the same bare `<img>` with
+no anchor around it. `nodes/image-1.json` was not touched by the phase and came back byte-identical
+from the corpus regeneration for the fourth phase running.
+
+**Version decision: MINOR, on the standing record-widening precedent.** No wire byte of any existing
+document changes and no shipped slot is re-meant. What breaks is F# **construction sites**: the
+record gains a sixth required field, exactly as at 0.36.0 / 0.39.0 / 0.40.0 / 0.41.0 / 0.42.0 /
+0.43.0 / 0.44.0. Authors using `{ Defaults.image with … }` — the documented form — are unaffected.
+
+**Surface added.**
+
+- `ImageSpec` gains `Expandable`; `Defaults.image` carries `Expandable = false`.
+- The C# authoring veneer's `ImageOptions` gains a defaulted `bool Expandable`; the VB XML veneer
+  reads an `expandable` attribute, which joins the analyzer's `Image` attribute vocabulary.
+- `Fuaran.UI.Ops.Apply`'s field-level `UpdateProp` surface for `Image` accepts `"Expandable"` as an
+  ordinary bool — the `CodeBlockSpec.Copyable` shape.
+- `Fuaran.UI.RenderFidelity`'s `Image` row is promoted out of the trivially-single-tier set: it now
+  declares `Sensitive = true` and a `RichTier.ClientOnly` overlay, so `render-fidelity.json` changes
+  shape for that kind. A consumer reading that artefact sees a `rich.class` of `clientOnly` where it
+  previously saw `none`.
+- `Fuaran.UI.Renderer` packs one new content file, `content/fuaran-image-expand.js` — the reference
+  enhancement, on the `content/fuaran-reference-tables.js` precedent — and the reference stylesheet
+  gains the `.fuaran-image-expand` / `.fuaran-image-lightbox*` rules.
+
+**Render — the contract is the anchor, not the overlay.** Under `Expandable` both renderers wrap the
+`<img>` in `<a class="fuaran-image-expand" href="{the sanitised src}" data-fuaran-expandable>`. Three
+properties are contractual:
+
+- **The baseline is a REAL LINK.** With no JavaScript the reader clicks the picture and the browser
+  opens the full-size asset. The overlay is a client-only post-hydration refinement over that link,
+  outside every parity comparison — the Phase 290 / 293 split, applied to an affordance rather than
+  to a rendering technique. This is why the wire slot is a `bool` and not an `Action`: nothing
+  crosses the dispatch gate, and an `Action` would make every expandable image a dispatch site.
+- **A `Src` the egress floor refused emits NO anchor**, and no marker attribute either. The `<img>`'s
+  `src` must exist so it collapses to the refusal URL; an anchor has no such obligation, and
+  `<a href="about:blank">` is the dead control the design exists to avoid. This is the Phase 1080
+  dropped-candidate rule applied to the affordance.
+- **With a `Caption`, the nesting is `<figure>` → `<a>` → `<img>`**, `<figcaption>` the anchor's
+  sibling. The caption is outside the link target deliberately: it is prose a reader selects and
+  quotes, and interactive content inside the element whose job is to *label* the image inverts the
+  `<figure>`/`<figcaption>` relationship.
+
+**The overlay honours the Phase 289 Modal contract in full** where a host ships one:
+`role="dialog"` + `aria-modal="true"`, an `alt`-derived `aria-label`, a focus trap, `Escape` and
+backdrop dismissal, focus restored to the opening anchor, and the rest of the document
+`aria-hidden` (restored to its prior value, not blanket-removed). Two implementations ship and both
+read `[data-fuaran-expandable]`: the packaged dependency-free `content/fuaran-image-expand.js` and
+the `@fuaran-ui/renderer/enhance-expandable` module.
+
+**Two binding-walk omissions closed in the same release, and they are the fixes most likely to change
+observed behaviour.** `Fuaran.UI.BindingWalk` (the analysis walk) did not descend `ImageSpec.Caption`
+or the `SrcSet` candidates' `Src`, and `Fuaran.UI.Renderer`'s reactive walk did not descend
+`Caption`. So a caption bound to a State key was validated by nothing and subscribed by nothing — it
+rendered once and never followed its source — and a candidate resolved from a query was subscribed
+but invisible to analysis. Both walks now descend both slots, and `WalkConformanceTests` carries a
+census row for each. A host relying on either omission (a validator that passed because a caption
+binding was unseen) will now see the binding.
+
+**Wire and corpus.** `WIRE_FORMAT.md` §3.6.5 states the rules, including the anchor a rendering host
+MUST emit; the generated §3.2 / §3.5 / §3.6 tables and `idl.json` / `schema.json` were regenerated.
+Four fixtures added: `nodes/image-expandable-1` (the declaration alone),
+`nodes/image-expandable-figure-1` (`expandable` + `caption` + `srcSet` on one node — the gallery
+thumbnail, and the case where a host that built its encoder as a chain of `if`s gets the canonical
+key order wrong), `lenient/lenient-image-explicit-expandable-false` (an explicit `false`
+canonicalising to the omitted form), and `reject/reject-image-expandable-nonbool`
+(`"expandable":"true"`, refused at `$.kind.expandable` rather than coerced — a truthiness rule would
+have to rule on `"false"` too, and two hosts ruling differently would disagree about whether the
+document declares an affordance at all).

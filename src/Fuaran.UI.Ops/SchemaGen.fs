@@ -662,11 +662,14 @@ let private defs: (string * J) list =
       // optional content, absent-means-`None`; same position in the schema for
       // a different reason. Phase 1080 — `srcSet` is omitted-when-EMPTY, a third
       // reason for the same position: absent and `[]` denote the same document.
+      // Phase 1079 — `expandable` is omitted-when-`false`, a fourth reason and
+      // the plainest: the identity of a bool declaration is not declaring it.
       record
           [ "alt"; "src"; "variant" ]
           [ "alt", ref "TextSource"
             "aspectRatio", ref "ImageAspect"
             "caption", ref "TextSource"
+            "expandable", boolean
             "fit", ref "ImageFit"
             "loading", ref "ImageLoading"
             "src", binding "str"

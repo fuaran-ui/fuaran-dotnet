@@ -86,6 +86,7 @@ Friend Module DisplayMapping
                 .AspectRatio = AsEnum(Of Csharp.ImageAspect)(Attr(el, "aspect-ratio"), Csharp.ImageAspect.Natural),
                 .Loading = AsEnum(Of Csharp.ImageLoading)(Attr(el, "loading"), Csharp.ImageLoading.Eager),
                 .Caption = OptText(el, "caption"),
+                .Expandable = AttrBool(el, "expandable"),
                 .SrcSet = ChildElements(el, "Source").
                     Select(Function(c) New Csharp.SrcSetEntry(AsStringBinding(Attr(c, "src")), AttrInt(c, "width", 0))).
                     ToList()})

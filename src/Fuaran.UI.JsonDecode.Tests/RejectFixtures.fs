@@ -311,6 +311,22 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "Image srcSet `null` — refused. Absent means the EMPTY LIST (the missing-list-field decode class); a present null is a second spelling for an absence that already has one, and admitting it would let two hosts disagree about the canonical bytes of the same document" }
+      // Phase 1079 — `"expandable":"true"` is the near-miss an emitter actually
+      // produces: a model or a templating layer that stringifies everything.
+      // Refusing it rather than coercing is the point. A truthiness rule would
+      // have to answer what `"false"`, `""` and `"no"` mean, and every answer
+      // is a different host's answer — so `"expandable":"false"` would turn an
+      // affordance ON in one host and leave it off in another, for bytes both
+      // called valid. The slot declares an interaction; a document that is
+      // ambiguous about whether it declares one is not a document.
+      { Id = "reject-image-expandable-nonbool"
+        Json =
+          """{"id":"i","kind":{"$type":"Image","alt":{"$type":"Literal","text":"Hero"},"expandable":"true","src":{"$type":"Static","value":"/hero.jpg"},"variant":"Default"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.expandable"
+        IsOp = false
+        Description =
+          "Image expandable `\"true\"` — the stringified boolean, refused rather than coerced. A truthiness rule would have to rule on `\"false\"` and `\"\"` too, and two hosts ruling differently would disagree about whether the document declares an affordance at all" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

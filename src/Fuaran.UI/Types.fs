@@ -820,6 +820,24 @@ and LinkProtection = Generated.LinkProtection
 /// goes through the same URL-scheme floor as the primary one — a srcset entry
 /// is not a sanitisation bypass — and an entry that fails it is dropped from
 /// the emitted candidate list rather than served.
+///
+/// Phase 1079 adds `Expandable` — a `bool` defaulting to `false` and omitted
+/// from the wire at that default. It is the only slot on this record that
+/// declares an INTERACTION rather than a picture, and the whole of its design
+/// is in what it makes the renderers emit. `true` wraps the `<img>` in a real
+/// `<a href>` pointing at the resolved, sanitised primary `Src` — so with no
+/// JavaScript at all the reader still reaches the full-size asset — and marks
+/// that anchor `data-fuaran-expandable` for the client enhancement tier, which
+/// upgrades it in place into an in-page overlay meeting the Modal a11y
+/// contract (`role="dialog"` + `aria-modal`, focus trap, `Escape`, focus
+/// restoration). Nothing crosses the dispatch gate: the expansion is
+/// presentation, so it declares no `Action` and adds no handler slot. When the
+/// primary `Src` fails the egress floor the anchor is NOT emitted, on the same
+/// reasoning that drops a refused `SrcSet` candidate — an affordance that
+/// cannot be honoured is worse than no affordance. It composes with `Caption`
+/// (`<figure>` wraps the anchor, so the caption is not inside the link target)
+/// and with `SrcSet` (the candidates are the thumbnail, the primary `Src`
+/// behind the link is the full asset).
 and ImageSpec = Generated.ImageSpec
 
 /// §4b — one candidate rendition in an `ImageSpec.SrcSet` (Phase 1080).

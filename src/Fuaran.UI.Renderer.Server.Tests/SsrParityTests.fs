@@ -366,6 +366,45 @@ let private fixtures: Fixture list =
           [ "srcset=\"/harbour-400.jpg 400w, /harbour-800.jpg 800w, /harbour-1600.jpg 1600w\""
             "sizes=\"100vw\"" ] }
 
+      // Phase 1079 — the expansion affordance's structural vocabulary. Like the
+      // caption fixture above, the ELEMENT name is pinned and not only the
+      // class: the whole no-JS claim is that this is an `<a href>`, and a
+      // `<span class="fuaran-image-expand">` carrying a data attribute would
+      // pass a class-only assertion while giving a scriptless reader nothing.
+      // The `href` is pinned to the same value as the `src` because that is the
+      // contract — the expansion goes to the asset the image already names.
+      { Name = "Display/Image (Phase 1079 expandable — a real anchor to the asset)"
+        Node =
+          Fuaran.imageSpec
+              "imge"
+              { Defaults.image with
+                  Src = Binding.Static(Some "/harbour.jpg")
+                  Alt = TextSource.Literal "Harbour"
+                  Expandable = true }
+        Expected =
+          [ "<a class=\"fuaran-image-expand\" href=\"/harbour.jpg\" data-fuaran-expandable=\"\">"
+            "<img class=\"fuaran-image\" src=\"/harbour.jpg\" alt=\"Harbour\">"
+            "</a>" ] }
+
+      // Phase 1079 — the NESTING, pinned as a fixture rather than left to the
+      // prose. `<figure>` wraps `<a>` wraps `<img>`, and the `<figcaption>` is
+      // the anchor's SIBLING: the caption is outside the link target because it
+      // is prose a reader selects and quotes, not a second click surface.
+      // Asserting the two opening tags in order is what catches the inversion
+      // (anchor outside figure), which would carry every one of these classes.
+      { Name = "Display/Image (Phase 1079 expandable + caption — figure wraps anchor wraps img)"
+        Node =
+          Fuaran.imageSpec
+              "imgef"
+              { Defaults.image with
+                  Src = Binding.Static(Some "/harbour.jpg")
+                  Alt = TextSource.Literal "Harbour"
+                  Expandable = true
+                  Caption = Some(TextSource.Literal "The harbour at dawn") }
+        Expected =
+          [ "<figure class=\"fuaran-image-figure\"><a class=\"fuaran-image-expand\" href=\"/harbour.jpg\" data-fuaran-expandable=\"\">"
+            "</a><figcaption class=\"fuaran-image-figure-caption\">The harbour at dawn</figcaption></figure>" ] }
+
       { Name = "Display/List"
         Node =
           Fuaran.listSpec
@@ -914,6 +953,81 @@ let ssrParityTests =
               Expect.isFalse
                   (contains "sizes=" html)
                   "no sizes attribute either — it describes a list that is not there"
+          }
+
+          // ── Phase 1079 — the expansion affordance ─────────────────────────
+          //
+          // The negative half, and the one this phase most needed. An
+          // `expandable` image whose `src` the egress floor REFUSED must emit
+          // no anchor: the `<img>`'s `src` collapses to the refusal URL because
+          // an `<img>` must have one, but an anchor has no such obligation, and
+          // `<a href="about:blank">` is precisely the dead control the design
+          // exists to avoid. The image itself still renders, carrying its
+          // refusal marker — the reader is simply not offered an expansion that
+          // could not work.
+          //
+          // The assertion is in three parts, because each alone is passable by
+          // a different broken renderer: that no anchor was emitted (a renderer
+          // wrapping the refusal URL would fail it), that the marker attribute
+          // is absent too (one that dropped the `<a>` but left the data
+          // attribute on the `<img>` would leave an enhancement tier a target
+          // with no href), and that the image and its refusal marker are still
+          // there (one that dropped the whole node would pass the first two and
+          // silently lose the picture).
+          test "an expandable image whose src is refused emits no anchor at all" {
+              let node =
+                  Fuaran.imageSpec
+                      "imgxr"
+                      { Defaults.image with
+                          Src = Binding.Static(Some "javascript:alert(1)")
+                          Alt = TextSource.Literal "Harbour"
+                          Expandable = true }
+
+              let html = renderHtml BindingResolver.empty node
+
+              Expect.isFalse (contains "<a " html) "no anchor is emitted around a refused source"
+
+              Expect.isFalse
+                  (contains "data-fuaran-expandable" html)
+                  "and no expansion marker either — an enhancement must not find a target with no link"
+
+              Expect.isTrue
+                  (contains "fuaran-egress-refused" html)
+                  (sprintf "the image itself still renders, carrying its refusal marker — got %s" html)
+          }
+
+          // The composition claim, stated as one byte pin because the ORDER is
+          // the claim. `srcSet` candidates are renditions of the THUMBNAIL and
+          // ride the `<img>`; the anchor's `href` is the primary `src`, the
+          // FULL asset. A renderer that put the smallest candidate behind the
+          // link would satisfy every class assertion in this file and defeat
+          // the entire feature — the reader would click a thumbnail and be
+          // shown a thumbnail.
+          test "expandable + srcSet — the candidates ride the img, the full asset rides the href" {
+              let node =
+                  Fuaran.imageSpec
+                      "imges"
+                      { Defaults.image with
+                          Src = Binding.Static(Some "/harbour.jpg")
+                          Alt = TextSource.Literal "Harbour"
+                          Expandable = true
+                          SrcSet =
+                              [ { Src = Binding.Static(Some "/harbour-400.jpg")
+                                  Width = 400 } ] }
+
+              let html = renderHtml BindingResolver.empty node
+
+              Expect.isTrue
+                  (contains "href=\"/harbour.jpg\"" html)
+                  "the anchor points at the primary src — the full asset, never a candidate"
+
+              Expect.isFalse
+                  (contains "href=\"/harbour-400.jpg\"" html)
+                  "a srcSet candidate never becomes the expansion target"
+
+              Expect.isTrue
+                  (contains "srcset=\"/harbour-400.jpg 400w\"" html)
+                  (sprintf "the candidate list stays on the <img> inside the anchor — got %s" html)
           }
 
           // The icon-contract lock: the icon NAME rides the `data-icon`

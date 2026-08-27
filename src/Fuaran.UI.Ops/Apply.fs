@@ -951,6 +951,13 @@ let private updateImage (field: string) (v: obj) (spec: ImageSpec) : UpdateResul
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryTextSourceOption v
             |> Result.map (fun x -> { spec with Caption = x }))
+    // Phase 1079 — an ordinary bool, so it takes the `CodeBlockSpec.Copyable`
+    // shape exactly. Toggling the expansion affordance on a rendered image is
+    // the kind of edit `UpdateProp` exists for.
+    | "Expandable" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with Expandable = x }))
     // `Src` is a Binding with no ReplaceBinding slot declared for Image, so it
     // is reachable only via EditNode today. Deliberately not advertised.
     | "Src" -> NotSupportedYet

@@ -82,7 +82,7 @@ internal static class Vocabulary
         b["LabelValueRow"] = WithFormat("id", "label", "value", "emphasis", "help");
         Add("Fact", "id", "label", "value", "icon", "tone", "emphasis", "help");
         Add("Link", "id", "href", "label", "rel", "target", "download");
-        Add("Image", "id", "src", "alt", "variant", "fit", "aspect-ratio", "loading", "caption");
+        Add("Image", "id", "src", "alt", "variant", "fit", "aspect-ratio", "loading", "caption", "expandable");
         Add("List", "id", "ordered");
         Add("Divider", "id", "orientation", "label");
         Add("Toast", "id", "message", "tone", "open", "dismissable");

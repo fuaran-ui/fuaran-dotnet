@@ -187,6 +187,48 @@ let private census: CensusRow list =
         ExpectRead = true
         ExpectSubscribe = true
         Asymmetry = "" }
+      // Phase 1079 — the census row that closes the residue this file's own
+      // header predicted: "a new FIELD on an existing spec lands green until a
+      // census fixture exists for it". `ImageSpec.Caption` arrived at Phase
+      // 1078, was collected by the ANALYSIS walk (which descends the spec
+      // structurally) and missed by the REACTIVE one (whose `Image` arm
+      // enumerates slots by hand and was not extended), so a bound caption was
+      // validated as a state read and never subscribed — the picture's alt text
+      // beside it re-rendered and the caption did not. Exactly the
+      // `PageStateKey` shape the file was written for, in a new slot, four
+      // phases later. The fix is one `keysOfTextOpt` call in `Render.kindKeys`;
+      // this row is what makes reverting it red.
+      { Slot = "Image.Caption (optional TextSource)"
+        Key = "cw-imgcaption"
+        Tree =
+          Fuaran.imageSpec
+              "imgcap"
+              { Defaults.image with
+                  Src = Binding.Static(Some "/a.png")
+                  Alt = TextSource.Literal "Alt"
+                  Caption = Some(TextSource.Bound(binding.state "cw-imgcaption" "c")) }
+        ExpectRead = true
+        ExpectSubscribe = true
+        Asymmetry = "" }
+      // …and its sibling, found by the same row. The reactive walk collected
+      // the `SrcSet` candidates from Phase 1080 while the ANALYSIS walk did
+      // not, so the asymmetry ran the other way and no fixture existed to say
+      // so. A candidate resolved from a State key is a read on exactly the
+      // terms the primary `Src` is.
+      { Slot = "Image.SrcSet candidate Src"
+        Key = "cw-imgsrcset"
+        Tree =
+          Fuaran.imageSpec
+              "imgss"
+              { Defaults.image with
+                  Src = Binding.Static(Some "/a.png")
+                  Alt = TextSource.Literal "Alt"
+                  SrcSet =
+                      [ { Src = binding.state "cw-imgsrcset" "/a-400.png"
+                          Width = 400 } ] }
+        ExpectRead = true
+        ExpectSubscribe = true
+        Asymmetry = "" }
 
       // ── Documented asymmetries ──
       { Slot = "Action.SetState valueFrom (Button.OnClick)"

@@ -194,6 +194,7 @@ let image: Node<obj> =
               AspectRatio = ImageAspect.Natural
               Loading = ImageLoading.Eager
               SrcSet = []
+              Expandable = false
               Caption = None }
         ))
         None
@@ -215,6 +216,7 @@ let imagePresentation: Node<obj> =
               AspectRatio = ImageAspect.SixteenNine
               Loading = ImageLoading.Lazy
               SrcSet = []
+              Expandable = false
               Caption = None }
         ))
         None
@@ -236,6 +238,7 @@ let imageCaption: Node<obj> =
               AspectRatio = ImageAspect.Natural
               Loading = ImageLoading.Eager
               SrcSet = []
+              Expandable = false
               Caption = Some(TextSource.Literal "The harbour at dawn, 1908. Oil on canvas.") }
         ))
         None
@@ -258,6 +261,7 @@ let imageCaptionI18n: Node<obj> =
               AspectRatio = ImageAspect.Natural
               Loading = ImageLoading.Eager
               SrcSet = []
+              Expandable = false
               Caption = Some(TextSource.I18n("gallery.caption.harbour", Map.ofList [ "year", JInt 1908 ])) }
         ))
         None
@@ -291,7 +295,72 @@ let imageSrcset: Node<obj> =
                     Width = 800 }
                   { Src = Binding.Static(Some "/harbour-400.jpg")
                     Width = 400 } ]
+              Expandable = false
               Caption = None }
+        ))
+        None
+
+let imageExpandable: Node<obj> =
+    // Phase 1079 — `expandable` alone, everything else where `image-caption-1`
+    // has it, so the byte difference from that fixture is exactly one key. The
+    // fixture is deliberately MINIMAL: what it certifies is that a host reads
+    // and re-emits one boolean, and a fixture that also carried a caption and a
+    // candidate list would let a host that conflated the three still pass.
+    //
+    // The renderers' obligation is not certifiable here and is not meant to be
+    // — the corpus pins BYTES. That an `expandable` image emits a working
+    // `<a href>` is pinned by the SSR-parity corpus, and the split is
+    // deliberate: a wire fixture that asserted markup would be asserting one
+    // host's rendering as the contract.
+    node
+        "image-expandable-1"
+        (NodeKind.Image(
+            { Src = Binding.Static(Some "/harbour.jpg")
+              Alt = TextSource.Literal "Fishing boats moored at first light"
+              Variant = ImageVariant.Default
+              Fit = ImageFit.Natural
+              AspectRatio = ImageAspect.Natural
+              Loading = ImageLoading.Eager
+              SrcSet = []
+              Expandable = true
+              Caption = None }
+        ))
+        None
+
+let imageExpandableFigure: Node<obj> =
+    // Phase 1079 — the COMPOSITION fixture: `expandable` + `caption` + `srcSet`
+    // on one node, which is the gallery thumbnail the whole ImageSpec cluster
+    // was built to express. It exists because the three slots interact at
+    // render time in a way no single-slot fixture states:
+    //
+    //   - the `srcSet` candidates are renditions of the THUMBNAIL, sized for
+    //     the layout box, while the primary `src` behind the expansion is the
+    //     FULL asset — so the candidate widths here are deliberately all
+    //     smaller than a full-size image would be;
+    //   - the caption sits OUTSIDE the link target, which is the nesting the
+    //     renderers implement (`<figure>` wraps `<a>` wraps `<img>`).
+    //
+    // On the wire all three are independent keys and the fixture proves only
+    // that they round-trip together. That is worth a fixture anyway: three
+    // omit-at-default slots present at once is the case where a host that
+    // built its encoder as a chain of `if`s gets the key ORDER wrong, and
+    // canonical ordering is what the byte comparison catches.
+    node
+        "image-expandable-figure-1"
+        (NodeKind.Image(
+            { Src = Binding.Static(Some "/harbour.jpg")
+              Alt = TextSource.Literal "Fishing boats moored at first light"
+              Variant = ImageVariant.Default
+              Fit = ImageFit.Cover
+              AspectRatio = ImageAspect.FourThree
+              Loading = ImageLoading.Lazy
+              SrcSet =
+                [ { Src = Binding.Static(Some "/harbour-400.jpg")
+                    Width = 400 }
+                  { Src = Binding.Static(Some "/harbour-800.jpg")
+                    Width = 800 } ]
+              Expandable = true
+              Caption = Some(TextSource.Literal "The harbour at dawn, 1908. Oil on canvas.") }
         ))
         None
 
@@ -4783,6 +4852,7 @@ let a11yImageDecorative: Node<obj> =
               AspectRatio = ImageAspect.Natural
               Loading = ImageLoading.Eager
               SrcSet = []
+              Expandable = false
               Caption = None }
         ))
         (Some
@@ -4833,6 +4903,8 @@ let allNodes: (string * Node<obj>) list =
       "Display/Image (Phase 1078 — literal caption)", imageCaption
       "Display/Image (Phase 1078 — i18n caption with args)", imageCaptionI18n
       "Display/Image (Phase 1080 — three-candidate srcSet, authored descending)", imageSrcset
+      "Display/Image (Phase 1079 — expandable, the declaration alone)", imageExpandable
+      "Display/Image (Phase 1079 — expandable + caption + srcSet, the gallery thumbnail)", imageExpandableFigure
       "Display/List (ordered)", listDisplay
       "Display/Toast (Success tone, open)", toast
       "Display/CodeBlock (fsharp, line numbers + highlights)", codeBlock

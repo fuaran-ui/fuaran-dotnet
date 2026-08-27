@@ -140,6 +140,7 @@ public static partial class Fuaran
                 options.Loading.ToFs(),
                 Fs.List((options.SrcSet ?? Enumerable.Empty<SrcSetEntry>())
                     .Select(e => new FsGen.SrcSetEntry(e.Src.Inner, e.Width))),
+                options.Expandable,
                 options.Caption is { } cap ? Fs.Some(cap.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>A structured item list.</summary>
@@ -415,6 +416,14 @@ public sealed record ImageOptions
     /// Empty (the default) emits no <c>srcset</c> at all. The renderers order the
     /// emitted candidates ascending by width, so the authored order here is free.</summary>
     public IEnumerable<SrcSetEntry>? SrcSet { get; init; }
+
+    /// <summary>Whether the full-size asset is reachable from the rendered image
+    /// (default <c>false</c>). Set, the renderers wrap the <c>&lt;img&gt;</c> in a real
+    /// <c>&lt;a href&gt;</c> to the source and mark it <c>data-fuaran-expandable</c>; the
+    /// link works with no script at all, and an enhancement tier upgrades it in place
+    /// into an in-page overlay. Nothing crosses the dispatch gate — the expansion is
+    /// presentation, so it declares no action.</summary>
+    public bool Expandable { get; init; }
 }
 
 /// <summary>One candidate rendition in <see cref="ImageOptions.SrcSet"/>.</summary>

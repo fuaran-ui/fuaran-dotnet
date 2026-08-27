@@ -224,6 +224,11 @@ let image: ImageSpec =
       // in the strongest sense: an image with no candidates is served from
       // `Src` alone, which is what every image did before the slot existed.
       SrcSet = []
+      // Phase 1079 — not expandable. `false` is the identity in the same sense
+      // the empty candidate list is: an image that declares no expansion
+      // renders exactly the `<img>` every image rendered before the slot
+      // existed, with no anchor around it.
+      Expandable = false
       // Phase 1078 — no caption is the pre-phase image, and `None` is the only
       // honest default: a caption is content, and inventing one is not a
       // default but a fabrication.

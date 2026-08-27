@@ -27,6 +27,14 @@
          as a file (script-src 'self'); the file's own header carries the CSP
          guidance and the no-JS posture. -->
     <Content Include="content\fuaran-reference-tables.js" Pack="true" PackagePath="content\" />
+    <!-- The reference expandable-image enhancement (Phase 1079) — progressive
+         enhancement over the server-rendered `[data-fuaran-expandable]` anchor,
+         shipped beside the stylesheet on exactly the tables precedent. The
+         anchor already works with no script at all; this upgrades it to an
+         in-page overlay meeting the Modal a11y contract. Serve it as a file
+         (script-src 'self'); the file's own header carries the CSP guidance and
+         the no-JS posture. -->
+    <Content Include="content\fuaran-image-expand.js" Pack="true" PackagePath="content\" />
     <Content Include="content\fuaran-bridge.css.template" Pack="true" PackagePath="content\" />
     <Content Include="content\README.md" Pack="true" PackagePath="content\" />
   </ItemGroup>

@@ -809,7 +809,23 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             | NodeKind.LabelValueRow r -> usesOfText r.Label @ usesOfBinding r.Value @ usesOfTextOpt r.Help, []
             | NodeKind.Fact fa -> usesOfText fa.Label @ usesOfText fa.Value @ usesOfTextOpt fa.Help, []
             | NodeKind.Link l -> usesOfBinding l.Href @ usesOfText l.Label, []
-            | NodeKind.Image i -> usesOfBinding i.Src @ usesOfText i.Alt, []
+            // Phase 1079 — `Caption` (Phase 1078) and every `SrcSet` candidate's
+            // `Src` (Phase 1080) join `Src`/`Alt` here, and the omission they
+            // close is the one this walk exists to prevent. Both slots hold
+            // ordinary bindings over the same sources `Src` and `Alt` use, so a
+            // caption bound to a State key, or a candidate resolved from a
+            // query, was invisible to every analysis that runs on this walk:
+            // unknown-key detection, write-back inference, the dependency
+            // report. Neither slot arm was written; each new field simply landed
+            // green, which is exactly the residue `WalkConformanceTests`'s own
+            // header predicted for a new FIELD on an existing spec. The census
+            // rows added with this fix are what make reverting either line red.
+            | NodeKind.Image i ->
+                usesOfBinding i.Src
+                @ usesOfText i.Alt
+                @ usesOfTextOpt i.Caption
+                @ (i.SrcSet |> List.collect (fun e -> usesOfBinding e.Src)),
+                []
             | NodeKind.List l -> l.Items |> List.collect usesOfText, []
             | NodeKind.Toast t ->
                 noteWriteBack (writeBackTargetOf t.Open)

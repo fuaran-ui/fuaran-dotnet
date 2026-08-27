@@ -239,10 +239,24 @@ let all: FidelityRow list =
 
       plain "Icon" "the icon name + size" "the resolved icon markup through the uniform icon hook"
 
-      plain
+      // Phase 1079 promotes `Image` out of `plain`. It now carries an explicit,
+      // phase-pinned three-tier contract of exactly the Phase 290 shape: a
+      // deterministic parity-checked floor (the anchor), and a declared
+      // client-only tier (the overlay) that no renderer emits and no parity
+      // comparison sees. The row was `plain` while the kind had only one tier;
+      // saying so now is the difference between a table that describes the
+      // renderers and one that merely lists the kinds.
+      row
           "Image"
-          "the src, alt, variant, the fit / aspectRatio / loading presentation tokens, the optional caption, and the srcSet candidate list"
-          "a real `<img>` with the sanitised `src` (unknown or dangerous schemes collapse to `about:blank`), `alt` always emitted, the per-variant class, and the per-token fit / aspect classes plus `loading=\"lazy\"` under `loading = Lazy`. The aspect box is reserved by CSS alone, so the space is held in the server-rendered output with no script. A `caption` wraps the `<img>` in `<figure class=\"fuaran-image-figure\">` with the resolved text in a `<figcaption>`; with no caption there is no wrapper at all. A non-empty `srcSet` emits `srcset` with `<url> <width>w` candidates ordered ASCENDING by width plus `sizes=\"100vw\"`; every candidate's url passes the same URL-scheme + egress floor as `src`, and one that fails it is dropped from the list rather than emitted, so the primary `src` remains the fallback. An empty `srcSet` emits neither attribute"
+          true
+          "the src, alt, variant, the fit / aspectRatio / loading presentation tokens, the optional caption, the srcSet candidate list, and the `expandable` declaration"
+          "a real `<img>` with the sanitised `src` (unknown or dangerous schemes collapse to `about:blank`), `alt` always emitted, the per-variant class, and the per-token fit / aspect classes plus `loading=\"lazy\"` under `loading = Lazy`. The aspect box is reserved by CSS alone, so the space is held in the server-rendered output with no script. A `caption` wraps the emission in `<figure class=\"fuaran-image-figure\">` with the resolved text in a `<figcaption>`; with no caption there is no wrapper at all. A non-empty `srcSet` emits `srcset` with `<url> <width>w` candidates ordered ASCENDING by width plus `sizes=\"100vw\"`; every candidate's url passes the same URL-scheme + egress floor as `src`, and one that fails it is dropped from the list rather than emitted, so the primary `src` remains the fallback. An empty `srcSet` emits neither attribute. Under `expandable` the `<img>` is wrapped in a real `<a class=\"fuaran-image-expand\" href=\"<the sanitised src>\" data-fuaran-expandable>` — a WORKING link to the full-size asset with no script, which is the whole no-JS story — nested INSIDE the `<figure>` so a caption is not part of the link target; a `src` the egress floor refused emits no anchor at all, because an affordance that cannot be honoured is worse than none"
+          (RichTier.ClientOnly(
+              "the in-page lightbox overlay",
+              "a post-hydration pass targeting `[data-fuaran-expandable]` (the packaged `content/fuaran-image-expand.js`, or the `@fuaran-ui/renderer/enhance-expandable` module); it appends an overlay to `document.body` and suppresses the anchor's navigation only once that overlay is up, so a failure leaves the working link"
+          ))
+          [ "image-expandable-1"; "image-expandable-figure-1" ]
+          "Phase 1079; WIRE_FORMAT.md 3.6.5; docs/SSR.md (expandable images)"
 
       plain "LabelValueRow" "the label / value TextSources" "the resolved, formatted row"
 
