@@ -114,6 +114,103 @@ let private switchReader (id: string) (key: string) : Node<Msg> =
                     Child = markdown (id + "-on") "on" } ]
             Default = markdown (id + "-off") "off" }
 
+// ─── Phase 865 fixtures — FUARAN105, a Transform over an unfillable source ───
+//
+// The charter's §3.1 shape: a grid carrying rows on its OWN `defaultValue`
+// beside a badge deriving a count from the same key without one. Under the
+// shipped resolver `Binding.State`'s default is a per-reader FALLBACK rather
+// than a slot seed, so the badge's Transform starts from `emptySource` and
+// renders zero forever — which is what these fixtures pin.
+
+let private inertSourceDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.TransformSourceInert _ -> true
+            | _ -> false)
+
+/// The canonical post-818 derivation idiom: `groupBy` + `count`, which is the
+/// pipeline the sighted emissions carried. Its content is immaterial to the
+/// rule — the rule keys on the SOURCE — but a real pipeline keeps the fixture
+/// recognisable as the emission it stands for.
+let private groupCount: Fuaran.Core.Transform list =
+    [ Fuaran.Core.Transform.GroupBy(
+          [ "team" ],
+          [ { Name = "n"
+              Fn = Fuaran.Core.AggFn.Count
+              Of = "team" } ]
+      ) ]
+
+/// Two rows, row-major — the shape `HostPrelude.TransformLive` transposes.
+let private memberRows: Fuaran.Core.JVal =
+    Fuaran.Core.JArr
+        [ Fuaran.Core.JObj [ "team", Fuaran.Core.JStr "Ops" ]
+          Fuaran.Core.JObj [ "team", Fuaran.Core.JStr "Ops" ] ]
+
+/// A badge whose text derives from a Transform over `$state.<key>`.
+/// `sourceDefault` is the Transform source slot's OWN carried default — the
+/// single thing that decides whether the pipeline runs over real rows or over
+/// `TransformLive.emptySource`.
+let private derivedBadge (id: string) (key: string) (sourceDefault: Fuaran.Core.JVal option) : Node<Msg> =
+    let source: Binding<Fuaran.Core.JVal> = Binding.State(key, sourceDefault)
+
+    // The decoder derives the initial snapshot from the source's carried
+    // default; mirrored here so the fixture is the tree a decode would produce.
+    let initial =
+        match sourceDefault with
+        | Some data ->
+            match HostPrelude.TransformLive.initialSource data with
+            | Ok ds -> ds
+            | Error _ -> HostPrelude.TransformLive.emptySource
+        | None -> HostPrelude.TransformLive.emptySource
+
+    Fuaran.badge
+        id
+        { Defaults.badge with
+            Label = TextSource.Bound(Binding.Transform(TransformSource.Live(source, initial), groupCount, None)) }
+
+/// A grid sourced from `$state.<key>`, carrying the rows in its own default —
+/// the OTHER half of the charter's pair. Deliberately NOT editable: an editable
+/// grid over a direct State source is a write destination, and that would make
+/// the fixture prove something about writers rather than about seeding.
+let private seedingGrid (id: string) (key: string) : Node<Msg> =
+    { Id = id
+      Kind =
+        NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source =
+                Binding.State(
+                    key,
+                    Some(Seq.ofList [ (Map.ofList [ "team", Unchecked.nonNull (box 1) ]: Fuaran.Core.Row) ])
+                )
+              RowKey = None
+              RowKeyField = Some "id"
+              Columns =
+                [ { Label = "Team"
+                    Value = None
+                    Field = Some "team"
+                    Sortable = None
+                    Editable = None
+                    Format = CellFormat.None
+                    Kind = CellKindErased.Text
+                    Width = ColumnWidth.Auto } ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              StaticRows = None }
+        )
+      State = None
+      Style = None
+      Accessibility = None
+      ExtraAttributes = None
+      Motion = None }
+
 // ─── Phase 864 fixtures — the declared-rule family (FUARAN099/100/101) ───
 //
 // Every rule below reasons about a slot the author DECLARED, so the fixtures
@@ -1661,6 +1758,120 @@ let tests =
               let tree = dashboard "root" [ switchReader "sw" "" ]
 
               Expect.isEmpty (noWriterDefects tree) "a malformed selector and an unreachable one are different findings"
+          }
+
+          // ─── Phase 865: FUARAN105 — a Transform over a State source nothing
+          // can fill. Every test has a go-red partner, because the rule reasons
+          // from an ABSENCE (no carried default, no writer) and an absence is
+          // only evidence where the walk can see everything.
+
+          test "FUARAN105: a Transform over a default-less State source warns" {
+              let tree = dashboard "root" [ derivedBadge "count" "members" None ]
+
+              match PreEmitValidate.validate tree with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.TransformSourceInert("count", "members"))
+                      "the defect is raised"
+
+                  let code, severity, _ =
+                      describe (PreEmitDefect.TransformSourceInert("count", "members"))
+
+                  Expect.equal code "FUARAN105" "stable code"
+
+                  Expect.equal
+                      severity
+                      DefectSeverity.Warning
+                      "the HOST may populate the key, and the validator cannot see the host"
+              | Ok() -> failtest "Expected FUARAN105, got Ok"
+          }
+
+          test "FUARAN105: the charter's §3.1 pair — a seeding grid does NOT rescue the badge" {
+              // The whole point of the rule, and the one reading a naive
+              // implementation gets wrong. `Binding.State`'s `defaultValue` is a
+              // PER-READER fallback: the grid's default is never written into the
+              // store, so the badge beside it still derives from the empty table
+              // and still renders zero. A rule that stood down here would be
+              // reading the tree under a seeding semantics the language does not
+              // have — which is exactly the change this phase defers.
+              let tree =
+                  dashboard "root" [ seedingGrid "grid" "members"; derivedBadge "count" "members" None ]
+
+              Expect.contains
+                  (inertSourceDefects tree)
+                  (PreEmitDefect.TransformSourceInert("count", "members"))
+                  "a sibling reader's default is not a seed"
+          }
+
+          test "FUARAN105 go-red check: the source's OWN default clears it" {
+              // The decoder derives the Transform's initial snapshot from the
+              // source binding's carried default, so the pipeline runs over real
+              // rows and the silent zero cannot arise.
+              let tree = dashboard "root" [ derivedBadge "count" "members" (Some memberRows) ]
+
+              Expect.isEmpty (inertSourceDefects tree) "a carried default makes the initial snapshot real"
+          }
+
+          test "FUARAN105 go-red check: a SetState writer clears it" {
+              // A default-less source is fine when the channel changes: the Live
+              // transform re-derives on the write, so the empty first snapshot is
+              // a starting state rather than a permanent wrong answer.
+              let tree = setStateTree "members" [ derivedBadge "count" "members" None ]
+
+              Expect.isEmpty (inertSourceDefects tree) "a declared writer makes the source fillable"
+          }
+
+          test "FUARAN105 go-red check: an OPAQUE writer stands the rule down" {
+              // A grid's row-click handler is a closure over the row: an arbitrary
+              // action, so an arbitrary write. Under it "nothing writes this key"
+              // is unprovable rather than false.
+              let grid = sortGrid None None [ ("Team", Some "team", None) ]
+
+              let opaqueGrid =
+                  match grid.Kind with
+                  | NodeKind.DataGrid spec ->
+                      { grid with
+                          Kind =
+                              NodeKind.DataGrid
+                                  { spec with
+                                      OnRowClick = Some(fun _ -> Action.Navigate "/x") } }
+                  | _ -> grid
+
+              let tree = dashboard "root" [ opaqueGrid; derivedBadge "count" "members" None ]
+              Expect.isEmpty (inertSourceDefects tree) "an unprovable claim is not a finding"
+          }
+
+          test "FUARAN105: a host-reserved key is exempt" {
+              let tree =
+                  dashboard "root" [ derivedBadge "count" (StateKeyPolicy.HostReservedPrefix + "members") None ]
+
+              Expect.isEmpty (inertSourceDefects tree) "the host fills its own namespace by definition"
+          }
+
+          test "FUARAN105 go-red check: an EMPTY key is not this rule's subject" {
+              let tree = dashboard "root" [ derivedBadge "count" "" None ]
+
+              Expect.isEmpty (inertSourceDefects tree) "a malformed source and an unfillable one are different findings"
+          }
+
+          test "FUARAN105 go-red check: a Data source is not its subject" {
+              // `TransformSource.Data` is the columnar / `ref` shape. It names no
+              // state key, so there is no slot to be unfillable.
+              let badge =
+                  Fuaran.badge
+                      "count"
+                      { Defaults.badge with
+                          Label =
+                              TextSource.Bound(
+                                  Binding.Transform(
+                                      TransformSource.Data HostPrelude.TransformLive.emptySource,
+                                      groupCount,
+                                      None
+                                  )
+                              ) }
+
+              Expect.isEmpty (inertSourceDefects (dashboard "root" [ badge ])) "an embedded table names no slot"
           }
 
           // ─── Phase 864: FUARAN099/100/101 — the declared-rule family. Every

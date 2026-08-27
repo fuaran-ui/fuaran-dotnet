@@ -317,7 +317,17 @@
          `DecodePolicy.admitAll`. Its own version rather than a repack of
          0.37.0, per the same-version-repack rule; see STABILITY.md "Recorded
          change — 0.38.0". -->
-    <Version>0.38.0</Version>
+    <!-- 0.39.0 (Phase 865): FUARAN105, the silent-zero derivation warning — a
+         `Binding.Transform` over a default-less `Binding.State` source that
+         nothing writes derives from the empty table and renders a plausible
+         wrong answer. Additive on the WIRE (no fixture byte moved; the corpus
+         regenerated identically apart from the derived vocabulary entry) and a
+         construction-site break in F#, since `PreEmitDefect` and
+         `BindingWalk.BindingUse` each gain a case and `StateKeyFacts` a field.
+         Minor, per the 0.36.0 precedent for the identical shape. Deliberately
+         a defect FLAG and NOT the seeding semantics change, which is deferred;
+         see STABILITY.md "Recorded change — 0.39.0". -->
+    <Version>0.39.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

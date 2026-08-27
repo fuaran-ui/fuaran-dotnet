@@ -391,6 +391,32 @@ type PreEmitDefect =
     ///
     /// Carries the switch node's id and the key.
     | SwitchKeyNoWriter of nodeId: string * key: string
+    /// **FUARAN105 (Warning)**. A `Binding.Transform` whose SOURCE is a
+    /// `Binding.State` carrying no `defaultValue`, on a key nothing in the tree
+    /// writes (Phase 865) — the silent zero. The Transform's initial snapshot
+    /// table is derived from the source binding's own carried default, so a
+    /// default-less source decodes to `TransformLive.emptySource`; with no
+    /// writer the channel never changes, so a `groupBy`/`count` pipeline over it
+    /// renders a plausible, permanent, wrong answer with nothing red anywhere.
+    ///
+    /// **A SIBLING reader's default is not a rescuer, and that is a fact about
+    /// the shipped resolver rather than a narrowing choice.**
+    /// `Binding.State`'s `defaultValue` is a PER-READER FALLBACK, not a slot
+    /// seed: nothing writes it into the store, so a grid declaring
+    /// `State("rows", Some rows)` beside a badge reading `State("rows", None)`
+    /// leaves the badge resolving from an unwritten slot. That is exactly the
+    /// emission this rule exists to name. A rule that stood down on a sibling's
+    /// default would be reading the tree under a seeding semantics the language
+    /// does not have.
+    ///
+    /// **WARNING, and it stands down under any opaque writer**, for the same
+    /// reason FUARAN103 does: a closure produces an arbitrary action at dispatch
+    /// time and may write anything, and a host may populate the key directly.
+    /// Host-reserved keys (the Phase 782 prefix) are exempt — the host's to
+    /// write by definition.
+    ///
+    /// Carries the reading node's id and the key.
+    | TransformSourceInert of nodeId: string * key: string
     /// **FUARAN099 (Error)**. A `FieldRule.compare` reads a `State` key that no
     /// field in the enclosing form owns and nothing in the tree writes (Phase
     /// 864) — the predicate can never be satisfied or unsatisfied, only absent,
@@ -726,6 +752,14 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         DefectSeverity.Warning,
         sprintf
             "switch '%s' selects on state key '%s' but nothing in the tree can write it — one branch renders forever; give the key a writer (an Action.SetState on a button, a Call with into: {\"$type\":\"State\",\"key\":\"%s\"}, or a control write-back slot bound to it), or select on the binding that already changes (a Selection, a Filter, a Query). If the key is written by the HOST, this warning is expected and can be ignored"
+            nodeId
+            key
+            key
+    | PreEmitDefect.TransformSourceInert(nodeId, key) ->
+        "FUARAN105",
+        DefectSeverity.Warning,
+        sprintf
+            "'%s' derives from a Transform over state key '%s', but that source declares no default and nothing in the tree writes the key — the pipeline runs over an EMPTY table and renders a plausible wrong answer (a count of zero) that nothing reports; carry the rows on the Transform's own source ({\"$type\":\"State\",\"key\":\"%s\",\"defaultValue\":[…]}), or give the key a writer. A sibling node's defaultValue does NOT fill the slot — it is a per-reader fallback, not a seed. If the key is populated by the HOST, this warning is expected and can be ignored"
             nodeId
             key
             key
@@ -1660,6 +1694,40 @@ let private validateCore
                 && reportedSwitch.Add(switchNodeId + " " + key)
             then
                 defects.Add(PreEmitDefect.SwitchKeyNoWriter(switchNodeId, key))
+
+    // ── FUARAN105 — a Transform over an unfillable State source (Phase 865) ──
+    //
+    // The silent zero. `Binding.State`'s `defaultValue` is a per-reader
+    // FALLBACK, not a slot seed (`BindingResolver.fs`), so a Transform whose own
+    // source declares no default resolves from an unwritten slot: the decoder's
+    // initial snapshot is `TransformLive.emptySource`, and a `groupBy`/`count`
+    // over it renders zero — correct-looking, permanent, and reported by
+    // nothing. The shape is exactly the one the shared-data-source charter
+    // sighted: a grid carrying the rows on its own `defaultValue` beside a badge
+    // deriving from the same key without one.
+    //
+    // It reasons from the ABSENCE of a write, so it takes the same stand-down
+    // FUARAN103 does — an opaque writer makes "nothing writes this" unprovable
+    // rather than false, and a host-reserved key is the host's to write.
+    //
+    // **A sibling reader's default is deliberately not consulted.** Under the
+    // shipped resolver it does not reach this Transform, so treating it as a
+    // rescuer would encode a seeding semantics the language does not have —
+    // which is the very change the charter defers.
+    if not facts.StateKeys.OpaqueWriter then
+        let reportedTransform = System.Collections.Generic.HashSet<string>()
+
+        for (readerNodeId, key) in facts.StateKeys.TransformInertSources do
+            // An EMPTY key names no slot at all; it is a malformed source rather
+            // than an unfillable one, and reporting it here would say nothing
+            // the author can act on.
+            if
+                key <> ""
+                && not (Set.contains key facts.StateKeys.WriteKeys)
+                && not (StateKeyPolicy.isHostReserved key)
+                && reportedTransform.Add(readerNodeId + " " + key)
+            then
+                defects.Add(PreEmitDefect.TransformSourceInert(readerNodeId, key))
 
     // ── FUARAN099 — a cross-field compare naming a key nothing can reach (Phase 864) ──
     //

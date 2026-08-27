@@ -50,6 +50,24 @@ type BindingUse =
     /// "this tree cannot be analysed" — the difference between a finding and a
     /// false accusation.
     | Computed
+    /// Phase 865 — a `Binding.Transform` whose SOURCE slot
+    /// (`TransformSource.Live`) is a `Binding.State`, carrying the key and
+    /// whether THAT slot declares its own `defaultValue`. FUARAN105's subject.
+    ///
+    /// **Deliberately NOT a `State` read**, and the distinction is the whole
+    /// point of recording it separately. `usesOfBinding` has never descended a
+    /// Transform's source slot, so a key only a Transform reads is absent from
+    /// `StateKeyFacts.Reads` today. Folding it in there would narrow FUARAN098
+    /// (a shipped Warning) on trees that fire it now — a behaviour change well
+    /// outside the remit of adding a Warning, and the same reasoning
+    /// `StateKeyFacts` already records for holding `WriteKeys` beside `Writes`.
+    /// The gap is real and is recorded as its own work; this case closes only
+    /// what FUARAN105 needs.
+    ///
+    /// It is also filtered OUT of `TreeBindingFacts.Uses` for the mirror
+    /// reason: the consumption-union rules (FUARAN070–076) are tuned to the
+    /// surfaces `Uses` covers today.
+    | TransformStateSource of key: string * hasDefault: bool
 
 /// One observed usage tagged with the id of the node whose spec reads it.
 type NodeBindingUse = { Reader: string; Use: BindingUse }
@@ -160,6 +178,20 @@ type StateKeyFacts =
         /// reader-tagged `State` use on a Switch does not identify the
         /// selector, and the rule that reasons about it must not guess.
         SwitchSelectors: (string * string) list
+        /// Phase 865 — every `Binding.Transform` in the tree whose source slot
+        /// is a **default-less** `Binding.State`, as (reading node id, key).
+        /// FUARAN105's subjects.
+        ///
+        /// A source that DOES carry a `defaultValue` is not recorded: the
+        /// decoder derives the Transform's initial snapshot table from that
+        /// carried default, so the pipeline runs over real rows rather than
+        /// `TransformLive.emptySource`, and the silent zero cannot arise. A
+        /// SIBLING reader's default is deliberately NOT a rescuer — under the
+        /// shipped resolver semantics `Binding.State`'s `defaultValue` is a
+        /// per-reader fallback, not a slot seed, so it never reaches this
+        /// Transform. That reading is the one the deferral of the seeding rule
+        /// requires; see `PreEmitDefect.TransformSourceInert`.
+        TransformInertSources: (string * string) list
     }
 
 /// The tree-wide facts `PreEmitValidate`'s cross-tree checks run on.
@@ -203,24 +235,36 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     | Binding.I18n(_, Some args) -> args |> Map.toList |> List.collect (fun (_, ab) -> usesOfBinding<JVal> ab)
     | Binding.I18n(_, None) -> []
     | Binding.Format(source, _, _) -> usesOfBinding source
-    | Binding.Transform(_, pipeline, parameters) ->
+    | Binding.Transform(source, pipeline, parameters) ->
         // The pure `Transform.paramsOf` derivation (fuaran-core#77) names every
         // param the pipeline actually references — a declared `params` entry
         // outside it is dead weight (FUARAN076).
         let referenced = Fuaran.Core.Transform.paramsOf pipeline |> Set.ofList
 
-        defaultArg parameters []
-        |> List.collect (fun (p: TransformParam) ->
-            let sourceUses =
-                usesOfBinding p.From
-                |> List.map (function
-                    // A param's Filter source is the DECLARED filter→consumer
-                    // edge (the 424 construct) — distinct from a plain value
-                    // read for the dangling / consumption checks.
-                    | BindingUse.Filter filterName -> BindingUse.TransformParamFilter filterName
-                    | other -> other)
+        // Phase 865 — the SOURCE slot, recorded as its own case rather than as a
+        // `State` read (see `BindingUse.TransformStateSource`). A `Data` source
+        // is columnar/`ref` and names no state key; a `Live` source over any
+        // other binding shape is not FUARAN105's subject.
+        let sourceUse =
+            match source with
+            | TransformSource.Live(Binding.State(key, defaultValue), _) ->
+                [ BindingUse.TransformStateSource(key, defaultValue.IsSome) ]
+            | TransformSource.Live _
+            | TransformSource.Data _ -> []
 
-            BindingUse.TransformParam(p.Name, Set.contains p.Name referenced) :: sourceUses)
+        sourceUse
+        @ (defaultArg parameters []
+           |> List.collect (fun (p: TransformParam) ->
+               let sourceUses =
+                   usesOfBinding p.From
+                   |> List.map (function
+                       // A param's Filter source is the DECLARED filter→consumer
+                       // edge (the 424 construct) — distinct from a plain value
+                       // read for the dangling / consumption checks.
+                       | BindingUse.Filter filterName -> BindingUse.TransformParamFilter filterName
+                       | other -> other)
+
+               BindingUse.TransformParam(p.Name, Set.contains p.Name referenced) :: sourceUses))
     // Phase 932 — `Computed` reads the whole state bag through a closure, so it
     // is an OPAQUE read, not an absent one. See `BindingUse.Computed`.
     | Binding.Computed _ -> [ BindingUse.Computed ]
@@ -374,6 +418,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
     let switchSelectors = ResizeArray<string * string>()
     let mutable opaqueWriter = false
 
+    // ── The Phase 865 read-side projection FUARAN105 runs on ──
+    let transformInertSources = ResizeArray<string * string>()
+
     /// A closure produces an arbitrary `Action` at dispatch time, so it may
     /// write any key. Seeing one stands the write-side rule down for the whole
     /// tree — over-counting an opaque writer costs a missed finding, and the
@@ -399,12 +446,18 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             implicitKey |> Option.iter (fun k -> stateWriteKeys.Add k |> ignore)
 
     /// Fold usages into the STATE projection only. Every read surface reaches
-    /// this, including the ones deliberately kept out of `Uses`.
-    let recordStateOf (found: BindingUse list) =
+    /// this, including the ones deliberately kept out of `Uses`. `readerId` is
+    /// the node whose spec holds the binding — carried because FUARAN105 names
+    /// the reading node, and this is the one fold every read surface reaches.
+    let recordStateOf (readerId: string) (found: BindingUse list) =
         for u in found do
             match u with
             | BindingUse.State k -> stateReads.Add k |> ignore
             | BindingUse.Computed -> opaqueReader <- true
+            // Phase 865 — only the DEFAULT-LESS source is a candidate; a source
+            // carrying its own default is what makes the initial snapshot real.
+            | BindingUse.TransformStateSource(key, false) -> transformInertSources.Add(readerId, key)
+            | BindingUse.TransformStateSource(_, true) -> ()
             | _ -> ()
 
     // `inUses` is false while walking a subtree that contributes STATE facts but
@@ -413,11 +466,17 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
     // feeding them into the consumption-union checks would change five shipped
     // rules' verdicts as a side-effect of adding a Warning.
     let record (inUses: bool) (readerId: string) (found: BindingUse list) =
-        recordStateOf found
+        recordStateOf readerId found
 
         if inUses then
             for u in found do
-                uses.Add { Reader = readerId; Use = u }
+                match u with
+                // Phase 865 — the STATE projection only, never `Uses`. See
+                // `BindingUse.TransformStateSource`: the consumption-union
+                // rules are tuned to the surfaces `Uses` covers today, and a
+                // Transform's source slot is not one of them.
+                | BindingUse.TransformStateSource _ -> ()
+                | _ -> uses.Add { Reader = readerId; Use = u }
 
     /// Every `SetState` reachable from a wire-survivable action slot: the key is
     /// a WRITE, and a `valueFrom` deriving the written value is itself a READ.
@@ -428,7 +487,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             stateWriteKeys.Add key |> ignore
 
             match valueFrom with
-            | Some b -> recordStateOf (usesOfBinding b)
+            | Some b -> recordStateOf readerId (usesOfBinding b)
             | None -> ()
         | Action.Chain actions -> actions |> List.iter (recordStateAction readerId)
         // A declared result target names its destination; an `onResult` closure
@@ -761,4 +820,5 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
           OpaqueReader = opaqueReader
           WriteKeys = Set.ofSeq stateWriteKeys
           OpaqueWriter = opaqueWriter
-          SwitchSelectors = List.ofSeq switchSelectors } }
+          SwitchSelectors = List.ofSeq switchSelectors
+          TransformInertSources = List.ofSeq transformInertSources } }

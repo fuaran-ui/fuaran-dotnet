@@ -1623,3 +1623,54 @@ document does not carry, which the generated reject machinery structurally canno
 **optional** for a host — unlike §21 or §22 — so a host that has not implemented it declares the
 family not-applicable with a reason rather than being non-conformant. The TypeScript leg is filed
 separately.
+
+## Recorded change — 0.39.0, the silent-zero derivation warning (fuaran#865)
+
+**Additive on every axis, and the wire does not move.** No fixture payload changed, no encoder or
+decoder path changed, and `--emit-corpus` regenerated the corpus byte-for-byte apart from the derived
+`validator/defect-vocabulary.json` entry for the one new defect below. Nothing about how a document is
+read or resolved is different; a new Warning is raised about a document shape that already decoded and
+already rendered exactly as it does now.
+
+**Why it exists.** `Binding.State`'s `defaultValue` is a PER-READER FALLBACK, not a slot seed: nothing
+writes it into the store. So a `Binding.Transform` whose own source is a default-less
+`Binding.State{key}` derives its initial snapshot from `TransformLive.emptySource`, and with no writer
+anywhere in the tree the channel never changes — a `groupBy`/`count` over it renders zero, forever,
+with nothing red at decode, at validate, or at render. The shape is idiomatic and looks correct: a grid
+carrying rows on its own `defaultValue` beside a badge counting "the same" rows. It is the strongest
+form a validator finding takes — the emission is what the language teaches, and the language makes it
+unsound.
+
+**This is a defect FLAG, not a semantics change, and the distinction is the whole scope of the
+release.** The seeding rule that would make the two-node document mean what it looks like it means
+(`Binding.State.defaultValue` seeding the slot at mount) is DEFERRED — it re-means an already-shipped
+document, which every conformant host would have to adopt simultaneously, and the evidence for it is
+one criterion at ×2. See
+[`docs/domain-explorations/shared-data-source-charter.md`](../docs/domain-explorations/shared-data-source-charter.md)
+§10. Nothing here anticipates it.
+
+**Additive public surface (each a *minor* event per the Semver note above).**
+
+- `PreEmitValidate` gains `TransformSourceInert of nodeId * key` → **FUARAN105 (Warning)**. Raised by
+  the existing `validate` / `validateWithRegistry` / `*WithPolicy` entry points; no new entry point.
+- `BindingWalk.BindingUse` gains `TransformStateSource of key * hasDefault`, and
+  `BindingWalk.StateKeyFacts` gains `TransformInertSources: (string * string) list`. A DU case and a
+  record field are both construction-site breaks in F# — the 0.36.0 precedent for the identical shape,
+  and why this is a minor rather than a repack.
+
+**A sibling reader's default is deliberately NOT a rescuer.** Under the shipped resolver it never
+reaches the Transform, so standing the rule down on one would be reading the tree under a seeding
+semantics the language does not have — and would make the rule silent on precisely the pair it exists
+to name. The charter's §6 wording ("no reader in the tree seeds that key") describes the rule as it
+would read AFTER the deferred seeding change; under the shipped semantics the decidable subject is the
+Transform's OWN source slot. The go-red partner in `Fuaran.UI.Tests` pins that reading.
+
+**Warning, never Error, and it stands down under any opaque writer** — the FUARAN103 posture, for the
+same reason: a closure produces an arbitrary action at dispatch time, and a host may populate the key
+directly, so "nothing can fill this" stops being provable. Host-reserved keys (the Phase 782 prefix)
+are exempt.
+
+**Host adoption.** The F# reference and the shared corpus land together. The TypeScript host declares a
+NAMED abstention rather than a silent gap: its pre-emit walker has no binding traversal and no
+tree-wide write projection, and a partial port of a rule that reasons from an absence would
+false-accuse rather than under-report. See its `validator-coverage.json`.

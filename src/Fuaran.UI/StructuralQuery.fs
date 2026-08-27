@@ -414,6 +414,13 @@ let private useMatches (channel: Channel) (name: string) (usage: BindingWalk.Bin
     | BindingWalk.BindingUse.TransformParamFilter filterName -> wants Channel.Filter && filterName = name
     | BindingWalk.BindingUse.Query(queryName, _) -> wants Channel.Query && queryName = name
     | BindingWalk.BindingUse.Selection targetNodeId -> wants Channel.Selection && targetNodeId = name
+    // Phase 865 — a Transform's `State` source IS the node reading that key, so
+    // the honest answer is the `State` one. **Unreachable today**: `collect`
+    // keeps this case out of `TreeBindingFacts.Uses` (see
+    // `BindingWalk.BindingUse.TransformStateSource`), and this index reads
+    // `Uses`. The arm states what the answer must be if that filter is ever
+    // lifted, rather than leaving a silent `false` behind it.
+    | BindingWalk.BindingUse.TransformStateSource(key, _) -> wants Channel.State && key = name
     | BindingWalk.BindingUse.TransformParam _
     | BindingWalk.BindingUse.Computed -> false
 

@@ -43,7 +43,9 @@
     "FUARAN100",
     "FUARAN101",
     "FUARAN102",
-    "FUARAN103"
+    "FUARAN103",
+    "FUARAN104",
+    "FUARAN105"
   ],
   "abstentionDefault": "Not applicable — the reference implements the whole vocabulary by definition.",
   "abstained": {},

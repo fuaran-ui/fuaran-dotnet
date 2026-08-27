@@ -357,6 +357,28 @@ down anywhere a reader would find it.
 | `CrossFieldRule` / `FormPredicate` | **Field** (redirected — and mostly a reuse) | Not a new construct. A rule's comparison operand is a read slot, and the reactive-derivation charter's one rule (any read slot may take a `Binding`) already says what a read slot may hold; the auto-bind rule already puts every form field's value in State under the field's own id. So a cross-field predicate is an ordinary per-field rule whose operand is `{"$type":"State","key":"<sibling field id>"}`, with no coordination vocabulary at all. Six operators, one operand, **no boolean combinators, no arithmetic, no expression language** — the standing rejection is unchanged by the slot being a predicate rather than a value. Rejected sibling spelling: letting `Date.min` / `RangedNumber.max` accept a `Binding`, which reaches only controls that already have bounds (so "confirm password equals password" stays inexpressible), conflates a *selectable range* with an *accepted set*, and re-types five slots where one suffices. |
 | `FieldError` / a validation-state slot on the wire | **Host chrome** | Not a field. An error is a **state**, not a declaration: an emitter would be authoring the outcome of a validation it has not performed over values it has not seen, and a decoded tree carrying an error message would replay a stale failure on every mount. Surfacing an unmet rule belongs to the host's own form feedback, which already exists on the server-driven path. **Reopen condition:** none foreseeable — the shape is wrong rather than unevidenced. |
 
+### Data-sharing cluster (added 2026-08-26 — the shared-data-source charter, Phase 865)
+
+The cluster the taxonomy lacked on the *provenance* side: how two sibling nodes read ONE table. Its
+governing ruling is one sentence — *the tree already has one name for host data and one name for
+tree-scoped data, and sharing is a question about what may DECLARE a value under the second, never
+about minting a third.*
+
+**Nothing was admitted, and one thing shipped.** The only shape that works is a **semantics change to
+an already-shipped slot** rather than an additive case, and on ×2 evidence from one criterion that is
+not a call to make; it is deferred, evidence-gated, pending corroboration at the pack-teaching sweep.
+What did ship is the *defect flag* that stands independent of it: **FUARAN105 (Warning)**, which names
+the silent zero the current semantics produce — a `Transform` over a default-less `State` source
+resolves to the empty table and renders a plausible wrong answer with nothing red anywhere. A finding
+about shipped behaviour needs no vocabulary decision, and shipping it does not anticipate one.
+
+| Reserved name | Disposition | Ruling |
+|---|---|---|
+| `SharedSource` / named embedded table | **Semantics (DEFERRED — evidence-gated)** | Not a kind, not a variant, not a field. The two sighted nodes share no slot type but `Binding`, so `DataSource` cannot carry the answer; the shape is a seeding rule on `Binding.State.defaultValue`, which is a semantics change to a shipped slot rather than an additive case. Deferred at ×2 on one criterion pending corroboration at the 872/873 sweep. The live defect the current semantics produce is flagged meanwhile by **FUARAN105 (Warning)**, which is a report about the shipped resolver and takes no position on the deferred rule. See the charter. |
+| `DataScope` / `Provide` | **Composition / rejected** | A container that renders nothing, inventing a third tree-scoped namespace beside `$state` and `queryResults`. Scoping is not a structural primitive. |
+| `DataSource.Named` / tree-first `Ref` | **Rejected — structurally cannot work** | `DataSource` reaches the UI wire only inside `Binding.Transform`. It cannot name a grid's or a chart's source, so it could not make the sighted pair share anything. The phase file's own anticipated shape, refuted. |
+| declared total / "a feed larger than you inline" (`stress-006/c1`) | **Host chrome** | A number the tree cannot substantiate. A host `Query` knows its own count; an inline source of twenty rows captioning two hundred is a false claim, and a slot carrying it would make the language complicit rather than fix it. Routed to pack teaching (872). **Reopen:** a paged grid over a host feed needing a total the host cannot supply. |
+
 **Reading of the taxonomy:** of ~20 reserved candidates, the overwhelming majority resolve to
 **variant / composition / role / covered** – only `NavBar`/`Menu`, a single consolidated `Media`, and a
 provisional `Tree` and `Calendar` are even *reserved* as genuine kinds, and each is admission-gated on
