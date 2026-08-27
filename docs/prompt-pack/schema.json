@@ -78,6 +78,25 @@
         "DateTime"
       ]
     },
+    "TextFormat": {
+      "type": "string",
+      "enum": [
+        "email",
+        "url",
+        "tel"
+      ]
+    },
+    "CompareOp": {
+      "type": "string",
+      "enum": [
+        "eq",
+        "neq",
+        "lt",
+        "lte",
+        "gt",
+        "gte"
+      ]
+    },
     "MathDisplay": {
       "type": "string",
       "enum": [
@@ -111,6 +130,13 @@
         "Quiet",
         "Normal",
         "Loud"
+      ]
+    },
+    "TrendPolarity": {
+      "type": "string",
+      "enum": [
+        "HigherIsBetter",
+        "LowerIsBetter"
       ]
     },
     "StyleRole": {
@@ -266,7 +292,7 @@
                   "const": "Bound"
                 },
                 "binding": {
-                  "$ref": "#/$defs/Binding"
+                  "$ref": "#/$defs/Binding_str"
                 }
               },
               "required": [
@@ -302,7 +328,565 @@
         }
       ]
     },
-    "Binding": {
+    "Binding_bool": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Static"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Query"
+            },
+            "dependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Filter"
+            },
+            "defaultValue": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Selection"
+            },
+            "defaultValue": {
+              "type": "boolean"
+            },
+            "field": {
+              "type": "string"
+            },
+            "nodeId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "nodeId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "State"
+            },
+            "defaultValue": {
+              "type": "boolean"
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Computed"
+            },
+            "fn": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "fn"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Now"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "I18n"
+            },
+            "args": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Binding_json"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Local"
+            },
+            "flushOn": {
+              "$ref": "#/$defs/LocalFlushTrigger"
+            },
+            "format": {
+              "const": "<closure>"
+            },
+            "initialFrom": {
+              "$ref": "#/$defs/Binding_bool"
+            },
+            "onCommit": {
+              "const": "<closure>"
+            },
+            "parse": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "flushOn",
+            "format",
+            "initialFrom",
+            "onCommit",
+            "parse"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Format"
+            },
+            "format": {
+              "$ref": "#/$defs/Format"
+            },
+            "locale": {
+              "$ref": "#/$defs/LocaleSource"
+            },
+            "source": {
+              "$ref": "#/$defs/Binding_float"
+            }
+          },
+          "required": [
+            "$type",
+            "format",
+            "locale",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Transform"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            },
+            "pipeline": {
+              "type": "array",
+              "items": true
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "pipeline",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Invoke"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "capabilityId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "args",
+            "capabilityId"
+          ]
+        }
+      ]
+    },
+    "Binding_float": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Static"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Query"
+            },
+            "dependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Filter"
+            },
+            "defaultValue": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Selection"
+            },
+            "defaultValue": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
+            },
+            "field": {
+              "type": "string"
+            },
+            "nodeId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "nodeId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "State"
+            },
+            "defaultValue": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Computed"
+            },
+            "fn": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "fn"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Now"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "I18n"
+            },
+            "args": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Binding_json"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Local"
+            },
+            "flushOn": {
+              "$ref": "#/$defs/LocalFlushTrigger"
+            },
+            "format": {
+              "const": "<closure>"
+            },
+            "initialFrom": {
+              "$ref": "#/$defs/Binding_float"
+            },
+            "onCommit": {
+              "const": "<closure>"
+            },
+            "parse": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "flushOn",
+            "format",
+            "initialFrom",
+            "onCommit",
+            "parse"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Format"
+            },
+            "format": {
+              "$ref": "#/$defs/Format"
+            },
+            "locale": {
+              "$ref": "#/$defs/LocaleSource"
+            },
+            "source": {
+              "$ref": "#/$defs/Binding_float"
+            }
+          },
+          "required": [
+            "$type",
+            "format",
+            "locale",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Transform"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            },
+            "pipeline": {
+              "type": "array",
+              "items": true
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "pipeline",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Invoke"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "capabilityId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "args",
+            "capabilityId"
+          ]
+        }
+      ]
+    },
+    "Binding_hosted": {
       "oneOf": [
         {
           "type": "object",
@@ -423,7 +1007,7 @@
             "args": {
               "type": "object",
               "additionalProperties": {
-                "$ref": "#/$defs/Binding"
+                "$ref": "#/$defs/Binding_json"
               }
             },
             "key": {
@@ -448,7 +1032,7 @@
               "const": "<closure>"
             },
             "initialFrom": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_hosted"
             },
             "onCommit": {
               "const": "<closure>"
@@ -479,7 +1063,7 @@
               "$ref": "#/$defs/LocaleSource"
             },
             "source": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_float"
             }
           },
           "required": [
@@ -501,7 +1085,1890 @@
                 "type": "object",
                 "properties": {
                   "from": {
-                    "$ref": "#/$defs/Binding"
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            },
+            "pipeline": {
+              "type": "array",
+              "items": true
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "pipeline",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Invoke"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "capabilityId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "args",
+            "capabilityId"
+          ]
+        }
+      ]
+    },
+    "Binding_int": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Static"
+            },
+            "value": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Query"
+            },
+            "dependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Filter"
+            },
+            "defaultValue": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Selection"
+            },
+            "defaultValue": {
+              "type": "integer"
+            },
+            "field": {
+              "type": "string"
+            },
+            "nodeId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "nodeId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "State"
+            },
+            "defaultValue": {
+              "type": "integer"
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Computed"
+            },
+            "fn": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "fn"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Now"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "I18n"
+            },
+            "args": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Binding_json"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Local"
+            },
+            "flushOn": {
+              "$ref": "#/$defs/LocalFlushTrigger"
+            },
+            "format": {
+              "const": "<closure>"
+            },
+            "initialFrom": {
+              "$ref": "#/$defs/Binding_int"
+            },
+            "onCommit": {
+              "const": "<closure>"
+            },
+            "parse": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "flushOn",
+            "format",
+            "initialFrom",
+            "onCommit",
+            "parse"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Format"
+            },
+            "format": {
+              "$ref": "#/$defs/Format"
+            },
+            "locale": {
+              "$ref": "#/$defs/LocaleSource"
+            },
+            "source": {
+              "$ref": "#/$defs/Binding_float"
+            }
+          },
+          "required": [
+            "$type",
+            "format",
+            "locale",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Transform"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            },
+            "pipeline": {
+              "type": "array",
+              "items": true
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "pipeline",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Invoke"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "capabilityId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "args",
+            "capabilityId"
+          ]
+        }
+      ]
+    },
+    "Binding_json": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Static"
+            },
+            "value": true
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Query"
+            },
+            "dependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Filter"
+            },
+            "defaultValue": true,
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Selection"
+            },
+            "defaultValue": true,
+            "field": {
+              "type": "string"
+            },
+            "nodeId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "nodeId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "State"
+            },
+            "defaultValue": true,
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Computed"
+            },
+            "fn": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "fn"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Now"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "I18n"
+            },
+            "args": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Binding_json"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Local"
+            },
+            "flushOn": {
+              "$ref": "#/$defs/LocalFlushTrigger"
+            },
+            "format": {
+              "const": "<closure>"
+            },
+            "initialFrom": {
+              "$ref": "#/$defs/Binding_json"
+            },
+            "onCommit": {
+              "const": "<closure>"
+            },
+            "parse": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "flushOn",
+            "format",
+            "initialFrom",
+            "onCommit",
+            "parse"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Format"
+            },
+            "format": {
+              "$ref": "#/$defs/Format"
+            },
+            "locale": {
+              "$ref": "#/$defs/LocaleSource"
+            },
+            "source": {
+              "$ref": "#/$defs/Binding_float"
+            }
+          },
+          "required": [
+            "$type",
+            "format",
+            "locale",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Transform"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            },
+            "pipeline": {
+              "type": "array",
+              "items": true
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "pipeline",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Invoke"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "capabilityId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "args",
+            "capabilityId"
+          ]
+        }
+      ]
+    },
+    "Binding_list_MapMarker": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Static"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MapMarker"
+              }
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Query"
+            },
+            "dependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Filter"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MapMarker"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Selection"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MapMarker"
+              }
+            },
+            "field": {
+              "type": "string"
+            },
+            "nodeId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "nodeId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "State"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MapMarker"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Computed"
+            },
+            "fn": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "fn"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Now"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "I18n"
+            },
+            "args": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Binding_json"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Local"
+            },
+            "flushOn": {
+              "$ref": "#/$defs/LocalFlushTrigger"
+            },
+            "format": {
+              "const": "<closure>"
+            },
+            "initialFrom": {
+              "$ref": "#/$defs/Binding_list_MapMarker"
+            },
+            "onCommit": {
+              "const": "<closure>"
+            },
+            "parse": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "flushOn",
+            "format",
+            "initialFrom",
+            "onCommit",
+            "parse"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Format"
+            },
+            "format": {
+              "$ref": "#/$defs/Format"
+            },
+            "locale": {
+              "$ref": "#/$defs/LocaleSource"
+            },
+            "source": {
+              "$ref": "#/$defs/Binding_float"
+            }
+          },
+          "required": [
+            "$type",
+            "format",
+            "locale",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Transform"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            },
+            "pipeline": {
+              "type": "array",
+              "items": true
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "pipeline",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Invoke"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "capabilityId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "args",
+            "capabilityId"
+          ]
+        }
+      ]
+    },
+    "Binding_list_SelectOption": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Static"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SelectOption"
+              }
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Query"
+            },
+            "dependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Filter"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SelectOption"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Selection"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SelectOption"
+              }
+            },
+            "field": {
+              "type": "string"
+            },
+            "nodeId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "nodeId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "State"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SelectOption"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Computed"
+            },
+            "fn": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "fn"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Now"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "I18n"
+            },
+            "args": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Binding_json"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Local"
+            },
+            "flushOn": {
+              "$ref": "#/$defs/LocalFlushTrigger"
+            },
+            "format": {
+              "const": "<closure>"
+            },
+            "initialFrom": {
+              "$ref": "#/$defs/Binding_list_SelectOption"
+            },
+            "onCommit": {
+              "const": "<closure>"
+            },
+            "parse": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "flushOn",
+            "format",
+            "initialFrom",
+            "onCommit",
+            "parse"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Format"
+            },
+            "format": {
+              "$ref": "#/$defs/Format"
+            },
+            "locale": {
+              "$ref": "#/$defs/LocaleSource"
+            },
+            "source": {
+              "$ref": "#/$defs/Binding_float"
+            }
+          },
+          "required": [
+            "$type",
+            "format",
+            "locale",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Transform"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            },
+            "pipeline": {
+              "type": "array",
+              "items": true
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "pipeline",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Invoke"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "capabilityId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "args",
+            "capabilityId"
+          ]
+        }
+      ]
+    },
+    "Binding_list_float": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Static"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "enum": [
+                      "NaN",
+                      "Infinity",
+                      "-Infinity"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Query"
+            },
+            "dependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Filter"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "enum": [
+                      "NaN",
+                      "Infinity",
+                      "-Infinity"
+                    ]
+                  }
+                ]
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Selection"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "enum": [
+                      "NaN",
+                      "Infinity",
+                      "-Infinity"
+                    ]
+                  }
+                ]
+              }
+            },
+            "field": {
+              "type": "string"
+            },
+            "nodeId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "nodeId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "State"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "enum": [
+                      "NaN",
+                      "Infinity",
+                      "-Infinity"
+                    ]
+                  }
+                ]
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Computed"
+            },
+            "fn": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "fn"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Now"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "I18n"
+            },
+            "args": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Binding_json"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Local"
+            },
+            "flushOn": {
+              "$ref": "#/$defs/LocalFlushTrigger"
+            },
+            "format": {
+              "const": "<closure>"
+            },
+            "initialFrom": {
+              "$ref": "#/$defs/Binding_list_float"
+            },
+            "onCommit": {
+              "const": "<closure>"
+            },
+            "parse": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "flushOn",
+            "format",
+            "initialFrom",
+            "onCommit",
+            "parse"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Format"
+            },
+            "format": {
+              "$ref": "#/$defs/Format"
+            },
+            "locale": {
+              "$ref": "#/$defs/LocaleSource"
+            },
+            "source": {
+              "$ref": "#/$defs/Binding_float"
+            }
+          },
+          "required": [
+            "$type",
+            "format",
+            "locale",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Transform"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            },
+            "pipeline": {
+              "type": "array",
+              "items": true
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "pipeline",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Invoke"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "capabilityId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "args",
+            "capabilityId"
+          ]
+        }
+      ]
+    },
+    "Binding_list_str": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Static"
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Query"
+            },
+            "dependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Filter"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Selection"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "field": {
+              "type": "string"
+            },
+            "nodeId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "nodeId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "State"
+            },
+            "defaultValue": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Computed"
+            },
+            "fn": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "fn"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Now"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "I18n"
+            },
+            "args": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Binding_json"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Local"
+            },
+            "flushOn": {
+              "$ref": "#/$defs/LocalFlushTrigger"
+            },
+            "format": {
+              "const": "<closure>"
+            },
+            "initialFrom": {
+              "$ref": "#/$defs/Binding_list_str"
+            },
+            "onCommit": {
+              "const": "<closure>"
+            },
+            "parse": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "flushOn",
+            "format",
+            "initialFrom",
+            "onCommit",
+            "parse"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Format"
+            },
+            "format": {
+              "$ref": "#/$defs/Format"
+            },
+            "locale": {
+              "$ref": "#/$defs/LocaleSource"
+            },
+            "source": {
+              "$ref": "#/$defs/Binding_float"
+            }
+          },
+          "required": [
+            "$type",
+            "format",
+            "locale",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Transform"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "name"
+                ]
+              }
+            },
+            "pipeline": {
+              "type": "array",
+              "items": true
+            },
+            "source": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "$type",
+            "pipeline",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Invoke"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "capabilityId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "args",
+            "capabilityId"
+          ]
+        }
+      ]
+    },
+    "Binding_str": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Static"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Query"
+            },
+            "dependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Filter"
+            },
+            "defaultValue": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Selection"
+            },
+            "defaultValue": {
+              "type": "string"
+            },
+            "field": {
+              "type": "string"
+            },
+            "nodeId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "nodeId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "State"
+            },
+            "defaultValue": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Computed"
+            },
+            "fn": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "fn"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Now"
+            }
+          },
+          "required": [
+            "$type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "I18n"
+            },
+            "args": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Binding_json"
+              }
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "$type",
+            "key"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Local"
+            },
+            "flushOn": {
+              "$ref": "#/$defs/LocalFlushTrigger"
+            },
+            "format": {
+              "const": "<closure>"
+            },
+            "initialFrom": {
+              "$ref": "#/$defs/Binding_str"
+            },
+            "onCommit": {
+              "const": "<closure>"
+            },
+            "parse": {
+              "const": "<closure>"
+            }
+          },
+          "required": [
+            "$type",
+            "flushOn",
+            "format",
+            "initialFrom",
+            "onCommit",
+            "parse"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Format"
+            },
+            "format": {
+              "$ref": "#/$defs/Format"
+            },
+            "locale": {
+              "$ref": "#/$defs/LocaleSource"
+            },
+            "source": {
+              "$ref": "#/$defs/Binding_float"
+            }
+          },
+          "required": [
+            "$type",
+            "format",
+            "locale",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Transform"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/Binding_json"
                   },
                   "name": {
                     "type": "string"
@@ -724,7 +3191,7 @@
                   }
                 },
                 "valueFrom": {
-                  "$ref": "#/$defs/Binding"
+                  "$ref": "#/$defs/Binding_json"
                 }
               },
               "required": [
@@ -1010,7 +3477,18 @@
               "const": "Numeric"
             },
             "value": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -1111,7 +3589,18 @@
               "const": "Flex"
             },
             "weight": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -1259,7 +3748,7 @@
               "const": "<closure>"
             },
             "value": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_str"
             }
           },
           "required": [
@@ -1276,7 +3765,7 @@
               "const": "<closure>"
             },
             "value": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_float"
             }
           },
           "required": [
@@ -1294,13 +3783,46 @@
             },
             "value": true,
             "min": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "max": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "step": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -1317,7 +3839,7 @@
               "const": "<closure>"
             },
             "value": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_bool"
             }
           },
           "required": [
@@ -1334,7 +3856,7 @@
               "const": "<closure>"
             },
             "value": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_bool"
             }
           },
           "required": [
@@ -1351,10 +3873,10 @@
               "const": "<closure>"
             },
             "options": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_list_SelectOption"
             },
             "value": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_str"
             }
           },
           "required": [
@@ -1372,16 +3894,49 @@
               "const": "<closure>"
             },
             "value": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_float"
             },
             "min": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "max": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "step": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -1398,13 +3953,13 @@
               "const": "<closure>"
             },
             "options": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_list_SelectOption"
             },
             "orientation": {
               "$ref": "#/$defs/Orientation"
             },
             "value": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_str"
             }
           },
           "required": [
@@ -1426,7 +3981,7 @@
               "type": "integer"
             },
             "value": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_str"
             }
           },
           "required": [
@@ -1444,7 +3999,7 @@
               "const": "<closure>"
             },
             "value": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_str"
             },
             "variant": {
               "$ref": "#/$defs/DateVariant"
@@ -1456,7 +4011,18 @@
               "type": "string"
             },
             "step": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -1484,7 +4050,18 @@
               "type": "string"
             },
             "step": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -1724,7 +4301,7 @@
           "$ref": "#/$defs/TextSource"
         },
         "value": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_float"
         },
         "tone": {
           "$ref": "#/$defs/ToneVariant"
@@ -1733,10 +4310,13 @@
           "$ref": "#/$defs/StyleWeight"
         },
         "trend": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_float"
         },
         "trendFormat": {
           "$ref": "#/$defs/CellFormat"
+        },
+        "trendPolarity": {
+          "$ref": "#/$defs/TrendPolarity"
         },
         "icon": {
           "type": "string"
@@ -1799,7 +4379,7 @@
       "type": "object",
       "properties": {
         "href": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_str"
         },
         "label": {
           "$ref": "#/$defs/TextSource"
@@ -1830,7 +4410,7 @@
           "$ref": "#/$defs/TextSource"
         },
         "src": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_str"
         },
         "variant": {
           "$ref": "#/$defs/ImageVariant"
@@ -1870,7 +4450,7 @@
           "$ref": "#/$defs/TextSource"
         },
         "open": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_bool"
         },
         "tone": {
           "$ref": "#/$defs/ToneVariant"
@@ -1930,7 +4510,7 @@
       "type": "object",
       "properties": {
         "source": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_list_float"
         }
       },
       "required": [
@@ -1995,7 +4575,7 @@
       "type": "object",
       "properties": {
         "fraction": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_float"
         },
         "indeterminate": {
           "type": "boolean"
@@ -2027,7 +4607,7 @@
           "$ref": "#/$defs/TextSource"
         },
         "value": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_float"
         },
         "help": {
           "$ref": "#/$defs/TextSource"
@@ -2069,16 +4649,60 @@
       "type": "object",
       "properties": {
         "height": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         },
         "minX": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         },
         "minY": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         },
         "width": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         }
       },
       "required": [
@@ -2092,10 +4716,32 @@
       "type": "object",
       "properties": {
         "x": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         },
         "y": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         }
       },
       "required": [
@@ -2115,22 +4761,33 @@
       "type": "object",
       "properties": {
         "fill": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_str"
         },
         "stroke": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_str"
         },
         "strokeWidth": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_float"
         },
         "opacity": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_float"
         },
         "textAnchor": {
           "$ref": "#/$defs/TextAnchor"
         },
         "fontSize": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         },
         "emphasis": {
           "$ref": "#/$defs/Emphasis"
@@ -2142,7 +4799,18 @@
           "type": "string"
         },
         "rotation": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         },
         "tip": {
           "$ref": "#/$defs/TextSource"
@@ -2267,22 +4935,77 @@
               "const": "Rectangle"
             },
             "height": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "style": {
               "$ref": "#/$defs/DrawStyle"
             },
             "width": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "x": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "y": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "cornerRadius": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -2304,16 +5027,60 @@
               "$ref": "#/$defs/DrawStyle"
             },
             "x1": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "x2": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "y1": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "y2": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -2398,13 +5165,46 @@
               "const": "Circle"
             },
             "cx": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "cy": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "r": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "style": {
               "$ref": "#/$defs/DrawStyle"
@@ -2425,16 +5225,60 @@
               "const": "Ellipse"
             },
             "cx": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "cy": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "rx": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "ry": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "style": {
               "$ref": "#/$defs/DrawStyle"
@@ -2462,10 +5306,32 @@
               "$ref": "#/$defs/TextSource"
             },
             "x": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "y": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -2849,6 +5715,71 @@
         "value"
       ]
     },
+    "CompareRule": {
+      "type": "object",
+      "properties": {
+        "against": {
+          "$ref": "#/$defs/Binding_json"
+        },
+        "op": {
+          "$ref": "#/$defs/CompareOp"
+        }
+      },
+      "required": [
+        "against",
+        "op"
+      ]
+    },
+    "FieldRule": {
+      "type": "object",
+      "properties": {
+        "compare": {
+          "$ref": "#/$defs/CompareRule"
+        },
+        "format": {
+          "$ref": "#/$defs/TextFormat"
+        },
+        "maxLength": {
+          "type": "integer"
+        },
+        "message": {
+          "$ref": "#/$defs/TextSource"
+        },
+        "minLength": {
+          "type": "integer"
+        },
+        "pattern": {
+          "type": "string"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "format"
+          ]
+        },
+        {
+          "required": [
+            "pattern"
+          ]
+        },
+        {
+          "required": [
+            "minLength"
+          ]
+        },
+        {
+          "required": [
+            "maxLength"
+          ]
+        },
+        {
+          "required": [
+            "compare"
+          ]
+        }
+      ]
+    },
     "FormField": {
       "type": "object",
       "properties": {
@@ -2866,6 +5797,9 @@
         },
         "help": {
           "$ref": "#/$defs/TextSource"
+        },
+        "rule": {
+          "$ref": "#/$defs/FieldRule"
         }
       },
       "required": [
@@ -2873,6 +5807,29 @@
         "kind",
         "label",
         "required"
+      ],
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "validation"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "constraints"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "validate"
+            ]
+          }
+        }
       ]
     },
     "FormSpec": {
@@ -2891,7 +5848,7 @@
           "$ref": "#/$defs/TextSource"
         },
         "disabled": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_bool"
         }
       },
       "required": [
@@ -2935,7 +5892,7 @@
           "type": "string"
         },
         "disabled": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_bool"
         }
       },
       "required": [
@@ -2954,22 +5911,22 @@
           "const": "<closure>"
         },
         "source": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_list_SelectOption"
         },
         "value": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_str"
         },
         "placeholder": {
           "$ref": "#/$defs/TextSource"
         },
         "disabled": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_bool"
         },
         "multiple": {
           "type": "boolean"
         },
         "values": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_list_str"
         },
         "onChangeMulti": {
           "const": "<closure>"
@@ -3000,7 +5957,7 @@
           "const": "<closure>"
         },
         "disabled": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_bool"
         }
       },
       "required": [
@@ -3201,7 +6158,7 @@
           ]
         },
         "source": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_hosted"
         },
         "onRowClick": {
           "const": "<closure>"
@@ -3317,7 +6274,7 @@
           "$ref": "#/$defs/ChartKind"
         },
         "source": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_hosted"
         },
         "xField": {
           "type": "string"
@@ -3373,10 +6330,32 @@
           "$ref": "#/$defs/TextSource"
         },
         "latitude": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         },
         "longitude": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         }
       },
       "required": [
@@ -3389,13 +6368,35 @@
       "type": "object",
       "properties": {
         "centreLatitude": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         },
         "centreLongitude": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         },
         "source": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_list_MapMarker"
         },
         "zoom": {
           "type": "integer"
@@ -3596,7 +6597,18 @@
           }
         },
         "weight": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "NaN",
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         }
       },
       "required": [
@@ -3614,7 +6626,7 @@
           "type": "string"
         },
         "disabled": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_bool"
         }
       },
       "required": [
@@ -3634,7 +6646,7 @@
           "$ref": "#/$defs/Orientation"
         },
         "activeIndex": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_int"
         },
         "onSelect": {
           "const": "<closure>"
@@ -3652,7 +6664,7 @@
           }
         },
         "activeTag": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_str"
         },
         "onSelectTag": {
           "const": "<closure>"
@@ -3666,7 +6678,7 @@
       "type": "object",
       "properties": {
         "activeStep": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_int"
         },
         "children": {
           "type": "array",
@@ -3716,7 +6728,7 @@
           "$ref": "#/$defs/TextSource"
         },
         "open": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_bool"
         },
         "onToggle": {
           "const": "<closure>"
@@ -3745,7 +6757,7 @@
           "$ref": "#/$defs/Action"
         },
         "open": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_bool"
         },
         "heading": {
           "$ref": "#/$defs/TextSource"
@@ -3976,10 +6988,32 @@
               "const": "FloatRange"
             },
             "max": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             },
             "min": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -4062,7 +7096,18 @@
               "const": "Float"
             },
             "value": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -4215,7 +7260,18 @@
               "const": "Float"
             },
             "value": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "enum": [
+                    "NaN",
+                    "Infinity",
+                    "-Infinity"
+                  ]
+                }
+              ]
             }
           },
           "required": [
@@ -4391,7 +7447,7 @@
                   "type": "string"
                 },
                 "on": {
-                  "$ref": "#/$defs/Binding"
+                  "$ref": "#/$defs/Binding_str"
                 }
               },
               "required": [
@@ -4541,7 +7597,7 @@
       "type": "object",
       "properties": {
         "label": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_str"
         },
         "labelledBy": {
           "type": "string"
@@ -4556,7 +7612,7 @@
           "$ref": "#/$defs/LiveRegionKind"
         },
         "hidden": {
-          "$ref": "#/$defs/Binding"
+          "$ref": "#/$defs/Binding_bool"
         }
       }
     },
@@ -4638,7 +7694,7 @@
               "const": "ReplaceBinding"
             },
             "binding": {
-              "$ref": "#/$defs/Binding"
+              "$ref": "#/$defs/Binding_json"
             },
             "slot": {
               "type": "string"
@@ -4709,6 +7765,15 @@
             "$type",
             "child",
             "parentId"
+          ],
+          "allOf": [
+            {
+              "not": {
+                "required": [
+                  "position"
+                ]
+              }
+            }
           ]
         },
         {
@@ -4743,6 +7808,15 @@
             "$type",
             "newParentId",
             "target"
+          ],
+          "allOf": [
+            {
+              "not": {
+                "required": [
+                  "newPosition"
+                ]
+              }
+            }
           ]
         },
         {

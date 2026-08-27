@@ -451,7 +451,7 @@ let buildSignatureCatalogue () =
         elif hasProp "not" el then
             "any"
         elif
-            hasProp "allOf" el
+            isHoistedAllOf el
             || (hasProp "properties" el && hasProp "$type" (el.GetProperty "properties"))
         then
             renderAlternative el
@@ -493,8 +493,24 @@ let buildSignatureCatalogue () =
     // A union alternative: an allOf hoist (`[$type-const; $ref Spec]` or the
     // inline-record-plus-constraint shape — Switch/SetState), an inline object case
     // with a `$type` const, or (TextSource's bare-string leg) any other type.
+    //
+    // `allOf` is NOT on its own the hoist marker, and reading it as one is a crash
+    // rather than a wrong rendering. A case may carry its own `properties`/`$type`
+    // and use `allOf` purely to REFUSE a legacy field (`allOf: [{ not: { required:
+    // ["position"] } }]` on InsertChild / MoveNode). The hoist is recognised by its
+    // shape instead: two-or-more members whose FIRST carries the `$type` const.
+    // A refusal guard renders as nothing — the catalogue lists the vocabulary you may
+    // emit, and a field the schema forbids has no spelling to teach.
+    and isHoistedAllOf (case: JsonElement) =
+        hasProp "allOf" case
+        && (let parts = case.GetProperty("allOf").EnumerateArray() |> Seq.toArray
+
+            parts.Length >= 2
+            && hasProp "properties" parts.[0]
+            && hasProp "$type" (parts.[0].GetProperty "properties"))
+
     and renderAlternative (case: JsonElement) : string =
-        if hasProp "allOf" case then
+        if isHoistedAllOf case then
             let parts = case.GetProperty("allOf").EnumerateArray() |> Seq.toArray
 
             let kind =
@@ -631,6 +647,25 @@ let buildSignatureCatalogue () =
 // …pretty canonical JSON…
 // ```
 // <!-- /fuaran:example -->
+//
+// EXAMPLES OWED AT THE NEXT PUBLISH (the prose-first split, 2026-08-27).
+// A marker block reconciles against the CORPUS, which is at head — so a block using
+// vocabulary the head corpus carries passes this check even when no PUBLISHED package
+// can decode it. The pack's consumers restore released packages, so an exemplar whose
+// spelling only exists in an unreleased version is an example that fails in the reader's
+// own hands. Teaching therefore lands as PROSE at ship and gains its fenced exemplar at
+// the publish that carries the fields (the precedent: the static-table sort intent, whose
+// example waited for its own release).
+//
+// Owed, once a release carries the 0.36.0–0.39.0 grid / form / metric vocabulary:
+//   nodes/grid-bound-sort.json        · sortStateKey + columns[].sortable + defaultSort
+//   nodes/grid-paged.json             · pageSize + pageStateKey
+//   nodes/grid-declared-edit.json     · editStateKey + per-column editable
+//   nodes/form-field-rules.json       · FormField.rule (format / pattern / length / compare)
+//   nodes/metric-inverted-polarity.json · trendPolarity
+// Each fixture already exists in the corpus; only the release gate is outstanding. The
+// pack manifest's `languageVersion` stamp is what makes the gap READABLE — compare it
+// against the newest published version before adding any of the blocks above.
 let private markerRegex =
     Regex(
         @"<!-- fuaran:example fixture=(?<id>[A-Za-z0-9._-]+) -->\r?\n```json\r?\n(?<body>.*?)\r?\n```\r?\n<!-- /fuaran:example -->",
@@ -1278,11 +1313,16 @@ type private LeniencyFamily =
 let private leniencyFamilies: LeniencyFamily list =
     [ { Name = "Static-envelope elision (bare scalar / array in a Binding slot)"
         Class = TaughtPrimary
-        FixtureIds = [ "lenient-shape-binding-scalar-fraction" ]
+        FixtureIds =
+          [ "lenient-shape-a11y-label-bare-scalar"
+            "lenient-shape-binding-scalar-fraction" ]
         Evidence =
           "JUDGEMENT: total + loss-free — §3.6: every Binding case is $type-discriminated, so a bare "
           + "array/scalar can only mean Static; bare objects and null stay refused (ambiguity preserved). "
-          + "Token-positive: ~24 chars per slot. Decoder-proof per emitted block." }
+          + "Token-positive: ~24 chars per slot. Decoder-proof per emitted block. The Accessibility "
+          + "trait's label/hidden fixture is the SAME rule at a second position, not a second rule — "
+          + "its own manifest entry says so ('the general §3.6 scalar rule'), so it joins this family "
+          + "rather than minting one that would restate the identical judgement." }
       { Name = "Option as bare string (label = value)"
         Class = TaughtPrimary
         FixtureIds =

@@ -141,6 +141,40 @@ it declares a form whose values go nowhere. Reach for the `Local` buffer +
 button, cross-field sequencing) — for plain "submit this form", `Call` is the whole
 answer.
 
+## Field constraints are DECLARED — a rule the form enforces, not help text
+
+A constraint stated in `help` is a sentence; the form still accepts anything. When the
+prompt says a field must be an email, must match a shape, must be a certain length, or
+must relate to another field, put it in that field's **`rule`** slot and the form enforces
+it. `rule` is one object on the `FormField`, carrying **at least one** of:
+
+- **`"format"`** — `"email" | "url" | "tel"`. This is how you declare "an email field":
+  the kind stays `{"$type":"Text"}` and the rule carries the format. There is no
+  `Email` form-field kind to reach for.
+- **`"pattern"`** — a regular-expression source string for a shape the format list does
+  not name (a postcode, a reference code).
+- **`"minLength"` / `"maxLength"`** — integer bounds on the text length.
+- **`"compare"`** — the CROSS-FIELD rule: `{"against": <Binding>, "op": "eq" | "neq" |
+  "lt" | "lte" | "gt" | "gte"}`. "End date on or after the start date" is
+  `"compare": {"against": {"$type":"State","key":"<the other field's id>"}, "op": "gte"}`
+  — the other field's captured value is read at its own id, per the self-wiring rule
+  below. A `compare` naming a key no field in the form owns and nothing writes is
+  refused (`FUARAN099`): it can never be satisfied or unsatisfied, so the field reads as
+  constrained while being unconstrained.
+
+Add `"message"` to say what the reader sees when the rule is unmet; omit it and the host
+phrases its own.
+
+**`required` is separate and unchanged** — `"required": true` says the field must be
+filled, `rule` says what a filled value must look like. A field commonly carries both.
+
+**Do not restate a bound the control already holds.** A 1–99 quantity is
+`{"$type":"RangedNumber","min":1,"max":99}` on the field's `kind`, not a `compare`
+against 1 and 99 — two sources for one bound, free to disagree, and the validator warns
+(`FUARAN101`). Likewise a date is a `Date` kind, not a `pattern`. Reach for `rule` for
+the constraint the KIND cannot already express, and keep the rule slot off controls that
+cannot honour it — a `pattern` on a `Checkbox`, a `format` on a `TextArea` (`FUARAN100`).
+
 ## Editing an existing tree
 
 After the first emission, prefer a `TreeOp` over re-sending the whole tree. A `TreeOp`
@@ -210,52 +244,52 @@ NodeKind =
 | VisKind
 | Custom { componentId:str; moduleId:str; props:{ [key]:any }; contentHash?:ContentHash; exposedNodeIds?:str[] }
 | ErrorBoundary { child:Node; fallback:Node }
-| Switch { cases:{ child:Node; match:str }[]; default:Node; on?:Binding; stateKey?:str }
+| Switch { cases:{ child:Node; match:str }[]; default:Node; on?:Binding_str; stateKey?:str }
 | FragmentDecl { body:Node; name:str; effect?:EffectClass; holes?:HoleDecl[] }
 | FragmentRef { name:str; args?:{ [key]:FragmentArg } }
 | Mount { capabilities:str[]; channel:GuestChannel; onBubble:closure; scopeId:str; inputs?:{ [key]:FragmentArg } }
 LayoutKind =
 | Box { children:Node[]; layout:BoxLayout; role:"Group"|"Card"|"Dashboard"|"Separator"; heading?:TextSource }
-| SplitPanel { children:Node[]; weight:num }
-| Tabs { children:Node[]; activeIndex?:Binding; activeTag?:Binding; orientation?:Orientation; tabHeaders?:TabHeader[]; tabTags?:str[] }
-| Stepper { activeStep:Binding; children:Node[] }
+| SplitPanel { children:Node[]; weight:any }
+| Tabs { children:Node[]; activeIndex?:Binding_int; activeTag?:Binding_str; orientation?:Orientation; tabHeaders?:TabHeader[]; tabTags?:str[] }
+| Stepper { activeStep:Binding_int; children:Node[] }
 | SummaryList { children:Node[]; heading?:TextSource }
-| Disclosure { children:Node[]; defaultOpen:bool; heading:TextSource; open:Binding }
-| Modal { children:Node[]; dismissable:bool; open:Binding; heading?:TextSource; onDismiss?:Action }
+| Disclosure { children:Node[]; defaultOpen:bool; heading:TextSource; open:Binding_bool }
+| Modal { children:Node[]; dismissable:bool; open:Binding_bool; heading?:TextSource; onDismiss?:Action }
 | ScrollArea { children:Node[]; orientation:"Vertical"|"Horizontal"|"Both"; maxHeight?:int; maxWidth?:int }
 DisplayKind =
 | Heading { level:int; text:TextSource; variant:"Standard"|"Eyebrow"|"Caption"|"Lead" }
 | Markdown { text:TextSource }
-| Metric { label:TextSource; value:Binding; emphasis?:Emphasis; format?:CellFormat; icon?:str; subtext?:TextSource; tone?:ToneVariant; trend?:Binding; trendFormat?:CellFormat; weight?:StyleWeight }
+| Metric { label:TextSource; value:Binding_float; emphasis?:Emphasis; format?:CellFormat; icon?:str; subtext?:TextSource; tone?:ToneVariant; trend?:Binding_float; trendFormat?:CellFormat; trendPolarity?:"HigherIsBetter"|"LowerIsBetter"; weight?:StyleWeight }
 | Badge { label:TextSource; variant:"Neutral"|"Brand"|"Success"|"Warning"|"Critical"|"Info" }
-| Sparkline { source:Binding }
+| Sparkline { source:Binding_list_float }
 | Callout { body:TextSource; dismissable?:bool; heading?:TextSource; icon?:str; tone?:ToneVariant }
-| Progress { fraction:Binding; caveat?:TextSource; indeterminate?:bool; label?:TextSource; tone?:ToneVariant }
+| Progress { fraction:Binding_float; caveat?:TextSource; indeterminate?:bool; label?:TextSource; tone?:ToneVariant }
 | Skeleton { rows:int }
 | Icon { icon:str; label?:str; size?:"Small"|"Medium"|"Large"; tone?:ToneVariant }
-| LabelValueRow { label:TextSource; value:Binding; emphasis?:bool; format?:CellFormat; help?:TextSource }
+| LabelValueRow { label:TextSource; value:Binding_float; emphasis?:bool; format?:CellFormat; help?:TextSource }
 | Fact { label:TextSource; value:TextSource; emphasis?:bool; help?:TextSource; icon?:str; tone?:ToneVariant }
-| Link { download:bool; href:Binding; label:TextSource; protection?:"email"; rel?:str; target?:str }
-| Image { alt:TextSource; src:Binding; variant:"Default"|"Avatar"|"Rounded" }
+| Link { download:bool; href:Binding_str; label:TextSource; protection?:"email"; rel?:str; target?:str }
+| Image { alt:TextSource; src:Binding_str; variant:"Default"|"Avatar"|"Rounded" }
 | List { items:TextSource[]; ordered:bool }
-| Toast { message:TextSource; open:Binding; dismissable?:bool; tone?:ToneVariant }
+| Toast { message:TextSource; open:Binding_bool; dismissable?:bool; tone?:ToneVariant }
 | CodeBlock { code:str; copyable:bool; highlightLines:int[]; language:str; lineNumbers:bool }
 | Math { display:"Inline"|"Block"; source:str }
 | Drawing { shapes:Shape[]; style:DrawStyle; viewBox:ViewBox; description?:TextSource; title?:TextSource }
 InputKind =
-| Form { fields:FormField[]; onSubmit:Action; submitLabel:TextSource; disabled?:Binding }
+| Form { fields:FormField[]; onSubmit:Action; submitLabel:TextSource; disabled?:Binding_bool }
 | Filters { items:FilterSpec[] }
-| Button { label:TextSource; onClick:Action; variant:"Primary"|"Secondary"|"Tertiary"|"Destructive"; disabled?:Binding; icon?:str }
-| FileUpload { accept:str[]; label:TextSource; multiple:bool; onSelect:closure; disabled?:Binding }
-| Select { label:TextSource; source:Binding; value:Binding; disabled?:Binding; multiple?:bool; placeholder?:TextSource; values?:Binding }
+| Button { label:TextSource; onClick:Action; variant:"Primary"|"Secondary"|"Tertiary"|"Destructive"; disabled?:Binding_bool; icon?:str }
+| FileUpload { accept:str[]; label:TextSource; multiple:bool; onSelect:closure; disabled?:Binding_bool }
+| Select { label:TextSource; source:Binding_list_SelectOption; value:Binding_str; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; values?:Binding_list_str }
 VisKind =
-| DataGrid { columns:ColumnErased[]; source:Binding; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool } }
-| Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding; xField:str; yFields:str[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }
-| Map { centreLatitude:num; centreLongitude:num; source:Binding; zoom:int }
+| DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool } }
+| Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding_hosted; xField:str; yFields:str[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }
+| Map { centreLatitude:any; centreLongitude:any; source:Binding_list_MapMarker; zoom:int }
 TreeOp =
 | EditNode { newKind:NodeKind; target:str }
 | UpdateProp { path:str; target:str; value:any }
-| ReplaceBinding { binding:Binding; slot:str; target:str }
+| ReplaceBinding { binding:Binding_json; slot:str; target:str }
 | UpdateStyle { style:SemanticStyle; target:str }
 | UpdateState { state:StateBehaviour; target:str }
 | InsertChild { child:Node; parentId:str }
@@ -269,14 +303,27 @@ Action =
 | Call { endpoint:str; into?:CallResultTarget }
 | Notify { channel:str; payload:any }
 | Navigate { route:str }
-| SetState { key:str; value?:any; valueFrom?:Binding }
+| SetState { key:str; value?:any; valueFrom?:Binding_json }
 | AiTool { args:any; toolName:str }
 | Chain { ops:Action[] }
 | CommitLocal { nodeId:str }
 | WriteToClipboard { text:str }
 | ReadFileBody { encoding:"Text"|"Base64"|"DataUrl"; fileRef:str; onRead:closure }
 | Invoke { args:object[]; capabilityId:str }
-Binding =
+Binding_bool =
+| Static { value?:bool }
+| Query { name:str; dependsOn?:str[] }
+| Filter { name:str; defaultValue?:bool }
+| Selection { nodeId:str; defaultValue?:bool; field?:str }
+| State { key:str; defaultValue?:bool }
+| Computed { fn:closure }
+| Now
+| I18n { key:str; args?:{ [key]:Binding_json } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_bool; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding_float }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Invoke { args:object[]; capabilityId:str }
+Binding_float =
 | Static { value?:any }
 | Query { name:str; dependsOn?:str[] }
 | Filter { name:str; defaultValue?:any }
@@ -284,10 +331,114 @@ Binding =
 | State { key:str; defaultValue?:any }
 | Computed { fn:closure }
 | Now
-| I18n { key:str; args?:{ [key]:Binding } }
-| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding; onCommit:closure; parse:closure }
-| Format { format:Format; locale:LocaleSource; source:Binding }
-| Transform { pipeline:any[]; source:object; params?:{ from:Binding; name:str }[] }
+| I18n { key:str; args?:{ [key]:Binding_json } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_float; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding_float }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Invoke { args:object[]; capabilityId:str }
+Binding_hosted =
+| Static { value?:any }
+| Query { name:str; dependsOn?:str[] }
+| Filter { name:str; defaultValue?:any }
+| Selection { nodeId:str; defaultValue?:any; field?:str }
+| State { key:str; defaultValue?:any }
+| Computed { fn:closure }
+| Now
+| I18n { key:str; args?:{ [key]:Binding_json } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_hosted; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding_float }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Invoke { args:object[]; capabilityId:str }
+Binding_int =
+| Static { value?:int }
+| Query { name:str; dependsOn?:str[] }
+| Filter { name:str; defaultValue?:int }
+| Selection { nodeId:str; defaultValue?:int; field?:str }
+| State { key:str; defaultValue?:int }
+| Computed { fn:closure }
+| Now
+| I18n { key:str; args?:{ [key]:Binding_json } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_int; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding_float }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Invoke { args:object[]; capabilityId:str }
+Binding_json =
+| Static { value?:any }
+| Query { name:str; dependsOn?:str[] }
+| Filter { name:str; defaultValue?:any }
+| Selection { nodeId:str; defaultValue?:any; field?:str }
+| State { key:str; defaultValue?:any }
+| Computed { fn:closure }
+| Now
+| I18n { key:str; args?:{ [key]:Binding_json } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_json; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding_float }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Invoke { args:object[]; capabilityId:str }
+Binding_list_MapMarker =
+| Static { value?:MapMarker[] }
+| Query { name:str; dependsOn?:str[] }
+| Filter { name:str; defaultValue?:MapMarker[] }
+| Selection { nodeId:str; defaultValue?:MapMarker[]; field?:str }
+| State { key:str; defaultValue?:MapMarker[] }
+| Computed { fn:closure }
+| Now
+| I18n { key:str; args?:{ [key]:Binding_json } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_MapMarker; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding_float }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Invoke { args:object[]; capabilityId:str }
+Binding_list_SelectOption =
+| Static { value?:SelectOption[] }
+| Query { name:str; dependsOn?:str[] }
+| Filter { name:str; defaultValue?:SelectOption[] }
+| Selection { nodeId:str; defaultValue?:SelectOption[]; field?:str }
+| State { key:str; defaultValue?:SelectOption[] }
+| Computed { fn:closure }
+| Now
+| I18n { key:str; args?:{ [key]:Binding_json } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_SelectOption; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding_float }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Invoke { args:object[]; capabilityId:str }
+Binding_list_float =
+| Static { value?:any[] }
+| Query { name:str; dependsOn?:str[] }
+| Filter { name:str; defaultValue?:any[] }
+| Selection { nodeId:str; defaultValue?:any[]; field?:str }
+| State { key:str; defaultValue?:any[] }
+| Computed { fn:closure }
+| Now
+| I18n { key:str; args?:{ [key]:Binding_json } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_float; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding_float }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Invoke { args:object[]; capabilityId:str }
+Binding_list_str =
+| Static { value?:str[] }
+| Query { name:str; dependsOn?:str[] }
+| Filter { name:str; defaultValue?:str[] }
+| Selection { nodeId:str; defaultValue?:str[]; field?:str }
+| State { key:str; defaultValue?:str[] }
+| Computed { fn:closure }
+| Now
+| I18n { key:str; args?:{ [key]:Binding_json } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_list_str; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding_float }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
+| Invoke { args:object[]; capabilityId:str }
+Binding_str =
+| Static { value?:str }
+| Query { name:str; dependsOn?:str[] }
+| Filter { name:str; defaultValue?:str }
+| Selection { nodeId:str; defaultValue?:str; field?:str }
+| State { key:str; defaultValue?:str }
+| Computed { fn:closure }
+| Now
+| I18n { key:str; args?:{ [key]:Binding_json } }
+| Local { flushOn:LocalFlushTrigger; format:closure; initialFrom:Binding_str; onCommit:closure; parse:closure }
+| Format { format:Format; locale:LocaleSource; source:Binding_float }
+| Transform { pipeline:any[]; source:object; params?:{ from:Binding_json; name:str }[] }
 | Invoke { args:object[]; capabilityId:str }
 BoxLayout =
 | Flex { direction:Orientation; wrap:bool; gap?:int }
@@ -322,7 +473,7 @@ CellKindErased =
 ColumnWidth =
 | Auto
 | Fixed { pixels:int }
-| Flex { weight:num }
+| Flex { weight:any }
 CurveCommand =
 | MoveTo { to:DrawPoint }
 | LineTo { to:DrawPoint }
@@ -330,17 +481,17 @@ CurveCommand =
 | QuadraticTo { control:DrawPoint; to:DrawPoint }
 | Close
 FormFieldKind =
-| Text { value?:Binding }
-| Number { value?:Binding }
-| Range { max?:num; min?:num; step?:num; value?:any }
-| Checkbox { value?:Binding }
-| Toggle { value?:Binding }
-| Choice { options:Binding; value?:Binding }
-| RangedNumber { max?:num; min?:num; step?:num; value?:Binding }
-| SegmentedChoice { options:Binding; orientation:Orientation; value?:Binding }
-| TextArea { rows:int; value?:Binding }
-| Date { variant:DateVariant; max?:str; min?:str; step?:num; value?:Binding }
-| DateRange { variant:DateVariant; max?:str; min?:str; step?:num; value?:any }
+| Text { value?:Binding_str }
+| Number { value?:Binding_float }
+| Range { max?:any; min?:any; step?:any; value?:any }
+| Checkbox { value?:Binding_bool }
+| Toggle { value?:Binding_bool }
+| Choice { options:Binding_list_SelectOption; value?:Binding_str }
+| RangedNumber { max?:any; min?:any; step?:any; value?:Binding_float }
+| SegmentedChoice { options:Binding_list_SelectOption; orientation:Orientation; value?:Binding_str }
+| TextArea { rows:int; value?:Binding_str }
+| Date { variant:DateVariant; max?:str; min?:str; step?:any; value?:Binding_str }
+| DateRange { variant:DateVariant; max?:str; min?:str; step?:any; value?:any }
 Format =
 | Number { decimals?:int }
 | Currency { isoCode:str }
@@ -350,7 +501,7 @@ Format =
 | Duration { style:DurationStyle; unit:DurationUnit }
 FragmentArg =
 | Int { value:int }
-| Float { value:num }
+| Float { value:any }
 | Bool { value:bool }
 | Str { value:str }
 | SlotArg { tree:Node }
@@ -360,7 +511,7 @@ HoleDecl =
 | Repeat { countSpace:HoleValueSpace; name:str }
 HoleValueSpace =
 | IntRange { max:int; min:int }
-| FloatRange { max:num; min:num }
+| FloatRange { max:any; min:any }
 | StringLen { maxLen:int; minLen:int }
 | Enum { choices:str[] }
 | AnyString
@@ -374,37 +525,41 @@ LocaleSource =
 | Explicit { tag:str }
 Scalar =
 | Int { value:int }
-| Float { value:num }
+| Float { value:any }
 | Bool { value:bool }
 | Str { value:str }
 Shape =
 | Group { children:Shape[]; style:DrawStyle }
-| Rectangle { height:num; style:DrawStyle; width:num; x:num; y:num; cornerRadius?:num }
-| Line { style:DrawStyle; x1:num; x2:num; y1:num; y2:num }
+| Rectangle { height:any; style:DrawStyle; width:any; x:any; y:any; cornerRadius?:any }
+| Line { style:DrawStyle; x1:any; x2:any; y1:any; y2:any }
 | Polyline { points:DrawPoint[]; style:DrawStyle }
 | Polygon { points:DrawPoint[]; style:DrawStyle }
 | Curve { commands:CurveCommand[]; style:DrawStyle }
-| Circle { cx:num; cy:num; r:num; style:DrawStyle }
-| Ellipse { cx:num; cy:num; rx:num; ry:num; style:DrawStyle }
-| Label { style:DrawStyle; text:TextSource; x:num; y:num }
+| Circle { cx:any; cy:any; r:any; style:DrawStyle }
+| Ellipse { cx:any; cy:any; rx:any; ry:any; style:DrawStyle }
+| Label { style:DrawStyle; text:TextSource; x:any; y:any }
 TextSource =
 | str
 | Literal { text:str }
-| Bound { binding:Binding }
+| Bound { binding:Binding_str }
 | I18n { args:{ [key]:any }; key:str }
-Accessibility { describedBy?:str; hidden?:Binding; label?:Binding; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str }
+Accessibility { describedBy?:str; hidden?:Binding_bool; label?:Binding_str; labelledBy?:str; liveRegion?:"polite"|"assertive"|"off"; role?:str }
 ColumnErased { kind:CellKindErased; label:str; editable?:bool; field?:str; format?:CellFormat; sortable?:bool; width?:ColumnWidth }
+CompareRule { against:Binding_json; op:"eq"|"neq"|"lt"|"lte"|"gt"|"gte" }
 ContentHash { algorithm:str; hash:str; strictness:"StrictReplay"|"AdvisoryWarning"|"Enforced" }
-DrawPoint { x:num; y:num }
-DrawStyle { emphasis?:Emphasis; fill?:Binding; fontFamily?:str; fontSize?:num; markId?:str; opacity?:Binding; rotation?:num; stroke?:Binding; strokeWidth?:Binding; textAnchor?:"Start"|"Middle"|"End"; tip?:TextSource }
+DrawPoint { x:any; y:any }
+DrawStyle { emphasis?:Emphasis; fill?:Binding_str; fontFamily?:str; fontSize?:any; markId?:str; opacity?:Binding_float; rotation?:any; stroke?:Binding_str; strokeWidth?:Binding_float; textAnchor?:"Start"|"Middle"|"End"; tip?:TextSource }
 EffectClass { determinism:"Deterministic"|"Clock"|"Random"|"Network"; hostEffect:"Pure"|"ReadsHost"|"WritesHost" }
+FieldRule { compare?:CompareRule; format?:"email"|"url"|"tel"; maxLength?:int; message?:TextSource; minLength?:int; pattern?:str }
 FilterSpec { kind:FormFieldKind; label:TextSource; name:str }
-FormField { id:str; kind:FormFieldKind; label:TextSource; required:bool; help?:TextSource }
+FormField { id:str; kind:FormFieldKind; label:TextSource; required:bool; help?:TextSource; rule?:FieldRule }
 GuestChannel { direction:"OutOnly"|"TwoWay"; messageShape?:str }
+MapMarker { label:TextSource; latitude:any; longitude:any }
+SelectOption { label:TextSource; value:str }
 SemanticStyle { emphasis?:Emphasis; role?:"None"|"Eyebrow"|"Data"|"Lede"|"Caption"; tone?:ToneVariant; voice?:"Default"|"Display"|"Structural"; weight?:StyleWeight }
 StateBehaviour { onEmpty?:Node; onLoading?:Node }
-TabHeader { label:TextSource; disabled?:Binding; icon?:str }
-ViewBox { height:num; minX:num; minY:num; width:num }
+TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }
+ViewBox { height:any; minX:any; minY:any; width:any }
 DateVariant = "Date"|"Time"|"DateTime"
 DurationStyle = "Compact"|"Clock"|"Long"
 DurationUnit = "Seconds"|"Minutes"|"Hours"
@@ -495,6 +650,25 @@ like `{ "$type": "Fact", "label": "Patient status", "value": "Ready for Discharg
 "tone": "Success" }` satisfies the colour and still misses the kind that was asked
 for. If the prompt names a variant or a colour for a single state word, reach for
 `Badge`.
+
+## When DOWN is good — `trendPolarity`, which is not `tone`
+
+A trended `Metric` renders its movement as an improvement or a regression, and by default
+UP is the improvement. For a wait time, an error rate, a cost, a backlog, that reading is
+exactly backwards: a −7.3% wait time is good news drawn as bad. Say which direction is
+good with **`"trendPolarity": "LowerIsBetter"`** on the metric; omit it when up is good.
+
+**It is a different field from `tone`, and neither substitutes for the other.** `tone`
+says how the metric stands NOW ("still above target" → `"Warning"`); `trendPolarity` says
+how to read its MOVEMENT. The renderer composes the two independently — the sentiment is
+the sign of `trend` against the declared polarity, drawn on the trend alone — so a metric
+can honestly be `"tone": "Warning"` and improving at the same time. Encoding "down is
+good" by flipping `tone` conflates the two and loses both readings.
+
+Spelled out: `"trend": {"$type":"Static","value":-0.0734}` with
+`"trendPolarity": "LowerIsBetter"` reads as an improvement; the number and its sign are
+never altered to make the colour come out right. The only two spellings are
+`"HigherIsBetter"` and `"LowerIsBetter"`.
 
 ## Selected, pre-selected, and derived state — the three idioms
 
@@ -679,6 +853,77 @@ by default to leave this one alone.
 `"$1,200.00"`; `"0.68"`, not `"68%"`. Column sorting compares numbers as numbers only when
 the cell reads as one, and a pre-formatted cell sorts as text — so `"$980"` lands above
 `"$1,200"`. Put the units in the header (`"Revenue (£)"`) where they belong.
+
+## Sorting a BOUND grid — the sort state key turns it on, a pipeline sort does not
+
+The section above sorts a `staticRows` table. A **data-bound** grid — one with `columns`
+and a `source` — sorts through a different pair of fields, and the common miss is
+reaching for the pipeline instead.
+
+**Give the grid a `sortStateKey`.** That single string is what makes the headers
+clickable: `"sortStateKey": "<key>"` names the `$state` slot holding the current sort,
+the renderer draws the sortable headers and writes each click back there. Every column
+with a `field` is then sortable; **`"sortable": false` opts one OUT** (a note column, an
+actions column). `"sortable": true` is only ever a restatement of the default — and on a
+grid naming no `sortStateKey` it is refused outright (`FUARAN094`), because a column
+cannot switch on a behaviour the grid never has.
+
+**Declare the opening order with `defaultSort`** — `{"column": <index>, "direction":
+"asc" | "desc"}`, where `column` is a zero-based index into `columns`. It stands alone:
+a grid with `defaultSort`
+and no `sortStateKey` opens in that order and is not re-sortable, which is a legitimate
+shape. A grid with `sortStateKey` and no `defaultSort` opens in the source's own order —
+so if the prompt names an initial order ("oldest first"), emit both.
+
+**A pipeline sort is not sortability.** A `sort` / `orderBy` step inside a `Transform`
+fixes ONE order into the data before it reaches the grid; the reader still cannot click
+a header. When the prompt says the user sorts, the answer is `sortStateKey` on the grid.
+Reach for the pipeline step only when the prompt names a fixed presentation order and no
+interaction at all.
+
+## Paging a long grid — `pageSize` + `pageStateKey`, and never a pager you build
+
+Two fields on the grid page it, and the pager control is the renderer's to draw:
+`"pageSize": <rows per page>` and `"pageStateKey": "<key>"`, the `$state` slot holding
+the current page position. Emit both — **`pageSize` without `pageStateKey` is refused**
+(`FUARAN093`): a page size with nothing carrying the position is not a page, so the grid
+would render every row.
+
+**Do not assemble a pager.** Buttons labelled "Next 25", a `Segmented` page-number strip,
+a `Range` filter chip standing in for a page — each is a control that looks like paging
+and drives nothing, and none is needed: declaring the two fields IS the pager. This is
+also the distinction to keep against filters. A filter narrows WHICH rows exist and is
+wired per the filter rules below; a pager moves a window over the rows that already
+match. A prompt asking for both wants a `Filters` node *and* the two grid fields, not one
+standing in for the other.
+
+**When the host pages, do not page again.** If the grid's `source` is a
+`{"$type":"Query", …, "dependsOn": ["<the page key>"]}` the host is already returning one
+page, so adding `pageSize` on top slices the page again and loses the rest — the
+validator cautions (`FUARAN096`). Page host-side *or* grid-side, not both.
+
+## Editing a grid — declare WHERE the edit lands, and which columns are editable
+
+`"editable": true` turns the grid's Text/Numeric field cells into inputs, and every edit
+needs a destination. There are two ways to give it one, and a grid must have exactly one:
+
+- **`"editStateKey": "<key>"`** — the declared destination. The edits are written to that
+  `$state` key whatever the grid's `source` is, which is what lets a `Query`-sourced grid
+  be editable at all.
+- **a `source` that is directly `{"$type":"State","key":"<key>", …}`** — the implicit
+  destination; the edits go back to that same key.
+
+With neither, the declaration is inert: the cells render read-only and the validator warns
+(`FUARAN090`). **Never leave the destination to a handler** — `onEdit` is host-code and
+encodes as `"<closure>"`, so an editable grid that names its destination only in prose, or
+only on the `source` of a `Transform`, has said nothing the renderer can act on.
+
+**Editability narrows per column, exactly as sortability does.** `"editable": false` on a
+column opts it out; the other columns follow the grid. When the prompt makes ONE column
+editable — a counted quantity beside three reference columns — say so on the three:
+read-only that is merely implied is not declared. `"editable": true` on a column under a
+grid that is not editable is refused (`FUARAN095`), the same widening the sort flag
+refuses.
 
 ## Distinguishing rows by value — the toned pill
 
@@ -1024,17 +1269,20 @@ only when you mean it, and only a catalogue-listed spelling; an unknown case fai
 ```
 <!-- /fuaran:example -->
 
-   **An editable grid needs a shared `$state` source.** `"editable": true` only does
-   anything when the grid's `source` is **directly** `{ "$type": "State", "key": "<key>",
-   "defaultValue": [ <row objects> ] }` — the renderer then turns Text/Numeric field cells
-   into inputs and writes the updated rows back to that key on every edit. Point every
-   reader that should track the edits — typically a `Chart` — at the SAME `$state` key as
-   its own `source` (repeat the same `defaultValue` rows on each reader): an edit in the
-   grid re-renders them live. `"editable": true` over a `Transform` or `Static` source is
-   inert — the data is not writable, every cell renders read-only, and the validator warns
-   (FUARAN090). Do not combine `editable` with a pipeline: edit the raw rows in `$state`;
-   a `Transform` pipeline cannot read them back, so keep edit-tracking readers on the
-   plain `$state` source.
+   **An editable grid needs a destination for the edits**, and the shared `$state` source
+   is the one that also keeps other readers live. Give the grid's `source` **directly**
+   `{ "$type": "State", "key": "<key>", "defaultValue": [ <row objects> ] }` — the
+   renderer then turns Text/Numeric field cells into inputs and writes the updated rows
+   back to that key on every edit. Point every reader that should track the edits —
+   typically a `Chart` — at the SAME `$state` key as its own `source` (repeat the same
+   `defaultValue` rows on each reader): an edit in the grid re-renders them live. Do not
+   combine `editable` with a pipeline: edit the raw rows in `$state`; a `Transform`
+   pipeline cannot read them back, so keep edit-tracking readers on the plain `$state`
+   source. `"editable": true` over a `Transform` or `Static` source and with no
+   `editStateKey` is inert — the data is not writable, every cell renders read-only, and
+   the validator warns (FUARAN090). Where the source cannot be a `State` (a `Query`-fed
+   grid), declare the destination explicitly with `editStateKey` — see "Editing a grid"
+   above, with the per-column narrowing.
 9. **Fetch host data declaratively with `Call` + `into`.** A refresh / load button's action:
    `{ "$type": "Call", "endpoint": "<host endpoint>", "into": { "$type": "State", "key": "<key>" } }`
    (or `"into": { "$type": "Query", "name": "<name>" }`). Readers bind the same `$state` key /

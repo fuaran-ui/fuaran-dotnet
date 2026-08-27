@@ -4,7 +4,7 @@
   "what": "Per-family (section -> needed | never-needed | unknown) map, distilled from the flip record. `unknown` defaults to INCLUDED; `needed` wins a conflict with `never-needed`. Every verdict carries the record line that decided it.",
   "flipRecord": { "file": "SLIMMING-CENSUS.md", "sha256": "sha256:39531ae400f9ae616b2c5ecedf4b8a933508559d8bb9748d0893407d751a4751" },
   "demandAttribution": { "file": "demand-attribution.jsonl", "sha256": "sha256:a829fc98ddb5e094d2106c6bcde67f29e7becfe72890e4b280168a0a85147917", "records": 65 },
-  "pack": { "file": "system-prompt.md", "sha256": "sha256:86ac4f8dd41300123b7be254c52dc1a9161da11683ac10aab22c31e1330555fa", "sections": 24 },
+  "pack": { "file": "system-prompt.md", "sha256": "sha256:acad30e88f69a3c1d558821bcc979a50c240d7ca3fdbfd23f4ae77833c7de6bb", "sections": 29 },
   "families": ["claude-opus", "claude-sonnet", "gemini", "gpt", "grok", "kimi"],
   "dialect": {
     "claude-opus": { "dialect": "lenient", "evidence": { "line": 808, "excerpt": "| \u0060claude-opus-4-8@low\u0060 | 12/12 (was 11/12) | \u22126.0% | **ADOPT** \u2014 dialect eligible as this family\u0027s pack dimension |" } },
@@ -86,6 +86,20 @@
       }
     },
     {
+      "key": "Field constraints are DECLARED \u2014 a rule the form enforces, not help text",
+      "alwaysCore": false,
+      "alwaysCoreReason": null,
+      "pinnedExemplars": [],
+      "families": {
+        "claude-opus": { "class": "unknown", "evidence": [] },
+        "claude-sonnet": { "class": "unknown", "evidence": [] },
+        "gemini": { "class": "unknown", "evidence": [] },
+        "gpt": { "class": "unknown", "evidence": [] },
+        "grok": { "class": "unknown", "evidence": [] },
+        "kimi": { "class": "unknown", "evidence": [] }
+      }
+    },
+    {
       "key": "Editing an existing tree",
       "alwaysCore": false,
       "alwaysCoreReason": null,
@@ -123,6 +137,20 @@
         "claude-sonnet": { "class": "unknown", "evidence": [] },
         "gemini": { "class": "unknown", "evidence": [] },
         "gpt": { "class": "needed", "evidence": [{ "line": 43, "alias": "gpt-5.6-sol", "marker": "flip", "polarity": "needed", "excerpt": "SLIMMING-CENSUS.md:43 | 370\u2013467 | Numbers vs text: \u0060Metric\u0060 vs \u0060Fact\u0060 | 1,086 (45/1,041) | **CUT (a), partial** \u2014 the arithmetic wrong-then-right exact-example pair (lines 395\u2013413, ~800 chars). Evidence: demand-log 2026\u2026" }, { "line": 52, "alias": "gpt", "marker": "extinguish", "polarity": "needed", "excerpt": "demand-attribution.jsonl[2026-08-09 ]:52 Metric-vs-Fact on the TEXT side \u2014 the decode didactic exists but only fires AFTER emission; gpt never adopts the Fact routing pre-emit **RESOLVED \u2014 both paths (2026-08-09)**. Post-emit: 796 session\u2026" }, { "line": 43, "alias": "gpt-5.6-sol", "marker": "generation-scoped", "polarity": "never-needed", "excerpt": "SLIMMING-CENSUS.md:43 | 370\u2013467 | Numbers vs text: \u0060Metric\u0060 vs \u0060Fact\u0060 | 1,086 (45/1,041) | **CUT (a), partial** \u2014 the arithmetic wrong-then-right exact-example pair (lines 395\u2013413, ~800 chars). Evidence: demand-log 2026\u2026" }, { "line": 147, "alias": "gpt-4o", "marker": "generation-scoped", "polarity": "never-needed", "excerpt": "SLIMMING-CENSUS.md:147 | \u00601db06df\u0060 | (a) | the gpt-4o arithmetic wrong-then-right pair (\u00A7Metric-vs-Fact, ~780 ch) | teaching-proof at both treatments (\u0060a89e84c\u0060, \u0060602ada7\u0060); generation-scoped 2026-08-11: sol@low 4/4 \u002B te\u2026" }] },
+        "grok": { "class": "unknown", "evidence": [] },
+        "kimi": { "class": "unknown", "evidence": [] }
+      }
+    },
+    {
+      "key": "When DOWN is good \u2014 \u0060trendPolarity\u0060, which is not \u0060tone\u0060",
+      "alwaysCore": false,
+      "alwaysCoreReason": null,
+      "pinnedExemplars": [],
+      "families": {
+        "claude-opus": { "class": "unknown", "evidence": [] },
+        "claude-sonnet": { "class": "unknown", "evidence": [] },
+        "gemini": { "class": "unknown", "evidence": [] },
+        "gpt": { "class": "unknown", "evidence": [] },
         "grok": { "class": "unknown", "evidence": [] },
         "kimi": { "class": "unknown", "evidence": [] }
       }
@@ -185,6 +213,48 @@
     },
     {
       "key": "Which tabular shape \u2014 \u0060columns\u0060 vs \u0060staticRows\u0060 vs a Markdown table",
+      "alwaysCore": false,
+      "alwaysCoreReason": null,
+      "pinnedExemplars": [],
+      "families": {
+        "claude-opus": { "class": "unknown", "evidence": [] },
+        "claude-sonnet": { "class": "unknown", "evidence": [] },
+        "gemini": { "class": "unknown", "evidence": [] },
+        "gpt": { "class": "unknown", "evidence": [] },
+        "grok": { "class": "unknown", "evidence": [] },
+        "kimi": { "class": "unknown", "evidence": [] }
+      }
+    },
+    {
+      "key": "Sorting a BOUND grid \u2014 the sort state key turns it on, a pipeline sort does not",
+      "alwaysCore": false,
+      "alwaysCoreReason": null,
+      "pinnedExemplars": [],
+      "families": {
+        "claude-opus": { "class": "unknown", "evidence": [] },
+        "claude-sonnet": { "class": "unknown", "evidence": [] },
+        "gemini": { "class": "unknown", "evidence": [] },
+        "gpt": { "class": "unknown", "evidence": [] },
+        "grok": { "class": "unknown", "evidence": [] },
+        "kimi": { "class": "unknown", "evidence": [] }
+      }
+    },
+    {
+      "key": "Paging a long grid \u2014 \u0060pageSize\u0060 \u002B \u0060pageStateKey\u0060, and never a pager you build",
+      "alwaysCore": false,
+      "alwaysCoreReason": null,
+      "pinnedExemplars": [],
+      "families": {
+        "claude-opus": { "class": "unknown", "evidence": [] },
+        "claude-sonnet": { "class": "unknown", "evidence": [] },
+        "gemini": { "class": "unknown", "evidence": [] },
+        "gpt": { "class": "unknown", "evidence": [] },
+        "grok": { "class": "unknown", "evidence": [] },
+        "kimi": { "class": "unknown", "evidence": [] }
+      }
+    },
+    {
+      "key": "Editing a grid \u2014 declare WHERE the edit lands, and which columns are editable",
       "alwaysCore": false,
       "alwaysCoreReason": null,
       "pinnedExemplars": [],
@@ -353,11 +423,11 @@
     }
   ],
   "summary": {
-    "claude-opus": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 21, "cuttable": 0 },
-    "claude-sonnet": { "needed": 0, "neverNeeded": 0, "unknownDefaultedIn": 24, "cuttable": 0 },
-    "gemini": { "needed": 2, "neverNeeded": 0, "unknownDefaultedIn": 22, "cuttable": 0 },
-    "gpt": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 21, "cuttable": 0 },
-    "grok": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 21, "cuttable": 0 },
-    "kimi": { "needed": 0, "neverNeeded": 0, "unknownDefaultedIn": 24, "cuttable": 0 }
+    "claude-opus": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 26, "cuttable": 0 },
+    "claude-sonnet": { "needed": 0, "neverNeeded": 0, "unknownDefaultedIn": 29, "cuttable": 0 },
+    "gemini": { "needed": 2, "neverNeeded": 0, "unknownDefaultedIn": 27, "cuttable": 0 },
+    "gpt": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 26, "cuttable": 0 },
+    "grok": { "needed": 3, "neverNeeded": 0, "unknownDefaultedIn": 26, "cuttable": 0 },
+    "kimi": { "needed": 0, "neverNeeded": 0, "unknownDefaultedIn": 29, "cuttable": 0 }
   }
 }

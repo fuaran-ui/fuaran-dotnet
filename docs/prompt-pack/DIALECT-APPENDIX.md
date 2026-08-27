@@ -9,7 +9,7 @@
 # The lenient-dialect appendix — Phase 840
 
 Classification of the ENTIRE decoder-leniency surface, as pinned by the corpus's
-`lenient-accept` fixture family (60 fixtures — `manifest.json` authoritative). Every
+`lenient-accept` fixture family (61 fixtures — `manifest.json` authoritative). Every
 fixture id is claimed by exactly one family below (asserted at generation, so a
 new leniency cannot land unclassified). Classes:
 
@@ -34,7 +34,7 @@ pins, not the pack — the pack-level ledger lives in the census.
 
 | Family | Class | Δ bytes | Fixtures | Evidence / judgement |
 |---|---|---:|---|---|
-| Static-envelope elision (bare scalar / array in a Binding slot) | taught-primary | -49 | `lenient-shape-binding-scalar-fraction` | JUDGEMENT: total + loss-free — §3.6: every Binding case is $type-discriminated, so a bare array/scalar can only mean Static; bare objects and null stay refused (ambiguity preserved). Token-positive: ~24 chars per slot. Decoder-proof per emitted block. |
+| Static-envelope elision (bare scalar / array in a Binding slot) | taught-primary | +5 | `lenient-shape-a11y-label-bare-scalar`<br>`lenient-shape-binding-scalar-fraction` | JUDGEMENT: total + loss-free — §3.6: every Binding case is $type-discriminated, so a bare array/scalar can only mean Static; bare objects and null stay refused (ambiguity preserved). Token-positive: ~24 chars per slot. Decoder-proof per emitted block. The Accessibility trait's label/hidden fixture is the SAME rule at a second position, not a second rule — its own manifest entry says so ('the general §3.6 scalar rule'), so it joins this family rather than minting one that would restate the identical judgement. |
 | Option as bare string (label = value) | taught-primary | +233 | `lenient-shape-options-bare-strings`<br>`lenient-shape-segmented-orientation-omitted` | JUDGEMENT: total + loss-free on its domain — a bare string option denotes exactly {label:s, value:s} (§3.6 SelectOption rule, the HTML <select> prior). Applied only where label equals value; distinct labels keep the object form. (The segmented fixture also pins orientation-omitted-⇒-Horizontal — the omitted-default family below.) |
 | Embedded source column as bare array (validity elided) | taught-primary | +142 | `lenient-transform-bare-columns` | JUDGEMENT: total + loss-free when the mask is all-true — the wire has no JSON null, so a bare array can only denote all-present (§3.6, §16.1 explicitly PREFERS this form). Guarded: a column with any false validity keeps its envelope. |
 | Schema omission (inferable column types) | taught-primary | +74 | `lenient-transform-schemaless` | JUDGEMENT: loss-free ONLY on the guarded domain — types infer deterministically for string/int/float/bool (fuaran-core columnar codec authority); date/timestamp NEVER infer and empty/mixed refuse. The transform drops a schema only when inference reproduces every declared type exactly (checked per column), so e.g. a float column of integral literals keeps its schema. §16.1 PREFERS the omitted form on this domain. |
