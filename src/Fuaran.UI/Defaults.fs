@@ -220,6 +220,10 @@ let image: ImageSpec =
       Fit = ImageFit.Natural
       AspectRatio = ImageAspect.Natural
       Loading = ImageLoading.Eager
+      // Phase 1080 — no alternate sources. The empty list is the identity here
+      // in the strongest sense: an image with no candidates is served from
+      // `Src` alone, which is what every image did before the slot existed.
+      SrcSet = []
       // Phase 1078 — no caption is the pre-phase image, and `None` is the only
       // honest default: a caption is content, and inventing one is not a
       // default but a fabrication.

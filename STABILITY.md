@@ -1980,3 +1980,65 @@ tables and `idl.json` / `schema.json` were regenerated. Three fixtures added:
 `nodes/image-caption-i18n-1` (an `I18n` caption with a populated arg bag), and
 `lenient/lenient-image-caption-envelope` (the enveloped TextSource form reaching
 `caption` by construction).
+
+## Recorded change — 0.44.0, `ImageSpec.SrcSet` (fuaran#1080)
+
+**Additive, and additive on both boundaries.** `ImageSpec` gains `SrcSet: SrcSetEntry list`,
+defaulting to `[]` and omitted from the wire at that default, together with a new public record
+`SrcSetEntry = { Src: Binding<string>; Width: int }`. A document written before this release decodes
+to `SrcSet = []`, re-encodes to the bytes it already had, and renders the same `<img>` with neither
+`srcset` nor `sizes`. `nodes/image-1.json` was not touched by the phase and came back byte-identical
+from the corpus regeneration for the third phase running.
+
+**Version decision: MINOR, on the standing record-widening precedent.** No wire byte of any existing
+document changes and no shipped slot is re-meant. What breaks is F# **construction sites**: the
+record gains a fifth required field, exactly as at 0.36.0 / 0.39.0 / 0.40.0 / 0.41.0 / 0.42.0 /
+0.43.0. Authors using `{ Defaults.image with … }` — the documented form — are unaffected.
+
+**Surface added.**
+
+- `ImageSpec` gains `SrcSet`; `SrcSetEntry` is a new public type re-exported from `Fuaran.UI.Types`;
+  `Defaults.image` carries `SrcSet = []`.
+- The C# authoring veneer's `ImageOptions` gains a nullable `SrcSet` sequence (defaulted, so existing
+  C# call sites keep compiling) and a `SrcSetEntry` record; the VB XML veneer reads repeated
+  `<Source src="…" width="…"/>` children, and `Source` joins the analyzer's structural-element set.
+- `Fuaran.UI.Ops.Apply`'s field-level `UpdateProp` surface for `Image` answers `"SrcSet"` with
+  `NotSupportedYet` rather than `UnknownField` — the slot exists, and it is reachable through
+  `EditNode`, exactly as `Src` is and for the same reason: there is no field-level coercion from an
+  untyped `obj` to a binding-bearing structure.
+
+**Render.** A non-empty `SrcSet` emits `srcset="<url> <width>w, …"` plus `sizes="100vw"` on the
+`<img>`; an empty one emits neither attribute. Three properties are contractual:
+
+- **Every candidate's `Src` passes the same URL-scheme and egress floor the primary `Src` does**, at
+  the same `Media` egress class. A srcset entry is a URL the browser fetches with no user act — the
+  class that floor exists for — so a slot that skipped it would be a documented bypass.
+- **A refused candidate is DROPPED from the list, not neutered.** The primary `src` must exist, so it
+  collapses to the refusal URL; a candidate has no such obligation, and offering a browser a
+  rendition guaranteed to fail is worse than offering it one fewer. The primary `src` remains the
+  fallback the whole mechanism rests on.
+- **Candidates are emitted ASCENDING by width, and that sort is the RENDERER's.** The wire preserves
+  authored array order, because a JSON array is ordered data and a codec that silently re-sorted one
+  would be normalising authored content rather than canonicalising a representation. The determinism
+  the server-rendered output needs holds where it is actually needed. The sort is stable, so equal
+  widths keep their authored order across re-renders.
+
+`sizes` is deliberately the single bounded value `100vw`: nothing in the document says how wide the
+element will be laid out, and the language has no media-query slot for an author to say so. Admitting
+one would put a free-form CSS string on the wire — the escape the `ImageVariant` / `ImageAspect`
+token vocabularies exist to close.
+
+**The width floor is a decode rule.** `Width` must be a positive integer. The wire has no
+refined-integer type (the `DefaultSort.column` precedent), so the floor lives in the policy decoder
+and the published `schema.json` (`minimum: 1`) and is pinned by a corpus reject vector. Zero is
+refused as firmly as a negative: a `0w` descriptor is not a small image, it is a candidate a browser
+can never select.
+
+**Wire and corpus.** `WIRE_FORMAT.md` §3.6.4 states the rules; the generated §3.2 / §3.5 / §3.6
+tables and `idl.json` / `schema.json` were regenerated. Four fixtures added:
+`nodes/image-srcset-1` (three candidates, authored DESCENDING so the fixture can tell a
+codec that canonicalises order from one that does not), `lenient/lenient-image-empty-srcset` (an
+explicit `[]` canonicalising to the omitted form — the missing-list-field decode class stated in both
+directions), `reject/reject-image-srcset-nonpositive-width` (`width: 0` on the second entry, refused
+at `$.kind.srcSet[1].width`), and `reject/reject-image-srcset-null` (a present `null`, refused —
+absence already has a spelling).

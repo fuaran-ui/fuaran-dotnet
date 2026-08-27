@@ -30,7 +30,10 @@ internal static class Vocabulary
     /// the analyzer does not flag them as unknown.</summary>
     public static readonly ImmutableHashSet<string> Structural = ImmutableHashSet.Create(
         StringComparer.Ordinal,
-        "Item", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default");
+        // Phase 1080 — `Source` is an `<Image>` child carrying one srcSet candidate
+        // (`src` + `width`). A repeated STRUCTURED slot has no attribute spelling,
+        // so it takes the child-element shape `Item` / `Option` / `Marker` already use.
+        "Item", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source");
 
     public static bool IsKnownElement(string name) => Kinds.Contains(name) || Structural.Contains(name);
 

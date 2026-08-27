@@ -343,6 +343,29 @@ let private fixtures: Fixture list =
             "<figcaption class=\"fuaran-image-figure-caption\">The harbour at dawn</figcaption>"
             "</figure>" ] }
 
+      // Phase 1080 — the srcSet emission vocabulary. The candidates are
+      // authored DESCENDING and the expectation is the ASCENDING string, so
+      // this fixture pins the renderer's sort as well as its spelling: a
+      // renderer that emitted authored order would produce a `srcset`
+      // containing all the same URLs and fail here.
+      { Name = "Display/Image (Phase 1080 srcSet — ascending, with sizes)"
+        Node =
+          Fuaran.imageSpec
+              "imgs"
+              { Defaults.image with
+                  Src = Binding.Static(Some "/harbour.jpg")
+                  Alt = TextSource.Literal "Harbour"
+                  SrcSet =
+                      [ { Src = Binding.Static(Some "/harbour-1600.jpg")
+                          Width = 1600 }
+                        { Src = Binding.Static(Some "/harbour-800.jpg")
+                          Width = 800 }
+                        { Src = Binding.Static(Some "/harbour-400.jpg")
+                          Width = 400 } ] }
+        Expected =
+          [ "srcset=\"/harbour-400.jpg 400w, /harbour-800.jpg 800w, /harbour-1600.jpg 1600w\""
+            "sizes=\"100vw\"" ] }
+
       { Name = "Display/List"
         Node =
           Fuaran.listSpec
@@ -828,6 +851,69 @@ let ssrParityTests =
                       "<figcaption class=\"fuaran-image-figure-caption\">Le port au lever du jour (1908)</figcaption>"
                       html)
                   "the I18n caption resolves through the catalog with its args substituted"
+          }
+
+          // ── Phase 1080 — the srcSet ───────────────────────────────────────
+          //
+          // The sanitisation proof, and the one test this phase most needed to
+          // exist. `srcset` is a list of URLs the browser fetches with NO user
+          // act, which is the exact class the render-time URL floor exists for
+          // — so a slot that routed only the primary `src` through it would be
+          // a documented way around the one rule this node has.
+          //
+          // The assertion is deliberately in TWO parts, because either alone
+          // is passable by a broken renderer. That the dangerous URL is absent
+          // would pass on a renderer that neutered it to the refusal URL and
+          // served it anyway; that the refusal URL is absent would pass on one
+          // that emitted the `javascript:` URL raw. Together they say the only
+          // thing worth saying: the candidate is GONE, and what remains is the
+          // safe one at its own descriptor.
+          test "every srcSet candidate passes the URL floor — a javascript: entry is dropped, not neutered" {
+              let node =
+                  Fuaran.imageSpec
+                      "imgx"
+                      { Defaults.image with
+                          Src = Binding.Static(Some "/harbour.jpg")
+                          Alt = TextSource.Literal "Harbour"
+                          SrcSet =
+                              [ { Src = Binding.Static(Some "/harbour-400.jpg")
+                                  Width = 400 }
+                                { Src = Binding.Static(Some "javascript:alert(1)")
+                                  Width = 800 } ] }
+
+              let html = renderHtml BindingResolver.empty node
+
+              Expect.isFalse (contains "javascript:" html) "no srcSet candidate carries a javascript: URL"
+
+              Expect.isFalse
+                  (contains "fuaran-egress-refused 800w" html)
+                  "a refused candidate is dropped from the list, not neutered into it"
+
+              Expect.isTrue
+                  (contains "srcset=\"/harbour-400.jpg 400w\"" html)
+                  (sprintf "the surviving candidate is emitted alone, at its own descriptor — got %s" html)
+          }
+
+          // An empty `srcSet` emits NEITHER attribute. The byte pin above
+          // ("an uncaptioned image emits the bare <img>") already forbids any
+          // addition to that emission, so this test is the readable statement
+          // of the same fact rather than a second guard — and it names the two
+          // attributes, so a failure says which one leaked.
+          test "an image with no srcSet candidates emits neither srcset nor sizes" {
+              let node =
+                  Fuaran.imageSpec
+                      "imgn"
+                      { Defaults.image with
+                          Src = Binding.Static(Some "/a.png")
+                          Alt = TextSource.Literal "Alt" }
+
+              let html = renderHtml BindingResolver.empty node
+
+              Expect.isFalse (contains "srcset" html) "no srcset attribute on an image with no candidates"
+
+              Expect.isFalse
+                  (contains "sizes=" html)
+                  "no sizes attribute either — it describes a list that is not there"
           }
 
           // The icon-contract lock: the icon NAME rides the `data-icon`

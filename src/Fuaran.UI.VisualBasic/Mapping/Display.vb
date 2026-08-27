@@ -85,7 +85,10 @@ Friend Module DisplayMapping
                 .Fit = AsEnum(Of Csharp.ImageFit)(Attr(el, "fit"), Csharp.ImageFit.Natural),
                 .AspectRatio = AsEnum(Of Csharp.ImageAspect)(Attr(el, "aspect-ratio"), Csharp.ImageAspect.Natural),
                 .Loading = AsEnum(Of Csharp.ImageLoading)(Attr(el, "loading"), Csharp.ImageLoading.Eager),
-                .Caption = OptText(el, "caption")})
+                .Caption = OptText(el, "caption"),
+                .SrcSet = ChildElements(el, "Source").
+                    Select(Function(c) New Csharp.SrcSetEntry(AsStringBinding(Attr(c, "src")), AttrInt(c, "width", 0))).
+                    ToList()})
 
         d("List") = Function(el) Csharp.Fuaran.List(
             New Csharp.ListOptions With {.Id = Attr(el, "id"), .Items = ChildTexts(el, "Item"), .Ordered = AttrBool(el, "ordered")})

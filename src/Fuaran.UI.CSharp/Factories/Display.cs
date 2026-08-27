@@ -138,6 +138,8 @@ public static partial class Fuaran
                 options.Fit.ToFs(),
                 options.AspectRatio.ToFs(),
                 options.Loading.ToFs(),
+                Fs.List((options.SrcSet ?? Enumerable.Empty<SrcSetEntry>())
+                    .Select(e => new FsGen.SrcSetEntry(e.Src.Inner, e.Width))),
                 options.Caption is { } cap ? Fs.Some(cap.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>A structured item list.</summary>
@@ -408,7 +410,20 @@ public sealed record ImageOptions
     /// <c>&lt;figure&gt;</c> with the text in a <c>&lt;figcaption&gt;</c>; absent, the
     /// emission is the bare <c>&lt;img&gt;</c>.</summary>
     public Text? Caption { get; init; }
+
+    /// <summary>Alternate renditions of the same picture at declared pixel widths.
+    /// Empty (the default) emits no <c>srcset</c> at all. The renderers order the
+    /// emitted candidates ascending by width, so the authored order here is free.</summary>
+    public IEnumerable<SrcSetEntry>? SrcSet { get; init; }
 }
+
+/// <summary>One candidate rendition in <see cref="ImageOptions.SrcSet"/>.</summary>
+/// <param name="Src">The candidate's source (bound or literal). It passes the same
+/// URL-scheme and egress floor the primary source does; a candidate that fails it is
+/// dropped from the emitted list rather than served.</param>
+/// <param name="Width">The candidate's intrinsic pixel width — the <c>w</c>
+/// descriptor. Must be positive; the wire refuses zero and negative widths.</param>
+public sealed record SrcSetEntry(Binding<string> Src, int Width);
 
 /// <summary>Options for <see cref="Fuaran.List"/>.</summary>
 public sealed record ListOptions

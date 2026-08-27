@@ -1029,12 +1029,65 @@ and private renderKind
             | ImageLoading.Eager -> []
             | ImageLoading.Lazy -> [ "loading", "lazy" ]
 
+        // Phase 1080 — the responsive candidate list. Three properties, each
+        // load-bearing and each the reason a line here exists:
+        //
+        // SANITISED PER ENTRY. Every candidate's `Src` goes through the SAME
+        // `sanitizeUrlForEgress` call the primary `src` does, at the same
+        // `Media` egress class. A srcset entry is a URL the browser fetches with
+        // no user act — exactly what the floor exists for — so routing only the
+        // primary through it would make `srcSet` a bypass of the one rule this
+        // node has.
+        //
+        // A FAILING ENTRY IS DROPPED, not neutered. The primary `src` collapses
+        // to `about:blank` because an `<img>` must have one; a candidate has no
+        // such obligation, and emitting `about:blank 400w` would offer the
+        // browser a rendition guaranteed to fail. Dropping it leaves the
+        // primary `src` — which is the fallback the whole mechanism is built on.
+        //
+        // ASCENDING BY WIDTH, sorted HERE. The wire preserves authored array
+        // order (a JSON array is ordered data; the canonical encoder sorts
+        // object keys only), so canonical SSR output is the renderer's
+        // obligation, not the codec's. `List.sortBy` is stable, so two entries
+        // declaring the same width keep their authored order rather than
+        // swapping on a re-render.
+        let srcSetAttrs =
+            let candidates =
+                spec.SrcSet
+                |> List.sortBy _.Width
+                |> List.choose (fun entry ->
+                    let resolved =
+                        BindingResolver.tryResolve ctx.Sources entry.Src |> Option.defaultValue ""
+
+                    // A non-empty refusal-marker list IS the refusal — read from
+                    // the seam's own verdict rather than by string-comparing the
+                    // URL it substitutes, so a later change to that substitute
+                    // cannot silently turn a dropped candidate into a served one.
+                    let safe, refusal =
+                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+
+                    if safe = "" || not (List.isEmpty refusal) then
+                        None
+                    else
+                        Some(safe + " " + string entry.Width + "w"))
+
+            match candidates with
+            | [] -> []
+            // `sizes` is BOUNDED, and `100vw` is the only value the tree can
+            // justify: nothing in the document says how wide this element will
+            // be laid out, and the language has no media-query slot for an
+            // author to say so. It is stated rather than left to the HTML
+            // default so the candidate arithmetic is visible in the emitted
+            // markup instead of implied by it.
+            | xs -> [ "srcset", String.concat ", " xs; "sizes", "100vw" ]
+
         // Phase 951 — the a11y projection lands on the `<img>` itself.
         let img =
             Html.img (
                 [ prop.className (variantClass + fitClass + aspectClass)
                   prop.src safeSrc
                   prop.alt (renderText ctx spec.Alt) ]
+                @ toProps srcSetAttrs
                 @ toProps loadingAttrs
                 @ toProps semanticAttrs
                 @ toProps egressAttrs

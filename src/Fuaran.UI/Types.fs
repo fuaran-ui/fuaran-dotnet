@@ -811,7 +811,30 @@ and LinkProtection = Generated.LinkProtection
 /// always was, byte for byte. Being a `TextSource` rather than a `string`, a
 /// caption is i18n-capable on exactly the terms every other authored string
 /// is; nothing about captions is special-cased in text resolution.
+///
+/// Phase 1080 adds `SrcSet` — a `SrcSetEntry list`, defaulting to `[]` and
+/// omitted from the wire at that default. It is the first REPEATED slot on the
+/// record: alternate renditions of the same picture at declared pixel widths,
+/// from which a client picks. `Src` remains the one every host can serve, so a
+/// host that ignores `SrcSet` entirely is still correct. Every entry's `Src`
+/// goes through the same URL-scheme floor as the primary one — a srcset entry
+/// is not a sanitisation bypass — and an entry that fails it is dropped from
+/// the emitted candidate list rather than served.
 and ImageSpec = Generated.ImageSpec
+
+/// §4b — one candidate rendition in an `ImageSpec.SrcSet` (Phase 1080).
+/// `Width` is the intrinsic pixel width of THIS candidate (the `w` descriptor);
+/// it must be positive, a floor the policy decoder and the published schema
+/// both state because the type system cannot. `Src` is a full `Binding<string>`
+/// for the same reason the primary `Src` is — a candidate can come from a query
+/// or a computed value, not only a literal path.
+///
+/// The list is authored in whatever order the author wrote it: the wire
+/// preserves array order, because a JSON array is ordered data and a codec that
+/// silently re-sorted one would be normalising authored content. The renderers
+/// sort ascending by width at emission, which is where the determinism the SSR
+/// output needs actually has to hold.
+and SrcSetEntry = Generated.SrcSetEntry
 
 /// §4b — `NodeKind.List`'s typed spec (Phase 287). `Items` is the ordered
 /// list of item texts; `Ordered` selects `<ol>` (true) vs `<ul>` (false).

@@ -241,8 +241,8 @@ let all: FidelityRow list =
 
       plain
           "Image"
-          "the src, alt, variant, the fit / aspectRatio / loading presentation tokens, and the optional caption"
-          "a real `<img>` with the sanitised `src` (unknown or dangerous schemes collapse to `about:blank`), `alt` always emitted, the per-variant class, and the per-token fit / aspect classes plus `loading=\"lazy\"` under `loading = Lazy`. The aspect box is reserved by CSS alone, so the space is held in the server-rendered output with no script. A `caption` wraps the `<img>` in `<figure class=\"fuaran-image-figure\">` with the resolved text in a `<figcaption>`; with no caption there is no wrapper at all"
+          "the src, alt, variant, the fit / aspectRatio / loading presentation tokens, the optional caption, and the srcSet candidate list"
+          "a real `<img>` with the sanitised `src` (unknown or dangerous schemes collapse to `about:blank`), `alt` always emitted, the per-variant class, and the per-token fit / aspect classes plus `loading=\"lazy\"` under `loading = Lazy`. The aspect box is reserved by CSS alone, so the space is held in the server-rendered output with no script. A `caption` wraps the `<img>` in `<figure class=\"fuaran-image-figure\">` with the resolved text in a `<figcaption>`; with no caption there is no wrapper at all. A non-empty `srcSet` emits `srcset` with `<url> <width>w` candidates ordered ASCENDING by width plus `sizes=\"100vw\"`; every candidate's url passes the same URL-scheme + egress floor as `src`, and one that fails it is dropped from the list rather than emitted, so the primary `src` remains the fallback. An empty `srcSet` emits neither attribute"
 
       plain "LabelValueRow" "the label / value TextSources" "the resolved, formatted row"
 

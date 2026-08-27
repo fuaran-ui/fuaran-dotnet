@@ -684,6 +684,12 @@ and ContentHash =
       Strictness: HashStrictness
     }
 
+and SrcSetEntry =
+    {
+      Src: Binding<string>
+      Width: int
+    }
+
 and EffectClass =
     {
       Determinism: DeterminismSource
@@ -754,6 +760,7 @@ and ImageSpec =
       Fit: ImageFit
       AspectRatio: ImageAspect
       Loading: ImageLoading
+      SrcSet: SrcSetEntry list
       Caption: TextSource option
     }
 
@@ -1805,6 +1812,9 @@ and private encButtonGroupItem<'Msg> (s: ButtonGroupItem<'Msg>) : JVal =
 and private encContentHash (s: ContentHash) : JVal =
     JObj([ Some("algorithm", JStr s.Algorithm); Some("hash", JStr s.Hash); Some("strictness", encHashStrictness s.Strictness) ] |> List.choose id)
 
+and private encSrcSetEntry (s: SrcSetEntry) : JVal =
+    JObj([ Some("src", (encBinding JStr) s.Src); Some("width", JInt s.Width) ] |> List.choose id)
+
 and private encEffectClass (s: EffectClass) : JVal =
     JObj([ Some("determinism", encDeterminismSource s.Determinism); Some("hostEffect", encHostEffect s.HostEffect) ] |> List.choose id)
 
@@ -1833,7 +1843,7 @@ and private encListSpec (s: ListSpec) : JVal =
     Canon.typed "List" ([ Some("items", JArr(List.map encTextSource s.Items)); Some("ordered", JBool s.Ordered) ] |> List.choose id)
 
 and private encImageSpec (s: ImageSpec) : JVal =
-    Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); Some("variant", encImageVariant s.Variant); (if s.Fit = ImageFit.Natural then None else Some("fit", encImageFit s.Fit)); (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if s.Loading = ImageLoading.Eager then None else Some("loading", encImageLoading s.Loading)); (s.Caption |> Option.map (fun v -> "caption", encTextSource v)) ] |> List.choose id)
+    Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); Some("variant", encImageVariant s.Variant); (if s.Fit = ImageFit.Natural then None else Some("fit", encImageFit s.Fit)); (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if s.Loading = ImageLoading.Eager then None else Some("loading", encImageLoading s.Loading)); (if List.isEmpty s.SrcSet then None else Some("srcSet", JArr(List.map encSrcSetEntry s.SrcSet))); (s.Caption |> Option.map (fun v -> "caption", encTextSource v)) ] |> List.choose id)
 
 and private encLinkSpec (s: LinkSpec) : JVal =
     Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun v -> "protection", encLinkProtection v)) ] |> List.choose id)
@@ -3150,6 +3160,12 @@ and private decContentHash (j: JVal) : Result<ContentHash, string> =
     dReq "strictness" __fs decHashStrictness |> Result.bind (fun strictness ->
     Ok { Algorithm = algorithm; Hash = hash; Strictness = strictness }))))
 
+and private decSrcSetEntry (j: JVal) : Result<SrcSetEntry, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
+    dReq "width" __fs dInt |> Result.bind (fun width ->
+    Ok { Src = src; Width = width })))
+
 and private decEffectClass (j: JVal) : Result<EffectClass, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "determinism" __fs decDeterminismSource |> Result.bind (fun determinism ->
@@ -3208,8 +3224,9 @@ and private decImageSpec (j: JVal) : Result<ImageSpec, string> =
     dDef "fit" __fs decImageFit (ImageFit.Natural) |> Result.bind (fun fit ->
     dDef "aspectRatio" __fs decImageAspect (ImageAspect.Natural) |> Result.bind (fun aspectRatio ->
     dDef "loading" __fs decImageLoading (ImageLoading.Eager) |> Result.bind (fun loading ->
+    dDef "srcSet" __fs (dList decSrcSetEntry) ([]) |> Result.bind (fun srcSet ->
     dOpt "caption" __fs decTextSource |> Result.bind (fun caption ->
-    Ok { Alt = alt; Src = src; Variant = variant; Fit = fit; AspectRatio = aspectRatio; Loading = loading; Caption = caption }))))))))
+    Ok { Alt = alt; Src = src; Variant = variant; Fit = fit; AspectRatio = aspectRatio; Loading = loading; SrcSet = srcSet; Caption = caption })))))))))
 
 and private decLinkSpec (j: JVal) : Result<LinkSpec, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3665,7 +3682,7 @@ let mkList (id: string) (items: TextSource list) (ordered: bool) : Node<'Msg> =
     { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: ImageVariant) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant; Fit = ImageFit.Natural; AspectRatio = ImageAspect.Natural; Loading = ImageLoading.Eager; Caption = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant; Fit = ImageFit.Natural; AspectRatio = ImageAspect.Natural; Loading = ImageLoading.Eager; SrcSet = []; Caption = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

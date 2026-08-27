@@ -193,6 +193,7 @@ let image: Node<obj> =
               Fit = ImageFit.Natural
               AspectRatio = ImageAspect.Natural
               Loading = ImageLoading.Eager
+              SrcSet = []
               Caption = None }
         ))
         None
@@ -213,6 +214,7 @@ let imagePresentation: Node<obj> =
               Fit = ImageFit.Cover
               AspectRatio = ImageAspect.SixteenNine
               Loading = ImageLoading.Lazy
+              SrcSet = []
               Caption = None }
         ))
         None
@@ -233,6 +235,7 @@ let imageCaption: Node<obj> =
               Fit = ImageFit.Natural
               AspectRatio = ImageAspect.Natural
               Loading = ImageLoading.Eager
+              SrcSet = []
               Caption = Some(TextSource.Literal "The harbour at dawn, 1908. Oil on canvas.") }
         ))
         None
@@ -254,7 +257,41 @@ let imageCaptionI18n: Node<obj> =
               Fit = ImageFit.Natural
               AspectRatio = ImageAspect.Natural
               Loading = ImageLoading.Eager
+              SrcSet = []
               Caption = Some(TextSource.I18n("gallery.caption.harbour", Map.ofList [ "year", JInt 1908 ])) }
+        ))
+        None
+
+let imageSrcset: Node<obj> =
+    // Phase 1080 — a three-candidate `srcSet`, authored DESCENDING by width.
+    //
+    // The order is the point of the fixture, not an accident of typing. The wire
+    // preserves authored array order (a JSON array is ordered data; the canonical
+    // encoder sorts object KEYS only), and the RENDERERS sort ascending when they
+    // emit the `srcset` attribute. A fixture authored already-ascending would
+    // round-trip identically whether the codec canonicalised order or left it
+    // alone, and so could not tell the two designs apart. This one can: a codec
+    // that sorted would fail the round-trip byte comparison here.
+    //
+    // Everything else is left where `image-caption-1` has it, so the byte
+    // difference from that fixture is exactly the one slot.
+    node
+        "image-srcset-1"
+        (NodeKind.Image(
+            { Src = Binding.Static(Some "/harbour.jpg")
+              Alt = TextSource.Literal "Fishing boats moored at first light"
+              Variant = ImageVariant.Default
+              Fit = ImageFit.Natural
+              AspectRatio = ImageAspect.Natural
+              Loading = ImageLoading.Eager
+              SrcSet =
+                [ { Src = Binding.Static(Some "/harbour-1600.jpg")
+                    Width = 1600 }
+                  { Src = Binding.Static(Some "/harbour-800.jpg")
+                    Width = 800 }
+                  { Src = Binding.Static(Some "/harbour-400.jpg")
+                    Width = 400 } ]
+              Caption = None }
         ))
         None
 
@@ -4745,6 +4782,7 @@ let a11yImageDecorative: Node<obj> =
               Fit = ImageFit.Natural
               AspectRatio = ImageAspect.Natural
               Loading = ImageLoading.Eager
+              SrcSet = []
               Caption = None }
         ))
         (Some
@@ -4794,6 +4832,7 @@ let allNodes: (string * Node<obj>) list =
       "Display/Image (Phase 1077 — fit / aspectRatio / loading all off-default)", imagePresentation
       "Display/Image (Phase 1078 — literal caption)", imageCaption
       "Display/Image (Phase 1078 — i18n caption with args)", imageCaptionI18n
+      "Display/Image (Phase 1080 — three-candidate srcSet, authored descending)", imageSrcset
       "Display/List (ordered)", listDisplay
       "Display/Toast (Success tone, open)", toast
       "Display/CodeBlock (fsharp, line numbers + highlights)", codeBlock

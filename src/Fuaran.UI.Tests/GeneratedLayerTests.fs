@@ -577,6 +577,21 @@ let generatedLayerTests =
               //    `schemaInexpressibleRejects` — which is why this list and
               //    that one keep drifting apart, and why both are named rather
               //    than counted.
+              //  - a `srcSet` entry `width` of 0 (Phase 1080) is the SAME class
+              //    as the `pageSize` and `defaultSort.column` entries above: a
+              //    value bound on a well-typed integer the IDL cannot refine, so
+              //    the generated decoder reads a plain `int` and accepts while
+              //    the policy decoder refuses. The schema expresses it as
+              //    `minimum: 1`, so it stays out of
+              //    `schemaInexpressibleRejects` too — a third instance of the
+              //    same split, and like `pageSize` its landing here was
+              //    predicted rather than discovered.
+              //    Note its SIBLING, `reject-image-srcset-null`, is deliberately
+              //    NOT here: `srcSet: null` is a shape failure the generated
+              //    list decoder catches unaided, so the two fixtures land on
+              //    opposite sides of this line. That they split is what shows
+              //    the missing-list-field rule has a structural half and a
+              //    policy half rather than being one rule.
               //  - a node tree nested past the §21 node-depth ceiling
               //    (`reject-limit-node-depth`, corpus bc5fcc0) is a GLOBAL
               //    bound over the whole tree, not a property of any node the
@@ -608,6 +623,7 @@ let generatedLayerTests =
                     "reject-fieldrule-empty.json"
                     "reject-fieldrule-length-unordered.json"
                     "reject-formfield-near-miss-validation.json"
+                    "reject-image-srcset-nonpositive-width.json"
                     "reject-limit-node-depth.json"
                     "reject-nearmiss-column-readonly.json"
                     "reject-nearmiss-grid-behaviour-record.json"

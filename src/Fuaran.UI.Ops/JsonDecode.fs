@@ -3858,6 +3858,38 @@ let private decodeLinkSpec (path: string) (j: Json) : Result<LinkSpec, DecodeErr
         | _, _, _, _, Error e, _
         | _, _, _, _, _, Error e -> Error e
 
+/// Phase 1080 — one `srcSet` candidate. `width` is the intrinsic pixel width of
+/// this rendition and must be a POSITIVE integer; zero and negative values are a
+/// `WRONG_TYPE` at `<path>.width`, which is also what the published schema's
+/// `minimum: 1` says, so the two expressions of the contract agree. The floor
+/// lives here rather than in the type system for the same reason
+/// `DefaultSort.column`'s does: there is no refined-integer type on the wire, so
+/// a numeric bound is a decode rule or it is nothing.
+///
+/// Zero is refused as firmly as a negative, and deliberately: a `0w` descriptor
+/// is not a small image, it is a candidate a browser can never select, so
+/// admitting it would let the wire carry a rendition no host can use.
+let private decodeSrcSetEntry (path: string) (j: Json) : Result<SrcSetEntry, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let srcR =
+            requireField path fields "src" "srcSet entry Binding<string> src"
+            |> Result.bind (decodeBindingString (path + ".src"))
+
+        let widthR =
+            match requireField path fields "width" "positive intrinsic pixel width" with
+            | Error e -> Error e
+            | Ok v ->
+                match v with
+                | JNumber n when n > 0.0 && n = floor n -> Ok(int n)
+                | _ -> wrongType (path + ".width") "JSON number (positive integer pixel width)"
+
+        match srcR, widthR with
+        | Ok src, Ok width -> Ok { Src = src; Width = width }
+        | Error e, _
+        | _, Error e -> Error e
+
 let private decodeImageSpec (path: string) (j: Json) : Result<ImageSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -3901,8 +3933,24 @@ let private decodeImageSpec (path: string) (j: Json) : Result<ImageSpec, DecodeE
             | None -> Ok None
             | Some v -> decodeTextSource (path + ".caption") v |> Result.map Some
 
-        match srcR, altR, variantR, fitR, aspectR, loadingR, captionR with
-        | Ok src, Ok alt, Ok variant, Ok fit, Ok aspect, Ok loading, Ok caption ->
+        // Phase 1080 — the MISSING-LIST-FIELD decode class, stated rather than
+        // inferred. An absent `srcSet` is the EMPTY LIST, never a null and never
+        // an error: an image with no alternate renditions and an image whose
+        // list is empty are the same document, so the two spellings must decode
+        // to the same value. A present-but-`null` is refused, because that is a
+        // host emitting an absence it had a spelling for.
+        let srcSetR =
+            match tryField fields "srcSet" with
+            | None -> Ok []
+            | Some v ->
+                match requireArray (path + ".srcSet") v with
+                | Error e -> Error e
+                | Ok xs ->
+                    xs
+                    |> traverseIndexed (fun i el -> decodeSrcSetEntry (sprintf "%s.srcSet[%d]" path i) el)
+
+        match srcR, altR, variantR, fitR, aspectR, loadingR, srcSetR, captionR with
+        | Ok src, Ok alt, Ok variant, Ok fit, Ok aspect, Ok loading, Ok srcSet, Ok caption ->
             Ok
                 { Src = src
                   Alt = alt
@@ -3910,14 +3958,16 @@ let private decodeImageSpec (path: string) (j: Json) : Result<ImageSpec, DecodeE
                   Fit = fit
                   AspectRatio = aspect
                   Loading = loading
+                  SrcSet = srcSet
                   Caption = caption }
-        | Error e, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _
-        | _, _, Error e, _, _, _, _
-        | _, _, _, Error e, _, _, _
-        | _, _, _, _, Error e, _, _
-        | _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _
+        | _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeListSpec (path: string) (j: Json) : Result<ListSpec, DecodeError> =
     match requireObject path j with

@@ -954,6 +954,14 @@ let private updateImage (field: string) (v: obj) (spec: ImageSpec) : UpdateResul
     // `Src` is a Binding with no ReplaceBinding slot declared for Image, so it
     // is reachable only via EditNode today. Deliberately not advertised.
     | "Src" -> NotSupportedYet
+    // Phase 1080 — `SrcSet` is a list of records each holding a `Binding`, so it
+    // is reachable only via EditNode, exactly as `Src` is and for the same
+    // reason: there is no field-level coercion from an untyped `obj` to a
+    // binding-bearing structure, and inventing one for this slot alone would put
+    // a bespoke parser on the update path. Named rather than left to fall
+    // through to `UnknownField`, so the answer is "not yet" rather than "no such
+    // field" — the distinction the two results exist to make.
+    | "SrcSet" -> NotSupportedYet
     | _ -> UnknownField
 
 let private updateToast (field: string) (v: obj) (spec: ToastSpec) : UpdateResult<'Msg> =

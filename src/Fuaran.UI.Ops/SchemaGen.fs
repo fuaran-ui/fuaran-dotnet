@@ -660,7 +660,8 @@ let private defs: (string * J) list =
       // Phase 1077 — `fit` / `aspectRatio` / `loading` are omitted-when-default;
       // out of `required`, present in `props`. Phase 1078 — `caption` is
       // optional content, absent-means-`None`; same position in the schema for
-      // a different reason.
+      // a different reason. Phase 1080 — `srcSet` is omitted-when-EMPTY, a third
+      // reason for the same position: absent and `[]` denote the same document.
       record
           [ "alt"; "src"; "variant" ]
           [ "alt", ref "TextSource"
@@ -669,7 +670,18 @@ let private defs: (string * J) list =
             "fit", ref "ImageFit"
             "loading", ref "ImageLoading"
             "src", binding "str"
+            "srcSet", arrayOf (ref "SrcSetEntry")
             "variant", ref "ImageVariant" ]
+
+      // Phase 1080 — one candidate rendition. `minimum: 1` is the schema's half
+      // of the positive-width floor the policy decoder states; a schema that
+      // admitted `0` while the decoder refused it would make the two documents
+      // disagree about what the wire permits.
+      "SrcSetEntry",
+      record
+          [ "src"; "width" ]
+          [ "src", binding "str"
+            "width", JObj [ "type", JStr "integer"; "minimum", JInt 1 ] ]
 
       "ListSpec", record [ "items"; "ordered" ] [ "items", arrayOf (ref "TextSource"); "ordered", boolean ]
 

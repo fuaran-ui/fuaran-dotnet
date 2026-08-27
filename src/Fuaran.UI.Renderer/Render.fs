@@ -1391,7 +1391,15 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
 
         __v, []
     | NodeKind.Link l -> keysOfBinding channel l.Href @ keysOfText channel l.Label, []
-    | NodeKind.Image i -> keysOfBinding channel i.Src @ keysOfText channel i.Alt, []
+    // Phase 1080 — every `srcSet` candidate's binding is a reactive key too:
+    // a candidate resolved from a query re-renders when that query moves, on
+    // exactly the terms the primary `src` does. Missing them would leave a
+    // responsive image serving stale renditions from a live source.
+    | NodeKind.Image i ->
+        keysOfBinding channel i.Src
+        @ (i.SrcSet |> List.collect (fun e -> keysOfBinding channel e.Src))
+        @ keysOfText channel i.Alt,
+        []
     | NodeKind.List l -> l.Items |> List.collect (keysOfText channel), []
     | NodeKind.Toast t ->
         let __v = keysOfText channel t.Message @ keysOfBinding channel t.Open
@@ -2884,12 +2892,44 @@ let rec private renderKind
             | ImageLoading.Eager -> []
             | ImageLoading.Lazy -> [ "loading", "lazy" ]
 
+        // Phase 1080 — the responsive candidate list, byte-parity with the
+        // server arm. Each entry's `Src` goes through the SAME `Media`-class
+        // egress seam as the primary `src`, because a srcset candidate is a URL
+        // the browser fetches with no user act — the exact class Phase 1026
+        // exists for, and routing only the primary through it would make this
+        // slot a documented way around the one rule this node has. A refused
+        // candidate is DROPPED rather than neutered: the primary `src` must
+        // exist so it collapses to the refusal URL, but a candidate has no such
+        // obligation, and offering the browser a rendition that cannot load is
+        // worse than offering it one fewer. Ascending by width is the
+        // RENDERER's canonicalisation — the wire keeps authored array order.
+        let srcSetAttrs =
+            let candidates =
+                spec.SrcSet
+                |> List.sortBy _.Width
+                |> List.choose (fun entry ->
+                    let resolved =
+                        BindingResolver.tryResolve ctx.Sources entry.Src |> Option.defaultValue ""
+
+                    let safe, refusal =
+                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+
+                    if safe = "" || not (List.isEmpty refusal) then
+                        None
+                    else
+                        Some(safe + " " + string entry.Width + "w"))
+
+            match candidates with
+            | [] -> []
+            | xs -> [ "srcset", String.concat ", " xs; "sizes", "100vw" ]
+
         // Phase 951 — the a11y projection lands on the `<img>` itself.
         let img =
             Html.img (
                 [ prop.className (variantClass + fitClass + aspectClass)
                   prop.src safeSrc
                   prop.alt (renderText ctx spec.Alt) ]
+                @ toProps srcSetAttrs
                 @ toProps loadingAttrs
                 @ toProps semanticAttrs
                 @ toProps egressAttrs

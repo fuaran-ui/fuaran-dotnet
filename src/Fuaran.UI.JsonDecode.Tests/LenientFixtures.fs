@@ -426,6 +426,25 @@ let all: LenientFixture list =
           """{"id":"len-image-cap","kind":{"$type":"Image","alt":"Fishing boats moored at first light","caption":"The harbour at dawn, 1908. Oil on canvas.","src":{"$type":"Static","value":"/harbour.jpg"},"variant":"Default"}}"""
         Description =
           "Image — the enveloped `{\"$type\":\"Literal\"}` TextSource form on `caption` decodes and canonicalises to the bare string, exactly as it does on `alt` (Phase 1078). The slot is a full `TextSource`, so a host that narrowed it to a plain string cannot decode this input at all." }
+
+      // Phase 1080 — the EMPTY-LIST half of the missing-list-field decode class,
+      // pinned explicitly rather than left to `image-1.json`'s silence. The
+      // input spells `srcSet` out as `[]`; the canonical form omits the key
+      // entirely. That is what makes "absent means empty" a two-way statement:
+      // absent decodes to `[]` (the decoder), and `[]` encodes to absent (the
+      // encoder), so the two spellings are one document and no host can emit a
+      // second set of bytes for it.
+      //
+      // This fixture is NOT vacuous, which the Phase 1078 lenient fixture had to
+      // be rescued from: the lenient input and the canonical output differ by a
+      // whole key, so a host that simply echoed its input would fail it.
+      { Id = "lenient-image-empty-srcset"
+        LenientJson =
+          """{"id":"len-image-srcset","kind":{"$type":"Image","alt":"Fishing boats moored at first light","src":{"$type":"Static","value":"/harbour.jpg"},"srcSet":[],"variant":"Default"}}"""
+        VerboseJson =
+          """{"id":"len-image-srcset","kind":{"$type":"Image","alt":"Fishing boats moored at first light","src":{"$type":"Static","value":"/harbour.jpg"},"variant":"Default"}}"""
+        Description =
+          "Image — an explicitly EMPTY `srcSet` decodes and canonicalises away to the omitted form (Phase 1080). Absent and `[]` denote the same document, so an image that declares no alternate renditions costs no key on the wire" }
       { Id = "lenient-shape-static-envelope-plain-scalars"
         LenientJson =
           """{"id":"len-env","kind":{"$type":"LabelValueRow","emphasis":{"$type":"Static","value":true},"label":"Total","value":{"$type":"Static","value":42.0}}}"""

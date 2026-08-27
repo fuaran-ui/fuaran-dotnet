@@ -276,6 +276,41 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "ImageAspect value '16/9' — the CSS ratio spelling, refused: the slot is a closed token vocabulary (Square | FourThree | ThreeTwo | SixteenNine), and admitting a numeric pair would reintroduce the free-form escape the tokens replace" }
+      // Phase 1080 — the `srcSet` width floor. `width` is the `w` descriptor a
+      // browser selects on, so a non-positive one names a candidate that can
+      // never be chosen: the wire would be able to state a rendition no host can
+      // render, which is the class of document a codec exists to refuse. Zero is
+      // refused as firmly as a negative, and it is the interesting half — a
+      // negative reads as a mistake, while `0` reads as "unspecified" to anyone
+      // who has not read the spec, which is exactly why it must not decode.
+      //
+      // The path names the ENTRY by index and then the slot, because a
+      // multi-candidate list needs to say WHICH candidate is wrong; a path of
+      // `$.kind.srcSet.width` would be true of a list with one entry and useless
+      // for any other.
+      { Id = "reject-image-srcset-nonpositive-width"
+        Json =
+          """{"id":"i","kind":{"$type":"Image","alt":{"$type":"Literal","text":"Hero"},"src":{"$type":"Static","value":"/hero.jpg"},"srcSet":[{"src":{"$type":"Static","value":"/hero-800.jpg"},"width":800},{"src":{"$type":"Static","value":"/hero-0.jpg"},"width":0}],"variant":"Default"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.srcSet[1].width"
+        IsOp = false
+        Description =
+          "SrcSetEntry width 0 — refused: a `w` descriptor names the intrinsic pixel width a browser selects on, so a non-positive value describes a candidate that can never be selected. The first entry is well-formed on purpose, so the path has to identify the second" }
+      // Phase 1080 — `srcSet: null` is REFUSED, and this is the fixture that
+      // makes the missing-list-field decode class a wire law rather than each
+      // host's reading. An ABSENT `srcSet` is the empty list; a PRESENT `null`
+      // is a host that had a spelling for absence and emitted a different one.
+      // Accepting it would make three spellings mean one thing, and the first
+      // host to round-trip `null` back out would emit bytes no other host
+      // produces for the same document.
+      { Id = "reject-image-srcset-null"
+        Json =
+          """{"id":"i","kind":{"$type":"Image","alt":{"$type":"Literal","text":"Hero"},"src":{"$type":"Static","value":"/hero.jpg"},"srcSet":null,"variant":"Default"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.srcSet"
+        IsOp = false
+        Description =
+          "Image srcSet `null` — refused. Absent means the EMPTY LIST (the missing-list-field decode class); a present null is a second spelling for an absence that already has one, and admitting it would let two hosts disagree about the canonical bytes of the same document" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

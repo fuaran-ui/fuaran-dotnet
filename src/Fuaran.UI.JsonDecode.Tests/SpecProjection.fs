@@ -163,6 +163,14 @@ let renderDefault (d: JsonElement) : string =
         | _ -> failwith "idl.json: bool default with no boolean 'value'"
     | "enum" -> str "case" d
     | "union" -> str "tag" d
+    // Phase 1080 — the empty list. The only list default the IDL admits is the
+    // EMPTY one (a non-empty list default would be content, not an identity), so
+    // the spelling is `[]` and a populated `items` array is an IDL defect rather
+    // than a value to render.
+    | "list" ->
+        match prop "items" d with
+        | Some items when items.ValueKind = JsonValueKind.Array && items.GetArrayLength() = 0 -> "[]"
+        | _ -> failwith "idl.json: list default with a non-empty 'items' — only the empty list is an identity default"
     | other -> failwithf "idl.json: unrecognised default shape '%s'" other
 
 /// The compact field spelling used in the §3.2 table:

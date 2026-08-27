@@ -370,7 +370,16 @@
          is a compile break on the 0.36.0 / 0.39.0 / 0.40.0 / 0.41.0 / 0.42.0
          precedent. Minor, per the record-widening dispensation. See
          STABILITY.md "Recorded change — 0.43.0". -->
-    <Version>0.43.0</Version>
+    <!-- 0.44.0 (Phase 1080) — `ImageSpec` gains `SrcSet: SrcSetEntry list`,
+         defaulting to `[]` and omitted from the wire at that default, plus the
+         new `SrcSetEntry` record. No wire byte of a pre-phase document changes
+         (`nodes/image-1.json` untouched a third time) and an image with no
+         candidates emits neither `srcset` nor `sizes`, but the record gains a
+         fifth required field, so every construction site is a compile break on
+         the 0.36.0 / 0.39.0 / 0.40.0 / 0.41.0 / 0.42.0 / 0.43.0 precedent.
+         Minor, per the record-widening dispensation. See STABILITY.md
+         "Recorded change — 0.44.0". -->
+    <Version>0.44.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
