@@ -147,6 +147,15 @@ against 1 and 99 — two sources for one bound, free to disagree, and the valida
 the constraint the KIND cannot already express, and keep the rule slot off controls that
 cannot honour it — a `pattern` on a `Checkbox`, a `format` on a `TextArea` (`FUARAN100`).
 
+Four rules and the cross-field one, in a whole form — note the start-date field carries
+no `rule` at all, and the end-date field's `compare` reads it at its own id:
+
+<!-- fuaran:example fixture=form-field-rules -->
+```json
+{"id":"form-field-rules","kind":{"$type":"Form","fields":[{"id":"work-email","kind":{"$type":"Text"},"label":"Work email","required":true,"rule":{"format":"email"}},{"id":"postcode","kind":{"$type":"Text"},"label":"Postcode","required":true,"rule":{"message":"Enter a UK postcode, e.g. EH1 1YZ","pattern":"[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}"}},{"id":"username","kind":{"$type":"Text"},"label":"Username","required":true,"rule":{"maxLength":24,"minLength":3}},{"id":"hire-start-date","kind":{"$type":"Date","variant":"Date"},"label":"Start date","required":true},{"id":"hire-end-date","kind":{"$type":"Date","variant":"Date"},"label":"End date","required":true,"rule":{"compare":{"against":{"$type":"State","key":"hire-start-date"},"op":"gte"},"message":"End date must be on or after the start date"}}],"onSubmit":{"$type":"Chain","ops":[]},"submitLabel":"Save"}}
+```
+<!-- /fuaran:example -->
+
 ## Editing an existing tree
 
 After the first emission, prefer a `TreeOp` over re-sending the whole tree. A `TreeOp`
@@ -642,6 +651,15 @@ Spelled out: `"trend": {"$type":"Static","value":-0.0734}` with
 never altered to make the colour come out right. The only two spellings are
 `"HigherIsBetter"` and `"LowerIsBetter"`.
 
+A wait time that fell, carrying both fields honestly — `tone` says it is still above
+target, `trendPolarity` says the fall is the good direction:
+
+<!-- fuaran:example fixture=metric-inverted-polarity -->
+```json
+{"id":"metric-inverted-polarity","kind":{"$type":"Metric","format":{"$type":"Duration","style":"Compact","unit":"Minutes"},"label":"Avg wait","subtext":"still above target","tone":"Warning","trend":{"$type":"Static","value":-0.0734},"trendFormat":{"$type":"Percent","decimals":2},"trendPolarity":"LowerIsBetter","value":{"$type":"Static","value":80}}}
+```
+<!-- /fuaran:example -->
+
 ## Selected, pre-selected, and derived state — the three idioms
 
 Tasks constantly say "with X selected", "defaulting to Y", or "the banner turns red
@@ -853,6 +871,15 @@ a header. When the prompt says the user sorts, the answer is `sortStateKey` on t
 Reach for the pipeline step only when the prompt names a fixed presentation order and no
 interaction at all.
 
+All three fields at once — the sort key on the grid, the opening order on column 1
+descending, and one column opted out:
+
+<!-- fuaran:example fixture=grid-bound-sort -->
+```json
+{"id":"grid-bound-sort","kind":{"$type":"DataGrid","columns":[{"field":"month","kind":{"$type":"Text"},"label":"Month"},{"field":"revenue","kind":{"$type":"Text"},"label":"Revenue"},{"field":"note","kind":{"$type":"Text"},"label":"Note","sortable":false}],"defaultSort":{"column":1,"direction":"desc"},"rowKeyField":"month","sortStateKey":"ledger-sort","source":{"$type":"State","defaultValue":[{"month":"Jan","revenue":980},{"month":"Feb","revenue":1105}],"key":"ledger"}}}
+```
+<!-- /fuaran:example -->
+
 ## Paging a long grid — `pageSize` + `pageStateKey`, and never a pager you build
 
 Two fields on the grid page it, and the pager control is the renderer's to draw:
@@ -873,6 +900,14 @@ standing in for the other.
 `{"$type":"Query", …, "dependsOn": ["<the page key>"]}` the host is already returning one
 page, so adding `pageSize` on top slices the page again and loses the rest — the
 validator cautions (`FUARAN096`). Page host-side *or* grid-side, not both.
+
+The whole of client-side paging — two fields, and no pager node anywhere in the tree:
+
+<!-- fuaran:example fixture=grid-paged -->
+```json
+{"id":"grid-paged","kind":{"$type":"DataGrid","columns":[{"field":"month","kind":{"$type":"Text"},"label":"Month"},{"field":"revenue","kind":{"$type":"Numeric"},"label":"Revenue"}],"pageSize":20,"pageStateKey":"members-page","rowKeyField":"month","source":{"$type":"State","defaultValue":[{"month":"Jan","revenue":980},{"month":"Feb","revenue":1105}],"key":"members"}}}
+```
+<!-- /fuaran:example -->
 
 ## Editing a grid — declare WHERE the edit lands, and which columns are editable
 
@@ -896,6 +931,15 @@ editable — a counted quantity beside three reference columns — say so on the
 read-only that is merely implied is not declared. `"editable": true` on a column under a
 grid that is not editable is refused (`FUARAN095`), the same widening the sort flag
 refuses.
+
+A `Query`-sourced grid made editable by a declared destination, with one column held
+read-only — the shape that is impossible without `editStateKey`:
+
+<!-- fuaran:example fixture=grid-declared-edit -->
+```json
+{"id":"grid-declared-edit","kind":{"$type":"DataGrid","columns":[{"field":"month","kind":{"$type":"Text"},"label":"Month"},{"field":"revenue","kind":{"$type":"Text"},"label":"Revenue"},{"editable":false,"field":"note","kind":{"$type":"Text"},"label":"Note"}],"editStateKey":"stock-adjustments","editable":true,"rowKeyField":"month","source":{"$type":"Query","name":"stock"}}}
+```
+<!-- /fuaran:example -->
 
 ## Distinguishing rows by value — the toned pill
 

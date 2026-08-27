@@ -648,24 +648,25 @@ let buildSignatureCatalogue () =
 // ```
 // <!-- /fuaran:example -->
 //
-// EXAMPLES OWED AT THE NEXT PUBLISH (the prose-first split, 2026-08-27).
+// THE PROSE-FIRST SPLIT, AND WHY IT IS A STANDING RULE RATHER THAN ONE PHASE'S NOTE.
 // A marker block reconciles against the CORPUS, which is at head — so a block using
 // vocabulary the head corpus carries passes this check even when no PUBLISHED package
 // can decode it. The pack's consumers restore released packages, so an exemplar whose
 // spelling only exists in an unreleased version is an example that fails in the reader's
-// own hands. Teaching therefore lands as PROSE at ship and gains its fenced exemplar at
-// the publish that carries the fields (the precedent: the static-table sort intent, whose
-// example waited for its own release).
+// own hands. Teaching for new vocabulary therefore lands as PROSE first (a prose line has
+// no decode gate) and gains its fenced exemplar at the publish that carries the fields.
 //
-// Owed, once a release carries the 0.36.0–0.39.0 grid / form / metric vocabulary:
-//   nodes/grid-bound-sort.json        · sortStateKey + columns[].sortable + defaultSort
-//   nodes/grid-paged.json             · pageSize + pageStateKey
-//   nodes/grid-declared-edit.json     · editStateKey + per-column editable
-//   nodes/form-field-rules.json       · FormField.rule (format / pattern / length / compare)
-//   nodes/metric-inverted-polarity.json · trendPolarity
-// Each fixture already exists in the corpus; only the release gate is outstanding. The
-// pack manifest's `languageVersion` stamp is what makes the gap READABLE — compare it
-// against the newest published version before adding any of the blocks above.
+// CLOSED 2026-08-27, and left here as the worked instance. Five exemplars were owed
+// against the 0.36.0–0.39.0 grid / form / metric vocabulary; `v0.39.0` was then tagged and
+// verified served by the registry, so all five landed in the same shape they were deferred
+// in — `grid-bound-sort` (sortStateKey + columns[].sortable + defaultSort), `grid-paged`
+// (pageSize + pageStateKey), `grid-declared-edit` (editStateKey + per-column editable),
+// `form-field-rules` (FormField.rule) and `metric-inverted-polarity` (trendPolarity).
+//
+// The check to run before adding a block for NEW vocabulary: compare the pack manifest's
+// `languageVersion` stamp against the newest version the registry actually serves. A tag
+// is evidence the release gesture was made, never that the index serves it — and note the
+// npm tier releases on its own train, so a `.NET` publication does not answer for it.
 let private markerRegex =
     Regex(
         @"<!-- fuaran:example fixture=(?<id>[A-Za-z0-9._-]+) -->\r?\n```json\r?\n(?<body>.*?)\r?\n```\r?\n<!-- /fuaran:example -->",
