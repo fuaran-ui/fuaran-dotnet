@@ -47,6 +47,18 @@ host-owned.
 | The body-fragment HTML (the Fuaran tree) | Fuaran (`render`) |
 | Domain SVG / widgets behind `NodeKind.Custom` | **Host** (Phase 141 server Custom registry) |
 
+### Serving the CSS is host-owned, so the version skew is too (Phase 433)
+
+Row 2 above is the one that can break silently. The stylesheet comes from `Fuaran.UI.Renderer` and the classes come from this package, and nothing couples their versions — so a host pinning one and serving the other's sheet renders unstyled or mis-styled with no error anywhere. `Render.checkStylesheet` turns that into a startup assertion:
+
+```fsharp
+match Render.checkStylesheet (File.ReadAllText servedStylesheetPath) with
+| Ok () -> ()
+| Error message -> failwith message
+```
+
+It compares the class-vocabulary fingerprint stamped in the served sheet's header against `Render.vocabularyFingerprint`. The renderer reads no files and fails no render: the host knows where its stylesheet comes from and the renderer does not. Full contract — what the fingerprint covers, what it deliberately does not, and how the value stays current — is [`HOST-STYLING-CHECKLIST.md`](HOST-STYLING-CHECKLIST.md) §1.5d.
+
 ## Server binding-resolution table
 
 The server has read-only `BindingSources` and no runtime. Binding resolution

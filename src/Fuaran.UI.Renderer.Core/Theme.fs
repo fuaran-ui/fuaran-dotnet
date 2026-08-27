@@ -22,6 +22,55 @@ module Fuaran.UI.Renderer.Theme
 
 open Fuaran.UI.Types
 
+// ─── Class-vocabulary fingerprint (Phase 433) ──────────────────────────────
+//
+//  A host serves its stylesheet from `Fuaran.UI.Renderer` and emits its classes
+//  from `Fuaran.UI.Renderer.Server`. Nothing coupled those two package versions,
+//  so a host pinning one and serving the other's sheet got silent visual
+//  breakage — a node rendering unstyled looks like a design choice, not a
+//  version skew. The fingerprint below is stamped into the reference stylesheet
+//  header and exposed here, so the host can assert the two agree at startup.
+//
+//  WHAT IT COVERS — the CLASS VOCABULARY, and nothing else. It is the digest of
+//  the same enumeration the coverage suite builds (`CssCoverageTests.fs`): the
+//  Theme projections run over every DU case, UNION the structural per-spec class
+//  literals scanned out of the renderer sources. So it moves when a class enters
+//  or leaves the vocabulary, and it is exactly as wide as the coverage proof.
+//
+//  WHAT IT DOES NOT COVER — the RULES. Re-colouring `.fuaran-callout` or
+//  rewriting the token defaults leaves the fingerprint unchanged, deliberately:
+//  it answers "does this sheet know the classes this renderer emits", which is
+//  the skew that renders a control as a bare browser input. Whole-sheet identity
+//  is a different question and already has an answer — the sha256 the tier-copy
+//  gate prints (`Build.fsproj -- CssCheck`).
+//
+//  WHERE THE VALUE COMES FROM — this constant is PINNED, and the coverage suite
+//  computes the truth and fails naming the correct value when the vocabulary
+//  moves. It cannot be computed here: half the enumeration is read out of the
+//  renderer SOURCES, which a shipping library has no access to at runtime (and
+//  which Fable could not do at all). So the chain is three links, each machine-
+//  checked: the suite pins this constant, `-- CssCheck` pins the stylesheet
+//  stamp to this constant, and the byte-copy check carries both to every tier.
+
+/// The marker the reference stylesheet stamps its fingerprint under. Carries the
+/// trailing colon so the literal is not itself a class-shaped token — the
+/// coverage scan reads this file, and a bare `fuaran-…` literal here would enter
+/// the very enumeration this fingerprint digests.
+let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
+
+/// The class-vocabulary fingerprint this renderer emits against — see the
+/// section comment above for what it covers and what it deliberately does not.
+///
+/// `fv1:` names the digest scheme: SHA-256 over the emitted class names sorted
+/// ordinally and joined with `\n`, UTF-8, truncated to the first 16 hex digits.
+/// The scheme tag is part of the value so a future widening is a visible
+/// mismatch rather than a silent re-interpretation of the same-shaped string.
+///
+/// PINNED. `Fuaran.UI.Tests` recomputes it from the live vocabulary and fails
+/// with the correct value when this is stale; `Build.fsproj -- Css` restamps the
+/// stylesheet from it, and `-- CssCheck` fails when the two disagree.
+let vocabularyFingerprint = "fv1:db6e4135e0aa5b83"
+
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
 /// the Fable branch uses `string`, which JS renders culture-invariantly already.

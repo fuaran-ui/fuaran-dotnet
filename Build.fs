@@ -266,6 +266,68 @@ let private tierCssCopies =
       "fuaran-go", Path.Combine(repoRoot, "..", "fuaran-go", "renderer", "content", "fuaran-reference.css")
       "fuaran-rs", Path.Combine(repoRoot, "..", "fuaran-rs", "css", "fuaran.css") ]
 
+// ─── Phase 433 — the vocabulary fingerprint stamp ──────────────────────────
+//
+// The canonical sheet carries a `fuaran-vocabulary-fingerprint:` stamp in its
+// header naming the class vocabulary it is written against, so an SSR host
+// serving it can refuse a sheet that disagrees with the renderer emitting the
+// classes. The value's home is `Theme.vocabularyFingerprint` — the shipping
+// constant a host compares against — and the stamp is GENERATED from it, so the
+// two cannot drift silently: `-- Css` restamps, `-- CssCheck` fails.
+//
+// Read out of the source TEXT rather than by referencing the renderer: this is
+// a FAKE build project, and giving the build a project reference on the library
+// it builds to read one string would be a far larger coupling than a regex over
+// a `let` binding. A regex that stops matching fails loudly below rather than
+// quietly reporting agreement, which is the failure mode that would matter.
+let private themeSourcePath =
+    Path.Combine(repoRoot, "src", "Fuaran.UI.Renderer.Core", "Theme.fs")
+
+let private fingerprintMarker = "fuaran-vocabulary-fingerprint:"
+
+let private pinnedFingerprint () =
+    let m =
+        System.Text.RegularExpressions.Regex.Match(
+            File.ReadAllText themeSourcePath,
+            @"let\s+vocabularyFingerprint\s*=\s*""([^""]+)"""
+        )
+
+    if not m.Success then
+        failwithf
+            "Could not read `vocabularyFingerprint` from %s. The stylesheet stamp is generated from that constant; if it has been renamed or reshaped, update this reader in the same change-set rather than leaving the stamp unchecked."
+            themeSourcePath
+
+    m.Groups[1].Value
+
+let private stampPattern =
+    System.Text.RegularExpressions.Regex(System.Text.RegularExpressions.Regex.Escape fingerprintMarker + @"\s*(\S+)")
+
+/// The fingerprint the canonical sheet is currently stamped with, or `None` when
+/// the stamp is absent entirely — reported as a finding, never as agreement.
+let private stampedFingerprint () =
+    let m = stampPattern.Match(File.ReadAllText canonicalCss)
+    if m.Success then Some m.Groups[1].Value else None
+
+/// Rewrite the canonical sheet's stamp to the pinned constant. Returns whether
+/// anything moved, so the sync can say so. Writes with the file's own bytes
+/// otherwise untouched — a single-token substitution, not a re-render — because
+/// the tier copies are byte copies and every other byte is hand-authored.
+let private stampCanonical () =
+    let pinned = pinnedFingerprint ()
+
+    match stampedFingerprint () with
+    | Some current when current = pinned -> false
+    | Some _ ->
+        let text = File.ReadAllText canonicalCss
+        let stamped = stampPattern.Replace(text, fingerprintMarker + " " + pinned, 1)
+        File.WriteAllText(canonicalCss, stamped)
+        true
+    | None ->
+        failwithf
+            "%s carries no `%s` stamp. A served stylesheet with no fingerprint is one no host can check — restore the stamp comment in the header (see docs/HOST-STYLING-CHECKLIST.md §1.5d); this target refuses to invent its position."
+            canonicalCss
+            fingerprintMarker
+
 /// What this checkout can say about one tier copy. `Absent` and `Missing` are
 /// deliberately distinct: a sibling that is not cloned is a narrower checkout
 /// and says nothing, whereas a copy deleted from a sibling that IS cloned is a
@@ -307,7 +369,27 @@ let private inspectCssCopies () =
 
     canonical, copies
 
+/// The stamp link, checked before the byte-copy one. Ordered that way because a
+/// wrong stamp propagates: syncing first would write the stale fingerprint into
+/// three sibling repos and report success doing it.
+let private checkStamp () =
+    let pinned = pinnedFingerprint ()
+
+    match stampedFingerprint () with
+    | Some current when current = pinned -> Trace.tracefn "  %-10s stamped    %s" "vocabulary" pinned
+    | Some current ->
+        failwithf
+            "Reference-CSS vocabulary-fingerprint drift — the canonical sheet is stamped `%s` but `Theme.vocabularyFingerprint` is `%s`. A host asserting the renderer's constant would refuse the sheet this package ships. Run `dotnet run --project Build.fsproj -- Css` to restamp, and commit the tier copies with it."
+            current
+            pinned
+    | None ->
+        failwithf
+            "%s carries no `%s` stamp. A served stylesheet with no fingerprint is one no host can check — see docs/HOST-STYLING-CHECKLIST.md §1.5d."
+            canonicalCss
+            fingerprintMarker
+
 let private cssCheck () =
+    checkStamp ()
     let canonical, copies = inspectCssCopies ()
     Trace.tracefn "Reference CSS %s — sha256=%s" canonicalCss canonical
 
@@ -338,6 +420,14 @@ let private cssCheck () =
             (System.String.Join("\n  ", broken))
 
 let private cssSync () =
+    // Restamp BEFORE the copies are inspected: the stamp is part of the bytes
+    // being copied, so doing it the other way round leaves every tier one
+    // generation behind and says nothing about it.
+    if stampCanonical () then
+        Trace.tracefn "  %-10s RESTAMPED  %s" "vocabulary" (pinnedFingerprint ())
+    else
+        Trace.tracefn "  %-10s already stamped %s" "vocabulary" (pinnedFingerprint ())
+
     let canonical, copies = inspectCssCopies ()
     Trace.tracefn "Reference CSS %s — sha256=%s" canonicalCss canonical
 

@@ -207,6 +207,40 @@ let private scannedClasses () : Set<string> =
 let private emittedClasses () : Set<string> =
     Set.union (projectedClasses ()) (scannedClasses ())
 
+// ─── Phase 433 — the vocabulary fingerprint ────────────────────────────────
+//
+//  `Theme.vocabularyFingerprint` is a PINNED constant a served stylesheet is
+//  stamped with, so an SSR host can refuse a sheet written against a different
+//  class vocabulary. It cannot be computed inside the shipping library: half the
+//  enumeration above is read out of the renderer SOURCES, which a package has no
+//  access to at runtime. So the truth is computed HERE — over exactly the union
+//  the coverage assertions run on, never a narrower restatement of it — and the
+//  constant is checked against it. A vocabulary change therefore fails with the
+//  value to paste, rather than leaving hosts asserting a fingerprint that no
+//  longer describes what the renderer emits.
+
+/// The digest scheme named by the `fv1:` tag on the constant: SHA-256 over the
+/// class names sorted ORDINALLY and joined with `\n`, UTF-8, first 16 hex digits.
+/// The sort is spelled out rather than left to `Set`'s ordering because the
+/// bytes are a cross-tier contract — a stamped sheet is read by hosts that do
+/// not share F#'s comparer.
+let private fingerprintOf (classes: Set<string>) : string =
+    let ordered =
+        classes |> Set.toList |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
+
+    let bytes = Text.Encoding.UTF8.GetBytes(String.Join("\n", ordered))
+    let digest = System.Security.Cryptography.SHA256.HashData bytes
+    "fv1:" + Convert.ToHexString(digest).Substring(0, 16).ToLowerInvariant()
+
+/// The fingerprint the packaged stylesheet is stamped with, read back out of the
+/// header comment. `None` when the stamp is absent — which is a finding, not a
+/// pass: an unstamped sheet is one no host can check.
+let private stampedFingerprint () : string option =
+    let m =
+        Regex.Match(File.ReadAllText referenceCssPath, Regex.Escape Theme.vocabularyFingerprintMarker + @"\s*(\S+)")
+
+    if m.Success then Some m.Groups[1].Value else None
+
 // ─── Declared absences ─────────────────────────────────────────────────────
 
 /// Why the reference stylesheet carries no rule for a class it can emit.
@@ -404,6 +438,34 @@ let tests =
                   (sprintf
                       "CoveredBy absence(s) whose covering class has no rule either: %s — the class is unstyled and so is its stated cover, which makes the exemption false rather than deliberate."
                       (String.Join(", ", broken |> List.map (fun (cls, covering) -> sprintf "%s -> %s" cls covering))))
+          }
+
+          // Phase 433. Two links in one place, because they fail for different
+          // reasons and the remedy differs: the constant going stale means the
+          // vocabulary moved and nobody re-pinned it, while the stamp going stale
+          // means the constant moved and `-- Css` was not re-run.
+          test "the pinned vocabulary fingerprint still describes the live vocabulary" {
+              let live = fingerprintOf (emittedClasses ())
+
+              Expect.equal
+                  Theme.vocabularyFingerprint
+                  live
+                  (sprintf
+                      "the emitted class vocabulary has changed, so `Theme.vocabularyFingerprint` no longer identifies it. Set it to `%s` in src/Fuaran.UI.Renderer.Core/Theme.fs, then run `dotnet run --project Build.fsproj -- Css` to restamp the stylesheet and its tier copies, in this change-set. A host asserting the old value would accept a sheet written against the old vocabulary."
+                      live)
+          }
+
+          test "the reference stylesheet is stamped with the pinned fingerprint" {
+              match stampedFingerprint () with
+              | None ->
+                  failwithf
+                      "content/fuaran-reference.css carries no `%s` stamp — a served sheet with no fingerprint is one no host can check, which is the silent skew this phase closed. Run `dotnet run --project Build.fsproj -- Css`."
+                      Theme.vocabularyFingerprintMarker
+              | Some stamped ->
+                  Expect.equal
+                      stamped
+                      Theme.vocabularyFingerprint
+                      "the stylesheet's stamped fingerprint and `Theme.vocabularyFingerprint` disagree — a host would refuse the very sheet this renderer ships with. Run `dotnet run --project Build.fsproj -- Css` to restamp, and commit the tier copies with it."
           }
 
           // Phase 431 task 3. The TS tier ships a BYTE-COPY of this stylesheet,

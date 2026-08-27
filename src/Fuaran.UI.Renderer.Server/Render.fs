@@ -2362,3 +2362,82 @@ let themeStyleElement (theme: Theme) : ReactElement =
 /// single string. Convenience for a host that wants both in one emission.
 let renderWithTheme (theme: Theme) (sources: BindingResolver.BindingSources) (node: Node<obj>) : string =
     Render.htmlView (themeStyleElement theme) + render sources node
+
+// ─── Served-stylesheet fingerprint (Phase 433) ─────────────────────────────
+//
+//  An SSR host serves its stylesheet from `Fuaran.UI.Renderer` and emits its
+//  classes from THIS package. Nothing couples the two package versions, so a
+//  host that pins one and serves the other's sheet renders unstyled or
+//  mis-styled with no error anywhere — a shipped control appearing as a bare
+//  browser input reads as a design choice, not as version skew. The reference
+//  stylesheet carries a stamp naming the class vocabulary it was written
+//  against; these three make that assertable at startup, where it is one line
+//  and one restart rather than a bug report about a page looking wrong.
+//
+//  The host owns the assertion. Nothing here reads a file or fails a render:
+//  the renderer does not know where a host's stylesheet comes from (a static
+//  file, an embedded resource, a CDN it fetched at boot), and a check that
+//  guessed would be checking the wrong bytes.
+//
+//  SCOPE — it fingerprints the class VOCABULARY, not the rules. A sheet whose
+//  colours or token defaults were changed still matches, deliberately: it
+//  answers "does this sheet know the classes this renderer emits", which is the
+//  skew that silently breaks a control. A host that also wants byte identity
+//  with the packaged sheet should hash it against the packaged copy instead.
+
+/// The class-vocabulary fingerprint this renderer emits against — re-exported
+/// from the shared spine so an SSR host asserts against the package it actually
+/// emits with, rather than reaching across to the client renderer's.
+let vocabularyFingerprint: string = Theme.vocabularyFingerprint
+
+/// The fingerprint a stylesheet is stamped with, read from its header comment.
+/// Takes the stylesheet TEXT, not a path — where a host's sheet comes from is
+/// the host's business. `None` means the sheet carries no stamp at all: either
+/// it predates the fingerprint or it is a consumer's own replacement sheet, and
+/// a host must decide which of those it tolerates rather than have this guess.
+let stylesheetFingerprint (css: string) : string option =
+    let marker = Theme.vocabularyFingerprintMarker
+    let at = css.IndexOf(marker, System.StringComparison.Ordinal)
+
+    if at < 0 then
+        None
+    else
+        let rest = css.Substring(at + marker.Length)
+
+        let token =
+            rest.Split([| ' '; '\t'; '\r'; '\n' |], System.StringSplitOptions.RemoveEmptyEntries)
+
+        if token.Length = 0 then None else Some token[0]
+
+/// Assert a served stylesheet was written against this renderer's class
+/// vocabulary. `Error` carries a message naming both fingerprints and the
+/// remedy — a host is expected to fail its own startup on it, loudly:
+///
+/// ```fsharp
+/// match Render.checkStylesheet (File.ReadAllText servedCssPath) with
+/// | Ok () -> ()
+/// | Error message -> failwith message
+/// ```
+///
+/// An UNSTAMPED sheet is an `Error` too, and that is the deliberate call: a host
+/// that has opted into this check has said the served sheet is the packaged one,
+/// and silence about a sheet that cannot be identified is exactly the outcome
+/// the check exists to remove. A host serving its own replacement sheet does not
+/// call this — the class hooks it implements are documented for that purpose.
+let checkStylesheet (css: string) : Result<unit, string> =
+    match stylesheetFingerprint css with
+    | Some stamped when stamped = vocabularyFingerprint -> Ok()
+    | Some stamped ->
+        Error(
+            sprintf
+                "Fuaran stylesheet version skew: the served stylesheet is stamped with class vocabulary %s, but this renderer emits %s. The two packages disagree on what classes exist, so nodes will render unstyled or mis-styled with no other error. Serve the fuaran-reference.css shipped with the matching Fuaran.UI.Renderer version, or align the package versions."
+                stamped
+                vocabularyFingerprint
+        )
+    | None ->
+        Error(
+            sprintf
+                "Fuaran stylesheet carries no `%s` stamp, so it cannot be checked against this renderer's class vocabulary (%s). Either it predates the fingerprint — align the package versions — or it is a replacement sheet, which should not be passed to this check."
+                Theme.vocabularyFingerprintMarker
+                vocabularyFingerprint
+        )

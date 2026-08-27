@@ -117,6 +117,38 @@ dotnet run --project Build.fsproj -- CssCheck     # fail, naming every copy that
 
 `CssCheck` is wired into the `Check` gate, so an edit to the canonical sheet that has not been propagated fails for the author who made it. That is the point of running it from this side: each consuming tier already locks its own copy, but only that tier's suite sees the drift, in a repo the author was not in — which is how a preceding change left two copies serving a stylesheet two rule families behind. A tier whose repo is not in the checkout is reported as *not checked* rather than passing quietly.
 
+### 1.5d The stylesheet carries a class-vocabulary fingerprint (Phase 433)
+
+A host serves its stylesheet from `Fuaran.UI.Renderer` and — if it server-renders — emits its classes from `Fuaran.UI.Renderer.Server`. Nothing couples those two package versions. A host that pins one and serves the other's sheet gets no error at all: nodes render unstyled or mis-styled, and a shipped control appearing as a bare browser input reads as a design choice rather than as version skew. That is the same failure the Range control had before §1.5b, arriving across a package boundary instead of an authoring one.
+
+`content/fuaran-reference.css` therefore carries a stamp in its header naming the class vocabulary it was written against:
+
+```css
+/* fuaran-vocabulary-fingerprint: fv1:db6e4135e0aa5b83 */
+```
+
+and the renderer exposes the matching value, so the host can assert the two agree.
+
+**What the fingerprint covers.** The **class vocabulary** — exactly the enumeration §1.5b's coverage suite builds, which is the Theme projections run over every DU case unioned with the structural class literals scanned out of the renderer sources. It moves when a class enters or leaves the vocabulary.
+
+**What it deliberately does not cover.** The **rules**. Re-colouring `.fuaran-callout`, retuning the token defaults, or adding a media query leaves it unchanged. It answers *does this sheet know the classes this renderer emits* — the skew that silently breaks a control — and nothing else. Whole-sheet identity is a different question with a different answer already: the sha256 printed by `Build.fsproj -- CssCheck`, and the byte-copy assertion in §1.5c. A host that needs byte identity should hash against the packaged copy rather than read the fingerprint as if it meant that.
+
+**The recommended host assertion.** Do it once at startup, and fail hard — the whole value is that a mismatch stops a deploy instead of producing a bug report about a page looking wrong:
+
+```fsharp
+open Fuaran.UI.Renderer.Server
+
+match Render.checkStylesheet (File.ReadAllText servedStylesheetPath) with
+| Ok () -> ()
+| Error message -> failwith message   // do not degrade to a warning
+```
+
+`Render.vocabularyFingerprint` is the constant if you would rather compare it yourself, and `Render.stylesheetFingerprint` reads the stamp out of a stylesheet's text. All three take or return plain values and read no files: where a host's stylesheet comes from — a static file, an embedded resource, something fetched at boot — is the host's business, and a check that guessed would be checking the wrong bytes.
+
+Two boundaries worth stating, because both are decisions rather than omissions. An **unstamped** sheet is an `Error`, not a pass: a host that calls this has asserted the served sheet is the packaged one, and staying silent about a sheet that cannot be identified is precisely the outcome the check removes. And a host serving **its own replacement sheet** (the §4l down-shift path) should not call this at all — it implements the class hooks in Sections 2–4 directly, and the fingerprint of the reference sheet says nothing about whether it did.
+
+**The value is machine-maintained, in three links.** `Theme.vocabularyFingerprint` is pinned rather than computed, because half the vocabulary is read out of the renderer *sources*, which a shipping package cannot see at runtime. So: the coverage suite recomputes the truth and fails naming the value to pin when the vocabulary moves; `-- CssCheck` (wired into `Check`) fails when the stylesheet's stamp and the constant disagree; and the byte-copy check carries the stamp to every tier. Changing the vocabulary is therefore: run the suite, paste the value it names into `Theme.fs`, run `-- Css`, commit the sheet and its three tier copies in the same change-set. No step of that is remembered rather than enforced.
+
 ### 1.6 Interaction state matrix (Phase 12.N) – 84 + 4 = 88 variables
 
 The static palette in §1.1 describes the **idle** appearance of every tone. The interaction matrix adds per-state × per-tone × per-slot tokens so consumers can theme `:hover` / `:focus-visible` / `:active` / `:disabled` independently of the base palette, without monkey-patching `.fuaran-button` / `.fuaran-tab` / `.fuaran-callout-dismiss` etc. Pre-12.N every interactive surface inherited an opinionated `filter: brightness(0.92)` hover with no theme escape hatch; post-12.N the brightness opinion is gone and tokens are the only knob.
