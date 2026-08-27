@@ -1894,3 +1894,46 @@ same document. It is now §16's row, the TypeScript decoder accepts it, and the 
 The spelling matters here because it is how a Transform source says "I read this key and carry no data
 of my own" — a bare `{"$type":"State","key":k}` wrapper remains refused, and widening the decoder to
 accept it is filed separately.
+
+## Recorded change — 0.42.0, `ImageSpec` presentation slots (fuaran#1077)
+
+**Additive, and additive on both boundaries.** `ImageSpec` gains `Fit: ImageFit`,
+`AspectRatio: ImageAspect` and `Loading: ImageLoading`, each with an identity default that IS
+today's behaviour — `Natural` / `Natural` / `Eager` — and each omitted-when-default on the wire.
+So a document written before this release decodes to a tree that renders exactly as it did, and
+re-encodes to the bytes it already had. The claim is executable rather than asserted:
+`nodes/image-1.json` was not touched by the phase, and the corpus regeneration left it
+byte-identical.
+
+**Version decision: MINOR, on the standing record-widening precedent.** No wire byte of any existing
+document changes and no shipped slot is re-meant, so the wire contract is untouched. What breaks is
+F# **construction sites**: a record gaining required fields stops `{ Src = …; Alt = …; Variant = … }`
+from compiling, exactly as at 0.36.0 / 0.39.0 / 0.40.0 / 0.41.0. Authors using
+`{ Defaults.image with … }` — the documented form — are unaffected.
+
+**Surface added.**
+
+- `Fuaran.UI.Types` re-exports `ImageFit` (`Natural | Cover | Contain`), `ImageAspect`
+  (`Natural | Square | FourThree | ThreeTwo | SixteenNine`) and `ImageLoading` (`Eager | Lazy`),
+  all generated from the IDL.
+- `ImageSpec` gains the three fields; `Defaults.image` carries all three at their identity default.
+- The C# authoring veneer's `ImageOptions` gains `Fit` / `AspectRatio` / `Loading` (defaulted, so
+  existing C# call sites keep compiling), with C#-native enum mirrors; the VB XML veneer gains the
+  `fit` / `aspect-ratio` / `loading` attributes.
+- `Fuaran.UI.Ops.Apply`'s field-level `UpdateProp` surface for `Image` gains `"Fit"`,
+  `"AspectRatio"` and `"Loading"`.
+
+**Render.** Both renderers map the tokens to classes and nothing else — `fuaran-image-fit-{cover,
+contain}` and `fuaran-image-aspect-{square,four-three,three-two,sixteen-nine}`, with **no** class
+emitted at `Natural` on either axis — and emit `loading="lazy"` only under `Loading = Lazy`. No
+value from the tree reaches a style attribute. The reference stylesheet gains the matching
+`aspect-ratio` rules, which is what makes the reservation hold with CSS alone: the box is sized in
+the first layout pass, before the image bytes arrive, so server-rendered output stops shifting when
+they land.
+
+**Wire and corpus.** `WIRE_FORMAT.md` §3.6.2 states the rules; the generated §3.2 / §3.5 / §3.6
+tables and `idl.json` / `schema.json` were regenerated. Three fixtures added:
+`nodes/image-presentation-1` (all three off-default), `lenient/lenient-image-explicit-defaults`
+(the explicit-default input canonicalising to the omitted form — the identity defaults stated out
+loud), and `reject/reject-unknown-image-aspect` (the CSS ratio spelling `"16/9"`, refused at
+`$.kind.aspectRatio` with no `.$type` suffix, per §6's bare-enum rule).

@@ -262,6 +262,20 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "TrendPolarity value 'Neutral' — RESERVED, not admitted (§3.6.1 clause 5); refused exactly like a name nobody has proposed, so a later admission is an ADDITION rather than a re-meaning of shipped bytes" }
+      // Phase 1077 — the near-miss an author will actually write. `aspectRatio`
+      // is a closed TOKEN vocabulary, not a CSS value, so the ratio spelling the
+      // stylesheet uses (`16 / 9`) is refused rather than parsed: admitting it
+      // would put an arbitrary numeric pair on the wire and re-open the
+      // free-form-CSS escape the token vocabulary exists to close. The path is
+      // the bare slot with no `.$type` suffix, per §6 and the Phase 1073 ruling.
+      { Id = "reject-unknown-image-aspect"
+        Json =
+          """{"id":"i","kind":{"$type":"Image","alt":{"$type":"Literal","text":"Hero"},"aspectRatio":"16/9","src":{"$type":"Static","value":"/hero.jpg"},"variant":"Default"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.aspectRatio"
+        IsOp = false
+        Description =
+          "ImageAspect value '16/9' — the CSS ratio spelling, refused: the slot is a closed token vocabulary (Square | FourThree | ThreeTwo | SixteenNine), and admitting a numeric pair would reintroduce the free-form escape the tokens replace" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

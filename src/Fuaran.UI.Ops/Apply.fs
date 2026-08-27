@@ -930,6 +930,21 @@ let private updateImage (field: string) (v: obj) (spec: ImageSpec) : UpdateResul
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryImageVariant v
             |> Result.map (fun x -> { spec with Variant = x }))
+    // Phase 1077 — the presentation slots are ordinary closed-enum fields, so
+    // they join the field-level UpdateProp surface on the same terms as
+    // `Variant`.
+    | "Fit" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryImageFit v
+            |> Result.map (fun x -> { spec with Fit = x }))
+    | "AspectRatio" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryImageAspect v
+            |> Result.map (fun x -> { spec with AspectRatio = x }))
+    | "Loading" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryImageLoading v
+            |> Result.map (fun x -> { spec with Loading = x }))
     // `Src` is a Binding with no ReplaceBinding slot declared for Image, so it
     // is reachable only via EditNode today. Deliberately not advertised.
     | "Src" -> NotSupportedYet

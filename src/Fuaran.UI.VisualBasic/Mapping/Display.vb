@@ -81,7 +81,10 @@ Friend Module DisplayMapping
                 .Id = Attr(el, "id"),
                 .Src = AsStringBinding(Attr(el, "src")),
                 .Alt = AsText(Attr(el, "alt")),
-                .Variant = AsEnum(Of Csharp.ImageVariant)(Attr(el, "variant"), Csharp.ImageVariant.Default)})
+                .Variant = AsEnum(Of Csharp.ImageVariant)(Attr(el, "variant"), Csharp.ImageVariant.Default),
+                .Fit = AsEnum(Of Csharp.ImageFit)(Attr(el, "fit"), Csharp.ImageFit.Natural),
+                .AspectRatio = AsEnum(Of Csharp.ImageAspect)(Attr(el, "aspect-ratio"), Csharp.ImageAspect.Natural),
+                .Loading = AsEnum(Of Csharp.ImageLoading)(Attr(el, "loading"), Csharp.ImageLoading.Eager)})
 
         d("List") = Function(el) Csharp.Fuaran.List(
             New Csharp.ListOptions With {.Id = Attr(el, "id"), .Items = ChildTexts(el, "Item"), .Ordered = AttrBool(el, "ordered")})

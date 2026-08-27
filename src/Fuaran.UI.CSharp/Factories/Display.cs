@@ -129,8 +129,15 @@ public static partial class Fuaran
         new(FsFactory.imageSpec<object>(
             options.Id,
             // Generated ImageSpec ctor is Generated.fs declaration order (Alt, Src,
-            // Variant) — Alt leads, the old hand order led with Src.
-            new FsGen.ImageSpec(options.Alt.Inner, options.Src.Inner, options.Variant.ToFs())));
+            // Variant, then the Phase 1077 presentation slots) — Alt leads, the old
+            // hand order led with Src.
+            new FsGen.ImageSpec(
+                options.Alt.Inner,
+                options.Src.Inner,
+                options.Variant.ToFs(),
+                options.Fit.ToFs(),
+                options.AspectRatio.ToFs(),
+                options.Loading.ToFs())));
 
     /// <summary>A structured item list.</summary>
     public static FuaranNode List(ListOptions options) =>
@@ -386,6 +393,15 @@ public sealed record ImageOptions
 
     /// <summary>The presentation variant (default plain).</summary>
     public ImageVariant Variant { get; init; } = ImageVariant.Default;
+
+    /// <summary>How the pixels fill the box (default <c>Natural</c> — no <c>object-fit</c> rule).</summary>
+    public ImageFit Fit { get; init; } = ImageFit.Natural;
+
+    /// <summary>The box reserved before the image loads (default <c>Natural</c> — no reservation).</summary>
+    public ImageAspect AspectRatio { get; init; } = ImageAspect.Natural;
+
+    /// <summary>Fetch timing (default <c>Eager</c> — the browser default, no attribute emitted).</summary>
+    public ImageLoading Loading { get; init; } = ImageLoading.Eager;
 }
 
 /// <summary>Options for <see cref="Fuaran.List"/>.</summary>

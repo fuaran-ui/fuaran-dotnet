@@ -81,6 +81,31 @@ public enum ImageVariant
     Rounded,
 }
 
+/// <summary>How an image fills its box — maps to the F# <c>ImageFit</c>.</summary>
+public enum ImageFit
+{
+    Natural,
+    Cover,
+    Contain,
+}
+
+/// <summary>The box an image reserves before it loads — maps to the F# <c>ImageAspect</c>.</summary>
+public enum ImageAspect
+{
+    Natural,
+    Square,
+    FourThree,
+    ThreeTwo,
+    SixteenNine,
+}
+
+/// <summary>Image fetch timing — maps to the F# <c>ImageLoading</c>.</summary>
+public enum ImageLoading
+{
+    Eager,
+    Lazy,
+}
+
 /// <summary>Scroll axis — maps to the F# <c>ScrollOrientation</c>.</summary>
 public enum ScrollOrientation
 {
@@ -217,6 +242,27 @@ internal static class EnumMap
             ImageVariant.Rounded => FsGen.ImageVariant.Rounded,
             _ => FsGen.ImageVariant.Default,
         };
+
+    internal static FsGen.ImageFit ToFs(this ImageFit f) =>
+        f switch
+        {
+            ImageFit.Cover => FsGen.ImageFit.Cover,
+            ImageFit.Contain => FsGen.ImageFit.Contain,
+            _ => FsGen.ImageFit.Natural,
+        };
+
+    internal static FsGen.ImageAspect ToFs(this ImageAspect a) =>
+        a switch
+        {
+            ImageAspect.Square => FsGen.ImageAspect.Square,
+            ImageAspect.FourThree => FsGen.ImageAspect.FourThree,
+            ImageAspect.ThreeTwo => FsGen.ImageAspect.ThreeTwo,
+            ImageAspect.SixteenNine => FsGen.ImageAspect.SixteenNine,
+            _ => FsGen.ImageAspect.Natural,
+        };
+
+    internal static FsGen.ImageLoading ToFs(this ImageLoading l) =>
+        l == ImageLoading.Lazy ? FsGen.ImageLoading.Lazy : FsGen.ImageLoading.Eager;
 
     internal static FsGen.ScrollOrientation ToFs(this ScrollOrientation o) =>
         o switch

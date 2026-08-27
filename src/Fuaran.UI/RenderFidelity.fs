@@ -241,8 +241,8 @@ let all: FidelityRow list =
 
       plain
           "Image"
-          "the src, alt and variant"
-          "a real `<img>` with the sanitised `src` (unknown or dangerous schemes collapse to `about:blank`), `alt` always emitted, and the per-variant class"
+          "the src, alt, variant, and the fit / aspectRatio / loading presentation tokens"
+          "a real `<img>` with the sanitised `src` (unknown or dangerous schemes collapse to `about:blank`), `alt` always emitted, the per-variant class, and the per-token fit / aspect classes plus `loading=\"lazy\"` under `loading = Lazy`. The aspect box is reserved by CSS alone, so the space is held in the server-rendered output with no script"
 
       plain "LabelValueRow" "the label / value TextSources" "the resolved, formatted row"
 

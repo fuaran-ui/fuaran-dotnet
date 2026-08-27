@@ -343,6 +343,10 @@ let private defs: (string * J) list =
       // Phase 812 — anti-scraper render strategy for a mailto Link.
       "LinkProtection", enumDef [ "email" ]
       "ImageVariant", enumDef [ "Default"; "Avatar"; "Rounded" ]
+      // Phase 1077 — the three `Image` presentation vocabularies.
+      "ImageFit", enumDef [ "Natural"; "Cover"; "Contain" ]
+      "ImageAspect", enumDef [ "Natural"; "Square"; "FourThree"; "ThreeTwo"; "SixteenNine" ]
+      "ImageLoading", enumDef [ "Eager"; "Lazy" ]
       "ScrollOrientation", enumDef [ "Vertical"; "Horizontal"; "Both" ]
       "DateVariant", enumDef [ "Date"; "Time"; "DateTime" ]
       // Phase 864 — both lower-case on the wire, the `LinkProtection` posture.
@@ -653,9 +657,16 @@ let private defs: (string * J) list =
             "protection", ref "LinkProtection" ]
 
       "ImageSpec",
+      // Phase 1077 — `fit` / `aspectRatio` / `loading` are omitted-when-default;
+      // out of `required`, present in `props`.
       record
           [ "alt"; "src"; "variant" ]
-          [ "alt", ref "TextSource"; "src", binding "str"; "variant", ref "ImageVariant" ]
+          [ "alt", ref "TextSource"
+            "aspectRatio", ref "ImageAspect"
+            "fit", ref "ImageFit"
+            "loading", ref "ImageLoading"
+            "src", binding "str"
+            "variant", ref "ImageVariant" ]
 
       "ListSpec", record [ "items"; "ordered" ] [ "items", arrayOf (ref "TextSource"); "ordered", boolean ]
 

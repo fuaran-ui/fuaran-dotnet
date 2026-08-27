@@ -304,6 +304,26 @@ let private fixtures: Fixture list =
             "src=\"/a.png\""
             "alt=\"Alt\"" ] }
 
+      // Phase 1077 — the presentation tokens' class + attribute vocabulary.
+      // A separate fixture rather than an extension of the one above, so a
+      // regression names which half broke: the variant mapping or the
+      // presentation mapping.
+      { Name = "Display/Image (Phase 1077 presentation tokens)"
+        Node =
+          Fuaran.imageSpec
+              "imgp"
+              { Defaults.image with
+                  Src = Binding.Static(Some "/hero.jpg")
+                  Alt = TextSource.Literal "Hero"
+                  Fit = ImageFit.Cover
+                  AspectRatio = ImageAspect.SixteenNine
+                  Loading = ImageLoading.Lazy }
+        Expected =
+          [ "fuaran-image"
+            "fuaran-image-fit-cover"
+            "fuaran-image-aspect-sixteen-nine"
+            "loading=\"lazy\"" ] }
+
       { Name = "Display/List"
         Node =
           Fuaran.listSpec

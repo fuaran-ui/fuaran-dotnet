@@ -214,7 +214,12 @@ let link: LinkSpec =
 let image: ImageSpec =
     { Src = noBinding<string>
       Alt = emptyLiteral
-      Variant = ImageVariant.Default }
+      Variant = ImageVariant.Default
+      // Phase 1077 — all three presentation slots default to today's
+      // behaviour, so `Defaults.image` is the pre-phase image exactly.
+      Fit = ImageFit.Natural
+      AspectRatio = ImageAspect.Natural
+      Loading = ImageLoading.Eager }
 
 let list: ListSpec = { Items = []; Ordered = false }
 

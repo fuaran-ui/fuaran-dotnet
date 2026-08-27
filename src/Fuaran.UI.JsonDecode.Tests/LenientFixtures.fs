@@ -397,6 +397,19 @@ let all: LenientFixture list =
         Description =
           "Fact (the new labeled text-fact kind) — explicit-default `tone`/`emphasis` decode and canonicalise away (omitted-when-default on both boundaries from day one), and the bare-string TextSource shorthand applies to `label`/`value`. The canonical minimal Fact is exactly the two-field form models want to write." }
 
+      // Phase 1077 — the identity defaults stated OUT LOUD. `image-1` proves the
+      // absent form by carrying none of the three slots; this proves the other
+      // half of the symmetric omit-when-default law: an input that spells each
+      // default explicitly decodes (read-compat) and re-encodes to the omitted
+      // form. Without it, "absent means Natural/Natural/Eager" is a claim only
+      // the reference host's own unit tests make.
+      { Id = "lenient-image-explicit-defaults"
+        LenientJson =
+          """{"id":"len-image","kind":{"$type":"Image","alt":{"$type":"Literal","text":"User avatar"},"aspectRatio":"Natural","fit":"Natural","loading":"Eager","src":{"$type":"Static","value":"/avatar.png"},"variant":"Avatar"}}"""
+        VerboseJson =
+          """{"id":"len-image","kind":{"$type":"Image","alt":"User avatar","src":{"$type":"Static","value":"/avatar.png"},"variant":"Avatar"}}"""
+        Description =
+          "Image — explicit-default `fit`/`aspectRatio`/`loading` decode and canonicalise away (omitted-when-default on both boundaries from day one, Phase 1077), and the bare-string TextSource shorthand applies to `alt`. The canonical minimal Image is exactly the pre-phase three-field form." }
       { Id = "lenient-shape-static-envelope-plain-scalars"
         LenientJson =
           """{"id":"len-env","kind":{"$type":"LabelValueRow","emphasis":{"$type":"Static","value":true},"label":"Total","value":{"$type":"Static","value":42.0}}}"""

@@ -174,12 +174,40 @@ let linkProtected: Node<obj> =
 let image: Node<obj> =
     // Phase 287 — Avatar variant exercises the variant DU; Src round-trips a
     // Binding<string> (sanitised at render, not at wire).
+    //
+    // Phase 1077 — this fixture deliberately carries NONE of the three
+    // presentation slots, and its committed bytes are unchanged by that phase.
+    // That is the acceptance criterion made executable: a pre-phase document
+    // still encodes and decodes to exactly what it did, and the proof is a
+    // fixture nobody had to touch.
     node
         "image-1"
         (NodeKind.Image(
             { Src = Binding.Static(Some "/avatar.png")
               Alt = TextSource.Literal "User avatar"
-              Variant = ImageVariant.Avatar }
+              Variant = ImageVariant.Avatar
+              Fit = ImageFit.Natural
+              AspectRatio = ImageAspect.Natural
+              Loading = ImageLoading.Eager }
+        ))
+        None
+
+let imagePresentation: Node<obj> =
+    // Phase 1077 — all three presentation slots at NON-default values, so the
+    // fixture pins the emitted spellings (`fit` / `aspectRatio` / `loading`)
+    // and their key order rather than only their absence. `Variant` is left at
+    // `Default` on purpose: the presentation slots are orthogonal to the
+    // variant, and a fixture that moved both at once could not tell a host
+    // that conflated them from one that did not.
+    node
+        "image-presentation-1"
+        (NodeKind.Image(
+            { Src = Binding.Static(Some "/hero.jpg")
+              Alt = TextSource.Literal "The harbour at dawn"
+              Variant = ImageVariant.Default
+              Fit = ImageFit.Cover
+              AspectRatio = ImageAspect.SixteenNine
+              Loading = ImageLoading.Lazy }
         ))
         None
 
@@ -4666,7 +4694,10 @@ let a11yImageDecorative: Node<obj> =
         (NodeKind.Image(
             { Src = Binding.Static(Some "/img/section-divider.svg")
               Alt = TextSource.Literal ""
-              Variant = ImageVariant.Default }
+              Variant = ImageVariant.Default
+              Fit = ImageFit.Natural
+              AspectRatio = ImageAspect.Natural
+              Loading = ImageLoading.Eager }
         ))
         (Some
             { Label = None
@@ -4712,6 +4743,7 @@ let allNodes: (string * Node<obj>) list =
       "Display/Link", link
       "Display/Link (protected email — Phase 812 protection field)", linkProtected
       "Display/Image (Avatar variant)", image
+      "Display/Image (Phase 1077 — fit / aspectRatio / loading all off-default)", imagePresentation
       "Display/List (ordered)", listDisplay
       "Display/Toast (Success tone, open)", toast
       "Display/CodeBlock (fsharp, line numbers + highlights)", codeBlock

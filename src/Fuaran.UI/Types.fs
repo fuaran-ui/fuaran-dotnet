@@ -72,6 +72,36 @@ type ButtonVariant = Generated.ButtonVariant
 /// is a soft-cornered rectangle. Bounded by design — the renderer maps each
 /// to a `fuaran-image-{variant}` class; no free-form CSS escape.
 type ImageVariant = Generated.ImageVariant
+
+/// §4b — how `NodeKind.Image`'s decoded pixels fill the box the layout gives
+/// the element (Phase 1077). `Natural` is the pre-phase behaviour: the
+/// intrinsic aspect ratio with `height: auto`, and NO `object-fit` rule at
+/// all. `Cover` fills the box and crops the overflow; `Contain` fits the whole
+/// image inside and letterboxes. Bounded by design — the renderers map each to
+/// a `fuaran-image-fit-{token}` class (nothing is emitted for `Natural`); no
+/// free-form CSS escape, the `ImageVariant` precedent.
+type ImageFit = Generated.ImageFit
+
+/// §4b — the box `NodeKind.Image` reserves BEFORE the image arrives (Phase
+/// 1077). This is the cumulative-layout-shift slot: under `Natural` the
+/// browser learns the shape only once the bytes land, and everything below the
+/// image jumps; a declared ratio reserves the space in the first layout pass,
+/// so the page settles once. The vocabulary is the four ratios a page actually
+/// asks for and no more — admitting arbitrary ratios would put a numeric value
+/// in a style attribute, which is the escape this language does not have. The
+/// renderers map each to a `fuaran-image-aspect-{token}` class carrying the
+/// `aspect-ratio` rule (`Square` / `FourThree` → `four-three` / `ThreeTwo` →
+/// `three-two` / `SixteenNine` → `sixteen-nine`); nothing is emitted for
+/// `Natural`.
+type ImageAspect = Generated.ImageAspect
+
+/// §4b — whether the browser fetches a `NodeKind.Image` during the initial
+/// load or defers it until it nears the viewport (Phase 1077). `Eager` is the
+/// pre-phase behaviour and stays the default deliberately: deferring an
+/// above-the-fold image is a REGRESSION, not an optimisation, and only the
+/// author knows where the image sits. `Lazy` emits `loading="lazy"` on the
+/// `<img>`; `Eager` emits no attribute at all, leaving the browser default.
+type ImageLoading = Generated.ImageLoading
 /// Scroll axis for `NodeKind.ScrollArea` (Phase 289). Selects which
 /// overflow axis the container clips + scrolls: `Vertical` → `overflow-y`,
 /// `Horizontal` → `overflow-x`, `Both` → both. The renderer maps each to a
@@ -761,6 +791,14 @@ and LinkProtection = Generated.LinkProtection
 /// `Alt` is mandatory — the accessibility floor for a non-decorative image
 /// (pass an empty `Literal ""` only for a purely decorative one). `Variant`
 /// defaults to `Default` in `Defaults.image`.
+///
+/// Phase 1077 adds the three presentation slots — `Fit`, `AspectRatio` and
+/// `Loading` — each omitted-at-default on both wire boundaries, so a document
+/// carrying none of them decodes and renders byte-identically to the
+/// pre-phase output. Together they close the two real defects of an
+/// image-heavy page: the layout shift when an undeclared box learns its shape
+/// late (`AspectRatio`, with `Fit` deciding how the pixels fill the reserved
+/// box), and eager-loading everything below the fold (`Loading`).
 and ImageSpec = Generated.ImageSpec
 
 /// §4b — `NodeKind.List`'s typed spec (Phase 287). `Items` is the ordered

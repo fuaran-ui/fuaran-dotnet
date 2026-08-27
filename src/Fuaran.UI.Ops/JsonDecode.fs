@@ -1985,6 +1985,34 @@ let private decodeImageVariant (path: string) (j: Json) : Result<ImageVariant, D
     | JString s -> unknownEnumCase path s "Default | Avatar | Rounded"
     | _ -> wrongType path "JSON string (ImageVariant)"
 
+// Phase 1077 — the three `Image` presentation vocabularies. Each is a BARE
+// enum: a plain JSON string in a named field with no `$type` member, so an
+// unrecognised case reports at the field's own path with no suffix (§6).
+let private decodeImageFit (path: string) (j: Json) : Result<ImageFit, DecodeError> =
+    match j with
+    | JString "Natural" -> Ok ImageFit.Natural
+    | JString "Cover" -> Ok ImageFit.Cover
+    | JString "Contain" -> Ok ImageFit.Contain
+    | JString s -> unknownEnumCase path s "Natural | Cover | Contain"
+    | _ -> wrongType path "JSON string (ImageFit)"
+
+let private decodeImageAspect (path: string) (j: Json) : Result<ImageAspect, DecodeError> =
+    match j with
+    | JString "Natural" -> Ok ImageAspect.Natural
+    | JString "Square" -> Ok ImageAspect.Square
+    | JString "FourThree" -> Ok ImageAspect.FourThree
+    | JString "ThreeTwo" -> Ok ImageAspect.ThreeTwo
+    | JString "SixteenNine" -> Ok ImageAspect.SixteenNine
+    | JString s -> unknownEnumCase path s "Natural | Square | FourThree | ThreeTwo | SixteenNine"
+    | _ -> wrongType path "JSON string (ImageAspect)"
+
+let private decodeImageLoading (path: string) (j: Json) : Result<ImageLoading, DecodeError> =
+    match j with
+    | JString "Eager" -> Ok ImageLoading.Eager
+    | JString "Lazy" -> Ok ImageLoading.Lazy
+    | JString s -> unknownEnumCase path s "Eager | Lazy"
+    | _ -> wrongType path "JSON string (ImageLoading)"
+
 let private decodeScrollOrientation (path: string) (j: Json) : Result<ScrollOrientation, DecodeError> =
     match j with
     | JString "Vertical" -> Ok ScrollOrientation.Vertical
@@ -3846,15 +3874,39 @@ let private decodeImageSpec (path: string) (j: Json) : Result<ImageSpec, DecodeE
             requireField path fields "variant" "ImageVariant"
             |> Result.bind (decodeImageVariant (path + ".variant"))
 
-        match srcR, altR, variantR with
-        | Ok src, Ok alt, Ok variant ->
+        // Phase 1077 — the presentation slots, omitted-when-default (the
+        // Phase 460 discipline). Absent restores today's behaviour exactly,
+        // which is what keeps every pre-phase document decoding unchanged.
+        let fitR =
+            match tryField fields "fit" with
+            | None -> Ok ImageFit.Natural
+            | Some v -> decodeImageFit (path + ".fit") v
+
+        let aspectR =
+            match tryField fields "aspectRatio" with
+            | None -> Ok ImageAspect.Natural
+            | Some v -> decodeImageAspect (path + ".aspectRatio") v
+
+        let loadingR =
+            match tryField fields "loading" with
+            | None -> Ok ImageLoading.Eager
+            | Some v -> decodeImageLoading (path + ".loading") v
+
+        match srcR, altR, variantR, fitR, aspectR, loadingR with
+        | Ok src, Ok alt, Ok variant, Ok fit, Ok aspect, Ok loading ->
             Ok
                 { Src = src
                   Alt = alt
-                  Variant = variant }
-        | Error e, _, _
-        | _, Error e, _
-        | _, _, Error e -> Error e
+                  Variant = variant
+                  Fit = fit
+                  AspectRatio = aspect
+                  Loading = loading }
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
 
 let private decodeListSpec (path: string) (j: Json) : Result<ListSpec, DecodeError> =
     match requireObject path j with
@@ -7844,6 +7896,14 @@ module Coerce =
     // The remaining closed-enum twins, added with the Display / Layout /
     // Visualisation field-level UpdateProp surface.
     let tryImageVariant (v: obj) : Result<ImageVariant, string> = viaJson decodeImageVariant v
+
+    // Phase 1077 — the `Image` presentation twins.
+    let tryImageFit (v: obj) : Result<ImageFit, string> = viaJson decodeImageFit v
+
+    let tryImageAspect (v: obj) : Result<ImageAspect, string> = viaJson decodeImageAspect v
+
+    let tryImageLoading (v: obj) : Result<ImageLoading, string> = viaJson decodeImageLoading v
+
     let tryMathDisplay (v: obj) : Result<MathDisplay, string> = viaJson decodeMathDisplay v
 
     let tryScrollOrientation (v: obj) : Result<ScrollOrientation, string> = viaJson decodeScrollOrientation v

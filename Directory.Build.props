@@ -353,7 +353,16 @@
          construction-site break on the 0.36.0 / 0.39.0 / 0.40.0 precedent.
          Admitted by operator ruling under the shared-data-source charter's own
          reopening condition. See STABILITY.md "Recorded change — 0.41.0". -->
-    <Version>0.41.0</Version>
+    <!-- 0.42.0 (Phase 1077) — `ImageSpec` gains three presentation slots
+         (`Fit` / `AspectRatio` / `Loading`) and three closed enums
+         (`ImageFit` / `ImageAspect` / `ImageLoading`). Every slot is
+         omitted-at-default on both wire boundaries, so no wire byte of a
+         pre-phase document changes and `nodes/image-1.json` is untouched —
+         but the record gains three REQUIRED fields, so every construction
+         site is a compile break on the 0.36.0 / 0.39.0 / 0.40.0 / 0.41.0
+         precedent. Minor, per the record-widening dispensation. See
+         STABILITY.md "Recorded change — 0.42.0". -->
+    <Version>0.42.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -2857,11 +2857,39 @@ let rec private renderKind
             | ImageVariant.Avatar -> "fuaran-image fuaran-image-avatar"
             | ImageVariant.Rounded -> "fuaran-image fuaran-image-rounded"
 
+        // Phase 1077 — the presentation tokens map to classes and nothing
+        // else: no value from the tree ever reaches a style attribute.
+        // `Natural` emits NO class on either axis, so a pre-phase tree's class
+        // attribute is byte-identical to what it was. Byte-parity with the
+        // server arm is the contract — keep the two mappings in step.
+        let fitClass =
+            match spec.Fit with
+            | ImageFit.Natural -> ""
+            | ImageFit.Cover -> " fuaran-image-fit-cover"
+            | ImageFit.Contain -> " fuaran-image-fit-contain"
+
+        let aspectClass =
+            match spec.AspectRatio with
+            | ImageAspect.Natural -> ""
+            | ImageAspect.Square -> " fuaran-image-aspect-square"
+            | ImageAspect.FourThree -> " fuaran-image-aspect-four-three"
+            | ImageAspect.ThreeTwo -> " fuaran-image-aspect-three-two"
+            | ImageAspect.SixteenNine -> " fuaran-image-aspect-sixteen-nine"
+
+        // Phase 1077 — `Eager` emits no attribute at all (the browser default);
+        // only `Lazy` is a declaration. Deferring an above-the-fold image is a
+        // regression, which is why the default is not the "optimised" value.
+        let loadingAttrs =
+            match spec.Loading with
+            | ImageLoading.Eager -> []
+            | ImageLoading.Lazy -> [ "loading", "lazy" ]
+
         // Phase 951 — the a11y projection lands on the `<img>` itself.
         Html.img (
-            [ prop.className variantClass
+            [ prop.className (variantClass + fitClass + aspectClass)
               prop.src safeSrc
               prop.alt (renderText ctx spec.Alt) ]
+            @ toProps loadingAttrs
             @ toProps semanticAttrs
             @ toProps egressAttrs
         )

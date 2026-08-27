@@ -50,6 +50,25 @@ type ImageVariant =
     | Rounded
 
 [<RequireQualifiedAccess>]
+type ImageFit =
+    | Natural
+    | Cover
+    | Contain
+
+[<RequireQualifiedAccess>]
+type ImageAspect =
+    | Natural
+    | Square
+    | FourThree
+    | ThreeTwo
+    | SixteenNine
+
+[<RequireQualifiedAccess>]
+type ImageLoading =
+    | Eager
+    | Lazy
+
+[<RequireQualifiedAccess>]
 type ToneVariant =
     | Default
     | Subdued
@@ -732,6 +751,9 @@ and ImageSpec =
       Alt: TextSource
       Src: Binding<string>
       Variant: ImageVariant
+      Fit: ImageFit
+      AspectRatio: ImageAspect
+      Loading: ImageLoading
     }
 
 // Display
@@ -1266,6 +1288,25 @@ let private encImageVariant (v: ImageVariant) : JVal =
     | ImageVariant.Avatar -> JStr "Avatar"
     | ImageVariant.Rounded -> JStr "Rounded"
 
+let private encImageFit (v: ImageFit) : JVal =
+    match v with
+    | ImageFit.Natural -> JStr "Natural"
+    | ImageFit.Cover -> JStr "Cover"
+    | ImageFit.Contain -> JStr "Contain"
+
+let private encImageAspect (v: ImageAspect) : JVal =
+    match v with
+    | ImageAspect.Natural -> JStr "Natural"
+    | ImageAspect.Square -> JStr "Square"
+    | ImageAspect.FourThree -> JStr "FourThree"
+    | ImageAspect.ThreeTwo -> JStr "ThreeTwo"
+    | ImageAspect.SixteenNine -> JStr "SixteenNine"
+
+let private encImageLoading (v: ImageLoading) : JVal =
+    match v with
+    | ImageLoading.Eager -> JStr "Eager"
+    | ImageLoading.Lazy -> JStr "Lazy"
+
 let private encToneVariant (v: ToneVariant) : JVal =
     match v with
     | ToneVariant.Default -> JStr "Default"
@@ -1791,7 +1832,7 @@ and private encListSpec (s: ListSpec) : JVal =
     Canon.typed "List" ([ Some("items", JArr(List.map encTextSource s.Items)); Some("ordered", JBool s.Ordered) ] |> List.choose id)
 
 and private encImageSpec (s: ImageSpec) : JVal =
-    Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); Some("variant", encImageVariant s.Variant) ] |> List.choose id)
+    Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); Some("variant", encImageVariant s.Variant); (if s.Fit = ImageFit.Natural then None else Some("fit", encImageFit s.Fit)); (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if s.Loading = ImageLoading.Eager then None else Some("loading", encImageLoading s.Loading)) ] |> List.choose id)
 
 and private encLinkSpec (s: LinkSpec) : JVal =
     Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun v -> "protection", encLinkProtection v)) ] |> List.choose id)
@@ -2053,6 +2094,28 @@ let private decImageVariant (j: JVal) : Result<ImageVariant, string> =
     | JStr "Avatar" -> Ok ImageVariant.Avatar
     | JStr "Rounded" -> Ok ImageVariant.Rounded
     | _ -> Error "not a ImageVariant"
+
+let private decImageFit (j: JVal) : Result<ImageFit, string> =
+    match j with
+    | JStr "Natural" -> Ok ImageFit.Natural
+    | JStr "Cover" -> Ok ImageFit.Cover
+    | JStr "Contain" -> Ok ImageFit.Contain
+    | _ -> Error "not a ImageFit"
+
+let private decImageAspect (j: JVal) : Result<ImageAspect, string> =
+    match j with
+    | JStr "Natural" -> Ok ImageAspect.Natural
+    | JStr "Square" -> Ok ImageAspect.Square
+    | JStr "FourThree" -> Ok ImageAspect.FourThree
+    | JStr "ThreeTwo" -> Ok ImageAspect.ThreeTwo
+    | JStr "SixteenNine" -> Ok ImageAspect.SixteenNine
+    | _ -> Error "not a ImageAspect"
+
+let private decImageLoading (j: JVal) : Result<ImageLoading, string> =
+    match j with
+    | JStr "Eager" -> Ok ImageLoading.Eager
+    | JStr "Lazy" -> Ok ImageLoading.Lazy
+    | _ -> Error "not a ImageLoading"
 
 let private decToneVariant (j: JVal) : Result<ToneVariant, string> =
     match j with
@@ -3141,7 +3204,10 @@ and private decImageSpec (j: JVal) : Result<ImageSpec, string> =
     dReq "alt" __fs decTextSource |> Result.bind (fun alt ->
     dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
     dReq "variant" __fs decImageVariant |> Result.bind (fun variant ->
-    Ok { Alt = alt; Src = src; Variant = variant }))))
+    dDef "fit" __fs decImageFit (ImageFit.Natural) |> Result.bind (fun fit ->
+    dDef "aspectRatio" __fs decImageAspect (ImageAspect.Natural) |> Result.bind (fun aspectRatio ->
+    dDef "loading" __fs decImageLoading (ImageLoading.Eager) |> Result.bind (fun loading ->
+    Ok { Alt = alt; Src = src; Variant = variant; Fit = fit; AspectRatio = aspectRatio; Loading = loading })))))))
 
 and private decLinkSpec (j: JVal) : Result<LinkSpec, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3597,7 +3663,7 @@ let mkList (id: string) (items: TextSource list) (ordered: bool) : Node<'Msg> =
     { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: ImageVariant) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant; Fit = ImageFit.Natural; AspectRatio = ImageAspect.Natural; Loading = ImageLoading.Eager }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
