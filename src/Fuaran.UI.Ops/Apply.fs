@@ -945,6 +945,12 @@ let private updateImage (field: string) (v: obj) (spec: ImageSpec) : UpdateResul
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryImageLoading v
             |> Result.map (fun x -> { spec with Loading = x }))
+    // Phase 1078 — the caption is an optional TextSource, so it takes the
+    // `CalloutSpec.Heading` shape: a `null` clears it, a value sets it.
+    | "Caption" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSourceOption v
+            |> Result.map (fun x -> { spec with Caption = x }))
     // `Src` is a Binding with no ReplaceBinding slot declared for Image, so it
     // is reachable only via EditNode today. Deliberately not advertised.
     | "Src" -> NotSupportedYet

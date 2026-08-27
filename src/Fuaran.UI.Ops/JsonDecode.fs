@@ -3892,21 +3892,32 @@ let private decodeImageSpec (path: string) (j: Json) : Result<ImageSpec, DecodeE
             | None -> Ok ImageLoading.Eager
             | Some v -> decodeImageLoading (path + ".loading") v
 
-        match srcR, altR, variantR, fitR, aspectR, loadingR with
-        | Ok src, Ok alt, Ok variant, Ok fit, Ok aspect, Ok loading ->
+        // Phase 1078 — `caption` is optional CONTENT, so it is absent-means-
+        // `None` (rule 4), not absent-means-a-default. The bare-string
+        // TextSource shorthand applies to it exactly as it does to `alt`,
+        // because `decodeTextSource` is the same function.
+        let captionR =
+            match tryField fields "caption" with
+            | None -> Ok None
+            | Some v -> decodeTextSource (path + ".caption") v |> Result.map Some
+
+        match srcR, altR, variantR, fitR, aspectR, loadingR, captionR with
+        | Ok src, Ok alt, Ok variant, Ok fit, Ok aspect, Ok loading, Ok caption ->
             Ok
                 { Src = src
                   Alt = alt
                   Variant = variant
                   Fit = fit
                   AspectRatio = aspect
-                  Loading = loading }
-        | Error e, _, _, _, _, _
-        | _, Error e, _, _, _, _
-        | _, _, Error e, _, _, _
-        | _, _, _, Error e, _, _
-        | _, _, _, _, Error e, _
-        | _, _, _, _, _, Error e -> Error e
+                  Loading = loading
+                  Caption = caption }
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 let private decodeListSpec (path: string) (j: Json) : Result<ListSpec, DecodeError> =
     match requireObject path j with

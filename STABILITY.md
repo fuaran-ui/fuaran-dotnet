@@ -1937,3 +1937,46 @@ tables and `idl.json` / `schema.json` were regenerated. Three fixtures added:
 (the explicit-default input canonicalising to the omitted form — the identity defaults stated out
 loud), and `reject/reject-unknown-image-aspect` (the CSS ratio spelling `"16/9"`, refused at
 `$.kind.aspectRatio` with no `.$type` suffix, per §6's bare-enum rule).
+
+## Recorded change — 0.43.0, `ImageSpec.Caption` (fuaran#1078)
+
+**Additive, and additive on both boundaries.** `ImageSpec` gains `Caption: TextSource option`,
+omitted from the wire when `None` (rule 4 — the ordinary optional-field posture, not an identity
+default: a caption is content, and there is no default caption the way there is a default fit). A
+document written before this release decodes to `Caption = None`, re-encodes to the bytes it already
+had, and renders the same bare `<img>` it always did. `nodes/image-1.json` was not touched by the
+phase and came back byte-identical from the corpus regeneration.
+
+**Version decision: MINOR, on the standing record-widening precedent.** No wire byte of any existing
+document changes and no shipped slot is re-meant. What breaks is F# **construction sites**: the
+record gains a fourth required field, exactly as at 0.36.0 / 0.39.0 / 0.40.0 / 0.41.0 / 0.42.0.
+Authors using `{ Defaults.image with … }` — the documented form — are unaffected.
+
+**Surface added.**
+
+- `ImageSpec` gains `Caption`; `Defaults.image` carries `Caption = None`.
+- The C# authoring veneer's `ImageOptions` gains a nullable `Caption` (defaulted, so existing C#
+  call sites keep compiling); the VB XML veneer gains the `caption` attribute.
+- `Fuaran.UI.Ops.Apply`'s field-level `UpdateProp` surface for `Image` gains `"Caption"`, taking
+  the `CalloutSpec.Heading` shape — a `null` clears it, a value sets it.
+
+**Render.** With a caption, both renderers wrap the `<img>` in
+`<figure class="fuaran-image-figure">` and emit the resolved text inside
+`<figcaption class="fuaran-image-figure-caption">`. Nothing moves onto the `<figure>`: the a11y
+projection, the egress marker and the sanitised `src` stay on the element they describe. Without a
+caption there is **no wrapper element at all** — the renderers return the `<img>` expression
+untouched, which is why the pre-phase emission is preserved by construction rather than by
+matching. The reference stylesheet gains two rules, of which the `margin: 0` reset is the
+load-bearing one: a UA stylesheet indents `<figure>` by 40px, so a captioned image would otherwise
+sit visibly out of line with the uncaptioned one beside it.
+
+The caption is a full `TextSource` rather than a string, so it is i18n-capable on exactly the terms
+every other authored string is — no caption-specific resolution path exists, and
+`nodes/image-caption-i18n-1` is what keeps a host from narrowing the slot to a string.
+
+**Wire and corpus.** `WIRE_FORMAT.md` §3.6.3 states the rules; the generated §3.2 / §3.5 / §3.6
+tables and `idl.json` / `schema.json` were regenerated. Three fixtures added:
+`nodes/image-caption-1` (a `Literal` caption, differing from `nodes/image-1` in exactly one key),
+`nodes/image-caption-i18n-1` (an `I18n` caption with a populated arg bag), and
+`lenient/lenient-image-caption-envelope` (the enveloped TextSource form reaching
+`caption` by construction).

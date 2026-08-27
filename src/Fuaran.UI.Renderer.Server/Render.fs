@@ -1030,14 +1030,34 @@ and private renderKind
             | ImageLoading.Lazy -> [ "loading", "lazy" ]
 
         // Phase 951 — the a11y projection lands on the `<img>` itself.
-        Html.img (
-            [ prop.className (variantClass + fitClass + aspectClass)
-              prop.src safeSrc
-              prop.alt (renderText ctx spec.Alt) ]
-            @ toProps loadingAttrs
-            @ toProps semanticAttrs
-            @ toProps egressAttrs
-        )
+        let img =
+            Html.img (
+                [ prop.className (variantClass + fitClass + aspectClass)
+                  prop.src safeSrc
+                  prop.alt (renderText ctx spec.Alt) ]
+                @ toProps loadingAttrs
+                @ toProps semanticAttrs
+                @ toProps egressAttrs
+            )
+
+        // Phase 1078 — the caption. `None` returns the `<img>` UNTOUCHED, which
+        // is the acceptance criterion expressed as control flow rather than as
+        // a claim: there is no wrapper to be byte-identical to, because there is
+        // no wrapper. `Some` wraps it in the semantic pair, which is the whole
+        // point — an ad-hoc `Text` sibling carried the same pixels and no
+        // binding, so assistive technology read it as the next paragraph.
+        // Nothing moves onto the `<figure>`: the a11y projection, the egress
+        // marker and the sanitised `src` all stay on the element they describe.
+        match spec.Caption with
+        | None -> img
+        | Some caption ->
+            Html.figure
+                [ prop.className "fuaran-image-figure"
+                  prop.children
+                      [ img
+                        Html.figcaption
+                            [ prop.className "fuaran-image-figure-caption"
+                              prop.text (renderText ctx caption) ] ] ]
     | NodeKind.List spec ->
         let items =
             spec.Items

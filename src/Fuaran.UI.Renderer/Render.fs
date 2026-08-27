@@ -2885,14 +2885,29 @@ let rec private renderKind
             | ImageLoading.Lazy -> [ "loading", "lazy" ]
 
         // Phase 951 — the a11y projection lands on the `<img>` itself.
-        Html.img (
-            [ prop.className (variantClass + fitClass + aspectClass)
-              prop.src safeSrc
-              prop.alt (renderText ctx spec.Alt) ]
-            @ toProps loadingAttrs
-            @ toProps semanticAttrs
-            @ toProps egressAttrs
-        )
+        let img =
+            Html.img (
+                [ prop.className (variantClass + fitClass + aspectClass)
+                  prop.src safeSrc
+                  prop.alt (renderText ctx spec.Alt) ]
+                @ toProps loadingAttrs
+                @ toProps semanticAttrs
+                @ toProps egressAttrs
+            )
+
+        // Phase 1078 — the caption, byte-parity with the server arm (a
+        // hydration mismatch here is a rendering defect, not a cosmetic one).
+        // `None` returns the `<img>` UNTOUCHED — no wrapper exists to differ.
+        match spec.Caption with
+        | None -> img
+        | Some caption ->
+            Html.figure
+                [ prop.className "fuaran-image-figure"
+                  prop.children
+                      [ img
+                        Html.figcaption
+                            [ prop.className "fuaran-image-figure-caption"
+                              prop.text (renderText ctx caption) ] ] ]
     | NodeKind.List spec ->
         // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
         let items =

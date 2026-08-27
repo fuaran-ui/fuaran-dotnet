@@ -799,6 +799,18 @@ and LinkProtection = Generated.LinkProtection
 /// image-heavy page: the layout shift when an undeclared box learns its shape
 /// late (`AspectRatio`, with `Fit` deciding how the pixels fill the reserved
 /// box), and eager-loading everything below the fold (`Loading`).
+///
+/// Phase 1078 adds `Caption` — a `TextSource option`, omitted from the wire
+/// when `None`. It is the one slot on this record that is CONTENT rather than
+/// presentation, which is why it is an ordinary optional field and not an
+/// identity default: there is no "default caption" the way there is a default
+/// fit. Present, the renderers wrap the `<img>` in `<figure>` /
+/// `<figcaption>`, which is the binding an ad-hoc `Text` sibling never had —
+/// an assistive technology reads the caption AS the image's caption rather
+/// than as the next paragraph. Absent, the emission is the bare `<img>` it
+/// always was, byte for byte. Being a `TextSource` rather than a `string`, a
+/// caption is i18n-capable on exactly the terms every other authored string
+/// is; nothing about captions is special-cased in text resolution.
 and ImageSpec = Generated.ImageSpec
 
 /// §4b — `NodeKind.List`'s typed spec (Phase 287). `Items` is the ordered

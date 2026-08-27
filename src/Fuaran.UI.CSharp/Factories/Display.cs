@@ -137,7 +137,8 @@ public static partial class Fuaran
                 options.Variant.ToFs(),
                 options.Fit.ToFs(),
                 options.AspectRatio.ToFs(),
-                options.Loading.ToFs())));
+                options.Loading.ToFs(),
+                options.Caption is { } cap ? Fs.Some(cap.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>A structured item list.</summary>
     public static FuaranNode List(ListOptions options) =>
@@ -402,6 +403,11 @@ public sealed record ImageOptions
 
     /// <summary>Fetch timing (default <c>Eager</c> — the browser default, no attribute emitted).</summary>
     public ImageLoading Loading { get; init; } = ImageLoading.Eager;
+
+    /// <summary>An optional caption. Present, the image renders inside a
+    /// <c>&lt;figure&gt;</c> with the text in a <c>&lt;figcaption&gt;</c>; absent, the
+    /// emission is the bare <c>&lt;img&gt;</c>.</summary>
+    public Text? Caption { get; init; }
 }
 
 /// <summary>Options for <see cref="Fuaran.List"/>.</summary>

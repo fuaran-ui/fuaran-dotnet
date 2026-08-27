@@ -362,7 +362,15 @@
          site is a compile break on the 0.36.0 / 0.39.0 / 0.40.0 / 0.41.0
          precedent. Minor, per the record-widening dispensation. See
          STABILITY.md "Recorded change — 0.42.0". -->
-    <Version>0.42.0</Version>
+    <!-- 0.43.0 (Phase 1078) — `ImageSpec` gains `Caption: TextSource option`,
+         omitted from the wire when `None`. No wire byte of a pre-phase
+         document changes (`nodes/image-1.json` is untouched again) and an
+         uncaptioned image renders the same bare `<img>` it always did, but
+         the record gains a fourth required field, so every construction site
+         is a compile break on the 0.36.0 / 0.39.0 / 0.40.0 / 0.41.0 / 0.42.0
+         precedent. Minor, per the record-widening dispensation. See
+         STABILITY.md "Recorded change — 0.43.0". -->
+    <Version>0.43.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

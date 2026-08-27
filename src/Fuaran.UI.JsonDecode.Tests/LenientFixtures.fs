@@ -410,6 +410,22 @@ let all: LenientFixture list =
           """{"id":"len-image","kind":{"$type":"Image","alt":"User avatar","src":{"$type":"Static","value":"/avatar.png"},"variant":"Avatar"}}"""
         Description =
           "Image — explicit-default `fit`/`aspectRatio`/`loading` decode and canonicalise away (omitted-when-default on both boundaries from day one, Phase 1077), and the bare-string TextSource shorthand applies to `alt`. The canonical minimal Image is exactly the pre-phase three-field form." }
+
+      // Phase 1078 — `caption` is a `TextSource`, so the §16 TextSource
+      // normalisation reaches it by construction rather than by a
+      // caption-specific rule: the enveloped `{"$type":"Literal","text":…}`
+      // input is accepted and canonicalises to the bare string, exactly as on
+      // `alt`. Worth pinning even so, because a caption READS like a string —
+      // "just take the string" is the shortcut a second host is most likely to
+      // take, and that host fails the byte comparison here rather than in
+      // somebody's locale.
+      { Id = "lenient-image-caption-envelope"
+        LenientJson =
+          """{"id":"len-image-cap","kind":{"$type":"Image","alt":{"$type":"Literal","text":"Fishing boats moored at first light"},"caption":{"$type":"Literal","text":"The harbour at dawn, 1908. Oil on canvas."},"src":{"$type":"Static","value":"/harbour.jpg"},"variant":"Default"}}"""
+        VerboseJson =
+          """{"id":"len-image-cap","kind":{"$type":"Image","alt":"Fishing boats moored at first light","caption":"The harbour at dawn, 1908. Oil on canvas.","src":{"$type":"Static","value":"/harbour.jpg"},"variant":"Default"}}"""
+        Description =
+          "Image — the enveloped `{\"$type\":\"Literal\"}` TextSource form on `caption` decodes and canonicalises to the bare string, exactly as it does on `alt` (Phase 1078). The slot is a full `TextSource`, so a host that narrowed it to a plain string cannot decode this input at all." }
       { Id = "lenient-shape-static-envelope-plain-scalars"
         LenientJson =
           """{"id":"len-env","kind":{"$type":"LabelValueRow","emphasis":{"$type":"Static","value":true},"label":"Total","value":{"$type":"Static","value":42.0}}}"""

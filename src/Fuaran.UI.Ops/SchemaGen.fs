@@ -658,11 +658,14 @@ let private defs: (string * J) list =
 
       "ImageSpec",
       // Phase 1077 — `fit` / `aspectRatio` / `loading` are omitted-when-default;
-      // out of `required`, present in `props`.
+      // out of `required`, present in `props`. Phase 1078 — `caption` is
+      // optional content, absent-means-`None`; same position in the schema for
+      // a different reason.
       record
           [ "alt"; "src"; "variant" ]
           [ "alt", ref "TextSource"
             "aspectRatio", ref "ImageAspect"
+            "caption", ref "TextSource"
             "fit", ref "ImageFit"
             "loading", ref "ImageLoading"
             "src", binding "str"

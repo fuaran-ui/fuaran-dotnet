@@ -180,6 +180,10 @@ let image: Node<obj> =
     // That is the acceptance criterion made executable: a pre-phase document
     // still encodes and decodes to exactly what it did, and the proof is a
     // fixture nobody had to touch.
+    //
+    // Phase 1078 carries no `Caption` either, for the same reason and with the
+    // same evidential weight: the bytes below were emitted before the field
+    // existed and are unchanged by its arrival.
     node
         "image-1"
         (NodeKind.Image(
@@ -188,7 +192,8 @@ let image: Node<obj> =
               Variant = ImageVariant.Avatar
               Fit = ImageFit.Natural
               AspectRatio = ImageAspect.Natural
-              Loading = ImageLoading.Eager }
+              Loading = ImageLoading.Eager
+              Caption = None }
         ))
         None
 
@@ -207,7 +212,49 @@ let imagePresentation: Node<obj> =
               Variant = ImageVariant.Default
               Fit = ImageFit.Cover
               AspectRatio = ImageAspect.SixteenNine
-              Loading = ImageLoading.Lazy }
+              Loading = ImageLoading.Lazy
+              Caption = None }
+        ))
+        None
+
+let imageCaption: Node<obj> =
+    // Phase 1078 — the caption at its simplest: a `Literal`. Everything else on
+    // the record is left where `image-1` has it, so the diff between the two
+    // fixtures' bytes is exactly one key. A fixture that also moved the variant
+    // or a presentation slot would round-trip just as well and would prove less,
+    // because a host that conflated `caption` with something else could still
+    // pass it.
+    node
+        "image-caption-1"
+        (NodeKind.Image(
+            { Src = Binding.Static(Some "/harbour.jpg")
+              Alt = TextSource.Literal "Fishing boats moored at first light"
+              Variant = ImageVariant.Default
+              Fit = ImageFit.Natural
+              AspectRatio = ImageAspect.Natural
+              Loading = ImageLoading.Eager
+              Caption = Some(TextSource.Literal "The harbour at dawn, 1908. Oil on canvas.") }
+        ))
+        None
+
+let imageCaptionI18n: Node<obj> =
+    // Phase 1078 — the caption as an `I18n` TextSource. This is the fixture
+    // that makes "i18n-capable" a corpus fact rather than a design intention:
+    // the slot is a `TextSource`, so every case of that DU rides it, and a host
+    // that quietly narrowed the slot to a string (the obvious shortcut, since
+    // captions read like strings) fails HERE rather than in a user's locale.
+    // The arg bag is populated on purpose — an empty one would not distinguish
+    // a host that dropped `args` from one that carried it.
+    node
+        "image-caption-i18n-1"
+        (NodeKind.Image(
+            { Src = Binding.Static(Some "/harbour.jpg")
+              Alt = TextSource.Literal "Fishing boats moored at first light"
+              Variant = ImageVariant.Default
+              Fit = ImageFit.Natural
+              AspectRatio = ImageAspect.Natural
+              Loading = ImageLoading.Eager
+              Caption = Some(TextSource.I18n("gallery.caption.harbour", Map.ofList [ "year", JInt 1908 ])) }
         ))
         None
 
@@ -4697,7 +4744,8 @@ let a11yImageDecorative: Node<obj> =
               Variant = ImageVariant.Default
               Fit = ImageFit.Natural
               AspectRatio = ImageAspect.Natural
-              Loading = ImageLoading.Eager }
+              Loading = ImageLoading.Eager
+              Caption = None }
         ))
         (Some
             { Label = None
@@ -4744,6 +4792,8 @@ let allNodes: (string * Node<obj>) list =
       "Display/Link (protected email — Phase 812 protection field)", linkProtected
       "Display/Image (Avatar variant)", image
       "Display/Image (Phase 1077 — fit / aspectRatio / loading all off-default)", imagePresentation
+      "Display/Image (Phase 1078 — literal caption)", imageCaption
+      "Display/Image (Phase 1078 — i18n caption with args)", imageCaptionI18n
       "Display/List (ordered)", listDisplay
       "Display/Toast (Success tone, open)", toast
       "Display/CodeBlock (fsharp, line numbers + highlights)", codeBlock

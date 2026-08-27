@@ -219,7 +219,11 @@ let image: ImageSpec =
       // behaviour, so `Defaults.image` is the pre-phase image exactly.
       Fit = ImageFit.Natural
       AspectRatio = ImageAspect.Natural
-      Loading = ImageLoading.Eager }
+      Loading = ImageLoading.Eager
+      // Phase 1078 — no caption is the pre-phase image, and `None` is the only
+      // honest default: a caption is content, and inventing one is not a
+      // default but a fabrication.
+      Caption = None }
 
 let list: ListSpec = { Items = []; Ordered = false }
 

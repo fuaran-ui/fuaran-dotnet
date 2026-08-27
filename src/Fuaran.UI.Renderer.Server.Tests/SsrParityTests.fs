@@ -324,6 +324,25 @@ let private fixtures: Fixture list =
             "fuaran-image-aspect-sixteen-nine"
             "loading=\"lazy\"" ] }
 
+      // Phase 1078 — the caption's structural vocabulary. The `<figure>` and
+      // `<figcaption>` element names are pinned alongside the classes because
+      // the semantics live in the ELEMENTS: an assistive technology binds the
+      // caption to the image on the `figure`/`figcaption` pair, and a wrapper
+      // that carried the same classes on two `<div>`s would look identical in
+      // a class-only assertion and be worthless to a screen reader.
+      { Name = "Display/Image (Phase 1078 caption — literal)"
+        Node =
+          Fuaran.imageSpec
+              "imgc"
+              { Defaults.image with
+                  Src = Binding.Static(Some "/harbour.jpg")
+                  Alt = TextSource.Literal "Fishing boats moored at first light"
+                  Caption = Some(TextSource.Literal "The harbour at dawn") }
+        Expected =
+          [ "<figure class=\"fuaran-image-figure\">"
+            "<figcaption class=\"fuaran-image-figure-caption\">The harbour at dawn</figcaption>"
+            "</figure>" ] }
+
       { Name = "Display/List"
         Node =
           Fuaran.listSpec
@@ -738,6 +757,77 @@ let ssrParityTests =
               Expect.isTrue (contains shared html) "server HTML embeds the shared SVG payload byte-for-byte"
 
               Expect.isFalse (contains "&amp;amp;" html) "the SSR path does not re-escape the already-escaped tip"
+          }
+
+          // ── Phase 1078 — the caption ──────────────────────────────────────
+          //
+          // The acceptance criterion for this phase is a NEGATIVE: an
+          // uncaptioned image must emit exactly what it emitted before the
+          // field existed. Asserting merely that `<figure` is absent would
+          // pass on a renderer that wrapped in a `<span>` instead, so this
+          // pins the WHOLE emission byte-for-byte. The literal below is the
+          // pre-phase output — the `None` branch returns the `<img>`
+          // expression untouched, so there is nothing between this string and
+          // the shape that shipped.
+          //
+          // The assertion is on the TAIL rather than the whole string on
+          // purpose: the wrapper's own class list belongs to the shared
+          // `Theme.nodeClassName` vocabulary, which other phases legitimately
+          // move and which the first test in this list already locks. Pinning
+          // it twice would make this test fail for reasons that have nothing
+          // to do with captions. What the tail pins is exactly this arm's
+          // claim — the `<img>`'s own bytes, its position as the wrapper's
+          // immediate child, and that nothing at all follows it.
+          test "an uncaptioned image emits the bare <img> — this arm's emission, byte for byte" {
+              let node =
+                  Fuaran.imageSpec
+                      "imgb"
+                      { Defaults.image with
+                          Src = Binding.Static(Some "/a.png")
+                          Alt = TextSource.Literal "Alt" }
+
+              let html = renderHtml BindingResolver.empty node
+
+              Expect.isTrue
+                  (html.EndsWith(
+                      "><img class=\"fuaran-image\" src=\"/a.png\" alt=\"Alt\"></div>",
+                      System.StringComparison.Ordinal
+                  ))
+                  (sprintf "an uncaptioned image emits no wrapper element of any kind — got %s" html)
+          }
+
+          // The caption is a `TextSource`, not a string, and this is the test
+          // that makes that load-bearing rather than incidental: the `I18n`
+          // case must reach the `<figcaption>` through the SAME `renderText`
+          // every other text slot uses — placeholder substitution included.
+          // A host that special-cased captions would pass the literal fixture
+          // above and fail here.
+          test "a caption resolves through TextSource — the I18n case, args and all" {
+              let sources =
+                  { BindingResolver.empty with
+                      I18n = Map.ofList [ "gallery.caption.harbour", "Le port au lever du jour ({year})" ] }
+
+              let node =
+                  Fuaran.imageSpec
+                      "imgi"
+                      { Defaults.image with
+                          Src = Binding.Static(Some "/harbour.jpg")
+                          Alt = TextSource.Literal "Fishing boats moored at first light"
+                          Caption =
+                              Some(
+                                  TextSource.I18n(
+                                      "gallery.caption.harbour",
+                                      Map.ofList [ "year", Fuaran.Core.JInt 1908 ]
+                                  )
+                              ) }
+
+              let html = renderHtml sources node
+
+              Expect.isTrue
+                  (contains
+                      "<figcaption class=\"fuaran-image-figure-caption\">Le port au lever du jour (1908)</figcaption>"
+                      html)
+                  "the I18n caption resolves through the catalog with its args substituted"
           }
 
           // The icon-contract lock: the icon NAME rides the `data-icon`
