@@ -402,6 +402,10 @@ let private updateMetric (field: string) (v: obj) (spec: MetricSpec) : UpdateRes
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryCellFormatOption v
             |> Result.map (fun x -> { spec with TrendFormat = x }))
+    | "TrendPolarity" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTrendPolarity v
+            |> Result.map (fun x -> { spec with TrendPolarity = x }))
     | "Icon" ->
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryStringOption v

@@ -352,6 +352,9 @@ let private defs: (string * J) list =
       "ToneVariant", enumDef [ "Default"; "Subdued"; "Brand"; "Success"; "Warning"; "Critical"; "Info" ]
       "StyleWeight", enumDef [ "Compact"; "Standard"; "Spacious" ]
       "Emphasis", enumDef [ "Quiet"; "Normal"; "Loud" ]
+      // Phase 867 - `Neutral` is RESERVED, not admitted: it is deliberately
+      // absent here so a schema-guided emitter cannot produce it.
+      "TrendPolarity", enumDef [ "HigherIsBetter"; "LowerIsBetter" ]
       "StyleRole", enumDef [ "None"; "Eyebrow"; "Data"; "Lede"; "Caption" ]
       "FontVoice", enumDef [ "Default"; "Display"; "Structural" ]
       "ChartKind", enumDef [ "Line"; "Bar"; "Area"; "Pie"; "Scatter"; "Heatmap" ]
@@ -622,6 +625,9 @@ let private defs: (string * J) list =
             "weight", ref "StyleWeight"
             "trend", binding "float"
             "trendFormat", ref "CellFormat"
+            // Phase 867 - omitted-when-default like the stylistic fields above,
+            // so it stays out of `required` and lives in `props`.
+            "trendPolarity", ref "TrendPolarity"
             "icon", str
             "subtext", ref "TextSource" ]
 

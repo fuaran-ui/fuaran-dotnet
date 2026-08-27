@@ -116,6 +116,7 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
           "Emphasis"
           "Trend"
           "TrendFormat"
+          "TrendPolarity"
           "Icon"
           "Subtext" ]
     | NodeKind.Badge _ -> [ "Label"; "Variant" ]

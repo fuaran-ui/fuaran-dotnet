@@ -776,7 +776,7 @@ and private renderKind
                             // success class. `tone` still colours the tile alone.
                             match BindingResolver.tryResolveScalarFloat ctx.Sources trendBinding with
                             | Some t ->
-                                let sentiment, glyph = Theme.trendSentiment t
+                                let sentiment, glyph = Theme.trendSentiment spec.TrendPolarity t
 
                                 Html.div
                                     [ prop.className ("fuaran-metric-trend fuaran-metric-trend-" + sentiment)

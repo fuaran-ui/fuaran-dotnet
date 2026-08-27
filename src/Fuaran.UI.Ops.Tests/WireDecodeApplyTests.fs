@@ -44,6 +44,7 @@ let private revenueMetric: Node<obj> =
               Emphasis = Emphasis.Normal
               Trend = None
               TrendFormat = None
+              TrendPolarity = TrendPolarity.HigherIsBetter
               Icon = None
               Subtext = None }
         )

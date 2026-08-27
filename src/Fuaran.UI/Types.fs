@@ -1248,6 +1248,13 @@ and FontVoice = Generated.FontVoice
 and ToneVariant = Generated.ToneVariant
 and StyleWeight = Generated.StyleWeight
 and Emphasis = Generated.Emphasis
+/// Phase 867 — which direction of a `Metric`'s measured quantity is GOOD.
+/// A property of the QUANTITY (permanent, every reading), where `tone` is a
+/// property of THIS READING — so the two are never the same statement, and a
+/// host derives neither from the other. Defaults to `HigherIsBetter` and is
+/// omitted on the wire at that default, so every pre-867 document keeps the
+/// reading it already had. `Neutral` is reserved, not admitted.
+and TrendPolarity = Generated.TrendPolarity
 // ─── Bindings — typed at author, stringly-typed at wire ──────────────
 //
 // §4k Q3.1 — `Binding.Query` names are MODULE-SCOPED (unqualified name

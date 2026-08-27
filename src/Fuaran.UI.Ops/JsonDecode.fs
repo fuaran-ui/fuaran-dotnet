@@ -2027,6 +2027,18 @@ let private decodeTone (path: string) (j: Json) : Result<ToneVariant, DecodeErro
     | JString s -> unknownDuCase path s toneVariantNames
     | _ -> wrongType path "JSON string (ToneVariant)"
 
+/// Phase 867 — `Metric.trendPolarity`. `Neutral` is RESERVED, not admitted:
+/// it is refused here like any other unknown case, so a document using it is a
+/// decode error rather than a silent `HigherIsBetter`.
+let private trendPolarityNames = "HigherIsBetter | LowerIsBetter"
+
+let private decodeTrendPolarity (path: string) (j: Json) : Result<TrendPolarity, DecodeError> =
+    match j with
+    | JString "HigherIsBetter" -> Ok TrendPolarity.HigherIsBetter
+    | JString "LowerIsBetter" -> Ok TrendPolarity.LowerIsBetter
+    | JString s -> unknownDuCase path s trendPolarityNames
+    | _ -> wrongType path "JSON string (TrendPolarity)"
+
 let private decodeWeight (path: string) (j: Json) : Result<StyleWeight, DecodeError> =
     match j with
     | JString "Compact" -> Ok StyleWeight.Compact
@@ -3532,6 +3544,13 @@ let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, Decod
             | None -> Ok None
             | Some v -> decodeCellFormat (path + ".trendFormat") v |> Result.map Some
 
+        // Phase 867 - omitted-when-default, so absence IS `HigherIsBetter`; a
+        // pre-867 document decodes to exactly the reading it always had.
+        let trendPolarityR =
+            match tryField fields "trendPolarity" with
+            | None -> Ok TrendPolarity.HigherIsBetter
+            | Some v -> decodeTrendPolarity (path + ".trendPolarity") v
+
         let iconR =
             match tryField fields "icon" with
             | None -> Ok None
@@ -3542,8 +3561,20 @@ let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, Decod
             | None -> Ok None
             | Some v -> decodeTextSource (path + ".subtext") v |> Result.map Some
 
-        match labelR, sourceR, formatR, toneR, weightR, emphasisR, trendR, trendFormatR, iconR, subtextR with
-        | Ok label, Ok source, Ok format, Ok tone, Ok weight, Ok emphasis, Ok trend, Ok trendFormat, Ok icon, Ok subtext ->
+        match
+            labelR, sourceR, formatR, toneR, weightR, emphasisR, trendR, trendFormatR, trendPolarityR, iconR, subtextR
+        with
+        | Ok label,
+          Ok source,
+          Ok format,
+          Ok tone,
+          Ok weight,
+          Ok emphasis,
+          Ok trend,
+          Ok trendFormat,
+          Ok trendPolarity,
+          Ok icon,
+          Ok subtext ->
             Ok
                 { Label = label
                   Value = source
@@ -3553,18 +3584,20 @@ let private decodeMetricSpec (path: string) (j: Json) : Result<MetricSpec, Decod
                   Emphasis = emphasis
                   Trend = trend
                   TrendFormat = trendFormat
+                  TrendPolarity = trendPolarity
                   Icon = icon
                   Subtext = subtext }
-        | Error e, _, _, _, _, _, _, _, _, _
-        | _, Error e, _, _, _, _, _, _, _, _
-        | _, _, Error e, _, _, _, _, _, _, _
-        | _, _, _, Error e, _, _, _, _, _, _
-        | _, _, _, _, Error e, _, _, _, _, _
-        | _, _, _, _, _, Error e, _, _, _, _
-        | _, _, _, _, _, _, Error e, _, _, _
-        | _, _, _, _, _, _, _, Error e, _, _
-        | _, _, _, _, _, _, _, _, Error e, _
-        | _, _, _, _, _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _, _, _, _, _
+        | _, _, Error e, _, _, _, _, _, _, _, _
+        | _, _, _, Error e, _, _, _, _, _, _, _
+        | _, _, _, _, Error e, _, _, _, _, _, _
+        | _, _, _, _, _, Error e, _, _, _, _, _
+        | _, _, _, _, _, _, Error e, _, _, _, _
+        | _, _, _, _, _, _, _, Error e, _, _, _
+        | _, _, _, _, _, _, _, _, Error e, _, _
+        | _, _, _, _, _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, _, _, _, _, Error e -> Error e
 
 let private decodeHeadingSpec (path: string) (j: Json) : Result<HeadingSpec, DecodeError> =
     match requireObject path j with
@@ -7745,6 +7778,9 @@ module Coerce =
     let tryIconSize (v: obj) : Result<IconSize, string> = viaJson decodeIconSize v
     let tryStyleWeight (v: obj) : Result<StyleWeight, string> = viaJson decodeWeight v
     let tryEmphasis (v: obj) : Result<Emphasis, string> = viaJson decodeEmphasis v
+
+    /// Phase 867 - `Metric.trendPolarity`.
+    let tryTrendPolarity (v: obj) : Result<TrendPolarity, string> = viaJson decodeTrendPolarity v
 
     /// The behavioural `emphasis` BOOL on Fact / LabelValueRow — the
     /// UpdateProp twin of `decodeEmphasisFlag`, so a TreeOp edit gets the

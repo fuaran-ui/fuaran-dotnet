@@ -311,6 +311,7 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
           (match spec.TrendFormat with
            | Some f -> valueEntry "TrendFormat" f
            | None -> entry "TrendFormat" None (Some "CellFormat option"))
+          valueEntry "TrendPolarity" spec.TrendPolarity
           (match spec.Icon with
            | Some i -> valueEntry "Icon" i
            | None -> entry "Icon" None (Some "IconSource option"))

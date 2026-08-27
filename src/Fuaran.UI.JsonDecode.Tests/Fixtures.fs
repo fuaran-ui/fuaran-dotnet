@@ -70,6 +70,7 @@ let private metricSpec: MetricSpec =
       Emphasis = Emphasis.Normal
       Trend = Some(Binding.Static(Some 0.07))
       TrendFormat = Some(CellFormat.Percent(Some 1))
+      TrendPolarity = TrendPolarity.HigherIsBetter
       Icon = Some "trending-up"
       Subtext = Some(TextSource.Literal "vs last month") }
 
@@ -617,8 +618,45 @@ let metricDuration: Node<obj> =
               Emphasis = Emphasis.Normal
               Trend = Some(Binding.Static(Some(-3.0)))
               TrendFormat = Some(CellFormat.RelativeTime RelativeTimeUnit.Minute)
+              // Phase 867 - left at the default DELIBERATELY. A wait time is the
+              // canonical `LowerIsBetter` quantity, so flipping it here would be
+              // the natural edit - and it would move a pre-867 fixture's bytes,
+              // which is the one thing the byte-unchanged assertion exists to
+              // catch. The inverted case gets its OWN fixture below.
+              TrendPolarity = TrendPolarity.HigherIsBetter
               Icon = None
               Subtext = None }
+        ))
+        None
+
+/// Phase 867 — the inverted-polarity metric: a falling wait time is an
+/// IMPROVEMENT, and this is the only fixture in the corpus that says so. It
+/// pins the one byte the slot exists to carry (`"trendPolarity":
+/// "LowerIsBetter"`), so a host that decodes the field into nothing, or drops
+/// it on re-encode, fails here rather than in a renderer nobody ran.
+///
+/// Its neighbour `metric-duration-1` is the same quantity WITHOUT the
+/// declaration, deliberately: the pair is the whole demand — the same falling
+/// number, read as an improvement under the declaration and as a regression
+/// without it, with the numeric text identical in both.
+let metricInvertedPolarity: Node<obj> =
+    node
+        "metric-inverted-polarity"
+        (NodeKind.Metric(
+            { Label = TextSource.Literal "Avg wait"
+              Value = Binding.Static(Some 80.0)
+              Format = CellFormat.Duration(DurationUnit.Minutes, DurationStyle.Compact)
+              Tone = ToneVariant.Warning
+              Weight = StyleWeight.Standard
+              Emphasis = Emphasis.Normal
+              Trend = Some(Binding.Static(Some(-0.0734)))
+              TrendFormat = Some(CellFormat.Percent(Some 2))
+              TrendPolarity = TrendPolarity.LowerIsBetter
+              Icon = None
+              // `tone` says the reading STANDS badly; the polarity says the
+              // quantity is IMPROVING. Both at once, on one node, is exactly
+              // the case a single `tone` slot could never express.
+              Subtext = Some(TextSource.Literal "still above target") }
         ))
         None
 
@@ -4605,6 +4643,8 @@ let allNodes: (string * Node<obj>) list =
       "Display/LabelValueRow", labelValueRow
       "Display/Fact", fact
       "Display/Metric (Phase 819 — CellFormat.Duration value + cell RelativeTime trend)", metricDuration
+      "Display/Metric (Phase 867 — inverted trendPolarity: a falling wait time is an improvement)",
+      metricInvertedPolarity
       "Display/Icon (Phase 821 — decorative, no label, Large)", iconDecorative
       "Layout/Dashboard (empty)", dashboardEmpty
       "Layout/Stack", stack

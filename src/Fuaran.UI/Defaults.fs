@@ -195,6 +195,7 @@ let metric: MetricSpec =
       Emphasis = Emphasis.Normal
       Trend = Option.None
       TrendFormat = Option.None
+      TrendPolarity = TrendPolarity.HigherIsBetter
       Icon = Option.None
       Subtext = Option.None }
 

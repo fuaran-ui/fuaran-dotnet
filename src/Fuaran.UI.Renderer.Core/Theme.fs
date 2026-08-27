@@ -74,10 +74,19 @@ let iconSizeClass (size: IconSize) : string =
 /// host. A stylesheet that asserts success about a number it has not looked at
 /// is a defect, not a design.
 ///
-/// Sentiment is a function of the RESOLVED trend's sign: rising is an
-/// improvement, falling a regression, zero neither. `tone` is untouched — it
-/// colours the TILE and says how the reading STANDS; this says which way the
-/// quantity MOVED. A host derives neither from the other.
+/// Sentiment is `sign(trend) × polarity`, where `HigherIsBetter` is `+1` and
+/// `LowerIsBetter` is `−1`: a positive product is an improvement, a negative
+/// product a regression, a zero trend neither. So a falling wait time reads as
+/// an improvement under `LowerIsBetter` and as a regression without it, and the
+/// numeric text — its sign included — is identical in both. Polarity changes how
+/// the number READS, never what it SAYS.
+///
+/// `tone` is untouched — it colours the TILE and says how the reading STANDS;
+/// this says which way the quantity MOVED. A host derives neither from the
+/// other, and in particular NOTHING here writes back to `tone`: a renderer that
+/// inferred "improving ⇒ tile is Success" would re-create in the render the
+/// exact conflation the wire slot exists to remove, and would override an
+/// emitter's deliberate `Critical` on a metric improving from a bad place.
 ///
 /// The glyphs are U+25B2 BLACK UP-POINTING TRIANGLE, U+25BC BLACK DOWN-POINTING
 /// TRIANGLE and U+2192 RIGHTWARDS ARROW — named here so a mojibake in this file
@@ -90,9 +99,16 @@ let iconSizeClass (size: IconSize) : string =
 /// that disagreement is the visible evidence the declaration was honoured.
 ///
 /// Shared by both renderers so the emitted class strings cannot drift.
-let trendSentiment (trend: float) : string * string =
-    if trend > 0.0 then "improving", "▲"
-    elif trend < 0.0 then "regressing", "▼"
+let trendSentiment (polarity: TrendPolarity) (trend: float) : string * string =
+    let direction =
+        match polarity with
+        | TrendPolarity.HigherIsBetter -> 1.0
+        | TrendPolarity.LowerIsBetter -> -1.0
+
+    let sentiment = trend * direction
+
+    if sentiment > 0.0 then "improving", "▲"
+    elif sentiment < 0.0 then "regressing", "▼"
     else "unchanged", "→"
 
 /// Map a `StyleWeight` to its CSS-variable name root.  Affects padding,

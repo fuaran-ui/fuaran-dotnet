@@ -379,6 +379,21 @@ about shipped behaviour needs no vocabulary decision, and shipping it does not a
 | `DataSource.Named` / tree-first `Ref` | **Rejected — structurally cannot work** | `DataSource` reaches the UI wire only inside `Binding.Transform`. It cannot name a grid's or a chart's source, so it could not make the sighted pair share anything. The phase file's own anticipated shape, refuted. |
 | declared total / "a feed larger than you inline" (`stress-006/c1`) | **Host chrome** | A number the tree cannot substantiate. A host `Query` knows its own count; an inline source of twenty rows captioning two hundred is a false claim, and a slot carrying it would make the language complicit rather than fix it. Routed to pack teaching (872). **Reopen:** a paged grid over a host feed needing a total the host cannot supply. |
 
+### Metric-semantics cluster (added 2026-08-26 — the trend-polarity charter, Phase 867)
+
+The cluster the taxonomy lacked on the *interpretation* side: how a tree says what a number MEANS
+as opposed to what it IS. Its governing ruling is one sentence — *`tone` states how a reading
+stands and is a fact about the value; polarity states which way the quantity improves and is a fact
+about the metric; a host derives neither from the other.*
+
+| Reserved name | Disposition | Ruling |
+|---|---|---|
+| `trendPolarity` / `inverse` / "down is good" | **Field (admitted 2026-08-26)** | Not a kind, not a variant. An optional bare-string enum on `MetricSpec` beside `trend`/`trendFormat`, defaulting to `HigherIsBetter` and omitted at default. `tone` cannot carry it: the slot already colours the tile, the two statements have different subjects, and — decisively — `trend` is a `Binding` resolved by the host, so a static enum cannot be a function of a value the emitter never sees. Admitted on ×7 cross-family SHOULD-level sightings. See the charter. |
+| trend sentiment rendering | **Renderer-owned — was a live defect, fixed in the same phase** | Not vocabulary at all. `.fuaran-metric-trend` was painted `--fuaran-tone-success-fg` unconditionally in the reference CSS and its byte-copy, so **every** trend rendered as an improvement in every host, in both directions. Sign→sentiment is a renderer + CSS change needing no wire slot, and it fixed the default-polarity majority of the sighted demand on its own. A polarity slot without it would have changed nothing observable — which is why the phase shipped it first, as Part A. |
+| sign inversion / "emit the trend already flipped" | **Rejected** | A −7.34% error rate printed as +7.34% is a false statement about the world. Polarity changes how a number reads, never what it says. |
+| value→tone map on a trend (the `TonedPill` shape) | **Rejected** | `TonedPill` maps a discrete field value through a `Map`; a continuous trend would need a range predicate, which is an expression language in a slot — refused here on the same grounds 864 refused boolean combinators. It also re-encodes tone where the missing fact is direction. |
+| `Neutral` polarity (a quantity with no better direction) | **Reserved, not admitted** | No §1.1 evidence. Reserved as a third case of the enum so a later admission is a bare-string addition rather than a boolean's replacement — which is the whole reason the slot is an enum and not `inverted: bool`. |
+
 **Reading of the taxonomy:** of ~20 reserved candidates, the overwhelming majority resolve to
 **variant / composition / role / covered** – only `NavBar`/`Menu`, a single consolidated `Media`, and a
 provisional `Tree` and `Calendar` are even *reserved* as genuine kinds, and each is admission-gated on

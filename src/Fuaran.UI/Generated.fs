@@ -72,6 +72,11 @@ type Emphasis =
     | Loud
 
 [<RequireQualifiedAccess>]
+type TrendPolarity =
+    | HigherIsBetter
+    | LowerIsBetter
+
+[<RequireQualifiedAccess>]
 type ScrollOrientation =
     | Vertical
     | Horizontal
@@ -771,6 +776,7 @@ and MetricSpec =
       Emphasis: Emphasis
       Trend: Binding<float> option
       TrendFormat: CellFormat option
+      TrendPolarity: TrendPolarity
       Icon: string option
       Subtext: TextSource option
     }
@@ -1282,6 +1288,11 @@ let private encEmphasis (v: Emphasis) : JVal =
     | Emphasis.Normal -> JStr "Normal"
     | Emphasis.Loud -> JStr "Loud"
 
+let private encTrendPolarity (v: TrendPolarity) : JVal =
+    match v with
+    | TrendPolarity.HigherIsBetter -> JStr "HigherIsBetter"
+    | TrendPolarity.LowerIsBetter -> JStr "LowerIsBetter"
+
 let private encScrollOrientation (v: ScrollOrientation) : JVal =
     match v with
     | ScrollOrientation.Vertical -> JStr "Vertical"
@@ -1792,7 +1803,7 @@ and private encProgressSpec (s: ProgressSpec) : JVal =
     Canon.typed "Progress" ([ Some("fraction", (encBinding encFloat) s.Fraction); (if s.Indeterminate = false then None else Some("indeterminate", JBool s.Indeterminate)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Label |> Option.map (fun v -> "label", encTextSource v)); (s.Caveat |> Option.map (fun v -> "caveat", encTextSource v)) ] |> List.choose id)
 
 and private encMetricSpec (s: MetricSpec) : JVal =
-    Canon.typed "Metric" ([ Some("label", encTextSource s.Label); Some("value", (encBinding encFloat) s.Value); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)); (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (s.Trend |> Option.map (fun v -> "trend", (encBinding encFloat) v)); (s.TrendFormat |> Option.map (fun v -> "trendFormat", encCellFormat v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Subtext |> Option.map (fun v -> "subtext", encTextSource v)) ] |> List.choose id)
+    Canon.typed "Metric" ([ Some("label", encTextSource s.Label); Some("value", (encBinding encFloat) s.Value); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)); (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (s.Trend |> Option.map (fun v -> "trend", (encBinding encFloat) v)); (s.TrendFormat |> Option.map (fun v -> "trendFormat", encCellFormat v)); (if s.TrendPolarity = TrendPolarity.HigherIsBetter then None else Some("trendPolarity", encTrendPolarity s.TrendPolarity)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Subtext |> Option.map (fun v -> "subtext", encTextSource v)) ] |> List.choose id)
 
 and private encLabelValueRowSpec (s: LabelValueRowSpec) : JVal =
     Canon.typed "LabelValueRow" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); Some("label", encTextSource s.Label); Some("value", (encBinding encFloat) s.Value); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
@@ -2067,6 +2078,12 @@ let private decEmphasis (j: JVal) : Result<Emphasis, string> =
     | JStr "Normal" -> Ok Emphasis.Normal
     | JStr "Loud" -> Ok Emphasis.Loud
     | _ -> Error "not a Emphasis"
+
+let private decTrendPolarity (j: JVal) : Result<TrendPolarity, string> =
+    match j with
+    | JStr "HigherIsBetter" -> Ok TrendPolarity.HigherIsBetter
+    | JStr "LowerIsBetter" -> Ok TrendPolarity.LowerIsBetter
+    | _ -> Error "not a TrendPolarity"
 
 let private decScrollOrientation (j: JVal) : Result<ScrollOrientation, string> =
     match j with
@@ -3164,9 +3181,10 @@ and private decMetricSpec (j: JVal) : Result<MetricSpec, string> =
     dDef "emphasis" __fs decEmphasis (Emphasis.Normal) |> Result.bind (fun emphasis ->
     dOpt "trend" __fs (decBinding dFloat) |> Result.bind (fun trend ->
     dOpt "trendFormat" __fs decCellFormat |> Result.bind (fun trendFormat ->
+    dDef "trendPolarity" __fs decTrendPolarity (TrendPolarity.HigherIsBetter) |> Result.bind (fun trendPolarity ->
     dOpt "icon" __fs dStr |> Result.bind (fun icon ->
     dOpt "subtext" __fs decTextSource |> Result.bind (fun subtext ->
-    Ok { Label = label; Value = value; Format = format; Tone = tone; Weight = weight; Emphasis = emphasis; Trend = trend; TrendFormat = trendFormat; Icon = icon; Subtext = subtext })))))))))))
+    Ok { Label = label; Value = value; Format = format; Tone = tone; Weight = weight; Emphasis = emphasis; Trend = trend; TrendFormat = trendFormat; TrendPolarity = trendPolarity; Icon = icon; Subtext = subtext }))))))))))))
 
 and private decLabelValueRowSpec (j: JVal) : Result<LabelValueRowSpec, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3591,7 +3609,7 @@ let mkProgress (id: string) (fraction: Binding<float>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Progress { Fraction = fraction; Indeterminate = false; Tone = ToneVariant.Default; Label = None; Caveat = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkMetric (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Metric { Label = label; Value = value; Format = CellFormat.None; Tone = ToneVariant.Default; Weight = StyleWeight.Standard; Emphasis = Emphasis.Normal; Trend = None; TrendFormat = None; Icon = None; Subtext = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.Metric { Label = label; Value = value; Format = CellFormat.None; Tone = ToneVariant.Default; Weight = StyleWeight.Standard; Emphasis = Emphasis.Normal; Trend = None; TrendFormat = None; TrendPolarity = TrendPolarity.HigherIsBetter; Icon = None; Subtext = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkLabelValueRow (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.LabelValueRow { Emphasis = false; Format = CellFormat.None; Label = label; Value = value; Help = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

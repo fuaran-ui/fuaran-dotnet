@@ -148,6 +148,12 @@ let private genWeight =
 let private genEmphasis =
     Gen.elements [ Emphasis.Quiet; Emphasis.Normal; Emphasis.Loud ]
 
+/// Phase 867 — both polarities, so the omitted-at-default encode leg AND the
+/// emitted `LowerIsBetter` leg are both exercised by the round-trip property
+/// rather than only by the two hand-authored fixtures.
+let private genTrendPolarity =
+    Gen.elements [ TrendPolarity.HigherIsBetter; TrendPolarity.LowerIsBetter ]
+
 // Phase 147 — vary role/voice so the property-based round-trip exercises the
 // optional-emit wire path (omitted at default, present otherwise).
 let private genStyleRole =
@@ -460,6 +466,7 @@ let private genMetricSpec: Gen<MetricSpec> =
         let! emphasis = genEmphasis
         let! trend = genOption genBindingFloat
         let! trendFormat = genOption genCellFormat
+        let! trendPolarity = genTrendPolarity
         let! icon = genOption genNonEmptyString
         let! subtext = genOption genTextSource
 
@@ -472,6 +479,7 @@ let private genMetricSpec: Gen<MetricSpec> =
               Emphasis = emphasis
               Trend = trend
               TrendFormat = trendFormat
+              TrendPolarity = trendPolarity
               Icon = icon
               Subtext = subtext }
     }

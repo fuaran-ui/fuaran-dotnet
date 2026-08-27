@@ -255,7 +255,11 @@ internal sealed class MetricBuilder : NodeBuilder
 
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewMetric(
-            new MetricSpec(_label, _source, _format, _tone, _weight, _emphasis, _trend, _trendFormat, _icon, _subtext));
+            // Phase 867 - the generated record's positional ctor gained
+            // `trendPolarity`. Authoring it from this veneer is a deliberate
+            // follow-up (charter S7); the default is the pre-867 reading.
+            new MetricSpec(_label, _source, _format, _tone, _weight, _emphasis, _trend, _trendFormat,
+                TrendPolarity.HigherIsBetter, _icon, _subtext));
 }
 
 internal sealed class HeadingBuilder : NodeBuilder
