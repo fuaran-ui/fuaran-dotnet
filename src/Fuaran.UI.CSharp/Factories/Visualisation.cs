@@ -58,13 +58,13 @@ public static partial class Fuaran
                 Fs.List((options.Rows ?? Enumerable.Empty<IEnumerable<Text>>())
                     .Select(r => Fs.List(r.Select(t => t.Inner)))),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<int, FsAction>>(),
-                // Phase 801 — the declarative sort-intent slots. The veneer does not
-                // expose them yet: the §11 step-6 gates pin KINDS (Coverage.cs reflects
-                // NodeKind cases; the VB analyzer pins Vocabulary.Kinds), so a payload-
-                // field addition binds neither veneer. Authoring them from C#/VB is a
-                // follow-up, not a gate failure.
-                Fs.None<bool>(),
-                Fs.None<FsGen.DefaultSort>())));
+                // Phase 801's declarative sort-intent slots, surfaced here by Phase 873.
+                // No §11 step-6 gate pins them — Coverage.cs reflects NodeKind cases and
+                // the VB analyzer pins Vocabulary.Kinds, so a payload-FIELD addition binds
+                // neither veneer and nothing was red while they were absent. That is what
+                // made surfacing them a deliberate act rather than an automatic one.
+                options.Sortable is { } tSortable ? Fs.Some(tSortable) : Fs.None<bool>(),
+                options.DefaultSort is { } tSort ? Fs.Some(tSort.Inner) : Fs.None<FsGen.DefaultSort>())));
 
     /// <summary>A marker map.</summary>
     public static FuaranNode Map(MapOptions options) =>
@@ -93,12 +93,22 @@ public static partial class Fuaran
         new(FsFactory.grid<TRow, object>(
             options.Id,
             Fs.Func<TRow, FsRow>(r => Fs.Map(options.ToRow(r))),
+            // GridSpecOf's ctor is declaration order (Source, RowKey, Columns,
+            // OnRowClick, Editable, SortStateKey, DefaultSort, PageSize,
+            // PageStateKey, EditStateKey) — the five behaviour slots were added to
+            // the typed facade by Phase 873, so the veneer no longer has to reach
+            // past it to author them.
             new FsTypes.GridSpecOf<TRow, object>(
                 (options.Source ?? Binding.Static(Enumerable.Empty<TRow>())).Inner,
                 Fs.Func<FsRow, string>(row => (options.RowKey ?? (_ => ""))(row)),
                 Fs.List((options.Columns ?? Enumerable.Empty<Column>()).Select(c => c.Inner)),
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<FsRow, FsAction>>(),
-                options.Editable)));
+                options.Editable,
+                Fs.OptStr(options.SortStateKey),
+                options.DefaultSort is { } ds ? Fs.Some(ds.Inner) : Fs.None<FsGen.DefaultSort>(),
+                options.PageSize is { } ps ? Fs.Some(ps) : Fs.None<int>(),
+                Fs.OptStr(options.PageStateKey),
+                Fs.OptStr(options.EditStateKey))));
 }
 
 /// <summary>A data-grid column. Accessors read the PROJECTED row (fuaran#665 —
@@ -148,6 +158,42 @@ public sealed class Column
             Fs.Map(toneMap.Select(kv => new KeyValuePair<string, FsGen.ToneVariant>(kv.Key, kv.Value.ToFs()))),
             defaultTone.ToFs(),
             Inner));
+
+    /// <summary>
+    /// NARROW this column's sortability (Phase 861). Sorting is a GRID-level
+    /// behaviour — <see cref="DataGridOptions{TRow}.SortStateKey"/> is what turns
+    /// the header affordance on — and a column flag only ever narrows it:
+    /// <c>false</c> opts this column out. <c>true</c> restates the inherited
+    /// default and is REFUSED (FUARAN094) under a grid declaring no
+    /// <c>SortStateKey</c>, because a column cannot turn on a behaviour whose
+    /// state key does not exist.
+    /// </summary>
+    public Column Sortable(bool sortable) =>
+        new(new FsTypes.Column<object>(
+            Inner.Label,
+            Inner.Value,
+            Inner.Format,
+            Inner.Kind,
+            Inner.Width,
+            Fs.Some(sortable),
+            Inner.Editable));
+
+    /// <summary>
+    /// NARROW this column's editability (Phase 863) — the same rule on the write
+    /// side. <c>false</c> makes this column read-only under a grid-level
+    /// <see cref="DataGridOptions{TRow}.Editable"/>, which is the declaration
+    /// "read-only implied by omission" could not express. <c>true</c> is refused
+    /// where the grid is not editable: a column narrows, never widens.
+    /// </summary>
+    public Column Editable(bool editable) =>
+        new(new FsTypes.Column<object>(
+            Inner.Label,
+            Inner.Value,
+            Inner.Format,
+            Inner.Kind,
+            Inner.Width,
+            Inner.Sortable,
+            Fs.Some(editable)));
 }
 
 /// <summary>Options for <see cref="Fuaran.Chart"/>.</summary>
@@ -238,6 +284,14 @@ public sealed record TableOptions
 
     /// <summary>The body rows (each a sequence of cells).</summary>
     public IEnumerable<IEnumerable<Text>>? Rows { get; init; }
+
+    /// <summary>Whether the reader may re-sort the table by clicking a header
+    /// (Phase 801). Absent leaves the pre-801 wire byte-for-byte.</summary>
+    public bool? Sortable { get; init; }
+
+    /// <summary>The order the table OPENS in (Phase 801) — configuration, not
+    /// data movement. <c>Column</c> indexes <see cref="Headers"/>.</summary>
+    public DefaultSort? DefaultSort { get; init; }
 }
 
 /// <summary>Options for <see cref="Fuaran.Map"/>.</summary>
@@ -282,6 +336,46 @@ public sealed record DataGridOptions<TRow>
     /// <summary>The columns (row-type-free; accessors read the projected row).</summary>
     public IEnumerable<Column>? Columns { get; init; }
 
-    /// <summary>Whether cells are editable.</summary>
+    /// <summary>Whether cells are editable. Narrow it per column with
+    /// <see cref="Column.Editable(bool)"/>.</summary>
     public bool Editable { get; init; }
+
+    /// <summary>
+    /// The State key carrying the sort descriptor
+    /// <c>{"column": &lt;index&gt;, "direction": "asc"|"desc"}</c> (Phase 861).
+    /// Declaring it IS the header affordance — a grid without it renders no
+    /// sortable headers, so a "sortable" grid that names no key is prose, not a
+    /// declaration.
+    /// </summary>
+    public string? SortStateKey { get; init; }
+
+    /// <summary>
+    /// The order the grid OPENS in (Phase 861) — the same record and wire
+    /// spelling a static table uses. It applies while
+    /// <see cref="SortStateKey"/> carries nothing; once the user has sorted,
+    /// the state wins. Legal with no <see cref="SortStateKey"/> at all.
+    /// </summary>
+    public DefaultSort? DefaultSort { get; init; }
+
+    /// <summary>
+    /// How many rows a page holds (Phase 862). Paging is on only when this and
+    /// <see cref="PageStateKey"/> are BOTH set. The pager itself is
+    /// renderer-owned, which is what makes a decorative pager unauthorable.
+    /// This is not a filter: paging chooses which WINDOW of the rows shows, a
+    /// filter chooses which rows exist.
+    /// </summary>
+    public int? PageSize { get; init; }
+
+    /// <summary>The State key carrying <c>{"page": &lt;1-based int&gt;}</c>
+    /// (Phase 862), both written and read by the grid.</summary>
+    public string? PageStateKey { get; init; }
+
+    /// <summary>
+    /// The DECLARED edit destination (Phase 863): the State key an edited cell's
+    /// whole updated rows value commits to. Absent keeps the shipped default —
+    /// write back to <see cref="Source"/> when that source is a direct state
+    /// binding, display-only otherwise. Naming it is what lets a DECODED grid
+    /// say where its edits land.
+    /// </summary>
+    public string? EditStateKey { get; init; }
 }

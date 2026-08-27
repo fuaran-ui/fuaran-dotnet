@@ -1142,21 +1142,61 @@ and Row = Fuaran.Core.Row
 /// the renderer actually resolves (the original `'row` value no longer exists
 /// past the projection).
 and GridSpecOf<'row, 'Msg> =
-    { Source: Binding<'row seq>
-      RowKey: Row -> string
-      Columns: Column<'Msg> list
-      OnRowClick: (Row -> Action<'Msg>) option
-      Editable: bool }
+    {
+        Source: Binding<'row seq>
+        RowKey: Row -> string
+        Columns: Column<'Msg> list
+        OnRowClick: (Row -> Action<'Msg>) option
+        Editable: bool
+        /// Phase 861 — the State key carrying the sort descriptor
+        /// `{"column": <index>, "direction": "asc"|"desc"}`. Declaring it is what
+        /// makes the header affordance appear; a grid without it renders no
+        /// sortable headers at all. Erases to `DataGridSpec.SortStateKey`.
+        SortStateKey: string option
+        /// Phase 861 — the declared INITIAL order on the BOUND path, the same
+        /// `DefaultSort` record `StaticRows` carries (Phase 801). It applies while
+        /// `SortStateKey` carries nothing; once the user has sorted, the state
+        /// wins. Legal with no `SortStateKey` at all — an opening order without
+        /// interactive re-sorting.
+        DefaultSort: DefaultSort option
+        /// Phase 862 — how many rows a page holds. Paging is on only when this and
+        /// `PageStateKey` are BOTH set; the pager itself is renderer-owned, so a
+        /// decorative pager cannot be authored.
+        PageSize: int option
+        /// Phase 862 — the State key carrying `{"page": <1-based int>}`, both
+        /// written and read by the grid.
+        PageStateKey: string option
+        /// Phase 863 — the DECLARED edit destination: the State key an edited
+        /// cell's whole updated rows value commits to. Absent keeps the Phase 663
+        /// behaviour (write back to the grid's own `Source` when that source is a
+        /// direct `Binding.State`, display-only otherwise).
+        EditStateKey: string option
+    }
 
 /// §4k Q3.2 — Column carries a typed `Kind`, not a nullable `OnEdit`.
 /// Row accessors take `Row` (fuaran#665) — the declarative `Field` floor is
 /// preferred; a closure is the override.
 and Column<'Msg> =
-    { Label: string
-      Value: Row -> CellValue
-      Format: CellFormat
-      Kind: CellKind<'Msg>
-      Width: ColumnWidth }
+    {
+        Label: string
+        Value: Row -> CellValue
+        Format: CellFormat
+        Kind: CellKind<'Msg>
+        Width: ColumnWidth
+        /// Phase 861 — per-column sort NARROWING (Phase 860's charter rule: a
+        /// column flag narrows a behaviour, never widens it). `None` inherits —
+        /// sortable iff the grid declares `SortStateKey`. `Some false` opts this
+        /// column out. `Some true` is the inherited default made explicit and is
+        /// an ERROR (FUARAN094) under a grid declaring no `SortStateKey`.
+        Sortable: bool option
+        /// Phase 863 — per-column EDITABILITY narrowing, the same rule on the
+        /// write side. `None` inherits the grid-level `Editable`; `Some false`
+        /// makes this column read-only under a grid-level `true`; `Some true` is
+        /// an ERROR where the grid is not editable. Distinct from
+        /// `CellKind.Editable`, which supplies the edit HANDLER — this flag says
+        /// whether the cell may be edited at all.
+        Editable: bool option
+    }
 
 /// Tree-level row-erased Column (generated). `Fuaran.grid` boxes a
 /// `Column<'row,'Msg>` into this shape via `Column.erase`. `Value` is the

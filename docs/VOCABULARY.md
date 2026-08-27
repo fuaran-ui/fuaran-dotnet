@@ -271,7 +271,10 @@ existing kinds – §1.2) · **Role** (a `Box`/existing-kind semantic role) · *
 irreducible primitive, reserved pending demand) · **Covered** (already expressible today) ·
 **Host chrome** (the capability belongs to the host application, and the language names it nowhere –
 added 2026-08-18 by the affordance→op charter, Phase 866, which needed a way to record a *decline*
-that is a positive design position rather than a deferral).
+that is a positive design position rather than a deferral) · **Field** (a slot on an existing spec
+RECORD – the tier §2.1 defines, below the variant line; listed here 2026-08-27 by Phase 873 because
+three rows already carried the disposition while the legend did not define it, and a legend that
+omits a disposition in live use is how a reader concludes the row is a typo).
 
 ### Navigation cluster
 
@@ -322,6 +325,30 @@ that is a positive design position rather than a deferral).
 | `KanbanBoard` | **Composition** | `Box` + `DataGrid` – application-space fragment territory (Phase 380), never a language kind. |
 | New chart types (`Gauge` / `Funnel` / `Heatmap` / `Treemap` / `Sankey`) | **Variant** | `ChartKind` variants, one and all. |
 | `StatusPill` / conditional row emphasis | **Variant** (shipped) | Shipped as `CellKindErased.TonedPill` at 0.11.0 (Phase 750): `field` + a value→`ToneVariant` `map` + an omit-when-default `default`. Admitted on 26 usage-evaluation occurrences of one intent across three prompt families and three providers, every one a partial. **Irreducible in the strongest available sense** — not "no composition expresses it" but "no wire spelling exists at all": the pre-existing `Pill` case's tone is a `'row -> ToneVariant` closure, which erases to `"<closure>"`, so the rule could not be *said* rather than being awkward to say. Cost: one variant + a `Map` field, no new kind, no new class vocabulary (it renders through the existing `fuaran-grid-cell-pill` / `fuaran-pill-<tone>` hooks). Confusion-delta: measured as the three canaries' criteria moving off PARTIAL in the next cohort — the pack change supersedes the current baseline by design. |
+
+### Grid-behaviour cluster (added 2026-08-27 by Phase 873 — the Phase 860 charter's own rows)
+
+**Filed retroactively, and the reason it was missing is worth more than the rows.** Phase 860's charter
+was approved and its three implementation phases shipped, but only ONE of its rulings reached this file
+— `Pagination`, and only because a reserved NAME already sat in the Navigation cluster for it to amend.
+The rest had no reserved name to attach to, so nothing pulled them here, and this charter's own §5 says
+the charter is not a surface a reader consults. A ruling that lives only in a charter document and a
+phase Outcome is a ruling the next session re-derives.
+
+Its governing ruling is one sentence and it decides every row below — *a grid behaviour the user drives
+is declared as a named State KEY that the grid both writes and reads, carrying a descriptor whose shape
+the specification fixes; the affordance belongs to the renderer.* The corollary is the part that keeps
+getting re-proposed: **there is no grid-level `sortable` or `pageable` boolean**, because the key IS the
+affordance and a flag with no key behind it is a decorative control writing state nothing reads.
+
+| Reserved name | Disposition | Ruling |
+|---|---|---|
+| `sortStateKey` + bound `defaultSort` (Phase 861) | **Field** (shipped 2026-08-16, 0.26.0) | Not a kind, not a variant. `sortStateKey` names the key carrying `{"column", "direction"}`; declaring it IS the header affordance, so a "sortable grid" that names no key is prose. `defaultSort` reuses the record and the field NAME `staticRows` already carried from Phase 801 — same behaviour, same spelling, deliberately not a second vocabulary — and applies only while the key carries nothing; once the user has sorted, the state wins. A grid may declare `defaultSort` with no `sortStateKey`, which is an opening order without interactive re-sorting. §1.1: census #26 at HIGH urgency, `stress-007/c2` ×cross-family. |
+| per-column `sortable` (Phase 861) | **Field** (shipped) | A column flag NARROWS and never widens — the charter's rule, and the reason `true` under a grid declaring no `sortStateKey` is `FUARAN094` rather than a silent no-op: a column asking to turn a behaviour ON is asking for something the rule does not grant. Absent inherits; `false` opts out. |
+| `pageSize` + `pageStateKey` (Phase 862) | **Field** (shipped) | The `Pagination` row in the Navigation cluster carries the ruling; recorded here so the grid-behaviour family reads whole. The pager is renderer-owned, which is what makes a decorative pager unauthorable rather than merely discouraged. |
+| `editStateKey` (Phase 863) | **Field** (shipped 2026-08-16, 0.26.0) | Not a kind, not a variant, and not a convenience. Before it the only spelling for an edit destination was a closure, which erases to `"<closure>"` — so a DECODED editable grid could not say where its edits land, which is census #27's whole complaint. Absent keeps Phase 663's shipped behaviour exactly (write back to the grid's own `source` when that source is a direct `State` binding, display-only otherwise), so nothing already authored changes meaning. It is also the destination Phase 866's admitted row-reorder reuses rather than minting a second write path. |
+| per-column `editable` (Phase 863) | **Field** (shipped) | The write-side twin of `sortable`, and the same narrowing rule: absent inherits the grid-level `editable`, `false` makes a column read-only under a grid-level `true` — the declaration that read-only-by-omission could not make — and `true` under a non-editable grid is `FUARAN095`. Its own demand row is distinct from #27's: #27 asks WHERE edits go, this asks WHICH columns may be edited, and the demand log carries them separately for that reason. |
+| a grid-level `sortable` / `pageable` boolean | **Refused by name** | Not reserved, not deferred — refused, and refused at DECODE by the near-miss table rather than ignored, so an emission reaching for it is told what to write. The `staticRows` path keeps its own `sortable`, which is not an exception: a static table holds its rows in the tree, so there is no state key for a reader to name. |
 
 ### Interaction / affordance cluster (added 2026-08-18 — the affordance→op charter, Phase 866)
 
@@ -393,6 +420,17 @@ about the metric; a host derives neither from the other.*
 | sign inversion / "emit the trend already flipped" | **Rejected** | A −7.34% error rate printed as +7.34% is a false statement about the world. Polarity changes how a number reads, never what it says. |
 | value→tone map on a trend (the `TonedPill` shape) | **Rejected** | `TonedPill` maps a discrete field value through a `Map`; a continuous trend would need a range predicate, which is an expression language in a slot — refused here on the same grounds 864 refused boolean combinators. It also re-encodes tone where the missing fact is direction. |
 | `Neutral` polarity (a quantity with no better direction) | **Reserved, not admitted** | No §1.1 evidence. Reserved as a third case of the enum so a later admission is a bare-string addition rather than a boolean's replacement — which is the whole reason the slot is an enum and not `inverted: bool`. |
+
+**Host adoption is PARTIAL, and this is the surface the next host sweep reads.** Recorded here by
+Phase 873; Phase 867's Outcome undertook to leave the note and left only the CSS-defect row above,
+which is the row describing a defect that was FIXED — so the standing gap was recorded nowhere. The F#,
+TypeScript, Swift and Kotlin surfaces read `trendPolarity` and project the sentiment with a non-colour
+channel. **Go, Python and Rust still paint the trend unconditionally and do not read the field**, which
+means the constant-green defect Part A fixed in the reference tiers is still live in those three: a
+falling error rate and a falling revenue both read as improvements. `nodes/metric-inverted-polarity.json`
+exists to gate the port, so each is a mechanical follow-up against a fixture rather than a design
+question. `Email.fs`'s email-safe projection is deliberately NOT in that list — it has no class
+vocabulary and tones the trend with the TILE's tone, so it never carried the defect.
 
 **Reading of the taxonomy:** of ~20 reserved candidates, the overwhelming majority resolve to
 **variant / composition / role / covered** – only `NavBar`/`Menu`, a single consolidated `Media`, and a

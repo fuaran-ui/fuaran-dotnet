@@ -715,11 +715,11 @@ module Column =
           // (`Field = Some …`, `Value = None`) is produced on the decoded path.
           Value = Some col.Value
           Field = None
-          // Phase 861 / 863 — the typed author facade carries no per-column
-          // narrowing; both flags are decoded-path declarations, like `Field`
-          // beside them.
-          Sortable = None
-          Editable = None
+          // Phase 861 / 863, surfaced on the typed facade by Phase 873 — both
+          // narrowing flags pass through. They are declarations, not closures,
+          // so the erasure has nothing to do to them.
+          Sortable = col.Sortable
+          Editable = col.Editable
           Format = col.Format
           Kind =
             match col.Kind with
@@ -1419,11 +1419,17 @@ module Fuaran =
               // no unbox wrapper survives.
               RowKey = Some spec.RowKey
               RowKeyField = None
-              SortStateKey = None
-              PageSize = None
-              PageStateKey = None
-              DefaultSort = None
-              EditStateKey = None
+              // Phases 861 / 862 / 863 (surfaced on the typed facade by Phase
+              // 873): the declarative grid-behaviour slots pass through
+              // unchanged. They are wire DECLARATIONS, not closures, so unlike
+              // `Source` they need no `toRow` projection.
+              SortStateKey = spec.SortStateKey
+              PageSize = spec.PageSize
+              PageStateKey = spec.PageStateKey
+              DefaultSort = spec.DefaultSort
+              EditStateKey = spec.EditStateKey
+              // Phase 934's `reorderable` has no typed-facade slot yet — the
+              // §11-step-6 follow-up for that phase, not this one's.
               Reorderable = false
               Columns = spec.Columns |> List.map Column.erase
               OnRowClick = spec.OnRowClick

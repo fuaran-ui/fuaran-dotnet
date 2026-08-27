@@ -327,7 +327,21 @@
          Minor, per the 0.36.0 precedent for the identical shape. Deliberately
          a defect FLAG and NOT the seeding semantics change, which is deferred;
          see STABILITY.md "Recorded change — 0.39.0". -->
-    <Version>0.39.0</Version>
+    <!-- 0.39.0 ALSO carries Phase 867's `MetricSpec.trendPolarity` + the
+         `TrendPolarity` enum, which landed into this version rather than
+         cutting one of its own. Recorded retroactively by Phase 873; see
+         STABILITY.md "Recorded change — 0.39.0, trend polarity". -->
+    <!-- 0.40.0 (Phase 873): the 861-867 wave's authoring surfaces. NO wire
+         change — the corpus regenerates byte-for-byte — but the typed F#
+         facade (`GridSpecOf` +5 fields, `Column` +2), the C# veneer (four new
+         enums, three new value records, the grid/table/metric/form options)
+         and the VB XML tier all gain the slots the wave added, which none of
+         them could author. Construction-site breaks in F#, so minor per the
+         0.36.0 / 0.39.0 precedent; the `{ Defaults.grid with ... }` idiom is
+         unaffected. This is Phase 801's recorded step-6 follow-up: no gate
+         binds a payload FIELD, so nothing was red while the surfaces were
+         missing. See STABILITY.md "Recorded change — 0.40.0". -->
+    <Version>0.40.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

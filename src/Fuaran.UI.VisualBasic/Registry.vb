@@ -43,13 +43,20 @@ Friend Module CoreMapping
                 .Children = Kids(el)})
 
         ' ── Display ───────────────────────────────────────────────────────────
+        ' Phase 867's `trend-polarity`, surfaced here by Phase 873 — together with
+        ' `trend`, which this tier had never carried. Polarity alone would have been a
+        ' fake affordance: it is a statement ABOUT a trend, so on a tile with no trend
+        ' it declares a sentiment for a quantity the tile never shows.
         d("Metric") = Function(el) Csharp.Fuaran.Metric(
             New Csharp.MetricOptions With {
                 .Id = Attr(el, "id"),
                 .Label = AsText(Attr(el, "label")),
                 .Value = AsDoubleBinding(Attr(el, "value")),
                 .Format = ReadFormat(el),
-                .Tone = AsEnum(Of Csharp.Tone)(Attr(el, "tone"), Csharp.Tone.Default)})
+                .Tone = AsEnum(Of Csharp.Tone)(Attr(el, "tone"), Csharp.Tone.Default),
+                .Trend = OptDoubleBinding(el, "trend"),
+                .TrendPolarity = AsEnum(Of Csharp.TrendPolarity)(
+                    Attr(el, "trend-polarity"), Csharp.TrendPolarity.HigherIsBetter)})
 
         d("Heading") = Function(el) Csharp.Fuaran.Heading(
             New Csharp.HeadingOptions With {

@@ -395,14 +395,24 @@ let grid<'row, 'Msg> : GridSpecOf<'row, 'Msg> =
       RowKey = (fun _ -> "")
       Columns = []
       OnRowClick = Option.None
-      Editable = false }
+      Editable = false
+      // Phases 861 / 862 / 863 — the declarative grid-behaviour slots. All
+      // absent by default: the pre-861 wire, byte-for-byte.
+      SortStateKey = Option.None
+      DefaultSort = Option.None
+      PageSize = Option.None
+      PageStateKey = Option.None
+      EditStateKey = Option.None }
 
 let column<'Msg> : Column<'Msg> =
     { Label = ""
       Value = (fun _ -> CellValue.Empty)
       Format = CellFormat.None
       Kind = CellKind.Text
-      Width = ColumnWidth.Auto }
+      Width = ColumnWidth.Auto
+      // Phases 861 / 863 — both narrowing flags inherit by default.
+      Sortable = Option.None
+      Editable = Option.None }
 
 // ─── Custom — bounded-escape defaults ────────────────────────────────────────
 //

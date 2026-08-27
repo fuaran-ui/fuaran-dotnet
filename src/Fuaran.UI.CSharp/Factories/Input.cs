@@ -113,38 +113,42 @@ public sealed class FormField
 
     private FormField(FsGen.FormField<object> inner) => Inner = inner;
 
-    private static FormField Make(string id, Text label, FsGen.FormFieldKind<object> kind, bool required, Text? help) =>
+    private static FormField Make(string id, Text label, FsGen.FormFieldKind<object> kind, bool required, Text? help, FieldRule? rule = null) =>
         // Generated FormField declares (Id, Kind, Label, Required, Help, Rule) — ctor is
-        // declaration order. Phase 864 added the Rule slot; the veneer does not author a
-        // rule (see the charter's §11-step-6 ruling — a spec-record FIELD binds neither
-        // veneer, and authoring a rule from C#/VB is tracked as its own follow-up), so it
-        // passes None and a C#-authored field is unconstrained beyond `required`.
+        // declaration order. Phase 864 added the Rule slot and recorded that no §11
+        // step-6 gate binds a spec-record FIELD (Coverage.cs reflects NodeKind cases; the
+        // VB analyzer pins Vocabulary.Kinds), so the veneer passed None and nothing was
+        // red. Phase 873 is the follow-up that ruling named: a rule is DATA, so unlike
+        // the field handlers beside it, it survives this veneer intact.
         new(new FsGen.FormField<object>(
             id,
             kind,
             label.Inner,
             required,
             help is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
-            Fs.None<FsGen.FieldRule>()));
+            rule is { } r ? Fs.Some(r.Inner) : Fs.None<FsGen.FieldRule>()));
 
-    /// <summary>A text field.</summary>
-    public static FormField Text(string id, Text label, string initial = "", bool required = false, Text? help = null) =>
-        Make(id, label, FsGen.FormFieldKind<object>.NewText(Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<string>())), required, help);
+    /// <summary>A text field. <paramref name="rule"/> declares a constraint the host
+    /// must enforce at submit (Phase 864).</summary>
+    public static FormField Text(string id, Text label, string initial = "", bool required = false, Text? help = null, FieldRule? rule = null) =>
+        Make(id, label, FsGen.FormFieldKind<object>.NewText(Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<string>())), required, help, rule);
 
-    /// <summary>A number field.</summary>
-    public static FormField Number(string id, Text label, double initial = 0.0, bool required = false, Text? help = null) =>
-        Make(id, label, FsGen.FormFieldKind<object>.NewNumber(Fs.Some(global::Fuaran.UI.Generated.Binding<double>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<double>())), required, help);
+    /// <summary>A number field. A numeric RANGE is <see cref="Fuaran.RangedNumber"/>'s
+    /// job, not <paramref name="rule"/>'s — the rule vocabulary deliberately does not
+    /// restate a bound that already had a spelling (FUARAN101 refuses one that does).</summary>
+    public static FormField Number(string id, Text label, double initial = 0.0, bool required = false, Text? help = null, FieldRule? rule = null) =>
+        Make(id, label, FsGen.FormFieldKind<object>.NewNumber(Fs.Some(global::Fuaran.UI.Generated.Binding<double>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<double>())), required, help, rule);
 
     /// <summary>A checkbox field.</summary>
-    public static FormField Checkbox(string id, Text label, bool initial = false, bool required = false, Text? help = null) =>
-        Make(id, label, FsGen.FormFieldKind<object>.NewCheckbox(Fs.Some(global::Fuaran.UI.Generated.Binding<bool>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<bool>())), required, help);
+    public static FormField Checkbox(string id, Text label, bool initial = false, bool required = false, Text? help = null, FieldRule? rule = null) =>
+        Make(id, label, FsGen.FormFieldKind<object>.NewCheckbox(Fs.Some(global::Fuaran.UI.Generated.Binding<bool>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<bool>())), required, help, rule);
 
     /// <summary>A multi-line text-area field.</summary>
-    public static FormField TextArea(string id, Text label, int rows = 4, string initial = "", bool required = false, Text? help = null) =>
-        Make(id, label, FsGen.FormFieldKind<object>.NewTextArea(Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<string>()), rows), required, help);
+    public static FormField TextArea(string id, Text label, int rows = 4, string initial = "", bool required = false, Text? help = null, FieldRule? rule = null) =>
+        Make(id, label, FsGen.FormFieldKind<object>.NewTextArea(Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(initial))), Fs.Some(NoFieldHandler<string>()), rows), required, help, rule);
 
     /// <summary>A single-choice (dropdown) field.</summary>
-    public static FormField Choice(string id, Text label, string? selected, IEnumerable<(string Value, string Label)> options, bool required = false, Text? help = null) =>
+    public static FormField Choice(string id, Text label, string? selected, IEnumerable<(string Value, string Label)> options, bool required = false, Text? help = null, FieldRule? rule = null) =>
         Make(
             id,
             label,
@@ -153,7 +157,8 @@ public sealed class FormField
                 Fuaran.ChoiceValue(selected),
                 Fs.Some(Fuaran.NoOptStrHandler())),
             required,
-            help);
+            help,
+            rule);
 
     private static Microsoft.FSharp.Core.FSharpFunc<T, FsAction> NoFieldHandler<T>() =>
         Fs.Func<T, FsAction>(_ => FsAction.NewChain(Fs.Empty<FsAction>()));

@@ -265,6 +265,24 @@ property* – set `gap` on a `Box`'s `Flex` / `Grid` `layout` rather than insert
 horizontal rule / separator is a childless `Box` with `role: Separator` (`<hr>` / `role="separator"`).
 The decoder **rejects** a bare `"$type": "Spacer"` / `"Divider"` (`UNKNOWN_DU_CASE`).
 
+#### When DOWN is good — `trendPolarity`, which is not `tone` (Phase 867)
+
+A `Metric`'s `trend` is a signed number, and the renderer reads its SIGN to decide whether the movement shows as an improvement or a regression. For most measures that is right; for wait time, error rate, cost, churn and every other quantity you want smaller, it is exactly backwards. `"trendPolarity": "LowerIsBetter"` says so:
+
+```json
+{ "id": "wait", "kind": { "$type": "Metric", "label": "Avg wait", "tone": "Warning",
+  "value": { "$type": "Static", "value": 80 },
+  "trend": { "$type": "Static", "value": -0.0734 },
+  "trendFormat": { "$type": "Percent", "decimals": 2 },
+  "trendPolarity": "LowerIsBetter" } }
+```
+
+The rule is **sentiment = sign(trend) × polarity**, and it applies to the trend element alone. It never negates the value: a −7.34% error rate still prints with its minus sign, because printing it as +7.34% would be a false statement about the world. `"HigherIsBetter"` is the default and is omitted on the wire, so say nothing when nothing is inverted.
+
+**Do not reach for `tone` instead.** They are different statements about different subjects: `tone` says how the reading STANDS right now (this wait time is still bad), polarity says which way the quantity IMPROVES (down). The tile above is both at once — `"tone": "Warning"` because 80 minutes is still above target, `LowerIsBetter` because it is falling — and one slot could never have carried both. A host derives neither from the other, and nothing writes back to `tone`.
+
+There is no `"Neutral"`: the spelling is reserved and no conformant host accepts it. A quantity with no better direction simply omits `trend`.
+
 #### Links and navigation – `Link` vs `Button` + `Action.Navigate`
 
 Two different intents, two different primitives:
@@ -316,6 +334,30 @@ A `Fuaran.form` carries an ordered list of fields; each field's `Kind` chooses t
 | `FormFieldKind.Range` | Dual-thumb numeric range. The value is a `(min, max)` pair; optional `Min` / `Max` / `Step` bound both ends. |
 | `FormFieldKind.Date` | Date / time / datetime input. The value is an ISO-8601 string; `DateVariant` picks the native control. |
 | `FormFieldKind.DateRange` | Start-and-end dates in **one** control — the value is an ordered `(from, to)` pair of ISO-8601 strings, with `DateVariant` and the optional ISO `Min` / `Max` + numeric `Step` bounding both ends. Reach for this rather than two `Date` fields whenever the two dates are one value: in a filter strip it binds **one** filter param, so everything downstream scopes off a single key. A literal pair must be ordered (`from <= to`) or the tree is refused at decode. |
+
+#### Field constraints are DECLARED — `rule`, not help text (Phase 864)
+
+A field's `Kind` names the **control**; its optional `rule` names the **accepted set**. Restating the constraint as `help` prose is the miss this slot exists to end — help text tells the reader what to do and obliges the host nothing, where a rule is enforced: a conformant rendering host **must not submit the form while a declared rule is unmet** and must make visible which field is unmet.
+
+`FieldRule` carries, all optional and all independent:
+
+- `"format": "email" | "url" | "tel"` — a named text SHAPE. Semantic, not a regex; the renderer's `<input type="email">` is that set's HTML projection rather than a second place the wire says the same thing.
+- `"pattern": "<regex>"` — a shape the vocabulary does not name. Carry a `message` with it: a host phrases a `format` failure well and a `pattern` failure badly.
+- `"minLength"` / `"maxLength"` — inclusive bounds. `minLength > maxLength` is refused at decode.
+- `"compare": {"against": <Binding>, "op": "eq"|"neq"|"lt"|"lte"|"gt"|"gte"}` — the cross-field predicate ("end date on or after start date"). Point `against` at a keyless `{"$type":"State","key":"<other field id>"}`. A comparison between values of different shapes is UNMET, not an error.
+- `"message": <TextSource>` — what the reader is told when the rule is unmet.
+
+```json
+{ "id": "work-email", "kind": { "$type": "Text" }, "label": "Work email", "required": true,
+  "rule": { "format": "email" } }
+{ "id": "end-date", "kind": { "$type": "Date", "variant": "Date" }, "label": "End date", "required": true,
+  "rule": { "compare": { "against": { "$type": "State", "key": "hire-start-date" }, "op": "gte" },
+            "message": "End date must be on or after the start date" } }
+```
+
+**A numeric RANGE is not a rule** — it is `FormFieldKind.RangedNumber`, which shipped long before this vocabulary, and a `compare` restating a bound the control already carries draws **FUARAN101**. An entirely empty `rule` object is refused at decode: "no constraint" is spelled by omitting the slot. A rule slot the control cannot honour — a `pattern` on a `Checkbox`, a `format` on a `TextArea` — draws **FUARAN100**, and a `compare` reading a state key no field owns and nothing writes draws **FUARAN099** (Error).
+
+**This is an affordance, never a gate.** Client-side enforcement is a courtesy to the reader; a host that accepts submissions re-checks every declared constraint server-side.
 
 #### Segmented choice (Phase 66)
 
@@ -711,7 +753,15 @@ Use this shape when the model-side active-tab state is a DU rather than an int. 
 | **FUARAN077** | Warning | A grid column has **neither `value` nor `field`** – it renders blank in every host (Phase 425). Always give a decoded column a `field`. |
 | **FUARAN078** | Warning | A `DataGrid` has **neither `rowKey` nor `rowKeyField`** – no stable row identity, so selection highlighting (Phase 427) and keyed diffing degrade. Give the grid a `rowKeyField`. |
 | **FUARAN091** | Error | The tree nests nodes deeper than the wire limit **max node depth = 24** (`WIRE_FORMAT.md` §21). Reported once, at the first node past the limit, carrying that node's id; the walk stops descending there, so a single over-deep subtree does not bury the rest of the report. A decoder refuses such a tree outright (`LIMIT_EXCEEDED`), so this fires on trees built in-process. Flatten the nesting — 24 levels is far beyond any realistic layout (a deliberately deep dashboard reaches about 16). |
-| **FUARAN090** | Warning | A `DataGrid` sets `editable: true` but its `source` is **not directly a `$state` binding** – edits have nowhere to go (a `Transform` pipeline is not invertible; `Static` rows are host data), so every cell renders read-only (Phase 663). Source the grid – and every reader that should track edits – from a shared `{"$type":"State","key":…,"defaultValue":[rows]}` binding. |
+| **FUARAN090** | Warning | A `DataGrid` sets `editable: true` but has **neither an `editStateKey` nor a `source` that is directly a `$state` binding** – edits have nowhere to go (a `Transform` pipeline is not invertible; `Static` rows are host data), so every cell renders read-only (Phase 663). Declare `editStateKey`, or source the grid – and every reader that should track edits – from a shared `{"$type":"State","key":…,"defaultValue":[rows]}` binding. |
+| **FUARAN093** | Error | A `DataGrid` declares `pageSize` with **no `pageStateKey`** (Phase 862). A page size with nothing carrying the position is not a page — the grid would render every row. Declare both, or neither. |
+| **FUARAN094** | Error | A column declares `sortable: true` under a grid naming **no `sortStateKey`** (Phase 861). A column flag NARROWS a behaviour and never widens one, so this asks for something the rule does not grant. Declare `sortStateKey` on the grid, or drop the flag — under a grid that has one, `sortable: true` merely restates the default. |
+| **FUARAN095** | Error | A column declares `editable: true` under a grid that is **not editable** (Phase 863) — the write-side twin of FUARAN094, and refused for the same reason. |
+| **FUARAN096** | Warning | A `DataGrid` declares `pageSize` while its `source` is a `Query` whose `dependsOn` names the page key (Phase 862) — the host is already returning one page, so the grid slices that page again and loses the rest. Page host-side *or* grid-side, never both. |
+| **FUARAN099** | Error | A `FieldRule.compare` reads a state key **no field owns and nothing in the tree writes** (Phase 864) — the comparison can never resolve, so the rule is unmet forever or silently skipped. Point `against` at a real sibling field's id. |
+| **FUARAN100** | Warning | A rule slot **the control cannot honour** (Phase 864) – a `pattern` on a `Checkbox`, a `format` on a `TextArea`. The constraint is declared and no host can enforce it. |
+| **FUARAN101** | Warning | A `compare` against a literal **duplicating a bound the control already carries** (Phase 864). A numeric range is `RangedNumber`'s job; restating it as a rule gives two places to change and one to forget. |
+| **FUARAN105** | Warning | A `Binding.Transform` whose own `source` is a default-less `{"$type":"State","key":…}` **nothing in the tree writes** (Phase 865). `defaultValue` on a *sibling* reader is a per-reader fallback, not a slot seed, so the derivation resolves over the empty table and renders a plausible wrong answer — a `groupBy`/`count` reads zero, forever, with nothing red at decode or at render. Point the Transform at a source something fills. |
 
 `PreEmitValidate.validate` reports all of these; fix every reported defect before submitting the tree.
 
@@ -901,7 +951,32 @@ The renderer projects each `field` off the row (a `Transform` produces rows keye
 
 Give the grid a `rowKeyField` (stable identity – it also drives the selected-row highlight). The `nodeId` must name a real, selection-producing node: a `Selection` over an id absent from the tree is FUARAN070 (error); over a non-Visualisation node, FUARAN071 (warn). A present `onRowClick` closure wins and suppresses the default write.
 
-**An editable grid is the write-back default applied to rows (Phase 663).** `"editable": true` has semantics only when the grid's `source` is **directly** a `$state` binding carrying the rows as its default:
+### A bound grid's declared behaviours — sort, page, edit (Phases 861 / 862 / 863)
+
+One rule decides all three, and it is the thing to learn once: **a grid behaviour the user drives is declared as a named `$state` key the grid both writes and reads, and the renderer draws the control.** There is deliberately no grid-level `sortable` or `pageable` boolean — the KEY is the affordance, so a flag with no key behind it would be a control that writes state nothing reads.
+
+**Sorting a bound grid — `sortStateKey`.** `"sortStateKey": "<key>"` names the `$state` slot holding `{"column": <index>, "direction": "asc"|"desc"}`. Declaring it is what makes the headers clickable; every column with a `field` is then sortable, and `"sortable": false` on a column opts that one out (a note column, an actions column). `"sortable": true` only ever restates the default, and under a grid naming no `sortStateKey` it is refused (**FUARAN094**) — a column cannot switch on a behaviour the grid does not have. `"defaultSort": {"column": <index>, "direction": …}` declares the OPENING order and stands alone: with no `sortStateKey` the grid opens in that order and is not re-sortable, which is a legitimate shape. **A pipeline `sort` step is not sortability** — it fixes one order into the data before the grid sees it and leaves no header to click. When the prompt says the user sorts, the answer is `sortStateKey`.
+
+**Paging — `pageSize` + `pageStateKey`, both or neither.** `"pageSize": <rows>` plus `"pageStateKey": "<key>"` (the slot holding `{"page": <1-based int>}`) page the grid, and the pager is the renderer's to draw. `pageSize` alone is refused (**FUARAN093**): a page size with nothing carrying the position is not a page. **Do not assemble a pager** — a "Next 25" button, a page-number `Segmented`, a `Range` chip standing in for a page are all controls that look like paging and drive nothing. Keep this distinct from filtering: a filter decides WHICH rows exist, paging moves a window over the rows that already match, and a prompt asking for both wants a `Filters` node *and* the two grid fields. If the `source` is a `Query` whose `dependsOn` names the page key, the host is already returning one page — adding `pageSize` slices it again (**FUARAN096**).
+
+**Editing — declare WHERE the edit lands.** `"editable": true` turns field-named Text/Numeric cells into inputs, and every edit needs exactly one destination:
+
+- **`"editStateKey": "<key>"`** — the declared destination. Edits commit there whatever the `source` is, which is what lets a `Query`-sourced grid be editable at all.
+- **a `source` that is directly `{"$type":"State","key":…}`** — the implicit destination (Phase 663); edits go back to that same key.
+
+With neither the declaration is inert — every cell renders read-only and **FUARAN090** warns. **Never leave the destination to a handler:** `onEdit` is host code and encodes as `"<closure>"`, so a grid naming its destination only in prose has said nothing the renderer can act on. **Editability narrows per column exactly as sortability does:** `"editable": false` opts a column out, and when the prompt makes ONE column editable beside three reference columns, say so on the three — read-only that is merely implied is not declared. `"editable": true` on a column under a non-editable grid is refused (**FUARAN095**), the same widening the sort flag refuses.
+
+```json
+{ "id": "stock", "kind": { "$type": "DataGrid", "editable": true, "editStateKey": "stock-adjustments",
+  "sortStateKey": "stock-sort", "defaultSort": { "column": 1, "direction": "desc" },
+  "pageSize": 20, "pageStateKey": "stock-page", "rowKeyField": "month",
+  "columns": [ { "field": "month", "kind": { "$type": "Text" }, "label": "Month" },
+               { "field": "revenue", "kind": { "$type": "Numeric" }, "label": "Revenue" },
+               { "field": "note", "kind": { "$type": "Text" }, "label": "Note", "sortable": false, "editable": false } ],
+  "source": { "$type": "Query", "name": "stock" } } }
+```
+
+**The implicit destination, which is the older and still-correct shape (Phase 663).** `"editable": true` also has semantics with no `editStateKey`, when the grid's `source` is **directly** a `$state` binding carrying the rows as its default:
 
 ```json
 { "id": "perf-grid", "kind": { "$type": "DataGrid", "editable": true, "rowKeyField": "quarter",
@@ -913,11 +988,11 @@ Give the grid a `rowKeyField` (stable identity – it also drives the selected-r
               "defaultValue": [ { "quarter": "Q1", "revenue": 120 }, { "quarter": "Q2", "revenue": 150 } ] } } }
 ```
 
-The renderer turns each field-named Text/Numeric cell into an input and commits the updated rows to the key on every edit; the chart on the same key re-renders live. `"editable": true` over a `Transform`/`Static` source is inert (the data is not writable – every cell renders read-only) and draws **FUARAN090** (warn). A `Transform` pipeline cannot read the edited rows back, so keep every edit-tracking reader on the plain `$state` source. Date columns and row add/remove are not part of the floor.
+The renderer turns each field-named Text/Numeric cell into an input and commits the updated rows to the key on every edit; the chart on the same key re-renders live. `"editable": true` over a `Transform`/`Static` source **and no `editStateKey`** is inert (the data is not writable – every cell renders read-only) and draws **FUARAN090** (warn); declaring `editStateKey` is exactly what lifts that restriction, so a `Transform`- or `Query`-sourced grid can be edited once it names where the edits go. A `Transform` pipeline cannot read the edited rows back, so keep every edit-tracking reader on the destination key itself. Date columns and row add/remove are not part of the floor.
 
 ### The control write-back default – every interactive control is self-wiring (Phase 426)
 
-The Phase 423 chip rule generalises to **every value-carrying control**: form fields (all eight kinds), `Select` (single and multi), `Tabs`, `Modal`, and `Disclosure`. **Omit the event handler** (`onChange` / `onToggle` / `onSelect` / `onDismiss` – closures you cannot emit) and bind the control's **value slot directly to a `$state` key** (`{"$type":"State","key":…,"defaultValue":…}`) or a `$filters` name. The renderer then writes every change back to that slot and re-renders every reader of it – a fully interactive control with zero host code:
+The Phase 423 chip rule generalises to **every value-carrying control**: form fields (all nine kinds — the count was stale at eight from before `DateRange`), `Select` (single and multi), `Tabs`, `Modal`, and `Disclosure`. **Omit the event handler** (`onChange` / `onToggle` / `onSelect` / `onDismiss` – closures you cannot emit) and bind the control's **value slot directly to a `$state` key** (`{"$type":"State","key":…,"defaultValue":…}`) or a `$filters` name. The renderer then writes every change back to that slot and re-renders every reader of it – a fully interactive control with zero host code:
 
 ```json
 { "$type": "Text",     "value": { "$type": "State", "key": "profileName", "defaultValue": "" } }

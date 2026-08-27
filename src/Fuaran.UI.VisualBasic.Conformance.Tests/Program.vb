@@ -60,6 +60,13 @@ Module Program
         ' ── Full node-shape mapping-completeness guard (Phase 311). ─────────────
         Coverage.Run(h)
 
+        ' ── The 861–867 behaviour + constraint slots (Phase 873). Ordered AHEAD of
+        '    the corpus pass deliberately: the orphaned §21 shape-limit fixture family
+        '    throws System.Text.Json's depth-64 default inside Conformance and aborts
+        '    the process before Report runs — a pre-existing defect enumerated by
+        '    fuaran#864, not repaired here and not a reason to leave these unreachable. ─
+        GapClosureSlots.Run(h)
+
         ' ── Full corpus conformance + authoring parity (Phase 312). ─────────────
         Conformance.Run(h)
         Authoring.Run(h)

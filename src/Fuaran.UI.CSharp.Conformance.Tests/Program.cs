@@ -89,6 +89,17 @@ internal static class Program
         // ── Full node-shape coverage guard (Phase 305). ────────────────────────
         Coverage.Run(h);
 
+        // ── The 861–867 behaviour + constraint slots (Phase 873). No reflection
+        //    over the kind set can notice these, which is why they are hand-written.
+        //    Ordered AHEAD of the corpus pass deliberately: the §21 shape-limit
+        //    fixture family is orphaned from the corpus generator, and its 72-level
+        //    `nodes/limit-node-depth-at-max.json` throws System.Text.Json's depth-64
+        //    default inside Conformance, aborting the process before Report runs.
+        //    That is a pre-existing defect enumerated by fuaran#864 and filed
+        //    separately — not repaired here, and not a reason to leave these checks
+        //    unreachable behind it. ──────────────────────────────────────────────
+        GapClosureSlots.Run(h);
+
         // ── Full corpus conformance (Phase 306). ───────────────────────────────
         Conformance.Run(h);
 

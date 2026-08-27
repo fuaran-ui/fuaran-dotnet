@@ -159,6 +159,61 @@ Friend Module Attributes
         Return Attr(el, name)
     End Function
 
+    ''' <summary>
+    ''' An OPTIONAL boolean attribute (Phase 873) — Nothing when absent, which is
+    ''' NOT the same as False. The narrowing flags this reads (a column's
+    ''' `sortable` / `editable`, a static table's `sortable`) inherit on absence
+    ''' and opt out on False, so collapsing the two would turn every unstated
+    ''' column into an explicit opt-out.
+    ''' </summary>
+    Friend Function OptBoolAttr(el As XElement, name As String) As Boolean?
+        If Not HasAttr(el, name) Then Return Nothing
+        Return ParseBool(Attr(el, name))
+    End Function
+
+    ''' <summary>
+    ''' Read a declared INITIAL sort order (Phase 801 static / Phase 861 bound) from
+    ''' the `default-sort-column` + `default-sort-direction` pair. Nothing when the
+    ''' column is absent: a direction with no column names no order at all.
+    ''' </summary>
+    Friend Function ReadDefaultSort(el As XElement) As Csharp.DefaultSort
+        Dim col = OptIntAttr(el, "default-sort-column")
+        If Not col.HasValue Then Return Nothing
+        Return New Csharp.DefaultSort With {
+            .Column = col.Value,
+            .Direction = AsEnum(Of Csharp.SortDirection)(Attr(el, "default-sort-direction"), Csharp.SortDirection.Asc)}
+    End Function
+
+    ''' <summary>
+    ''' Read a field's declared constraint (Phase 864) from the `rule-*` attribute
+    ''' family. Nothing when no slot is declared — an EMPTY rule is refused by the
+    ''' wire, so emitting one here would author a document no host accepts.
+    ''' </summary>
+    Friend Function ReadFieldRule(el As XElement) As Csharp.FieldRule
+        Dim compare As Csharp.CompareRule = Nothing
+        If HasAttr(el, "rule-compare-field") Then
+            compare = Csharp.CompareRule.AgainstField(
+                Attr(el, "rule-compare-field"),
+                AsEnum(Of Csharp.CompareOp)(Attr(el, "rule-compare-op"), Csharp.CompareOp.Eq))
+        End If
+
+        Dim rule = New Csharp.FieldRule With {
+            .Format = OptEnum(Of Csharp.TextFormat)(el, "rule-format"),
+            .Pattern = OptStr(el, "rule-pattern"),
+            .MinLength = OptIntAttr(el, "rule-min-length"),
+            .MaxLength = OptIntAttr(el, "rule-max-length"),
+            .Compare = compare,
+            .Message = OptText(el, "rule-message")}
+
+        If rule.Format Is Nothing AndAlso rule.Pattern Is Nothing AndAlso
+           Not rule.MinLength.HasValue AndAlso Not rule.MaxLength.HasValue AndAlso
+           rule.Compare Is Nothing Then
+            Return Nothing
+        End If
+
+        Return rule
+    End Function
+
     ' Optional bindings — Nothing (null) when the attribute is absent, matching the
     ' C# options records' nullable binding slots.
     Friend Function OptBoolBinding(el As XElement, name As String) As Csharp.Binding(Of Boolean)

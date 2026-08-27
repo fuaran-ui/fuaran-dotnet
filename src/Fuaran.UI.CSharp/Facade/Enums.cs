@@ -148,6 +148,56 @@ public enum ChartXScale
     Temporal,
 }
 
+/// <summary>
+/// Which direction of a metric's trend is GOOD (Phase 867) — maps to the F#
+/// <c>TrendPolarity</c>. <c>HigherIsBetter</c> is the default and is omitted on
+/// the wire. There is deliberately no <c>Neutral</c> member: the wire RESERVES
+/// that spelling and does not accept it, and an enum that could spell it would
+/// advertise a value every conformant host refuses.
+/// </summary>
+public enum TrendPolarity
+{
+    HigherIsBetter,
+    LowerIsBetter,
+}
+
+/// <summary>
+/// Sort direction on a <see cref="DefaultSort"/> (Phase 801) — maps to the F#
+/// <c>SortDirection</c>. Lower-case on the wire: <c>"asc"</c> / <c>"desc"</c>.
+/// </summary>
+public enum SortDirection
+{
+    Asc,
+    Desc,
+}
+
+/// <summary>
+/// The declared TEXT SHAPE a field's value must take (Phase 864) — maps to the
+/// F# <c>TextFormat</c>. A format is a semantic declaration, not a regular
+/// expression: use <see cref="FieldRule.Pattern"/> for a shape the vocabulary
+/// does not name.
+/// </summary>
+public enum TextFormat
+{
+    Email,
+    Url,
+    Tel,
+}
+
+/// <summary>
+/// The comparison a cross-field rule makes (Phase 864) — maps to the F#
+/// <c>CompareOp</c>.
+/// </summary>
+public enum CompareOp
+{
+    Eq,
+    Neq,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+}
+
 /// <summary>Icon display size (Phase 821) — <c>Medium</c> is the default.</summary>
 public enum IconSize
 {
@@ -186,6 +236,33 @@ internal static class EnumMap
             IconSize.Small => FsGen.IconSize.Small,
             IconSize.Large => FsGen.IconSize.Large,
             _ => FsGen.IconSize.Medium,
+        };
+
+    internal static FsGen.TrendPolarity ToFs(this TrendPolarity p) =>
+        p == TrendPolarity.LowerIsBetter
+            ? FsGen.TrendPolarity.LowerIsBetter
+            : FsGen.TrendPolarity.HigherIsBetter;
+
+    internal static FsGen.SortDirection ToFs(this SortDirection d) =>
+        d == SortDirection.Desc ? FsGen.SortDirection.Desc : FsGen.SortDirection.Asc;
+
+    internal static FsGen.TextFormat ToFs(this TextFormat f) =>
+        f switch
+        {
+            TextFormat.Url => FsGen.TextFormat.Url,
+            TextFormat.Tel => FsGen.TextFormat.Tel,
+            _ => FsGen.TextFormat.Email,
+        };
+
+    internal static FsGen.CompareOp ToFs(this CompareOp o) =>
+        o switch
+        {
+            CompareOp.Neq => FsGen.CompareOp.Neq,
+            CompareOp.Lt => FsGen.CompareOp.Lt,
+            CompareOp.Lte => FsGen.CompareOp.Lte,
+            CompareOp.Gt => FsGen.CompareOp.Gt,
+            CompareOp.Gte => FsGen.CompareOp.Gte,
+            _ => FsGen.CompareOp.Eq,
         };
 
     internal static FsGen.DateStyle ToFs(this DateStyle d) =>

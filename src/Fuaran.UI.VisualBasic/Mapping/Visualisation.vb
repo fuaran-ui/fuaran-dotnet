@@ -33,7 +33,9 @@ Friend Module VisualisationMapping
             New Csharp.TableOptions With {
                 .Id = Attr(el, "id"),
                 .Headers = ChildTexts(el, "Header"),
-                .Rows = ReadRows(el)})
+                .Rows = ReadRows(el),
+                .Sortable = OptBoolAttr(el, "sortable"),
+                .DefaultSort = ReadDefaultSort(el)})
 
         d("Map") = Function(el) Csharp.Fuaran.Map(
             New Csharp.MapOptions With {
@@ -43,13 +45,21 @@ Friend Module VisualisationMapping
                 .CentreLongitude = AttrDouble(el, "centre-lng", 0.0),
                 .Zoom = AttrInt(el, "zoom", 4)})
 
+        ' Phases 861 / 862 / 863, surfaced here by Phase 873. These are DECLARATIONS,
+        ' not closures, so unlike the column value accessors below they survive the
+        ' XML round-trip intact — the same reason Phase 750's <Tone> children do.
         d("DataGrid") = Function(el) Csharp.Fuaran.DataGrid(Of Object)(
             New Csharp.DataGridOptions(Of Object) With {
                 .Id = Attr(el, "id"),
                 .Source = OptObjSeqBinding(el, "source"),
                 .ToRow = AddressOf RowCells,
                 .Columns = ReadColumns(el),
-                .Editable = AttrBool(el, "editable")})
+                .Editable = AttrBool(el, "editable"),
+                .SortStateKey = OptStr(el, "sort-state-key"),
+                .DefaultSort = ReadDefaultSort(el),
+                .PageSize = OptIntAttr(el, "page-size"),
+                .PageStateKey = OptStr(el, "page-state-key"),
+                .EditStateKey = OptStr(el, "edit-state-key")})
     End Sub
 
     ''' fuaran#665 — the required ToRow projection for XML-authored grids, whose row
@@ -107,8 +117,17 @@ Friend Module VisualisationMapping
             ' "tone this column by a DIFFERENT row property".
             Dim field = If(HasAttr(c, "tone-field"), Attr(c, "tone-field"), Attr(c, "field"))
             Dim dflt = AsEnum(Of Csharp.Tone)(Attr(c, "default-tone"), Csharp.Tone.Default)
-            Return col.WithTonedPill(field, map, dflt)
+            col = col.WithTonedPill(field, map, dflt)
         End If
+
+        ' Phases 861 / 863 — the two per-column NARROWING flags. Absent means
+        ' inherit, which is why they read through OptBoolAttr rather than AttrBool:
+        ' `False` opts the column out and unstated does not.
+        Dim sortable = OptBoolAttr(c, "sortable")
+        If sortable.HasValue Then col = col.Sortable(sortable.Value)
+
+        Dim editable = OptBoolAttr(c, "editable")
+        If editable.HasValue Then col = col.Editable(editable.Value)
 
         Return col
     End Function

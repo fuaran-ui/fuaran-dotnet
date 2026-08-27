@@ -1674,3 +1674,135 @@ are exempt.
 NAMED abstention rather than a silent gap: its pre-emit walker has no binding traversal and no
 tree-wide write projection, and a partial port of a rule that reasons from an absence would
 false-accuse rather than under-report. See its `validator-coverage.json`.
+
+## Recorded change — 0.26.0, the grid's declarative behaviour slots (fuaran#861, #862, #863)
+
+**Recorded retroactively by fuaran#873, and the delay is itself part of the record.** These three
+phases shipped their wire additions on 2026-08-16 and none of them wrote an entry here, so the
+version that carries the whole grid-behaviour vocabulary has been undescribed since. None of the
+three CUT 0.26.0 either — the version was already standing when the first landed, so three
+public-contract additions rode a number no one of them advanced. Under the producer-side rule a
+public-contract change advances `<Version>` in the same commit; what actually happened is closer to
+three changes sharing one slot. Nothing downstream broke, because the three landed within hours of
+each other and the published tier has since moved to 0.39.0 carrying all of them — but a consumer
+reading this file could not have learned that 0.26.0 means anything more than the release before it.
+
+**One rule decides all three**, and it is Phase 860's charter: *a grid behaviour the user drives is
+declared as a named State key that the grid both writes and reads, carrying a descriptor whose shape
+the specification fixes; the affordance belongs to the renderer.* That is why there is no `sortable`
+or `pageable` boolean on the grid — the KEY is the affordance. A flag with no key behind it is the
+decorative-pager shape the charter exists to refuse, and eleven cross-family emissions of exactly
+that shape were what produced it.
+
+**Additive public surface (each a *minor* event per the Semver note above).**
+
+- `DataGridSpec` gains `SortStateKey: string option`, `DefaultSort: DefaultSort option`,
+  `PageSize: int option`, `PageStateKey: string option` and `EditStateKey: string option`.
+- `ColumnErased` gains `Sortable: bool option` and `Editable: bool option`.
+- Every one of the seven is an F# record field addition, so every one is a construction-site break —
+  the same shape as 0.36.0's and 0.39.0's, and minor for the same reason.
+
+**Wire contract.** All seven are omitted when absent, so a pre-861 document encodes byte-for-byte as
+it did. `sortStateKey` names the key carrying `{"column": <index>, "direction": "asc"|"desc"}`;
+`pageStateKey` names the key carrying `{"page": <1-based int>}` and `pageSize` is refused below 1
+(`WRONG_TYPE`); `editStateKey` names the key an edited cell's whole updated rows value commits to.
+The two column flags NARROW and never widen: absent inherits, `false` opts out, and `true` under a
+grid that grants nothing is a pre-emit error — `FUARAN094` on the sort side, `FUARAN095` on the write
+side. Corpus: `nodes/grid-bound-sort.json`, `nodes/grid-paged.json`, `nodes/grid-paged-sorted.json`,
+`nodes/grid-declared-edit.json`.
+
+**What `editStateKey` actually bought, stated because it is easy to read as a convenience.** Before
+it, a DECODED editable grid could not say where its edits land — the only spelling was a closure,
+which erases to `"<closure>"` — so the destination survived authoring in F# and vanished on the wire.
+That is census row #27's whole complaint.
+
+**Authoring surfaces.** None of the three reached the C#, VB or F# typed AUTHOR facades when it
+shipped, and nothing failed: the §11 step-6 gates reflect `NodeKind` CASES, and these are FIELDS.
+Closed by fuaran#873 at 0.40.0 below.
+
+## Recorded change — 0.39.0, trend polarity (fuaran#867)
+
+**Recorded retroactively by fuaran#873.** Phase 867 Part B landed `MetricSpec.trendPolarity` into a
+0.39.0 that fuaran#865 had cut hours earlier for FUARAN105, and wrote no entry here — so the entry
+above describes 0.39.0 as the silent-zero derivation warning and nothing else, while the published
+0.39.0 also carries a new wire field and a new bare-string enum. Both changes reached consumers in one
+coherent published version, so no contract was swapped underneath anyone; what was wrong is that this
+file said only half of what that version means.
+
+**Additive public surface (a *minor* event per the Semver note above).**
+
+- A new bare-string enum type `TrendPolarity` with cases `HigherIsBetter` and `LowerIsBetter`.
+- `MetricSpec` gains `TrendPolarity: TrendPolarity` — TOTAL, not an option, with `HigherIsBetter` as
+  the identity default and omitted at that default. A record field addition, so a construction-site
+  break in F#, and it broke the C# fluent veneer and the poc builder outright, both of which construct
+  `MetricSpec` through the generated POSITIONAL constructor. That is the sharpest available statement
+  of what step 6's gates do and do not cover: the TESTS are insensitive to a field, the CODE is not.
+
+**Wire contract.** `"trendPolarity": "LowerIsBetter"`, omitted at the default. `Neutral` is RESERVED
+and deliberately not a case — which is the whole reason the slot is an enum rather than
+`inverted: bool`, since a later admission is then a bare-string addition and not a type replacement.
+The composition rule is the deliverable rather than the field, and it is normative at
+`WIRE_FORMAT.md` §3.6.1: **sentiment = sign(trend) x polarity**, rendered on the trend element alone.
+It never negates the value, and it never writes to `tone` — `tone` says how the reading STANDS,
+polarity says which way the quantity IMPROVES, and no host derives either from the other. Corpus:
+`nodes/metric-inverted-polarity.json`.
+
+**What Part A fixed, which is why the slot means anything.** Before it, `.fuaran-metric-trend` carried
+one class and the reference stylesheet painted it success-toned unconditionally — so a -7.34% error
+rate read green by accident and a -7.34% revenue read green while being wrong. A polarity slot shipped
+alone would have changed nothing observable. Sentiment is now a function of the resolved trend's sign
+across all four reference renderers, and because colour alone fails WCAG 1.4.1 a visible glyph carries
+an `aria-label` naming the sentiment — placed on the GLYPH, so assistive technology hears "improving
+-7.3%" instead of losing the number to an overriding label.
+
+**Host adoption is PARTIAL and named.** The F#, TypeScript, Swift and Kotlin surfaces read the field.
+Go, Python and Rust still paint the trend unconditionally and do not read it — recorded in
+`docs/VOCABULARY.md` where the next host sweep will find it, with the corpus fixture that now exists to
+gate the port.
+
+## Recorded change — 0.40.0, the wave's authoring surfaces (fuaran#873)
+
+**No wire change, and that is the point.** Nothing about how a document encodes, decodes or resolves
+moves; `--emit-corpus` produces the corpus byte-for-byte. What changes is that the seven grid fields,
+the field rule and the polarity enum recorded in the two entries above become AUTHORABLE from the
+typed F# facade, the C# fluent veneer and the VB XML literals — which none of them was.
+
+**Why this needed a phase of its own.** Phase 801 recorded the mechanism and the honest consequence:
+the C# coverage test reflects `NodeKind` union cases and the VB analyzer pins the kind vocabulary, so
+a payload-FIELD addition binds NEITHER veneer — no gate fails, and the absence is invisible to every
+test. Only a C#, VB or F# author discovers it, in some later session. Five phases then shipped fields
+behind that blind spot. The gates are unchanged and still correct for what they measure; what this
+release adds is the surfaces themselves, plus hand-written checks in both veneer conformance harnesses
+that assert what no reflection over the kind set can notice.
+
+**Additive public surface (each a *minor* event per the Semver note above).**
+
+- `Types.GridSpecOf` gains `SortStateKey`, `DefaultSort`, `PageSize`, `PageStateKey`, `EditStateKey`;
+  `Types.Column` gains `Sortable: bool option` and `Editable: bool option`. Record field additions, so
+  construction-site breaks — but `Defaults.grid` / `Defaults.column` carry them, so the documented
+  `{ Defaults.grid with ... }` idiom is unaffected.
+- `Fuaran.UI.CSharp` gains the value records `DefaultSort`, `FieldRule` and `CompareRule`, and the
+  enums `TrendPolarity`, `SortDirection`, `TextFormat` and `CompareOp`.
+- `DataGridOptions<TRow>` gains the five behaviour slots; `TableOptions` gains Phase 801's `Sortable`
+  and `DefaultSort`; `MetricOptions` gains `TrendPolarity`; `Column` gains the fluent narrowing
+  methods `Sortable(bool)` and `Editable(bool)`; every `FormField` factory gains an optional
+  `FieldRule? rule` parameter.
+- The VB tier reads them as attributes: `sort-state-key` / `page-size` / `page-state-key` /
+  `edit-state-key` / `default-sort-column` / `default-sort-direction` on `<DataGrid>`, `sortable` and
+  `editable` on `<Column>`, the `rule-*` family on `<Field>`, and `trend` + `trend-polarity` on
+  `<Metric>`. The analyzer's per-element attribute table gains all of them, so authoring one no longer
+  draws FUARAN061.
+
+**`<Metric trend>` arrives with `trend-polarity`, and that pairing is deliberate.** The VB tier had
+never carried `trend` at all, so polarity alone would have been a fake affordance in exactly the sense
+Phase 866 defines: a statement ABOUT a trend, on a tile that cannot show one.
+
+**Phase 934's `reorderable` is NOT surfaced**, and its absence is a finding rather than a scope
+choice: it is the same step-6 follow-up one phase later, and it belongs to that phase.
+
+**What is deliberately NOT authorable, per item.** A grid's per-cell `Editable` / `Checkbox` /
+`Button` / `Link` / `Pill` / `Progress` kinds stay F#-only — each is defined by a closure over the
+row, which the veneers cannot model and the wire cannot carry. That is the pre-existing boundary these
+additions do not move: everything added here is DATA, which is exactly why it survives the veneer
+intact, and it is the same reason Phase 750's declarative `TonedPill` could be surfaced when `Pill`
+could not.

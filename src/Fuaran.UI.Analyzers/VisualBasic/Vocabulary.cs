@@ -65,7 +65,10 @@ internal static class Vocabulary
         Add("ScrollArea", "id", "orientation", "max-height", "max-width");
         Add("Heading", "id", "text", "level", "variant");
         Add("Markdown", "id", "text");
-        b["Metric"] = WithFormat("id", "label", "value", "tone");
+        // Phase 867 / 873 — `trend` and `trend-polarity` arrive together. Polarity is
+        // a statement ABOUT a trend, so a tier that could spell one and not the other
+        // would let an author declare a sentiment for a quantity the tile never shows.
+        b["Metric"] = WithFormat("id", "label", "value", "tone", "trend", "trend-polarity");
         Add("Badge", "id", "label", "variant");
         Add("Sparkline", "id", "source");
         Add("Spacer", "id", "size");
@@ -106,9 +109,18 @@ internal static class Vocabulary
         Add("Chart", "id", "source", "kind", "x-field", "y-fields", "title", "stacked",
             "value-format-currency", "value-format-number", "value-format-percent",
             "x-title", "y-title", "subtitle", "legend-position", "data-labels", "x-scale");
-        Add("Table", "id");
+        // Phase 801 / 873 — the static table's declared sort intent. `default-sort-column`
+        // indexes the <Header> children; a direction with no column names no order, so the
+        // pair is read as one.
+        Add("Table", "id", "sortable", "default-sort-column", "default-sort-direction");
         Add("Map", "id", "centre-lat", "centre-lng", "zoom");
-        Add("DataGrid", "id", "source", "editable");
+        // Phases 861 / 862 / 863 / 873 — the grid's behaviour declarations. Each names a
+        // State key the grid both writes and reads (Phase 860's charter rule), which is why
+        // there is no `sortable` / `pageable` boolean here: the KEY is the affordance, and a
+        // flag with no key behind it is the decorative-pager shape the charter refuses.
+        Add("DataGrid", "id", "source", "editable",
+            "sort-state-key", "default-sort-column", "default-sort-direction",
+            "page-size", "page-state-key", "edit-state-key");
         Add("Custom", "id", "module-id", "component-id", "exposed-node-ids");
         Add("ErrorBoundary", "id");
         Add("FragmentDecl", "id", "name");
@@ -118,12 +130,20 @@ internal static class Vocabulary
         // Structural sub-elements.
         Add("Case", "match");
         Add("Option", "value", "label");
-        Add("Field", "kind", "id", "label", "required", "initial", "help", "selected", "rows");
+        // Phase 864 / 873 — the `rule-*` family carries the field's DECLARED constraint.
+        // Every slot is optional and an entirely empty rule is refused by the wire, so the
+        // translator emits none unless at least one slot is stated.
+        Add("Field", "kind", "id", "label", "required", "initial", "help", "selected", "rows",
+            "rule-format", "rule-pattern", "rule-min-length", "rule-max-length",
+            "rule-compare-field", "rule-compare-op", "rule-message");
         Add("Filter", "kind", "name", "label");
         // Phase 750 — `tone-field` / `default-tone` accompany <Tone> children and turn the
         // column into a declarative TonedPill; `tone-field` is only needed when the tone is
         // driven by a DIFFERENT row property than the column displays.
-        Add("Column", "type", "label", "field", "tone-field", "default-tone");
+        // Phases 861 / 863 / 873 — `sortable` / `editable` on a COLUMN narrow the grid's
+        // behaviour and never widen it; absent means inherit, which is why neither has a
+        // default here.
+        Add("Column", "type", "label", "field", "tone-field", "default-tone", "sortable", "editable");
         Add("Tone", "value", "tone");
         Add("Marker", "lat", "lng", "label");
         Add("Prop", "name", "value");

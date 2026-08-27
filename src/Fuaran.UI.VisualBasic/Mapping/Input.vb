@@ -44,22 +44,26 @@ Friend Module InputMapping
         Return ChildElements(el, "Field").Select(AddressOf ReadField).ToList()
     End Function
 
+    ''' Phase 864's declared field rule, surfaced here by Phase 873. The rule is the
+    ''' language's answer to restating the constraint as help text — which is what
+    ''' every sighted emission did — so an XML author gets the same slot the wire has.
     Private Function ReadField(f As XElement) As Csharp.FormField
         Dim id = Attr(f, "id")
         Dim label = AsText(Attr(f, "label"))
         Dim required = AttrBool(f, "required")
         Dim help = OptText(f, "help")
+        Dim rule = ReadFieldRule(f)
         Select Case Attr(f, "kind", "text").ToLowerInvariant()
             Case "number"
-                Return Csharp.FormField.Number(id, label, AttrDouble(f, "initial", 0.0), required, help)
+                Return Csharp.FormField.Number(id, label, AttrDouble(f, "initial", 0.0), required, help, rule)
             Case "checkbox"
-                Return Csharp.FormField.Checkbox(id, label, AttrBool(f, "initial"), required, help)
+                Return Csharp.FormField.Checkbox(id, label, AttrBool(f, "initial"), required, help, rule)
             Case "textarea"
-                Return Csharp.FormField.TextArea(id, label, AttrInt(f, "rows", 4), OptStr(f, "initial"), required, help)
+                Return Csharp.FormField.TextArea(id, label, AttrInt(f, "rows", 4), OptStr(f, "initial"), required, help, rule)
             Case "choice"
-                Return Csharp.FormField.Choice(id, label, OptStr(f, "selected"), ReadOptions(f), required, help)
+                Return Csharp.FormField.Choice(id, label, OptStr(f, "selected"), ReadOptions(f), required, help, rule)
             Case Else
-                Return Csharp.FormField.Text(id, label, If(HasAttr(f, "initial"), Attr(f, "initial"), ""), required, help)
+                Return Csharp.FormField.Text(id, label, If(HasAttr(f, "initial"), Attr(f, "initial"), ""), required, help, rule)
         End Select
     End Function
 

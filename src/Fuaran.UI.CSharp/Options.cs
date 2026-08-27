@@ -154,6 +154,17 @@ public sealed record MetricOptions
     /// <summary>Display format for the trend value.</summary>
     public CellFormat? TrendFormat { get; init; }
 
+    /// <summary>
+    /// Which DIRECTION of movement is good (Phase 867). The default,
+    /// <see cref="TrendPolarity.HigherIsBetter"/>, is omitted on the wire.
+    /// <see cref="TrendPolarity.LowerIsBetter"/> inverts the SENTIMENT only —
+    /// sentiment = sign(trend) × polarity — so a falling error rate reads as an
+    /// improvement while the numeric text and its sign are untouched. This is
+    /// NOT <see cref="Tone"/>: tone says how the metric stands NOW, polarity
+    /// says which way is better. One slot could never have said both.
+    /// </summary>
+    public TrendPolarity TrendPolarity { get; init; } = TrendPolarity.HigherIsBetter;
+
     /// <summary>An optional leading icon name.</summary>
     public string? Icon { get; init; }
 

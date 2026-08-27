@@ -123,9 +123,9 @@ public static partial class Fuaran
             // Format, Tone, Weight, Emphasis, Trend, TrendFormat, TrendPolarity, Icon,
             // Subtext). Phase 867 added `trendPolarity`; a payload FIELD binds neither
             // the C# coverage reflection nor the VB analyzer vocabulary (both pin
-            // NodeKind cases), but it DOES bind this positional construction, so the
-            // default is passed here and surfacing it on MetricOptions is a deliberate
-            // follow-up rather than an omission.
+            // NodeKind cases), so nothing failed while this passed the default —
+            // Phase 873 surfaced it on MetricOptions, which is what the absence of a
+            // binding gate makes a deliberate act rather than an automatic one.
             new FsGen.MetricSpec(
                 options.Label.Inner,
                 options.Value.Inner,
@@ -135,7 +135,7 @@ public static partial class Fuaran
                 options.Emphasis.ToFs(),
                 options.Trend is { } t ? Fs.Some(t.Inner) : Fs.None<global::Fuaran.UI.Generated.Binding<double>>(),
                 options.TrendFormat is { } tf ? Fs.Some(tf.Inner) : Fs.None<FsGen.CellFormat>(),
-                FsGen.TrendPolarity.HigherIsBetter,
+                options.TrendPolarity.ToFs(),
                 Icon(options.Icon),
                 options.Subtext is { } s ? Fs.Some(s.Inner) : Fs.None<FsGen.TextSource>())));
 
