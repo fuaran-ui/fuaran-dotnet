@@ -770,14 +770,26 @@ and private renderKind
                               ) ]
                         match spec.Trend with
                         | Some trendBinding ->
-                            Html.div
-                                [ prop.className "fuaran-metric-trend"
-                                  prop.text (
-                                      match BindingResolver.tryResolveScalarFloat ctx.Sources trendBinding with
-                                      | Some t ->
-                                          formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t
-                                      | None -> ""
-                                  ) ]
+                            // Phase 867 — mirrors the client renderer byte-for-byte:
+                            // the trend element carries a SENTIMENT (sign, and from
+                            // Part B the declared polarity), not an unconditional
+                            // success class. `tone` still colours the tile alone.
+                            match BindingResolver.tryResolveScalarFloat ctx.Sources trendBinding with
+                            | Some t ->
+                                let sentiment, glyph = Theme.trendSentiment t
+
+                                Html.div
+                                    [ prop.className ("fuaran-metric-trend fuaran-metric-trend-" + sentiment)
+                                      prop.children
+                                          [ Html.span
+                                                [ prop.className "fuaran-metric-trend-glyph"
+                                                  prop.role "img"
+                                                  prop.ariaLabel sentiment
+                                                  prop.text glyph ]
+                                            Html.text (
+                                                formatNumber (spec.TrendFormat |> Option.defaultValue CellFormat.None) t
+                                            ) ] ]
+                            | None -> Html.div [ prop.className "fuaran-metric-trend"; prop.text "" ]
                         | None -> Html.none
                         match spec.Subtext with
                         | Some subtext ->

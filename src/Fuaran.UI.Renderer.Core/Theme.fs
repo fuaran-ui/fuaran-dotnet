@@ -65,6 +65,36 @@ let iconSizeClass (size: IconSize) : string =
     | IconSize.Medium -> "medium"
     | IconSize.Large -> "large"
 
+/// Phase 867 — the `Metric` trend element's SENTIMENT, as the class-modifier
+/// fragment (which is also the accessible label) paired with its visible glyph.
+///
+/// Until this shipped, `.fuaran-metric-trend` carried exactly one class and the
+/// reference stylesheet painted it `--fuaran-tone-success-fg` unconditionally,
+/// so EVERY trend rendered as an improvement — in both directions, on every
+/// host. A stylesheet that asserts success about a number it has not looked at
+/// is a defect, not a design.
+///
+/// Sentiment is a function of the RESOLVED trend's sign: rising is an
+/// improvement, falling a regression, zero neither. `tone` is untouched — it
+/// colours the TILE and says how the reading STANDS; this says which way the
+/// quantity MOVED. A host derives neither from the other.
+///
+/// The glyphs are U+25B2 BLACK UP-POINTING TRIANGLE, U+25BC BLACK DOWN-POINTING
+/// TRIANGLE and U+2192 RIGHTWARDS ARROW — named here so a mojibake in this file
+/// is a diff a reviewer can catch rather than a rendered byte nobody pinned.
+/// They carry the sentiment on a NON-COLOUR channel (WCAG 1.4.1 — colour alone
+/// fails), and the renderers hang the fragment on the glyph as an `aria-label`
+/// so assistive technology hears the sentiment without the numeric text being
+/// replaced by it. The glyph tracks SENTIMENT, not the number's direction: under
+/// an inverted polarity the triangle deliberately disagrees with the sign, and
+/// that disagreement is the visible evidence the declaration was honoured.
+///
+/// Shared by both renderers so the emitted class strings cannot drift.
+let trendSentiment (trend: float) : string * string =
+    if trend > 0.0 then "improving", "▲"
+    elif trend < 0.0 then "regressing", "▼"
+    else "unchanged", "→"
+
 /// Map a `StyleWeight` to its CSS-variable name root.  Affects padding,
 /// font scale, density — not colour.
 let weightVar (weight: StyleWeight) : string =
