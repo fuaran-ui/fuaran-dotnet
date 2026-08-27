@@ -971,6 +971,41 @@ let private updateImage (field: string) (v: obj) (spec: ImageSpec) : UpdateResul
     | "SrcSet" -> NotSupportedYet
     | _ -> UnknownField
 
+/// Phase 1076 — the `Media` field surface. `Label`, `Controls` and `Loop` are
+/// ordinary coercible scalars and take the shapes `ImageSpec.Alt` /
+/// `CodeBlockSpec.Copyable` already established.
+///
+/// `Src` and `Kind` are both named rather than left to fall through, and for
+/// the two DIFFERENT reasons the `NotSupportedYet` / `UnknownField` split
+/// exists to record. `Src` is a `Binding` with no coercion from an untyped
+/// `obj`, exactly as `ImageSpec.Src` is. `Kind` is a discriminated union
+/// carrying its own payload, so setting it from a scalar would mean either
+/// inventing a spelling for "Video with these two slots" or silently resetting
+/// the video-only slots to their defaults on every switch — a whole-node
+/// `EditNode` says what the author means without either.
+let private updateMedia (field: string) (v: obj) (spec: MediaSpec) : UpdateResult<'Msg> =
+    let wrap f =
+        match f v with
+        | Ok newSpec -> Updated(NodeKind.Media(newSpec))
+        | Error msg -> TypeMismatch msg
+
+    match field with
+    | "Label" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSource v
+            |> Result.map (fun x -> { spec with Label = x }))
+    | "Controls" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with Controls = x }))
+    | "Loop" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with Loop = x }))
+    | "Src"
+    | "Kind" -> NotSupportedYet
+    | _ -> UnknownField
+
 let private updateToast (field: string) (v: obj) (spec: ToastSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
@@ -1213,6 +1248,7 @@ let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) 
     | NodeKind.Fact spec -> updateFact field v spec
     | NodeKind.Link spec -> updateLink field v spec
     | NodeKind.Image spec -> updateImage field v spec
+    | NodeKind.Media spec -> updateMedia field v spec
     | NodeKind.List spec -> updateList field v spec
     | NodeKind.Toast spec -> updateToast field v spec
     // The old justification here claimed the spec is "mostly literal

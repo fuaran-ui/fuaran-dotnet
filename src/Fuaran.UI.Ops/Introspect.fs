@@ -129,6 +129,11 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     | NodeKind.Fact _ -> [ "Label"; "Value"; "Icon"; "Tone"; "Emphasis"; "Help" ]
     | NodeKind.Link _ -> [ "Href"; "Label"; "Rel"; "Target"; "Download" ]
     | NodeKind.Image _ -> [ "Alt"; "Variant" ]
+    // Phase 1076 — the three coercible scalars. `Src` (a Binding) and `Kind`
+    // (a payload-bearing union) are `NotSupportedYet` in `updateMedia`, so
+    // advertising them here would promise a field-level edit that answers
+    // "not yet" — the same restraint `Image` shows by omitting `Src`.
+    | NodeKind.Media _ -> [ "Label"; "Controls"; "Loop" ]
     | NodeKind.List _ -> [ "Items"; "Ordered" ]
     | NodeKind.Toast _ -> [ "Message"; "Tone"; "Dismissable" ]
     | NodeKind.CodeBlock _ -> [ "Code"; "Language"; "LineNumbers"; "HighlightLines"; "Copyable" ]

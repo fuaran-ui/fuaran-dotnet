@@ -107,6 +107,7 @@ let all: Classification list =
       sv "NodeKind.Fact"
       sv "NodeKind.Link"
       sv "NodeKind.Image"
+      sv "NodeKind.Media" // Phase 1076 — scalars + Bindings, no closure slot
       sv "NodeKind.List"
       sv "NodeKind.Toast"
       sv "NodeKind.CodeBlock"

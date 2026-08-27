@@ -426,6 +426,10 @@ and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | Date of value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
     | DateRange of value: Binding<DateRangePair> option * onChange: (string * string -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
 
+and [<RequireQualifiedAccess>] MediaKind =
+    | Video of autoplay: bool * poster: Binding<string> option
+    | Audio
+
 and [<RequireQualifiedAccess>] ColumnWidth =
     | Auto
     | Fixed of pixels: int
@@ -763,6 +767,16 @@ and ImageSpec =
       SrcSet: SrcSetEntry list
       Expandable: bool
       Caption: TextSource option
+    }
+
+// Display
+and MediaSpec =
+    {
+      Controls: bool
+      Kind: MediaKind
+      Label: TextSource
+      Loop: bool
+      Src: Binding<string>
     }
 
 // Display
@@ -1198,6 +1212,7 @@ and [<RequireQualifiedAccess>] NodeKind<'Msg> =
     | Icon of IconSpec
     | List of ListSpec
     | Image of ImageSpec
+    | Media of MediaSpec
     | Link of LinkSpec
     | Callout of CalloutSpec
     | Progress of ProgressSpec
@@ -1538,6 +1553,7 @@ let rec private encNodeKind (k: NodeKind<'Msg>) : JVal =
     | NodeKind.Icon s -> encIconSpec s
     | NodeKind.List s -> encListSpec s
     | NodeKind.Image s -> encImageSpec s
+    | NodeKind.Media s -> encMediaSpec s
     | NodeKind.Link s -> encLinkSpec s
     | NodeKind.Callout s -> encCalloutSpec s
     | NodeKind.Progress s -> encProgressSpec s
@@ -1670,6 +1686,11 @@ and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("orientation", encOrientation orientation) ] |> List.choose id)
     | FormFieldKind.Date (value, onChange, variant, min, max, step) -> Canon.typed "Date" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
     | FormFieldKind.DateRange (value, onChange, variant, min, max, step) -> Canon.typed "DateRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<DateRangePair>) -> match v with | Binding.Static(Some p) -> encDateRangePair p | __other -> encBinding encDateRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+
+and private encMediaKind (v: MediaKind) : JVal =
+    match v with
+    | MediaKind.Video (autoplay, poster) -> Canon.typed "Video" ([ (if autoplay = false then None else Some("autoplay", JBool autoplay)); (poster |> Option.map (fun v -> "poster", (encBinding JStr) v)) ] |> List.choose id)
+    | MediaKind.Audio -> Canon.typed "Audio" [  ]
 
 and private encColumnWidth (v: ColumnWidth) : JVal =
     match v with
@@ -1845,6 +1866,9 @@ and private encListSpec (s: ListSpec) : JVal =
 
 and private encImageSpec (s: ImageSpec) : JVal =
     Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); Some("variant", encImageVariant s.Variant); (if s.Fit = ImageFit.Natural then None else Some("fit", encImageFit s.Fit)); (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if s.Loading = ImageLoading.Eager then None else Some("loading", encImageLoading s.Loading)); (if List.isEmpty s.SrcSet then None else Some("srcSet", JArr(List.map encSrcSetEntry s.SrcSet))); (if s.Expandable = false then None else Some("expandable", JBool s.Expandable)); (s.Caption |> Option.map (fun v -> "caption", encTextSource v)) ] |> List.choose id)
+
+and private encMediaSpec (s: MediaSpec) : JVal =
+    Canon.typed "Media" ([ (if s.Controls = true then None else Some("controls", JBool s.Controls)); Some("kind", encMediaKind s.Kind); Some("label", encTextSource s.Label); (if s.Loop = false then None else Some("loop", JBool s.Loop)); Some("src", (encBinding JStr) s.Src) ] |> List.choose id)
 
 and private encLinkSpec (s: LinkSpec) : JVal =
     Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun v -> "protection", encLinkProtection v)) ] |> List.choose id)
@@ -2366,6 +2390,7 @@ let rec private decNodeKind (j: JVal) : Result<NodeKind<obj>, string> =
     | "Icon" -> decIconSpec j |> Result.map NodeKind.Icon
     | "List" -> decListSpec j |> Result.map NodeKind.List
     | "Image" -> decImageSpec j |> Result.map NodeKind.Image
+    | "Media" -> decMediaSpec j |> Result.map NodeKind.Media
     | "Link" -> decLinkSpec j |> Result.map NodeKind.Link
     | "Callout" -> decCalloutSpec j |> Result.map NodeKind.Callout
     | "Progress" -> decProgressSpec j |> Result.map NodeKind.Progress
@@ -2747,6 +2772,19 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, string> =
             Ok(FormFieldKind.DateRange(value, onChange, variant, min, max, step))))))))
         | __other -> Error ("unknown FormFieldKind case: " + __other))
     | _ -> Error "expected a FormFieldKind object"
+
+and private decMediaKind (j: JVal) : Result<MediaKind, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "Video" ->
+            dDef "autoplay" __fs dBool (false) |> Result.bind (fun autoplay ->
+            dOpt "poster" __fs (decBinding dStr) |> Result.bind (fun poster ->
+            Ok(MediaKind.Video(autoplay, poster))))
+        | "Audio" -> Ok MediaKind.Audio
+        | __other -> Error ("unknown MediaKind case: " + __other))
+    | _ -> Error "expected a MediaKind object"
 
 and private decColumnWidth (j: JVal) : Result<ColumnWidth, string> =
     match j with
@@ -3230,6 +3268,15 @@ and private decImageSpec (j: JVal) : Result<ImageSpec, string> =
     dOpt "caption" __fs decTextSource |> Result.bind (fun caption ->
     Ok { Alt = alt; Src = src; Variant = variant; Fit = fit; AspectRatio = aspectRatio; Loading = loading; SrcSet = srcSet; Expandable = expandable; Caption = caption }))))))))))
 
+and private decMediaSpec (j: JVal) : Result<MediaSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "controls" __fs dBool (true) |> Result.bind (fun controls ->
+    dReq "kind" __fs decMediaKind |> Result.bind (fun kind ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    dDef "loop" __fs dBool (false) |> Result.bind (fun loop ->
+    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
+    Ok { Controls = controls; Kind = kind; Label = label; Loop = loop; Src = src }))))))
+
 and private decLinkSpec (j: JVal) : Result<LinkSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "href" __fs (decBinding dStr) |> Result.bind (fun href ->
@@ -3586,6 +3633,7 @@ let private witnessKindTag (n: Node<'Msg>) : string =
     | NodeKind.Icon _ -> "Icon"
     | NodeKind.List _ -> "List"
     | NodeKind.Image _ -> "Image"
+    | NodeKind.Media _ -> "Media"
     | NodeKind.Link _ -> "Link"
     | NodeKind.Callout _ -> "Callout"
     | NodeKind.Progress _ -> "Progress"
@@ -3685,6 +3733,9 @@ let mkList (id: string) (items: TextSource list) (ordered: bool) : Node<'Msg> =
 
 let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: ImageVariant) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant; Fit = ImageFit.Natural; AspectRatio = ImageAspect.Natural; Loading = ImageLoading.Eager; SrcSet = []; Expandable = false; Caption = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+
+let mkMedia (id: string) (kind: MediaKind) (label: TextSource) (src: Binding<string>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Media { Controls = true; Kind = kind; Label = label; Loop = false; Src = src }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

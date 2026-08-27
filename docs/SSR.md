@@ -80,6 +80,7 @@ when present.
 | **Layout.Disclosure** | Native `<details>`/`<summary>`; the `open` attribute reflects the resolved `Open` binding (falling back to `DefaultOpen`). |
 | **Display** – Heading / Markdown / Metric / Badge / Callout / Progress / Spacer / Skeleton / LabelValueRow | Full structural HTML. `Metric` / `Progress` / `LabelValueRow` render their resolved + formatted value. |
 | **Display.Image** (Phases 287 / 1077–1080) | Real `<img>`; `src` sanitised (`javascript:`/`vbscript:`/`file:`/unknown → `about:blank`); `alt` always emitted; `fuaran-image-avatar`/`-rounded` per variant; the `fit`/`aspectRatio` presentation classes and `loading="lazy"`; `srcset` + `sizes` from a non-empty candidate list. Under `expandable`, the `<img>` is wrapped in a **real `<a href>`** to the full-size asset marked `data-fuaran-expandable` – the in-page overlay is a **client-only** post-hydration enhancement over that link, outside the parity output (see "Expandable images" below). A `caption` wraps the whole emission in `<figure>`/`<figcaption>`. |
+| **Display.Media** (Phase 1076) | Real `<video class="fuaran-media fuaran-media-video">` or `<audio class="fuaran-media fuaran-media-audio">`; `src` sanitised through the same `Media` egress class `Image` uses; `aria-label` ALWAYS emitted from the mandatory `label` (a transport has no decorative case, so unlike `alt` there is no empty branch); `controls` unless the document switches it off; `loop` only when declared. A `poster` passes the same URL floor and a refused one is **dropped** rather than emitted. `autoplay` renders **only together with `muted`** — the pairing is what the declaration means, which is why there is no separate muted slot to fall out of step with it — and the Audio variant has no autoplay pathway at all, in the type, the wire or the emission. No client-only tier: a `<video controls>` is already a complete interactive control, so nothing is attached at hydration. |
 | **Display.List** (Phase 287) | `<ol>`/`<ul>` (`fuaran-list-ordered`/`-unordered`) of `<li class="fuaran-list-item">`. |
 | **Display.Divider** (Phase 287) | `<hr class="fuaran-divider-horizontal">`, a labelled `role="separator"` rule, or a vertical `role="separator" aria-orientation="vertical"` rule. |
 | **Display.Toast** (Phase 289) | Overlay contract (below): always emitted, `role="status"` + `aria-live="polite"`, `[hidden]` when `open` is false. |
@@ -206,7 +207,7 @@ same change-set – add a fixture with the node's canonical class+ARIA tokens.
 **Where the ARIA lands (Phase 951 / `docs/DECISIONS.md` D4).** The projection is
 one function on both tiers, but its TARGET is per-kind: a kind whose body is the
 node's semantic element – `Link` (`<a>`), `Button` (`<button>`), `Image`
-(`<img>`) – carries `role` / `aria-*` on that element, and the `aria-*` half of
+(`<img>`) and `Media` (`<video>` / `<audio>`) – carries `role` / `aria-*` on that element, and the `aria-*` half of
 `ExtraAttributes` follows it there; the `data-*` half stays on the wrapper with
 `data-fuaran-node-id`. Every other kind keeps the whole projection on the
 wrapper. `Accessibility.forwardsToSemanticElement` is the predicate, shared by
@@ -484,7 +485,7 @@ half-working control.**
 |---|---|
 | **Rendered** (the Display subset) | Heading · Metric · Fact · LabelValueRow · Badge · Callout · List · Link · Image · Markdown · Progress · CodeBlock · Math · Toast (open) · DataGrid (`staticRows`) |
 | **Structural** (children render; the node carries layout only) | Box (all roles) · SplitPanel · SummaryList · Disclosure · ScrollArea · ErrorBoundary · Switch · FragmentRef |
-| **Open-live link** (never a control) | Button · Form · Select · FileUpload · Filters · Tabs · Stepper · Modal · Chart · Map · Sparkline · Drawing · Custom · Mount · DataGrid (client-library form) |
+| **Open-live link** (never a control) | Button · Form · Select · FileUpload · Filters · Tabs · Stepper · Modal · Chart · Map · Media · Sparkline · Drawing · Custom · Mount · DataGrid (client-library form) |
 | **Omitted** (nothing a static digest can convey) | Icon · Skeleton · FragmentDecl · Toast (closed) |
 
 `Email.scope` is that table **in code**, one row per canonical wire kind with the

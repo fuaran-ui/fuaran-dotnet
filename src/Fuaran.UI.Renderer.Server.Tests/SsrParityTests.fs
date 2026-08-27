@@ -405,6 +405,74 @@ let private fixtures: Fixture list =
           [ "<figure class=\"fuaran-image-figure\"><a class=\"fuaran-image-expand\" href=\"/harbour.jpg\" data-fuaran-expandable=\"\">"
             "</a><figcaption class=\"fuaran-image-figure-caption\">The harbour at dawn</figcaption></figure>" ] }
 
+      // ── Phase 1076: the media transport ───────────────────────────────────
+      //
+      // Four fixtures, and each pins something the WIRE corpus structurally
+      // cannot: the corpus pins bytes, and every claim below is about markup.
+      { Name = "Display/Media (video — element, class, label, transport)"
+        Node =
+          Fuaran.mediaSpec
+              "mv"
+              { Defaults.media with
+                  Src = Binding.Static(Some "/walkthrough.mp4")
+                  Label = TextSource.Literal "Studio walkthrough" }
+        Expected =
+          [ "<video"
+            "class=\"fuaran-media fuaran-media-video\""
+            "src=\"/walkthrough.mp4\""
+            "aria-label=\"Studio walkthrough\""
+            "controls=\"true\"" ] }
+
+      // THE PROBE. The pairing is the one rule on this kind whose violation is
+      // silent: an unmuted `autoplay` is blocked by every browser, so the video
+      // simply never starts and the document's declaration quietly means
+      // nothing. Both attributes are asserted, so removing either fails here —
+      // which is how this assertion was verified, by observing it red against a
+      // renderer that emitted `autoplay` alone.
+      { Name = "Display/Media (video autoplay NEVER renders without muted)"
+        Node =
+          Fuaran.mediaSpec
+              "mva"
+              { Defaults.media with
+                  Src = Binding.Static(Some "/ambient.mp4")
+                  Label = TextSource.Literal "Ambient loop"
+                  Controls = false
+                  Loop = true
+                  Kind = MediaKind.Video(true, None) }
+        Expected = [ "autoplay=\"true\""; "muted=\"true\""; "loop=\"true\"" ] }
+
+      { Name = "Display/Media (video poster — the second URL through the same floor)"
+        Node =
+          Fuaran.mediaSpec
+              "mvp"
+              { Defaults.media with
+                  Src = Binding.Static(Some "/walkthrough.mp4")
+                  Label = TextSource.Literal "Studio walkthrough"
+                  Kind = MediaKind.Video(false, Some(Binding.Static(Some "/walkthrough-poster.jpg"))) }
+        Expected = [ "poster=\"/walkthrough-poster.jpg\"" ] }
+
+      // The Audio arm has NO autoplay pathway in the type, so the only way this
+      // fixture could grow one is a renderer inventing it. Asserting the
+      // element and the class is what pins that `<audio>` is emitted rather
+      // than a `<video>` with a different class — a mistake a class-only
+      // assertion would pass.
+      { Name = "Display/Media (audio — its own element, and no autoplay anywhere)"
+        Node =
+          Fuaran.mediaSpec
+              "ma"
+              { Defaults.media with
+                  Src = Binding.Static(Some "/commentary.mp3")
+                  Label = TextSource.Literal "Curator's commentary"
+                  Kind = MediaKind.Audio }
+        Expected =
+          [ "<audio"
+            "class=\"fuaran-media fuaran-media-audio\""
+            // The apostrophe is deliberate: the label reaches an ATTRIBUTE, so
+            // the entity-encoded form is what pins that it goes through the
+            // engine's escape rather than being written raw.
+            "aria-label=\"Curator&apos;s commentary\""
+            "controls=\"true\"" ] }
+
       { Name = "Display/List"
         Node =
           Fuaran.listSpec
@@ -576,6 +644,48 @@ let ssrParityTests =
                       Expect.isTrue
                           (contains token html)
                           (sprintf "%s: expected token '%s' in server HTML" f.Name token)
+          }
+
+          // ── Phase 1076 — the two NEGATIVE media claims ────────────────────
+          //
+          // The fixture vocabulary above asserts presence only, so it cannot
+          // state either of this kind's actual safety properties. Both are
+          // absences, and an absence is exactly what a corpus of substring
+          // expectations is blind to.
+          test "an Audio node emits no autoplay pathway of any kind" {
+              let html =
+                  renderHtml
+                      BindingResolver.empty
+                      (Fuaran.mediaSpec
+                          "ma-neg"
+                          { Defaults.media with
+                              Src = Binding.Static(Some "/commentary.mp3")
+                              Label = TextSource.Literal "Commentary"
+                              Kind = MediaKind.Audio })
+
+              Expect.isFalse (contains "autoplay" html) "an <audio> must never carry an autoplay attribute"
+              Expect.isFalse (contains "muted" html) "an <audio> has no autoplay, so it has nothing to mute"
+          }
+
+          // A video that does NOT declare autoplay must not carry `muted`
+          // either. The pairing runs one way: muted is what makes autoplay
+          // honest, and emitting it unasked would silence a video the reader
+          // pressed play on.
+          test "a video without autoplay carries neither attribute" {
+              let html =
+                  renderHtml
+                      BindingResolver.empty
+                      (Fuaran.mediaSpec
+                          "mv-neg"
+                          { Defaults.media with
+                              Src = Binding.Static(Some "/walkthrough.mp4")
+                              Label = TextSource.Literal "Walkthrough" })
+
+              Expect.isFalse (contains "autoplay" html) "autoplay is not declared, so it must not be emitted"
+
+              Expect.isFalse
+                  (contains "muted" html)
+                  "muted rides autoplay; unasked, it silences a video the reader started"
           }
 
           // ── Phase 951 — WHERE the projection lands ────────────────────────

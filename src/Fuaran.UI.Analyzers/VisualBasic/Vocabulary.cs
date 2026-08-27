@@ -18,7 +18,7 @@ internal static class Vocabulary
         // Layout (Phase 390: Box is the unified container; Dashboard/Stack/Grid/Card remain as Box-emitting element conveniences)
         "Box", "Dashboard", "Stack", "Grid", "SplitPanel", "Tabs", "Card", "Stepper", "SummaryList", "Disclosure", "Modal", "ScrollArea",
         // Display (Phase 459: Spacer retired → Box layout `gap`; Divider stays as a Box `Separator`-emitting element convenience)
-        "Heading", "Markdown", "Metric", "Fact", "Badge", "Sparkline", "Callout", "Progress", "Skeleton", "Icon", "LabelValueRow", "Link", "Image", "List", "Divider", "Toast", "CodeBlock", "Math", "Drawing",
+        "Heading", "Markdown", "Metric", "Fact", "Badge", "Sparkline", "Callout", "Progress", "Skeleton", "Icon", "LabelValueRow", "Link", "Image", "Media", "List", "Divider", "Toast", "CodeBlock", "Math", "Drawing",
         // Input
         "Form", "Filters", "Button", "FileUpload", "Select", "MultiSelect",
         // Visualisation
@@ -83,6 +83,11 @@ internal static class Vocabulary
         Add("Fact", "id", "label", "value", "icon", "tone", "emphasis", "help");
         Add("Link", "id", "href", "label", "rel", "target", "download");
         Add("Image", "id", "src", "alt", "variant", "fit", "aspect-ratio", "loading", "caption", "expandable");
+        // Phase 1076 — ONE element for the one wire kind; `kind` selects the
+        // variant ("video" | "audio"). `autoplay` and `poster` are listed because
+        // the element admits them; they are READ only on the video branch, which
+        // is a translator rule rather than an attribute-vocabulary one.
+        Add("Media", "id", "src", "label", "kind", "controls", "loop", "autoplay", "poster");
         Add("List", "id", "ordered");
         Add("Divider", "id", "orientation", "label");
         Add("Toast", "id", "message", "tone", "open", "dismissable");

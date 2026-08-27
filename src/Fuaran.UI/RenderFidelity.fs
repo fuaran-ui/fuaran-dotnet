@@ -292,6 +292,7 @@ let all: FidelityRow list =
           [ "markdown-1" ]
           "Phases 292, 293; WIRE_FORMAT.md 14; docs/MARKDOWN.md"
 
+
       row
           "Math"
           true
@@ -303,6 +304,24 @@ let all: FidelityRow list =
           ))
           [ "math-1" ]
           "Phases 293, 658; WIRE_FORMAT.md 3.2; docs/SSR.md; docs/MATH-DEGRADATION.md"
+
+      // Phase 1076 — `Media` is `sensitive` for the reason `Image` is: the
+      // element fetches its `src` (and its `poster`) with no user act, so
+      // RENDERING the tree IS the request. It carries NO rich tier, and that is
+      // a claim rather than a blank: a `<video controls>` is already a complete
+      // interactive control in every browser, so there is nothing a client-only
+      // pass would add and no renderer attaches one.
+      row
+          "Media"
+          true
+          "the src binding, the mandatory accessible label, the controls / loop declarations, and the MediaKind variant — Video, carrying autoplay and an optional poster binding, or Audio, carrying neither"
+          "a real `<video class=\"fuaran-media fuaran-media-video\">` or `<audio class=\"fuaran-media fuaran-media-audio\">` a browser plays with no script. The sanitised `src` (unknown or dangerous schemes collapse to the refusal URL) and an `aria-label` carrying the resolved label are ALWAYS emitted — the label is mandatory on the wire and a transport has no decorative case. `controls` emits unless the document switches it off; `loop` only when declared. A `poster` passes the same URL-scheme + egress floor as `src` and a refused one is DROPPED rather than emitted, because a `<video>` with no poster shows its first frame while a poster at the refusal URL is a broken image over the player. `autoplay` is emitted ONLY together with `muted` — the pairing is what the declaration means, not a default, which is why the wire carries no separate muted slot to fall out of step with it. The Audio variant has NO autoplay pathway at all: the case declares no such slot, so there is nothing for a renderer to read"
+          RichTier.None
+          [ "media-video-1"
+            "media-video-poster-1"
+            "media-video-autoplay-1"
+            "media-audio-1" ]
+          "Phase 1076; WIRE_FORMAT.md 3.6.6; docs/SSR.md (media)"
 
       plain "Metric" "the label + value source + format" "the resolved, formatted metric tile"
 
@@ -438,6 +457,7 @@ let wireKindNames: string list =
       "Map"
       "Markdown"
       "Math"
+      "Media"
       "Metric"
       "Modal"
       "Mount"

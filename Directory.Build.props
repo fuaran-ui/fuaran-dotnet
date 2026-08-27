@@ -379,7 +379,16 @@
          the 0.36.0 / 0.39.0 / 0.40.0 / 0.41.0 / 0.42.0 / 0.43.0 precedent.
          Minor, per the record-widening dispensation. See STABILITY.md
          "Recorded change — 0.44.0". -->
-    <Version>0.45.0</Version>
+    <!-- 0.46.0 (Phase 1076) — the `Media` playback kind. `NodeKind` gains
+         `Media of MediaSpec`, with `MediaSpec { Controls; Kind; Label; Loop;
+         Src }` and `MediaKind = Video of autoplay * poster option | Audio`. A
+         NEW CASE on a closed DU, so unlike the ImageSpec run this breaks
+         exhaustive MATCHES rather than construction sites — every consumer
+         switching over `NodeKind` gains an arm. Additive on the wire (no
+         existing document changes meaning) and minor per the pre-1.0
+         new-DU-case precedent (0.7.0, `FormFieldKind.DateRange`). See
+         STABILITY.md "Recorded change — 0.46.0". -->
+    <Version>0.46.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -91,6 +91,35 @@ Friend Module DisplayMapping
                     Select(Function(c) New Csharp.SrcSetEntry(AsStringBinding(Attr(c, "src")), AttrInt(c, "width", 0))).
                     ToList()})
 
+        ' Phase 1076 — ONE element for one wire kind, with `kind` selecting the
+        ' variant, mirroring the wire's shape rather than inventing two elements
+        ' the codec has no cases for. `controls` defaults TRUE here as it does
+        ' everywhere: the accessible value is what an author gets for free.
+        '
+        ' `autoplay` and `poster` are read only on the Video branch. An author
+        ' who writes `kind="audio" autoplay="true"` gets an audio element that
+        ' does not autoplay, which is the same answer the decoder gives the same
+        ' document — the slot does not exist on that case, so the value has
+        ' nowhere to land.
+        d("Media") = Function(el) If(
+            String.Equals(Attr(el, "kind", "video"), "audio", StringComparison.OrdinalIgnoreCase),
+            Csharp.Fuaran.Audio(
+                New Csharp.AudioOptions With {
+                    .Id = Attr(el, "id"),
+                    .Src = AsStringBinding(Attr(el, "src")),
+                    .Label = AsText(Attr(el, "label")),
+                    .Controls = AttrBool(el, "controls", True),
+                    .Loop = AttrBool(el, "loop")}),
+            Csharp.Fuaran.Video(
+                New Csharp.VideoOptions With {
+                    .Id = Attr(el, "id"),
+                    .Src = AsStringBinding(Attr(el, "src")),
+                    .Label = AsText(Attr(el, "label")),
+                    .Controls = AttrBool(el, "controls", True),
+                    .Loop = AttrBool(el, "loop"),
+                    .Autoplay = AttrBool(el, "autoplay"),
+                    .Poster = If(HasAttr(el, "poster"), AsStringBinding(Attr(el, "poster")), Nothing)}))
+
         d("List") = Function(el) Csharp.Fuaran.List(
             New Csharp.ListOptions With {.Id = Attr(el, "id"), .Items = ChildTexts(el, "Item"), .Ordered = AttrBool(el, "ordered")})
 

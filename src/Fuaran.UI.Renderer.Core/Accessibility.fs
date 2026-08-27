@@ -118,7 +118,15 @@ let forwardsToSemanticElement (kind: NodeKind<'Msg>) : bool =
     match kind with
     | NodeKind.Link _
     | NodeKind.Button _
-    | NodeKind.Image _ -> true
+    | NodeKind.Image _
+    // Phase 1076 — `Media` satisfies all three on the same reading `Image`
+    // does. The `<video>` / `<audio>` IS the body root, it carries native
+    // interactive semantics (a transport a user focuses and operates), and
+    // nothing else in the body competes for the name. As with `Image`'s `alt`,
+    // a node-level `Accessibility.Label` overrides the spec's own `label` —
+    // which is the right precedence: the node-level slot is the author saying
+    // this specific instance is named something else.
+    | NodeKind.Media _ -> true
     | _ -> false
 
 /// Split already-sanitised `ExtraAttributes` pairs into the half that stays on

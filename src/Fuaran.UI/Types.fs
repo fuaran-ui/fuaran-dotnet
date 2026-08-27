@@ -854,6 +854,55 @@ and ImageSpec = Generated.ImageSpec
 /// output needs actually has to hold.
 and SrcSetEntry = Generated.SrcSetEntry
 
+/// §4b — `NodeKind.Media`'s typed spec (Phase 1076). ONE media kind carrying a
+/// `MediaKind` variant, never a `Video` kind beside an `Audio` kind: the
+/// vocabulary charter's Appendix A pre-ruled the shape and this record honours
+/// it. Everything a video and an audio surface share sits here — `Src` (the
+/// asset, a `Binding<string>` routed through the render-time URL floor exactly
+/// as `ImageSpec.Src` is), `Label`, `Controls`, `Loop` — and the only slots
+/// that differ are video-only and live in the `MediaKind.Video` payload.
+///
+/// `Label` is MANDATORY and has no decorative case, which is where it parts
+/// company with `ImageSpec.Alt`. A decorative image can honestly declare
+/// `alt=""` and disappear from the accessibility tree; a media element is a
+/// TRANSPORT, so it is always an interactive control, and an interactive
+/// control with no accessible name is announced as "video" and nothing more.
+/// It is emitted as `aria-label` on the element itself.
+///
+/// `Controls` defaults to `true` and is omitted from the wire AT that default —
+/// the `ToastSpec.Dismissable` polarity rather than `ImageSpec.Expandable`'s,
+/// and for a reason worth stating: a media element without a transport cannot
+/// be paused, seeked or muted by a keyboard user at all, so the accessible
+/// value is the default and switching it OFF is the deviation the wire has to
+/// spell out. `Loop` takes the ordinary polarity, omitted at `false`.
+///
+/// See `MediaKind` for the autoplay rule, which is the only part of this kind
+/// whose design lives in the renderers rather than in the type.
+and MediaSpec = Generated.MediaSpec
+
+/// §4b — which media surface a `MediaSpec` is (Phase 1076): `Video`, carrying
+/// the two video-only slots, or `Audio`, carrying nothing.
+///
+/// `Audio` has no fields, and that is the design rather than a stub. The two
+/// slots `Video` adds are both meaningless for audio — a poster frame is a
+/// still image of a moving picture, and an audio surface that starts itself is
+/// a defect shape, not a variant. So the autoplay knob DOES NOT EXIST on this
+/// case rather than existing and defaulting to off: a slot that defaults to off
+/// is one a caller can switch on, and there is no document this language wants
+/// to be able to state in which a page begins making sound unbidden.
+///
+/// `Video.Autoplay` is bounded by construction on the render side, and the rule
+/// is normative in the spec rather than advisory: a host emits `autoplay` ONLY
+/// together with a muted attribute. There is no independent `Muted` slot to get
+/// out of step with it — the pairing is not a default a caller can override,
+/// it is what `Autoplay` MEANS. `Video.Poster` is a full `Binding<string>` for
+/// the same reason `Src` is, and it goes through the same `Media`-class egress
+/// floor: a poster frame is a URL the browser fetches with no user act. A
+/// refused poster drops the attribute rather than neutering it — a `<video>`
+/// with no poster shows its first frame, which is a working rendering, whereas
+/// a poster pointing at the refusal URL is a broken image over the player.
+and MediaKind = Generated.MediaKind
+
 /// §4b — `NodeKind.List`'s typed spec (Phase 287). `Items` is the ordered
 /// list of item texts; `Ordered` selects `<ol>` (true) vs `<ul>` (false).
 and ListSpec = Generated.ListSpec
@@ -1813,6 +1862,7 @@ module Kind =
         | NodeKind.Fact _ -> "Fact"
         | NodeKind.Link _ -> "Link"
         | NodeKind.Image _ -> "Image"
+        | NodeKind.Media _ -> "Media"
         | NodeKind.List _ -> "List"
         | NodeKind.Toast _ -> "Toast"
         | NodeKind.CodeBlock _ -> "CodeBlock"
@@ -1857,6 +1907,7 @@ module Kind =
         | NodeKind.Fact _
         | NodeKind.Link _
         | NodeKind.Image _
+        | NodeKind.Media _
         | NodeKind.List _
         | NodeKind.Toast _
         | NodeKind.CodeBlock _

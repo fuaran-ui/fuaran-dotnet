@@ -382,6 +382,21 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
         // Phase 287 — Src is a Binding<string> (sanitised at render); Alt +
         // Variant are scalar props.
         [ valueEntry "Alt" spec.Alt; valueEntry "Variant" spec.Variant ]
+    | NodeKind.Media(spec) ->
+        // Phase 1076 — `Src` is a Binding (sanitised at render), so it is not a
+        // prop; `Label`, `Controls` and `Loop` are the scalars, and `Kind` is
+        // surfaced by its CASE NAME rather than its payload. An introspecting
+        // agent asking "what is this node" wants to know it is a video, and the
+        // payload's two slots are a separate question the entry cannot answer
+        // without inventing a spelling for a union.
+        [ valueEntry "Label" spec.Label
+          valueEntry
+              "Kind"
+              (match spec.Kind with
+               | MediaKind.Video _ -> "Video"
+               | MediaKind.Audio -> "Audio")
+          valueEntry "Controls" spec.Controls
+          valueEntry "Loop" spec.Loop ]
     | NodeKind.List(spec) ->
         [ valueEntry "Ordered" spec.Ordered
           entry "ItemCount" (Some(boxNN (List.length spec.Items))) (Some "TextSource list (count)") ]

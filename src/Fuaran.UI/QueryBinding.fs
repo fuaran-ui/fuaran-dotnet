@@ -282,6 +282,7 @@ let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list =
         | NodeKind.Fact _
         | NodeKind.Link _
         | NodeKind.Image _
+        | NodeKind.Media _
         | NodeKind.List _
         | NodeKind.Toast _
         | NodeKind.CodeBlock _

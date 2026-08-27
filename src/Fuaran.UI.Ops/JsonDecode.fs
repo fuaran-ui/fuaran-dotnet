@@ -1412,6 +1412,7 @@ let displayNodeKinds =
       "Fact"
       "Link"
       "Image"
+      "Media"
       "List"
       "Toast"
       "CodeBlock"
@@ -3982,6 +3983,94 @@ let private decodeImageSpec (path: string) (j: Json) : Result<ImageSpec, DecodeE
         | _, _, _, _, _, _, _, Error e, _
         | _, _, _, _, _, _, _, _, Error e -> Error e
 
+/// Phase 1076 — which media surface this is. A `$type`-DISCRIMINATED union, so
+/// an unknown case reports at `<path>.$type` (the `Binding` / `TextSource`
+/// position), not at the bare slot — the Phase 1073 distinction.
+///
+/// `Video`'s two slots take the two ordinary shapes and nothing more:
+/// `autoplay` is omit-at-default, so absent is `false` and a present
+/// non-boolean is a `WRONG_TYPE` rather than a truthiness coercion (the
+/// `Image.expandable` ruling, and it matters more here — a host that read
+/// `"autoplay":"false"` as true would start playing a video the document says
+/// not to); `poster` is an ordinary optional binding.
+///
+/// `Audio` reads NO fields, and it does not refuse the extra ones either —
+/// unknown-member tolerance is a decoder-wide posture, not this case's business.
+/// What matters is that there is no autoplay slot to read: a document carrying
+/// `{"$type":"Audio","autoplay":true}` decodes to an audio surface that does
+/// not autoplay, because the value has nowhere to land.
+let private decodeMediaKind (path: string) (j: Json) : Result<MediaKind, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        match requireDiscriminator path fields with
+        | Error e -> Error e
+        | Ok "Video" ->
+            let autoplayR =
+                match tryField fields "autoplay" with
+                | None -> Ok false
+                | Some v -> requireBool (path + ".autoplay") v
+
+            let posterR =
+                match tryField fields "poster" with
+                | None -> Ok None
+                | Some v -> decodeBindingString (path + ".poster") v |> Result.map Some
+
+            match autoplayR, posterR with
+            | Ok autoplay, Ok poster -> Ok(MediaKind.Video(autoplay, poster))
+            | Error e, _
+            | _, Error e -> Error e
+        | Ok "Audio" -> Ok MediaKind.Audio
+        | Ok other -> unknownDuCase path other "Video | Audio"
+
+/// Phase 1076 — the media spec. `label` is REQUIRED, which is the a11y floor
+/// expressed where it can actually be enforced: a `MISSING_FIELD` here is the
+/// decode-side twin of FUARAN108 at the authoring end, and between them there
+/// is no route by which an unnamed media element reaches a renderer.
+///
+/// `controls` is the estate's second omit-at-TRUE slot (`Toast.dismissable` was
+/// the first), so an absent key is `true` — the accessible value — and the
+/// document only spends a key to take the transport away.
+let private decodeMediaSpec (path: string) (j: Json) : Result<MediaSpec, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let controlsR =
+            match tryField fields "controls" with
+            | None -> Ok true
+            | Some v -> requireBool (path + ".controls") v
+
+        let kindR =
+            requireField path fields "kind" "MediaKind (Video | Audio)"
+            |> Result.bind (decodeMediaKind (path + ".kind"))
+
+        let labelR =
+            requireField path fields "label" "media accessible label TextSource"
+            |> Result.bind (decodeTextSource (path + ".label"))
+
+        let loopR =
+            match tryField fields "loop" with
+            | None -> Ok false
+            | Some v -> requireBool (path + ".loop") v
+
+        let srcR =
+            requireField path fields "src" "media Binding<string> Src"
+            |> Result.bind (decodeBindingString (path + ".src"))
+
+        match controlsR, kindR, labelR, loopR, srcR with
+        | Ok controls, Ok kind, Ok label, Ok loop, Ok src ->
+            Ok
+                { Controls = controls
+                  Kind = kind
+                  Label = label
+                  Loop = loop
+                  Src = src }
+        | Error e, _, _, _, _
+        | _, Error e, _, _, _
+        | _, _, Error e, _, _
+        | _, _, _, Error e, _
+        | _, _, _, _, Error e -> Error e
+
 let private decodeListSpec (path: string) (j: Json) : Result<ListSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -4673,6 +4762,10 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 getSpec ()
                 |> Result.bind (decodeImageSpec specPath)
                 |> Result.map NodeKind.Image
+            | "Media" ->
+                getSpec ()
+                |> Result.bind (decodeMediaSpec specPath)
+                |> Result.map NodeKind.Media
             | "List" -> getSpec () |> Result.bind (decodeListSpec specPath) |> Result.map NodeKind.List
             | "Toast" ->
                 getSpec ()

@@ -154,6 +154,10 @@ let scope: (string * Disposition) list =
       Disposition.Rendered
           "NARROWED to the escaped source in a monospace span. The MathML floor is correct in a browser and blank in Outlook, so the projection prefers readable LaTeX to invisible mathematics"
 
+      "Media",
+      Disposition.OpenLive
+          "a transport, not a picture. No mainstream mail client plays inline media, and the fallbacks are all worse than a link: a `<video>` degrades to a blank rectangle, and a poster frame rendered as a bare `<img>` is a still image that silently looks like a broken player. The label is the link text, which is exactly what it was written to be"
+
       "Metric", Disposition.Rendered "the KPI tile: label, formatted value, trend and subtext, stacked in a cell"
 
       "Modal",
@@ -1066,6 +1070,25 @@ and private renderKind
             |> Option.defaultValue "Chart"
         )
     | NodeKind.Map _ -> live "Map"
+    // Phase 1076 — the media transport. The node's own `Label` is the link
+    // text, falling back to the surface name only when it resolves to nothing:
+    // a mandatory accessible name is precisely a sentence describing what the
+    // player plays, which is what an "open live" link wants to say anyway.
+    | NodeKind.Media spec ->
+        let surface =
+            match spec.Kind with
+            | MediaKind.Video _ -> "Video"
+            | MediaKind.Audio -> "Audio"
+
+        // `liveLabel` prefers the node's `Accessibility.Label`; the spec's own
+        // mandatory `Label` is the next-best answer and the surface name is the
+        // last resort, so a reader is told what the recording is rather than
+        // that a recording exists.
+        live (
+            match text spec.Label with
+            | "" -> surface
+            | label -> label
+        )
     | NodeKind.Sparkline _ -> live "Trend"
     | NodeKind.Drawing _ -> live "Diagram"
     | NodeKind.Custom _ -> live "Component"

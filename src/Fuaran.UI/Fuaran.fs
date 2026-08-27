@@ -1115,6 +1115,41 @@ module Fuaran =
     let imageSpec (id: string) (spec: ImageSpec) : Node<'Msg> =
         buildNode id (NodeKind.Image(spec)) Defaults.Accessibility.none
 
+    /// Media playback surface (Phase 1076). Positional
+    /// `Fuaran.video "id" "/clip.mp4" "Studio walkthrough"` and
+    /// `Fuaran.audio "id" "/talk.mp3" "Curator's commentary"` build the two
+    /// variants with a transport, no loop, no autoplay and no poster; the
+    /// `mediaSpec` twin takes the full record.
+    ///
+    /// The label is a REQUIRED positional argument on both, not an optional
+    /// tail: it is the accessible name, there is no decorative case for a
+    /// transport, and a smart constructor that let it be omitted would make the
+    /// easiest thing to write the thing FUARAN108 refuses.
+    let video (id: string) (src: string) (label: string) : Node<'Msg> =
+        buildNode
+            id
+            (NodeKind.Media(
+                { Defaults.media with
+                    Src = Binding.Static(Some src)
+                    Label = TextSource.Literal label
+                    Kind = MediaKind.Video(false, Option.None) }
+            ))
+            Defaults.Accessibility.none
+
+    let audio (id: string) (src: string) (label: string) : Node<'Msg> =
+        buildNode
+            id
+            (NodeKind.Media(
+                { Defaults.media with
+                    Src = Binding.Static(Some src)
+                    Label = TextSource.Literal label
+                    Kind = MediaKind.Audio }
+            ))
+            Defaults.Accessibility.none
+
+    let mediaSpec (id: string) (spec: MediaSpec) : Node<'Msg> =
+        buildNode id (NodeKind.Media(spec)) Defaults.Accessibility.none
+
     /// Structured item list (Phase 287). Positional
     /// `Fuaran.list "id" [ "First"; "Second" ]` builds an unordered list of
     /// `Literal` items; the `listSpec` twin takes the full record (ordered

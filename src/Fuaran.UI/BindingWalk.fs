@@ -826,6 +826,20 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 @ usesOfTextOpt i.Caption
                 @ (i.SrcSet |> List.collect (fun e -> usesOfBinding e.Src)),
                 []
+            // Phase 1076 — three reactive slots, and the third is the one a
+            // walk written from the record's field list would miss: `Poster`
+            // lives inside the `MediaKind.Video` case payload, not on the spec.
+            // A poster resolved from a query is as much a dependency as the
+            // primary `Src`, so the case is matched rather than the slot
+            // ignored; `Audio` genuinely contributes nothing beyond the shared
+            // pair.
+            | NodeKind.Media m ->
+                let kindUses =
+                    match m.Kind with
+                    | MediaKind.Video(_, poster) -> usesOfBindingOpt poster
+                    | MediaKind.Audio -> []
+
+                usesOfBinding m.Src @ usesOfText m.Label @ kindUses, []
             | NodeKind.List l -> l.Items |> List.collect usesOfText, []
             | NodeKind.Toast t ->
                 noteWriteBack (writeBackTargetOf t.Open)

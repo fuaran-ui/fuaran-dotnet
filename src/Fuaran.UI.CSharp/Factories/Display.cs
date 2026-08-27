@@ -143,6 +143,35 @@ public static partial class Fuaran
                 options.Expandable,
                 options.Caption is { } cap ? Fs.Some(cap.Inner) : Fs.None<FsGen.TextSource>())));
 
+    /// <summary>A video playback surface. Autoplay never renders without a muted
+    /// attribute — the pairing is what the declaration means, not a default.</summary>
+    public static FuaranNode Video(VideoOptions options) =>
+        new(FsFactory.mediaSpec<object>(
+            options.Id,
+            // Generated MediaSpec ctor is Generated.fs declaration order
+            // (Controls, Kind, Label, Loop, Src).
+            new FsGen.MediaSpec(
+                options.Controls,
+                FsGen.MediaKind.NewVideo(
+                    options.Autoplay,
+                    options.Poster is { } poster ? Fs.Some(poster.Inner) : Fs.None<FsGen.Binding<string>>()),
+                options.Label.Inner,
+                options.Loop,
+                options.Src.Inner)));
+
+    /// <summary>An audio playback surface. There is deliberately no autoplay option:
+    /// the wire case carries no such slot, so a page cannot begin making sound
+    /// unbidden.</summary>
+    public static FuaranNode Audio(AudioOptions options) =>
+        new(FsFactory.mediaSpec<object>(
+            options.Id,
+            new FsGen.MediaSpec(
+                options.Controls,
+                FsGen.MediaKind.Audio,
+                options.Label.Inner,
+                options.Loop,
+                options.Src.Inner)));
+
     /// <summary>A structured item list.</summary>
     public static FuaranNode List(ListOptions options) =>
         new(FsFactory.listSpec<object>(
@@ -433,6 +462,60 @@ public sealed record ImageOptions
 /// <param name="Width">The candidate's intrinsic pixel width — the <c>w</c>
 /// descriptor. Must be positive; the wire refuses zero and negative widths.</param>
 public sealed record SrcSetEntry(Binding<string> Src, int Width);
+
+/// <summary>Options for <see cref="Fuaran.Video"/>.</summary>
+public sealed record VideoOptions
+{
+    /// <summary>The node id.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The media source (bound or literal). It passes the render-time
+    /// URL-scheme and egress floor.</summary>
+    public required Binding<string> Src { get; init; }
+
+    /// <summary>The accessible name, emitted as <c>aria-label</c>. Mandatory, and
+    /// unlike an image's alt text there is no decorative case: a transport is always
+    /// an interactive control, so an unnamed one is announced as "video" and nothing
+    /// more.</summary>
+    public required Text Label { get; init; }
+
+    /// <summary>Whether the browser's own transport is shown (default <c>true</c> —
+    /// the accessible value; switching it off is the deviation).</summary>
+    public bool Controls { get; init; } = true;
+
+    /// <summary>Whether playback repeats (default <c>false</c>).</summary>
+    public bool Loop { get; init; }
+
+    /// <summary>Whether playback starts by itself (default <c>false</c>). Set, the
+    /// renderers emit <c>autoplay</c> together with <c>muted</c>, always — there is no
+    /// separate muted option because the pairing is not a default to override.</summary>
+    public bool Autoplay { get; init; }
+
+    /// <summary>An optional poster frame. It passes the same URL floor the source
+    /// does, and a refused one is dropped rather than emitted — a video with no poster
+    /// shows its first frame, which is a working rendering.</summary>
+    public Binding<string>? Poster { get; init; }
+}
+
+/// <summary>Options for <see cref="Fuaran.Audio"/>. Note what is ABSENT: there is no
+/// autoplay and no poster, because <c>MediaKind.Audio</c> carries neither slot.</summary>
+public sealed record AudioOptions
+{
+    /// <summary>The node id.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The media source (bound or literal).</summary>
+    public required Binding<string> Src { get; init; }
+
+    /// <summary>The accessible name, emitted as <c>aria-label</c>. Mandatory.</summary>
+    public required Text Label { get; init; }
+
+    /// <summary>Whether the browser's own transport is shown (default <c>true</c>).</summary>
+    public bool Controls { get; init; } = true;
+
+    /// <summary>Whether playback repeats (default <c>false</c>).</summary>
+    public bool Loop { get; init; }
+}
 
 /// <summary>Options for <see cref="Fuaran.List"/>.</summary>
 public sealed record ListOptions

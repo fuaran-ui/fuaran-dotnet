@@ -364,6 +364,79 @@ let imageExpandableFigure: Node<obj> =
         ))
         None
 
+// ─── Media (Phase 1076) ─────────────────────────────────────────────────────
+//
+// Four fixtures, and between them they pin every polarity this kind carries.
+// The wire cannot express the RENDER obligations — that autoplay never emits
+// without muted, that Audio has no autoplay pathway — so those live in the
+// SSR-parity corpus and the spec's normative text. What the bytes pin is the
+// omit rules, which is the half a second host gets wrong silently.
+
+/// The minimum: a video with only the mandatory slots. `controls` is at its
+/// TRUE default and `loop` at its false one, so NEITHER appears, and the case
+/// payload is the bare `{"$type":"Video"}` because `autoplay` omits at false
+/// and `poster` is absent. A host that inverted either polarity produces
+/// different bytes for this one fixture and for no other.
+let mediaVideo: Node<obj> =
+    node
+        "media-video-1"
+        (NodeKind.Media(
+            { Controls = true
+              Kind = MediaKind.Video(false, None)
+              Label = TextSource.Literal "Studio walkthrough"
+              Loop = false
+              Src = Binding.Static(Some "/walkthrough.mp4") }
+        ))
+        None
+
+/// The poster frame — the one video-only slot that is a URL. Everything else
+/// sits where `media-video-1` has it, so the byte difference is exactly one
+/// key, and that key is INSIDE the case object rather than beside it: a host
+/// that hoisted the payload's members onto the spec would round-trip its own
+/// emission perfectly and fail here.
+let mediaVideoPoster: Node<obj> =
+    node
+        "media-video-poster-1"
+        (NodeKind.Media(
+            { Controls = true
+              Kind = MediaKind.Video(false, Some(Binding.Static(Some "/walkthrough-poster.jpg")))
+              Label = TextSource.Literal "Studio walkthrough"
+              Loop = false
+              Src = Binding.Static(Some "/walkthrough.mp4") }
+        ))
+        None
+
+/// All three booleans OFF their defaults at once, which is the case where a
+/// host that built its encoder as a chain of `if`s gets the key ORDER wrong.
+/// It also pins the two polarities against each other: `controls` emits
+/// because it is FALSE, `loop` and `autoplay` because they are TRUE.
+let mediaVideoAutoplay: Node<obj> =
+    node
+        "media-video-autoplay-1"
+        (NodeKind.Media(
+            { Controls = false
+              Kind = MediaKind.Video(true, None)
+              Label = TextSource.Literal "Ambient loop"
+              Loop = true
+              Src = Binding.Static(Some "/ambient.mp4") }
+        ))
+        None
+
+/// The Audio variant. Its payload is the discriminator and nothing else, which
+/// is the point of the variant shape rather than a poverty of it: there is no
+/// autoplay key to omit here because the slot does not exist on this case.
+let mediaAudio: Node<obj> =
+    node
+        "media-audio-1"
+        (NodeKind.Media(
+            { Controls = true
+              Kind = MediaKind.Audio
+              Label = TextSource.Literal "Curator's commentary"
+              Loop = false
+              Src = Binding.Static(Some "/commentary.mp3") }
+        ))
+        None
+
 let listDisplay: Node<obj> =
     // Phase 287 — ordered list with two items.
     node
@@ -4905,6 +4978,10 @@ let allNodes: (string * Node<obj>) list =
       "Display/Image (Phase 1080 — three-candidate srcSet, authored descending)", imageSrcset
       "Display/Image (Phase 1079 — expandable, the declaration alone)", imageExpandable
       "Display/Image (Phase 1079 — expandable + caption + srcSet, the gallery thumbnail)", imageExpandableFigure
+      "Display/Media (Phase 1076 — video at its minimum, both bool defaults omitted)", mediaVideo
+      "Display/Media (Phase 1076 — video with a poster frame in the case payload)", mediaVideoPoster
+      "Display/Media (Phase 1076 — autoplay declared, both shared bools off-default)", mediaVideoAutoplay
+      "Display/Media (Phase 1076 — the Audio variant, whose payload is the discriminator alone)", mediaAudio
       "Display/List (ordered)", listDisplay
       "Display/Toast (Success tone, open)", toast
       "Display/CodeBlock (fsharp, line numbers + highlights)", codeBlock

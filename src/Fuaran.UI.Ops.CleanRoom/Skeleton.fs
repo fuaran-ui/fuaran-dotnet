@@ -178,6 +178,8 @@ let private ownContentLength (kind: NodeKind<'Msg>) : int =
     | NodeKind.LabelValueRow s -> textSourceLength s.Label
     | NodeKind.Link s -> textSourceLength s.Label
     | NodeKind.Image s -> textSourceLength s.Alt
+    // Phase 1076 — the accessible label is this node's own text content.
+    | NodeKind.Media s -> textSourceLength s.Label
     | NodeKind.List s -> s.Items |> List.sumBy textSourceLength
     | NodeKind.Toast s -> textSourceLength s.Message
     | NodeKind.CodeBlock s -> String.length s.Code
@@ -200,7 +202,8 @@ let roleOf (kind: NodeKind<'Msg>) : StructuralRole =
     | NodeKind.Heading _ -> StructuralRole.Heading
     | NodeKind.Metric _
     | NodeKind.Sparkline _ -> StructuralRole.DataView
-    | NodeKind.Image _ -> StructuralRole.Media
+    | NodeKind.Image _
+    | NodeKind.Media _ -> StructuralRole.Media
     | NodeKind.Custom _ -> StructuralRole.Opaque
     // Switch (Phase 392) is a structural control-flow primitive — it selects a
     // child subtree by state; the chosen child carries its own role. Mount (§4o)

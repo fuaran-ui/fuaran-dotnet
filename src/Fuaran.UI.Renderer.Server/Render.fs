@@ -1160,6 +1160,89 @@ and private renderKind
                         Html.figcaption
                             [ prop.className "fuaran-image-figure-caption"
                               prop.text (renderText ctx caption) ] ] ]
+    // Phase 1076 — the media transport. Deterministic, script-free markup: a
+    // real `<video>` / `<audio>` a browser plays with no runtime, exactly as
+    // `Image` emits a real `<img>`.
+    //
+    // Four things here are contract rather than choice, and each is stated
+    // normatively in the wire spec because a host that got any of them wrong
+    // would still round-trip the bytes perfectly:
+    //
+    //   * `aria-label` ALWAYS. The label is mandatory on the wire and there is
+    //     no decorative case, so unlike `Image`'s `alt` there is no branch: the
+    //     attribute is emitted whatever the label resolves to. FUARAN108 is
+    //     what stops an empty one reaching here in the first place.
+    //   * `autoplay` NEVER WITHOUT `muted`. The pairing is not a default a
+    //     caller can override — it is what `Autoplay` means, which is why the
+    //     wire carries no separate `muted` slot to get out of step with it.
+    //     Every browser blocks unmuted autoplay anyway, so an unmuted emission
+    //     would produce a player that silently does not start: the declaration
+    //     would be a lie and the failure would be invisible.
+    //   * NO AUTOPLAY PATHWAY ON AUDIO, at all. Not "off by default" — the
+    //     `MediaKind.Audio` case carries no slot to read, so this arm has
+    //     nothing to branch on and cannot acquire one by a later edit here.
+    //   * BOTH URLS THROUGH THE EGRESS FLOOR. `Src` and `Poster` are each
+    //     fetched by the browser with no user act, which is the whole of the
+    //     `Media` egress class. They differ in what a REFUSAL means: an element
+    //     must have a source, so `src` collapses to the refusal URL and carries
+    //     the marker, while a poster simply leaves — a `<video>` with no poster
+    //     shows its first frame, which is a working rendering, whereas a poster
+    //     pointing at the refusal URL is a broken image painted over the
+    //     player. Same rule as a refused `SrcSet` candidate, same reason.
+    //
+    // The boolean attributes use Feliz's TYPED props rather than
+    // `prop.custom (name, "")`, and that is deliberate on this kind alone: the
+    // muted pairing has to hold in the DOM on BOTH tiers, and the typed props
+    // are the one spelling each backend renders correctly without a per-arm
+    // string (`autoPlay` → `autoplay` here, → React's `autoPlay` on the client).
+    | NodeKind.Media spec ->
+        let resolvedSrc =
+            BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
+
+        let safeSrc, egressAttrs =
+            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
+
+        let sharedProps (variantClass: string) =
+            [ prop.className ("fuaran-media " + variantClass)
+              prop.src safeSrc
+              prop.custom ("aria-label", renderText ctx spec.Label) ]
+            @ (if spec.Controls then [ prop.controls true ] else [])
+            @ (if spec.Loop then [ prop.loop true ] else [])
+
+        match spec.Kind with
+        | MediaKind.Video(autoplay, poster) ->
+            let posterProps =
+                match poster with
+                | None -> []
+                | Some p ->
+                    let resolved = BindingResolver.tryResolve ctx.Sources p |> Option.defaultValue ""
+
+                    // The refusal is read from the seam's own marker list, not
+                    // by comparing against whatever URL it substitutes — the
+                    // `SrcSet` candidate rule, applied to the one other URL
+                    // this vocabulary fetches unprompted.
+                    let safe, refusal =
+                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+
+                    if safe = "" || not (List.isEmpty refusal) then
+                        []
+                    else
+                        [ prop.poster safe ]
+
+            let autoplayProps =
+                if autoplay then
+                    [ prop.autoPlay true; prop.muted true ]
+                else
+                    []
+
+            Html.video (
+                sharedProps "fuaran-media-video"
+                @ posterProps
+                @ autoplayProps
+                @ toProps semanticAttrs
+                @ toProps egressAttrs
+            )
+        | MediaKind.Audio -> Html.audio (sharedProps "fuaran-media-audio" @ toProps semanticAttrs @ toProps egressAttrs)
     | NodeKind.List spec ->
         let items =
             spec.Items

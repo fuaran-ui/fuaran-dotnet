@@ -234,6 +234,24 @@ let image: ImageSpec =
       // default but a fabrication.
       Caption = None }
 
+/// Phase 1076 — the default media surface. `Controls = true` is the one value
+/// here that is a POSITION rather than an identity: a `<video>` with no
+/// transport cannot be paused or muted by a keyboard user, so the accessible
+/// setting is what an author gets without asking, and turning it off is the
+/// deviation. `Kind` defaults to `Video` with autoplay off and no poster —
+/// autoplay is never a default on any surface, which is the whole of that
+/// slot's design. `Label` is `emptyLiteral` for the same reason `image`'s `Alt`
+/// is: `Defaults` never invents content, and the empty label is what the
+/// pre-emit validator refuses (unlike an image, media has no decorative case,
+/// so an empty label here is always a defect rather than sometimes a
+/// declaration).
+let media: MediaSpec =
+    { Controls = true
+      Kind = MediaKind.Video(false, None)
+      Label = emptyLiteral
+      Loop = false
+      Src = noBinding<string> }
+
 let list: ListSpec = { Items = []; Ordered = false }
 
 let toast: ToastSpec =

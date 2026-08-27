@@ -2115,3 +2115,95 @@ canonicalising to the omitted form), and `reject/reject-image-expandable-nonbool
 (`"expandable":"true"`, refused at `$.kind.expandable` rather than coerced — a truthiness rule would
 have to rule on `"false"` too, and two hosts ruling differently would disagree about whether the
 document declares an affordance at all).
+
+## Recorded change — 0.46.0, `NodeKind.Media` (fuaran#1076)
+
+**Additive on the wire, and a NEW CASE on a closed DU in the type.** `NodeKind` gains
+`Media of MediaSpec`, where
+
+```fsharp
+type MediaSpec =
+    { Controls: bool           // omitted from the wire at TRUE
+      Kind: MediaKind
+      Label: TextSource        // MANDATORY — the a11y floor, with no decorative case
+      Loop: bool               // omitted from the wire at false
+      Src: Binding<string> }
+
+and MediaKind =
+    | Video of autoplay: bool * poster: Binding<string> option
+    | Audio
+```
+
+No existing document changes meaning: `Media` is a discriminator no prior emission carried, and no
+shipped slot is re-meant.
+
+**Version decision: MINOR, and the precedent is a different one from the ImageSpec run above.**
+0.36.0–0.45.0 were record WIDENINGS, which break construction sites. This is a new DU case, which
+breaks **exhaustive matches** — every consumer switching over `NodeKind` gains an arm. The
+pre-1.0 precedent for that is 0.7.0 (`FormFieldKind` gaining `DateRange`), and it rides a minor for
+the same reason: pre-1.0, and the alternative is a major bump for an addition the format is designed
+to absorb.
+
+**One kind, two variants — never two kinds.** The vocabulary charter's Appendix A pre-ruled the shape
+(`VOCABULARY.md`, the `Media` row, amended to ADMITTED in the same change-set under a recorded
+operator mandate). Everything the two surfaces share lives once on `MediaSpec`; only the video-only
+slots live in the variant. Phase 1083, which had specified a second `Audio` kind, is subsumed.
+
+**Surface added.**
+
+- `Fuaran.UI.Types` re-exports `MediaSpec` + `MediaKind`; `Fuaran.UI.Defaults.media` carries
+  `Controls = true`, `Kind = Video(false, None)`, `Loop = false`, an empty `Label` and no source.
+- `Fuaran.Fuaran` gains `video` / `audio` (positional `id`, `src`, `label`) and `mediaSpec`. The
+  label is a REQUIRED positional argument on both: a constructor that let it be omitted would make
+  the easiest thing to write the thing FUARAN108 refuses.
+- `Fuaran.UI.Ops.Apply`'s field-level `UpdateProp` surface accepts `"Label"` / `"Controls"` /
+  `"Loop"`; `"Src"` and `"Kind"` answer `NotSupportedYet` (a `Binding` and a payload-bearing union
+  have no coercion from an untyped `obj`).
+- `Fuaran.UI.PreEmitValidate` gains **FUARAN108 (Error)** — a `Media` node whose `Label` is an empty
+  or whitespace `Literal`. Only a literal is judged: a `Bound` / `I18n` label resolves from data the
+  walk cannot see, so calling it empty would be a guess.
+- `Fuaran.UI.Renderer.Accessibility.forwardsToSemanticElement` returns `true` for `Media`, so a
+  node-level `Accessibility` projection lands on the `<video>` / `<audio>` rather than the wrapper —
+  the `Image` treatment, on the same three grounds.
+- `Fuaran.UI.RenderFidelity` gains a `Media` row (`Sensitive = true`, `RichTier.None`), so
+  `render-fidelity.json` grows one entry.
+- The C# veneer gains `Fuaran.Video` / `Fuaran.Audio` + `VideoOptions` / `AudioOptions`; the VB XML
+  veneer gains a `<Media kind="video"|"audio">` element, whose attribute vocabulary joins the
+  analyzer's table. `AudioOptions` deliberately carries no autoplay and no poster.
+- The reference stylesheet gains `.fuaran-media` / `.fuaran-media-video` / `.fuaran-media-audio`.
+
+**Render — three obligations, all normative in `WIRE_FORMAT.md` §3.6.6 rather than advisory, because
+a host that got any of them wrong would still round-trip the bytes perfectly.**
+
+- **`aria-label` ALWAYS.** The label is mandatory and a transport has no decorative case, so unlike
+  `ImageSpec.Alt` there is no branch a renderer takes when it resolves to nothing.
+- **`autoplay` NEVER without `muted`.** The pairing is what the declaration MEANS, not a default a
+  caller overrides — which is why the wire carries no separate muted slot to fall out of step with
+  it. Every browser blocks unmuted autoplay, so an unmuted emission is a player that silently never
+  starts: the declaration would mean nothing and the failure would be invisible. The converse holds
+  too — `muted` is not emitted where `autoplay` is absent.
+- **The `Audio` variant has NO autoplay pathway**, in the type, on the wire, or in the emission. This
+  is stronger than a default of `false`: a slot that defaults to off is one a document can switch on.
+
+**Both URLs pass the §19 egress floor, and a refused POSTER is dropped where a refused `Src`
+collapses.** An element must have a source, so `src` takes the refusal substitute and carries its
+marker; a poster simply leaves, because a `<video>` with no poster shows its first frame — a working
+rendering — while a poster at the refusal URL is a broken image painted over the player. That is the
+0.44.0 dropped-candidate rule applied to a single slot.
+
+**No client-only tier, and that is a claim rather than a blank.** A `<video controls>` is already a
+complete interactive control in every browser, so no renderer attaches anything at hydration and
+there is no enhancement module to ship.
+
+**Wire and corpus.** `WIRE_FORMAT.md` §3.6.6 states the rules; the generated §3.2 / §3.5 / §3.6
+tables and `idl.json` / `schema.json` / `render-fidelity.json` were regenerated. Seven fixtures
+added: `nodes/media-video-1` (the minimum — both bool defaults omitted, the payload the bare
+discriminator), `nodes/media-video-poster-1` (the poster INSIDE the case object rather than beside
+it), `nodes/media-video-autoplay-1` (all three bools off their defaults at once, which is where an
+encoder built as a chain of `if`s gets the canonical key order wrong), `nodes/media-audio-1`,
+`reject/reject-media-missing-label` (`MISSING_FIELD` at `$.kind.label`),
+`reject/reject-unknown-media-kind` (`UNKNOWN_DU_CASE` at `$.kind.kind.$type` — the variant is
+`$type`-discriminated, so the path carries the suffix a bare enum's does not), and
+`reject/reject-media-autoplay-nonbool` (`WRONG_TYPE` at `$.kind.kind.autoplay` — the stringified
+boolean refused rather than coerced, on the slot where a truthiness rule would make one host start
+playing a video another host leaves still).

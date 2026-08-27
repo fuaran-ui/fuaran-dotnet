@@ -545,6 +545,29 @@ type PreEmitDefect =
     /// Carries the form node's id, the field id, and the duplicated bound.
     | CompareDuplicatesBound of nodeId: string * fieldId: string * bound: string
 
+    /// **FUARAN108 (Error)**. A `Media` node whose `Label` resolves to nothing —
+    /// an empty `Literal`, which is what `Defaults.media` carries so that the
+    /// record can be constructed at all (Phase 1076).
+    ///
+    /// This is `ImageSpec.Alt`'s a11y floor WITHOUT the decorative escape, and
+    /// the absence of that escape is the whole of the rule. An image can
+    /// honestly declare `alt=""`: a spacer, a rule, a background texture adds
+    /// nothing a screen-reader user needs, and the empty string is the way to
+    /// say so. A media element is a TRANSPORT — a control a user can focus,
+    /// play, pause and seek — so it is never decorative, and an unnamed one is
+    /// announced as "video" or "audio" and nothing else. The reader is told a
+    /// player exists and given no way to learn what it plays.
+    ///
+    /// Error rather than Warning because there is no legitimate shape it
+    /// refuses. Every other reading of an empty label is a defect: an author
+    /// who took `Defaults.media` and filled the source but not the name, an
+    /// emitter that dropped a slot, a translation key that resolved to the
+    /// empty string. A Warning would be advice about a document that cannot be
+    /// used, which is what the pre-emit gate exists to stop.
+    ///
+    /// Carries the node's id.
+    | MediaWithoutLabel of nodeId: string
+
 /// Which `FieldRule` slot a control cannot honour (FUARAN100, Phase 864).
 /// Typed rather than a string so the honourable set stays enumerable: a slot
 /// added to `FieldRule` without a decision here will not compile.
@@ -893,6 +916,12 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             fieldId
             bound
+    | PreEmitDefect.MediaWithoutLabel nodeId ->
+        "FUARAN108",
+        DefectSeverity.Error,
+        sprintf
+            "media node '%s' has an EMPTY label — a media element is a transport, not a picture, so it is never decorative and there is no honest empty case the way there is for an image's alt; without a name it is announced to a screen reader as \"video\" or \"audio\" and nothing more, telling the reader that a player exists and not what it plays. Give 'label' the text a listener needs to decide whether to play it"
+            nodeId
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -1318,6 +1347,24 @@ let private validateCore
         | NodeKind.CodeBlock _
         | NodeKind.Math _
         | NodeKind.Drawing _ -> ()
+        // FUARAN108 (Phase 1076): a media transport with no accessible name.
+        //
+        // Only a LITERAL is judged. A `Bound` or `I18n` label resolves at render
+        // time from data this walk cannot see, so calling it empty would be a
+        // guess — the same restraint FUARAN092 shows for a bound `href` two arms
+        // below. What is left is the case that is decidable and is also the case
+        // that actually happens: `Defaults.media` carries the empty literal so
+        // the record can be constructed, and an author who fills `Src` and
+        // forgets `Label` ships exactly this.
+        //
+        // Whitespace counts as empty. A label of `" "` is not a name a listener
+        // can act on, and admitting it would make the rule trivially evadable by
+        // a space — which is worse than not having the rule, because the
+        // document would then carry a green gate saying it had been checked.
+        | NodeKind.Media spec ->
+            match spec.Label with
+            | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.MediaWithoutLabel n.Id)
+            | _ -> ()
         // FUARAN092 (Phase 812): email protection declared over an href that
         // is statically known not to be a mailto:. Bound hrefs (Query / State
         // / …) resolve at runtime and are not judged here.

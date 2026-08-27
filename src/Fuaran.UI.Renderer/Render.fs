@@ -1132,6 +1132,7 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
     | NodeKind.Fact _
     | NodeKind.Link _
     | NodeKind.Image _
+    | NodeKind.Media _
     | NodeKind.List _
     | NodeKind.Toast _
     | NodeKind.CodeBlock _
@@ -1410,6 +1411,20 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
         @ keysOfText channel i.Alt
         @ keysOfTextOpt channel i.Caption,
         []
+    // Phase 1076 — `Poster` lives inside the `MediaKind.Video` payload rather
+    // than on the spec, so a collector written from the record's field list
+    // would miss it and a poster bound to a live source would never re-render.
+    // Collected from the case, on the same terms as `Src`.
+    | NodeKind.Media m ->
+        let kindKeys =
+            match m.Kind with
+            | MediaKind.Video(_, poster) ->
+                match poster with
+                | Some p -> keysOfBinding channel p
+                | None -> []
+            | MediaKind.Audio -> []
+
+        keysOfBinding channel m.Src @ keysOfText channel m.Label @ kindKeys, []
     | NodeKind.List l -> l.Items |> List.collect (keysOfText channel), []
     | NodeKind.Toast t ->
         let __v = keysOfText channel t.Message @ keysOfBinding channel t.Open
@@ -1698,6 +1713,7 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
     | NodeKind.Fact _
     | NodeKind.Link _
     | NodeKind.Image _
+    | NodeKind.Media _
     | NodeKind.List _
     | NodeKind.Toast _
     | NodeKind.CodeBlock _
@@ -2989,6 +3005,70 @@ let rec private renderKind
                         Html.figcaption
                             [ prop.className "fuaran-image-figure-caption"
                               prop.text (renderText ctx caption) ] ] ]
+    // Phase 1076 — the media transport, structural parity with the server arm,
+    // which states the four contract points at length. In brief, and in the
+    // order they appear below: `aria-label` unconditionally (the label is
+    // mandatory and has no decorative case); both URLs through the same
+    // `Media`-class egress seam, with a refused poster DROPPED where a refused
+    // `src` collapses; and `autoplay` never emitted without `muted`.
+    //
+    // The client tier attaches NOTHING — no `onPlay`, no ref, no observer. A
+    // `<video controls>` is already a complete interactive control in every
+    // browser, and the whole point of a declarative media node is that the
+    // deterministic floor and the hydrated render are the same element. There
+    // is no enhancement tier here as there is for `Image.expandable`, because
+    // there is nothing an enhancement would add.
+    | NodeKind.Media spec ->
+        let resolvedSrc =
+            BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
+
+        let safeSrc, egressAttrs =
+            Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
+
+        let sharedProps (variantClass: string) =
+            [ prop.className ("fuaran-media " + variantClass)
+              prop.src safeSrc
+              prop.custom ("aria-label", renderText ctx spec.Label) ]
+            @ (if spec.Controls then [ prop.controls true ] else [])
+            @ (if spec.Loop then [ prop.loop true ] else [])
+
+        match spec.Kind with
+        | MediaKind.Video(autoplay, poster) ->
+            let posterProps =
+                match poster with
+                | None -> []
+                | Some p ->
+                    let resolved = BindingResolver.tryResolve ctx.Sources p |> Option.defaultValue ""
+
+                    let safe, refusal =
+                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+
+                    if safe = "" || not (List.isEmpty refusal) then
+                        []
+                    else
+                        [ prop.poster safe ]
+
+            // The pairing, on the tier where it actually governs playback.
+            // Feliz's typed props carry it to React's `autoPlay` / `muted` DOM
+            // properties; hand-spelling either as a custom attribute would give
+            // React a falsy empty string and silently drop it, which is the one
+            // failure mode this line exists to prevent.
+            let autoplayProps =
+                if autoplay then
+                    [ prop.autoPlay true; prop.muted true ]
+                else
+                    []
+
+            Html.video (
+                sharedProps "fuaran-media-video"
+                @ posterProps
+                @ autoplayProps
+                @ toProps semanticAttrs
+                @ toProps egressAttrs
+            )
+        // No autoplay branch, and none can be added here: `MediaKind.Audio`
+        // carries no slot to read.
+        | MediaKind.Audio -> Html.audio (sharedProps "fuaran-media-audio" @ toProps semanticAttrs @ toProps egressAttrs)
     | NodeKind.List spec ->
         // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
         let items =

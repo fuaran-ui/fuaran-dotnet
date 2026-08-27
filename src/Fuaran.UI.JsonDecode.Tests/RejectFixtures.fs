@@ -327,6 +327,52 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "Image expandable `\"true\"` — the stringified boolean, refused rather than coerced. A truthiness rule would have to rule on `\"false\"` and `\"\"` too, and two hosts ruling differently would disagree about whether the document declares an affordance at all" }
+      // Phase 1076 — the a11y floor, expressed where a decoder can enforce it.
+      // `label` is REQUIRED on `Media` where `caption` is optional on `Image`,
+      // and the difference is the whole rule: an image can be decorative and
+      // say so with an empty alt, while a media element is a transport and is
+      // never decorative. A document that omits the label describes a player a
+      // screen-reader user is told exists and cannot identify, so it is refused
+      // rather than defaulted — there is no honest value to default TO.
+      { Id = "reject-media-missing-label"
+        Json =
+          """{"id":"m","kind":{"$type":"Media","kind":{"$type":"Video"},"src":{"$type":"Static","value":"/clip.mp4"}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.label"
+        IsOp = false
+        Description =
+          "Media with no `label` — refused. The accessible name is mandatory because a transport has no decorative case, and there is no value to default to that would not be a fabricated name for someone else's recording" }
+      // Phase 1076 — the structurally wrong PAYLOAD, the `Image` reject-vector
+      // shape applied to a variant union. `MediaKind` is `$type`-discriminated,
+      // so unlike the bare-enum rejects above the path DOES carry the `.$type`
+      // suffix (§6, and the Phase 1073 ruling that distinguishes the two
+      // positions). `"Stream"` is the near-miss an author actually writes: a
+      // third surface that sounds like it should exist, refused exactly like a
+      // name nobody has proposed, so admitting one later is an ADDITION rather
+      // than a re-meaning of shipped bytes.
+      { Id = "reject-unknown-media-kind"
+        Json =
+          """{"id":"m","kind":{"$type":"Media","kind":{"$type":"Stream"},"label":"Live feed","src":{"$type":"Static","value":"/live.m3u8"}}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.kind.$type"
+        IsOp = false
+        Description =
+          "MediaKind case 'Stream' — refused. The variant set is closed at Video | Audio; a third surface is an admission, not a spelling a decoder may guess at. The path carries `.$type` because MediaKind is discriminated, unlike the bare-enum slots" }
+      // Phase 1076 — the stringified boolean, on the slot where coercing it
+      // would be worst. `Image.expandable` refuses the same shape and the
+      // reasoning is the same, but the CONSEQUENCE differs: a host that read
+      // `"autoplay":"false"` as truthy would start playing a video the document
+      // says not to, in a page the reader did not ask to make noise. The path
+      // names the slot INSIDE the case payload, which is also what pins where
+      // the slot lives.
+      { Id = "reject-media-autoplay-nonbool"
+        Json =
+          """{"id":"m","kind":{"$type":"Media","kind":{"$type":"Video","autoplay":"true"},"label":"Ambient loop","src":{"$type":"Static","value":"/ambient.mp4"}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.kind.autoplay"
+        IsOp = false
+        Description =
+          "Media autoplay `\"true\"` — the stringified boolean, refused rather than coerced. A truthiness rule would have to rule on `\"false\"` and `\"\"` too, and two hosts ruling differently would disagree about whether a page starts playing by itself" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

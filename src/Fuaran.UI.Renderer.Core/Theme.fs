@@ -237,6 +237,7 @@ let kindClass (kind: NodeKind<'Msg>) : string =
     | NodeKind.Skeleton(_) -> "fuaran-kind-skeleton"
     | NodeKind.Icon(_) -> "fuaran-kind-icon"
     | NodeKind.Image(_) -> "fuaran-kind-image"
+    | NodeKind.Media(_) -> "fuaran-kind-media"
     | NodeKind.List(_) -> "fuaran-kind-list"
     | NodeKind.Toast(_) -> "fuaran-kind-toast"
     | NodeKind.CodeBlock(_) -> "fuaran-kind-code-block"

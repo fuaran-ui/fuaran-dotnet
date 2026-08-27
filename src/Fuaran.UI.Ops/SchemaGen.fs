@@ -686,6 +686,30 @@ let private defs: (string * J) list =
           [ "src", binding "str"
             "width", JObj [ "type", JStr "integer"; "minimum", JInt 1 ] ]
 
+      // Phase 1076 — `controls` and `loop` are omitted-when-default and so sit
+      // out of `required`, but for OPPOSITE reasons: `loop` omits at `false`,
+      // `controls` at `true`. A schema cannot express that asymmetry and does
+      // not try — it says only that the members are optional booleans, and the
+      // defaults live in the normative text where the two polarities are
+      // stated. `label` IS required, which is the a11y floor at its most
+      // enforceable point.
+      "MediaSpec",
+      record
+          [ "kind"; "label"; "src" ]
+          [ "controls", boolean
+            "kind", ref "MediaKind"
+            "label", ref "TextSource"
+            "loop", boolean
+            "src", binding "str" ]
+
+      // Phase 1076 — `Video` carries the two video-only slots (`autoplay`
+      // omitted at `false`, `poster` optional); `Audio` carries none, and the
+      // empty case is the point rather than a gap.
+      "MediaKind",
+      union
+          [ duCase "Video" [] [ "autoplay", boolean; "poster", binding "str" ]
+            duCase "Audio" [] [] ]
+
       "ListSpec", record [ "items"; "ordered" ] [ "items", arrayOf (ref "TextSource"); "ordered", boolean ]
 
 
@@ -874,6 +898,7 @@ let private defs: (string * J) list =
             duCaseHoisted "Fact" "FactSpec"
             duCaseHoisted "Link" "LinkSpec"
             duCaseHoisted "Image" "ImageSpec"
+            duCaseHoisted "Media" "MediaSpec"
             duCaseHoisted "List" "ListSpec"
             duCaseHoisted "Toast" "ToastSpec"
             duCaseHoisted "CodeBlock" "CodeBlockSpec"
