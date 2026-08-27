@@ -1806,3 +1806,91 @@ row, which the veneers cannot model and the wire cannot carry. That is the pre-e
 additions do not move: everything added here is DATA, which is exactly why it survives the veneer
 intact, and it is the same reason Phase 750's declarative `TonedPill` could be surfaced when `Pill`
 could not.
+
+## Recorded change — 0.41.0, `Binding.State` slot seeding (fuaran#1075)
+
+**This is a SEMANTICS change to a shipped slot, and it is the first entry in this document that is.**
+Every recorded change above is additive: an existing document keeps meaning exactly what it meant, and
+what grows is what a document *can* say. This one is different in kind. `Binding.State`'s
+`defaultValue` stops being a per-reader fallback and becomes a **slot seed** — the declared value is
+the value of `$state.<key>` for every reader in the tree, not only for the binding that carries it.
+A document that decoded yesterday decodes to the identical tree today and **renders a different
+value**, wherever two readers share one key.
+
+**Version decision: MINOR, and the reasoning is recorded because the rule that produced it is not the
+one the entries above use.** Those grade on the public *surface* — a record field added is a
+construction-site break, so minor. This change's surface additions grade the same way (below), but
+they are not why it is a minor: the behaviour change is. Under the pre-1.0 caveat at the head of this
+document every minor may break, and re-meaning a slot is exactly what that caveat covers; a patch
+would understate it, and a major would say the package's contract had been redrawn, which it has not
+— one rule inside one binding case now composes across readers. Consumers pinning an exact patch, per
+the same caveat, take it deliberately.
+
+**Why it exists.** The 0.39.0 entry above flags the defect and names the fix as deferred: a grid
+carrying rows on its own `defaultValue`, beside a badge deriving a count over the same key, is the
+idiomatic shape the pack teaches and the wire made it unsound — the badge derived over an empty table
+and rendered a plausible, permanent, wrong answer. That deferral was evidence-gated on a second
+corroborating window, which fuaran#872's sweep supplied (a third model family reproducing the
+unlinked-copies complaint post-teaching, on a criterion teaching cannot move). The operator admitted
+the rule on 2026-08-27 under the charter's own pre-registered reopening condition. The design is
+settled in
+[`docs/domain-explorations/shared-data-source-charter.md`](../docs/domain-explorations/shared-data-source-charter.md)
+§4–§6 and normative in `WIRE_FORMAT.md` §24.4–§24.6.
+
+**The rules, in the form a consumer needs them.**
+
+- **Who declares:** any `Binding.State` with a present `defaultValue`, in any slot. No new
+  declaration form and no new namespace.
+- **Precedence:** a host-furnished value, then a written value, then the seed. A seed is the value
+  before anything else has said anything — never an override — so 0.39.0's "writing wins over
+  defaulting" is unchanged.
+- **Order-independence:** seeding runs over the whole tree before any binding resolves, so a reader
+  that appears before the declaration is not a special case.
+- **Two declarations of one key:** identical values agree; different values are FUARAN106 (Error).
+  The renderer still has to render, and takes the FIRST in tree order, so every host agrees while the
+  validator names the disagreement. An EMPTY table declaration (`"defaultValue": []`) declares
+  nothing — it is the value an unseeded slot already has.
+- **Host-reserved keys are never seeded.** A seed is a tree-originated write, and Phase 782's `host.`
+  floor refuses those on every path.
+
+**What a consumer must check before adopting.** Only one shape changes: a tree in which one reader
+declares a value for a key AND another reader reads the same key. Everywhere else — one reader per
+key, or a key the host populates — resolves byte-identically to 0.40.0. A host that DEPENDED on the
+old per-reader isolation (two nodes deliberately reading one key name with different defaults,
+expecting each to keep its own) now gets the first declaration for both, and FUARAN106 names it as an
+Error at pre-emit rather than leaving it to be discovered in the rendered output.
+
+**Additive public surface (each a *minor* event per the Semver note above).**
+
+- `PreEmitValidate` gains `ConflictingStateSeeds of key * firstNodeId * secondNodeId` →
+  **FUARAN106 (Error)** and `DuplicateInlineTable of firstNodeId * secondNodeId * seedKey` →
+  **FUARAN107 (Warning)**, both raised by the existing `validate` entry points; no new entry point.
+- `BindingWalk.BindingUse` gains `StateSeed of key * value * fingerprint` and
+  `InlineTable of table * seedKey`; `BindingWalk.StateKeyFacts` gains `Seeds: StateSeedDecl list` and
+  `InlineTables: InlineTableDecl list`; the record types `StateSeedDecl` / `InlineTableDecl` and the
+  functions `BindingWalk.stateSeeds` / `BindingWalk.isEmptySeed` are new. DU cases and record fields
+  are both construction-site breaks in F# — the 0.36.0 / 0.39.0 / 0.40.0 precedent.
+- `Fuaran.UI.Renderer.Render` gains `withStateSeeds`, the client tier's seeding entry. The server
+  tier seeds inside `mkContextWith`, so its public surface is unchanged.
+
+**One shipped rule was WIDENED rather than left alone, and leaving it would have been a
+contradiction.** FUARAN105 (0.39.0) fires where a Transform derives over a State key that cannot be
+filled. Its shipped wording keyed on the Transform's OWN source slot, and 0.39.0's entry says in terms
+why: under the per-reader fallback a sibling's `defaultValue` never reached the Transform, so standing
+down on one would have silenced the rule on precisely the pair the charter was written about. Under
+seeding the opposite is true, so the rule now stands down when ANY reader in the tree seeds the key —
+the wording the charter always gave it. Without that widening the resolver would say the slot is
+filled while the validator said it never could be.
+
+**Wire and corpus.** No fixture payload moved: `--emit-corpus` into a scratch directory regenerated
+the corpus byte-for-byte apart from the one new fixture and the derived
+`validator/defect-vocabulary.json` entries. `nodes/shared-source-seeded-pair.json` is added as the
+executable form of §24.6 — one declared table, two readers.
+
+**One cross-host divergence was found and closed in the same change.** The reference host has read
+`"defaultValue": []` in a Transform's source slot as the empty table since 0.23.1; that leniency was
+never written into `WIRE_FORMAT.md` and never pinned by a fixture, and the TypeScript host refused the
+same document. It is now §16's row, the TypeScript decoder accepts it, and the new fixture pins it.
+The spelling matters here because it is how a Transform source says "I read this key and carry no data
+of my own" — a bare `{"$type":"State","key":k}` wrapper remains refused, and widening the decoder to
+accept it is filed separately.

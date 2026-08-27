@@ -1049,6 +1049,36 @@ let private scheduleExposedNodeIdsVerification
 // expansions get the prefix concatenated by the recursive render call,
 // so `outerRef.innerRef.btn` is what reaches the DOM.
 
+/// The Phase 1075 SEEDING PASS — one-shot, pre-render, whole-tree.
+///
+/// A `Binding.State` carrying a `defaultValue` DECLARES the value of its slot
+/// rather than merely falling back to it for itself, so a grid bound to
+/// `$state.members` and a `Transform` deriving over the same key read the same
+/// rows. This is where that happens on the client tier: the declared values are
+/// collected once for the tree and laid UNDER whatever the caller already
+/// furnished.
+///
+/// **Precedence, per the shared-data-source charter §4:** a host-furnished
+/// value (and, in a scoped render, a value written into the scope's store) wins
+/// over a seed. A seed is the value before anything else has said anything —
+/// never an override — which is the only reading consistent with the wire's
+/// standing posture that the host owns named data.
+///
+/// **Order-independent, per §5.** The pass runs over the whole tree before any
+/// binding resolves, so a badge appearing BEFORE the grid that declares the
+/// rows is not a special case and document order carries no meaning.
+///
+/// Zero-cost when the tree declares nothing: an empty seed map returns the
+/// caller's sources unchanged, by reference.
+let withStateSeeds<'Msg> (node: Node<'Msg>) (sources: BindingResolver.BindingSources) : BindingResolver.BindingSources =
+    let seeds = Fuaran.UI.BindingWalk.stateSeeds node
+
+    if Map.isEmpty seeds then
+        sources
+    else
+        { sources with
+            State = sources.State |> Map.fold (fun acc k v -> Map.add k v acc) seeds }
+
 /// One-shot pre-render walk that collects every
 /// reachable `NodeKind.FragmentDecl` body into a `Map<FragmentId, _>`.
 /// The convenience entry points (`renderWithSources` /
@@ -3354,7 +3384,17 @@ let rec private renderKind
                         Runtime.UnprivilegedGuestRuntime(ctx.Runtime, spec.ScopeId) :> Runtime.IFuaranRuntime, rawBubble
 
                 let guestCtx: RenderContext<obj> =
-                    { Sources = { ctx.Sources with State = scopedState }
+                    // Phase 1075 — the guest seeds from ITS OWN tree, into its
+                    // own scope. A guest declaration is invisible to the host
+                    // and vice versa (charter §4, Phase 266's boundary
+                    // unchanged): the host's walk never sees this tree, because
+                    // the guest is loaded by the host's runtime rather than
+                    // carried in the host's own nodes, so nothing leaks upward
+                    // by construction. Downward, the host's furnished State and
+                    // the scope's written values both sit OVER the guest's
+                    // seeds, which is the same precedence every other entry
+                    // point applies.
+                    { Sources = withStateSeeds guestTree { ctx.Sources with State = scopedState }
                       Runtime = guestRuntime
                       VisAdapter = VisAdapter.noOp<obj>
                       Dispatch = guestDispatch
@@ -5813,7 +5853,7 @@ let renderWithSources
     (node: Node<'Msg>)
     : ReactElement =
     render
-        { Sources = sources
+        { Sources = withStateSeeds node sources
           Runtime = Runtime.diagnostic
           VisAdapter = VisAdapter.noOp<'Msg>
           Dispatch = dispatch
@@ -5869,7 +5909,7 @@ let renderWithSourcesAndEgress
     (node: Node<'Msg>)
     : ReactElement =
     render
-        { Sources = sources
+        { Sources = withStateSeeds node sources
           Runtime = Runtime.diagnostic
           VisAdapter = VisAdapter.noOp<'Msg>
           Dispatch = dispatch
@@ -5899,7 +5939,7 @@ let renderWithSourcesAndSink
     (node: Node<'Msg>)
     : ReactElement =
     render
-        { Sources = sources
+        { Sources = withStateSeeds node sources
           Runtime = runtime
           VisAdapter = VisAdapter.noOp<'Msg>
           Dispatch = dispatch
@@ -5942,7 +5982,7 @@ let renderWithSourcesSinkAndContext
     (node: Node<'Msg>)
     : ReactElement =
     render
-        { Sources = sources
+        { Sources = withStateSeeds node sources
           Runtime = runtime
           VisAdapter = VisAdapter.noOp<'Msg>
           Dispatch = dispatch
@@ -5987,7 +6027,7 @@ let renderWithSourcesSinkContextAndActionSink
     (node: Node<'Msg>)
     : ReactElement =
     render
-        { Sources = sources
+        { Sources = withStateSeeds node sources
           Runtime = runtime
           VisAdapter = VisAdapter.noOp<'Msg>
           Dispatch = dispatch
@@ -6026,7 +6066,7 @@ let renderWithSourcesInScope
         |> Map.fold (fun acc k v -> Map.add k v acc) sources.State
 
     render
-        { Sources = { sources with State = scopedState }
+        { Sources = withStateSeeds node { sources with State = scopedState }
           Runtime = runtime
           VisAdapter = VisAdapter.noOp<'Msg>
           Dispatch = dispatch
@@ -6079,7 +6119,7 @@ let renderWithSourcesInScopeAndSink
         |> Map.fold (fun acc k v -> Map.add k v acc) sources.State
 
     render
-        { Sources = { sources with State = scopedState }
+        { Sources = withStateSeeds node { sources with State = scopedState }
           Runtime = runtime
           VisAdapter = VisAdapter.noOp<'Msg>
           Dispatch = dispatch

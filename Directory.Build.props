@@ -340,8 +340,20 @@
          0.36.0 / 0.39.0 precedent; the `{ Defaults.grid with ... }` idiom is
          unaffected. This is Phase 801's recorded step-6 follow-up: no gate
          binds a payload FIELD, so nothing was red while the surfaces were
-         missing. See STABILITY.md "Recorded change — 0.40.0". -->
-    <Version>0.40.0</Version>
+         missing. See STABILITY.md "Recorded change — 0.40.0".
+
+         0.41.0 — fuaran#1075. MINOR, and the reasoning is on the SEMANTICS
+         axis rather than the surface one: `Binding.State.defaultValue` stops
+         being a per-reader fallback and SEEDS its slot, so a document that
+         decoded yesterday renders a different value today wherever two readers
+         share a key. No wire byte moves and no fixture payload changes. The
+         additive surface rides along (two `BindingUse` cases, two
+         `StateKeyFacts` fields, two `PreEmitDefect` cases → FUARAN106 /
+         FUARAN107, `BindingWalk.stateSeeds`, `Render.withStateSeeds`), each a
+         construction-site break on the 0.36.0 / 0.39.0 / 0.40.0 precedent.
+         Admitted by operator ruling under the shared-data-source charter's own
+         reopening condition. See STABILITY.md "Recorded change — 0.41.0". -->
+    <Version>0.41.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

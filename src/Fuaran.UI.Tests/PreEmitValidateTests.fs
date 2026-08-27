@@ -211,6 +211,63 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
       ExtraAttributes = None
       Motion = None }
 
+// ─── Phase 1075 fixtures — the seeding rule, FUARAN106 and FUARAN107 ───
+
+/// A grid sourced from an ARBITRARY row feed — the parametrised twin of
+/// `seedingGrid`, so a fixture can put the SAME data on a grid row-major and on
+/// a Transform columnar and assert the two do not read as a disagreement.
+let private gridWithSource (id: string) (source: Binding<Fuaran.Core.Row seq>) : Node<Msg> =
+    match (seedingGrid id "unused").Kind with
+    | NodeKind.DataGrid spec ->
+        { Id = id
+          Kind = NodeKind.DataGrid { spec with Source = source }
+          State = None
+          Style = None
+          Accessibility = None
+          ExtraAttributes = None
+          Motion = None }
+    | _ -> failwith "seedingGrid must produce a DataGrid"
+
+/// `memberRows` as the typed ROW-MAJOR feed a grid's `source` carries — the
+/// same two rows, spelled the way the other slot cannot spell them.
+let private memberRowsTyped: Fuaran.Core.Row seq =
+    Seq.ofList
+        [ (Map.ofList [ "team", Unchecked.nonNull (box "Ops") ]: Fuaran.Core.Row)
+          (Map.ofList [ "team", Unchecked.nonNull (box "Ops") ]: Fuaran.Core.Row) ]
+
+/// `memberRows` as the canonical columnar `DataSource` a Transform's `Data`
+/// arm carries.
+let private memberTable: Fuaran.Core.DataSource =
+    match HostPrelude.TransformLive.initialSource memberRows with
+    | Ok ds -> ds
+    | Error _ -> failwith "memberRows must decode as a table"
+
+/// A badge deriving over an EMBEDDED table rather than a state key — the
+/// second inline copy in FUARAN107's subject pair.
+let private embeddedBadge (id: string) (table: Fuaran.Core.DataSource) : Node<Msg> =
+    Fuaran.badge
+        id
+        { Defaults.badge with
+            Label = TextSource.Bound(Binding.Transform(TransformSource.Data table, groupCount, None)) }
+
+let private seedConflicts (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.ConflictingStateSeeds _ -> true
+            | _ -> false)
+
+let private duplicateTables (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.DuplicateInlineTable _ -> true
+            | _ -> false)
+
 // ─── Phase 864 fixtures — the declared-rule family (FUARAN099/100/101) ───
 //
 // Every rule below reasons about a slot the author DECLARED, so the fixtures
@@ -1787,21 +1844,37 @@ let tests =
               | Ok() -> failtest "Expected FUARAN105, got Ok"
           }
 
-          test "FUARAN105: the charter's §3.1 pair — a seeding grid does NOT rescue the badge" {
-              // The whole point of the rule, and the one reading a naive
-              // implementation gets wrong. `Binding.State`'s `defaultValue` is a
-              // PER-READER fallback: the grid's default is never written into the
-              // store, so the badge beside it still derives from the empty table
-              // and still renders zero. A rule that stood down here would be
-              // reading the tree under a seeding semantics the language does not
-              // have — which is exactly the change this phase defers.
+          test "FUARAN105: the charter's §3.1 pair — a seeding grid DOES rescue the badge (Phase 1075)" {
+              // THE INVERSION, and it is the whole of Phase 1075 read through
+              // this rule. Under 865's per-reader fallback the grid's default was
+              // never written into the store, so the badge beside it derived from
+              // the empty table and rendered zero forever — and this assertion
+              // read `Expect.contains`. Under the seeding rule the grid's
+              // declaration seeds `$state.members`, the badge's Transform
+              // resolves against it, and the pair means what it looks like it
+              // means. The rule widens to the charter §6 wording it was written
+              // with: it fires where NOTHING in the tree seeds the key.
+              //
+              // Keeping the old assertion would have left two rules contradicting
+              // each other in the same binary — the resolver saying the slot is
+              // filled and the validator saying it can never be.
               let tree =
                   dashboard "root" [ seedingGrid "grid" "members"; derivedBadge "count" "members" None ]
+
+              Expect.isEmpty (inertSourceDefects tree) "a sibling reader's declared default seeds the slot"
+          }
+
+          test "FUARAN105 go-red check: the sibling seed must be on the SAME key" {
+              // The partner to the inversion above. Standing down on any seed
+              // anywhere would make the rule unfalsifiable; it stands down on a
+              // seed for THIS key.
+              let tree =
+                  dashboard "root" [ seedingGrid "grid" "other"; derivedBadge "count" "members" None ]
 
               Expect.contains
                   (inertSourceDefects tree)
                   (PreEmitDefect.TransformSourceInert("count", "members"))
-                  "a sibling reader's default is not a seed"
+                  "a seed on a different key fills a different slot"
           }
 
           test "FUARAN105 go-red check: the source's OWN default clears it" {
@@ -1872,6 +1945,170 @@ let tests =
                               ) }
 
               Expect.isEmpty (inertSourceDefects (dashboard "root" [ badge ])) "an embedded table names no slot"
+          }
+
+          // ─── Phase 1075: FUARAN106 — two declarations of one seeded slot.
+          // Decidable from the tree alone, so it is an Error; every test has a
+          // go-red partner because the whole risk of an Error rule here is that
+          // it reads two SPELLINGS of one table as a disagreement.
+
+          test "FUARAN106: two readers declaring DIFFERENT defaults for one key is an Error" {
+              let other =
+                  Fuaran.Core.JArr [ Fuaran.Core.JObj [ "team", Fuaran.Core.JStr "Research" ] ]
+
+              let tree =
+                  dashboard
+                      "root"
+                      [ derivedBadge "a" "members" (Some memberRows)
+                        derivedBadge "b" "members" (Some other) ]
+
+              match seedConflicts tree with
+              | [ PreEmitDefect.ConflictingStateSeeds(key, first, second) ] ->
+                  Expect.equal key "members" "the contested key"
+                  Expect.equal first "a" "the declaration that wins — first in walk order"
+                  Expect.equal second "b" "the declaration that is silently discarded"
+
+                  let code, severity, _ =
+                      describe (PreEmitDefect.ConflictingStateSeeds(key, first, second))
+
+                  Expect.equal code "FUARAN106" "stable code"
+
+                  Expect.equal
+                      severity
+                      DefectSeverity.Error
+                      "both declarations are in the tree — the disagreement needs no host to decide it"
+              | other -> failtestf "Expected exactly one FUARAN106, got %A" other
+          }
+
+          test "FUARAN106 go-red check: two readers declaring the SAME default agree" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ derivedBadge "a" "members" (Some memberRows)
+                        derivedBadge "b" "members" (Some memberRows) ]
+
+              Expect.isEmpty (seedConflicts tree) "agreement is not a conflict"
+          }
+
+          test "FUARAN106 go-red check: ROW-MAJOR and COLUMNAR spellings of one table agree" {
+              // The reason this rule can afford to be an Error. A grid carries
+              // rows as an array of row objects; a Transform's live source
+              // carries the same data canonically columnar. Comparing the raw
+              // values would refuse the most idiomatic shape the pack teaches,
+              // so both are normalised through the transpose + columnar decode
+              // the decode-time snapshot already uses.
+              let tree =
+                  dashboard
+                      "root"
+                      [ gridWithSource "grid" (Binding.State("members", Some memberRowsTyped))
+                        derivedBadge "count" "members" (Some memberRows) ]
+
+              Expect.isEmpty (seedConflicts tree) "one table spelled two ways is one table"
+          }
+
+          test "FUARAN106 go-red check: one declaration and one bare reader is the shape we want" {
+              let tree =
+                  dashboard "root" [ seedingGrid "grid" "members"; derivedBadge "count" "members" None ]
+
+              Expect.isEmpty (seedConflicts tree) "declaring once and reading everywhere is the point of the rule"
+          }
+
+          test "FUARAN106: a host-reserved key is exempt" {
+              // The seeding pass refuses to seed a host slot at all (Phase 782),
+              // so two declarations there contest a slot neither can fill — a
+              // different defect, not this one.
+              let key = StateKeyPolicy.HostReservedPrefix + "members"
+
+              let other =
+                  Fuaran.Core.JArr [ Fuaran.Core.JObj [ "team", Fuaran.Core.JStr "Research" ] ]
+
+              let tree =
+                  dashboard "root" [ derivedBadge "a" key (Some memberRows); derivedBadge "b" key (Some other) ]
+
+              Expect.isEmpty (seedConflicts tree) "the tree cannot seed a host slot, so it cannot contest one"
+          }
+
+          // ─── Phase 1075: FUARAN107 — two inline copies of one table. The lint
+          // the charter asks for, and the rule that names the emission the
+          // charter was written about.
+
+          test "FUARAN107: a grid and a Transform each carrying the same rows warns" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ gridWithSource "grid" (Binding.Static(Some memberRowsTyped))
+                        embeddedBadge "count" memberTable ]
+
+              match duplicateTables tree with
+              | [ PreEmitDefect.DuplicateInlineTable(first, second, seedKey) ] ->
+                  Expect.equal first "grid" "the earlier copy"
+                  Expect.equal second "count" "the later copy"
+                  Expect.isNone seedKey "neither copy declares a key yet — that is the remedy, not the state"
+
+                  let code, severity, _ =
+                      describe (PreEmitDefect.DuplicateInlineTable(first, second, seedKey))
+
+                  Expect.equal code "FUARAN107" "stable code"
+
+                  Expect.equal severity DefectSeverity.Warning "identical is not the same claim as meant-to-be-one"
+              | other -> failtestf "Expected exactly one FUARAN107, got %A" other
+          }
+
+          test "FUARAN107: the remedy names the key when one copy already declares it" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ gridWithSource "grid" (Binding.State("members", Some memberRowsTyped))
+                        embeddedBadge "count" memberTable ]
+
+              match duplicateTables tree with
+              | [ PreEmitDefect.DuplicateInlineTable(_, _, Some key) ] ->
+                  Expect.equal key "members" "the seeded key the second copy should point at"
+              | other -> failtestf "Expected a FUARAN107 naming the key, got %A" other
+          }
+
+          test "FUARAN107 go-red check: two readers of ONE key are sharing, not duplicating" {
+              // The shape Phase 1075 exists to make possible. Both copies name
+              // `members`, so there is one source however many readers point at
+              // it — reporting it would name the fix as the defect.
+              let tree =
+                  dashboard
+                      "root"
+                      [ gridWithSource "grid" (Binding.State("members", Some memberRowsTyped))
+                        derivedBadge "count" "members" (Some memberRows) ]
+
+              Expect.isEmpty (duplicateTables tree) "one shared name is one table"
+          }
+
+          test "FUARAN107 go-red check: DIFFERENT tables are not copies" {
+              let otherTable =
+                  match
+                      HostPrelude.TransformLive.initialSource (
+                          Fuaran.Core.JArr [ Fuaran.Core.JObj [ "team", Fuaran.Core.JStr "Research" ] ]
+                      )
+                  with
+                  | Ok ds -> ds
+                  | Error _ -> failwith "fixture"
+
+              let tree =
+                  dashboard
+                      "root"
+                      [ gridWithSource "grid" (Binding.Static(Some memberRowsTyped))
+                        embeddedBadge "count" otherTable ]
+
+              Expect.isEmpty (duplicateTables tree) "two tables that differ are two tables"
+          }
+
+          test "FUARAN107 go-red check: two EMPTY sources are not duplicated data" {
+              // Every unpopulated live Transform decodes to `emptySource`, so
+              // pairing empties would fire on trees carrying no inline data.
+              let tree =
+                  dashboard
+                      "root"
+                      [ embeddedBadge "a" HostPrelude.TransformLive.emptySource
+                        embeddedBadge "b" HostPrelude.TransformLive.emptySource ]
+
+              Expect.isEmpty (duplicateTables tree) "an empty table is not a copy of anything"
           }
 
           // ─── Phase 864: FUARAN099/100/101 — the declared-rule family. Every

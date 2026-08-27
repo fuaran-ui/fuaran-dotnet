@@ -4174,6 +4174,97 @@ let badgeTransformLive: Node<obj> =
         ))
         None
 
+/// Phase 1075 — the shared-data-source charter's §3.1 pair, on the wire: ONE
+/// declared table, TWO readers.
+///
+/// A `DataGrid` bound to `$state.members` carries the rows on its own
+/// `defaultValue`; a `Badge` beside it derives a `groupBy`/`count` over the
+/// SAME key and carries no data of its own. Under the seeding rule the grid's
+/// declaration seeds the slot and the badge counts the grid's rows — before it,
+/// `defaultValue` was a per-reader fallback, the badge's live source started
+/// from `TransformLive.emptySource`, and the pair rendered a derived value that
+/// was silently wrong with nothing red anywhere.
+///
+/// **Why the badge's source spells `"defaultValue":[]` rather than carrying no
+/// `defaultValue` at all.** A bare `{"$type":"State","key":k}` in a Transform's
+/// source slot is refused as un-unwrappable (§16, `reject/reject-transform-source-empty-wrapper`),
+/// so the empty array is how "I read this key and carry no data" is written
+/// today. It declares nothing — an unseeded slot already resolves to the empty
+/// table — so it neither seeds the slot empty nor conflicts with the grid, and
+/// the pair reads the same whichever order the two nodes appear in. Widening
+/// the decoder to accept the bare form is routed as its own work.
+///
+/// This fixture is also the pin for the empty-array leniency itself, which the
+/// F# host has read this way since 0.23.1 and this corpus never carried: the
+/// TypeScript host refused it until Phase 1075, so ONE document decoded on one
+/// reference host and not the other.
+let sharedSourceSeededPair: Node<obj> =
+    let rows: Fuaran.Core.Row seq =
+        Seq.ofList
+            [ (Map.ofList [ "team", Unchecked.nonNull (box "Ops") ]: Fuaran.Core.Row)
+              (Map.ofList [ "team", Unchecked.nonNull (box "Research") ]: Fuaran.Core.Row) ]
+
+    let grid =
+        node
+            "member-grid"
+            (NodeKind.DataGrid(
+                { SortStateKey = None
+                  PageSize = None
+                  PageStateKey = None
+                  EditStateKey = None
+                  DefaultSort = None
+                  Source = Binding.State("members", Some rows)
+                  RowKey = None
+                  RowKeyField = Some "team"
+                  Columns =
+                    [ { Label = "Team"
+                        Value = None
+                        Field = Some "team"
+                        Sortable = None
+                        Editable = None
+                        Format = CellFormat.None
+                        Kind = CellKindErased.Text
+                        Width = ColumnWidth.Auto } ]
+                  OnRowClick = None
+                  Editable = false
+                  Reorderable = false
+                  StaticRows = None }
+            ))
+            None
+
+    let derivedSource: Binding<JVal> = Binding.State("members", Some(JArr []))
+
+    let badge =
+        node
+            "member-count"
+            (NodeKind.Badge(
+                { Label =
+                    TextSource.Bound(
+                        Binding.Transform(
+                            TransformSource.Live(derivedSource, Fuaran.UI.HostPrelude.TransformLive.emptySource),
+                            [ Fuaran.Core.GroupBy(
+                                  [],
+                                  [ { Name = "n"
+                                      Fn = Fuaran.Core.AggFn.Count
+                                      Of = "team" } ]
+                              ) ],
+                            None
+                        )
+                    )
+                  Variant = BadgeVariant.Info }
+            ))
+            None
+
+    node
+        "shared-source-seeded-pair"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = None
+              Children = [ grid; badge ] }
+        ))
+        None
+
 /// Phase 861 — sort on a DATA-BOUND grid: per-column `sortable` narrowing plus
 /// a declared initial order, reusing the `defaultSort` record and field name the
 /// `staticRows` path already carries (Phase 801). The middle column opts OUT —
@@ -4734,6 +4825,8 @@ let allNodes: (string * Node<obj>) list =
       gridPagedSorted
       "Display/Badge (Phase 818 — LIVE State-sourced Transform: the Tier-D count badge, preserved source + initial snapshot)",
       badgeTransformLive
+      "Visualisation/Grid + Display/Badge (Phase 1075 — the seeded shared source: one declared table, two readers)",
+      sharedSourceSeededPair
       "Input/Button (Phase 818 — SetState.valueFrom: a derived state write from the selected row's field)",
       buttonSetStateValueFrom
       "Visualisation/Map", mapVis

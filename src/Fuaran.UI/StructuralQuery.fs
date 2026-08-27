@@ -421,6 +421,14 @@ let private useMatches (channel: Channel) (name: string) (usage: BindingWalk.Bin
     // `Uses`. The arm states what the answer must be if that filter is ever
     // lifted, rather than leaving a silent `false` behind it.
     | BindingWalk.BindingUse.TransformStateSource(key, _) -> wants Channel.State && key = name
+    // Phase 1075 — a SEED declaration rides beside the `State` read it belongs
+    // to (`usesOfBinding` emits both), so answering it here would double-count
+    // the same node against the same name. The `State` arm above is the answer.
+    // `InlineTable` names nothing at all. Both are kept out of `Uses` by
+    // `collect`, so both arms are unreachable today, stated for the same reason
+    // the arm above it is.
+    | BindingWalk.BindingUse.StateSeed _
+    | BindingWalk.BindingUse.InlineTable _
     | BindingWalk.BindingUse.TransformParam _
     | BindingWalk.BindingUse.Computed -> false
 

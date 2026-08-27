@@ -391,17 +391,27 @@ governing ruling is one sentence — *the tree already has one name for host dat
 tree-scoped data, and sharing is a question about what may DECLARE a value under the second, never
 about minting a third.*
 
-**Nothing was admitted, and one thing shipped.** The only shape that works is a **semantics change to
-an already-shipped slot** rather than an additive case, and on ×2 evidence from one criterion that is
-not a call to make; it is deferred, evidence-gated, pending corroboration at the pack-teaching sweep.
-What did ship is the *defect flag* that stands independent of it: **FUARAN105 (Warning)**, which names
-the silent zero the current semantics produce — a `Transform` over a default-less `State` source
-resolves to the empty table and renders a plausible wrong answer with nothing red anywhere. A finding
-about shipped behaviour needs no vocabulary decision, and shipping it does not anticipate one.
+**Nothing was admitted at first, and one thing shipped.** The only shape that works is a **semantics
+change to an already-shipped slot** rather than an additive case, and on ×2 evidence from one
+criterion that was not a call to make; it was deferred, evidence-gated, pending corroboration at the
+pack-teaching sweep. What shipped alongside is the *defect flag* that stands independent of it:
+**FUARAN105 (Warning)**, which names the silent zero the old semantics produced — a `Transform` over a
+default-less `State` source resolved to the empty table and rendered a plausible wrong answer with
+nothing red anywhere. A finding about shipped behaviour needs no vocabulary decision, and shipping it
+did not anticipate one.
+
+**The gate then closed the other way, and that is the record worth keeping.** Phase 872's sweep
+(epoch `b77343e`) reproduced the unlinked-copies complaint at `stress-001/c2` from a THIRD model
+family, post-teaching, on a criterion teaching structurally cannot move — three families across two
+windows. The operator ruled the charter's own pre-registered reopening condition met on 2026-08-27
+and **admitted the seeding rule**; it shipped as [Phase
+1075](../../roadmap/phases/1075-binding-state-seeding-semantics-o1.md). An evidence gate that only
+ever refuses is not a gate, and this row is the first time one in this charter has been reopened by
+the evidence it named in advance.
 
 | Reserved name | Disposition | Ruling |
 |---|---|---|
-| `SharedSource` / named embedded table | **Semantics (DEFERRED — evidence-gated)** | Not a kind, not a variant, not a field. The two sighted nodes share no slot type but `Binding`, so `DataSource` cannot carry the answer; the shape is a seeding rule on `Binding.State.defaultValue`, which is a semantics change to a shipped slot rather than an additive case. Deferred at ×2 on one criterion pending corroboration at the 872/873 sweep. The live defect the current semantics produce is flagged meanwhile by **FUARAN105 (Warning)**, which is a report about the shipped resolver and takes no position on the deferred rule. See the charter. |
+| `SharedSource` / named embedded table | **Semantics (ADMITTED 2026-08-27 — shipped, fuaran#1075)** | Still not a kind, not a variant, not a field, and that refutation is unchanged: the two sighted nodes share no slot type but `Binding`, so `DataSource` could never have carried the answer. What was admitted is the **seeding rule on `Binding.State.defaultValue`** — a declared default fills its slot for every reader in the tree rather than falling back for its own binding alone — which is a semantics change to a shipped slot and was deferred at ×2 on one criterion. The gate reopened on its own terms: 872's sweep (epoch `b77343e`) reproduced `stress-001/c2` from a third model family post-teaching, on a pack-independent criterion, and the operator ruled the charter's condition met. Shipped with `FUARAN106` (conflicting seeds, **Error**) and `FUARAN107` (two inline copies of one table, **Warning**); **FUARAN105 widened** to the wording the charter always gave it, since a sibling's declaration now IS a rescuer. Normative in `WIRE_FORMAT.md` §24.4–§24.6. See the charter §10. |
 | `DataScope` / `Provide` | **Composition / rejected** | A container that renders nothing, inventing a third tree-scoped namespace beside `$state` and `queryResults`. Scoping is not a structural primitive. |
 | `DataSource.Named` / tree-first `Ref` | **Rejected — structurally cannot work** | `DataSource` reaches the UI wire only inside `Binding.Transform`. It cannot name a grid's or a chart's source, so it could not make the sighted pair share anything. The phase file's own anticipated shape, refuted. |
 | declared total / "a feed larger than you inline" (`stress-006/c1`) | **Host chrome** | A number the tree cannot substantiate. A host `Query` knows its own count; an inline source of twenty rows captioning two hundred is a false claim, and a slot carrying it would make the language complicit rather than fix it. Routed to pack teaching (872). **Reopen:** a paged grid over a host feed needing a total the host cannot supply. |

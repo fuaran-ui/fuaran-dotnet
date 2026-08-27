@@ -1,4 +1,4 @@
-module Fuaran.UI.Renderer.Server.Render
+﻿module Fuaran.UI.Renderer.Server.Render
 
 // ============================================================================
 //  Fuaran — server-side renderer (Phase 140).
@@ -2009,7 +2009,27 @@ let mkContextWith
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : ServerRenderContext =
-    { Sources = sources
+    // Phase 1075 — the SEEDING PASS, at the server tier's single context choke
+    // point so it lands on every entry point below by construction rather than
+    // by each one remembering it (the same argument the egress default makes
+    // just under this line).
+    //
+    // A `Binding.State` carrying a `defaultValue` declares the value of its
+    // slot, so `ctx.Sources.State` is populated by the same pass the client
+    // renderer runs and the two hosts' first render read an identical map —
+    // which is what keeps hydration mismatch-free (`docs/SSR.md`). A
+    // host-furnished value wins over a seed (charter §4); the fold lays the
+    // caller's map over the seeds, never under them.
+    let seeded =
+        let seeds = Fuaran.UI.BindingWalk.stateSeeds node
+
+        if Map.isEmpty seeds then
+            sources
+        else
+            { sources with
+                State = sources.State |> Map.fold (fun acc k v -> Map.add k v acc) seeds }
+
+    { Sources = seeded
       Fragments = collectFragments Map.empty node
       Customs = customs
       Scope = None

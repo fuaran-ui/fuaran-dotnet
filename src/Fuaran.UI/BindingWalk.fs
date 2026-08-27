@@ -68,9 +68,56 @@ type BindingUse =
     /// reason: the consumption-union rules (FUARAN070–076) are tuned to the
     /// surfaces `Uses` covers today.
     | TransformStateSource of key: string * hasDefault: bool
+    /// Phase 1075 — a `Binding.State` carrying a PRESENT `defaultValue`: the
+    /// declaring reader, and under the seeding rule the thing that puts a value
+    /// under `$state.<key>` for every other reader in the tree.
+    ///
+    /// Carries the value TWICE, on purpose. `value` is the boxed default
+    /// exactly as the declaring reader would have resolved it — the renderers
+    /// seed the store with THAT, so a grid's `Row seq` stays a `Row seq` and no
+    /// reader's `unbox` changes meaning. `fingerprint` is a COMPARISON form:
+    /// two readers may spell one table row-major and columnar and mean the same
+    /// thing, so FUARAN106 must not read a re-encoding as a disagreement. See
+    /// `seedFingerprint`.
+    ///
+    /// Emitted BESIDE `State key`, never instead of it: a declaring reader is
+    /// still a reader, and nothing about the read projection moves.
+    /// Filtered OUT of `TreeBindingFacts.Uses` for the same reason
+    /// `TransformStateSource` is — the consumption-union rules
+    /// (FUARAN070–076) are tuned to the surfaces `Uses` covers today.
+    | StateSeed of key: string * value: objnull * fingerprint: objnull
+    /// Phase 1075 — an INLINE table carried in the tree, normalised to the
+    /// canonical columnar `Table` whatever slot spelled it (a grid/chart
+    /// `source` row array, a Transform's `Data` embedded table, a Transform's
+    /// live `State` source's carried default). `seedKey` names the state key
+    /// that carries it when the slot is a `Binding.State` — the discriminator
+    /// FUARAN107 uses to tell "two copies" from "one shared name".
+    ///
+    /// Also filtered out of `Uses`.
+    | InlineTable of table: Fuaran.Core.Table * seedKey: string option
 
 /// One observed usage tagged with the id of the node whose spec reads it.
 type NodeBindingUse = { Reader: string; Use: BindingUse }
+
+/// Phase 1075 — one `Binding.State` declaration that seeds its slot.
+type StateSeedDecl =
+    {
+        /// The id of the node whose spec carries the declaring binding.
+        Reader: string
+        /// The state key seeded.
+        Key: string
+        /// The boxed default, as the declaring reader resolves it — what the
+        /// renderers put in the store.
+        Value: objnull
+        /// The comparison form (see `BindingUse.StateSeed`).
+        Fingerprint: objnull
+    }
+
+/// Phase 1075 — one inline table carried in the tree, normalised.
+type InlineTableDecl =
+    { Reader: string
+      SeedKey: string option
+      Table: Fuaran.Core.Table }
 
 /// One observed wire-survivable `Action.Call` (Phase 428), collected from the
 /// wire-survivable Action slots (`Button.OnClick` / `Form.OnSubmit` /
@@ -192,6 +239,20 @@ type StateKeyFacts =
         /// Transform. That reading is the one the deferral of the seeding rule
         /// requires; see `PreEmitDefect.TransformSourceInert`.
         TransformInertSources: (string * string) list
+        /// Phase 1075 — every `Binding.State` in the tree carrying a present
+        /// `defaultValue`, in walk order. Under the seeding rule the FIRST
+        /// declaration of a key seeds the slot; the rest are either agreements
+        /// (identical fingerprint — harmless) or conflicts (FUARAN106).
+        ///
+        /// Host-reserved keys are NOT filtered here: the walk reports what the
+        /// tree says, and refusing a tree-originated write to a host slot
+        /// (Phase 782) is the SEEDING pass's job, where the refusal belongs
+        /// beside every other one. A rule that wants the filtered set applies
+        /// `StateKeyPolicy.isHostReserved` itself, as `stateSeeds` does.
+        Seeds: StateSeedDecl list
+        /// Phase 1075 — every inline table the tree carries, normalised to the
+        /// canonical columnar shape. FUARAN107's subjects.
+        InlineTables: InlineTableDecl list
     }
 
 /// The tree-wide facts `PreEmitValidate`'s cross-tree checks run on.
@@ -221,8 +282,68 @@ type TreeBindingFacts =
 /// re-sync source, `I18n` `{arg}` sub-bindings, a `Format` binding's numeric
 /// source, and a parameterised `Transform`'s param sources — the same
 /// recursion contract as the renderer's reactive walk.
+/// Phase 1075 — normalise a boxed seed value to the form FUARAN106 compares.
+///
+/// Two readers may spell ONE table two ways — a grid's `source` is a row-major
+/// array of row objects, a Transform's live `State` source carries the same
+/// data as canonical columnar — and a conflict rule that read a re-encoding as
+/// a disagreement would raise an Error on the most idiomatic shape the pack
+/// teaches. So a tabular seed normalises through the SAME transpose + columnar
+/// decode the decode-time snapshot uses (`TransformLive.initialSource`), and
+/// everything else is compared as it stands.
+///
+/// A non-tabular value falls back to the value itself: a scalar seed
+/// (`"Ada"`, `3.0`, `false`) compares structurally in both hosts, and a `JVal`
+/// that is not a table compares as the `JVal` DU it is.
+let private seedFingerprint (v: objnull) : objnull =
+    match v with
+    | :? JVal as jv ->
+        match HostPrelude.TransformLive.initialSource jv with
+        | Ok(Fuaran.Core.Embedded t) -> box t
+        | _ -> box jv
+    | other -> other
+
+/// Phase 1075 — the EMPTY table, which is what a seed must not be.
+///
+/// `defaultValue: []` is the identity of the seeding lattice, not a claim about
+/// content: an unseeded slot already resolves to `TransformLive.emptySource`,
+/// so an empty declaration adds nothing an absent one does not already say.
+/// Two consequences, and BOTH are load-bearing rather than tidy.
+///
+/// It must not WIN the first-declaration race, or a badge spelling
+/// `{"$type":"State","key":"members","defaultValue":[]}` — today the only way
+/// to say "I read this slot and carry nothing" in a Transform's source slot —
+/// would seed the slot empty whenever it appeared before the grid that carries
+/// the rows, and the charter's §5 order-independence would be false.
+///
+/// And it must not CONFLICT, or that same pair would raise FUARAN106 against
+/// the grid beside it — an Error on the document the seeding rule exists to
+/// make work.
+let private emptyTable: Fuaran.Core.Table = { Schema = []; Columns = [] }
+
+let isEmptySeed (fingerprint: objnull) : bool =
+    match fingerprint with
+    | :? Fuaran.Core.Table as t -> t = emptyTable
+    | _ -> false
+
+/// Phase 1075 — normalise a ROW-MAJOR feed (a grid / chart `source`) to the
+/// canonical columnar `Table`, through the same path a live Transform source
+/// takes. `None` when the rows do not decode as a table (a ragged row set —
+/// Core's schema inference is deliberately loud rather than patching).
+let private tableOfRows (rows: Fuaran.Core.Row seq) : Fuaran.Core.Table option =
+    match HostPrelude.TransformLive.initialSource (Fuaran.Core.RowCodec.encodeRows rows) with
+    | Ok(Fuaran.Core.Embedded t) -> Some t
+    | Ok(Fuaran.Core.Ref _)
+    | Error _ -> None
+
 let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
     match binding with
+    // Phase 1075 — a PRESENT default is a seed declaration as well as a read.
+    | Binding.State(key, Some d) ->
+        let boxed = box d
+
+        [ BindingUse.State key
+          BindingUse.StateSeed(key, boxed, seedFingerprint boxed) ]
     | Binding.State(key, _) -> [ BindingUse.State key ]
     | Binding.Filter(name, _) -> [ BindingUse.Filter name ]
     | Binding.Selection(nodeId, _, _, _) -> [ BindingUse.Selection nodeId ]
@@ -245,10 +366,33 @@ let rec usesOfBinding<'T> (binding: Binding<'T>) : BindingUse list =
         // `State` read (see `BindingUse.TransformStateSource`). A `Data` source
         // is columnar/`ref` and names no state key; a `Live` source over any
         // other binding shape is not FUARAN105's subject.
+        // Phase 1075 — the same slot, read twice more. A live `State` source
+        // carrying a default is a SEED declaration like any other
+        // `Binding.State` (charter §4: the declaring reader is any
+        // `Binding.State` with a present `defaultValue`), and the table it
+        // carries — or the `Data` arm's embedded table — is an INLINE TABLE
+        // FUARAN107 compares against every other copy in the tree.
+        //
+        // It still does NOT emit `BindingUse.State key`: 865's reasoning is
+        // unchanged by seeding, because widening `Reads` narrows FUARAN098 on
+        // trees that fire it today, which is a different phase's work.
         let sourceUse =
             match source with
-            | TransformSource.Live(Binding.State(key, defaultValue), _) ->
-                [ BindingUse.TransformStateSource(key, defaultValue.IsSome) ]
+            | TransformSource.Live(Binding.State(key, defaultValue), initial) ->
+                let seed =
+                    match defaultValue with
+                    | Some dv ->
+                        let boxed = box dv
+                        [ BindingUse.StateSeed(key, boxed, seedFingerprint boxed) ]
+                    | None -> []
+
+                let inline_ =
+                    match defaultValue, initial with
+                    | Some _, Fuaran.Core.Embedded t -> [ BindingUse.InlineTable(t, Some key) ]
+                    | _ -> []
+
+                BindingUse.TransformStateSource(key, defaultValue.IsSome) :: (seed @ inline_)
+            | TransformSource.Data(Fuaran.Core.Embedded t) -> [ BindingUse.InlineTable(t, None) ]
             | TransformSource.Live _
             | TransformSource.Data _ -> []
 
@@ -283,6 +427,40 @@ let private usesOfTextOpt (text: TextSource option) : BindingUse list =
     match text with
     | Some t -> usesOfText t
     | None -> []
+
+/// Phase 1075 — binding usages of a ROW-FEED slot (a grid's / chart's
+/// `source`), which the generic walk cannot fully normalise.
+///
+/// Two things happen here that `usesOfBinding` structurally cannot. The seed
+/// FINGERPRINT is re-derived from the typed rows: the generic walk boxes a
+/// `Row seq` and has no portable way to recognise it, so a grid seeding
+/// `members` row-major and a Transform seeding it columnar would read as a
+/// disagreement. And a row array — whether it rides a `State` default or a
+/// `Static` value — IS an inline table, so it is recorded as one.
+///
+/// The seed VALUE is untouched: the store must receive the `Row seq` the grid
+/// itself resolves, not a re-encoding of it.
+let private rowFeedUses (binding: Binding<Fuaran.Core.Row seq>) : BindingUse list =
+    let table =
+        match binding with
+        | Binding.State(_, Some rows)
+        | Binding.Static(Some rows) -> tableOfRows rows
+        | _ -> None
+
+    let normalised =
+        usesOfBinding binding
+        |> List.map (fun u ->
+            match u, table with
+            | BindingUse.StateSeed(k, v, _), Some t -> BindingUse.StateSeed(k, v, box t)
+            | _ -> u)
+
+    let inline_ =
+        match binding, table with
+        | Binding.State(key, Some _), Some t -> [ BindingUse.InlineTable(t, Some key) ]
+        | Binding.Static(Some _), Some t -> [ BindingUse.InlineTable(t, None) ]
+        | _ -> []
+
+    normalised @ inline_
 
 let private usesOfBindingOpt (binding: Binding<'T> option) : BindingUse list =
     match binding with
@@ -421,6 +599,18 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
     // ── The Phase 865 read-side projection FUARAN105 runs on ──
     let transformInertSources = ResizeArray<string * string>()
 
+    // ── The Phase 1075 seeding projection (the resolver's seed map, FUARAN106,
+    //    FUARAN107) ──
+    let seeds = ResizeArray<StateSeedDecl>()
+    let inlineTables = ResizeArray<InlineTableDecl>()
+
+    /// An EMPTY table is not a copy of anything. `TransformLive.emptySource` is
+    /// what a live source with no data decodes to and what `[]` normalises to,
+    /// so recording it would make every pair of empty sources in one tree read
+    /// as duplicated data.
+    let isNonEmptyTable (t: Fuaran.Core.Table) =
+        not (List.isEmpty t.Columns) || not (List.isEmpty t.Schema)
+
     /// A closure produces an arbitrary `Action` at dispatch time, so it may
     /// write any key. Seeing one stands the write-side rule down for the whole
     /// tree — over-counting an opaque writer costs a missed finding, and the
@@ -458,6 +648,21 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             // carrying its own default is what makes the initial snapshot real.
             | BindingUse.TransformStateSource(key, false) -> transformInertSources.Add(readerId, key)
             | BindingUse.TransformStateSource(_, true) -> ()
+            // Phase 1075 — the seeding projection. Every read surface reaches
+            // this fold, which is what makes the seed map slot-complete rather
+            // than complete only where `Uses` happens to be.
+            | BindingUse.StateSeed(key, value, fingerprint) ->
+                seeds.Add
+                    { Reader = readerId
+                      Key = key
+                      Value = value
+                      Fingerprint = fingerprint }
+            | BindingUse.InlineTable(table, seedKey) ->
+                if isNonEmptyTable table then
+                    inlineTables.Add
+                        { Reader = readerId
+                          SeedKey = seedKey
+                          Table = table }
             | _ -> ()
 
     // `inUses` is false while walking a subtree that contributes STATE facts but
@@ -476,6 +681,13 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 // rules are tuned to the surfaces `Uses` covers today, and a
                 // Transform's source slot is not one of them.
                 | BindingUse.TransformStateSource _ -> ()
+                // Phase 1075 — the same posture for the two seeding cases. A
+                // declaring reader still contributes its `State key` read to
+                // `Uses`; the declaration itself is a fact about the SLOT, not
+                // a consumption edge, and widening `Uses` would move five
+                // shipped Error-severity rules' verdicts as a side effect.
+                | BindingUse.StateSeed _
+                | BindingUse.InlineTable _ -> ()
                 | _ -> uses.Add { Reader = readerId; Use = u }
 
     /// Every `SetState` reachable from a wire-survivable action slot: the key is
@@ -736,7 +948,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 let uses =
                     // Phase 393 — a static read-only grid carries its cells as `TextSource`
                     // in `StaticRows`; a data-bound grid carries a `Source` binding.
-                    usesOfBinding g.Source
+                    rowFeedUses g.Source
                     @ (match g.StaticRows with
                        | Some sr ->
                            (sr.Headers |> List.collect usesOfText)
@@ -744,7 +956,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                        | None -> [])
 
                 uses, []
-            | NodeKind.Chart c -> usesOfBinding c.Source @ usesOfTextOpt c.Title, []
+            | NodeKind.Chart c -> rowFeedUses c.Source @ usesOfTextOpt c.Title, []
             | NodeKind.Map m -> usesOfBinding m.Source, []
             // ── Structural ──
             | NodeKind.ErrorBoundary spec -> [], [ spec.Child; spec.Fallback ]
@@ -821,4 +1033,46 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
           WriteKeys = Set.ofSeq stateWriteKeys
           OpaqueWriter = opaqueWriter
           SwitchSelectors = List.ofSeq switchSelectors
-          TransformInertSources = List.ofSeq transformInertSources } }
+          TransformInertSources = List.ofSeq transformInertSources
+          Seeds = List.ofSeq seeds
+          InlineTables = List.ofSeq inlineTables } }
+
+/// Phase 1075 — the SEED MAP for a tree: the value each `$state.<key>` slot
+/// carries before anything else has said anything.
+///
+/// The rules, all four from the charter's §4, are here and nowhere else so the
+/// two reference renderers cannot drift on them:
+///
+///  - **The declaring reader is any `Binding.State` with a present
+///    `defaultValue`.** There is no separate declaration site — that is the
+///    whole economy of the rule.
+///  - **First declaration in walk order wins.** Two declarations of one key are
+///    a defect (FUARAN106, Error) but the renderer must still be deterministic
+///    and must not depend on which host walked the tree; first-wins is the
+///    charter's §3.4(1) alternative, taken BESIDE the refusal rather than
+///    instead of it.
+///  - **A host-reserved key (Phase 782) is never seeded.** A seed is a
+///    tree-originated write, and the wire must not gain a way around a
+///    deliberate floor.
+///  - **The seed is the FLOOR, not an override.** The caller merges a
+///    host-furnished value and any written value OVER this map — see the
+///    renderers' `withStateSeeds`.
+let stateSeeds<'Msg> (root: Node<'Msg>) : Map<string, obj> =
+    (collect root).StateKeys.Seeds
+    |> List.fold
+        (fun acc (d: StateSeedDecl) ->
+            match d.Value with
+            // A null seed carries nothing — an absent value cannot be the value
+            // before anything else has said anything.
+            | null -> acc
+            // Nor can an EMPTY table: it is the value an unseeded slot already
+            // has, so declaring it says nothing, and letting it win the
+            // first-declaration race would make document order matter (see
+            // `isEmptySeed`).
+            | _ when isEmptySeed d.Fingerprint -> acc
+            | value ->
+                if Fuaran.UI.StateKeyPolicy.isHostReserved d.Key || Map.containsKey d.Key acc then
+                    acc
+                else
+                    Map.add d.Key value acc)
+        Map.empty

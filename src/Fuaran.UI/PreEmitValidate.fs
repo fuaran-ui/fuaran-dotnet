@@ -399,15 +399,20 @@ type PreEmitDefect =
     /// writer the channel never changes, so a `groupBy`/`count` pipeline over it
     /// renders a plausible, permanent, wrong answer with nothing red anywhere.
     ///
-    /// **A SIBLING reader's default is not a rescuer, and that is a fact about
-    /// the shipped resolver rather than a narrowing choice.**
-    /// `Binding.State`'s `defaultValue` is a PER-READER FALLBACK, not a slot
-    /// seed: nothing writes it into the store, so a grid declaring
-    /// `State("rows", Some rows)` beside a badge reading `State("rows", None)`
-    /// leaves the badge resolving from an unwritten slot. That is exactly the
-    /// emission this rule exists to name. A rule that stood down on a sibling's
-    /// default would be reading the tree under a seeding semantics the language
-    /// does not have.
+    /// **A SIBLING reader's default IS a rescuer since Phase 1075, and the
+    /// reversal is the point of that phase rather than a loosening of this
+    /// rule.** Until the seeding rule landed, `Binding.State`'s `defaultValue`
+    /// was a PER-READER FALLBACK: nothing wrote it into the store, so a grid
+    /// declaring `State("rows", Some rows)` beside a badge reading
+    /// `State("rows", None)` left the badge resolving from an unwritten slot,
+    /// and this rule had to key on the Transform's OWN source or be silent on
+    /// precisely the pair the charter was written about. Under seeding the
+    /// grid's declaration seeds the slot, the badge reads it, and the rule
+    /// widens to the charter §6 wording it was always meant to have: it fires
+    /// where NO reader in the tree seeds the key and nothing writes it.
+    /// Standing down on a sibling seed is now correct where it would have been
+    /// wrong before; the go-red test that pinned the old reading pins the new
+    /// one.
     ///
     /// **WARNING, and it stands down under any opaque writer**, for the same
     /// reason FUARAN103 does: a closure produces an arbitrary action at dispatch
@@ -417,6 +422,82 @@ type PreEmitDefect =
     ///
     /// Carries the reading node's id and the key.
     | TransformSourceInert of nodeId: string * key: string
+    /// **FUARAN106 (Error)**. Two `Binding.State` readers of ONE key declare
+    /// DIFFERENT `defaultValue`s (Phase 1075) — the conflicting-seed defect the
+    /// shared-data-source charter §3.4(1) named as the first rule the seeding
+    /// semantics needs.
+    ///
+    /// Before seeding this was legal and harmless: each reader resolved its own
+    /// fallback, and two disagreeing defaults simply meant two nodes showing
+    /// two things. Under seeding there is ONE slot and the declarations are
+    /// claims about it, so a disagreement is a fact about the document that
+    /// cannot be resolved from the document. The renderer still has to render:
+    /// it takes the FIRST declaration in walk order, which is deterministic and
+    /// host-independent, and this rule is what stops that determinism from
+    /// being a silent coin-toss the author never sees.
+    ///
+    /// **ERROR, where its two Phase-1075 siblings are Warnings, on the
+    /// fuaran-core#90 rule.** Both declarations are in the tree; neither is a
+    /// claim about a host the walk cannot see. The disagreement is decidable on
+    /// the evidence the walk already holds — the same argument FUARAN099 makes
+    /// for its own Error grade.
+    ///
+    /// **Two spellings of one table are NOT a disagreement.** A grid carries
+    /// rows row-major and a Transform's live source carries the same data
+    /// canonically columnar; comparing the raw values would call that a
+    /// conflict and refuse the most idiomatic shape the pack teaches. Both
+    /// sides are therefore normalised through the same transpose + columnar
+    /// decode the decode-time snapshot uses before they are compared
+    /// (`BindingWalk.seedFingerprint`).
+    ///
+    /// **What is NOT claimed.** The comparison is structural equality over the
+    /// normalised form. A seed whose value is a LAZILY constructed sequence
+    /// has no structural identity in .NET, so two such seeds carrying equal
+    /// content compare unequal and are reported. That cannot arise on the wire
+    /// — a decoded row feed is a materialised list and a decoded scalar is a
+    /// primitive — so it is reachable only from a hand-authored tree that
+    /// builds one default twice, where the report is at worst premature
+    /// rather than wrong.
+    ///
+    /// Carries the key and the two declaring node ids, in walk order.
+    | ConflictingStateSeeds of key: string * firstNodeId: string * secondNodeId: string
+    /// **FUARAN107 (Warning)**. Two nodes carry STRUCTURALLY IDENTICAL inline
+    /// tables (Phase 1075) — the two-inline-copies lint the shared-data-source
+    /// charter asks for, and the rule that would have caught the emission the
+    /// charter was written about: a `DataGrid` carrying its rows inline beside
+    /// a `Badge` whose `Transform` carries its own separate copy of the same
+    /// rows, with nothing anywhere saying the two are meant to be one table.
+    ///
+    /// **It is a Phase-1075 rule and not an older one because the REMEDY is
+    /// what seeding creates.** Before the seeding rule the advice would have
+    /// been to collapse the copies onto one declared name, and no such
+    /// declaration existed — the Warning would have named a defect and pointed
+    /// at nothing. Under seeding, one reader declares `defaultValue` on a state
+    /// key and every other reader — a grid's `source`, a `Transform`'s live
+    /// source — points at the key.
+    ///
+    /// **"Seedable" is read as re-expressible, and the widening is recorded
+    /// rather than assumed.** Charter §6 words the row "where one is
+    /// seedable". Every slot this rule collects from — a grid's or chart's
+    /// `source`, a `Transform`'s source — can carry a `Binding.State`, so the
+    /// qualifier selects nothing, and reading it narrowly would silence the
+    /// rule on the sighted emission (whose grid carries a `Static` value).
+    ///
+    /// **Two readers of the SAME key are the shape this rule wants, not a
+    /// defect.** A grid and a Transform both declaring the same rows under one
+    /// key is sound, agrees under FUARAN106, and is what the pack teaches
+    /// today; it is excluded rather than reported.
+    ///
+    /// **WARNING, because "identical" is not "meant to be one".** Two panels
+    /// legitimately showing the same small reference table is unusual, not
+    /// wrong, and the fuaran-core#90 rule refuses only what is provably wrong.
+    /// Empty tables are excluded — an empty live source is what every
+    /// unpopulated Transform decodes to, and pairing them would fire on trees
+    /// carrying no inline data at all.
+    ///
+    /// Carries the two node ids in walk order, and the state key of the
+    /// seedable copy when one of them has one.
+    | DuplicateInlineTable of firstNodeId: string * secondNodeId: string * seedKey: string option
     /// **FUARAN099 (Error)**. A `FieldRule.compare` reads a `State` key that no
     /// field in the enclosing form owns and nothing in the tree writes (Phase
     /// 864) — the predicate can never be satisfied or unsatisfied, only absent,
@@ -759,10 +840,30 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         "FUARAN105",
         DefectSeverity.Warning,
         sprintf
-            "'%s' derives from a Transform over state key '%s', but that source declares no default and nothing in the tree writes the key — the pipeline runs over an EMPTY table and renders a plausible wrong answer (a count of zero) that nothing reports; carry the rows on the Transform's own source ({\"$type\":\"State\",\"key\":\"%s\",\"defaultValue\":[…]}), or give the key a writer. A sibling node's defaultValue does NOT fill the slot — it is a per-reader fallback, not a seed. If the key is populated by the HOST, this warning is expected and can be ignored"
+            "'%s' derives from a Transform over state key '%s', but NOTHING in the tree seeds that key — no reader declares a defaultValue for it and nothing writes it — so the pipeline runs over an EMPTY table and renders a plausible wrong answer (a count of zero) that nothing reports; declare the rows once on any reader of the key ({\"$type\":\"State\",\"key\":\"%s\",\"defaultValue\":[…]}), which seeds the slot for every reader including this one, or give the key a writer. If the key is populated by the HOST, this warning is expected and can be ignored"
             nodeId
             key
             key
+    | PreEmitDefect.ConflictingStateSeeds(key, firstNodeId, secondNodeId) ->
+        "FUARAN106",
+        DefectSeverity.Error,
+        sprintf
+            "state key '%s' is seeded twice with DIFFERENT values — '%s' and '%s' each declare a defaultValue for it, and a key has one slot, so only the first declaration ('%s') takes effect and the second is silently discarded; declare the value ONCE and let the other reader carry {\"$type\":\"State\",\"key\":\"%s\"} with no defaultValue, or give the two readers different keys if they are genuinely different data"
+            key
+            firstNodeId
+            secondNodeId
+            firstNodeId
+            key
+    | PreEmitDefect.DuplicateInlineTable(firstNodeId, secondNodeId, seedKey) ->
+        "FUARAN107",
+        DefectSeverity.Warning,
+        sprintf
+            "'%s' and '%s' each carry their own inline copy of the SAME table — the two copies can silently diverge, and nothing in the tree says they are meant to be one source; declare the rows once under a state key (%s) and have the other read {\"$type\":\"State\",\"key\":\"<key>\"} with no defaultValue, which resolves to the seeded slot. If the two are genuinely independent data that happen to match, this warning is expected and can be ignored"
+            firstNodeId
+            secondNodeId
+            (match seedKey with
+             | Some k -> sprintf "'%s' already declares one" k
+             | None -> "neither declares one yet")
     | PreEmitDefect.CompareKeyUnreachable(nodeId, fieldId, key) ->
         "FUARAN099",
         DefectSeverity.Error,
@@ -1710,12 +1811,23 @@ let private validateCore
     // FUARAN103 does — an opaque writer makes "nothing writes this" unprovable
     // rather than false, and a host-reserved key is the host's to write.
     //
-    // **A sibling reader's default is deliberately not consulted.** Under the
-    // shipped resolver it does not reach this Transform, so treating it as a
-    // rescuer would encode a seeding semantics the language does not have —
-    // which is the very change the charter defers.
+    // **A sibling reader's default IS consulted since Phase 1075.** Under the
+    // seeding rule a declaration anywhere in the tree fills the slot for every
+    // reader, so the rule widens to charter §6's wording — it fires where NO
+    // reader seeds the key. 865 could not read it that way, because under the
+    // per-reader fallback a sibling's default never reached the Transform and
+    // standing down on one would have silenced the rule on exactly the pair the
+    // charter was written about.
     if not facts.StateKeys.OpaqueWriter then
         let reportedTransform = System.Collections.Generic.HashSet<string>()
+
+        // An EMPTY declaration is not a rescuer: `defaultValue: []` leaves the
+        // slot exactly as unseeded, which is the silent zero this rule names.
+        let seededKeys =
+            facts.StateKeys.Seeds
+            |> List.filter (fun (d: BindingWalk.StateSeedDecl) -> not (BindingWalk.isEmptySeed d.Fingerprint))
+            |> List.map (fun d -> d.Key)
+            |> Set.ofList
 
         for (readerNodeId, key) in facts.StateKeys.TransformInertSources do
             // An EMPTY key names no slot at all; it is a malformed source rather
@@ -1723,11 +1835,79 @@ let private validateCore
             // the author can act on.
             if
                 key <> ""
+                && not (Set.contains key seededKeys)
                 && not (Set.contains key facts.StateKeys.WriteKeys)
                 && not (StateKeyPolicy.isHostReserved key)
                 && reportedTransform.Add(readerNodeId + " " + key)
             then
                 defects.Add(PreEmitDefect.TransformSourceInert(readerNodeId, key))
+
+    // ── FUARAN106 — two declarations of one seeded slot (Phase 1075) ──
+    //
+    // Decidable from the tree ALONE: both declarations are in hand, and a key
+    // has one slot. Runs unconditionally — no opaque-writer stand-down, because
+    // the rule reasons about a PRESENCE (two disagreeing declarations) rather
+    // than an absence, so nothing a host might do later makes the disagreement
+    // stop being one.
+    //
+    // A host-reserved key is exempt for the same reason it is everywhere else:
+    // the seeding pass refuses to seed one (Phase 782), so two declarations
+    // there conflict over a slot neither can fill, which is a different defect
+    // and not this one.
+    let seedsByKey =
+        facts.StateKeys.Seeds
+        |> List.filter (fun (d: BindingWalk.StateSeedDecl) ->
+            d.Key <> ""
+            && not (StateKeyPolicy.isHostReserved d.Key)
+            // `defaultValue: []` declares nothing — it is the value an unseeded
+            // slot already has, and today it is also the only way a Transform's
+            // source slot can spell "I read this key and carry no data of my
+            // own". Reporting it as a disagreement would raise an Error on
+            // exactly the document the seeding rule exists to make work.
+            && not (BindingWalk.isEmptySeed d.Fingerprint))
+        |> List.groupBy (fun d -> d.Key)
+
+    for (key, decls) in seedsByKey do
+        match decls with
+        | first :: rest ->
+            // Only the FIRST disagreement is reported per key: the remedy is to
+            // declare the value once, so listing every later reader would repeat
+            // one instruction n times.
+            match rest |> List.tryFind (fun d -> d.Fingerprint <> first.Fingerprint) with
+            | Some conflicting ->
+                defects.Add(PreEmitDefect.ConflictingStateSeeds(key, first.Reader, conflicting.Reader))
+            | None -> ()
+        | [] -> ()
+
+    // ── FUARAN107 — two inline copies of one table (Phase 1075) ──
+    //
+    // The charter's two-copies lint. Pairs are reported once per (earlier,
+    // later) node pair, and two entries that share a state key are the SHARING
+    // this phase exists to make possible rather than a duplication.
+    let inlineTables = facts.StateKeys.InlineTables
+
+    if not (List.isEmpty inlineTables) then
+        let reportedPair = System.Collections.Generic.HashSet<string>()
+        let indexed = inlineTables |> List.indexed
+
+        for (i, a) in indexed do
+            for (j, b) in indexed do
+                if
+                    j > i
+                    && a.Reader <> b.Reader
+                    && a.Table = b.Table
+                    // One shared key is one source, however many readers point
+                    // at it — the shape the seeding rule creates.
+                    && not (a.SeedKey.IsSome && a.SeedKey = b.SeedKey)
+                    && reportedPair.Add(a.Reader + " " + b.Reader)
+                then
+                    let seedKey =
+                        match a.SeedKey, b.SeedKey with
+                        | Some k, _ -> Some k
+                        | _, Some k -> Some k
+                        | None, None -> None
+
+                    defects.Add(PreEmitDefect.DuplicateInlineTable(a.Reader, b.Reader, seedKey))
 
     // ── FUARAN099 — a cross-field compare naming a key nothing can reach (Phase 864) ──
     //
