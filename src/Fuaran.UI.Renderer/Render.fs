@@ -2921,7 +2921,13 @@ let rec private renderKind
 
             match candidates with
             | [] -> []
-            | xs -> [ "srcset", String.concat ", " xs; "sizes", "100vw" ]
+            // `srcSet`, camel-cased, NOT the HTML attribute spelling the server
+            // arm uses. This is a React DOM property name — React maps it to the
+            // `srcset` attribute, and the lowercase form is the one React warns
+            // about and the one the TypeScript React renderer does not use
+            // either. `sizes` is spelled the same on both sides. The two arms
+            // therefore differ by one capital letter and agree on the DOM.
+            | xs -> [ "srcSet", String.concat ", " xs; "sizes", "100vw" ]
 
         // Phase 951 — the a11y projection lands on the `<img>` itself.
         let img =
