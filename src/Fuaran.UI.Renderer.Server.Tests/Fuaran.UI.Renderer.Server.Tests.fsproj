@@ -26,6 +26,12 @@
          email-hostile-construct lint (including a planted-construct test, so a
          clean lint run is evidence rather than silence). -->
     <Compile Include="EmailProjectionTests.fs" />
+    <!-- GalleryExpressionTests is the Phase 1082 GATE: it asks, in emitted
+         bytes, what the shipped layout + image vocabulary can and cannot say
+         about an artwork-gallery page. Its masonry probes are negative
+         evidence — each one FAILS if a later phase makes column-fill reachable
+         through that route, which is what keeps the recorded finding honest. -->
+    <Compile Include="GalleryExpressionTests.fs" />
     <Compile Include="HydrationTests.fs" />
     <Compile Include="IslandsTests.fs" />
     <!-- CustomContractServerTests pins Phase 164's server twin of the typed
