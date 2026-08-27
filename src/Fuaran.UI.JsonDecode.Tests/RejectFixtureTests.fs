@@ -48,6 +48,39 @@ let private checkError
 
     Expect.isTrue (err.Path.StartsWith expectedPath) (sprintf "Path '%s' starts with '%s'" err.Path expectedPath)
 
+    // Phase 1073 — the ruled bare-enum reject-path spelling, pinned.
+    //
+    // The prefix assertion above cannot catch a spurious `.$type`: a host that
+    // reports `$.style.tone.$type` where the corpus says `$.style.tone` passes it,
+    // and three hosts did exactly that for the corpus's whole life. Prefix matching
+    // stays (see below), so this is the guard that makes the ruling enforceable.
+    //
+    // WIRE_FORMAT.md §6: `$type` appears in a path only when the DISCRIMINATOR is at
+    // fault. A bare enum carries no discriminator on the wire, so a `.$type` suffix
+    // there names a JSON member the document does not contain and an author cannot
+    // repair at. The corpus already distinguishes the two populations correctly, so
+    // the corpus's own expectation is the oracle: the emitted path may only end in
+    // `.$type` where the fixture's `expectedPath` does.
+    //
+    // Deliberately NOT an equality assertion over the whole family. 67 of the 73
+    // reject fixtures match exactly, and the 6 that do not are legitimate: four
+    // `reject-binding-*` cases where the corpus records the author-facing SLOT
+    // (`$.kind.trend`) and the decoder reports the wrong-typed position inside it
+    // (`$.kind.trend.value`), and the two `reject-limit-*-depth` cases where §21
+    // explicitly licenses naming the position at which the limit was breached while
+    // the corpus records `$` for the whole refused document. A host that is MORE
+    // precise than the corpus's stated slot is over-specifying, not diverging — the
+    // defect this phase found was a suffix naming a position that does not exist at
+    // all, which is a different thing and is what this pins.
+    if not (expectedPath.EndsWith ".$type") then
+        Expect.isFalse
+            (err.Path.EndsWith ".$type")
+            (sprintf
+                "reject fixture %s: corpus expects '%s' (a bare-enum position, no discriminator on the wire) but the decoder reported '%s'. A `.$type` suffix here names a JSON member the document does not contain — see WIRE_FORMAT.md §6 and use `unknownEnumCase`, not `unknownDuCase`."
+                e.Id
+                expectedPath
+                err.Path)
+
     // Node-side rejects carry an expected-shape recovery hint (the
     // decoder-quality invariant); op-side rejects assert only Code + Path.
     // Core-wrapped refusals are the named exception (inverse-pinned above).

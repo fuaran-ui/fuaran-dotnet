@@ -1569,8 +1569,28 @@ let private missingField (path: string) (key: string) (expected: string) : Resul
 let private wrongType (path: string) (expected: string) : Result<'a, DecodeError> =
     err DecodeErrorCode.WRONG_TYPE path (sprintf "expected %s" expected) (Some expected)
 
+/// An unrecognised case at a `$type`-DISCRIMINATED position: the document carries
+/// a literal `"$type"` member and its value is not a known case. WIRE_FORMAT.md §6
+/// — "`$type` appears literally in the path when the discriminator is at fault" —
+/// so the reported path names that member.
 let private unknownDuCase (path: string) (got: string) (expected: string) : Result<'a, DecodeError> =
     err DecodeErrorCode.UNKNOWN_DU_CASE (path + ".$type") (sprintf "unknown discriminator '%s'" got) (Some expected)
+
+/// An unrecognised case at a BARE ENUM position: a plain JSON string in a named
+/// field, with no `$type` member anywhere in the document (`style.tone`,
+/// `kind.trendPolarity`, `accessibility.liveRegion`, …). Same code — §6's
+/// `UNKNOWN_DU_CASE` covers "a `$type` discriminator (or bare-enum string)" —
+/// but the path is the FIELD's own, with no suffix.
+///
+/// Phase 1073: this helper did not exist, so every bare enum reported
+/// `$.style.tone.$type`, naming a JSON member the document does not contain and
+/// cannot be repaired at. It went unnoticed because the conformance harness
+/// prefix-matches `expectedPath`, so the corpus's (correct) bare expectation
+/// matched the (wrong) suffixed emission. Do not route a bare enum through
+/// `unknownDuCase` — the two positions are different and the corpus distinguishes
+/// them.
+let private unknownEnumCase (path: string) (got: string) (expected: string) : Result<'a, DecodeError> =
+    err DecodeErrorCode.UNKNOWN_DU_CASE path (sprintf "unknown discriminator '%s'" got) (Some expected)
 
 /// The depth breach shared by both `Json` -> `JVal` bridges. Phase 781: these
 /// walk a STRUCTURED PAYLOAD position (`Custom` props, an action payload, a
@@ -1918,7 +1938,7 @@ let private decodeOrientation (path: string) (j: Json) : Result<Orientation, Dec
     | JString "row" -> Ok Orientation.Horizontal
     | JString "Column"
     | JString "column" -> Ok Orientation.Vertical
-    | JString s -> unknownDuCase path s "Vertical | Horizontal"
+    | JString s -> unknownEnumCase path s "Vertical | Horizontal"
     | _ -> wrongType path "JSON string (Orientation)"
 
 let private decodeFileReadEncoding (path: string) (j: Json) : Result<FileReadEncoding, DecodeError> =
@@ -1926,7 +1946,7 @@ let private decodeFileReadEncoding (path: string) (j: Json) : Result<FileReadEnc
     | JString "Text" -> Ok FileReadEncoding.Text
     | JString "Base64" -> Ok FileReadEncoding.Base64
     | JString "DataUrl" -> Ok FileReadEncoding.DataUrl
-    | JString s -> unknownDuCase path s "Text | Base64 | DataUrl"
+    | JString s -> unknownEnumCase path s "Text | Base64 | DataUrl"
     | _ -> wrongType path "JSON string (FileReadEncoding)"
 
 let private decodeBadgeVariant (path: string) (j: Json) : Result<BadgeVariant, DecodeError> =
@@ -1942,7 +1962,7 @@ let private decodeBadgeVariant (path: string) (j: Json) : Result<BadgeVariant, D
     // BadgeVariant's identity case is Neutral. Danger is the Bootstrap prior.
     | JString "Default" -> Ok BadgeVariant.Neutral
     | JString "Danger" -> Ok BadgeVariant.Critical
-    | JString s -> unknownDuCase path s "Neutral | Brand | Success | Warning | Critical | Info"
+    | JString s -> unknownEnumCase path s "Neutral | Brand | Success | Warning | Critical | Info"
     | _ -> wrongType path "JSON string (BadgeVariant)"
 
 let private decodeButtonVariant (path: string) (j: Json) : Result<ButtonVariant, DecodeError> =
@@ -1954,7 +1974,7 @@ let private decodeButtonVariant (path: string) (j: Json) : Result<ButtonVariant,
     // Lenient-ingest alias (decode-only): Bootstrap's 'Danger' names the same
     // concept as Destructive (the red delete-class button).
     | JString "Danger" -> Ok ButtonVariant.Destructive
-    | JString s -> unknownDuCase path s "Primary | Secondary | Tertiary | Destructive"
+    | JString s -> unknownEnumCase path s "Primary | Secondary | Tertiary | Destructive"
     | _ -> wrongType path "JSON string (ButtonVariant)"
 
 let private decodeImageVariant (path: string) (j: Json) : Result<ImageVariant, DecodeError> =
@@ -1962,7 +1982,7 @@ let private decodeImageVariant (path: string) (j: Json) : Result<ImageVariant, D
     | JString "Default" -> Ok ImageVariant.Default
     | JString "Avatar" -> Ok ImageVariant.Avatar
     | JString "Rounded" -> Ok ImageVariant.Rounded
-    | JString s -> unknownDuCase path s "Default | Avatar | Rounded"
+    | JString s -> unknownEnumCase path s "Default | Avatar | Rounded"
     | _ -> wrongType path "JSON string (ImageVariant)"
 
 let private decodeScrollOrientation (path: string) (j: Json) : Result<ScrollOrientation, DecodeError> =
@@ -1970,7 +1990,7 @@ let private decodeScrollOrientation (path: string) (j: Json) : Result<ScrollOrie
     | JString "Vertical" -> Ok ScrollOrientation.Vertical
     | JString "Horizontal" -> Ok ScrollOrientation.Horizontal
     | JString "Both" -> Ok ScrollOrientation.Both
-    | JString s -> unknownDuCase path s "Vertical | Horizontal | Both"
+    | JString s -> unknownEnumCase path s "Vertical | Horizontal | Both"
     | _ -> wrongType path "JSON string (ScrollOrientation)"
 
 let private decodeDateVariant (path: string) (j: Json) : Result<DateVariant, DecodeError> =
@@ -1978,14 +1998,14 @@ let private decodeDateVariant (path: string) (j: Json) : Result<DateVariant, Dec
     | JString "Date" -> Ok DateVariant.Date
     | JString "Time" -> Ok DateVariant.Time
     | JString "DateTime" -> Ok DateVariant.DateTime
-    | JString s -> unknownDuCase path s "Date | Time | DateTime"
+    | JString s -> unknownEnumCase path s "Date | Time | DateTime"
     | _ -> wrongType path "JSON string (DateVariant)"
 
 let private decodeMathDisplay (path: string) (j: Json) : Result<MathDisplay, DecodeError> =
     match j with
     | JString "Inline" -> Ok MathDisplay.Inline
     | JString "Block" -> Ok MathDisplay.Block
-    | JString s -> unknownDuCase path s "Inline | Block"
+    | JString s -> unknownEnumCase path s "Inline | Block"
     | _ -> wrongType path "JSON string (MathDisplay)"
 
 let private decodeHeadingVariant (path: string) (j: Json) : Result<HeadingVariant, DecodeError> =
@@ -1998,7 +2018,7 @@ let private decodeHeadingVariant (path: string) (j: Json) : Result<HeadingVarian
     // OTHER observed guesses ('Title', 'Page', 'Section') stay rejects — their
     // mapping is ambiguous (Standard? Lead?), so aliasing would guess intent.
     | JString "Default" -> Ok HeadingVariant.Standard
-    | JString s -> unknownDuCase path s "Standard | Eyebrow | Caption | Lead"
+    | JString s -> unknownEnumCase path s "Standard | Eyebrow | Caption | Lead"
     | _ -> wrongType path "JSON string (HeadingVariant)"
 
 /// The legal `ToneVariant` names, in one place because two positions now teach them
@@ -2024,7 +2044,7 @@ let private decodeTone (path: string) (j: Json) : Result<ToneVariant, DecodeErro
     | JString "Danger"
     | JString "Negative" -> Ok ToneVariant.Critical
     | JString "Neutral" -> Ok ToneVariant.Default
-    | JString s -> unknownDuCase path s toneVariantNames
+    | JString s -> unknownEnumCase path s toneVariantNames
     | _ -> wrongType path "JSON string (ToneVariant)"
 
 /// Phase 867 — `Metric.trendPolarity`. `Neutral` is RESERVED, not admitted:
@@ -2036,7 +2056,7 @@ let private decodeTrendPolarity (path: string) (j: Json) : Result<TrendPolarity,
     match j with
     | JString "HigherIsBetter" -> Ok TrendPolarity.HigherIsBetter
     | JString "LowerIsBetter" -> Ok TrendPolarity.LowerIsBetter
-    | JString s -> unknownDuCase path s trendPolarityNames
+    | JString s -> unknownEnumCase path s trendPolarityNames
     | _ -> wrongType path "JSON string (TrendPolarity)"
 
 let private decodeWeight (path: string) (j: Json) : Result<StyleWeight, DecodeError> =
@@ -2044,7 +2064,7 @@ let private decodeWeight (path: string) (j: Json) : Result<StyleWeight, DecodeEr
     | JString "Compact" -> Ok StyleWeight.Compact
     | JString "Standard" -> Ok StyleWeight.Standard
     | JString "Spacious" -> Ok StyleWeight.Spacious
-    | JString s -> unknownDuCase path s "Compact | Standard | Spacious"
+    | JString s -> unknownEnumCase path s "Compact | Standard | Spacious"
     | _ -> wrongType path "JSON string (StyleWeight)"
 
 let private decodeEmphasis (path: string) (j: Json) : Result<Emphasis, DecodeError> =
@@ -2067,7 +2087,7 @@ let private decodeEmphasis (path: string) (j: Json) : Result<Emphasis, DecodeErr
     // lives in `decodeEmphasisFlag`.
     | JBool true -> Ok Emphasis.Loud
     | JBool false -> Ok Emphasis.Normal
-    | JString s -> unknownDuCase path s "Quiet | Normal | Loud"
+    | JString s -> unknownEnumCase path s "Quiet | Normal | Loud"
     | _ -> wrongType path "JSON string (Emphasis)"
 
 /// The behavioural `emphasis` BOOL (Fact / LabelValueRow) — the other half of
@@ -2102,7 +2122,7 @@ let private decodeStyleRole (path: string) (j: Json) : Result<StyleRole, DecodeE
     | JString "Data" -> Ok StyleRole.Data
     | JString "Lede" -> Ok StyleRole.Lede
     | JString "Caption" -> Ok StyleRole.Caption
-    | JString s -> unknownDuCase path s "None | Eyebrow | Data | Lede | Caption"
+    | JString s -> unknownEnumCase path s "None | Eyebrow | Data | Lede | Caption"
     | _ -> wrongType path "JSON string (StyleRole)"
 
 let private decodeFontVoice (path: string) (j: Json) : Result<FontVoice, DecodeError> =
@@ -2110,7 +2130,7 @@ let private decodeFontVoice (path: string) (j: Json) : Result<FontVoice, DecodeE
     | JString "Default" -> Ok FontVoice.Default
     | JString "Display" -> Ok FontVoice.Display
     | JString "Structural" -> Ok FontVoice.Structural
-    | JString s -> unknownDuCase path s "Default | Display | Structural"
+    | JString s -> unknownEnumCase path s "Default | Display | Structural"
     | _ -> wrongType path "JSON string (FontVoice)"
 
 let private decodeColumnWidth (path: string) (j: Json) : Result<ColumnWidth, DecodeError> =
@@ -2138,7 +2158,7 @@ let private decodeChartKind (path: string) (j: Json) : Result<ChartKind, DecodeE
     | JString "Pie" -> Ok ChartKind.Pie
     | JString "Scatter" -> Ok ChartKind.Scatter
     | JString "Heatmap" -> Ok ChartKind.Heatmap
-    | JString s -> unknownDuCase path s "Line | Bar | Area | Pie | Scatter | Heatmap"
+    | JString s -> unknownEnumCase path s "Line | Bar | Area | Pie | Scatter | Heatmap"
     | _ -> wrongType path "JSON string (ChartKind)"
 
 let private decodeChartLegendPosition (path: string) (j: Json) : Result<ChartLegendPosition, DecodeError> =
@@ -2147,21 +2167,21 @@ let private decodeChartLegendPosition (path: string) (j: Json) : Result<ChartLeg
     | JString "Right" -> Ok ChartLegendPosition.Right
     | JString "Bottom" -> Ok ChartLegendPosition.Bottom
     | JString "None" -> Ok ChartLegendPosition.None
-    | JString s -> unknownDuCase path s "Top | Right | Bottom | None"
+    | JString s -> unknownEnumCase path s "Top | Right | Bottom | None"
     | _ -> wrongType path "JSON string (ChartLegendPosition)"
 
 let private decodeChartDataLabels (path: string) (j: Json) : Result<ChartDataLabels, DecodeError> =
     match j with
     | JString "Off" -> Ok ChartDataLabels.Off
     | JString "Ends" -> Ok ChartDataLabels.Ends
-    | JString s -> unknownDuCase path s "Off | Ends"
+    | JString s -> unknownEnumCase path s "Off | Ends"
     | _ -> wrongType path "JSON string (ChartDataLabels)"
 
 let private decodeChartXScale (path: string) (j: Json) : Result<ChartXScale, DecodeError> =
     match j with
     | JString "Category" -> Ok ChartXScale.Category
     | JString "Temporal" -> Ok ChartXScale.Temporal
-    | JString s -> unknownDuCase path s "Category | Temporal"
+    | JString s -> unknownEnumCase path s "Category | Temporal"
     | _ -> wrongType path "JSON string (ChartXScale)"
 
 let private decodeAriaRole (path: string) (j: Json) : Result<AriaRole, DecodeError> =
@@ -2194,7 +2214,7 @@ let private decodeLiveRegion (path: string) (j: Json) : Result<LiveRegionKind, D
     | JString "polite" -> Ok LiveRegionKind.Polite
     | JString "assertive" -> Ok LiveRegionKind.Assertive
     | JString "off" -> Ok LiveRegionKind.Off
-    | JString s -> unknownDuCase path s "polite | assertive | off"
+    | JString s -> unknownEnumCase path s "polite | assertive | off"
     | _ -> wrongType path "JSON string (LiveRegionKind)"
 
 // ─── CellFormat / CellValue ──────────────────────────────────────────────
@@ -2208,7 +2228,7 @@ let private decodeDurationUnit (path: string) (j: Json) : Result<DurationUnit, D
     | JString "Seconds" -> Ok DurationUnit.Seconds
     | JString "Minutes" -> Ok DurationUnit.Minutes
     | JString "Hours" -> Ok DurationUnit.Hours
-    | JString s -> unknownDuCase path s "Seconds | Minutes | Hours"
+    | JString s -> unknownEnumCase path s "Seconds | Minutes | Hours"
     | _ -> wrongType path "JSON string (DurationUnit)"
 
 let private decodeDurationStyle (path: string) (j: Json) : Result<DurationStyle, DecodeError> =
@@ -2216,7 +2236,7 @@ let private decodeDurationStyle (path: string) (j: Json) : Result<DurationStyle,
     | JString "Compact" -> Ok DurationStyle.Compact
     | JString "Clock" -> Ok DurationStyle.Clock
     | JString "Long" -> Ok DurationStyle.Long
-    | JString s -> unknownDuCase path s "Compact | Clock | Long"
+    | JString s -> unknownEnumCase path s "Compact | Clock | Long"
     | _ -> wrongType path "JSON string (DurationStyle)"
 
 let private decodeRelativeTimeUnit (path: string) (j: Json) : Result<RelativeTimeUnit, DecodeError> =
@@ -2228,7 +2248,7 @@ let private decodeRelativeTimeUnit (path: string) (j: Json) : Result<RelativeTim
     | JString "Week" -> Ok RelativeTimeUnit.Week
     | JString "Month" -> Ok RelativeTimeUnit.Month
     | JString "Year" -> Ok RelativeTimeUnit.Year
-    | JString s -> unknownDuCase path s "Second | Minute | Hour | Day | Week | Month | Year"
+    | JString s -> unknownEnumCase path s "Second | Minute | Hour | Day | Week | Month | Year"
     | _ -> wrongType path "JSON string (RelativeTimeUnit)"
 
 let private decodeCellFormat (path: string) (j: Json) : Result<CellFormat, DecodeError> =
@@ -2326,7 +2346,7 @@ let private decodeDateStyle (path: string) (j: Json) : Result<DateStyle, DecodeE
     | JString "Medium" -> Ok DateStyle.Medium
     | JString "Long" -> Ok DateStyle.Long
     | JString "Full" -> Ok DateStyle.Full
-    | JString s -> unknownDuCase path s "Short | Medium | Long | Full"
+    | JString s -> unknownEnumCase path s "Short | Medium | Long | Full"
     | _ -> wrongType path "JSON string (DateStyle)"
 
 // (`decodeRelativeTimeUnit` lives beside `decodeCellFormat` above since
@@ -3973,7 +3993,7 @@ let private decodeIconSize (path: string) (j: Json) : Result<IconSize, DecodeErr
     | JString "Small" -> Ok IconSize.Small
     | JString "Medium" -> Ok IconSize.Medium
     | JString "Large" -> Ok IconSize.Large
-    | JString s -> unknownDuCase path s "Small | Medium | Large"
+    | JString s -> unknownEnumCase path s "Small | Medium | Large"
     | _ -> wrongType path "JSON string (IconSize)"
 
 let private decodeIconSpec (path: string) (j: Json) : Result<IconSpec, DecodeError> =
@@ -4170,7 +4190,7 @@ let private decodeTextAnchor (path: string) (j: Json) : Result<TextAnchor, Decod
     | Ok "Start" -> Ok TextAnchor.Start
     | Ok "Middle" -> Ok TextAnchor.Middle
     | Ok "End" -> Ok TextAnchor.End
-    | Ok s -> unknownDuCase path s "Start | Middle | End"
+    | Ok s -> unknownEnumCase path s "Start | Middle | End"
 
 let private decodeDrawStyle (path: string) (j: Json) : Result<DrawStyle, DecodeError> =
     match requireObject path j with
@@ -4810,7 +4830,7 @@ let private decodeTextFormat (path: string) (j: Json) : Result<TextFormat, Decod
     | JString "email" -> Ok TextFormat.Email
     | JString "url" -> Ok TextFormat.Url
     | JString "tel" -> Ok TextFormat.Tel
-    | JString s -> unknownDuCase path s "email | url | tel"
+    | JString s -> unknownEnumCase path s "email | url | tel"
     | _ -> wrongType path "JSON string (TextFormat)"
 
 let private decodeCompareOp (path: string) (j: Json) : Result<CompareOp, DecodeError> =
@@ -4821,7 +4841,7 @@ let private decodeCompareOp (path: string) (j: Json) : Result<CompareOp, DecodeE
     | JString "lte" -> Ok CompareOp.Lte
     | JString "gt" -> Ok CompareOp.Gt
     | JString "gte" -> Ok CompareOp.Gte
-    | JString s -> unknownDuCase path s "eq | neq | lt | lte | gt | gte"
+    | JString s -> unknownEnumCase path s "eq | neq | lt | lte | gt | gte"
     | _ -> wrongType path "JSON string (CompareOp)"
 
 /// The cross-field operand. `against` is a `Binding` — that is the entire
@@ -5589,7 +5609,7 @@ let private decodeSortDirection (path: string) (j: Json) : Result<SortDirection,
     match j with
     | JString "asc" -> Ok SortDirection.Asc
     | JString "desc" -> Ok SortDirection.Desc
-    | JString s -> unknownDuCase path s "asc | desc"
+    | JString s -> unknownEnumCase path s "asc | desc"
     | _ -> wrongType path "JSON string (SortDirection)"
 
 /// Phase 801 — the `{column, direction}` initial-order declaration. `column` is a
@@ -6243,7 +6263,7 @@ let private decodeEffectClass (path: string) (j: Json) : Result<EffectClass, Dec
                 | "Pure" -> Ok HostEffect.Pure
                 | "ReadsHost" -> Ok HostEffect.ReadsHost
                 | "WritesHost" -> Ok HostEffect.WritesHost
-                | other -> unknownDuCase (path + ".hostEffect") other "Pure | ReadsHost | WritesHost")
+                | other -> unknownEnumCase (path + ".hostEffect") other "Pure | ReadsHost | WritesHost")
 
         let detR =
             requireField path fields "determinism" "EffectClass determinism"
@@ -6254,7 +6274,7 @@ let private decodeEffectClass (path: string) (j: Json) : Result<EffectClass, Dec
                 | "Clock" -> Ok DeterminismSource.Clock
                 | "Random" -> Ok DeterminismSource.Random
                 | "Network" -> Ok DeterminismSource.Network
-                | other -> unknownDuCase (path + ".determinism") other "Deterministic | Clock | Random | Network")
+                | other -> unknownEnumCase (path + ".determinism") other "Deterministic | Clock | Random | Network")
 
         match hostR, detR with
         | Ok host, Ok det -> Ok { HostEffect = host; Determinism = det }
@@ -6340,7 +6360,8 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                             | "Card" -> Ok BoxRole.Card
                             | "Dashboard" -> Ok BoxRole.Dashboard
                             | "Separator" -> Ok BoxRole.Separator
-                            | other -> unknownDuCase (specPath + ".role") other "Group | Card | Dashboard | Separator")
+                            | other ->
+                                unknownEnumCase (specPath + ".role") other "Group | Card | Dashboard | Separator")
 
                     let layoutR =
                         requireField specPath specFields "layout" "layout object"
@@ -6805,7 +6826,7 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
                                 | "AdvisoryWarning" -> Ok HashStrictness.AdvisoryWarning
                                 | "Enforced" -> Ok HashStrictness.Enforced
                                 | other ->
-                                    unknownDuCase
+                                    unknownEnumCase
                                         (path + ".contentHash.strictness")
                                         other
                                         "StrictReplay | AdvisoryWarning | Enforced")
