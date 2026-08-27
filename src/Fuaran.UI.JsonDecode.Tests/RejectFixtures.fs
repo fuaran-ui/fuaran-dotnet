@@ -246,6 +246,22 @@ let all: RejectFixture list =
         ExpectedPath = "$.style.tone"
         IsOp = false
         Description = "ToneVariant value 'Magenta'" }
+      // Phase 1073 — the RESERVED case. Phase 867 admitted `trendPolarity` as a
+      // two-case enum with `Neutral` reserved-not-admitted and authored no reject
+      // vector, so five hosts each decided the question in their own test suite
+      // rather than against the corpus. They happened to agree; this fixture is
+      // what makes the agreement ARBITRATED rather than coincidental, and is what
+      // a sixth host will be measured against. The path is the bare slot, per §6
+      // and the Phase 1073 ruling: a bare enum carries no discriminator on the
+      // wire, so there is no `.$type` to name.
+      { Id = "reject-unknown-trend-polarity"
+        Json =
+          """{"id":"m","kind":{"$type":"Metric","label":"Avg wait","trend":{"$type":"Static","value":-0.0734},"trendPolarity":"Neutral","value":{"$type":"Static","value":80}}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.trendPolarity"
+        IsOp = false
+        Description =
+          "TrendPolarity value 'Neutral' — RESERVED, not admitted (§3.6.1 clause 5); refused exactly like a name nobody has proposed, so a later admission is an ADDITION rather than a re-meaning of shipped bytes" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
