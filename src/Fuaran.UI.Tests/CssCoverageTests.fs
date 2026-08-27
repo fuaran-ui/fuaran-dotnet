@@ -1,0 +1,428 @@
+module Fuaran.UI.Tests.CssCoverageTests
+
+#nowarn "3261" // DirectoryInfo.Parent is legitimately nullable here (the climb's terminator).
+
+// ============================================================================
+//  Phase 431 — CSS class-vocabulary <-> stylesheet coverage conformance.
+//
+//  Class-NAME parity between the F# and TypeScript renderers is corpus-locked,
+//  and the wire format's forward-coupling rule makes a new kind update encoder,
+//  decoder and corpus in one commit. The class -> CSS-*rule* axis had no such
+//  enforcement: a class could be emitted with no matching rule and only a prose
+//  note in HOST-STYLING-CHECKLIST caught it. Two families had already slipped
+//  through that way, and one of them — `fuaran-field-range*`, the Range and
+//  DateRange pair control — was a shipped control rendering as bare browser
+//  inputs on every host serving the packaged sheet.
+//
+//  This module turns the prose contract into an executable one. It enumerates
+//  every class the renderer can emit and fails when one has no rule in
+//  `content/fuaran-reference.css`.
+//
+//  THE ENUMERATION HAS TWO SOURCES, because the vocabulary is built two ways.
+//
+//   (1) PROJECTED — the suffix families are BUILT by concatenation
+//       (`"fuaran-tone-" + toneVar tone`), so no literal in the tree spells the
+//       finished class. These are enumerated by RUNNING the real Theme.fs
+//       projections over every case of every DU they range over, with the cases
+//       obtained by reflection: a case added to `ToneVariant` or `Motion`
+//       enters this enumeration with no edit here.
+//
+//   (2) SCANNED — the structural per-spec vocabulary (`fuaran-field-range`,
+//       `fuaran-card-body`, …) is written as string literals at the emission
+//       site. These are read out of the renderer sources themselves, so a class
+//       added to a renderer enters the enumeration with no edit here either.
+//       Scanning the SOURCE rather than a hand-transcribed list is the whole
+//       point: a list would have to be remembered, and the gap this phase
+//       exists to close is exactly what happens when it is not.
+//
+//  WHAT COUNTS AS COVERED is "the stylesheet carries a selector naming this
+//  class", including inside a compound or descendant selector — that is how the
+//  sheet legitimately styles most of the vocabulary.
+//
+//  A class the sheet deliberately leaves bare is DECLARED below with a reason,
+//  and the declaration is falsifiable rather than a mute-list: a `CoveredBy`
+//  entry names the class that carries the chrome instead and the suite asserts
+//  THAT class has a rule, and every declared entry must still be emitted, so an
+//  exemption outliving its class fails rather than accumulating.
+// ============================================================================
+
+open System
+open System.IO
+open System.Text.RegularExpressions
+open FSharp.Reflection
+open Expecto
+open Fuaran.UI.Types
+open Fuaran.UI.Renderer
+
+// ─── Inputs ────────────────────────────────────────────────────────────────
+
+/// The packaged reference stylesheet, copied into the test bin by the fsproj
+/// (the `ThemeTests.fs` precedent).
+let private referenceCssPath: string =
+    Path.Combine(AppContext.BaseDirectory, "fuaran-reference.css")
+
+/// The renderer sources, copied into the test bin by the fsproj under
+/// `renderer-sources/{core,client,server}/`. Copied rather than resolved by
+/// walking up to the repo root so the scan cannot silently read a different
+/// checkout's sources than the ones this build compiled.
+let private rendererSourceDir: string =
+    Path.Combine(AppContext.BaseDirectory, "renderer-sources")
+
+/// The TypeScript tier's byte-copy of the reference stylesheet. Present in a
+/// workspace checkout, absent in a bare single-repo one (the `Build.fs`
+/// wire-corpus precedent) — found by climbing rather than pinned, since its
+/// depth above this repo is a checkout layout, not a contract.
+let private tryFindTsCssCopy () : string option =
+    let rec climb (dir: DirectoryInfo) =
+        if isNull (box dir) then
+            None
+        else
+            let candidate =
+                Path.Combine(dir.FullName, "fuaran-ts", "packages", "renderer", "css", "fuaran.css")
+
+            if File.Exists candidate then
+                Some candidate
+            else
+                climb dir.Parent
+
+    climb (DirectoryInfo(AppContext.BaseDirectory))
+
+// ─── The stylesheet side ───────────────────────────────────────────────────
+
+/// Every class name the reference stylesheet names in a selector — compound
+/// (`.fuaran-callout.fuaran-tone-success`) and descendant selectors included,
+/// because that is how most of the vocabulary is legitimately styled.
+///
+/// COMMENTS ARE STRIPPED FIRST, and that is load-bearing rather than tidy:
+/// `.fuaran-tone-brand` occurs in this file only inside a comment recording
+/// that the outer-scoped tone shape was RETIRED. A scan that counted it would
+/// report a tone class as styled on the strength of a note saying it is not.
+let private styledClasses () : Set<string> =
+    let text = File.ReadAllText referenceCssPath
+    let stripped = Regex.Replace(text, @"/\*[\s\S]*?\*/", "")
+
+    Regex.Matches(stripped, @"\.(fuaran-[a-zA-Z0-9_-]+)")
+    |> Seq.cast<Match>
+    |> Seq.map (fun m -> m.Groups[1].Value)
+    |> Set.ofSeq
+
+// ─── Source (1): the projected suffix families ─────────────────────────────
+
+/// Every case of a DU whose cases are all nullary, by reflection. Asserts the
+/// all-nullary property rather than filtering for it: silently skipping a case
+/// that gained a payload would narrow the enumeration invisibly, which is the
+/// failure mode this whole module exists to prevent.
+let private nullaryCases<'T> () : 'T list =
+    let cases = FSharpType.GetUnionCases typeof<'T>
+
+    let payloaded =
+        cases |> Array.filter (fun c -> c.GetFields().Length > 0) |> Array.map _.Name
+
+    if payloaded.Length > 0 then
+        failwithf
+            "%s has non-nullary case(s) %s — the class enumeration reflects over its cases and can no longer construct them. Enumerate them explicitly here."
+            typeof<'T>.Name
+            (String.Join(", ", payloaded))
+
+    cases
+    |> Array.toList
+    |> List.map (fun c -> FSharpValue.MakeUnion(c, [||]) :?> 'T)
+
+/// The classes the Theme projections BUILD by concatenation, obtained by
+/// running them rather than by restating their prefixes.
+let private projectedClasses () : Set<string> =
+    // `Theme.className` over the full cross-product of the SemanticStyle axes.
+    // The record is built field-by-field rather than by copy-and-update on
+    // `Defaults.style` deliberately: a new style axis then fails to compile
+    // HERE, which is the forward coupling this module is for.
+    let styleClasses =
+        [ for tone in nullaryCases<ToneVariant> () do
+              for weight in nullaryCases<StyleWeight> () do
+                  for emphasis in nullaryCases<Emphasis> () do
+                      for role in nullaryCases<StyleRole> () do
+                          for voice in nullaryCases<FontVoice> () do
+                              let style: SemanticStyle =
+                                  { Tone = tone
+                                    Weight = weight
+                                    Emphasis = emphasis
+                                    Role = role
+                                    Voice = voice }
+
+                              yield! (Theme.className style).Split(' ') ]
+
+    // The remaining families are composed at their emission site rather than in
+    // Theme.fs, so the PREFIX is written here and only the suffix is derived.
+    // The scan below sees each prefix as a bare trailing-dash fragment, which
+    // is why it cannot supply these itself.
+    let motionClasses =
+        nullaryCases<Motion> ()
+        |> List.map (fun m -> "fuaran-motion-" + Theme.motionVar m)
+
+    let iconSizeClasses =
+        nullaryCases<IconSize> ()
+        |> List.map (fun s -> "fuaran-icon--" + Theme.iconSizeClass s)
+
+    // Sentiment is sign(trend) x polarity, so both polarities over a positive,
+    // negative and zero trend reach every sentiment the renderer can emit.
+    let trendClasses =
+        [ for polarity in nullaryCases<TrendPolarity> () do
+              for trend in [ 1.0; -1.0; 0.0 ] do
+                  "fuaran-metric-trend-" + fst (Theme.trendSentiment polarity trend) ]
+
+    styleClasses @ motionClasses @ iconSizeClasses @ trendClasses
+    |> List.filter (fun s -> s <> "")
+    |> Set.ofList
+
+// ─── Source (2): the structural vocabulary, scanned from the sources ───────
+
+/// A finished class name: lower-case segments joined by single hyphens. The
+/// shape deliberately rejects a trailing-hyphen fragment (`"fuaran-tone-"`, a
+/// concatenation root whose completions come from source (1)) and anything
+/// carrying a format specifier (`"fuaran-custom-%s-%s"`, an author-supplied
+/// fragment that is not a fixed vocabulary member at all).
+let private classTokenShape =
+    Regex(@"^fuaran-[a-z0-9]+(-[a-z0-9]+)*$", RegexOptions.Compiled)
+
+let private stringLiteral =
+    Regex("\"((?:[^\"\\\\\r\n]|\\\\.)*)\"", RegexOptions.Compiled)
+
+let private scannedClasses () : Set<string> =
+    if not (Directory.Exists rendererSourceDir) then
+        failwithf
+            "Renderer sources absent at %s — the fsproj copies them into the test bin. A coverage scan with no sources to scan reports everything as covered."
+            rendererSourceDir
+
+    Directory.EnumerateFiles(rendererSourceDir, "*.fs", SearchOption.AllDirectories)
+    |> Seq.collect (fun path ->
+        // Line comments go first: they carry worked HTML examples naming
+        // classes that no code path emits.
+        let source = Regex.Replace(File.ReadAllText path, @"(?m)//.*$", "")
+
+        stringLiteral.Matches source
+        |> Seq.cast<Match>
+        |> Seq.collect (fun m -> m.Groups[1].Value.Split([| ' '; '\t' |], StringSplitOptions.RemoveEmptyEntries))
+        |> Seq.filter classTokenShape.IsMatch)
+    |> Set.ofSeq
+
+let private emittedClasses () : Set<string> =
+    Set.union (projectedClasses ()) (scannedClasses ())
+
+// ─── Declared absences ─────────────────────────────────────────────────────
+
+/// Why the reference stylesheet carries no rule for a class it can emit.
+type private Absence =
+    /// Another class in the same emission carries the chrome. The suite asserts
+    /// the named class DOES have a rule, so the excuse is checkable rather than
+    /// a mute-list entry that only has to be plausible.
+    | CoveredBy of covering: string * note: string
+    /// A deliberate bare hook: the reference sheet holds no opinion here and
+    /// the class exists for consumer selectors and dev tooling.
+    | BareHook of note: string
+    /// Not a class at all — the literal is a class-shaped string in some other
+    /// role, and the scan cannot tell from its shape.
+    | NotAClass of note: string
+
+/// Whole prefix families the reference sheet leaves bare by contract. A family
+/// entry rather than one entry per member because the reason is the same for
+/// every member and always will be — these are the three axes documented as
+/// consumer hooks in HOST-STYLING-CHECKLIST §2.0/§2.1.
+let private unstyledFamilies: (string * string) list =
+    [ "fuaran-kind-",
+      "§2.1 per-NodeKind base hook. The kind class says WHAT a node is; the inner per-kind class \
+       (`fuaran-layout-card`, `fuaran-callout`, `fuaran-metric`) carries the chrome. Styling the kind \
+       class instead would put a rule on every node of that kind including ones a host has replaced."
+
+      "fuaran-tone-",
+      "§2.0 wrapper tone hook. Tone reaches the pixels through the per-component suffix classes \
+       (`fuaran-callout-success`, `fuaran-metric-default`); the outer-scoped `.fuaran-tone-X .fuaran-Y` \
+       shape was deliberately retired (see the comment above the per-tone Metric rules). A bare rule \
+       here would tint every node carrying the tone, which is what that retirement was avoiding."
+
+      "fuaran-weight-",
+      "§2.0/§1.5 density hook, deliberately without a reference opinion. Every node wrapper carries one \
+       of these three, so any rule here lands on every node in the tree at single-class specificity — \
+       it would race the per-component rules by file order, and a `standard` rule restating a token's \
+       default would defeat a consumer's `:root` override of it. Consumers safelist and bind these; \
+       giving them reference rules is a design decision with estate-wide blast radius, not a \
+       conformance fix."
+
+      "fuaran-emphasis-",
+      "§2.0/§1.5 prominence hook, deliberately without a reference opinion — same reasoning as \
+       `fuaran-weight-` above, and the same three-on-every-node shape." ]
+
+/// Individual classes the reference stylesheet leaves bare, each with the
+/// reason. Ordered as the coverage failure prints them.
+let private declaredAbsences: (string * Absence) list =
+    [ "fuaran-callout-body", CoveredBy("fuaran-callout", "structural body wrapper; the callout carries the chrome")
+      "fuaran-card-body", CoveredBy("fuaran-layout-card", "structural body wrapper; the card carries the chrome")
+      "fuaran-modal-body", CoveredBy("fuaran-modal-dialog", "structural body wrapper; the dialog carries the chrome")
+      "fuaran-stepper-body", CoveredBy("fuaran-stepper-step", "structural body wrapper; the steps carry the chrome")
+      "fuaran-link-protected-wrap",
+      CoveredBy("fuaran-link", "zero-paint wrapper around the anchor and its interstitial")
+      "fuaran-link-protected", CoveredBy("fuaran-link", "modifier on the anchor; the link rule styles it")
+      "fuaran-form-date", CoveredBy("fuaran-form-input", "per-kind modifier; emitted alongside the input class")
+      "fuaran-file-upload-label", CoveredBy("fuaran-file-upload", "child of the styled upload wrapper")
+      "fuaran-grid-cell-link", CoveredBy("fuaran-grid-cell", "anchor inside a styled cell")
+      "fuaran-map-marker", CoveredBy("fuaran-map-marker-list", "list item; the list carries the layout")
+      "fuaran-math", CoveredBy("fuaran-math-block", "grouping hook; the -block / -inline pair carries the chrome")
+      "fuaran-progress", CoveredBy("fuaran-progress-bar", "grouping hook; bar / fill / label carry the chrome")
+      "fuaran-sparkline-empty", CoveredBy("fuaran-sparkline", "empty-state modifier on the styled sparkline")
+      "fuaran-split-pane-left", CoveredBy("fuaran-split-pane", "§3.1 — the base class styles both panes")
+      "fuaran-split-pane-right", CoveredBy("fuaran-split-pane", "§3.1 — the base class styles both panes")
+      "fuaran-list-ordered", CoveredBy("fuaran-list", "<ol> native numbering; `.fuaran-list` keeps list-style")
+      "fuaran-list-unordered", CoveredBy("fuaran-list", "<ul> native markers; `.fuaran-list` keeps list-style")
+      "fuaran-tabs-horizontal",
+      CoveredBy("fuaran-tabs-vertical", "§3.1 — horizontal is the default axis; only the vertical one needs rules")
+      "fuaran-custom-decode-error",
+      CoveredBy("fuaran-kind-custom-placeholder", "refusal marker on an element the placeholder rule styles")
+
+      "fuaran-form-checkbox",
+      BareHook "native checkbox chrome, deliberately not restyled — the reference sheet restyles no native control"
+      "fuaran-form-toggle", BareHook "native checkbox in switch role; same posture as the checkbox above"
+      "fuaran-filter-checkbox", BareHook "the filter twin of the form checkbox; same posture"
+      "fuaran-filter-toggle", BareHook "the filter twin of the form toggle; same posture"
+      "fuaran-file-upload-input", BareHook "native file-input chrome, deliberately not restyled"
+      "fuaran-file-upload-control", BareHook "the server renderer's file-input vocabulary; same native chrome"
+      "fuaran-layout-separator", BareHook "the element is an <hr>; the reference sheet keeps the native rule"
+      "fuaran-sparkline-line",
+      BareHook "SVG geometry; stroke and fill ride presentation attributes, as the drawing hooks do"
+      "fuaran-island", BareHook "hydration boundary, zero-paint by construction — a rule here would shift layout"
+      "fuaran-mount-boundary",
+      BareHook "isolation boundary marker; the guest's own subtree carries its scoped classes inside it"
+      "fuaran-custom-wrapper",
+      BareHook
+          "wraps a HOST-registered custom renderer. Deliberately bare for the reason the custom-placeholder \
+           comment gives: a host that registers a renderer must not inherit our visuals."
+      "fuaran-custom-hash-mismatch",
+      BareHook
+          "strict-mode refusal marker on a wrapper that renders no body — there is nothing to paint, and the \
+           fact is carried on the data attribute beside it"
+
+      "fuaran-form-commit",
+      NotAClass "a window-level DOM EVENT name (LocalBindings.fs OnSubmit flush), never a className" ]
+
+let private absenceMap = Map.ofList declaredAbsences
+
+let private familyReason (cls: string) : string option =
+    unstyledFamilies
+    |> List.tryPick (fun (prefix, note) ->
+        if cls.StartsWith(prefix, StringComparison.Ordinal) then
+            Some note
+        else
+            None)
+
+let private isDeclared (cls: string) =
+    (familyReason cls).IsSome || absenceMap.ContainsKey cls
+
+// ─── Tests ─────────────────────────────────────────────────────────────────
+
+[<Tests>]
+let tests =
+    testList
+        "CssCoverage"
+        [
+          // The probe before the verdict: a scan that matched nothing would
+          // report perfect coverage, and a green result is exactly what it
+          // would look like. Pin the floor and the two classes this phase was
+          // filed over, so the enumeration cannot quietly stop enumerating.
+          test "the enumeration actually enumerates" {
+              let emitted = emittedClasses ()
+
+              Expect.isGreaterThan
+                  (Set.count emitted)
+                  150
+                  "the emitted-class enumeration collapsed — a scan matching nothing reports full coverage"
+
+              Expect.isTrue
+                  (emitted.Contains "fuaran-field-range")
+                  "the scanned structural vocabulary is missing `fuaran-field-range` — source (2) is not reading the renderers"
+
+              Expect.isTrue
+                  (emitted.Contains "fuaran-weight-compact")
+                  "the projected suffix families are missing `fuaran-weight-compact` — source (1) is not running the Theme projections"
+
+              Expect.isGreaterThan
+                  (Set.count (styledClasses ()))
+                  150
+                  "the reference-CSS selector scan collapsed — every class would then read as unstyled"
+          }
+
+          test "every emittable class has a reference-CSS rule or a declared absence" {
+              let styled = styledClasses ()
+
+              let uncovered =
+                  emittedClasses ()
+                  |> Set.filter (fun cls -> not (styled.Contains cls) && not (isDeclared cls))
+                  |> Set.toList
+
+              if not uncovered.IsEmpty then
+                  failwithf
+                      "%d emitted class(es) have no rule in fuaran-reference.css and no declared absence:\n  %s\n\nAdd a rule for each, or — if the sheet is meant to leave it bare — declare it in `declaredAbsences` in this file with the reason. A class emitted with no rule renders unstyled in every host serving the packaged sheet, and nothing else in the build says so."
+                      uncovered.Length
+                      (String.Join("\n  ", uncovered))
+          }
+
+          test "every declared absence names a class that is still emitted" {
+              let emitted = emittedClasses ()
+
+              let stale =
+                  declaredAbsences
+                  |> List.map fst
+                  |> List.filter (fun cls -> not (emitted.Contains cls))
+
+              Expect.isEmpty
+                  stale
+                  (sprintf
+                      "declared absence(s) for class(es) the renderers no longer emit: %s — remove the entries. An exemption that outlives its class is how a mute-list starts."
+                      (String.Join(", ", stale)))
+          }
+
+          test "every declared absence names a class the stylesheet does not already style" {
+              let styled = styledClasses ()
+
+              let redundant = declaredAbsences |> List.map fst |> List.filter styled.Contains
+
+              Expect.isEmpty
+                  redundant
+                  (sprintf
+                      "class(es) declared as deliberately unstyled that the stylesheet DOES style: %s — remove the entries, they now describe the opposite of what the sheet does."
+                      (String.Join(", ", redundant)))
+          }
+
+          test "every CoveredBy excuse names a class that really is styled" {
+              let styled = styledClasses ()
+
+              let broken =
+                  declaredAbsences
+                  |> List.choose (fun (cls, absence) ->
+                      match absence with
+                      | CoveredBy(covering, _) when not (styled.Contains covering) -> Some(cls, covering)
+                      | _ -> None)
+
+              Expect.isEmpty
+                  broken
+                  (sprintf
+                      "CoveredBy absence(s) whose covering class has no rule either: %s — the class is unstyled and so is its stated cover, which makes the exemption false rather than deliberate."
+                      (String.Join(", ", broken |> List.map (fun (cls, covering) -> sprintf "%s -> %s" cls covering))))
+          }
+
+          // Phase 431 task 3. The TS tier ships a BYTE-COPY of this stylesheet,
+          // kept in step by operator discipline with nothing enforcing it — so
+          // the cheapest way to extend the coverage floor across the tier is to
+          // make the copy's identity executable: identical bytes means the
+          // coverage proved above holds there unchanged. Skipped, loudly, in a
+          // bare single-repo checkout where the sibling is not on disk.
+          test "the TypeScript tier's stylesheet copy is byte-identical" {
+              match tryFindTsCssCopy () with
+              | None -> skiptest "fuaran-ts sibling not present in this checkout — byte-copy parity not checked here"
+              | Some tsPath ->
+                  let reference = File.ReadAllBytes referenceCssPath
+                  let copy = File.ReadAllBytes tsPath
+
+                  Expect.equal
+                      (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData copy))
+                      (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData reference))
+                      (sprintf
+                          "%s has drifted from the reference stylesheet. Any commit changing the F# CSS re-copies it to the TS tier in the same change-set; until a CSS build pipeline generates the copy, this assertion is what enforces it."
+                          tsPath)
+          } ]

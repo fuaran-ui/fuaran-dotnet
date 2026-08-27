@@ -14,6 +14,27 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+  <!-- Phase 431: the renderer sources are an INPUT to CssCoverageTests.fs, which
+       reads the structural class vocabulary out of the emission sites rather
+       than from a hand-transcribed list. Copied into the bin (rather than
+       resolved by climbing to the repo root) so the scan cannot read a
+       different checkout's sources than the ones this build compiled. The
+       globs are deliberate: a new renderer source file enters the scan with no
+       edit here, which is the whole forward-coupling property. -->
+  <ItemGroup>
+    <Content Include="..\Fuaran.UI.Renderer.Core\*.fs">
+      <Link>renderer-sources\core\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Fuaran.UI.Renderer\*.fs">
+      <Link>renderer-sources\client\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Fuaran.UI.Renderer.Server\*.fs">
+      <Link>renderer-sources\server\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
   <ItemGroup>
     <Compile Include="Tests.fs" />
     <Compile Include="BoundedTests.fs" />
@@ -177,6 +198,11 @@
       <Link>SampleThemes\HighContrast.fs</Link>
     </Compile>
     <Compile Include="ThemeTests.fs" />
+    <!-- Phase 431 — the emitted-class -> reference-CSS-rule coverage floor.
+         ThemeTests pins the `:root` VARIABLE surface against the typed Theme;
+         this pins the CLASS surface against the rules, which was the one axis
+         of the styling contract with no executable guarantee. -->
+    <Compile Include="CssCoverageTests.fs" />
     <!-- CoreAdoptionTests validates the Fuaran.UI tree witness + op-stream against
          the Fuaran.Core conformance kit and re-expresses the op-stream over
          Fuaran.Core.OpStream (with a canonical-encoding equality wrapper, since

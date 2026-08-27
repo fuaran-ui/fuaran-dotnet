@@ -92,9 +92,19 @@ Re-binding one works exactly as for any other token — set it at your app shell
 | `--fuaran-z-modal` | `1000` | modal stacking order |
 | `--fuaran-z-toast` | `1100` | toast stacking order |
 
-### 1.5 Pending (Phase 12.K)
+### 1.5 Weight and emphasis: consumer hooks, not a pending gap
 
-`StyleWeight` and `Emphasis` variants on `SemanticStyle` currently emit `fuaran-weight-{compact|standard|spacious}` and `fuaran-emphasis-{quiet|normal|loud}` classes but the reference CSS provides no rules for them yet. Phase 12.K's typed `Theme.toCss` emitter will fill in the variable surface (compact / spacious mappings against the spacing scale; quiet / loud mappings against border-width + shadow). The class hooks are documented in Section 2.0 below so Tailwind-JIT-shaped consumers can pre-safelist them now.
+`StyleWeight` and `Emphasis` on `SemanticStyle` emit `fuaran-weight-{compact|standard|spacious}` and `fuaran-emphasis-{quiet|normal|loud}`, and the reference CSS carries **no rules for them, deliberately**. This entry previously read as a Phase-12.K to-do (compact / spacious against the spacing scale; quiet / loud against border-width + shadow); Phase 431, which made emitted-class ↔ rule coverage executable, **settled it the other way** and recorded the absence as a declared, tested one rather than an open promise.
+
+The reason is the shape of these two axes rather than a shortage of design opinion: *every* node wrapper carries one class from each, so any rule here lands on every node in the tree at single-class specificity — it would race the per-component rules by file order — and a `standard` / `normal` rule restating a token's default value would defeat a consumer's own `:root` override of that token. Consumers safelist and bind these hooks at their app shell, which is what they are for. Giving them reference rules is a design decision with estate-wide visual blast radius; it is open to a deliberate later phase, but it is not a conformance defect.
+
+The class hooks are documented in Section 2.0 below so Tailwind-JIT-shaped consumers can pre-safelist them.
+
+### 1.5b Coverage is enforced, not documented (Phase 431)
+
+The class contract in Sections 2–4 is executable. `src/Fuaran.UI.Tests/CssCoverageTests.fs` enumerates every class the renderer can emit — the Theme projections by *running* them over every DU case, the structural per-spec vocabulary by *scanning* the renderer sources — and fails the build when one has no rule in `content/fuaran-reference.css` and no declared absence. A declared absence names the class that carries the chrome instead, and the suite checks *that* class really is styled, so an exemption cannot be a mute-list entry. The same suite asserts the TypeScript tier's byte-copy of the stylesheet is identical, which is what enforces the re-copy discipline until a CSS build pipeline generates it.
+
+**So a new class hook is not shipped until it has a rule or an entry.** Adding one to a renderer without either turns the build red here, rather than surfacing as an unstyled node in a downstream host's page.
 
 ### 1.6 Interaction state matrix (Phase 12.N) – 84 + 4 = 88 variables
 
@@ -171,8 +181,8 @@ Inner kind-specific class hooks are emitted by the per-kind renderers (Section 3
 |---|---|---|
 | `fuaran-node` | every node | base hook; consumers MUST NOT override (see anti-patterns) |
 | `fuaran-tone-{default,subdued,brand,success,warning,critical,info}` | `style.Tone` | 7 variants |
-| `fuaran-weight-{compact,standard,spacious}` | `style.Weight` | 3 variants – reference CSS not yet wired (Phase 12.K) |
-| `fuaran-emphasis-{quiet,normal,loud}` | `style.Emphasis` | 3 variants – reference CSS not yet wired (Phase 12.K) |
+| `fuaran-weight-{compact,standard,spacious}` | `style.Weight` | 3 variants – consumer hook, deliberately unstyled by the reference sheet (§1.5) |
+| `fuaran-emphasis-{quiet,normal,loud}` | `style.Emphasis` | 3 variants – consumer hook, deliberately unstyled by the reference sheet (§1.5) |
 
 ### 2.1 Per-`NodeKind` base hooks (25 variants)
 
