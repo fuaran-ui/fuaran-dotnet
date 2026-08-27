@@ -568,6 +568,107 @@ type PreEmitDefect =
     /// Carries the node's id.
     | MediaWithoutLabel of nodeId: string
 
+    // ── The accessibility family (FUARAN109/110/111, Phase 727) ──────────────
+    //
+    // Until this family landed the runtime validator carried NO accessibility
+    // rule at all. The posture was enforced at build time (the source-AST
+    // walker's FUARAN040/041, which needs F# source and cannot run in a
+    // browser) and audited at release time (the axe-over-DOM gate, which needs
+    // a rendered DOM). Neither reaches the tree an AI emits or a navigator
+    // edits, so every conformant host was left to re-derive the checks — and
+    // one did, app-side, over decoded JSON, having to say in its own header
+    // that it was borrowing no provenance it did not have.
+    //
+    // **Severity: WARNING for all three, deliberately** (the phase's recorded
+    // decision). The rules run on every existing emission the moment they ship,
+    // and a11y defects are overwhelmingly present in trees that are otherwise
+    // correct — so shipping them at Error would turn a large body of working
+    // emissions red on arrival, and a gate that is red on arrival is one people
+    // learn to step over. Advisory first; a host or a release gate that wants
+    // enforcement grades `describe`'s severity itself and decides to refuse.
+    // Note what Warning does NOT mean here: `validate` still LISTS these in its
+    // `Error` result, exactly as the module's existing Warning-severity rules
+    // (FUARAN049, FUARAN069, FUARAN071, …) already are. Severity is the
+    // projection's grade, not a second return channel — nothing in this family
+    // changes the walker's contract.
+    //
+    // All three ERR TOWARDS SILENCE by construction. A defect they cannot
+    // decide statically is not reported: a bound or i18n name resolves from
+    // data no pre-emit walk can see, and calling it empty would be a guess. An
+    // un-audited node is a cost this family can afford; a false accusation
+    // against a correct tree is not.
+
+    /// **FUARAN109 (Warning)**. An INTERACTIVE node that reaches a screen
+    /// reader with no name: its structural naming slot is an empty literal and
+    /// the node declares neither `Accessibility.Label` nor
+    /// `Accessibility.LabelledBy`. Its accessible name would have to come from
+    /// its own text content, and there is none.
+    ///
+    /// **Which kinds are interactive is READ from the language, not tabled
+    /// here.** Every smart constructor passes a per-kind
+    /// `Defaults.Accessibility.*` value, and this rule fires only where that
+    /// value declares an ARIA role that names an OPERABLE element. So the
+    /// language's own statement about a kind is the gate: give a kind a
+    /// non-interactive default and it stops being audited in the same edit,
+    /// with nothing here to update. The lock is deliberately ONE-DIRECTIONAL —
+    /// a newly interactive kind whose naming slot is not wired below goes
+    /// un-audited rather than falsely flagged.
+    ///
+    /// **The declared-name escape is not a loophole, and its hole is closed by
+    /// FUARAN111.** A blank structural label on a node carrying
+    /// `accessibility.label` is odd-looking and perfectly announced, so it is
+    /// not flagged — that is the browser's own name computation (trait label →
+    /// `aria-labelledby` target → element text content), not a softening. What
+    /// would be a loophole is a DECLARED name that is itself empty, which would
+    /// silence this rule while naming nothing; FUARAN111 catches exactly that
+    /// shape, which is why the two ship together.
+    ///
+    /// Carries the node's id, its wire kind, and the naming slot that is empty.
+    | InteractiveWithoutAccessibleName of nodeId: string * kind: string * slot: string
+
+    /// **FUARAN110 (Warning)**. An `Accessibility.LabelledBy` /
+    /// `DescribedBy` naming a node id the tree does not carry. The renderer
+    /// emits the reference unconditionally, so the DOM gets an
+    /// `aria-labelledby` pointing at nothing and the browser silently ignores
+    /// it — the node is announced as though the reference had never been
+    /// written, which is the worst of both: the author believes the element is
+    /// named and no reader is told anything.
+    ///
+    /// This closes an asymmetry the app-side audit could only report: no op in
+    /// the tree-op vocabulary reaches the `accessibility` trait (`UpdateProp`
+    /// paths are rooted inside the kind spec), so a lens that finds a dangling
+    /// ref cannot offer a fix for it. A pre-emit rule sees the whole tree
+    /// BEFORE the emission is accepted, which is the one place the defect is
+    /// actionable at all.
+    ///
+    /// Judged against the same node universe FUARAN070's dangling-`Selection`
+    /// check uses, so "a node in this tree" means one thing in this module.
+    ///
+    /// Carries the referring node's id, the slot, and the missing target id.
+    | DanglingAccessibilityReference of nodeId: string * slot: string * target: string
+
+    /// **FUARAN111 (Warning)**. An accessibility slot the node DECLARES and
+    /// leaves empty — `label` bound to a static empty (or valueless) string,
+    /// or a `labelledBy` / `describedBy` naming the empty string.
+    ///
+    /// A declared-and-empty slot is worse than an absent one in both
+    /// directions. Downwards: the renderer drops an empty `aria-label` (the
+    /// projection filters it), so the author declared a name and the DOM got
+    /// none, with nothing anywhere saying so. Upwards: a declared `label` is
+    /// what tells FUARAN109 the node is named, so an empty one SILENCES the
+    /// rule that would otherwise have caught the node — the defect suppresses
+    /// its own detection. That is the whole reason this rule exists as a peer
+    /// of 109 rather than a tidy extra.
+    ///
+    /// Only a `Binding.Static` label is judged, for the family's standing
+    /// reason: any other binding resolves from data this walk cannot see.
+    /// Whitespace counts as empty — a name of `" "` is not a name a listener
+    /// can act on, and admitting it would make the rule evadable by a space,
+    /// which is worse than not having it.
+    ///
+    /// Carries the node's id and the empty slot.
+    | EmptyAccessibilityDeclaration of nodeId: string * slot: string
+
 /// Which `FieldRule` slot a control cannot honour (FUARAN100, Phase 864).
 /// Typed rather than a string so the honourable set stays enumerable: a slot
 /// added to `FieldRule` without a decision here will not compile.
@@ -922,6 +1023,42 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         sprintf
             "media node '%s' has an EMPTY label — a media element is a transport, not a picture, so it is never decorative and there is no honest empty case the way there is for an image's alt; without a name it is announced to a screen reader as \"video\" or \"audio\" and nothing more, telling the reader that a player exists and not what it plays. Give 'label' the text a listener needs to decide whether to play it"
             nodeId
+    | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ->
+        "FUARAN109",
+        DefectSeverity.Warning,
+        sprintf
+            "%s '%s' reaches a screen reader with no name — '%s' is empty and the node declares neither accessibility.label nor accessibility.labelledBy, so its accessible name would have to come from its text content and there is none; give '%s' the text a listener needs, or name the element with accessibility.label"
+            kind
+            nodeId
+            slot
+            slot
+    | PreEmitDefect.DanglingAccessibilityReference(nodeId, slot, target) ->
+        "FUARAN110",
+        DefectSeverity.Warning,
+        sprintf
+            "node '%s' declares accessibility.%s = '%s', which is not a node in this tree — the emitted %s points at nothing and the browser ignores it, so the element is announced as though the reference had never been written; point it at a node that exists, or drop the slot and name the element with accessibility.label"
+            nodeId
+            slot
+            target
+            // The attribute name, spelled out rather than lower-cased at
+            // runtime: `Fuaran.UI` is ASCII-only and culture-free by policy
+            // (see the FUARAN102 scanner's note), and the pair is closed. The
+            // fallback is not dead code — the generated defect vocabulary
+            // renders every message from a SENTINEL slot value, and a two-arm
+            // `if` would have it claim `aria-describedby` for a slot named
+            // `<slot>`. Echoing the slot renders a shape rather than a wrong
+            // claim, which is what that artefact is for.
+            (match slot with
+             | "labelledBy" -> "aria-labelledby"
+             | "describedBy" -> "aria-describedby"
+             | other -> "aria-" + other)
+    | PreEmitDefect.EmptyAccessibilityDeclaration(nodeId, slot) ->
+        "FUARAN111",
+        DefectSeverity.Warning,
+        sprintf
+            "node '%s' declares accessibility.%s and leaves it EMPTY — a declared name that names nothing, which the renderer drops rather than emits, and which additionally silences the missing-name check that would otherwise have caught this node; give the slot real text, or remove it so the element's own content supplies the name"
+            nodeId
+            slot
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -1096,6 +1233,168 @@ let private isWriteBackTarget (binding: Binding<'T>) : bool =
     | Binding.Local _ -> true
     | _ -> false
 
+// ── FUARAN109/110/111 — the accessibility family (Phase 727) ─────────────────
+//
+// The derivation, in one place. The rules themselves are three lines each; what
+// is worth reading is WHERE their inputs come from, because the family's whole
+// claim is that it re-derives nothing.
+//
+//  · WHICH kinds are interactive — read from `Defaults.Accessibility.*`, the
+//    per-kind trait every smart constructor in `Fuaran.fs` passes into
+//    `buildNode`. The language states this; this module consults it. An
+//    app-side audit had to guess at the same question from a hand-written list
+//    with a source-lock test behind it, because it could not reach the
+//    defaults. Sitting inside `Fuaran.UI`, downstream of `Defaults.fs`, this
+//    one can, so the list is gone and the values are the input.
+//  · WHAT counts as an operable role — an EXHAUSTIVE match over `AriaRole`, so
+//    a role added to the DU does not compile until someone decides. That is the
+//    lock in the direction that matters: the vocabulary cannot grow past the
+//    rule silently.
+//  · WHAT the accessible name is — the browser's own computation, in the
+//    browser's own order: the declared trait label, then an `aria-labelledby`
+//    target, then the element's text content. Not "what the renderer emits":
+//    `renderButton` puts `ButtonSpec.Label` in the button's TEXT CONTENT and
+//    injects no `aria-label`, so a node with a filled structural label and no
+//    trait at all is correctly named and must not be flagged.
+//
+// The one-directional lock is stated once here and holds for all three: a kind
+// the language stops calling interactive stops being audited; a kind that
+// BECOMES interactive without a naming slot wired into `interactiveNaming`
+// below goes un-audited. Un-audited is the failure this family can afford.
+
+/// An `AriaRole` naming an element the user OPERATES — the roles for which
+/// "reaches a screen reader with no name" is a defect rather than an
+/// observation. Exhaustive on purpose: a role added to the DU will not compile
+/// here until it is classified.
+let private isInteractiveRole (role: AriaRole) : bool =
+    match role with
+    | AriaRole.Button
+    | AriaRole.Link
+    | AriaRole.Form
+    | AriaRole.Tab -> true
+    | AriaRole.Custom raw ->
+        // `Custom` is an open string, and only one widget role is reached by
+        // any default the language ships (`Select`'s combobox). The rest of the
+        // space is deliberately NOT judged: guessing at an arbitrary role would
+        // accuse a node of a defect the language never declared, and this
+        // family errs towards silence.
+        raw = "combobox"
+    | AriaRole.Dialog
+    | AriaRole.Alert
+    | AriaRole.Status
+    | AriaRole.Banner
+    | AriaRole.Navigation
+    | AriaRole.Main
+    | AriaRole.Region
+    | AriaRole.Heading
+    | AriaRole.Progressbar
+    | AriaRole.Tablist
+    | AriaRole.Tabpanel -> false
+
+/// Whether the language's OWN per-kind accessibility default declares the kind
+/// interactive. This is the gate on FUARAN109: the `Defaults.Accessibility.*`
+/// value is the input, never a restatement of it.
+let private defaultDeclaresInteractive (dflt: Accessibility option) : bool =
+    match dflt with
+    | None -> false
+    | Some a ->
+        match a.Role with
+        | Some role -> isInteractiveRole role
+        | None -> false
+
+/// A `TextSource` statically known to render nothing. Only a LITERAL is judged,
+/// exactly as FUARAN108 judges `Media.Label`: a `Bound` or `I18n` source
+/// resolves at render time from data this walk cannot see, so calling it empty
+/// would be a guess. Whitespace counts as empty.
+let private isEmptyTextSource (t: TextSource) : bool =
+    match t with
+    | TextSource.Literal s -> s.Trim() = ""
+    | TextSource.Bound _
+    | TextSource.I18n _ -> false
+
+/// A `Binding<string>` statically known to carry nothing — a static empty (or
+/// whitespace) string, or a `Static` slot with no value at all. Every other
+/// binding resolves at runtime and is not judged.
+let private isEmptyStaticText (binding: Binding<string>) : bool =
+    match binding with
+    | Binding.Static None -> true
+    | Binding.Static(Some s) -> s.Trim() = ""
+    | _ -> false
+
+/// Whether the trait DECLARES a name for the node. Tested on the DECLARATION,
+/// not on the emission: a bound label resolves to nothing in a pre-emit walk
+/// and is still a name, and the build-time rule makes the same concession in
+/// the same place ("trust the binding to produce a non-empty string at
+/// runtime"). An empty declaration is FUARAN111's finding, not this one's.
+let private declaresAccessibleName (a11y: Accessibility option) : bool =
+    match a11y with
+    | None -> false
+    | Some a -> a.Label.IsSome || a.LabelledBy.IsSome
+
+/// For a kind the language pairs with an interactive accessibility default: the
+/// default itself, the structural slot whose text NAMES the element, and that
+/// slot's wire name. `None` for every other kind.
+///
+/// This is the family's only per-kind association, and it is the naming SLOT
+/// rather than the interactivity verdict — the verdict comes from the default
+/// above. The slots are each their kind's required naming field:
+/// `submitLabel` names a form (through its submit button); `label` names the
+/// other three.
+let private interactiveNaming (kind: NodeKind<'Msg>) : (Accessibility option * TextSource * string) option =
+    match kind with
+    | NodeKind.Button spec -> Some(Defaults.Accessibility.button, spec.Label, "label")
+    | NodeKind.Select spec -> Some(Defaults.Accessibility.select, spec.Label, "label")
+    | NodeKind.Form spec -> Some(Defaults.Accessibility.form, spec.SubmitLabel, "submitLabel")
+    | NodeKind.FileUpload spec -> Some(Defaults.Accessibility.fileUpload, spec.Label, "label")
+    | _ -> None
+
+/// The per-node half of the family: FUARAN109 (an unnamed interactive element)
+/// and FUARAN111 (a declared-and-empty slot). FUARAN110 needs the whole tree
+/// and is judged post-walk.
+let private accessibilityDefects (n: Node<'Msg>) : PreEmitDefect list =
+    let unnamed =
+        match interactiveNaming n.Kind with
+        | Some(dflt, naming, slot) when
+            defaultDeclaresInteractive dflt
+            && isEmptyTextSource naming
+            && not (declaresAccessibleName n.Accessibility)
+            ->
+            [ PreEmitDefect.InteractiveWithoutAccessibleName(n.Id, wireKindName n.Kind, slot) ]
+        | _ -> []
+
+    let declaredEmpty =
+        match n.Accessibility with
+        | None -> []
+        | Some a ->
+            let emptyRef (slot: string) (target: string option) =
+                match target with
+                | Some s when s.Trim() = "" -> Some(PreEmitDefect.EmptyAccessibilityDeclaration(n.Id, slot))
+                | _ -> None
+
+            [ (match a.Label with
+               | Some b when isEmptyStaticText b -> Some(PreEmitDefect.EmptyAccessibilityDeclaration(n.Id, "label"))
+               | _ -> None)
+              emptyRef "labelledBy" a.LabelledBy
+              emptyRef "describedBy" a.DescribedBy ]
+            |> List.choose id
+
+    unnamed @ declaredEmpty
+
+/// The `(slot, target)` accessibility references a node declares. Empty targets
+/// are excluded — an empty slot is FUARAN111's finding, and reporting the same
+/// value twice under two codes would be noise rather than coverage.
+let private accessibilityRefs (n: Node<'Msg>) : (string * string) list =
+    match n.Accessibility with
+    | None -> []
+    | Some a ->
+        let namedRef (slot: string) (target: string option) =
+            match target with
+            | Some s when s.Trim() <> "" -> Some(slot, s)
+            | _ -> None
+
+        [ namedRef "labelledBy" a.LabelledBy; namedRef "describedBy" a.DescribedBy ]
+        |> List.choose id
+
 let private validateCore
     (policy: DecodePolicy)
     (customCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option)
@@ -1113,6 +1412,11 @@ let private validateCore
     let compareStateReads = ResizeArray<string * string * string>()
     let formOwnedStateKeys = System.Collections.Generic.HashSet<string>()
     let nodeIdCounts = System.Collections.Generic.Dictionary<string, int>()
+    // Phase 727 (FUARAN110) — (readerNodeId, slot, target) per declared
+    // accessibility reference. Collected here and judged post-walk for the same
+    // reason FUARAN070's dangling `Selection` is: "names a node in this tree"
+    // is only answerable once the whole tree has been seen.
+    let accessibilityRefUses = ResizeArray<string * string * string>()
 
     let recordNodeId (raw: string) =
         if raw = "" then
@@ -1169,6 +1473,17 @@ let private validateCore
         match staleDateLiteral n.Kind with
         | Some literal -> defects.Add(PreEmitDefect.DateLiteralWhereNowPlausible(n.Id, literal))
         | None -> ()
+
+        // FUARAN109 / FUARAN111 (Phase 727) — the per-node half of the
+        // accessibility family. Sited here rather than in the per-kind arms
+        // below because the trait it reads lives on the NODE, not in any kind
+        // spec: one site covers every kind at once, and a kind the language
+        // newly declares interactive is reached with no arm to remember.
+        accessibilityDefects n |> List.iter defects.Add
+
+        // FUARAN110's evidence — judged after the walk, see the declaration.
+        for (slot, target) in accessibilityRefs n do
+            accessibilityRefUses.Add(n.Id, slot, target)
 
         // Per-kind: check kind-specific invariants + enumerate children.
         match n.Kind with
@@ -1728,6 +2043,17 @@ let private validateCore
                 if not isProducer then
                     defects.Add(PreEmitDefect.SelectionOverNonProducer(u.Reader, target))
         | _ -> ()
+
+    // FUARAN110 (Phase 727) — an accessibility reference naming a node the tree
+    // does not carry. Judged against `facts.Nodes`, the SAME node universe the
+    // dangling-`Selection` check immediately above uses, so "a node in this
+    // tree" means one thing in this module rather than two — notably it agrees
+    // about the boundaries a walk does not cross (a `Mount` guest's interior is
+    // a separate id space, and a reference into one is genuinely dangling from
+    // the host tree's point of view).
+    for (readerId, slot, target) in accessibilityRefUses do
+        if not (Map.containsKey target facts.Nodes) then
+            defects.Add(PreEmitDefect.DanglingAccessibilityReference(readerId, slot, target))
 
     // FUARAN072 / FUARAN073: every wire-survivable `Action.Call` either
     // dispatches through a closure, or lands its response where a reader

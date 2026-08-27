@@ -433,6 +433,66 @@ let private pagedGrid
       Motion = Defaults.Motion.none
       ExtraAttributes = None }
 
+// ─── Phase 727 fixtures — the accessibility family (FUARAN109/110/111) ───
+//
+// Every fixture is built through the real smart constructors, so each node
+// carries the language's OWN per-kind `Defaults.Accessibility.*` value — which
+// is the rules' input, not a detail of the fixture. A node hand-built as a
+// record would carry `Accessibility = None` and silently exercise nothing.
+
+/// A button with `label` as its structural name, carrying the constructor's own
+/// accessibility default (`Role = Button`) — the shape an F# author gets free.
+let private a11yButton (id: string) (label: string) : Node<Msg> =
+    Fuaran.button
+        id
+        { Defaults.button<Msg> with
+            Label = TextSource.Literal label
+            OnClick = Action.Chain [] }
+
+/// The same button with a BOUND structural label — the shape no pre-emit walk
+/// can resolve, and which the family therefore never judges.
+let private boundLabelButton (id: string) : Node<Msg> =
+    Fuaran.button
+        id
+        { Defaults.button<Msg> with
+            Label = TextSource.Bound(Binding.State("caption", None))
+            OnClick = Action.Chain [] }
+
+/// Replace a node's accessibility trait — the author override the rules read.
+let private withTrait (a: Accessibility) (n: Node<Msg>) : Node<Msg> = { n with Accessibility = Some a }
+
+/// A trait declaring `label` and nothing else.
+let private traitLabel (binding: Binding<string>) : Accessibility =
+    { Defaults.Accessibility.empty with
+        Label = Some binding }
+
+/// Only the Phase 727 defects. The fixtures deliberately carry unrelated shapes
+/// (a default `Select` is inert, a bare `Form` has no fields), so asserting
+/// `Ok()` would couple these tests to rules they are not about.
+let private a11yDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.InteractiveWithoutAccessibleName _
+            | PreEmitDefect.DanglingAccessibilityReference _
+            | PreEmitDefect.EmptyAccessibilityDeclaration _ -> true
+            | _ -> false)
+
+/// Those defects as their published codes — what a host actually reads.
+let private a11yCodes (tree: Node<Msg>) : string list =
+    a11yDefects tree
+    |> List.map (fun d ->
+        let code, _, _ = PreEmitValidate.describe d
+        code)
+
+/// The severity `describe` publishes for a defect — the family's whole posture
+/// question, asserted rather than asserted-about-in-a-comment.
+let private severityOf (d: PreEmitDefect) : DefectSeverity =
+    let _, severity, _ = PreEmitValidate.describe d
+    severity
+
 [<Tests>]
 let tests =
     testList
@@ -2335,4 +2395,244 @@ let tests =
               let tree = dashboard "root" [ ruleForm [ ruleField "qty" kind (Some rule) ] ]
 
               Expect.isEmpty (ruleDefects tree) "a lower-bound compare and an upper bound are different claims"
+          }
+
+          // ── Phase 727 — the accessibility family ──────────────────────────
+
+          test "FUARAN109 flags an interactive node that reaches a screen reader with no name" {
+              let tree = dashboard "root" [ a11yButton "save" "" ]
+
+              match a11yDefects tree with
+              | [ PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ] ->
+                  Expect.equal nodeId "save" "the offending node"
+                  Expect.equal kind "Button" "the wire kind, as a host reads it"
+                  Expect.equal slot "label" "the naming slot that is empty"
+              | other -> failtestf "Expected one FUARAN109, got %A" other
+          }
+
+          test "FUARAN109/110/111 are all WARNING severity — the family's recorded posture" {
+              // The decision the phase records: advisory on adoption, because
+              // the rules run on every existing emission the moment they ship
+              // and a gate that is red on arrival is one people step over.
+              let unnamed = PreEmitDefect.InteractiveWithoutAccessibleName("n", "Button", "label")
+
+              let dangling =
+                  PreEmitDefect.DanglingAccessibilityReference("n", "labelledBy", "gone")
+
+              let empty = PreEmitDefect.EmptyAccessibilityDeclaration("n", "label")
+
+              for d in [ unnamed; dangling; empty ] do
+                  Expect.equal (severityOf d) DefectSeverity.Warning "advisory, not refusal"
+          }
+
+          test "FUARAN109 go-red check: a named interactive node is silent" {
+              let tree = dashboard "root" [ a11yButton "save" "Save" ]
+
+              Expect.isEmpty (a11yDefects tree) "the structural label supplies the accessible name"
+          }
+
+          test "FUARAN109 go-red check: a whitespace-only name is still no name" {
+              // Admitting `\" \"` would make the rule evadable by a space, which
+              // is worse than not having it — the tree would then carry a green
+              // gate saying it had been checked.
+              let tree = dashboard "root" [ a11yButton "save" "   " ]
+
+              Expect.equal (a11yCodes tree) [ "FUARAN109" ] "whitespace is empty"
+          }
+
+          test "FUARAN109 go-red check: a BOUND label is never judged" {
+              // It resolves at render time from data no pre-emit walk can see,
+              // so calling it empty would be a guess. The family errs towards
+              // silence — the same restraint FUARAN108 shows for Media.Label.
+              let tree = dashboard "root" [ boundLabelButton "save" ]
+
+              Expect.isEmpty (a11yDefects tree) "an unresolvable name is not an absent one"
+          }
+
+          test "FUARAN109 trap: a blank label WITH a declared accessibility.label is not flagged" {
+              // The Phase 717 trap, stated as a test. A button whose structural
+              // label is blank and whose trait names it is odd-looking and
+              // perfectly announced: the browser's name computation is
+              // trait label → aria-labelledby target → text content, and the
+              // first arm is satisfied. Flagging it would be exactly the false
+              // positive an audit cannot afford.
+              let tree =
+                  dashboard "root" [ a11yButton "save" "" |> withTrait (traitLabel (Binding.Static(Some "Save"))) ]
+
+              Expect.isEmpty (a11yDefects tree) "a declared name IS a name"
+          }
+
+          test "FUARAN109 trap: a blank label with a RESOLVING labelledBy is not flagged" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ markdown "caption" "Save the document"
+                        a11yButton "save" ""
+                        |> withTrait
+                            { Defaults.Accessibility.empty with
+                                LabelledBy = Some "caption" } ]
+
+              Expect.isEmpty (a11yDefects tree) "the second arm of the name computation is satisfied"
+          }
+
+          test "FUARAN109 is derived from the language's defaults: a Link is not audited" {
+              // `Fuaran.link` passes `Defaults.Accessibility.none`, so the
+              // language does not declare a Link interactive and the rule does
+              // not reach it — even though a Link has a structural `label` slot
+              // that is just as empty. The pin is one-directional by design:
+              // read the default, never a table beside it.
+              let tree = dashboard "root" [ Fuaran.link "docs" "https://example.invalid" "" ]
+
+              Expect.isEmpty (a11yDefects tree) "the language's own default is the gate"
+          }
+
+          test "FUARAN109 covers Select, Form and FileUpload, each by its own naming slot" {
+              let select =
+                  Fuaran.select
+                      "choice"
+                      { Defaults.select<Msg> with
+                          Label = TextSource.Literal ""
+                          Value = Binding.State("choice", None) }
+
+              let form =
+                  Fuaran.form
+                      "details"
+                      { Defaults.form<Msg> with
+                          SubmitLabel = TextSource.Literal "" }
+
+              let upload =
+                  Fuaran.fileUpload
+                      "attach"
+                      { Defaults.fileUpload<Msg> with
+                          Label = TextSource.Literal "" }
+
+              let slots =
+                  a11yDefects (dashboard "root" [ select; form; upload ])
+                  |> List.map (function
+                      | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, _, slot) -> nodeId, slot
+                      | other -> failtestf "Expected FUARAN109, got %A" other)
+
+              Expect.equal
+                  slots
+                  [ "choice", "label"; "details", "submitLabel"; "attach", "label" ]
+                  "a form is named through its submit button; the others through their own label"
+          }
+
+          test "FUARAN110 flags an accessibility reference naming a node the tree does not carry" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ a11yButton "save" "Save"
+                        |> withTrait
+                            { Defaults.Accessibility.empty with
+                                LabelledBy = Some "no-such-node" } ]
+
+              match a11yDefects tree with
+              | [ PreEmitDefect.DanglingAccessibilityReference(nodeId, slot, target) ] ->
+                  Expect.equal nodeId "save" "the referring node"
+                  Expect.equal slot "labelledBy" "the slot"
+                  Expect.equal target "no-such-node" "the missing target"
+              | other -> failtestf "Expected one FUARAN110, got %A" other
+          }
+
+          test "FUARAN110 covers describedBy as well as labelledBy" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ a11yButton "save" "Save"
+                        |> withTrait
+                            { Defaults.Accessibility.empty with
+                                DescribedBy = Some "missing-help" } ]
+
+              Expect.equal (a11yCodes tree) [ "FUARAN110" ] "both reference slots are judged"
+          }
+
+          test "FUARAN110 go-red check: a reference that resolves is silent" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ markdown "help" "Saves your work"
+                        a11yButton "save" "Save"
+                        |> withTrait
+                            { Defaults.Accessibility.empty with
+                                DescribedBy = Some "help" } ]
+
+              Expect.isEmpty (a11yDefects tree) "the target is in the tree"
+          }
+
+          test "FUARAN111 flags a declared accessibility slot left empty" {
+              let tree =
+                  dashboard "root" [ a11yButton "save" "Save" |> withTrait (traitLabel (Binding.Static(Some ""))) ]
+
+              match a11yDefects tree with
+              | [ PreEmitDefect.EmptyAccessibilityDeclaration(nodeId, slot) ] ->
+                  Expect.equal nodeId "save" "the offending node"
+                  Expect.equal slot "label" "the empty slot"
+              | other -> failtestf "Expected one FUARAN111, got %A" other
+          }
+
+          test "FUARAN111 flags a Static slot with no value at all" {
+              let tree =
+                  dashboard "root" [ a11yButton "save" "Save" |> withTrait (traitLabel (Binding.Static None)) ]
+
+              Expect.equal (a11yCodes tree) [ "FUARAN111" ] "declared and valueless is declared and empty"
+          }
+
+          test "FUARAN111 is what closes the hole FUARAN109's declared-name escape opens" {
+              // The pair's whole reason for shipping together. An empty declared
+              // label satisfies `declaresAccessibleName`, so it SILENCES
+              // FUARAN109 — the defect suppresses its own detection — while the
+              // renderer drops the empty `aria-label` and the element is named
+              // by nothing. Exactly one code fires, and it is the right one.
+              let tree =
+                  dashboard "root" [ a11yButton "save" "" |> withTrait (traitLabel (Binding.Static(Some " "))) ]
+
+              Expect.equal (a11yCodes tree) [ "FUARAN111" ] "109 is silenced; 111 catches what silenced it"
+          }
+
+          test "FUARAN111 owns an EMPTY reference slot — 110 does not double-report it" {
+              // An empty `labelledBy` names nothing and so is trivially
+              // dangling too. Reporting one value under two codes is noise
+              // rather than coverage, so the reference collector excludes it.
+              let tree =
+                  dashboard
+                      "root"
+                      [ a11yButton "save" "Save"
+                        |> withTrait
+                            { Defaults.Accessibility.empty with
+                                LabelledBy = Some "" } ]
+
+              Expect.equal (a11yCodes tree) [ "FUARAN111" ] "one value, one finding"
+          }
+
+          test "FUARAN111 go-red check: a real declared name is silent" {
+              let tree =
+                  dashboard "root" [ a11yButton "save" "Save" |> withTrait (traitLabel (Binding.Static(Some "Save"))) ]
+
+              Expect.isEmpty (a11yDefects tree) "a declared name that names something"
+          }
+
+          test "FUARAN111 go-red check: a non-Static label binding is never judged" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ a11yButton "save" "Save"
+                        |> withTrait (traitLabel (Binding.State("caption", None))) ]
+
+              Expect.isEmpty (a11yDefects tree) "it resolves at runtime; emptiness is unprovable here"
+          }
+
+          test "the accessibility family is silent on a clean tree" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ markdown "help" "Saves your work"
+                        a11yButton "save" "Save"
+                        |> withTrait
+                            { Defaults.Accessibility.empty with
+                                Role = Some AriaRole.Button
+                                Label = Some(Binding.Static(Some "Save the document"))
+                                DescribedBy = Some "help" } ]
+
+              Expect.isEmpty (a11yDefects tree) "nothing to report"
           } ]
