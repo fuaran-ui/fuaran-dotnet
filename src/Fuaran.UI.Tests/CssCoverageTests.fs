@@ -407,11 +407,21 @@ let tests =
           }
 
           // Phase 431 task 3. The TS tier ships a BYTE-COPY of this stylesheet,
-          // kept in step by operator discipline with nothing enforcing it — so
-          // the cheapest way to extend the coverage floor across the tier is to
-          // make the copy's identity executable: identical bytes means the
+          // so the cheapest way to extend the coverage floor across the tier is
+          // to make the copy's identity executable: identical bytes means the
           // coverage proved above holds there unchanged. Skipped, loudly, in a
           // bare single-repo checkout where the sibling is not on disk.
+          //
+          // Phase 432 gave the copy a GENERATOR (`Build.fsproj -- Css`) and an
+          // authoring-side drift gate (`-- CssCheck`, wired into `Check`), which
+          // retired the hand-copy discipline this assertion originally stood in
+          // for. It is KEPT rather than deleted because the two answer different
+          // questions: the build target asks whether the four copies agree, while
+          // this one carries the COVERAGE claim across the tier — the assertions
+          // above prove the vocabulary is styled in the canonical sheet, and this
+          // is what makes that proof transfer to the TypeScript one. Deleting it
+          // would leave the coverage floor canonical-only, which is not what the
+          // build target replaced.
           test "the TypeScript tier's stylesheet copy is byte-identical" {
               match tryFindTsCssCopy () with
               | None -> skiptest "fuaran-ts sibling not present in this checkout — byte-copy parity not checked here"
@@ -423,6 +433,6 @@ let tests =
                       (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData copy))
                       (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData reference))
                       (sprintf
-                          "%s has drifted from the reference stylesheet. Any commit changing the F# CSS re-copies it to the TS tier in the same change-set; until a CSS build pipeline generates the copy, this assertion is what enforces it."
+                          "%s has drifted from the reference stylesheet, so the class coverage proved above does not carry to the TypeScript tier. The copy is generated: run `dotnet run --project Build.fsproj -- Css` and commit the result in the same change-set as the canonical edit."
                           tsPath)
           } ]

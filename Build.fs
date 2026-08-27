@@ -230,6 +230,139 @@ let private packableProjects =
             // Phase 310 — the VB XML-literal veneer (a .vbproj).
             Path.Combine(repoRoot, "src", "Fuaran.UI.VisualBasic", "Fuaran.UI.VisualBasic.vbproj") ]
 
+// ─── Phase 432 — the reference stylesheet and its tier copies ──────────────
+//
+// `src/Fuaran.UI.Renderer/content/fuaran-reference.css` is the CANONICAL
+// stylesheet: the artefact packaged into `Fuaran.UI.Renderer`, and the one the
+// class-coverage suite reads. Every other host tier ships a BYTE-COPY of it.
+//
+// Each consuming tier already locks its own copy — the F# coverage suite for
+// the TypeScript one, `conformance/render_test.go` for Go, `tests/render.rs`
+// for Rust — so drift is caught. But only by the tier that drifted, and only in
+// a repo the author who caused it was not in. That is precisely how the
+// preceding phase landed: it added two rule families to the canonical sheet,
+// re-copied the TypeScript tier, and left the Go and Rust copies serving a
+// stylesheet two families behind, with nothing on the authoring side to say so.
+//
+// These targets close it from the AUTHORING side, and replace the hand copy:
+//
+//   `-- Css`        rewrites every copy present in this checkout from the
+//                   canonical sheet — the generator. `-- Css --check` runs the
+//                   check below instead of writing.
+//   `-- CssCheck`   fails, naming every copy that is not byte-identical. Wired
+//                   into `Check`, so the gate the author already runs reports
+//                   the drift they have just created.
+//
+// The copies are plain byte copies and stay so across clones: all four repos
+// pin `* text=auto eol=lf`, so there is no newline translation to reproduce and
+// no generation step beyond the copy itself.
+let private canonicalCss =
+    Path.Combine(repoRoot, "src", "Fuaran.UI.Renderer", "content", "fuaran-reference.css")
+
+/// The tier copies, keyed by the sibling repo shipping each. Resolved through
+/// the same `..` hop above this repo that the wire-corpus gate uses.
+let private tierCssCopies =
+    [ "fuaran-ts", Path.Combine(repoRoot, "..", "fuaran-ts", "packages", "renderer", "css", "fuaran.css")
+      "fuaran-go", Path.Combine(repoRoot, "..", "fuaran-go", "renderer", "content", "fuaran-reference.css")
+      "fuaran-rs", Path.Combine(repoRoot, "..", "fuaran-rs", "css", "fuaran.css") ]
+
+/// What this checkout can say about one tier copy. `Absent` and `Missing` are
+/// deliberately distinct: a sibling that is not cloned is a narrower checkout
+/// and says nothing, whereas a copy deleted from a sibling that IS cloned is a
+/// finding. Collapsing them would let a deleted copy read as "not checked".
+type private CssCopyState =
+    | Absent
+    | Missing
+    | Drifted of digest: string
+    | Identical
+
+let private sha256Of (path: string) =
+    System.Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes path))
+
+let private inspectCssCopies () =
+    let canonical = sha256Of canonicalCss
+
+    let copies =
+        tierCssCopies
+        |> List.map (fun (tier, path) ->
+            // `GetDirectoryName` is genuinely nullable (a rootless path has no
+            // parent); a null here is the same answer as a directory that is not
+            // there, so both fall to `Absent`.
+            let siblingDir =
+                match Path.GetDirectoryName path with
+                | null -> None
+                | dir -> Some dir
+
+            let state =
+                match siblingDir with
+                | Some dir when Directory.Exists dir ->
+                    if not (File.Exists path) then
+                        Missing
+                    else
+                        let digest = sha256Of path
+                        if digest = canonical then Identical else Drifted digest
+                | _ -> Absent
+
+            tier, path, state)
+
+    canonical, copies
+
+let private cssCheck () =
+    let canonical, copies = inspectCssCopies ()
+    Trace.tracefn "Reference CSS %s — sha256=%s" canonicalCss canonical
+
+    for tier, path, state in copies do
+        match state with
+        | Identical -> Trace.tracefn "  %-10s identical  %s" tier path
+        // Reported, not silent: "nothing to check here" and "everything checked"
+        // must not read alike. A single-repo checkout (the publish workflow) has
+        // no siblings at all, which is legitimate and is what this line says.
+        | Absent -> Trace.traceImportant (sprintf "  %-10s NOT CHECKED — sibling absent from this checkout" tier)
+        | Missing
+        | Drifted _ -> ()
+
+    let broken =
+        copies
+        |> List.choose (fun (tier, path, state) ->
+            match state with
+            | Drifted digest -> Some(sprintf "%s — DRIFTED (sha256=%s)  %s" tier digest path)
+            | Missing -> Some(sprintf "%s — MISSING (the sibling is checked out but carries no copy)  %s" tier path)
+            | Absent
+            | Identical -> None)
+
+    if not (List.isEmpty broken) then
+        failwithf
+            "Reference-CSS drift — %d tier copy/copies diverged from the canonical sheet (sha256=%s):\n  %s\n\nThe F# sheet is canonical and the tier copies are generated from it. Run `dotnet run --project Build.fsproj -- Css` to rewrite them, and commit the result in the same change-set as the canonical edit."
+            (List.length broken)
+            canonical
+            (System.String.Join("\n  ", broken))
+
+let private cssSync () =
+    let canonical, copies = inspectCssCopies ()
+    Trace.tracefn "Reference CSS %s — sha256=%s" canonicalCss canonical
+
+    for tier, _, state in copies do
+        match state with
+        | Absent -> Trace.traceImportant (sprintf "  %-10s SKIPPED — sibling absent from this checkout" tier)
+        | Identical -> Trace.tracefn "  %-10s already identical" tier
+        | Missing
+        | Drifted _ -> ()
+
+    let stale =
+        copies
+        |> List.filter (fun (_, _, state) ->
+            match state with
+            | Missing
+            | Drifted _ -> true
+            | Absent
+            | Identical -> false)
+
+    for tier, path, _ in stale do
+        File.Copy(canonicalCss, path, true)
+        Trace.tracefn "  %-10s WRITTEN  %s" tier path
+
+    Trace.tracefn "%d tier copy/copies rewritten." (List.length stale)
+
 let private dotnet args workingDir =
     CreateProcess.fromRawCommand "dotnet" args
     |> CreateProcess.withWorkingDirectory workingDir
@@ -244,7 +377,7 @@ let private init (args: string array) =
     |> Context.RuntimeContext.Fake
     |> Context.setExecutionContext
 
-let private registerTargets () =
+let private registerTargets (args: string array) =
     Target.create "Format" (fun _ -> dotnet [ "fantomas"; "." ] repoRoot)
 
     Target.create "Build" (fun _ -> dotnet [ "build"; solution; "-c"; "Release" ] repoRoot)
@@ -527,10 +660,29 @@ let private registerTargets () =
 
     "AuthoringPackFamilies" ==> "Check" |> ignore
 
+    // Phase 432 — the reference stylesheet's tier copies. Two entry points over
+    // one pair of functions (see their comment above `dotnet`): `Css` generates,
+    // `Css --check` and `CssCheck` verify. Both are pure IO over committed
+    // files, so neither depends on `Build`.
+    //
+    // `CssCheck` exists as its own target rather than `Check` depending on `Css`
+    // with a flag, because a target chain cannot pass one: `Check` would then
+    // run the GENERATOR, silently rewriting the copies it was asked to verify. A
+    // gate that repairs what it measures can never fail.
+    Target.create "Css" (fun _ ->
+        if args |> Array.contains "--check" then
+            cssCheck ()
+        else
+            cssSync ())
+
+    Target.create "CssCheck" (fun _ -> cssCheck ())
+
+    "CssCheck" ==> "Check" |> ignore
+
 [<EntryPoint>]
 let main args =
     init args
-    registerTargets ()
+    registerTargets args
 
     // FAKE's CLI selects a target only via `-t <name>` / `--target <name>`; a bare
     // positional (`dotnet run -- Validate`) falls through to <targetargs>, so the

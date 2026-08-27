@@ -102,9 +102,20 @@ The class hooks are documented in Section 2.0 below so Tailwind-JIT-shaped consu
 
 ### 1.5b Coverage is enforced, not documented (Phase 431)
 
-The class contract in Sections 2–4 is executable. `src/Fuaran.UI.Tests/CssCoverageTests.fs` enumerates every class the renderer can emit — the Theme projections by *running* them over every DU case, the structural per-spec vocabulary by *scanning* the renderer sources — and fails the build when one has no rule in `content/fuaran-reference.css` and no declared absence. A declared absence names the class that carries the chrome instead, and the suite checks *that* class really is styled, so an exemption cannot be a mute-list entry. The same suite asserts the TypeScript tier's byte-copy of the stylesheet is identical, which is what enforces the re-copy discipline until a CSS build pipeline generates it.
+The class contract in Sections 2–4 is executable. `src/Fuaran.UI.Tests/CssCoverageTests.fs` enumerates every class the renderer can emit — the Theme projections by *running* them over every DU case, the structural per-spec vocabulary by *scanning* the renderer sources — and fails the build when one has no rule in `content/fuaran-reference.css` and no declared absence. A declared absence names the class that carries the chrome instead, and the suite checks *that* class really is styled, so an exemption cannot be a mute-list entry. The same suite asserts the TypeScript tier's byte-copy of the stylesheet is identical, which is what carries that coverage proof across to the copy.
 
 **So a new class hook is not shipped until it has a rule or an entry.** Adding one to a renderer without either turns the build red here, rather than surfacing as an unstyled node in a downstream host's page.
+
+### 1.5c The tier copies are generated (Phase 432)
+
+`content/fuaran-reference.css` is the **canonical** stylesheet; every other host tier ships a byte-copy of it. Those copies are **generated, not hand-copied**:
+
+```powershell
+dotnet run --project Build.fsproj -- Css          # rewrite every tier copy present in this checkout
+dotnet run --project Build.fsproj -- CssCheck     # fail, naming every copy that is not byte-identical
+```
+
+`CssCheck` is wired into the `Check` gate, so an edit to the canonical sheet that has not been propagated fails for the author who made it. That is the point of running it from this side: each consuming tier already locks its own copy, but only that tier's suite sees the drift, in a repo the author was not in — which is how a preceding change left two copies serving a stylesheet two rule families behind. A tier whose repo is not in the checkout is reported as *not checked* rather than passing quietly.
 
 ### 1.6 Interaction state matrix (Phase 12.N) – 84 + 4 = 88 variables
 
