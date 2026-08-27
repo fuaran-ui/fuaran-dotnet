@@ -4,7 +4,7 @@ module Fuaran.UI.AiTools.BindingProbe
 //  Fuaran runtime-introspection AI tools — binding-resolution probe.
 //
 //  Resolves a typed `Binding<'T>` against the introspection context's
-//  `BindingProbeSources`, returning a typed `ResolvedBindingResult` the
+//  `Fuaran.UI.BindingSources`, returning a typed `ResolvedBindingResult` the
 //  §4i tools can hand back through the cross-cutting obj-erasure
 //  boundary. The implementation mirrors
 //  `Fuaran.UI.Renderer.BindingResolver.resolve` — same semantics, same
@@ -13,13 +13,19 @@ module Fuaran.UI.AiTools.BindingProbe
 //  (which pulls in Feliz / Fable / browser substrate the orchestrator
 //  doesn't want).
 //
-//  The duplication is intentional but flagged for TIDY-UP — the right
-//  long-term shape is `BindingSources` + `resolve` lifted into
-//  `Fuaran.UI` proper (free of any Feliz dependency) and consumed from
-//  both Renderer and AiTools. Splitting that out is a separate touch
-//  of `Fuaran.UI/Types.fs` (Track 1 integration lane) deferred until a
-//  pass with broader scope arrives — keeping it standalone here for
-//  the session-5+ commit's discipline.
+//  Phase 213 closed the SHAPE half of that duplication: the source record is
+//  no longer a hand-copied `BindingProbeSources` but the canonical
+//  `Fuaran.UI.BindingSources` the renderer resolves against, so a field the
+//  renderer gains can never again be silently missing here (it was missing
+//  `Locale`, `Now`, `ComputedContext`, `I18nResolver` and `CapabilityInvoker`).
+//  The RESOLUTION half stays deliberately split: the arms below that decline
+//  (`Computed` / `Now` / `I18n` / `Format` / `Transform` / `Invoke`) decline
+//  because their resolution needs renderer-side machinery — the Intl /
+//  Globalization formatter, the dataframe pipeline evaluator, the host
+//  capability dispatcher — not because the probe lacks the data. Reporting
+//  `NotResolvedYet` is the honest answer there; inventing a second
+//  implementation of that machinery here would manufacture exactly the
+//  probe-disagrees-with-the-render defect this file exists to avoid.
 // ============================================================================
 
 open Fuaran.UI.Types
@@ -206,23 +212,30 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
             | None -> resolvedOk Unchecked.defaultof<'T>
 
     | Binding.Computed _ ->
-        // Computed bindings carry a `BindingContext -> 'T` function;
-        // resolving requires the renderer's ComputedContext which we
-        // don't expose here (it's a renderer-side abstraction not yet
-        // shaped into a wire-traversable contract). v1 surfaces as
-        // a NotResolvedYet hint pointing the orchestrator at a
-        // structural workaround.
+        // Computed bindings carry a `BindingContext -> 'T` function. The seed
+        // `ComputedContext` is on `ctx.Sources` since Phase 213, but resolving
+        // also means reproducing the renderer's live-state merge policy
+        // (`sources.State` authoritative, injected keys underneath) — a second
+        // implementation of a policy, which is the drift class this file's
+        // header warns about. And the closure is an F#-only escape that never
+        // serialises, so a `Computed` value is not wire-traversable in the
+        // first place. v1 surfaces as a NotResolvedYet hint pointing the
+        // orchestrator at a structural workaround.
         failed
             BindingErrorCode.NotResolvedYet
             "Computed bindings are not yet introspectable (the BindingContext is renderer-side)."
             (Some "Express the same derivation via Binding.Query + a computed-column accessor, then introspect that.")
 
     | Binding.Now _ ->
-        // Phase 765 — the instant lives in `BindingSources.Now`, a
-        // renderer-side value this probe does not receive, so it is the same
-        // shape of non-introspectable as `Computed` above: report
-        // NotResolvedYet rather than inventing a clock here, which would make
-        // the probe disagree with what the renderer actually showed.
+        // Phase 765 — the instant lives in `BindingSources.Now`. Since Phase
+        // 213 that field IS on `ctx.Sources` (the shape is the renderer's), so
+        // the probe no longer lacks the datum; what it lacks is a decision that
+        // the probe should start reporting a value where it has reported
+        // NotResolvedYet since 765. Turning that on is a deliberate
+        // behaviour change to a public tool surface, not a side-effect of the
+        // shape unification, so it stays declined here. Reporting
+        // NotResolvedYet is never WRONG — it is the honest "ask the renderer";
+        // inventing a clock here would be.
         failed
             BindingErrorCode.NotResolvedYet
             "Now bindings resolve against the host-furnished instant (BindingSources.Now), which is renderer-side."
@@ -236,12 +249,13 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
         tryResolveBinding<'T> ctx initialFrom
 
     | Binding.I18n(key, _args) ->
-        // i18n bindings resolve via the renderer's
-        // `BindingSources.I18nResolver`, which the probe doesn't have a
-        // handle on (probe sources are introspection-shaped, not full
-        // renderer sources). v1 surfaces as NotResolvedYet with a hint;
-        // the orchestrator can ask the host for catalog state via a
-        // separate seam if it cares about the resolved string.
+        // i18n bindings resolve via `BindingSources.I18nResolver` — present on
+        // `ctx.Sources` since Phase 213 — but resolving one also means
+        // resolving its `Binding<JVal>` args and applying the renderer's
+        // placeholder-substitution policy, which is renderer-side machinery.
+        // v1 surfaces as NotResolvedYet with a hint; the orchestrator can ask
+        // the host for catalog state via a separate seam if it cares about the
+        // resolved string.
         failed
             BindingErrorCode.NotResolvedYet
             (sprintf "I18n binding for key '%s' requires the renderer's I18nResolver, not exposed to the probe." key)
@@ -250,18 +264,22 @@ let rec tryResolveBinding<'T> (ctx: IntrospectionContext) (binding: Binding<'T>)
 
     | Binding.Format(_source, _format, _locale) ->
         // Format bindings format their numeric source via the
-        // renderer's Intl / Globalization formatter (locale-dependent), which
-        // the probe doesn't have a handle on (probe sources are introspection-
-        // shaped, not full renderer sources). v1 surfaces as NotResolvedYet
-        // with a hint — same posture as I18n / Computed.
+        // renderer's Intl / Globalization formatter, which the probe has no
+        // handle on — the FORMATTER is renderer-side, not the locale. The
+        // ambient `Locale` the formatter reads is on `ctx.Sources` since Phase
+        // 213 (it was the field the old hand-duplicated probe record had
+        // silently dropped), so the gap here is the formatter alone. v1
+        // surfaces as NotResolvedYet with a hint — same posture as
+        // I18n / Computed.
         failed
             BindingErrorCode.NotResolvedYet
             "Format bindings require the renderer's locale formatter, not exposed to the probe."
             (Some "Introspect the underlying numeric source binding directly; the formatted string is renderer-side.")
     | Binding.Transform _ ->
         // Transform bindings (Phase 282) evaluate a `Fuaran.Core.DataFrame` pipeline in the
-        // renderer's resolver, not the probe (probe sources are introspection-shaped). v1 surfaces
-        // as NotResolvedYet with a hint — same posture as Format / I18n / Computed.
+        // renderer's resolver, not the probe (the pipeline EVALUATOR is renderer-side; the source
+        // record is shared since Phase 213). v1 surfaces as NotResolvedYet with a hint — same
+        // posture as Format / I18n / Computed.
         failed
             BindingErrorCode.NotResolvedYet
             "Transform bindings evaluate a dataframe pipeline in the renderer's resolver, not the probe."

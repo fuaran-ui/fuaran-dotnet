@@ -30,6 +30,12 @@
     <Compile Include="StateKeyPolicy.fs" />
     <Compile Include="Generated.fs" />
     <Compile Include="Types.fs" />
+    <!-- Phase 213: the canonical, data-only `BindingSources` record — the one
+         shape a host furnishes for binding resolution. Promoted here from the
+         renderer so `Fuaran.UI.AiTools` (which must stay renderer-free) and the
+         renderer reference ONE field set instead of two hand-duplicated ones.
+         Depends only on Types.fs; no resolver logic. -->
+    <Compile Include="BindingSources.fs" />
     <!-- Phase 268: Node.mapMsg — exhaustive ('a -> 'b) -> Node<'a> -> Node<'b>
          relabel of a tree's message type (the erasure `embed` lowers through).
          Depends only on Types.fs. -->

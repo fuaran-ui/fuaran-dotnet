@@ -167,40 +167,33 @@ let systemClock: IIntrospectionClock = SystemClock() :> IIntrospectionClock
 /// explicit at the call site (no global mutable state in this package,
 /// FGP 4 + portability rule 5).
 ///
-/// `Sources` mirrors the renderer's `BindingResolver.BindingSources`
-/// shape — duplicated rather than referenced because `Fuaran.UI.AiTools`
-/// stays free of `Fuaran.UI.Renderer` (the renderer depends on Feliz +
-/// Fable; AiTools targets .NET-side orchestrator consumption). The
-/// duplication is flagged for TIDY-UP — consolidating `BindingSources`
-/// + the resolver into `Fuaran.UI` proper breaks the cycle without
-/// pulling in Renderer.
+/// `Sources` IS the renderer's binding-source record (Phase 213), not a copy
+/// of it: the canonical `BindingSources` lives in `Fuaran.UI` — data-only,
+/// FSharp.Core only — and both this package and
+/// `Fuaran.UI.Renderer.BindingResolver` reference that one shape.
+/// `Fuaran.UI.AiTools` still takes NO dependency on `Fuaran.UI.Renderer` (the
+/// renderer depends on Feliz + Fable; AiTools targets .NET-side orchestrator
+/// consumption) — `Fuaran.UI` is the package both already depend on, which is
+/// what let the cycle break without pulling the renderer in.
+///
+/// It replaces a hand-duplicated `BindingProbeSources` that had already
+/// drifted: it never gained `Locale`, so a binding the renderer resolved
+/// against the ambient locale resolved differently under introspection and the
+/// AI tool could report a value disagreeing with the rendered UI. The probe
+/// still declines to resolve the renderer-side arms (`Computed` / `Now` /
+/// `I18n` / `Format` / `Transform` / `Invoke`) — carrying the fields is what
+/// makes that a deliberate posture rather than an absent shape.
 type IntrospectionContext =
-    { Sources: BindingProbeSources
+    { Sources: Fuaran.UI.BindingSources
       Geometry: IGeometryProbe
       CurrentState: ICurrentStateProbe
       Errors: IRuntimeErrorSink
       Clock: IIntrospectionClock }
 
-/// Forward-declared placeholder; the real shape lives in `BindingProbe.fs`
-/// (open recursion isn't available across .fs files in F#). The
-/// `IntrospectionContext` record references this name; `BindingProbe.fs`
-/// defines the body.
-and BindingProbeSources =
-    { QueryResults: Map<string, obj>
-      State: Map<string, obj>
-      Filters: Map<string, obj>
-      Selections: Map<NodeId, obj>
-      I18n: Map<string, string> }
-
 /// Empty / default context — useful for tests that exercise the
 /// tree-shape introspection without wiring any external state.
 let emptyContext: IntrospectionContext =
-    { Sources =
-        { QueryResults = Map.empty
-          State = Map.empty
-          Filters = Map.empty
-          Selections = Map.empty
-          I18n = Map.empty }
+    { Sources = Fuaran.UI.BindingSources.empty
       Geometry = noGeometry
       CurrentState = noCurrentState
       Errors = createInMemorySink ()

@@ -10,6 +10,9 @@
     <Compile Include="CapabilitiesTests.fs" />
     <!-- Phase 358 — cross-domain Slot composition (composeAcross adoption). -->
     <Compile Include="FunctionToolTests.fs" />
+    <!-- Phase 213 — the guard that fails if the introspection source shape and
+         the renderer resolver's source shape ever become two types again. -->
+    <Compile Include="BindingSourcesDriftTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -19,6 +22,14 @@
     <!-- Phase 358 — the composed-tree render-parity check encodes to canonical
          JSON (the same wire encoding both pipelines emit). -->
     <ProjectReference Include="..\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+    <!-- Phase 213 — TEST-ONLY. The drift guard asserts that the introspection
+         source shape and the renderer resolver's source shape are one type, so
+         it must see both. Renderer.Core is the emission-agnostic spine
+         (FSharp.Core + Fable.Core, no Feliz / React / browser substrate); the
+         SHIPPING Fuaran.UI.AiTools package still references no renderer at
+         all, and BindingSourcesDriftTests asserts that rather than assuming
+         it. -->
+    <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />

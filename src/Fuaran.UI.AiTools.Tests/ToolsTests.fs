@@ -33,7 +33,7 @@ type ChannelRow = { RowId: int; Channel: string }
 
 let private idOf (NodeId rawId) = rawId
 
-// F# 10 `box _` types as `obj | null`; the BindingProbeSources contract and
+// F# 10 `box _` types as `obj | null`; the `Fuaran.UI.BindingSources` contract and
 // the fuaran#665 `Row` cell maps require nonnull-obj values. Same workaround
 // Fuaran.UI.Ops.Tests's `nn` helper uses.
 let private nn (value: 'T) : obj = box value |> Unchecked.nonNull
@@ -97,11 +97,11 @@ let private freshContext () : IntrospectionContext =
       Errors = Seams.createInMemorySink ()
       Clock = Seams.fixedClock }
 
-let private contextWithSources (sources: BindingProbeSources) : IntrospectionContext =
+let private contextWithSources (sources: Fuaran.UI.BindingSources) : IntrospectionContext =
     { (freshContext ()) with
         Sources = sources }
 
-let private withQuery (name: string) (value: obj) : BindingProbeSources =
+let private withQuery (name: string) (value: obj) : Fuaran.UI.BindingSources =
     { (freshContext ()).Sources with
         QueryResults = Map.ofList [ name, value ] }
 
