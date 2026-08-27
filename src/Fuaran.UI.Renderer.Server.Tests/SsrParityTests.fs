@@ -931,6 +931,92 @@ let ssrParityTests =
               Expect.isFalse (contains "&amp;amp;" html) "the SSR path does not re-escape the already-escaped tip"
           }
 
+          // ── Phase 643 — the provenance option, with the option ON ──────────
+          //
+          // The same parity argument as the two tests above, on the seam that
+          // makes it matter most. The `<metadata>` payload is an
+          // entity-escaped canonical JSON document — which is to say it is
+          // MOSTLY `&quot;` — so it is the single densest concentration of
+          // pre-escaped text this renderer ever emits. A re-escaping pass
+          // anywhere in the SSR path turns every `&quot;` into `&amp;quot;`,
+          // the recovery unescape then yields `&quot;` where a `"` belonged,
+          // and the embedded document stops being JSON. Nothing about the page
+          // looks wrong; the artefact simply stops being recoverable, which is
+          // the one property the option exists to provide.
+          //
+          // What this pins, therefore, is BOTH halves of the option: that the
+          // installed scope reaches the server arm at all (an arm holding its
+          // own `DrawingSvg.render` call would emit the un-stamped bytes and
+          // the `contains` would fail), and that the payload it splices is the
+          // shared emitter's bytes VERBATIM.
+          test "chart provenance — the SSR payload is the shared emitter's bytes verbatim, option ON (Phase 643)" {
+              let rows: Fuaran.Core.Row list =
+                  [ Map.ofList [ "quarter", box "Q1 & <b>"; "revenue", box 120.0 ]
+                    Map.ofList [ "quarter", box "Q2"; "revenue", box 90.5 ] ]
+
+              let spec: ChartSpec<obj> =
+                  { Defaults.chart with
+                      Kind = ChartKind.Bar
+                      Source = Binding.Static(Some(rows :> Fuaran.Core.Row seq))
+                      XField = "quarter"
+                      YFields = [ "revenue" ]
+                      Title = Some(TextSource.Literal "Revenue & \"growth\"") }
+
+              let node = Fuaran.chart "ch-prov" spec
+
+              let textOf t =
+                  match t with
+                  | TextSource.Literal s -> s
+                  | _ -> "?"
+
+              try
+                  // OFF (the shipped default) — the SSR bytes are the pre-643
+                  // bytes, so nothing about an ordinary page render moved.
+                  Fuaran.UI.Charts.clearChartProvenance ()
+                  let offHtml = renderHtml BindingResolver.empty node
+
+                  Expect.isFalse (contains "<metadata" offHtml) "an un-opted-in SSR chart carries no provenance"
+
+                  // ON — the shared emitter's own output, i.e. the exact string
+                  // the CLIENT arm hands to `dangerouslySetInnerHTML`.
+                  Fuaran.UI.Charts.installChartProvenance Fuaran.UI.Charts.ChartProvenance.SpecAndData
+
+                  let shared = Fuaran.UI.Charts.renderSvg BindingResolver.empty textOf spec rows
+
+                  let onHtml = renderHtml BindingResolver.empty node
+
+                  Expect.isTrue
+                      (contains "<metadata data-fuaran-provenance=\"v1\">" shared)
+                      "the shared emitter stamps the drawing when the scope is installed"
+
+                  Expect.isTrue
+                      (contains shared onHtml)
+                      "server HTML embeds the shared self-describing SVG payload byte-for-byte"
+
+                  Expect.isFalse
+                      (contains "&amp;quot;" onHtml)
+                      "the SSR path does not re-escape the already-escaped provenance document"
+
+                  // And the artefact the SERVER produced — not a separately
+                  // rendered string — recovers.
+                  match Fuaran.UI.Charts.tryRecover onHtml with
+                  | Error e -> failtestf "the SSR-emitted artefact must recover, but: %s" e
+                  | Ok recovered ->
+                      Expect.equal
+                          recovered.SpecJson
+                          (Fuaran.UI.Charts.specWireJson spec)
+                          "recovered from the server's own HTML, byte-identical"
+
+                      Expect.equal
+                          recovered.Stamp
+                          (Fuaran.UI.Charts.stampOf spec (Some rows))
+                          "carrying the derived stamp"
+              finally
+                  // Process-global: leaving it installed would change what every
+                  // later test in this assembly renders.
+                  Fuaran.UI.Charts.clearChartProvenance ()
+          }
+
           // ── Phase 1078 — the caption ──────────────────────────────────────
           //
           // The acceptance criterion for this phase is a NEGATIVE: an

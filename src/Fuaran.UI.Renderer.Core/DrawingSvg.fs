@@ -139,6 +139,50 @@ let escape (s: string) : string =
 
     sb.ToString()
 
+/// The exact inverse of `escape` for the five entities it emits — a single
+/// LEFT-TO-RIGHT pass, so a `&amp;lt;` produced from a literal `&lt;` in the
+/// source text decodes back to `&lt;` and is never re-scanned into `<`. A
+/// two-pass or replace-per-entity implementation gets that case wrong silently,
+/// which is why this is written as a scanner.
+///
+/// Unrecognised entities are left VERBATIM rather than guessed at: this is the
+/// inverse of one known emitter, not a general XML entity resolver, and
+/// inventing a decoding for `&nbsp;` here would be a claim the emitter never
+/// made.
+let unescape (s: string) : string =
+    let sb = StringBuilder(s.Length)
+    let mutable i = 0
+
+    // Written with `Substring` + structural `=` (ordinal on both runtimes)
+    // rather than a positional `String.CompareOrdinal` overload — this file is
+    // Fable-compiled, and the narrow BCL overloads are exactly where the two
+    // pipelines diverge. The allocation is a recovery-path cost, not a render
+    // one.
+    let startsAt (needle: string) =
+        i + needle.Length <= s.Length && s.Substring(i, needle.Length) = needle
+
+    while i < s.Length do
+        if startsAt "&amp;" then
+            sb.Append '&' |> ignore
+            i <- i + 5
+        elif startsAt "&lt;" then
+            sb.Append '<' |> ignore
+            i <- i + 4
+        elif startsAt "&gt;" then
+            sb.Append '>' |> ignore
+            i <- i + 4
+        elif startsAt "&quot;" then
+            sb.Append '"' |> ignore
+            i <- i + 6
+        elif startsAt "&#39;" then
+            sb.Append '\'' |> ignore
+            i <- i + 5
+        else
+            sb.Append s[i] |> ignore
+            i <- i + 1
+
+    sb.ToString()
+
 // ─── Output budget (Phase 790) ───────────────────────────────────────────────
 //
 // A `Drawing` is ONE node, so a tree-size budget never sees the size of the
@@ -568,17 +612,89 @@ let private viewBoxAttr (vb: ViewBox) : string =
     + " "
     + formatNum vb.Height
 
+// ─── Self-describing output (Phase 643) ──────────────────────────────────────
+//
+// An emitted drawing can carry ONE opaque canonical-JSON document in an SVG
+// `<metadata>` element, so an exported figure is recoverable to whatever
+// produced it. This module stays SPEC-AGNOSTIC about that document: it is handed
+// a string, it escapes and splices it, and it hands the same string back. The
+// chart tier owns what the document MEANS (`Fuaran.UI.Charts` — the provenance
+// stamp + the embedded `ChartSpec` wire JSON); the drawing builder owns only
+// that it survives the SVG intact.
+//
+// THREE decisions, each load-bearing:
+//
+//  1. **Entity escaping, never CDATA.** The document is XML TEXT CONTENT run
+//     through the same `escape` every label and `<title>` already uses. CDATA
+//     was the obvious alternative and is wrong here: a CDATA section terminates
+//     at the first `]]>`, and a JSON payload carrying user data can contain that
+//     sequence — at which point the SVG is malformed and the failure is a parse
+//     error a long way from its cause. Entity escaping has no such sequence, and
+//     `&quot;` / `&#39;` in text content are ordinary XML that any conformant
+//     parser resolves, so a third-party tool recovers the document without
+//     knowing anything about this emitter.
+//
+//     The escaping is also what makes the RECOVERY scan unambiguous: after
+//     escaping, no `<` survives in the payload, so the first `</metadata>` after
+//     the opening tag is necessarily the real terminator. A canonical JSON
+//     document additionally carries no raw control character (the canonical
+//     encoder escapes them inside strings and emits none outside), so the text
+//     is XML-safe once the five entities are handled.
+//
+//  2. **Position: AFTER `<title>` / `<desc>`, before the shapes.** `<title>` is
+//     the accessible name only as the FIRST child (see the a11y note above), so
+//     the metadata cannot lead. Putting it before the shapes rather than last
+//     keeps the recovery scan cheap on a large drawing and keeps the provenance
+//     adjacent to the two other descriptive elements.
+//
+//  3. **It rides the SAME output budget as everything else.** An embedded typed
+//     row table is the one part of this markup with no bound of its own, so it
+//     is appended through the `Emitter` and abandoned at the ceiling like any
+//     other content — a refusal, not a megabyte. That is the size guard: a
+//     spec+data emission that refuses can be retried spec-only, which is why the
+//     chart tier's option distinguishes the two rather than being a bool.
+
+/// The marker attribute identifying a `<metadata>` element as OURS — SVG's own
+/// metadata element is general-purpose, so an authoring tool's is correctly not
+/// read as a provenance document.
+///
+/// A `data-` ATTRIBUTE rather than an `id`, for two reasons. Several drawings
+/// routinely share one document, so an id would be DUPLICATED across every
+/// stamped chart on a page — invalid HTML, and exactly the reasoning that kept
+/// the a11y wiring off `aria-labelledby` (see the note above). And it matches
+/// the `data-fuaran-*` convention every other non-class markup hook in this
+/// renderer already uses (`data-fuaran-mark`, `data-fuaran-node-id`).
+[<Literal>]
+let metadataMarkerAttribute = "data-fuaran-provenance"
+
+/// The embedded document's shape version, carried as the marker's VALUE. A later
+/// document shape is a different version here rather than a silent
+/// reinterpretation of this one.
+[<Literal>]
+let metadataDocumentVersion = "v1"
+
+let private metadataOpen =
+    "<metadata " + metadataMarkerAttribute + "=\"" + metadataDocumentVersion + "\">"
+
+[<Literal>]
+let private metadataClose = "</metadata>"
+
 /// The full canonical inline-SVG string for a `Drawing`, emitted under an
-/// explicit character ceiling (Phase 790). `role="img"` + optional `<title>` /
-/// `<desc>` (a11y, R3); `viewBox` from the spec; the root `Style` applies to
-/// `<svg>` and is inherited by shapes that omit their own. `textOf` resolves
-/// label / title / desc `TextSource`s (each renderer passes its own text
-/// resolver, so I18n / bound text resolve exactly as the rest of the tree).
+/// explicit character ceiling (Phase 790), optionally carrying an embedded
+/// canonical-JSON provenance document (Phase 643). `role="img"` + optional
+/// `<title>` / `<desc>` (a11y, R3); `viewBox` from the spec; the root `Style`
+/// applies to `<svg>` and is inherited by shapes that omit their own. `textOf`
+/// resolves label / title / desc `TextSource`s (each renderer passes its own
+/// text resolver, so I18n / bound text resolve exactly as the rest of the tree).
+///
+/// `metadata = None` emits BYTE-IDENTICAL markup to every pre-643 drawing — the
+/// `<metadata>` element is not emitted empty.
 ///
 /// Over-budget emission is ABANDONED at the ceiling and reported as
 /// `OutputTooLarge` — the partial markup is never returned.
-let tryRenderWithLimit
+let tryRenderWithMetadataAndLimit
     (limit: int)
+    (metadata: string option)
     (sources: BindingResolver.BindingSources)
     (textOf: TextSource -> string)
     (spec: DrawingSpec)
@@ -606,6 +722,13 @@ let tryRenderWithLimit
         e.Add "</desc>"
     | None -> ()
 
+    match metadata with
+    | Some doc ->
+        e.Add metadataOpen
+        e.Add(escape doc)
+        e.Add metadataClose
+    | None -> ()
+
     let mutable rest = spec.Shapes
 
     while not (List.isEmpty rest) && not e.Overflowed do
@@ -619,6 +742,16 @@ let tryRenderWithLimit
     else
         Ok e.Result
 
+/// `tryRenderWithMetadataAndLimit` with no embedded metadata — the pre-643
+/// signature, byte-identical output.
+let tryRenderWithLimit
+    (limit: int)
+    (sources: BindingResolver.BindingSources)
+    (textOf: TextSource -> string)
+    (spec: DrawingSpec)
+    : Result<string, DrawingRenderError> =
+    tryRenderWithMetadataAndLimit limit None sources textOf spec
+
 /// `tryRenderWithLimit` at the default ceiling (`defaultMaxOutputChars`).
 let tryRender
     (sources: BindingResolver.BindingSources)
@@ -627,13 +760,32 @@ let tryRender
     : Result<string, DrawingRenderError> =
     tryRenderWithLimit defaultMaxOutputChars sources textOf spec
 
+/// `tryRenderWithMetadataAndLimit` at the default ceiling.
+let tryRenderWithMetadata
+    (metadata: string option)
+    (sources: BindingResolver.BindingSources)
+    (textOf: TextSource -> string)
+    (spec: DrawingSpec)
+    : Result<string, DrawingRenderError> =
+    tryRenderWithMetadataAndLimit defaultMaxOutputChars metadata sources textOf spec
+
 /// The canonical inline-SVG string for a `Drawing` at the default output
-/// ceiling. An over-budget drawing renders as a bounded refusal SVG — the same
-/// canvas, no shapes, and a `<desc>` saying why — rather than an unbounded
-/// string; `tryRender` is the typed form for a caller that wants to handle the
-/// refusal itself.
-let render (sources: BindingResolver.BindingSources) (textOf: TextSource -> string) (spec: DrawingSpec) : string =
-    match tryRender sources textOf spec with
+/// ceiling, optionally self-describing. An over-budget drawing renders as a
+/// bounded refusal SVG — the same canvas, no shapes, and a `<desc>` saying why —
+/// rather than an unbounded string; `tryRenderWithMetadata` is the typed form
+/// for a caller that wants to handle the refusal itself (and, for an embedded
+/// row table, retry spec-only).
+///
+/// The refusal carries NO metadata: it is the statement that this drawing was
+/// not emitted, and stamping provenance onto a picture that was not drawn would
+/// be a claim about an artefact that does not exist.
+let renderWithMetadata
+    (metadata: string option)
+    (sources: BindingResolver.BindingSources)
+    (textOf: TextSource -> string)
+    (spec: DrawingSpec)
+    : string =
+    match tryRenderWithMetadata metadata sources textOf spec with
     | Ok svg -> svg
     | Error(OutputTooLarge limit) ->
         let reason =
@@ -651,3 +803,37 @@ let render (sources: BindingResolver.BindingSources) (textOf: TextSource -> stri
         + "\"><desc>"
         + escape reason
         + "</desc></svg>"
+
+/// `renderWithMetadata` with no embedded metadata — the pre-643 signature,
+/// byte-identical output.
+let render (sources: BindingResolver.BindingSources) (textOf: TextSource -> string) (spec: DrawingSpec) : string =
+    renderWithMetadata None sources textOf spec
+
+/// Recover the embedded canonical-JSON provenance document from a
+/// self-describing SVG, or `None` when the markup carries none.
+///
+/// A deliberate SCAN rather than an XML parse: the emitter above is the only
+/// thing that writes this element, it writes exactly one, and it escapes every
+/// `<` in the payload — so the first `</metadata>` after the opening tag is
+/// necessarily the terminator, and no dependency on an XML reader (which Fable
+/// has no portable equivalent of) is needed to read our own output back.
+///
+/// The tag match is on the FULL opening tag including the versioned id, so a
+/// foreign `<metadata>` an authoring tool added — SVG's own metadata element is
+/// general-purpose — is correctly not read as ours.
+let tryRecoverMetadata (svg: string) : string option =
+    let start = svg.IndexOf(metadataOpen, System.StringComparison.Ordinal)
+
+    if start < 0 then
+        None
+    else
+        let bodyStart = start + metadataOpen.Length
+        let bodyEnd = svg.IndexOf(metadataClose, bodyStart, System.StringComparison.Ordinal)
+
+        if bodyEnd < 0 then
+            // An opening tag with no terminator is truncated markup, not a
+            // document — recovering a prefix of a JSON payload would hand the
+            // caller something that parses as nothing and reads as data loss.
+            None
+        else
+            Some(unescape (svg.Substring(bodyStart, bodyEnd - bodyStart)))

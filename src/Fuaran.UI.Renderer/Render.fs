@@ -5708,8 +5708,14 @@ and private renderChart
 
                               if not (isNull markId) then
                                   chartPointClick (runAction ctx) parentNodeId spec pointRows markId)
+                      // Phase 643 — the emission goes through
+                      // `Charts.renderSvg`, the single entry point the SERVER
+                      // arm also calls, so the provenance scope threads through
+                      // both tiers identically by construction rather than by
+                      // two call sites kept in step. The host-installed scope
+                      // ships `Off`, so these client bytes are unchanged.
                       prop.dangerouslySetInnerHTML (
-                          DrawingSvg.render ctx.Sources (renderText ctx) (Fuaran.UI.Charts.lower spec pointRows)
+                          Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx) spec pointRows
                       ) ]
             | _ ->
                 // Unresolved data, or a chart kind whose lowering rule has not

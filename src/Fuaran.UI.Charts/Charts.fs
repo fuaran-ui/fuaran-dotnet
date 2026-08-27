@@ -3714,3 +3714,340 @@ let lowerWith<'Msg> (limits: ChartLimits) (spec: ChartSpec<'Msg>) (rows: Row seq
 /// typed form for a caller that wants to handle the refusal itself.
 let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
     lowerWith ChartLimits.defaults spec rows
+
+// ═══ Provenance stamp + self-describing SVG (Phase 643) ══════════════════════
+//
+// The chart-projection plan's D13, and the resolution of that plan's open
+// question 2: the stamp and the recoverable spec live in the EMITTED SVG, never
+// as `DrawingSpec` wire fields. `DrawingSpec` stays purely presentational and
+// `ChartSpec` is untouched — this phase adds no wire vocabulary at all, which is
+// what lets it be additive across every conformant host.
+//
+// ─── What the stamp COVERS ───────────────────────────────────────────────────
+//
+//   `specHash`         SHA-256 of the CANONICAL WIRE ENCODING of the `ChartSpec`
+//                      — literally `Canon.render (encodeNodeKindJson (Chart s))`,
+//                      the same bytes the wire carries. Not a hash of the F#
+//                      record, not of the lowered drawing: the artefact's claim
+//                      is "this picture came from THIS spec", and the spec's
+//                      identity on the wire is the only identity every host
+//                      agrees on. Canonical-float discipline and Ordinal key
+//                      ordering are INHERITED from `Canon.render` rather than
+//                      re-implemented here, so a stamp minted on .NET and one
+//                      minted under Fable are the same string by construction.
+//
+//   `dataFingerprint`  SHA-256 over a tagged canonical document carrying BOTH
+//                      the schema (the Ordinal-sorted union of column names) and
+//                      the content (`RowCodec.encodeRows` under `Canon.render`).
+//                      Two legs rather than one because they fail differently: a
+//                      renamed column with identical values, and identical
+//                      columns with changed values, are both changes a reader
+//                      cares about, and a content hash alone conflates the first
+//                      with no change at all when the rename is in a column the
+//                      chart does not plot.
+//
+//   `loweringVersion`  A compile-time constant identifying the lowering that
+//                      drew the picture. **Bump it in the same change-set as any
+//                      `chart-lowering/*` golden regeneration** — that is the
+//                      whole discipline, and it is what makes the stamp mean
+//                      "this spec + this data + this geometry" rather than only
+//                      the first two. A stamp with a stale version claims a
+//                      picture that is no longer the one this code draws.
+//
+// ─── What the stamp does NOT claim ───────────────────────────────────────────
+//
+//   * **It is not a signature.** The artefact carries its own stamp, so a
+//     matching `specHash` proves only that whoever wrote the SVG could compute
+//     it — exactly the `CustomHash` distinction (Phase 783), and for the same
+//     reason. Attestation is a HOST concern: a host running notarised attests
+//     the stamp through its existing op-stream attestation seam. This phase
+//     defines the record, never a signing surface.
+//
+//   * **It certifies the option document and the SVG, and nothing downstream.**
+//     The claim is bounded to the first-party lowering: this `ChartSpec` and
+//     this data, through this lowering version, deterministically produce these
+//     SVG bytes. A third-party charting backend rendering the same spec produces
+//     pixels this stamp says nothing about — which is why the record carries no
+//     `backendId` field yet. When a backend seam ships, a backend's output is a
+//     DIFFERENT artefact needing a different claim, not this one with a label
+//     added.
+//
+//   * **The data leg is over the ENCODED payload.** A cell the row codec cannot
+//     express as a scalar encodes as its `"<opaque>"` sentinel (the Phase 665
+//     residual boundary), so two distinct unrepresentable values fingerprint
+//     alike. The fingerprint covers what is RECOVERABLE, which is the honest
+//     scope: it is the fingerprint of the artefact's data, not of a runtime
+//     object graph the artefact never carried.
+//
+//   * **`opaque` is a real answer, not a failure.** A spec whose row source
+//     cannot be resolved to a typed feed stamps `dataFingerprint = "opaque"`
+//     rather than omitting the field or inventing a hash of nothing. A reader
+//     can then tell "the data was not fingerprinted" from "the data
+//     fingerprinted to this" — a distinction an absent field destroys.
+
+/// The lowering's version identity, carried in every stamp. **Bump this in the
+/// same change-set as any `chart-lowering/*` golden regeneration** — see the
+/// section note above.
+[<Literal>]
+let loweringVersion = "chart-lowering@1"
+
+/// The `dataFingerprint` of a stamp whose data leg is not available — an honest
+/// answer, never an omitted field. See the section note above.
+[<Literal>]
+let opaqueDataFingerprint = "opaque"
+
+/// The `$type` tag of the embedded provenance document. Versioned in the name so
+/// a later document shape is a different tag rather than a silent reinterpretation
+/// of this one.
+[<Literal>]
+let provenanceDocumentType = "FuaranChartProvenanceV1"
+
+/// A lowered chart's provenance record (chart-projection D13). Derived purely —
+/// same spec + same rows + same lowering version ⇒ same stamp, on every host.
+type ChartStamp =
+    {
+        /// `sha256:<hex>` over the canonical wire encoding of the `ChartSpec`.
+        SpecHash: string
+        /// `sha256:<hex>` over the schema + content of the typed row feed, or
+        /// `opaqueDataFingerprint` when no typed feed was available.
+        DataFingerprint: string
+        /// The `loweringVersion` constant at emission time.
+        LoweringVersion: string
+    }
+
+/// How much of itself an emitted chart SVG describes.
+///
+/// The three cases are a SIZE decision as much as a disclosure one, which is why
+/// this is not a bool: the spec of a query-sourced chart is a few hundred bytes,
+/// while its resolved table can be megabytes, and an embedded table rides the
+/// same emission budget as the markup. `SpecAndData` is the recoverable-in-
+/// isolation case (a saved file with nowhere to re-run the query); `SpecOnly` is
+/// the auditable-and-small case.
+[<RequireQualifiedAccess>]
+type ChartProvenance =
+    /// No `<metadata>` element at all — output bytes identical to the pre-643
+    /// emission. The default for inline page renders.
+    | Off
+    /// The stamp + the canonical `ChartSpec` wire JSON.
+    | SpecOnly
+    /// The stamp, the spec, AND the resolved row feed as canonical wire JSON.
+    | SpecAndData
+
+/// The canonical wire JSON of a `ChartSpec` — the exact bytes the wire carries
+/// for this node's kind, and the input `specHash` is taken over.
+let specWireJson<'Msg> (spec: ChartSpec<'Msg>) : string =
+    Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeNodeKindJson (NodeKind.Chart spec))
+
+/// The canonical wire JSON of a typed row feed (`RowCodec.encodeRows`).
+let dataWireJson (rows: Row seq) : string =
+    Fuaran.Core.Canon.render (Fuaran.Core.RowCodec.encodeRows rows)
+
+/// The stamp's spec leg — `sha256:<hex>` over `specWireJson`.
+let specHashOf<'Msg> (spec: ChartSpec<'Msg>) : string =
+    "sha256:" + Fuaran.UI.Hashing.sha256Hex (specWireJson spec)
+
+/// The Ordinal-sorted union of column names across a row feed — the schema half
+/// of the data fingerprint. A UNION rather than the first row's keys, because a
+/// ragged feed's later columns are part of what the artefact carries.
+let schemaColumns (rows: Row seq) : string list =
+    rows
+    |> Seq.collect (fun r -> r |> Map.toSeq |> Seq.map fst)
+    |> Seq.distinct
+    |> Seq.sortWith (fun a b -> System.String.CompareOrdinal(a, b))
+    |> List.ofSeq
+
+/// The stamp's data leg. `None` stamps `opaqueDataFingerprint` honestly.
+///
+/// The hashed document has the same shape as the Phase-134 body-shape hash: a
+/// version-tagged, newline-joined canonical string, so the tag line makes the
+/// digest unmistakable for a hash of anything else and a later revision changes
+/// the tag rather than silently changing what the same-looking digest means.
+let dataFingerprintOf (rows: Row seq option) : string =
+    match rows with
+    | Option.None -> opaqueDataFingerprint
+    | Option.Some rs ->
+        let materialised = List.ofSeq rs
+
+        [ "fuaran-chart-data:v1"
+          "schema=" + String.concat "," (schemaColumns materialised)
+          "rows=" + dataWireJson materialised ]
+        |> String.concat "\n"
+        |> Fuaran.UI.Hashing.sha256Hex
+        |> fun h -> "sha256:" + h
+
+/// Derive the provenance stamp. Pure and total: no clock, no counter, no host
+/// identity — same inputs, same stamp, on any machine and either runtime.
+let stampOf<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq option) : ChartStamp =
+    { SpecHash = specHashOf spec
+      DataFingerprint = dataFingerprintOf rows
+      LoweringVersion = loweringVersion }
+
+/// The canonical-JSON provenance document embedded in a self-describing SVG, or
+/// `None` under `ChartProvenance.Off`.
+let provenanceDocument<'Msg> (provenance: ChartProvenance) (spec: ChartSpec<'Msg>) (rows: Row seq) : string option =
+    match provenance with
+    | ChartProvenance.Off -> Option.None
+    | _ ->
+        let materialised = List.ofSeq rows
+        let stamp = stampOf spec (Option.Some(materialised :> Row seq))
+
+        let fields =
+            [ Option.Some("spec", Fuaran.UI.Generated.encodeNodeKindJson (NodeKind.Chart spec))
+              Option.Some("specHash", Fuaran.Core.JVal.JStr stamp.SpecHash)
+              Option.Some("dataFingerprint", Fuaran.Core.JVal.JStr stamp.DataFingerprint)
+              Option.Some("loweringVersion", Fuaran.Core.JVal.JStr stamp.LoweringVersion)
+              (match provenance with
+               | ChartProvenance.SpecAndData -> Option.Some("data", Fuaran.Core.RowCodec.encodeRows materialised)
+               | _ -> Option.None) ]
+            |> List.choose id
+
+        Option.Some(Fuaran.Core.Canon.render (Fuaran.Core.Canon.typed provenanceDocumentType fields))
+
+/// What a self-describing chart SVG recovers to.
+type RecoveredChart =
+    {
+        /// The canonical `ChartSpec` wire JSON — byte-identical to
+        /// `specWireJson` of the spec that produced the artefact.
+        SpecJson: string
+        /// The canonical row-feed wire JSON, present only when the artefact was
+        /// emitted `SpecAndData`.
+        DataJson: string option
+        /// The stamp as recorded in the artefact. Verify it by re-deriving:
+        /// `specHashOf` over a spec decoded from `SpecJson` must agree.
+        Stamp: ChartStamp
+    }
+
+let private provField (name: string) (fields: (string * Fuaran.Core.JVal) list) : Fuaran.Core.JVal option =
+    fields
+    |> List.tryPick (fun (k, v) -> if k = name then Option.Some v else Option.None)
+
+let private provString (name: string) (fields: (string * Fuaran.Core.JVal) list) : Result<string, string> =
+    match provField name fields with
+    | Option.Some(Fuaran.Core.JVal.JStr s) -> Ok s
+    | Option.Some _ -> Error("chart provenance: \"" + name + "\" is not a string")
+    | Option.None -> Error("chart provenance: missing \"" + name + "\"")
+
+/// Recover a self-describing chart SVG back to its `ChartSpec` wire JSON + stamp
+/// — "edit this chart" from the exported artefact alone.
+///
+/// The spec is returned as canonical JSON rather than a decoded `ChartSpec`
+/// deliberately: decoding needs a `'Msg` decoder for the handler slots, which an
+/// artefact by definition does not carry (closures never ride the wire), so the
+/// wire JSON is the most a recovery from bytes can honestly hand back. A caller
+/// that wants the typed record feeds this string to the ordinary node decoder
+/// with its own message decoder — the same route any other wire document takes.
+///
+/// Every failure NAMES what was expected, and none of them throws.
+let tryRecover (svg: string) : Result<RecoveredChart, string> =
+    match DrawingSvg.tryRecoverMetadata svg with
+    | Option.None -> Error "chart provenance: the SVG carries no provenance metadata"
+    | Option.Some doc ->
+        match Fuaran.Core.Json.parse doc with
+        | Error e -> Error("chart provenance: the embedded document is not valid JSON — " + e)
+        | Ok(Fuaran.Core.JVal.JObj fields) ->
+            provString "$type" fields
+            |> Result.bind (fun tag ->
+                if tag <> provenanceDocumentType then
+                    Error("chart provenance: unrecognised document type \"" + tag + "\"")
+                else
+                    match provField "spec" fields with
+                    | Option.None -> Error "chart provenance: missing \"spec\""
+                    | Option.Some specJson ->
+                        provString "specHash" fields
+                        |> Result.bind (fun specHash ->
+                            provString "dataFingerprint" fields
+                            |> Result.bind (fun dataFingerprint ->
+                                provString "loweringVersion" fields
+                                |> Result.map (fun loweringVer ->
+                                    {
+                                      // Re-rendered canonically rather than
+                                      // sliced out of the source text: the
+                                      // canonical form is a FUNCTION of the
+                                      // value, so this reproduces the producer's
+                                      // bytes exactly while a substring would
+                                      // only reproduce whatever the transport
+                                      // happened to leave behind.
+                                      SpecJson = Fuaran.Core.Canon.render specJson
+                                      DataJson = provField "data" fields |> Option.map Fuaran.Core.Canon.render
+                                      Stamp =
+                                        { SpecHash = specHash
+                                          DataFingerprint = dataFingerprint
+                                          LoweringVersion = loweringVer } }))))
+        | Ok _ -> Error "chart provenance: the embedded document is not a JSON object"
+
+// ─── The renderer seam ───────────────────────────────────────────────────────
+//
+// Both renderers reach a chart's SVG through `renderSvg` below, so the option
+// threads through the client and the server tier IDENTICALLY by construction
+// rather than by two call sites kept in step — the same argument the shared
+// `DrawingSvg` emitter already makes for the drawing itself.
+//
+// The default is PROCESS-GLOBAL and installed by the host, exactly like
+// `CustomHash.installCustomHashFloor` and the renderer's guest seam, and for the
+// same reason: the installing host lives in another assembly, there is one
+// policy per process, and widening the renderer's context record would be a
+// public-API change on every emitter for a knob almost no host sets.
+//
+// It ships `Off`, so every existing inline page render is BYTE-IDENTICAL. An
+// export-oriented path does not flip the global — it calls `renderSvgWith`
+// directly with the scope it wants, which is both explicit and free of the race
+// a flip-around-a-call would have.
+
+let mutable private installedProvenance: ChartProvenance = ChartProvenance.Off
+
+/// Install the host's default chart-provenance scope for renderer-driven
+/// emission. Ships `ChartProvenance.Off` — inline page renders are byte-identical
+/// to the pre-643 emission unless a host opts in.
+let installChartProvenance (provenance: ChartProvenance) : unit = installedProvenance <- provenance
+
+/// The installed default. Read-only introspection.
+let currentChartProvenance () : ChartProvenance = installedProvenance
+
+/// Restore the default (`Off`) scope — host teardown and test isolation,
+/// mirroring `CustomHash.clearCustomHashFloor`.
+let clearChartProvenance () : unit =
+    installedProvenance <- ChartProvenance.Off
+
+/// Lower and emit a chart's SVG under an EXPLICIT provenance scope — the entry
+/// point an export-oriented path calls.
+///
+/// A REFUSED lowering (over the cost caps) emits no metadata: the refusal drawing
+/// is not the picture the stamp would be describing, and stamping provenance onto
+/// a chart that was not drawn would be a claim about an artefact that does not
+/// exist.
+///
+/// Under `Off` the row source is consumed exactly as deep as `lower` reads it;
+/// under either stamping scope the rows are needed twice (stamp and drawing) and
+/// are materialised, but only to the SAME `MaxPointsPerSeries + 1` bound, so an
+/// unbounded source is still never fully materialised (Phase 790).
+let renderSvgWith<'Msg>
+    (provenance: ChartProvenance)
+    (sources: BindingResolver.BindingSources)
+    (textOf: TextSource -> string)
+    (spec: ChartSpec<'Msg>)
+    (rows: Row seq)
+    : string =
+    match provenance with
+    | ChartProvenance.Off -> DrawingSvg.render sources textOf (lower spec rows)
+    | _ ->
+        let limits = ChartLimits.defaults
+
+        let capped =
+            if limits.MaxPointsPerSeries = System.Int32.MaxValue then
+                List.ofSeq rows
+            else
+                rows |> Seq.truncate (limits.MaxPointsPerSeries + 1) |> List.ofSeq
+
+        match tryLower spec capped with
+        | Error refusal -> DrawingSvg.render sources textOf (refusalDrawing spec refusal)
+        | Ok drawing -> DrawingSvg.renderWithMetadata (provenanceDocument provenance spec capped) sources textOf drawing
+
+/// Lower and emit a chart's SVG under the host-installed provenance scope — the
+/// single entry point BOTH renderers' `Chart` arms call.
+let renderSvg<'Msg>
+    (sources: BindingResolver.BindingSources)
+    (textOf: TextSource -> string)
+    (spec: ChartSpec<'Msg>)
+    (rows: Row seq)
+    : string =
+    renderSvgWith (currentChartProvenance ()) sources textOf spec rows

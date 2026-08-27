@@ -1530,10 +1530,14 @@ and private renderKind
             // placeholder for a lowered kind; SSR ↔ CSR byte-parity via the
             // shared lowering + Drawing builder). The lowered-kind set is
             // `Charts.isLowered` — one source of truth with the client branch.
+            //
+            // Phase 643 — the emission goes through `Charts.renderSvg`, the
+            // single entry point the CLIENT arm also calls, so the provenance
+            // scope threads through both tiers identically by construction
+            // rather than by two call sites kept in step. The host-installed
+            // scope ships `Off`, so these SSR bytes are unchanged.
             Html.div
-                [ prop.dangerouslySetInnerHTML (
-                      DrawingSvg.render ctx.Sources (renderText ctx) (Fuaran.UI.Charts.lower spec rows)
-                  ) ]
+                [ prop.dangerouslySetInnerHTML (Fuaran.UI.Charts.renderSvg ctx.Sources (renderText ctx) spec rows) ]
         | resolution, _ ->
             // Unresolved data, or a not-yet-lowered kind (Heatmap): the
             // client-hydration placeholder.

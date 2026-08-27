@@ -235,6 +235,9 @@
     <Compile Include="NodeMapTests.fs" />
     <Compile Include="WireSurvivabilityTests.fs" />
     <Compile Include="ChartLoweringTests.fs" />
+    <!-- Phase 643 — the provenance stamp + self-describing SVG. Reads the
+         copied renderer sources above for the SSR/CSR "one entry point" lock. -->
+    <Compile Include="ChartProvenanceTests.fs" />
     <!-- Phase 790 — the resource bounds a well-formed emission can otherwise
          exhaust slowly: portable-memo-store eviction and the chart-lowering
          series / point caps + the linear-not-quadratic property. -->
