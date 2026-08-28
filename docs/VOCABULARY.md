@@ -44,9 +44,33 @@ The proposal cites **at least one** of these observed, recorded signals – not 
   couldn't express"; ledger code FUARAN054).
 - **`Custom`-node fallout.** A shipped case study or demo resorted to `NodeKind.Custom` (the principled
   escape hatch) for a pattern that recurs across consumers – recurrence, not a one-off, is the signal.
+  Since Phase 1103 the evaluation harness reports that recurrence as a **standing rate** over stored
+  emissions rather than as an anecdote from whichever run somebody had open, so "recurs" is a number a
+  proposal can cite and a reader can re-derive.
 - **An emission-eval miss.** An AI consumer emitting the canonical prompt corpus produced a
   *"no expressible tree – missing contract case"* outcome for a prompt (distinct from a low *quality*
   score, which is a legitimate eval result and is **not** admission evidence).
+
+**Where signal (c) comes from – the shadow evaluation leg (Phase 1103).** The third bullet has a
+structural problem the first two do not: an evaluation that teaches the closed kind list *suppresses*
+the very outcome it asks for. A model handed the vocabulary does not invent a `$type`, and a prompt set
+written against the vocabulary does not pose a task the vocabulary already cannot express – so the
+channel can read clean for months while the gap it exists to detect goes unrecorded, which is how the
+media vocabulary came to be admitted by other means. The evaluation harness therefore also runs a
+small, periodic **unconstrained shadow leg**: the same prompts with the kind-list teaching removed,
+solely to harvest what a model reaches for when nothing stops it – invented `$type` names,
+discriminators the wire format does not use at all, and emissions the vocabulary has no shape to
+receive.
+
+Sightings from that leg **are** admissible §1.1(c) evidence, under one condition: **a sighting carries
+its shadow provenance wherever it is cited.** A shadow emission crosses no gate, scores no cell, seeds
+no pattern bank and enters no corpus – it is quarantined by construction, which is what makes the leg
+safe to run at all – so a proposal citing one as though it were a scored emission would be claiming a
+reliability that emission was never measured for. Cite the leg, its teaching stamp and its run. A
+sighting whose provenance has been dropped is not evidence, and an *absence* of sightings is only a
+result when a leg actually ran: a leg that was not executed has measured nothing, which is a different
+fact from a leg that found nothing. Recurrence governs here exactly as it does for signal (b) – one
+sighting is a sighting; a repeated or cross-model one is demand.
 
 A kind whose only justification is "a real product might want it" or "it rounds out the set" has **no
 demand evidence** and is not admitted. It may be *reserved* in the plateau taxonomy (Appendix A) so its
