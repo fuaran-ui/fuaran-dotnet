@@ -259,6 +259,8 @@ Childless leaves.
 | `Fuaran.heading` | `Heading` | Section title. Variant axis (`Standard` / `Eyebrow` / `Caption` / `Lead`) Phase 12.P – see "Heading variants" below. |
 | `Fuaran.labelValueRow` | `LabelValueRow` | Single label-left / value-right row (Phase 12.P). Typically nested inside `Fuaran.summaryList`. |
 | `Fuaran.link` | `Link` | Crawlable hyperlink – a real `<a href>` (Phase 139). See "Links and navigation" below. |
+| `Fuaran.image` / `Fuaran.imageSpec` | `Image` | A picture (Phase 287, extended by Phases 1077–1080). See "Pictures and playback" below. |
+| `Fuaran.video` / `Fuaran.audio` / `Fuaran.mediaSpec` | `Media` | A playback surface – one kind, two variants (Phase 1076). See "Pictures and playback" below. |
 
 **No `Spacer`, no `Divider` (Phase 459).** Both retired into `Box`: inter-child spacing is a *container
 property* – set `gap` on a `Box`'s `Flex` / `Grid` `layout` rather than inserting a spacer node – and a
@@ -307,6 +309,135 @@ Two different intents, two different primitives:
 bookmark it, it is a `Link`. If it is a stateful gesture with no URL, it is a
 `Button` + `Action.Navigate`. The validator's **FUARAN063** flags a `Link` with
 a blank `Href` and steers you to one of the two shapes.
+
+#### Pictures and playback – `Image` and `Media`
+
+Two kinds cover the whole of it, and the first choice is not close: **a still
+picture is an `Image`; anything with a transport – something a reader plays,
+pauses and seeks – is a `Media`.** There is no third case and no borderline. A
+GIF is a picture. A silent looping clip is a `Media` whose `loop` is `true`,
+because it is still a video element.
+
+What is worth saying plainly, because it is the mistake that actually gets
+made: **do not reach for `Markdown` carrying `<img>` or `![](…)`, and do not
+reach for `Custom`.** Both decode, both render something picture-shaped, and
+both are wrong for the same reason — they carry a string where the tree should
+carry a picture, so nothing downstream can see it. A `TreeOp` cannot address
+the source, the validator cannot check the alt text, `srcSet` and `expandable`
+have nowhere to live, and a non-HTML host has markup it cannot render at all.
+`Custom` is the sanctioned escape for genuinely non-Fuaran content; a picture
+and a video are not that.
+
+```json
+{ "id": "hero", "kind": { "$type": "Image", "alt": "The harbour at dawn",
+    "aspectRatio": "SixteenNine", "fit": "Cover", "loading": "Lazy",
+    "src": { "$type": "Static", "value": "/hero.jpg" }, "variant": "Default" } }
+
+{ "id": "walkthrough", "kind": { "$type": "Media", "kind": { "$type": "Video" },
+    "label": "Studio walkthrough",
+    "src": { "$type": "Static", "value": "/walkthrough.mp4" } } }
+```
+
+F# side: `Fuaran.image "hero" "/hero.jpg" "The harbour at dawn"` and
+`Fuaran.video "walkthrough" "/walkthrough.mp4" "Studio walkthrough"` cover the
+positional 80% case; the `imageSpec` / `mediaSpec` twins take the full record
+over `Defaults.image` / `Defaults.media`.
+
+**`src` is a `Binding<string>`, never a bare string.** It is the slot's shape
+on both kinds, and on `poster` and every `srcSet` candidate too — a source can
+come from a query or a computed value, not only a literal path. `alt`,
+`caption` and `label` are `TextSource`, so they are i18n-capable on exactly the
+terms every other authored string is; a bare JSON string is the canonical
+`Literal` spelling of one.
+
+**Every presentation slot is a bounded token, and none of them is CSS.**
+
+| Slot | Vocabulary | Omitted at |
+|---|---|---|
+| `variant` (`Image`) | `Default` / `Avatar` / `Rounded` | never – always emit one |
+| `fit` (`Image`) | `Natural` / `Cover` / `Contain` | `Natural` |
+| `aspectRatio` (`Image`) | `Natural` / `Square` / `FourThree` / `ThreeTwo` / `SixteenNine` | `Natural` |
+| `loading` (`Image`) | `Eager` / `Lazy` | `Eager` |
+| `expandable` (`Image`) | `true` / `false` | `false` |
+| `srcSet` (`Image`) | list of `{ "src": <Binding>, "width": <positive int> }` | the empty list |
+| `caption` (`Image`) | `TextSource` | absent (it is content, not a default) |
+| `controls` (`Media`) | `true` / `false` | **`true`** – see below |
+| `loop` (`Media`) | `true` / `false` | `false` |
+
+`aspectRatio` names a ratio; it does not carry one. `"16:9"`, `"16 / 9"` and
+`1.7778` are all rejects — the token is `SixteenNine`. That is the same
+boundedness `variant` has had since Phase 287, and it is what keeps an
+author-supplied value out of a style attribute.
+
+`variant` is the one `Image` slot with no omit-at-default: emit it every time.
+A missing `variant` is the most common way a well-formed-looking `Image` fails
+to decode.
+
+**`aspectRatio` reserves the box; `fit` says what happens to pixels that do not
+match it.** Neither is derived from the other, and the pair is what removes the
+layout shift when an image arrives late. `loading` defaults to `Eager`
+deliberately: deferring an above-the-fold image delays the largest contentful
+paint rather than helping it, and only you know where the image sits. Declare
+`Lazy` below the fold and say nothing above it.
+
+**`Media` is ONE kind with two variants, discriminated inside `kind`.** The
+surface is at `kind.kind.$type`, closed at `Video` | `Audio`. `autoplay` and
+`poster` are video-only and live **inside** that object, not beside it:
+
+```json
+{ "id": "ambient", "kind": { "$type": "Media", "controls": false, "loop": true,
+    "kind": { "$type": "Video", "autoplay": true,
+              "poster": { "$type": "Static", "value": "/ambient-poster.jpg" } },
+    "label": "Ambient loop",
+    "src": { "$type": "Static", "value": "/ambient.mp4" } } }
+```
+
+Three `Media` rules that are not guessable from the shape:
+
+- **`label` is required and has no decorative case.** An image can honestly be
+  decorative and declare `alt: ""`; a transport never can — a player with no
+  accessible name is announced as "video" and nothing more. **FUARAN108** is
+  the pre-emit refusal.
+- **`controls` is omitted at `true`, the reverse of every other bool here.** A
+  media element without a transport cannot be paused, seeked or muted by a
+  keyboard user at all, so the accessible setting is what you get for free and
+  only `"controls": false` ever appears on the wire.
+- **`Audio` has no autoplay slot at all** — not a default of `false`, absent.
+  There is no document this language wants to be able to state in which a page
+  begins making sound unbidden. On `Video`, `autoplay` is a declaration a host
+  may only honour muted, and there is deliberately no `muted` slot to emit
+  beside it: a second knob free to disagree with the first would only add the
+  combination no host may render.
+
+**The `Image` slots compose, and the composition is the point.** A captioned,
+expandable, responsive figure is one node:
+
+```json
+{ "id": "plate", "kind": { "$type": "Image",
+    "alt": "Fishing boats moored at first light",
+    "caption": "The harbour at dawn, 1908. Oil on canvas.",
+    "expandable": true, "aspectRatio": "FourThree", "fit": "Cover", "loading": "Lazy",
+    "src": { "$type": "Static", "value": "/harbour.jpg" },
+    "srcSet": [ { "src": { "$type": "Static", "value": "/harbour-400.jpg" }, "width": 400 },
+                { "src": { "$type": "Static", "value": "/harbour-800.jpg" }, "width": 800 } ],
+    "variant": "Default" } }
+```
+
+`caption` present means the picture is presented as a `<figure>` with its
+`<figcaption>`, so assistive technology reads the caption **as** the image's
+caption rather than as the next paragraph — the binding an ad-hoc text sibling
+never had. `expandable` wraps the image in a real `<a href>` at the resolved
+source, which works with no JavaScript at all; an overlay is a refinement of
+that link, never the mechanism. `srcSet` candidates are renditions of the
+*thumbnail* while the primary `src` behind the link is the full asset, and the
+array order is yours — the wire preserves it and the renderer sorts ascending
+by width at emission. `srcSet` entry widths are positive integers; `0` is a
+reject, because a candidate no client can select is not a small image.
+
+Do not build any of this out of separate nodes. A caption as a sibling
+paragraph, an expansion as a `Button` beside the picture, or three sizes as
+three nodes are all things an author has to remember to keep associated, and
+the association is exactly what these slots supply.
 
 ### Input kinds (`Input.*`)
 
