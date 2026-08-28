@@ -1380,7 +1380,27 @@ let private defs: (string * J) list =
             "voice", ref "FontVoice" ]
 
       "Accessibility",
-      record
+      // Phase 959 — the trait's near-miss set, refused here as it is at decode.
+      // Grouped by the slot each points at, in the decoder's declaration order,
+      // so the two artefacts read as one table.
+      forbidding
+          [ "aria-label"
+            "ariaLabel"
+            "aria-labelledby"
+            "ariaLabelledBy"
+            "labelledby"
+            "aria-describedby"
+            "ariaDescribedBy"
+            "describedby"
+            "aria-role"
+            "ariaRole"
+            "aria-live"
+            "ariaLive"
+            "live"
+            "liveregion"
+            "aria-hidden"
+            "ariaHidden" ]
+      <| record
           []
           [ "label", binding "str"
             "labelledBy", str

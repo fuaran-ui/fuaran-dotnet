@@ -616,6 +616,15 @@ let generatedLayerTests =
               //    `schemaInexpressibleRejects`. Its length-pair sibling goes
               //    the other way and joins that list beside `DateRange`, which
               //    is the two sets pulling apart on one phase's three fixtures.
+              //  - the four `nearmiss-a11y` fixtures (Phase 959) are the SAME
+              //    enumerated-name class as the grid's, at the §3.1
+              //    accessibility trait. Their landing here was predicted rather
+              //    than discovered, for the reason the class was named in the
+              //    first place: the generated layer decodes by field lookup, so
+              //    an unread key is invisible to it whatever record it sits on.
+              //    Like the grid's they are schema-EXPRESSIBLE
+              //    (`not: { required: [...] }` on `Accessibility`) and so stay
+              //    out of `schemaInexpressibleRejects`.
               Expect.equal
                   policyOwned
                   [ "reject-daterange-unordered.json"
@@ -625,6 +634,10 @@ let generatedLayerTests =
                     "reject-formfield-near-miss-validation.json"
                     "reject-image-srcset-nonpositive-width.json"
                     "reject-limit-node-depth.json"
+                    "reject-nearmiss-a11y-aria-hidden.json"
+                    "reject-nearmiss-a11y-arialabel.json"
+                    "reject-nearmiss-a11y-live.json"
+                    "reject-nearmiss-a11y-liveregion-case.json"
                     "reject-nearmiss-column-readonly.json"
                     "reject-nearmiss-grid-behaviour-record.json"
                     "reject-nearmiss-grid-current-page.json"

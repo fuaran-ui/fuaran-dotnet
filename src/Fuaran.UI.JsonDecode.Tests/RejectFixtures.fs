@@ -757,6 +757,54 @@ let all: RejectFixture list =
         Description =
           "accessibility.hidden bare scalar of the wrong type — §3.6 leniency is about SHAPE, not type (Phase 955)" }
 
+      // ─── The `Accessibility` trait's NEAR MISSES (Phase 959) ──────────────
+      //
+      //  Phase 955's six vectors above pin what happens to a MALFORMED trait.
+      //  These four pin what happens to a well-formed trait under the wrong KEY,
+      //  which until now was: nothing at all. Rule 2 tolerates unknown keys, so
+      //  every one of these decoded silently, and — this being the one trait with
+      //  no visible output — an author had no way to discover it in either
+      //  direction.
+      //
+      //  Sixteen names are refused; four vectors sample the three families plus
+      //  the evidence, on the Phase 863 precedent (eight names, four fixtures).
+      //  Two of the four are MEASURED rather than derived: `live` and `ariaLabel`
+      //  are spellings language-tier emissions actually carry (`live` ×6 against
+      //  `liveRegion`'s ×12 across 12,722 emissions — a third of every live-region
+      //  declaration silently discarded).
+      { Id = "reject-nearmiss-a11y-arialabel"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"accessibility":{"ariaLabel":"Notifications"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility.ariaLabel"
+        IsOp = false
+        Description =
+          "accessibility 'ariaLabel' — the camelCase JSX prior for the accessible name; MEASURED in the emission corpora, and the whole declaration vanished (Phase 959)" }
+      { Id = "reject-nearmiss-a11y-live"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"accessibility":{"live":"polite"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility.live"
+        IsOp = false
+        Description =
+          "accessibility 'live' — the sharpest of the set: six measured emissions against liveRegion's twelve, and the HTML idiom it comes from also spells a BOOLEAN, so it is not a safe alias (Phase 959)" }
+      { Id = "reject-nearmiss-a11y-aria-hidden"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"accessibility":{"aria-hidden":true}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility.aria-hidden"
+        IsOp = false
+        Description =
+          "accessibility 'aria-hidden' — the ARIA ATTRIBUTE name where the wire wants the slot name 'hidden'; the projection slot two hosts once dropped entirely (Phase 959)" }
+      { Id = "reject-nearmiss-a11y-liveregion-case"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"accessibility":{"liveregion":"assertive"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.accessibility.liveregion"
+        IsOp = false
+        Description =
+          "accessibility 'liveregion' — the canonical slot name un-cased to the ARIA attribute spelling; the wire is camelCase (Phase 959)" }
+
       // ─── The NUMERIC `Binding<'T>` slots (Phase 1064) ─────────────────────
       //
       //  Phase 955/956 closed the SCALAR half of a general defect: five hosts

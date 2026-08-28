@@ -2246,6 +2246,82 @@ let private decodeLiveRegion (path: string) (j: Json) : Result<LiveRegionKind, D
     | JString s -> unknownEnumCase path s "polite | assertive | off"
     | _ -> wrongType path "JSON string (LiveRegionKind)"
 
+/// Phase 959 — the `Accessibility` trait's near-miss set (the Phase 863
+/// discipline applied to the §3.1 trait).
+///
+/// Rule 2's tolerance of unknown keys is right for a slot a future profile may
+/// add and wrong for a near miss of one that exists: the tree decodes,
+/// validates and renders while the declaration does nothing. That silence is
+/// sharper here than anywhere else in the vocabulary, and for a reason peculiar
+/// to this trait — the trait has **no visible output**. A mislabelled column is
+/// on screen; an ignored `ariaLabel` is invisible to the author in both
+/// directions, so the refusal is the only feedback that will ever arrive. An
+/// author's accessibility intent would otherwise simply vanish.
+///
+/// **Refused rather than aliased**, deliberately, and note the argument differs
+/// from the grid's. There the names were not synonyms; here `ariaLabel` IS an
+/// unambiguous synonym, so §16's admission test turns on the other half of its
+/// rule — a shorthand earns its place by being a *genuine assist* to the
+/// emitting model, and a six-character key rename is not that. Aliasing would
+/// buy nothing and spend the one channel that teaches the vocabulary. `live` is
+/// the sharpest case: it is not merely a rename, because the HTML idiom it
+/// comes from also spells a BOOLEAN (`aria-live` on/off), so an alias would
+/// bind a possibly-boolean prior onto a closed three-token set. Refusing names
+/// the key AND the tokens.
+///
+/// Three families, grouped by the slot each points at:
+///   - the ARIA ATTRIBUTE name where the wire wants the slot name (`aria-*`),
+///   - its camelCase JSX/React spelling (`aria*`),
+///   - the un-prefixed or un-cased slot name (`live`, `labelledby`, …).
+///
+/// Two entries are named by MEASURED evidence rather than derived: across
+/// 12,722 language-tier emissions in the evaluation corpora, `live` appears 6
+/// times against `liveRegion`'s 12 — a third of all live-region declarations
+/// were being dropped on the floor — and `ariaLabel` once against `label`'s 44.
+/// The rest of each family rides in with them: a set that refused only the two
+/// spellings we happened to observe would teach nothing about the third.
+///
+/// The `liveRegion` TOKENS need no entry here and that is not an omission: an
+/// unknown bare-enum token already raises `UNKNOWN_DU_CASE` naming the closed
+/// set (§3.5), and `role` is deliberately open to any role NAME. Only the KEYS
+/// were silent, because only unknown keys are tolerated.
+let private accessibilityNearMisses =
+    [ "aria-label", "label — the accessible name, a Binding<string> (a bare string is the §3.6 shorthand)"
+      "ariaLabel", "label — the accessible name, a Binding<string> (a bare string is the §3.6 shorthand)"
+      "aria-labelledby", "labelledBy — the id of a sibling node whose text carries the name"
+      "ariaLabelledBy", "labelledBy — the id of a sibling node whose text carries the name"
+      "labelledby", "labelledBy — the slot name is camelCase on the wire, not the ARIA attribute spelling"
+      "aria-describedby", "describedBy — the id of a sibling node whose text carries the description"
+      "ariaDescribedBy", "describedBy — the id of a sibling node whose text carries the description"
+      "describedby", "describedBy — the slot name is camelCase on the wire, not the ARIA attribute spelling"
+      "aria-role", "role — the ARIA role NAME as a bare string"
+      "ariaRole", "role — the ARIA role NAME as a bare string"
+      "aria-live", "liveRegion — the closed token set \"polite\" / \"assertive\" / \"off\""
+      "ariaLive", "liveRegion — the closed token set \"polite\" / \"assertive\" / \"off\""
+      "live", "liveRegion — the closed token set \"polite\" / \"assertive\" / \"off\""
+      "liveregion", "liveRegion — the closed token set \"polite\" / \"assertive\" / \"off\""
+      "aria-hidden", "hidden — a Binding<bool> (a bare bool is the §3.6 shorthand)"
+      "ariaHidden", "hidden — a Binding<bool> (a bare bool is the §3.6 shorthand)" ]
+
+/// Walked in declaration order, so which defect surfaces first is deterministic
+/// across the five hosts.
+let private accessibilityNearMiss (path: string) (fields: Map<string, Json>) : Result<unit, DecodeError> =
+    accessibilityNearMisses
+    |> List.tryPick (fun (name, canonical) ->
+        match tryField fields name with
+        | Some _ ->
+            Some(
+                err
+                    DecodeErrorCode.WRONG_TYPE
+                    (path + "." + name)
+                    (sprintf
+                        "'%s' is not part of the accessibility vocabulary — it would be ignored, not honoured, and the intent would reach assistive technology as nothing at all"
+                        name)
+                    (Some canonical)
+            )
+        | None -> None)
+    |> Option.defaultValue (Ok())
+
 // ─── CellFormat / CellValue ──────────────────────────────────────────────
 
 // Phase 819 — the Duration / RelativeTime format enums. Defined ahead of
@@ -7389,6 +7465,12 @@ and private decodeAccessibility (path: string) (j: Json) : Result<Accessibility,
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
+        // Phase 959 — the near-miss check runs BEFORE the slot reads, matching
+        // the `FormField` ordering, so a trait carrying both `ariaLabel` and a
+        // well-formed `label` still names the ignored key rather than decoding
+        // half the author's intent in silence.
+        let nearMissR = accessibilityNearMiss path fields
+
         let labelR =
             match tryField fields "label" with
             | None -> Ok None
@@ -7419,8 +7501,8 @@ and private decodeAccessibility (path: string) (j: Json) : Result<Accessibility,
             | None -> Ok None
             | Some v -> decodeBindingBool (path + ".hidden") v |> Result.map Some
 
-        match labelR, labelledByR, describedByR, roleR, liveR, hiddenR with
-        | Ok label, Ok labelledBy, Ok describedBy, Ok role, Ok liveRegion, Ok hidden ->
+        match nearMissR, labelR, labelledByR, describedByR, roleR, liveR, hiddenR with
+        | Ok(), Ok label, Ok labelledBy, Ok describedBy, Ok role, Ok liveRegion, Ok hidden ->
             Ok
                 { Label = label
                   LabelledBy = labelledBy
@@ -7428,12 +7510,13 @@ and private decodeAccessibility (path: string) (j: Json) : Result<Accessibility,
                   Role = role
                   LiveRegion = liveRegion
                   Hidden = hidden }
-        | Error e, _, _, _, _, _
-        | _, Error e, _, _, _, _
-        | _, _, Error e, _, _, _
-        | _, _, _, Error e, _, _
-        | _, _, _, _, Error e, _
-        | _, _, _, _, _, Error e -> Error e
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 and private decodeStateBehaviour (w: Walk) (path: string) (j: Json) : Result<StateBehaviour<obj>, DecodeError> =
     match requireObject path j with
