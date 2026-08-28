@@ -614,6 +614,17 @@ let private updateBox (field: string) (v: obj) (spec: BoxSpec<'Msg>) : UpdateRes
                 { spec with
                     Layout = LayoutMode.Grid(x, templateColumns, gap) }
         | Error msg -> TypeMismatch msg
+    // `Masonry` carries the same column count and so takes the same field name.
+    // Without this arm `availableFields` would advertise `Cols` on a masonry box
+    // and `UpdateProp` would answer `UnknownField` — an introspection surface
+    // that names a field it cannot set.
+    | "Cols", LayoutMode.Masonry(_, gap) ->
+        match coerceField JsonDecode.Coerce.tryInt v with
+        | Ok x ->
+            updated
+                { spec with
+                    Layout = LayoutMode.Masonry(x, gap) }
+        | Error msg -> TypeMismatch msg
     | "TemplateColumns", LayoutMode.Grid(cols, _, gap) ->
         // Additive optional `string option` field. Accepts either a raw string
         // (sugar — wraps in `Some`) or an explicit `string option` payload.

@@ -412,6 +412,7 @@ and [<RequireQualifiedAccess>] LayoutMode =
     | Auto
     | Flex of direction: Orientation * wrap: bool * gap: int option
     | Grid of cols: int * templateColumns: string option * gap: int option
+    | Masonry of cols: int * gap: int option
 
 and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | Text of value: Binding<string> option * onChange: (string -> Action<'Msg>) option
@@ -1672,6 +1673,7 @@ and private encLayoutMode (v: LayoutMode) : JVal =
     | LayoutMode.Auto -> Canon.typed "Auto" [  ]
     | LayoutMode.Flex (direction, wrap, gap) -> Canon.typed "Flex" ([ Some("direction", encOrientation direction); Some("wrap", JBool wrap); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
     | LayoutMode.Grid (cols, templateColumns, gap) -> Canon.typed "Grid" ([ Some("cols", JInt cols); (templateColumns |> Option.map (fun v -> "templateColumns", JStr v)); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
+    | LayoutMode.Masonry (cols, gap) -> Canon.typed "Masonry" ([ Some("cols", JInt cols); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
 
 and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     match v with
@@ -2700,6 +2702,10 @@ and private decLayoutMode (j: JVal) : Result<LayoutMode, string> =
             dOpt "templateColumns" __fs dStr |> Result.bind (fun templateColumns ->
             dOpt "gap" __fs dInt |> Result.bind (fun gap ->
             Ok(LayoutMode.Grid(cols, templateColumns, gap)))))
+        | "Masonry" ->
+            dReq "cols" __fs dInt |> Result.bind (fun cols ->
+            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
+            Ok(LayoutMode.Masonry(cols, gap))))
         | __other -> Error ("unknown LayoutMode case: " + __other))
     | _ -> Error "expected a LayoutMode object"
 

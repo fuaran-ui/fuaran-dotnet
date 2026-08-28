@@ -6734,8 +6734,48 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                                     | Error e, _, _
                                     | _, Error e, _
                                     | _, _, Error e -> Error e
+                                | "Masonry" ->
+                                    // Phase 1082 — column-FILL. `cols` is REQUIRED
+                                    // and must be a POSITIVE integer, following the
+                                    // `srcSet` width floor: a masonry container with
+                                    // zero or negative columns names a layout no
+                                    // renderer can realise, and `0` reads as
+                                    // "unspecified" to anyone who has not read the
+                                    // spec, which is exactly why it must not decode.
+                                    //
+                                    // There is deliberately NO auto-column leniency
+                                    // here of the kind `Grid` carries: a `Grid` with
+                                    // no column spec canonicalises to `Auto` because
+                                    // the language already owns that concept, whereas
+                                    // a masonry with no column count has no existing
+                                    // case to mean — silently rewriting it to `Auto`
+                                    // would discard the author's whole intent.
+                                    let colsR =
+                                        requireFieldAliased
+                                            lpath
+                                            lfields
+                                            "cols"
+                                            [ "columns" ]
+                                            "positive integer column count"
+                                        |> Result.bind (fun v ->
+                                            match v with
+                                            | JNumber n when n > 0.0 && n = floor n -> Ok(int n)
+                                            | _ ->
+                                                wrongType
+                                                    (lpath + ".cols")
+                                                    "JSON number (positive integer column count)")
+
+                                    let gapR =
+                                        match tryField lfields "gap" with
+                                        | None -> Ok Option.None
+                                        | Some v -> requireInt (lpath + ".gap") v |> Result.map Some
+
+                                    match colsR, gapR with
+                                    | Ok c, Ok g -> Ok(LayoutMode.Masonry(c, g))
+                                    | Error e, _
+                                    | _, Error e -> Error e
                                 | "Auto" -> Ok BoxLayout.Auto
-                                | other -> unknownDuCase lpath other "Flex | Grid | Auto"))
+                                | other -> unknownDuCase lpath other "Flex | Grid | Masonry | Auto"))
 
                     match childrenR, headingR, roleR, layoutR with
                     | Ok children, Ok heading, Ok role, Ok layout ->

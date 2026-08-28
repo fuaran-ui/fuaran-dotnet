@@ -101,7 +101,15 @@ let private plain kind source fallback =
 let all: FidelityRow list =
     [ plain "Badge" "the label TextSource + tone" "a `fuaran-badge` span carrying the resolved label and tone class"
 
-      plain "Box" "the child list + layout spec" "the full structural container, classes identical on both sides"
+      // Phase 1082 — the fallback text names the fill direction because
+      // `Masonry` made it a RENDER obligation rather than a styling choice:
+      // WIRE_FORMAT §3.6.7 fixes the realising CSS family and the
+      // break-avoidance rule, so "the full structural container" is no longer
+      // the whole of what a conformant host owes for this kind.
+      plain
+          "Box"
+          "the child list + layout spec"
+          "the full structural container, classes identical on both sides; the layout mode's declared fill direction realised per WIRE_FORMAT §3.6.7 (row-fill for `Grid`, column-fill for `Masonry`)"
 
       row
           "Button"

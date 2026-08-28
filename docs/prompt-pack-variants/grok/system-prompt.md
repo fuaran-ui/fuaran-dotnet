@@ -425,6 +425,7 @@ Binding_str =
 BoxLayout =
 | Flex { direction:Orientation; wrap:bool; gap?:int }
 | Grid { cols:int; gap?:int; templateColumns?:str }
+| Masonry { cols:int; gap?:int }
 | Auto
 CallResultTarget =
 | State { key:str }

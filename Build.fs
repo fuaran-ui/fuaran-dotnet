@@ -264,7 +264,17 @@ let private canonicalCss =
 let private tierCssCopies =
     [ "fuaran-ts", Path.Combine(repoRoot, "..", "fuaran-ts", "packages", "renderer", "css", "fuaran.css")
       "fuaran-go", Path.Combine(repoRoot, "..", "fuaran-go", "renderer", "content", "fuaran-reference.css")
-      "fuaran-rs", Path.Combine(repoRoot, "..", "fuaran-rs", "css", "fuaran.css") ]
+      "fuaran-rs", Path.Combine(repoRoot, "..", "fuaran-rs", "css", "fuaran.css")
+      // Phase 1082 rider — `fuaran-py` was the one tier shipping a byte-copy of
+      // the canonical sheet that Phase 432 never registered here. Its own
+      // byte-parity test (`tests/test_renderer.py`) compared against the
+      // canonical file, so the drift was DETECTED in that repo and could not be
+      // REPAIRED from this one: the generator rewrote three copies and left the
+      // fourth for a human to remember. That asymmetry is precisely the class
+      // Phase 432 closed for ts/go/rs, and py was outside it by omission rather
+      // than by decision.
+      "fuaran-py",
+      Path.Combine(repoRoot, "..", "fuaran-py", "src", "fuaran_py", "renderer", "content", "fuaran-reference.css") ]
 
 // ─── Phase 433 — the vocabulary fingerprint stamp ──────────────────────────
 //

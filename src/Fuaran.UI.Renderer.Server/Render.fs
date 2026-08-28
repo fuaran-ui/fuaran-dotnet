@@ -432,6 +432,28 @@ and private renderKind
                 [ prop.className "fuaran-layout-grid"
                   prop.style gridStyle
                   prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
+        | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
+            // Phase 1082 — column-FILL, realised through the CSS MULTI-COLUMN
+            // property family (`column-count` + the `gap` shorthand's
+            // `column-gap` half), which is what WIRE_FORMAT §3.6.7 makes
+            // normative. `grid-template-rows: masonry` is the other candidate
+            // and is deliberately not used: it is not deterministically
+            // available across engines, and a layout mode whose behaviour
+            // depends on which browser reads it is not a wire contract.
+            //
+            // The column count rides inline for the same reason `Grid`'s does —
+            // so a CSS host need not pre-declare every N — and the same
+            // narrow-viewport rules in the reference sheet collapse it.
+            let masonryStyle =
+                [ style.custom ("column-count", string cols) ]
+                @ (match masonryGap with
+                   | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
+                   | None -> [])
+
+            Html.div
+                [ prop.className "fuaran-layout-masonry"
+                  prop.style masonryStyle
+                  prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
         | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
             let dir =
                 match direction with

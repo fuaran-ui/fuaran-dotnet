@@ -388,7 +388,18 @@
          existing document changes meaning) and minor per the pre-1.0
          new-DU-case precedent (0.7.0, `FormFieldKind.DateRange`). See
          STABILITY.md "Recorded change — 0.46.0". -->
-    <Version>0.46.0</Version>
+    <!-- 0.47.0 (Phase 1082) — the `Masonry` column-fill layout mode.
+         `LayoutMode` gains `Masonry of cols: int * gap: int option`, with the
+         `MasonryLayoutSpec` authoring record and `Fuaran.masonryLayout` beside
+         it. A NEW CASE on a closed DU, so it breaks exhaustive MATCHES and not
+         construction sites — the choice was deliberate over widening `Grid`,
+         which would have changed that case's arity and stopped EVERY pattern
+         match on it compiling in every host. Two arms in this repo needed
+         adding, against the whole-estate sweep the other spelling implied.
+         Additive on the wire (no existing document changes meaning) and minor
+         per the pre-1.0 new-DU-case precedent (0.7.0 `FormFieldKind.DateRange`;
+         0.46.0 `NodeKind.Media`). See STABILITY.md "Recorded change — 0.47.0". -->
+    <Version>0.47.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

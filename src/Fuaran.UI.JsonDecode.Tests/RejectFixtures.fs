@@ -296,6 +296,25 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "SrcSetEntry width 0 — refused: a `w` descriptor names the intrinsic pixel width a browser selects on, so a non-positive value describes a candidate that can never be selected. The first entry is well-formed on purpose, so the path has to identify the second" }
+      // Phase 1082 — the masonry column floor, the `srcSet` width precedent
+      // applied to a layout. A column COUNT of zero or less names an
+      // arrangement no renderer can realise: `column-count: 0` is invalid CSS,
+      // and a container declaring it would fall back to whatever the host's
+      // stylesheet last said, so the wire would carry a layout whose rendered
+      // result is host-defined. Zero is the interesting half again — it reads
+      // as "let the browser decide" to an emitter that has not read the spec,
+      // and `Grid`'s auto-column leniency makes that reading actively plausible
+      // here, which is precisely why `Masonry` must refuse it rather than
+      // canonicalise: `Grid` has `Auto` to mean the browser's choice, and
+      // masonry has nothing for the rewrite to land on.
+      { Id = "reject-box-masonry-nonpositive-cols"
+        Json =
+          """{"id":"m","kind":{"$type":"Box","children":[],"layout":{"$type":"Masonry","cols":0},"role":"Group"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.layout.cols"
+        IsOp = false
+        Description =
+          "Masonry cols 0 — refused: a column count names how many columns the children fill, so a non-positive one describes a layout no renderer can realise. Refused rather than canonicalised to `Auto`, unlike a column-less `Grid`: that leniency works because `Auto` already means the browser's own choice, and masonry has no such case for the rewrite to land on" }
       // Phase 1080 — `srcSet: null` is REFUSED, and this is the fixture that
       // makes the missing-list-field decode class a wire law rather than each
       // host's reading. An ABSENT `srcSet` is the empty list; a PRESENT `null`

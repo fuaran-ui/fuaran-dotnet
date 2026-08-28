@@ -2116,6 +2116,51 @@ canonicalising to the omitted form), and `reject/reject-image-expandable-nonbool
 have to rule on `"false"` too, and two hosts ruling differently would disagree about whether the
 document declares an affordance at all).
 
+## Recorded change — 0.47.0, `LayoutMode.Masonry` (fuaran#1082)
+
+**Additive on the wire, and a NEW CASE on a closed DU in the type.** `LayoutMode` gains
+
+```fsharp
+| Masonry of cols: int * gap: int option
+```
+
+with an authoring record and smart constructor beside it:
+
+```fsharp
+type MasonryLayoutSpec<'Msg> = { Cols: int; Children: Node<'Msg> list }
+Fuaran.masonryLayout : string -> MasonryLayoutSpec<'Msg> -> Node<'Msg>
+Defaults.masonryLayout<'Msg>          // Cols = 3
+```
+
+No existing document changes meaning: `Masonry` is a discriminator no prior emission carried, and no
+shipped slot is re-meant. `Grid` is untouched — same arity, same fields, same bytes.
+
+**Version decision: MINOR**, on the 0.46.0 precedent directly above (and 0.7.0,
+`FormFieldKind.DateRange`): a new DU case breaks exhaustive matches rather than construction sites,
+and pre-1.0 that rides a minor.
+
+**Why a new CASE and not a field on `Grid` — the counter-intuitive half of the charter's §2.1 rule.**
+A fill DIRECTION could have been spelled as a `Grid` field, and that spelling is the *more* expensive
+one, not the cheaper: adding a field to a DU case changes that case's arity, so **every** pattern
+match on `LayoutMode.Grid` across every host and every consumer stops compiling. A new case leaves
+them all alone and raises `FS0025` only where a match is exhaustive. Measured in this repo: **two**
+arms needed adding (`Theme.kindClass` and `Introspect.availableFields`), against a whole-estate sweep
+the other spelling implied. Four further sites were completed voluntarily rather than by the compiler
+— `Apply`, `Tools.extractProps`, `TreeOpDiff`, `Render.nodeKindName` — because each would otherwise
+have silently under-reported the new case rather than failing.
+
+**No escape hatch is created.** `Masonry` carries `cols` and `gap` and deliberately no
+`templateColumns` twin, so the complete set of CSS properties a masonry container can cause a host to
+emit is fixed by `WIRE_FORMAT.md` §3.6.7, and every one of them is a known CSS property.
+`GridLayoutSpec.TemplateColumns` — the one layout slot carrying a verbatim CSS string — is unchanged
+and unextended: `Masonry` deliberately has no twin of it.
+
+**`cols` carries a positive floor** enforced by the policy decoder (`WRONG_TYPE` at
+`$.kind.layout.cols`) and by the published schema (`minimum: 1`), on the 0.44.0 `srcSet` width
+precedent. The generated structural layer cannot express it — the IDL has no refined-integer type —
+so the fixture lands on the policy side of the `GeneratedLayerTests` accept-set seam, as the third
+such value bound before it did.
+
 ## Recorded change — 0.46.0, `NodeKind.Media` (fuaran#1076)
 
 **Additive on the wire, and a NEW CASE on a closed DU in the type.** `NodeKind` gains

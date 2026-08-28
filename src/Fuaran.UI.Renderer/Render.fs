@@ -100,6 +100,11 @@ let nodeKindName<'Msg> (kind: NodeKind<'Msg>) : string =
             | (BoxRole.Group, BoxLayout.Auto) -> "Dashboard"
             | BoxRole.Separator, _ -> "Separator"
             | BoxRole.Group, BoxLayout.Grid _ -> "Grid"
+            // `Masonry` postdates the retired vocabulary this projection
+            // preserves, so it names itself rather than borrowing `Grid`'s
+            // label — a diagnostic that said "Layout.Grid" for a masonry
+            // failure would send a reader to the wrong renderer arm.
+            | BoxRole.Group, BoxLayout.Masonry _ -> "Masonry"
             | BoxRole.Group, BoxLayout.Flex _ -> "Stack"
 
         "Layout." + inner
@@ -2256,6 +2261,23 @@ let rec private renderKind
             Html.div
                 [ prop.className "fuaran-layout-grid"
                   prop.style gridStyle
+                  prop.children (spec.Children |> List.map (render ctx)) ]
+        | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
+            // Phase 1082 — column-FILL, realised through the CSS MULTI-COLUMN
+            // property family per WIRE_FORMAT §3.6.7. Note the property name
+            // diverges from the server arm's kebab-case `column-count` for the
+            // same reason `gridTemplateColumns` does: React's style object
+            // requires camelCase, while Feliz.ViewEngine writes the key verbatim
+            // into the style attribute, where CSS ignores camelCase.
+            let masonryStyle =
+                [ style.custom ("columnCount", string cols) ]
+                @ (match masonryGap with
+                   | Some n -> [ style.custom ("gap", sprintf "%dpx" n) ]
+                   | None -> [])
+
+            Html.div
+                [ prop.className "fuaran-layout-masonry"
+                  prop.style masonryStyle
                   prop.children (spec.Children |> List.map (render ctx)) ]
         | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
             let dir =

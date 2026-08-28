@@ -663,6 +663,41 @@ and GridLayoutSpec<'Msg> =
         TemplateColumns: string option
     }
 
+/// Column-FILL container spec (Phase 1082) — the masonry
+/// hang, where `GridLayoutSpec` is the row-aligned one. Children flow DOWN
+/// each column in turn rather than across each row, so a short child does
+/// not leave whitespace beneath it waiting for its row's tallest sibling.
+/// That is the whole of the difference, and it is why this is a separate
+/// layout mode rather than a flag: no arrangement of `Cols` or
+/// `TemplateColumns` can change a grid's fill direction.
+///
+/// Reach for it when the children have GENUINELY DIFFERENT intrinsic
+/// heights — a picture wall mixing portraits and landscapes, a note board,
+/// a card feed of unequal bodies. For similarly-proportioned children the
+/// row-aligned `gridLayout` reads as a considered hang and is the better
+/// choice; masonry's ragged bottom edge is a cost it only earns back when
+/// the heights actually vary.
+///
+/// **Reading order changes, and it is a real consequence.** The CSS
+/// multi-column family that realises this fills column 1 top-to-bottom
+/// before starting column 2, so document order runs down each column. For
+/// a gallery, where each child stands alone, that is invisible; for
+/// content meant to be read in sequence across the page, it is not — use
+/// `gridLayout` there.
+///
+/// There is deliberately **no** `TemplateColumns` twin: that field is a
+/// verbatim `grid-template-columns` sizing function, and the multi-column
+/// model has no track list for one to name.
+and MasonryLayoutSpec<'Msg> =
+    {
+        /// The number of columns to fill. Must be POSITIVE — the
+        /// decoder and the published schema both refuse zero and
+        /// negatives, because a masonry with no columns names a layout no
+        /// renderer can realise.
+        Cols: int
+        Children: Node<'Msg> list
+    }
+
 and SplitPanelSpec<'Msg> = Generated.SplitPanelSpec<'Msg>
 
 /// Tabbed container spec (generated). `ActiveIndex` is the currently-active

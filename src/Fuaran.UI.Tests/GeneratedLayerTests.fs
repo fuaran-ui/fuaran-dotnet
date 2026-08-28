@@ -625,9 +625,22 @@ let generatedLayerTests =
               //    Like the grid's they are schema-EXPRESSIBLE
               //    (`not: { required: [...] }` on `Accessibility`) and so stay
               //    out of `schemaInexpressibleRejects`.
+              //  - a `Masonry` layout's `cols` of 0 (Phase 1082) is the FOURTH
+              //    instance of the value-bound class, after `defaultSort.column`,
+              //    `pageSize` and the `srcSet` width. Same mechanism exactly: the
+              //    IDL declares `cols` as `TInt` and has no refined-integer type,
+              //    so the generated decoder reads a plain `int` and accepts,
+              //    while the policy decoder applies the positive floor. The
+              //    schema states it as `minimum: 1`, so it is schema-INVALID and
+              //    stays out of `schemaInexpressibleRejects` like the other three.
+              //    Its landing here was predicted rather than discovered — the
+              //    phase chose the `srcSet` precedent deliberately — and this
+              //    guard is what confirms the precedent transferred to a LAYOUT
+              //    slot rather than only to the image record it was written for.
               Expect.equal
                   policyOwned
-                  [ "reject-daterange-unordered.json"
+                  [ "reject-box-masonry-nonpositive-cols.json"
+                    "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
                     "reject-fieldrule-empty.json"
                     "reject-fieldrule-length-unordered.json"

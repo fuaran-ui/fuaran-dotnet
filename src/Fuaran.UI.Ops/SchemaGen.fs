@@ -1165,10 +1165,18 @@ let private defs: (string * J) list =
 
       "GridTemplate", record [ "cols" ] [ "cols", integer; "gap", integer; "templateColumns", str ]
 
+      // Phase 1082 — column-fill. `minimum: 1` is the schema's half of the
+      // decoder's positive-column floor, so the two expressions of the contract
+      // agree (the `srcSet` width precedent). No `templateColumns`: the case does
+      // not carry one, and a schema that admitted it would describe a wire the
+      // decoder refuses.
+      "MasonryLayout", record [ "cols" ] [ "cols", JObj [ "type", JStr "integer"; "minimum", JInt 1 ]; "gap", integer ]
+
       "BoxLayout",
       union
           [ duCaseHoisted "Flex" "FlexLayout"
             duCaseHoisted "Grid" "GridTemplate"
+            duCaseHoisted "Masonry" "MasonryLayout"
             duCase "Auto" [] [] ]
 
       "SplitPanelSpec", record [ "children"; "weight" ] [ "children", arrayOf (ref "Node"); "weight", number ]

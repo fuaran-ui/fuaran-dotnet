@@ -1001,6 +1001,35 @@ let gridLayoutTemplatedAutoFit: Node<obj> =
         ))
         None
 
+// Phase 1082 — column-fill. Two children rather than the grid fixtures' one:
+// masonry is a statement about how children DISTRIBUTE between columns, and a
+// single-child container cannot exhibit it. The `Masonry` case carries `cols`
+// and `gap` and no `templateColumns`, so these two fixtures are its complete
+// field surface — the second exists because `gap` is omitted-when-None and
+// would otherwise never appear on the wire, which is exactly the gap the IDL's
+// own comment records against the `Flex` and `Grid` cases.
+let masonryLayout: Node<obj> =
+    node
+        "masonry-1"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Masonry(3, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children = [ metric; markdown ] }
+        ))
+        None
+
+let masonryLayoutGap: Node<obj> =
+    node
+        "masonry-gap"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Masonry(4, Some 16)
+              Role = BoxRole.Group
+              Heading = None
+              Children = [ metric; markdown ] }
+        ))
+        None
+
 let splitPanel: Node<obj> =
     node
         "split-1"
@@ -5018,6 +5047,8 @@ let allNodes: (string * Node<obj>) list =
       "Layout/Grid (TemplateColumns 1fr 2fr ratio)", gridLayoutTemplatedRatio
       "Layout/Grid (TemplateColumns 100px + repeat fixed-plus-flex)", gridLayoutTemplatedFixedPlusFlex
       "Layout/Grid (TemplateColumns auto-fit minmax)", gridLayoutTemplatedAutoFit
+      "Layout/Masonry (Phase 1082 — column-fill, three columns)", masonryLayout
+      "Layout/Masonry (Phase 1082 — explicit gap)", masonryLayoutGap
       "Layout/SplitPanel", splitPanel
       "Layout/Tabs", tabs
       "Layout/Tabs (explicit headers + tags + activeTag)", tabsExplicitHeaders

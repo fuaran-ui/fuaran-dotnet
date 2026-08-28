@@ -69,7 +69,7 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 /// PINNED. `Fuaran.UI.Tests` recomputes it from the live vocabulary and fails
 /// with the correct value when this is stale; `Build.fsproj -- Css` restamps the
 /// stylesheet from it, and `-- CssCheck` fails when the two disagree.
-let vocabularyFingerprint = "fv1:db6e4135e0aa5b83"
+let vocabularyFingerprint = "fv1:f8c7017590804af1"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
@@ -265,6 +265,12 @@ let kindClass (kind: NodeKind<'Msg>) : string =
         | BoxRole.Card, _ -> "fuaran-kind-card"
         | BoxRole.Separator, _ -> "fuaran-kind-divider"
         | BoxRole.Group, BoxLayout.Grid _ -> "fuaran-kind-grid-layout"
+        // `Masonry` has no legacy kind to inherit a hook from — it is the one
+        // layout mode that postdates the merge — so it takes its own. Reusing
+        // `-grid-layout` was the alternative and is rejected: the two modes fill
+        // in different directions and a host styling "the grid container" would
+        // silently catch both.
+        | BoxRole.Group, BoxLayout.Masonry _ -> "fuaran-kind-masonry"
         | BoxRole.Group, (BoxLayout.Flex _ | BoxLayout.Auto) -> "fuaran-kind-stack"
     | NodeKind.SplitPanel(_) -> "fuaran-kind-split-panel"
     | NodeKind.Tabs(_) -> "fuaran-kind-tabs"

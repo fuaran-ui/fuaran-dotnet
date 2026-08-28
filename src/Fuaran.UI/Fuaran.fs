@@ -956,6 +956,24 @@ module Fuaran =
             ))
             Defaults.Accessibility.none
 
+    /// Column-fill smart-ctor (Phase 1082) — the masonry hang. Children flow
+    /// DOWN each column in turn instead of across each row, so children of
+    /// unequal height pack without the whitespace a row-aligned grid leaves
+    /// beneath its shorter cells. Use it for a picture wall of mixed
+    /// portraits and landscapes; use `Fuaran.gridLayout` when the children are
+    /// similarly proportioned or must be read in sequence (multi-column fill
+    /// puts document order down each column, not across the page).
+    let masonryLayout (id: string) (spec: MasonryLayoutSpec<'Msg>) : Node<'Msg> =
+        buildNode
+            id
+            (NodeKind.Box(
+                { Layout = BoxLayout.Masonry(spec.Cols, Option.None)
+                  Role = BoxRole.Group
+                  Heading = Option.None
+                  Children = spec.Children }
+            ))
+            Defaults.Accessibility.none
+
     let splitPanel (id: string) (spec: SplitPanelSpec<'Msg>) : Node<'Msg> =
         buildNode id (NodeKind.SplitPanel(spec)) Defaults.Accessibility.none
 

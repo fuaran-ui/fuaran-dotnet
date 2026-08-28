@@ -91,6 +91,10 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
             match spec.Layout with
             | BoxLayout.Flex _ -> [ "Orientation"; "Wrap" ]
             | BoxLayout.Grid _ -> [ "Cols"; "TemplateColumns" ]
+            // `Masonry` advertises `Cols` and NOT `TemplateColumns`: it carries
+            // no template slot, so advertising one would name a field an
+            // `UpdateProp` could never set.
+            | BoxLayout.Masonry _ -> [ "Cols" ]
             | BoxLayout.Auto -> []
 
         layoutFields @ [ "Heading"; "Children" ]

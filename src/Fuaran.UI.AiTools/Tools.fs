@@ -256,6 +256,10 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
                 match templateColumns with
                 | Some t -> baseEntries @ [ valueEntry "TemplateColumns" t ]
                 | None -> baseEntries @ [ entry "TemplateColumns" None (Some "string option") ]
+            // `Masonry` surfaces `Cols` alone — it has no `TemplateColumns`
+            // slot, so advertising an absent one would describe a field the
+            // case does not carry.
+            | BoxLayout.Masonry(cols, _) -> [ valueEntry "Cols" cols ]
             | BoxLayout.Auto -> []
 
         let headingEntries =

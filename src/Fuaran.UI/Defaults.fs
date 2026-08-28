@@ -101,6 +101,12 @@ let gridLayout<'Msg> : GridLayoutSpec<'Msg> =
       // record-with the spec directly.
       TemplateColumns = Option.None }
 
+/// Phase 1082 — column-fill. `3` rather than `gridLayout`'s `12`: the grid
+/// default is a twelve-slot TRACK model an author subdivides, while a masonry
+/// column is a real column of content, and three is the count a picture wall
+/// actually wants. A default of 12 would render 12 near-empty ribbons.
+let masonryLayout<'Msg> : MasonryLayoutSpec<'Msg> = { Cols = 3; Children = [] }
+
 let splitPanel<'Msg> : SplitPanelSpec<'Msg> = { Weight = 0.5; Children = [] }
 
 let tabs<'Msg> : TabsSpec<'Msg> =

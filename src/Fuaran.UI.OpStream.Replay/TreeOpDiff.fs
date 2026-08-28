@@ -603,6 +603,23 @@ module TreeOpDiff =
                                         { sa with
                                             Layout = BoxLayout.Grid(colsA, tmplB, gapA) }
                                 ) }
+                // Masonry → Masonry diffs its one settable field. Without this
+                // arm a column-count change between two masonry boxes falls to
+                // `[]` and the diff silently reports no op, so a replay would
+                // not reproduce it. Cross-MODE changes (Grid ↔ Masonry) stay in
+                // the `_` arm deliberately: they are a layout REPLACEMENT, not a
+                // field edit, and `UpdateProp` has no spelling for one.
+                | BoxLayout.Masonry(_, gapA), BoxLayout.Masonry(colsB, _) ->
+                    prop
+                        "Cols"
+                        (pvInt colsB)
+                        { a with
+                            Kind =
+                                lay (
+                                    NodeKind.Box
+                                        { sa with
+                                            Layout = BoxLayout.Masonry(colsB, gapA) }
+                                ) }
                 | _ -> []
 
             layoutOps

@@ -19,12 +19,8 @@ module Fuaran.UI.Renderer.Server.Tests.GalleryExpressionTests
 //      requirement lands on a closed token; nothing reaches a style attribute
 //      except the column count, which is the renderer's own emission.
 //
-//   2. **Masonry (column-fill) — INEXPRESSIBLE, and structurally so.** The three
-//      `masonryProbe*` tests below are the negative evidence. They are written
-//      as assertions over emitted HTML rather than as prose because a claim that
-//      something cannot be said is only worth what its falsifier is worth: if a
-//      later phase makes masonry reachable through any of these routes, the
-//      matching probe FAILS and this module's finding is retired with it.
+//   2. **Masonry (column-fill) — WAS inexpressible; ADMITTED by Phase 1082 as
+//      `LayoutMode.Masonry`.** See "The flip" below.
 //
 //  The near-miss is recorded too (`nearMissNaturalAspect`): a grid of
 //  `AspectRatio.Natural` images is a real, shippable gallery — it is simply a
@@ -32,6 +28,40 @@ module Fuaran.UI.Renderer.Server.Tests.GalleryExpressionTests
 //  legitimate look, and for a gallery of similarly-proportioned works it is
 //  arguably the better one. It is not masonry, and this module does not pretend
 //  it is.
+//
+//  ── The flip (Phase 1082) — and the finding it produced ────────────────────
+//
+//  The gate above was written so that a phase making masonry reachable would
+//  turn it RED, retiring the finding rather than leaving it standing as stale
+//  prose. Phase 1082 made masonry reachable. **The gate stayed GREEN — all
+//  seven tests passed, unchanged, against a tree where `LayoutMode.Masonry`
+//  renders.** That is worth more than the red would have been, so it is
+//  recorded rather than quietly fixed.
+//
+//  The reason is precise, and it is not that the probes were weak. Each probe
+//  is sound for the route it names: probe A asserts the complete inline style
+//  set of a `Grid` container, probe B asserts which CSS PROPERTY the template
+//  escape reaches, probe C asserts that no per-item style channel exists. All
+//  three remain TRUE after the admission, because masonry did not arrive
+//  through any of them — it arrived as a fourth route the gate did not model,
+//  a new case on the layout DU, which touches no `Grid` emission at all.
+//
+//  So the fault was in the SCOPE of the claim, not in the detectors: three
+//  route-specific falsifiers were read as supporting a route-INDEPENDENT
+//  conclusion ("masonry is inexpressible"). An enumeration of closed doors is
+//  only a proof that a room is sealed if the enumeration is known to be
+//  complete, and nothing here established that. This is the estate's
+//  "verify the probe, not just the verdict" discipline seen from an angle it
+//  had not been seen from before: the probes were verified, individually, and
+//  the verdict still over-reached them.
+//
+//  The module is therefore rewritten rather than deleted. The three probes are
+//  KEPT — they are now separation assertions, and they say something sharper
+//  than they did: a `Grid` still emits no column-fill mechanism, so the two
+//  modes did not blur into one another when the second arrived. Beside them sit
+//  the POSITIVE assertions of the admitted case, which are what a future
+//  removal or regression of masonry would go red against. The negative claim
+//  that outran its evidence is gone.
 // ============================================================================
 
 open Expecto
@@ -88,6 +118,21 @@ let private expressibleUniform: Node<obj> =
                 [ artwork "a1" "harbour" "Harbour at dawn" ImageAspect.Square
                   artwork "a2" "quarry" "The quarry road" ImageAspect.Square
                   artwork "a3" "gannets" "Gannets over Boreray" ImageAspect.Square ] }
+
+/// Target 2 — the masonry hang, expressible since Phase 1082. The same three
+/// works at their natural proportions, packed by COLUMN instead of by row.
+/// Deliberately built from `Defaults.masonryLayout` with only `Cols` and
+/// `Children` set, because that is the whole authoring surface: there is no
+/// `TemplateColumns` twin to reach for, which is what keeps the case bounded.
+let private expressibleMasonry: Node<obj> =
+    Fuaran.masonryLayout
+        "gallery-masonry"
+        { Defaults.masonryLayout<obj> with
+            Cols = 3
+            Children =
+                [ artwork "m1" "harbour" "Harbour at dawn" ImageAspect.Natural
+                  artwork "m2" "quarry" "The quarry road" ImageAspect.Natural
+                  artwork "m3" "gannets" "Gannets over Boreray" ImageAspect.Natural ] }
 
 /// The near-miss — the same grid with each work at its NATURAL proportions.
 /// Emitted deliberately so the difference from the uniform page is a byte
@@ -176,7 +221,95 @@ let tests =
                   "figure wraps anchor wraps img, with the caption outside the link"
           }
 
-          // ── 2. Masonry: INEXPRESSIBLE ───────────────────────────────────
+          // ── 2. Masonry: EXPRESSIBLE (Phase 1082) ────────────────────────
+          //
+          // The positive record of the admitted case. These are the assertions
+          // a removal or a regression of masonry now goes red against — the
+          // role the three probes below were mistakenly read as filling.
+          test "masonry gallery is expressible, and emits the column-fill mechanism" {
+              let html = renderHtml expressibleMasonry
+
+              Expect.isTrue (contains "fuaran-layout-masonry" html) "masonry container class"
+
+              // The mechanism itself, asserted as the emitted DECLARATION
+              // rather than as the class alone: the class could be styled by
+              // any host stylesheet, whereas `column-count` is the renderer's
+              // own instruction and is what WIRE_FORMAT §3.6.7 makes normative.
+              Expect.isTrue (contains "column-count:3" html) "the declared column count rides the inline emission"
+
+              // The complete inline style set, on the same pattern probe A uses
+              // for the grid: one layout instruction and nothing else, so this
+              // goes red the moment the container learns to say anything more.
+              let styles =
+                  System.Text.RegularExpressions.Regex.Matches(html, "style=\"([^\"]*)\"")
+                  |> Seq.map (fun m -> m.Groups[1].Value)
+                  |> List.ofSeq
+
+              Expect.equal styles [ "column-count:3" ] "one layout instruction, and it is the column count"
+
+              // It is a MASONRY, not a grid wearing a new name: the row-fill
+              // track property must be absent, or the two modes have blurred.
+              Expect.isFalse (contains "grid-template-columns" html) "no row-fill track template"
+
+              // The works themselves still compose exactly as they do in the
+              // grid — the layout mode changed, the cell vocabulary did not.
+              Expect.equal
+                  (System.Text.RegularExpressions.Regex.Matches(html, "fuaran-image-fit-cover").Count)
+                  3
+                  "every work is still cropped to its box"
+
+              Expect.isTrue
+                  (contains "<figcaption class=\"fuaran-image-figure-caption\">Harbour at dawn</figcaption>" html)
+                  "…and still captioned"
+          }
+
+          // The gap slot, which is the case's only other field. Asserted
+          // separately because it is omitted-when-None: a container with no gap
+          // must emit the column count ALONE, so the two shapes are different
+          // byte strings and a renderer that always emitted a gap would be
+          // caught here rather than in the corpus.
+          test "masonry gap is emitted only when declared" {
+              // Built by rewriting the layout on an authored node rather than
+              // through the smart constructor, because `gap` is deliberately
+              // NOT on the authoring surface — `Fuaran.masonryLayout` passes
+              // `None` exactly as `Fuaran.gridLayout` does. It is wire
+              // vocabulary a decoded tree can carry and a hand-authored F# tree
+              // reaches only this way, and that asymmetry is inherited from
+              // `Grid` on purpose rather than fixed here.
+              let withGap =
+                  let authored =
+                      Fuaran.masonryLayout
+                          "m-gap"
+                          { Defaults.masonryLayout<obj> with
+                              Cols = 4
+                              Children = [ artwork "g1" "harbour" "Harbour at dawn" ImageAspect.Natural ] }
+
+                  match authored.Kind with
+                  | NodeKind.Box spec ->
+                      { authored with
+                          Kind =
+                              NodeKind.Box
+                                  { spec with
+                                      Layout = BoxLayout.Masonry(4, Some 16) } }
+                  | _ -> failtest "masonryLayout must build a Box"
+
+              let html = renderHtml withGap
+
+              Expect.isTrue (contains "column-count:4" html) "the declared column count"
+              Expect.isTrue (contains "gap:16px" html) "…and the declared gap"
+
+              // The no-gap shape, for contrast — the assertion that makes the
+              // one above about `gap` rather than about rendering at all.
+              Expect.isFalse (contains "gap:" (renderHtml expressibleMasonry)) "a gap-free masonry emits no gap"
+          }
+
+          // ── 3. The three original probes, KEPT as separation assertions ──
+          //
+          // Each remains TRUE after the admission, and that is now the point:
+          // `Grid` did not acquire a column-fill mechanism when `Masonry`
+          // arrived, so the two modes stayed distinct. Read them as "the grid
+          // is still the grid", never again as "masonry is unreachable" — the
+          // module header records why that second reading was never sound.
           //
           // Probe A — the typed route. `LayoutMode.Grid` carries a column COUNT
           // and nothing about fill direction, so the emitted page instructs the
@@ -267,7 +400,7 @@ let tests =
               Expect.isFalse (contains "span 2" html) "…and nothing of it survives"
           }
 
-          // ── 3. The near-miss, recorded rather than argued ────────────────
+          // ── 4. The near-miss, recorded rather than argued ────────────────
           //
           // `AspectRatio.Natural` gives each work its own proportions inside a
           // row-fill grid. That is the closest the shipped vocabulary gets to a
@@ -303,7 +436,7 @@ let tests =
                   "document order is authored order — the grid fills by row"
           }
 
-          // ── 4. The probes' own go-red self-test ─────────────────────────
+          // ── 5. The probes' own go-red self-test ─────────────────────────
           //
           // Every masonry probe above is an ABSENCE assertion, and an absence
           // assertion is worth exactly what its detector is worth: one that
