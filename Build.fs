@@ -705,8 +705,9 @@ let private registerTargets (args: string array) =
 
     // Phase 110 — AI-authoring pack drift check. Runs docs/tools/authoring-pack.fsx in
     // --check mode: fails the build if any corpus-derived wire example in the authoring
-    // guide or prompt pack diverged from the wire-format-fixtures corpus. No Build dep —
-    // it is a pure fsi pass over docs/ + wire-format-fixtures/.
+    // guide or prompt pack diverged from the wire-format-fixtures corpus. No HARD Build
+    // dep — it is a pure fsi pass over docs/ + wire-format-fixtures/, and `-- AuthoringPack`
+    // on its own should stay a seconds-long check rather than a solution build.
     Target.create "AuthoringPack" (fun _ ->
         dotnet
             [ "fsi"
@@ -768,6 +769,26 @@ let private registerTargets (args: string array) =
     Target.create "CssCheck" (fun _ -> cssCheck ())
 
     "CssCheck" ==> "Check" |> ignore
+
+    // Phase 1094 — ORDER the docs-drift checks after the compile/test gate inside
+    // `Check`, with SOFT dependencies (`?=>` — "if both targets run, this one runs
+    // first", imposing no dependency of its own).
+    //
+    // A dependency-free target is free to run first, and these did: a `Check` whose
+    // only defect was a stale generated doc exited before `Build` had compiled
+    // anything, so the run could not distinguish "the pack needs a regen" from "the
+    // repo does not build" — and the compile gate, which is what `Check` mainly
+    // exists to be, never ran at all. The gate's first answer must be about the code.
+    //
+    // Soft rather than hard (`==>`) deliberately: these three genuinely do not need
+    // the build (pure IO over committed files), and a hard dep would make
+    // `-- AuthoringPack` / `-- CssCheck` compile the whole solution to run a text
+    // comparison. `AuthoringPackDialect` keeps its HARD `Build` dep above — it runs
+    // the real decoder out of the Release outputs, so there the build is an input
+    // rather than an ordering preference.
+    "Test" ?=> "AuthoringPack" |> ignore
+    "Test" ?=> "AuthoringPackFamilies" |> ignore
+    "Test" ?=> "CssCheck" |> ignore
 
 [<EntryPoint>]
 let main args =
