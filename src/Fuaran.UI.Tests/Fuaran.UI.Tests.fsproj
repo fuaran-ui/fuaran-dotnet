@@ -262,6 +262,13 @@
          URL is safe to HAVE is a different question from whether its
          destination was DECLARED. -->
     <Compile Include="EgressPolicyTests.fs" />
+    <!-- Phase 1106 — the Defaults-`with` construction discipline. Reads the
+         authoring sites (every test project, samples/, benchmarks/) and fails on
+         a full spec-record literal that has not declared itself deliberate, so
+         an additive wire slot stops breaking (FS0764) every literal in the repo.
+         The governed spec set is derived from Defaults.fs, so a new spec is
+         governed the moment it gains a default. -->
+    <Compile Include="SpecConstructionTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
