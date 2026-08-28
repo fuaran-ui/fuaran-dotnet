@@ -1,0 +1,87 @@
+name: SSR class+ARIA parity
+
+# Phase 958 — make the SSR class+ARIA parity corpus (Phase 142) REACHABLE from
+# a push.
+#
+# The corpus itself has existed since Phase 142 and grows with every kind, and
+# Phase 951 extended it to be placement-sensitive rather than presence-sensitive.
+# None of that ran in CI: this repo has no push-to-main build lane of its own
+# (see notify-conformance.yml, which says so in its own header), and the
+# cross-implementation conformance gate that DOES run these sources drives the
+# codec suite — `Fuaran.UI.JsonDecode.Tests` — never the server renderer's. So
+# the parity lock was a local-only gate, and a gate that exists but is not
+# reached is the lesson Phase 103 already paid for once.
+#
+# Scope is deliberately narrow: this lane runs the ONE test project that carries
+# the SSR parity corpus. It is not a general build-and-test lane for the repo —
+# that gap is real, wider than this phase, and is reported rather than quietly
+# fixed here.
+#
+# ── Layout ───────────────────────────────────────────────────────────────────
+# The corpus-driven part of the parity lock resolves the shared conformance
+# corpus by walking UP from the test assembly for `wire-format-fixtures/
+# manifest.json`, so the corpus must sit beside this repo's root. This repo is
+# therefore checked out into a subdirectory and the corpus next to it — the same
+# reassembly the workspace conformance gate performs:
+#
+#     $GITHUB_WORKSPACE/
+#     ├── fuaran-dotnet/          ← this repo
+#     └── wire-format-fixtures/   ← fuaran-ui/fuaran-ui-specification
+#
+# ── Why the presence guard is not decoration ─────────────────────────────────
+# Those tests degrade to a SKIP when the corpus is absent, deliberately, so a
+# bare single-repo clone still runs the rest of the suite. In CI that same
+# tolerance is the failure mode: a layout drift would silently re-enable the
+# skips and the lane would go green having asserted nothing about the fixtures
+# it exists to read. The guard turns that into a red job.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ssr-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fuaran-dotnet
+        uses: actions/checkout@v4
+        with:
+          path: fuaran-dotnet
+
+      # UNPINNED on purpose: the corpus is the shared conformance oracle every
+      # host certifies against, and one current spec for all hosts is the point
+      # of giving it a single home.
+      - name: Checkout the wire-format corpus (fuaran-ui-specification)
+        uses: actions/checkout@v4
+        with:
+          repository: fuaran-ui/fuaran-ui-specification
+          path: wire-format-fixtures
+
+      - name: Assert the corpus is where the tests resolve it
+        run: test -f wire-format-fixtures/manifest.json
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: fuaran-dotnet/global.json
+
+      # NU1301: nuget.config declares a `local` folder source three levels above
+      # this repo for inner-loop iteration. It does not exist on the runner, and
+      # NuGet hard-errors on a missing folder source rather than treating it as
+      # empty — so mint it, as the nuget.config itself prescribes.
+      - name: Create the empty local NuGet feed dir (NU1301 workaround)
+        run: mkdir -p "${{ github.workspace }}/../../local-nuget-feed"
+
+      # Expecto is an exe, so `dotnet run`, not `dotnet test`.
+      - name: SSR class+ARIA parity corpus
+        working-directory: fuaran-dotnet
+        run: >-
+          dotnet run
+          --project src/Fuaran.UI.Renderer.Server.Tests/Fuaran.UI.Renderer.Server.Tests.fsproj
+          -c Release -- --summary

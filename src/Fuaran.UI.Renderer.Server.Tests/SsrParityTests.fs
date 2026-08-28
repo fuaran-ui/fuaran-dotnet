@@ -614,6 +614,97 @@ let private fixtures: Fixture list =
             "fuaran-link fuaran-link-protected"
             "&#109;&#97;&#105;&#108;&#116;&#111;&#58;" ] } ]
 
+// ─── Phase 958 — the corpus half of the class+ARIA lock ─────────────────────
+//
+//  Everything above is hand-built in this repo, so the lock measures the
+//  reference host against the reference host's own idea of the vocabulary. The
+//  Phase 955 accessibility-trait family is the shared oracle, and it is what
+//  this corpus was blind to: no fixture here carries an `Accessibility` trait
+//  at all, so the ARIA half of "class+ARIA parity" was pinned only against
+//  nodes this file authored.
+//
+//  The corpus is a sibling checkout, so its absence degrades to a SKIP — a
+//  missing input is a statement about the checkout, not about the code (the
+//  `ScalarSsrParityTests` posture, and for the reason recorded there: bound at
+//  module level, a `failwith` throws in the type initializer and takes the
+//  whole assembly down).
+
+let private tryCorpusRoot () : string option =
+    let rec walk (dir: System.IO.DirectoryInfo) =
+        if isNull dir then
+            None
+        else
+            let candidate =
+                System.IO.Path.Combine(dir.FullName, "wire-format-fixtures", "manifest.json")
+
+            if System.IO.File.Exists candidate then
+                Some(System.IO.Path.Combine(dir.FullName, "wire-format-fixtures"))
+            else
+                walk dir.Parent
+
+    walk (System.IO.DirectoryInfo(System.AppContext.BaseDirectory))
+
+let private corpusRoot = tryCorpusRoot ()
+
+let private corpusDir () : string =
+    match corpusRoot with
+    | Some r -> r
+    | None ->
+        skiptest
+            "wire-format-fixtures/ not found walking up from the test assembly — the Phase 955 a11y family needs the workspace checkout (skipped in a bare single-repo clone or a worktree elsewhere)"
+
+let private decodeFixture (name: string) : Node<obj> =
+    let json =
+        System.IO.File.ReadAllText(System.IO.Path.Combine(corpusDir (), "nodes", name + ".json"))
+
+    match Fuaran.UI.Ops.JsonDecode.decodeNodeObj json with
+    | Ok node -> node
+    | Error e -> failwithf "decode failed for %s: %A" name e
+
+/// The node's own wrapper open tag, located by its ADDRESS rather than by the
+/// markup's first `>`.
+///
+/// An `Image` node emits a `<link rel="preload">` AHEAD of its wrapper, so a
+/// first-`>` slice returns the preload tag — which carries no projection at
+/// all, which means every "must not have leaked onto the wrapper" assertion on
+/// that fixture would pass vacuously. That was measured on the sibling tier
+/// (Phase 956) rather than reasoned, and it applies here identically.
+let private wrapperTagOf (id: string) (html: string) =
+    let at =
+        html.IndexOf($"data-fuaran-node-id=\"{id}\"", System.StringComparison.Ordinal)
+
+    if at < 0 then
+        failwithf "no wrapper carrying the node address %s in: %s" id html
+
+    let from = html.Substring(html.LastIndexOf('<', at))
+    from.Substring(0, from.IndexOf('>') + 1)
+
+/// An element's own open tag — everything from `<tag` up to its first `>`.
+let private openTagOf (tag: string) (html: string) =
+    let from = html.Substring(html.IndexOf("<" + tag, System.StringComparison.Ordinal))
+    from.Substring(0, from.IndexOf('>') + 1)
+
+/// One trait-bearing fixture: which element must carry the projection.
+/// `None` = the wrapper `<div>`; `Some tag` = the semantic element the kind
+/// body renders, under D4.
+type private A11yFixture =
+    { Fixture: string
+      Element: string option }
+
+let private a11yFixtures =
+    [ { Fixture = "a11y-wrapper-all-slots"
+        Element = None }
+      { Fixture = "a11y-wrapper-state-bound"
+        Element = None }
+      { Fixture = "a11y-alert-assertive"
+        Element = None }
+      { Fixture = "a11y-link-labelled"
+        Element = Some "a" }
+      { Fixture = "a11y-button-named"
+        Element = Some "button" }
+      { Fixture = "a11y-image-decorative"
+        Element = Some "img" } ]
+
 [<Tests>]
 let ssrParityTests =
     testList
@@ -794,6 +885,90 @@ let ssrParityTests =
               let span = html.Substring(html.IndexOf("<span"))
               let spanTag = span.Substring(0, span.IndexOf('>') + 1)
               Expect.isTrue (contains "aria-label=\"Home\"" spanTag) "aria-label lands on the wrap span"
+          }
+
+          // ── Phase 958 — the trait fixtures join the class+ARIA lock ───────
+          //
+          // Two halves, matching this corpus's own two halves.
+          //
+          //  CLASS. The shared-spine assertion at the top of this list runs
+          //  over hand-built nodes; here it runs over the shared corpus, so a
+          //  change to the `Theme.nodeClassName` vocabulary is caught against
+          //  the fixtures every host answers to rather than only against nodes
+          //  this file authored.
+          //
+          //  ARIA. Not containment but BYTE-AGREEMENT. The Feliz CLIENT
+          //  renderer cannot render to an HTML string on .NET, so the client
+          //  side is the exact shared function its wrapper dispatches through
+          //  (`Accessibility.accessibilityAttributes`, fed into `prop.custom`);
+          //  the pairs are then formatted the way `ViewBuilder.buildElement`
+          //  formats an attribute (` key="value"`, in prop order) and the whole
+          //  run asserted as a CONTIGUOUS substring of the carrying element's
+          //  open tag. Containment of each pair separately — what the sibling
+          //  legs assert — cannot see a reordering, a duplicate emission, or a
+          //  slot that migrated to a different element within the same tag;
+          //  the contiguous run can.
+          //
+          //  The escaping caveat is deliberate and bounded: `Interop.mkAttr`
+          //  escapes the VALUE, so a fixture whose label carried `<`, `&` or a
+          //  quote would need the expectation escaped too. None of the Phase
+          //  955 family does, and a new one that did would fail here loudly
+          //  rather than silently weaken the assertion.
+          for f in a11yFixtures do
+              test $"{f.Fixture} — the corpus fixture's class + ARIA agree byte-for-byte, on the right element" {
+                  let node = decodeFixture f.Fixture
+                  let html = renderHtml BindingResolver.empty node
+                  let wrapper = wrapperTagOf node.Id html
+
+                  // ── CLASS: the shared spine, over the shared corpus.
+                  let expectedClass =
+                      Theme.nodeClassName node.Kind (node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
+
+                  Expect.isTrue
+                      (contains $"class=\"{expectedClass}\"" wrapper)
+                      $"{f.Fixture}: the wrapper class must be the shared Theme.nodeClassName — got: {wrapper}"
+
+                  // ── ARIA: the client's projection, byte-for-byte, on the
+                  // element D4 routes it to.
+                  let projected =
+                      Accessibility.accessibilityAttributes BindingResolver.empty node.Accessibility
+
+                  Expect.isNonEmpty
+                      projected
+                      $"{f.Fixture}: a trait-bearing fixture whose projection is empty would make every assertion below vacuous"
+
+                  let expectedRun =
+                      projected |> List.map (fun (k, v) -> $" {k}=\"{v}\"") |> String.concat ""
+
+                  let carrier =
+                      match f.Element with
+                      | None -> wrapper
+                      | Some tag -> openTagOf tag html
+
+                  Expect.isTrue
+                      (contains expectedRun carrier)
+                      $"{f.Fixture}: the server must emit the client's projection verbatim and in order — wanted '{expectedRun}' in: {carrier}"
+
+                  // A forwarding kind must not leave any of it behind.
+                  match f.Element with
+                  | None -> ()
+                  | Some _ ->
+                      for (attr, _) in projected do
+                          Expect.isFalse
+                              (contains attr wrapper)
+                              $"{f.Fixture}: {attr} leaked onto the wrapper — got: {wrapper}"
+
+                  // The wrapper keeps the node's ADDRESS whichever element
+                  // carries the projection.
+                  Expect.isTrue
+                      (contains $"data-fuaran-node-id=\"{node.Id}\"" wrapper)
+                      $"{f.Fixture}: the wrapper must keep the node address — got: {wrapper}"
+              }
+
+          // A table-driven leg that silently enumerated nothing would be a lock
+          // that locked nothing.
+          test "the a11y corpus leg covers the full Phase 955 node family" {
+              Expect.equal (List.length a11yFixtures) 6 "the Phase 955 node family is six fixtures"
           }
 
           // Guard that the lock actually bites: a token NOT in the vocabulary
