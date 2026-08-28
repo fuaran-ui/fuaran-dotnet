@@ -51,6 +51,125 @@ type RichTier =
     /// is excluded from every parity comparison by contract.
     | ClientOnly of technique: string * seam: string
 
+/// A RENDER OBLIGATION a conformant host owes for a kind (Phase 1105) — one
+/// member of a CLOSED vocabulary of checkable claims.
+///
+/// The distinction from the `Fallback` prose beside it is the whole point. That
+/// prose is a paragraph: complete, normative, and unfalsifiable by a machine, so
+/// a host can render the kind, pass every byte-parity fixture, and still have
+/// silently dropped an obligation the paragraph states. (The one media defect
+/// the Rust compiler could not catch was exactly that — a boolean site, not a
+/// missing arm.) These claims are the checkable REMAINDER: each names one
+/// consequence a host's own render suite can assert in emitted output, and each
+/// is bound to the spec section that states it.
+///
+/// The set is closed on purpose. A host reads the manifest, matches each claim
+/// it knows, and reports every claim it does NOT — so a new obligation lands in
+/// every adopting host as an unasserted claim rather than as a paragraph nobody
+/// re-read. It is deliberately NOT a free-form string: an open vocabulary would
+/// let a host silently accept a claim it has no checker for.
+[<RequireQualifiedAccess>]
+type ObligationClaim =
+    /// An accessible name is emitted on EVERY instance of the kind — never only
+    /// where an author supplied a decorative-looking value.
+    | AccessibleNameAlways
+    /// `autoplay` is emitted only together with `muted`; neither appears alone.
+    | AutoplayMutedPairing
+    /// A variant that declares no autoplay slot emits no autoplay pathway of any
+    /// kind — not the attribute, not its paired companion.
+    | NoAutoplayPathway
+    /// A secondary source the URL-scheme + egress floor refuses is DROPPED
+    /// rather than emitted at the refusal URL.
+    | RefusedSourceDropped
+    /// The alternative-text attribute is emitted always, the empty string
+    /// included — an absent attribute and an empty one are different claims to
+    /// assistive technology.
+    | AltAlwaysEmitted
+    /// A declared expansion emits a real, working anchor to the full-size asset
+    /// — the affordance survives with no script at all.
+    | AnchorAffordanceOnExpandable
+    /// A source the egress floor refused emits NO affordance: an expansion that
+    /// cannot be honoured is worse than none.
+    | RefusedSrcNoAffordance
+    /// The caption sits OUTSIDE the expansion anchor, so the caption text is not
+    /// part of the link target.
+    | FigureCaptionOutsideLink
+    /// Responsive candidates are emitted in ascending width order, and a
+    /// candidate the egress floor refuses is dropped rather than emitted.
+    | SrcSetAscendingByWidth
+
+/// The stable wire token for a claim. This is what the artefact carries and what
+/// a host's checker registry is keyed by, so it may not change without a version
+/// — the `match` is exhaustive, so a new case fails to compile until it is named.
+let claimId (claim: ObligationClaim) : string =
+    match claim with
+    | ObligationClaim.AccessibleNameAlways -> "accessible-name-always"
+    | ObligationClaim.AutoplayMutedPairing -> "autoplay-muted-pairing"
+    | ObligationClaim.NoAutoplayPathway -> "no-autoplay-pathway"
+    | ObligationClaim.RefusedSourceDropped -> "refused-source-dropped"
+    | ObligationClaim.AltAlwaysEmitted -> "alt-always-emitted"
+    | ObligationClaim.AnchorAffordanceOnExpandable -> "anchor-affordance-on-expandable"
+    | ObligationClaim.RefusedSrcNoAffordance -> "refused-src-no-affordance"
+    | ObligationClaim.FigureCaptionOutsideLink -> "figure-caption-outside-link"
+    | ObligationClaim.SrcSetAscendingByWidth -> "srcset-ascending-by-width"
+
+/// What the claim MEANS, kind-independently — the vocabulary entry a host reads
+/// when it meets a claim id it does not yet implement, so "unchecked" can be
+/// reported with the obligation's substance rather than as a bare token.
+let claimMeaning (claim: ObligationClaim) : string =
+    match claim with
+    | ObligationClaim.AccessibleNameAlways ->
+        "an accessible name is emitted on every instance of the kind, never only where an author supplied one"
+    | ObligationClaim.AutoplayMutedPairing ->
+        "autoplay is emitted only together with muted; neither attribute ever appears without the other"
+    | ObligationClaim.NoAutoplayPathway ->
+        "a variant declaring no autoplay slot emits no autoplay pathway at all - neither the attribute nor its pair"
+    | ObligationClaim.RefusedSourceDropped ->
+        "a secondary source the URL-scheme and egress floor refuses is dropped rather than emitted at the refusal URL"
+    | ObligationClaim.AltAlwaysEmitted ->
+        "the alternative-text attribute is emitted always, the empty string included - absent and empty are different claims"
+    | ObligationClaim.AnchorAffordanceOnExpandable ->
+        "a declared expansion emits a real working anchor to the full-size asset, honoured with no script at all"
+    | ObligationClaim.RefusedSrcNoAffordance ->
+        "a source the egress floor refused emits no affordance - an expansion that cannot be honoured is worse than none"
+    | ObligationClaim.FigureCaptionOutsideLink ->
+        "the caption sits outside the expansion anchor, so the caption text is not part of the link target"
+    | ObligationClaim.SrcSetAscendingByWidth ->
+        "responsive candidates are emitted in ascending width order, and a refused candidate is dropped rather than emitted"
+
+/// The closed vocabulary, in declaration order.
+///
+/// `claimId` and `claimMeaning` are exhaustive matches, so a new case cannot
+/// compile without being named there; this list is the ENUMERATION, and a
+/// reflection test (`RenderObligationVocabularyTests`) asserts it is complete —
+/// the one guard a Fable-safe module cannot state about itself.
+let allClaims: ObligationClaim list =
+    [ ObligationClaim.AccessibleNameAlways
+      ObligationClaim.AutoplayMutedPairing
+      ObligationClaim.NoAutoplayPathway
+      ObligationClaim.RefusedSourceDropped
+      ObligationClaim.AltAlwaysEmitted
+      ObligationClaim.AnchorAffordanceOnExpandable
+      ObligationClaim.RefusedSrcNoAffordance
+      ObligationClaim.FigureCaptionOutsideLink
+      ObligationClaim.SrcSetAscendingByWidth ]
+
+/// One obligation as a row declares it: which claim, the normative sentence for
+/// THIS kind, and the spec section that states it.
+///
+/// `Statement` is per-kind because the same claim reads differently on different
+/// kinds (an accessible name on a transport is mandatory-on-the-wire; on a
+/// decorative image it is the empty string). `Section` is what makes the claim
+/// falsifiable against the specification rather than against a host's habit.
+type Obligation =
+    {
+        Claim: ObligationClaim
+        /// The normative sentence, as the cited section states it for this kind.
+        Statement: string
+        /// The spec section that states it (`WIRE_FORMAT.md 3.6.6`).
+        Section: string
+    }
+
 /// One row: a canonical wire kind and its declared fidelity posture.
 type FidelityRow =
     {
@@ -73,6 +192,10 @@ type FidelityRow =
         /// every named fixture is in the corpus manifest, so a rename cannot
         /// leave a dangling pin.
         Fixtures: string list
+        /// The checkable render obligations this kind carries (Phase 1105).
+        /// Empty means the row states no claim a host suite is expected to
+        /// assert — NOT that the kind's fallback prose is optional.
+        Obligations: Obligation list
         /// Where the contract is written down: the phase that pinned it plus
         /// the normative doc section.
         Contract: string
@@ -85,7 +208,20 @@ let private row kind sensitive source fallback rich fixtures contract =
       Fallback = fallback
       Rich = rich
       Fixtures = fixtures
+      Obligations = []
       Contract = contract }
+
+/// Attach the checkable obligations to a row. A combinator rather than a tenth
+/// parameter on `row`: every row would otherwise carry an empty list at its call
+/// site, which reads as "considered and found none" on forty rows where only two
+/// were considered at all.
+let private obliged (obligations: Obligation list) (r: FidelityRow) = { r with Obligations = obligations }
+
+/// One obligation, spelled at the call site.
+let private owes claim section statement =
+    { Claim = claim
+      Statement = statement
+      Section = section }
 
 /// A trivially single-tier row: the deterministic render is the whole render.
 let private plain kind source fallback =
@@ -254,7 +390,7 @@ let all: FidelityRow list =
       // comparison sees. The row was `plain` while the kind had only one tier;
       // saying so now is the difference between a table that describes the
       // renderers and one that merely lists the kinds.
-      row
+      (row
           "Image"
           true
           "the src, alt, variant, the fit / aspectRatio / loading presentation tokens, the optional caption, the srcSet candidate list, and the `expandable` declaration"
@@ -265,6 +401,27 @@ let all: FidelityRow list =
           ))
           [ "image-expandable-1"; "image-expandable-figure-1" ]
           "Phase 1079; WIRE_FORMAT.md 3.6.5; docs/SSR.md (expandable images)"
+       |> obliged
+           [ owes
+                 ObligationClaim.AltAlwaysEmitted
+                 "WIRE_FORMAT.md 3.6.2"
+                 "`alt` is emitted on every image, the empty string included — a decorative image declares an empty alt rather than omitting the attribute"
+             owes
+                 ObligationClaim.AnchorAffordanceOnExpandable
+                 "WIRE_FORMAT.md 3.6.5"
+                 "under `expandable` the `<img>` is wrapped in a real `<a class=\"fuaran-image-expand\" href=\"<the sanitised src>\" data-fuaran-expandable>` — a WORKING link to the full-size asset with no script"
+             owes
+                 ObligationClaim.RefusedSrcNoAffordance
+                 "WIRE_FORMAT.md 3.6.5"
+                 "a `src` the URL-scheme + egress floor refused emits no anchor at all, because an affordance that cannot be honoured is worse than none"
+             owes
+                 ObligationClaim.FigureCaptionOutsideLink
+                 "WIRE_FORMAT.md 3.6.3, 3.6.5"
+                 "with a caption the anchor nests INSIDE the `<figure>` — `<figure>` wraps `<a>` wraps `<img>`, and the `<figcaption>` follows the anchor — so the caption is not part of the link target"
+             owes
+                 ObligationClaim.SrcSetAscendingByWidth
+                 "WIRE_FORMAT.md 3.6.4"
+                 "a non-empty `srcSet` emits `<url> <width>w` candidates ordered ASCENDING by width; a candidate the egress floor refuses is dropped rather than emitted, so the primary `src` remains the fallback" ])
 
       plain "LabelValueRow" "the label / value TextSources" "the resolved, formatted row"
 
@@ -319,7 +476,7 @@ let all: FidelityRow list =
       // a claim rather than a blank: a `<video controls>` is already a complete
       // interactive control in every browser, so there is nothing a client-only
       // pass would add and no renderer attaches one.
-      row
+      (row
           "Media"
           true
           "the src binding, the mandatory accessible label, the controls / loop declarations, and the MediaKind variant — Video, carrying autoplay and an optional poster binding, or Audio, carrying neither"
@@ -330,6 +487,23 @@ let all: FidelityRow list =
             "media-video-autoplay-1"
             "media-audio-1" ]
           "Phase 1076; WIRE_FORMAT.md 3.6.6; docs/SSR.md (media)"
+       |> obliged
+           [ owes
+                 ObligationClaim.AccessibleNameAlways
+                 "WIRE_FORMAT.md 3.6.6"
+                 "an `aria-label` carrying the resolved label is ALWAYS emitted — the label is mandatory on the wire and a transport has no decorative case"
+             owes
+                 ObligationClaim.AutoplayMutedPairing
+                 "WIRE_FORMAT.md 3.6.6"
+                 "`autoplay` is emitted ONLY together with `muted`, and `muted` rides `autoplay` — the pairing is what the declaration means, not a default, which is why the wire carries no separate muted slot to fall out of step with it"
+             owes
+                 ObligationClaim.NoAutoplayPathway
+                 "WIRE_FORMAT.md 3.6.6"
+                 "the Audio variant has NO autoplay pathway at all: the case declares no such slot, so an `<audio>` emission carries neither `autoplay` nor `muted`"
+             owes
+                 ObligationClaim.RefusedSourceDropped
+                 "WIRE_FORMAT.md 3.6.6"
+                 "a `poster` the URL-scheme + egress floor refuses is DROPPED rather than emitted, because a `<video>` with no poster shows its first frame while a poster at the refusal URL is a broken image over the player" ])
 
       plain "Metric" "the label + value source + format" "the resolved, formatted metric tile"
 
@@ -504,6 +678,76 @@ let tryFind (wireKind: string) : FidelityRow option =
 
 /// The posture of a node's own kind.
 let ofNode (node: Node<'Msg>) : FidelityRow option = tryFind (wireNameOf node.Kind)
+
+// ─── Obligation coverage (Phase 1105) ────────────────────────────────────────
+//
+// The reporting shape every adopting host uses, declared once here so the hosts
+// answer the same question in the same words rather than each inventing a way to
+// say "we did not check that".
+
+/// Every declared obligation, paired with the kind that owes it, in table order.
+let allObligations: (string * Obligation) list =
+    [ for r in all do
+          for o in r.Obligations -> r.Kind, o ]
+
+/// A host's answer for one declared obligation.
+///
+/// `Unchecked` is the case the whole mechanism exists for. A host that renders a
+/// kind and has no checker for one of its claims must say so, WITH a reason —
+/// "not checked" is not "passed", and an obligation that quietly falls out of a
+/// host's suite is exactly the silent failure the closed vocabulary replaces.
+[<RequireQualifiedAccess>]
+type ObligationOutcome =
+    /// The host renders this kind and its suite asserts this claim in emitted
+    /// output.
+    | Asserted
+    /// The host renders this kind but has no checker for this claim yet.
+    | Unchecked of reason: string
+    /// The host does not render this kind at all, so the claim does not arise.
+    /// Distinct from `Unchecked`: nothing is owed, rather than owed and unpaid.
+    | NotRendered of reason: string
+
+/// One line of a host's obligation report.
+type ObligationReport =
+    { Kind: string
+      ClaimId: string
+      Statement: string
+      Section: string
+      Outcome: ObligationOutcome }
+
+/// Project the declaration through a host's own answer, producing one report
+/// line per declared obligation. A host supplies `statusOf`; the enumeration is
+/// the declaration's, never the host's, so a NEW obligation appears in the
+/// report the moment it is declared rather than when someone remembers it.
+let reportWith (statusOf: string -> ObligationClaim -> ObligationOutcome) : ObligationReport list =
+    allObligations
+    |> List.map (fun (kind, o) ->
+        { Kind = kind
+          ClaimId = claimId o.Claim
+          Statement = o.Statement
+          Section = o.Section
+          Outcome = statusOf kind o.Claim })
+
+/// The report lines a host must SURFACE: everything it did not assert. Empty is
+/// the only silent result — anything else is printed, so an unchecked obligation
+/// is visible in the run rather than inferable from its absence.
+let unasserted (report: ObligationReport list) : ObligationReport list =
+    report
+    |> List.filter (fun line ->
+        match line.Outcome with
+        | ObligationOutcome.Asserted -> false
+        | _ -> true)
+
+/// The one-line rendering of a report line, so the same sentence appears in
+/// every host's output.
+let describeReport (line: ObligationReport) : string =
+    let outcome =
+        match line.Outcome with
+        | ObligationOutcome.Asserted -> "asserted"
+        | ObligationOutcome.Unchecked reason -> "UNCHECKED (" + reason + ")"
+        | ObligationOutcome.NotRendered reason -> "not rendered (" + reason + ")"
+
+    line.Kind + "/" + line.ClaimId + " [" + line.Section + "]: " + outcome
 
 // ─── Badge derivation ────────────────────────────────────────────────────────
 //

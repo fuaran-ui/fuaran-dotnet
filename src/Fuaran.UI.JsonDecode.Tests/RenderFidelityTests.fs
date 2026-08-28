@@ -168,6 +168,110 @@ let staleArtifactGuard =
                   "the emitted artefact must carry every declared row") ]
 
 [<Tests>]
+let obligationVocabulary =
+    testList
+        "Fuaran.UI.RenderFidelity — obligation vocabulary (Phase 1105)"
+        [ testCase "allClaims enumerates every case of the closed DU" (fun () ->
+              // The one guard the Fable-safe module cannot state about itself.
+              // `claimId` and `claimMeaning` are exhaustive matches, so a new
+              // case cannot compile without being NAMED there — but nothing
+              // forces it into the ENUMERATION the artefact is emitted from, and
+              // a claim missing from `allClaims` would be absent from every
+              // host's vocabulary while looking perfectly declared here.
+              let cases =
+                  Microsoft.FSharp.Reflection.FSharpType.GetUnionCases(typeof<ObligationClaim>)
+                  |> Array.length
+
+              Expect.equal
+                  (List.length allClaims)
+                  cases
+                  "RenderFidelity.allClaims does not enumerate every ObligationClaim case — add the new claim to the list, or a host can never report it as unchecked")
+
+          testCase "claim ids are distinct and kebab-cased tokens" (fun () ->
+              let ids = allClaims |> List.map claimId
+
+              Expect.equal (List.distinct ids |> List.length) (List.length ids) "two claims share a wire token"
+
+              for id in ids do
+                  Expect.isTrue
+                      (id |> Seq.forall (fun c -> (c >= 'a' && c <= 'z') || c = '-'))
+                      (sprintf
+                          "'%s' is not a lower-case kebab token — the id is a wire string a host keys its registry by"
+                          id))
+
+          testCase "every declared obligation carries a statement and a spec section" (fun () ->
+              // An obligation with no section is an assertion about a host's
+              // habit, not about the specification — the thing this vocabulary
+              // exists to stop.
+              for (kind, o) in allObligations do
+                  Expect.isNotEmpty o.Statement (sprintf "%s/%s: no normative statement" kind (claimId o.Claim))
+
+                  Expect.stringContains
+                      o.Section
+                      "WIRE_FORMAT.md"
+                      (sprintf "%s/%s: an obligation must cite the spec section that states it" kind (claimId o.Claim)))
+
+          testCase "no kind declares the same claim twice" (fun () ->
+              let dupes =
+                  all
+                  |> List.collect (fun r -> r.Obligations |> List.map (fun o -> r.Kind, claimId o.Claim))
+                  |> List.countBy id
+                  |> List.filter (fun (_, n) -> n > 1)
+                  |> List.map fst
+
+              Expect.isEmpty dupes "a kind declares one claim twice; a host registry would assert whichever came first")
+
+          testCase "the media wave's three normative obligations are declared" (fun () ->
+              // §3.6.6 states three render obligations in prose, and the media
+              // parity batch had to port them "as stated, never inferred". They
+              // are the reason this vocabulary exists, so their presence is
+              // pinned rather than assumed.
+              let mediaClaims =
+                  tryFind "Media"
+                  |> Option.map (fun r -> r.Obligations |> List.map (fun o -> claimId o.Claim))
+                  |> Option.defaultValue []
+
+              for expected in [ "accessible-name-always"; "autoplay-muted-pairing"; "no-autoplay-pathway" ] do
+                  Expect.contains
+                      mediaClaims
+                      expected
+                      (sprintf "the Media row must declare '%s' — it is normative in WIRE_FORMAT.md 3.6.6" expected))
+
+          testCase "the emitted artefact carries the vocabulary and every row's obligations" (fun () ->
+              use doc = JsonDocument.Parse(RenderFidelityArtifact.toJson ())
+
+              let vocabulary =
+                  doc.RootElement.GetProperty("obligationVocabulary").EnumerateArray()
+                  |> Seq.map (fun e -> e.GetProperty("id").GetString())
+                  |> List.ofSeq
+
+              Expect.equal
+                  vocabulary
+                  (allClaims |> List.map claimId)
+                  "the artefact's obligationVocabulary must be the closed set, in declaration order"
+
+              let emitted =
+                  doc.RootElement.GetProperty("kinds").EnumerateArray()
+                  |> Seq.collect (fun k ->
+                      k.GetProperty("obligations").EnumerateArray()
+                      |> Seq.map (fun o -> k.GetProperty("kind").GetString(), o.GetProperty("id").GetString()))
+                  |> List.ofSeq
+
+              Expect.equal
+                  emitted
+                  (allObligations |> List.map (fun (kind, o) -> kind, claimId o.Claim))
+                  "every declared obligation must reach the artefact — a host reads the artefact, not this table"
+
+              // Every emitted claim id must be IN the vocabulary. A row naming a
+              // claim the vocabulary omits would be unresolvable by a host that
+              // keys its registry off the vocabulary.
+              for (kind, id) in emitted do
+                  Expect.contains
+                      vocabulary
+                      id
+                      (sprintf "%s declares '%s', which the vocabulary does not carry" kind id)) ]
+
+[<Tests>]
 let badgeDerivation =
     testList
         "Fuaran.UI.RenderFidelity — badge derivation"

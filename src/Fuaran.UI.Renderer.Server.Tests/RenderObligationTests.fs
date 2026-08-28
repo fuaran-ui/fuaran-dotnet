@@ -1,0 +1,523 @@
+module Fuaran.UI.Renderer.Server.Tests.RenderObligationTests
+
+// ============================================================================
+//  Executable render-obligation conformance (Phase 1105) — the reference host's
+//  adoption.
+//
+//  Codec conformance is byte-parity and strong. Render obligations were prose:
+//  §3.6.5 and §3.6.6 state, in sentences, that an accessible name is always
+//  emitted, that `autoplay` never appears without `muted`, that an audio
+//  transport has no autoplay pathway at all, that a refused source emits no
+//  affordance. A host can pass every fixture in the corpus and silently fail
+//  every one of those — the one media defect the Rust compiler could not catch
+//  was exactly this shape, a boolean site rather than a missing match arm.
+//
+//  So the manifest carries them now, and this suite asserts FROM the manifest
+//  rather than from a hand list beside it. The consequences, which are the whole
+//  point:
+//
+//    * The ENUMERATION is the corpus artefact's. A new obligation declared on a
+//      kind this host renders arrives here as a claim with no checker, and the
+//      gate goes RED until someone asserts it — not as a paragraph a future
+//      reader may or may not re-read.
+//
+//    * NOT CHECKED IS NOT PASSED. Every claim this host does not assert is
+//      printed by name, with the section that states it, and fails the gate
+//      unless it carries a declared exemption. Silence is never available as an
+//      answer.
+//
+//    * The go-red property is PROVEN, not asserted. `statusOf` is exercised
+//      against a claim no checker covers, and must report it as unchecked — the
+//      shape a newly-declared obligation takes on the day it lands.
+//
+//  Every checker asserts in EMITTED HTML through `Render.render`, the ordinary
+//  entry point. A checker that inspected the typed tree would be re-stating the
+//  type system; the obligations are claims about output.
+// ============================================================================
+
+open System
+open System.IO
+open System.Text.Json
+open Expecto
+
+open Fuaran.UI
+open Fuaran.UI.Types
+open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Server
+open Fuaran.UI.RenderFidelity
+
+let private contains (needle: string) (haystack: string) =
+    haystack.Contains(needle, StringComparison.Ordinal)
+
+let private render (node: Node<obj>) =
+    Render.render BindingResolver.empty node
+
+/// A destination that is safe by the scheme floor and entirely undeclared, so
+/// the ambient egress policy (Phase 1026) refuses it. This is the input the two
+/// "refused" obligations are about.
+let private refusedUrl = "https://collector.example/asset.jpg"
+
+// ─── The manifest is the enumeration ─────────────────────────────────────────
+
+/// Walk up to the workspace corpus — the same degrade-to-skip posture
+/// `A11yCorpusParityTests` records, and for the same reason: a missing input is
+/// a statement about the checkout, not about the code.
+let private tryCorpusArtifact () : string option =
+    let rec walk (dir: DirectoryInfo) =
+        if isNull dir then
+            None
+        else
+            let candidate =
+                Path.Combine(dir.FullName, "wire-format-fixtures", "render-fidelity.json")
+
+            if File.Exists candidate then
+                Some candidate
+            else
+                walk dir.Parent
+
+    walk (DirectoryInfo(AppContext.BaseDirectory))
+
+/// One obligation as the manifest declares it, before this host has resolved the
+/// claim id against its own vocabulary.
+type private DeclaredObligation =
+    { Kind: string
+      ClaimId: string
+      Section: string }
+
+/// The obligations this host must answer for, read from the GENERATED artefact
+/// where the corpus is present.
+///
+/// The fallback to the shipped declaration is not a shortcut: `Fuaran.UI` is
+/// where the artefact is generated FROM, and the stale-artefact guard in
+/// `Fuaran.UI.JsonDecode.Tests` pins the two byte-for-byte, so in a bare clone
+/// the declaration is the same set by construction. Reading the artefact where
+/// it exists is what makes this host answer the same question a non-F# host
+/// answers, from the same bytes.
+let private declaredObligations: DeclaredObligation list =
+    match tryCorpusArtifact () with
+    | Some path ->
+        use doc = JsonDocument.Parse(File.ReadAllText path)
+
+        [ for kind in doc.RootElement.GetProperty("kinds").EnumerateArray() do
+              let kindName = kind.GetProperty("kind").GetString()
+
+              match kind.TryGetProperty "obligations" with
+              | true, arr when arr.ValueKind = JsonValueKind.Array ->
+                  for o in arr.EnumerateArray() ->
+                      { Kind = kindName
+                        ClaimId = o.GetProperty("id").GetString()
+                        Section = o.GetProperty("section").GetString() }
+              | _ -> () ]
+    | None ->
+        allObligations
+        |> List.map (fun (kind, o) ->
+            { Kind = kind
+              ClaimId = claimId o.Claim
+              Section = o.Section })
+
+// ─── The checkers ────────────────────────────────────────────────────────────
+//
+// One per (kind, claim). Each is an assertion over emitted HTML, and each pins
+// BOTH directions where the obligation has two — an emission test alone cannot
+// tell a renderer that honours a conditional from one that emits unconditionally.
+
+let private mediaVideo id src label =
+    Fuaran.mediaSpec
+        id
+        { Defaults.media with
+            Src = Binding.Static(Some src)
+            Label = TextSource.Literal label }
+
+let private image id (mutate: ImageSpec -> ImageSpec) =
+    Fuaran.imageSpec id (mutate Defaults.image)
+
+let private checkAccessibleNameAlways () =
+    // Both variants, because the label is mandatory on the wire for the KIND and
+    // not for one arm of it. A renderer that emitted the label only on `<video>`
+    // would pass a video-only assertion.
+    let video = render (mediaVideo "mv" "/walkthrough.mp4" "Studio walkthrough")
+
+    let audio =
+        render (
+            Fuaran.mediaSpec
+                "ma"
+                { Defaults.media with
+                    Src = Binding.Static(Some "/commentary.mp3")
+                    Label = TextSource.Literal "Curator commentary"
+                    Kind = MediaKind.Audio }
+        )
+
+    Expect.isTrue (contains "aria-label=\"Studio walkthrough\"" video) "a video emits the resolved label as aria-label"
+
+    Expect.isTrue (contains "aria-label=\"Curator commentary\"" audio) "an audio emits the resolved label as aria-label"
+
+let private checkAutoplayMutedPairing () =
+    let autoplaying =
+        render (
+            Fuaran.mediaSpec
+                "mva"
+                { Defaults.media with
+                    Src = Binding.Static(Some "/ambient.mp4")
+                    Label = TextSource.Literal "Ambient loop"
+                    Kind = MediaKind.Video(true, None) }
+        )
+
+    Expect.isTrue (contains "autoplay=" autoplaying) "a declared autoplay is emitted"
+
+    Expect.isTrue
+        (contains "muted=" autoplaying)
+        "…and never without muted — an unmuted autoplay is blocked and means nothing"
+
+    // The pairing runs one way, and this is the half a one-sided assertion
+    // misses: `muted` unasked silences a video the reader started themselves.
+    let plain = render (mediaVideo "mv" "/walkthrough.mp4" "Studio walkthrough")
+
+    Expect.isFalse (contains "autoplay" plain) "autoplay is not declared, so it must not be emitted"
+    Expect.isFalse (contains "muted" plain) "muted rides autoplay; unasked it is a behaviour change, not a default"
+
+let private checkNoAutoplayPathway () =
+    let audio =
+        render (
+            Fuaran.mediaSpec
+                "ma"
+                { Defaults.media with
+                    Src = Binding.Static(Some "/commentary.mp3")
+                    Label = TextSource.Literal "Curator commentary"
+                    Kind = MediaKind.Audio }
+        )
+
+    Expect.isFalse (contains "autoplay" audio) "an <audio> must never carry an autoplay attribute"
+    Expect.isFalse (contains "muted" audio) "an <audio> has no autoplay, so it has nothing to mute"
+
+let private checkRefusedSourceDropped () =
+    let refused =
+        render (
+            Fuaran.mediaSpec
+                "mvp"
+                { Defaults.media with
+                    Src = Binding.Static(Some "/walkthrough.mp4")
+                    Label = TextSource.Literal "Studio walkthrough"
+                    Kind = MediaKind.Video(false, Some(Binding.Static(Some refusedUrl))) }
+        )
+
+    Expect.isFalse (contains "collector.example" refused) "a refused poster's destination is never emitted"
+
+    Expect.isFalse
+        (contains "poster=" refused)
+        "a refused poster is DROPPED, not emitted at the refusal URL — a poster at the refusal URL is a broken image over the player, where no poster shows the first frame"
+
+    // The allow twin. Without it, a renderer that dropped EVERY poster would
+    // pass the refusal assertion above and this obligation would guard nothing.
+    let allowed =
+        render (
+            Fuaran.mediaSpec
+                "mvp2"
+                { Defaults.media with
+                    Src = Binding.Static(Some "/walkthrough.mp4")
+                    Label = TextSource.Literal "Studio walkthrough"
+                    Kind = MediaKind.Video(false, Some(Binding.Static(Some "/walkthrough-poster.jpg"))) }
+        )
+
+    Expect.isTrue (contains "poster=\"/walkthrough-poster.jpg\"" allowed) "a local poster still renders"
+
+let private checkAltAlwaysEmitted () =
+    let named =
+        render (
+            image "img" (fun s ->
+                { s with
+                    Src = Binding.Static(Some "/harbour.jpg")
+                    Alt = TextSource.Literal "Fishing boats moored at first light" })
+        )
+
+    Expect.isTrue (contains "alt=\"Fishing boats moored at first light\"" named) "the alt text is emitted"
+
+    // The decorative case is the one that matters. An omitted `alt` and an empty
+    // one are different claims to assistive technology: omitted means "nobody
+    // said", empty means "this is decorative, skip it".
+    let decorative =
+        render (
+            image "imgd" (fun s ->
+                { s with
+                    Src = Binding.Static(Some "/rule.png")
+                    Alt = TextSource.Literal "" })
+        )
+
+    Expect.isTrue (contains "alt=\"\"" decorative) "a decorative image emits an EMPTY alt, never no alt at all"
+
+let private checkAnchorAffordanceOnExpandable () =
+    let html =
+        render (
+            image "imge" (fun s ->
+                { s with
+                    Src = Binding.Static(Some "/harbour.jpg")
+                    Alt = TextSource.Literal "Harbour"
+                    Expandable = true })
+        )
+
+    // The ELEMENT is pinned, not only the class: the whole no-JS claim is that
+    // this is an `<a href>`, and a `<span class="fuaran-image-expand">` carrying
+    // the data attribute would pass a class-only assertion while giving a
+    // scriptless reader nothing.
+    Expect.isTrue
+        (contains "<a class=\"fuaran-image-expand\" href=\"/harbour.jpg\" data-fuaran-expandable=\"\">" html)
+        "expandable emits a real anchor to the asset the image already names"
+
+    let notExpandable =
+        render (
+            image "imgp" (fun s ->
+                { s with
+                    Src = Binding.Static(Some "/harbour.jpg")
+                    Alt = TextSource.Literal "Harbour" })
+        )
+
+    Expect.isFalse (contains "fuaran-image-expand" notExpandable) "an undeclared expansion emits no anchor"
+
+let private checkRefusedSrcNoAffordance () =
+    let html =
+        render (
+            image "imgr" (fun s ->
+                { s with
+                    Src = Binding.Static(Some refusedUrl)
+                    Alt = TextSource.Literal "Harbour"
+                    Expandable = true })
+        )
+
+    Expect.isFalse
+        (contains "fuaran-image-expand" html)
+        "a src the egress floor refused emits NO expand anchor — an affordance that cannot be honoured is worse than none"
+
+    // The image itself still renders, at the refusal URL. Without this leg a
+    // renderer that dropped the whole node would pass the assertion above, and
+    // this obligation would be satisfied by a worse bug than the one it guards.
+    Expect.isTrue
+        (contains Sanitize.egressRefusalUrl html)
+        "the img is still emitted, with the marked refusal URL as its src"
+
+    Expect.isFalse
+        (contains "href=\"https://collector.example" html)
+        "and the refused destination never becomes a navigable href"
+
+let private checkFigureCaptionOutsideLink () =
+    let html =
+        render (
+            image "imgef" (fun s ->
+                { s with
+                    Src = Binding.Static(Some "/harbour.jpg")
+                    Alt = TextSource.Literal "Harbour"
+                    Expandable = true
+                    Caption = Some(TextSource.Literal "The harbour at dawn") })
+        )
+
+    // Asserting the two opening tags IN ORDER is what catches the inversion
+    // (anchor outside figure), which would carry every one of the same classes.
+    Expect.isTrue
+        (contains
+            "<figure class=\"fuaran-image-figure\"><a class=\"fuaran-image-expand\" href=\"/harbour.jpg\" data-fuaran-expandable=\"\">"
+            html)
+        "the figure wraps the anchor, not the other way round"
+
+    Expect.isTrue
+        (contains "</a><figcaption class=\"fuaran-image-figure-caption\">The harbour at dawn</figcaption></figure>" html)
+        "the figcaption is the anchor's SIBLING — the caption is prose a reader quotes, not a second click surface"
+
+let private checkSrcSetAscendingByWidth () =
+    // Authored DESCENDING, so the assertion pins the renderer's SORT and not
+    // merely its spelling: a renderer emitting authored order would produce a
+    // srcset containing all the same URLs and fail here.
+    let html =
+        render (
+            image "imgs" (fun s ->
+                { s with
+                    Src = Binding.Static(Some "/harbour.jpg")
+                    Alt = TextSource.Literal "Harbour"
+                    SrcSet =
+                        [ { Src = Binding.Static(Some "/harbour-1600.jpg")
+                            Width = 1600 }
+                          { Src = Binding.Static(Some "/harbour-800.jpg")
+                            Width = 800 }
+                          { Src = Binding.Static(Some "/harbour-400.jpg")
+                            Width = 400 } ] })
+        )
+
+    Expect.isTrue
+        (contains "srcset=\"/harbour-400.jpg 400w, /harbour-800.jpg 800w, /harbour-1600.jpg 1600w\"" html)
+        "candidates are emitted ascending by width"
+
+    // The second half of the same obligation: a refused candidate is DROPPED, so
+    // the primary src remains the fallback rather than the list carrying a
+    // destination the floor refused.
+    let withRefused =
+        render (
+            image "imgs2" (fun s ->
+                { s with
+                    Src = Binding.Static(Some "/harbour.jpg")
+                    Alt = TextSource.Literal "Harbour"
+                    SrcSet =
+                        [ { Src = Binding.Static(Some "/harbour-400.jpg")
+                            Width = 400 }
+                          { Src = Binding.Static(Some refusedUrl)
+                            Width = 1600 } ] })
+        )
+
+    Expect.isFalse (contains "collector.example" withRefused) "a refused candidate's destination is never emitted"
+    Expect.isTrue (contains "/harbour-400.jpg 400w" withRefused) "…while the candidates that pass the floor still are"
+
+/// The registry: which (kind, claim) pairs this host asserts, and how.
+///
+/// Keyed by the claim's WIRE token rather than the DU case, because the
+/// enumeration this is matched against comes from the artefact.
+let private checkers: ((string * string) * (unit -> unit)) list =
+    [ ("Media", "accessible-name-always"), checkAccessibleNameAlways
+      ("Media", "autoplay-muted-pairing"), checkAutoplayMutedPairing
+      ("Media", "no-autoplay-pathway"), checkNoAutoplayPathway
+      ("Media", "refused-source-dropped"), checkRefusedSourceDropped
+      ("Image", "alt-always-emitted"), checkAltAlwaysEmitted
+      ("Image", "anchor-affordance-on-expandable"), checkAnchorAffordanceOnExpandable
+      ("Image", "refused-src-no-affordance"), checkRefusedSrcNoAffordance
+      ("Image", "figure-caption-outside-link"), checkFigureCaptionOutsideLink
+      ("Image", "srcset-ascending-by-width"), checkSrcSetAscendingByWidth ]
+
+/// Obligations this host declares it does NOT check, each with a reason.
+///
+/// EMPTY is the correct state for the reference host: it renders every canonical
+/// kind, so every declared obligation is one it owes. The list exists because
+/// the alternative — an unchecked obligation silently absent from the registry —
+/// is precisely the failure the manifest replaces. A host that genuinely cannot
+/// check a claim (no player, no network loader, a decode-only surface) records
+/// it here and its report says so out loud.
+let private declaredExemptions: ((string * string) * string) list = []
+
+/// This host's answer for one declared obligation.
+let private statusOf (kind: string) (claimId: string) : ObligationOutcome =
+    if checkers |> List.exists (fun ((k, c), _) -> k = kind && c = claimId) then
+        ObligationOutcome.Asserted
+    else
+        match declaredExemptions |> List.tryFind (fun ((k, c), _) -> k = kind && c = claimId) with
+        | Some(_, reason) -> ObligationOutcome.Unchecked reason
+        | None ->
+            ObligationOutcome.Unchecked
+                "no checker registered in RenderObligationTests and no declared exemption — add one, or declare why this host cannot check it"
+
+let private reportLine (o: DeclaredObligation) =
+    let outcome = statusOf o.Kind o.ClaimId
+
+    { Kind = o.Kind
+      ClaimId = o.ClaimId
+      Statement = ""
+      Section = o.Section
+      Outcome = outcome }
+
+[<Tests>]
+let renderObligationConformance =
+    testList
+        "Phase 1105 — executable render-obligation conformance"
+        [
+
+          // ── The gate ────────────────────────────────────────────────────────
+          test "every obligation the manifest declares is asserted by this host" {
+              let report = declaredObligations |> List.map reportLine
+
+              Expect.isNonEmpty
+                  report
+                  "the manifest declares no obligations at all — either the artefact is stale or this suite is reading the wrong file, and either way it is asserting nothing"
+
+              // NOT CHECKED IS NOT PASSED. Everything this host did not assert is
+              // printed by name and section before the gate decides, so an
+              // exempted claim is visible in the run rather than inferable from
+              // its absence.
+              let unmet = unasserted report
+
+              for line in unmet do
+                  printfn "  render obligation not asserted: %s" (describeReport line)
+
+              let undeclared =
+                  unmet
+                  |> List.filter (fun l ->
+                      not (
+                          declaredExemptions
+                          |> List.exists (fun ((k, c), _) -> k = l.Kind && c = l.ClaimId)
+                      ))
+                  |> List.map (fun l -> sprintf "%s/%s [%s]" l.Kind l.ClaimId l.Section)
+
+              Expect.isEmpty
+                  undeclared
+                  "a render obligation this host owes has no checker: assert it in RenderObligationTests, or add a declared exemption saying why this host cannot"
+          }
+
+          // ── The go-red proof ────────────────────────────────────────────────
+          test "an obligation with no checker is reported UNCHECKED (negative probe)" {
+              // This is the shape a NEWLY-DECLARED obligation takes on the day it
+              // lands: a kind/claim pair the registry does not cover. Without
+              // this probe the gate above could be green because the
+              // classification never reports anything, which is the completeness
+              // check that cannot fail.
+              match statusOf "Markdown" "accessible-name-always" with
+              | ObligationOutcome.Unchecked reason ->
+                  Expect.stringContains
+                      reason
+                      "no checker registered"
+                      "an unregistered claim must say so, in words a reader can act on"
+              | other ->
+                  failtestf
+                      "an unregistered (kind, claim) must be reported UNCHECKED, got %A — the gate cannot go red"
+                      other
+
+              // …and the gate's own filter must then classify it as undeclared,
+              // which is what turns the suite red.
+              let probe =
+                  { Kind = "Markdown"
+                    ClaimId = "accessible-name-always"
+                    Statement = ""
+                    Section = "probe"
+                    Outcome = statusOf "Markdown" "accessible-name-always" }
+
+              Expect.equal (unasserted [ probe ] |> List.length) 1 "the probe must survive the unasserted filter"
+          }
+
+          // ── The vocabulary seam ─────────────────────────────────────────────
+          test "every claim id the manifest names is in this host's closed vocabulary" {
+              // A manifest claim this package's `ObligationClaim` does not carry
+              // means the corpus is AHEAD of the shipped declaration — a real
+              // state on a host pinned to an older package, and one that must be
+              // reported rather than skipped past. The corpus is the oracle; a
+              // host that cannot name a claim cannot have checked it.
+              let known = allClaims |> List.map claimId |> Set.ofList
+
+              let unknown =
+                  declaredObligations
+                  |> List.map (fun o -> o.ClaimId)
+                  |> List.distinct
+                  |> List.filter (fun id -> not (Set.contains id known))
+
+              Expect.isEmpty
+                  unknown
+                  "the corpus declares a render obligation this package's closed vocabulary does not carry — the shipped Fuaran.UI is behind the corpus artefact"
+          }
+
+          // ── The registry is not itself a second source of truth ─────────────
+          test "no checker is registered for an obligation the manifest does not declare" {
+              // The inverse direction. A checker for a claim no row declares is a
+              // stale assertion: it passes forever and guards a contract that has
+              // moved, which is exactly the drift the generated artefact exists
+              // to remove.
+              let declared =
+                  declaredObligations |> List.map (fun o -> o.Kind, o.ClaimId) |> Set.ofList
+
+              let orphans =
+                  checkers
+                  |> List.map fst
+                  |> List.filter (fun pair -> not (Set.contains pair declared))
+                  |> List.map (fun (k, c) -> sprintf "%s/%s" k c)
+
+              Expect.isEmpty
+                  orphans
+                  "a checker asserts an obligation no manifest row declares — either the row was removed or the checker was never declared"
+          }
+
+          // ── The checkers themselves ─────────────────────────────────────────
+          //
+          // Registered above and run here by name, so a failing obligation names
+          // the claim it broke rather than surfacing as one opaque red test.
+          yield!
+              checkers
+              |> List.map (fun ((kind, claim), check) -> test (sprintf "%s owes %s" kind claim) { check () }) ]

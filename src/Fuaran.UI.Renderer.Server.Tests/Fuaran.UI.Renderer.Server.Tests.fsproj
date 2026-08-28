@@ -32,6 +32,12 @@
          evidence — each one FAILS if a later phase makes column-fill reachable
          through that route, which is what keeps the recorded finding honest. -->
     <Compile Include="GalleryExpressionTests.fs" />
+    <!-- RenderObligationTests is Phase 1105's adoption: the checkable render
+         obligations are enumerated from the GENERATED render-fidelity manifest,
+         so a newly-declared obligation arrives here as a claim with no checker
+         and turns the gate red. Everything this host does not assert is printed
+         by name — not checked is not passed. -->
+    <Compile Include="RenderObligationTests.fs" />
     <Compile Include="HydrationTests.fs" />
     <Compile Include="IslandsTests.fs" />
     <!-- CustomContractServerTests pins Phase 164's server twin of the typed

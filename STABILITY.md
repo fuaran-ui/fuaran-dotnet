@@ -2116,6 +2116,58 @@ canonicalising to the omitted form), and `reject/reject-image-expandable-nonbool
 have to rule on `"false"` too, and two hosts ruling differently would disagree about whether the
 document declares an affordance at all).
 
+## Recorded change — 0.47.0, render obligations on the fidelity manifest (fuaran#1105)
+
+**A record widening plus two new types on `Fuaran.UI.RenderFidelity`; no wire change, no renderer
+behaviour change, and no change to what any existing row already said.**
+
+```fsharp
+type ObligationClaim =            // a CLOSED DU of nine checkable claims
+    | AccessibleNameAlways | AutoplayMutedPairing | NoAutoplayPathway | RefusedSourceDropped
+    | AltAlwaysEmitted | AnchorAffordanceOnExpandable | RefusedSrcNoAffordance
+    | FigureCaptionOutsideLink | SrcSetAscendingByWidth
+
+type Obligation = { Claim: ObligationClaim; Statement: string; Section: string }
+
+type FidelityRow = { … ; Obligations: Obligation list ; … }   // ← the widening
+```
+
+plus the reader/reporting surface beside them (`claimId`, `claimMeaning`, `allClaims`,
+`allObligations`, `ObligationOutcome`, `ObligationReport`, `reportWith`, `unasserted`,
+`describeReport`).
+
+**What it is for.** The `Fallback` prose on each row is complete, normative, and unfalsifiable by a
+machine. A host can render a kind, pass every byte-parity fixture in the corpus, and still have
+silently dropped an obligation that paragraph states — `<audio>` growing an autoplay pathway its case
+declares no slot for, `autoplay` emitted without its `muted` pair, an expansion anchor pointing at a
+destination the egress floor refused. None of those is a missing discriminator arm, so neither the
+codec suite nor the compiler reaches them. The obligations are the CHECKABLE remainder: each names one
+consequence a host's render suite can assert in emitted output, bound to the section that states it.
+`Media` and `Image` declare them (four and five respectively); every other row declares none, which
+says its fallback states no separately-checkable claim — never that its prose is optional.
+
+**Breaking-change classification: a record widening, so full-literal construction of `FidelityRow`
+breaks (FS0764).** It rides the in-flight **0.47.0** rather than taking a slot of its own, on the same
+reasoning as the entry below: `v0.46.0` is the newest tag, so 0.47.0 is unreleased and this addition
+is part of the same unshipped surface as the `Masonry` and TreeOp-vocabulary entries. A consumer moves
+0.46.0 → 0.47.0 and sees one minor's worth of change. In-repo construction is through the private
+`row` / `plain` helpers, so no call site moved.
+
+**The artefact and the spec move with it (§11 forward-coupling).** `render-fidelity.json` gains a
+top-level `obligationVocabulary` (the closed set, so a host can enumerate what EXISTS independently of
+the rows it reads) and a per-kind `obligations` array; `WIRE_FORMAT.md` §13 states the mechanism, the
+three-outcome reporting shape, and the §11.0 per-host adoption roster. The stale-artefact guard
+already pinned the two byte-for-byte and needed no change.
+
+**Pinned on four legs.** `RenderFidelityTests` adds a vocabulary block — a **reflection** check that
+`allClaims` enumerates every DU case (the one guard a Fable-safe module cannot state about itself:
+`claimId` being exhaustive forces a new case to be NAMED, but not to reach the enumeration the artefact
+is emitted from), distinct kebab ids, a statement and a `WIRE_FORMAT.md` section on every obligation,
+and the artefact carrying exactly what the table declares. `Fuaran.UI.Renderer.Server.Tests`'
+`RenderObligationTests` is the adoption: it enumerates from the generated artefact and asserts all nine
+in emitted HTML, prints every claim it does not assert, and fails on any that carries no declared
+exemption — verified go-red by declaring a tenth obligation on a kind with no checker.
+
 ## Recorded change — 0.47.0, the TreeOp vocabulary as an EXPORT (fuaran#1104)
 
 **Purely additive public surface on `Fuaran.UI.Ops.JsonDecode`; no wire change and no type

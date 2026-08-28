@@ -399,6 +399,15 @@
          Additive on the wire (no existing document changes meaning) and minor
          per the pre-1.0 new-DU-case precedent (0.7.0 `FormFieldKind.DateRange`;
          0.46.0 `NodeKind.Media`). See STABILITY.md "Recorded change — 0.47.0". -->
+    <!-- 0.47.0 also carries Phase 1105 — render obligations on the fidelity
+         manifest. `Fuaran.UI.RenderFidelity` gains the closed `ObligationClaim`
+         DU, the `Obligation` record, and an `Obligations` field on
+         `FidelityRow`. The field is a RECORD WIDENING (full-literal
+         construction breaks, FS0764), so it rides this in-flight minor rather
+         than taking a slot: `v0.46.0` is the newest tag, so 0.47.0 is
+         unreleased and this lands in the same unshipped surface as the two
+         entries above. See STABILITY.md "Recorded change — 0.47.0, render
+         obligations on the fidelity manifest". -->
     <Version>0.47.0</Version>
   </PropertyGroup>
 

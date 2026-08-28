@@ -71,6 +71,36 @@ let private writeRich (w: Utf8JsonWriter) (rich: RichTier) : unit =
 
     w.WriteEndObject()
 
+/// The closed obligation vocabulary, emitted once at the top level (Phase 1105).
+///
+/// A host reads this to know the FULL set of claims that exist, not merely the
+/// ones the kinds it renders happen to declare. That matters for the
+/// "not checked is not passed" rule: a host whose checker registry is keyed by
+/// claim id can report an id it does not implement only if it can enumerate the
+/// vocabulary independently of the rows.
+let private writeVocabulary (w: Utf8JsonWriter) : unit =
+    w.WriteStartArray("obligationVocabulary")
+
+    for claim in allClaims do
+        w.WriteStartObject()
+        w.WriteString("id", claimId claim)
+        w.WriteString("meaning", claimMeaning claim)
+        w.WriteEndObject()
+
+    w.WriteEndArray()
+
+let private writeObligations (w: Utf8JsonWriter) (obligations: Obligation list) : unit =
+    w.WriteStartArray("obligations")
+
+    for o in obligations do
+        w.WriteStartObject()
+        w.WriteString("id", claimId o.Claim)
+        w.WriteString("statement", o.Statement)
+        w.WriteString("section", o.Section)
+        w.WriteEndObject()
+
+    w.WriteEndArray()
+
 /// The artefact as a deterministic UTF-8 string.
 ///
 /// `NewLine = "\n"` is load-bearing on Windows, for the reason recorded beside
@@ -96,7 +126,10 @@ let toJson () : string =
         + "and what, if anything, is declared client-only rich. Generated from Fuaran.UI.RenderFidelity; "
         + "it transcribes the shipped fidelity contracts and introduces no wire or renderer behaviour. "
         + "A consumer deriving per-node fidelity badges reads this rather than hand-annotating. "
-        + "See WIRE_FORMAT.md 13."
+        + "Each kind also declares the checkable render obligations it owes, drawn from the closed "
+        + "obligationVocabulary and bound to the spec section that states each one; a host render "
+        + "suite asserts every obligation for the kinds it renders and REPORTS any it cannot check, "
+        + "because not checked is not passed. See WIRE_FORMAT.md 13."
     )
 
     w.WriteStartArray("tiers")
@@ -114,6 +147,8 @@ let toJson () : string =
 
     w.WriteEndArray()
 
+    writeVocabulary w
+
     w.WriteStartArray("kinds")
 
     for r in all do
@@ -130,6 +165,8 @@ let toJson () : string =
             w.WriteStringValue("nodes/" + f + ".json")
 
         w.WriteEndArray()
+
+        writeObligations w r.Obligations
 
         w.WriteString("contract", r.Contract)
         w.WriteEndObject()
