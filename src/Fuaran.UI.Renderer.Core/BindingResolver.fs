@@ -238,6 +238,34 @@ module private JsLift =
 
     [<Emit("$0[$1]")>]
     let jsGet (_: obj) (_: string) : obj = jsNative
+
+    // Phase 1085 — the F# COLLECTION shapes, discriminated STRUCTURALLY.
+    //
+    // An F# `Map` and an F# `list` compile to library classes, not to a JS
+    // object or array, so neither the `typeof` dispatch nor `jsIsPlainObject`
+    // sees them and the lift returned `None` for both. A TYPE TEST is not the
+    // way back: `:? Map<string, obj>` is refused outright by the compiler
+    // ("Cannot type test (evals to false)"), which is how this was found.
+    //
+    // `Symbol.toStringTag` is the map's own declared tag — a string literal the
+    // library returns, so it survives minification where a constructor name
+    // does not. The iterable check is deliberately BROADER than a list: it
+    // covers a lazily-built sequence too, which the .NET branch's `seq<Row>`
+    // arm reads and no earlier Fable arm could. Native `Map`/`Set` are excluded
+    // because `Array.from` on them yields entry PAIRS, which would lift as an
+    // array of two-element arrays — a plausible-looking wrong answer, and the
+    // one thing `None` exists to prevent.
+    [<Emit("Object.prototype.toString.call($0) === '[object FSharpMap]'")>]
+    let jsIsFSharpMap (_: obj) : bool = jsNative
+
+    [<Emit("Array.from($0)")>]
+    let jsEntries (_: obj) : obj[][] = jsNative
+
+    [<Emit("$0 != null && typeof $0[Symbol.iterator] === 'function' && !($0 instanceof Map) && !($0 instanceof Set)")>]
+    let jsIsPlainIterable (_: obj) : bool = jsNative
+
+    [<Emit("Array.from($0)")>]
+    let jsToArray (_: obj) : obj[] = jsNative
 #endif
 
 let private liftNumber (f: float) : JVal =
@@ -251,6 +279,21 @@ let private liftNumber (f: float) : JVal =
     else
         JFloat f
 
+/// An array lifts only when EVERY element does — a partial lift would be a
+/// silently truncated table, which is the failure `None` exists to prevent.
+let private liftAll (items: JVal option list) : JVal option =
+    if items |> List.forall Option.isSome then
+        Some(JArr(items |> List.map Option.get))
+    else
+        None
+
+/// The object twin of `liftAll`, on the same all-or-nothing rule.
+let private liftFields (fields: (string * JVal option) list) : JVal option =
+    if fields |> List.forall (fun (_, fv) -> Option.isSome fv) then
+        Some(JObj(fields |> List.map (fun (k, fv) -> k, Option.get fv)))
+    else
+        None
+
 /// Lift a store-resolved value to a `JVal` (see the section note above).
 /// `None` when the value has no faithful structural lift — callers surface
 /// that loudly, never silently.
@@ -259,6 +302,21 @@ let rec jvalOfResolved (v: obj) : JVal option =
     match v with
     | :? JVal as jv -> Some jv
     | _ when isNull v -> None
+    // Phase 1085 — the F# COLLECTION shapes, on the Fable pipeline too.
+    //
+    // MEASURED, not reasoned: a Fable build of the Phase-1075 charter pair (a
+    // grid seeding `$state.members` beside a badge deriving a count over it)
+    // rendered the count on .NET and rendered NOTHING in the browser, because
+    // an F# list compiles to `FSharpList` and a `Map` to `FSharpMap` and
+    // neither is a JS array or a plain object — so the `typeof` dispatch below
+    // returned `None` for exactly the value the seeding pass puts in the store.
+    // The .NET branch has carried these arms since 818; this is the same lift
+    // on the other pipeline, not a new leniency, and the parity it restores is
+    // the point (a store holds typed F# values on BOTH hosts — a host-furnished
+    // `Row seq` and an editable grid's write-back are the standing examples).
+    //
+    // The arms themselves are in `JsLift` below the `typeof` dispatch, because a
+    // TYPE TEST cannot express them here — see the note on `jsIsFSharpMap`.
     | _ ->
         match JsLift.jsTypeof v with
         | "string" -> Some(JStr(unbox<string> v))
@@ -266,23 +324,27 @@ let rec jvalOfResolved (v: obj) : JVal option =
         | "number" -> Some(liftNumber (unbox<float> v))
         | _ ->
             if JsLift.jsIsArray v then
-                let items = unbox<obj[]> v |> Array.toList |> List.map jvalOfResolved
-
-                if items |> List.forall Option.isSome then
-                    Some(JArr(items |> List.map Option.get))
-                else
-                    None
+                liftAll (unbox<obj[]> v |> Array.toList |> List.map jvalOfResolved)
             elif JsLift.jsIsPlainObject v then
-                let fields =
-                    JsLift.jsKeys v
-                    |> Array.toList
-                    |> List.sortWith (fun a b -> System.String.CompareOrdinal(a, b))
-                    |> List.map (fun k -> k, jvalOfResolved (JsLift.jsGet v k))
-
-                if fields |> List.forall (fun (_, fv) -> Option.isSome fv) then
-                    Some(JObj(fields |> List.map (fun (k, fv) -> k, Option.get fv)))
-                else
-                    None
+                JsLift.jsKeys v
+                |> Array.toList
+                |> List.sortWith (fun a b -> System.String.CompareOrdinal(a, b))
+                |> List.map (fun k -> k, jvalOfResolved (JsLift.jsGet v k))
+                |> liftFields
+            elif JsLift.jsIsFSharpMap v then
+                // The `Row` / `JValObj`-object shape. Sorted ordinally like the
+                // plain-object arm above rather than trusting the map's own
+                // comparer, so one wire value cannot depend on which host lifted it.
+                JsLift.jsEntries v
+                |> Array.toList
+                |> List.map (fun kv -> unbox<string> kv[0], kv[1])
+                |> List.sortWith (fun (a, _) (b, _) -> System.String.CompareOrdinal(a, b))
+                |> List.map (fun (k, fv) -> k, jvalOfResolved fv)
+                |> liftFields
+            elif JsLift.jsIsPlainIterable v then
+                // An F# `list` or `seq` — the `Row seq` a Phase-1075 seed and an
+                // editable grid's write-back both carry.
+                liftAll (JsLift.jsToArray v |> Array.toList |> List.map jvalOfResolved)
             else
                 None
 #else
@@ -295,29 +357,14 @@ let rec jvalOfResolved (v: obj) : JVal option =
     | :? float as f -> Some(liftNumber f)
     | :? (obj list) as xs ->
         // The `JValObj` array lowering (the bounded server store's shape).
-        let items = xs |> List.map jvalOfResolved
-
-        if items |> List.forall Option.isSome then
-            Some(JArr(items |> List.map Option.get))
-        else
-            None
+        liftAll (xs |> List.map jvalOfResolved)
     | :? Map<string, obj> as m ->
         // The `JValObj` object lowering / a single `Row`.
-        let fields = m |> Map.toList |> List.map (fun (k, fv) -> k, jvalOfResolved fv)
-
-        if fields |> List.forall (fun (_, fv) -> Option.isSome fv) then
-            Some(JObj(fields |> List.map (fun (k, fv) -> k, Option.get fv)))
-        else
-            None
+        liftFields (m |> Map.toList |> List.map (fun (k, fv) -> k, jvalOfResolved fv))
     | :? seq<Row> as rows ->
         // The editable-grid write-back shape: a `Row seq` written whole to a
         // State key. Rows lift element-wise (each `Row` is the Map arm above).
-        let items = rows |> Seq.toList |> List.map (box >> jvalOfResolved)
-
-        if items |> List.forall Option.isSome then
-            Some(JArr(items |> List.map Option.get))
-        else
-            None
+        liftAll (rows |> Seq.toList |> List.map (box >> jvalOfResolved))
     | _ -> None
 #endif
 
@@ -649,16 +696,38 @@ and private evalTransformFrame
         // renderer's reactive key walk subscribes the source binding's channel
         // keys, so a store write re-evaluates every reader.
         | TransformSource.Live(binding, initial) ->
+            let fromInitial () =
+                match initial with
+                | Fuaran.Core.Embedded t -> Ok t
+                | Fuaran.Core.Ref name ->
+                    Error(sprintf "Transform live source initial snapshot is a non-host-resolved 'ref' ('%s')" name)
+
             let tableR =
                 match resolve<obj> sources (objOfJValBinding binding) with
+                // Phase 1085 — an ABSENT resolved value is the initial snapshot,
+                // not an error. `Binding.State(key, None)` on a slot nothing has
+                // seeded or written resolves to the slot's default
+                // representation (`null`) rather than to `NotResolved`, so
+                // without this arm the bare wire spelling
+                // `{"$type":"State","key":k}` — the one this phase makes
+                // decodable, and the one FUARAN106's own remedy tells an author
+                // to write — would refuse where `"defaultValue": []` renders the
+                // empty table. Two spellings of "I read this key and carry no
+                // data of my own" must resolve alike.
+                //
+                // DELIBERATELY the quiet arm, and the choice is FUARAN105's:
+                // that rule's own contract already says a default-less source
+                // "decodes to `TransformLive.emptySource`" and names the
+                // resulting zero as a pre-emit WARNING. Making the resolver loud
+                // instead would put the resolver and the shipped validator in
+                // flat contradiction inside one binary — the exact defect class
+                // 1075 closed when it widened FUARAN105 rather than leaving it.
+                // The loudness lives at authoring time, where it can name the
+                // key and the remedy; a raw `null` at render time can name
+                // neither.
+                | Resolved v when isNull v -> fromInitial ()
                 | Resolved v -> liveValueToTable v
-                | NotResolved ->
-                    (match initial with
-                     | Fuaran.Core.Embedded t -> Ok t
-                     | Fuaran.Core.Ref name ->
-                         Error(
-                             sprintf "Transform live source initial snapshot is a non-host-resolved 'ref' ('%s')" name
-                         ))
+                | NotResolved -> fromInitial ()
                 | Errored m -> Error(sprintf "Transform live source errored: %s" m)
                 | I18nUnresolved k -> Error(sprintf "Transform live source is an unresolved i18n key '%s'" k)
 

@@ -28,15 +28,20 @@ let private rejectEntries = snd corpus |> List.filter (fun e -> e.Kind = "reject
 /// hint; the wrap deliberately does not invent one). Named, never counted —
 /// the same posture as `SchemaConformance.schemaInexpressibleRejects`.
 ///
-/// - `reject-transform-source-empty-wrapper` (fuaran#815 / Phase 822): the
-///   un-unwrappable State wrapper reaches Core's columnar codec verbatim, so
-///   the refusal is Core's, not this decoder's.
+/// The list is EMPTY since fuaran#1085 retired its only member,
+/// `reject-transform-source-empty-wrapper` (fuaran#815 / Phase 822 — the
+/// un-unwrappable State wrapper, whose refusal was Core's rather than this
+/// decoder's). That shape is an ACCEPT now: under fuaran#1075's seeding rule a
+/// sibling reader's declaration fills the slot, so a Transform source carrying
+/// no data of its own decodes to a live source over the empty initial
+/// snapshot.
 ///
-/// Each entry is asserted hint-LESS below — the inverse pin. If the wrap ever
-/// gains a recovery hint, this fails and the list shrinks deliberately rather
-/// than the exemption quietly outliving its reason.
-let private coreWrappedHintlessRejects: Set<string> =
-    set [ "reject-transform-source-empty-wrapper" ]
+/// Kept rather than deleted, because the mechanism is what matters: the wrap
+/// exists, and the next Core-surfaced refusal belongs here rather than being
+/// rediscovered. Each entry is asserted hint-LESS below — the inverse pin. If
+/// the wrap ever gains a recovery hint, this fails and the list shrinks
+/// deliberately rather than the exemption quietly outliving its reason.
+let private coreWrappedHintlessRejects: Set<string> = Set.empty
 
 let private checkError
     (e: Corpus.FixtureEntry)

@@ -48,19 +48,17 @@ let private gridJson =
 /// The charter's §3.1 badge: a `groupBy` + `count` over the SAME key, carrying
 /// no data of its own. This is the reader the seeding rule exists for.
 ///
-/// **`"defaultValue":[]` is how "I carry no data" is spelled in a Transform's
-/// source slot on the wire today, and the charter did not know it.** §3.1
-/// writes the source as a bare `{"$type":"State","key":"members"}` and asserts
-/// "no decoder refuses it"; the decoder DOES refuse it (`WRONG_TYPE` at
-/// `$.kind.source.source`, pinned by `reject/reject-transform-source-empty-wrapper`
-/// and specified in `WIRE_FORMAT.md` §16 — a State wrapper carrying neither
-/// `defaultValue` nor `value` is not unwrappable). The bare form is reachable
-/// only from a hand-authored F# tree. The empty array is therefore the wire
-/// spelling of the charter's pair, and it is exempt from the seeding rules by
-/// construction (`BindingWalk.isEmptySeed`) so it neither seeds the slot empty
-/// nor conflicts with the grid beside it. Widening the decoder to accept the
-/// bare form is recorded as a finding and routed, not taken here: it is
-/// authored in the IDL support module of a different repo.
+/// **Two spellings, one intent.** §3.1 writes the source as a bare
+/// `{"$type":"State","key":"members"}`; when 1075 shipped, the decoder REFUSED
+/// that (`WRONG_TYPE` at `$.kind.source.source`, pinned by a corpus reject and
+/// specified in `WIRE_FORMAT.md` §16 — a State wrapper carrying neither
+/// `defaultValue` nor `value` was not unwrappable), so the charter's own
+/// document was not a wire document at all and `"defaultValue":[]` was the only
+/// spelling available. **Phase 1085 widened it**: the bare form decodes to a
+/// live source over the empty initial snapshot, the reject is retired, and both
+/// spellings are exercised below. Either way the payload declares nothing and is
+/// exempt from the seeding rules by construction (`BindingWalk.isEmptySeed`), so
+/// it neither seeds the slot empty nor conflicts with the grid beside it.
 let private badgeJson =
     """{"id":"member-count","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[{"$type":"groupBy","aggs":[{"fn":"count","name":"n","of":"team"}],"keys":[]}],"source":{"$type":"State","defaultValue":[],"key":"members"}}},"variant":"Info"}}"""
 
@@ -143,6 +141,81 @@ let sharedSourceSeedingTests =
               Expect.equal (seeds |> Map.toList |> List.map fst) [ "members" ] "one key is seeded, by the grid"
 
               Expect.equal (badgeTextUnder seeds tree) "2" "seeded, the badge counts the grid's two rows"
+          }
+
+          // ---- Phase 1085 — the charter's own spelling, now decodable ----
+          test "the charter's §3.1 pair renders the same count in EITHER source spelling" {
+              // One intent must have one behaviour. The bare form is the
+              // spelling the charter wrote and the one FUARAN106's remedy text
+              // tells an author to use; before 1085 it did not decode at all.
+              let bareBadgeJson =
+                  """{"id":"member-count","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[{"$type":"groupBy","aggs":[{"fn":"count","name":"n","of":"team"}],"keys":[]}],"source":{"$type":"State","key":"members"}}},"variant":"Info"}}"""
+
+              let bare = decode (pairJson [ gridJson; bareBadgeJson ])
+              let empty = decode (pairJson [ gridJson; badgeJson ])
+
+              Expect.equal (badgeTextUnder (BindingWalk.stateSeeds bare) bare) "2" "the bare spelling reads the seed"
+
+              Expect.equal
+                  (badgeTextUnder (BindingWalk.stateSeeds bare) bare)
+                  (badgeTextUnder (BindingWalk.stateSeeds empty) empty)
+                  "both spellings of 'I carry no data' derive the same value"
+
+              // And the bare source declares nothing, so it seeds nothing —
+              // the grid is still the sole declaring reader.
+              Expect.equal
+                  (BindingWalk.stateSeeds bare |> Map.toList |> List.map fst)
+                  [ "members" ]
+                  "the bare source is not a declaration"
+          }
+
+          test "a bare State source nothing seeds derives over the EMPTY table rather than erroring" {
+              // The deliberately QUIET arm of Phase 1085. An unseeded,
+              // unwritten default-less slot resolves to the slot's default
+              // representation (`null`), which is the initial snapshot and not
+              // a resolution failure. FUARAN105 is the pre-emit warning that
+              // names the resulting zero, where the key and the remedy can be
+              // named; a raw null at render time can name neither.
+              let bareBadgeJson =
+                  """{"id":"member-count","kind":{"$type":"Badge","label":{"$type":"Bound","binding":{"$type":"Transform","pipeline":[{"$type":"groupBy","aggs":[{"fn":"count","name":"n","of":"team"}],"keys":[]}],"source":{"$type":"State","key":"members"}}},"variant":"Info"}}"""
+
+              let alone = decode bareBadgeJson
+
+              // The `groupBy` over an empty table yields nothing to render —
+              // the same answer the `"defaultValue":[]` spelling gives, and
+              // NOT an `Errored` resolution.
+              Expect.equal (badgeTextUnder Map.empty alone) "<unresolved>" "no rows, no derived value"
+
+              Expect.equal
+                  (badgeTextUnder Map.empty alone)
+                  (badgeTextUnder Map.empty (decode badgeJson))
+                  "the two spellings agree when the slot is empty too"
+
+              // The SOURCE is no longer the thing that fails. Before 1085 the
+              // bare form did not decode at all; the arm added here would
+              // otherwise have made it resolve to `null` and error with
+              // "cannot be read as data". What remains is the PIPELINE's own
+              // honest complaint about an empty table — byte-identical to what
+              // the `"defaultValue": []` spelling has always said, which is the
+              // parity the pin is for. (The 1075 tests recorded the same shape:
+              // an empty table has no columns, so a `groupBy` over one is
+              // refused rather than counted as zero.)
+              let resolutionOf (n: Node<obj>) =
+                  sprintf
+                      "%A"
+                      (BindingResolver.resolveScalarText
+                          { BindingResolver.empty with
+                              State = Map.empty }
+                          (badgeBinding n))
+
+              Expect.equal
+                  (resolutionOf alone)
+                  (resolutionOf (decode badgeJson))
+                  "both spellings fail the same way over an empty slot"
+
+              Expect.isFalse
+                  ((resolutionOf alone).Contains "cannot be read as data")
+                  "the live SOURCE resolves; only the pipeline has anything to complain about"
           }
 
           test "the SSR frame renders the seeded value, not the zero" {

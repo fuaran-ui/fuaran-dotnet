@@ -85,13 +85,6 @@ let private acceptTest (e: Corpus.FixtureEntry) : Test =
 ///   property values, so the payload is a well-formed `{from, to}` object by
 ///   every shape rule the schema can state. Ordering is decoder policy.
 ///
-/// - `reject-transform-source-empty-wrapper` (fuaran#815 / Phase 822): the
-///   schema deliberately models `Transform.source` as a bare object — Fuaran.Core
-///   owns the columnar algebra (§5 / §13 "don't constrain content the encoder
-///   doesn't decompose") — so a State wrapper carrying no `defaultValue`/`value`
-///   is a well-formed object by every shape rule the schema states. The
-///   unwrap-payload requirement is decoder policy.
-///
 /// - `reject-fieldrule-length-unordered` (Phase 864): `FieldRule` must satisfy
 ///   `minLength <= maxLength` — the `reject-daterange-unordered` rule above,
 ///   applied to a length pair, and inexpressible for the identical reason.
@@ -107,7 +100,9 @@ let private acceptTest (e: Corpus.FixtureEntry) : Test =
 let private schemaInexpressibleRejects: Set<string> =
     set
         [ "reject-daterange-unordered"
-          "reject-transform-source-empty-wrapper"
+          // fuaran#1085 retired `reject-transform-source-empty-wrapper` from
+          // this list with the fixture itself: the shape the schema could not
+          // refuse is one the DECODER no longer refuses either.
           "reject-fieldrule-length-unordered" ]
 
 // Phase 1068 — `schemaTypeErasedBindingRejects` is GONE, and its deletion is the

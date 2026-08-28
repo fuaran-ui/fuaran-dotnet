@@ -3577,10 +3577,18 @@ and private decMountSpec (j: JVal) : Result<MountSpec<obj>, string> =
 
 // Phase 818 — the Transform source slot. A `$type` of State / Selection / Query preserves the binding as
 // `TransformSource.Live` with the initial snapshot derived from its carried
-// default data (`Fuaran.UI.HostPrelude.TransformLive`); a State source with no
-// data is refused through the columnar codec so the didactic names the missing
-// canonical field (the Phase-815 posture). Every other shape decodes through
-// Core's columnar codec unchanged.
+// default data (`Fuaran.UI.HostPrelude.TransformLive`). Every other shape
+// decodes through Core's columnar codec unchanged.
+//
+// Phase 1085 — a State source carrying NO data decodes to a live source over
+// the EMPTY initial snapshot, exactly as a Selection / Query source already
+// did. It used to be refused through the columnar codec (the Phase-815
+// posture, correct when nothing could fill the slot), which made the most
+// direct way to say "I read this key and carry no data of my own"
+// unspellable: under the Phase-1075 seeding rule a SIBLING reader's
+// declaration fills the slot, and FUARAN106's own remedy text tells an author
+// to write precisely this shape. `"defaultValue": []` remains legal and means
+// the same thing; the bare form is no longer a second answer to one question.
 and private decTransformSource (j: JVal) : Result<TransformSource, string> =
     let asData (v: JVal) : Result<TransformSource, string> =
         Fuaran.Core.ColumnCodec.decodeJson v |> Result.map TransformSource.Data |> Result.mapError string
@@ -3610,10 +3618,9 @@ and private decTransformSource (j: JVal) : Result<TransformSource, string> =
                     match Fuaran.UI.HostPrelude.TransformLive.initialSource data with
                     | Ok initial -> Ok(TransformSource.Live(b, initial))
                     | Error _ -> Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource))
-                | None, "State" ->
-                    // No carried data: surface the columnar codec's own
-                    // missing-field didactic (byte-identical to pre-818).
-                    asData j
+                // Phase 1085 — no carried data, on ANY of the three tags: the
+                // binding is preserved live over the empty initial snapshot.
+                // The State arm used to fall through to `asData` here.
                 | None, _ -> Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource)))
         | _ -> asData j
     | _ -> asData j

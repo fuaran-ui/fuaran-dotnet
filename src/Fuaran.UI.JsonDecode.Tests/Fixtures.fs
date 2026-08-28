@@ -4440,13 +4440,18 @@ let badgeTransformLive: Node<obj> =
 /// was silently wrong with nothing red anywhere.
 ///
 /// **Why the badge's source spells `"defaultValue":[]` rather than carrying no
-/// `defaultValue` at all.** A bare `{"$type":"State","key":k}` in a Transform's
-/// source slot is refused as un-unwrappable (§16, `reject/reject-transform-source-empty-wrapper`),
-/// so the empty array is how "I read this key and carry no data" is written
-/// today. It declares nothing — an unseeded slot already resolves to the empty
-/// table — so it neither seeds the slot empty nor conflicts with the grid, and
-/// the pair reads the same whichever order the two nodes appear in. Widening
-/// the decoder to accept the bare form is routed as its own work.
+/// `defaultValue` at all.** Both spellings decode since fuaran#1085 — the bare
+/// `{"$type":"State","key":k}` is a live source over the empty initial
+/// snapshot, and §16's refusal of it is retired. This fixture keeps the empty
+/// array DELIBERATELY, and the reason is a host-parity one rather than a
+/// preference: the corpus is a shared gate, and two of the polyglot hosts still
+/// refuse the bare form (`fuaran-rs` decodes this fixture today and would go
+/// red on the respelling; `fuaran-go` cannot decode a binding-shaped Transform
+/// source at all and is already red on it). Respelling the corpus is therefore
+/// the polyglot parity phase's move, not this one's — see fuaran#1085's outcome.
+/// Either way the payload declares nothing — an unseeded slot already resolves
+/// to the empty table — so it neither seeds the slot empty nor conflicts with
+/// the grid, and the pair reads the same whichever order the two nodes appear in.
 ///
 /// This fixture is also the pin for the empty-array leniency itself, which the
 /// F# host has read this way since 0.23.1 and this corpus never carried: the

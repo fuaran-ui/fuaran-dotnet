@@ -2802,8 +2802,11 @@ and private bindingGeneric<'T>
                             // the pipeline when the binding's channel changes.
                             // The initial snapshot still derives through the
                             // same 815 normalisation, so SSR output and the
-                            // didactics (ragged rows; a State wrapper carrying
-                            // NO data) are byte-identical to the snapshot era.
+                            // ragged-rows didactic are byte-identical to the
+                            // snapshot era. Phase 1085 retired the OTHER
+                            // didactic: a State wrapper carrying no data is a
+                            // live source over the empty snapshot now, as
+                            // Selection / Query always were.
                             let snapshot () =
                                 jsonToJVal 1 (path + ".source") (normaliseTransformSource srcJ)
                                 |> Result.bind (fun v ->
@@ -2859,12 +2862,19 @@ and private bindingGeneric<'T>
                                                      Fuaran.UI.HostPrelude.TransformLive.emptySource
                                                  )
                                              ))
-                                    | None, "State" ->
-                                        // A State wrapper carrying NO data still
-                                        // errors didactically (the 815 posture) —
-                                        // the columnar codec names the missing
-                                        // canonical field.
-                                        snapshot () |> Result.map TransformSource.Data
+                                    // Phase 1085 — no carried data, on ANY of the
+                                    // three tags: the binding is preserved live
+                                    // over the empty initial snapshot. The State
+                                    // arm used to fall through to the columnar
+                                    // codec's missing-field didactic (the 815
+                                    // posture), which was correct while nothing
+                                    // else could fill the slot; under Phase
+                                    // 1075's seeding rule a SIBLING reader's
+                                    // declaration fills it, so the refusal was
+                                    // rejecting the most direct spelling of "I
+                                    // read this key and carry no data of my own"
+                                    // — the one FUARAN106's own remedy text tells
+                                    // an author to write.
                                     | None, _ ->
                                         Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource)))
 
