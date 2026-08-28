@@ -52,6 +52,7 @@ open System.Text.RegularExpressions
 open FSharp.Reflection
 open Expecto
 open Fuaran.UI.Types
+open Fuaran.UI
 open Fuaran.UI.Renderer
 
 // ─── Inputs ────────────────────────────────────────────────────────────────
@@ -142,11 +143,12 @@ let private projectedClasses () : Set<string> =
                       for role in nullaryCases<StyleRole> () do
                           for voice in nullaryCases<FontVoice> () do
                               let style: SemanticStyle =
-                                  { Tone = tone
-                                    Weight = weight
-                                    Emphasis = emphasis
-                                    Role = role
-                                    Voice = voice }
+                                  { Defaults.style with
+                                      Tone = tone
+                                      Weight = weight
+                                      Emphasis = emphasis
+                                      Role = role
+                                      Voice = voice }
 
                               yield! (Theme.className style).Split(' ') ]
 

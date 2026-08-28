@@ -24,6 +24,7 @@
 
 open Expecto
 open Fuaran.UI.Types
+open Fuaran.UI
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.Ops
 
@@ -36,17 +37,11 @@ let private revenueMetric: Node<obj> =
     { Id = "revenue"
       Kind =
         NodeKind.Metric(
-            { Label = TextSource.Literal "Revenue"
-              Value = Binding.Static(Some 0.0)
-              Format = CellFormat.Currency "USD"
-              Tone = ToneVariant.Brand
-              Weight = StyleWeight.Standard
-              Emphasis = Emphasis.Normal
-              Trend = None
-              TrendFormat = None
-              TrendPolarity = TrendPolarity.HigherIsBetter
-              Icon = None
-              Subtext = None }
+            { Defaults.metric with
+                Label = TextSource.Literal "Revenue"
+                Value = Binding.Static(Some 0.0)
+                Format = CellFormat.Currency "USD"
+                Tone = ToneVariant.Brand }
         )
       // `None` is the canonical empty-state / default-style shape since the swap.
       State = None

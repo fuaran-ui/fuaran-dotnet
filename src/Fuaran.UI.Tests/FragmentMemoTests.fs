@@ -39,14 +39,14 @@ let private fragment: ParamFragment<unit> =
                         Motion = None
                         ExtraAttributes = None } ] }
 
-    { Name = "card"
-      Holes =
-        Some
-            [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-              HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), None)
-              HoleDecl.Slot("content", None) ]
-      Body = body
-      Effect = None }
+    { Defaults.fragmentDecl with
+        Name = "card"
+        Holes =
+            Some
+                [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
+                  HoleDecl.Value("count", HoleValueSpace.IntRange(0, 100), None)
+                  HoleDecl.Slot("content", None) ]
+        Body = body }
 
 let private slotArgs (text: string) : Map<string, Node<unit>> =
     Map.ofList [ "content", Fuaran.markdown "body" text ]

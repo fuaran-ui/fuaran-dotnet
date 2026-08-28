@@ -74,11 +74,12 @@ let private mkFragment (holeCount: int) : ParamFragment<unit> =
     let valueHoles =
         [ for i in 0 .. holeCount - 1 -> HoleDecl.Value($"field{i}", HoleValueSpace.StringLen(0, 80), None) ]
 
-    { Name = $"frag{holeCount}"
-      Holes = Some(valueHoles @ [ HoleDecl.Slot("content", None) ])
-      Body = body
-      // `None` ≡ the pure-deterministic default, so it stays cache-admissible.
-      Effect = None }
+    { Defaults.fragmentDecl with
+        Name = $"frag{holeCount}"
+        Holes = Some(valueHoles @ [ HoleDecl.Slot("content", None) ])
+        Body = body
+        // `None` ≡ the pure-deterministic default, so it stays cache-admissible.
+        Effect = None }
 
 let private baseArgs (holeCount: int) : Map<string, obj> =
     [ for i in 0 .. holeCount - 1 -> $"field{i}", v (box $"value-{i}") ]

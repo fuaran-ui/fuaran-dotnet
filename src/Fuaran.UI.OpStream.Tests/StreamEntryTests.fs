@@ -35,11 +35,8 @@ let private decodeOp (json: string) : Result<TreeOp<obj>, string> =
     |> Result.mapError (fun e -> sprintf "%s at %s: %s" e.Code e.Path e.Message)
 
 let private style: SemanticStyle =
-    { Tone = ToneVariant.Success
-      Weight = StyleWeight.Standard
-      Emphasis = Emphasis.Normal
-      Role = StyleRole.None
-      Voice = FontVoice.Default }
+    { Defaults.style with
+        Tone = ToneVariant.Success }
 
 /// The op corpus. The last three are the adversarial ones: their payloads
 /// contain the envelope's own field names as literal text.

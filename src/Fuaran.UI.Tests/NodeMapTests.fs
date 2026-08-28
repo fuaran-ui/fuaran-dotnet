@@ -134,24 +134,22 @@ let nodeMapTests =
 
           test "a form field's onChange closure is remapped (closure -> Action -> Action)" {
               let field: FormField<int> =
-                  { Id = "name"
-                    Label = TextSource.Literal "Name"
-                    Kind =
-                      FormFieldKind.Text(
-                          Some(Binding.Static(Some "")),
-                          Some(fun (s: string) -> Action.Dispatch s.Length)
-                      )
-                    Required = false
-                    Help = None
-                    Rule = None }
+                  { Defaults.formField with
+                      Id = "name"
+                      Label = TextSource.Literal "Name"
+                      Kind =
+                          FormFieldKind.Text(
+                              Some(Binding.Static(Some "")),
+                              Some(fun (s: string) -> Action.Dispatch s.Length)
+                          ) }
 
               let node: Node<int> =
                   Fuaran.form
                       "f"
-                      { Fields = [ field ]
-                        OnSubmit = Action.Dispatch 0
-                        SubmitLabel = TextSource.Literal "Go"
-                        Disabled = None }
+                      { Defaults.form with
+                          Fields = [ field ]
+                          OnSubmit = Action.Dispatch 0
+                          SubmitLabel = TextSource.Literal "Go" }
 
               let mapped = Node.mapMsg string node
 

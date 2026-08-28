@@ -17,15 +17,15 @@ let private bx (v: 'a) : obj = box v |> Unchecked.nonNull
 let private body: Node<unit> = Fuaran.markdown "tpl" "template body"
 
 let private pf: ParamFragment<unit> =
-    { Name = "card"
-      Holes =
-        Some
-            [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-              HoleDecl.Value("tone", HoleValueSpace.Enum [ "info"; "warn" ], Some(Scalar.Str "info"))
-              HoleDecl.Slot("content", None)
-              HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 10)) ]
-      Body = body
-      Effect = None }
+    { Defaults.fragmentDecl with
+        Name = "card"
+        Holes =
+            Some
+                [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
+                  HoleDecl.Value("tone", HoleValueSpace.Enum [ "info"; "warn" ], Some(Scalar.Str "info"))
+                  HoleDecl.Slot("content", None)
+                  HoleDecl.Repeat("rows", HoleValueSpace.IntRange(1, 10)) ]
+        Body = body }
 
 [<Tests>]
 let tests =

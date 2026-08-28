@@ -1102,20 +1102,20 @@ let private xScaleOf (name: string) : ChartXScale =
     | _ -> ChartXScale.Category
 
 let private specOf (case: Case) : ChartSpec<obj> =
-    { Source = Binding.Static(Some(Seq.ofList (buildRows case)))
-      Kind = case.Kind
-      XField = case.XField
-      YFields = case.YFields
-      Title = case.Title |> Option.map TextSource.Literal
-      ValueFormat = case.ValueFormat
-      XTitle = case.XTitle |> Option.map TextSource.Literal
-      YTitle = case.YTitle |> Option.map TextSource.Literal
-      Subtitle = case.Subtitle |> Option.map TextSource.Literal
-      LegendPosition = case.LegendPosition |> Option.map legendPositionOf
-      DataLabels = case.DataLabels |> Option.map dataLabelsOf
-      XScale = case.XScale |> Option.map xScaleOf
-      OnPointClick = None
-      Stacked = case.Stacked }
+    { Defaults.chart with
+        Source = Binding.Static(Some(Seq.ofList (buildRows case)))
+        Kind = case.Kind
+        XField = case.XField
+        YFields = case.YFields
+        Title = case.Title |> Option.map TextSource.Literal
+        ValueFormat = case.ValueFormat
+        XTitle = case.XTitle |> Option.map TextSource.Literal
+        YTitle = case.YTitle |> Option.map TextSource.Literal
+        Subtitle = case.Subtitle |> Option.map TextSource.Literal
+        LegendPosition = case.LegendPosition |> Option.map legendPositionOf
+        DataLabels = case.DataLabels |> Option.map dataLabelsOf
+        XScale = case.XScale |> Option.map xScaleOf
+        Stacked = case.Stacked }
 
 /// The neutral input contract's `axisUnitMode` string → the mode. The one place
 /// the mapping is written down on this host; the other hosts mirror it.

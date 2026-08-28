@@ -123,11 +123,10 @@ module private SimpleSinkJson =
         | [| "R"; id |] -> Ok(TreeOp.RemoveNode(NodeId id))
         | [| "S"; id; tone; weight; emphasis |] ->
             let style: SemanticStyle =
-                { Tone = toneOf tone
-                  Weight = weightOf weight
-                  Emphasis = emphasisOf emphasis
-                  Role = StyleRole.None
-                  Voice = FontVoice.Default }
+                { Defaults.style with
+                    Tone = toneOf tone
+                    Weight = weightOf weight
+                    Emphasis = emphasisOf emphasis }
 
             Ok(TreeOp.UpdateStyle(NodeId id, style))
         | [| "M"; target; newParent |] -> Ok(TreeOp.MoveNode(NodeId target, NodeId newParent))

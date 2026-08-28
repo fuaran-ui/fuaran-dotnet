@@ -193,11 +193,10 @@ let tests =
 
           test "UpdateStyle replaces the addressed node's Style block" {
               let newStyle: SemanticStyle =
-                  { Tone = ToneVariant.Warning
-                    Weight = StyleWeight.Spacious
-                    Emphasis = Emphasis.Loud
-                    Role = StyleRole.None
-                    Voice = FontVoice.Default }
+                  { Defaults.style with
+                      Tone = ToneVariant.Warning
+                      Weight = StyleWeight.Spacious
+                      Emphasis = Emphasis.Loud }
 
               match Apply.apply (TreeOp.UpdateStyle(NodeId "revenue-metric", newStyle)) dashboard with
               | Ok updated ->

@@ -32,20 +32,12 @@ let private rowsOf (n: int) (m: int) : Row list =
           Map.ofList (("x", box (sprintf "c%d" i)) :: ys) ]
 
 let private specOf (kind: ChartKind) (m: int) (stacked: bool) : ChartSpec<obj> =
-    { Source = Binding.Static None
-      Kind = kind
-      XField = "x"
-      YFields = [ for j in 1..m -> sprintf "y%d" j ]
-      Title = None
-      ValueFormat = None
-      XTitle = None
-      YTitle = None
-      Subtitle = None
-      LegendPosition = None
-      DataLabels = None
-      XScale = None
-      OnPointClick = None
-      Stacked = stacked }
+    { Defaults.chart with
+        Source = Binding.Static None
+        Kind = kind
+        XField = "x"
+        YFields = [ for j in 1..m -> sprintf "y%d" j ]
+        Stacked = stacked }
 
 /// Wall-clock milliseconds for one uncapped lowering, taken as the MINIMUM of
 /// three runs. Minimum, not mean or median: scheduling and GC only ever add time,

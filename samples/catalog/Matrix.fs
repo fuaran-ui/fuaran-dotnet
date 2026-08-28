@@ -124,11 +124,10 @@ let private demoBadge (tone, weight, emphasis) : Node<unit> =
       State = None
       Style =
         Some
-            { Tone = tone
-              Weight = weight
-              Emphasis = emphasis
-              Role = StyleRole.None
-              Voice = FontVoice.Default }
+            { Defaults.style with
+                Tone = tone
+                Weight = weight
+                Emphasis = emphasis }
       Accessibility = Defaults.Accessibility.none
       Motion = Defaults.Motion.none
       ExtraAttributes = None }
@@ -179,11 +178,10 @@ let private demoSparkline (tone, weight, emphasis) : Node<unit> =
       State = None
       Style =
         Some
-            { Tone = tone
-              Weight = weight
-              Emphasis = emphasis
-              Role = StyleRole.None
-              Voice = FontVoice.Default }
+            { Defaults.style with
+                Tone = tone
+                Weight = weight
+                Emphasis = emphasis }
       Accessibility = Defaults.Accessibility.none
       Motion = Defaults.Motion.none
       ExtraAttributes = None }
@@ -601,11 +599,10 @@ let private demoCustom (tone, weight, emphasis) : Node<unit> =
       State = None
       Style =
         Some
-            { Tone = tone
-              Weight = weight
-              Emphasis = emphasis
-              Role = StyleRole.None
-              Voice = FontVoice.Default }
+            { Defaults.style with
+                Tone = tone
+                Weight = weight
+                Emphasis = emphasis }
       Accessibility = Defaults.Accessibility.none
       Motion = Defaults.Motion.none
       ExtraAttributes = None }

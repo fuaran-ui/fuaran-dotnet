@@ -27,6 +27,7 @@ open System.IO
 open System.Text.RegularExpressions
 open Expecto
 open Fuaran.UI.Types
+open Fuaran.UI
 open Fuaran.UI.Renderer
 open Fuaran.UI.Charts
 
@@ -41,20 +42,12 @@ let private rows: Fuaran.Core.Row list =
       Map.ofList [ "quarter", box "Q2 & \"co\""; "revenue", box 90.5 ] ]
 
 let private baseSpec: ChartSpec<obj> =
-    { Kind = ChartKind.Bar
-      Source = Binding.Static(Some(rows :> Fuaran.Core.Row seq))
-      Stacked = false
-      XField = "quarter"
-      YFields = [ "revenue" ]
-      Title = Some(TextSource.Literal "Revenue & \"growth\" <q> ]]> '")
-      ValueFormat = None
-      XTitle = None
-      YTitle = None
-      Subtitle = None
-      LegendPosition = None
-      DataLabels = None
-      XScale = None
-      OnPointClick = None }
+    { Defaults.chart with
+        Kind = ChartKind.Bar
+        Source = Binding.Static(Some(rows :> Fuaran.Core.Row seq))
+        XField = "quarter"
+        YFields = [ "revenue" ]
+        Title = Some(TextSource.Literal "Revenue & \"growth\" <q> ]]> '") }
 
 /// A spec whose row source is NOT carried inline — the leg whose data cannot be
 /// recovered from the spec alone, and which therefore needs the embedded feed.

@@ -34,6 +34,7 @@ module Fuaran.UI.Tests.ToneClassEmission
 
 open Expecto
 open Fuaran.UI.Types
+open Fuaran.UI
 open Fuaran.UI.Renderer
 
 // ─── Documented contract (mirrors HOST-STYLING-CHECKLIST.md §4.1) ──────────
@@ -64,12 +65,7 @@ let private allBadges: (BadgeVariant * string) list =
 let private toneBearingKinds: string list =
     [ "callout"; "progress"; "pill"; "metric" ]
 
-let private defaultStyle: SemanticStyle =
-    { Tone = ToneVariant.Default
-      Weight = StyleWeight.Standard
-      Emphasis = Emphasis.Normal
-      Role = StyleRole.None
-      Voice = FontVoice.Default }
+let private defaultStyle: SemanticStyle = Defaults.style
 
 [<Tests>]
 let tests =

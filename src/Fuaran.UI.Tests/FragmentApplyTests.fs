@@ -27,13 +27,13 @@ let private cardFragment: ParamFragment<unit> =
                         Motion = None
                         ExtraAttributes = None } ] }
 
-    { Name = "card"
-      Holes =
-        Some
-            [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
-              HoleDecl.Slot("content", None) ]
-      Body = body
-      Effect = None }
+    { Defaults.fragmentDecl with
+        Name = "card"
+        Holes =
+            Some
+                [ HoleDecl.Value("title", HoleValueSpace.StringLen(1, 40), None)
+                  HoleDecl.Slot("content", None) ]
+        Body = body }
 
 let private slotArg: Node<unit> = Fuaran.markdown "body" "slot content"
 

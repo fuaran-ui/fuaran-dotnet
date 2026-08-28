@@ -30,11 +30,8 @@ let private initialTree: Node<obj> =
             Children = [ Fuaran.markdown "g-left" "Left pane"; Fuaran.markdown "g-right" "Right pane" ] }
 
 let private style: SemanticStyle =
-    { Tone = ToneVariant.Success
-      Weight = StyleWeight.Standard
-      Emphasis = Emphasis.Normal
-      Role = StyleRole.None
-      Voice = FontVoice.Default }
+    { Defaults.style with
+        Tone = ToneVariant.Success }
 
 /// The guest's op-stream: insert a note, restyle it, drop the right pane.
 let private guestOps: TreeOp<obj> list =

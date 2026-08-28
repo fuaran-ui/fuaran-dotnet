@@ -291,16 +291,13 @@ let tests =
                         node
                             "frm"
                             (NodeKind.Form(
-                                { Fields =
-                                    [ { Id = "name"
-                                        Label = TextSource.Literal "Name"
-                                        Kind = FormFieldKind.Text(Some(Binding.State("name", Some "")), None)
-                                        Required = false
-                                        Help = None
-                                        Rule = None } ]
-                                  OnSubmit = Action.Chain []
-                                  SubmitLabel = TextSource.Literal "Save"
-                                  Disabled = None }
+                                { Defaults.form with
+                                    Fields =
+                                        [ { Defaults.formField with
+                                              Id = "name"
+                                              Label = TextSource.Literal "Name"
+                                              Kind = FormFieldKind.Text(Some(Binding.State("name", Some "")), None) } ]
+                                    SubmitLabel = TextSource.Literal "Save" }
                             )) ]
 
               Expect.isEmpty (AffordanceInertness.report tree) "nothing in a wire-survivable tree is inert"

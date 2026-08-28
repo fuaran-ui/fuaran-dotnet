@@ -10,20 +10,10 @@ module Fuaran.UI.Renderer.Server.Tests.DrawingSvgTests
 
 open Expecto
 open Fuaran.UI.Types
+open Fuaran.UI
 open Fuaran.UI.Renderer
 
-let private noStyle: DrawStyle =
-    { Fill = None
-      Stroke = None
-      StrokeWidth = None
-      Opacity = None
-      TextAnchor = None
-      FontSize = None
-      Emphasis = None
-      FontFamily = None
-      MarkId = None
-      Rotation = None
-      Tip = None }
+let private noStyle: DrawStyle = Defaults.drawStyle
 
 let private textOf (t: TextSource) : string =
     match t with
@@ -34,15 +24,15 @@ let private render spec =
     DrawingSvg.render BindingResolver.empty textOf spec
 
 let private drawing shapes title : DrawingSpec =
-    { ViewBox =
-        { MinX = 0.0
-          MinY = 0.0
-          Width = 200.0
-          Height = 100.0 }
-      Shapes = shapes
-      Style = noStyle
-      Title = title
-      Description = None }
+    { Defaults.drawing with
+        ViewBox =
+            { MinX = 0.0
+              MinY = 0.0
+              Width = 200.0
+              Height = 100.0 }
+        Shapes = shapes
+        Style = noStyle
+        Title = title }
 
 let private contains (needle: string) (h: string) =
     h.Contains(needle, System.StringComparison.Ordinal)

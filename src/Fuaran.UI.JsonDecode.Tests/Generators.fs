@@ -45,6 +45,7 @@ open System
 open FsCheck
 open FsCheck.FSharp
 open Fuaran.UI.Types
+open Fuaran.UI
 open Fuaran.Core
 open Fuaran.UI.Ops.Types
 
@@ -471,17 +472,18 @@ let private genMetricSpec: Gen<MetricSpec> =
         let! subtext = genOption genTextSource
 
         return
-            { Label = label
-              Value = source
-              Format = format
-              Tone = tone
-              Weight = weight
-              Emphasis = emphasis
-              Trend = trend
-              TrendFormat = trendFormat
-              TrendPolarity = trendPolarity
-              Icon = icon
-              Subtext = subtext }
+            { Defaults.metric with
+                Label = label
+                Value = source
+                Format = format
+                Tone = tone
+                Weight = weight
+                Emphasis = emphasis
+                Trend = trend
+                TrendFormat = trendFormat
+                TrendPolarity = trendPolarity
+                Icon = icon
+                Subtext = subtext }
     }
 
 let private genCalloutSpec: Gen<CalloutSpec> =
@@ -493,11 +495,12 @@ let private genCalloutSpec: Gen<CalloutSpec> =
         let! dismissable = genBool
 
         return
-            { Tone = tone
-              Heading = heading
-              Body = body
-              Icon = icon
-              Dismissable = dismissable }
+            { Defaults.callout with
+                Tone = tone
+                Heading = heading
+                Body = body
+                Icon = icon
+                Dismissable = dismissable }
     }
 
 let private genProgressSpec: Gen<ProgressSpec> =
@@ -509,11 +512,12 @@ let private genProgressSpec: Gen<ProgressSpec> =
         let! tone = genTone
 
         return
-            { Fraction = fraction
-              Label = label
-              Caveat = caveat
-              Indeterminate = indeterminate
-              Tone = tone }
+            { Defaults.progress with
+                Fraction = fraction
+                Label = label
+                Caveat = caveat
+                Indeterminate = indeterminate
+                Tone = tone }
     }
 
 let private genLabelValueRowSpec: Gen<LabelValueRowSpec> =
@@ -525,11 +529,12 @@ let private genLabelValueRowSpec: Gen<LabelValueRowSpec> =
         let! help = genOption genTextSource
 
         return
-            { Label = label
-              Value = source
-              Format = format
-              Emphasis = emphasis
-              Help = help }
+            { Defaults.labelValueRow with
+                Label = label
+                Value = source
+                Format = format
+                Emphasis = emphasis
+                Help = help }
     }
 
 let private genDisplayKind: Gen<NodeKind<obj>> =
@@ -621,12 +626,10 @@ let private genFormFields: Gen<FormField<obj> list> =
         let! orientation = genOrientation
 
         let mk id kind : FormField<obj> =
-            { Id = id
-              Label = label
-              Kind = kind
-              Required = false
-              Help = None
-              Rule = None }
+            { Defaults.formField with
+                Id = id
+                Label = label
+                Kind = kind }
 
         return
             // Phase 426: cover both the `Some` closure (byte-stable `"<closure>"`) and the `None`
@@ -664,10 +667,11 @@ let private genFormSpec: Gen<FormSpec<obj>> =
         let! disabled = genOption genBindingBool
         // OnSubmit covers all nine Action arms (see allActionsChain).
         return
-            { Fields = fields
-              OnSubmit = allActionsChain
-              SubmitLabel = submitLabel
-              Disabled = disabled }
+            { Defaults.form with
+                Fields = fields
+                OnSubmit = allActionsChain
+                SubmitLabel = submitLabel
+                Disabled = disabled }
     }
 
 /// One `FilterSpec` of every `FilterKind` arm.
@@ -720,12 +724,13 @@ let private genButtonSpec: Gen<ButtonSpec<obj>> =
         let! disabled = genOption genBindingBool
 
         return
-            { Label = label
-              OnClick = onClick
-              Variant = variant
-              Icon = icon
-              Tooltip = tooltip
-              Disabled = disabled }
+            { Defaults.button with
+                Label = label
+                OnClick = onClick
+                Variant = variant
+                Icon = icon
+                Tooltip = tooltip
+                Disabled = disabled }
     }
 
 let private genFileUploadSpec: Gen<FileUploadSpec<obj>> =
@@ -736,11 +741,11 @@ let private genFileUploadSpec: Gen<FileUploadSpec<obj>> =
         let! disabled = genOption genBindingBool
 
         return
-            { Label = label
-              Accept = accept
-              Multiple = multiple
-              OnSelect = Some(fun _ -> Action.Chain [])
-              Disabled = disabled }
+            { Defaults.fileUpload with
+                Label = label
+                Accept = accept
+                Multiple = multiple
+                Disabled = disabled }
     }
 
 let private genSelectSpec: Gen<SelectSpec<obj>> =
@@ -761,27 +766,28 @@ let private genSelectSpec: Gen<SelectSpec<obj>> =
         let! vlist = genSmallList genNonEmptyString
 
         return
-            { Label = label
-              Source = source
-              Value = value
-              OnChange =
-                (if withHandlers then
-                     Some(fun _ -> Action.Chain [])
-                 else
-                     Option.None)
-              Placeholder = placeholder
-              Disabled = disabled
-              Multiple = (if multiple then Some true else Option.None)
-              Values =
-                (if multiple then
-                     Some(Binding.Static(Some vlist))
-                 else
-                     Option.None)
-              OnChangeMulti =
-                (if multiple && withHandlers then
-                     Some(fun _ -> Action.Chain [])
-                 else
-                     Option.None) }
+            { Defaults.select with
+                Label = label
+                Source = source
+                Value = value
+                OnChange =
+                    (if withHandlers then
+                         Some(fun _ -> Action.Chain [])
+                     else
+                         Option.None)
+                Placeholder = placeholder
+                Disabled = disabled
+                Multiple = (if multiple then Some true else Option.None)
+                Values =
+                    (if multiple then
+                         Some(Binding.Static(Some vlist))
+                     else
+                         Option.None)
+                OnChangeMulti =
+                    (if multiple && withHandlers then
+                         Some(fun _ -> Action.Chain [])
+                     else
+                         Option.None) }
     }
 
 let private genInputKind: Gen<NodeKind<obj>> =
@@ -882,20 +888,20 @@ let private genChartSpec: Gen<ChartSpec<obj>> =
         let! stacked = genBool
 
         return
-            { Source = Binding.Static(Some Seq.empty)
-              Kind = kind
-              XField = xField
-              YFields = yFields
-              Title = title
-              ValueFormat = valueFormat
-              XTitle = xTitle
-              YTitle = yTitle
-              Subtitle = subtitle
-              LegendPosition = legendPosition
-              DataLabels = dataLabels
-              XScale = xScale
-              OnPointClick = None
-              Stacked = stacked }
+            { Defaults.chart with
+                Source = Binding.Static(Some Seq.empty)
+                Kind = kind
+                XField = xField
+                YFields = yFields
+                Title = title
+                ValueFormat = valueFormat
+                XTitle = xTitle
+                YTitle = yTitle
+                Subtitle = subtitle
+                LegendPosition = legendPosition
+                DataLabels = dataLabels
+                XScale = xScale
+                Stacked = stacked }
     }
 
 let private genMapSpec: Gen<MapSpec<obj>> =
@@ -905,11 +911,11 @@ let private genMapSpec: Gen<MapSpec<obj>> =
         let! zoom = Gen.choose (0, 20)
 
         return
-            { Source = Binding.Static(Some([]: MapMarker list))
-              CentreLatitude = lat
-              CentreLongitude = lon
-              Zoom = zoom
-              OnMarkerClick = None }
+            { Defaults.map with
+                Source = Binding.Static(Some([]: MapMarker list))
+                CentreLatitude = lat
+                CentreLongitude = lon
+                Zoom = zoom }
     }
 
 let private genVisKind: Gen<NodeKind<obj>> =
@@ -973,11 +979,12 @@ let private genSemanticStyle: Gen<SemanticStyle> =
         let! voice = genFontVoice
 
         return
-            { Tone = tone
-              Weight = weight
-              Emphasis = emphasis
-              Role = role
-              Voice = voice }
+            { Defaults.style with
+                Tone = tone
+                Weight = weight
+                Emphasis = emphasis
+                Role = role
+                Voice = voice }
     }
 
 /// Node.State / Node.Style are `option` post-swap (Phase 692–694). The pre-swap
@@ -1077,14 +1084,11 @@ let rec private genLayoutKind (size: int) : Gen<NodeKind<obj>> =
 
               return
                   NodeKind.Tabs
-                      { Orientation = orientation
-                        Children = children
-                        ActiveIndex = active
-                        OnSelect = (if withHandler then Some(fun _ -> Action.Chain []) else None)
-                        TabHeaders = None
-                        TabTags = None
-                        ActiveTag = None
-                        OnSelectTag = None }
+                      { Defaults.tabs with
+                          Orientation = orientation
+                          Children = children
+                          ActiveIndex = active
+                          OnSelect = (if withHandler then Some(fun _ -> Action.Chain []) else None) }
           }
           gen {
               let! active = genBindingInt
@@ -1117,11 +1121,12 @@ let rec private genLayoutKind (size: int) : Gen<NodeKind<obj>> =
 
               return
                   NodeKind.Disclosure
-                      { Heading = heading
-                        Open = isOpen
-                        OnToggle = (if withHandler then Some(fun _ -> Action.Chain []) else None)
-                        Children = children
-                        DefaultOpen = defaultOpen }
+                      { Defaults.disclosure with
+                          Heading = heading
+                          Open = isOpen
+                          OnToggle = (if withHandler then Some(fun _ -> Action.Chain []) else None)
+                          Children = children
+                          DefaultOpen = defaultOpen }
           } ]
 
 and private genNodeKind (size: int) : Gen<NodeKind<obj>> =
@@ -1141,12 +1146,12 @@ and private genNodeKind (size: int) : Gen<NodeKind<obj>> =
 
                   return
                       NodeKind.FragmentDecl
-                          { Name = name
-                            Body = body
-                            // `None` ≡ the old zero-holes / pure-deterministic
-                            // defaults — both keys stay off the wire.
-                            Holes = None
-                            Effect = None }
+                          // `Holes` and `Effect` stay where `Defaults.fragmentDecl`
+                          // has them — the zero-holes / pure-deterministic shape,
+                          // so both keys stay off the wire.
+                          { Defaults.fragmentDecl with
+                              Name = name
+                              Body = body }
               } ]
         else
             []

@@ -48,34 +48,28 @@ let private exemplarTree () : Node<TestMsg> =
                       [ Fuaran.markdown "step-welcome" "Welcome — tell us who you are."
                         Fuaran.form
                             "step-details"
-                            { Fields =
-                                [ { Id = "draft-name"
-                                    Label = TextSource.Literal "Full name"
-                                    Kind = FormFieldKind.textDeclarative (binding.state "draft-name" "")
-                                    Required = true
-                                    Help = None
-                                    Rule = None }
-                                  { Id = "draft-team"
-                                    Label = TextSource.Literal "Team"
-                                    Kind = FormFieldKind.textDeclarative (binding.state "draft-team" "")
-                                    Required = false
-                                    Help = None
-                                    Rule = None } ]
-                              OnSubmit = Action.SetState("wizard-step", Some(JInt 2), None)
-                              SubmitLabel = TextSource.Literal "Continue"
-                              Disabled = None }
+                            { Defaults.form with
+                                Fields =
+                                    [ { Defaults.formField with
+                                          Id = "draft-name"
+                                          Label = TextSource.Literal "Full name"
+                                          Kind = FormFieldKind.textDeclarative (binding.state "draft-name" "")
+                                          Required = true }
+                                      { Defaults.formField with
+                                          Id = "draft-team"
+                                          Label = TextSource.Literal "Team"
+                                          Kind = FormFieldKind.textDeclarative (binding.state "draft-team" "") } ]
+                                OnSubmit = Action.SetState("wizard-step", Some(JInt 2), None)
+                                SubmitLabel = TextSource.Literal "Continue" }
                         Fuaran.markdown "step-review" "All done — review and finish." ]
                     // Closure-carrying: encodes as the "<closure>" sentinel.
                     OnSelect = Some(fun i -> Action.Dispatch(Selected i)) }
               Fuaran.button
                   "wiz-share"
-                  { Label = TextSource.Literal "Share this session"
-                    // Wire-survivable: rides the bundle as data.
-                    OnClick = Action.WriteToClipboard "https://demo.example/teleport"
-                    Variant = ButtonVariant.Secondary
-                    Icon = None
-                    Tooltip = None
-                    Disabled = None } ] }
+                  { Defaults.button with
+                      Label = TextSource.Literal "Share this session"
+                      // Wire-survivable: rides the bundle as data.
+                      OnClick = Action.WriteToClipboard "https://demo.example/teleport" } ] }
 
 let private exemplarState: Map<string, JVal> =
     Map.ofList
