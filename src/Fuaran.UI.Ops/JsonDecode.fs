@@ -1477,6 +1477,63 @@ let wrongNodeKindHint =
 
     primitives + ", or " + String.concat " | " structural
 
+// ─── The TreeOp vocabulary, as a DECLARATION ────────────────────────────────
+//
+// Phase 1104. `knownNodeKinds` above gave the node half of the wire vocabulary a
+// declaration a consumer can read; the op half had none. Its enumeration lived
+// inside ONE error-message string in `decodeTreeOpAstCore`'s fallback arm, which
+// is not a surface: a consumer wanting the op vocabulary had to either re-type it
+// (a second copy — the defect `nodeKindGroups` exists to remove) or reflect over
+// `TreeOp`'s union cases, which yields the CASE NAMES and nothing else. The case
+// names are the `$type` discriminators, so reflection answers "which ops exist";
+// it cannot answer "what fields does one carry", because the DU's own field
+// labels are not the wire keys (`EditNode of NodeId * NodeKind<'Msg>` carries no
+// label at all, and the wire calls those two `target` and `newKind`).
+//
+// So the declaration below carries both halves, and the error string is projected
+// from it rather than restating it.
+
+/// Every recognised `TreeOp` `$type` discriminator with its WIRE field set, in
+/// the order `decodeTreeOpAstCore` matches them. Each field is `(name, required)`;
+/// every op field is required today, and the flag is carried anyway so a future
+/// optional field is expressible without a shape change to this export.
+///
+/// This is the vocabulary, not a description of it: `unknownOpKindHint` below is
+/// projected from it, and a test pins it field-for-field against the corpus's
+/// `idl.json` — the artefact the structural layer is generated from — so it
+/// cannot drift from the vocabulary the codecs were generated for.
+let opWireFields: (string * (string * bool) list) list =
+    [ "EditNode", [ "target", true; "newKind", true ]
+      "UpdateProp", [ "target", true; "path", true; "value", true ]
+      "ReplaceBinding", [ "target", true; "slot", true; "binding", true ]
+      "UpdateStyle", [ "target", true; "style", true ]
+      "UpdateState", [ "target", true; "state", true ]
+      "InsertChild", [ "parentId", true; "child", true ]
+      "RemoveNode", [ "target", true ]
+      "MoveNode", [ "target", true; "newParentId", true ]
+      "ReorderChildren", [ "parentId", true; "newOrder", true ]
+      "ReplaceRoot", [ "node", true ]
+      "Batch", [ "ops", true ] ]
+
+/// Every recognised `TreeOp` `$type` discriminator, in wire-documentation order.
+/// A discriminator outside this set is `UNKNOWN_DU_CASE`. The op-side twin of
+/// `knownNodeKinds`.
+let knownOpKinds = opWireFields |> List.map fst
+
+/// The fields a conformant decoder REFUSES BY NAME rather than ignoring — the
+/// positional pair the 681–687 wave removed from the wire (`WRONG_TYPE`, see
+/// `retiredPositionalField`). Carried in the vocabulary because "this field is
+/// gone" is something a consumer teaching the format has to be able to say: a
+/// surface that merely omits them leaves a reader who has seen them elsewhere to
+/// infer the removal from silence.
+let retiredOpFields: (string * string) list =
+    [ "InsertChild", "position"; "MoveNode", "newPosition" ]
+
+/// The `ExpectedShape` hint carried by every unknown-op `UNKNOWN_DU_CASE`,
+/// projected from the vocabulary above rather than restating it — the op-side
+/// twin of `wrongNodeKindHint`.
+let unknownOpKindHint = String.concat " | " knownOpKinds
+
 /// Every recognised `FormFieldKind` discriminator (WIRE_FORMAT §11) — the ONE
 /// control vocabulary shared by a `Form`'s fields and a `Filters` strip's chips,
 /// in the same order the sibling hosts advertise it. A discriminator outside this
@@ -8002,10 +8059,11 @@ and private decodeTreeOpAstCore (w: Walk) (path: string) (j: Json) : Result<Tree
                 traverseIndexed (fun i item -> decodeTreeOpAst (descend w) (sprintf "%s.ops[%d]" path i) item) xs)
             |> Result.map TreeOp.Batch
         | Ok s ->
-            unknownDuCase
-                path
-                s
-                "EditNode | UpdateProp | ReplaceBinding | UpdateStyle | UpdateState | InsertChild | RemoveNode | MoveNode | ReorderChildren | ReplaceRoot | Batch"
+            // Phase 1104 — projected from `knownOpKinds`, not restated. The
+            // enumeration used to be this literal, which made it the only place
+            // the op vocabulary was written down and left every consumer to
+            // re-type it.
+            unknownDuCase path s unknownOpKindHint
 
 // ─── Apply-engine structural coercion bridge ─────────────────────────────
 //

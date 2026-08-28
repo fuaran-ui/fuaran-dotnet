@@ -2116,6 +2116,39 @@ canonicalising to the omitted form), and `reject/reject-image-expandable-nonbool
 have to rule on `"false"` too, and two hosts ruling differently would disagree about whether the
 document declares an affordance at all).
 
+## Recorded change — 0.47.0, the TreeOp vocabulary as an EXPORT (fuaran#1104)
+
+**Purely additive public surface on `Fuaran.UI.Ops.JsonDecode`; no wire change and no type
+change.** Four new values:
+
+```fsharp
+val opWireFields : (string * (string * bool) list) list   // tag, (wire field, required)
+val knownOpKinds : string list                            // the $type discriminators
+val retiredOpFields : (string * string) list              // (op, field) a decoder refuses BY NAME
+val unknownOpKindHint : string                            // projected from knownOpKinds
+```
+
+**What it replaces.** The op half of the wire vocabulary had no declaration anywhere: its only
+enumeration was a pipe-separated literal inside `decodeTreeOpAstCore`'s fallback arm, which is not a
+surface. A consumer that needed it — a teaching surface, an authoring surface, another host — had to
+either re-type it (the second copy `nodeKindGroups` exists to remove on the node side) or reflect
+over `TreeOp`'s union cases, which yields the case names and **nothing else**. Reflection cannot
+reach the wire field names, because the DU's own labels are not the wire's: `EditNode of NodeId *
+NodeKind<'Msg>` carries no labels at all, and the wire calls those two `target` and `newKind`. The
+fallback arm's literal is now projected from `unknownOpKindHint` rather than restating it.
+
+**Version decision: rides the in-flight 0.47.0, no separate bump.** Additive-only — nothing is
+removed, renamed or re-meant, so no consumer's construction site or exhaustive match is affected —
+and 0.47.0 is unreleased at the time of writing (`v0.46.0` is the newest tag), so this addition is
+part of the same unshipped surface as the `Masonry` entry below rather than a second slot to cut.
+
+**Pinned on two independent legs** (`Fuaran.UI.JsonDecode.Tests/OpVocabularyTests.fs`): against the
+corpus's `idl.json` — the artefact the structural layer is generated from, which carries the tags,
+the wire field names AND their optionality — and against `TreeOp`'s own union cases. The second is
+deliberately kept rather than replaced: it reads the SHIPPED type where the first reads the artefact,
+so the two disagree if the generated layer and the corpus ever fall out of step, which neither leg
+could report alone.
+
 ## Recorded change — 0.47.0, `LayoutMode.Masonry` (fuaran#1082)
 
 **Additive on the wire, and a NEW CASE on a closed DU in the type.** `LayoutMode` gains

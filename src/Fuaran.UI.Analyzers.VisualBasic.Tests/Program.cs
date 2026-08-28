@@ -106,6 +106,11 @@ internal static class Program
             Vocabulary.Kinds.SetEquals(translatorKinds),
             $"analyzer-only: [{string.Join(",", Vocabulary.Kinds.Except(translatorKinds))}]  translator-only: [{string.Join(",", translatorKinds.Except(Vocabulary.Kinds))}]");
 
+        // ── Phase 1104: the same question one level down — the attribute table
+        //    against the IDL's per-kind FIELDS. The pin above is at kind level and
+        //    cannot see a kind that gained a field.
+        AuthoringSurfacePin.Run(Check);
+
         Console.WriteLine($"[vb-analyzer-tests] {_passed} passed, {Failures.Count} failed.");
         foreach (var f in Failures)
         {

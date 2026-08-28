@@ -37,6 +37,12 @@
          guard the repo gate + the cross-host workflow run. -->
     <Compile Include="SpecProjection.fs" />
     <Compile Include="SpecProjectionTests.fs" />
+    <!-- Phase 1104 — the TreeOp vocabulary export (`JsonDecode.opWireFields`)
+         pinned on two independent legs: idl.json (tags + wire field names +
+         optionality, the strong leg) and TreeOp's own union cases (the shipped
+         type, which carries no field information). Must follow Corpus.fs — the
+         IDL leg reads the emitted corpus. -->
+    <Compile Include="OpVocabularyTests.fs" />
     <Compile Include="CorpusEmitEolTests.fs" />
     <Compile Include="RoundTripTests.fs" />
     <Compile Include="SelectionDerivedValueTests.fs" />
