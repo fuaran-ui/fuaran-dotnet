@@ -37,6 +37,20 @@ open Fuaran.UI.OpStream.Abstractions
 [<Literal>]
 let corpusDirName = "wire-format-fixtures"
 
+/// `JsonDocument` options that admit exactly what the wire format's SYNTACTIC
+/// bound admits (`WireLimits.MaxJsonDepth`).
+///
+/// `System.Text.Json` defaults to a maximum nesting of 64, which is far inside
+/// that bound and — the part that bites — below what a single `MaxDepth`-deep
+/// TREE costs: one node level is several JSON levels, so the §21 accept fixture
+/// at exactly 24 node levels is 72 JSON levels. A harness left on the default
+/// throws on a payload the decoder accepts, and then reports a conformance
+/// failure whose only out-of-contract party is the harness's own parser. Every
+/// corpus-reading parse in this suite uses these options; `JsonDecode` itself
+/// enforces the real bound and refuses `MaxJsonDepth + 1` with LIMIT_EXCEEDED.
+let wireJsonOptions =
+    JsonDocumentOptions(MaxDepth = Fuaran.UI.WireLimits.MaxJsonDepth)
+
 /// One row of `manifest.json`. Round-trip fixtures carry `ExpectedFile`
 /// (identical to `InputFile` — the conformance assertion is
 /// `encode(decode(inputFile)) = expectedFile`); reject fixtures carry
@@ -251,6 +265,24 @@ let emit (outputDir: string) : unit =
         let id = nodeIdStr node
         let rel = "nodes/" + id + ".json"
         File.WriteAllText(Path.Combine(nodesDir, id + ".json"), CanonicalJson.encodeNode node)
+
+        entries.Add
+            { Id = id
+              Kind = "node-round-trip"
+              InputFile = rel
+              ExpectedFile = Some rel
+              ExpectedErrorCode = None
+              ExpectedPath = None
+              Decoder = "node"
+              Description = desc }
+
+    // Node fixtures whose payload is a stored wire string keyed by an explicit
+    // corpus id (the §21 shape-limit family — see `Fixtures.storedNodes` for why
+    // they cannot be `Node` values, and why they are declared rather than
+    // hand-authored into the corpus).
+    for (id, desc, payload) in Fixtures.storedNodes do
+        let rel = "nodes/" + id + ".json"
+        File.WriteAllText(Path.Combine(nodesDir, id + ".json"), payload)
 
         entries.Add
             { Id = id
@@ -635,5 +667,5 @@ let loadFormFieldKinds () : string list = loadStringArray "formFieldKinds"
 /// derivation and the host attestation's fixture sweep, so the two cannot
 /// disagree about where the control vocabulary lives.
 let controlKindsIn (wire: string) : string list =
-    use doc = JsonDocument.Parse wire
+    use doc = JsonDocument.Parse(wire, wireJsonOptions)
     controlKindsOf doc.RootElement

@@ -16,8 +16,8 @@ module Fuaran.UI.JsonDecode.Tests.SchemaConformance
 //    2. Every reject-fixture FAILS the schema (or is not parseable JSON, the
 //       INVALID_JSON case) — mirrors `JsonDecode.decode* = Error`. The one
 //       exception is the named `schemaInexpressibleRejects` set: rules Draft
-//       2020-12 provably cannot state (cross-field ordering), pinned inversely
-//       so the exemption cannot outlive its reason.
+//       2020-12 provably cannot state (cross-field ordering; recursion depth),
+//       pinned inversely so the exemption cannot outlive its reason.
 //    3. Stale-schema guard: the committed schema.json is byte-identical to a
 //       fresh `SchemaGen.wireFormatSchema` — the regenerate-and-diff guard that
 //       keeps the schema co-updated with Types.fs (WIRE_FORMAT.md §11). If this
@@ -45,9 +45,14 @@ let private schema = JsonSchema.FromText schemaText
 /// not parseable JSON (the INVALID_JSON surface — a rejection). `Some isValid`
 /// ⇒ parsed + schema-evaluated.
 let private validate (wire: string) : bool option =
+    // Parsed at the wire format's own syntactic bound (`Corpus.wireJsonOptions`),
+    // not System.Text.Json's 64-level default. On the default this function
+    // returned `None` — "not parseable JSON" — for every §21 depth fixture,
+    // which read as a REJECTION: the accept-fixture leg failed outright, and the
+    // reject legs passed for a reason that had nothing to do with the schema.
     let parsed =
         try
-            Some(JsonDocument.Parse wire)
+            Some(JsonDocument.Parse(wire, Corpus.wireJsonOptions))
         with _ ->
             None
 
@@ -94,6 +99,18 @@ let private acceptTest (e: Corpus.FixtureEntry) : Test =
 ///   so both are stated in the schema and both fail it. Only the relation
 ///   between two values escapes the dialect.
 ///
+/// - `reject-limit-node-depth` / `reject-limit-op-depth` (Phase 781, §21):
+///   nesting deeper than `WireLimits.MaxDepth`. Draft 2020-12 recurses through
+///   `$ref` and has no keyword that bounds how many times — a depth limit is
+///   not a shape, and the payloads are legal by every shape rule the schema can
+///   state. Their SIBLINGS `reject-limit-json-depth{,-at-max}` are NOT here and
+///   must not be added: those breach (or sit at) the syntactic bound, so the
+///   parser refuses the first outright and the schema refuses the second on
+///   shape — a bare array is not a node. Only the semantic depth rule escapes
+///   the dialect. Both were latent until fuaran#1094 parsed at the wire bound
+///   rather than System.Text.Json's 64-level default; before that the harness's
+///   own parser refused them and the exemption was invisible.
+///
 /// Each entry is asserted schema-VALID below — the INVERSE pin. If the schema
 /// ever gains the power to refuse one of these, this test fails and the list
 /// shrinks deliberately rather than the exemption quietly outliving its reason.
@@ -103,7 +120,9 @@ let private schemaInexpressibleRejects: Set<string> =
           // fuaran#1085 retired `reject-transform-source-empty-wrapper` from
           // this list with the fixture itself: the shape the schema could not
           // refuse is one the DECODER no longer refuses either.
-          "reject-fieldrule-length-unordered" ]
+          "reject-fieldrule-length-unordered"
+          "reject-limit-node-depth"
+          "reject-limit-op-depth" ]
 
 // Phase 1068 — `schemaTypeErasedBindingRejects` is GONE, and its deletion is the
 // point rather than a tidy-up. Phase 1064 found four reject fixtures the emitted

@@ -65,8 +65,19 @@ Module Conformance
         Return If(kindType = "GridLayout", "Grid", kindType)
     End Function
 
+    ' Parse corpus payloads at the wire format's own syntactic bound, not
+    ' System.Text.Json's 64-level default. A node level costs several JSON
+    ' levels, so the §21 accept fixture at exactly MaxDepth node levels is 72
+    ' JSON levels — well inside what the decoder accepts and past what the
+    ' default reader will read. On the default this harness did not fail a
+    ' fixture, it THREW, killing the whole conformance run at the first deep
+    ' payload.
+    Private ReadOnly WireJson As New JsonDocumentOptions With {
+        .MaxDepth = Global.Fuaran.UI.WireLimits.MaxJsonDepth
+    }
+
     Private Function KindType(nodeJson As String) As String
-        Using doc = JsonDocument.Parse(nodeJson)
+        Using doc = JsonDocument.Parse(nodeJson, WireJson)
             Dim kind As JsonElement
             If Not doc.RootElement.TryGetProperty("kind", kind) Then Return Nothing
             Dim t As JsonElement

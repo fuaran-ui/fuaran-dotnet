@@ -902,4 +902,50 @@ let all: RejectFixture list =
         ExpectedPath = "$.kind.activeStep"
         IsOp = false
         Description =
-          "Binding<int> Static payload is a §7 non-finite sentinel — the sentinels are FLOAT-slot only; an integer slot has no non-finite form (Phase 1064)" } ]
+          "Binding<int> Static payload is a §7 non-finite sentinel — the sentinels are FLOAT-slot only; an integer slot has no non-finite form (Phase 1064)" }
+
+      // ─── LIMIT_EXCEEDED — the §21 shape bounds ───────────────────────
+      //
+      // Each bound is pinned from BOTH sides: these are the PAST-the-bound
+      // halves, and their at-the-bound twins are `Fixtures.storedNodes`
+      // (`limit-node-depth-at-max`) and `reject-limit-json-depth-at-max`
+      // below — a guard that only ever refuses is indistinguishable from a
+      // decoder that refuses everything.
+      //
+      // Payloads are BUILT (`Fixtures.boxChain` / `Fixtures.batchChain`), not
+      // stored: they were authored straight into the corpus until fuaran#1094,
+      // and every `--emit-corpus` then deleted them, because the emitter
+      // rewrites the payload directories wholesale. Declared here they are
+      // regenerated like every other reject fixture.
+      { Id = "reject-limit-node-depth"
+        Json = Fixtures.boxChain (Fuaran.UI.WireLimits.MaxDepth + 1)
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§21 max node depth — one level past the limit (25). Refused with LIMIT_EXCEEDED, never INVALID_JSON (rule 2) and never a throw (rule 3)" }
+      { Id = "reject-limit-op-depth"
+        Json = Fixtures.batchChain Fuaran.UI.WireLimits.MaxDepth
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$"
+        IsOp = true
+        Description =
+          "§21.5 the op axis — 25 nested TreeOp.Batch. Counted separately from the node axis; the syntactic bound only LOOKS like cover for it" }
+      { Id = "reject-limit-json-depth"
+        Json =
+          String.replicate (Fuaran.UI.WireLimits.MaxJsonDepth + 1) "["
+          + String.replicate (Fuaran.UI.WireLimits.MaxJsonDepth + 1) "]"
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§21 max JSON depth — 257 levels of bare array nesting, ONE past the limit. Well-formed and merely too deep, so LIMIT_EXCEEDED rather than INVALID_JSON (rule 2). Pins the boundary exactly; its at-the-limit twin below pins the other side" }
+      { Id = "reject-limit-json-depth-at-max"
+        Json =
+          String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["
+          + String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "]"
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$"
+        IsOp = false
+        Description =
+          "§21 max JSON depth — 256 levels, EXACTLY at the limit. Not a valid node, so it must fail; the point is that it fails on SHAPE and not as a limit breach. Rule 1 in the one form the reject machinery can express for a syntactic bound: a host whose guard sits one level too tight answers LIMIT_EXCEEDED here and fails" } ]

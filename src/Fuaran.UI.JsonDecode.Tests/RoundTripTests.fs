@@ -152,11 +152,43 @@ let envelopeRoundTrips =
 let coverageGate =
     testList
         "Fuaran.UI.Ops.JsonDecode — corpus coverage gate"
-        [ testCase "node corpus has one entry per Fixtures.allNodes fixture" (fun () ->
+        [ testCase "node corpus has one entry per emitted node fixture" (fun () ->
               Expect.equal
                   (List.length nodeEntries)
-                  (List.length Fixtures.allNodes)
-                  "node-round-trip corpus count must equal Fixtures.allNodes — regenerate with `--emit-corpus` after adding a fixture")
+                  (List.length Fixtures.allNodes + List.length Fixtures.storedNodes)
+                  "node-round-trip corpus count must equal Fixtures.allNodes + Fixtures.storedNodes — regenerate with `--emit-corpus` after adding a fixture")
+
+          // The §21 stored payloads are the one node family the emitter does not
+          // derive from a `Node` value, so nothing else holds their generators to
+          // the committed bytes. Without this pin a drifted generator would not
+          // fail — it would silently rewrite the SHARED corpus on the next
+          // `--emit-corpus`, in a repo this one does not track.
+          testCase "stored node payloads are byte-identical to the committed corpus" (fun () ->
+              for (id, _, payload) in Fixtures.storedNodes do
+                  let committed = Corpus.readPayload corpusRoot ("nodes/" + id + ".json")
+
+                  Expect.equal
+                      payload
+                      committed
+                      (sprintf
+                          "stored fixture '%s' has drifted from the committed corpus bytes — a regen would rewrite the shared corpus"
+                          id))
+
+          // The same pin for the reject family, which HAS always been emitted
+          // from `RejectFixtures.all` and so had no need of one — until the §21
+          // rejects joined the table and made the generators' byte-exactness
+          // load-bearing. It costs one comparison per fixture and covers the
+          // whole family rather than the four that motivated it.
+          testCase "reject payloads are byte-identical to the committed corpus" (fun () ->
+              for f in RejectFixtures.all do
+                  let committed = Corpus.readPayload corpusRoot ("reject/" + f.Id + ".json")
+
+                  Expect.equal
+                      f.Json
+                      committed
+                      (sprintf
+                          "reject fixture '%s' in RejectFixtures.all has drifted from the committed corpus bytes — regenerate with `--emit-corpus`"
+                          f.Id))
 
           testCase "op corpus has one entry per Fixtures.allOps fixture" (fun () ->
               Expect.equal
@@ -195,7 +227,11 @@ let kindSetPin =
 
                       match JsonDecode.decodeNodeObj wire with
                       | Ok decoded ->
-                          use doc = System.Text.Json.JsonDocument.Parse(CanonicalJson.encodeNode decoded)
+                          use doc =
+                              System.Text.Json.JsonDocument.Parse(
+                                  CanonicalJson.encodeNode decoded,
+                                  Corpus.wireJsonOptions
+                              )
 
                           match doc.RootElement.GetProperty("kind").GetProperty("$type").GetString() with
                           | null -> failtestf "fixture %s: decoded node has no kind.$type" e.Id

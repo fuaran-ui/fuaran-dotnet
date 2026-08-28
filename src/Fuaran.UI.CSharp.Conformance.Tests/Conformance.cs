@@ -123,9 +123,21 @@ internal static class Conformance
         }
     }
 
+    // Parse corpus payloads at the wire format's own syntactic bound, not
+    // System.Text.Json's 64-level default. A node level costs several JSON
+    // levels, so the §21 accept fixture at exactly `MaxDepth` node levels is 72
+    // JSON levels — well inside what the decoder accepts and past what the
+    // default reader will read. On the default this harness did not fail a
+    // fixture, it THREW, killing the whole conformance run at the first deep
+    // payload.
+    private static readonly JsonDocumentOptions WireJson = new()
+    {
+        MaxDepth = global::Fuaran.UI.WireLimits.MaxJsonDepth,
+    };
+
     private static string? KindType(string nodeJson)
     {
-        using var doc = JsonDocument.Parse(nodeJson);
+        using var doc = JsonDocument.Parse(nodeJson, WireJson);
         return doc.RootElement.TryGetProperty("kind", out var kind) && kind.TryGetProperty("$type", out var t)
             ? t.GetString()
             : null;

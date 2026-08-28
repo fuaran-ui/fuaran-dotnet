@@ -5156,3 +5156,61 @@ let allOps: (string * TreeOp<obj>) list =
       "UpdateProp-nested-badindex", opUpdatePropNestedBadIndex
       "UpdateProp-nested-badfield", opUpdatePropNestedBadField
       "UpdateProp-nested-malformed", opUpdatePropNestedMalformed ]
+
+// ─── §21 shape-limit payloads (wire STRINGS, not `Node` values) ──────────────
+//
+// The WIRE_FORMAT §21 limit fixtures are built as text for the reason
+// `LimitTests.fs` states at its head: assembling a `MaxDepth`-deep tree as an F#
+// value proves nothing about the decoder, and one level PAST the bound overflows
+// the stack while BUILDING the input. They also carry corpus ids that are not
+// their root node's id (`limit-node-depth-at-max` vs `n0`), which `allNodes`
+// cannot express — there the id is derived from the node.
+//
+// They live here so `Corpus.emit` OWNS them. Before this they were authored
+// straight into the corpus, and since the emitter rewrites the payload
+// directories wholesale, EVERY regeneration deleted the five payloads and
+// dropped their manifest rows — leaving fixtures the corpus carried and no host
+// could reproduce, and a `--emit-corpus` that silently shrank the shared
+// conformance surface. `Fixtures.storedNodes` + the four `RejectFixtures`
+// entries beside it close that by construction; the byte-parity pin in
+// `RoundTripTests` holds the generators to the committed bytes, so a drift fails
+// loudly rather than rewriting the corpus on the next regen.
+
+/// A canonical-wire `Box` chain exactly `boxes` nodes deep: `boxes - 1` wrapper
+/// boxes `n0`…`n{boxes-2}` around an empty `leaf` box. Byte-identical to
+/// `CanonicalJson.encodeNode` on this shape (Ordinal-sorted keys,
+/// omit-when-default), so a within-limit chain is a genuinely decodable tree and
+/// not merely something the decoder tolerates.
+let boxChain (boxes: int) : string =
+    let box (id: string) (children: string) =
+        "{\"id\":\""
+        + id
+        + "\",\"kind\":{\"$type\":\"Box\",\"children\":["
+        + children
+        + "],\"layout\":{\"$type\":\"Flex\",\"direction\":\"Vertical\",\"wrap\":false},\"role\":\"Group\"}}"
+
+    let mutable acc = box "leaf" ""
+
+    for i in boxes - 2 .. -1 .. 0 do
+        acc <- box ("n" + string i) acc
+
+    acc
+
+/// `batches` nested `TreeOp.Batch` ops around a single innermost `RemoveNode`,
+/// so the document is `batches + 1` op levels deep and carries no nodes at all —
+/// the op nesting axis on its own (§21.5).
+let batchChain (batches: int) : string =
+    let mutable acc = """{"$type":"RemoveNode","target":"x"}"""
+
+    for _ in 1..batches do
+        acc <- "{\"$type\":\"Batch\",\"ops\":[" + acc + "]}"
+
+    acc
+
+/// Node fixtures whose payload is a stored wire string rather than an encoded
+/// `Node` value, keyed by an explicit corpus id. `(id, description, payload)` —
+/// the description is the manifest row verbatim.
+let storedNodes: (string * string * string) list =
+    [ "limit-node-depth-at-max",
+      "§21 max node depth — a tree at EXACTLY the limit (24 levels). Rule 1: every conformant host MUST decode this; refusing it is non-conformance, not conservatism",
+      boxChain Fuaran.UI.WireLimits.MaxDepth ]

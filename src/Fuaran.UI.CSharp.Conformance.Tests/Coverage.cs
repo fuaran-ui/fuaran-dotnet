@@ -15,11 +15,23 @@ namespace Fuaran.UI.CSharp.Conformance.Tests;
 // exactly as F#'s FS0025 exhaustiveness would flag a new case.
 internal static class Coverage
 {
-    // The few cases whose C# factory name differs from the F# DU case name.
-    private static readonly IReadOnlyDictionary<string, string> Alias = new Dictionary<string, string>
+    // The few cases whose C# factory name(s) differ from the F# DU case name. A
+    // case maps to the SET of factories that author it, not to one name: `Media`
+    // (Phase 1076) is the first kind whose spec carries a VARIANT DU
+    // (`MediaKind = Video of VideoDetail | Audio`), and the veneer authors one
+    // factory per variant rather than one factory taking a discriminator — video
+    // has an autoplay/poster payload audio deliberately has not. Every listed
+    // factory is REQUIRED, not any-of: a half-authored variant DU is precisely
+    // the gap this pin exists to catch.
+    private static readonly IReadOnlyDictionary<string, string[]> Alias = new Dictionary<string, string[]>
     {
-        ["GridLayout"] = "Grid", // LayoutKind.GridLayout → Fuaran.Grid (DataGrid keeps its name)
+        ["GridLayout"] = ["Grid"], // LayoutKind.GridLayout → Fuaran.Grid (DataGrid keeps its name)
+        ["Media"] = ["Video", "Audio"], // MediaKind = Video of VideoDetail | Audio
     };
+
+    /// <summary>The C# factory name(s) that author a given wire <c>kind.$type</c>.</summary>
+    private static string[] FactoriesFor(string kindType) =>
+        Alias.TryGetValue(kindType, out var mapped) ? mapped : [kindType];
 
     private static readonly HashSet<string> FactoryNames = typeof(Fuaran)
         .GetMethods(BindingFlags.Public | BindingFlags.Static)
@@ -27,9 +39,9 @@ internal static class Coverage
         .Select(m => m.Name)
         .ToHashSet(StringComparer.Ordinal);
 
-    /// <summary>Whether a public C# factory exists for the given wire <c>kind.$type</c> (applying the alias map).</summary>
+    /// <summary>Whether every public C# factory that authors the given wire <c>kind.$type</c> exists.</summary>
     public static bool HasFactoryForKind(string kindType) =>
-        FactoryNames.Contains(Alias.TryGetValue(kindType, out var mapped) ? mapped : kindType);
+        FactoriesFor(kindType).All(FactoryNames.Contains);
 
     public static void Run(Harness h)
     {
@@ -42,11 +54,12 @@ internal static class Coverage
 
         foreach (var caseName in kindCaseNames)
         {
-            var expected = Alias.TryGetValue(caseName, out var mapped) ? mapped : caseName;
+            var expected = FactoriesFor(caseName);
+            var missing = expected.Where(n => !factoryNames.Contains(n)).ToList();
             h.Check(
-                $"coverage: factory Fuaran.{expected} exists for kind {caseName}",
-                factoryNames.Contains(expected),
-                $"no public static Fuaran.{expected}(…) returning FuaranNode");
+                $"coverage: factory {string.Join(" + ", expected.Select(n => "Fuaran." + n))} exists for kind {caseName}",
+                missing.Count == 0,
+                $"no public static {string.Join(" / ", missing.Select(n => $"Fuaran.{n}(…)"))} returning FuaranNode");
         }
     }
 
