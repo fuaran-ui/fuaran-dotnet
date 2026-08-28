@@ -604,9 +604,42 @@ requests.
 must be **non-empty** (an empty key never resolves – the switch is stuck on
 `default` – **FUARAN083**, warning).
 
-### Defaults
+### Defaults — and the `{ Defaults.X with … }` construction rule
 
-Every spec record has a matching `Defaults.X` record with sensible defaults. Always start from `Defaults.X` and override only what differs – this is the canonical authoring idiom and minimises emission size.
+Every spec record has a matching `Defaults.X` record with sensible defaults.
+**Construct a spec by record-updating that default, naming only what differs:**
+
+```fsharp
+{ Defaults.image with
+    Src = Binding.Static(Some "/harbour.jpg")
+    Alt = TextSource.Literal "Fishing boats moored at first light" }
+```
+
+not by writing out every field. This is the canonical authoring idiom for two
+reasons, and only the first is about emission size.
+
+1. **It minimises the emission.** The canonical encoder omits a slot sitting at
+   its default, so the shorter literal is also the shorter document.
+
+2. **It is what keeps additive growth additive.** Spec records grow: the wire
+   format's forward-coupling rule adds a slot, `Defaults` gains its identity
+   value for it, and every existing document decodes to exactly what it decoded
+   to before. In F# source that only holds for the `with` form. A *full* record
+   literal must name every field (FS0764), so it stops compiling the moment the
+   record gains one — and the cost lands on whoever added the field, across
+   every literal in the tree. The `with` form names no absent slot and so needs
+   no edit at all.
+
+**Full literals are still right in one place: reconstruction.** A decoder
+building a record from wire data, or generated codec code, *should* name every
+field, because there FS0764 is the safety net that makes a new slot impossible
+to forget. The rule is about AUTHORING a value, not about rebuilding one.
+
+A construction lint enforces this at the repo's authoring sites (the test
+projects, `samples/`, `benchmarks/`) — see
+[CONTRIBUTING.md](../CONTRIBUTING.md#constructing-spec-records). A literal whose
+full-ness genuinely is the assertion declares itself with a
+`// FULL-LITERAL(<Spec>): <reason>` comment line above it.
 
 ## Motion (Phase 12.F)
 

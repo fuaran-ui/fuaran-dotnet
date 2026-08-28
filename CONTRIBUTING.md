@@ -34,6 +34,51 @@ Per-commit hard requirements:
    (see [`WIRE_FORMAT.md`](../wire-format-fixtures/WIRE_FORMAT.md) §11). The corpus is the cross-host parity gate.
 5. **API-stability impact declared** — if your change touches a surface listed as stable in
    [`STABILITY.md`](STABILITY.md), declare the impact in the PR description.
+6. **Spec records are constructed with `{ Defaults.X with … }`** — see below.
+
+## Constructing spec records
+
+Build a spec record by record-updating its default, naming only the fields that
+differ from it:
+
+```fsharp
+{ Defaults.image with
+    Src = Binding.Static(Some "/harbour.jpg")
+    Alt = TextSource.Literal "Fishing boats moored at first light" }
+```
+
+**Why this is a rule and not a preference.** Spec records grow additively: a new
+slot ships with an identity value in
+[`Defaults.fs`](src/Fuaran.UI/Defaults.fs), and every document that omits it
+decodes exactly as before. That is the design, and on the wire it holds. In F#
+source it holds only for the `with` form — a *full* record literal must name
+every field, so it fails to compile (FS0764) the moment the record gains one.
+When a repo is full of such literals, an additive wire slot becomes a
+source-breaking change and the churn lands on whoever added the field. The
+`with` form mentions no absent slot and so needs no edit at all.
+
+**Full literals stay correct where a record is RECONSTRUCTED rather than
+authored** — a wire decoder, or generated codec code. There FS0764 is the safety
+net that makes a new slot impossible to forget, so library sources are
+deliberately outside the rule.
+
+`Fuaran.UI.Tests`'s `SpecConstruction` suite enforces this at the **authoring
+sites** — every `*.Tests` project, `samples/` and `benchmarks/` — and fails
+naming the file, the line and the `Defaults` value to start from. The governed
+spec set is derived from `Defaults.fs`, so a record is governed as soon as it
+has a default.
+
+If a literal's full-ness genuinely is the assertion — a test that exists to
+catch field additions — declare it on a comment line just above the literal:
+
+```fsharp
+// FULL-LITERAL(ImageSpec): this literal exists to break when the record grows.
+{ Src = …
+  Alt = … }
+```
+
+The marker names the spec so it cannot drift onto a neighbouring literal and go
+on silencing something else.
 
 ## Pull request flow
 
