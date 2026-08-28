@@ -1396,11 +1396,15 @@ let private leniencyFamilies: LeniencyFamily list =
           [ "lenient-bare-text-button-label"
             "lenient-bare-text-callout"
             "lenient-bare-text-heading"
-            "lenient-bare-text-markdown" ]
+            "lenient-bare-text-markdown"
+            "lenient-image-caption-envelope" ]
         Evidence =
           "0.2.0 direction-flip (§16 rule 1): the bare string is the canonical TextSource form; the "
           + "leniency accepts the VERBOSE {\"$type\":\"Literal\"} envelope. The terse side is already "
-          + "taught as canonical." }
+          + "taught as canonical. `Image.caption` (fuaran#1078) is that same rule at a fifth "
+          + "TextSource position, not a fifth rule — its manifest row says so, and the slot is a "
+          + "full TextSource precisely so an i18n caption is expressible; a host that narrowed it "
+          + "to a plain string cannot decode the input at all." }
       { Name = "Bound-wrapper unwrap in Binding value positions"
         Class = AlreadyCanonical
         FixtureIds = [ "lenient-binding-bound-wrapper" ]
@@ -1415,12 +1419,23 @@ let private leniencyFamilies: LeniencyFamily list =
             "lenient-460-explicit-default-metric"
             "lenient-460-explicit-default-style"
             "lenient-596-form-explicit-auto-state"
-            "lenient-fact-explicit-defaults" ]
+            "lenient-fact-explicit-defaults"
+            "lenient-image-explicit-defaults"
+            "lenient-image-explicit-expandable-false"
+            "lenient-image-empty-srcset" ]
         Evidence =
           "Omitted-when-default is the canonical posture on both boundaries (§3.6): the leniency accepts "
           + "the VERBOSE explicit spelling and re-encode drops it. The terse side (omission) is already "
           + "the taught rule — restated in the dialect passage, no transform needed (canonical corpus "
-          + "bytes already omit)." }
+          + "bytes already omit). The three Image rows (fuaran#1077/#1079/#1080) are the same judgement "
+          + "at three shapes of default: a closed-enum identity (fit/aspectRatio/loading), a bool "
+          + "identity (expandable:false — declaring no expansion and not declaring one are the same "
+          + "document), and an EMPTY COLLECTION (srcSet:[] — an image with no alternate renditions). "
+          + "The empty-collection case joins rather than mints a family because the judgement is "
+          + "identical: absent and empty denote the same document, so the normalisation is total and "
+          + "loss-free, and the omitted side is what canonical already emits. (The Image trio's inputs "
+          + "also carry the enveloped-TextSource `alt`, classified in its own row above — a fixture is "
+          + "claimed by the rule it PINS, not by every rule it happens to exercise.)" }
       { Name = "Static-envelope unwrap at plain-value fields"
         Class = AlreadyCanonical
         FixtureIds = [ "lenient-shape-static-envelope-plain-scalars" ]

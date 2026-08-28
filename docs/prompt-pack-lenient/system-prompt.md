@@ -279,7 +279,8 @@ DisplayKind =
 | LabelValueRow { label:TextSource; value:Binding_float; emphasis?:bool; format?:CellFormat; help?:TextSource }
 | Fact { label:TextSource; value:TextSource; emphasis?:bool; help?:TextSource; icon?:str; tone?:ToneVariant }
 | Link { download:bool; href:Binding_str; label:TextSource; protection?:"email"; rel?:str; target?:str }
-| Image { alt:TextSource; src:Binding_str; variant:"Default"|"Avatar"|"Rounded" }
+| Image { alt:TextSource; src:Binding_str; variant:"Default"|"Avatar"|"Rounded"; aspectRatio?:"Natural"|"Square"|"FourThree"|"ThreeTwo"|"SixteenNine"; caption?:TextSource; expandable?:bool; fit?:"Natural"|"Cover"|"Contain"; loading?:"Eager"|"Lazy"; srcSet?:SrcSetEntry[] }
+| Media { kind:MediaKind; label:TextSource; src:Binding_str; controls?:bool; loop?:bool }
 | List { items:TextSource[]; ordered:bool }
 | Toast { message:TextSource; open:Binding_bool; dismissable?:bool; tone?:ToneVariant }
 | CodeBlock { code:str; copyable:bool; highlightLines:int[]; language:str; lineNumbers:bool }
@@ -532,6 +533,9 @@ LocalFlushTrigger =
 LocaleSource =
 | Ambient
 | Explicit { tag:str }
+MediaKind =
+| Video { autoplay?:bool; poster?:Binding_str }
+| Audio
 Scalar =
 | Int { value:int }
 | Float { value:any }
@@ -566,6 +570,7 @@ GuestChannel { direction:"OutOnly"|"TwoWay"; messageShape?:str }
 MapMarker { label:TextSource; latitude:any; longitude:any }
 SelectOption { label:TextSource; value:str }
 SemanticStyle { emphasis?:Emphasis; role?:"None"|"Eyebrow"|"Data"|"Lede"|"Caption"; tone?:ToneVariant; voice?:"Default"|"Display"|"Structural"; weight?:StyleWeight }
+SrcSetEntry { src:Binding_str; width:int }
 StateBehaviour { onEmpty?:Node; onLoading?:Node }
 TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }
 ViewBox { height:any; minX:any; minY:any; width:any }

@@ -4,7 +4,7 @@
   "what": "Per-family (section -> needed | never-needed | unknown) map, distilled from the flip record. `unknown` defaults to INCLUDED; `needed` wins a conflict with `never-needed`. Every verdict carries the record line that decided it.",
   "flipRecord": { "file": "SLIMMING-CENSUS.md", "sha256": "sha256:39531ae400f9ae616b2c5ecedf4b8a933508559d8bb9748d0893407d751a4751" },
   "demandAttribution": { "file": "demand-attribution.jsonl", "sha256": "sha256:a829fc98ddb5e094d2106c6bcde67f29e7becfe72890e4b280168a0a85147917", "records": 65 },
-  "pack": { "file": "system-prompt.md", "sha256": "sha256:b365091a797652e036c8c955f97288c04e41146ac1dbd9bf5df84f99270b7b5e", "sections": 29 },
+  "pack": { "file": "system-prompt.md", "sha256": "sha256:e473c78ed5e1792a4f215c5b6febc6b25b9998fca2c661faf832e70dfa812779", "sections": 29 },
   "families": ["claude-opus", "claude-sonnet", "gemini", "gpt", "grok", "kimi"],
   "dialect": {
     "claude-opus": { "dialect": "lenient", "evidence": { "line": 808, "excerpt": "| \u0060claude-opus-4-8@low\u0060 | 12/12 (was 11/12) | \u22126.0% | **ADOPT** \u2014 dialect eligible as this family\u0027s pack dimension |" } },
