@@ -1,0 +1,131 @@
+name: CI
+
+# Phase 1094 — the repo-wide build-and-verify lane. THE gate this repo defines
+# for itself (`Build.fsproj -- Check`), reached from a push.
+#
+# Until this landed, `Check` was local-only: Phase 958 proved the Phase-142 SSR
+# parity lock had never once run in CI, and every other suite here — Ops,
+# Validator, AiTools, FastPath, Catalog, Content, Fragments, Giraffe,
+# LayoutObserver, OpStream, Telemetry, JsonDecode conformance, the C#/VB
+# authoring veneers, the Roslyn analyzers, the server renderers — was in exactly
+# the same position. 958 deliberately did not wire this, because the gate was RED
+# at HEAD (Image/Media wire-wave residue) and a lane that arrives red is one
+# people learn to step over. 1094 restored the gate first; this lane's first run
+# in its history is green.
+#
+# ── What it runs ─────────────────────────────────────────────────────────────
+# The repo's own gate verbatim — `Check` = Format → Build → Test → Validate,
+# plus the three docs-drift checks (AuthoringPack / AuthoringPackDialect /
+# AuthoringPackFamilies) and the reference-CSS tier-copy check. Nothing is
+# curated out: a CI-only subset drifts from what a maintainer runs, and the
+# divergence is invisible from both sides.
+#
+# ── Why fantomas --check runs as its own step FIRST ──────────────────────────
+# `Check`'s chain begins at `Format`, which REWRITES sources. On an ephemeral
+# runner that is harmless and also useless: the gate would silently repair an
+# unformatted commit and report green, so the workspace's format-before-commit
+# mandate would have no enforcement anywhere. Verifying first turns it into an
+# assertion; the later `Format` pass is then a no-op by construction.
+#
+# ── Layout ───────────────────────────────────────────────────────────────────
+# The conformance suites resolve the shared corpus by walking UP from the test
+# assembly for `wire-format-fixtures/manifest.json`, so the corpus must sit
+# beside this repo's root. This repo is therefore checked out into a
+# subdirectory and the corpus next to it — the reassembly the workspace
+# conformance gate performs, and the one `ssr-parity.yml` performed before this
+# lane absorbed it:
+#
+#     $GITHUB_WORKSPACE/
+#     ├── fuaran-dotnet/          ← this repo
+#     └── wire-format-fixtures/   ← fuaran-ui/fuaran-ui-specification
+#
+# ── Why the presence guard is not decoration ─────────────────────────────────
+# `Build.fs` skips the corpus-driven suites (JsonDecode conformance, the C# PoC,
+# the C#/VB veneer conformance suites) when the corpus is absent, deliberately,
+# so a bare single-repo clone still runs the rest. In CI that same tolerance is
+# the failure mode: a layout drift would silently re-enable the skips and the
+# lane would go green having asserted nothing about the fixtures it exists to
+# read. The guard turns that into a red job before a single test runs.
+#
+# ── ssr-parity.yml is FOLDED IN (Phase 1094 decision) ────────────────────────
+# That lane ran one project — `Fuaran.UI.Renderer.Server.Tests` — under exactly
+# this layout. `Check` runs the same project, from the same corpus reassembly,
+# on the same triggers, so keeping both would run one set of assertions twice
+# per push for no additional information, and leave the corpus checkout + the
+# NU1301 workaround maintained in two places to drift apart. Its header said its
+# narrowness was a stopgap for the missing repo-wide lane; this is that lane, so
+# the file was deleted rather than left standing. The SSR class+ARIA parity lock
+# is not weakened — it is reached by a superset.
+#
+# ── No deploy ────────────────────────────────────────────────────────────────
+# Build-and-verify only. This workflow has no deploy job, uploads no artifact,
+# publishes no package, and starts no `workflow_run` chain; `permissions` is
+# read-only. Publication in this repo stays where it was: `publish-packages.yml`
+# on a `v*` TAG push (a branch push creates no tag and reaches it), and
+# `catalog-pages.yml`, whose deploy job is gated on `workflow_dispatch`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Build.fsproj -- Check
+    runs-on: ubuntu-latest
+    # The whole gate: ~30 test projects plus the validator sweep over every
+    # project in src/. Generous, and still an upper bound rather than a target —
+    # a run that reaches it has hung, which is worth failing on.
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout fuaran-dotnet
+        uses: actions/checkout@v4
+        with:
+          path: fuaran-dotnet
+
+      # UNPINNED on purpose: the corpus is the shared conformance oracle every
+      # host certifies against, and one current spec for all hosts is the point
+      # of giving it a single home.
+      - name: Checkout the wire-format corpus (fuaran-ui-specification)
+        uses: actions/checkout@v4
+        with:
+          repository: fuaran-ui/fuaran-ui-specification
+          path: wire-format-fixtures
+
+      - name: Assert the corpus is where the suites resolve it
+        run: test -f wire-format-fixtures/manifest.json
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: fuaran-dotnet/global.json
+
+      # NU1301: nuget.config declares a `local` folder source three levels above
+      # this repo for inner-loop iteration. It does not exist on the runner, and
+      # NuGet hard-errors on a missing folder source rather than treating it as
+      # empty — so mint it, as the nuget.config itself prescribes. The published
+      # `Fuaran.Core.*` packages then resolve anonymously from nuget.org.
+      - name: Create the empty local NuGet feed dir (NU1301 workaround)
+        run: mkdir -p "${{ github.workspace }}/../../local-nuget-feed"
+
+      # fantomas and fable are local tools; `Check` shells `dotnet fantomas`.
+      - name: Restore .NET tools
+        working-directory: fuaran-dotnet
+        run: dotnet tool restore
+
+      - name: Formatting is already applied (fantomas --check)
+        working-directory: fuaran-dotnet
+        run: dotnet fantomas --check .
+
+      - name: The repo gate
+        working-directory: fuaran-dotnet
+        run: dotnet run --project Build.fsproj -- Check
