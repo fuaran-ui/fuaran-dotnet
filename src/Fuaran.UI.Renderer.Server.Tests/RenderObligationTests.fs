@@ -43,6 +43,7 @@ open Expecto
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Feliz.ViewEngine
 open Fuaran.UI.Renderer.Server
 open Fuaran.UI.RenderFidelity
 
@@ -362,6 +363,145 @@ let private checkSrcSetAscendingByWidth () =
     Expect.isFalse (contains "collector.example" withRefused) "a refused candidate's destination is never emitted"
     Expect.isTrue (contains "/harbour-400.jpg 400w" withRefused) "…while the candidates that pass the floor still are"
 
+// ─── Phase 1108 — the unregistered-degradation obligation ────────────────────
+
+/// A contract card for a component this host has NO renderer for. That is the
+/// whole premise: the store and the renderer registry are independent, and the
+/// case the obligation is about is the one where only the first is populated.
+let private sparklineCard: CustomKindCard =
+    { ModuleId = "analytics"
+      ComponentId = "sparkline"
+      Props =
+        [ { Name = "series"
+            Type = "string"
+            Required = true
+            PayloadLanguage = Some "chartspec"
+            PayloadGate = Some "chartspec-gate:1.2" }
+          { Name = "title"
+            Type = "string"
+            Required = false
+            PayloadLanguage = None
+            PayloadGate = None } ]
+      Hash =
+        { Algorithm = "SHA256"
+          Hash = "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3" }
+      Summary = Some "A compact trend line with a period-over-period delta." }
+
+let private customNode (contentHash: ContentHash option) : Node<obj> =
+    Fuaran.custom
+        "cust"
+        "analytics"
+        "sparkline"
+        (Map.ofList [ "series", Fuaran.Core.JStr "{\"points\":[1,2,3]}" ])
+        contentHash
+        []
+
+let private checkUnregisteredCustomLabelled () =
+    let cards = CustomCardStore.ofCards [ sparklineCard ]
+
+    // (1) NO CARD, NO RENDERER — the pre-1108 path, byte-for-byte. This leg is
+    // first because it is the one the obligation must NOT have changed: an
+    // obligation that quietly rewrote every existing host's output would be a
+    // breaking change wearing a conformance claim.
+    let bare = Render.render BindingResolver.empty (customNode None)
+
+    Expect.isTrue
+        (contains "[fuaran:custom analytics.sparkline]" bare)
+        "the identity-only placeholder still names the component"
+
+    Expect.isFalse
+        (contains "data-fuaran-custom-card" bare)
+        "a host with no card claims nothing about a card — the marker is absent, not empty"
+
+    Expect.isFalse (contains "trend line" bare) "and it invents no description it does not have"
+
+    // (2) CARD, NO RENDERER, NO DECLARED HASH — the common case. The description
+    // is shown, and the claim is marked unverified rather than asserted.
+    let unverified =
+        Render.renderWithCards cards Registry.empty BindingResolver.empty (customNode None)
+
+    Expect.isTrue
+        (contains "data-fuaran-custom-card=\"unverified\"" unverified)
+        "the verdict marker is machine-readable"
+
+    Expect.isTrue (contains "[fuaran:custom analytics.sparkline]" unverified) "the identity is still emitted"
+
+    Expect.isTrue
+        (contains "A compact trend line with a period-over-period delta." unverified)
+        "the card's summary is emitted — this is the whole legibility gain"
+
+    Expect.isTrue
+        (contains "series: string (required) [chartspec (gate chartspec-gate:1.2)]" unverified)
+        "the declared prop rows are emitted, payload language included"
+
+    // Never a prop VALUE. The host was not asked to interpret the node's props,
+    // and spilling them into a placeholder is an information leak that buys no
+    // legibility at all.
+    Expect.isFalse (contains "points" unverified) "no prop value reaches the placeholder"
+
+    // (3) CARD, MATCHING HASH — the strongest claim available.
+    let matching =
+        Render.renderWithCards
+            cards
+            Registry.empty
+            BindingResolver.empty
+            (customNode (
+                Some
+                    { Algorithm = "SHA256"
+                      Hash = "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"
+                      Strictness = HashStrictness.AdvisoryWarning }
+            ))
+
+    Expect.isTrue (contains "data-fuaran-custom-card=\"described\"" matching) "a verified card says so"
+
+    Expect.isTrue (contains "A compact trend line" matching) "and shows the description"
+
+    // (4) CARD, CONTRADICTED HASH — the card describes a different shape at the
+    // same address, so its description is WITHHELD. Without this leg the
+    // obligation would be satisfied by a renderer that showed any card matching
+    // by name, which is the guess it exists to forbid.
+    let mismatched =
+        Render.renderWithCards
+            cards
+            Registry.empty
+            BindingResolver.empty
+            (customNode (
+                Some
+                    { Algorithm = "SHA256"
+                      Hash = "0000000000000000000000000000000000000000"
+                      Strictness = HashStrictness.AdvisoryWarning }
+            ))
+
+    Expect.isTrue
+        (contains "data-fuaran-custom-card=\"hash-mismatch\"" mismatched)
+        "the contradiction is stated, not hidden"
+
+    Expect.isFalse
+        (contains "trend line" mismatched)
+        "a description of a different shape is withheld — a confident wrong description is worse than none"
+
+    Expect.isTrue
+        (contains "[fuaran:custom analytics.sparkline]" mismatched)
+        "the identity survives; only the description is withheld"
+
+    // (5) A RENDERER WINS. A registered renderer renders; the card is never
+    // consulted. Without this leg a renderer that ignored its own registry in
+    // favour of a card would pass every assertion above.
+    let rendered =
+        Render.renderWithCards
+            cards
+            (Registry.empty
+             |> Registry.register "analytics" "sparkline" (fun _ ->
+                 Html.div [ prop.className "host-sparkline"; prop.text "rendered" ]))
+            BindingResolver.empty
+            (customNode None)
+
+    Expect.isTrue (contains "host-sparkline" rendered) "the registered renderer runs"
+
+    Expect.isFalse
+        (contains "data-fuaran-custom-card" rendered)
+        "and no card marker is emitted for a node that rendered"
+
 /// The registry: which (kind, claim) pairs this host asserts, and how.
 ///
 /// Keyed by the claim's WIRE token rather than the DU case, because the
@@ -375,7 +515,8 @@ let private checkers: ((string * string) * (unit -> unit)) list =
       ("Image", "anchor-affordance-on-expandable"), checkAnchorAffordanceOnExpandable
       ("Image", "refused-src-no-affordance"), checkRefusedSrcNoAffordance
       ("Image", "figure-caption-outside-link"), checkFigureCaptionOutsideLink
-      ("Image", "srcset-ascending-by-width"), checkSrcSetAscendingByWidth ]
+      ("Image", "srcset-ascending-by-width"), checkSrcSetAscendingByWidth
+      ("Custom", "unregistered-custom-labelled"), checkUnregisteredCustomLabelled ]
 
 /// Obligations this host declares it does NOT check, each with a reason.
 ///

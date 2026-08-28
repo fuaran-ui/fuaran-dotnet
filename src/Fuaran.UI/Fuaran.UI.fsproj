@@ -52,6 +52,13 @@
     <Compile Include="Fuaran.fs" />
     <Compile Include="CustomContract.fs" />
     <Compile Include="CustomRegistry.fs" />
+    <!-- Phase 1108: the contract-card artefact (WIRE_FORMAT.md §25) — the
+         registry's `CustomKindCard` made transportable, plus the host-supplied
+         card store and the placeholder derivation the unregistered-degradation
+         obligation is stated over. Types + derivation only; the codec lives in
+         Fuaran.UI.Ops (it speaks the §6 DecodeError envelope), so a RENDERER
+         reaches the placeholder without a decoder dependency. -->
+    <Compile Include="CustomCard.fs" />
     <!-- Phase 427: the cross-tree binding-collection walk PreEmitValidate's
          tree-wide checks (dangling Selection; the 421/424/425 filter
          consumption union) run on. Depends only on Types.fs. -->

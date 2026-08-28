@@ -31,9 +31,16 @@ open Fuaran.UI.Types
 //      contract fail validation for the act of describing itself more honestly,
 //      which is the surest way to get the declaration left off.
 //
+//   4. CARD EXPORT (Phase 1108) — the same `CustomKindCard` that feeds (1) is
+//      now the specified, transportable CARD artefact (WIRE_FORMAT.md §25), so a
+//      deployment can hand a FOREIGN host enough to prop-validate and honestly
+//      label a `Custom` node it has no renderer for. Nothing new is assembled
+//      for it: everything a foreign host needs was already gathered here for the
+//      orchestrator's benefit and existed only in-process. See `CustomCard`.
+//
 //  The registry stores only the ERASED contract facts (module/component id +
-//  schema + hash), not the generic `'Props`, so contracts over different prop
-//  types coexist in one registry. Pure data + FSharp.Core only (Fable-clean); a
+//  schema + hash + summary), not the generic `'Props`, so contracts over
+//  different prop types coexist in one registry. Pure data + FSharp.Core only (Fable-clean); a
 //  host owns the registry's lifetime and threads it into its validate / prompt
 //  paths.
 // ============================================================================
@@ -61,13 +68,40 @@ type CustomPropCard =
         PayloadGate: string option
     }
 
+/// The content-identity half of a card (Phase 1108) — the algorithm and the
+/// digest, and deliberately NOT the `Strictness`.
+///
+/// `ContentHash` carries a third field because a NODE declares what should happen
+/// on mismatch. A card is a description of a component, not a policy about one
+/// tree's replay: the strictness belongs to whoever emitted the node, and a card
+/// that carried one would be a foreign deployment's policy arriving as data.
+type CardContentHash = { Algorithm: string; Hash: string }
+
 /// A registered custom component, projected for the AI's available-kinds context:
 /// what to emit (`ModuleId` / `ComponentId`) and the prop contract to emit it
 /// against.
+///
+/// Since Phase 1108 this is ALSO the wire-adjacent CARD artefact (WIRE_FORMAT.md
+/// §25) — the same facts, transportable. That is the whole economy of the phase:
+/// everything a foreign host needs to be honest about a `Custom` node it cannot
+/// render was already assembled here for the orchestrator's benefit and existed
+/// only in-process. A card is not a renderer and does not pretend to be one; it
+/// is what makes "opaque elsewhere" into "legible-but-unrendered elsewhere".
 type CustomKindCard =
-    { ModuleId: string
-      ComponentId: string
-      Props: CustomPropCard list }
+    {
+        ModuleId: string
+        ComponentId: string
+        Props: CustomPropCard list
+        /// The registered contract's derived content hash, so a consumer can ask
+        /// whether this card describes the node in front of it rather than merely
+        /// a component of the same name.
+        Hash: CardContentHash
+        /// One line saying what the component IS. `None` where the contract
+        /// declares none — a placeholder built from such a card shows identity
+        /// alone. Never synthesised from the ids: an invented sentence is exactly
+        /// the guess the degradation obligation forbids.
+        Summary: string option
+    }
 
 /// A single prop-validation defect against a declared schema. `Code` is always
 /// `CustomRegistry.propDefectCode` (`FUARAN068`) — carried per-defect so a host
@@ -134,6 +168,39 @@ module CustomRegistry =
         | PropType.PArray -> "array"
         | PropType.PJson -> "json"
 
+    /// The inverse of `propTypeTag` (Phase 1108) — recover a `PropType` from the
+    /// tag a card carries, so a host holding only the card can prop-validate a
+    /// node exactly as a host holding the contract does.
+    ///
+    /// `None` is the honest answer for a tag this package does not know: a card
+    /// emitted by a NEWER producer can name a `PropType` case that did not exist
+    /// when this consumer was built, and guessing (`PJson`, say — "accepts
+    /// anything") would silently downgrade a check into a pass. The decoder turns
+    /// this `None` into `UNKNOWN_DU_CASE`; the validator turns it into a stated
+    /// non-answer.
+    ///
+    /// `enum(a|b|c)` round-trips through the same spelling `propTypeTag` emits.
+    /// An empty choice list is unrepresentable in that spelling — `enum()` would
+    /// read as one empty choice — so it is refused rather than parsed to a set
+    /// that accepts nothing while claiming to be an enum.
+    let tryParsePropTypeTag (tag: string) : PropType option =
+        match tag with
+        | "string" -> Some PropType.PString
+        | "int" -> Some PropType.PInt
+        | "float" -> Some PropType.PFloat
+        | "bool" -> Some PropType.PBool
+        | "object" -> Some PropType.PObject
+        | "array" -> Some PropType.PArray
+        | "json" -> Some PropType.PJson
+        | _ when tag.StartsWith("enum(", System.StringComparison.Ordinal) && tag.EndsWith(")") ->
+            let inner = tag.Substring(5, tag.Length - 6)
+
+            if inner = "" then
+                Option.None
+            else
+                Some(PropType.PEnum(inner.Split('|') |> Array.toList))
+        | _ -> Option.None
+
     /// Whether a wire `JVal` satisfies a declared `PropType`. `PInt` accepts a
     /// `JInt`; `PFloat` accepts either (an int is an exact float); `PJson` accepts
     /// anything. Mirrors the decoder's number policy.
@@ -161,12 +228,74 @@ module CustomRegistry =
             | Some g -> sprintf "%s (gate %s)" pl.Language g.AsStamp
             | Option.None -> sprintf "%s (NO GATE)" pl.Language)
 
+    /// Check a prop bag against a `PropSchema` — the whole of the registry's
+    /// judgement, lifted out of the registry (Phase 1108).
+    ///
+    /// Lifted rather than duplicated because a CARD carries the same schema
+    /// without the registry around it, and a foreign host validating from a card
+    /// must reach exactly the same verdict a host holding the contract reaches.
+    /// Two implementations of "does this bag satisfy this schema" would be two
+    /// answers the day one of them was edited, and the whole claim a card makes
+    /// is that it says what the contract says.
+    let validateSchema (schema: PropSchema) (props: Map<string, JVal>) : CustomValidation =
+        let missing =
+            schema
+            |> List.filter (fun p -> p.Required && not (Map.containsKey p.Name props))
+            |> List.map (fun p ->
+                { Code = propDefectCode
+                  Key = p.Name
+                  Message = sprintf "required prop '%s' (%s) is missing" p.Name (propTypeTag p.Type) })
+
+        let mistyped =
+            schema
+            |> List.choose (fun p ->
+                match Map.tryFind p.Name props with
+                | Some v when not (matchesType p.Type v) ->
+                    Some
+                        { Code = propDefectCode
+                          Key = p.Name
+                          Message = sprintf "prop '%s' is not a %s" p.Name (propTypeTag p.Type) }
+                | _ -> None)
+
+        let obligations =
+            schema
+            |> List.choose (fun p ->
+                match p.PayloadLanguage, Map.tryFind p.Name props with
+                | Some pl, Some v when matchesType p.Type v ->
+                    let kind, message =
+                        match pl.Gate with
+                        | Some g ->
+                            PayloadObligationKind.GateOwed,
+                            sprintf
+                                "prop '%s' carries a '%s' payload; the '%s' gate judges it and has NOT run here"
+                                p.Name
+                                pl.Language
+                                g.AsStamp
+                        | Option.None ->
+                            PayloadObligationKind.Ungated,
+                            sprintf
+                                "prop '%s' declares a '%s' payload but names no gate — nothing can judge it"
+                                p.Name
+                                pl.Language
+
+                    Some
+                        { Key = p.Name
+                          Language = pl.Language
+                          Gate = pl.Gate
+                          Kind = kind
+                          Message = message }
+                | _ -> None)
+
+        { Defects = missing @ mistyped
+          Obligations = obligations }
+
 /// The registered-contract facts, erased of the generic `'Props`.
 type private RegisteredCustom =
     { ModuleId: string
       ComponentId: string
       Schema: PropSchema
-      Hash: ContentHash }
+      Hash: ContentHash
+      Summary: string option }
 
 /// An immutable registry of custom-component contracts keyed on
 /// `(moduleId, componentId)`. Build by folding `register` over your contracts.
@@ -183,7 +312,8 @@ type CustomRegistry private (entries: Map<string * string, RegisteredCustom>) =
             { ModuleId = contract.ModuleId
               ComponentId = contract.ComponentId
               Schema = contract.Schema
-              Hash = contract.Hash }
+              Hash = contract.Hash
+              Summary = contract.Summary }
 
         CustomRegistry(Map.add key entry entries)
 
@@ -196,6 +326,10 @@ type CustomRegistry private (entries: Map<string * string, RegisteredCustom>) =
         |> List.map (fun (_, e) ->
             { ModuleId = e.ModuleId
               ComponentId = e.ComponentId
+              Hash =
+                { Algorithm = e.Hash.Algorithm
+                  Hash = e.Hash.Hash }
+              Summary = e.Summary
               Props =
                 e.Schema
                 |> List.map (fun p ->
@@ -247,54 +381,4 @@ type CustomRegistry private (entries: Map<string * string, RegisteredCustom>) =
     member _.ValidatePropsDetailed(moduleId: string, componentId: string, props: Map<string, JVal>) : CustomValidation =
         match Map.tryFind (moduleId, componentId) entries with
         | None -> { Defects = []; Obligations = [] }
-        | Some e ->
-            let missing =
-                e.Schema
-                |> List.filter (fun p -> p.Required && not (Map.containsKey p.Name props))
-                |> List.map (fun p ->
-                    { Code = CustomRegistry.propDefectCode
-                      Key = p.Name
-                      Message = sprintf "required prop '%s' (%s) is missing" p.Name (CustomRegistry.propTypeTag p.Type) })
-
-            let mistyped =
-                e.Schema
-                |> List.choose (fun p ->
-                    match Map.tryFind p.Name props with
-                    | Some v when not (CustomRegistry.matchesType p.Type v) ->
-                        Some
-                            { Code = CustomRegistry.propDefectCode
-                              Key = p.Name
-                              Message = sprintf "prop '%s' is not a %s" p.Name (CustomRegistry.propTypeTag p.Type) }
-                    | _ -> None)
-
-            let obligations =
-                e.Schema
-                |> List.choose (fun p ->
-                    match p.PayloadLanguage, Map.tryFind p.Name props with
-                    | Some pl, Some v when CustomRegistry.matchesType p.Type v ->
-                        let kind, message =
-                            match pl.Gate with
-                            | Some g ->
-                                PayloadObligationKind.GateOwed,
-                                sprintf
-                                    "prop '%s' carries a '%s' payload; the '%s' gate judges it and has NOT run here"
-                                    p.Name
-                                    pl.Language
-                                    g.AsStamp
-                            | Option.None ->
-                                PayloadObligationKind.Ungated,
-                                sprintf
-                                    "prop '%s' declares a '%s' payload but names no gate — nothing can judge it"
-                                    p.Name
-                                    pl.Language
-
-                        Some
-                            { Key = p.Name
-                              Language = pl.Language
-                              Gate = pl.Gate
-                              Kind = kind
-                              Message = message }
-                    | _ -> None)
-
-            { Defects = missing @ mistyped
-              Obligations = obligations }
+        | Some e -> CustomRegistry.validateSchema e.Schema props

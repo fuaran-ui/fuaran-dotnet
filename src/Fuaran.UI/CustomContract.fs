@@ -102,6 +102,20 @@ type CustomContract<'Props> =
         Schema: PropSchema
         /// Content hash derived from the declared shape (Phase 134 / Phase 70).
         Hash: ContentHash
+        /// One line saying what this component IS, for a reader who cannot render
+        /// it (Phase 1108). `None` is honest and common — a contract authored
+        /// before the card artefact existed declares none, and a placeholder
+        /// derived from such a card shows identity alone rather than inventing a
+        /// description.
+        ///
+        /// It is deliberately not folded into the ids. `analytics.trend-card` is
+        /// an ADDRESS; a foreign host that can only print the address has told its
+        /// reader nothing they could not read off the wire themselves. Nor does it
+        /// enter the content hash — see the header note: the hash folds the
+        /// declared SHAPE, and a reworded sentence must not invalidate every
+        /// `StrictReplay` consumer of a component that emits exactly what it did
+        /// before.
+        Summary: string option
     }
 
 [<RequireQualifiedAccess>]
@@ -143,7 +157,8 @@ module CustomContract =
           Hash =
             { Algorithm = "SHA256"
               Hash = hash
-              Strictness = strictness } }
+              Strictness = strictness }
+          Summary = Option.None }
 
     /// Build a contract with an EXPLICIT typed prop schema — the first-class path:
     /// each prop's `PropType` + `Required` drives AI discovery and runtime
@@ -186,7 +201,21 @@ module CustomContract =
                   Hash =
                     { Algorithm = "SHA256"
                       Hash = hash
-                      Strictness = strictness } }
+                      Strictness = strictness }
+                  Summary = Option.None }
+
+    /// Declare, in one line, what this component IS — the sentence a host that
+    /// cannot render it shows instead (Phase 1108). A combinator rather than a
+    /// parameter on `create` / `createWithSchema`: both already take seven
+    /// arguments, an eighth positional string would be unreadable at every call
+    /// site, and the overwhelming majority of contracts declare none.
+    ///
+    /// The summary does NOT move the content hash — asserted in the tests rather
+    /// than left to inspection, because a hash that moved on a reworded sentence
+    /// would invalidate every `StrictReplay` consumer of a component whose
+    /// emitted shape did not change at all.
+    let withSummary (summary: string) (contract: CustomContract<'Props>) : CustomContract<'Props> =
+        { contract with Summary = Some summary }
 
     /// The derived hash string (the Phase-134 body-shape SHA-256). Registries
     /// record this so a `Custom.node`'s declared hash verifies against it.

@@ -22,6 +22,11 @@
          Fuaran.UI.OpStream.Abstractions/Elicitation.fs. Must precede
          Corpus.fs (the emitter proves its laws at emit time). -->
     <Compile Include="ElicitationFixtures.fs" />
+    <!-- CardFixtures.fs — the WIRE_FORMAT §25 contract-card family (Phase 1108).
+         Its own family, never the node corpus: a card is not a node, so the node
+         round-trip law says nothing about it. Must precede Corpus.fs (the
+         emitter proves the family's laws at emit time). -->
+    <Compile Include="CardFixtures.fs" />
     <Compile Include="DefectVocabulary.fs" />
     <!-- Phase 442 — the render-fidelity manifest artefact, generated from the
          `Fuaran.UI.RenderFidelity` declaration. Must precede Corpus.fs, which
@@ -47,6 +52,11 @@
     <Compile Include="RoundTripTests.fs" />
     <Compile Include="SelectionDerivedValueTests.fs" />
     <Compile Include="ElicitationTests.fs" />
+    <!-- Phase 1108 — the §25 card family, corpus-driven, plus the value-level
+         suites the corpus cannot express (the three-way hash verdict, the
+         withholding rule, card-vs-contract validation agreement). Must follow
+         Corpus.fs. -->
+    <Compile Include="CardTests.fs" />
     <Compile Include="RejectFixtureTests.fs" />
     <Compile Include="LenientIngestTests.fs" />
     <Compile Include="TransformSourceLeniencyTests.fs" />

@@ -29,6 +29,12 @@
          hand-written mirror of the wire contract alongside CanonicalJson
          (encoder) + JsonDecode (decoder), co-updated per WIRE_FORMAT.md §11. -->
     <Compile Include="SchemaGen.fs" />
+    <!-- Phase 1108: the contract-card codec (WIRE_FORMAT.md §25). Here rather
+         than beside the card types because it speaks the §6 DecodeError envelope
+         declared in JsonDecode.fs — a card refusal that had its own vocabulary
+         would be a second refusal shape for hosts to learn and would fit none of
+         the corpus manifest's reject columns. -->
+    <Compile Include="CustomCardJson.fs" />
     <Compile Include="Apply.fs" />
     <!-- Placement algebra — pure op construction over the existing TreeOp
          vocabulary (no new op kinds, no wire change); pre-checks mirror the

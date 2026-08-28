@@ -97,6 +97,12 @@ type ObligationClaim =
     /// Responsive candidates are emitted in ascending width order, and a
     /// candidate the egress floor refuses is dropped rather than emitted.
     | SrcSetAscendingByWidth
+    /// An unregistered `Custom` node for which a CONTRACT CARD is available
+    /// renders a labelled placeholder derived from that card — the component
+    /// identity, the card's summary, and a machine-readable verdict marker — and
+    /// never a blank, never a guess. Where no card is available the placeholder
+    /// is unchanged.
+    | UnregisteredCustomLabelled
 
 /// The stable wire token for a claim. This is what the artefact carries and what
 /// a host's checker registry is keyed by, so it may not change without a version
@@ -112,6 +118,7 @@ let claimId (claim: ObligationClaim) : string =
     | ObligationClaim.RefusedSrcNoAffordance -> "refused-src-no-affordance"
     | ObligationClaim.FigureCaptionOutsideLink -> "figure-caption-outside-link"
     | ObligationClaim.SrcSetAscendingByWidth -> "srcset-ascending-by-width"
+    | ObligationClaim.UnregisteredCustomLabelled -> "unregistered-custom-labelled"
 
 /// What the claim MEANS, kind-independently — the vocabulary entry a host reads
 /// when it meets a claim id it does not yet implement, so "unchecked" can be
@@ -136,6 +143,8 @@ let claimMeaning (claim: ObligationClaim) : string =
         "the caption sits outside the expansion anchor, so the caption text is not part of the link target"
     | ObligationClaim.SrcSetAscendingByWidth ->
         "responsive candidates are emitted in ascending width order, and a refused candidate is dropped rather than emitted"
+    | ObligationClaim.UnregisteredCustomLabelled ->
+        "an unregistered custom node with an available contract card renders a labelled placeholder derived from that card - identity, summary and a machine-readable verdict marker - never a blank and never a guess"
 
 /// The closed vocabulary, in declaration order.
 ///
@@ -152,7 +161,8 @@ let allClaims: ObligationClaim list =
       ObligationClaim.AnchorAffordanceOnExpandable
       ObligationClaim.RefusedSrcNoAffordance
       ObligationClaim.FigureCaptionOutsideLink
-      ObligationClaim.SrcSetAscendingByWidth ]
+      ObligationClaim.SrcSetAscendingByWidth
+      ObligationClaim.UnregisteredCustomLabelled ]
 
 /// One obligation as a row declares it: which claim, the normative sentence for
 /// THIS kind, and the spec section that states it.
@@ -288,17 +298,27 @@ let all: FidelityRow list =
           [ "code-1" ]
           "Phase 290; WIRE_FORMAT.md 3.2; docs/SSR.md (deterministic-render + client-only-enhancement contract)"
 
+      // Phase 1108 — the fallback prose now names the CARDED degradation,
+      // because "the same labelled placeholder on both sides" stopped being the
+      // whole of what a host owes for an unregistered node the moment a
+      // description of it became obtainable. The obligation below is the
+      // checkable remainder of that sentence.
       row
           "Custom"
           true
           "the component name, a bounded prop map, and the optional content-identity envelope"
-          "whatever the host's SERVER custom-renderer registry emits for the component; an unregistered node renders the same labelled placeholder on both sides"
+          "whatever the host's SERVER custom-renderer registry emits for the component; an unregistered node renders a labelled placeholder, identical on both sides — derived from the contract card (WIRE_FORMAT §25) where one is available, and identity-only where none is"
           (RichTier.ClientOnly(
               "the host's registered client renderer",
               "the `IFuaranRuntime.RegisterCustomRenderer` trust boundary (Phase 141) - the sanctioned escape a host uses for a library render such as a diagram"
           ))
           [ "custom-1" ]
-          "Phase 141; docs/SSR.md (custom-renderer registry); SANITIZATION.md"
+          "Phase 141; Phase 1108; docs/SSR.md (custom-renderer registry); WIRE_FORMAT.md 25; SANITIZATION.md"
+      |> obliged
+          [ owes
+                ObligationClaim.UnregisteredCustomLabelled
+                "WIRE_FORMAT.md 25.4"
+                "where no renderer is registered for a Custom node and a contract card for its identity is available, the emitted placeholder carries the component identity, the card's summary where the card declares one, and a machine-readable verdict marker; it emits no prop value and no guess at the component's appearance, and where the card's content hash contradicts the node's it withholds the description rather than showing one that describes a different shape" ]
 
       row
           "DataGrid"

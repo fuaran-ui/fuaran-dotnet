@@ -190,6 +190,12 @@ let private writeManifest
         + "refusal (expectedErrorCode at a path starting with expectedPath). elicitation-answer-accept / "
         + "elicitation-answer-reject fixtures (WIRE_FORMAT 18.4): the inputFile pairs {answer, contract}; "
         + "run the host's answer-conformance validation and assert acceptance or the expected refusal. "
+        + "contract-card-round-trip / contract-card-reject fixtures (WIRE_FORMAT 25): decode with the "
+        + "decoder-named entry point (contract-card = the single-card codec, contract-card-bundle = the "
+        + "bundle codec), then either re-encode byte-equal to expectedFile or assert the structured "
+        + "refusal (expectedErrorCode at a path starting with expectedPath). A card is NOT a node — it "
+        + "is the description a host reads to label and prop-validate a Custom node it has no renderer "
+        + "for — so it is its own family and never appears in nodes/. "
         + "See fuaran-dotnet/docs/WIRE_FORMAT.md."
     )
 
@@ -252,8 +258,16 @@ let emit (outputDir: string) : unit =
     let lenientDir = Path.Combine(outputDir, "lenient")
     let envelopeDir = Path.Combine(outputDir, "envelope")
     let elicitationDir = Path.Combine(outputDir, "elicitation")
+    let cardsDir = Path.Combine(outputDir, "cards")
 
-    for d in [ nodesDir; opsDir; rejectDir; lenientDir; envelopeDir; elicitationDir ] do
+    for d in
+        [ nodesDir
+          opsDir
+          rejectDir
+          lenientDir
+          envelopeDir
+          elicitationDir
+          cardsDir ] do
         if Directory.Exists d then
             Directory.Delete(d, true)
 
@@ -495,6 +509,54 @@ let emit (outputDir: string) : unit =
                   ExpectedPath = Some path
                   Decoder = "elicitation-answer"
                   Description = af.Description }
+
+    // Contract-card family (WIRE_FORMAT §25). Its own family and its own
+    // directory: a card is not a node, so the node family's round-trip law —
+    // stated over `CanonicalJson.encodeNode` — has nothing to say about it, and
+    // folding these in would have changed what every host's node-corpus leg was
+    // asserting. Same emitter-proves-the-law discipline as the families above.
+    for cf in CardFixtures.roundTrips do
+        let rel = "cards/" + cf.Id + ".json"
+        File.WriteAllText(Path.Combine(cardsDir, cf.Id + ".json"), cf.Wire)
+
+        match CardFixtures.decodeReencode cf.Decoder cf.Wire with
+        | Ok reencoded when reencoded = cf.Wire -> ()
+        | Ok other ->
+            failwithf "card fixture '%s' violates the §25 round-trip law:\n  in  → %s\n  out → %s" cf.Id cf.Wire other
+        | Error e ->
+            failwithf "card fixture '%s' expected a round-trip but decode refused (%s at %s)" cf.Id e.Code e.Path
+
+        entries.Add
+            { Id = cf.Id
+              Kind = "contract-card-round-trip"
+              InputFile = rel
+              ExpectedFile = Some rel
+              ExpectedErrorCode = None
+              ExpectedPath = None
+              Decoder = cf.Decoder
+              Description = cf.Description }
+
+    for cf in CardFixtures.rejects do
+        let rel = "cards/" + cf.Id + ".json"
+        File.WriteAllText(Path.Combine(cardsDir, cf.Id + ".json"), cf.Wire)
+
+        match cf.Expect with
+        | CardFixtures.RoundTrip -> failwithf "card fixture '%s' is in the reject list but expects a round-trip" cf.Id
+        | CardFixtures.Refuse(code, path) ->
+            match CardFixtures.decodeReencode cf.Decoder cf.Wire with
+            | Error e when e.Code = code && e.Path.StartsWith path -> ()
+            | Error e -> failwithf "card fixture '%s' expected %s at %s, got %s at %s" cf.Id code path e.Code e.Path
+            | Ok _ -> failwithf "card fixture '%s' expected a refusal but decode accepted it" cf.Id
+
+            entries.Add
+                { Id = cf.Id
+                  Kind = "contract-card-reject"
+                  InputFile = rel
+                  ExpectedFile = None
+                  ExpectedErrorCode = Some code
+                  ExpectedPath = Some path
+                  Decoder = cf.Decoder
+                  Description = cf.Description }
 
     for rf in RejectFixtures.all do
         let rel = "reject/" + rf.Id + ".json"

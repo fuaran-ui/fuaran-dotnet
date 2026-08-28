@@ -2428,3 +2428,88 @@ encoder built as a chain of `if`s gets the canonical key order wrong), `nodes/me
 `reject/reject-media-autoplay-nonbool` (`WRONG_TYPE` at `$.kind.kind.autoplay` — the stringified
 boolean refused rather than coerced, on the slot where a truthiness rule would make one host start
 playing a video another host leaves still).
+
+---
+
+## Recorded change — 0.47.0, contract cards + the unregistered-degradation obligation (fuaran#1108)
+
+**Two record widenings, one new module, one new obligation claim, and a second renderer store; no
+wire change to any existing document, and — asserted, not assumed — no movement in any existing
+contract's content hash.**
+
+```fsharp
+type CustomContract<'Props> = { … ; Summary: string option }        // ← widening 1
+type CardContentHash = { Algorithm: string; Hash: string }          // algorithm + digest, NO strictness
+type CustomKindCard = { … ; Hash: CardContentHash ; Summary: string option }  // ← widening 2
+
+type CardHashVerdict = Matches | Unverified of reason: string | Mismatch   // a CLOSED three-case DU
+type CardValidation  = { Defects; Obligations; Unresolvable: string list }
+type CardPlaceholder = { ModuleId; ComponentId; Label; Summary; PropLines; HashVerdict; Validation }
+type CustomCardStore = …                                            // a host-supplied lookup
+```
+
+**What this is for.** A registered custom component is first-class inside its own deployment and
+opaque everywhere else: a foreign host has no contract, no schema and no renderer, so the most it can
+honestly do is name the component and stop. What the issuing deployment had, and the receiver did
+not, was never a RENDERER — it was the DESCRIPTION, and `CustomKindCard` already assembled all of it
+for the orchestrator's prompt context. Making that card a specified, transportable artefact
+(`WIRE_FORMAT.md` §25) turns "opaque elsewhere" into "legible-but-unrendered elsewhere" at a fraction
+of the cost of a portable renderer.
+
+**Surface added.**
+
+- `Fuaran.UI.CustomCard` — the format-version tags, the placeholder derivation (`describe`), the
+  three-way hash verdict (`verifyHash` / `verdictMarker`), card-driven prop validation (`validate`),
+  and the `/.well-known/fuaran-cards.json` path convention. Fable-safe, FSharp.Core + the Core JSON
+  model, so both renderers reach it without a decoder dependency.
+- `Fuaran.UI.CustomCardStore` — the host-supplied lookup, and deliberately a SECOND store rather than
+  a field on the renderer registry. A registry says "I can render this"; a store says "I can describe
+  this", and all four combinations are meaningful. Folding cards into the registry would have made a
+  description obtainable only where a renderer already existed — i.e. in every case except the one
+  the artefact exists for.
+- `Fuaran.UI.CustomContract.withSummary` — a combinator, not an eighth positional argument on
+  `create` / `createWithSchema`. **The summary does not enter the content hash**, which the tests
+  assert rather than leave to inspection: a hash that moved on a reworded sentence would invalidate
+  every `StrictReplay` consumer of a component whose emitted shape did not change at all.
+- `Fuaran.UI.CustomRegistry.validateSchema` — the registry's judgement, lifted out of the registry so
+  the card path and the contract path cannot reach different verdicts. `tryParsePropTypeTag` is the
+  inverse of `propTypeTag`, and answers `None` for a tag from a newer producer rather than guessing
+  one.
+- `Fuaran.UI.Ops.CustomCardJson` — the codec. Here rather than beside the types because it speaks the
+  §6 `DecodeError` envelope declared in `JsonDecode`; a card refusal with its own vocabulary would be
+  a second refusal shape for hosts to learn and would fit none of the corpus manifest's reject
+  columns. `exportBundleJson` is the registry's publication path.
+- `Fuaran.UI.Renderer.Server` gains `ServerRenderContext.Cards`, `mkContextWithCards` and
+  `renderWithCards`. Empty by default, and an empty store leaves every emitted byte exactly as it
+  was.
+
+**The render obligation (`unregistered-custom-labelled`, `WIRE_FORMAT.md` §25.4).** A new
+`ObligationClaim` case on the fuaran#1105 vocabulary, attached to the `Custom` row, so an adopting
+host's suite enumerates it from `render-fidelity.json` rather than from prose. Where a host renders
+an unregistered `Custom` node and a card for its identity is available, the placeholder carries the
+identity, the card's summary, and a machine-readable verdict marker — never a prop VALUE and never a
+guess. **Where no card is available the placeholder is byte-for-byte what it was**, which is what
+makes the obligation safe to declare on a kind every roster host already renders.
+
+**The three-way verdict is the load-bearing detail.** A `moduleId`/`componentId` pair is an ADDRESS,
+and two deployments can ship different components at the same address. So `described` (hashes agree)
+shows everything; `unverified` (nothing to compare — no declared hash, or different algorithms) shows
+everything and says the claim is unverified; and `hash-mismatch` WITHHOLDS the summary and the prop
+rows while keeping the identity and the fact of the mismatch. Two digests under different algorithms
+are `unverified` rather than `hash-mismatch`: they are incomparable, not unequal, and withholding a
+good description on the strength of a comparison never made would be the wrong error.
+
+**Prop validation from a card is the half that is not cosmetic.** A foreign host can now say a
+`Custom` node is MALFORMED, where before it could only fail to render it — and it reaches the same
+verdict, in the same words, as a host holding the contract.
+
+**Stylesheet.** `.fuaran-custom-summary` and `.fuaran-custom-defects` join the vocabulary; the
+existing `.fuaran-custom-label` / `.fuaran-custom-props` carry the rest, which also brings the F# and
+TypeScript server placeholders onto the same class set. `Theme.vocabularyFingerprint` and the four
+tier copies were regenerated with `-- Css`.
+
+**Wire and corpus.** `WIRE_FORMAT.md` §25 states the artefact, the decode rules, the obligation and
+the transport convention; §11.0 gains a contract-card adoption table beside the render-obligation
+one. The corpus grows its own `cards/` family with the `contract-card-round-trip` /
+`contract-card-reject` kinds — **its own family and never `nodes/`**, because a card is not a node
+and the node round-trip law says nothing about it. `manifest.json` is the authoritative enumeration.

@@ -57,6 +57,19 @@ type ServerRenderContext =
         /// default — every `Custom` node then falls back to the labelled
         /// placeholder, matching the client's unregistered path.
         Customs: Registry.ServerCustomRendererRegistry
+        /// Host-supplied CONTRACT CARDS (Phase 1108; WIRE_FORMAT.md §25). Empty
+        /// by default, and an empty store leaves every emitted byte exactly as it
+        /// was — the identity-only placeholder is unchanged for a host that holds
+        /// no card, which is what makes this addition free for every existing
+        /// consumer.
+        ///
+        /// Deliberately a SECOND store rather than a field on `Customs`. A
+        /// renderer registry answers "can I render this"; a card store answers
+        /// "can I describe this", and the whole point of the phase is the case
+        /// where the second is true and the first is not. Folding the cards into
+        /// the registry would have made a description obtainable only where a
+        /// renderer already existed.
+        Cards: Fuaran.UI.CustomCardStore
         /// The render SCOPE this tree runs under (Phase 783). `None` is the root
         /// scope. Custom-renderer lookup is constrained to it, so a tree rendered
         /// for a public surface cannot invoke a renderer registered for a
@@ -1680,12 +1693,63 @@ and private renderCustom
     : ReactElement =
     // Unregistered placeholder — identical labelled shape to the client's
     // unregistered Custom path (parity).
-    let placeholder () =
+    //
+    // Phase 1108 — TWO shapes, and the first one is byte-for-byte what shipped
+    // before. A host holding no card for this identity emits exactly the
+    // identity-only div it always emitted; a host holding one emits the
+    // card-derived degradation the §25.4 obligation states. That the uncarded
+    // path is untouched is not a courtesy: it is what makes the obligation
+    // safe to declare on a kind every roster host already renders.
+    let identityOnly () =
         Html.div
             [ prop.className (sprintf "fuaran-kind-custom-placeholder fuaran-custom-%s-%s" moduleId componentId)
               prop.custom ("data-fuaran-custom-module", moduleId)
               prop.custom ("data-fuaran-custom-component", componentId)
               prop.text (sprintf "[fuaran:custom %s.%s]" moduleId componentId) ]
+
+    let carded (described: Fuaran.UI.CardPlaceholder) =
+        let summary =
+            match described.Summary with
+            | Some s -> [ Html.div [ prop.className "fuaran-custom-summary"; prop.text s ] ]
+            | None -> []
+
+        let props =
+            match described.PropLines with
+            | [] -> []
+            | lines ->
+                [ Html.ul
+                      [ prop.className "fuaran-custom-props"
+                        prop.children (lines |> List.map (fun line -> Html.li [ prop.text line ])) ] ]
+
+        // The node's own prop bag, judged against the card. This is the half a
+        // labelling pass alone would miss: a foreign host can now say the node
+        // is MALFORMED, where before it could only fail to render it. Defect
+        // KEYS and messages are the card's own words about its declared schema —
+        // never a prop VALUE, which the host was not asked to interpret.
+        let defects =
+            match described.Validation.Defects with
+            | [] -> []
+            | ds ->
+                [ Html.ul
+                      [ prop.className "fuaran-custom-defects"
+                        prop.children (ds |> List.map (fun d -> Html.li [ prop.text d.Message ])) ] ]
+
+        Html.div
+            [ prop.className (sprintf "fuaran-kind-custom-placeholder fuaran-custom-%s-%s" moduleId componentId)
+              prop.custom ("data-fuaran-custom-module", moduleId)
+              prop.custom ("data-fuaran-custom-component", componentId)
+              prop.custom ("data-fuaran-custom-card", Fuaran.UI.CustomCard.verdictMarker described.HashVerdict)
+              prop.children (
+                  [ Html.div [ prop.className "fuaran-custom-label"; prop.text described.Label ] ]
+                  @ summary
+                  @ props
+                  @ defects
+              ) ]
+
+    let placeholder () =
+        match ctx.Cards.TryFind(moduleId, componentId) with
+        | None -> identityOnly ()
+        | Some card -> carded (Fuaran.UI.CustomCard.describe contentHash props card)
 
     // Phase 783 — SCOPE-CONSTRAINED lookup. No cross-scope fallback.
     match Registry.tryRenderInScope ctx.Scope moduleId componentId ctx.Customs with
@@ -2289,6 +2353,10 @@ let mkContextWith
     { Sources = seeded
       Fragments = collectFragments Map.empty node
       Customs = customs
+      // Phase 1108 — empty by default. A host that holds cards reaches them by
+      // name (`mkContextWithCards`), exactly as it reaches a non-default egress
+      // policy, so no existing entry point changes what it emits.
+      Cards = Fuaran.UI.CustomCardStore.Empty
       Scope = None
       // Phase 1026 — default-deny, reached-by-name opt-out
       // (`mkContextWithEgress`). This is the server tier's single context choke
@@ -2312,6 +2380,22 @@ let mkContextWithEgress
     : ServerRenderContext =
     { mkContextWith customs sources node with
         EgressPolicy = egressPolicy }
+
+/// `mkContextWith` plus a host-supplied CONTRACT-CARD store (Phase 1108) — what
+/// a host passes when it can DESCRIBE components it cannot render.
+///
+/// The two stores are independent, and all four combinations are meaningful: a
+/// renderer and a card (the card is unused — a rendered node needs no
+/// description), a renderer only (unchanged), a card only (the case this phase
+/// exists for), and neither (unchanged).
+let mkContextWithCards
+    (cards: Fuaran.UI.CustomCardStore)
+    (customs: Registry.ServerCustomRendererRegistry)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : ServerRenderContext =
+    { mkContextWith customs sources node with
+        Cards = cards }
 
 /// Build a `ServerRenderContext` under a named render SCOPE (Phase 783) —
 /// Custom-renderer lookup is then constrained to renderers registered for that
@@ -2376,6 +2460,17 @@ let renderWithInScope
     (node: Node<obj>)
     : string =
     Render.htmlView (renderNode 1 (mkContextInScope scope customs sources node) node)
+
+/// `renderWith` plus a host-supplied CONTRACT-CARD store (Phase 1108) — an
+/// unregistered `Custom` node whose identity the store knows renders the
+/// card-derived labelled placeholder instead of the identity-only one.
+let renderWithCards
+    (cards: Fuaran.UI.CustomCardStore)
+    (customs: Registry.ServerCustomRendererRegistry)
+    (sources: BindingResolver.BindingSources)
+    (node: Node<obj>)
+    : string =
+    Render.htmlView (renderNode 1 (mkContextWithCards cards customs sources node) node)
 
 /// A `<style>` element carrying the Phase 12.K `Theme` → CSS-variable `:root`
 /// projection — parity with the client `themeStyleElement`. The host mounts

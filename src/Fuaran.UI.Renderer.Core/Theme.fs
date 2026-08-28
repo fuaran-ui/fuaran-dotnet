@@ -69,7 +69,7 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 /// PINNED. `Fuaran.UI.Tests` recomputes it from the live vocabulary and fails
 /// with the correct value when this is stale; `Build.fsproj -- Css` restamps the
 /// stylesheet from it, and `-- CssCheck` fails when the two disagree.
-let vocabularyFingerprint = "fv1:f8c7017590804af1"
+let vocabularyFingerprint = "fv1:075664559ccec161"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
