@@ -22,6 +22,15 @@ open Fuaran.UI.Types
 //      disabled-binding advisory). This closes the "a Custom node opts out of all
 //      validation" gap — a registered kind is checked like a built-in.
 //
+//   3. PAYLOAD OBLIGATIONS (Phase 1107) — `ValidatePropsDetailed` reports, apart
+//      from the defects, what the registry CANNOT judge: a prop whose schema
+//      declares an inner wire format carries an outstanding gate run, and a
+//      declaration naming no gate carries something worse. Reported separately
+//      from the defects on purpose. An obligation is not an error — the payload
+//      may well be fine — so folding it into the `FUARAN068` stream would make a
+//      contract fail validation for the act of describing itself more honestly,
+//      which is the surest way to get the declaration left off.
+//
 //  The registry stores only the ERASED contract facts (module/component id +
 //  schema + hash), not the generic `'Props`, so contracts over different prop
 //  types coexist in one registry. Pure data + FSharp.Core only (Fable-clean); a
@@ -35,9 +44,22 @@ open Fuaran.UI.Types
 /// API — named records are binary-stable across compilers and speakable from
 /// C#/VB, anonymous records are neither.
 type CustomPropCard =
-    { Name: string
-      Type: string
-      Required: bool }
+    {
+        Name: string
+        Type: string
+        Required: bool
+        /// The inner wire format this prop's value is written in (Phase 1107), or
+        /// `None` for an ordinary prop. A teaching surface or an eval harness
+        /// reads this to know an inner language EXISTS — which `Type = "string"`
+        /// could never tell it.
+        PayloadLanguage: string option
+        /// The stamp (`gate:version`) of the gate that judges that language.
+        /// `None` alongside a `Some` language is the declared-but-ungated state,
+        /// and it is carried as its own absence rather than being folded into the
+        /// language string, so a card consumer never has to parse one out of the
+        /// other.
+        PayloadGate: string option
+    }
 
 /// A registered custom component, projected for the AI's available-kinds context:
 /// what to emit (`ModuleId` / `ComponentId`) and the prop contract to emit it
@@ -54,6 +76,42 @@ type CustomPropDefect =
     { Code: string
       Key: string
       Message: string }
+
+/// Why a declared-wire payload prop carries an outstanding obligation (Phase
+/// 1107). This is deliberately NOT a defect vocabulary: neither case says the
+/// payload is wrong, only that this registry cannot say it is right.
+[<RequireQualifiedAccess>]
+type PayloadObligationKind =
+    /// The prop declares an inner language AND names the gate that judges it,
+    /// and that gate did not run here. It cannot: the registry holds no decoder
+    /// for any domain's format, and FGP 7 puts the one definition of the gate in
+    /// the domain that owns the language. A gate run is OWED before the payload
+    /// can be called valid.
+    | GateOwed
+    /// The prop declares an inner language but names NO gate. Nothing can judge
+    /// this payload at all — a claim with no falsifier. Distinct from `GateOwed`
+    /// because the remedies are different: one is "run it", the other is
+    /// "there is nothing to run".
+    | Ungated
+
+/// One outstanding payload obligation on a prop bag. Reported ALONGSIDE the
+/// defect list rather than inside it: a `CustomPropDefect` is an error the
+/// pre-emit walk escalates, and an obligation is not an error — a contract that
+/// adopts a payload declaration must not thereby start failing validation.
+type CustomPayloadObligation =
+    { Key: string
+      Language: string
+      Gate: PayloadGate option
+      Kind: PayloadObligationKind
+      Message: string }
+
+/// Both answers the registry gives about one prop bag: what is WRONG with it
+/// (schema defects, error-grade) and what is still OWED on it (payload gate runs
+/// this tier cannot perform). Keeping them in one record is the point — the
+/// caller sees that a prop bag passing `Defects = []` is not thereby judged.
+type CustomValidation =
+    { Defects: CustomPropDefect list
+      Obligations: CustomPayloadObligation list }
 
 module CustomRegistry =
 
@@ -90,6 +148,18 @@ module CustomRegistry =
         | PropType.PArray, JArr _ -> true
         | PropType.PJson, _ -> true
         | _ -> false
+
+    /// The prompt-facing rendering of a declared payload language (Phase 1107) —
+    /// the one line a teaching surface prints beside the prop's type tag, so
+    /// every such surface prints the same thing. `None` for an ordinary prop.
+    /// The ungated case says so loudly: a reader must not have to notice a
+    /// missing parenthetical to learn that nothing judges the payload.
+    let payloadTag (p: PayloadLanguage option) : string option =
+        p
+        |> Option.map (fun pl ->
+            match pl.Gate with
+            | Some g -> sprintf "%s (gate %s)" pl.Language g.AsStamp
+            | Option.None -> sprintf "%s (NO GATE)" pl.Language)
 
 /// The registered-contract facts, erased of the generic `'Props`.
 type private RegisteredCustom =
@@ -131,17 +201,52 @@ type CustomRegistry private (entries: Map<string * string, RegisteredCustom>) =
                 |> List.map (fun p ->
                     { Name = p.Name
                       Type = CustomRegistry.propTypeTag p.Type
-                      Required = p.Required }) })
+                      Required = p.Required
+                      PayloadLanguage = p.PayloadLanguage |> Option.map _.Language
+                      PayloadGate = p.PayloadLanguage |> Option.bind _.Gate |> Option.map _.AsStamp }) })
 
     /// Validate a decoded `NodeKind.Custom` prop bag against the registered
     /// schema for `(moduleId, componentId)`. An UNregistered component is `Ok`
     /// (the registry only speaks for what it knows — an unknown custom kind is a
     /// host trust-boundary concern, not a schema violation). A registered one is
     /// checked: every required prop present, every present prop the right
-    /// `PropType`. Returns the defect list (empty = valid).
-    member _.ValidateProps(moduleId: string, componentId: string, props: Map<string, JVal>) : CustomPropDefect list =
+    /// `PropType`. Returns the defect list (empty = NO SCHEMA DEFECT — which
+    /// since Phase 1107 is deliberately narrower than "valid": a declared-wire
+    /// payload prop can be defect-free and still be unjudged. See
+    /// `ValidatePropsDetailed`.)
+    member this.ValidateProps(moduleId: string, componentId: string, props: Map<string, JVal>) : CustomPropDefect list =
+        this.ValidatePropsDetailed(moduleId, componentId, props).Defects
+
+    /// The PAYLOAD obligations on a prop bag (Phase 1107) — what this registry
+    /// cannot judge and says so. One entry per declared-wire prop that is
+    /// PRESENT and well-shaped: `GateOwed` when the contract names a gate (the
+    /// host composes and runs it), `Ungated` when it names none.
+    ///
+    /// A declared-wire prop that is absent, or present with the wrong JSON
+    /// shape, raises NO obligation — the first is nothing to judge, and the
+    /// second already has a `CustomPropDefect` saying the shape is wrong.
+    /// Reporting both would double-count one fault and make the obligation list
+    /// a noisier restatement of the defect list rather than the different
+    /// question it is.
+    member this.ValidatePayloads
+        (moduleId: string, componentId: string, props: Map<string, JVal>)
+        : CustomPayloadObligation list =
+        this.ValidatePropsDetailed(moduleId, componentId, props).Obligations
+
+    /// The distinguishing call: a prop bag's schema DEFECTS and its outstanding
+    /// payload OBLIGATIONS, separately. `ValidateProps` and `ValidatePayloads`
+    /// are the two projections of it.
+    ///
+    /// This is what closes the gap a `PString` declaration left open. Before the
+    /// payload-language annotation, a prop holding a whole inner wire format and
+    /// a prop holding a label were the same declaration, so a payload that was
+    /// prose rather than its declared format PASSED prop validation and failed
+    /// only at render. It still passes `Defects` — the shape genuinely is a
+    /// string — but it now leaves an obligation behind, so the two are no longer
+    /// the same answer.
+    member _.ValidatePropsDetailed(moduleId: string, componentId: string, props: Map<string, JVal>) : CustomValidation =
         match Map.tryFind (moduleId, componentId) entries with
-        | None -> []
+        | None -> { Defects = []; Obligations = [] }
         | Some e ->
             let missing =
                 e.Schema
@@ -162,4 +267,34 @@ type CustomRegistry private (entries: Map<string * string, RegisteredCustom>) =
                               Message = sprintf "prop '%s' is not a %s" p.Name (CustomRegistry.propTypeTag p.Type) }
                     | _ -> None)
 
-            missing @ mistyped
+            let obligations =
+                e.Schema
+                |> List.choose (fun p ->
+                    match p.PayloadLanguage, Map.tryFind p.Name props with
+                    | Some pl, Some v when CustomRegistry.matchesType p.Type v ->
+                        let kind, message =
+                            match pl.Gate with
+                            | Some g ->
+                                PayloadObligationKind.GateOwed,
+                                sprintf
+                                    "prop '%s' carries a '%s' payload; the '%s' gate judges it and has NOT run here"
+                                    p.Name
+                                    pl.Language
+                                    g.AsStamp
+                            | Option.None ->
+                                PayloadObligationKind.Ungated,
+                                sprintf
+                                    "prop '%s' declares a '%s' payload but names no gate — nothing can judge it"
+                                    p.Name
+                                    pl.Language
+
+                        Some
+                            { Key = p.Name
+                              Language = pl.Language
+                              Gate = pl.Gate
+                              Kind = kind
+                              Message = message }
+                    | _ -> None)
+
+            { Defects = missing @ mistyped
+              Obligations = obligations }

@@ -17,6 +17,41 @@ open Fuaran.Core
 //  and a content hash DERIVED from the declared shape (not hand-typed). The
 //  `Map<string, JVal>` wire shape is unchanged — this is a host-side façade,
 //  not a tree-type change.
+//
+//  ── The payload-language declaration (Phase 1107) ──────────────────────────
+//
+//  A declared `PString` prop says "a string". For a whole class of registered
+//  component that is the least interesting true thing about it: the string IS a
+//  wire format, with its own decoder and its own gate, and a prop schema that
+//  cannot say so passes a prose payload and leaves the failure to render.
+//
+//  ANNOTATION, NOT A `PropType` CASE — the decision, and why.
+//
+//   * The two facts are ORTHOGONAL. `PropType` answers "what JSON shape does
+//     this hold"; the declaration answers "what does the content MEAN, and who
+//     judges it". A payload need not be a string — a structured DSL is a
+//     perfectly good `PObject` payload — so a `PWire` case would have to choose
+//     one shape and foreclose the rest, or restate the shape question inside
+//     itself.
+//   * `PropType` is CLOSED, and its closedness is what it is for. Every
+//     `matchesType` / `propTypeTag` arm is exhaustive; a new case breaks every
+//     one of them in every consumer, for a fact none of them needs. With the
+//     annotation, not one existing match moved.
+//   * The set of payload languages is OPEN. Every domain names its own format
+//     and its own gate, so a `PWire` case would carry free-form strings inside
+//     a vocabulary whose entire value is that it is a fixed, checkable list —
+//     the typed-surface erosion the bounded-escape posture warns about, done to
+//     the one type meant to resist it.
+//   * The cost is honest and it is paid here: widening `PropDecl` breaks
+//     full-literal construction (FS0764). `Defaults.propDecl` is the Phase-1106
+//     answer, and it is why the next annotation on a prop costs nothing.
+//
+//  THE HASH DOES NOT MOVE. `Hashing.customBodyShapeHash` folds the module and
+//  component ids, the prop KEY SET and the exposed ids — never a prop's declared
+//  detail. A contract that adopts the declaration therefore hashes exactly as it
+//  did before, which is asserted rather than asserted-to-be-obvious: a moved
+//  hash would invalidate every `StrictReplay` consumer of an existing component
+//  for a change that altered nothing about what it emits.
 // ============================================================================
 
 open Fuaran.UI.Types
@@ -101,9 +136,10 @@ module CustomContract =
           Schema =
             propKeys
             |> List.map (fun k ->
-                { Name = k
-                  Type = PropType.PJson
-                  Required = true })
+                { Defaults.propDecl with
+                    Name = k
+                    Type = PropType.PJson
+                    Required = true })
           Hash =
             { Algorithm = "SHA256"
               Hash = hash
@@ -155,6 +191,95 @@ module CustomContract =
     /// The derived hash string (the Phase-134 body-shape SHA-256). Registries
     /// record this so a `Custom.node`'s declared hash verifies against it.
     let hash (contract: CustomContract<'Props>) : string = contract.Hash.Hash
+
+    /// The payload language declared for `key`, or `None` when the contract
+    /// declares no such prop or declares it as an ordinary one.
+    let payloadLanguage (contract: CustomContract<'Props>) (key: string) : PayloadLanguage option =
+        contract.Schema
+        |> List.tryFind (fun p -> p.Name = key)
+        |> Option.bind _.PayloadLanguage
+
+    /// Every declared-wire prop of a contract, in schema order.
+    let payloadProps (contract: CustomContract<'Props>) : (string * PayloadLanguage) list =
+        contract.Schema
+        |> List.choose (fun p -> p.PayloadLanguage |> Option.map (fun pl -> p.Name, pl))
+
+// ============================================================================
+//  Payload provenance (Phase 1107, task 3) — the shape an op-stream or telemetry
+//  consumer records when a declared-wire payload prop is UPDATED.
+//
+//  The WIRING is per-host and deliberately so: this tier holds no op-stream
+//  sink, and FGP 7 puts the one definition of a domain's gate in that domain, so
+//  nothing here can run one. What this tier owns is the SHAPE both ends agree
+//  on, and the one-line attribution a stream stores — so that two hosts writing
+//  the same fact write the same bytes, and a reader can tell the three states
+//  apart without parsing prose.
+//
+//  `NotRun` is a first-class verdict rather than an omission. A stream that
+//  simply leaves the unjudged case out cannot distinguish "the gate ran and was
+//  content" from "nobody looked", and that reading is precisely how an unjudged
+//  payload becomes an assumed-good one.
+// ============================================================================
+
+/// What a domain gate concluded about a payload it was handed.
+[<RequireQualifiedAccess>]
+type PayloadGateVerdict =
+    /// The named gate ran and accepted the payload.
+    | Accepted
+    /// The named gate ran and refused it, carrying the gate's own reason.
+    | Refused of reason: string
+    /// No gate ran — the payload was updated unjudged. Recorded, never omitted.
+    | NotRun
+
+/// The provenance record for one update to a declared-wire payload prop: which
+/// component, which prop, which inner language, which gate (if any is named),
+/// and what that gate concluded.
+type PayloadUpdateProvenance =
+    { ModuleId: string
+      ComponentId: string
+      Key: string
+      Language: string
+      Gate: PayloadGate option
+      Verdict: PayloadGateVerdict }
+
+[<RequireQualifiedAccess>]
+module PayloadProvenance =
+    /// The record for a payload update on `key` of `contract`, or `None` when
+    /// that prop declares no inner language. `None` is the load-bearing half: a
+    /// host cannot manufacture a "via `<language>` gate" attribution for a prop
+    /// whose contract never claimed one, so the attribution is falsifiable
+    /// against the schema rather than being whatever the writer typed.
+    let forUpdate
+        (contract: CustomContract<'Props>)
+        (key: string)
+        (verdict: PayloadGateVerdict)
+        : PayloadUpdateProvenance option =
+        CustomContract.payloadLanguage contract key
+        |> Option.map (fun pl ->
+            { ModuleId = contract.ModuleId
+              ComponentId = contract.ComponentId
+              Key = key
+              Language = pl.Language
+              Gate = pl.Gate
+              Verdict = verdict })
+
+    /// The stable one-line attribution a stream stores — "via `<language>` gate
+    /// `<stamp>` — `<verdict>`". An ungated declaration renders `<ungated>` in
+    /// the stamp slot rather than eliding it, so the line never reads as though
+    /// a gate were named.
+    let attribution (p: PayloadUpdateProvenance) : string =
+        let stamp =
+            match p.Gate with
+            | Some g -> g.AsStamp
+            | Option.None -> "<ungated>"
+
+        let verdict =
+            match p.Verdict with
+            | PayloadGateVerdict.Accepted -> "accepted"
+            | PayloadGateVerdict.Refused reason -> "refused: " + reason
+            | PayloadGateVerdict.NotRun -> "NOT RUN"
+
+        sprintf "via %s gate %s — %s" p.Language stamp verdict
 
 [<RequireQualifiedAccess>]
 module Custom =

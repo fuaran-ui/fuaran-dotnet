@@ -268,12 +268,80 @@ type PropType =
     | PArray
     | PJson
 
-/// One declared prop of a Custom component: its wire key, its type, and whether
-/// an author must supply it. A `PropSchema` is the ordered list of these.
+// ─── Payload-language declaration (Phase 1107) ────────────────────────────────
+//
+// `PropType` answers ONE question — what JSON shape does this prop hold — and it
+// is closed so that the validator can switch on it exhaustively. A payload prop
+// asks a second, orthogonal question: the string IS a wire format, with its own
+// decoder and its own gate, and losing that is how a prose payload passes prop
+// validation and is caught only at render.
+//
+// The declaration is therefore an ANNOTATION on the prop, not a ninth `PropType`
+// case. `PropType` stays closed and answers what it answered before; the set of
+// payload languages is OPEN (every domain names its own) and could never have
+// been enumerated inside it. See the `CustomContract` header for the full
+// argument.
+
+/// The identity of the gate that judges a declared payload language: which gate,
+/// and which version of it. `Version` is opaque on purpose — a content hash, a
+/// tool version, a corpus stamp; the domain that owns the gate decides, and the
+/// only property this layer relies on is that it changes when the gate does.
+///
+/// Deliberately a MIRROR of the shape an eval substrate already models rather
+/// than a reference to it: `Fuaran.UI` depends on FSharp.Core and nothing else,
+/// and a two-field record is a cheaper thing to keep in step than a package edge
+/// is to carry. `AsStamp` is the joinable half — a harness reading both surfaces
+/// matches on that one token without either side knowing the other exists.
+type PayloadGate =
+    { Gate: string
+      Version: string }
+
+    /// The single-token form a card row, a sidecar row or a provenance record
+    /// stores. An empty `Version` degrades to the bare gate name rather than
+    /// emitting a trailing colon.
+    member this.AsStamp: string =
+        if this.Version = "" then
+            this.Gate
+        else
+            this.Gate + ":" + this.Version
+
+/// A declaration that a prop's value is not merely a string (or object, or
+/// array) but a WIRE FORMAT in its own right — an inner language with its own
+/// decoder and its own gate.
+///
+/// `Language` is the format's identifier, an OPEN set. `Gate` is an option
+/// because "declared but ungated" is a real, distinguishable state — a claim
+/// with no falsifier — and NOT the same thing as undeclared; `CustomRegistry`
+/// reports the two as different obligation classes for exactly that reason.
+type PayloadLanguage =
+    { Language: string
+      Gate: PayloadGate option }
+
+[<RequireQualifiedAccess>]
+module PayloadLanguage =
+    /// A payload language WITH the gate that judges it — the complete
+    /// declaration, and the one a domain should aim to make.
+    let gated (language: string) (gate: string) (version: string) : PayloadLanguage =
+        { Language = language
+          Gate = Some { Gate = gate; Version = version } }
+
+    /// A payload language with NO gate named. Legitimate — a domain may declare
+    /// the format before it has a runnable gate — but it is a claim nothing can
+    /// falsify, and it is reported as its own obligation class rather than
+    /// folded into "a gate is owed".
+    let ungated (language: string) : PayloadLanguage =
+        { Language = language
+          Gate = Option.None }
+
+/// One declared prop of a Custom component: its wire key, its type, whether an
+/// author must supply it, and — optionally — the inner wire format its value is
+/// written in. `PayloadLanguage = None` is an ORDINARY prop: the `PropType` is
+/// the whole of what is declared about it.
 type PropDecl =
     { Name: string
       Type: PropType
-      Required: bool }
+      Required: bool
+      PayloadLanguage: PayloadLanguage option }
 
 /// The declared prop contract of a Custom component — the ordered prop list a
 /// `CustomContract` carries. Its key set is the same set the content hash folds

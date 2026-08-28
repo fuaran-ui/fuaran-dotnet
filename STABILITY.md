@@ -2116,6 +2116,97 @@ canonicalising to the omitted form), and `reject/reject-image-expandable-nonbool
 have to rule on `"false"` too, and two hosts ruling differently would disagree about whether the
 document declares an affordance at all).
 
+## Recorded change — 0.47.0, payload-language declaration on contract props (fuaran#1107)
+
+**Two record widenings plus five new types on `Fuaran.UI`'s extension-registry surface; no wire
+change, no renderer behaviour change, and — asserted, not assumed — no movement in any existing
+contract's content hash.**
+
+```fsharp
+type PayloadGate = { Gate: string; Version: string }          // + member AsStamp
+type PayloadLanguage = { Language: string; Gate: PayloadGate option }
+
+type PropDecl = { … ; PayloadLanguage: PayloadLanguage option }   // ← widening 1
+type CustomPropCard = { … ; PayloadLanguage: string option ; PayloadGate: string option }  // ← widening 2
+
+type PayloadObligationKind = GateOwed | Ungated                // a CLOSED two-case DU
+type CustomPayloadObligation = { Key; Language; Gate; Kind; Message }
+type CustomValidation = { Defects: CustomPropDefect list; Obligations: CustomPayloadObligation list }
+
+type PayloadGateVerdict = Accepted | Refused of reason: string | NotRun
+type PayloadUpdateProvenance = { ModuleId; ComponentId; Key; Language; Gate; Verdict }
+```
+
+plus `Defaults.propDecl`, the module functions `PayloadLanguage.gated` / `.ungated`,
+`CustomRegistry.payloadTag`, `CustomContract.payloadLanguage` / `.payloadProps`,
+`PayloadProvenance.forUpdate` / `.attribution`, and two registry members
+(`ValidatePayloads`, `ValidatePropsDetailed`).
+
+**What it is for.** A registered contract's payload prop was declared `PString` — "a string" — which
+loses the most important fact about it: that string IS a wire format with its own decoder and its own
+gate. `points: string` and a whole markdown document were the same declaration, so a payload that was
+prose rather than its declared format passed prop validation and failed only at render.
+
+**ANNOTATION, NOT A `PropType` CASE — the decision.** The two facts are orthogonal (`PropType` answers
+what JSON shape; the declaration answers what the content means and who judges it, and a payload need
+not be a string at all). `PropType` is closed and its closedness is the point — every `matchesType` /
+`propTypeTag` arm is exhaustive, and a ninth case would break all of them in every consumer for a fact
+none of them needs; not one existing match moved under the annotation. And the set of payload
+languages is OPEN — every domain names its own format and gate — so a `PWire` case would carry
+free-form strings inside a vocabulary whose whole value is being a fixed checkable list, which is the
+typed-surface erosion the bounded-escape posture exists to resist, done to the one type meant to
+resist it.
+
+**Breaking-change classification: two record widenings, so full-literal construction of `PropDecl`
+and `CustomPropCard` breaks (FS0764).** It rides the in-flight **0.47.0** on the same reasoning as the
+entries below: `v0.46.0` is the newest tag, 0.47.0 is unreleased, and a consumer moving 0.46.0 →
+0.47.0 sees one minor's worth of change. `Defaults.propDecl` is the Phase-1106 answer for `PropDecl`
+and is why the next annotation on a prop schema costs no edit at any authoring site; `CustomPropCard`
+is constructed only inside `DescribeForAi`.
+
+**THE CONTENT HASH DOES NOT MOVE, and that is asserted on two independent legs.**
+`Hashing.customBodyShapeHash` folds the module and component ids, the prop KEY SET and the exposed ids
+— never a prop's declared detail — so a contract that adopts the declaration hashes exactly as it did
+before. `CustomRegistryTests` asserts the annotated, unannotated and permissively-derived contracts
+over one prop set agree with each other, AND pins the resulting digest to a literal computed outside
+this codebase. The first alone compares two calls to the same function and so could not see a change
+to the derivation itself; the second alone could not see a schema-detail leak that moved all three
+together. A moved hash would invalidate every `StrictReplay` consumer of an existing component for a
+change that altered nothing about what it emits.
+
+**An obligation is NOT a defect, and the separation is load-bearing.**
+`ValidatePropsDetailed` returns the schema defects (`FUARAN068`, error-grade, unchanged) and the
+payload obligations apart from one another. `ValidateProps` is unchanged in signature and in
+behaviour, so no existing consumer moves and no contract starts failing validation for the act of
+describing itself more honestly — which is the surest way to get a declaration left off. Nothing is
+wired into `PreEmitValidate.validateWithRegistry` for the same reason: that path maps the whole
+`CustomPropSchemaViolation` case to `FUARAN068`/Error regardless of the per-defect codes it carries, so
+an obligation folded in would escalate a tree the registry has no grounds to refuse. No new `FUARAN`
+code was allocated.
+
+**Two obligation classes, because the remedies differ.** `GateOwed` — a gate is named and did not run
+here; the registry holds no decoder for any domain's format, and the one definition of that gate lives
+in the domain that owns the language. `Ungated` — a language is declared and no gate is named, so
+nothing can judge the payload at all: a claim with no falsifier. An absent or wrong-shaped payload prop
+raises no obligation, because a `FUARAN068` defect already reports it and two reports of one fault make
+the obligation list a noisier restatement of the defect list rather than the different question it is.
+
+**Provenance is a SHAPE, not a wiring.** `PayloadUpdateProvenance` + `PayloadProvenance.attribution`
+fix the bytes two hosts write for the same fact ("via `<language>` gate `<stamp>` — `<verdict>`"); the
+op-stream/telemetry wiring is per-host, because this tier holds no sink and can run no domain gate.
+`forUpdate` returns `option` and yields `None` for a prop that declares no language, so an attribution
+is falsifiable against the schema rather than being whatever the writer typed. `NotRun` is a
+first-class verdict rather than an omission: a stream that leaves the unjudged case out cannot
+distinguish "the gate ran and was content" from "nobody looked", and that reading is exactly how an
+unjudged payload becomes an assumed-good one.
+
+**fuaran-ts parity is at that tier's own granularity, and the divergence is named.** The TS registry is
+a RENDERER registry — it carries no prop schema at all, so there is no prop to annotate. It gains the
+same declaration types and the same two obligation classes, declared per-component-per-prop-key on
+`register`, plus `describePayloadLanguages()` and `payloadObligations()`. The F# tier derives the
+declared set from a schema it already holds; the TS tier is handed it. Same vocabulary, same tags, same
+attribution line.
+
 ## Recorded change — 0.47.0, render obligations on the fidelity manifest (fuaran#1105)
 
 **A record widening plus two new types on `Fuaran.UI.RenderFidelity`; no wire change, no renderer

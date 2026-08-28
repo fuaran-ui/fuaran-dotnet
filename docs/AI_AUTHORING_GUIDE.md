@@ -765,6 +765,28 @@ component behave like a built-in kind in the two ways that matter to you as an a
 So: prefer typed built-ins; for a registered custom kind, emit its `props` per the schema in your
 context; you still never invent a `(moduleId, componentId)` the host hasn't registered.
 
+#### A prop can declare an INNER wire format
+
+Some props are not "a string" in any useful sense: the string is itself a wire format, with its own
+decoder and its own gate. A schema entry can say so, and when it does the card carries it:
+
+```
+points: string (required) — payload: markdown (gate cmark:0.31)
+```
+
+Read that as a second obligation on top of the type. `string` tells you the JSON shape; `payload`
+tells you what has to be true of the content, and names the gate that will decide. **Emit the declared
+format, not prose that describes it** — a prose payload is a well-shaped string, so it passes the
+schema check and fails later, at render, where the failure is expensive and hard to attribute.
+
+`payload: <language> (NO GATE)` is the same instruction with a warning attached: the host has declared
+the format but named nothing that can check it, so nothing will catch a mistake before a user does.
+
+`registry.ValidatePropsDetailed(...)` reports the two questions separately — `Defects` (schema
+violations, `FUARAN068`) and `Obligations` (payload gate runs the language tier cannot perform,
+because the gate belongs to the domain that owns the format). An empty `Defects` on a declared-wire
+prop means the shape is right; it does not mean the payload has been judged.
+
 ### The two additive safety fields
 
 When the host's registered renderer ships with a known source hash and declared interior NodeIds, populate them:

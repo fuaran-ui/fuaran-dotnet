@@ -470,6 +470,18 @@ let customContentHash: ContentHash option = Option.None
 
 let customExposedNodeIds: NodeId list = []
 
+/// The zero `PropDecl` (Phase 1107): an unnamed, optional, any-JSON prop
+/// declaring no inner wire format. Authored as
+/// `{ Defaults.propDecl with Name = "points"; Type = PropType.PString }` per the
+/// Phase-1106 construction convention, so the next additive field on the prop
+/// schema costs no edit at any authoring site — which is what made the
+/// payload-language annotation affordable in the first place.
+let propDecl: PropDecl =
+    { Name = ""
+      Type = PropType.PJson
+      Required = false
+      PayloadLanguage = Option.None }
+
 // ─── ErrorBoundary defaults ───────────────────────────────────────────────────
 //
 // `ErrorBoundary` is the AI-emittable shape for "if this subtree breaks,
