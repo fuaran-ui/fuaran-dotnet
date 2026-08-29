@@ -54,19 +54,37 @@ type BindingUse =
     /// (`TransformSource.Live`) is a `Binding.State`, carrying the key and
     /// whether THAT slot declares its own `defaultValue`. FUARAN105's subject.
     ///
-    /// **Deliberately NOT a `State` read**, and the distinction is the whole
-    /// point of recording it separately. `usesOfBinding` has never descended a
-    /// Transform's source slot, so a key only a Transform reads is absent from
-    /// `StateKeyFacts.Reads` today. Folding it in there would narrow FUARAN098
-    /// (a shipped Warning) on trees that fire it now — a behaviour change well
-    /// outside the remit of adding a Warning, and the same reasoning
-    /// `StateKeyFacts` already records for holding `WriteKeys` beside `Writes`.
-    /// The gap is real and is recorded as its own work; this case closes only
-    /// what FUARAN105 needs.
+    /// **It IS a `State` read, and it reaches both projections.** Phase 865
+    /// recorded it as its own case and deliberately withheld it from
+    /// `StateKeyFacts.Reads` and `TreeBindingFacts.Uses`, on the ground that
+    /// folding it in would NARROW FUARAN098 (a shipped Warning) on trees that
+    /// fire it today — a behaviour change outside the remit of adding a
+    /// Warning. That deferral is now discharged, because the narrowing was
+    /// MEASURED rather than assumed, and because the walk was contradicting the
+    /// renderer beside it:
     ///
-    /// It is also filtered OUT of `TreeBindingFacts.Uses` for the mirror
-    /// reason: the consumption-union rules (FUARAN070–076) are tuned to the
-    /// surfaces `Uses` covers today.
+    ///  - `Render.keysOfBinding`'s `TransformSource.Live` arm has SUBSCRIBED
+    ///    this slot since Phase 818 — a `SetState` on the source key
+    ///    re-evaluates the pipeline and re-renders every reader — so a rule
+    ///    saying "nothing in the tree reads this key" was denying an edge the
+    ///    renderer honours. That is precisely the asymmetry the Phase 936
+    ///    walk-conformance census exists to catch, and it went undetected only
+    ///    because no census row carried a Transform. One does now.
+    ///  - The narrowing measured empty. Over all 157 corpus node fixtures the
+    ///    fold changed ONE fixture's read set (`badge-transform-live`, which
+    ///    fires nothing) and TWO fixtures' usage lists, and left every defect —
+    ///    of every code — byte-identical.
+    ///
+    /// The distinct case is KEPT rather than collapsed into `State`, because
+    /// FUARAN105 needs the `hasDefault` bit and needs to know the read came
+    /// from a Transform's source slot specifically.
+    ///
+    /// Reaching `Uses` moves no verdict either: every consumer of `Uses`
+    /// (FUARAN070–076, `AffordanceInertness.bindingFindings`) matches specific
+    /// cases and drops the rest, so the consumption-union rules cannot see this
+    /// one. What it does reach is `StructuralQuery`'s `BoundTo` index, where a
+    /// Transform's source reader is now findable on the State channel — the
+    /// answer that arm always said was the honest one.
     | TransformStateSource of key: string * hasDefault: bool
     /// Phase 1075 — a `Binding.State` carrying a PRESENT `defaultValue`: the
     /// declaring reader, and under the seeding rule the thing that puts a value
@@ -82,9 +100,11 @@ type BindingUse =
     ///
     /// Emitted BESIDE `State key`, never instead of it: a declaring reader is
     /// still a reader, and nothing about the read projection moves.
-    /// Filtered OUT of `TreeBindingFacts.Uses` for the same reason
-    /// `TransformStateSource` is — the consumption-union rules
-    /// (FUARAN070–076) are tuned to the surfaces `Uses` covers today.
+    /// Filtered OUT of `TreeBindingFacts.Uses` — unlike
+    /// `TransformStateSource`, which now reaches it, and for a reason that
+    /// does not carry here: a seed declaration rides beside the `State` read
+    /// it belongs to, so admitting it would record the same reader against the
+    /// same name twice.
     | StateSeed of key: string * value: objnull * fingerprint: objnull
     /// Phase 1075 — an INLINE table carried in the tree, normalised to the
     /// canonical columnar `Table` whatever slot spelled it (a grid/chart
@@ -135,7 +155,7 @@ type CallUse =
 /// **What counts as a READ, enumerated rather than assumed.** The rule reasons
 /// from the ABSENCE of a read, so an under-broad definition does not merely miss
 /// findings — it manufactures false ones, which is how a Warning-severity rule
-/// gets suppressed and stops protecting anything. The eight surfaces:
+/// gets suppressed and stops protecting anything. The nine surfaces:
 ///
 ///  1. `Binding.State(k, _)` in ANY binding-bearing slot, recursing exactly as
 ///     `usesOfBinding` does — through `Local.initialFrom`, `Format.source`,
@@ -164,6 +184,14 @@ type CallUse =
 ///     bindings and `Shape.Label` text — ordinary binding slots, listed because
 ///     the two tree walks in this estate have each historically missed one of
 ///     them while covering the other.
+///  9. A `Binding.Transform`'s live SOURCE slot,
+///     `TransformSource.Live(Binding.State(k, _), _)` — recorded as
+///     `BindingUse.TransformStateSource` and withheld from this set by Phase
+///     865, folded in once the narrowing was measured. The renderer has
+///     subscribed the slot since Phase 818, so withholding it let FUARAN098
+///     report a write as invisible that the reactive walk beside it honours.
+///     Both source shapes count: whether the slot carries its own default
+///     decides FUARAN105's verdict, never whether the key is read.
 ///
 /// Where a surface could not be decided, it is counted AS A READ: over-counting
 /// costs a missed finding, under-counting costs a false accusation, and only one
@@ -269,12 +297,20 @@ type TreeBindingFacts =
         /// default row-click write; charts/tables/maps via host closures).
         Nodes: Map<string, bool>
         /// The State-channel read/write projection FUARAN098 runs on (Phase 932).
-        /// Held BESIDE `Uses` rather than folded into it: the consumption-union
-        /// rules (FUARAN070–076) are tuned to the surfaces `Uses` covers today,
-        /// and widening that set would newly fire five shipped Error-severity
-        /// rules on trees that pass now — a behaviour change well outside an
-        /// additive Warning rule's remit. The gaps in `Uses` are real and are
-        /// filed as their own work; see `TIDY-UP.md`.
+        /// Held BESIDE `Uses` rather than folded into it: `Uses` records one
+        /// entry per binding usage (a consumption edge, reader-tagged), while
+        /// this is a per-KEY projection over surfaces that are not bindings at
+        /// all — a grid's `sortStateKey` string, an absent form-field value
+        /// slot, a subtree walked for state facts alone. Neither is derivable
+        /// from the other.
+        ///
+        /// The two sets are no longer allowed to drift SILENTLY, which is the
+        /// part that changed. `TransformStateSource` sat in neither, on the
+        /// ground that admitting it would move shipped rules' verdicts; the
+        /// blast radius was measured (no defect of any code changed, on any of
+        /// the 157 corpus node fixtures) and it now reaches both. A future
+        /// surface that belongs in one and not the other says so in its own
+        /// case's doc comment, with the measurement.
         StateKeys: StateKeyFacts
     }
 
@@ -644,10 +680,19 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             match u with
             | BindingUse.State k -> stateReads.Add k |> ignore
             | BindingUse.Computed -> opaqueReader <- true
-            // Phase 865 — only the DEFAULT-LESS source is a candidate; a source
-            // carrying its own default is what makes the initial snapshot real.
-            | BindingUse.TransformStateSource(key, false) -> transformInertSources.Add(readerId, key)
-            | BindingUse.TransformStateSource(_, true) -> ()
+            // A Transform's live `State` source IS a read of that key, and the
+            // fold belongs here rather than in `Uses` — see
+            // `BindingUse.TransformStateSource`.
+            //
+            // Phase 865 additionally records the DEFAULT-LESS source as
+            // FUARAN105's subject; a source carrying its own default is what
+            // makes the initial snapshot real, so it is a read and nothing
+            // more.
+            | BindingUse.TransformStateSource(key, hasDefault) ->
+                stateReads.Add key |> ignore
+
+                if not hasDefault then
+                    transformInertSources.Add(readerId, key)
             // Phase 1075 — the seeding projection. Every read surface reaches
             // this fold, which is what makes the seed map slot-complete rather
             // than complete only where `Uses` happens to be.
@@ -676,11 +721,6 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         if inUses then
             for u in found do
                 match u with
-                // Phase 865 — the STATE projection only, never `Uses`. See
-                // `BindingUse.TransformStateSource`: the consumption-union
-                // rules are tuned to the surfaces `Uses` covers today, and a
-                // Transform's source slot is not one of them.
-                | BindingUse.TransformStateSource _ -> ()
                 // Phase 1075 — the same posture for the two seeding cases. A
                 // declaring reader still contributes its `State key` read to
                 // `Uses`; the declaration itself is a fact about the SLOT, not

@@ -230,6 +230,43 @@ let private census: CensusRow list =
         ExpectSubscribe = true
         Asymmetry = "" }
 
+      // The third instance of this file's own founding shape, and the oldest:
+      // the REACTIVE walk has subscribed a `Binding.Transform`'s live source
+      // since Phase 818 (a `SetState` on the source key re-evaluates the
+      // pipeline and re-renders every reader), while the ANALYSIS walk recorded
+      // it as `BindingUse.TransformStateSource` and deliberately kept it out of
+      // `StateKeyFacts.Reads`. So FUARAN098 could report "nothing in the tree
+      // reads this key" about a key the renderer beside it demonstrably
+      // subscribes — the drift running in the `PageStateKey` direction, in a
+      // slot no census row covered. No row existed, so the containment
+      // assertion could not see it: it quantifies over the census trees, and
+      // none of them carried a Transform.
+      { Slot = "Binding.Transform live State source"
+        Key = "cw-transform-src"
+        Tree =
+          Fuaran.badge
+              "tsrc"
+              { Defaults.badge with
+                  Label =
+                      TextSource.Bound(
+                          Binding.Transform(
+                              TransformSource.Live(
+                                  Binding.State("cw-transform-src", None),
+                                  HostPrelude.TransformLive.emptySource
+                              ),
+                              [ Fuaran.Core.Transform.GroupBy(
+                                    [ "team" ],
+                                    [ { Name = "n"
+                                        Fn = Fuaran.Core.AggFn.Count
+                                        Of = "team" } ]
+                                ) ],
+                              None
+                          )
+                      ) }
+        ExpectRead = true
+        ExpectSubscribe = true
+        Asymmetry = "" }
+
       // ── Documented asymmetries ──
       { Slot = "Action.SetState valueFrom (Button.OnClick)"
         Key = "cw-dispatch"

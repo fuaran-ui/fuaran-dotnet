@@ -1680,6 +1680,32 @@ let tests =
               Expect.isEmpty (noReaderDefects tree) "the pager reads the key it is named with"
           }
 
+          test "FUARAN098 go-red check: a Transform's live State SOURCE counts as a reader" {
+              // The slot Phase 865 deliberately left out of `Reads`, folded in
+              // once the blast radius was measured (nothing in the corpus and
+              // nothing in either suite changed verdict). It had to be folded:
+              // the REACTIVE walk has subscribed this slot since Phase 818
+              // (`Render.keysOfBinding`'s `TransformSource.Live` arm), so a
+              // `SetState` on the source key re-evaluates the pipeline and
+              // re-renders every reader — and the rule beside it was calling
+              // that same write invisible.
+              //
+              // Both source shapes are one read. Whether the slot carries its
+              // own `defaultValue` decides FUARAN105's verdict (does the
+              // pipeline start from real rows or from `emptySource`); it never
+              // decides whether the key is READ.
+              let defaulted =
+                  setStateTree "members" [ derivedBadge "count" "members" (Some memberRows) ]
+
+              let defaultLess = setStateTree "members" [ derivedBadge "count" "members" None ]
+
+              Expect.isEmpty (noReaderDefects defaulted) "a Transform over $state.members reads members"
+
+              Expect.isEmpty
+                  (noReaderDefects defaultLess)
+                  "a default-less source is FUARAN105's subject and still a reader"
+          }
+
           test "FUARAN098: a host-reserved key is exempt" {
               // Such a write is REFUSED at dispatch on every path (Phase 782), so
               // its defect is that it is unaddressable, not that it is unread —

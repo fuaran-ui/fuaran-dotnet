@@ -416,12 +416,15 @@ let private useMatches (channel: Channel) (name: string) (usage: BindingWalk.Bin
     | BindingWalk.BindingUse.TransformParamFilter filterName -> wants Channel.Filter && filterName = name
     | BindingWalk.BindingUse.Query(queryName, _) -> wants Channel.Query && queryName = name
     | BindingWalk.BindingUse.Selection targetNodeId -> wants Channel.Selection && targetNodeId = name
-    // Phase 865 — a Transform's `State` source IS the node reading that key, so
-    // the honest answer is the `State` one. **Unreachable today**: `collect`
-    // keeps this case out of `TreeBindingFacts.Uses` (see
-    // `BindingWalk.BindingUse.TransformStateSource`), and this index reads
-    // `Uses`. The arm states what the answer must be if that filter is ever
-    // lifted, rather than leaving a silent `false` behind it.
+    // A Transform's `State` source IS the node reading that key, so the honest
+    // answer is the `State` one. Phase 865 wrote this arm against a filter that
+    // made it unreachable — `collect` kept the case out of
+    // `TreeBindingFacts.Uses` — and stated the answer anyway rather than
+    // leaving a silent `false` behind it. That filter is now lifted (see
+    // `BindingWalk.BindingUse.TransformStateSource`), so the arm is LIVE: a
+    // badge deriving a count from `$state.members` answers
+    // `BoundTo(State, "members")`, which is what a reader searching for who
+    // consumes a key means by the question.
     | BindingWalk.BindingUse.TransformStateSource(key, _) -> wants Channel.State && key = name
     // Phase 1075 — a SEED declaration rides beside the `State` read it belongs
     // to (`usesOfBinding` emits both), so answering it here would double-count

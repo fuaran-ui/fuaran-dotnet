@@ -212,6 +212,32 @@ let structuralQueryTests =
                             "an unknown name matches nothing"
                 }
 
+                test "binding — bound-to on the State channel reaches a Transform's live SOURCE" {
+                    // The seeding charter's pair fixture: a grid reading
+                    // `$state.members` through a plain `Binding.State`, and a
+                    // badge deriving a count from the SAME key through a
+                    // `Transform`'s live source. Both read `members`; only the
+                    // grid was findable while the shared walk withheld
+                    // `BindingUse.TransformStateSource` from
+                    // `TreeBindingFacts.Uses`, which this index reads. A search
+                    // that named one reader of a key two nodes read was not
+                    // giving a narrower answer, it was giving a wrong one.
+                    match tree "shared-source-seeded-pair" with
+                    | None -> skiptest "corpus fixture absent"
+                    | Some t ->
+                        let r = evaluate (Predicate.BoundTo(Channel.State, "members")) t
+
+                        Expect.isTrue (Set.contains "member-grid" r.Matched) "the grid's source reads members"
+
+                        Expect.isTrue
+                            (Set.contains "member-count" r.Matched)
+                            "the badge's Transform source reads members too"
+
+                        Expect.isFalse
+                            (Set.contains "shared-source-seeded-pair" r.Matched)
+                            "the container reads nothing itself — a read is not inherited"
+                }
+
                 test "shape — children-of: Dashboard >= N, with the counted children as the trace" {
                     match tree "filterable-static-dashboard" with
                     | None -> skiptest "corpus fixture absent"
