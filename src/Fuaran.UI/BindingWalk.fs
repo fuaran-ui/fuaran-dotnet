@@ -552,6 +552,38 @@ let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse 
     | Action.ReadFileBody _
     | Action.Invoke _ -> []
 
+/// Binding usages carried by an ACTION value, recursing `Chain` — the sibling
+/// of `callsOfAction`, and the arm of the walk that was missing.
+///
+/// `Action.SetState`'s `valueFrom` (Phase 818) is the only binding-bearing
+/// action slot in the vocabulary: every other arm carries strings, a `JVal`
+/// literal, an `InvokeArg` pair of strings, or a closure the wire cannot see.
+/// So this reads as one arm and a long tail of empties — which is exactly why
+/// it is written as an EXHAUSTIVE match over the DU rather than one case and a
+/// wildcard. Its whole job is to be the place the compiler stops a new
+/// binding-bearing action arm, the way `callsOfAction` beside it does for a new
+/// fetch-bearing one.
+///
+/// A `valueFrom` read is a DISPATCH-TIME read: it resolves when the gesture
+/// fires, not at render, which is why the reactive walk deliberately does not
+/// subscribe it (the recorded asymmetry in the Phase 936 census). Analysis
+/// counts it regardless — the tree does read that key/filter/query, and a
+/// consumption rule reasoning from its absence would be reasoning from a
+/// surface it simply never looked at.
+let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
+    match action with
+    | Action.SetState(_, _, Some valueFrom) -> usesOfBinding valueFrom
+    | Action.SetState(_, _, None) -> []
+    | Action.Chain actions -> actions |> List.collect usesOfAction
+    | Action.Call _
+    | Action.Dispatch _
+    | Action.Notify _
+    | Action.Navigate _
+    | Action.AiTool _
+    | Action.CommitLocal _
+    | Action.WriteToClipboard _
+    | Action.ReadFileBody _
+    | Action.Invoke _ -> []
 
 /// The State key a WRITE-BACK slot commits to, and whether committing also runs
 /// host code that may write elsewhere. A slot holding any other binding shape
@@ -730,17 +762,17 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                 | BindingUse.InlineTable _ -> ()
                 | _ -> uses.Add { Reader = readerId; Use = u }
 
-    /// Every `SetState` reachable from a wire-survivable action slot: the key is
-    /// a WRITE, and a `valueFrom` deriving the written value is itself a READ.
+    /// Every `SetState` reachable from a wire-survivable action slot: the WRITE
+    /// side. The `valueFrom` READ is collected by `usesOfAction` in
+    /// `recordCalls` — through `record`, so it reaches `Uses` as well as the
+    /// state projection — and must NOT be folded a second time here: `seeds`,
+    /// `inlineTables` and `transformInertSources` are lists, so a doubled fold
+    /// would report FUARAN105/106/107 twice on one slot.
     let rec recordStateAction (readerId: string) (action: Action<'Msg>) =
         match action with
-        | Action.SetState(key, _, valueFrom) ->
+        | Action.SetState(key, _, _) ->
             stateWrites.Add(readerId, key)
             stateWriteKeys.Add key |> ignore
-
-            match valueFrom with
-            | Some b -> recordStateOf readerId (usesOfBinding b)
-            | None -> ()
         | Action.Chain actions -> actions |> List.iter (recordStateAction readerId)
         // A declared result target names its destination; an `onResult` closure
         // does not, and may write anything at all.
@@ -763,6 +795,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
 
     let recordCalls (inUses: bool) (readerId: string) (action: Action<'Msg>) =
         recordStateAction readerId action
+        record inUses readerId (usesOfAction action)
 
         if inUses then
             for c in callsOfAction readerId action do

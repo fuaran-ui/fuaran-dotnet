@@ -954,6 +954,122 @@ let tests =
               | Ok() -> failtest "Expected FUARAN070 from the Switch selector, got Ok"
           }
 
+          // ── The FOURTH surface of that Tidy-Up: bindings carried by an ACTION.
+          //
+          // `callsOfAction` harvested `Action.Call` endpoints and dropped the
+          // rest, and `recordStateAction` routed a `SetState`'s `valueFrom` to
+          // the STATE projection only — so a `valueFrom` binding on any other
+          // channel contributed no usage at all, and the consumption-union
+          // rules reasoned from a surface they had never looked at.
+          //
+          // Coverage first, because green was VACUOUS here in exactly the way
+          // the earlier pass warned: `Fuaran.UI.Tests` held not one
+          // `Action.SetState` carrying a `valueFrom` before these tests — the
+          // only two in the repo were a corpus fixture builder and a decode
+          // round-trip assertion, neither of which runs the validator.
+
+          test "validate flags FUARAN070 for a dangling Selection inside an Action's valueFrom" {
+              // The shape the corpus already carried and nothing reported:
+              // `button-setstate-valuefrom` writes `chosen-id` from
+              // `Binding.Selection("orders-grid", …)` — a wire fixture whose
+              // isolated tree holds no such node.
+              let writer =
+                  Fuaran.button
+                      "picker"
+                      { Defaults.button<Msg> with
+                          Label = TextSource.Literal "Track this order"
+                          OnClick =
+                              Action.SetState(
+                                  "chosen-id",
+                                  None,
+                                  Some(Binding.Selection("no-such-grid", (fun (raw: obj) -> unbox raw), None, None))
+                              ) }
+
+              match PreEmitValidate.validate (dashboard "root" [ writer ]) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.DanglingSelection("picker", "no-such-grid"))
+                      "a dispatch-time read is still a read — the walk must descend an action's valueFrom"
+              | Ok() -> failtest "Expected FUARAN070 from the Action valueFrom, got Ok"
+          }
+
+          test "FUARAN074 go-red check: a chip consumed ONLY by an Action's valueFrom is not decorative" {
+              // The other direction, and the one that matters more: widening a
+              // read surface must REMOVE false accusations as well as find real
+              // defects. A button writing state from `$filters.dept` consumes
+              // that chip — the chip is the reason the button has anything to
+              // write.
+              let chip =
+                  Fuaran.filters
+                      "chips"
+                      [ { Name = "dept"
+                          Label = TextSource.Literal "dept"
+                          Kind = FormFieldKind.Text(Some(Binding.Filter("dept", None)), None) } ]
+
+              let writer =
+                  Fuaran.button
+                      "apply"
+                      { Defaults.button<Msg> with
+                          Label = TextSource.Literal "Apply"
+                          OnClick = Action.SetState("applied-dept", None, Some(Binding.Filter("dept", None))) }
+
+              let defects =
+                  match PreEmitValidate.validate (dashboard "root" [ chip; writer ]) with
+                  | Ok() -> []
+                  | Error ds -> ds
+
+              Expect.isFalse
+                  (List.contains (PreEmitDefect.DecorativeFilter("chips", "dept")) defects)
+                  "the button's valueFrom consumes the chip"
+          }
+
+          test "an Action's valueFrom is folded into each projection exactly ONCE" {
+              // The hazard the widening introduces rather than closes.
+              // `Seeds`, `InlineTables` and `TransformInertSources` are LISTS,
+              // so folding the `valueFrom` into the state projection twice —
+              // once on the action arm and once through the usage walk — would
+              // report FUARAN105/106/107 twice for one slot, and the duplicate
+              // would look like two defects in one tree.
+              let writer =
+                  Fuaran.button
+                      "derive"
+                      { Defaults.button<Msg> with
+                          Label = TextSource.Literal "Derive"
+                          OnClick =
+                              Action.SetState(
+                                  "team-count",
+                                  None,
+                                  Some(
+                                      Binding.Transform(
+                                          TransformSource.Live(
+                                              Binding.State("members", None),
+                                              HostPrelude.TransformLive.emptySource
+                                          ),
+                                          groupCount,
+                                          None
+                                      )
+                                  )
+                              ) }
+
+              let facts = BindingWalk.collect (dashboard "root" [ writer ])
+
+              Expect.equal
+                  facts.StateKeys.TransformInertSources
+                  [ "derive", "members" ]
+                  "one inert source, recorded once"
+
+              Expect.equal
+                  (facts.Uses
+                   |> List.filter (fun u ->
+                       match u.Use with
+                       | BindingWalk.BindingUse.TransformStateSource _ -> true
+                       | _ -> false)
+                   |> List.length)
+                  1
+                  "one usage, recorded once"
+          }
+
           // ── FUARAN072 / FUARAN073 — Call result-target checks (Phase 428) ──
 
           test "validate flags FUARAN072 for a Call into a Query no reader binds (orphan fetch)" {
