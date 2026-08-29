@@ -4234,19 +4234,19 @@ let badgeTransformLive: Node<obj> =
 /// from `TransformLive.emptySource`, and the pair rendered a derived value that
 /// was silently wrong with nothing red anywhere.
 ///
-/// **Why the badge's source spells `"defaultValue":[]` rather than carrying no
-/// `defaultValue` at all.** Both spellings decode since fuaran#1085 — the bare
-/// `{"$type":"State","key":k}` is a live source over the empty initial
-/// snapshot, and §16's refusal of it is retired. This fixture keeps the empty
-/// array DELIBERATELY, and the reason is a host-parity one rather than a
-/// preference: the corpus is a shared gate, and two of the polyglot hosts still
-/// refuse the bare form (`fuaran-rs` decodes this fixture today and would go
-/// red on the respelling; `fuaran-go` cannot decode a binding-shaped Transform
-/// source at all and is already red on it). Respelling the corpus is therefore
-/// the polyglot parity phase's move, not this one's — see fuaran#1085's outcome.
-/// Either way the payload declares nothing — an unseeded slot already resolves
-/// to the empty table — so it neither seeds the slot empty nor conflicts with
-/// the grid, and the pair reads the same whichever order the two nodes appear in.
+/// **Why the badge's source carries NO `defaultValue` at all.** It spelled
+/// `"defaultValue":[]` until the polyglot adoption completed, and the reason was
+/// a host-parity one rather than a preference: the corpus is a shared gate, and
+/// two of the polyglot hosts still refused the bare form when fuaran#1085 landed
+/// the leniency on the reference hosts. Every host now accepts
+/// `{"$type":"State","key":k}` as a live source over the empty initial snapshot,
+/// so the corpus is respelled to the bare form — which is the spelling that says
+/// what the badge means. The badge declares no data; the empty ARRAY is a
+/// declaration of an empty table, and the empty-declaration rule should stay the
+/// answer for a genuinely empty live collection rather than double as the
+/// workaround for a source that declares nothing. Either spelling seeds nothing
+/// — an unseeded slot already resolves to the empty table — so the pair reads
+/// the same whichever order the two nodes appear in.
 ///
 /// This fixture is also the pin for the empty-array leniency itself, which the
 /// F# host has read this way since 0.23.1 and this corpus never carried: the
@@ -4286,7 +4286,7 @@ let sharedSourceSeededPair: Node<obj> =
             ))
             None
 
-    let derivedSource: Binding<JVal> = Binding.State("members", Some(JArr []))
+    let derivedSource: Binding<JVal> = Binding.State("members", None)
 
     let badge =
         node
