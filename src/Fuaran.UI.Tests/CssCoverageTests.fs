@@ -44,6 +44,18 @@ module Fuaran.UI.Tests.CssCoverageTests
 //  entry names the class that carries the chrome instead and the suite asserts
 //  THAT class has a rule, and every declared entry must still be emitted, so an
 //  exemption outliving its class fails rather than accumulating.
+//
+//  SOURCE (2) IS A SHAPE HEURISTIC, and the second declared list exists because
+//  of it. `classTokenShape` cannot tell a class name from any other
+//  `fuaran-`-shaped literal in the same file — a window-level DOM event name, a
+//  storage key, the suffix of a data attribute. Today the near misses dodge it
+//  by naming convention alone (`"data-fuaran-provenance"` is spelled with the
+//  `data-` prefix inside the literal, so the anchored shape rejects it), which
+//  is luck rather than a rule: the same attribute written as two concatenated
+//  fragments would be scanned as an emittable class and then reported as
+//  unstyled. `declaredNonClassTokens` is where such a literal is named, with
+//  the same falsifiability the absences carry — an entry the scan no longer
+//  matches FAILS, so the list cannot outlive the literal it describes.
 // ============================================================================
 
 open System
@@ -254,9 +266,6 @@ type private Absence =
     /// A deliberate bare hook: the reference sheet holds no opinion here and
     /// the class exists for consumer selectors and dev tooling.
     | BareHook of note: string
-    /// Not a class at all — the literal is a class-shaped string in some other
-    /// role, and the scan cannot tell from its shape.
-    | NotAClass of note: string
 
 /// Whole prefix families the reference sheet leaves bare by contract. A family
 /// entry rather than one entry per member because the reason is the same for
@@ -332,12 +341,39 @@ let private declaredAbsences: (string * Absence) list =
       "fuaran-custom-hash-mismatch",
       BareHook
           "strict-mode refusal marker on a wrapper that renders no body — there is nothing to paint, and the \
-           fact is carried on the data attribute beside it"
+           fact is carried on the data attribute beside it" ]
 
-      "fuaran-form-commit",
-      NotAClass "a window-level DOM EVENT name (LocalBindings.fs OnSubmit flush), never a className" ]
+/// Literals the SOURCE SCAN matches that are not CSS classes at all — the shape
+/// heuristic's known misses, named rather than left to be mistaken for classes
+/// the sheet forgot.
+///
+/// This is a different claim from a declared absence, which is why it is a
+/// different list: an absence says "this class is emitted and the sheet leaves
+/// it bare, here is what carries the chrome"; an entry here says "no element
+/// ever carries this string in a `class` attribute, so asking the stylesheet
+/// for a rule is the wrong question". Filing one as the other reads, to the
+/// next person, as a styling gap nobody got round to.
+///
+/// FALSIFIABLE ON BOTH SIDES, and that is the whole reason it is a list of
+/// pairs rather than a mute-set. The suite asserts every entry is still matched
+/// by the scan — so a renamed or deleted literal fails here instead of leaving
+/// a permanent exemption behind — and that the reference sheet does NOT style
+/// it, since a rule for a token declared "never a class" means one of the two
+/// is wrong.
+///
+/// These tokens stay INSIDE the fingerprinted enumeration deliberately. The
+/// fingerprint is a pinned cross-tier constant over everything the sources and
+/// projections yield; narrowing it to "only the real classes" would re-pin a
+/// four-copy stamp in exchange for detecting strictly LESS renderer change,
+/// which is the opposite of what it is for.
+let private declaredNonClassTokens: (string * string) list =
+    [ "fuaran-form-commit",
+      "a window-level DOM EVENT name (the LocalBindings.fs OnSubmit flush), dispatched and listened for — \
+       never written into a className" ]
 
 let private absenceMap = Map.ofList declaredAbsences
+
+let private nonClassTokens = declaredNonClassTokens |> List.map fst |> Set.ofList
 
 let private familyReason (cls: string) : string option =
     unstyledFamilies
@@ -348,7 +384,9 @@ let private familyReason (cls: string) : string option =
             None)
 
 let private isDeclared (cls: string) =
-    (familyReason cls).IsSome || absenceMap.ContainsKey cls
+    (familyReason cls).IsSome
+    || absenceMap.ContainsKey cls
+    || nonClassTokens.Contains cls
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
@@ -393,7 +431,7 @@ let tests =
 
               if not uncovered.IsEmpty then
                   failwithf
-                      "%d emitted class(es) have no rule in fuaran-reference.css and no declared absence:\n  %s\n\nAdd a rule for each, or — if the sheet is meant to leave it bare — declare it in `declaredAbsences` in this file with the reason. A class emitted with no rule renders unstyled in every host serving the packaged sheet, and nothing else in the build says so."
+                      "%d emitted class(es) have no rule in fuaran-reference.css and no declared absence:\n  %s\n\nThree remedies, and which one applies is a question about the token, not about the sheet:\n  * it IS a class and should be styled -> add a rule to content/fuaran-reference.css;\n  * it IS a class the sheet deliberately leaves bare -> declare it in `declaredAbsences` in this file, naming either the class that carries the chrome instead (`CoveredBy`) or the reason there is no reference opinion (`BareHook`);\n  * it is NOT a class at all — a DOM event name, a storage key, a data-attribute fragment the source scan's shape heuristic cannot distinguish -> declare it in `declaredNonClassTokens` in this file with the role it really plays.\nA class emitted with no rule renders unstyled in every host serving the packaged sheet, and nothing else in the build says so."
                       uncovered.Length
                       (String.Join("\n  ", uncovered))
           }
@@ -423,6 +461,46 @@ let tests =
                   (sprintf
                       "class(es) declared as deliberately unstyled that the stylesheet DOES style: %s — remove the entries, they now describe the opposite of what the sheet does."
                       (String.Join(", ", redundant)))
+          }
+
+          // The declared non-class tokens carry the same two falsifiers the
+          // absences do, for the same reason: an exemption nothing checks is a
+          // mute-list with a comment on it.
+          test "every declared non-class token is still matched by the source scan" {
+              let scanned = scannedClasses ()
+
+              let stale =
+                  declaredNonClassTokens
+                  |> List.map fst
+                  |> List.filter (fun tok -> not (scanned.Contains tok))
+
+              Expect.isEmpty
+                  stale
+                  (sprintf
+                      "declared non-class token(s) the renderer sources no longer yield: %s — remove the entries. The literal was renamed or deleted, and the declaration now exempts nothing while still reading as a live exception."
+                      (String.Join(", ", stale)))
+          }
+
+          test "no declared non-class token is styled, or declared as an absence" {
+              let styled = styledClasses ()
+
+              let contradicted =
+                  declaredNonClassTokens |> List.map fst |> List.filter styled.Contains
+
+              Expect.isEmpty
+                  contradicted
+                  (sprintf
+                      "token(s) declared as never-a-class that the reference stylesheet DOES style: %s — one of the two is wrong. Either the sheet carries a rule matching nothing, or the token really is emitted as a class and belongs in `declaredAbsences` (or simply covered)."
+                      (String.Join(", ", contradicted)))
+
+              let bothLists =
+                  declaredNonClassTokens |> List.map fst |> List.filter absenceMap.ContainsKey
+
+              Expect.isEmpty
+                  bothLists
+                  (sprintf
+                      "token(s) declared BOTH as a bare class and as never-a-class: %s — the two lists make contradictory claims about the same literal. Keep the one that is true."
+                      (String.Join(", ", bothLists)))
           }
 
           test "every CoveredBy excuse names a class that really is styled" {
