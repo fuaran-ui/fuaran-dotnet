@@ -389,3 +389,172 @@ let chartPointSelectionTests =
 
               SelectionStore.clear chartId
           } ]
+
+// ============================================================================
+//  The selection defaults on the ADAPTER path.
+//
+//  Phase 427 gave a `DataGrid` whose `OnRowClick` is `None` a default write,
+//  and Phase 933 gave a `Chart` whose `OnPointClick` is `None` the same one.
+//  Both landed on the FIRST-PARTY render path only. An `IVisualisationAdapter`
+//  (the shipped AG Grid / AG Charts adapters) wired the closure case and
+//  dropped the default: AG Charts attached no `nodeClick` listener at all when
+//  the slot was `None`, and AG Grid's `onRowClicked` ran `()`.
+//
+//  That is the case the defaults exist FOR. `OnRowClick` / `OnPointClick`
+//  cannot cross the wire, so a DECODED tree always arrives with the slot
+//  `None` — meaning the affordance was inert on the adapter path for exactly
+//  the trees it was built to serve, and which adapter a host happened to wire
+//  silently decided whether master-detail worked.
+//
+//  Both decisions now live in one place per kind (`Render.chartPointSelected`
+//  / `Render.gridRowSelected`), called from both paths. Two legs below: the
+//  decisions themselves, exercised directly; and a SOURCE pin over the two
+//  adapters, because their bodies are Fable-only (npm `import`,
+//  `ReactLegacy.createElement`, `JsInterop.createObj`) and cannot be invoked
+//  from a .NET suite at all. The pin is not a substitute for behaviour — it is
+//  the strongest statement available about code this suite cannot run, and it
+//  fails on precisely the regression that happened: an adapter re-deciding
+//  locally instead of routing to the shared decision.
+// ============================================================================
+
+let private adapterSource (fileName: string) : string =
+    let path =
+        System.IO.Path.Combine(System.AppContext.BaseDirectory, "renderer-sources", "client", fileName)
+
+    if not (System.IO.File.Exists path) then
+        failwithf
+            "renderer source not found at %s — Fuaran.UI.Tests copies the renderer sources into its output; check the Content items in the fsproj."
+            path
+
+    System.IO.File.ReadAllText path
+
+let private gridSpecWith (onRowClick: (Row -> Action<obj>) option) : GridSpec<obj> =
+    { SortStateKey = None
+      PageSize = None
+      PageStateKey = None
+      EditStateKey = None
+      DefaultSort = None
+      Source = Binding.Static(Some(Seq.ofList chartRows))
+      RowKey = None
+      RowKeyField = Some "region"
+      Columns =
+        [ { Label = "Region"
+            Value = None
+            Field = Some "region"
+            Sortable = None
+            Editable = None
+            Format = CellFormat.None
+            Kind = CellKindErased.Text
+            Width = ColumnWidth.Auto } ]
+      OnRowClick = onRowClick
+      Editable = false
+      Reorderable = false
+      StaticRows = None }
+
+[<Tests>]
+let adapterSelectionDefaultTests =
+    // Sequenced for the same reason the two lists above are: `SelectionStore`
+    // is process-global.
+    testSequenced
+    <| testList
+        "selection defaults reach the adapter path"
+        [ test "chartPointSelected: a decoded chart's datum publishes under the node's own id" {
+              let nodeId = "adapter-chart-decoded"
+              SelectionStore.clear nodeId
+
+              let spec = chartSpec ChartKind.Bar "region" None
+              let mutable dispatched = 0
+
+              // The row arrives DIRECTLY here — AG Charts hands the listener
+              // `ev?datum` — where the lowered-SVG path has to recover it from
+              // `data-fuaran-mark` first. Same decision, different way in.
+              Render.chartPointSelected (fun _ -> dispatched <- dispatched + 1) nodeId spec chartRows[1]
+
+              Expect.equal dispatched 0 "the default is a store write, not an action dispatch"
+
+              match SelectionStore.get nodeId with
+              | Some v -> Expect.equal (regionOf v) "South" "the clicked datum is published"
+              | None -> failtest "the adapter-path default published nothing — the affordance is still inert"
+
+              SelectionStore.clear nodeId
+          }
+
+          test "chartPointSelected: an explicit OnPointClick still wins and leaves the store alone" {
+              let nodeId = "adapter-chart-closure"
+              SelectionStore.clear nodeId
+
+              let mutable actions: Action<obj> list = []
+
+              let spec =
+                  chartSpec ChartKind.Bar "region" (Some(fun (r: Row) -> Action.Navigate(regionOf (nn r))))
+
+              Render.chartPointSelected (fun a -> actions <- a :: actions) nodeId spec chartRows[0]
+
+              match actions with
+              | [ Action.Navigate route ] -> Expect.equal route "North" "the closure saw the clicked datum"
+              | other -> failtestf "expected exactly one Navigate from the closure, got %A" other
+
+              Expect.isNone (SelectionStore.get nodeId) "closure wins — it never touches the store"
+              SelectionStore.clear nodeId
+          }
+
+          test "gridRowSelected: a decoded grid's row publishes under the node's own id" {
+              let nodeId = "adapter-grid-decoded"
+              SelectionStore.clear nodeId
+
+              let mutable dispatched = 0
+
+              Render.gridRowSelected (fun _ -> dispatched <- dispatched + 1) nodeId (gridSpecWith None) chartRows[2]
+
+              Expect.equal dispatched 0 "the default is a store write, not an action dispatch"
+
+              match SelectionStore.get nodeId with
+              | Some v -> Expect.equal (regionOf v) "East" "the clicked row is published"
+              | None -> failtest "the grid default published nothing"
+
+              SelectionStore.clear nodeId
+          }
+
+          test "gridRowSelected: an explicit OnRowClick still wins and leaves the store alone" {
+              let nodeId = "adapter-grid-closure"
+              SelectionStore.clear nodeId
+
+              let mutable actions: Action<obj> list = []
+
+              Render.gridRowSelected
+                  (fun a -> actions <- a :: actions)
+                  nodeId
+                  (gridSpecWith (Some(fun (r: Row) -> Action.Navigate(regionOf (nn r)))))
+                  chartRows[0]
+
+              match actions with
+              | [ Action.Navigate route ] -> Expect.equal route "North" "the closure saw the clicked row"
+              | other -> failtestf "expected exactly one Navigate from the closure, got %A" other
+
+              Expect.isNone (SelectionStore.get nodeId) "closure wins — it never touches the store"
+              SelectionStore.clear nodeId
+          }
+
+          test "the shipped adapters ROUTE to the shared decision rather than re-deciding" {
+              // A source pin, and stated as one. These adapter bodies are
+              // Fable-only, so no .NET assertion can reach the listener they
+              // build; what CAN be checked is that neither file inspects the
+              // selection slot itself. Both regressions were exactly that —
+              // `match spec.OnPointClick with … | None -> createObj []` and
+              // `match spec.OnRowClick with … | None -> ()` — an adapter
+              // answering a question that is not an adapter's to answer.
+              for fileName, decision, slot in
+                  [ "AgChartAdapter.fs", "Render.chartPointSelected", "spec.OnPointClick"
+                    "AgGridAdapter.fs", "Render.gridRowSelected", "spec.OnRowClick" ] do
+                  let source = adapterSource fileName
+
+                  Expect.stringContains source decision (sprintf "%s must route its click through %s" fileName decision)
+
+                  Expect.isFalse
+                      (source.Contains slot)
+                      (sprintf
+                          "%s reads %s directly — the selection decision belongs to %s, or the two paths diverge again"
+                          fileName
+                          slot
+                          decision)
+          } ]

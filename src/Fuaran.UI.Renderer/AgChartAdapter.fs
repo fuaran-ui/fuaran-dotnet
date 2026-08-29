@@ -5,9 +5,13 @@ module Fuaran.UI.Renderer.AgChartAdapter
 //
 //  Implements the `Chart` half of `IVisualisationAdapter<'Msg>` against the
 //  `ag-charts-react` + `ag-charts-community` npm packages. AG Charts
-//  `listeners.nodeClick` event datum flows into typed `Action<'Msg>` via
-//  `ChartSpec.OnPointClick` and the context's `RunAction` callback — no
-//  `obj` leakage at the author surface.
+//  `listeners.nodeClick` event datum flows into `Render.chartPointSelected` —
+//  the shared decision the first-party lowered-SVG path also makes — so an
+//  authored `ChartSpec.OnPointClick` dispatches through the context's
+//  `RunAction` callback and a DECODED chart (whose slot is always `None`,
+//  because a callback cannot cross the wire) falls to the Phase 933 default and
+//  publishes the datum under its own node id. No `obj` leakage at the author
+//  surface either way.
 //
 //  Standalone posture (Fuaran CLAUDE.md FGP 2): reaches ag-charts-react via
 //  `Fable.Core.JsInterop`, no external platform project reference.
@@ -76,18 +80,30 @@ let private chartKindString (kind: ChartKind) : string =
 
 // ─── Series builder ─────────────────────────────────────────────────
 
-let private buildSeries<'Msg> (runAction: Action<'Msg> -> unit) (spec: ChartSpec<'Msg>) : obj array =
+let private buildSeries<'Msg> (runAction: Action<'Msg> -> unit) (nodeId: string) (spec: ChartSpec<'Msg>) : obj array =
     // listeners.nodeClick: AG Charts passes `{ datum: obj; series: ...; ... }`.
-    // We extract `datum` (the row) and dispatch the author's OnPointClick.
+    // We extract `datum` (the row) and hand it to the SAME decision the
+    // first-party lowered-SVG path makes — dispatch the author's
+    // `OnPointClick`, or publish the datum under this node's own id.
+    //
+    // ATTACHED UNCONDITIONALLY, which is the whole of this change. The listener
+    // used to exist only in the `Some` case, so a DECODED chart — where the slot
+    // is always `None`, because a callback cannot cross the wire — got no
+    // listener at all and its point-selection affordance was inert on this path
+    // while working on the first-party one. An adapter is a rendering choice; it
+    // is not supposed to be a behaviour choice.
+    //
+    // No mark-id round-trip here: AG Charts hands the listener the row itself,
+    // where the lowered path has to recover it from `data-fuaran-mark` on the
+    // emitted SVG. That difference is exactly why the decision is
+    // `Render.chartPointSelected` (takes a row) rather than
+    // `Render.chartPointClick` (takes a mark id).
     let listeners =
-        match spec.OnPointClick with
-        | Some onClick ->
-            let nodeClick (ev: obj) =
-                let datum: Row = ev?datum
-                runAction (onClick datum)
+        let nodeClick (ev: obj) =
+            let datum: Row = ev?datum
+            Render.chartPointSelected runAction nodeId spec datum
 
-            createObj [ "nodeClick" ==> nodeClick ]
-        | None -> createObj []
+        createObj [ "nodeClick" ==> nodeClick ]
 
     match spec.Kind with
     | ChartKind.Pie ->
@@ -181,7 +197,7 @@ let renderChart<'Msg> (spec: ChartSpec<'Msg>) (context: VisAdapter.Visualisation
         match rows, context.State.OnEmpty with
         | [], Some emptyNode -> Some(context.RecurseRender emptyNode)
         | _ ->
-            let series = buildSeries context.RunAction spec
+            let series = buildSeries context.RunAction context.NodeId spec
 
             let titleObj =
                 match spec.Title with

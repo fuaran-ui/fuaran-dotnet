@@ -37,7 +37,11 @@ module Fuaran.UI.Renderer.AgGridAdapter
 //    Custom render      → custom cellRenderer that calls
 //                         `render (fun o -> jsToJVal o)` for the nested
 //                         Fuaran Node, then recurses through `RecurseRender`.
-//  OnRowClick wires AG Grid's `onRowClicked` event with the row obj.
+//  AG Grid's `onRowClicked` wires to `Render.gridRowSelected` with the row obj
+//  — the shared decision the first-party table also makes: dispatch
+//  `OnRowClick` when the author supplied one, else publish the row under the
+//  node's own id (the Phase 427 default, which is what a DECODED grid always
+//  takes since a callback cannot cross the wire).
 //  ColumnWidth: Auto leaves AG Grid's auto-sizing; Fixed sets `width`;
 //  Flex sets `flex`.
 // ============================================================================
@@ -386,10 +390,16 @@ let renderGrid<'Msg> (spec: GridSpec<'Msg>) (context: VisAdapter.VisualisationCo
                     | Some field -> BindingResolver.projectRowFieldString row field
                     | None -> ""
 
+            // The same decision the first-party table's `<tr>` handler makes —
+            // dispatch `OnRowClick`, or publish the row under this node's own id
+            // (Phase 427). The `None` arm used to be `()`, so a DECODED grid —
+            // where the slot is always `None`, because a callback cannot cross
+            // the wire — published nothing, and every `Binding.Selection` reader
+            // of that grid stayed empty on this path while working on the
+            // first-party one. Master-detail with no host code is the whole
+            // point of the default; an adapter must not be where it stops.
             let onRowClicked (p: obj) =
-                match spec.OnRowClick with
-                | Some f -> context.RunAction(f (p?data: Row))
-                | None -> ()
+                Render.gridRowSelected context.RunAction context.NodeId spec (p?data: Row)
 
             let gridProps =
                 createObj

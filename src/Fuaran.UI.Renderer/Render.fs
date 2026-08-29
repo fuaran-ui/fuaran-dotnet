@@ -2145,6 +2145,55 @@ let clearGuestSeam () : unit = guestSeam <- None
 /// one before replacing it.
 let currentGuestSeam () : GuestSeam option = guestSeam
 
+/// The SELECTION DECISION for one already-identified chart datum: dispatch the
+/// author's closure, or publish under the node's own id.
+///
+/// Held apart from `chartPointClick` because there are TWO ways a click arrives
+/// at this decision and only one of them has a mark id. The first-party lowered
+/// path emits raw SVG and recovers the row from `data-fuaran-mark`; an
+/// `IVisualisationAdapter` (AG Charts' `listeners.nodeClick`) is handed the row
+/// directly. Both must decide the same thing — the adapter path spent 933
+/// deciding nothing at all — so the decision lives in one place and the
+/// row-identification stays with whoever has to do it.
+let chartPointSelected<'Msg>
+    (dispatch: Action<'Msg> -> unit)
+    (nodeId: string)
+    (spec: ChartSpec<'Msg>)
+    (row: Row)
+    : unit =
+    match spec.OnPointClick with
+    // CLOSURE WINS — Phase 427's rule, unchanged. A host that supplied
+    // `OnPointClick` in-process dispatches exactly as before and never touches
+    // the store. The default below is for the DECODED case, where the slot
+    // arrives `None` because a callback cannot cross the wire
+    // (`WireSurvivability`: `NodeKind.Chart -> None // OnPointClick selection
+    // host-only`) — which is why every decoded chart's point click was inert
+    // before Phase 933, and why it stayed inert on the adapter path after it.
+    | Some f -> dispatch (f row)
+    // THE UNGATED WRITE, and why it is acceptable — recorded at the decision
+    // rather than at either call site, because a later reader will otherwise
+    // read the asymmetry as a defect (866).
+    //
+    // This calls `SelectionStore.set` DIRECTLY rather than going through
+    // `runAction`, so it is not subject to the gate every dispatched `Action`
+    // passes. The charter judged that acceptable on ONE property: a node may
+    // publish only under its OWN `NodeId`. Unlike `SetState`, whose key space is
+    // SHARED — an ungated write there could clobber a key belonging to any other
+    // node — the blast radius here is the chart itself, and the worst a
+    // malformed chart can do is misreport its own selection. The identical
+    // property is what makes 427's grid write safe; it is a property of the
+    // DESTINATION, not of who is writing.
+    | None -> SelectionStore.set nodeId (box row)
+
+/// Phase 427's grid twin of the decision above, factored for the same reason:
+/// the first-party table wires it on each `<tr>`, an `IVisualisationAdapter`
+/// wires it on AG Grid's `onRowClicked`, and the two had drifted — the adapter
+/// dispatched the closure and dropped the default on the floor.
+let gridRowSelected<'Msg> (dispatch: Action<'Msg> -> unit) (nodeId: string) (spec: GridSpec<'Msg>) (row: Row) : unit =
+    match spec.OnRowClick with
+    | Some f -> dispatch (f row)
+    | None -> SelectionStore.set nodeId (box row)
+
 /// Phase 933 — the chart point-click DECISION, lifted out of the DOM handler in
 /// `renderChart` so the behaviour is reachable without a browser.
 ///
@@ -2166,30 +2215,7 @@ let chartPointClick<'Msg>
     // polyline per series, so there is no datum under the pointer), or data that
     // has moved on since the SVG was painted. Both are no-ops, never a guess.
     | None -> ()
-    | Some row ->
-        match spec.OnPointClick with
-        // CLOSURE WINS — Phase 427's rule, unchanged. A host that supplied
-        // `OnPointClick` in-process dispatches exactly as before and never
-        // touches the store. The default below is for the DECODED case, where
-        // the slot arrives `None` because a callback cannot cross the wire
-        // (`WireSurvivability`: `NodeKind.Chart -> None // OnPointClick
-        // selection host-only`) — which is why every decoded chart's point
-        // click was inert before this phase.
-        | Some f -> dispatch (f row)
-        // THE UNGATED WRITE, and why it is acceptable — recorded at the call
-        // site because a later reader will otherwise read the asymmetry as a
-        // defect (866).
-        //
-        // This calls `SelectionStore.set` DIRECTLY rather than going through
-        // `runAction`, so it is not subject to the gate every dispatched
-        // `Action` passes. The charter judged that acceptable on ONE property:
-        // a node may publish only under its OWN `NodeId`. Unlike `SetState`,
-        // whose key space is SHARED — an ungated write there could clobber a key
-        // belonging to any other node — the blast radius here is the chart
-        // itself, and the worst a malformed chart can do is misreport its own
-        // selection. The identical property is what makes 427's grid write safe;
-        // it is a property of the DESTINATION, not of who is writing.
-        | None -> SelectionStore.set nodeId (box row)
+    | Some row -> chartPointSelected dispatch nodeId spec row
 
 /// Phase 934 — the in-flight row drag's source (grid NodeId + ABSOLUTE row
 /// index). Module-level because HTML5 drag state must survive between two
@@ -5060,7 +5086,8 @@ and private renderGrid
         { Sources = ctx.Sources
           State = state
           RecurseRender = render ctx
-          RunAction = runAction ctx }
+          RunAction = runAction ctx
+          NodeId = parentNodeId }
 
     match ctx.VisAdapter.RenderGrid(spec, visCtx) with
     | Some rendered -> rendered
@@ -5469,9 +5496,7 @@ and private renderGrid
                                                               "fuaran-grid-row"
                                                       )
                                                       prop.onClick (fun _ ->
-                                                          match spec.OnRowClick with
-                                                          | Some f -> runAction ctx (f row)
-                                                          | None -> SelectionStore.set parentNodeId (box row)) ]
+                                                          gridRowSelected (runAction ctx) parentNodeId spec row) ]
                                                     @ reorderRowProps rowIndex
                                                     @ [ prop.children (reorderCellFor rowIndex @ bodyCells) ]
                                                 ) ] ] ] ]
@@ -5667,7 +5692,8 @@ and private renderChart
         { Sources = ctx.Sources
           State = state
           RecurseRender = render ctx
-          RunAction = runAction ctx }
+          RunAction = runAction ctx
+          NodeId = parentNodeId }
 
     match ctx.VisAdapter.RenderChart(spec, visCtx) with
     | Some rendered -> rendered

@@ -70,7 +70,12 @@ module Fuaran.UI.Renderer.VisAdapter
 //  AG Charts event mapping
 //  ──────────────────────
 //  AG Charts series `listeners.nodeClick` event carries `datum: obj` →
-//  `runAction (ChartSpec.OnPointClick datum)`. Series kind translation:
+//  `Render.chartPointSelected`, which dispatches `ChartSpec.OnPointClick` when
+//  the author supplied one and otherwise publishes the datum under the node's
+//  own id (the Phase 933 default). The listener is attached UNCONDITIONALLY:
+//  `OnPointClick` is `None` on every DECODED chart, because a callback cannot
+//  cross the wire, so attaching only in the `Some` case left the affordance
+//  inert on exactly the trees the default exists for. Series kind translation:
 //    - ChartKind.Line / Bar / Area / Scatter → AG Charts `type: "line"` /
 //      `"bar"` / `"area"` / `"scatter"`.
 //    - ChartKind.Pie → AG Charts `type: "pie"`.
@@ -92,10 +97,26 @@ open Fuaran.UI.Types
 /// `RenderContext` record itself (which would force a cycle between this
 /// file and `Render.fs`).
 type VisualisationContext<'Msg> =
-    { Sources: BindingResolver.BindingSources
-      State: StateBehaviour<'Msg>
-      RecurseRender: Node<'Msg> -> ReactElement
-      RunAction: Action<'Msg> -> unit }
+    {
+        Sources: BindingResolver.BindingSources
+        State: StateBehaviour<'Msg>
+        RecurseRender: Node<'Msg> -> ReactElement
+        RunAction: Action<'Msg> -> unit
+        /// The id of the node being rendered — the one field an adapter cannot
+        /// recover from the spec, because a `GridSpec` / `ChartSpec` does not
+        /// carry its own node's id.
+        ///
+        /// It is here because the SELECTION DEFAULTS need it. A grid whose
+        /// `OnRowClick` is `None` (Phase 427) and a chart whose `OnPointClick`
+        /// is `None` (Phase 933) publish the clicked datum to the
+        /// `SelectionStore` under the NODE's own id, which is what makes
+        /// decoded master-detail work with no host code: a callback cannot
+        /// cross the wire, so the slot always arrives `None` on a decoded tree.
+        /// Without this field an adapter could dispatch the closure case and
+        /// nothing else, so the whole affordance was inert on the adapter path
+        /// while working on the first-party one.
+        NodeId: string
+    }
 
 /// Adapter contract for the two Visualisation kinds whose author surface
 /// doesn't fit the simple Feliz fallback (Grid, Chart). The renderer
