@@ -671,11 +671,12 @@ module FormFieldKind =
 /// `onChange = None`, the shape an AI author uses — the renderer's reactive FilterStore then
 /// writes `$filters.<name>` on change with zero host code. Pair a closure-free ctor with a
 /// `Binding.Filter` self-read on the `value` to close the loop.
-[<RequireQualifiedAccess>]
+///
 /// 0.2.0 filters-unification: filter chips carry ordinary `FormFieldKind`
 /// controls. These helpers build the closure-free (declarative) shapes an AI
 /// author emits — the renderer writes `$filters.<name>` itself. The old
 /// `FilterKind` family and its helpers are retired (pre-launch clean break).
+[<RequireQualifiedAccess>]
 module FilterField =
     /// Text chip bound to its own filter key.
     let text (name: string) : FormFieldKind<'Msg> =

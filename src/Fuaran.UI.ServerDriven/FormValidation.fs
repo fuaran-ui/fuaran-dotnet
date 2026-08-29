@@ -150,6 +150,29 @@ let private patternTimeout = System.TimeSpan.FromMilliseconds 100.0
 ///     spec already makes three rule shapes decode errors), not this tier's.
 ///   • a timeout — resolving it to UNMET would let one hostile submission deny
 ///     a legitimate one purely by choosing a slow input.
+/// The two failure classes above, as a predicate — an EXCEPTION FILTER rather
+/// than two `with` arms, so the one arm that has no meaning under Fable can be
+/// dropped at a declaration boundary instead of inside the handler.
+///
+/// A filter is the shape that keeps the .NET semantics exactly as they were:
+/// `false` re-raises, so every exception outside these two classes still
+/// propagates — a catch-all `| _ -> true` would silently swallow them, which is
+/// a widening this tier must not do.
+let private isBenignPatternFailure (ex: exn) : bool =
+#if FABLE_COMPILER
+    // Fable lowers `Regex` onto the JavaScript `RegExp`, which has no match
+    // timeout at all — so `RegexMatchTimeoutException` cannot be raised on this
+    // path, and the type test for it is one Fable refuses to emit (it can only
+    // ever evaluate to false). The malformed-pattern class is the one that
+    // survives; everything else propagates, as on .NET.
+    ex :? System.ArgumentException
+#else
+    match ex with
+    | :? System.ArgumentException -> true
+    | :? System.Text.RegularExpressions.RegexMatchTimeoutException -> true
+    | _ -> false
+#endif
+
 let private matchesPattern (pattern: string) (s: string) : bool =
     try
         // `\A(?:…)\z` is HTML `pattern`'s whole-value anchoring. The author's
@@ -161,9 +184,8 @@ let private matchesPattern (pattern: string) (s: string) : bool =
             System.Text.RegularExpressions.RegexOptions.None,
             patternTimeout
         )
-    with
-    | :? System.ArgumentException -> true
-    | :? System.Text.RegularExpressions.RegexMatchTimeoutException -> true
+    with ex when isBenignPatternFailure ex ->
+        true
 
 /// Does `lhs <op> rhs` hold over two submitted values?
 ///
