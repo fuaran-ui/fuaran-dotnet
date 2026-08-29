@@ -198,34 +198,76 @@ let tests =
           // ── The worst case the caps admit is cheap ──────────────────────────
 
           test "a large stacked lowering stays cheap — the quadratic is gone" {
-              // A wall-clock RATIO across two sizes cannot pin "linear, not
-              // quadratic": cache-hierarchy effects make genuinely linear code
-              // look superlinear at an 8x size step, so a ratio bar tight enough
-              // to catch the quadratic also fails the fix. The pin is therefore
-              // absolute, at a size where the two implementations are an order
-              // of magnitude apart: 40 000 points x 6 stacked series costs
-              // ~0.3s when the nested loops index arrays and ~13s when they
-              // index lists, so a 3s ceiling has ~10x headroom above the fix
-              // (a much slower machine still passes) and ~4x clearance below
-              // the defect (it cannot pass).
+              // The pin is a RATIO between two sizes of the same workload, not a
+              // wall-clock ceiling. It was a ceiling (3000ms at 40 000 points),
+              // and that ceiling is a time bomb rather than a bound: it measures
+              // the machine as much as the code, so it passed on a quiet box and
+              // failed at 4182ms on a loaded one, with nothing about the lowering
+              // changed. A bound that reports the machine's other tenants is not
+              // reporting a regression.
+              //
+              // The ratio survives that because sustained contention scales BOTH
+              // legs. What it costs is the older comment's objection, which was
+              // right on its own terms and is answered by the size step rather
+              // than dismissed: at a small step, cache-hierarchy effects make
+              // genuinely linear code look superlinear, so a bar tight enough to
+              // catch the quadratic also fails the fix. At an 8x step the two
+              // implementations are nowhere near each other — array indexing
+              // scales ~8x, list indexing ~64x, since each of 8x more rows also
+              // costs 8x more to reach.
+              //
+              // Measured rather than assumed, on the 12-core machine this was
+              // rewritten on: 8.9x / 9.3x / 9.7x idle, and 6.5x / 7.8x / 11.2x
+              // with all twelve cores held busy — the load moves the ABSOLUTE
+              // cost and leaves the ratio where it was, which is the whole
+              // claim. The bar sits at 24x, roughly the geometric midpoint
+              // between the worst of those and the ~55x a list-indexing lowering
+              // must produce at this step: 2x of headroom on each side, where
+              // the absolute form only ever had whatever the machine that ran it
+              // happened to leave.
               //
               // Above the shipped point cap deliberately: this is a property of
               // the lowering core, which is worth holding whatever the caps
               // admit.
-              let points = 40_000
-              let spec = specOf ChartKind.Bar 6 true
-              let rows = rowsOf points 6
+              let series = 6
+              let smallPoints = 5_000
+              let largePoints = 40_000 // an 8x step
+              let spec = specOf ChartKind.Bar series true
+              let smallRows = rowsOf smallPoints series
+              let largeRows = rowsOf largePoints series
 
-              // Warm the JIT so the timed run is not paying for it.
-              Charts.lowerWith Charts.ChartLimits.unlimited spec (Seq.ofList (rowsOf 100 6))
+              // Warm the JIT so neither timed leg is paying for it.
+              Charts.lowerWith Charts.ChartLimits.unlimited spec (Seq.ofList (rowsOf 100 series))
               |> ignore
 
-              let elapsed = lowerMs spec rows
+              let smallMs = lowerMs spec smallRows
+              let largeMs = lowerMs spec largeRows
+
+              // A denominator near the timer floor would turn the ratio into
+              // noise and fail for the one reason this test must not: nothing to
+              // do with the lowering. Assert it is measurable rather than
+              // dividing and hoping.
+              Expect.isGreaterThan
+                  smallMs
+                  1.0
+                  (sprintf
+                      "the reference leg (%d points x %d stacked series) took %.2fms — too close to the timer floor to divide by. Raise `smallPoints`."
+                      smallPoints
+                      series
+                      smallMs)
+
+              let ratio = largeMs / smallMs
 
               Expect.isLessThan
-                  elapsed
-                  3000.0
-                  (sprintf "lowering %d points x 6 stacked series took %.0fms" points elapsed)
+                  ratio
+                  24.0
+                  (sprintf
+                      "lowering cost scaled %.1fx across an 8x size step (%d pts %.0fms -> %d pts %.0fms). Linear is ~8x; the pre-790 list-indexing lowering is ~64x. This is a SHAPE regression, not a slow machine — the ratio is taken from two legs measured moments apart under the same load."
+                      ratio
+                      smallPoints
+                      smallMs
+                      largePoints
+                      largeMs)
           }
 
           test "the de-quadratified lowering emits the same geometry" {
