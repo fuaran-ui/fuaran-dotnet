@@ -73,6 +73,13 @@ if ($Demo) {
 }
 
 # ─── Default: verify ─────────────────────────────────────────────────
+# One configuration for the build and every suite, read from the same env var
+# `Build.fs` reads — so the two entry points can never name different output
+# trees, and a session iterating in bin/Debug/ can point the whole gate there
+# with `$env:FUARAN_BUILD_CONFIGURATION = 'Debug'` instead of building one tree
+# and testing another. Default Release, unchanged.
+$config = if ($env:FUARAN_BUILD_CONFIGURATION) { $env:FUARAN_BUILD_CONFIGURATION } else { "Release" }
+
 $sln = "Fuaran.sln"
 $testProjects = @(
     "src/Fuaran.UI.Tests/Fuaran.UI.Tests.fsproj"
@@ -99,8 +106,8 @@ if (-not $SkipFormat) {
 }
 
 if (-not $SkipBuild) {
-    Write-Step "dotnet build $sln -c Release"
-    dotnet build $sln -c Release
+    Write-Step "dotnet build $sln -c $config"
+    dotnet build $sln -c $config
     if ($LASTEXITCODE -ne 0) { Write-Error "Build failed (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
 }
 
@@ -112,10 +119,10 @@ if (-not $SkipTests) {
         # `--no-build` MUST precede `--project` or `dotnet run` forwards
         # it to Expecto.
         if ($SkipBuild) {
-            dotnet run --project $project -c Release
+            dotnet run --project $project -c $config
         }
         else {
-            dotnet run --no-build --project $project -c Release
+            dotnet run --no-build --project $project -c $config
         }
         if ($LASTEXITCODE -ne 0) { Write-Error "$project failed (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
     }
@@ -131,7 +138,7 @@ if ($Validate) {
     | Where-Object { $_.Name -ne "Fuaran.UI.Validator.fsproj" -and $_.Name -ne "Fuaran.UI.Validator.Tests.fsproj" }
     foreach ($project in $candidates) {
         Write-Host "Fuaran.UI.Validator: $($project.FullName)" -ForegroundColor DarkGray
-        dotnet run --no-build --project $validatorProject -c Release -- $project.FullName
+        dotnet run --no-build --project $validatorProject -c $config -- $project.FullName
         if ($LASTEXITCODE -ne 0) { Write-Error "Validator failed on $($project.FullName) (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
     }
 }

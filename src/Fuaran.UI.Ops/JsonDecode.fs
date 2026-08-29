@@ -3112,10 +3112,19 @@ and private bindingGeneric<'T>
                 | Error e -> Error e
                 | Ok inner -> bindingGeneric<'T> (path + ".binding") parseStatic placeholder inner
             | Ok s ->
+                // The vocabulary this arm advertises is `ExpectedShape` on the
+                // error a refused host reads, so a stale list tells an author
+                // their perfectly valid binding is outside the vocabulary — on
+                // the one code path that exists to teach them what it is. `Now`
+                // (Phase 765) and `Bound` (the Pilot-5 lenient wave) were both
+                // dispatched above and both unadvertised here for as long as
+                // they had existed. `GeneratedLayerTests`' binding-vocabulary
+                // guard now fails when this list and the arms above it disagree,
+                // so the next omission is caught in the commit that makes it.
                 unknownDuCase
                     path
                     s
-                    "Static | Query | Filter | Selection | State | Computed | I18n | Local | Format | Transform | Invoke"
+                    "Static | Query | Filter | Selection | State | Now | Computed | I18n | Local | Format | Transform | Invoke | Bound"
 
 and private decodeBindingObjArgs (path: string) (j: Json) : Result<Map<string, Binding<JVal>>, DecodeError> =
     match requireObject path j with

@@ -463,6 +463,26 @@ let private cssSync () =
 
     Trace.tracefn "%d tier copy/copies rewritten." (List.length stale)
 
+/// The configuration EVERY target builds, tests, validates and packs in.
+///
+/// Single-sourced rather than repeated as a literal at each `dotnet` call,
+/// because the hazard is DIVERGENCE rather than the value. `-- Build` writes
+/// `bin/Release/`; a session that then runs `bin/Debug/<suite>.dll` directly —
+/// the ordinary way to run an Expecto console, since the `dotnet run` driver
+/// can hang before the suite starts — is testing a dll `-- Build` never
+/// touched, and gets a green build and a stale binary with nothing saying so.
+/// Two live output trees, one of which the gate is silent about.
+///
+/// `FUARAN_BUILD_CONFIGURATION=Debug` points the WHOLE gate at the tree such a
+/// session is iterating in, so building and testing cannot name different ones.
+/// The default is `Release`, unchanged, so CI and `run.ps1` behave exactly as
+/// before — this adds a way to be consistent, it does not move the default.
+let private configuration =
+    match System.Environment.GetEnvironmentVariable "FUARAN_BUILD_CONFIGURATION" with
+    | null
+    | "" -> "Release"
+    | c -> c
+
 let private dotnet args workingDir =
     CreateProcess.fromRawCommand "dotnet" args
     |> CreateProcess.withWorkingDirectory workingDir
@@ -480,21 +500,30 @@ let private init (args: string array) =
 let private registerTargets (args: string array) =
     Target.create "Format" (fun _ -> dotnet [ "fantomas"; "." ] repoRoot)
 
-    Target.create "Build" (fun _ -> dotnet [ "build"; solution; "-c"; "Release" ] repoRoot)
+    Target.create "Build" (fun _ ->
+        // Name the tree. A green `-- Build` used to say only "the solution
+        // compiles", and a session testing `bin/Debug/` read that as "the dll I
+        // am about to run is current" — which it was not.
+        Trace.tracefn
+            "Building %s configuration (bin/%s/) — set FUARAN_BUILD_CONFIGURATION to change it."
+            configuration
+            configuration
+
+        dotnet [ "build"; solution; "-c"; configuration ] repoRoot)
 
     Target.create "Test" (fun _ ->
-        dotnet [ "run"; "--project"; testProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; opsTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; aiToolsTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; fastPathTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; validatorTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; opStreamTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; dagOpStreamTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; dagInspectTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; layoutObserverTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; styleObserverTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; themeManifestTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; telemetryTestProject; "-c"; "Release" ] repoRoot
+        dotnet [ "run"; "--project"; testProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; opsTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; aiToolsTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; fastPathTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; validatorTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; opStreamTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; dagOpStreamTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; dagInspectTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; layoutObserverTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; styleObserverTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; themeManifestTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; telemetryTestProject; "-c"; configuration ] repoRoot
 
         // The JsonDecode conformance suite loads the wire-format-fixtures corpus
         // from the workspace root (a sibling of this repo). In a single-repo CI
@@ -507,28 +536,28 @@ let private registerTargets (args: string array) =
             Path.Combine(repoRoot, "..", "wire-format-fixtures", "manifest.json")
 
         if File.Exists corpusManifest then
-            dotnet [ "run"; "--project"; jsonDecodeTestProject; "-c"; "Release" ] repoRoot
+            dotnet [ "run"; "--project"; jsonDecodeTestProject; "-c"; configuration ] repoRoot
         else
             Trace.traceImportant
                 "SKIPPING Fuaran.UI.JsonDecode.Tests — wire-format-fixtures corpus absent (single-repo checkout; conformance runs where the workspace corpus is present)."
 
-        dotnet [ "run"; "--project"; serverRenderTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; serverDrivenTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; serverDrivenAspNetCoreTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; serverDrivenWebSocketTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; giraffeTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; contentTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; fragmentsTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; siteTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; cleanRoomTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; catalogTestProject; "-c"; "Release" ] repoRoot
+        dotnet [ "run"; "--project"; serverRenderTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; serverDrivenTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; serverDrivenAspNetCoreTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; serverDrivenWebSocketTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; giraffeTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; contentTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; fragmentsTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; siteTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; cleanRoomTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; catalogTestProject; "-c"; configuration ] repoRoot
 
         // The C# authoring PoC emits canonical nodes against the workspace
         // wire-format-fixtures corpus, so it too needs the workspace checkout —
         // skip it in a single-repo checkout for the same reason as the
         // JsonDecode suite above.
         if File.Exists corpusManifest then
-            dotnet [ "run"; "--project"; csharpAuthoringPocProject; "-c"; "Release" ] repoRoot
+            dotnet [ "run"; "--project"; csharpAuthoringPocProject; "-c"; configuration ] repoRoot
         else
             Trace.traceImportant
                 "SKIPPING Fuaran.UI.CSharp.Poc — wire-format-fixtures corpus absent (single-repo checkout)."
@@ -536,18 +565,18 @@ let private registerTargets (args: string array) =
         // The C# authoring veneer's corpus-conformance suite (Phase 306) — same
         // workspace-corpus gate as the PoC + JsonDecode suites.
         if File.Exists corpusManifest then
-            dotnet [ "run"; "--project"; csharpConformanceTestProject; "-c"; "Release" ] repoRoot
+            dotnet [ "run"; "--project"; csharpConformanceTestProject; "-c"; configuration ] repoRoot
         else
             Trace.traceImportant
                 "SKIPPING Fuaran.UI.CSharp.Conformance.Tests — wire-format-fixtures corpus absent (single-repo checkout)."
 
         // The Roslyn analyzer's tests are corpus-independent — always run.
-        dotnet [ "run"; "--project"; analyzerTestProject; "-c"; "Release" ] repoRoot
-        dotnet [ "run"; "--project"; vbAnalyzerTestProject; "-c"; "Release" ] repoRoot
+        dotnet [ "run"; "--project"; analyzerTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; vbAnalyzerTestProject; "-c"; configuration ] repoRoot
 
         // The VB XML-literal veneer's corpus-conformance suite — same corpus gate.
         if File.Exists corpusManifest then
-            dotnet [ "run"; "--project"; vbConformanceTestProject; "-c"; "Release" ] repoRoot
+            dotnet [ "run"; "--project"; vbConformanceTestProject; "-c"; configuration ] repoRoot
         else
             Trace.traceImportant
                 "SKIPPING Fuaran.UI.VisualBasic.Conformance.Tests — wire-format-fixtures corpus absent (single-repo checkout).")
@@ -566,7 +595,7 @@ let private registerTargets (args: string array) =
 
         for project in candidateProjects do
             printfn "Fuaran.UI.Validator: %s" project
-            dotnet [ "run"; "--project"; validatorProject; "-c"; "Release"; "--"; project ] repoRoot)
+            dotnet [ "run"; "--project"; validatorProject; "-c"; configuration; "--"; project ] repoRoot)
 
     // ─── Publication gate: a tagged pack must BE the tagged version ─────
     //
@@ -674,21 +703,21 @@ let private registerTargets (args: string array) =
         assertPublishablePack (feed <> defaultFeed)
 
         for project in packableProjects do
-            dotnet [ "pack"; project; "-c"; "Release"; "-o"; feed ] repoRoot)
+            dotnet [ "pack"; project; "-c"; configuration; "-o"; feed ] repoRoot)
 
     // SSR client/server class+ARIA parity gate (Phase 142). Runs the server
     // renderer's parity corpus — the executable lock keeping the Feliz client
     // renderer and the Feliz.ViewEngine server renderer on the same class+ARIA
     // contract. CI runs this target alongside Test.
     Target.create "SsrParity" (fun _ ->
-        dotnet [ "run"; "--project"; serverRenderTestProject; "-c"; "Release" ] repoRoot)
+        dotnet [ "run"; "--project"; serverRenderTestProject; "-c"; configuration ] repoRoot)
 
     // DomPatch lowering conformance gate (Phase 158 QW6). Runs the server-driven
     // test project, whose golden TreeOp→DomPatch corpus locks the lowering — the
     // cheap CI gate against silent patch-lowering drift (the DomPatch analogue of
     // SsrParity). CI runs this target alongside Test.
     Target.create "DomPatchCorpus" (fun _ ->
-        dotnet [ "run"; "--project"; serverDrivenTestProject; "-c"; "Release" ] repoRoot)
+        dotnet [ "run"; "--project"; serverDrivenTestProject; "-c"; configuration ] repoRoot)
 
     // Phase 169 — catalog static-build Fable gate. `dotnet fable` transpiles the
     // public component-reference catalog so a "builds clean on .NET but breaks

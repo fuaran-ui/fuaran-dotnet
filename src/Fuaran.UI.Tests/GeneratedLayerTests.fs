@@ -660,3 +660,126 @@ let generatedLayerTests =
                     "reject-wrongtype-static-sort-column.json" ]
                   "the policy-owned residue is exactly the shapes structure cannot judge"
           } ]
+
+// ============================================================================
+//  The two decoders' BINDING VOCABULARY, guarded (Phase 1085 dispatch finding).
+//
+//  `Fuaran.UI.Ops.JsonDecode` is the second decoder in this repo: the
+//  hand-written POLICY layer that owns diagnostics, §16 lenient-accept and the
+//  reject set, sitting above the IDL-generated structural one. Its binding
+//  `$type` dispatch is a hand-maintained arm list, and so is the `expected`
+//  vocabulary its unknown-case error advertises. The generated layer's is
+//  derived from the IDL. Nothing tied the two together, so a `Binding` case
+//  landing in the IDL and not in the hand-written arms — or the reverse — was a
+//  change-twice hazard with no guard at all.
+//
+//  The byte-diff above already compares the two decoders over the `nodes/`
+//  family by decoding and RE-ENCODING each fixture. That catches a case the
+//  hand-written decoder gets WRONG on a fixture that exercises it. It cannot
+//  catch a case no fixture exercises, which is the state every newly-modelled
+//  case is in on the day it lands. These probe the vocabulary directly, so no
+//  fixture has to exist first.
+//
+//  Behavioural probes, not source reading: each feeds the hand-written decoder
+//  a binding slot carrying the tag and asks what it says. `bindingDispatches`
+//  deliberately treats ANY error other than `UNKNOWN_DU_CASE` as "dispatched" —
+//  a bare `{"$type":"State"}` is missing its required `key`, and that is the
+//  arm answering, which is exactly what is being asked.
+// ============================================================================
+
+/// One binding tag in the plainest bare-Binding slot the wire has: a `Metric`'s
+/// `value`. No payload fields, so a dispatched arm answers with its own
+/// complaint about what is missing and an undispatched one answers
+/// `UNKNOWN_DU_CASE`.
+let private bindingProbe (typeTag: string) : Result<Node<obj>, JsonDecode.DecodeError> =
+    JsonDecode.decodeNodeObj (
+        sprintf """{"id":"m","kind":{"$type":"Metric","label":"L","value":{"$type":"%s"}}}""" typeTag
+    )
+
+let private unknownDuCase =
+    JsonDecode.DecodeErrorCode.toString JsonDecode.DecodeErrorCode.UNKNOWN_DU_CASE
+
+let private bindingDispatches (typeTag: string) : bool =
+    match bindingProbe typeTag with
+    | Ok _ -> true
+    | Error e -> e.Code <> unknownDuCase
+
+/// Every `Binding` case the IDL-generated layer models, by reflection over the
+/// generated DU — so a case added to the IDL enters this guard with no edit
+/// here, which is the whole point of the guard.
+let private generatedBindingCases: string list =
+    FSharp.Reflection.FSharpType.GetUnionCases(typeof<Generated.Binding<obj>>)
+    |> Array.map _.Name
+    |> Array.toList
+    |> List.sort
+
+/// The decode-only tags the policy layer adds ABOVE the generated vocabulary —
+/// §16 leniencies with no canonical case behind them, so reflection cannot find
+/// them. Listed because they must appear in the advertised vocabulary too: a
+/// tag the decoder accepts and does not admit to accepting is the same defect
+/// as one it advertises and does not accept.
+let private lenientOnlyBindingTags = [ "Bound" ]
+
+[<Tests>]
+let bindingVocabularyTests =
+    testList
+        "the two decoders agree about the Binding vocabulary"
+        [ test "the probe discriminates — an invented tag IS an unknown DU case" {
+              // The control. Every assertion below reads a NEGATIVE result off
+              // this probe, so a probe that could never report `UNKNOWN_DU_CASE`
+              // would make all of them vacuously green.
+              match bindingProbe "NoSuchBindingCaseXyzzy" with
+              | Ok _ -> failtest "the hand-written decoder accepted an invented binding tag"
+              | Error e ->
+                  Expect.equal e.Code unknownDuCase "an invented tag is an unknown DU case"
+
+                  Expect.stringContains
+                      e.Path
+                      "$type"
+                      "the unknown-case error points at the discriminator it could not read"
+          }
+
+          test "every Binding case the generated layer models is DISPATCHED by the hand-written decoder" {
+              // The change-twice hazard, in the direction it actually runs: a
+              // case lands in the IDL, the generated layer re-syncs, and the
+              // hand-written policy decoder above it never learns the tag. Until
+              // some fixture happened to use it, nothing said so.
+              Expect.isNonEmpty generatedBindingCases "reflection found the generated Binding cases"
+
+              let undispatched = generatedBindingCases |> List.filter (bindingDispatches >> not)
+
+              Expect.equal
+                  undispatched
+                  []
+                  "the hand-written decoder has no arm for these Binding cases, which the generated layer models"
+          }
+
+          test "the advertised Binding vocabulary names every tag the decoder dispatches" {
+              // The other half, and the one that was WRONG when this guard was
+              // written. `unknownDuCase`'s `expected` string is hand-maintained
+              // beside the arms it describes, so it drifts the moment an arm is
+              // added without touching it: `Now` (Phase 765) and `Bound` (the
+              // Pilot-5 lenient wave) were both dispatched and both unadvertised.
+              //
+              // That string is not decoration. It is `ExpectedShape` on the
+              // error a host reads when its emission is refused, and the wire
+              // spec's conformance harness compares it — so a stale list tells
+              // an author their perfectly valid `Now` binding is outside the
+              // vocabulary, on the one code path that exists to teach them what
+              // the vocabulary is.
+              match bindingProbe "NoSuchBindingCaseXyzzy" with
+              | Ok _ -> failtest "the hand-written decoder accepted an invented binding tag"
+              | Error e ->
+                  let advertised = defaultArg e.ExpectedShape ""
+
+                  let dispatchedButUnadvertised =
+                      (generatedBindingCases @ lenientOnlyBindingTags)
+                      |> List.filter bindingDispatches
+                      |> List.filter (fun tag -> not (advertised.Contains tag))
+                      |> List.sort
+
+                  Expect.equal
+                      dispatchedButUnadvertised
+                      []
+                      (sprintf "these tags are accepted but absent from the advertised vocabulary '%s'" advertised)
+          } ]
