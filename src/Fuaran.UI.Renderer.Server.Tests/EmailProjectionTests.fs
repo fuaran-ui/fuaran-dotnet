@@ -45,10 +45,13 @@ open Fuaran.UI.Renderer.Server
 /// is the cross-host WIRE oracle, and an email projection is a .NET-side render
 /// target no other host implements. Putting these fixtures there would assert a
 /// conformance obligation on hosts that have no such projection.
-let private corpusDir () : string =
+///
+/// `None` when the walk does not find the project — the assembly was copied
+/// somewhere else, or is being run from outside the repo checkout.
+let private tryCorpusDir () : string option =
     let rec walk (dir: DirectoryInfo) =
         if isNull dir then
-            failwith "Fuaran.UI.Renderer.Server.Tests/ not found walking up — run from inside the repo checkout."
+            None
         else
             let candidate =
                 Path.Combine(
@@ -59,11 +62,30 @@ let private corpusDir () : string =
                 )
 
             if File.Exists candidate then
-                Path.Combine(dir.FullName, "src", "Fuaran.UI.Renderer.Server.Tests", "email-corpus")
+                Some(Path.Combine(dir.FullName, "src", "Fuaran.UI.Renderer.Server.Tests", "email-corpus"))
             else
                 walk dir.Parent
 
     walk (DirectoryInfo(AppContext.BaseDirectory))
+
+/// The corpus directory, or a SKIP for the one test that needs it. The third
+/// instance of the degrade-to-skip family `aa6e72a` closed in
+/// `ScalarSsrParityTests` and `ChainCorpusTests`, and the one that commit
+/// named and left open.
+///
+/// It is the mildest of the three — the locator is called from inside a test
+/// rather than bound at module scope, so the `failwith` errored ONE test
+/// instead of taking the whole assembly down through a type initialiser. Fixed
+/// on the same argument regardless: absence of the repo checkout is a statement
+/// about where the assembly is running, not about whether the email projection
+/// is correct, and a red test says the second thing. The two other locators
+/// would have gone on reading as the only members of a family with three.
+let private corpusDir () : string =
+    match tryCorpusDir () with
+    | Some d -> d
+    | None ->
+        skiptest
+            "src/Fuaran.UI.Renderer.Server.Tests/ not found walking up from the test assembly — the byte-pinned email corpus is IN-REPO, so this test needs the repo checkout (skipped when the assembly runs from elsewhere)"
 
 let private approving =
     Environment.GetEnvironmentVariable "FUARAN_APPROVE_EMAIL_CORPUS" = "1"
