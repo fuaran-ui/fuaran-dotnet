@@ -30,6 +30,7 @@
     <Compile Include="StateKeys.fs" />
     <Compile Include="CustomHash.fs" />
     <Compile Include="Markdown.fs" />
+    <Compile Include="Css.fs" />
     <Compile Include="Theme.fs" />
     <Compile Include="Formatting.fs" />
     <Compile Include="BindingResolver.fs" />

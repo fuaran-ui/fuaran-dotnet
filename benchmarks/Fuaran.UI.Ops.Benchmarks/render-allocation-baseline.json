@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "artifact": "render-allocation",
+  "status": "pending",
+  "captured_at_utc": "",
+  "runtime": {
+    "dotnet": "",
+    "os": "",
+    "cpu": ""
+  },
+  "metrics": [
+    {
+      "id": "render.state_keys.Small.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Render.collectStateKeys over the whole tree — the reactive subscription walk, once per frame."
+    },
+    {
+      "id": "render.live_state_merge.Small.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "StateStore overlayOnto — the live-store read view merged over the host sources, once per channel per frame."
+    },
+    {
+      "id": "render.class_vocabulary.Small.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Theme.nodeClassName + the Css / Ids builders, once per node of the tree."
+    },
+    {
+      "id": "render.state_keys.Small.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per key walk. The pre-207 walk allocated a Set per node and unioned bottom-up."
+    },
+    {
+      "id": "render.live_state_merge.Small.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per store merge. The pre-207 path materialised a whole snapshot Map first."
+    },
+    {
+      "id": "render.class_vocabulary.Small.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node."
+    },
+    {
+      "id": "render.state_keys.Medium.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Render.collectStateKeys over the whole tree — the reactive subscription walk, once per frame."
+    },
+    {
+      "id": "render.live_state_merge.Medium.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "StateStore overlayOnto — the live-store read view merged over the host sources, once per channel per frame."
+    },
+    {
+      "id": "render.class_vocabulary.Medium.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Theme.nodeClassName + the Css / Ids builders, once per node of the tree."
+    },
+    {
+      "id": "render.state_keys.Medium.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per key walk. The pre-207 walk allocated a Set per node and unioned bottom-up."
+    },
+    {
+      "id": "render.live_state_merge.Medium.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per store merge. The pre-207 path materialised a whole snapshot Map first."
+    },
+    {
+      "id": "render.class_vocabulary.Medium.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node."
+    },
+    {
+      "id": "render.state_keys.Large.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Render.collectStateKeys over the whole tree — the reactive subscription walk, once per frame."
+    },
+    {
+      "id": "render.live_state_merge.Large.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "StateStore overlayOnto — the live-store read view merged over the host sources, once per channel per frame."
+    },
+    {
+      "id": "render.class_vocabulary.Large.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Theme.nodeClassName + the Css / Ids builders, once per node of the tree."
+    },
+    {
+      "id": "render.state_keys.Large.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per key walk. The pre-207 walk allocated a Set per node and unioned bottom-up."
+    },
+    {
+      "id": "render.live_state_merge.Large.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per store merge. The pre-207 path materialised a whole snapshot Map first."
+    },
+    {
+      "id": "render.class_vocabulary.Large.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node."
+    }
+  ]
+}

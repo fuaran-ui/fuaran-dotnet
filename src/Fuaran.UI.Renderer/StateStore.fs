@@ -185,6 +185,35 @@ type StateStoreInstance(persistPrefix: string) =
     member _.Snapshot() : Map<string, obj> =
         [ for kv in store -> kv.Key, kv.Value ] |> Map.ofSeq
 
+    /// `true` when this instance holds no loaded values — the question
+    /// `withLiveState` asks per render before deciding whether a merge can
+    /// change anything. Answering it directly costs nothing; answering it as
+    /// `Map.isEmpty (Snapshot ())` built a whole `Map` first (Phase 207).
+    member _.IsEmpty: bool = store.Count = 0
+
+    /// Overlay this store's live values onto `target` (store wins), keying each
+    /// entry with `keyOf` — the per-render READ VIEW behind `withLiveState`.
+    ///
+    /// Same result as `Snapshot() |> Map.fold (fun acc k v -> Map.add (keyOf k) v acc) target`,
+    /// with the intermediate snapshot `Map` removed: that map was built once per
+    /// store per render purely to be folded away again. An empty store returns
+    /// `target` unchanged (the same reference), so a store-free tree allocates
+    /// nothing here at all.
+    ///
+    /// Perf primitive (Phase 207): the `mutable` accumulator is deliberate. Do
+    /// NOT "simplify" it back through `Snapshot()` — the result is identical, so
+    /// no behavioural test can see the regression.
+    member _.OverlayOnto(target: Map<'K, obj>, keyOf: string -> 'K) : Map<'K, obj> =
+        if store.Count = 0 then
+            target
+        else
+            let mutable acc = target
+
+            for kv in store do
+                acc <- Map.add (keyOf kv.Key) kv.Value acc
+
+            acc
+
     /// Clear this instance's in-memory store + live subscriber lists. Persisted
     /// (localStorage) values are intentionally NOT cleared, so a reload
     /// re-hydrates them; `Reset` clears only the in-memory store + live
@@ -230,6 +259,14 @@ let subscribeKeys (keys: Set<string>) (callback: unit -> unit) : unit -> unit =
 
 /// Snapshot the loaded default store into a `BindingSources.State`-shaped map.
 let snapshot () : Map<string, obj> = defaultInstance.Snapshot()
+
+/// `true` when the default store holds no loaded values.
+let isEmpty () : bool = defaultInstance.IsEmpty
+
+/// Overlay the default store's live values onto `target` (store wins) without
+/// materialising an intermediate snapshot `Map` — the per-render read view
+/// `withLiveState` uses. See `StateStoreInstance.OverlayOnto`.
+let overlayOnto (target: Map<string, obj>) : Map<string, obj> = defaultInstance.OverlayOnto(target, id)
 
 /// Clear the process-global default store and subscriber list. Primarily a
 /// test-isolation seam (Phase 128): the default store is a single-process

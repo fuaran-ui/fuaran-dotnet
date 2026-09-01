@@ -17,6 +17,11 @@ open Fuaran.UI.Ops.Benchmarks
 //        WRITE-path baseline (`op-append-baseline.json`).
 //   - `hit-rate`             — (RUN — deferred) print the memo reuse fraction
 //        over a representative edit session per corpus size.
+//   - `emit-render-template [path]` — (build-time, safe) the same for the
+//        RENDER-SPINE baseline (`render-allocation-baseline.json`, Phase 207).
+//   - `render-alloc [count]` — (RUN — deferred) print mean_ns + alloc_b for the
+//        three render-spine families (reactive key walk, live-store merge,
+//        per-node class/id vocabulary) at each tree size.
 //   - `append-rate [count]`  — (RUN — deferred) print the durable-append mean_ns
 //        + alloc_b per op shape over `count` appends (default 20000) to a fresh
 //        InMemory sink — the off-hot-path half of the op-stream write baseline.
@@ -33,6 +38,9 @@ let private defaultBaselinePath =
 let private defaultOpBaselinePath =
     Path.Combine(__SOURCE_DIRECTORY__, "op-append-baseline.json")
 
+let private defaultRenderBaselinePath =
+    Path.Combine(__SOURCE_DIRECTORY__, "render-allocation-baseline.json")
+
 let private emitTemplate (path: string) =
     let json = Baseline.PerfBaseline.toJson Baseline.PerfBaseline.applyPendingTemplate
     File.WriteAllText(path, json)
@@ -43,10 +51,27 @@ let private emitOpTemplate (path: string) =
     File.WriteAllText(path, json)
     printfn "Wrote pending op-append baseline template: %s" path
 
+let private emitRenderTemplate (path: string) =
+    let json = Baseline.PerfBaseline.toJson Baseline.PerfBaseline.renderPendingTemplate
+    File.WriteAllText(path, json)
+    printfn "Wrote pending render-allocation baseline template: %s" path
+
 let private printHitRates () =
     for s in Corpus.all do
         let rate = HitRate.measure s 64 16
         printfn "memo.hit_rate.%s = %.4f" s.Name rate
+
+let private printRenderAllocations (count: int) =
+    for s in RenderAllocation.all do
+        let keysNs, keysB = RenderAllocation.measureStateKeys s count
+        let mergeNs, mergeB = RenderAllocation.measureLiveStateMerge s count
+        let vocabNs, vocabB = RenderAllocation.measureClassVocabulary s count
+        printfn "render.state_keys.%s.mean_ns = %.1f" s.Name keysNs
+        printfn "render.state_keys.%s.alloc_b = %.1f" s.Name keysB
+        printfn "render.live_state_merge.%s.mean_ns = %.1f" s.Name mergeNs
+        printfn "render.live_state_merge.%s.alloc_b = %.1f" s.Name mergeB
+        printfn "render.class_vocabulary.%s.mean_ns = %.1f" s.Name vocabNs
+        printfn "render.class_vocabulary.%s.alloc_b = %.1f" s.Name vocabB
 
 let private printAppendRates (count: int) =
     for s in OpCorpus.all do
@@ -67,6 +92,22 @@ let main argv =
         0
     | "hit-rate" :: _ ->
         printHitRates ()
+        0
+    | "emit-render-template" :: rest ->
+        let path = rest |> List.tryHead |> Option.defaultValue defaultRenderBaselinePath
+        emitRenderTemplate path
+        0
+    | "render-alloc" :: rest ->
+        let count =
+            rest
+            |> List.tryHead
+            |> Option.bind (fun s ->
+                match Int32.TryParse s with
+                | true, n -> Some n
+                | _ -> None)
+            |> Option.defaultValue 20000
+
+        printRenderAllocations count
         0
     | "append-rate" :: rest ->
         let count =

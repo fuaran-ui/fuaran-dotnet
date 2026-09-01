@@ -200,6 +200,63 @@ module PerfBaseline =
               yield $"opstream.build_record.{s.Name}.alloc_b", "B", "Allocated bytes per record build."
               yield $"opstream.append.{s.Name}.alloc_b", "B", "Allocated bytes per durable append." ]
 
+    /// The declared metric catalogue for the RENDER-SPINE baseline (Phase 207).
+    /// The three families are the three allocators that phase removed from the
+    /// per-node / per-frame path, each measured by `RenderAllocation` over the
+    /// same three tree sizes: the reactive subscription walk a frame pays before
+    /// it renders anything, the live-store merge that precedes it, and the
+    /// per-node class + ARIA-id vocabulary a node's chrome is built from.
+    ///
+    /// `alloc_b` is the metric that matters here and `mean_ns` the corroborating
+    /// one: every Phase 207 edit is output-identical, so a regression shows up as
+    /// bytes before it shows up as time.
+    let renderMetricCatalogue: (string * string * string) list =
+        [ for s in RenderAllocation.all do
+              yield
+                  $"render.state_keys.{s.Name}.mean_ns",
+                  "ns",
+                  "Render.collectStateKeys over the whole tree — the reactive subscription walk, once per frame."
+
+              yield
+                  $"render.live_state_merge.{s.Name}.mean_ns",
+                  "ns",
+                  "StateStore overlayOnto — the live-store read view merged over the host sources, once per channel per frame."
+
+              yield
+                  $"render.class_vocabulary.{s.Name}.mean_ns",
+                  "ns",
+                  "Theme.nodeClassName + the Css / Ids builders, once per node of the tree."
+
+              yield
+                  $"render.state_keys.{s.Name}.alloc_b",
+                  "B",
+                  "Allocated bytes per key walk. The pre-207 walk allocated a Set per node and unioned bottom-up."
+
+              yield
+                  $"render.live_state_merge.{s.Name}.alloc_b",
+                  "B",
+                  "Allocated bytes per store merge. The pre-207 path materialised a whole snapshot Map first."
+
+              yield
+                  $"render.class_vocabulary.{s.Name}.alloc_b",
+                  "B",
+                  "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node." ]
+
+    /// The committed PENDING template for the render-spine baseline: every
+    /// metric ID declared, every value `NaN`, status `pending`.
+    let renderPendingTemplate: PerfBaseline =
+        { SchemaVersion = schemaVersion
+          Artifact = "render-allocation"
+          Status = "pending"
+          CapturedAtUtc = ""
+          Runtime = { Dotnet = ""; Os = ""; Cpu = "" }
+          Metrics =
+            [ for id, unit, note in renderMetricCatalogue ->
+                  { Id = id
+                    Value = nan
+                    Unit = unit
+                    Note = note } ] }
+
     /// The committed PENDING template for the op-stream WRITE-path baseline:
     /// every metric ID declared, every value `NaN`, status `pending`.
     let opPendingTemplate: PerfBaseline =

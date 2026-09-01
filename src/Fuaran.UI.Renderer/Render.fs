@@ -43,6 +43,7 @@
 //  obj-erasure boundary.
 // ============================================================================
 
+open System.Collections.Generic
 open Feliz
 open Fuaran.Core
 open Fuaran.UI.Types
@@ -443,9 +444,18 @@ let private isOpaqueOptionPlaceholder (option: SelectOption) : bool =
     option.Value = opaqueOptionsSentinel && option.Label = opaqueOptionsSentinel
 
 let private resolveOptions (ctx: RenderContext<'Msg>) (binding: Binding<SelectOption list>) : SelectOption list =
-    BindingResolver.tryResolve ctx.Sources binding
-    |> Option.defaultValue []
-    |> List.filter (isOpaqueOptionPlaceholder >> not)
+    let resolved =
+        BindingResolver.tryResolve ctx.Sources binding |> Option.defaultValue []
+
+    // Per-render hot path (Phase 207): `List.filter` allocates a fresh list even
+    // when it removes nothing, and the opaque placeholder is a decode-time
+    // rarity — every ordinary options source pays a full copy of its own list on
+    // every render to drop nothing. Ask first, copy only when there is something
+    // to drop. Result-identical; do NOT "simplify" back to a bare `List.filter`.
+    if resolved |> List.exists isOpaqueOptionPlaceholder then
+        resolved |> List.filter (isOpaqueOptionPlaceholder >> not)
+    else
+        resolved
 
 // ─── The uniform icon hook ─────────────────────────────────────────────────
 //
@@ -1301,11 +1311,27 @@ let private keysOfFormFieldKind<'Msg>
     | FormFieldKind.DateRange(v, _, _, _, _, _) -> keysOfValue v
 
 
-let rec collectKeys<'Msg> (channel: KeyChannel) (node: Node<'Msg>) : Set<string> =
-    let a11yKeys =
-        match node.Accessibility with
-        | Some a -> keysOfBindingOpt channel a.Label @ keysOfBindingOpt channel a.Hidden
-        | None -> []
+/// The single-`HashSet` DFS behind `collectKeys` (Phase 207) — the reactive
+/// re-render path walks the whole tree on every frame to derive its
+/// subscription set, and the pre-207 walk allocated a `Set` per node and
+/// `Set.union`ed them bottom-up, so an N-node tree paid O(N) immutable-set
+/// merges to produce one set. This threads ONE mutable accumulator down the
+/// walk instead; `collectKeys` seals it into the same immutable `Set` at the
+/// top, so every caller's result is unchanged (a `Set` is order-independent, so
+/// the DFS order cannot show through).
+///
+/// Perf primitive: the `HashSet` + `for` shape is deliberate. Do NOT "simplify"
+/// it back to a fold over `Set.union` — the result is identical, so no
+/// behavioural test can see the regression.
+let rec private collectKeysInto<'Msg> (channel: KeyChannel) (acc: HashSet<string>) (node: Node<'Msg>) : unit =
+    match node.Accessibility with
+    | Some a ->
+        for k in keysOfBindingOpt channel a.Label do
+            acc.Add k |> ignore
+
+        for k in keysOfBindingOpt channel a.Hidden do
+            acc.Add k |> ignore
+    | None -> ()
 
     // Phase 936 — a `StateBehaviour` branch is a wire-encoded child node
     // rendered in place of the body, so a binding inside it is a real reader
@@ -1318,22 +1344,31 @@ let rec collectKeys<'Msg> (channel: KeyChannel) (node: Node<'Msg>) : Set<string>
     // stale surface. `OnError` is a CLOSURE producing its node at error time;
     // its output is statically invisible to every walk in the estate (it is
     // also not wire-encodable, so decoded trees never carry one).
-    let stateBehaviourKeys =
-        match node.State with
-        | Some sb ->
-            let ofSlot slot =
-                slot |> Option.map (collectKeys channel) |> Option.defaultValue Set.empty
+    match node.State with
+    | Some sb ->
+        match sb.OnEmpty with
+        | Some slot -> collectKeysInto channel acc slot
+        | None -> ()
 
-            Set.union (ofSlot sb.OnEmpty) (ofSlot sb.OnLoading)
-        | None -> Set.empty
+        match sb.OnLoading with
+        | Some slot -> collectKeysInto channel acc slot
+        | None -> ()
+    | None -> ()
 
     let directKeys, children = kindKeys channel node.Kind
 
-    let childKeys =
-        children
-        |> List.fold (fun acc child -> Set.union acc (collectKeys channel child)) Set.empty
+    for k in directKeys do
+        acc.Add k |> ignore
 
-    Set.union (Set.ofList (a11yKeys @ directKeys)) (Set.union stateBehaviourKeys childKeys)
+    for child in children do
+        collectKeysInto channel acc child
+
+/// Every reactive key for `channel` in the tree rooted at `node`. Public: the
+/// .NET test runner and the reactive host both pin this walk.
+and collectKeys<'Msg> (channel: KeyChannel) (node: Node<'Msg>) : Set<string> =
+    let acc = HashSet<string>()
+    collectKeysInto channel acc node
+    Set.ofSeq acc
 
 /// This node's own (non-descendant) reactive keys for `channel`, paired with its child `Node`s for
 /// `collectKeys` to recurse into.
@@ -2316,7 +2351,7 @@ let rec private renderKind
             // `gap` emits only when set (Phase 459) — a gap-free stack carries no
             // `style` attribute, byte-identical to the pre-459 emission.
             Html.div (
-                [ prop.className (sprintf "fuaran-layout-stack %s%s" dir wrap) ]
+                [ prop.className (Css.layoutStack dir wrap) ]
                 @ (match flexGap with
                    | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
                    | None -> [])
@@ -2462,8 +2497,8 @@ let rec private renderKind
         // the parent NodeId + tab index so cross-render snapshot diffs are
         // stable; collisions across multiple Tabs nodes on the same page are
         // structurally avoided by NodeId uniqueness (a renderer invariant).
-        let tabId (i: int) = sprintf "%s-tab-%d" parentNodeIdStr i
-        let panelId (i: int) = sprintf "%s-panel-%d" parentNodeIdStr i
+        let tabId (i: int) = Ids.tab parentNodeIdStr i
+        let panelId (i: int) = Ids.panel parentNodeIdStr i
 
         // Arrow-key navigation walks past disabled tabs. `dir` is
         // +1 / -1; wraps at list ends. Returns the same starting index when
@@ -2537,7 +2572,7 @@ let rec private renderKind
             | None -> ()
 
         Html.div
-            [ prop.className (sprintf "fuaran-layout-tabs %s" orientationClass)
+            [ prop.className (Css.layoutTabs orientationClass)
               prop.children
                   [ Html.div
                         [ prop.className "fuaran-tabs-bar"
@@ -2790,7 +2825,7 @@ let rec private renderKind
             | HeadingVariant.Lead -> " fuaran-heading-lead"
 
         let props: IReactProperty list =
-            [ prop.className (sprintf "fuaran-heading%s" variantSuffix)
+            [ prop.className (Css.heading variantSuffix)
               prop.text (renderText ctx spec.Text) ]
 
         // HTML heading levels are 1..6; anything outside that range falls to h6.
@@ -2815,7 +2850,7 @@ let rec private renderKind
     | NodeKind.Metric spec -> renderMetric ctx parentNodeId state spec
     | NodeKind.Badge spec ->
         Html.span
-            [ prop.className (sprintf "fuaran-badge fuaran-badge-%s" (badgeVariantClass spec.Variant))
+            [ prop.className (Css.badge (badgeVariantClass spec.Variant))
               prop.text (renderText ctx spec.Label) ]
     | NodeKind.Skeleton spec ->
         Html.div
@@ -2829,12 +2864,7 @@ let rec private renderKind
         // labelled emits `role="img"` + `aria-label`. Mirrors the SSR
         // renderer byte-for-byte.
         Html.span
-            [ prop.className (
-                  sprintf
-                      "fuaran-icon fuaran-icon--%s fuaran-icon-%s"
-                      (Theme.iconSizeClass spec.Size)
-                      (Theme.toneVar spec.Tone)
-              )
+            [ prop.className (Css.icon (Theme.iconSizeClass spec.Size) (Theme.toneVar spec.Tone))
               prop.custom ("data-icon", spec.Icon)
               match spec.Label with
               | Some label ->
@@ -3155,7 +3185,7 @@ let rec private renderKind
                 []
 
         Html.div
-            [ prop.className (sprintf "fuaran-toast fuaran-toast-%s" toneClass)
+            [ prop.className (Css.toast toneClass)
               prop.role "status"
               prop.custom ("aria-live", "polite")
               if not isOpen then
@@ -3202,9 +3232,7 @@ let rec private renderKind
                     @ [ Html.pre
                             [ prop.className "fuaran-codeblock-pre"
                               prop.children
-                                  [ Html.code
-                                        [ prop.className (sprintf "fuaran-codeblock-code language-%s" spec.Language)
-                                          prop.text spec.Code ] ] ] ]
+                                  [ Html.code [ prop.className (Css.codeBlockCode spec.Language); prop.text spec.Code ] ] ] ]
                 ) ]
         )
     | NodeKind.Math spec ->
@@ -3532,6 +3560,21 @@ let rec private renderKind
                 // `outerRef.innerRef.btn` without re-concatenating an
                 // ambient prefix.
                 let prefix = parentNodeId + "."
+
+                // Phase 207 examined memoising this expansion per
+                // `(fragment, prefix)` and deliberately installed NO cache. The
+                // finding is recorded here so it is not re-derived: `prefix` is
+                // the REF's own node id, so within a single render pass every
+                // expansion already has a distinct key and a per-render cache
+                // could never hit. A cache that does hit has to outlive the
+                // render — and `RenderContext` is built fresh at every entry
+                // point, so it is not that cache's home. A cross-render memo is
+                // sound only when keyed on the BODY INSTANCE (immutable, and the
+                // thing that actually determines the result) rather than the
+                // fragment NAME, which a differently-declared tree can reuse —
+                // and that needs a bounded, lifetime-owning cache with a
+                // concurrency posture of its own. That is a design decision, not
+                // a local edit.
                 let namespaced = namespaceNode prefix body
 
                 let expandedCtx =
@@ -3710,7 +3753,7 @@ and private renderMetric
                   CorrelationId = correlationId parentNodeId })
     | _ ->
         Html.div
-            [ prop.className (sprintf "fuaran-metric fuaran-metric-%s" (Theme.toneVar spec.Tone))
+            [ prop.className (Css.metric (Theme.toneVar spec.Tone))
               prop.children
                   [ match spec.Icon with
                     | Some icon -> iconHook "fuaran-metric-icon" icon
@@ -3760,7 +3803,7 @@ and private renderFact (ctx: RenderContext<'Msg>) (spec: FactSpec) : ReactElemen
     let emphasisSuffix = if spec.Emphasis then " fuaran-fact-emphasis" else ""
 
     Html.div
-        [ prop.className (sprintf "fuaran-fact fuaran-fact-%s%s" (Theme.toneVar spec.Tone) emphasisSuffix)
+        [ prop.className (Css.fact (Theme.toneVar spec.Tone) emphasisSuffix)
           prop.children
               [ Html.div [ prop.className "fuaran-fact-label"; prop.text (renderText ctx spec.Label) ]
                 Html.div
@@ -3776,7 +3819,7 @@ and private renderFact (ctx: RenderContext<'Msg>) (spec: FactSpec) : ReactElemen
 
 and private renderCallout (ctx: RenderContext<'Msg>) (spec: CalloutSpec) : ReactElement =
     Html.div
-        [ prop.className (sprintf "fuaran-callout fuaran-callout-%s" (Theme.toneVar spec.Tone))
+        [ prop.className (Css.callout (Theme.toneVar spec.Tone))
           prop.children
               [ match spec.Icon with
                 | Some icon -> iconHook "fuaran-callout-icon" icon
@@ -3819,8 +3862,7 @@ and private renderProgress
 
         Html.div
             [ prop.className (
-                  sprintf
-                      "fuaran-progress fuaran-progress-%s%s"
+                  Css.progress
                       (Theme.toneVar spec.Tone)
                       (if spec.Indeterminate then
                            " fuaran-progress-indeterminate"
@@ -3881,7 +3923,7 @@ and private renderLabelValueRow
             | BindingResolver.I18nUnresolved key -> sprintf "[i18n:%s]" key
 
         Html.div
-            [ prop.className (sprintf "fuaran-label-value-row%s" emphasisSuffix)
+            [ prop.className (Css.labelValueRow emphasisSuffix)
               prop.children
                   [ Html.div
                         [ prop.className "fuaran-label-value-row-label-block"
@@ -3950,9 +3992,9 @@ and private renderButton
 
     let className =
         if unwired then
-            sprintf "fuaran-button fuaran-button-%s fuaran-button-unwired" variantClass
+            Css.buttonUnwired variantClass
         else
-            sprintf "fuaran-button fuaran-button-%s" variantClass
+            Css.button variantClass
 
     // Worked-example follow-on:
     // ButtonSpec.Tooltip wins over the unwired-action hint. Author-
@@ -4899,7 +4941,7 @@ and private renderSegmentedChoiceCore
         BindingResolver.tryResolve ctx.Sources value
         |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
 
-    let optionId (index: int) : string = sprintf "%s-opt-%d" idNamespace index
+    let optionId (index: int) : string = Ids.optionId idNamespace index
 
     match orientation with
     | Orientation.Horizontal ->
@@ -5648,7 +5690,7 @@ and private renderGridCell
         )
     | CellKindErased.Pill(label, tone) ->
         Html.span
-            [ prop.className (sprintf "fuaran-grid-cell-pill fuaran-pill-%s" (Theme.toneVar (tone row)))
+            [ prop.className (Css.gridCellPill (Theme.toneVar (tone row)))
               prop.text (renderText ctx (label row)) ]
     | CellKindErased.TonedPill(field, toneMap, defaultTone) ->
         // Phase 750 — the declarative twin. Deliberately the SAME element, class
@@ -5657,9 +5699,7 @@ and private renderGridCell
         // parity test pins the two against each other.
         let label, tone = BindingResolver.tonedPillOf row field toneMap defaultTone
 
-        Html.span
-            [ prop.className (sprintf "fuaran-grid-cell-pill fuaran-pill-%s" (Theme.toneVar tone))
-              prop.text label ]
+        Html.span [ prop.className (Css.gridCellPill (Theme.toneVar tone)); prop.text label ]
     | CellKindErased.Progress(fraction, label) ->
         let f = fraction row
 
@@ -6422,52 +6462,49 @@ let renderWithSourcesInScopeAndSink
 /// re-render reads the current value for every `Binding.State`. Idempotent if
 /// the host already merged the snapshot.
 let private withLiveState (sources: BindingResolver.BindingSources) : BindingResolver.BindingSources =
-    let stateSnap = StateStore.snapshot ()
-
+    // Per-render hot path (Phase 207): each store overlays its live values onto
+    // the caller's map through its own NAMED READ VIEW (`overlayOnto`). The
+    // pre-207 route called `snapshot ()` first, which materialised a whole
+    // intermediate `Map` per store per render for the sole purpose of folding it
+    // away again — four throwaway maps on every reactive re-render. The
+    // `isEmpty ()` guards are unchanged in meaning (an untouched store leaves
+    // `sources` byte-identical, record copy included) and now answer without
+    // building anything. Result-identical; do NOT "simplify" back to
+    // `snapshot () |> Map.fold`.
     let withState =
-        if Map.isEmpty stateSnap then
+        if StateStore.isEmpty () then
             sources
         else
             { sources with
-                State = stateSnap |> Map.fold (fun acc k v -> Map.add k v acc) sources.State }
+                State = StateStore.overlayOnto sources.State }
 
-    // Filter twin (Phase 423): merge the live `FilterStore` snapshot over `sources.Filters` (store
+    // Filter twin (Phase 423): merge the live `FilterStore` values over `sources.Filters` (store
     // wins) so a decoded chip's `$filters.<name>` write flows to every `Binding.Filter` reader.
-    let filterSnap = FilterStore.snapshot ()
-
     let withFilters =
-        if Map.isEmpty filterSnap then
+        if FilterStore.isEmpty () then
             withState
         else
             { withState with
-                Filters = filterSnap |> Map.fold (fun acc k v -> Map.add k v acc) withState.Filters }
+                Filters = FilterStore.overlayOnto withState.Filters }
 
-    // Selection twin (Phase 427): merge the live `SelectionStore` snapshot over
+    // Selection twin (Phase 427): merge the live `SelectionStore` values over
     // `sources.Selections` (store wins; raw node-id strings re-wrap as `NodeId`) so a default
     // row-click write flows to every `Binding.Selection` reader.
-    let selectionSnap = SelectionStore.snapshot ()
-
     let withSelections =
-        if Map.isEmpty selectionSnap then
+        if SelectionStore.isEmpty () then
             withFilters
         else
             { withFilters with
-                Selections =
-                    selectionSnap
-                    |> Map.fold (fun acc k v -> Map.add (NodeId k) v acc) withFilters.Selections }
+                Selections = SelectionStore.overlayOntoBy NodeId withFilters.Selections }
 
-    // Query twin (Phase 428): merge the live `QueryStore` snapshot (declarative `Call … into
+    // Query twin (Phase 428): merge the live `QueryStore` values (declarative `Call … into
     // Query` results) over `sources.QueryResults` (store wins) so a written slot flows to every
     // `Binding.Query` reader.
-    let querySnap = QueryStore.snapshot ()
-
-    if Map.isEmpty querySnap then
+    if QueryStore.isEmpty () then
         withSelections
     else
         { withSelections with
-            QueryResults =
-                querySnap
-                |> Map.fold (fun acc k v -> Map.add k v acc) withSelections.QueryResults }
+            QueryResults = QueryStore.overlayOnto withSelections.QueryResults }
 
 #if FABLE_COMPILER
 open Fable.Core // `jsNative` for the createElement import below

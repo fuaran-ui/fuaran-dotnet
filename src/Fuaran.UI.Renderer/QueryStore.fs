@@ -60,6 +60,14 @@ let subscribeKeys (names: Set<string>) (callback: unit -> unit) : unit -> unit =
 /// `BindingSources.QueryResults` bag by the caller; store wins).
 let snapshot () : Map<string, obj> = defaultInstance.Snapshot()
 
+/// `true` when the default query store holds no written results.
+let isEmpty () : bool = defaultInstance.IsEmpty
+
+/// Overlay the default query store's written results onto `target` (store wins)
+/// without materialising an intermediate snapshot `Map` — the per-render read
+/// view `withLiveState` uses. See `StateStoreInstance.OverlayOnto`.
+let overlayOnto (target: Map<string, obj>) : Map<string, obj> = defaultInstance.OverlayOnto(target, id)
+
 /// Clear the process-global default query store and subscriber list.
 /// Test-isolation seam mirroring `StateStore.reset`.
 let reset () : unit = defaultInstance.Reset()

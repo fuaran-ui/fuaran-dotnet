@@ -69,7 +69,14 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 /// PINNED. `Fuaran.UI.Tests` recomputes it from the live vocabulary and fails
 /// with the correct value when this is stale; `Build.fsproj -- Css` restamps the
 /// stylesheet from it, and `-- CssCheck` fails when the two disagree.
-let vocabularyFingerprint = "fv1:075664559ccec161"
+// Phase 207 moved this. The renderer's emission did not change: routing the
+// `Heading` and `LabelValueRow` class strings through `Css` replaced a
+// `sprintf "fuaran-heading%s"` format string — which the coverage scan cannot
+// read a class out of — with a plain `"fuaran-heading" + suffix`, so the scan
+// now sees two classes the renderer has always emitted and the reference sheet
+// has always styled. The enumeration got MORE accurate; the digest over it
+// therefore moved.
+let vocabularyFingerprint = "fv1:68c3a78c4afdffbb"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
@@ -319,10 +326,7 @@ let kindClass (kind: NodeKind<'Msg>) : string =
     | NodeKind.Chart(_) -> "fuaran-kind-chart"
     | NodeKind.Map(_) -> "fuaran-kind-map"
     | NodeKind.Custom(spec) ->
-        sprintf
-            "fuaran-kind-custom fuaran-custom-%s-%s"
-            (sanitiseClassFragment spec.ModuleId)
-            (sanitiseClassFragment spec.ComponentId)
+        Css.kindCustom (sanitiseClassFragment spec.ModuleId) (sanitiseClassFragment spec.ComponentId)
     | NodeKind.FragmentDecl _ ->
         // The decl itself renders nothing visible
         // (the body is the *template*); the class hook lets consumers

@@ -60,6 +60,18 @@ let subscribeKeys (nodeIds: Set<string>) (callback: unit -> unit) : unit -> unit
 /// re-wraps `NodeId` when merging into `BindingSources.Selections`).
 let snapshot () : Map<string, obj> = defaultInstance.Snapshot()
 
+/// `true` when the default selection store holds no selections.
+let isEmpty () : bool = defaultInstance.IsEmpty
+
+/// Overlay the default selection store's live values onto `target` (store wins),
+/// re-keying each raw node-id string through `keyOf` — the per-render read view
+/// `withLiveState` uses, with the intermediate snapshot `Map` removed. Takes the
+/// key mapper because `BindingSources.Selections` is keyed by the wrapped
+/// `NodeId`, not the raw string this store holds. See
+/// `StateStoreInstance.OverlayOnto`.
+let overlayOntoBy (keyOf: string -> 'K) (target: Map<'K, obj>) : Map<'K, obj> =
+    defaultInstance.OverlayOnto(target, keyOf)
+
 /// Clear the process-global default selection store and subscriber list.
 /// Test-isolation seam mirroring `StateStore.reset` / `FilterStore.reset`.
 let reset () : unit = defaultInstance.Reset()

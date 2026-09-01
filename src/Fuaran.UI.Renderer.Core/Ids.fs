@@ -85,3 +85,34 @@ let deterministicCorrelationId (seed: string) : string =
 /// a sanctioned seam rather than re-introducing `Guid.NewGuid()` ad hoc.
 let randomCorrelationId () : string =
     System.Guid.NewGuid().ToString("N").Substring(0, 8)
+
+// ============================================================================
+//  Per-node ARIA-id vocabulary (Phase 207).
+//
+//  The composite ids the renderers mint per node per frame so `aria-controls` /
+//  `aria-labelledby` / `id` pairs address each other. Historically each renderer
+//  spelled them with `sprintf "%s-tab-%d"` at the call site — a runtime
+//  format-string parse per tab per frame under Fable, and two spellings that
+//  could drift apart across the client / SSR pair the parity corpus locks.
+//
+//  Each builder is one `inline` concatenation. **Perf primitives: do NOT
+//  "simplify" them back to `sprintf`** — the output is byte-identical, so no
+//  behavioural test can see the regression; the named builder is the guard
+//  (`Fuaran.UI.Tests/HotPathVocabularyTests.fs` asserts the call sites use it).
+//
+//  `string index` is culture-invariant for `int` on both pipelines (Fable emits
+//  a plain JS number-to-string), so these are byte-identical to the `%d` forms
+//  they replace.
+// ============================================================================
+
+/// `<parentNodeId>-tab-<index>` — a Tabs header's element id, referenced by the
+/// matching panel's `aria-labelledby`.
+let inline tab (parentNodeId: string) (index: int) : string = parentNodeId + "-tab-" + string index
+
+/// `<parentNodeId>-panel-<index>` — a Tabs panel's element id, referenced by the
+/// matching header's `aria-controls`.
+let inline panel (parentNodeId: string) (index: int) : string = parentNodeId + "-panel-" + string index
+
+/// `<idNamespace>-opt-<index>` — one option's element id inside a segmented
+/// choice / filter group.
+let inline optionId (idNamespace: string) (index: int) : string = idNamespace + "-opt-" + string index

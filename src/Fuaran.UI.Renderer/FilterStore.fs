@@ -67,6 +67,14 @@ let subscribeKeys (keys: Set<string>) (callback: unit -> unit) : unit -> unit =
 /// Snapshot the loaded default filter store into a `BindingSources.Filters`-shaped map.
 let snapshot () : Map<string, obj> = defaultInstance.Snapshot()
 
+/// `true` when the default filter store holds no loaded values.
+let isEmpty () : bool = defaultInstance.IsEmpty
+
+/// Overlay the default filter store's live values onto `target` (store wins)
+/// without materialising an intermediate snapshot `Map` — the per-render read
+/// view `withLiveState` uses. See `StateStoreInstance.OverlayOnto`.
+let overlayOnto (target: Map<string, obj>) : Map<string, obj> = defaultInstance.OverlayOnto(target, id)
+
 /// Clear the process-global default filter store and subscriber list. Test-isolation
 /// seam mirroring `StateStore.reset` (persisted localStorage values are left intact).
 let reset () : unit = defaultInstance.Reset()

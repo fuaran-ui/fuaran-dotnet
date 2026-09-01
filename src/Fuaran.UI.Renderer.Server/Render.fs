@@ -166,9 +166,18 @@ let private isOpaqueOptionPlaceholder (option: SelectOption) : bool =
     option.Value = opaqueOptionsSentinel && option.Label = opaqueOptionsSentinel
 
 let private resolveOptions (ctx: ServerRenderContext) (binding: Binding<SelectOption list>) : SelectOption list =
-    BindingResolver.tryResolve ctx.Sources binding
-    |> Option.defaultValue []
-    |> List.filter (isOpaqueOptionPlaceholder >> not)
+    let resolved =
+        BindingResolver.tryResolve ctx.Sources binding |> Option.defaultValue []
+
+    // Per-render hot path (Phase 207) — the client mirror's reasoning, verbatim:
+    // `List.filter` allocates a fresh list even when it removes nothing, and the
+    // opaque placeholder is a decode-time rarity. Ask first, copy only when there
+    // is something to drop. Result-identical; do NOT "simplify" back to a bare
+    // `List.filter`.
+    if resolved |> List.exists isOpaqueOptionPlaceholder then
+        resolved |> List.filter (isOpaqueOptionPlaceholder >> not)
+    else
+        resolved
 
 // ─── Variant class helpers (shared vocabulary with the client) ──────────────
 
@@ -476,7 +485,7 @@ and private renderKind
             let wrap = if flexWrap then " fuaran-stack-wrap" else ""
 
             Html.div (
-                [ prop.className (sprintf "fuaran-layout-stack %s%s" dir wrap) ]
+                [ prop.className (Css.layoutStack dir wrap) ]
                 @ (match flexGap with
                    | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
                    | None -> [])
@@ -567,11 +576,11 @@ and private renderKind
             |> List.tryItem activeIndex
             |> Option.orElseWith (fun () -> spec.Children |> List.tryHead)
 
-        let tabId (i: int) = sprintf "%s-tab-%d" parentNodeIdStr i
-        let panelId (i: int) = sprintf "%s-panel-%d" parentNodeIdStr i
+        let tabId (i: int) = Ids.tab parentNodeIdStr i
+        let panelId (i: int) = Ids.panel parentNodeIdStr i
 
         Html.div
-            [ prop.className (sprintf "fuaran-layout-tabs %s" orientationClass)
+            [ prop.className (Css.layoutTabs orientationClass)
               prop.children
                   [ Html.div
                         [ prop.className "fuaran-tabs-bar"
@@ -759,7 +768,7 @@ and private renderKind
             | HeadingVariant.Lead -> " fuaran-heading-lead"
 
         let props =
-            [ prop.className (sprintf "fuaran-heading%s" variantSuffix)
+            [ prop.className (Css.heading variantSuffix)
               prop.text (renderText ctx spec.Text) ]
 
         match spec.Level with
@@ -788,7 +797,7 @@ and private renderKind
         | BindingResolver.NotResolved, Some loadingNode -> renderNode (depth + 1) ctx loadingNode
         | _ ->
             Html.div
-                [ prop.className (sprintf "fuaran-metric fuaran-metric-%s" (Theme.toneVar spec.Tone))
+                [ prop.className (Css.metric (Theme.toneVar spec.Tone))
                   prop.children
                       [ match spec.Icon with
                         | Some icon -> iconHook "fuaran-metric-icon" icon
@@ -832,7 +841,7 @@ and private renderKind
                         | None -> Html.none ] ]
     | NodeKind.Badge spec ->
         Html.span
-            [ prop.className (sprintf "fuaran-badge fuaran-badge-%s" (badgeVariantClass spec.Variant))
+            [ prop.className (Css.badge (badgeVariantClass spec.Variant))
               prop.text (renderText ctx spec.Label) ]
     | NodeKind.Skeleton spec ->
         Html.div
@@ -846,12 +855,7 @@ and private renderKind
         // labelled emits `role="img"` + `aria-label`. Mirrors the client
         // renderer byte-for-byte.
         Html.span
-            [ prop.className (
-                  sprintf
-                      "fuaran-icon fuaran-icon--%s fuaran-icon-%s"
-                      (Theme.iconSizeClass spec.Size)
-                      (Theme.toneVar spec.Tone)
-              )
+            [ prop.className (Css.icon (Theme.iconSizeClass spec.Size) (Theme.toneVar spec.Tone))
               prop.custom ("data-icon", spec.Icon)
               match spec.Label with
               | Some label ->
@@ -860,7 +864,7 @@ and private renderKind
               | None -> prop.custom ("aria-hidden", "true") ]
     | NodeKind.Callout spec ->
         Html.div
-            [ prop.className (sprintf "fuaran-callout fuaran-callout-%s" (Theme.toneVar spec.Tone))
+            [ prop.className (Css.callout (Theme.toneVar spec.Tone))
               prop.children
                   [ match spec.Icon with
                     | Some icon -> iconHook "fuaran-callout-icon" icon
@@ -883,8 +887,7 @@ and private renderKind
 
             Html.div
                 [ prop.className (
-                      sprintf
-                          "fuaran-progress fuaran-progress-%s%s"
+                      Css.progress
                           (Theme.toneVar spec.Tone)
                           (if spec.Indeterminate then
                                " fuaran-progress-indeterminate"
@@ -927,7 +930,7 @@ and private renderKind
                     ""
 
             Html.div
-                [ prop.className (sprintf "fuaran-label-value-row%s" emphasisSuffix)
+                [ prop.className (Css.labelValueRow emphasisSuffix)
                   prop.children
                       [ Html.span
                             [ prop.className "fuaran-label-value-row-label"
@@ -948,7 +951,7 @@ and private renderKind
         let emphasisSuffix = if spec.Emphasis then " fuaran-fact-emphasis" else ""
 
         Html.div
-            [ prop.className (sprintf "fuaran-fact fuaran-fact-%s%s" (Theme.toneVar spec.Tone) emphasisSuffix)
+            [ prop.className (Css.fact (Theme.toneVar spec.Tone) emphasisSuffix)
               prop.children
                   [ Html.div [ prop.className "fuaran-fact-label"; prop.text (renderText ctx spec.Label) ]
                     Html.div
@@ -1315,7 +1318,7 @@ and private renderKind
                 []
 
         Html.div (
-            [ prop.className (sprintf "fuaran-toast fuaran-toast-%s" toneClass)
+            [ prop.className (Css.toast toneClass)
               prop.role "status"
               prop.custom ("aria-live", "polite") ]
             @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
@@ -1360,9 +1363,7 @@ and private renderKind
                     @ [ Html.pre
                             [ prop.className "fuaran-codeblock-pre"
                               prop.children
-                                  [ Html.code
-                                        [ prop.className (sprintf "fuaran-codeblock-code language-%s" spec.Language)
-                                          prop.text spec.Code ] ] ] ]
+                                  [ Html.code [ prop.className (Css.codeBlockCode spec.Language); prop.text spec.Code ] ] ] ]
                 ) ]
         )
     | NodeKind.Math spec ->
@@ -1418,7 +1419,7 @@ and private renderKind
             | _ -> []
 
         Html.button (
-            [ prop.className (sprintf "fuaran-button fuaran-button-%s" variantClass)
+            [ prop.className (Css.button variantClass)
               // The uniform icon hook: an icon-bearing button wraps its label
               // as a text node beside the hook; an icon-less button keeps the
               // plain `prop.text` shape (markup unchanged for existing trees).
@@ -1702,7 +1703,7 @@ and private renderCustom
     // safe to declare on a kind every roster host already renders.
     let identityOnly () =
         Html.div
-            [ prop.className (sprintf "fuaran-kind-custom-placeholder fuaran-custom-%s-%s" moduleId componentId)
+            [ prop.className (Css.customPlaceholder moduleId componentId)
               prop.custom ("data-fuaran-custom-module", moduleId)
               prop.custom ("data-fuaran-custom-component", componentId)
               prop.text (sprintf "[fuaran:custom %s.%s]" moduleId componentId) ]
@@ -1735,7 +1736,7 @@ and private renderCustom
                         prop.children (ds |> List.map (fun d -> Html.li [ prop.text d.Message ])) ] ]
 
         Html.div
-            [ prop.className (sprintf "fuaran-kind-custom-placeholder fuaran-custom-%s-%s" moduleId componentId)
+            [ prop.className (Css.customPlaceholder moduleId componentId)
               prop.custom ("data-fuaran-custom-module", moduleId)
               prop.custom ("data-fuaran-custom-component", componentId)
               prop.custom ("data-fuaran-custom-card", Fuaran.UI.CustomCard.verdictMarker described.HashVerdict)
@@ -1793,7 +1794,7 @@ and private renderCustom
         | Some HashStrictness.StrictReplay
         | Some HashStrictness.Enforced ->
             Html.div
-                [ prop.className (sprintf "fuaran-custom-hash-mismatch fuaran-custom-%s-%s" moduleId componentId)
+                [ prop.className (Css.customHashMismatch moduleId componentId)
                   prop.custom ("data-fuaran-custom-hash-mismatch", "strict")
                   prop.text (
                       sprintf "[fuaran:custom %s.%s — content-hash mismatch (StrictReplay)]" moduleId componentId
@@ -1824,7 +1825,7 @@ and private renderCustom
             | [] -> body
             | attrs ->
                 Html.div (
-                    [ prop.className (sprintf "fuaran-custom-wrapper fuaran-custom-%s-%s" moduleId componentId) ]
+                    [ prop.className (Css.customWrapper moduleId componentId) ]
                     @ attrs
                     @ [ prop.children [ body ] ]
                 )
@@ -2233,7 +2234,7 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
             renderSegmentedFilter ctx spec.Name options value orientation
 
     Html.label
-        [ prop.className (sprintf "fuaran-filter fuaran-filter-%s" kindClass)
+        [ prop.className (Css.filter kindClass)
           prop.children
               [ Html.span [ prop.className "fuaran-filter-label"; prop.text labelText ]
                 control ] ]
@@ -2259,7 +2260,7 @@ and private renderSegmentedFilter
         BindingResolver.tryResolve ctx.Sources value
         |> Option.bind (fun s -> if isNull s || s = "" then None else Some s)
 
-    let optionId (index: int) : string = sprintf "%s-opt-%d" idNamespace index
+    let optionId (index: int) : string = Ids.optionId idNamespace index
 
     match orientation with
     | Orientation.Horizontal ->

@@ -82,7 +82,23 @@ dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- hit-rate
 # Op-stream write path — encode + hash (BenchmarkDotNet), then durable append:
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- --filter *OpStream*
 dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- append-rate 20000
+
+# Render spine — the Phase 207 per-node / per-frame allocators:
+dotnet run -c Release --project benchmarks/Fuaran.UI.Ops.Benchmarks -- render-alloc 20000
 ```
+
+The render-spine baseline ships its own artifact,
+`render-allocation-baseline.json` (regenerate the pending template with
+`-- emit-render-template`). Fill its `render.state_keys.*` /
+`render.live_state_merge.*` / `render.class_vocabulary.*` metrics from the
+`render-alloc` output, which prints them already keyed by metric id.
+
+Those three families are the allocators [Phase 207](../../../../roadmap/phases/207-renderer-hot-path-allocation-reduction.md)
+removed from the render path: the reactive subscription walk, the live-store
+merge that precedes it, and the per-node class + ARIA-id vocabulary. Every edit
+that phase made is OUTPUT-IDENTICAL, so the test suite cannot see a regression
+in any of them — `alloc_b` is the number that can. (The SHAPE of those call
+sites is locked separately, by `Fuaran.UI.Tests/HotPathVocabularyTests.fs`.)
 
 The op-stream baseline ships its own artifact, `op-append-baseline.json`
 (regenerate the pending template with `-- emit-op-template`). Fill its

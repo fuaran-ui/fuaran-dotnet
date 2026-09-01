@@ -269,6 +269,7 @@
          The governed spec set is derived from Defaults.fs, so a new spec is
          governed the moment it gains a default. -->
     <Compile Include="SpecConstructionTests.fs" />
+    <Compile Include="HotPathVocabularyTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

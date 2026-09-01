@@ -15,6 +15,7 @@
   <ItemGroup>
     <Compile Include="Corpus.fs" />
     <Compile Include="OpCorpus.fs" />
+    <Compile Include="RenderAllocation.fs" />
     <Compile Include="Baseline.fs" />
     <Compile Include="ApplyBenchmarks.fs" />
     <Compile Include="HitRate.fs" />
