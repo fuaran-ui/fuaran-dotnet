@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.Corpus
+﻿module Fuaran.UI.JsonDecode.Tests.Corpus
 
 // ============================================================================
 //  Language-neutral wire-format conformance corpus.
@@ -602,10 +602,17 @@ let emit (outputDir: string) : unit =
     // discriminators over the node round-trip fixtures — extracted from the
     // *encoded* bytes, NOT `Kind.name` (which is a display tag that diverges from
     // the wire name for DataGrid: `Kind.name` → "Grid", wire `$type` → "DataGrid").
+    //
+    // Parsed at `wireJsonOptions`, not the reader default, in both this
+    // enumeration and the form-field one below. The default 64 holds TODAY only
+    // because every payload deep enough to exceed it is authored as a
+    // `storedNodes` raw string rather than an `allNodes` typed value — a
+    // property of the fixture partition, not of this code. A deep fixture
+    // authored as a typed `Node` would throw the emitter here at 64 levels.
     let kinds =
         Fixtures.allNodes
         |> List.map (fun (_, n) ->
-            use doc = JsonDocument.Parse(CanonicalJson.encodeNode n)
+            use doc = JsonDocument.Parse(CanonicalJson.encodeNode n, wireJsonOptions)
 
             match doc.RootElement.GetProperty("kind").GetProperty("$type").GetString() with
             | null -> failwithf "node fixture '%s' has no kind.$type discriminator" (nodeIdStr n)
@@ -618,7 +625,7 @@ let emit (outputDir: string) : unit =
     let formFieldKinds =
         Fixtures.allNodes
         |> List.collect (fun (_, n) ->
-            use doc = JsonDocument.Parse(CanonicalJson.encodeNode n)
+            use doc = JsonDocument.Parse(CanonicalJson.encodeNode n, wireJsonOptions)
             controlKindsOf doc.RootElement)
         |> List.distinct
         |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))

@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.DecodePolicyTests
+﻿module Fuaran.UI.JsonDecode.Tests.DecodePolicyTests
 
 // ============================================================================
 //  Host-declared kind admission policy (WIRE_FORMAT.md §23, Phase 1020).
@@ -176,10 +176,12 @@ let wireProjection =
                             | Ok node ->
                                 // `System.Text.Json` defaults to a reader depth
                                 // of 64 and the §21 limit fixtures nest deeper
-                                // than that by design. The ceiling here is the
-                                // reader's, not the format's — WireLimits owns
-                                // the format's.
-                                use doc = JsonDocument.Parse(text, JsonDocumentOptions(MaxDepth = 512))
+                                // than that by design. `Corpus.wireJsonOptions`
+                                // carries the format's own syntactic bound
+                                // (`WireLimits.MaxJsonDepth`), so this harness
+                                // follows §21 if it ever moves — a literal here
+                                // would be the one depth site left behind.
+                                use doc = JsonDocument.Parse(text, Corpus.wireJsonOptions)
                                 let onTheWire = str (doc.RootElement.GetProperty("kind").GetProperty "$type")
                                 let projected = wireKindName node.Kind
 
