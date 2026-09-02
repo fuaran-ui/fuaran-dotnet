@@ -87,18 +87,21 @@ public static partial class Fuaran
                 Fs.None<Microsoft.FSharp.Core.FSharpFunc<bool, FsAction>>(),
                 (options.Open ?? false).Inner)));
 
-    /// <summary>An out-of-flow modal dialog.</summary>
+    /// <summary>An out-of-flow modal dialog. <c>OnDismiss</c> takes a
+    /// wire-representable <see cref="FuaranAction"/> (Phase 1153).</summary>
     public static FuaranNode Modal(ModalOptions options) =>
         new(FsFactory.modal<object>(
             options.Id,
             // Generated ModalSpec ctor is Generated.fs declaration order (Children,
             // Dismissable, OnDismiss, Open, Heading), not the old hand order.
-            // `OnDismiss = None` since the swap — ≡ the old no-op action (Phase 426:
-            // a bound Open gets false written back on dismiss).
+            // OnDismiss stays ABSENT when unset rather than becoming an empty chain
+            // (Phase 426: a bound Open gets false written back on dismiss, so the
+            // slot is genuinely optional) — which is also what keeps this additive
+            // on the wire for every author who does not set it.
             new FsGen.ModalSpec<object>(
                 Kids(options.Children),
                 options.Dismissable,
-                Fs.None<FsAction>(),
+                options.OnDismiss is { } d ? Fs.Some(d.Inner) : Fs.None<FsAction>(),
                 (options.Open ?? false).Inner,
                 options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>())));
 
@@ -213,6 +216,14 @@ public sealed record ModalOptions
 
     /// <summary>Whether a dismiss affordance is shown (default true).</summary>
     public bool Dismissable { get; init; } = true;
+
+    /// <summary>
+    /// What the dialog raises when dismissed (Phase 1153). Unset leaves the slot
+    /// ABSENT on the wire — a bound <see cref="Open"/> already gets <c>false</c>
+    /// written back, so "no extra action" is the honest default rather than an
+    /// empty chain.
+    /// </summary>
+    public FuaranAction? OnDismiss { get; init; }
 
     /// <summary>The dialog content.</summary>
     public IEnumerable<FuaranNode>? Children { get; init; }

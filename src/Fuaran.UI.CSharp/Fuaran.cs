@@ -159,7 +159,8 @@ public static partial class Fuaran
 
     // ─── Input ────────────────────────────────────────────────────────────────
 
-    /// <summary>A button. The <c>OnClick</c> handler is opaque to the wire; author intent survives via the tree shape.</summary>
+    /// <summary>A button. <c>OnClick</c> takes a wire-representable
+    /// <see cref="FuaranAction"/> (Phase 1153) — unset raises nothing.</summary>
     public static FuaranNode Button(ButtonOptions options) =>
         new(FsFactory.button<object>(
             options.Id,
@@ -167,7 +168,7 @@ public static partial class Fuaran
             // OnClick, Variant, Icon, Tooltip, Disabled).
             new FsGen.ButtonSpec<object>(
                 options.Label.Inner,
-                global::Fuaran.UI.Generated.Action<object>.NewChain(Fs.Empty<global::Fuaran.UI.Generated.Action<object>>()),
+                (options.OnClick ?? FuaranAction.Empty).Inner,
                 options.Variant.ToFs(),
                 Icon(options.Icon),
                 Fs.None<FsGen.TextSource>(),

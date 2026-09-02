@@ -47,7 +47,9 @@ public static partial class Fuaran
             : Microsoft.FSharp.Core.FSharpOption<global::Fuaran.UI.Generated.Binding<string>>.Some(
                 global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(selected)));
 
-    /// <summary>A form — an ordered list of fields plus a submit action.</summary>
+    /// <summary>A form — an ordered list of fields plus a submit action.
+    /// <c>OnSubmit</c> takes a wire-representable <see cref="FuaranAction"/>
+    /// (Phase 1153) — unset raises nothing.</summary>
     public static FuaranNode Form(FormOptions options) =>
         new(FsFactory.form<object>(
             options.Id,
@@ -55,7 +57,7 @@ public static partial class Fuaran
             // OnSubmit, SubmitLabel, Disabled).
             new FsGen.FormSpec<object>(
                 Fs.List((options.Fields ?? Enumerable.Empty<FormField>()).Select(f => f.Inner)),
-                NoAction,
+                (options.OnSubmit ?? FuaranAction.Empty).Inner,
                 options.SubmitLabel.Inner,
                 Fs.None<global::Fuaran.UI.Generated.Binding<bool>>())));
 
@@ -217,6 +219,13 @@ public sealed record FormOptions
 
     /// <summary>The submit-button label (default "Submit").</summary>
     public Text SubmitLabel { get; init; } = "Submit";
+
+    /// <summary>
+    /// What the form raises on submit (Phase 1153). Unset is an empty chain — the
+    /// shape this veneer authored before the <see cref="FuaranAction"/> vocabulary
+    /// existed, so it is byte-unchanged for an author who does not set it.
+    /// </summary>
+    public FuaranAction? OnSubmit { get; init; }
 }
 
 /// <summary>Options for <see cref="Fuaran.Select"/>.</summary>
