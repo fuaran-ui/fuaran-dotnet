@@ -13,7 +13,7 @@
 //    FUARAN078 — unstable row identity (neither RowKey nor RowKeyField)
 //    FUARAN090 — inert editable grid (editable: true without a direct
 //                Binding.State source — Phase 663 write-back floor)
-//    FUARAN113 — a column `field` / `rowKeyField` naming a column absent from
+//    FUARAN114 — a column `field` / `rowKeyField` naming a column absent from
 //                the source's statically-known schema (Phase 1149 — error)
 // ============================================================================
 
@@ -81,7 +81,7 @@ let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<
 
 let private gridWith (source: Binding<Row seq>) : Node<Msg> = gridWithEditable false source
 
-/// A read-only grid naming the fields it projects — the shape FUARAN113 judges.
+/// A read-only grid naming the fields it projects — the shape FUARAN114 judges.
 /// `columnFields` are the column `field`s in order; `rowKeyField` is the grid's
 /// own row-identity name.
 let private gridNamingFields
@@ -350,10 +350,10 @@ let tests =
               | Error defects -> failtestf "Expected Ok for a read-only Transform grid, got: %A" defects
           }
 
-          // Phase 1149 — FUARAN113: the grid's read-side grounding, the twin of
+          // Phase 1149 — FUARAN114: the grid's read-side grounding, the twin of
           // FUARAN086's chart rule. Positive, negative, and the two shapes where
           // the schema is not derivable and the rule must stay silent.
-          test "FUARAN113: a column field absent from the source's schema is an error" {
+          test "FUARAN114: a column field absent from the source's schema is an error" {
               let grid =
                   gridNamingFields
                       [ "dept"; "headcount" ]
@@ -377,12 +377,12 @@ let tests =
                   let code, severity, _ =
                       PreEmitValidate.describe (PreEmitDefect.GridFieldUngrounded("grid", "headcount", deptSchema))
 
-                  Expect.equal code "FUARAN113" "the stable code"
-                  Expect.equal severity DefectSeverity.Error "FUARAN113 is an error, not an advisory"
-              | Ok() -> failtest "Expected FUARAN113 defect, got Ok"
+                  Expect.equal code "FUARAN114" "the stable code"
+                  Expect.equal severity DefectSeverity.Error "FUARAN114 is an error, not an advisory"
+              | Ok() -> failtest "Expected FUARAN114 defect, got Ok"
           }
 
-          test "FUARAN113: a rowKeyField absent from the source's schema is an error" {
+          test "FUARAN114: a rowKeyField absent from the source's schema is an error" {
               let grid =
                   gridNamingFields
                       [ "dept" ]
@@ -395,10 +395,10 @@ let tests =
                       defects
                       (PreEmitDefect.GridFieldUngrounded("grid", "id", deptSchema))
                       "GridFieldUngrounded surfaced for the absent rowKeyField"
-              | Ok() -> failtest "Expected FUARAN113 defect for the rowKeyField, got Ok"
+              | Ok() -> failtest "Expected FUARAN114 defect for the rowKeyField, got Ok"
           }
 
-          test "FUARAN113 does not fire when every named field is in the schema" {
+          test "FUARAN114 does not fire when every named field is in the schema" {
               let grid =
                   gridNamingFields
                       [ "dept" ]
@@ -410,7 +410,7 @@ let tests =
               | Error defects -> failtestf "Expected Ok for a fully grounded grid, got: %A" defects
           }
 
-          test "FUARAN113 stands down where the output schema is not derivable" {
+          test "FUARAN114 stands down where the output schema is not derivable" {
               // A non-empty pipeline changes the column set — derive adds,
               // project/groupBy remove — so a name absent from the SOURCE schema
               // may be perfectly correct against the pipeline's output. Refusing
@@ -437,7 +437,7 @@ let tests =
                            match d with
                            | PreEmitDefect.GridFieldUngrounded _ -> true
                            | _ -> false))
-                      (sprintf "FUARAN113 must not fire over a non-empty pipeline, got: %A" defects)
+                      (sprintf "FUARAN114 must not fire over a non-empty pipeline, got: %A" defects)
 
               // Every other source shape is unknowable before the tree runs.
               for source in
@@ -455,5 +455,5 @@ let tests =
                                match d with
                                | PreEmitDefect.GridFieldUngrounded _ -> true
                                | _ -> false))
-                          (sprintf "FUARAN113 must not fire over %A, got: %A" source defects)
+                          (sprintf "FUARAN114 must not fire over %A, got: %A" source defects)
           } ]

@@ -699,7 +699,7 @@ type PreEmitDefect =
     /// Carries the node's id and the closure slot
     /// (`SlotCapability`'s `Type.slot` spelling).
     | WireLossyActionClosure of nodeId: string * slot: string
-    /// **FUARAN113 (Error)**. A `DataGrid` names a column its own source cannot
+    /// **FUARAN114 (Error)**. A `DataGrid` names a column its own source cannot
     /// produce: a column `field`, or the grid's `rowKeyField`, absent from the
     /// statically-known schema of the `Binding.Transform` the grid reads
     /// (Phase 1149). The row projection resolves the name against each row and
@@ -1133,7 +1133,7 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             slot
     | PreEmitDefect.GridFieldUngrounded(nodeId, field, schemaColumns) ->
-        "FUARAN113",
+        "FUARAN114",
         DefectSeverity.Error,
         sprintf
             "grid '%s' names field '%s', absent from its source's statically-known schema [%s] — the row projection resolves it against nothing, so the cell renders blank (or, for rowKeyField, every row shares one empty key and row identity collapses); fix the name, or source the grid from data that carries the column (Phase 1149)"
@@ -1655,7 +1655,7 @@ let private validateCore
             if spec.RowKey.IsNone && spec.RowKeyField.IsNone then
                 defects.Add(PreEmitDefect.UnstableRowIdentity nodeIdStr)
 
-            // FUARAN113 (Phase 1149): a declared field the grid's own source
+            // FUARAN114 (Phase 1149): a declared field the grid's own source
             // cannot produce. FUARAN077 above asks whether a column names
             // ANYTHING; this asks whether what it names is THERE — the read-side
             // twin of FUARAN086, over the same window and by the same restraint.
