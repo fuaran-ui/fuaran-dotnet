@@ -1,0 +1,17 @@
+{
+  "kind": "copies",
+  "producer": "fuaran-dotnet",
+  "records": [
+    {
+      "source": "src/Fuaran.UI.Renderer/content/fuaran-reference.css",
+      "consumers": [
+        "Fuaran/Fuaran-UI/fuaran-ts/packages/renderer/css/fuaran.css",
+        "Fuaran/Fuaran-UI/fuaran-go/renderer/content/fuaran-reference.css",
+        "Fuaran/Fuaran-UI/fuaran-rs/css/fuaran.css",
+        "Fuaran/Fuaran-UI/fuaran-py/src/fuaran_py/renderer/content/fuaran-reference.css"
+      ],
+      "check": "bytes",
+      "regen": "cd Fuaran/Fuaran-UI/fuaran-dotnet; dotnet run --project Build.fsproj -- Css"
+    }
+  ]
+}
