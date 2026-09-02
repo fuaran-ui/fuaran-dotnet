@@ -61,11 +61,11 @@ module GuestFork =
         (mountOpHash: string)
         (op: TreeOp<'Msg>)
         (promptId: string option)
-        (userId: string)
+        (actor: Actor)
         (timestamp: DateTimeOffset)
         (resultEnvelope: OpResultEnvelope)
         : DagOpRecord<'Msg> =
-        DagOpRecord.create (GuestStream.streamId scopeId) [ mountOpHash ] op promptId userId timestamp resultEnvelope
+        DagOpRecord.create (GuestStream.streamId scopeId) [ mountOpHash ] op promptId actor timestamp resultEnvelope
 
     /// Append a subsequent op INSIDE a guest scope: an ordinary single-parent
     /// DAG step under `guest-<scopeId>`, its parent the guest's current head
@@ -77,11 +77,11 @@ module GuestFork =
         (priorGuestHash: string)
         (op: TreeOp<'Msg>)
         (promptId: string option)
-        (userId: string)
+        (actor: Actor)
         (timestamp: DateTimeOffset)
         (resultEnvelope: OpResultEnvelope)
         : DagOpRecord<'Msg> =
-        DagOpRecord.create (GuestStream.streamId scopeId) [ priorGuestHash ] op promptId userId timestamp resultEnvelope
+        DagOpRecord.create (GuestStream.streamId scopeId) [ priorGuestHash ] op promptId actor timestamp resultEnvelope
 
     /// Project a guest op's provenance — `(scopeId, promptId)` — so "which
     /// region, from which prompt" resolves per guest (consumed by the per-guest

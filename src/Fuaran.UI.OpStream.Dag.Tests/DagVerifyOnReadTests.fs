@@ -134,7 +134,7 @@ let tests =
                       [ hostRecord.Hash ]
                       removeRight
                       None
-                      "tester"
+                      (Actor.Human "tester")
                       (ts 2L)
                       OpResultEnvelope.Success
 
@@ -156,7 +156,7 @@ let tests =
                       [ String.replicate 64 "c" ]
                       removeRight
                       None
-                      "tester"
+                      (Actor.Human "tester")
                       (ts 1L)
                       OpResultEnvelope.Success
 

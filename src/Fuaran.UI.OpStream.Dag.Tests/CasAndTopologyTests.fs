@@ -31,36 +31,54 @@ let provenanceInDagHash =
         "DAG content address folds provenance (Phase 408)"
         [ test "userId is folded into the content hash" {
               let op = TreeOp.RemoveNode rightChildId
-              let a = DagOpRecord.create "s" [] op None "alice" (ts 1L) OpResultEnvelope.Success
-              let b = DagOpRecord.create "s" [] op None "mallory" (ts 1L) OpResultEnvelope.Success
+
+              let a =
+                  DagOpRecord.create "s" [] op None (Actor.Human "alice") (ts 1L) OpResultEnvelope.Success
+
+              let b =
+                  DagOpRecord.create "s" [] op None (Actor.Human "mallory") (ts 1L) OpResultEnvelope.Success
+
               Expect.notEqual a.Hash b.Hash "different userId → different content id"
           }
 
           test "promptId is folded into the content hash" {
               let op = TreeOp.RemoveNode rightChildId
-              let a = DagOpRecord.create "s" [] op None "u" (ts 1L) OpResultEnvelope.Success
+
+              let a =
+                  DagOpRecord.create "s" [] op None (Actor.Human "u") (ts 1L) OpResultEnvelope.Success
 
               let b =
-                  DagOpRecord.create "s" [] op (Some "p-1") "u" (ts 1L) OpResultEnvelope.Success
+                  DagOpRecord.create "s" [] op (Some "p-1") (Actor.Human "u") (ts 1L) OpResultEnvelope.Success
 
               Expect.notEqual a.Hash b.Hash "absent vs present promptId → different content id"
           }
 
           test "resultEnvelope is folded into the content hash" {
               let op = TreeOp.RemoveNode rightChildId
-              let ok = DagOpRecord.create "s" [] op None "u" (ts 1L) OpResultEnvelope.Success
+
+              let ok =
+                  DagOpRecord.create "s" [] op None (Actor.Human "u") (ts 1L) OpResultEnvelope.Success
 
               let fail =
-                  DagOpRecord.create "s" [] op None "u" (ts 1L) (OpResultEnvelope.Failure("KindMismatch", "boom"))
+                  DagOpRecord.create
+                      "s"
+                      []
+                      op
+                      None
+                      (Actor.Human "u")
+                      (ts 1L)
+                      (OpResultEnvelope.Failure("KindMismatch", "boom"))
 
               Expect.notEqual ok.Hash fail.Hash "flipping Success → Failure → different content id"
           }
 
           test "recomputeHash catches a re-attributed node (DagVerify hash coverage)" {
               let op = TreeOp.RemoveNode rightChildId
-              let r = DagOpRecord.create "s" [] op None "alice" (ts 1L) OpResultEnvelope.Success
+
+              let r =
+                  DagOpRecord.create "s" [] op None (Actor.Human "alice") (ts 1L) OpResultEnvelope.Success
               // Re-attribute WITHOUT re-hashing — the stored hash no longer recomputes.
-              let tampered = { r with UserId = "mallory" }
+              let tampered = { r with Actor = Actor.Human "mallory" }
 
               Expect.notEqual
                   (DagOpRecord.recomputeHash tampered)

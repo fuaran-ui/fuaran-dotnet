@@ -44,7 +44,7 @@ let private mkRecord
       Op = op
       OutcomeHash = outcome
       PromptId = prompt
-      UserId = "u1"
+      Actor = Actor.Human "u1"
       Timestamp = DateTimeOffset.FromUnixTimeSeconds unix
       ResultEnvelope = OpResultEnvelope.Success
       Tombstoned = tombstoned }
@@ -93,9 +93,59 @@ let tests =
                   mkRecord "s1" "h1" [ "p1"; "p2" ] (TreeOp.RemoveNode(NodeId "n1")) None None 1700000000L false
 
               let expected =
-                  """{"hash":"h1","op":{"$type":"RemoveNode","target":"n1"},"parents":["p1","p2"],"resultEnvelope":{"$type":"Success"},"streamId":"s1","timestamp":1700000000,"tombstoned":false,"userId":"u1"}"""
+                  """{"actor":{"kind":"human","id":"u1"},"hash":"h1","op":{"$type":"RemoveNode","target":"n1"},"parents":["p1","p2"],"resultEnvelope":{"$type":"Success"},"streamId":"s1","timestamp":1700000000,"tombstoned":false}"""
 
               Expect.equal (DagWire.encodeRecord r) expected "canonical bytes pinned"
+          }
+
+          test "byte-golden: an AGENT actor nests its pinned member order" {
+              // `Actor.encode` pins `kind` first, then the case fields — NOT
+              // Ordinal-sorted. The nested value embeds verbatim, exactly as the
+              // nested op does, so this is what the TS host must reproduce.
+              let r =
+                  { mkRecord "s1" "h1" [] (TreeOp.RemoveNode(NodeId "n1")) None None 1700000000L false with
+                      Actor = Actor.Agent("claude", "4.8", "planner") }
+
+              Expect.stringContains
+                  (DagWire.encodeRecord r)
+                  """{"actor":{"kind":"agent","model":"claude","version":"4.8","id":"planner"},"hash":"""
+                  "agent actor nests in pinned member order, first in the envelope"
+          }
+
+          test "a pre-1144 userId envelope is REFUSED by name, not lifted" {
+              // The actor is inside the content address, so a lifted record would
+              // carry a stored hash no host can reproduce — a silent verification
+              // failure instead of a clear refusal. Go-red proof for that refusal.
+              let legacy =
+                  """{"hash":"h1","op":{"$type":"RemoveNode","target":"n1"},"parents":[],"resultEnvelope":{"$type":"Success"},"streamId":"s1","timestamp":1700000000,"tombstoned":false,"userId":"u1"}"""
+
+              match DagWire.decodeRecord decodeOp legacy with
+              | Ok _ -> failtest "a pre-1144 envelope must not decode"
+              | Error e ->
+                  Expect.stringContains e "userId" "the refusal names the retired field"
+                  Expect.stringContains e "do not carry forward" "the refusal states the consequence"
+          }
+
+          test "recomputeHash distinguishes a Human from an Agent with the SAME id" {
+              // The point of typing the actor: pre-1144 both of these hashed the
+              // bare id "planner" and were indistinguishable by content address.
+              let op = TreeOp.RemoveNode(NodeId "n1")
+              let ts = DateTimeOffset.FromUnixTimeSeconds 1700000000L
+
+              let asHuman =
+                  DagOpRecord.create "s1" [] op None (Actor.Human "planner") ts OpResultEnvelope.Success
+
+              let asAgent =
+                  DagOpRecord.create
+                      "s1"
+                      []
+                      op
+                      None
+                      (Actor.Agent("claude", "4.8", "planner"))
+                      ts
+                      OpResultEnvelope.Success
+
+              Expect.notEqual asHuman.Hash asAgent.Hash "the Human/Agent distinction is inside the address"
           }
 
           test "optional fields are omitted when None and present when Some" {

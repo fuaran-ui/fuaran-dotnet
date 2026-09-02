@@ -84,7 +84,14 @@ let build () : Corpus =
 
     // a — genesis, HUMAN (no PromptId), restyles the LEFT pane.
     let a =
-        DagOpRecord.create "s" [] (restyle leftChildId ToneVariant.Brand) None "human" (ts 1L) OpResultEnvelope.Success
+        DagOpRecord.create
+            "s"
+            []
+            (restyle leftChildId ToneVariant.Brand)
+            None
+            (Actor.Human "human")
+            (ts 1L)
+            OpResultEnvelope.Success
 
     add sink a
 
@@ -95,7 +102,7 @@ let build () : Corpus =
             [ a.Hash ]
             (restyle rightChildId ToneVariant.Success)
             (Some "prompt-ai")
-            "ai"
+            (Actor.Agent("claude", "4.8", "planner"))
             (ts 2L)
             OpResultEnvelope.Success
 
@@ -108,7 +115,7 @@ let build () : Corpus =
             [ a.Hash ]
             (restyle leftChildId ToneVariant.Critical)
             None
-            "human"
+            (Actor.Human "human")
             (ts 3L)
             OpResultEnvelope.Success
 
@@ -121,7 +128,7 @@ let build () : Corpus =
             [ a.Hash ]
             (restyle rightChildId ToneVariant.Brand)
             (Some "prompt-ai-2")
-            "ai"
+            (Actor.Agent("claude", "4.8", "planner"))
             (ts 4L)
             OpResultEnvelope.Success
 
