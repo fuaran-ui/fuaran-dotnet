@@ -43,6 +43,22 @@ internal static class Program
             """,
             Array.Empty<string>());
 
+        // The regression the structural pin found. `<Tone>` is a real child
+        // element — the translator has read it since Phase 750
+        // (`ChildElements(c, "Tone")`) and it carries a row in
+        // `Vocabulary.Attributes` — but it was absent from
+        // `Vocabulary.Structural`, so `IsKnownElement` said no and every valid
+        // use raised FUARAN060 and skipped the attribute check entirely.
+        await Expect("FUARAN060 negative: <Tone> is a recognised structural child",
+            """
+            Module M
+                Sub S()
+                    Dim x = <DataGrid id="g" source="q"><Column type="text" field="f" label="F"><Tone value="ok" tone="positive"/></Column></DataGrid>
+                End Sub
+            End Module
+            """,
+            Array.Empty<string>());
+
         await Expect("non-Fuaran literal ignored",
             """
             Module M
@@ -110,6 +126,12 @@ internal static class Program
         //    against the IDL's per-kind FIELDS. The pin above is at kind level and
         //    cannot see a kind that gained a field.
         AuthoringSurfacePin.Run(Check);
+
+        // ── The same question again for the CHILD-ELEMENT table. The pin above
+        //    stops where the attribute stops; a structured wire field takes a
+        //    child element instead, and `Vocabulary.Structural` — the set that
+        //    decides whether FUARAN060 fires — was pinned against nothing.
+        StructuralElementPin.Run(Check, AuthoringSurfacePin.FindIdl());
 
         Console.WriteLine($"[vb-analyzer-tests] {_passed} passed, {Failures.Count} failed.");
         foreach (var f in Failures)
