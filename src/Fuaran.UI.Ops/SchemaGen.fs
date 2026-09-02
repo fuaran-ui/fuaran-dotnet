@@ -345,6 +345,8 @@ let private defs: (string * J) list =
       "ImageVariant", enumDef [ "Default"; "Avatar"; "Rounded" ]
       // Phase 1077 — the three `Image` presentation vocabularies.
       "ImageFit", enumDef [ "Natural"; "Cover"; "Contain" ]
+      // Phase 1110 — closed at four; `metadata` is deliberately not a case.
+      "TrackKind", enumDef [ "Subtitles"; "Captions"; "Descriptions"; "Chapters" ]
       "ImageAspect", enumDef [ "Natural"; "Square"; "FourThree"; "ThreeTwo"; "SixteenNine" ]
       "ImageLoading", enumDef [ "Eager"; "Lazy" ]
       "ScrollOrientation", enumDef [ "Vertical"; "Horizontal"; "Both" ]
@@ -700,7 +702,27 @@ let private defs: (string * J) list =
             "kind", ref "MediaKind"
             "label", ref "TextSource"
             "loop", boolean
-            "src", binding "str" ]
+            "src", binding "str"
+            // Phase 1110 — `tracks` is omitted-when-EMPTY (the `srcSet`
+            // position) and `transcript` is optional content (the `caption`
+            // position); both therefore sit out of `required`, again for two
+            // different reasons the schema cannot tell apart.
+            "tracks", arrayOf (ref "TrackEntry")
+            "transcript", ref "TextSource" ]
+
+      // Phase 1110 — one timed-text track. FOUR required members, which makes
+      // this the strictest record in the schema; `default` is the only optional
+      // one and it omits at `false`. `srcLang` is required for every kind, where
+      // HTML asks for it only on subtitles — the schema states the wire's rule,
+      // not the element's.
+      "TrackEntry",
+      record
+          [ "kind"; "label"; "src"; "srcLang" ]
+          [ "default", boolean
+            "kind", ref "TrackKind"
+            "label", ref "TextSource"
+            "src", binding "str"
+            "srcLang", str ]
 
       // Phase 1076 — `Video` carries the two video-only slots (`autoplay`
       // omitted at `false`, `poster` optional); `Audio` carries none, and the

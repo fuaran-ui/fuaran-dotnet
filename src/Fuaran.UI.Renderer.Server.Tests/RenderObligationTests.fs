@@ -221,6 +221,129 @@ let private checkRefusedSourceDropped () =
 
     Expect.isTrue (contains "poster=\"/walkthrough-poster.jpg\"" allowed) "a local poster still renders"
 
+// Phase 1110 — the three track/transcript checkers. Each pins BOTH directions,
+// on the same reasoning the four above do: an emission assertion alone cannot
+// tell a renderer that honours a rule from one that emits unconditionally.
+
+let private track kind src srcLang label isDefault : TrackEntry =
+    { Default = isDefault
+      Kind = kind
+      Label = TextSource.Literal label
+      Src = Binding.Static(Some src)
+      SrcLang = srcLang }
+
+let private mediaTracks id (tracks: TrackEntry list) =
+    Fuaran.mediaSpec
+        id
+        { Defaults.media with
+            Src = Binding.Static(Some "/walkthrough.mp4")
+            Label = TextSource.Literal "Studio walkthrough"
+            Tracks = tracks }
+
+let private checkAuthoredChildOrder () =
+    // Authored in an order no sort produces: a `gd` subtitles track before two
+    // `en` captions ones. Alphabetical by srclang, by label, or by kind would
+    // all move the first entry, so any re-sort shows up here.
+    let html =
+        render (
+            mediaTracks
+                "mvt"
+                [ track TrackKind.Subtitles "/restoration-2.gd.vtt" "gd" "Gaidhlig" false
+                  track TrackKind.Captions "/restoration-2.en.vtt" "en" "English captions" true
+                  track TrackKind.Descriptions "/restoration-2.ad.vtt" "en" "Audio description" false ]
+        )
+
+    let posOf (needle: string) =
+        html.IndexOf(needle, System.StringComparison.Ordinal)
+
+    let gd = posOf "/restoration-2.gd.vtt"
+    let en = posOf "/restoration-2.en.vtt"
+    let ad = posOf "/restoration-2.ad.vtt"
+
+    Expect.isGreaterThan gd -1 "the first authored track is emitted"
+    Expect.isLessThan gd en "the authored order is preserved — the gd track precedes the en one"
+    Expect.isLessThan en ad "…and the whole list, not merely its head"
+
+let private checkSingleDefaultPerKind () =
+    // Two captions tracks both electing themselves default, plus a subtitles one
+    // that also does. First-wins is PER KIND, so the subtitles election survives
+    // beside the captions one and only the SECOND captions election is dropped.
+    let html =
+        render (
+            mediaTracks
+                "mvd"
+                [ track TrackKind.Captions "/a.en.vtt" "en" "English captions" true
+                  track TrackKind.Captions "/b.en.vtt" "en" "English captions (verbose)" true
+                  track TrackKind.Subtitles "/c.gd.vtt" "gd" "Gaidhlig" true ]
+        )
+
+    let defaults =
+        html.Split([| "default=" |], System.StringSplitOptions.None).Length - 1
+
+    Expect.equal
+        defaults
+        2
+        "one default survives per KIND — the captions duplicate loses, the subtitles election does not"
+
+    Expect.isTrue (contains "/b.en.vtt" html) "the losing track is still EMITTED; only its claim on the menu is dropped"
+
+    // The twin without which a renderer that dropped every `default` would pass.
+    let single =
+        render (mediaTracks "mvd1" [ track TrackKind.Captions "/a.en.vtt" "en" "English captions" true ])
+
+    Expect.isTrue (contains "default=" single) "a lone election is honoured"
+
+let private checkTranscriptDisclosureNamed () =
+    let withTranscript =
+        render (
+            Fuaran.mediaSpec
+                "mat"
+                { Defaults.media with
+                    Src = Binding.Static(Some "/commentary.mp3")
+                    Label = TextSource.Literal "Curator commentary"
+                    Kind = MediaKind.Audio
+                    Transcript = Some(TextSource.Literal "The harbour was rebuilt twice.") }
+        )
+
+    Expect.isTrue (contains "<details" withTranscript) "a declared transcript renders as a disclosure"
+
+    Expect.isTrue
+        (contains "fuaran-media-transcript" withTranscript)
+        "…carrying the media-scoped class, not the Disclosure kind's"
+
+    Expect.isTrue
+        (contains "The harbour was rebuilt twice." withTranscript)
+        "…and the transcript text itself, which is the document's content"
+
+    Expect.isTrue
+        (contains "aria-label=\"Curator commentary\"" withTranscript)
+        "the disclosure carries the media's resolved label as its accessible name"
+
+    let transcriptIndex =
+        withTranscript.IndexOf("<details", System.StringComparison.Ordinal)
+
+    let audioIndex = withTranscript.IndexOf("<audio", System.StringComparison.Ordinal)
+
+    Expect.isLessThan
+        audioIndex
+        transcriptIndex
+        "the disclosure sits BESIDE the transport, after it — inside a media element a browser treats it as fallback content and never shows it"
+
+    // The absent twin: no transcript, no disclosure and no wrapper. Without it a
+    // renderer that always emitted the group would pass everything above.
+    let without =
+        render (
+            Fuaran.mediaSpec
+                "mat0"
+                { Defaults.media with
+                    Src = Binding.Static(Some "/commentary.mp3")
+                    Label = TextSource.Literal "Curator commentary"
+                    Kind = MediaKind.Audio }
+        )
+
+    Expect.isFalse (contains "<details" without) "no transcript, no disclosure"
+    Expect.isFalse (contains "fuaran-media-group" without) "…and no group wrapper either"
+
 let private checkAltAlwaysEmitted () =
     let named =
         render (
@@ -511,6 +634,9 @@ let private checkers: ((string * string) * (unit -> unit)) list =
       ("Media", "autoplay-muted-pairing"), checkAutoplayMutedPairing
       ("Media", "no-autoplay-pathway"), checkNoAutoplayPathway
       ("Media", "refused-source-dropped"), checkRefusedSourceDropped
+      ("Media", "authored-child-order"), checkAuthoredChildOrder
+      ("Media", "single-default-per-kind"), checkSingleDefaultPerKind
+      ("Media", "transcript-disclosure-named"), checkTranscriptDisclosureNamed
       ("Image", "alt-always-emitted"), checkAltAlwaysEmitted
       ("Image", "anchor-affordance-on-expandable"), checkAnchorAffordanceOnExpandable
       ("Image", "refused-src-no-affordance"), checkRefusedSrcNoAffordance

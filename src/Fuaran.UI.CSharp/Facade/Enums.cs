@@ -106,6 +106,17 @@ public enum ImageLoading
     Lazy,
 }
 
+/// <summary>What a media text track carries — maps to the F# <c>TrackKind</c>.
+/// Closed at four; there is deliberately no metadata case, whose cues no user agent
+/// renders.</summary>
+public enum TrackKind
+{
+    Subtitles,
+    Captions,
+    Descriptions,
+    Chapters,
+}
+
 /// <summary>Scroll axis — maps to the F# <c>ScrollOrientation</c>.</summary>
 public enum ScrollOrientation
 {
@@ -263,6 +274,16 @@ internal static class EnumMap
 
     internal static FsGen.ImageLoading ToFs(this ImageLoading l) =>
         l == ImageLoading.Lazy ? FsGen.ImageLoading.Lazy : FsGen.ImageLoading.Eager;
+
+    internal static FsGen.TrackKind ToFs(this TrackKind k) =>
+        k switch
+        {
+            TrackKind.Subtitles => FsGen.TrackKind.Subtitles,
+            TrackKind.Captions => FsGen.TrackKind.Captions,
+            TrackKind.Descriptions => FsGen.TrackKind.Descriptions,
+            TrackKind.Chapters => FsGen.TrackKind.Chapters,
+            _ => FsGen.TrackKind.Captions,
+        };
 
     internal static FsGen.ScrollOrientation ToFs(this ScrollOrientation o) =>
         o switch

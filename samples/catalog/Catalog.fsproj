@@ -48,6 +48,7 @@
     <Compile Include="Formatting102.fs" />
     <Compile Include="InteractiveDisabled130.fs" />
     <Compile Include="MobileViewport.fs" />
+    <Compile Include="BidiRtl.fs" />
     <Compile Include="Catalog.fs" />
     <Compile Include="Main.fs" />
   </ItemGroup>

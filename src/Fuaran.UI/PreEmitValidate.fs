@@ -568,6 +568,49 @@ type PreEmitDefect =
     /// Carries the node's id.
     | MediaWithoutLabel of nodeId: string
 
+    /// **FUARAN113 (Error)**. A `Media` node carrying a text track whose `Label`
+    /// resolves to nothing - an empty or whitespace `Literal` (Phase 1110).
+    ///
+    /// FUARAN108's argument, one level down, and it survives the descent for a
+    /// reason worth stating rather than assuming. A track's label is not
+    /// decoration and not a caption: it is the ENTRY a user agent puts in its
+    /// track menu, and it is the only thing distinguishing one track from
+    /// another there. An unlabelled track is offered as its kind alone, so a
+    /// reader choosing between two captions tracks - the ordinary case the
+    /// moment a recording has a verbose and a plain cut - is shown two identical
+    /// choices and given nothing to choose on.
+    ///
+    /// Error rather than Warning for FUARAN108's reason too: there is no
+    /// legitimate shape it refuses. A track exists to be selected, so a track
+    /// nobody can select is a defect under every reading - the wire already
+    /// makes `label` required, and this rule catches the value that satisfies
+    /// the requirement while meaning nothing.
+    ///
+    /// Only a LITERAL is judged. A `Bound` or `I18n` label resolves at render
+    /// time from data this walk cannot see, so calling it empty would be a
+    /// guess; the same restraint FUARAN108 shows one level up.
+    ///
+    /// **What this rule deliberately does NOT do, assessed and recorded per the
+    /// phase's own instruction: it does not require a captions track on a
+    /// `Video`.** The case for requiring one is strong in the abstract - WCAG
+    /// 1.2.2 asks for captions on prerecorded video, and most video that reaches
+    /// a reader is speech. The case against is that this validator cannot tell
+    /// the difference between a lecture recording and a decorative silent loop
+    /// behind a hero panel, and a rule that fires on the second is one authors
+    /// learn to switch off - which costs the estate the rule on the first. There
+    /// is nothing in the wire that distinguishes them: `loop` and `autoplay`
+    /// hint at a decorative shape and are neither necessary nor sufficient for
+    /// it. So the obligation stays where it can be stated truthfully - the
+    /// spec's normative prose and an author's own gate - rather than being
+    /// guessed at here. If a later phase adds a slot that DOES declare the
+    /// distinction (a "decorative" or "silent" declaration, the `Image` alt
+    /// precedent), the rule becomes decidable and should be revisited then.
+    ///
+    /// Carries the node's id and the track's index in the authored list, because
+    /// "one of this node's tracks is unlabelled" is not an actionable message on
+    /// a node with four of them.
+    | TrackWithoutLabel of nodeId: string * trackIndex: int
+
     // ── The accessibility family (FUARAN109/110/111, Phase 727) ──────────────
     //
     // Until this family landed the runtime validator carried NO accessibility
@@ -1089,6 +1132,13 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         sprintf
             "media node '%s' has an EMPTY label — a media element is a transport, not a picture, so it is never decorative and there is no honest empty case the way there is for an image's alt; without a name it is announced to a screen reader as \"video\" or \"audio\" and nothing more, telling the reader that a player exists and not what it plays. Give 'label' the text a listener needs to decide whether to play it"
             nodeId
+    | PreEmitDefect.TrackWithoutLabel(nodeId, trackIndex) ->
+        "FUARAN113",
+        DefectSeverity.Error,
+        sprintf
+            "media node '%s' carries a text track at index %d with an EMPTY label - a track's label IS its entry in the user agent's track menu, and it is the only thing that tells one track from another there, so an unlabelled one is offered as its kind alone and a reader choosing between two captions tracks is shown two identical choices. Give the track's 'label' the text a reader needs to pick it"
+            nodeId
+            trackIndex
     | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ->
         "FUARAN109",
         DefectSeverity.Warning,
@@ -1799,6 +1849,17 @@ let private validateCore
             match spec.Label with
             | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.MediaWithoutLabel n.Id)
             | _ -> ()
+
+            // FUARAN113 (Phase 1110): the same judgement, per track. Reported
+            // INDEPENDENTLY of FUARAN108 rather than short-circuiting on it - a
+            // node can carry both defects, and a walk that reported only the
+            // node-level one would send an author back for a second pass after
+            // fixing it.
+            spec.Tracks
+            |> List.iteri (fun i t ->
+                match t.Label with
+                | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.TrackWithoutLabel(n.Id, i))
+                | _ -> ())
         // FUARAN092 (Phase 812): email protection declared over an href that
         // is statically known not to be a mailto:. Bound hrefs (Query / State
         // / …) resolve at runtime and are not judged here.

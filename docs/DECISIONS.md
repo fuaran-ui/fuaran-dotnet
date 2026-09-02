@@ -10,6 +10,79 @@ consequence.
 
 ---
 
+## 2026-09-02 — D6: writing direction is a DOCUMENT fact and a BOUND-TEXT fact; it is not on the wire
+
+**Decided.** Direction enters a Fuaran page at exactly two places, and neither is a wire slot.
+
+1. **The document declares one direction, derived from its locale.** A host says which language the
+   page is in — `LocaleSource.Explicit "ar-EG"`, or its ambient locale — and `lang` + `dir` on
+   `<html>` follow from that one declaration. The direction is never passed separately, so the two
+   cannot disagree. `Formatting.textDirection` is the derivation, shared by every arm.
+
+2. **A display leaf whose text is RUNTIME-BOUND carries `dir="auto"`.** The renderer emits it on the
+   node wrapper; the browser then resolves that element from its own first strong directional
+   character. The policy is `Accessibility.isBidiIsolated`, kind-level and total, so a new kind
+   forces an answer rather than defaulting to silence.
+
+Everything between those two — the layout — is handled by CSS logical properties in the reference
+stylesheet, which mirrors from the document's `dir` with no override block and no second sheet.
+
+**The slot set, and why it is that set.** `TextSource.Bound` only. `Literal` is the author writing in
+the document's language and `I18n` is a host-resolved translation of the document's own locale; both
+are already correct under the document's `dir`, and `auto` on them would let one stray character
+re-lay-out a line the author controls. `Bound` is the only case whose direction genuinely cannot be
+known at author time. And only on a **display leaf**: `dir` inherits, so `auto` on a layout container
+would resolve ONE direction from the first strong character anywhere beneath it and impose it on
+every child — the opposite of what a mixed-direction page needs. Data surfaces that own per-cell
+emission (`DataGrid` / `Chart` / `Map`) are excluded for the same reason, and `Custom` because this
+library cannot know what a host-rendered body puts on the page.
+
+**The wire question — ASSESSED, and the answer is NO.** A per-node direction override was considered
+and is **not** admitted to the wire. The vocabulary charter's gate asks for a demonstrated
+inexpressible case, and none was found:
+
+- *A page in one language.* Expressible: the document's locale.
+- *A page whose data is in another language than its chrome.* Expressible: `dir="auto"` on the bound
+  leaves, which is strictly better than a wire slot because it needs no emitter to know the
+  direction of a value it is passing through.
+- *A region deliberately fixed against its content* — a code block, a table of Latin identifiers on
+  an Arabic page. Expressible: `ExtraAttributes` does not carry `dir` (its allowlist is `data-*` /
+  `aria-*`), but a **host** composes such a region in its own shell or its own `Custom` renderer,
+  which is where a deliberate override belongs; a tree emitted by a model has no business asserting
+  one.
+- *A single mixed run inside one text value* — Arabic and English in the same sentence, each needing
+  its own embedding level. **Genuinely not expressible**, and it is not expressible by a per-node
+  slot either: it needs per-SPAN markup inside a text value, which is a markup question
+  (`NodeKind.Markdown`'s territory) rather than a direction question. Recorded as the one open case;
+  it does not motivate the slot that was under consideration.
+
+So the wire is unchanged by this phase, which is the outcome the assessment was there to establish
+rather than to assume.
+
+**Rejected.**
+
+- **A `dir` slot on every node.** Would put a presentational attribute in a semantic tree, and every
+  emitter would then have to decide it for every node — with no better information than the browser
+  has, and usually worse, since the emitter often does not know the value being bound.
+- **Emitting `dir="ltr"` / `dir="rtl"` rather than `auto` on bound leaves.** Requires the renderer to
+  guess a direction from a string, which is exactly the analysis the browser already performs
+  correctly and to spec.
+- **An `[dir="rtl"]` override block in the stylesheet.** Mirrors the page but cannot un-mirror a
+  nested LTR island, which is the case a real mixed-direction document is made of. Logical properties
+  scope correctly by construction; the catalog's `?dir=rtl` harness exists to show the difference.
+
+**Consequences.** No wire change and no vocabulary change. The reference stylesheet's inline-axis
+rules are now logical, so **every host tier's byte-copy inherits the mirroring** — but a tier's own
+document SHELL does not, and each must derive `lang`/`dir` from its own locale seam
+([Phase 1128](../../roadmap/phases/1128-platform-baseline-host-adoption.md)). The Giraffe shell's
+hardcoded `lang="en"` is gone: a shell that declares no locale now emits no `lang` and no `dir`,
+because asserting English about a document nobody made a statement about is the defect this phase
+exists to remove, not a safe default.
+
+Roadmap: [Phase 1114](../../roadmap/phases/1114-rtl-bidi-document-language.md).
+
+---
+
 ## 2026-08-20 — D5: this tier owns its vocabulary; Fuaran.Core ships only the engine
 
 **Decided.** The IDL **engine** is a package — `Fuaran.Core.Idl`, distributed from Fuaran.Core 0.4.0

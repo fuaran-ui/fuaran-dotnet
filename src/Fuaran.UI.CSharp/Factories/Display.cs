@@ -166,7 +166,9 @@ public static partial class Fuaran
                     options.Poster is { } poster ? Fs.Some(poster.Inner) : Fs.None<FsGen.Binding<string>>()),
                 options.Label.Inner,
                 options.Loop,
-                options.Src.Inner)));
+                options.Src.Inner,
+                ToFsTracks(options.Tracks),
+                options.Transcript is { } vt ? Fs.Some(vt.Inner) : Fs.None<FsGen.TextSource>())));
 
     /// <summary>An audio playback surface. There is deliberately no autoplay option:
     /// the wire case carries no such slot, so a page cannot begin making sound
@@ -179,7 +181,17 @@ public static partial class Fuaran
                 FsGen.MediaKind.Audio,
                 options.Label.Inner,
                 options.Loop,
-                options.Src.Inner)));
+                options.Src.Inner,
+                ToFsTracks(options.Tracks),
+                options.Transcript is { } at ? Fs.Some(at.Inner) : Fs.None<FsGen.TextSource>())));
+
+    /// <summary>Lower the veneer's track records onto the generated ones, preserving
+    /// authored order. Shared by <see cref="Video"/> and <see cref="Audio"/>: the slot
+    /// lives on the spec, not on the video case, so both surfaces carry it.</summary>
+    private static Microsoft.FSharp.Collections.FSharpList<FsGen.TrackEntry> ToFsTracks(
+        IEnumerable<TrackEntry>? tracks) =>
+        Fs.List((tracks ?? Enumerable.Empty<TrackEntry>())
+            .Select(t => new FsGen.TrackEntry(t.Default, t.Kind.ToFs(), t.Label.Inner, t.Src.Inner, t.SrcLang)));
 
     /// <summary>A structured item list.</summary>
     public static FuaranNode List(ListOptions options) =>
@@ -504,6 +516,19 @@ public sealed record VideoOptions
     /// does, and a refused one is dropped rather than emitted — a video with no poster
     /// shows its first frame, which is a working rendering.</summary>
     public Binding<string>? Poster { get; init; }
+
+    /// <summary>Timed-text tracks — captions, subtitles, descriptions, chapters.
+    /// Empty (the default) emits no <c>&lt;track&gt;</c> children at all. The renderers
+    /// emit them in the order authored HERE, unlike an image's srcSet: a reader picks
+    /// a track from a menu the user agent builds in document order.</summary>
+    public IEnumerable<TrackEntry>? Tracks { get; init; }
+
+    /// <summary>An optional transcript. Present, the renderers emit a disclosure
+    /// BESIDE the player carrying the media's own label as its accessible name;
+    /// absent, the emission is the bare element. It cannot be a child of the media
+    /// element, where a browser would treat it as fallback content and never show
+    /// it.</summary>
+    public Text? Transcript { get; init; }
 }
 
 /// <summary>Options for <see cref="Fuaran.Audio"/>. Note what is ABSENT: there is no
@@ -524,7 +549,40 @@ public sealed record AudioOptions
 
     /// <summary>Whether playback repeats (default <c>false</c>).</summary>
     public bool Loop { get; init; }
+
+    /// <summary>Timed-text tracks. An audio surface carries them for the same reason a
+    /// video one does — a chapters or descriptions track is not a picture — and the
+    /// slot lives on the spec rather than the video case for exactly that reason.</summary>
+    public IEnumerable<TrackEntry>? Tracks { get; init; }
+
+    /// <summary>An optional transcript. This is the audio accessibility FLOOR: a
+    /// recording with no visual channel has nowhere else to put its words, so where a
+    /// video can be served by captions an audio surface usually cannot.</summary>
+    public Text? Transcript { get; init; }
 }
+
+/// <summary>One timed-text track of a media surface.</summary>
+/// <param name="Kind">What the track carries. Captions transcribe dialogue AND the
+/// non-speech sound a reader who cannot hear it would lose; subtitles translate
+/// dialogue for a reader who can hear but not follow the language.</param>
+/// <param name="Src">The track file (bound or literal). It passes the same URL-scheme
+/// and egress floor the primary source does; a track that fails it is dropped rather
+/// than emitted at the refusal URL.</param>
+/// <param name="SrcLang">The track's language tag. Required for every kind, where HTML
+/// asks for it only on subtitles: it is what orders the user agent's track menu,
+/// drives pronunciation, and tells two same-labelled tracks apart.</param>
+/// <param name="Label">The entry a user agent puts in its track menu. Never empty —
+/// FUARAN113 refuses an empty literal, because a track nobody can pick out of the menu
+/// is a track nobody can select.</param>
+/// <param name="Default">Whether this track is elected as the one shown without asking.
+/// At most one track per kind may be: the renderers honour the FIRST election of a kind
+/// and emit later ones without the attribute.</param>
+public sealed record TrackEntry(
+    TrackKind Kind,
+    Binding<string> Src,
+    string SrcLang,
+    Text Label,
+    bool Default = false);
 
 /// <summary>Options for <see cref="Fuaran.List"/>.</summary>
 public sealed record ListOptions
