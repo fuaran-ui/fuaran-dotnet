@@ -274,6 +274,16 @@
          governed the moment it gains a default. -->
     <Compile Include="SpecConstructionTests.fs" />
     <Compile Include="HotPathVocabularyTests.fs" />
+    <!-- Phase 1141 — the render-level form-field write-back harness. Drives
+         the change closures the rendered pair controls carry
+         (Render.rangeInputHandlers / dateRangeInputHandlers) and the scalar
+         seam every other control now shares (Render.fieldChange), with a
+         perturbed construction per site class as the go-red evidence, plus a
+         census over the copied renderer sources pinning that neither render
+         function has re-grown a write-back implementation of its own.
+         Separate from FormFieldWriteBackTests, which pins the dispatch given a
+         payload; this pins the payload CONSTRUCTION. -->
+    <Compile Include="FormFieldWriteBackHarnessTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

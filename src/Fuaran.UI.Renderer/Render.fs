@@ -908,6 +908,32 @@ let private writeBackTo (ctx: RenderContext<'Msg>) (binding: Binding<'T>) (value
         | None -> FilterStore.clear name
     | _ -> ()
 
+/// The control write-back dispatch (Phase 426) — THE one, for every client
+/// form-field and filter-chip control. A present handler dispatches (the
+/// closure wins and no store is touched); an omitted handler writes the typed
+/// change back to the control's own value binding through `writeBackTo`, where
+/// `None` is the CLEAR (a cleared choice removes the slot rather than storing
+/// an empty value).
+///
+/// Module-level, and that is load-bearing rather than incidental: this body
+/// existed three times over — here, as `renderFormField`'s local `handle`, and
+/// as `renderFilterSpec`'s eight locals — and the two local copies were
+/// unreachable from any test BY CONSTRUCTION, on the path carrying the same
+/// hand-built-payload risk with none of the coverage. Every one of those call
+/// sites now routes here. Keep it that way: a local re-implementation inside a
+/// render function is untestable by construction, and the harness census in
+/// `Fuaran.UI.Tests` fails on one reappearing.
+let fieldChange
+    (ctx: RenderContext<'Msg>)
+    (onChange: ('v -> Action<'Msg>) option)
+    (binding: Binding<'T>)
+    (write: obj option)
+    (v: 'v)
+    : unit =
+    match onChange with
+    | Some h -> runAction ctx (h v)
+    | None -> writeBackTo ctx binding write
+
 /// Change dispatch for the dual-input pair form fields (`FormFieldKind.Range` /
 /// `FormFieldKind.DateRange`): either input's change emits the WHOLE pair. A
 /// present handler dispatches it (the closure wins); an omitted handler writes
@@ -929,9 +955,49 @@ let pairFieldChange
     (pair: obj)
     (v: 'v)
     : unit =
-    match onChange with
-    | Some h -> runAction ctx (h v)
-    | None -> writeBackTo ctx binding (Some pair)
+    fieldChange ctx onChange binding (Some pair) v
+
+/// Phase 1141 — the two per-input change closures a rendered numeric-pair
+/// control carries: `(minInput, maxInput)`. Either input emits the whole
+/// rebuilt pair, so each closure must land its new value in ITS OWN slot and
+/// carry the OTHER slot through from `current` unchanged. That construction is
+/// the risk this seam exists to expose: it was previously written out inline at
+/// every call site, where a swapped slot or a mis-boxed payload is invisible to
+/// every behavioural test the renderer has (Feliz's .NET `ReactElement` is
+/// opaque, so a rendered control's handler cannot be extracted and fired).
+/// Building the closures here means the harness drives exactly the closure the
+/// control carries.
+///
+/// `'T` is free because the write destination is the caller's binding: a form
+/// field passes its own `Binding<RangePair>` value slot, a filter chip passes
+/// the auto-bind `Binding.Filter(name, None)` its declarative write has always
+/// targeted.
+let rangeInputHandlers
+    (ctx: RenderContext<'Msg>)
+    (onChange: (float * float -> Action<'Msg>) option)
+    (binding: Binding<'T>)
+    (current: RangePair)
+    : (float -> unit) * (float -> unit) =
+    let write (pair: RangePair) =
+        pairFieldChange ctx onChange binding (box pair) (pair.Min, pair.Max)
+
+    (fun v -> write ({ Min = v; Max = current.Max }: RangePair)),
+    (fun v -> write ({ Min = current.Min; Max = v }: RangePair))
+
+/// Phase 1141 — `rangeInputHandlers` for the date pair: `(fromInput, toInput)`.
+/// Phase 725's chip and the form's `DateRange` field are the same shape over
+/// `DateRangePair`, so they share one construction.
+let dateRangeInputHandlers
+    (ctx: RenderContext<'Msg>)
+    (onChange: (string * string -> Action<'Msg>) option)
+    (binding: Binding<'T>)
+    (current: DateRangePair)
+    : (string -> unit) * (string -> unit) =
+    let write (pair: DateRangePair) =
+        pairFieldChange ctx onChange binding (box pair) (pair.From, pair.To)
+
+    (fun v -> write ({ From = v; To = current.To }: DateRangePair)),
+    (fun v -> write ({ From = current.From; To = v }: DateRangePair))
 
 /// Phase 663 — replace one field of a grid row for the editable-grid State
 /// write-back. fuaran#665 typed the rows slot (`Row = Map<string, obj>`), so
@@ -4203,10 +4269,11 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
     // change back to the field's own value binding when that binding is
     // directly `Binding.State` / `Binding.Filter` (see `writeBackTo`). A
     // cleared choice clears the slot rather than writing an empty value.
-    let handle (onChange: ('v -> Action<'Msg>) option) (binding: Binding<'T>) (write: obj option) (v: 'v) : unit =
-        match onChange with
-        | Some h -> runAction ctx (h v)
-        | None -> writeBackTo ctx binding write
+    //
+    // Phase 1141 — this was a LOCAL `handle` with the module-level
+    // `pairFieldChange`'s body, i.e. a second copy of the same dispatch that no
+    // test could reach. The sites below call the module-level `fieldChange`
+    // directly; do not reintroduce a local wrapper.
 
     // Phase 596 — the value slots are `Binding<_> option` since the swap. An
     // absent (`None`) slot is the auto-bind form: substitute exactly the
@@ -4279,7 +4346,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                       prop.id field.Id
                       prop.required field.Required
                       prop.value current
-                      prop.onChange (fun (v: string) -> handle onChange value (Some(box v)) v) ]
+                      prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) v) ]
                     @ FieldRules.constraintAttrs true field.Rule
                 )
         | FormFieldKind.Number(value, onChange) ->
@@ -4324,7 +4391,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                       prop.id field.Id
                       prop.required field.Required
                       prop.value current
-                      prop.onChange (fun (v: float) -> handle onChange value (Some(box v)) v) ]
+                      prop.onChange (fun (v: float) -> fieldChange ctx onChange value (Some(box v)) v) ]
         | FormFieldKind.Checkbox(value, onToggle) ->
             let value =
                 value
@@ -4338,7 +4405,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.type'.checkbox
                   prop.id field.Id
                   prop.isChecked current
-                  prop.onChange (fun (b: bool) -> handle onToggle value (Some(box b)) b) ]
+                  prop.onChange (fun (b: bool) -> fieldChange ctx onToggle value (Some(box b)) b) ]
         // Phase 766 — the toggle/switch affordance. Same DATA as Checkbox (a
         // boolean, the same write-back path); different PRESENTATION and, the
         // part that matters, a different a11y contract: `role="switch"` with
@@ -4362,7 +4429,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.ariaChecked current
                   prop.id field.Id
                   prop.isChecked current
-                  prop.onChange (fun (b: bool) -> handle onToggle value (Some(box b)) b) ]
+                  prop.onChange (fun (b: bool) -> fieldChange ctx onToggle value (Some(box b)) b) ]
         | FormFieldKind.Choice(options, value, onChange) ->
             let value =
                 value
@@ -4390,7 +4457,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.value (current |> Option.defaultValue "")
                   prop.onChange (fun (v: string) ->
                       let chosen = if v = "" then None else Some v
-                      handle onChange value (chosen |> Option.map box) chosen)
+                      fieldChange ctx onChange value (chosen |> Option.map box) chosen)
                   prop.children optionItems ]
         | FormFieldKind.Range(value, onChange, _, _, _) ->
             // 0.2.0 filters-unification: dual-thumb numeric range as a form
@@ -4407,6 +4474,9 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 |> Option.defaultValue { Min = 0.0; Max = 0.0 }
 
             let minV, maxV = current.Min, current.Max
+            // Phase 1141 — the two closures the rendered inputs carry are built
+            // by the module-level seam, so the harness drives exactly them.
+            let onMinInput, onMaxInput = rangeInputHandlers ctx onChange value current
 
             Html.span
                 [ prop.className "fuaran-field-range"
@@ -4415,25 +4485,13 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                             [ prop.type'.number
                               prop.className "fuaran-field-range-min"
                               prop.value minV
-                              prop.onChange (fun (v: float) ->
-                                  pairFieldChange
-                                      ctx
-                                      onChange
-                                      value
-                                      (box ({ Min = v; Max = maxV }: RangePair))
-                                      (v, maxV)) ]
+                              prop.onChange onMinInput ]
                         Html.span [ prop.className "fuaran-field-range-sep"; prop.text "–" ]
                         Html.input
                             [ prop.type'.number
                               prop.className "fuaran-field-range-max"
                               prop.value maxV
-                              prop.onChange (fun (v: float) ->
-                                  pairFieldChange
-                                      ctx
-                                      onChange
-                                      value
-                                      (box ({ Min = minV; Max = v }: RangePair))
-                                      (minV, v)) ] ] ]
+                              prop.onChange onMaxInput ] ] ]
         | FormFieldKind.RangedNumber(value, onChange, min, max, step) ->
             // Parallel-additive Number case with optional Min /
             // Max / Step (flat options since the swap; the host
@@ -4488,7 +4546,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                       prop.id field.Id
                       prop.required field.Required
                       prop.value current
-                      prop.onChange (fun (v: float) -> handle onChange value (Some(box v)) v) ]
+                      prop.onChange (fun (v: float) -> fieldChange ctx onChange value (Some(box v)) v) ]
                     @ minAttrs
                 )
         | FormFieldKind.TextArea(value, onChange, rows) ->
@@ -4507,7 +4565,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   prop.required field.Required
                   prop.rows rows
                   prop.value current
-                  prop.onChange (fun (v: string) -> handle onChange value (Some(box v)) v) ]
+                  prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) v) ]
                 @ FieldRules.constraintAttrs false field.Rule
             )
         | FormFieldKind.SegmentedChoice(options, value, onChange, orientation) ->
@@ -4525,7 +4583,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 field.Id
                 options
                 value
-                (fun chosen -> handle onChange value (chosen |> Option.map box) chosen)
+                (fun chosen -> fieldChange ctx onChange value (chosen |> Option.map box) chosen)
                 orientation
         | FormFieldKind.Date(value, onChange, variant, min, max, step) ->
             // Phase 288 — native date / time / datetime control. The bound
@@ -4564,7 +4622,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                   // The Date onChange takes `string option` since the swap —
                   // an input change always carries a value, so wrap `Some`;
                   // the store write-back keeps the raw string.
-                  prop.onChange (fun (v: string) -> handle onChange value (Some(box v)) (Some v)) ]
+                  prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) (Some v)) ]
                 @ constraintAttrs
             )
         | FormFieldKind.DateRange(value, onChange, variant, min, max, step) ->
@@ -4585,6 +4643,8 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                 |> Option.defaultValue { From = ""; To = "" }
 
             let fromV, toV = current.From, current.To
+            // Phase 1141 — see the `Range` arm: one seam builds both closures.
+            let onFromInput, onToInput = dateRangeInputHandlers ctx onChange value current
 
             let inputType =
                 match variant with
@@ -4612,13 +4672,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                               prop.id field.Id
                               prop.required field.Required
                               prop.value fromV
-                              prop.onChange (fun (v: string) ->
-                                  pairFieldChange
-                                      ctx
-                                      onChange
-                                      value
-                                      (box ({ From = v; To = toV }: DateRangePair))
-                                      (v, toV)) ]
+                              prop.onChange onFromInput ]
                             @ constraintAttrs
                         )
                         Html.span [ prop.className "fuaran-field-range-sep"; prop.text "–" ]
@@ -4627,13 +4681,7 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                               prop.type' inputType
                               prop.required field.Required
                               prop.value toV
-                              prop.onChange (fun (v: string) ->
-                                  pairFieldChange
-                                      ctx
-                                      onChange
-                                      value
-                                      (box ({ From = fromV; To = v }: DateRangePair))
-                                      (fromV, v)) ]
+                              prop.onChange onToInput ]
                             @ constraintAttrs
                         ) ] ]
 
@@ -4661,61 +4709,27 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
     // shape) writes its typed value to the reactive `FilterStore` under `spec.Name` — zero host code,
     // and every `Binding.Filter` reader re-renders (the `useFilterKeys` subscription). A `Some`
     // closure dispatches exactly as before (no store write) — F#-authored apps are unchanged.
-    let writeChoiceValue (chosen: string option) : unit =
-        match chosen with
-        | Some v -> FilterStore.set spec.Name (box v)
-        | None -> FilterStore.clear spec.Name // a cleared choice removes the key
-
-    let handleText (onChange: (string -> Action<'Msg>) option) (v: string) : unit =
-        match onChange with
-        | Some oc -> runAction ctx (oc v)
-        | None -> FilterStore.set spec.Name (box v)
-
-    // The Date onChange takes `string option` since the swap; a native input
-    // change always carries a value, so the closure receives `Some v` while
-    // the declarative write-back keeps storing the raw ISO string.
-    let handleDate (onChange: (string option -> Action<'Msg>) option) (v: string) : unit =
-        match onChange with
-        | Some oc -> runAction ctx (oc (Some v))
-        | None -> FilterStore.set spec.Name (box v)
-
-    let handleChoice (onChange: (string option -> Action<'Msg>) option) (chosen: string option) : unit =
-        match onChange with
-        | Some oc -> runAction ctx (oc chosen)
-        | None -> writeChoiceValue chosen
-
-    let handleRange (onChange: (float * float -> Action<'Msg>) option) (pair: float * float) : unit =
-        match onChange with
-        | Some oc -> runAction ctx (oc pair)
-        | None ->
-            // The store value must unbox back to the reader's type: a range
-            // value binding is `Binding<RangePair>` since the swap, so the
-            // declarative write-back boxes the record (the tuple `onChange`
-            // contract above is unchanged).
-            let lo, hi = pair
-            FilterStore.set spec.Name (box ({ Min = lo; Max = hi }: RangePair))
-
-    // Phase 725 — the date-range chip writes ONE filter key holding the whole
-    // (from, to) pair, exactly as `handleRange` does for the numeric pair.
-    let handleDateRange (onChange: (string * string -> Action<'Msg>) option) (pair: string * string) : unit =
-        match onChange with
-        | Some oc -> runAction ctx (oc pair)
-        | None ->
-            // The store value must unbox back to the reader's type: the chip's
-            // value binding is `Binding<DateRangePair>` since the swap, so the
-            // declarative write-back boxes the record (exactly `handleRange`).
-            let f, t = pair
-            FilterStore.set spec.Name (box ({ From = f; To = t }: DateRangePair))
-
-    let handleFloat (onChange: (float -> Action<'Msg>) option) (v: float) : unit =
-        match onChange with
-        | Some oc -> runAction ctx (oc v)
-        | None -> FilterStore.set spec.Name (box v)
-
-    let handleBool (onToggle: (bool -> Action<'Msg>) option) (v: bool) : unit =
-        match onToggle with
-        | Some ot -> runAction ctx (ot v)
-        | None -> FilterStore.set spec.Name (box v)
+    //
+    // Phase 1141 — that write path used to be EIGHT local closures here, a
+    // second implementation of `fieldChange` / `pairFieldChange` unreachable
+    // from any test by construction. They are gone; every arm below routes
+    // through the module-level seam with `filterWriteBinding` as the
+    // destination, which is exactly what those locals wrote to:
+    // `FilterStore.set spec.Name v` IS `writeBackTo`'s `Binding.Filter` arm,
+    // and `FilterStore.clear spec.Name` IS its `None` clear. The substitution
+    // is therefore behaviour-preserving, not a redesign.
+    //
+    // Note the READ and the WRITE are different bindings whenever a chip
+    // carries an explicit non-filter value slot: each arm resolves its CURRENT
+    // value through `spec`'s own slot, while the declarative write has always
+    // gone to `$filters.<name>` regardless. For the auto-bind form — the
+    // overwhelmingly common declarative shape, and the substitution every arm
+    // already makes for an absent slot — the two are the same binding. Routing
+    // the write through the resolved binding instead would change filter-chip
+    // semantics for every control kind, not just these; that is a language
+    // decision, out of this phase's scope, and named here rather than left
+    // implicit in a closure.
+    let filterWriteBinding: Binding<obj> = Binding.Filter(spec.Name, None)
 
     // 0.2.0 filters-unification: the chip's control is an ordinary
     // FormFieldKind; every declarative (handler-free) control writes its own
@@ -4736,7 +4750,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.type'.text
                   prop.placeholder labelText
                   prop.value current
-                  prop.onChange (fun (v: string) -> handleText onChange v) ]
+                  prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
         | FormFieldKind.Number(value, onChange) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
@@ -4747,7 +4761,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 [ prop.className "fuaran-filter-input"
                   prop.type'.number
                   prop.value current
-                  prop.onChange (fun (v: float) -> handleFloat onChange v) ]
+                  prop.onChange (fun (v: float) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
         | FormFieldKind.RangedNumber(value, onChange, _, _, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
@@ -4758,7 +4772,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 [ prop.className "fuaran-filter-input"
                   prop.type'.number
                   prop.value current
-                  prop.onChange (fun (v: float) -> handleFloat onChange v) ]
+                  prop.onChange (fun (v: float) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
         | FormFieldKind.Checkbox(value, onToggle) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
 
@@ -4769,7 +4783,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 [ prop.className "fuaran-filter-checkbox"
                   prop.type'.checkbox
                   prop.isChecked current
-                  prop.onChange (fun (v: bool) -> handleBool onToggle v) ]
+                  prop.onChange (fun (v: bool) -> fieldChange ctx onToggle filterWriteBinding (Some(box v)) v) ]
         // Phase 766 — the filter-chip twin of the form toggle; same boolean
         // filter write-back, switch semantics for the screen reader.
         | FormFieldKind.Toggle(value, onToggle) ->
@@ -4784,7 +4798,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                   prop.role "switch"
                   prop.ariaChecked current
                   prop.isChecked current
-                  prop.onChange (fun (v: bool) -> handleBool onToggle v) ]
+                  prop.onChange (fun (v: bool) -> fieldChange ctx onToggle filterWriteBinding (Some(box v)) v) ]
         | FormFieldKind.TextArea(value, onChange, rows) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
@@ -4793,7 +4807,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 [ prop.className "fuaran-filter-input"
                   prop.rows rows
                   prop.value current
-                  prop.onChange (fun (v: string) -> handleText onChange v) ]
+                  prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
         | FormFieldKind.Date(value, onChange, _, _, _, _) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let current = BindingResolver.tryResolve ctx.Sources value |> Option.defaultValue ""
@@ -4802,7 +4816,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 [ prop.className "fuaran-filter-input"
                   prop.type'.date
                   prop.value current
-                  prop.onChange (fun (v: string) -> handleDate onChange v) ]
+                  prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) (Some v)) ]
         | FormFieldKind.Choice(options, value, onChange) ->
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
             let opts = resolveOptions ctx options
@@ -4821,7 +4835,9 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
             Html.select
                 [ prop.className "fuaran-filter-select"
                   prop.value (current |> Option.defaultValue "")
-                  prop.onChange (fun (v: string) -> handleChoice onChange (if v = "" then None else Some v))
+                  prop.onChange (fun (v: string) ->
+                      let chosen = if v = "" then None else Some v
+                      fieldChange ctx onChange filterWriteBinding (chosen |> Option.map box) chosen)
                   prop.children optionItems ]
         | FormFieldKind.Range(value, onChange, _, _, _) ->
             // Two-input range — min + max bound to a `RangePair` binding
@@ -4834,6 +4850,10 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 |> Option.defaultValue { Min = 0.0; Max = 0.0 }
 
             let minV, maxV = current.Min, current.Max
+            // Phase 1141 — the chip's pair write-back is the FORM field's, one
+            // seam; the chip's declarative destination is filterWriteBinding.
+            let onMinInput, onMaxInput =
+                rangeInputHandlers ctx onChange filterWriteBinding current
 
             Html.span
                 [ prop.className "fuaran-filter-range"
@@ -4842,13 +4862,13 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                             [ prop.type'.number
                               prop.className "fuaran-filter-range-min"
                               prop.value minV
-                              prop.onChange (fun (v: float) -> handleRange onChange (v, maxV)) ]
+                              prop.onChange onMinInput ]
                         Html.span [ prop.className "fuaran-filter-range-sep"; prop.text "–" ]
                         Html.input
                             [ prop.type'.number
                               prop.className "fuaran-filter-range-max"
                               prop.value maxV
-                              prop.onChange (fun (v: float) -> handleRange onChange (minV, v)) ] ] ]
+                              prop.onChange onMaxInput ] ] ]
         | FormFieldKind.DateRange(value, onChange, variant, min, max, step) ->
             // Phase 725 — the date-range chip: two native date/time inputs
             // over ONE filter param carrying the whole (from, to) pair. Both
@@ -4861,6 +4881,9 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 |> Option.defaultValue { From = ""; To = "" }
 
             let fromV, toV = current.From, current.To
+            // Phase 1141 — see the chip's Range arm: one seam, both closures.
+            let onFromInput, onToInput =
+                dateRangeInputHandlers ctx onChange filterWriteBinding current
 
             let inputType =
                 match variant with
@@ -4886,7 +4909,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                             [ prop.type' inputType
                               prop.className "fuaran-filter-input fuaran-filter-range-min"
                               prop.value fromV
-                              prop.onChange (fun (v: string) -> handleDateRange onChange (v, toV)) ]
+                              prop.onChange onFromInput ]
                             @ constraintAttrs
                         )
                         Html.span [ prop.className "fuaran-filter-range-sep"; prop.text "–" ]
@@ -4894,7 +4917,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                             [ prop.type' inputType
                               prop.className "fuaran-filter-input fuaran-filter-range-max"
                               prop.value toV
-                              prop.onChange (fun (v: string) -> handleDateRange onChange (fromV, v)) ]
+                              prop.onChange onToInput ]
                             @ constraintAttrs
                         ) ] ]
         | FormFieldKind.SegmentedChoice(options, value, onChange, orientation) ->
@@ -4902,7 +4925,14 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
             // surface to `FormFieldKind.SegmentedChoice`; uses the filter's
             // `Name` as the id-namespace for the radiogroup / fieldset.
             let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
-            renderSegmentedChoiceCore ctx spec.Name options value (handleChoice onChange) orientation
+
+            renderSegmentedChoiceCore
+                ctx
+                spec.Name
+                options
+                value
+                (fun chosen -> fieldChange ctx onChange filterWriteBinding (chosen |> Option.map box) chosen)
+                orientation
 
     Html.label
         [ prop.className "fuaran-filter"
