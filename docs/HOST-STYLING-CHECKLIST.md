@@ -117,6 +117,46 @@ dotnet run --project Build.fsproj -- CssCheck     # fail, naming every copy that
 
 `CssCheck` is wired into the `Check` gate, so an edit to the canonical sheet that has not been propagated fails for the author who made it. That is the point of running it from this side: each consuming tier already locks its own copy, but only that tier's suite sees the drift, in a repo the author was not in — which is how a preceding change left two copies serving a stylesheet two rule families behind. A tier whose repo is not in the checkout is reported as *not checked* rather than passing quietly.
 
+### 1.5e Writing direction: the sheet is LOGICAL; the shell is not (Phase 1114)
+
+Every inline-axis rule in the canonical sheet is expressed in CSS **logical** properties —
+`margin-inline-start` / `padding-inline-end` / `border-inline-start` / `inset-inline-start` /
+`inset-inline-end` / `inset-inline` / `text-align: start|end` / `float: inline-end`. The consequence
+for a host is short: **set `dir` and the whole component vocabulary mirrors.** There is no RTL
+stylesheet, no override block to import, and no per-component opt-in. A nested subtree that sets its
+own `dir` mirrors only itself, which is what a mixed-direction page is made of — an Arabic page with
+a left-to-right table of identifiers in it, say. The sheet's own header enumerates the three physical
+usages that survive deliberately and why, and the only two `[dir="rtl"]` rules in it flip the
+disclosure chevron's GLYPH, never any geometry.
+
+Two things this does **not** do for you, and they are the whole of the host-side work:
+
+1. **The `dir` attribute itself.** Nothing in the stylesheet emits it. A host derives it from the
+   document's locale — in this repo `Formatting.textDirection : string -> string` is that
+   derivation, and the Giraffe `DocumentShell` is its first consumer. A tier that ships the
+   byte-copy inherits the mirroring and inherits **none** of this.
+2. **A host that re-implemented the class hooks** rather than serving the sheet (the §1 option (b)
+   path) must make the same physical→logical substitution in its own rules. Serving a mirrored
+   vocabulary from a sheet whose own rules are physical produces a page that is half-mirrored, which
+   is worse than one that is not mirrored at all.
+
+**Per-tier handoff — enumerated here for [Phase 1128](../../roadmap/phases/1128-platform-baseline-host-adoption.md).**
+The CSS moves by byte-copy; the shells do not, and each tier's shell is a different seam:
+
+| Tier | Inherits the mirrored sheet | Still owes a `lang` / `dir` declaration |
+|---|---|---|
+| `fuaran-ts` | yes — `packages/renderer/css/fuaran.css` | its standalone-bundle mount and any host page template it ships |
+| `fuaran-go` | yes — `renderer/content/fuaran-reference.css` | the static-HTML + islands document emitter (the `<html>` open tag it writes) |
+| `fuaran-rs` | yes — `css/fuaran.css` | the server-side emitter and the `wasm32` client's mount root |
+| `fuaran-py` | yes — `src/fuaran_py/renderer/content/fuaran-reference.css` | the server-HTML renderer's document wrapper |
+| `fuaran-swift` / `fuaran-kt` | n/a — native surfaces, no stylesheet | the platform's own layout-direction setting, from the same locale |
+
+Each of those shells needs the same two facts the F# shell now derives: the BCP-47 tag, and the
+direction that follows from it. The derivation is small and deterministic (an RTL script set, an RTL
+language-default set, script-subtag-wins) — port it, do not re-derive it, and do not reach for a
+runtime locale database, because the answer must be the same string on the server that emits the
+markup and the client that hydrates it.
+
 ### 1.5d The stylesheet carries a class-vocabulary fingerprint (Phase 433)
 
 A host serves its stylesheet from `Fuaran.UI.Renderer` and — if it server-renders — emits its classes from `Fuaran.UI.Renderer.Server`. Nothing couples those two package versions. A host that pins one and serves the other's sheet gets no error at all: nodes render unstyled or mis-styled, and a shipped control appearing as a bare browser input reads as a design choice rather than as version skew. That is the same failure the Range control had before §1.5b, arriving across a package boundary instead of an authoring one.
