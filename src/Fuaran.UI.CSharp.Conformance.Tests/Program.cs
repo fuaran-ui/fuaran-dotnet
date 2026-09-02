@@ -100,6 +100,12 @@ internal static class Program
         //    unreachable behind it. ──────────────────────────────────────────────
         GapClosureSlots.Run(h);
 
+        // ── The Action vocabulary (Phase 1153) — the three bare-Action spec slots,
+        //    their byte-parity against the F# smart ctor, and the deliberate absence
+        //    of `Dispatch`. Ordered here for the same reason as the block above: ahead
+        //    of the corpus pass, whose §21 shape-limit fixture aborts the process.
+        Actions.Run(h);
+
         // ── Full corpus conformance (Phase 306). ───────────────────────────────
         Conformance.Run(h);
 

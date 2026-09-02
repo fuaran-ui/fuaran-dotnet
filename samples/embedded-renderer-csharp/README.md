@@ -26,6 +26,11 @@ how intent is declared.
 Clicking it is handled entirely in the browser: the renderer writes the new value back to the
 state slot and every reader of that slot re-renders. No round trip, no host code.
 
+**A host round trip, authored in C#.** "Ping the host" carries a `FuaranAction.Notify` — channel
+plus JSON payload, both of which survive serialisation, no closure anywhere. The page declares a
+`NotifyEndpoint`, the mount snippet POSTs the notification to it, and `MapPost("/notify", …)`
+logs it. That is a click authored in C#, crossing the wire, arriving in C# host code.
+
 **A fingerprint you can query.** `GET /_fuaran/fingerprint.json` says which renderer version is
 embedded, which wire profile it decodes, and the class vocabulary it was synced against. Run under
 `ASPNETCORE_ENVIRONMENT=Development` and the page also carries a drift warning when any of that
@@ -38,15 +43,9 @@ rebuilds it as the `"<closure>"` sentinel, so a serialised `Dispatch` arrives as
 renders, fires, and does nothing. Full Fable is the one tier where it survives, because there the
 tree is never serialised. See [`docs/EMBEDDED-RENDERER.md`](../../docs/EMBEDDED-RENDERER.md) §2.
 
-**A host round trip.** `Action.Notify` and `Action.Call(into: …)` *are* wire-representable and the
-package's snippet wires `onNotify` for you — but **the C# authoring veneer does not yet expose the
-`Action` vocabulary at all.** `ButtonOptions` has no `OnClick`, and the factory hardwires an empty
-chain. So a `Notify` is not authorable from C# today, and this sample does not pretend otherwise
-by reaching past the veneer into the F# tier: a sample that demonstrates a surface its own
-language does not have teaches the wrong thing.
-
-That gap is the C# veneer's to close, not this package's. When it does, the mount options here
-gain a `NotifyEndpoint` and the sample gains a button.
+**A closure-shaped handler.** A select's change, a grid's row click, a form field's edit take a
+closure in the language tier too; the encoder erases them to `"<closure>"`, so they are not
+authorable as data from any tier and this sample does not fake one.
 
 ## Files
 
