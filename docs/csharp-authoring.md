@@ -182,18 +182,59 @@ Metric(new() { Id = "gbp", Label = "Revenue", Value = 1234.5, Subtext = revenue 
 ## 8. Actions and the `Node<obj>` posture
 
 A C# author **never names a message type**. The wire format carries no `'Msg` (a Fuaran
-tree is data, not a program), so interactive handlers – a button's click, a form's
-submit, a select's change – are **opaque to the wire** and encode as a `"<closure>"`
-sentinel. The bound state that *drives* the UI (a tab index, an open flag, a field
-value) is what rides the wire and round-trips.
+tree is data, not a program), so a handler that takes a *value* – a select's change, a
+grid's row click, a form field's edit – is a closure in the language tier too, is
+**opaque to the wire**, and encodes as a `"<closure>"` sentinel. The bound state that
+*drives* the UI (a tab index, an open flag, a field value) is what rides the wire and
+round-trips. This is why the C# factories fix `Node<object>` and supply placeholder
+handlers for those slots by construction: it is correct, not a gap.
 
-This is why the C# factories fix `Node<object>` and supply placeholder handlers by
-construction: it is correct, not a gap. Your host runtime re-attaches real behaviour
-downstream; the authored tree stays a pure, portable description of *what* to render.
+Three slots are different, because the wire carries an action **document** in them
+rather than a closure: `ButtonOptions.OnClick`, `FormOptions.OnSubmit` and
+`ModalOptions.OnDismiss`. Those take a `FuaranAction`.
 
 ```csharp
-Button(new() { Id = "save", Label = "Save", Variant = ButtonVariant.Primary });
+// Reach the host on a channel with a JSON payload. A plain string, number or bool
+// converts implicitly; `Payload.Object` / `Payload.Array` compose.
+Button(new()
+{
+    Id = "save",
+    Label = "Save",
+    Variant = ButtonVariant.Primary,
+    OnClick = FuaranAction.Notify("draft.saved", Payload.Object(("id", 42), ("dirty", false))),
+});
+
+// Call an endpoint and write the response to `$state.total`; every
+// `Binding.State("total")` reader re-renders. `CallIntoQuery` writes a query slot.
+Button(new() { Id = "refresh", Label = "Refresh", OnClick = FuaranAction.CallIntoState("/api/total", "total") });
+
+// Several in order.
+Form(new()
+{
+    Id = "hire",
+    Fields = [FormField.Text("name", "Name")],
+    OnSubmit = FuaranAction.Chain(
+        FuaranAction.Notify("form.submitted", "hire"),
+        FuaranAction.CallIntoQuery("/api/candidates", "candidates")),
+});
+
+// An unset slot raises nothing, which is what this veneer authored before the
+// action vocabulary existed — so leaving it out is byte-unchanged.
+Button(new() { Id = "noop", Label = "Save", Variant = ButtonVariant.Primary });
 ```
+
+**There is deliberately no `Dispatch`.** Its message is a host closure: the encoder
+emits the discriminator and drops the payload, and a decoding host rebuilds it as the
+`"<closure>"` sentinel — so a serialised `Dispatch` arrives as an affordance that
+renders, fires, and does nothing. Full Fable is the one tier where it survives, because
+there the tree is never serialised. `EncodeForTransport` (§ the transport encoder)
+refuses a tree carrying one; the absence on this facade is the other half of that
+answer, and it is why the refusal cannot fire on a tree you authored here.
+
+Typed host behaviour is obtained the other way round — the host binds a handler table
+to the artifact's declared action holes, which is uniform across hosts and needs no
+per-language mechanism. The authored tree stays a pure, portable description of *what*
+to render and *what it raises*.
 
 ## 9. Charts and data grids
 

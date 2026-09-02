@@ -129,7 +129,14 @@ module Handlers =
     /// across runs for the same policy — an ETag input has to be, or every
     /// process restart invalidates every cached page.
     let private optionsSig (opts: FuaranGiraffeOptions) : string =
-        themeCss opts + "|" + Sanitize.encodeEgressPolicy opts.EgressPolicy
+        // The ambient locale is part of the signature since Phase 1114: it is
+        // now an INPUT to the rendered document (`<html lang dir>`), so two
+        // option sets differing only in locale must not share a cache entry.
+        themeCss opts
+        + "|"
+        + Sanitize.encodeEgressPolicy opts.EgressPolicy
+        + "|"
+        + opts.Sources.Locale
 
     /// A deterministic signature of the shell + render mode (`sprintf "%A"` over
     /// the shell record is stable across runs for the same value). `Fragment`
@@ -200,7 +207,7 @@ module Handlers =
             Etag.compute (CanonicalJson.encodeNode node) (optionsSig opts) (shellSig Static (Some shell))
 
         let render () =
-            Document.render shell (themeBlock opts + bodyFor opts Static node)
+            Document.renderWithLocale opts.Sources.Locale shell (themeBlock opts + bodyFor opts Static node)
 
         respond etag "text/html; charset=utf-8" render opts.Cache
 
@@ -212,7 +219,7 @@ module Handlers =
             Etag.compute (CanonicalJson.encodeNode node) (optionsSig opts) (shellSig Hydratable (Some shell))
 
         let render () =
-            Document.render shell (themeBlock opts + bodyFor opts Hydratable node)
+            Document.renderWithLocale opts.Sources.Locale shell (themeBlock opts + bodyFor opts Hydratable node)
 
         respond etag "text/html; charset=utf-8" render opts.Cache
 
@@ -226,7 +233,7 @@ module Handlers =
             Etag.compute (CanonicalJson.encodeNode node) (optionsSig opts) (shellSig Islands (Some shell))
 
         let render () =
-            Document.render shell (themeBlock opts + bodyFor opts Islands node)
+            Document.renderWithLocale opts.Sources.Locale shell (themeBlock opts + bodyFor opts Islands node)
 
         respond etag "text/html; charset=utf-8" render opts.Cache
 

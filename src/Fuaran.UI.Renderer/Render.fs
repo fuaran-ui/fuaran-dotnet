@@ -1530,7 +1530,22 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
                 | None -> []
             | MediaKind.Audio -> []
 
-        keysOfBinding channel m.Src @ keysOfText channel m.Label @ kindKeys, []
+        // Phase 1110 - every track carries a bindable `Src` and an i18n-capable
+        // `Label`, and the transcript is an optional `TextSource`. All three are
+        // collected for the reason the poster is: a slot that resolves from a
+        // live source and is not collected is one that never re-renders, and a
+        // caption menu frozen at its first values is a defect a reader meets
+        // rather than one a test does.
+        let trackKeys =
+            m.Tracks
+            |> List.collect (fun t -> keysOfBinding channel t.Src @ keysOfText channel t.Label)
+
+        keysOfBinding channel m.Src
+        @ keysOfText channel m.Label
+        @ kindKeys
+        @ trackKeys
+        @ keysOfTextOpt channel m.Transcript,
+        []
     | NodeKind.List l -> l.Items |> List.collect (keysOfText channel), []
     | NodeKind.Toast t ->
         let __v = keysOfText channel t.Message @ keysOfBinding channel t.Open
@@ -3169,6 +3184,78 @@ let rec private renderKind
         let safeSrc, egressAttrs =
             Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
 
+        // Phase 1110 - structural parity with the server arm, which states the
+        // three track obligations at length: authored order preserved, one
+        // default per kind with the first election winning, and a track whose
+        // source the egress floor refuses dropped rather than emitted at the
+        // refusal URL. Nothing is attached here either - a `<track>` inside a
+        // `<video controls>` is a complete caption menu with no script at all,
+        // which is exactly why the declaration is worth having.
+        let trackKindToken (k: TrackKind) =
+            match k with
+            | TrackKind.Subtitles -> "subtitles"
+            | TrackKind.Captions -> "captions"
+            | TrackKind.Descriptions -> "descriptions"
+            | TrackKind.Chapters -> "chapters"
+
+        let trackEls =
+            spec.Tracks
+            |> List.fold
+                (fun (claimed: Set<string>, acc) (t: TrackEntry) ->
+                    let resolved =
+                        BindingResolver.tryResolve ctx.Sources t.Src |> Option.defaultValue ""
+
+                    let safe, refusal =
+                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+
+                    if safe = "" || not (List.isEmpty refusal) then
+                        claimed, acc
+                    else
+                        let token = trackKindToken t.Kind
+                        let takesDefault = t.Default && not (Set.contains token claimed)
+
+                        let el =
+                            Html.track (
+                                [ prop.custom ("kind", token)
+                                  prop.src safe
+                                  prop.custom ("srclang", t.SrcLang)
+                                  prop.custom ("label", renderText ctx t.Label) ]
+                                @ (if takesDefault then [ prop.custom ("default", "") ] else [])
+                            )
+
+                        (if takesDefault then Set.add token claimed else claimed), el :: acc)
+                (Set.empty, [])
+            |> snd
+            |> List.rev
+
+        let trackChildren =
+            if List.isEmpty trackEls then
+                []
+            else
+                [ prop.children trackEls ]
+
+        // Phase 1110 - the transcript disclosure, beside the transport rather
+        // than inside it, byte-parallel with the server arm (see it for why a
+        // media element cannot hold one as a child). A present transcript is the
+        // one case that wraps; absent, the emission is the bare element.
+        let withTranscript (el: ReactElement) =
+            match spec.Transcript with
+            | None -> el
+            | Some transcript ->
+                Html.div
+                    [ prop.className "fuaran-media-group"
+                      prop.children
+                          [ el
+                            Html.details
+                                [ prop.className "fuaran-media-transcript"
+                                  prop.custom ("aria-label", renderText ctx spec.Label)
+                                  prop.children
+                                      [ Html.summary
+                                            [ prop.className "fuaran-media-transcript-summary"; prop.text "Transcript" ]
+                                        Html.div
+                                            [ prop.className "fuaran-media-transcript-body"
+                                              prop.text (renderText ctx transcript) ] ] ] ] ]
+
         let sharedProps (variantClass: string) =
             [ prop.className ("fuaran-media " + variantClass)
               prop.src safeSrc
@@ -3203,16 +3290,27 @@ let rec private renderKind
                 else
                     []
 
-            Html.video (
-                sharedProps "fuaran-media-video"
-                @ posterProps
-                @ autoplayProps
-                @ toProps semanticAttrs
-                @ toProps egressAttrs
+            withTranscript (
+                Html.video (
+                    sharedProps "fuaran-media-video"
+                    @ posterProps
+                    @ autoplayProps
+                    @ toProps semanticAttrs
+                    @ toProps egressAttrs
+                    @ trackChildren
+                )
             )
         // No autoplay branch, and none can be added here: `MediaKind.Audio`
         // carries no slot to read.
-        | MediaKind.Audio -> Html.audio (sharedProps "fuaran-media-audio" @ toProps semanticAttrs @ toProps egressAttrs)
+        | MediaKind.Audio ->
+            withTranscript (
+                Html.audio (
+                    sharedProps "fuaran-media-audio"
+                    @ toProps semanticAttrs
+                    @ toProps egressAttrs
+                    @ trackChildren
+                )
+            )
     | NodeKind.List spec ->
         // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
         let items =
@@ -6102,12 +6200,18 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // unchanged: a11y then extras, on the wrapper, in that order. Parity-locked
     // with the server renderer via the shared predicate — see
     // `Accessibility.forwardsToSemanticElement` + `docs/DECISIONS.md` D4.
+    // Phase 1114 — the `dir="auto"` isolation for a display leaf carrying
+    // runtime-bound text. Wrapper-side in BOTH arms and FIRST in the list, so
+    // the emitted attribute order is identical under SSR and CSR; the policy
+    // itself is the shared `Accessibility.bidiAttributes`.
+    let bidi = Accessibility.bidiAttributes node.Kind
+
     let wrapperAttrs, semanticAttrs =
         if Accessibility.forwardsToSemanticElement node.Kind then
             let dataExtras, ariaExtras = Accessibility.partitionExtraAttributes extraPairs
-            dataExtras, a11yPairs @ ariaExtras
+            bidi @ dataExtras, a11yPairs @ ariaExtras
         else
-            a11yPairs @ extraPairs, []
+            bidi @ a11yPairs @ extraPairs, []
 
     // Per-node render guard. A throwing leaf-body renderer
     // (binding accessor crash, malformed spec, etc.) is caught here so

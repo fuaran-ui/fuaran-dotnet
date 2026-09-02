@@ -392,6 +392,35 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "Media autoplay `\"true\"` — the stringified boolean, refused rather than coerced. A truthiness rule would have to rule on `\"false\"` and `\"\"` too, and two hosts ruling differently would disagree about whether a page starts playing by itself" }
+      // Phase 1110 — `srcLang` is REQUIRED on every track kind, where HTML asks
+      // for it only on subtitles. The strictness is what makes a track menu
+      // routable: the language orders it, drives pronunciation, and is the only
+      // thing telling two English-labelled tracks of different languages apart.
+      // A default here would have to be invented, and an invented language tag
+      // is worse than none — it makes a speech engine confidently wrong.
+      { Id = "reject-media-track-missing-srclang"
+        Json =
+          """{"id":"m","kind":{"$type":"Media","kind":{"$type":"Video"},"label":"Studio walkthrough","src":{"$type":"Static","value":"/walkthrough.mp4"},"tracks":[{"kind":"Captions","label":"English captions","src":{"$type":"Static","value":"/walkthrough.en.vtt"}}]}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.tracks[0].srcLang"
+        IsOp = false
+        Description =
+          "a text track with no `srcLang` — refused. The language tag is what orders a track menu, drives pronunciation and tells two same-labelled tracks apart; there is no value to default to that would not be an invented claim about someone else's recording. The path carries the ARRAY INDEX, so a document with four tracks names the one at fault" }
+      // Phase 1110 — the stringified boolean again, one level further in. The
+      // `autoplay` fixture above refuses the same shape on a slot inside a case
+      // payload; this one refuses it on a slot inside a LIST ELEMENT, which is
+      // the position a host that decoded arrays with a looser walker than its
+      // records would get wrong. A truthiness rule here would make two hosts
+      // disagree about which caption track opens, which is a difference the
+      // reader sees on the first frame.
+      { Id = "reject-media-track-default-nonbool"
+        Json =
+          """{"id":"m","kind":{"$type":"Media","kind":{"$type":"Video"},"label":"Studio walkthrough","src":{"$type":"Static","value":"/walkthrough.mp4"},"tracks":[{"default":"true","kind":"Captions","label":"English captions","src":{"$type":"Static","value":"/walkthrough.en.vtt"},"srcLang":"en"}]}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.tracks[0].default"
+        IsOp = false
+        Description =
+          "a track `default` of `\"true\"` — the stringified boolean, refused rather than coerced. Two hosts ruling differently on truthiness would disagree about which caption track opens, which is a difference the reader meets on the first frame" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

@@ -62,6 +62,12 @@
     <Compile Include="TransformSourceLeniencyTests.fs" />
     <Compile Include="StyleOmitDefaultTests.fs" />
     <Compile Include="SchemaConformanceTests.fs" />
+    <!-- Phase 1140 — the residue Phase 1068 left: the published schema admits a
+         VALUELESS `Static` (`value` is optional, Phase 677) where a scalar slot's
+         decoder refuses one, and the control slots that legitimately accept it
+         share a `$def` with the scalar slots that do not. Pinned INVERSELY in
+         both directions; reads no corpus fixture. -->
+    <Compile Include="BindingStaticPresenceTests.fs" />
     <!-- Phase 442 — the render-fidelity manifest's completeness rule (one row
          per canonical wire kind, proven to fail on a probe kind), the
          fixture-pin existence check, and the stale-artefact guard. -->
