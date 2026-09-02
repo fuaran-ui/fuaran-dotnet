@@ -329,6 +329,13 @@ type SortDirection =
     | Desc
 
 [<RequireQualifiedAccess>]
+type TrackKind =
+    | Subtitles
+    | Captions
+    | Descriptions
+    | Chapters
+
+[<RequireQualifiedAccess>]
 type TextSource =
     | Literal of text: string
     | Bound of binding: Binding<string>
@@ -695,6 +702,15 @@ and SrcSetEntry =
       Width: int
     }
 
+and TrackEntry =
+    {
+      Default: bool
+      Kind: TrackKind
+      Label: TextSource
+      Src: Binding<string>
+      SrcLang: string
+    }
+
 and EffectClass =
     {
       Determinism: DeterminismSource
@@ -778,6 +794,8 @@ and MediaSpec =
       Label: TextSource
       Loop: bool
       Src: Binding<string>
+      Tracks: TrackEntry list
+      Transcript: TextSource option
     }
 
 // Display
@@ -1528,6 +1546,13 @@ let private encSortDirection (v: SortDirection) : JVal =
     | SortDirection.Asc -> JStr "asc"
     | SortDirection.Desc -> JStr "desc"
 
+let private encTrackKind (v: TrackKind) : JVal =
+    match v with
+    | TrackKind.Subtitles -> JStr "Subtitles"
+    | TrackKind.Captions -> JStr "Captions"
+    | TrackKind.Descriptions -> JStr "Descriptions"
+    | TrackKind.Chapters -> JStr "Chapters"
+
 // WIRE_FORMAT §5 — a non-finite double has no JSON *number* spelling, so it rides as
 // one of the three quoted sentinel strings, which §7 requires a decoder to read back
 // AT A FLOAT SLOT (`dFloat` below; `dInt` is deliberately not widened — §7 stops at
@@ -1839,6 +1864,9 @@ and private encContentHash (s: ContentHash) : JVal =
 and private encSrcSetEntry (s: SrcSetEntry) : JVal =
     JObj([ Some("src", (encBinding JStr) s.Src); Some("width", JInt s.Width) ] |> List.choose id)
 
+and private encTrackEntry (s: TrackEntry) : JVal =
+    JObj([ (if s.Default = false then None else Some("default", JBool s.Default)); Some("kind", encTrackKind s.Kind); Some("label", encTextSource s.Label); Some("src", (encBinding JStr) s.Src); Some("srcLang", JStr s.SrcLang) ] |> List.choose id)
+
 and private encEffectClass (s: EffectClass) : JVal =
     JObj([ Some("determinism", encDeterminismSource s.Determinism); Some("hostEffect", encHostEffect s.HostEffect) ] |> List.choose id)
 
@@ -1870,7 +1898,7 @@ and private encImageSpec (s: ImageSpec) : JVal =
     Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); Some("variant", encImageVariant s.Variant); (if s.Fit = ImageFit.Natural then None else Some("fit", encImageFit s.Fit)); (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if s.Loading = ImageLoading.Eager then None else Some("loading", encImageLoading s.Loading)); (if List.isEmpty s.SrcSet then None else Some("srcSet", JArr(List.map encSrcSetEntry s.SrcSet))); (if s.Expandable = false then None else Some("expandable", JBool s.Expandable)); (s.Caption |> Option.map (fun v -> "caption", encTextSource v)) ] |> List.choose id)
 
 and private encMediaSpec (s: MediaSpec) : JVal =
-    Canon.typed "Media" ([ (if s.Controls = true then None else Some("controls", JBool s.Controls)); Some("kind", encMediaKind s.Kind); Some("label", encTextSource s.Label); (if s.Loop = false then None else Some("loop", JBool s.Loop)); Some("src", (encBinding JStr) s.Src) ] |> List.choose id)
+    Canon.typed "Media" ([ (if s.Controls = true then None else Some("controls", JBool s.Controls)); Some("kind", encMediaKind s.Kind); Some("label", encTextSource s.Label); (if s.Loop = false then None else Some("loop", JBool s.Loop)); Some("src", (encBinding JStr) s.Src); (if List.isEmpty s.Tracks then None else Some("tracks", JArr(List.map encTrackEntry s.Tracks))); (s.Transcript |> Option.map (fun v -> "transcript", encTextSource v)) ] |> List.choose id)
 
 and private encLinkSpec (s: LinkSpec) : JVal =
     Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun v -> "protection", encLinkProtection v)) ] |> List.choose id)
@@ -2379,6 +2407,14 @@ let private decSortDirection (j: JVal) : Result<SortDirection, string> =
     | JStr "asc" -> Ok SortDirection.Asc
     | JStr "desc" -> Ok SortDirection.Desc
     | _ -> Error "not a SortDirection"
+
+let private decTrackKind (j: JVal) : Result<TrackKind, string> =
+    match j with
+    | JStr "Subtitles" -> Ok TrackKind.Subtitles
+    | JStr "Captions" -> Ok TrackKind.Captions
+    | JStr "Descriptions" -> Ok TrackKind.Descriptions
+    | JStr "Chapters" -> Ok TrackKind.Chapters
+    | _ -> Error "not a TrackKind"
 
 let rec private decNodeKind (j: JVal) : Result<NodeKind<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3211,6 +3247,15 @@ and private decSrcSetEntry (j: JVal) : Result<SrcSetEntry, string> =
     dReq "width" __fs dInt |> Result.bind (fun width ->
     Ok { Src = src; Width = width })))
 
+and private decTrackEntry (j: JVal) : Result<TrackEntry, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "default" __fs dBool (false) |> Result.bind (fun ``default`` ->
+    dReq "kind" __fs decTrackKind |> Result.bind (fun kind ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
+    dReq "srcLang" __fs dStr |> Result.bind (fun srcLang ->
+    Ok { Default = ``default``; Kind = kind; Label = label; Src = src; SrcLang = srcLang }))))))
+
 and private decEffectClass (j: JVal) : Result<EffectClass, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "determinism" __fs decDeterminismSource |> Result.bind (fun determinism ->
@@ -3281,7 +3326,9 @@ and private decMediaSpec (j: JVal) : Result<MediaSpec, string> =
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
     dDef "loop" __fs dBool (false) |> Result.bind (fun loop ->
     dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
-    Ok { Controls = controls; Kind = kind; Label = label; Loop = loop; Src = src }))))))
+    dDef "tracks" __fs (dList decTrackEntry) ([]) |> Result.bind (fun tracks ->
+    dOpt "transcript" __fs decTextSource |> Result.bind (fun transcript ->
+    Ok { Controls = controls; Kind = kind; Label = label; Loop = loop; Src = src; Tracks = tracks; Transcript = transcript }))))))))
 
 and private decLinkSpec (j: JVal) : Result<LinkSpec, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3748,7 +3795,7 @@ let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: Imag
     { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant; Fit = ImageFit.Natural; AspectRatio = ImageAspect.Natural; Loading = ImageLoading.Eager; SrcSet = []; Expandable = false; Caption = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkMedia (id: string) (kind: MediaKind) (label: TextSource) (src: Binding<string>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Media { Controls = true; Kind = kind; Label = label; Loop = false; Src = src }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+    { Id = id; Kind = NodeKind.Media { Controls = true; Kind = kind; Label = label; Loop = false; Src = src; Tracks = []; Transcript = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

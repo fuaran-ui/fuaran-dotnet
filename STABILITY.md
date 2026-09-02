@@ -2253,6 +2253,57 @@ would weaken the gate to carry a marker that would then mean nothing. The hazard
 legible where it can be without a false accusation: a doc comment on `Action.dispatch` naming the
 constraint and the two remedies, the FUARAN112 rule, and the transport encoder's refusal.
 
+## Recorded change — 0.48.0, `Media` text tracks + transcript (fuaran#1110)
+
+**Additive. Two new spec-record fields, one new record, one new enum, one new pre-emit defect code,
+three new render-obligation claims.** No breaking change to a shipped surface, and a document that
+carries neither field encodes and decodes to exactly the bytes it did before: `tracks` omits at the
+EMPTY LIST and `transcript` is an ordinary optional, so `Defaults.media` still encodes to the four
+keys it always did.
+
+**Why the field tier and not a variant or a kind.** `docs/VOCABULARY.md` §2.1: the consumer has
+already chosen `Media` and already chosen `Video` or `Audio`, so a track list is a REFINEMENT of a
+control that is otherwise unchanged. The Appendix A `Media` row is amended in the same change-set
+(the rule the Phase 1076 admission established), and the amendment is what makes that row's
+irreducibility claim — "captioning a11y no existing kind expresses" — true rather than asserted.
+The tier's one disadvantage is acknowledged there: a field addition skips §11.2 vocabulary
+attestation, so only the fixtures catch a lagging host.
+
+**Surface added.**
+
+- `Fuaran.UI.Types` re-exports `TrackEntry` + `TrackKind`; `MediaSpec` gains `Tracks: TrackEntry
+  list` and `Transcript: TextSource option`. `Defaults.media` carries `[]` and `None` — `Defaults`
+  never invents content, and neither slot has a value that could be invented.
+- `TrackEntry` is `{ Default: bool; Kind: TrackKind; Label: TextSource; Src: Binding<string>;
+  SrcLang: string }`. Four of five members are REQUIRED, which makes it the strictest record on the
+  wire. `SrcLang` is required for EVERY kind where HTML asks for it only on subtitles: it is what
+  orders a track menu, drives pronunciation, and tells two same-labelled tracks apart.
+- `TrackKind` is `Subtitles | Captions | Descriptions | Chapters`, closed. There is deliberately no
+  `Metadata` case — its cues are rendered by no user agent and read only by script, so a
+  declarative document naming it would state an intent no host can honour.
+- `Fuaran.UI.PreEmitValidate` gains **FUARAN113 (Error)** — a track whose `Label` is an empty or
+  whitespace `Literal`. FUARAN108's argument one level down: a track's label IS its entry in the
+  user agent's menu, so an unlabelled one leaves a reader choosing between two identical entries.
+  Only a literal is judged, the same restraint FUARAN108 shows. The rule deliberately does NOT
+  require a captions track on a `Video`, and the defect's own doc comment records why: nothing in
+  the wire distinguishes a lecture recording from a decorative silent loop, and a rule that fires
+  on the second is one authors switch off — which costs the estate the rule on the first.
+- `Fuaran.UI.RenderFidelity` gains three obligation claims — `authored-child-order`,
+  `single-default-per-kind`, `transcript-disclosure-named` — and the `Media` row carries them plus
+  a widened `refused-source-dropped` covering a refused track source. **A new claim is a new
+  obligation for every host in the §11.0 roster**: hosts that have not adopted report them
+  unchecked, which is the artefact working as designed rather than a regression.
+- The renderers emit `<track kind srclang label default>` children in AUTHORED order (the opposite
+  of `srcSet`, and §3.6.6 says why), honour the first `default` election per kind, drop a track
+  whose source the egress floor refuses, and render a declared transcript as a `<details>`
+  disclosure BESIDE the transport carrying the media's label as its accessible name.
+- The reference stylesheet gains `.fuaran-media-group` and the `.fuaran-media-transcript*` family.
+- The C# veneer gains `TrackEntry` + `TrackKind` and `Tracks` / `Transcript` on both
+  `VideoOptions` and `AudioOptions`; the VB XML veneer gains a `<Track>` child element and a
+  `transcript` attribute, both joining the analyzer's vocabulary.
+
+**Version.** Minor on the producing packages — 0.48.0, already the working version.
+
 ## Recorded change — 0.47.0, payload-language declaration on contract props (fuaran#1107)
 
 **Two record widenings plus five new types on `Fuaran.UI`'s extension-registry surface; no wire

@@ -957,6 +957,50 @@ and ImageSpec = Generated.ImageSpec
 /// output needs actually has to hold.
 and SrcSetEntry = Generated.SrcSetEntry
 
+/// §4b — one timed-text track of a `Media` node (Phase 1110). The
+/// list-of-records shape follows `SrcSetEntry` above, and for the same reason: a
+/// repeated structured slot is a record list, never a parallel family of flat
+/// fields.
+///
+/// `SrcLang` is REQUIRED for every kind, where HTML makes `srclang` mandatory
+/// only on a subtitles track. The extra strictness costs an author one value and
+/// buys a track menu a user agent can order, a speech engine can pronounce, and
+/// a reader can tell apart; a track with no language is one nothing downstream
+/// can route.
+///
+/// `Label` is a `TextSource` because it is CONTENT — the text a user agent puts
+/// in its track menu — so it is i18n-capable on the same terms as
+/// `ImageSpec.Caption`. It is required for the reason `MediaSpec.Label` is: an
+/// unlabelled track is offered by its kind alone, which tells a reader that a
+/// captions track exists and nothing about which one it is. FUARAN113 refuses
+/// the empty literal.
+///
+/// `Src` routes through the same render-time URL floor `MediaSpec.Src` and
+/// `MediaKind.Video`'s poster do — a track file is fetched by the browser with
+/// no user act, which is the whole of the `Media` egress class — and a refused
+/// track is DROPPED, on the poster's rule rather than the source's: an element
+/// must have a source, but it need not have this track, and a `<track>` pointing
+/// at the refusal URL is a caption menu entry that opens onto nothing.
+///
+/// `Default` omits at `false`. It is a per-KIND election, and the constraint is
+/// a RENDER obligation rather than a decode rule: a document electing two
+/// default captions tracks is legal bytes no user agent can honour, so a host
+/// resolves it deterministically (first wins) instead of the decoder refusing a
+/// shape a lenient host would render anyway.
+and TrackEntry = Generated.TrackEntry
+
+/// §4b — what a `Media` timed-text track IS (Phase 1110): `Subtitles` (dialogue
+/// translated for a reader who cannot follow the language), `Captions` (dialogue
+/// AND the non-speech sound a reader who cannot hear it would lose — which is
+/// why the two are separate kinds and not one kind with a flag), `Descriptions`
+/// (what is visible, narrated), `Chapters` (the navigable sections).
+///
+/// Four kinds, closed. There is deliberately no `Metadata` case: its cues are
+/// rendered by no user agent and read only by script, so a declarative document
+/// naming it would state an intent no host can honour without leaving the
+/// vocabulary.
+and TrackKind = Generated.TrackKind
+
 /// §4b — `NodeKind.Media`'s typed spec (Phase 1076). ONE media kind carrying a
 /// `MediaKind` variant, never a `Video` kind beside an `Audio` kind: the
 /// vocabulary charter's Appendix A pre-ruled the shape and this record honours

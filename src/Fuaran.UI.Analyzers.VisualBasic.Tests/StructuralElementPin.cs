@@ -83,6 +83,7 @@ internal static class StructuralElementPin
 
             // Renames — the element name and the wire field name differ.
             ["Source"] = ("Image.srcSet", "rename — one SrcSetEntry of the srcSet list (Phase 1080)"),
+            ["Track"] = ("Media.tracks", "singular-of-the-field — one TrackEntry of the tracks list (Phase 1110)"),
             ["Option"] = ("Select.source", "rename — one SelectOption; the literal children build the Binding the `source` field carries"),
             ["Marker"] = ("Map.source", "rename — one MapMarker; the literal children build the Binding the `source` field carries"),
             ["Prop"] = ("Custom.props", "rename — one entry of the props map, authored as name/value"),
