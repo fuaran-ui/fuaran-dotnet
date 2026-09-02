@@ -2701,6 +2701,88 @@ let gridTransformParam: Node<obj> =
         ))
         None
 
+/// Phase 610 — the multi-select chip idiom end to end: a `<select multiple>` whose `values` binding
+/// IS `$filters.depts` (handler omitted, so its write-back stores the selection there) beside a
+/// `DataGrid` whose `Transform` scopes rows with an `in`/`param` membership test over that same
+/// name. The list param resolves by SUBSTITUTION (`InParam` -> `InList`), and an empty selection is
+/// unbound, so deselecting everything shows the unfiltered table. Proves the list-valued `param`
+/// wire (`{"$type":"in","expr":…,"param":…}`) at node level, where the literal `items` form and the
+/// scalar `param` form were both already pinned.
+let multiselectChipListParam: Node<obj> =
+    let source =
+        Fuaran.Core.Embedded
+            { Schema = [ "dept", Fuaran.Core.StringType; "amount", Fuaran.Core.IntType ]
+              Columns =
+                [ Fuaran.Core.Column.create
+                      "dept"
+                      Fuaran.Core.StringType
+                      [ Fuaran.Core.Str "eng"; Fuaran.Core.Str "sales"; Fuaran.Core.Str "ops" ]
+                  Fuaran.Core.Column.create
+                      "amount"
+                      Fuaran.Core.IntType
+                      [ Fuaran.Core.Int 100; Fuaran.Core.Int 90; Fuaran.Core.Int 70 ] ] }
+
+    let fieldCol (label: string) (field: string) : ColumnErased<obj> =
+        { Label = label
+          Value = None
+          Field = Some field
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    node
+        "multiselect-chip-list-param"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Auto
+              Role = BoxRole.Dashboard
+              Heading = Some(TextSource.Literal "Spend by department")
+              Children =
+                [ node
+                      "dept-chip"
+                      (NodeKind.Select(
+                          { Defaults.select with
+                              Label = TextSource.Literal "Departments"
+                              Source =
+                                  Binding.Static(
+                                      Some
+                                          [ { Value = "eng"; Label = "Engineering" }
+                                            { Value = "sales"; Label = "Sales" }
+                                            { Value = "ops"; Label = "Operations" } ]
+                                  )
+                              Multiple = Some true
+                              Values = Some(Binding.Filter("depts", None)) }
+                      ))
+                      None
+                  node
+                      "dept-grid"
+                      (NodeKind.DataGrid(
+                          { SortStateKey = None
+                            PageSize = None
+                            PageStateKey = None
+                            EditStateKey = None
+                            DefaultSort = None
+                            Source =
+                              Binding.Transform(
+                                  TransformSource.Data(source),
+                                  [ Fuaran.Core.Filter(Fuaran.Core.InParam(Fuaran.Core.Col "dept", "depts")) ],
+                                  Some
+                                      [ { From = Binding.Filter("depts", None)
+                                          Name = "depts" } ]
+                              )
+                            RowKey = None
+                            RowKeyField = Some "dept"
+                            Columns = [ fieldCol "Department" "dept"; fieldCol "Spend" "amount" ]
+                            OnRowClick = None
+                            Editable = false
+                            Reorderable = false
+                            StaticRows = None }
+                      ))
+                      None ] }
+        ))
+        None
+
 /// Phase 425 — a fully field-named `DataGrid`: columns carry `Field` (no closure), the spec carries
 /// `RowKeyField`, and the source is a `Transform`. A decoded grid renders data + stable identity with
 /// zero host code. Proves the `field` / `rowKeyField` wire (omitted-when-None elsewhere).
@@ -4842,6 +4924,7 @@ let allNodes: (string * Node<obj>) list =
       "Visualisation/Grid", gridVis
       "Visualisation/Grid (Phase 282 — Binding.Transform compute source)", gridTransform
       "Visualisation/Grid (Phase 424 — parameterised Binding.Transform, filter param from a chip)", gridTransformParam
+      "Layout/Box (Phase 610 — multi-select chip + DataGrid scoped by a list-valued in/param)", multiselectChipListParam
       "Display/Metric (Phase 421 — Binding.Query with a declared dependsOn filter edge)", queryDependsOn
       "Visualisation/Grid (Phase 425 — field-named columns + RowKeyField, closure-free)", gridFieldNamed
       "Visualisation/Grid (Phase 750 — TonedPill: value-conditional cell tone declared as a value→tone map)",

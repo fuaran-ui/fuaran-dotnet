@@ -851,6 +851,8 @@ let fewShot =
       // is exactly what `lenient-filterable-static-dashboard-compact` demonstrates, and
       // that one IS a system-prompt block.
       // grid-toned-pill: cut 2026-08-15 (Phase 834 dedup — system-prompt block).
+      "multiselect-chip-list-param",
+      "A spend dashboard: a multi-select department picker beside a table of departmental spend, showing only the selected departments — and every department when none is selected."
       "query-dependson",
       "A revenue metric fed by a host 'orders' query that declares it depends on the status and region filters — the host re-runs the query when either filter changes."
       "discl-1", "A collapsible 'Additional entitlements' section, open by default, containing a short note."

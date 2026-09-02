@@ -640,30 +640,78 @@ let rec resolve<'T> (sources: BindingSources) (binding: Binding<'T>) : Resolutio
 /// strict), while a *non-filter* step referencing an unbound param surfaces Core's
 /// `UnboundParam` loudly (never silent). A non-scalar or `Errored` param source, a `Ref`
 /// source (deferred — Phase 282 evaluates Embedded), and an evaluator error are all `Error`.
+///
+/// Phase 610 — a param source that resolves to a LIST (a multi-select chip's selection) is a
+/// LIST param. It never enters the scalar env: it resolves by SUBSTITUTION through
+/// `Transform.substituteListParams` (`InParam(x, n)` -> `InList(x, <items as literals>)`) before
+/// the prune below, which is how Core specifies a list param (fuaran-core#91) rather than a second
+/// evaluation env. An EMPTY selection is treated as UNBOUND rather than substituted to
+/// `InList(x, [])`: "nothing selected" is the absence of a constraint, not a constraint no row
+/// satisfies — the same lenient rule an unset scalar chip already gets, so deselecting everything
+/// shows the unfiltered table rather than an empty one. A list bound to a name the pipeline reads
+/// as a SCALAR `param` (or a scalar bound to one it reads as an `in`/`param`) substitutes nothing
+/// and reaches Core's strict `UnboundParam` — loud, never a silent wrong scoping.
 and private evalTransformFrame
     (sources: BindingSources)
     (source: TransformSource)
     (pipeline: Fuaran.Core.Transform list)
     (parameters: TransformParam list)
     : Result<Fuaran.Core.Table, string> =
-    let rec resolveParams (env: Map<string, Fuaran.Core.Cell>) (unbound: Set<string>) remaining =
+    // Phase 610 — coerce a resolved LIST source to `Cell list`. Routed through
+    // [[jvalOfResolved]], the total store-value lift both pipelines already share (Phase
+    // 818/1085), so a browser array, an F# list under Fable, the server store's `obj list`
+    // lowering and a genuine `JArr` all land on one shape rather than on four type tests that
+    // would drift apart per host. A non-array, or an array holding a non-scalar item, is `None`
+    // and keeps the pre-existing loud "non-scalar value" error.
+    let resolvedToCells (v: obj) : Fuaran.Core.Cell list option =
+        match jvalOfResolved v with
+        | Some(JArr items) ->
+            let cells = items |> List.map jvalToCell
+
+            if cells |> List.forall Option.isSome then
+                Some(cells |> List.map Option.get)
+            else
+                None
+        | _ -> None
+
+    let rec resolveParams
+        (env: Map<string, Fuaran.Core.Cell>)
+        (listEnv: Map<string, Fuaran.Core.Cell list>)
+        (unbound: Set<string>)
+        remaining
+        =
         match remaining with
-        | [] -> Ok(env, unbound)
+        | [] -> Ok(env, listEnv, unbound)
         | (p: TransformParam) :: rest ->
             let name = p.Name
 
             match resolve<obj> sources (objOfJValBinding p.From) with
             | Resolved v ->
                 match resolvedToCell v with
-                | Some cell -> resolveParams (Map.add name cell env) unbound rest
-                | None -> Error(sprintf "Transform param '%s' resolved to a non-scalar value" name)
-            | NotResolved -> resolveParams env (Set.add name unbound) rest
+                | Some cell -> resolveParams (Map.add name cell env) listEnv unbound rest
+                | None ->
+                    match resolvedToCells v with
+                    // The empty selection is UNBOUND, not an empty membership set (see above).
+                    | Some [] -> resolveParams env listEnv (Set.add name unbound) rest
+                    | Some cells -> resolveParams env (Map.add name cells listEnv) unbound rest
+                    | None -> Error(sprintf "Transform param '%s' resolved to a non-scalar value" name)
+            | NotResolved -> resolveParams env listEnv (Set.add name unbound) rest
             | Errored m -> Error(sprintf "Transform param '%s' source errored: %s" name m)
             | I18nUnresolved k -> Error(sprintf "Transform param '%s' source is an unresolved i18n key '%s'" name k)
 
-    match resolveParams Map.empty Set.empty parameters with
+    match resolveParams Map.empty Map.empty Set.empty parameters with
     | Error m -> Error m
-    | Ok(env, unbound) ->
+    | Ok(env, listEnv, unbound) ->
+
+        // Phase 610 — bound LIST params resolve by substitution BEFORE the prune. A substituted
+        // `InParam` becomes an `InList` and so names no param at all, while an unbound one
+        // survives as `InParam` and is caught by the prune below under its own name — which is
+        // why one `paramsOf`-driven prune covers both param kinds with no second rule.
+        let pipeline =
+            if Map.isEmpty listEnv then
+                pipeline
+            else
+                Fuaran.Core.Transform.substituteListParams listEnv pipeline
 
         // Prune every `filter` step whose params include an unbound name (unset filter ⇒ no constraint).
         let pipeline =

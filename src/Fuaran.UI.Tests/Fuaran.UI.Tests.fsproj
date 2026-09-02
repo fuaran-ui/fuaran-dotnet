@@ -158,6 +158,10 @@
          param → env resolution, the unset-filter prune rule, and the derived
          Transform.paramsOf edge. -->
     <Compile Include="TransformParamTests.fs" />
+    <!-- TransformListParamTests pins Phase 610 LIST-valued Transform params:
+         in/param substitution, the empty-selection prune, and the loud kind
+         mismatch in both directions. -->
+    <Compile Include="TransformListParamTests.fs" />
     <!-- TransformScalarTests pins Phase 632's Transform-in-scalar-slots rule
          (1×1 cell, loud N×M didactic, count-of-nothing = 0) + Selection.field. -->
     <Compile Include="TransformScalarTests.fs" />

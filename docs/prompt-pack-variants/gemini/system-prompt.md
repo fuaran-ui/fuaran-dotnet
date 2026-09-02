@@ -773,7 +773,12 @@ limit | union`) — a step without `$type` is rejected. Canonical step fields: `
 SQL/pandas spellings (`keys` for sort, `column`/`descending`, `aggregations`/`op`/`as`/`avg`,
 `count`) coerce to them. A multi-select filter binds membership with
 `{ "$type": "in", "expr": { "$type": "col", "name": … }, "param": "<param name>" }` (a
-list-valued param; use `"items": [ … ]` for a literal list). The window running-total fn is
+list-valued param; use `"items": [ … ]` for a literal list). Wire the CHIP to it by giving a
+`Select` with `"multiple": true` a `values` binding naming a filter
+(`{ "$type": "Filter", "name": "depts" }`), omitting `onChangeMulti`, and pointing the param's
+`from` at that SAME filter name — the shared name is the whole wiring. An EMPTY selection
+shows the UNFILTERED table, never an empty one: nothing selected is the absence of a
+constraint, exactly as an unset scalar chip is. The window running-total fn is
 `cumulSum`. For prompt-given data a plain `Static`
 rows array on the consumer (see "Prompt-given data") is usually the simpler correct choice;
 reach for `Transform` when a filter/param must scope the data declaratively.
