@@ -2618,3 +2618,68 @@ the transport convention; §11.0 gains a contract-card adoption table beside the
 one. The corpus grows its own `cards/` family with the `contract-card-round-trip` /
 `contract-card-reject` kinds — **its own family and never `nodes/`**, because a card is not a node
 and the node round-trip law says nothing about it. `manifest.json` is the authoritative enumeration.
+
+## Recorded breaking change — 0.48.0, the typed-`Actor` DAG fold (fuaran#1144)
+
+**What it is.** `DagOpRecord` carried a bare `UserId: string` where the linear `OpRecord` has carried
+the typed `Actor` (`Human of id` | `Agent of model * version * id`) since Phase 320. It now carries
+the same `Actor`, encoded by the same pinned `Actor.encode`. Three surfaces move together:
+
+```text
+// content-address pre-image (0.47.0)
+{"parents":[…],"op":…,"ts":1700000000,"userId":"u1","promptId":…,"result":…}
+// content-address pre-image (0.48.0)
+{"parents":[…],"op":…,"ts":1700000000,"actor":{"kind":"human","id":"u1"},"promptId":…,"result":…}
+
+// canonical wire record (0.47.0) — Ordinal key order put userId LAST
+{"hash":…,"op":…,…,"tombstoned":false,"userId":"u1"}
+// canonical wire record (0.48.0) — "actor" sorts FIRST
+{"actor":{"kind":"human","id":"u1"},"hash":…,"op":…,…,"tombstoned":false}
+```
+
+**Why it is major and not a tidy-up.** Phase 408 folded attribution INTO the DAG content address to
+close the same provenance hole the linear chain closed in 406/411. Typing it therefore does not merely
+change a field's type — **it re-addresses every DAG node**. Every hash in `wire-format-fixtures/dag/`
+was re-minted in this change; a pre-0.48.0 record's stored `Hash` will not reproduce under
+`DagOpRecord.recomputeHash`, and a pre-0.48.0 hash is not a valid parent link for a 0.48.0 node. This
+is the event [`Fuaran.UI.OpStream.Dag.*`](#fuaranuiopstreamdag-opt-in-rung-4--phase-178) above names
+as "breakage of the `DagOpRecord` wire shape … a major-version bump on the same axis as the linear
+wire format". Pre-1.0, that axis still rides a minor bump.
+
+**Its own version slot, deliberately.** 0.47.0 was in flight and unreleased (newest tag `v0.46.0`), so
+this could have ridden it on the precedent the 0.47.0 entries themselves invoke. It does not: that
+slot carries four additive changes, and a wire break folded into a minor that otherwise reads as
+growth is a break nobody finds when they go looking for it.
+
+**What breaks, and what does not.**
+
+- **Every construction site and every exhaustive read of `DagOpRecord`.** `UserId = "u1"` becomes
+  `Actor = Actor.Human "u1"`; `DagOpRecord.create` / `createMerge` / `computeHash` /
+  `computeMergeHash` and `GuestFork.genesis` / `step` take an `Actor` where they took a `string`. A
+  host still threading a bare id lifts it with `Actor.ofLegacyString`.
+- **`DagGraphNode.UserId` becomes `Actor`** in `Fuaran.UI.OpStream.Dag.Inspect`. Keeping a bare string
+  on the display projection would have re-introduced, one layer up, exactly the lossy flattening this
+  change removes.
+- **`DagWire.decodeRecord` REFUSES a pre-1144 `userId` envelope by name** rather than lifting it. A
+  lenient lift would mint a record whose stored `hash` no host can reproduce — a silent verification
+  failure downstream instead of a clear refusal at the boundary. `@fuaran-ui/ops` refuses identically.
+- **`SqliteDagSink` reuses the `user_id` column**, now holding `Actor.encode` JSON, exactly as the
+  linear `SqliteSink` has since Phase 320. A pre-1144 row holds a bare id and reads back through
+  `Actor.ofLegacyString`, so **an existing database still opens** — but its records' content addresses
+  are not valid under the new pre-image, and no read path can make them so.
+- **Not touched:** the linear `OpRecord` chain, its `chainFormatVersion` (`2`), `StreamEntry.encode`,
+  the Node/TreeOp corpus, and every non-DAG fixture family. The DAG remains opt-in rung-4, so a
+  consumer that references none of the `Fuaran.UI.OpStream.Dag.*` packages is unaffected.
+
+**What is gained, stated plainly.** Attribution was already hashed but as an untyped string, so a
+`Human "planner"` and an `Agent("claude", "4.8", "planner")` produced the *same* DAG content address —
+the AI-accountability distinction the linear chain has protected since Phase 320 was flattened away
+at the DAG boundary, and `DagOpRecord.ofLinear` discarded it on the way in. Both now hash distinctly,
+and the degenerate embedding of a linear history into the DAG is attribution-faithful.
+
+**Migration.** [`docs/migrations/1144-typed-actor-dag-fold.md`](docs/migrations/1144-typed-actor-dag-fold.md).
+There is no in-place upgrade for a persisted DAG: **old DAG addresses do not carry forward.**
+
+**The DAG pre-image still carries no format-version tag.** The linear chain's `"v"` has no DAG
+counterpart (see the linear entry above: "a DAG version tag is tracked separately"). Introducing one
+is a separate design act with its own cross-host concept; it was deliberately not bundled here.

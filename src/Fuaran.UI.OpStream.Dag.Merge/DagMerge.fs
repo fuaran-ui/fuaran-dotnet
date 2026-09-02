@@ -97,7 +97,15 @@ module DagMerge =
             | [ single ] -> single
             | many -> TreeOp.Batch many
 
-        DagOpRecord.createMerge streamId [ headA; headB ] deltaOp outcomeHash None "merge" now OpResultEnvelope.Success
+        DagOpRecord.createMerge
+            streamId
+            [ headA; headB ]
+            deltaOp
+            outcomeHash
+            None
+            (Actor.ofLegacyString "merge")
+            now
+            OpResultEnvelope.Success
 
     /// The synthetic virtual-ancestor TREE for a criss-cross (multiple-LCA)
     /// history — git's recursive-base merge. The candidate bases are sorted

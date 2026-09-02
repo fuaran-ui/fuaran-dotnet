@@ -27,7 +27,14 @@ let fixtures: (string * string * DagOpRecord<obj>) list =
 
     // A genesis (no-parent) record.
     let genesis =
-        DagOpRecord.create "s1" [] (TreeOp.RemoveNode(NodeId "n1")) None "u1" (ts 1700000000L) OpResultEnvelope.Success
+        DagOpRecord.create
+            "s1"
+            []
+            (TreeOp.RemoveNode(NodeId "n1"))
+            None
+            (Actor.Human "u1")
+            (ts 1700000000L)
+            OpResultEnvelope.Success
 
     // A single-parent child (a linear step off the genesis).
     let child =
@@ -36,7 +43,7 @@ let fixtures: (string * string * DagOpRecord<obj>) list =
             [ genesis.Hash ]
             (TreeOp.RemoveNode(NodeId "n2"))
             (Some "prompt-1")
-            "u1"
+            (Actor.Agent("claude", "4.8", "planner"))
             (ts 1700000060L)
             OpResultEnvelope.Success
 
@@ -48,7 +55,7 @@ let fixtures: (string * string * DagOpRecord<obj>) list =
             (TreeOp.Batch [])
             (String.replicate 64 "c")
             None
-            "merge"
+            (Actor.Human "merge")
             (ts 1700000120L)
             OpResultEnvelope.Success
 
@@ -60,7 +67,7 @@ let fixtures: (string * string * DagOpRecord<obj>) list =
             Tombstoned = true }
 
     [ "dag-genesis", "Genesis DAG record (no parents)", genesis
-      "dag-linear-step", "Single-parent DAG record (linear step, promptId present)", child
+      "dag-linear-step", "Single-parent DAG record (linear step, promptId present, agent actor)", child
       "dag-merge", "Two-parent merge node (outcome hash; author-order parents)", merge
       "dag-tombstone", "Tombstoned record (payload pruned, hash + parents preserved)", tombstoned ]
 
@@ -87,7 +94,7 @@ let emit (root: string) : unit =
     let manifest =
         "{\n"
         + "  \"version\": 1,\n"
-        + "  \"description\": \"Fuaran DAG-record wire-format conformance corpus (Phase 178, additive). dag-record-round-trip: decode inputFile, re-encode, assert byte-equal to expectedFile. The op field nests the canonical TreeOp wire form. See fuaran-dotnet/docs/WIRE_FORMAT.md.\",\n"
+        + "  \"description\": \"Fuaran DAG-record wire-format conformance corpus (Phase 178, additive; re-addressed by Phase 1144). dag-record-round-trip: decode inputFile, re-encode, assert byte-equal to expectedFile. The op field nests the canonical TreeOp wire form and the actor field nests the canonical typed-actor form (Human | Agent) — both embedded verbatim in their own pinned encodings. Phase 1144 replaced the pre-1144 bare userId member with the typed actor, in the wire record AND in the content-address pre-image, so every hash in this family was re-minted and pre-1144 DAG addresses do not carry forward. See fuaran-dotnet/docs/WIRE_FORMAT.md.\",\n"
         + "  \"fixtures\": [\n"
         + System.String.Join(",\n", manifestEntries)
         + "\n  ]\n}\n"
