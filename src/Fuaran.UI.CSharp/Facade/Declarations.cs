@@ -13,6 +13,12 @@ namespace Fuaran.UI.CSharp;
 // FIELD binds neither) — Phase 801 recorded that, and recorded the honest
 // consequence that authoring the slots from C#/VB is a follow-up nothing would
 // fail without. This file is that follow-up.
+//
+// SPEC-CONSTRUCTION-TRIPWIRE — the `new FsGen.<X>(…)` calls below are positional on
+// purpose. An additive slot on one of these records lands here as CS7036, at the one
+// site that decides whether the veneer exposes it or passes the F# default; that is
+// the mechanism, not churn. See src/Fuaran.UI.Tests/SpecConstructionTests.fs
+// ("The C# authoring veneer").
 
 /// <summary>
 /// A declared INITIAL sort order (Phase 801 for a static table, Phase 861 for a

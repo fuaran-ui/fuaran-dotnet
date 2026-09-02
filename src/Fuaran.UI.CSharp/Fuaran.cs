@@ -16,6 +16,14 @@ namespace Fuaran.UI.CSharp;
 //
 //  This file carries the foundation set (Phase 304). Phase 305 completes the
 //  ~40-shape vocabulary under Factories/ by extending this same partial class.
+//
+//  SPEC-CONSTRUCTION-TRIPWIRE — the `new FsGen.<X>(…)` calls below are positional
+//  on purpose. C# has no copy-and-update over an F# record, so an additive spec
+//  slot lands here as CS7036, at the one site that has to decide whether the
+//  veneer exposes the new slot or passes the F# default explicitly. That is the
+//  mechanism, not churn to be routed around. Pinned in both directions, this
+//  marker included, by src/Fuaran.UI.Tests/SpecConstructionTests.fs
+//  ("The C# authoring veneer").
 // ============================================================================
 
 /// <summary>The C# authoring entry points for Fuaran UI trees.</summary>

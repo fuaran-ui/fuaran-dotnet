@@ -11,6 +11,11 @@ namespace Fuaran.UI.CSharp;
 // ARIA. Handler slots (onSelect / onToggle / onDismiss) are opaque to the wire, so
 // they default to no-ops here — author intent survives via the tree shape + bound
 // state (activeIndex / open), which do ride the wire.
+//
+// SPEC-CONSTRUCTION-TRIPWIRE — the `new FsGen.<X>(…)` calls below are positional on
+// purpose. An additive spec slot lands here as CS7036, at the one site that decides
+// whether the veneer exposes it or passes the F# default; that is the mechanism, not
+// churn. See src/Fuaran.UI.Tests/SpecConstructionTests.fs ("The C# authoring veneer").
 public static partial class Fuaran
 {
     private static FsAction NoAction { get; } = FsAction.NewChain(Fs.Empty<FsAction>());

@@ -9,6 +9,11 @@ namespace Fuaran.UI.CSharp;
 // Phase 305 — the structural NodeKind cases: the bounded-escape Custom hatch, the
 // ErrorBoundary graceful-degradation wrapper, and the reusable-subtree Fragment
 // decl/ref pair.
+//
+// SPEC-CONSTRUCTION-TRIPWIRE — the `new FsGen.<X>(…)` calls below are positional on
+// purpose. An additive spec slot lands here as CS7036, at the one site that decides
+// whether the veneer exposes it or passes the F# default; that is the mechanism, not
+// churn. See src/Fuaran.UI.Tests/SpecConstructionTests.fs ("The C# authoring veneer").
 public static partial class Fuaran
 {
     /// <summary>The bounded-escape hatch — a host-registered component addressed by module + component id.</summary>

@@ -38,6 +38,28 @@ module Fuaran.UI.Tests.SpecConstructionTests
 //     The same error is a defect at an authoring site and a safety net at a
 //     reconstruction site; this lint is the line between them.
 //
+//   * The C# AUTHORING VENEER is a THIRD category, and the rule above cannot
+//     reach it. `src/Fuaran.UI.CSharp/` builds every spec through the generated
+//     POSITIONAL constructor, because C# has no copy-and-update over an F#
+//     record: there is no `<Clone>$` and so no `with` expression, the records
+//     are not `[<CLIMutable>]` and so no object initializer, and `Defaults` is
+//     a value with no per-field setter to copy from. The churn is therefore not
+//     removable there — and it should not be. There is exactly ONE site per
+//     spec, translating `<X>Options` into `<X>Spec`, and a new slot HAS to be
+//     decided about at it: exposed on the options record, or passed as the F#
+//     default explicitly (`LinkSpec`'s `LinkProtection` is the worked example).
+//     CS7036 at that site is what forces the decision, naming the file and the
+//     line, for the VB tier as well — VB constructs no spec of its own and
+//     authors everything through this veneer. It is the same reasoning that
+//     leaves the decoder ungoverned: the compile error is a defect at an
+//     authoring site and a MECHANISM at a translation site.
+//
+//     So the veneer is governed by a different rule, checked at the foot of
+//     this module: the tripwire must stay a tripwire. Every generated-type
+//     construction there is positional, the form that would absorb an added
+//     field in silence is not writable, and every file where the CS7036 will
+//     land says why it is there.
+//
 //  THE ESCAPE IS A MARKER, NOT A MUTE-LIST. A literal whose full-ness is the
 //  assertion — a test that exists to catch field additions — carries
 //
@@ -396,6 +418,178 @@ let private scanRepo () : Finding list =
     constructionSites
     |> List.collect (fun path -> scan (Path.GetRelativePath(repoRoot, path).Replace('\\', '/')) (File.ReadAllText path))
 
+// ─── The C# authoring veneer — keeping the tripwire a tripwire ─────────────
+//
+// Everything above governs F# authoring sites, where the churn is removable and
+// removing it is the point. The veneer is the other case (see the third bullet
+// of the header): there the churn IS the mechanism, so what is checked here is
+// that the mechanism still works.
+
+let private veneerRoot = Path.Combine(repoRoot, "src", "Fuaran.UI.CSharp")
+
+/// Same-length view of C# source: comments become spaces (newlines kept) and
+/// string / char-literal content becomes `Fill`. Written separately from the F#
+/// view rather than generalised, because the two languages disagree about the
+/// sequences that matter: `(*` opens a comment in F# and dereferences in C#,
+/// `/* */` is a comment in C# and nothing in F#. A view wrong about either
+/// mis-reads the file it was pointed at and never says so. Known limit: the
+/// holes of an interpolated string are blanked with the string, so a
+/// construction written inside one is invisible here.
+let private csharpAnalysisView (text: string) : string =
+    let sb = Text.StringBuilder(text.Length)
+    let n = text.Length
+
+    let blank (a: int) (b: int) (filler: char) =
+        for k in a .. b - 1 do
+            sb.Append(if text[k] = '\n' then '\n' else filler) |> ignore
+
+    let mutable i = 0
+
+    while i < n do
+        let two = if i + 2 <= n then text.Substring(i, 2) else ""
+        let three = if i + 3 <= n then text.Substring(i, 3) else ""
+
+        if three = "\"\"\"" then
+            // C# 11 raw string literal.
+            let close = text.IndexOf("\"\"\"", i + 3)
+            let j = if close < 0 then n else close + 3
+            blank i j Fill
+            i <- j
+        elif two = "@\"" then
+            let mutable j = i + 2
+            let mutable go = true
+
+            while go && j < n do
+                if text[j] = '"' then
+                    if j + 1 < n && text[j + 1] = '"' then
+                        j <- j + 2
+                    else
+                        j <- j + 1
+                        go <- false
+                else
+                    j <- j + 1
+
+            blank i j Fill
+            i <- j
+        elif text[i] = '"' then
+            let mutable j = i + 1
+            let mutable go = true
+
+            while go && j < n do
+                if text[j] = '\\' then
+                    j <- j + 2
+                elif text[j] = '"' then
+                    j <- j + 1
+                    go <- false
+                elif text[j] = '\n' then
+                    go <- false
+                else
+                    j <- j + 1
+
+            blank i (min j n) Fill
+            i <- min j n
+        elif two = "//" then
+            let nl = text.IndexOf('\n', i)
+            let j = if nl < 0 then n else nl
+            blank i j ' '
+            i <- j
+        elif two = "/*" then
+            let close = text.IndexOf("*/", i + 2)
+            let j = if close < 0 then n else close + 2
+            blank i j ' '
+            i <- j
+        else
+            let charLit = Regex.Match(text.Substring(i, min 4 (n - i)), @"^'(?:[^'\\\n]|\\.)'")
+
+            if charLit.Success then
+                blank i (i + charLit.Length) Fill
+                i <- i + charLit.Length
+            else
+                sb.Append(text[i]) |> ignore
+                i <- i + 1
+
+    sb.ToString()
+
+/// The veneer's own sources — discovered, not listed, so a file added tomorrow
+/// is covered on the day it is added.
+let private veneerSources: string list =
+    if not (Directory.Exists veneerRoot) then
+        // Same reasoning as the repo-root climb: a check that reads nothing
+        // reports a clean repo, which is the one answer it must never give by
+        // accident.
+        failwith
+            "SpecConstruction: src/Fuaran.UI.CSharp was not found — the veneer could not be read, so the tripwire checks have proved nothing."
+
+    Directory.EnumerateFiles(veneerRoot, "*.cs", SearchOption.AllDirectories)
+    |> Seq.filter (fun p ->
+        let q = p.Replace('\\', '/')
+        not (q.Contains "/obj/" || q.Contains "/bin/"))
+    |> Seq.sort
+    |> List.ofSeq
+
+/// `using <alias> = Fuaran.UI.Generated;`. Every reference to a generated type
+/// in this project goes through such an alias, so the alias — read per file,
+/// because a `using` is file-scoped — is what identifies a construction as one
+/// of the generated records rather than a same-named type of the veneer's own.
+let private generatedAliasRe =
+    Regex(@"using[ \t]+(?<alias>[A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*(?:global::)?Fuaran\.UI\.Generated[ \t]*;")
+
+let private newExprRe =
+    Regex(
+        @"new[ \t\r\n]+(?:global::)?(?<qual>[A-Za-z_][A-Za-z0-9_]*)\.(?<ty>[A-Za-z_][A-Za-z0-9_]*)(?:<[^<>()]*>)?[ \t\r\n]*(?<form>[({])"
+    )
+
+type VeneerSite =
+    {
+        File: string
+        Line: int
+        Type: string
+        /// `(` — the generated positional constructor, which is the tripwire.
+        /// `{` — an object initializer, which is the form that would absorb an
+        /// added field in silence.
+        Form: char
+    }
+
+let private scanVeneer (label: string) (source: string) : VeneerSite list =
+    let view = csharpAnalysisView source
+
+    let aliases =
+        generatedAliasRe.Matches view
+        |> Seq.map (fun m -> m.Groups["alias"].Value)
+        |> Set.ofSeq
+
+    [ for m in newExprRe.Matches view do
+          let qual = m.Groups["qual"].Value
+          // `Generated` covers the fully-qualified spelling, whose last two
+          // segments the pattern captures as `Generated.<Type>`.
+          if aliases.Contains qual || qual = "Generated" then
+              yield
+                  { File = label
+                    Line = 1 + (view.Substring(0, m.Index) |> Seq.filter ((=) '\n') |> Seq.length)
+                    Type = m.Groups["ty"].Value
+                    Form = m.Groups["form"].Value[0] } ]
+
+/// The per-file declaration that the positional form below is deliberate. File
+/// granularity rather than per-site, because in C# the posture is uniform for a
+/// whole file and the compiler error names the file — but it is still checked
+/// in both directions below, so a marker cannot outlive its subject.
+let private tripwireMarkerRe = Regex(@"//\s*SPEC-CONSTRUCTION-TRIPWIRE\b")
+
+let private veneerScan: (string * string * VeneerSite list) list =
+    veneerSources
+    |> List.map (fun path ->
+        let source = File.ReadAllText path
+        let label = Path.GetRelativePath(repoRoot, path).Replace('\\', '/')
+        label, source, scanVeneer label source)
+
+/// `Generated.fs` read through the F# view, so an occurrence in a comment is
+/// not mistaken for the attribute itself.
+let private generatedView: string =
+    analysisView (File.ReadAllText(Path.Combine(repoRoot, "src", "Fuaran.UI", "Generated.fs")))
+
+let private syntheticVeneer (body: string) : string =
+    sprintf "using FsGen = Fuaran.UI.Generated;\n\nnamespace X;\n\npublic static class Y\n{\n%s\n}\n" body
+
 // ─── Synthetic sources for the go-red proof ────────────────────────────────
 
 // The probes below are BUILT from the governed field set rather than typed out.
@@ -538,4 +732,129 @@ let tests =
                   (sprintf
                       "full spec-record literals at authoring sites — each one breaks (FS0764) the next time the record gains a field, which is what makes wire-additive growth source-breaking. Rewrite as `{ Defaults.x with … }`, naming only what differs. If the full-ness IS the assertion, say so with a `// FULL-LITERAL(<Spec>): <reason>` comment line above the literal.\n%s"
                       report)
+          }
+
+          // ── The C# authoring veneer ──────────────────────────────────────
+          // Not the rule above, and deliberately so — see the header's third
+          // bullet. What follows checks that the veneer's compile-time tripwire
+          // is still a tripwire, which is a different claim from the one the
+          // rest of this module makes and needs its own evidence.
+
+          // Same vacuity guard as the F# side: a veneer scanner that has
+          // stopped matching passes every assertion below without reading a
+          // thing.
+          test "the veneer's generated-type constructions are discovered, and not empty" {
+              let sites = veneerScan |> List.collect (fun (_, _, s) -> s)
+
+              Expect.isGreaterThan
+                  sites.Length
+                  30
+                  "far fewer generated-type constructions in the C# veneer than it has node kinds — the veneer scanner has stopped matching, and every assertion about the veneer is now vacuous"
+
+              Expect.isTrue
+                  (sites |> List.exists (fun s -> s.Type = "ImageSpec"))
+                  "no ImageSpec construction found in the veneer — it is the record whose additive growth broke that site in the first place, so its absence means the scan is wrong rather than that the site is gone"
+          }
+
+          // The tripwire itself: the positional constructor is what CS7036
+          // fires on. An object initializer would compile straight through an
+          // added field and leave it at its CLR zero.
+          test "every veneer construction of a generated type is positional" {
+              let tolerant =
+                  veneerScan
+                  |> List.collect (fun (_, _, s) -> s)
+                  |> List.filter (fun s -> s.Form <> '(')
+
+              let report =
+                  tolerant
+                  |> List.map (fun s -> sprintf "  %s:%d — %s built with an object initializer" s.File s.Line s.Type)
+                  |> String.concat "\n"
+
+              Expect.isEmpty
+                  tolerant
+                  (sprintf
+                      "a generated record is built in the veneer with an object initializer rather than the positional constructor. That form absorbs an added field in silence — the slot arrives at its CLR zero in every C#- and VB-authored tree, with no error anywhere — which is exactly the tripwire this veneer relies on. Build it positionally.\n%s"
+                      report)
+          }
+
+          // The structural premise of the check above, and the stronger of the
+          // two: an object initializer over an F# record needs settable
+          // properties, which only `[<CLIMutable>]` provides. While the
+          // generated records do not carry it, the tolerant form is not merely
+          // absent from the veneer — it cannot be written there at all.
+          test "the generated records are not [<CLIMutable>] — the tripwire's structural premise" {
+              Expect.isFalse
+                  (generatedView.Contains "CLIMutable")
+                  "Generated.fs now emits [<CLIMutable>]. That gives the generated records a parameterless constructor and settable properties, so the C# veneer can build a spec with an object initializer — and an object initializer accepts an added field silently, at its CLR zero. If the IDL generator needs the attribute for a serializer, the veneer's construction discipline has to be re-established some other way before it lands; do not simply delete this assertion."
+          }
+
+          // The marker is checked in both directions. A file that constructs a
+          // generated record and does not say why the form is deliberate leaves
+          // the next reader of the CS7036 to re-derive it; a marker left behind
+          // in a file that no longer constructs one is a claim about nothing.
+          test "every veneer file that constructs a generated type declares the tripwire, and none declares it idly" {
+              let undeclared =
+                  veneerScan
+                  |> List.filter (fun (_, source, sites) -> not sites.IsEmpty && not (tripwireMarkerRe.IsMatch source))
+                  |> List.map (fun (label, _, sites) -> sprintf "  %s (%d constructions)" label sites.Length)
+
+              Expect.isEmpty
+                  undeclared
+                  (sprintf
+                      "a C# veneer file builds a generated record and does not declare the tripwire. The positional form is the mechanism that forces an added spec slot to be decided about here, and the next reader meets it as a bare CS7036 — say so, with a `// SPEC-CONSTRUCTION-TRIPWIRE` comment block at the head of the file.\n%s"
+                      (String.concat "\n" undeclared))
+
+              let stale =
+                  veneerScan
+                  |> List.filter (fun (_, source, sites) -> sites.IsEmpty && tripwireMarkerRe.IsMatch source)
+                  |> List.map (fun (label, _, _) -> sprintf "  %s" label)
+
+              Expect.isEmpty
+                  stale
+                  (sprintf
+                      "a C# veneer file declares the SPEC-CONSTRUCTION-TRIPWIRE and no longer constructs a generated record — delete the marker rather than carrying a claim about nothing.\n%s"
+                      (String.concat "\n" stale))
+          }
+
+          // The go-red proof for the veneer scanner. The C#-specific parts are
+          // the ones worth proving: the block comment and the alias resolution
+          // have no counterpart in the F# scanner above, so nothing else in
+          // this module would notice if either stopped working.
+          test "the veneer scanner reports the forms it must, and ignores what it must" {
+              let sitesOf body =
+                  scanVeneer "synthetic.cs" (syntheticVeneer body)
+
+              Expect.equal
+                  (sitesOf "    public static object A() => new FsGen.ImageSpec(1, 2);"
+                   |> List.map (fun s -> s.Type, s.Form))
+                  [ "ImageSpec", '(' ]
+                  "a positional construction through the generated alias must be seen, and seen as positional"
+
+              Expect.equal
+                  (sitesOf "    public static object A() => new FsGen.FormSpec<object>(1, 2);"
+                   |> List.map (fun s -> s.Type))
+                  [ "FormSpec" ]
+                  "a construction of a GENERIC generated record must be seen — most of the veneer's specs are generic in 'Msg"
+
+              Expect.equal
+                  (sitesOf "    public static object A() => new FsGen.ImageSpec { Alt = 1 };"
+                   |> List.map (fun s -> s.Form))
+                  [ '{' ]
+                  "an object-initializer construction must be reported AS an object initializer — reading it as positional is the failure that would let the tolerant form in"
+
+              Expect.isEmpty
+                  (sitesOf "    public static object A() => new Local.ImageSpec(1, 2);")
+                  "a construction through a qualifier that is not the generated alias must not be reported — otherwise the alias resolution is not doing any work and the scan is really matching on the type NAME"
+
+              Expect.isEmpty
+                  (sitesOf "    // new FsGen.ImageSpec(1, 2);")
+                  "a construction inside a line comment must not be reported"
+
+              Expect.isEmpty
+                  (sitesOf "    /* new FsGen.ImageSpec(1, 2); */")
+                  "a construction inside a BLOCK comment must not be reported — C# has them and F# does not, so this is the case the F# view would have got wrong"
+
+              Expect.isEmpty
+                  (sitesOf "    public static string A() => \"new FsGen.ImageSpec(1, 2);\";")
+                  "a construction inside a string literal must not be reported"
           } ]

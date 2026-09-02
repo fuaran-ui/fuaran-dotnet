@@ -9,6 +9,15 @@ namespace Fuaran.UI.CSharp;
 // Phase 305 — the remaining Display kinds (Heading / Markdown / Metric ship in the
 // foundation). Badge / Sparkline / Spacer have no F# smart constructor, so they
 // build bare (their ARIA default is `none`, so bare == smart-ctor output == corpus).
+//
+// SPEC-CONSTRUCTION-TRIPWIRE — the `new FsGen.<X>(…)` calls below are positional on
+// purpose, and must stay so. C# has no copy-and-update over an F# record, so an
+// additive spec slot lands here as CS7036 — at the one site that has to decide
+// whether the veneer exposes the new slot or passes the F# default explicitly (see
+// Link's LinkProtection). That is the mechanism, not churn to be routed around; the
+// VB tier authors through this veneer, so it is the tripwire for both languages.
+// Pinned in both directions, this marker included, by
+// src/Fuaran.UI.Tests/SpecConstructionTests.fs ("The C# authoring veneer").
 public static partial class Fuaran
 {
     /// <summary>A coloured badge / pill. (Built bare — no F# smart ctor; ARIA default is none.)</summary>

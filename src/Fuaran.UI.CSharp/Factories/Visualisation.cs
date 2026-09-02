@@ -16,6 +16,11 @@ namespace Fuaran.UI.CSharp;
 // fuaran#665: its REQUIRED `ToRow` projects each row to the wire-expressible
 // name→value map, and column accessors read that projected row by name (the
 // same shape the F# facade takes — `'row` survives only at the source seam).
+//
+// SPEC-CONSTRUCTION-TRIPWIRE — the `new FsGen.<X>(…)` calls below are positional on
+// purpose. An additive spec slot lands here as CS7036, at the one site that decides
+// whether the veneer exposes it or passes the F# default; that is the mechanism, not
+// churn. See src/Fuaran.UI.Tests/SpecConstructionTests.fs ("The C# authoring veneer").
 public static partial class Fuaran
 {
     /// <summary>A chart. <c>Source</c> binds a typed row sequence (name→value maps);
