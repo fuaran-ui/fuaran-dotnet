@@ -31,12 +31,12 @@ using static Fuaran.UI.CSharp.Fuaran;
 //  does nothing. Full Fable is the one tier where it survives, because there
 //  the tree is never serialised. See docs/EMBEDDED-RENDERER.md §2.
 //
-//  Nor is it a `Notify` — the C# authoring veneer does not yet expose the
-//  `Action` vocabulary at all (its `Button.OnClick` is hardwired to an empty
-//  chain), so a host round trip is not authorable from C# today. The sample
-//  says so rather than reaching past the veneer into the F# tier to fake it:
-//  a sample that demonstrates a surface its own language does not have is
-//  worse than one that is honest about the boundary. See the README.
+//  The button below is the OTHER kind: a `Notify`, which DOES cross the wire.
+//  The renderer POSTs it to the `NotifyEndpoint` this page declares, so the
+//  click reaches C# host code — a real round trip, authored in C#, with no
+//  closure anywhere. (Phase 1153 gave the veneer its `Action` vocabulary; until
+//  then this sample said plainly that it could not express one rather than
+//  reaching past the veneer into the F# tier to fake it.)
 // ============================================================================
 
 var builder = WebApplication.CreateBuilder(args);
@@ -82,6 +82,19 @@ static FuaranNode BuildTree() =>
                     }),
                 ],
             }),
+            Button(new()
+            {
+                Id = "ping",
+                Label = "Ping the host",
+                Variant = ButtonVariant.Primary,
+                // A `Notify` is wire-representable in full — channel and payload
+                // both survive serialisation — so this button reaches C# host code
+                // through the endpoint declared in the mount options below. No
+                // closure is involved, which is exactly why it survives.
+                OnClick = FuaranAction.Notify(
+                    "sample.ping",
+                    Payload.Object(("from", "embedded-renderer-csharp"))),
+            }),
         ],
     });
 
@@ -104,7 +117,9 @@ app.MapGet("/", (IWebHostEnvironment env) =>
     var options = new Snippet.MountOptions(
         "fuaran-root",
         "/_fuaran",
-        FSharpOption<string>.None, // no Notify endpoint — see the note above
+        // Where a `Notify` is POSTed as {"channel": …, "payload": …}. Stated
+        // rather than defaulted: a read-only page leaves it None on purpose.
+        FSharpOption<string>.Some("/notify"),
         FSharpOption<string>.None, // no CSP nonce in the sample
         // Development only: warns when the embedded bundle and the authoring
         // packages this app restored have parted company.
@@ -128,6 +143,16 @@ app.MapGet("/", (IWebHostEnvironment env) =>
         """;
 
     return Results.Content(html, "text/html; charset=utf-8");
+});
+
+// The host end of the round trip. The mount snippet POSTs every `Notify` here as
+// {"channel": …, "payload": …}; this sample logs it, which is enough to see the
+// click arrive in C#. A real host would dispatch on the channel.
+app.MapPost("/notify", async (HttpRequest request, ILogger<Program> log) =>
+{
+    using var reader = new StreamReader(request.Body);
+    log.LogInformation("Fuaran notify: {Body}", await reader.ReadToEndAsync());
+    return Results.NoContent();
 });
 
 app.Run();
