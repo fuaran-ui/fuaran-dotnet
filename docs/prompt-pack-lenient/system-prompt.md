@@ -280,7 +280,7 @@ DisplayKind =
 | Fact { label:TextSource; value:TextSource; emphasis?:bool; help?:TextSource; icon?:str; tone?:ToneVariant }
 | Link { download:bool; href:Binding_str; label:TextSource; protection?:"email"; rel?:str; target?:str }
 | Image { alt:TextSource; src:Binding_str; variant:"Default"|"Avatar"|"Rounded"; aspectRatio?:"Natural"|"Square"|"FourThree"|"ThreeTwo"|"SixteenNine"; caption?:TextSource; expandable?:bool; fit?:"Natural"|"Cover"|"Contain"; loading?:"Eager"|"Lazy"; srcSet?:SrcSetEntry[] }
-| Media { kind:MediaKind; label:TextSource; src:Binding_str; controls?:bool; loop?:bool }
+| Media { kind:MediaKind; label:TextSource; src:Binding_str; controls?:bool; loop?:bool; tracks?:TrackEntry[]; transcript?:TextSource }
 | List { items:TextSource[]; ordered:bool }
 | Toast { message:TextSource; open:Binding_bool; dismissable?:bool; tone?:ToneVariant }
 | CodeBlock { code:str; copyable:bool; highlightLines:int[]; language:str; lineNumbers:bool }
@@ -574,6 +574,7 @@ SemanticStyle { emphasis?:Emphasis; role?:"None"|"Eyebrow"|"Data"|"Lede"|"Captio
 SrcSetEntry { src:Binding_str; width:int }
 StateBehaviour { onEmpty?:Node; onLoading?:Node }
 TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }
+TrackEntry { kind:"Subtitles"|"Captions"|"Descriptions"|"Chapters"; label:TextSource; src:Binding_str; srcLang:str; default?:bool }
 ViewBox { height:any; minX:any; minY:any; width:any }
 DateVariant = "Date"|"Time"|"DateTime"
 DurationStyle = "Compact"|"Clock"|"Long"
