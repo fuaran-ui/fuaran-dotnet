@@ -4135,6 +4135,77 @@ let private decodeImageSpec (path: string) (j: Json) : Result<ImageSpec, DecodeE
         | _, _, _, _, _, _, _, Error e, _
         | _, _, _, _, _, _, _, _, Error e -> Error e
 
+/// Phase 1110 — a `Media` timed-text track's kind. A BARE enum (§6): a plain
+/// JSON string in a named field with no `$type` member, so an unrecognised case
+/// reports at the field's own path with no suffix — the `ImageFit` position, not
+/// the `MediaKind` one.
+///
+/// The set is closed at four. `"metadata"` is refused exactly as a name nobody
+/// has proposed would be: its cues are rendered by no user agent, so admitting
+/// it would let the wire state an intent no host can honour.
+let private decodeTrackKind (path: string) (j: Json) : Result<TrackKind, DecodeError> =
+    match j with
+    | JString "Subtitles" -> Ok TrackKind.Subtitles
+    | JString "Captions" -> Ok TrackKind.Captions
+    | JString "Descriptions" -> Ok TrackKind.Descriptions
+    | JString "Chapters" -> Ok TrackKind.Chapters
+    | JString s -> unknownEnumCase path s "Subtitles | Captions | Descriptions | Chapters"
+    | _ -> wrongType path "JSON string (TrackKind)"
+
+/// Phase 1110 — one timed-text track. Four of its five slots are REQUIRED, which
+/// makes this the strictest record on the wire, and the strictness is the point:
+/// every one of them is a value a user agent needs before it can offer the track
+/// at all.
+///
+/// `srcLang` in particular is required for EVERY kind, where HTML makes
+/// `srclang` mandatory only on subtitles. A missing one is a `MISSING_FIELD`
+/// here rather than a silently unlabelled menu entry downstream — the language
+/// is what orders the menu, drives pronunciation, and lets a reader tell two
+/// caption tracks apart.
+///
+/// `default` is the ordinary omit-at-false bool and a present non-boolean is a
+/// `WRONG_TYPE` rather than a truthiness coercion — the `Image.expandable` and
+/// `MediaKind.Video.autoplay` ruling, and it matters for the same reason: two
+/// hosts disagreeing about which track opens is a difference a reader sees.
+let private decodeTrackEntry (path: string) (j: Json) : Result<TrackEntry, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let defaultR =
+            match tryField fields "default" with
+            | None -> Ok false
+            | Some v -> requireBool (path + ".default") v
+
+        let kindR =
+            requireField path fields "kind" "TrackKind (Subtitles | Captions | Descriptions | Chapters)"
+            |> Result.bind (decodeTrackKind (path + ".kind"))
+
+        let labelR =
+            requireField path fields "label" "track menu label TextSource"
+            |> Result.bind (decodeTextSource (path + ".label"))
+
+        let srcR =
+            requireField path fields "src" "track Binding<string> src"
+            |> Result.bind (decodeBindingString (path + ".src"))
+
+        let srcLangR =
+            requireField path fields "srcLang" "BCP 47 language tag of the track"
+            |> Result.bind (requireString (path + ".srcLang"))
+
+        match defaultR, kindR, labelR, srcR, srcLangR with
+        | Ok dflt, Ok kind, Ok label, Ok src, Ok srcLang ->
+            Ok
+                { Default = dflt
+                  Kind = kind
+                  Label = label
+                  Src = src
+                  SrcLang = srcLang }
+        | Error e, _, _, _, _
+        | _, Error e, _, _, _
+        | _, _, Error e, _, _
+        | _, _, _, Error e, _
+        | _, _, _, _, Error e -> Error e
+
 /// Phase 1076 — which media surface this is. A `$type`-DISCRIMINATED union, so
 /// an unknown case reports at `<path>.$type` (the `Binding` / `TextSource`
 /// position), not at the bare slot — the Phase 1073 distinction.
@@ -4209,19 +4280,46 @@ let private decodeMediaSpec (path: string) (j: Json) : Result<MediaSpec, DecodeE
             requireField path fields "src" "media Binding<string> Src"
             |> Result.bind (decodeBindingString (path + ".src"))
 
-        match controlsR, kindR, labelR, loopR, srcR with
-        | Ok controls, Ok kind, Ok label, Ok loop, Ok src ->
+        // Phase 1110 — the missing-list-field decode class, the `Image.srcSet`
+        // rule verbatim: an ABSENT `tracks` is the EMPTY LIST, never a null and
+        // never an undefined, because an absent list and an empty one denote the
+        // same document. A present non-array is a `WRONG_TYPE` at the slot.
+        let tracksR =
+            match tryField fields "tracks" with
+            | None -> Ok []
+            | Some v ->
+                match requireArray (path + ".tracks") v with
+                | Error e -> Error e
+                | Ok items ->
+                    items
+                    |> traverseIndexed (fun i el -> decodeTrackEntry (sprintf "%s.tracks[%d]" path i) el)
+
+        // `transcript` is an ordinary optional, NOT an omit-at-default: it is
+        // content, so an absent transcript (the document offers none) and an
+        // empty one (the document offers an empty transcript) are different
+        // statements, and only an optional can tell them apart.
+        let transcriptR =
+            match tryField fields "transcript" with
+            | None -> Ok None
+            | Some v -> decodeTextSource (path + ".transcript") v |> Result.map Some
+
+        match controlsR, kindR, labelR, loopR, srcR, tracksR, transcriptR with
+        | Ok controls, Ok kind, Ok label, Ok loop, Ok src, Ok tracks, Ok transcript ->
             Ok
                 { Controls = controls
                   Kind = kind
                   Label = label
                   Loop = loop
-                  Src = src }
-        | Error e, _, _, _, _
-        | _, Error e, _, _, _
-        | _, _, Error e, _, _
-        | _, _, _, Error e, _
-        | _, _, _, _, Error e -> Error e
+                  Src = src
+                  Tracks = tracks
+                  Transcript = transcript }
+        | Error e, _, _, _, _, _, _
+        | _, Error e, _, _, _, _, _
+        | _, _, Error e, _, _, _, _
+        | _, _, _, Error e, _, _, _
+        | _, _, _, _, Error e, _, _
+        | _, _, _, _, _, Error e, _
+        | _, _, _, _, _, _, Error e -> Error e
 
 let private decodeListSpec (path: string) (j: Json) : Result<ListSpec, DecodeError> =
     match requireObject path j with

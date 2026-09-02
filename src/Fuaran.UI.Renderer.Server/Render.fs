@@ -1240,6 +1240,99 @@ and private renderKind
         let safeSrc, egressAttrs =
             Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolvedSrc
 
+        // Phase 1110 - the timed-text tracks. Three obligations live in this one
+        // fold, and each of them is something the bytes cannot carry:
+        //
+        //   * AUTHORED ORDER. The list is emitted exactly as the wire carries
+        //     it. This is the OPPOSITE of `srcSet`, which the renderers sort
+        //     ascending by width, and the difference is not an inconsistency: a
+        //     browser picks ONE candidate from a srcset by an algorithm, while a
+        //     reader picks a track from a menu the user agent builds in document
+        //     order. Sorting the first is canonicalisation; sorting the second
+        //     would be reordering someone else's menu.
+        //   * ONE DEFAULT PER KIND, FIRST WINS. A document electing two default
+        //     captions tracks is legal bytes - the decoder does not refuse it,
+        //     because a lenient host would render it anyway - and HTML leaves
+        //     two defaults of one kind undefined. So the host decides, and every
+        //     host decides the same way: the first election of a kind is
+        //     honoured and a later one emits WITHOUT the attribute. The track is
+        //     still emitted; only its claim on the menu is dropped.
+        //   * A REFUSED SOURCE DROPS THE TRACK. The poster rule rather than the
+        //     source rule: an element must have a source, but it need not have
+        //     this track, and a `<track>` pointing at the refusal URL is a menu
+        //     entry that opens onto nothing.
+        let trackKindToken (k: TrackKind) =
+            match k with
+            | TrackKind.Subtitles -> "subtitles"
+            | TrackKind.Captions -> "captions"
+            | TrackKind.Descriptions -> "descriptions"
+            | TrackKind.Chapters -> "chapters"
+
+        let trackEls =
+            spec.Tracks
+            |> List.fold
+                (fun (claimed: Set<string>, acc) (t: TrackEntry) ->
+                    let resolved =
+                        BindingResolver.tryResolve ctx.Sources t.Src |> Option.defaultValue ""
+
+                    let safe, refusal =
+                        Sanitize.sanitizeUrlForEgress ctx.EgressPolicy Sanitize.EgressClass.Media resolved
+
+                    if safe = "" || not (List.isEmpty refusal) then
+                        claimed, acc
+                    else
+                        let token = trackKindToken t.Kind
+                        let takesDefault = t.Default && not (Set.contains token claimed)
+
+                        let el =
+                            Html.track (
+                                [ prop.custom ("kind", token)
+                                  prop.src safe
+                                  prop.custom ("srclang", t.SrcLang)
+                                  prop.custom ("label", renderText ctx t.Label) ]
+                                @ (if takesDefault then [ prop.custom ("default", "") ] else [])
+                            )
+
+                        (if takesDefault then Set.add token claimed else claimed), el :: acc)
+                (Set.empty, [])
+            |> snd
+            |> List.rev
+
+        let trackChildren =
+            if List.isEmpty trackEls then
+                []
+            else
+                [ prop.children trackEls ]
+
+        // Phase 1110 - the transcript, rendered BESIDE the transport rather than
+        // inside it. `<video>` and `<audio>` admit only source-ish children, so
+        // a transcript in there would be fallback content a browser never shows;
+        // the disclosure has to be a sibling, which is why a present transcript
+        // is the one case that wraps. Absent, the emission is the bare element
+        // it always was - the `Image` caption treatment, for the same reason.
+        //
+        // The `<details>` carries the MEDIA's resolved label as its accessible
+        // name, so a reader meeting the disclosure out of context is told which
+        // recording it transcribes. The summary text is renderer chrome (the
+        // `Toast` dismiss precedent); the transcript itself is the document's.
+        let withTranscript (el: ReactElement) =
+            match spec.Transcript with
+            | None -> el
+            | Some transcript ->
+                Html.div
+                    [ prop.className "fuaran-media-group"
+                      prop.children
+                          [ el
+                            Html.details
+                                [ prop.className "fuaran-media-transcript"
+                                  prop.custom ("aria-label", renderText ctx spec.Label)
+                                  prop.children
+                                      [ Html.summary
+                                            [ prop.className "fuaran-media-transcript-summary"; prop.text "Transcript" ]
+                                        Html.div
+                                            [ prop.className "fuaran-media-transcript-body"
+                                              prop.text (renderText ctx transcript) ] ] ] ] ]
+
         let sharedProps (variantClass: string) =
             [ prop.className ("fuaran-media " + variantClass)
               prop.src safeSrc
@@ -1273,14 +1366,25 @@ and private renderKind
                 else
                     []
 
-            Html.video (
-                sharedProps "fuaran-media-video"
-                @ posterProps
-                @ autoplayProps
-                @ toProps semanticAttrs
-                @ toProps egressAttrs
+            withTranscript (
+                Html.video (
+                    sharedProps "fuaran-media-video"
+                    @ posterProps
+                    @ autoplayProps
+                    @ toProps semanticAttrs
+                    @ toProps egressAttrs
+                    @ trackChildren
+                )
             )
-        | MediaKind.Audio -> Html.audio (sharedProps "fuaran-media-audio" @ toProps semanticAttrs @ toProps egressAttrs)
+        | MediaKind.Audio ->
+            withTranscript (
+                Html.audio (
+                    sharedProps "fuaran-media-audio"
+                    @ toProps semanticAttrs
+                    @ toProps egressAttrs
+                    @ trackChildren
+                )
+            )
     | NodeKind.List spec ->
         let items =
             spec.Items

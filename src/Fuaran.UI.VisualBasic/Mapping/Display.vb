@@ -109,7 +109,9 @@ Friend Module DisplayMapping
                     .Src = AsStringBinding(Attr(el, "src")),
                     .Label = AsText(Attr(el, "label")),
                     .Controls = AttrBool(el, "controls", True),
-                    .Loop = AttrBool(el, "loop")}),
+                    .Loop = AttrBool(el, "loop"),
+                    .Transcript = OptText(el, "transcript"),
+                    .Tracks = MediaTracks(el)}),
             Csharp.Fuaran.Video(
                 New Csharp.VideoOptions With {
                     .Id = Attr(el, "id"),
@@ -118,7 +120,9 @@ Friend Module DisplayMapping
                     .Controls = AttrBool(el, "controls", True),
                     .Loop = AttrBool(el, "loop"),
                     .Autoplay = AttrBool(el, "autoplay"),
-                    .Poster = If(HasAttr(el, "poster"), AsStringBinding(Attr(el, "poster")), Nothing)}))
+                    .Poster = If(HasAttr(el, "poster"), AsStringBinding(Attr(el, "poster")), Nothing),
+                    .Transcript = OptText(el, "transcript"),
+                    .Tracks = MediaTracks(el)}))
 
         d("List") = Function(el) Csharp.Fuaran.List(
             New Csharp.ListOptions With {.Id = Attr(el, "id"), .Items = ChildTexts(el, "Item"), .Ordered = AttrBool(el, "ordered")})
@@ -164,5 +168,25 @@ Friend Module DisplayMapping
                 .Title = OptText(el, "title"),
                 .Description = OptText(el, "description")})
     End Sub
+
+    ''' <summary>Phase 1110 — the &lt;Track&gt; children of a &lt;Media&gt;, in AUTHORED
+    ''' order. Unlike an &lt;Image&gt;'s &lt;Source&gt; children, whose order the renderers
+    ''' normalise, the order written here is the order a reader sees in the user
+    ''' agent's track menu, so the translator preserves it exactly.
+    '''
+    ''' &lt;c&gt;srclang&lt;/c&gt; is spelled all-lowercase, matching the HTML attribute rather
+    ''' than the wire's camelCase &lt;c&gt;srcLang&lt;/c&gt;: this dialect is authored by people
+    ''' who know the element, and the analyzer's attribute table carries the same
+    ''' spelling.&lt;/summary&gt;
+    Private Function MediaTracks(el As XElement) As IReadOnlyList(Of Csharp.TrackEntry)
+        Return ChildElements(el, "Track").
+            Select(Function(c) New Csharp.TrackEntry(
+                AsEnum(Of Csharp.TrackKind)(Attr(c, "kind"), Csharp.TrackKind.Captions),
+                AsStringBinding(Attr(c, "src")),
+                Attr(c, "srclang"),
+                AsText(Attr(c, "label")),
+                AttrBool(c, "default"))).
+            ToList()
+    End Function
 
 End Module
