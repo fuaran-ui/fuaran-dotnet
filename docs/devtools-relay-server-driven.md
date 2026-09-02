@@ -2,6 +2,14 @@
 
 _Phase 741 re-scope. Written against the substrate as shipped 2026-07-29._
 
+> **Update 2026-09-02 — B1 is closed, and it did not land here.** The bounded tier now has a channel
+> connection, so the "there is no page to run against" verdict below no longer holds. Read the
+> [B1 closed](#b1-closed--where-it-landed-and-why-not-here) section at the foot before acting on the
+> blocker table: the row's *destination repo* was wrong, for a reason that also constrains B2.
+> Everything else in this note stands as written — B2 and B3 are open, and the two architectural
+> findings (a server-driven page holds no tree; relay `apply` is coherent on the bounded driver only)
+> were findings about the tier, not about missing work.
+
 The [DevTools relay contract](../../wire-format-fixtures/DEVTOOLS_RELAY.md) (`relay@1.0`) lets a
 browser extension read and edit a Fuaran page in place. It was specified (Phase 734) and implemented
 (Phase 735, TS renderer; Phase 739, the Fable leg) against the **client tiers**, where the typed tree
@@ -231,6 +239,66 @@ The blocking order is B1 → (B2, B3) → the phase:
 Only once those land does Phase 741's own work — a page peer in the shim, an inbound op kind, the
 `RelayApplyGate` call at the bounded connection, and the demo — become a phase-sized piece of work.
 Attempting it before B1 would mean building a relay leg for a page that cannot be served.
+
+---
+
+## B1 closed — where it landed, and why not here
+
+_2026-09-02._
+
+`BoundedConnection` exists. It is **`Fuaran.Program.Bounded.BoundedConnection`**, not a type in this
+repository, and the reason is worth recording because the same constraint governs what is left.
+
+**The blocker table above says B1 lands in `fuaran-dotnet`. That was true when the table was written
+and cannot be made true now.** Phase 756 moved the bounded driver into the `Fuaran.Program.Bounded`
+package, and that package consumes `Fuaran.UI.ServerDriven` as a *published dependency*, one way, by
+design. A connection needs the bounded session type; putting one in `Channel.fs` would mean this
+repository referencing back into a package that references it, which is the one direction that tier
+does not have. So the connection sits beside the driver it sequences, and this repository's
+contribution to B1 is the seam it already shipped: `IFuaranLiveChannel`, `Frame`, `InMemoryChannel`
+and the replay-buffer default were consumed **unchanged**, at the version that consumer already
+pinned. B1 needed no change here at all.
+
+What that closes, against the note's own predictions:
+
+- **The bounded mode can now be served.** Any backend implementing the transport seam serves a
+  bounded page, with no bounded code of its own — which is what makes the rest of this note about a
+  page that exists rather than one that does not.
+- **The reflection half is demonstrated, not merely predicted.** The note argued that on the bounded
+  driver the round trip "falls out for free" from `resolveTree` → `TreeOpDiff.diff` →
+  `Lowering.lower`. It does, and the connection's tests pin the sharper claim underneath it: an edit
+  applied to `BaseTree` is *structural*, so a later interaction re-resolves against the edited tree
+  rather than reverting it — the exact property the model-backed driver cannot have.
+
+Two design predictions in Q2 turned out to want amending, and the amendments are recorded in that
+package's `DECISIONS.md` **D13** rather than restated here:
+
+- The note expected "**a new reject case**" on the bounded reject DU. That DU documents itself as the
+  event-level refusal and nothing else, and it is closed and matched exhaustively by hosts — so
+  widening it would be a breaking change made to model something the type says it does not model. The
+  out-of-band refusal is an additive type of its own.
+- The note expected the gate to be "**`RelayApplyGate.Decide` called by the connection**". The
+  *shape* is right and the reasoning held — the driver's dispatch gate is typed over the interaction
+  action and cannot express an attributed op, exactly as predicted. What could not follow is the
+  composition: the runtime tier holding that gate is not on the bounded package's restore graph. So
+  the connection exposes a grant-policy seam, default-closed, and a host that has such a gate
+  installs it there. One gate, composed at the host, rather than a dependency the tier cannot take.
+
+### What this changes about B2 — a second cost the note did not have
+
+B2 is unchanged as a *finding*: the channel is push-frames outbound and fire-and-forget inbound, so
+a refusal has nowhere to ride, and the connection therefore **returns** its refusal to the caller
+rather than pushing it. For an in-process host that is complete. For a remote submitter it is not,
+and B2 is still what closes the gap.
+
+The new cost is ordering. The response leg is a change to `Frame` and the shim — this repository —
+but the bounded connection consumes this repository as a **published package on a public restore
+path**, with a pin check that refuses a version only a local feed can serve. So B2 is not one change
+followed by a consuming change: it is a change here, a version cut, a publish, and only then a
+consumer able to see it. Worth knowing before scheduling it, and it is why B1 was worth doing first
+in the one form that needed nothing from this side.
+
+B3 is untouched and remains the specification repository's, on the reasoning already given.
 
 ---
 
