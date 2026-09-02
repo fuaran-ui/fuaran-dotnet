@@ -76,6 +76,19 @@ dotnet run --project Build.fsproj -- Check        # full pre-commit gate
 
 The `run.ps1` script at the repo root is the universal "drop in and verify" entry point.
 
+The test gate certifies against the shared wire-format corpus, which it reads from a directory named
+`wire-format-fixtures` **next to** this repository — clone it there first:
+
+```sh
+git clone https://github.com/fuaran-ui/fuaran-ui-specification wire-format-fixtures
+git clone https://github.com/fuaran-ui/fuaran-dotnet
+cd fuaran-dotnet && pwsh ./run.ps1
+```
+
+Without it the corpus-parity suites fail by design ("`wire-format-fixtures/manifest.json` not found") rather
+than passing over an absent oracle. The `local` NuGet source in `nuget.config` is an optional developer
+shadow feed; it is not needed to build or test from a clean clone.
+
 ## Repository conventions
 
 See [`CLAUDE.md`](CLAUDE.md) for repo conventions (build pipeline, formatting mandate, sample port allocation).
