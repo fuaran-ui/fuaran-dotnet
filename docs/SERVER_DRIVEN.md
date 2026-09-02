@@ -777,8 +777,12 @@ recurring.
 > the bounded path inherits the floor in *Form / input / local-state policy*
 > above (the flushed value arrives as the input event → `SetState`); the explicit
 > buffer-seeding protocol lands with the form sample. The `BoundedConnection`
-> channel glue (the bounded analogue of `LiveConnection`) is the documented
-> follow-on – `step` is transport-shaped already, so it is glue, not new design.
+> channel glue (the bounded analogue of `LiveConnection`) **has shipped** – as it
+> predicted, `step` was transport-shaped already, so it was glue and not new
+> design. It lives with the driver it sequences rather than here: the bounded
+> driver moved out of this repository, and the package holding it consumes this
+> one, so a connection over a bounded session cannot live on this side of that
+> dependency. This tier's contribution is the transport seam, consumed unchanged.
 
 ---
 
@@ -788,7 +792,9 @@ recurring.
 - `src/Fuaran.UI.ServerDriven/content/fuaran-live-patch.js` – the generic shim.
 - `docs/SSR.md` – server-side rendering (the first paint this tier patches onto).
 - `docs/devtools-relay-server-driven.md` – why the DevTools relay does not reach
-  this tier yet: the page holds no tree, relay `apply` is coherent only on the
-  bounded driver, and that driver has no channel connection (`BoundedConnection`).
+  this tier yet: the page holds no tree, and relay `apply` is coherent only on
+  the bounded driver. Its third blocker — that driver having no channel
+  connection — is closed; the note's foot records where that landed and the
+  publish ordering it leaves behind for the remaining two.
 - `SANITIZATION.md` – the string→DOM injection-safety contract every rendered
   fragment (including the lowering's re-rendered nodes) routes through.
