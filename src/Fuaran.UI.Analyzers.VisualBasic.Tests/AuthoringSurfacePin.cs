@@ -64,7 +64,6 @@ internal static class AuthoringSurfacePin
         ["Grid"] = "convenience — emits Box with a Grid layout",
         ["Card"] = "convenience — emits Box with role Card",
         ["Divider"] = "convenience — emits Box with role Separator",
-        ["Spacer"] = "convenience — retired as a kind (Phase 459); spacing is the enclosing Box's gap",
         ["Table"] = "convenience — emits the static-rows DataGrid the retired Table kind expressed",
         ["MultiSelect"] = "convenience — emits Select with multiple set",
         ["Case"] = "structural child of <Switch>",
@@ -170,7 +169,12 @@ internal static class AuthoringSurfacePin
     /// record, a node, a map, a closure, an opaque or hosted payload — takes a
     /// child-element shape or is unauthorable, so its absence from the attribute
     /// table is structural rather than an omission.</summary>
-    private static bool IsAttributeEligible(JsonElement type)
+    /// <remarks>`internal` rather than private so `StructuralElementPin` re-uses
+    /// this rule verbatim instead of re-stating it. The two pins partition the
+    /// field space between them — attribute-eligible here, structured there — and
+    /// two copies of the boundary would eventually disagree about which pin owns
+    /// a field, leaving it checked by neither.</remarks>
+    internal static bool IsAttributeEligible(JsonElement type)
     {
         var kind = type.GetProperty("$type").GetString();
         switch (kind)
@@ -223,7 +227,7 @@ internal static class AuthoringSurfacePin
     /// clone is absent (a single-repo checkout), which the caller reports LOUDLY
     /// rather than passing quietly — "nothing to check" must not read as
     /// "everything checked".</summary>
-    private static string? FindIdl()
+    internal static string? FindIdl()
     {
         var declared = Environment.GetEnvironmentVariable("FUARAN_WIRE_CORPUS");
         if (!string.IsNullOrWhiteSpace(declared))

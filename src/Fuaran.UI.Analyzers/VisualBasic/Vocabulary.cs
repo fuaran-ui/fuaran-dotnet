@@ -27,13 +27,22 @@ internal static class Vocabulary
         "Custom", "ErrorBoundary", "FragmentDecl", "FragmentRef", "Mount", "Switch");
 
     /// <summary>Structural sub-elements (children of a kind, not kinds themselves) — recognised so
-    /// the analyzer does not flag them as unknown.</summary>
+    /// the analyzer does not flag them as unknown. Membership here is not cosmetic:
+    /// `IsKnownElement` is `Kinds ∪ Structural`, and the analyzer reports FUARAN060 and
+    /// RETURNS on anything outside it, so an omission is a false positive on valid
+    /// authoring AND silently skips that element's attribute check. Pinned to the IDL
+    /// slot each name spells by `StructuralElementPin` in the analyzer test project.</summary>
     public static readonly ImmutableHashSet<string> Structural = ImmutableHashSet.Create(
         StringComparer.Ordinal,
         // Phase 1080 — `Source` is an `<Image>` child carrying one srcSet candidate
         // (`src` + `width`). A repeated STRUCTURED slot has no attribute spelling,
         // so it takes the child-element shape `Item` / `Option` / `Marker` already use.
-        "Item", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source");
+        //
+        // `Tone` is a `<Column>` child carrying one entry of the TonedPill value map
+        // (Phase 750). It was read by the translator and admitted by the attribute
+        // table below from the day it landed, but omitted HERE — so `<Tone>` raised
+        // FUARAN060 on every valid use until `StructuralElementPin` measured the set.
+        "Item", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source", "Tone");
 
     public static bool IsKnownElement(string name) => Kinds.Contains(name) || Structural.Contains(name);
 
@@ -74,7 +83,12 @@ internal static class Vocabulary
         b["Metric"] = WithFormat("id", "label", "value", "tone", "trend", "trend-polarity");
         Add("Badge", "id", "label", "variant");
         Add("Sparkline", "id", "source");
-        Add("Spacer", "id", "size");
+        // (No `Spacer` row. The kind was retired in Phase 459 — spacing is the
+        // enclosing Box's `gap` — and the element left neither a `Kinds` entry
+        // nor a translator mapping, so `<Spacer>` is refused by FUARAN060 before
+        // any attribute is looked at. The row that outlived it was unreachable
+        // code that also mis-stated the surface; `StructuralElementPin`'s
+        // recognition leg is what named it.)
         Add("Callout", "id", "body", "heading", "tone", "icon", "dismissable");
         Add("Progress", "id", "fraction", "label", "caveat", "indeterminate", "tone");
         Add("Skeleton", "id", "rows");
