@@ -5271,6 +5271,20 @@ and private renderGrid
                 // Phase 862 — `rowIndex` arrives page-relative; `rowOffset`
                 // lifts it into the full sorted set so the whole rows value
                 // written back carries every row, not just this page's.
+                //
+                // Phase 1157 — and this host mints NO per-control slot attribute
+                // for the commit, deliberately. The charter walk refused a
+                // `data-*` write-back slot hint naming the state key (see
+                // `docs/VOCABULARY.md`, Appendix A, Interaction / affordance
+                // cluster): the destination is already on the wire, the closure
+                // below reaches it in-process, and an attribute publishing a
+                // store ADDRESS would let a generic DOM wirer write the store
+                // past the scope routing and the host-reserved-key guard that
+                // `writeBackTo` crosses. Every `data-*` token this renderer does
+                // emit carries identity WITHIN THE TREE, never a store address,
+                // and that line is the ruling. A host whose renderer emits inert
+                // HTML obtains this destination out of band from its own core,
+                // not by reading it back out of its own markup.
                 let editCommit: (int -> string -> obj -> unit) option =
                     BindingResolver.editDestination spec.Editable spec.EditStateKey spec.Source
                     |> Option.map (fun dest ->
