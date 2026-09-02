@@ -27,7 +27,14 @@ let private restyle (id: string) (tone: ToneVariant) : TreeOp<TestMsg> =
 /// `regionB` (1 op), both anchored on the host genesis (the Mount op stand-in).
 let private buildForest () =
     let hostGenesis =
-        DagOpRecord.create "s" [] (restyle "left" ToneVariant.Brand) None "human" (ts 1L) OpResultEnvelope.Success
+        DagOpRecord.create
+            "s"
+            []
+            (restyle "left" ToneVariant.Brand)
+            None
+            (Actor.Human "human")
+            (ts 1L)
+            OpResultEnvelope.Success
 
     let hostStep =
         DagOpRecord.create
@@ -35,7 +42,7 @@ let private buildForest () =
             [ hostGenesis.Hash ]
             (restyle "right" ToneVariant.Success)
             None
-            "human"
+            (Actor.Human "human")
             (ts 2L)
             OpResultEnvelope.Success
 
@@ -45,7 +52,7 @@ let private buildForest () =
             hostGenesis.Hash
             (restyle "left" ToneVariant.Critical)
             (Some "prompt-a")
-            "ai"
+            (Actor.Agent("claude", "4.8", "planner"))
             (ts 3L)
             OpResultEnvelope.Success
 
@@ -55,7 +62,7 @@ let private buildForest () =
             guestA1.Hash
             (restyle "right" ToneVariant.Brand)
             (Some "prompt-a")
-            "ai"
+            (Actor.Agent("claude", "4.8", "planner"))
             (ts 4L)
             OpResultEnvelope.Success
 
@@ -65,7 +72,7 @@ let private buildForest () =
             hostGenesis.Hash
             (restyle "left" ToneVariant.Success)
             (Some "prompt-b")
-            "ai"
+            (Actor.Agent("claude", "4.8", "planner"))
             (ts 5L)
             OpResultEnvelope.Success
 

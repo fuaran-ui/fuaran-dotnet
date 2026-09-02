@@ -19,7 +19,7 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 //          op_json              TEXT    NOT NULL,
 //          outcome_hash         TEXT    NULL,        -- merge nodes only
 //          prompt_id            TEXT    NULL,
-//          user_id              TEXT    NOT NULL,
+//          user_id              TEXT    NOT NULL,   -- canonical typed-actor JSON (Actor.encode)
 //          timestamp            INTEGER NOT NULL,
 //          result_envelope_json TEXT    NOT NULL,
 //          tombstoned           INTEGER NOT NULL,    -- 0 / 1
@@ -56,6 +56,14 @@ open Fuaran.UI.OpStream.Dag.Abstractions
 // ============================================================================
 
 module private DagJson =
+
+    /// Read the `user_id` column back as a typed `Actor`. Phase 1144 stores
+    /// `Actor.encode` there; a pre-1144 row holds a bare id string and lifts to
+    /// the `Human` case, the same fallback the linear sqlite sink has used since
+    /// Phase 320. Lifting keeps an old database READABLE — it does not make an
+    /// old record's content address valid, which no read path can.
+    let readActor (raw: string) : Actor =
+        Actor.tryDecode raw |> Option.defaultValue (Actor.ofLegacyString raw)
 
     /// JSON array of parent hashes. Hashes are 64-hex / opaque tokens with no
     /// JSON-special characters, but we quote + escape defensively.
@@ -250,7 +258,7 @@ FROM dag_op_record WHERE stream_id = @s AND hash = @h;"""
                   Op = op
                   OutcomeHash = outcomeHash
                   PromptId = promptId
-                  UserId = reader.GetString 4
+                  Actor = DagJson.readActor (reader.GetString 4)
                   Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 5)
                   ResultEnvelope = DagJson.decodeEnvelope (reader.GetString 6)
                   Tombstoned = reader.GetInt64 7 <> 0L }
@@ -292,7 +300,7 @@ FROM dag_op_record WHERE stream_id = @s ORDER BY hash;"""
                   Op = op
                   OutcomeHash = outcomeHash
                   PromptId = promptId
-                  UserId = reader.GetString 5
+                  Actor = DagJson.readActor (reader.GetString 5)
                   Timestamp = DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64 6)
                   ResultEnvelope = DagJson.decodeEnvelope (reader.GetString 7)
                   Tombstoned = reader.GetInt64 8 <> 0L }
@@ -371,7 +379,13 @@ ON CONFLICT(stream_id, hash) DO NOTHING;"""
                 )
                 |> ignore
 
-                cmd.Parameters.AddWithValue("@user", record.UserId) |> ignore
+                // Phase 1144 — the `user_id` column now holds the canonical typed-actor
+                // JSON (`Actor.encode`), mirroring what the LINEAR sqlite sink has stored
+                // since Phase 320. The column is reused rather than renamed: pre-1144 rows
+                // hold a bare id string and read back via `Actor.ofLegacyString`, so an
+                // existing database still OPENS. Its records' content addresses do not
+                // carry forward, though — see docs/migrations/1144-typed-actor-dag-fold.md.
+                cmd.Parameters.AddWithValue("@user", Actor.encode record.Actor) |> ignore
 
                 cmd.Parameters.AddWithValue("@ts", record.Timestamp.ToUnixTimeSeconds())
                 |> ignore

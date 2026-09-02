@@ -14,14 +14,24 @@ open Fuaran.UI.OpStream.Abstractions
 //  discipline as `CanonicalJson`) carrying the multi-parent links + the nested
 //  canonical `TreeOp`:
 //
-//      {"hash":"…","op":{…canonical TreeOp…},"outcomeHash":"…"?,
-//       "parents":["…","…"],"promptId":"…"?,"resultEnvelope":{…},
-//       "streamId":"…","timestamp":<unixSeconds>,"tombstoned":false,
-//       "userId":"…"}
+//      {"actor":{…canonical Actor…},"hash":"…","op":{…canonical TreeOp…},
+//       "outcomeHash":"…"?,"parents":["…","…"],"promptId":"…"?,
+//       "resultEnvelope":{…},"streamId":"…","timestamp":<unixSeconds>,
+//       "tombstoned":false}
 //
 //  `outcomeHash` / `promptId` are omitted when `None` (algorithm rule 4).
-//  `op` nests the existing `CanonicalJson.encodeOp` output verbatim, so the DAG
-//  envelope reuses the TreeOp wire contract rather than re-specifying it.
+//  `op` nests the existing `CanonicalJson.encodeOp` output verbatim, and `actor`
+//  nests `Actor.encode` verbatim, so the DAG envelope reuses the TreeOp and
+//  actor wire contracts rather than re-specifying either.
+//
+//  Phase 1144 replaced the trailing `"userId":"…"` member with the leading
+//  `"actor":{…}` — the typed `Human | Agent` the linear chain has carried since
+//  Phase 320. Top-level keys stay Ordinal-sorted, which is why `actor` moves to
+//  the FRONT of the envelope. It is a MAJOR wire event on the same axis as the
+//  content-address change it accompanies (`DagOpRecord`): the actor is inside
+//  the address, so a record cannot be re-encoded under the new key while
+//  keeping its old hash. `decodeRecord` therefore REFUSES a `userId` envelope by
+//  name rather than lifting it — see `docs/migrations/1144-typed-actor-dag-fold.md`.
 //
 //  Two conformant hosts (F# + the TS reference implementation) encode the same
 //  record to byte-identical JSON, and the `parents` array + nested `op` are the
@@ -55,14 +65,18 @@ module DagWire =
 
     /// Encode a `DagOpRecord` to its canonical JSON wire form. Keys are emitted
     /// in Ordinal-sorted order; `outcomeHash` / `promptId` are omitted when
-    /// `None`. `op` nests `CanonicalJson.encodeOp` verbatim.
+    /// `None`. `op` nests `CanonicalJson.encodeOp` verbatim and `actor` nests
+    /// `Actor.encode` verbatim (both pinned encodings, embedded as-is).
     let encodeRecord<'Msg> (record: DagOpRecord<'Msg>) : string =
         let sb = StringBuilder()
         sb.Append '{' |> ignore
 
-        // Ordinal key order: hash < op < outcomeHash < parents < promptId <
-        // resultEnvelope < streamId < timestamp < tombstoned < userId.
-        sb.Append "\"hash\":" |> ignore
+        // Ordinal key order: actor < hash < op < outcomeHash < parents <
+        // promptId < resultEnvelope < streamId < timestamp < tombstoned.
+        sb.Append "\"actor\":" |> ignore
+        sb.Append(Actor.encode record.Actor) |> ignore
+
+        sb.Append ",\"hash\":" |> ignore
         escapeInto sb record.Hash
 
         sb.Append ",\"op\":" |> ignore
@@ -104,9 +118,6 @@ module DagWire =
 
         sb.Append ",\"tombstoned\":" |> ignore
         sb.Append(if record.Tombstoned then "true" else "false") |> ignore
-
-        sb.Append ",\"userId\":" |> ignore
-        escapeInto sb record.UserId
 
         sb.Append '}' |> ignore
         sb.ToString()
@@ -268,11 +279,17 @@ module DagWire =
             let f = topLevelFields json
             let req k = Map.tryFind k f
 
-            match req "hash", req "op", req "parents", req "streamId", req "timestamp", req "userId" with
-            | Some hashRaw, Some opRaw, Some parentsRaw, Some streamRaw, Some tsRaw, Some userRaw ->
-                match decodeOp opRaw with
-                | Error e -> Error(sprintf "DagWire.decodeRecord: op decode failed: %s" e)
-                | Ok op ->
+            match req "hash", req "op", req "parents", req "streamId", req "timestamp", req "actor" with
+            | Some hashRaw, Some opRaw, Some parentsRaw, Some streamRaw, Some tsRaw, Some actorRaw ->
+                match Actor.tryDecode actorRaw, decodeOp opRaw with
+                | None, _ ->
+                    Error(
+                        sprintf
+                            "DagWire.decodeRecord: malformed 'actor' — not a canonical Actor.encode object: %s"
+                            actorRaw
+                    )
+                | _, Error e -> Error(sprintf "DagWire.decodeRecord: op decode failed: %s" e)
+                | Some actor, Ok op ->
                     let envelope =
                         f
                         |> Map.tryFind "resultEnvelope"
@@ -286,7 +303,7 @@ module DagWire =
                           Op = op
                           OutcomeHash = f |> Map.tryFind "outcomeHash" |> Option.map unquote
                           PromptId = f |> Map.tryFind "promptId" |> Option.map unquote
-                          UserId = unquote userRaw
+                          Actor = actor
                           // `int64 (s: string)` is FSharp.Core's invariant-culture
                           // parse and is Fable-supported; the explicit
                           // `Int64.Parse(s, provider)` overload is not (Fable
@@ -295,8 +312,15 @@ module DagWire =
                           Timestamp = System.DateTimeOffset.FromUnixTimeSeconds(int64 tsRaw)
                           ResultEnvelope = envelope
                           Tombstoned = (f |> Map.tryFind "tombstoned") = Some "true" }
+            | _ when (Map.containsKey "userId" f) && not (Map.containsKey "actor" f) ->
+                // A pre-1144 envelope. Refused BY NAME rather than lifted: the actor
+                // is inside the content address, so a lifted record would carry a
+                // stored `hash` that `DagOpRecord.recomputeHash` cannot reproduce —
+                // a silent verification failure downstream instead of a clear one here.
+                Error
+                    "DagWire.decodeRecord: pre-1144 envelope — 'userId' was replaced by the typed 'actor', and DAG content addresses do not carry forward (docs/migrations/1144-typed-actor-dag-fold.md)"
             | _ ->
                 Error
-                    "DagWire.decodeRecord: missing one of the required fields (hash/op/parents/streamId/timestamp/userId)"
+                    "DagWire.decodeRecord: missing one of the required fields (hash/op/parents/streamId/timestamp/actor)"
         with ex ->
             Error(sprintf "DagWire.decodeRecord: %s" ex.Message)
