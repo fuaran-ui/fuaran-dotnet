@@ -6186,12 +6186,18 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // unchanged: a11y then extras, on the wrapper, in that order. Parity-locked
     // with the server renderer via the shared predicate — see
     // `Accessibility.forwardsToSemanticElement` + `docs/DECISIONS.md` D4.
+    // Phase 1114 — the `dir="auto"` isolation for a display leaf carrying
+    // runtime-bound text. Wrapper-side in BOTH arms and FIRST in the list, so
+    // the emitted attribute order is identical under SSR and CSR; the policy
+    // itself is the shared `Accessibility.bidiAttributes`.
+    let bidi = Accessibility.bidiAttributes node.Kind
+
     let wrapperAttrs, semanticAttrs =
         if Accessibility.forwardsToSemanticElement node.Kind then
             let dataExtras, ariaExtras = Accessibility.partitionExtraAttributes extraPairs
-            dataExtras, a11yPairs @ ariaExtras
+            bidi @ dataExtras, a11yPairs @ ariaExtras
         else
-            a11yPairs @ extraPairs, []
+            bidi @ a11yPairs @ extraPairs, []
 
     // Per-node render guard. A throwing leaf-body renderer
     // (binding accessor crash, malformed spec, etc.) is caught here so
