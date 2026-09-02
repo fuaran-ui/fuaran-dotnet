@@ -34,6 +34,14 @@ open Fuaran.UI.Telemetry.Abstractions
 //     differs). This is the "edit a decision → the chart re-derives" property
 //     made concrete and cheap.
 //
+//   - A KEY THAT COSTS LESS THAN THE WORK IT SAVES (Phase 210). The structural
+//     key's body half is memoised per `ParamFragment` reference, so a probe
+//     hashes only the ref id + slot args. Before this, a cache HIT paid a
+//     whole-tree canonical encode + SHA-256 just to build the key that told it
+//     the tree was reusable — for a small fragment, more than the substitution
+//     it was avoiding — and a value-only `Reapply` re-hashed the entire tree to
+//     establish that nothing structural had changed.
+//
 //   - THE EFFECT GATE (invariant 3). `FragmentMemo.isCacheable` gates admission:
 //     a pure-deterministic fragment is always cached; an effecting / clock /
 //     random / network fragment BYPASSES the cache entirely (re-derived every
@@ -57,6 +65,21 @@ type Derivation<'Msg> =
       StructuralKey: string
       ValueArgs: Map<string, obj> }
 
+/// Defaults for the engine's key machinery (Phase 210).
+module KeyMemoDefaults =
+
+    /// How many distinct `ParamFragment` instances one engine memoises body
+    /// digests for. This bounds a DIFFERENT population from the substituted-tree
+    /// store's capacity, and a much smaller one: the store is keyed by content,
+    /// so it grows once per distinct (fragment, ref site, slot-arg) application,
+    /// whereas this grows once per distinct fragment DECLARATION in play on the
+    /// surface. Bounded (rather than unbounded-because-small) because the memo
+    /// holds a strong reference to every fragment in it, and a bound is what
+    /// makes that safe to say. A surface with more live declarations than this
+    /// degrades to the pre-210 cost on the overflow — never to a wrong key.
+    [<Literal>]
+    let bodyDigestCapacity = 64
+
 /// The memoised incremental re-derivation engine. One instance per logical
 /// artifact surface (so its cache + telemetry name scope to that surface).
 ///
@@ -75,6 +98,32 @@ type Derivation<'Msg> =
 /// carries no fixed bound).
 type Engine<'Msg>(store: IFragmentStore<'Msg>, sink: IFuaranTelemetrySink, ?cacheName: string) =
     let cacheName = defaultArg cacheName "fragment.apply"
+
+    // Phase 210 — the IMMUTABLE half of the structural key, memoised by fragment
+    // REFERENCE IDENTITY. `pf.Name` + `pf.Body` cannot change for a given
+    // `ParamFragment` instance, so their digest is constant across every
+    // application of it; without this memo a structural cache HIT still paid a
+    // whole-tree canonical encode + SHA-256 merely to build the key that
+    // discovered the tree was reusable, and a value-only `Reapply` re-hashed the
+    // entire tree to discover that nothing structural had changed.
+    //
+    // Owned by the ENGINE, deliberately, rather than hidden inside `FragmentKey`:
+    // this type already declares a single-threaded contract (see the header) and
+    // a bounded lifetime, so the memo inherits both. A module-level static in the
+    // key module would be shared across every thread and every engine in the
+    // process and would retain every fragment body it ever saw.
+    //
+    // A fragment instance the memo has not seen (or has evicted) simply costs
+    // what it cost before — the digest is recomputed, never guessed.
+    let bodyDigests =
+        BoundedRefMemo<ParamFragment<'Msg>, string>(KeyMemoDefaults.bodyDigestCapacity)
+
+    /// The structural key for one application, with the body half served from
+    /// `bodyDigests` and only the ref id + slot args hashed per probe. Identical
+    /// in value to `FragmentKey.structural` — the memo changes what it costs, not
+    /// what it says.
+    let structuralKey (pf: ParamFragment<'Msg>) (refId: string) (slotArgs: Map<string, Node<'Msg>>) : string =
+        FragmentKey.structuralOf (bodyDigests.GetOrAdd(pf, FragmentKey.bodyDigest)) refId slotArgs
 
     let emit (outcome: CacheOutcome) : unit =
         sink.RecordCacheStat
@@ -143,6 +192,14 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, sink: IFuaranTelemetrySink, ?cach
     /// `Count` for an unbounded portable store.
     member _.Cache = store
 
+    /// The body-digest memo (Phase 210) — exposed for observability on the same
+    /// footing as `Cache` (`Hits` / `Misses` / `Count` / `Capacity`). A hit here
+    /// is one whole-subtree canonical encode + SHA-256 not paid. Its hit rate is
+    /// also the regression signal: a change that reverted the engine to hashing
+    /// the whole body per probe would show up as this counter going flat.
+    /// Mutating it directly is not part of the contract.
+    member _.KeyMemo = bodyDigests
+
     /// Apply with whole-application memoisation, served from the caller-supplied
     /// content-addressed store (Phase 360). A pure-deterministic fragment's
     /// substituted tree is content-keyed (`FragmentKey.structural`) + cached in
@@ -154,7 +211,7 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, sink: IFuaranTelemetrySink, ?cach
     member _.Apply
         (pf: ParamFragment<'Msg>, refId: string, valueArgs: Map<string, obj>, slotArgs: Map<string, Node<'Msg>>)
         : Result<Derivation<'Msg>, string> =
-        let sk = FragmentKey.structural pf refId slotArgs
+        let sk = structuralKey pf refId slotArgs
 
         if not (isCacheable (pf.Effect |> Option.defaultValue EffectClass.pureDeterministic)) then
             // Effecting / non-deterministic — never consult or populate the store.
@@ -210,7 +267,10 @@ type Engine<'Msg>(store: IFragmentStore<'Msg>, sink: IFuaranTelemetrySink, ?cach
         if not (isCacheable (pf.Effect |> Option.defaultValue EffectClass.pureDeterministic)) then
             this.Apply(pf, refId, newValueArgs, newSlotArgs)
         else
-            let sk = FragmentKey.structural pf refId newSlotArgs
+            // Phase 210 — the body digest is served from the engine's memo, so a
+            // value-only re-derive hashes only the (small) slot-arg portion to
+            // establish that the structural key is unchanged.
+            let sk = structuralKey pf refId newSlotArgs
 
             if sk = prev.StructuralKey then
                 // Structural tree unchanged → reuse it; recompute only the

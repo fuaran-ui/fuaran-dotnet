@@ -286,7 +286,8 @@ path – a simple linear tree app carries zero DAG overhead.
 
 ### `Fuaran.UI.Memo`
 - The incremental re-derivation engine `Engine<'Msg>` (`Apply` / `Reapply`) + the `Derivation<'Msg>` record (Phase 183) – effect-aware memoisation over `FragmentApply.apply`. Transparent: no wire change, no change to apply semantics.
-- `FragmentMemo.isCacheable` (the effect-class cache gate) + `FragmentMemo.BoundedLru` live in `Fuaran.UI` (Fable-clean, reusable). `FragmentKey.*` (the canonical-JSON-keyed content hash) lives here.
+- `FragmentMemo.isCacheable` (the effect-class cache gate) + `FragmentMemo.BoundedLru` + `FragmentMemo.BoundedRefMemo` live in `Fuaran.UI` (Fable-clean, reusable). `FragmentKey.*` (the canonical-JSON-keyed content hash) lives here.
+- **The structural key's composition changed in Phase 210 (`fuaran-fragment-apply:v1` → `:v2`).** The key is now composed from a separately-digested body (`FragmentKey.bodyDigest`, tagged `fuaran-fragment-body:v1`) plus the ref id and slot args (`FragmentKey.structuralOf`), so a probe no longer re-encodes and re-hashes the whole fragment body. `FragmentKey.structural` keeps its signature and its discrimination (the same `(name, body, refId, slot-args)` tuples key apart); what changes is the key VALUE. The key was never a wire artefact and no fixture pins it, so this is not a wire-format event — but a **portable-store snapshot** (`MemoCacheStore.Snapshot`, Phase 360) persisted by a pre-210 build keys its entries under the old composition, so it MISSES rather than mis-hits after the upgrade. A host that persists memo snapshots across versions should discard them on this bump; correctness is unaffected either way.
 
 ### Wire format
 

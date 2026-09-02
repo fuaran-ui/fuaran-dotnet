@@ -6,7 +6,7 @@ open Fuaran.UI.Types
 // ============================================================================
 //  FragmentMemo — the generic, Fable-clean memo core (Phase 183).
 //
-//  The two reusable, dependency-free building blocks of the incremental
+//  The reusable, dependency-free building blocks of the incremental
 //  re-derivation engine:
 //
 //   1. `isCacheable` — the EFFECT-CLASS CACHE GATE (invariant 3). Only a pure +
@@ -19,6 +19,13 @@ open Fuaran.UI.Types
 //      with hit/miss counters. The engine stores substituted trees here; the
 //      bound keeps a long authoring session from growing the cache without
 //      limit.
+//
+//   3. `BoundedRefMemo` — a size-bounded memo keyed by REFERENCE IDENTITY
+//      (Phase 210), for the derived value of an immutable object that cannot be
+//      looked up by content without recomputing the very thing being memoised.
+//      The engine memoises each fragment body's content digest here, so a cache
+//      probe no longer re-encodes + re-hashes the whole body just to build its
+//      key.
 //
 //  Both live here (in `Fuaran.UI`, `FSharp.Core` + `Fuaran.UI.Types` only) so
 //  they are Fable-clean and reusable — the same gate + bound will lift onto the
@@ -130,6 +137,120 @@ type BoundedLru<'V>(capacity: int) =
     /// Drop every entry and reset the hit/miss counters.
     member _.Clear() : unit =
         store.Clear()
+        clock <- 0L
+        hits <- 0
+        misses <- 0
+
+/// One reference-keyed memo slot: the key OBJECT (compared by identity, never by
+/// value), its memoised value, and a monotonic access stamp for recency.
+type private RefEntry<'K, 'V> =
+    { Key: 'K
+      Value: 'V
+      mutable Stamp: int64 }
+
+/// A size-bounded memo keyed by REFERENCE IDENTITY rather than by value — the
+/// third memo building block (Phase 210), beside `isCacheable` and `BoundedLru`.
+///
+/// It exists for the case where the key is an immutable object whose derived
+/// value is expensive and constant for that object's lifetime, and where hashing
+/// the key BY VALUE would cost exactly what the memo is trying to avoid. A
+/// content digest of a fragment body is that case: it cannot be looked up by
+/// content without first computing the content digest.
+///
+/// Identity is `Object.ReferenceEquals` over a bounded array of slots — O(k)
+/// pointer comparisons for a bound k, against a whole-subtree encode + hash.
+/// Deliberately NOT a reference-hashed dictionary or a weak table: reference
+/// HASHING (`RuntimeHelpers.GetHashCode`) and `ConditionalWeakTable` are both
+/// .NET-only and would break Fable portability, while a plain scan is portable by
+/// construction.
+///
+/// Eviction is least-recently-used on insert-when-full — the same policy, and the
+/// same monotonic-stamp mechanism, `BoundedLru` uses; the evicted slot is
+/// overwritten in place, so no access shifts the array. The bound is also what
+/// makes holding strong references to keys safe: the memo retains at most
+/// `capacity` of them, never every key it has ever seen.
+///
+/// Single-threaded by contract, exactly as `BoundedLru` is — an owner that shares
+/// one across threads serialises access externally. `capacity` is clamped to at
+/// least 1.
+type BoundedRefMemo<'K, 'V when 'K: not struct>(capacity: int) =
+    let capacity = max 1 capacity
+    let entries = ResizeArray<RefEntry<'K, 'V>>()
+    let mutable clock = 0L
+    let mutable hits = 0
+    let mutable misses = 0
+
+    let nextStamp () =
+        clock <- clock + 1L
+        clock
+
+    /// The slot index of `key` by reference identity, or `-1`.
+    let indexOfRef (key: 'K) : int =
+        let mutable found = -1
+        let mutable i = 0
+
+        while found < 0 && i < entries.Count do
+            if System.Object.ReferenceEquals(entries[i].Key, key) then
+                found <- i
+
+            i <- i + 1
+
+        found
+
+    /// The configured (clamped) capacity bound.
+    member _.Capacity = capacity
+
+    /// The number of slots currently held.
+    member _.Count = entries.Count
+
+    /// Cumulative memo hits since construction (or the last `Clear`).
+    member _.Hits = hits
+
+    /// Cumulative memo misses since construction (or the last `Clear`).
+    member _.Misses = misses
+
+    /// The memoised value for `key`, computing it with `compute` on a miss. A hit
+    /// promotes the slot to most-recently-used; a miss at capacity first evicts
+    /// the least-recently-used slot. `compute` runs at most once per key while
+    /// that key's slot survives — which is the whole point, so it must be a pure
+    /// function of the key.
+    member _.GetOrAdd(key: 'K, compute: 'K -> 'V) : 'V =
+        let found = indexOfRef key
+
+        if found >= 0 then
+            hits <- hits + 1
+            entries[found].Stamp <- nextStamp ()
+            entries[found].Value
+        else
+            misses <- misses + 1
+
+            let slot =
+                { Key = key
+                  Value = compute key
+                  Stamp = nextStamp () }
+
+            if entries.Count < capacity then
+                entries.Add slot
+            else
+                // Evict the least-recently-used slot, overwritten in place. O(n),
+                // and only here — never on a hit.
+                let mutable lru = 0
+
+                for j in 1 .. entries.Count - 1 do
+                    if entries[j].Stamp < entries[lru].Stamp then
+                        lru <- j
+
+                entries[lru] <- slot
+
+            slot.Value
+
+    /// `true` when `key` currently holds a slot (by reference identity; does not
+    /// affect recency or the hit/miss counters).
+    member _.ContainsKey(key: 'K) : bool = indexOfRef key >= 0
+
+    /// Drop every slot and reset the hit/miss counters.
+    member _.Clear() : unit =
+        entries.Clear()
         clock <- 0L
         hits <- 0
         misses <- 0

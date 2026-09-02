@@ -48,6 +48,32 @@ let private fragment: ParamFragment<unit> =
                   HoleDecl.Slot("content", None) ]
         Body = body }
 
+/// The SAME fragment name over a DIFFERENT body (Phase 210) — the soundness
+/// fixture. A name is not identity: a differently-declared tree can reuse one, so
+/// this must never share a structural key, or a cached tree, with `fragment`.
+let private sameNameOtherBody: ParamFragment<unit> =
+    let body =
+        Fuaran.dashboard
+            "panel-root"
+            { Defaults.dashboard<unit> with
+                Children =
+                    [ Fuaran.markdown "panel-title" "Other"
+                      { Id = "content"
+                        Kind = NodeKind.FragmentRef { Name = "content"; Args = None }
+                        State = None
+                        Style = None
+                        Accessibility = None
+                        Motion = None
+                        ExtraAttributes = None } ] }
+
+    { fragment with Body = body }
+
+/// A DIFFERENT name over the SAME body object — the converse fixture. The body
+/// alone is not identity either, which is why the name is folded into the body
+/// digest rather than into the composition around it.
+let private otherNameSameBody: ParamFragment<unit> =
+    { fragment with Name = "card-alt" }
+
 let private slotArgs (text: string) : Map<string, Node<unit>> =
     Map.ofList [ "content", Fuaran.markdown "body" text ]
 
@@ -238,4 +264,151 @@ let tests =
               Expect.equal rec0.Capacity 8 "the bound is surfaced"
               Expect.equal rec0.Size 1 "the current size is surfaced"
               Expect.equal (CacheOutcome.name rec0.Outcome) "miss" "the outcome classification is surfaced"
+          }
+
+          // ==================================================================
+          //  Phase 210 — the structural key's body half is memoised per
+          //  `ParamFragment` reference, so a probe hashes only the ref id + slot
+          //  args. Behaviour-preserving: every assertion below is about COST or
+          //  about the key discriminating exactly what it discriminated before.
+          // ==================================================================
+
+          test "the key splits faithfully — body digest ⊕ slot args = the whole-fragment key" {
+              let slots = slotArgs "x"
+
+              Expect.equal
+                  (FragmentKey.structuralOf (FragmentKey.bodyDigest fragment) "ref1" slots)
+                  (FragmentKey.structural fragment "ref1" slots)
+                  "composing from a precomputed body digest yields the same key as the one-call form"
+          }
+
+          test "the key still discriminates body, ref id and slot args" {
+              let slots = slotArgs "x"
+              let k = FragmentKey.structural fragment "ref1" slots
+
+              Expect.notEqual (FragmentKey.structural fragment "ref2" slots) k "a different ref site keys apart"
+
+              Expect.notEqual
+                  (FragmentKey.structural fragment "ref1" (slotArgs "y"))
+                  k
+                  "a different slot argument keys apart"
+
+              // The soundness case: the SAME fragment name with a DIFFERENT body
+              // must never share a key. The name alone is not identity — a
+              // differently-declared tree can reuse it.
+              Expect.notEqual
+                  (FragmentKey.structural sameNameOtherBody "ref1" slots)
+                  k
+                  "the same name with a different body keys apart"
+
+              // And the name is not redundant either: two declarations sharing one
+              // body object still key apart.
+              Expect.notEqual
+                  (FragmentKey.structural otherNameSameBody "ref1" slots)
+                  k
+                  "a different name over the same body keys apart"
+          }
+
+          test "BoundedRefMemo computes once per REFERENCE, not once per value" {
+              let memo = FragmentMemo.BoundedRefMemo<ParamFragment<unit>, string>(8)
+              let mutable computed = 0
+
+              let digest (pf: ParamFragment<unit>) =
+                  computed <- computed + 1
+                  FragmentKey.bodyDigest pf
+
+              let a = fragment
+              // A record copy — structurally EQUAL to `a`, and a distinct object.
+              let b = { fragment with Name = fragment.Name }
+
+              let ka = memo.GetOrAdd(a, digest)
+              let ka2 = memo.GetOrAdd(a, digest)
+              let kb = memo.GetOrAdd(b, digest)
+
+              Expect.equal computed 2 "the same reference computes once; a distinct object computes again"
+              Expect.equal memo.Hits 1 "the repeat lookup is a hit"
+              Expect.equal memo.Misses 2 "each distinct reference is a miss"
+              Expect.equal ka ka2 "the memoised digest is returned unchanged"
+              Expect.equal kb ka "a structurally-identical fragment digests identically (content-addressed)"
+          }
+
+          test "BoundedRefMemo is bounded — least-recently-used slots are evicted" {
+              let memo = FragmentMemo.BoundedRefMemo<ParamFragment<unit>, string>(2)
+              let mutable computed = 0
+
+              let digest (pf: ParamFragment<unit>) =
+                  computed <- computed + 1
+                  FragmentKey.bodyDigest pf
+
+              let a = { fragment with Name = "a" }
+              let b = { fragment with Name = "b" }
+              let c = { fragment with Name = "c" }
+
+              memo.GetOrAdd(a, digest) |> ignore
+              memo.GetOrAdd(b, digest) |> ignore
+              // Touch `a` so `b` becomes the least-recently-used slot.
+              memo.GetOrAdd(a, digest) |> ignore
+              memo.GetOrAdd(c, digest) |> ignore
+
+              Expect.equal memo.Count 2 "the memo never exceeds its bound"
+              Expect.equal memo.Capacity 2 "the bound is observable"
+              Expect.isTrue (memo.ContainsKey a) "the recently-used slot survives"
+              Expect.isFalse (memo.ContainsKey b) "the least-recently-used slot was evicted"
+              Expect.equal computed 3 "an evicted key simply recomputes — never a wrong digest"
+          }
+
+          test "a repeated apply digests the fragment body once, not once per probe" {
+              let sink = CaptureSink()
+              let engine = Engine<unit>(64, sink)
+
+              for _ in 1..4 do
+                  engine.Apply(fragment, "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "apply"
+                  |> ignore
+
+              Expect.equal engine.KeyMemo.Misses 1 "the body is digested exactly once for the fragment"
+              Expect.equal engine.KeyMemo.Hits 3 "every later probe reuses the digest instead of re-hashing the tree"
+              Expect.equal sink.Last.Outcome CacheOutcome.Hit "the tree cache still hits — behaviour is unchanged"
+          }
+
+          test "a value-only reapply re-hashes only the slot args" {
+              let sink = CaptureSink()
+              let engine = Engine<unit>(64, sink)
+
+              let d0 =
+                  engine.Apply(fragment, "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "base apply"
+
+              let d1 =
+                  engine.Reapply(d0, fragment, "ref1", valueArgs "Hello" 7, slotArgs "x")
+                  |> ok "value-only reapply"
+
+              Expect.equal engine.KeyMemo.Hits 1 "the reapply's key reuses the memoised body digest"
+              Expect.equal engine.KeyMemo.Misses 1 "the body is never re-digested for the same fragment"
+              Expect.equal d1.StructuralKey d0.StructuralKey "a value-only edit leaves the structural key unchanged"
+
+              Expect.isTrue
+                  (System.Object.ReferenceEquals(d0.Result.Tree, d1.Result.Tree))
+                  "and the tree is still reused reference-identically"
+          }
+
+          test "a same-named fragment with a different body is never served the cached tree" {
+              let sink = CaptureSink()
+              let engine = Engine<unit>(64, sink)
+
+              let d0 =
+                  engine.Apply(fragment, "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "first declaration"
+
+              let d1 =
+                  engine.Apply(sameNameOtherBody, "ref1", valueArgs "Hello" 3, slotArgs "x")
+                  |> ok "second declaration, same name"
+
+              Expect.notEqual d1.StructuralKey d0.StructuralKey "the two declarations key apart"
+              Expect.equal sink.Last.Outcome CacheOutcome.Miss "the differently-bodied declaration re-derives"
+
+              Expect.notEqual
+                  (CanonicalJson.encodeNode d1.Result.Tree)
+                  (CanonicalJson.encodeNode d0.Result.Tree)
+                  "and it yields its OWN body, not the cached tree"
           } ]
