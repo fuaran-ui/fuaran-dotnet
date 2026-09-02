@@ -428,12 +428,22 @@ let private bootViewport () : unit =
     |> Program.withReactSynchronous mountId
     |> Program.run
 
+// Phase 1114 right-to-left / bidi harness. Constant view; the mirroring is
+// driven by `dir` on the page's own regions plus the reference stylesheet's
+// logical properties, so no model state is needed.
+let private bootBidiRtl () : unit =
+    Program.mkSimple (fun () -> ()) (fun () () -> ()) (fun () _ -> BidiRtl.view ())
+    |> Program.withReactSynchronous mountId
+    |> Program.run
+
 warnMissingKinds ()
 
-// `?viewport=mobile` is handled ahead of the gallery/harness router so the
-// existing 13-arm dispatch stays untouched (guard-clause idiom).
+// `?viewport=mobile` and `?dir=rtl` are handled ahead of the gallery/harness
+// router so the existing 13-arm dispatch stays untouched (guard-clause idiom).
 if queryParam "viewport" = Some "mobile" then
     bootViewport ()
+elif queryParam "dir" = Some "rtl" then
+    bootBidiRtl ()
 else
 
     match

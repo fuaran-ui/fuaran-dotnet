@@ -42,7 +42,7 @@ internal static class Vocabulary
         // (Phase 750). It was read by the translator and admitted by the attribute
         // table below from the day it landed, but omitted HERE — so `<Tone>` raised
         // FUARAN060 on every valid use until `StructuralElementPin` measured the set.
-        "Item", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source", "Tone");
+        "Item", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source", "Tone", "Track");
 
     public static bool IsKnownElement(string name) => Kinds.Contains(name) || Structural.Contains(name);
 
@@ -101,7 +101,9 @@ internal static class Vocabulary
         // variant ("video" | "audio"). `autoplay` and `poster` are listed because
         // the element admits them; they are READ only on the video branch, which
         // is a translator rule rather than an attribute-vocabulary one.
-        Add("Media", "id", "src", "label", "kind", "controls", "loop", "autoplay", "poster");
+        // Phase 1110 — `transcript` is the only new ATTRIBUTE: `tracks` is a repeated
+        // structured slot, so it takes the <Track> child-element shape instead.
+        Add("Media", "id", "src", "label", "kind", "controls", "loop", "autoplay", "poster", "transcript");
         Add("List", "id", "ordered");
         Add("Divider", "id", "orientation", "label");
         Add("Toast", "id", "message", "tone", "open", "dismissable");
@@ -167,6 +169,9 @@ internal static class Vocabulary
         // default here.
         Add("Column", "type", "label", "field", "tone-field", "default-tone", "sortable", "editable");
         Add("Tone", "value", "tone");
+        // Phase 1110 — `srclang` is spelled as the HTML attribute is, not as the wire's
+        // camelCase `srcLang`: this dialect is authored by people who know the element.
+        Add("Track", "kind", "src", "srclang", "label", "default");
         Add("Marker", "lat", "lng", "label");
         Add("Prop", "name", "value");
         return b.ToImmutable();

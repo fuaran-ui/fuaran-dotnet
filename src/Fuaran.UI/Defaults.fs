@@ -256,7 +256,14 @@ let media: MediaSpec =
       Kind = MediaKind.Video(false, None)
       Label = emptyLiteral
       Loop = false
-      Src = noBinding<string> }
+      Src = noBinding<string>
+      // Phase 1110 — both new slots default to ABSENT, and neither invents
+      // content: `Defaults` cannot know what a recording says. An empty track
+      // list and no transcript are the honest starting point, and they are also
+      // the wire's identity for both fields, so a default-constructed media node
+      // encodes to exactly the bytes it encoded to before this phase.
+      Tracks = []
+      Transcript = None }
 
 let list: ListSpec = { Items = []; Ordered = false }
 

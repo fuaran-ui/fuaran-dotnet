@@ -31,6 +31,93 @@ module Fuaran.UI.Renderer.Formatting
 
 open Fuaran.UI.Types
 
+// ─── Script direction (Phase 1114) ──────────────────────────────────────────
+//
+// ONE shared implementation for BOTH pipelines, defined above the `#if` for the
+// same reason `formatDuration` is: a document's `dir` must be the same string
+// under SSR and under the browser, or the server's markup and the client's
+// hydration disagree about which way the page runs. Neither runtime can supply
+// it — `Intl.Locale.prototype.getTextInfo` is not universally available and
+// .NET's `CultureInfo.TextInfo.IsRightToLeft` is present but would give the two
+// arms two different oracles, which is precisely the parity hazard — so the
+// answer is derived from the BCP-47 tag itself, deterministically.
+//
+// Deliberately a TAG-DERIVED answer and not a locale-database one: the set of
+// right-to-left scripts is small, closed in practice, and changes on the
+// timescale of Unicode script additions rather than of CLDR releases.
+
+/// The RTL SCRIPT subtags (BCP-47 second position, ISO 15924). Consulted first,
+/// because an explicit script overrides the language's default — `az-Arab` is
+/// right-to-left where bare `az` is not, and `ku-Latn` is left-to-right where
+/// bare `ku` is not.
+let private rtlScripts =
+    set
+        [ "adlm"
+          "arab"
+          "aran"
+          "hebr"
+          "mand"
+          "nkoo"
+          "rohg"
+          "samr"
+          "syrc"
+          "thaa"
+          "yezi" ]
+
+/// The languages whose DEFAULT script is right-to-left, for a tag that names no
+/// script: Arabic, Aramaic, Central Kurdish, Dhivehi, Persian, Hebrew,
+/// Kashmiri, Mazanderani, N'Ko, Pashto, Sindhi, Syriac, Uyghur, Urdu, Yiddish.
+///
+/// DEFAULTS, not "languages ever written right-to-left". `pa` (Punjabi) and
+/// `ku` (Kurdish) are absent deliberately: their default scripts are Gurmukhi
+/// and Latin, and it is `pa-Arab` / `ckb` that run right-to-left — which the
+/// script check above already resolves. Adding them here would mirror the
+/// majority of their speakers' pages backwards.
+let private rtlLanguages =
+    set
+        [ "ar"
+          "arc"
+          "ckb"
+          "dv"
+          "fa"
+          "he"
+          "iw"
+          "ji"
+          "ks"
+          "mzn"
+          "nqo"
+          "ps"
+          "sd"
+          "syr"
+          "ug"
+          "ur"
+          "yi" ]
+
+/// The writing direction a BCP-47 tag implies — `"rtl"` or `"ltr"`. An empty,
+/// malformed or unknown tag is `"ltr"`: the value is emitted as a document
+/// attribute, so guessing wrong in the majority direction is the recoverable
+/// error and refusing to answer is not an option the attribute has.
+///
+/// Two of the language entries are legacy ISO-639 codes (`iw` for Hebrew, `ji`
+/// for Yiddish) that a host's own configuration may still carry; they resolve
+/// the same as their modern forms rather than silently reading as left-to-right.
+let textDirection (localeTag: string) : string =
+    if System.String.IsNullOrWhiteSpace localeTag then
+        "ltr"
+    else
+        let parts = localeTag.Replace('_', '-').ToLowerInvariant().Split('-')
+        let language = parts[0]
+
+        // A script subtag is the four-letter part; `ar-EG` has a region there,
+        // `az-Arab-IR` a script. Scan rather than index, so a tag carrying an
+        // extended-language subtag (`zh-cmn-Hans`) is still read correctly.
+        let script = parts |> Array.tryFind (fun p -> p.Length = 4)
+
+        match script with
+        | Some s when rtlScripts.Contains s -> "rtl"
+        | Some _ -> "ltr"
+        | None -> if rtlLanguages.Contains language then "rtl" else "ltr"
+
 let private dateStyleStr (s: DateStyle) : string =
     match s with
     | DateStyle.Short -> "short"

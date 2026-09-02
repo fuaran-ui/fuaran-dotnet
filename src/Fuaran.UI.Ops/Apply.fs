@@ -1013,7 +1013,22 @@ let private updateMedia (field: string) (v: obj) (spec: MediaSpec) : UpdateResul
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryBool v
             |> Result.map (fun x -> { spec with Loop = x }))
+    // Phase 1110 - the transcript is an optional `TextSource`, so it takes the
+    // `ImageSpec.Caption` shape exactly: a `null` clears it, a value sets it.
+    // Attaching a transcript to a recording that shipped without one is squarely
+    // the kind of edit `UpdateProp` exists for.
+    | "Transcript" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryTextSourceOption v
+            |> Result.map (fun x -> { spec with Transcript = x }))
     | "Src"
+    // Phase 1110 - `Tracks` is a list of records each holding a `Binding` and a
+    // `TextSource`, so it takes the `ImageSpec.SrcSet` disposition: a real field
+    // with no coercion from an untyped `obj`, which is `NotSupportedYet` and not
+    // `UnknownField`. The distinction is the whole point of the split - an
+    // author told the field does not exist looks for a different one, where an
+    // author told it is not reachable this way reaches for `EditNode`.
+    | "Tracks"
     | "Kind" -> NotSupportedYet
     | _ -> UnknownField
 

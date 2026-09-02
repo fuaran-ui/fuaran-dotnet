@@ -132,7 +132,10 @@ let islandsTree: Node<obj> =
 // ─── Shells (host-authored SEO content) ──────────────────────────────────────
 
 let private shell (title: string) (description: string) (canonical: string) : DocumentShell =
-    { DocumentShell.create title with
+    // Phase 1114 — the document declares its language, and `lang` + `dir` on
+    // `<html>` follow from it. The shell no longer hardcodes `lang="en"`, so a
+    // host that says nothing gets nothing; this sample says English.
+    { (DocumentShell.create title |> DocumentShell.withLocale "en") with
         MetaDescription = Some description
         Canonical = Some canonical
         OpenGraph = [ "og:title", title; "og:type", "website" ]

@@ -397,6 +397,91 @@ let mediaAudio: Node<obj> =
         ))
         None
 
+// ─── Media text tracks (Phase 1110) ─────────────────────────────────────────
+//
+// Three more, and they pin the two things the four above could not: that a
+// REPEATED structured slot on this record encodes in authored order with its
+// own key order, and that an optional `TextSource` on the spec is absent by
+// default. The RENDER obligations these fixtures exist to be measured against —
+// authored track order, one default per kind, the transcript disclosure — are
+// again not expressible in bytes and live in the SSR corpus and the spec.
+
+/// One captions track, elected as the default. `default` is off its `false`
+/// identity so the key appears, and every other slot of the entry is required,
+/// so this one fixture pins the whole `TrackEntry` key order in a single line.
+let mediaVideoCaptions: Node<obj> =
+    node
+        "media-video-captions-1"
+        (NodeKind.Media(
+            { Defaults.media with
+                Label = TextSource.Literal "Studio walkthrough"
+                Src = Binding.Static(Some "/walkthrough.mp4")
+                Tracks =
+                    [ { Default = true
+                        Kind = TrackKind.Captions
+                        Label = TextSource.Literal "English captions"
+                        Src = Binding.Static(Some "/walkthrough.en.vtt")
+                        SrcLang = "en" } ] }
+        ))
+        None
+
+/// Three tracks, authored in an order no sort would produce, with TWO captions
+/// entries both electing themselves default. The wire carries the array exactly
+/// as authored — a JSON array is ordered data and the canonical encoder sorts
+/// object KEYS only — so this is the fixture that tells a host preserving the
+/// authored order from one re-sorting it. `image-srcset-1` makes the opposite
+/// point, and the pair is what makes each rule legible on its own.
+///
+/// The double default election is legal bytes: the decoder does not refuse it,
+/// because a lenient host would render it anyway, and the render obligation
+/// resolves it first-wins. A reject fixture here would have made the wire
+/// stricter than every host that reads it.
+let mediaVideoTracks2: Node<obj> =
+    node
+        "media-video-tracks-2"
+        (NodeKind.Media(
+            { Defaults.media with
+                Label = TextSource.Literal "Harbour restoration, part two"
+                Src = Binding.Static(Some "/restoration-2.mp4")
+                Tracks =
+                    [ { Default = false
+                        Kind = TrackKind.Subtitles
+                        Label = TextSource.Literal "Gàidhlig"
+                        Src = Binding.Static(Some "/restoration-2.gd.vtt")
+                        SrcLang = "gd" }
+                      { Default = true
+                        Kind = TrackKind.Captions
+                        Label = TextSource.Literal "English captions"
+                        Src = Binding.Static(Some "/restoration-2.en.vtt")
+                        SrcLang = "en" }
+                      { Default = true
+                        Kind = TrackKind.Captions
+                        Label = TextSource.Literal "English captions (verbose)"
+                        Src = Binding.Static(Some "/restoration-2.en-verbose.vtt")
+                        SrcLang = "en" } ] }
+        ))
+        None
+
+/// The audio transcript floor. An `Audio` surface has no visual channel to hang
+/// captions on, so a transcript IS its accessibility affordance — which is why
+/// the slot sits on the spec rather than on the `Video` case. Every other media
+/// fixture pins its omission at the same time.
+let mediaAudioTranscript: Node<obj> =
+    node
+        "media-audio-transcript-1"
+        (NodeKind.Media(
+            { Defaults.media with
+                Kind = MediaKind.Audio
+                Label = TextSource.Literal "Curator's commentary"
+                Src = Binding.Static(Some "/commentary.mp3")
+                Transcript =
+                    Some(
+                        TextSource.Literal
+                            "The harbour was rebuilt twice: once after the storm of 1908, and again in 1953."
+                    ) }
+        ))
+        None
+
 let listDisplay: Node<obj> =
     // Phase 287 — ordered list with two items.
     node
@@ -4851,6 +4936,9 @@ let allNodes: (string * Node<obj>) list =
       "Display/Media (Phase 1076 — video with a poster frame in the case payload)", mediaVideoPoster
       "Display/Media (Phase 1076 — autoplay declared, both shared bools off-default)", mediaVideoAutoplay
       "Display/Media (Phase 1076 — the Audio variant, whose payload is the discriminator alone)", mediaAudio
+      "Display/Media (Phase 1110 — one captions track, elected default)", mediaVideoCaptions
+      "Display/Media (Phase 1110 — three tracks, authored order, two default elections)", mediaVideoTracks2
+      "Display/Media (Phase 1110 — the audio transcript floor)", mediaAudioTranscript
       "Display/List (ordered)", listDisplay
       "Display/Toast (Success tone, open)", toast
       "Display/CodeBlock (fsharp, line numbers + highlights)", codeBlock

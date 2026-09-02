@@ -382,3 +382,48 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* ── Phase 1114 — right-to-left / bidi harness (`?dir=rtl`) ─────────────────
+   Harness chrome only. The MIRRORING is the reference stylesheet's job: these
+   rules deliberately use logical properties themselves, so the two regions are
+   laid out by the same mechanism the exhibits are and nothing here can mask a
+   defect in it. */
+.bidi-rtl-page {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: hidden;
+  padding: var(--fuaran-space-lg, 16px);
+}
+
+.bidi-rtl-page * {
+  box-sizing: border-box;
+}
+
+.bidi-rtl-region,
+.bidi-ltr-region,
+.bidi-ltr-island {
+  margin-block: var(--fuaran-space-xl, 24px);
+  padding: var(--fuaran-space-lg, 16px);
+  border: 1px solid var(--fuaran-tone-default-border, #e5e7eb);
+  border-radius: var(--fuaran-radius-lg, 8px);
+}
+
+.bidi-ltr-island {
+  background: var(--fuaran-tone-subdued-bg, #f3f4f6);
+}
+
+.bidi-rtl-item,
+.bidi-rtl-textrun {
+  margin-block: var(--fuaran-space-xl, 24px);
+  padding-top: var(--fuaran-space-md, 12px);
+  border-top: 1px solid var(--fuaran-tone-default-border, #e5e7eb);
+}
+
+.bidi-rtl-label {
+  margin: 0 0 var(--fuaran-space-sm, 8px);
+  font-size: var(--fuaran-text-sm, 13px);
+  font-weight: var(--fuaran-font-weight-semibold, 600);
+  color: var(--fuaran-tone-subdued-fg, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
