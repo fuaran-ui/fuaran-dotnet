@@ -31,6 +31,17 @@ module Fuaran.UI.JsonDecode.Tests.OpVocabularyTests
 //
 //  Leg 3 is the projection: the decoder's unknown-op hint must BE the
 //  declaration rather than agree with it today.
+//
+//  Leg 4 is the CROSS-HOST leg, and it is the one this file was missing. Legs
+//  1–3 are all F#-internal — the IDL is the generation root of this repo's
+//  structural layer, the DU is an F# type, the hint is this decoder's error
+//  string — so none of them is a surface a second host can fail against. The
+//  node vocabulary has had that surface since the `kinds` enumeration landed in
+//  `manifest.json` and the control vocabulary since `formFieldKinds`; the op
+//  vocabulary had the STRONGER artefact and none of the reach, because every
+//  host's harness loads the manifest and no host reads `idl.json`. So a host
+//  with no op decode arm certified every op fixture it happened to carry and
+//  declared nothing about the op set. The asymmetry was the gap.
 // ============================================================================
 
 open System
@@ -192,4 +203,65 @@ let tests =
                         Expect.equal
                             e.ExpectedShape
                             (Some JsonDecode.unknownOpKindHint)
-                            "the UNKNOWN_DU_CASE hint is not the declared vocabulary" ] ]
+                            "the UNKNOWN_DU_CASE hint is not the declared vocabulary" ]
+
+          testList
+              "leg 4 — pinned to the manifest's `ops` enumeration"
+              [ testCase "the declared op set is manifest.ops"
+                <| fun () ->
+                    // The cross-host leg (WIRE_FORMAT §11.2). Legs 1 and 2 are
+                    // F#-internal: they hold this host's declaration against the
+                    // IDL and against its own shipped DU, and a second host can
+                    // read neither — the IDL is the generation root of THIS
+                    // repo's structural layer, and the DU is an F# type. Every
+                    // host's harness already loads `manifest.json`, so the
+                    // enumeration that lives there is the one another host can
+                    // fail against, in the same both-directions shape the
+                    // `kinds` and `formFieldKinds` pins use.
+                    //
+                    // Stated in both directions rather than as one set equality,
+                    // so the failure says which way round it went — "the corpus
+                    // knows an op this host does not" and "this host declares an
+                    // op the corpus never exercises" have different remedies,
+                    // and only the first is an adoption gap.
+                    let manifestOps = Set.ofList (Corpus.loadOps ())
+                    let declared = Set.ofList JsonDecode.knownOpKinds
+
+                    let missing = Set.difference manifestOps declared |> Set.toList
+
+                    Expect.isEmpty
+                        missing
+                        (sprintf "manifest.ops declares ops this host's decoder does not know: %A" missing)
+
+                    let extra = Set.difference declared manifestOps |> Set.toList
+
+                    Expect.isEmpty
+                        extra
+                        (sprintf
+                            "this host declares ops the corpus never exercises (add an op fixture, then regenerate with --emit-corpus): %A"
+                            extra)
+
+                testCase "manifest.ops is the discriminator every op fixture actually carries"
+                <| fun () ->
+                    // The enumeration is GENERATED from these bytes, so this
+                    // reads it back off the corpus rather than off the emitter —
+                    // the leg that catches a manifest regenerated from a
+                    // different fixture set than the one committed beside it.
+                    let fromFixtures =
+                        snd (Corpus.load ())
+                        |> List.filter (fun (e: Corpus.FixtureEntry) -> e.Kind = "op-round-trip")
+                        |> List.map (fun e ->
+                            let wire = Corpus.readPayload corpusRoot e.InputFile
+                            use doc = JsonDocument.Parse(wire, Corpus.wireJsonOptions)
+
+                            match doc.RootElement.GetProperty("$type").GetString() with
+                            | null -> failtestf "op fixture %s has no $type" e.Id
+                            | s -> s)
+                        |> Set.ofList
+
+                    Expect.isNonEmpty fromFixtures "the corpus enumerates no op round-trip fixtures"
+
+                    Expect.equal
+                        (Set.ofList (Corpus.loadOps ()))
+                        fromFixtures
+                        "manifest.ops and the op fixtures' own discriminators disagree — regenerate with --emit-corpus" ] ]

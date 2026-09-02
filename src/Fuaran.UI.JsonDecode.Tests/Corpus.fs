@@ -131,6 +131,7 @@ let private writeManifest
     (outputDir: string)
     (kinds: string list)
     (formFieldKinds: string list)
+    (ops: string list)
     (entries: FixtureEntry list)
     : unit =
     let sorted = entries |> List.sortBy (fun e -> e.Kind, e.Id)
@@ -224,6 +225,28 @@ let private writeManifest
 
     for k in formFieldKinds do
         w.WriteStringValue(k)
+
+    w.WriteEndArray()
+
+    // The canonical TreeOp enumeration: the `$type` discriminators `decodeOp`
+    // accepts, derived the same way `kinds` is — from the ENCODED op round-trip
+    // fixtures, never a hand list. The third attested family (WIRE_FORMAT §11.2).
+    //
+    // The op vocabulary already had a stronger pin than this one: `idl.json`'s
+    // `ops` array carries the tags AND each op's wire field names AND their
+    // optionality, and `JsonDecode.opWireFields` is held to it field-for-field.
+    // What it did not have is the MANIFEST leg — and the two artefacts answer to
+    // different readers. `idl.json` is the vocabulary the generated structural
+    // layer is built from; `manifest.json` is what a conformant host's harness
+    // loads, which is why every cross-host attestation reads it and none of them
+    // reads the IDL. So a host with no op decode arm at all could pin nothing:
+    // the node and control families named the gap for it and the op family had
+    // no list for it to fail against. The asymmetry was the defect, not a
+    // missing check.
+    w.WriteStartArray("ops")
+
+    for o in ops do
+        w.WriteStringValue(o)
 
     w.WriteEndArray()
 
@@ -630,13 +653,28 @@ let emit (outputDir: string) : unit =
         |> List.distinct
         |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
 
-    writeManifest outputDir kinds formFieldKinds (List.ofSeq entries)
+    // The canonical TreeOp enumeration — same derivation as `kinds`, over the OP
+    // fixtures rather than the node ones. Read off the encoded bytes for the same
+    // reason: the union case name is a host-side display tag, `$type` is the wire.
+    let ops =
+        Fixtures.allOps
+        |> List.map (fun (name, op) ->
+            use doc = JsonDocument.Parse(CanonicalJson.encodeOp op, wireJsonOptions)
+
+            match doc.RootElement.GetProperty("$type").GetString() with
+            | null -> failwithf "op fixture '%s' has no $type discriminator" name
+            | s -> s)
+        |> List.distinct
+        |> List.sortWith (fun a b -> String.CompareOrdinal(a, b))
+
+    writeManifest outputDir kinds formFieldKinds ops (List.ofSeq entries)
 
     printfn
-        "Emitted %d fixtures + %d kinds + %d form-field kinds + schema.json to %s"
+        "Emitted %d fixtures + %d kinds + %d form-field kinds + %d ops + schema.json to %s"
         entries.Count
         kinds.Length
         formFieldKinds.Length
+        ops.Length
         outputDir
 
 // ─── Load (test-time index) ──────────────────────────────────────────────────
@@ -730,6 +768,12 @@ let loadKinds () : string list = loadStringArray "kinds"
 /// manifest.json — the Phase 746 cross-host CONTROL-vocabulary attestation
 /// anchor, the second discriminator family to gain one.
 let loadFormFieldKinds () : string list = loadStringArray "formFieldKinds"
+
+/// The canonical `TreeOp` enumeration (the `ops` array) from manifest.json — the
+/// third discriminator family to gain a manifest leg, and the one whose absence
+/// meant a host could certify every op fixture it happened to carry while
+/// declaring nothing at all about the op vocabulary as a SET.
+let loadOps () : string list = loadStringArray "ops"
 
 /// Every `FormFieldKind` discriminator a corpus payload carries, in its two wire
 /// carriers (`Form.fields[]` / `Filters.items[]`). Shared by the emitter's
