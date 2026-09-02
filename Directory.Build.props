@@ -408,7 +408,23 @@
          unreleased and this lands in the same unshipped surface as the two
          entries above. See STABILITY.md "Recorded change — 0.47.0, render
          obligations on the fidelity manifest". -->
-    <Version>0.47.0</Version>
+    <!-- 0.48.0 (Phase 1144) — the typed-`Actor` DAG fold, a MAJOR-axis wire
+         event on `Fuaran.UI.OpStream.Dag.*`. `DagOpRecord.UserId: string`
+         becomes `Actor: Actor`, the content-address pre-image's `"userId"`
+         member becomes `"actor":<Actor.encode>`, and the canonical wire record
+         carries `"actor"` (Ordinal-first) in place of the trailing `"userId"`.
+         Because Phase 408 had already folded attribution INTO the address,
+         typing it RE-ADDRESSES EVERY DAG NODE: pre-1144 DAG content addresses
+         do not carry forward and there is no in-place upgrade for a persisted
+         DAG. This takes its own version slot rather than riding the in-flight
+         0.47.0 — that slot carries four ADDITIVE changes, and a reader
+         scanning the history for the release that moved the DAG wire must not
+         have to find it inside a minor that otherwise reads as growth.
+         Pre-1.0, so the major axis still rides a minor bump (STABILITY.md §
+         "the semver rules take effect from 1.0.0"). See STABILITY.md "Recorded
+         breaking change — 0.48.0" and
+         docs/migrations/1144-typed-actor-dag-fold.md. -->
+    <Version>0.48.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

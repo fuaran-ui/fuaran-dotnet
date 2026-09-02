@@ -1,6 +1,7 @@
 namespace Fuaran.UI.OpStream.Dag.Inspect
 
 open System.Collections.Generic
+open Fuaran.UI.OpStream.Abstractions
 open Fuaran.UI.OpStream.Dag.Abstractions
 
 // ============================================================================
@@ -57,7 +58,7 @@ type DagGraphNode =
       Tombstoned: bool
       OutcomeHash: string option
       PromptId: string option
-      UserId: string
+      Actor: Actor
       Timestamp: System.DateTimeOffset }
 
 /// A parent→child link. `IsPrimary` marks the replay-spine edge (the parent is
@@ -144,7 +145,7 @@ module DagGraphModel =
                   Tombstoned = r.Tombstoned
                   OutcomeHash = r.OutcomeHash
                   PromptId = r.PromptId
-                  UserId = r.UserId
+                  Actor = r.Actor
                   Timestamp = r.Timestamp })
             |> List.sortWith (fun a b ->
                 if a.Depth <> b.Depth then

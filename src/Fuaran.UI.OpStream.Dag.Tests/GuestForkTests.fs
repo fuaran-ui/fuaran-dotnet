@@ -76,7 +76,7 @@ let tests =
                       mountOp.Hash
                       (styleLeft ToneVariant.Critical)
                       None
-                      "guest"
+                      (Actor.Human "guest")
                       (ts 2L)
                       OpResultEnvelope.Success
 
@@ -109,7 +109,7 @@ let tests =
                       mountOp.Hash
                       (styleLeft ToneVariant.Critical)
                       None
-                      "guest"
+                      (Actor.Human "guest")
                       (ts 3L)
                       OpResultEnvelope.Success
 
@@ -138,7 +138,7 @@ let tests =
                       mountOp.Hash
                       (styleLeft ToneVariant.Critical)
                       None
-                      "guest"
+                      (Actor.Human "guest")
                       (ts 3L)
                       OpResultEnvelope.Success
 
@@ -177,7 +177,7 @@ let tests =
                       mountOp.Hash
                       (styleLeft ToneVariant.Critical)
                       None
-                      "guest"
+                      (Actor.Human "guest")
                       (ts 2L)
                       OpResultEnvelope.Success
 
@@ -189,7 +189,7 @@ let tests =
                       g0.Hash
                       (styleRight ToneVariant.Success)
                       None
-                      "guest"
+                      (Actor.Human "guest")
                       (ts 3L)
                       OpResultEnvelope.Success
 
@@ -218,7 +218,7 @@ let tests =
                       mountOp.Hash
                       (styleLeft ToneVariant.Critical)
                       None
-                      "guest"
+                      (Actor.Human "guest")
                       (ts 3L)
                       OpResultEnvelope.Success
 
@@ -256,7 +256,7 @@ let tests =
                       mountOp.Hash
                       (styleLeft ToneVariant.Critical)
                       None
-                      "guest"
+                      (Actor.Human "guest")
                       (ts 2L)
                       OpResultEnvelope.Success
 
@@ -268,7 +268,7 @@ let tests =
                       g0.Hash
                       (styleRight ToneVariant.Success)
                       None
-                      "guest"
+                      (Actor.Human "guest")
                       (ts 3L)
                       OpResultEnvelope.Success
 
@@ -304,7 +304,7 @@ let tests =
                       mountOp.Hash
                       (styleLeft ToneVariant.Critical)
                       (Some "prompt-42")
-                      "guest"
+                      (Actor.Human "guest")
                       (ts 2L)
                       OpResultEnvelope.Success
 

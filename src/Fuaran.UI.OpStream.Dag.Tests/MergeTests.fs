@@ -177,10 +177,24 @@ let tests =
                   // Two merge-shaped nodes each parented on {p,q} → lca is
                   // ambiguous ({p,q} are both maximal common ancestors).
                   let h1 =
-                      DagOpRecord.create "s" [ p.Hash; q.Hash ] brand None "t" (ts 4L) OpResultEnvelope.Success
+                      DagOpRecord.create
+                          "s"
+                          [ p.Hash; q.Hash ]
+                          brand
+                          None
+                          (Actor.Human "t")
+                          (ts 4L)
+                          OpResultEnvelope.Success
 
                   let h2 =
-                      DagOpRecord.create "s" [ q.Hash; p.Hash ] critical None "t" (ts 5L) OpResultEnvelope.Success
+                      DagOpRecord.create
+                          "s"
+                          [ q.Hash; p.Hash ]
+                          critical
+                          None
+                          (Actor.Human "t")
+                          (ts 5L)
+                          OpResultEnvelope.Success
 
                   add sink h1
                   add sink h2

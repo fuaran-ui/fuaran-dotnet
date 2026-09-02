@@ -35,12 +35,19 @@ open Fuaran.UI.OpStream.Abstractions
 //      Hash = SHA-256( {"parents":[<sorted, quoted>]
 //                       ,"op":<CanonicalJson.encodeOp(Op)>
 //                       ,"ts":<unixSeconds>
-//                       ,"userId":<..>,"promptId":<null|..>,"result":<..>} )
+//                       ,"actor":<Actor.encode(Actor)>
+//                       ,"promptId":<null|..>,"result":<..>} )
 //
 //  Phase 408 folded `userId` / `promptId` / `resultEnvelope` INTO the hash,
 //  closing the F13/Phase-320-class provenance hole the linear chain closed in
 //  406/411 (re-attributing a node was previously undetectable), and replaced the
-//  raw `encodeOp ++ unixTs` concatenation with the delimited envelope. A MERGE
+//  raw `encodeOp ++ unixTs` concatenation with the delimited envelope. Phase 1144
+//  then TYPED that attribution: the `"userId":<bare string>` member became
+//  `"actor":<Actor.encode>`, the same typed `Actor` (Human | Agent) and the same
+//  pinned canonical encoding the linear chain has folded since Phase 320 — so the
+//  Human/Agent distinction is inside the digest rather than flattened to an id on
+//  the way in. Because attribution was already hashed, typing it RE-ADDRESSES
+//  EVERY DAG NODE: pre-1144 content addresses do not carry forward. A MERGE
 //  node folds the OUTCOME tree hash under a `"merge"` tag instead of the op
 //  (M1: two hosts agree iff they reach the same tree) — the SOVEREIGN DAG
 //  identity semantic Core's minimal `nodeHash` cannot express (assessment
@@ -73,6 +80,12 @@ open Fuaran.UI.OpStream.Abstractions
 ///    merge node's `Op` still carries the replay delta (the diff from the
 ///    primary parent's tree to the merged tree) so replay along the primary
 ///    spine reconstructs the merged tree.
+///  - `Actor` is the typed author (Phase 1144) — the same `Human | Agent` DU the
+///    linear `OpRecord` carries, replacing the pre-1144 bare `UserId: string`.
+///    It is folded into the content address via `Actor.encode`, so the
+///    Human/Agent distinction is covered by the digest and survives
+///    `ofLinear`. Hosts still threading a bare id lift it with
+///    `Actor.ofLegacyString`.
 ///  - `Tombstoned` marks a record whose payload has been pruned for retention
 ///    (`Op` reset to a placeholder, the original `Hash` preserved so the chain
 ///    still links — see `DagRetention`). A live record is `Tombstoned = false`.
@@ -87,7 +100,7 @@ type DagOpRecord<'Msg> =
       Op: TreeOp<'Msg>
       OutcomeHash: string option
       PromptId: string option
-      UserId: string
+      Actor: Actor
       Timestamp: DateTimeOffset
       ResultEnvelope: OpResultEnvelope
       Tombstoned: bool }
@@ -120,6 +133,36 @@ module DagOpRecord =
     // tree hash under a `"merge"` tag, NOT the op-path (M1 — two hosts agree iff
     // they reach the same tree). The assessment (fuaran#408) keeps UI's DAG
     // identity sovereign vs `Core.OpStream.Dag`; this only hardens its pre-image.
+    //
+    // ── THE PRE-IMAGE CHANGE (Phase 1144) ────────────────────────────────────
+    // The envelope's attribution member moved from an untyped id to the typed
+    // actor, at the SAME position in the delimited envelope:
+    //
+    //     …,"ts":<unix>,"userId":"alice",  "promptId":…,"result":…     (408)
+    //     …,"ts":<unix>,"actor":{"kind":"human","id":"alice"},"promptId":…,…  (1144)
+    //
+    // The bytes come from `Actor.encode`, the encoding the linear chain has
+    // pinned since Phase 320 and which the TS + Core hosts reproduce
+    // byte-for-byte — one canonical actor encoding across the estate, reused
+    // rather than a second one invented here. `Actor.encode` emits its members
+    // in a PINNED order (`kind` first, then the case fields), not Ordinal-sorted;
+    // that is the whole point of it being pinned, and the nested value is
+    // embedded verbatim exactly as `CanonicalJson.encodeOp` is.
+    //
+    // THIS RE-ADDRESSES EVERY DAG NODE. A pre-1144 record's stored `Hash` will
+    // not reproduce under `recomputeHash`, and a pre-1144 hash is not a valid
+    // parent link for a post-1144 node — DAG content addresses do NOT carry
+    // forward, and there is no in-place upgrade for a persisted DAG. See
+    // `docs/migrations/1144-typed-actor-dag-fold.md`. It is deliberately not
+    // dual-read: a lenient lift of a bare id would mint a record whose stored
+    // hash silently fails verification, which is a worse failure than a refusal
+    // that names the cause (`DagWire.decodeRecord` refuses a `userId` envelope
+    // for exactly this reason).
+    //
+    // The DAG pre-image carries NO format-version tag (the linear chain's `"v"`
+    // has no DAG counterpart — see the STABILITY.md note that "a DAG version tag
+    // is tracked separately"). Introducing one is a separate design act with its
+    // own cross-host concept, not a side-effect of typing the actor.
 
     /// Canonical JSON string escaping — `"` / `\` / control chars, matching the
     /// linear `StreamEntry` / `CanonicalJson` escaper so bytes align across hosts.
@@ -142,14 +185,14 @@ module DagOpRecord =
 
     let private provenanceJson
         (ts: DateTimeOffset)
-        (userId: string)
+        (actor: Actor)
         (promptId: string option)
         (result: OpResultEnvelope)
         : string =
         ",\"ts\":"
         + ts.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)
-        + ",\"userId\":"
-        + jstr userId
+        + ",\"actor\":"
+        + Actor.encode actor
         + ",\"promptId\":"
         + (match promptId with
            | Some p -> jstr p
@@ -165,7 +208,7 @@ module DagOpRecord =
         (parents: string list)
         (op: TreeOp<'Msg>)
         (timestamp: DateTimeOffset)
-        (userId: string)
+        (actor: Actor)
         (promptId: string option)
         (resultEnvelope: OpResultEnvelope)
         : string =
@@ -174,7 +217,7 @@ module DagOpRecord =
             + parentsJson parents
             + ",\"op\":"
             + CanonicalJson.encodeOp op
-            + provenanceJson timestamp userId promptId resultEnvelope
+            + provenanceJson timestamp actor promptId resultEnvelope
             + "}"
 
         HashChain.sha256Hex payload
@@ -188,7 +231,7 @@ module DagOpRecord =
         (parents: string list)
         (outcomeHash: string)
         (timestamp: DateTimeOffset)
-        (userId: string)
+        (actor: Actor)
         (promptId: string option)
         (resultEnvelope: OpResultEnvelope)
         : string =
@@ -197,7 +240,7 @@ module DagOpRecord =
             + parentsJson parents
             + ",\"merge\":"
             + jstr outcomeHash
-            + provenanceJson timestamp userId promptId resultEnvelope
+            + provenanceJson timestamp actor promptId resultEnvelope
             + "}"
 
         HashChain.sha256Hex payload
@@ -208,9 +251,9 @@ module DagOpRecord =
     let recomputeHash<'Msg> (record: DagOpRecord<'Msg>) : string =
         match record.OutcomeHash with
         | Some outcome ->
-            computeMergeHash record.Parents outcome record.Timestamp record.UserId record.PromptId record.ResultEnvelope
+            computeMergeHash record.Parents outcome record.Timestamp record.Actor record.PromptId record.ResultEnvelope
         | None ->
-            computeHash record.Parents record.Op record.Timestamp record.UserId record.PromptId record.ResultEnvelope
+            computeHash record.Parents record.Op record.Timestamp record.Actor record.PromptId record.ResultEnvelope
 
     /// Assemble a live (`Tombstoned = false`) ordinary DAG record with its
     /// content hash computed from `parents` / `op` / `timestamp`.
@@ -219,17 +262,17 @@ module DagOpRecord =
         (parents: string list)
         (op: TreeOp<'Msg>)
         (promptId: string option)
-        (userId: string)
+        (actor: Actor)
         (timestamp: DateTimeOffset)
         (resultEnvelope: OpResultEnvelope)
         : DagOpRecord<'Msg> =
         { StreamId = streamId
-          Hash = computeHash parents op timestamp userId promptId resultEnvelope
+          Hash = computeHash parents op timestamp actor promptId resultEnvelope
           Parents = parents
           Op = op
           OutcomeHash = None
           PromptId = promptId
-          UserId = userId
+          Actor = actor
           Timestamp = timestamp
           ResultEnvelope = resultEnvelope
           Tombstoned = false }
@@ -244,17 +287,17 @@ module DagOpRecord =
         (replayDelta: TreeOp<'Msg>)
         (outcomeHash: string)
         (promptId: string option)
-        (userId: string)
+        (actor: Actor)
         (timestamp: DateTimeOffset)
         (resultEnvelope: OpResultEnvelope)
         : DagOpRecord<'Msg> =
         { StreamId = streamId
-          Hash = computeMergeHash parents outcomeHash timestamp userId promptId resultEnvelope
+          Hash = computeMergeHash parents outcomeHash timestamp actor promptId resultEnvelope
           Parents = parents
           Op = replayDelta
           OutcomeHash = Some outcomeHash
           PromptId = promptId
-          UserId = userId
+          Actor = actor
           Timestamp = timestamp
           ResultEnvelope = resultEnvelope
           Tombstoned = false }
@@ -278,24 +321,14 @@ module DagOpRecord =
                     | head :: _ -> [ head.Hash ]
 
                 let dag =
-                    // The DAG record keeps a bare-string `UserId`, so the linear
-                    // record's TYPED actor is projected down to its attribution id
-                    // (Phase 320) and the Human/Agent distinction is lost in the
-                    // embedding.
-                    //
-                    // The comment that stood here said the DAG's content address was
-                    // "deliberately tree-outcome-based, not actor-folded". That has
-                    // been WRONG since Phase 408, which folded `userId` (along with
-                    // `promptId` and the result envelope) into the pre-image — see
-                    // `provenanceJson`. Attribution IS hashed; what is outstanding is
-                    // only that it is hashed as an untyped string.
-                    //
-                    // Closing that gap is a MAJOR wire event, not a tidy-up: `userId`
-                    // is inside the content address, so typing it re-addresses every
-                    // DAG node, moves the `wire-format-fixtures/dag/` corpus, and must
-                    // land with the TS host in the same change-set (STABILITY.md puts
-                    // `DagOpRecord` pre-image breakage on the major axis).
-                    create r.StreamId parents r.Op r.PromptId (Actor.id r.Actor) r.Timestamp r.ResultEnvelope
+                    // The linear record's TYPED actor carries over WHOLE (Phase 1144).
+                    // Until then the DAG held a bare-string `UserId`, so this call
+                    // projected the actor down to `Actor.id` and the Human/Agent
+                    // distinction was lost in the embedding — a lossy step in the one
+                    // direction the degenerate-equivalence contract is supposed to be
+                    // faithful. Both records now fold the same `Actor.encode` bytes,
+                    // so the embedding preserves attribution exactly.
+                    create r.StreamId parents r.Op r.PromptId r.Actor r.Timestamp r.ResultEnvelope
 
                 dag :: acc)
             []
