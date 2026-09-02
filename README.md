@@ -1,5 +1,7 @@
 # Fuaran (language tier)
 
+[![CI](https://github.com/fuaran-ui/fuaran-dotnet/actions/workflows/ci.yml/badge.svg)](https://github.com/fuaran-ui/fuaran-dotnet/actions/workflows/ci.yml) [![NuGet](https://img.shields.io/nuget/v/Fuaran.UI.svg)](https://www.nuget.org/packages/Fuaran.UI) [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 The Fuaran language tier: a typed UI tree, smart constructors, renderer, apply engine, validator, op-stream persistence, layout observability, and op-apply telemetry — all shipped as the `Fuaran.UI.*` NuGet package set.
 
 This is the OSS-target language tier, licensed Apache-2.0.
