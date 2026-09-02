@@ -255,6 +255,68 @@ let tests =
                   "a form-field kind does not forward — the <label> already names the control"
           }
 
+          // ── Phase 1114 — the `dir="auto"` policy ──────────────────────────
+          //
+          // Kind-level and shared by both renderer arms, so this is the one
+          // place the slot set can be asserted as pure F#. Read the policy note
+          // above `Accessibility.isBidiIsolated` for what decides each answer.
+
+          test "dir=auto is emitted for a display leaf whose text is RUNTIME-bound" {
+              let isolated (n: Node<Msg>) = Accessibility.isBidiIsolated n.Kind
+
+              let boundHeading =
+                  Fuaran.heading
+                      "h"
+                      { Defaults.heading with
+                          Text = TextSource.Bound(Binding.State("customerName", Some "")) }
+
+              Expect.isTrue (isolated boundHeading) "a bound heading carries data of unknown direction"
+
+              Expect.equal
+                  (Accessibility.bidiAttributes boundHeading.Kind)
+                  [ "dir", "auto" ]
+                  "the attribute pair is exactly dir=auto"
+          }
+
+          test "dir=auto is NOT emitted for authored or host-translated text" {
+              let isolated (n: Node<Msg>) = Accessibility.isBidiIsolated n.Kind
+
+              let literal =
+                  Fuaran.heading
+                      "h"
+                      { Defaults.heading with
+                          Text = TextSource.Literal "Revenue" }
+
+              let i18n =
+                  Fuaran.heading
+                      "h"
+                      { Defaults.heading with
+                          Text = TextSource.I18n("dashboard.revenue", Map.empty) }
+
+              Expect.isFalse (isolated literal) "a literal is the author writing in the document's language"
+              Expect.isFalse (isolated i18n) "an i18n key resolves in the document's own locale"
+              Expect.equal (Accessibility.bidiAttributes literal.Kind) [] "no attribute at all, not dir=ltr"
+          }
+
+          test "dir=auto is NOT emitted on a layout container, even one holding bound text" {
+              // `dir` inherits, so `auto` here would resolve ONE direction from
+              // the first strong character anywhere beneath and impose it on
+              // every child — the opposite of what a mixed-direction page needs.
+              let boundHeading =
+                  Fuaran.heading
+                      "h"
+                      { Defaults.heading with
+                          Text = TextSource.Bound(Binding.State("name", Some "")) }
+
+              let container =
+                  Fuaran.stack
+                      "stk"
+                      { Defaults.stack<Msg> with
+                          Children = [ boundHeading ] }
+
+              Expect.isFalse (Accessibility.isBidiIsolated container.Kind) "a container never isolates for its children"
+          }
+
           test "partitionExtraAttributes splits data-* (wrapper) from aria-* (projection)" {
               let dataHalf, ariaHalf =
                   Accessibility.partitionExtraAttributes [ "aria-current", "page"; "data-hook", "nav"; "data-x", "1" ]

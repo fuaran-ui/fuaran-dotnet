@@ -16,8 +16,10 @@ let opts =
         Cache = RenderCache.inMemory () }
 
 // A crawlable page in one HttpHandler call.
+// `withLocale` drives BOTH `lang` and `dir` on `<html>` — one declaration, so
+// the two cannot disagree. A shell that declares no locale emits neither.
 let shell =
-    { DocumentShell.create "Pricing — Acme" with
+    { (DocumentShell.create "Pricing — Acme" |> DocumentShell.withLocale "en") with
         MetaDescription = Some "Simple, transparent pricing."
         Canonical = Some "https://acme.example/pricing"
         OpenGraph = [ "og:title", "Pricing — Acme"; "og:type", "website" ]

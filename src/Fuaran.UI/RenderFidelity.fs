@@ -103,6 +103,18 @@ type ObligationClaim =
     /// never a blank, never a guess. Where no card is available the placeholder
     /// is unchanged.
     | UnregisteredCustomLabelled
+    /// Repeated children are emitted in the AUTHORED order the wire carries,
+    /// never re-sorted - the order is content, not a candidate list an algorithm
+    /// picks from.
+    | AuthoredChildOrder
+    /// At most one repeated child per declared kind carries the default marker;
+    /// a later duplicate election is emitted WITHOUT it rather than producing
+    /// two defaults the user agent must choose between.
+    | SingleDefaultPerKind
+    /// A declared transcript renders as a disclosure beside the transport,
+    /// carrying its own accessible name - never inside an element that would
+    /// hide it, and never as an unnamed toggle.
+    | TranscriptDisclosureNamed
 
 /// The stable wire token for a claim. This is what the artefact carries and what
 /// a host's checker registry is keyed by, so it may not change without a version
@@ -119,6 +131,9 @@ let claimId (claim: ObligationClaim) : string =
     | ObligationClaim.FigureCaptionOutsideLink -> "figure-caption-outside-link"
     | ObligationClaim.SrcSetAscendingByWidth -> "srcset-ascending-by-width"
     | ObligationClaim.UnregisteredCustomLabelled -> "unregistered-custom-labelled"
+    | ObligationClaim.AuthoredChildOrder -> "authored-child-order"
+    | ObligationClaim.SingleDefaultPerKind -> "single-default-per-kind"
+    | ObligationClaim.TranscriptDisclosureNamed -> "transcript-disclosure-named"
 
 /// What the claim MEANS, kind-independently — the vocabulary entry a host reads
 /// when it meets a claim id it does not yet implement, so "unchecked" can be
@@ -145,6 +160,12 @@ let claimMeaning (claim: ObligationClaim) : string =
         "responsive candidates are emitted in ascending width order, and a refused candidate is dropped rather than emitted"
     | ObligationClaim.UnregisteredCustomLabelled ->
         "an unregistered custom node with an available contract card renders a labelled placeholder derived from that card - identity, summary and a machine-readable verdict marker - never a blank and never a guess"
+    | ObligationClaim.AuthoredChildOrder ->
+        "repeated children are emitted in the authored order the wire carries, never re-sorted"
+    | ObligationClaim.SingleDefaultPerKind ->
+        "at most one repeated child per declared kind carries the default marker; a later duplicate election is emitted without it"
+    | ObligationClaim.TranscriptDisclosureNamed ->
+        "a declared transcript renders as a disclosure beside the transport, carrying its own accessible name"
 
 /// The closed vocabulary, in declaration order.
 ///
@@ -162,7 +183,10 @@ let allClaims: ObligationClaim list =
       ObligationClaim.RefusedSrcNoAffordance
       ObligationClaim.FigureCaptionOutsideLink
       ObligationClaim.SrcSetAscendingByWidth
-      ObligationClaim.UnregisteredCustomLabelled ]
+      ObligationClaim.UnregisteredCustomLabelled
+      ObligationClaim.AuthoredChildOrder
+      ObligationClaim.SingleDefaultPerKind
+      ObligationClaim.TranscriptDisclosureNamed ]
 
 /// One obligation as a row declares it: which claim, the normative sentence for
 /// THIS kind, and the spec section that states it.
@@ -505,7 +529,10 @@ let all: FidelityRow list =
           [ "media-video-1"
             "media-video-poster-1"
             "media-video-autoplay-1"
-            "media-audio-1" ]
+            "media-audio-1"
+            "media-video-captions-1"
+            "media-video-tracks-2"
+            "media-audio-transcript-1" ]
           "Phase 1076; WIRE_FORMAT.md 3.6.6; docs/SSR.md (media)"
        |> obliged
            [ owes
@@ -523,7 +550,19 @@ let all: FidelityRow list =
              owes
                  ObligationClaim.RefusedSourceDropped
                  "WIRE_FORMAT.md 3.6.6"
-                 "a `poster` the URL-scheme + egress floor refuses is DROPPED rather than emitted, because a `<video>` with no poster shows its first frame while a poster at the refusal URL is a broken image over the player" ])
+                 "a `poster` or a `track` source the URL-scheme + egress floor refuses is DROPPED rather than emitted, because a `<video>` with no poster shows its first frame while a poster at the refusal URL is a broken image over the player, and a `<track>` at the refusal URL is a caption menu entry that opens onto nothing"
+             owes
+                 ObligationClaim.AuthoredChildOrder
+                 "WIRE_FORMAT.md 3.6.6"
+                 "`<track>` children are emitted in the AUTHORED order the wire carries, never re-sorted - the opposite of `srcSet`, because a browser picks one candidate from a srcset by an algorithm while a reader picks a track from a menu built in document order"
+             owes
+                 ObligationClaim.SingleDefaultPerKind
+                 "WIRE_FORMAT.md 3.6.6"
+                 "at most one `<track>` of a given `kind` carries `default`: the FIRST election of a kind is honoured and a later one is emitted without the attribute, the track itself still emitted"
+             owes
+                 ObligationClaim.TranscriptDisclosureNamed
+                 "WIRE_FORMAT.md 3.6.6"
+                 "a declared `transcript` renders as a `<details>` disclosure BESIDE the transport, carrying the media's resolved label as its accessible name - never as a child of the media element, where a browser would treat it as fallback content and never show it" ])
 
       plain "Metric" "the label + value source + format" "the resolved, formatted metric tile"
 
