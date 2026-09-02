@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -43,6 +43,8 @@
          test), and its durable SQLite log. -->
     <Compile Include="ActionInvocationTests.fs" />
     <Compile Include="ActionLogPrivacyTests.fs" />
+    <!-- Phase 577: the transport encoder that refuses a lossy tree. -->
+    <Compile Include="TransportEncodeTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

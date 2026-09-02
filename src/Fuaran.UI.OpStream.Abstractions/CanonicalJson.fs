@@ -784,6 +784,70 @@ let encodeNode<'Msg> (node: Node<'Msg>) : string =
     nodeAppender node sb
     sb.ToString()
 
+/// One place a tree would lose behaviour on the way to the wire (Phase 577):
+/// the node carrying the closure, and which slot holds it.
+///
+/// `Slot` is spelled with `SlotCapability`'s `Type.slot` names
+/// (`"Action.Dispatch.msg"`, `"Action.Call.onResult"`,
+/// `"Action.ReadFileBody.onRead"`), so a report from here names the same slot
+/// the survivability table, the validator's FUARAN112 and the §4 placeholder
+/// enumeration name.
+type LossyPath = { NodeId: string; Slot: string }
+
+/// Encode a `Node<'Msg>` for TRANSPORT — the same canonical bytes as
+/// `encodeNode`, but refusing a tree whose interaction would not survive the
+/// round trip.
+///
+/// **Why this is a second function rather than a flag on the first.**
+/// `encodeNode` feeds the hash chain, and its closure-blindness there is
+/// DELIBERATE: two ops differing only in an opaque `'Msg` payload hash
+/// identically, by design, because the chain records the shape of a change and
+/// not the identity of the host code that requested it. Making that path refuse
+/// would break the property it exists to have. What was missing was a path
+/// where the author's INTENT is known — and calling a function named for
+/// transport is that intent, stated at the one moment it can be.
+///
+/// Refuses on the `Action` DU's three closure slots — `Dispatch`'s `msg`,
+/// `Call`'s `onResult`, `ReadFileBody`'s `onRead` — each of which decodes to an
+/// inert placeholder, so the affordance arrives able to fire and unable to do
+/// anything. Every offending path is returned, not the first: an author repairs
+/// a tree in one pass or discovers its defects one turn at a time.
+///
+/// **The loss leaves no trace in the bytes**, which is why it has to be caught
+/// here. `encodeNode` emits the discriminator and DROPS the payload — a
+/// `Dispatch` becomes `{"$type":"Dispatch"}` — and `"<closure>"` is the
+/// DECODER's reconstruction. A downstream reader of the emission cannot tell a
+/// `Dispatch` that lost a message from one that never carried a payload, so the
+/// encoding side is the last place the question is answerable at all.
+///
+/// **What it does NOT claim.** Other slots erase too (a `FormFieldKind.onChange`,
+/// a `TabsSpec.onSelect`) and are not refused, because the renderers'
+/// write-back default reconstructs their behaviour from the control's own
+/// writable binding — the closure is lost and the interaction is not.
+/// `Binding.Computed` is likewise untouched here; it is FUARAN084's subject.
+/// A tree this function accepts carries no *unrecoverable* interaction, which
+/// is a narrower claim than "nothing about it erased".
+///
+/// The wire-representable way to reach a host is `Action.Notify` or
+/// `Action.Call` with `into:`; typed dispatch is obtained by binding handlers
+/// to the artifact's declared action holes, host-side.
+let encodeNodeForTransport<'Msg> (node: Node<'Msg>) : Result<string, LossyPath list> =
+    let facts = Fuaran.UI.BindingWalk.collect node
+
+    // Deduplicated on (node, slot) so a `Chain` of two `Dispatch`es is one
+    // repair rather than two reports of it. Ordered by the walk, which is
+    // depth-first pre-order, so the paths read in tree order.
+    let seen = System.Collections.Generic.HashSet<string>()
+
+    let lossy =
+        facts.Closures
+        |> List.filter (fun c -> seen.Add(c.Reader + " " + c.Slot))
+        |> List.map (fun c -> { NodeId = c.Reader; Slot = c.Slot })
+
+    match lossy with
+    | [] -> Ok(encodeNode node)
+    | paths -> Error paths
+
 /// Encode a `TreeOp<'Msg>` to its canonical JSON string. Server-side hash
 /// chain calls this to feed SHA-256; the encoded form is also useful for
 /// op-stream sinks that persist as JSON text (Sqlite `op_json` column).

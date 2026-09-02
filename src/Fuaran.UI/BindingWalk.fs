@@ -149,6 +149,36 @@ type CallUse =
       HasOnResult: bool
       Into: CallResultTarget option }
 
+/// One observed CLOSURE-CARRYING action slot (Phase 577) — an `Action` case
+/// holding host code that does not survive a serialisation round trip.
+///
+/// **What actually happens to it, stated precisely, because it is worse than
+/// "it becomes a sentinel".** The canonical encoder emits the case's
+/// discriminator and DROPS the payload entirely — a `Dispatch` encodes as
+/// `{"$type":"Dispatch"}`, with no field where the message was. `"<closure>"`
+/// is the DECODER's reconstruction (WIRE_FORMAT §4). So the emitted bytes carry
+/// no trace of the loss: nothing downstream of the encoder can tell a
+/// `Dispatch` that lost a message from one that never had a payload.
+///
+/// **Three slots, and the enumeration is the point.** `Action.Dispatch.msg`
+/// carries the host's typed message; `Action.Call.onResult` and
+/// `Action.ReadFileBody.onRead` carry continuations. Those are the whole of the
+/// `Action` DU's closure surface, and every one of them decodes to an inert
+/// placeholder (`SlotCapability.decoderPlaceholderSlots`), so a tree carrying
+/// one loses the behaviour rather than degrading it.
+///
+/// **What this deliberately does NOT record.** The other decoder-placeholder
+/// slots — a `FormFieldKind.onChange`, a `TabsSpec.onSelect`, a
+/// `DisclosureSpec.onToggle` — erase too, but the renderers' write-back default
+/// reconstructs the behaviour from the control's own writable binding, so their
+/// loss is recoverable and flagging them would report a shape the language
+/// sanctions. `Binding.Computed.fn` is likewise out of scope: it is
+/// FUARAN084's subject already. This is the residue neither covers.
+///
+/// `Slot` is spelled with the same `Type.slot` names `SlotCapability` uses, so
+/// one vocabulary names these slots across the estate.
+type ClosureUse = { Reader: string; Slot: string }
+
 /// The State-channel projection **FUARAN098** runs on (Phase 932) — which keys
 /// the tree WRITES with `Action.SetState`, and which it can be shown to READ.
 ///
@@ -292,6 +322,11 @@ type TreeBindingFacts =
         DeclaredFilters: (string * string) list
         /// Every wire-survivable `Action.Call` in the tree, reader-tagged (Phase 428).
         Calls: CallUse list
+        /// Every closure-carrying action slot in the tree, reader-tagged
+        /// (Phase 577). The subject of **FUARAN112** and of
+        /// `CanonicalJson.encodeNodeForTransport`'s refusal — see `ClosureUse`
+        /// for what the three slots are and what is deliberately not in them.
+        Closures: ClosureUse list
         /// Every node id in the tree, mapped to whether the node is a
         /// selection PRODUCER — a `Visualisation` kind (the grid's Phase 427
         /// default row-click write; charts/tables/maps via host closures).
@@ -552,6 +587,38 @@ let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse 
     | Action.ReadFileBody _
     | Action.Invoke _ -> []
 
+/// Closure-carrying slots held by an ACTION value, recursing `Chain` — the
+/// sibling of `callsOfAction` (Phase 577). Exhaustive by construction: no
+/// wildcard, so a new `Action` case must be classified here rather than
+/// silently escaping the transport refusal and FUARAN112.
+let rec closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : ClosureUse list =
+    match action with
+    | Action.Dispatch _ ->
+        [ { Reader = readerId
+            Slot = "Action.Dispatch.msg" } ]
+    | Action.Call(_, onResult, _) ->
+        if onResult.IsSome then
+            [ { Reader = readerId
+                Slot = "Action.Call.onResult" } ]
+        else
+            []
+    | Action.ReadFileBody(_, _, _, onRead) ->
+        if onRead.IsSome then
+            [ { Reader = readerId
+                Slot = "Action.ReadFileBody.onRead" } ]
+        else
+            []
+    | Action.Chain actions -> actions |> List.collect (closuresOfAction readerId)
+    // The closure-free arms. `Invoke` reaches a host capability by ID with
+    // wire-encoded args, and `AiTool` by tool name — neither holds host code.
+    | Action.Notify _
+    | Action.Navigate _
+    | Action.SetState _
+    | Action.AiTool _
+    | Action.CommitLocal _
+    | Action.WriteToClipboard _
+    | Action.Invoke _ -> []
+
 /// Binding usages carried by an ACTION value, recursing `Chain` — the sibling
 /// of `callsOfAction`, and the arm of the walk that was missing.
 ///
@@ -652,6 +719,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
     let uses = ResizeArray<NodeBindingUse>()
     let declaredFilters = ResizeArray<string * string>()
     let calls = ResizeArray<CallUse>()
+    let closures = ResizeArray<ClosureUse>()
     let nodes = System.Collections.Generic.Dictionary<string, bool>()
 
     // ── The Phase 932 State-channel projection (see `StateKeyFacts`) ──
@@ -800,6 +868,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         if inUses then
             for c in callsOfAction readerId action do
                 calls.Add c
+
+            for c in closuresOfAction readerId action do
+                closures.Add c
 
     let rec walk (inUses: bool) (n: Node<'Msg>) =
         let readerId = n.Id
@@ -1128,6 +1199,7 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
     { Uses = List.ofSeq uses
       DeclaredFilters = List.ofSeq declaredFilters
       Calls = List.ofSeq calls
+      Closures = List.ofSeq closures
       Nodes = nodes |> Seq.fold (fun acc (KeyValue(k, v)) -> Map.add k v acc) Map.empty
       StateKeys =
         { Writes = List.ofSeq stateWrites

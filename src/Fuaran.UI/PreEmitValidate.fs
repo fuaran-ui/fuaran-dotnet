@@ -669,6 +669,37 @@ type PreEmitDefect =
     /// Carries the node's id and the empty slot.
     | EmptyAccessibilityDeclaration of nodeId: string * slot: string
 
+    /// **FUARAN112 (Warning)**. A closure-carrying action on a tree that may be
+    /// bound for the wire — an `Action.Dispatch`, an `Action.Call` with an
+    /// `onResult`, or an `Action.ReadFileBody` with an `onRead`. The canonical
+    /// encoder emits the case's discriminator and DROPS the closure payload, and
+    /// the decoder rebuilds it as the `"<closure>"` sentinel — so the
+    /// interaction reaches a decoding host as a shape with no behaviour behind
+    /// it: the button still renders, still fires, and does nothing.
+    ///
+    /// **This is the BACKSTOP, not the enforcement point.** The sanctioned path
+    /// for a tree that must survive serialisation is
+    /// `CanonicalJson.encodeNodeForTransport`, which REFUSES rather than warns —
+    /// calling it is the author saying the interaction was meant to survive, and
+    /// that is where intent is known. This rule exists for the author who
+    /// reaches past that path, which is why it is a Warning: a walk cannot know
+    /// whether the tree it is looking at will ever be encoded at all. An
+    /// in-process Fable host renders `Dispatch` perfectly, forever, and telling
+    /// it otherwise at Error severity would be wrong.
+    ///
+    /// **The typed answer is hole-binding, not this rule.** The remedy is not to
+    /// delete the interaction: a browser raises a wire action (`Notify`, or
+    /// `Call` with `into:`) and the host binds typed behaviour to the artifact's
+    /// declared action holes. Full Fable is the one tier where `Dispatch`
+    /// survives, because there the tree is never serialised.
+    ///
+    /// Reported per offending node and slot rather than once per tree — the
+    /// author repairs each of them.
+    ///
+    /// Carries the node's id and the closure slot
+    /// (`SlotCapability`'s `Type.slot` spelling).
+    | WireLossyActionClosure of nodeId: string * slot: string
+
 /// Which `FieldRule` slot a control cannot honour (FUARAN100, Phase 864).
 /// Typed rather than a string so the honourable set stays enumerable: a slot
 /// added to `FieldRule` without a decision here will not compile.
@@ -1059,6 +1090,13 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "node '%s' declares accessibility.%s and leaves it EMPTY — a declared name that names nothing, which the renderer drops rather than emits, and which additionally silences the missing-name check that would otherwise have caught this node; give the slot real text, or remove it so the element's own content supplies the name"
             nodeId
             slot
+    | PreEmitDefect.WireLossyActionClosure(nodeId, slot) ->
+        "FUARAN112",
+        DefectSeverity.Warning,
+        sprintf
+            "node '%s' carries a host closure in '%s' — the canonical encoder drops the payload and the decoder rebuilds it as \"<closure>\", so a decoding host receives an affordance that fires and does nothing; replace it with a wire-representable action (Action.Notify, or Action.Call with into:) and bind the typed behaviour host-side to the artifact's declared action hole. Encode with encodeNodeForTransport to have this refused rather than warned. If this tree is rendered IN PROCESS and never serialised, the closure is correct and this warning is expected"
+            nodeId
+            slot
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -1397,6 +1435,14 @@ let private accessibilityRefs (n: Node<'Msg>) : (string * string) list =
 
 let private validateCore
     (policy: DecodePolicy)
+    // Phase 577 (FUARAN112) — whether this tree is declared bound for the wire.
+    // The closure rule is decidable from the tree alone, but its RELEVANCE is
+    // not: an in-process Fable host renders `Action.Dispatch` perfectly and
+    // forever, so a walk that reported it unconditionally would be accusing the
+    // idiomatic F# shape of a defect it does not have. The caller declares the
+    // intent by choosing `validateForTransport`, exactly as it declares a
+    // deployment by choosing `validateWithPolicy`.
+    (forTransport: bool)
     (customCheck: string -> string -> string -> Map<string, JVal> -> PreEmitDefect option)
     (node: Node<'Msg>)
     : Result<unit, PreEmitDefect list> =
@@ -2308,6 +2354,23 @@ let private validateCore
             then
                 defects.Add(PreEmitDefect.CompareKeyUnreachable(formNodeId, fieldId, key))
 
+    // ── FUARAN112 — a closure-carrying action on a tree bound for the wire ──
+    //
+    // Runs only under `forTransport`, for the reason given at the parameter.
+    // The facts come from the ONE walk `BindingWalk.collect` already performs
+    // over every action slot, so a new closure-bearing `Action` case is
+    // classified there (exhaustively, no wildcard) rather than escaping here.
+    //
+    // Deduplicated on (node, slot): a `Chain` holding two `Dispatch`es is one
+    // repair on one node, and reporting it twice would tell the author there
+    // are two things wrong with it.
+    if forTransport then
+        let reportedClosure = System.Collections.Generic.HashSet<string>()
+
+        for (c: BindingWalk.ClosureUse) in facts.Closures do
+            if reportedClosure.Add(c.Reader + " " + c.Slot) then
+                defects.Add(PreEmitDefect.WireLossyActionClosure(c.Reader, c.Slot))
+
     if defects.Count = 0 then
         Ok()
     else
@@ -2318,7 +2381,7 @@ let private validateCore
 /// found (NOT short-circuited on the first one) so the AI can repair the
 /// tree in a single turn rather than discovering defects one at a time.
 let validate (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateCore DecodePolicy.admitAll (fun _ _ _ _ -> None) node
+    validateCore DecodePolicy.admitAll false (fun _ _ _ _ -> None) node
 
 /// `validate` + custom-prop schema enforcement (**FUARAN068**): every
 /// `NodeKind.Custom` whose `(moduleId, componentId)` is registered has its
@@ -2331,6 +2394,7 @@ let validate (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
 let validateWithRegistry (registry: CustomRegistry) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
     validateCore
         DecodePolicy.admitAll
+        false
         (fun nodeId moduleId componentId props ->
             match registry.ValidateProps(moduleId, componentId, props) with
             | [] -> None
@@ -2348,7 +2412,7 @@ let validateWithRegistry (registry: CustomRegistry) (node: Node<'Msg>) : Result<
 /// `JsonDecode.decodeNodeWithPolicy`, on the receiving side, over bytes rather
 /// than over a tree the same process built.
 let validateWithPolicy (policy: DecodePolicy) (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
-    validateCore policy (fun _ _ _ _ -> None) node
+    validateCore policy false (fun _ _ _ _ -> None) node
 
 /// `validateWithRegistry` + the kind-admission lint — the both-declared form.
 /// A profile that excludes only part of the guest boundary (`Mount` but not
@@ -2362,8 +2426,28 @@ let validateWithRegistryAndPolicy
     : Result<unit, PreEmitDefect list> =
     validateCore
         policy
+        false
         (fun nodeId moduleId componentId props ->
             match registry.ValidateProps(moduleId, componentId, props) with
             | [] -> None
             | propDefects -> Some(PreEmitDefect.CustomPropSchemaViolation(nodeId, moduleId, componentId, propDefects)))
         node
+
+/// `validate` + the **FUARAN112** wire-lossy-closure lint (Phase 577): every
+/// `Action.Dispatch`, `Action.Call(onResult = Some _)` and
+/// `Action.ReadFileBody(onRead = Some _)` in the tree is reported, because each
+/// carries host code the canonical encoder renders as `"<closure>"`.
+///
+/// **Call this when the tree is bound for the wire, and only then.** The flag is
+/// not a strictness dial: it is the caller stating that the tree will be
+/// serialised, which is the fact the rule needs and cannot derive. A tree
+/// rendered in process by the Fable host keeps its closures and is correct;
+/// `validate` says nothing about them, deliberately.
+///
+/// **Advisory here; the refusal lives with the encoder.**
+/// `CanonicalJson.encodeNodeForTransport` returns `Error` on exactly this set,
+/// at the moment of encoding, which is where the loss would actually happen. A
+/// tree that passes this has not been proved wire-faithful — it has merely not
+/// been refused by a walk the author chose to run.
+let validateForTransport (node: Node<'Msg>) : Result<unit, PreEmitDefect list> =
+    validateCore DecodePolicy.admitAll true (fun _ _ _ _ -> None) node

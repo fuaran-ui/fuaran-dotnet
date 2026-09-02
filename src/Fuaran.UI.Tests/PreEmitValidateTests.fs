@@ -493,6 +493,30 @@ let private severityOf (d: PreEmitDefect) : DefectSeverity =
     let _, severity, _ = PreEmitValidate.describe d
     severity
 
+
+// ─── Phase 577 fixtures — FUARAN112, a closure-carrying action bound for the wire ───
+
+/// A button whose click carries `action`. The action is the variable under test;
+/// everything else about the tree is deliberately unremarkable.
+let private actionButton (id: string) (action: Action<Msg>) : Node<Msg> =
+    Fuaran.button
+        id
+        { Defaults.button<Msg> with
+            Label = TextSource.Literal "Go"
+            OnClick = action }
+
+/// Only the Phase 577 defect. The fixtures carry other shapes on purpose (a
+/// button with a bare `Chain` is inert to some rules and not others), so
+/// asserting `Ok()` would couple these tests to rules they are not about.
+let private closureDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validateForTransport tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.WireLossyActionClosure _ -> true
+            | _ -> false)
+
 [<Tests>]
 let tests =
     testList
@@ -2777,4 +2801,80 @@ let tests =
                                 DescribedBy = Some "help" } ]
 
               Expect.isEmpty (a11yDefects tree) "nothing to report"
+          }
+
+          // ── Phase 577 — FUARAN112, the wire-lossy closure backstop ──
+
+          test "FUARAN112 flags Action.Dispatch on a tree bound for the wire" {
+              let tree = dashboard "root" [ actionButton "go" (Action.dispatch NoOp) ]
+
+              match closureDefects tree with
+              | [ PreEmitDefect.WireLossyActionClosure(nodeId, slot) ] ->
+                  Expect.equal nodeId "go" "the offending node"
+                  Expect.equal slot "Action.Dispatch.msg" "the SlotCapability spelling, so one vocabulary names it"
+
+                  let code, severity, message =
+                      PreEmitValidate.describe (PreEmitDefect.WireLossyActionClosure(nodeId, slot))
+
+                  Expect.equal code "FUARAN112" "the published code"
+                  Expect.equal severity DefectSeverity.Warning "advisory — the encoder is the refusal point"
+                  Expect.stringContains message "go" "names the node the author must repair"
+              | other -> failtestf "Expected one FUARAN112, got %A" other
+          }
+
+          test "FUARAN112 flags a Call's onResult continuation but not a declarative Call" {
+              let lossy =
+                  dashboard "root" [ actionButton "go" (Action.call (ApiEndpoint "/save") (fun (_: obj) -> NoOp)) ]
+
+              match closureDefects lossy with
+              | [ PreEmitDefect.WireLossyActionClosure(nodeId, slot) ] ->
+                  Expect.equal nodeId "go" "the offending node"
+                  Expect.equal slot "Action.Call.onResult" "the continuation slot, not the endpoint"
+              | other -> failtestf "Expected one FUARAN112, got %A" other
+
+              // The wire-representable twin — the same round trip with the result
+              // written to a state slot instead of handed to a closure.
+              let survivable =
+                  dashboard "root" [ actionButton "go" (Action.callIntoState (ApiEndpoint "/save") "saved") ]
+
+              Expect.isEmpty (closureDefects survivable) "into: survives the wire; onResult does not"
+          }
+
+          test "FUARAN112 reaches inside a Chain and reports each node once" {
+              let tree =
+                  dashboard "root" [ actionButton "go" (Action.Chain [ Action.dispatch NoOp; Action.dispatch NoOp ]) ]
+
+              // Two closures, one node, one slot — one repair, so one finding.
+              match closureDefects tree with
+              | [ PreEmitDefect.WireLossyActionClosure("go", "Action.Dispatch.msg") ] -> ()
+              | other -> failtestf "Expected one de-duplicated FUARAN112, got %A" other
+          }
+
+          test "FUARAN112 go-red check: the plain validate never reports it" {
+              // The rule's whole premise is that relevance is the CALLER'S to
+              // declare. An in-process Fable host renders `Dispatch` correctly
+              // and forever, so `validate` saying nothing is the behaviour, not
+              // an omission — and this is the assertion that keeps it true.
+              let tree = dashboard "root" [ actionButton "go" (Action.dispatch NoOp) ]
+
+              match PreEmitValidate.validate tree with
+              | Ok() -> ()
+              | Error ds ->
+                  Expect.isEmpty
+                      (ds
+                       |> List.filter (function
+                           | PreEmitDefect.WireLossyActionClosure _ -> true
+                           | _ -> false))
+                      "validate is silent about in-process dispatch"
+          }
+
+          test "FUARAN112 is silent on a tree whose every action is wire-representable" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ actionButton "notify" (Action.notify "app.saved" (Fuaran.Core.JVal.JStr "ok"))
+                        actionButton "navigate" (Action.navigate "/next")
+                        actionButton "fetch" (Action.callIntoQuery (ApiEndpoint "/rows") "rows") ]
+
+              Expect.isEmpty (closureDefects tree) "nothing here erases"
           } ]

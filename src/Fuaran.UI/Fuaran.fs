@@ -381,6 +381,29 @@ module binding =
 
 [<RequireQualifiedAccess>]
 module Action =
+    /// Dispatch a typed host message. **IN-PROCESS ONLY** — read this before
+    /// putting one on a tree you intend to serialise.
+    ///
+    /// `'Msg` is a host closure. The canonical decoder replaces it with the
+    /// `"<closure>"` sentinel — documented wire behaviour, not a defect — so a
+    /// browser fed canonical wire JSON observes THAT an interaction happened and
+    /// can never receive the message. The affordance still renders and still
+    /// fires; it just does nothing. **Full Fable is the one tier where this
+    /// survives, because there the tree is never serialised.**
+    ///
+    /// To reach a host across the wire, use the wire-representable actions:
+    /// `Action.notify` (channel + JSON payload) or `Action.callIntoState` /
+    /// `Action.callIntoQuery` (`Call` with an `into:` target — `onResult` is a
+    /// closure and does not survive either). Typed dispatch is then obtained
+    /// host-side by binding a handler table to the artifact's declared action
+    /// holes, which is uniform across hosts and needs no per-language
+    /// mechanism.
+    ///
+    /// Two shipped surfaces make the constraint checkable rather than
+    /// remembered: `CanonicalJson.encodeNodeForTransport` REFUSES a tree
+    /// carrying one, and `PreEmitValidate.validateForTransport` reports it as
+    /// **FUARAN112**. Neither fires on the plain in-process paths, because
+    /// there is nothing wrong with them.
     let dispatch (msg: 'Msg) : Action<'Msg> = Action.Dispatch msg
 
     /// Per Defect (2) resolution: typed `'a -> 'Msg` is boxed to
