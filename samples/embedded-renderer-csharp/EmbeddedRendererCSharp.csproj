@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- ========================================================================
+       Phase 577 — the C# leg of the embedded-renderer sample pair.
+
+       A minimal ASP.NET app that authors a tree in C#, serves its canonical
+       wire JSON, and hydrates it in the browser through the embedded browser
+       renderer. The point it exists to prove: **there is no Node toolchain
+       here.** No package.json, no bundler, no wwwroot — the renderer arrives
+       inside Fuaran.UI.Renderer.Web.
+
+       No fixed port. The sample binds whatever ASPNETCORE_URLS (or the `urls` switch)
+       names, so it needs no allocation from the workspace port band and two
+       copies can run side by side. run it with `dotnet run` and pass the urls switch.
+
+       Under samples/, excluded from the packable set and the Validate glob
+       (which walks src/*.fsproj only), and deletable without touching any
+       shipped suite.
+       ======================================================================== -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Fuaran.UI.Samples.EmbeddedRenderer.CSharp</RootNamespace>
+    <AssemblyName>Fuaran.UI.Samples.EmbeddedRenderer.CSharp</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <!-- The veneer consumes FSharp.Core types under the hood; FSharp.Core ships
+         null-oblivious metadata, so nullable analysis over that seam is noise.
+         Same posture as samples/csharp-authoring-poc. -->
+    <NoWarn>$(NoWarn);CS8632</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fuaran.UI.CSharp\Fuaran.UI.CSharp.csproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer.Web\Fuaran.UI.Renderer.Web.fsproj" />
+    <!-- Only for Theme.vocabularyFingerprint, the authoring half of the
+         drift comparison the snippet reports at development time. -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+    <ProjectReference Include="..\..\src\Fuaran.UI.OpStream.Abstractions\Fuaran.UI.OpStream.Abstractions.fsproj" />
+  </ItemGroup>
+
+</Project>

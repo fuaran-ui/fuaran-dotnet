@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Renderer.Web</PackageId>
+    <Description>Fuaran embedded browser renderer for .NET hosts — the standalone @fuaran-ui/renderer bundle and the canonical reference stylesheet, embedded as static web assets and served by one MapFuaranRenderer() call, plus the HTML snippet that hydrates a serialized tree. Author a tree in any .NET language, serve its wire JSON, and the browser renders it live: no Node toolchain anywhere on the consumer side. Ships a fingerprint of what it embeds, and warns at development time when that disagrees with the authoring package. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;renderer;aspnetcore;static-web-assets;no-node</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Fingerprint.fs" />
+    <Compile Include="Assets.fs" />
+    <Compile Include="Snippet.fs" />
+    <Compile Include="Endpoints.fs" />
+  </ItemGroup>
+  <!-- The three embedded assets. EMBEDDED rather than staticwebassets, so the
+       code that serves them and the bytes it serves are one artefact that a
+       deployment cannot separate — see Assets.fs for the full reasoning.
+
+       The bundle and its fingerprint are byte-copies produced by
+       scripts/sync-renderer-web.ps1 and COMMITTED, so this package builds with
+       no Node toolchain present. That is the whole claim the package makes:
+       maintainers run Node to produce the bundle, consumers never do. -->
+  <ItemGroup>
+    <EmbeddedResource Include="content\fuaran-renderer.js" LogicalName="Fuaran.UI.Renderer.Web.content.fuaran-renderer.js" />
+    <EmbeddedResource Include="content\fuaran-renderer.json" LogicalName="Fuaran.UI.Renderer.Web.content.fuaran-renderer.json" />
+    <!-- The stylesheet is LINKED from the canonical file rather than copied.
+         Four sibling repos already ship byte-copies of it, generated and
+         drift-gated by the repo's Css build target; a fifth copy in this repo would be
+         a fifth thing to keep in step for no gain, when the canonical file sits
+         one directory away and MSBuild can embed it where it lies. There is no
+         drift class here to guard, because there is no copy. -->
+    <EmbeddedResource Include="..\Fuaran.UI.Renderer\content\fuaran-reference.css" LogicalName="Fuaran.UI.Renderer.Web.content.fuaran-reference.css" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+  </ItemGroup>
+  <!-- The endpoint mapping runs on ASP.NET. FrameworkReference (not a
+       PackageReference) — the shared framework ships with the .NET SDK, so no
+       Directory.Packages.props version entry is needed. Same shape as
+       Fuaran.UI.ServerDriven.AspNetCore. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+</Project>

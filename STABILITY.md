@@ -2116,6 +2116,41 @@ canonicalising to the omitted form), and `reject/reject-image-expandable-nonbool
 have to rule on `"false"` too, and two hosts ruling differently would disagree about whether the
 document declares an affordance at all).
 
+## Recorded change — 0.47.0, `Fuaran.UI.Renderer.Web` (fuaran#577)
+
+**A NEW package, plus two additive members on the C# veneer. Nothing existing is removed or
+retyped, and no wire byte moves.**
+
+`Fuaran.UI.Renderer.Web` embeds the built `@fuaran-ui/renderer` standalone browser bundle and the
+canonical reference stylesheet as static web assets, serves them from `MapFuaranRenderer()`, and
+emits the HTML snippet that hydrates a serialized tree. A C# or VB developer adds one
+`PackageReference` and gets a live client-side render with **no Node toolchain**: the bundle is
+built by maintainers, byte-copied by `scripts/sync-renderer-web.ps1`, and committed.
+
+Public surface: `Fingerprint` (the `EmbeddedFingerprint` record, the `Mismatch` DU, `check`,
+`describe`, `toJson`, `parse`, `AuthoringWireProfile`), `Assets` (the `Asset` record, the three
+assets, `read`, `fingerprint`, `etag`), `Snippet` (`MountOptions`, `defaults`, `styleLink`,
+`scriptTag`, `assetTags`, `mount`) and `FuaranRendererEndpointExtensions.MapFuaranRenderer`.
+
+**Its dependency set is `FSharp.Core` plus the ASP.NET Core shared framework, and that is
+defended.** It takes no reference on `Fuaran.UI`, the renderer or the op-stream: it serves assets
+and emits HTML, and the caller passes the wire JSON and the vocabulary fingerprint. A consumer
+therefore adopts it without inheriting anything else this package believes about versions.
+
+**The stylesheet is LINKED, not copied.** The `<EmbeddedResource>` points at
+`src/Fuaran.UI.Renderer/content/fuaran-reference.css` where it lies, so this package is not a
+fifth tier copy and there is no drift class here for `-- Css` to gain. Only the browser bundle is
+a byte copy across a repo boundary, and it carries a fingerprint sidecar that
+`-- RendererWebCheck` (inside `Check`) and `Snippet.mount` (at development time) both read.
+
+### `Fuaran.UI.CSharp` — `EncodeForTransport` / `TryEncodeForTransport` (additive)
+
+`FuaranNode` gains the C# leg of the transport encoder, and the package gains the `LossySlot`
+record it reports through. `Encode()` is unchanged: its closure-blindness feeds the op-stream hash
+chain and is deliberate there, so which method you call is how intent is declared. Additive —
+nothing that compiled against 0.46.0 stops compiling — and it rides the in-flight **0.47.0** with
+the entries below rather than taking a slot of its own, `v0.46.0` being the newest tag.
+
 ## Recorded change — 0.47.0, the transport encoder and FUARAN112 (fuaran#577)
 
 **One new DU case, one record widening, and four new public members; no wire change, no change to

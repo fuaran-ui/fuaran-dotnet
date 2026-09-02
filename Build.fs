@@ -58,6 +58,9 @@ let private jsonDecodeTestProject =
 let private serverRenderTestProject =
     Path.Combine(repoRoot, "src", "Fuaran.UI.Renderer.Server.Tests", "Fuaran.UI.Renderer.Server.Tests.fsproj")
 
+let private rendererWebTestProject =
+    Path.Combine(repoRoot, "src", "Fuaran.UI.Renderer.Web.Tests", "Fuaran.UI.Renderer.Web.Tests.fsproj")
+
 let private serverDrivenTestProject =
     Path.Combine(repoRoot, "src", "Fuaran.UI.ServerDriven.Tests", "Fuaran.UI.ServerDriven.Tests.fsproj")
 
@@ -164,6 +167,10 @@ let private packableProjects =
       "Fuaran.UI.Charts"
       "Fuaran.UI.Renderer"
       "Fuaran.UI.Renderer.Server"
+      // Phase 577 — the embedded browser renderer for .NET hosts. Ships the
+      // built @fuaran-ui/renderer bundle and the canonical stylesheet as
+      // embedded assets, so a consumer needs no Node toolchain.
+      "Fuaran.UI.Renderer.Web"
       "Fuaran.UI.Ops.Abstractions"
       "Fuaran.UI.Ops"
       "Fuaran.UI.AiTools"
@@ -542,6 +549,7 @@ let private registerTargets (args: string array) =
                 "SKIPPING Fuaran.UI.JsonDecode.Tests — wire-format-fixtures corpus absent (single-repo checkout; conformance runs where the workspace corpus is present)."
 
         dotnet [ "run"; "--project"; serverRenderTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; rendererWebTestProject; "-c"; configuration ] repoRoot
         dotnet [ "run"; "--project"; serverDrivenTestProject; "-c"; configuration ] repoRoot
         dotnet [ "run"; "--project"; serverDrivenAspNetCoreTestProject; "-c"; configuration ] repoRoot
         dotnet [ "run"; "--project"; serverDrivenWebSocketTestProject; "-c"; configuration ] repoRoot
@@ -808,6 +816,38 @@ let private registerTargets (args: string array) =
     Target.create "CssCheck" (fun _ -> cssCheck ())
 
     "CssCheck" ==> "Check" |> ignore
+
+    // Phase 577 — the embedded browser-renderer assets, on exactly the shape
+    // above and for the same reason. `Fuaran.UI.Renderer.Web` embeds a BUILT
+    // ARTEFACT from fuaran-ts; a byte copy across a repo boundary goes stale
+    // silently, and the failure is the quiet kind (the page renders, one node
+    // degrades). `RendererWeb` generates, `RendererWebCheck` verifies, and the
+    // two are separate targets so `Check` cannot be made to repair what it
+    // measures.
+    //
+    // The work is in `scripts/sync-renderer-web.ps1` rather than here, unlike
+    // the CSS pair, because the SYNC half shells `pnpm` to build the bundle and
+    // a FAKE target is the wrong place for a Node build. The CHECK half needs no
+    // Node at all — it reads committed text — which is what lets it run in the
+    // gate on a machine that has never installed one.
+    let syncRendererWeb (mode: string) =
+        let script = Path.Combine(repoRoot, "scripts", "sync-renderer-web.ps1")
+
+        CreateProcess.fromRawCommand "pwsh" [ "-NoProfile"; "-File"; script; mode ]
+        |> CreateProcess.withWorkingDirectory repoRoot
+        |> CreateProcess.ensureExitCode
+        |> Proc.run
+        |> ignore
+
+    Target.create "RendererWeb" (fun _ ->
+        if args |> Array.contains "--check" then
+            syncRendererWeb "-Check"
+        else
+            syncRendererWeb "-Sync")
+
+    Target.create "RendererWebCheck" (fun _ -> syncRendererWeb "-Check")
+
+    "RendererWebCheck" ==> "Check" |> ignore
 
     // Phase 1094 — ORDER the docs-drift checks after the compile/test gate inside
     // `Check`, with SOFT dependencies (`?=>` — "if both targets run, this one runs
