@@ -7,6 +7,14 @@
 # laws `Fuaran.UI.Tests` enumerates on .NET had no counterpart under Node at all, and the one
 # session that ran them there did it by hand.
 #
+# THE LAWS ARE DEFINED ONCE, in `Laws.fs` beside this script. That file is compiled by BOTH
+# executors — `Program.fs` here, which this script runs on both pipelines, and the Expecto suite in
+# `src/Fuaran.UI.Tests`, which links it. Neither owns a law, so an edit to one reddens both. Until
+# that seam existed the laws were written out twice and the copies had already drifted: this side
+# enumerated the cubic laws over five of the eleven pool members and checked neither absorption nor
+# distributivity, which made "the laws hold on both pipelines" a statement about two different sets
+# of laws. Add a law to `Laws.laws` and it appears here and in that suite in the same edit.
+#
 # It makes TWO claims, and they are different:
 #   1. the laws hold under Node, over the shared corpus;
 #   2. the two pipelines agree about every MATCH SET, because the runs are byte-compared and each

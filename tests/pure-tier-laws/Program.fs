@@ -23,41 +23,17 @@ module PureTierLaws.Program
 // writing a lone surrogate to a terminal and a probe that reported console encoding as an algebra
 // divergence would be worse than no probe. That is the lesson tests/ids-parity-probe records; it
 // applies unchanged here.
+//
+// THE LAWS ARE NOT DEFINED HERE. They live in `Laws.fs` beside this file, which the Expecto suite
+// compiles as a linked source too — one definition, two executors. This file is the executor that
+// COUNTS: it folds each `Claim` into a per-law claims/violations pair and prints it. What the
+// suite does with the same claims is assert them one by one. A law edited in `Laws.fs` therefore
+// reddens both, which is exactly what two hand-maintained copies of the laws could not promise —
+// and had already stopped delivering, this side having enumerated the cubic laws over five of the
+// eleven pool members and checked neither absorption nor distributivity at all.
 
 open Fuaran.UI
 open Fuaran.UI.Types
-open Fuaran.UI.StructuralQuery
-
-/// The predicate pool the laws are enumerated over — the same set
-/// `Fuaran.UI.Tests/StructuralQueryTests` uses, deliberately, so a law that holds on one pipeline
-/// and not the other is comparing like with like. Each member is asserted to DISCRIMINATE over the
-/// corpus below: a law quantified over predicates that match nothing is a law about the empty set.
-let private pool: Predicate list =
-    [ Predicate.Kind "Box"
-      Predicate.Kind "DataGrid"
-      Predicate.Kind "Callout"
-      Predicate.Category NodeCategory.Layout
-      Predicate.Category NodeCategory.Visualisation
-      Predicate.Role "Dashboard"
-      Predicate.ChildCount(Cmp.Gte, 2)
-      Predicate.Tone "Critical"
-      Predicate.BoundTo(Channel.Any, "region")
-      Predicate.Dispatches Act.Any
-      Predicate.HasDescendant(Predicate.Kind "DataGrid") ]
-
-/// The pool restricted for the cubic laws. Associativity is enumerated over pool^3 per fixture,
-/// which at the full pool is 1,331 evaluations per tree per law — bounded, but it dominates the
-/// run under Node for no extra discrimination. The prefix is a deliberate, stated trade, not an
-/// accident of writing `List.truncate` and forgetting: pairs and identities still run over the
-/// WHOLE pool, and the claim counts printed at the end make the difference visible rather than
-/// implied.
-let private cubicPool = pool |> List.truncate 5
-
-let private matched (p: Predicate) (t: Node<obj>) : Set<string> = (evaluate p t).Matched
-
-/// Every node id in a tree, via the algebra's own identity element. The identity law below is what
-/// pins this to the tree's real node set, so it is not a circular definition.
-let private everyNode (t: Node<obj>) : Set<string> = matched (Predicate.And []) t
 
 /// One law's verdict over one fixture: how many claims it made, and how many failed.
 type private Verdict = { Claims: int; Violations: int }
@@ -68,106 +44,10 @@ let private check (v: Verdict) (holds: bool) : Verdict =
     { Claims = v.Claims + 1
       Violations = v.Violations + (if holds then 0 else 1) }
 
-// ── the laws ────────────────────────────────────────────────────────────────
-
-let private idempotence (t: Node<obj>) : Verdict =
-    pool
-    |> List.fold
-        (fun v a ->
-            let v = check v (matched (Predicate.And [ a; a ]) t = matched a t)
-            check v (matched (Predicate.Or [ a; a ]) t = matched a t))
-        zero
-
-let private commutativity (t: Node<obj>) : Verdict =
-    pool
-    |> List.fold
-        (fun v a ->
-            pool
-            |> List.fold
-                (fun v b ->
-                    let v =
-                        check v (matched (Predicate.And [ a; b ]) t = matched (Predicate.And [ b; a ]) t)
-
-                    check v (matched (Predicate.Or [ a; b ]) t = matched (Predicate.Or [ b; a ]) t))
-                v)
-        zero
-
-let private associativity (t: Node<obj>) : Verdict =
-    cubicPool
-    |> List.fold
-        (fun v a ->
-            cubicPool
-            |> List.fold
-                (fun v b ->
-                    cubicPool
-                    |> List.fold
-                        (fun v c ->
-                            let v =
-                                check
-                                    v
-                                    (matched (Predicate.And [ Predicate.And [ a; b ]; c ]) t = matched
-                                        (Predicate.And [ a; Predicate.And [ b; c ] ])
-                                        t)
-
-                            check
-                                v
-                                (matched (Predicate.Or [ Predicate.Or [ a; b ]; c ]) t = matched
-                                    (Predicate.Or [ a; Predicate.Or [ b; c ] ])
-                                    t))
-                        v)
-                v)
-        zero
-
-let private identities (t: Node<obj>) : Verdict =
-    let v = check zero (Set.isEmpty (matched (Predicate.Or []) t))
-
-    pool
-    |> List.fold
-        (fun v a ->
-            let v = check v (matched (Predicate.And [ a; Predicate.And [] ]) t = matched a t)
-
-            check v (matched (Predicate.Or [ a; Predicate.Or [] ]) t = matched a t))
-        v
-
-let private negation (t: Node<obj>) : Verdict =
-    let every = everyNode t
-
-    pool
-    |> List.fold
-        (fun v a ->
-            let v = check v (matched (Predicate.Not(Predicate.Not a)) t = matched a t)
-            check v (matched (Predicate.Not a) t = Set.difference every (matched a t)))
-        zero
-
-let private deMorgan (t: Node<obj>) : Verdict =
-    pool
-    |> List.fold
-        (fun v a ->
-            pool
-            |> List.fold
-                (fun v b ->
-                    let v =
-                        check
-                            v
-                            (matched (Predicate.Not(Predicate.And [ a; b ])) t = matched
-                                (Predicate.Or [ Predicate.Not a; Predicate.Not b ])
-                                t)
-
-                    check
-                        v
-                        (matched (Predicate.Not(Predicate.Or [ a; b ])) t = matched
-                            (Predicate.And [ Predicate.Not a; Predicate.Not b ])
-                            t))
-                v)
-        zero
-
-let private laws: (string * (Node<obj> -> Verdict)) list =
-    [ "idem", idempotence
-      "comm", commutativity
-      "assoc", associativity
-      "ident", identities
-      "neg", negation
-      "demorgan", deMorgan ]
+/// Fold one law's claims over one fixture. The claims stream, so the ~4,700 a fixture now produces
+/// are never all live at once.
+let private verdict (claims: Laws.Claim seq) : Verdict =
+    claims |> Seq.fold (fun v c -> check v (Laws.holds c)) zero
 
 // ── the run ─────────────────────────────────────────────────────────────────
 
@@ -188,7 +68,7 @@ let main _ =
     // A pool member that matches everywhere, or nowhere, makes every law below a statement about a
     // constant. Counted per predicate across the corpus and printed, so vacuity is visible rather
     // than assumed — the .NET suite asserts the same property and this is its portable half.
-    let mutable hitCounts = pool |> List.map (fun _ -> 0)
+    let mutable hitCounts = Laws.pool |> List.map (fun _ -> 0)
     let mutable totalClaims = 0
     let mutable totalViolations = 0
     let mutable decoded = 0
@@ -204,7 +84,7 @@ let main _ =
         | Ok t ->
             decoded <- decoded + 1
 
-            let sizes = pool |> List.map (fun p -> Set.count (matched p t))
+            let sizes = Laws.pool |> List.map (fun p -> Set.count (Laws.matched p t))
 
             hitCounts <- List.map2 (fun total size -> total + (if size > 0 then 1 else 0)) hitCounts sizes
 
@@ -212,10 +92,10 @@ let main _ =
                 "FIX %s %s nodes=%d sets=%s"
                 (pad3 i)
                 name
-                (Set.count (everyNode t))
+                (Set.count (Laws.everyNode t))
                 (sizes |> List.map string |> String.concat ",")
 
-            let verdicts = laws |> List.map (fun (label, law) -> label, law t)
+            let verdicts = Laws.laws |> List.map (fun (label, law) -> label, verdict (law t))
 
             for (_, v) in verdicts do
                 totalClaims <- totalClaims + v.Claims

@@ -21,6 +21,16 @@ module Fuaran.UI.Tests.StructuralQuery
 //      against an INDEPENDENT oracle built in this file from the public
 //      `children` relation, not against the evaluator's own idea of ancestry.
 //
+//      THE LAWS THEMSELVES ARE NOT WRITTEN HERE. They live in
+//      `tests/pure-tier-laws/Laws.fs`, linked into this project, because a
+//      second executor consumes the same definitions: that directory's probe
+//      runs them on .NET and on the same sources transpiled to JavaScript and
+//      byte-compares the two. This suite is the executor that ASSERTS — one
+//      Expecto case per law, each claim an `Expect.equal` naming its fixture and
+//      instance. The laws had been written out twice, once on each side, and the
+//      copies had already drifted; one definition site is what makes "the laws
+//      hold on both pipelines" a statement about the same laws.
+//
 //   3. THAT NO SIGNATURE-SEARCH CAPABILITY IS REIMPLEMENTED. The delegation
 //      seam routes a signature-expressible query out to the shipped bank and
 //      the two answers agree; and `Fuaran.UI` is shown to hold no reference to
@@ -35,6 +45,9 @@ open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.StructuralQuery
+
+// The shared law definitions, linked in from tests/pure-tier-laws/Laws.fs.
+open PureTierLaws
 
 // ── the corpus ──────────────────────────────────────────────────────────────
 
@@ -111,25 +124,19 @@ let private idsAreUnique (root: Node<obj>) : bool =
     let ids = allNodes root |> List.map _.Id
     List.length ids = List.length (List.distinct ids)
 
-// ── the predicate pool the laws are enumerated over ──────────────────────────
+// ── the shared law definitions ───────────────────────────────────────────────
+//
+// `pool`, `matched`, `everyNode` and every algebra law come from the linked
+// `PureTierLaws.Laws` module — the one definition site the transpiled probe
+// also compiles. These are aliases onto it, not second definitions: the point
+// of the seam is that there is nothing here to drift.
 
-let private pool: Predicate list =
-    [ Predicate.Kind "Box"
-      Predicate.Kind "DataGrid"
-      Predicate.Kind "Callout"
-      Predicate.Category NodeCategory.Layout
-      Predicate.Category NodeCategory.Visualisation
-      Predicate.Role "Dashboard"
-      Predicate.ChildCount(Cmp.Gte, 2)
-      Predicate.Tone "Critical"
-      Predicate.BoundTo(Channel.Any, "region")
-      Predicate.Dispatches Act.Any
-      Predicate.HasDescendant(Predicate.Kind "DataGrid") ]
+let private pool = Laws.pool
 
-let private matched (p: Predicate) (t: Node<obj>) : Set<string> = (evaluate p t).Matched
+let private matched = Laws.matched
 
 /// The identity of `And` — it holds of every node, so this is "every id".
-let private everyNode (t: Node<obj>) : Set<string> = matched (Predicate.And []) t
+let private everyNode = Laws.everyNode
 
 /// Run `check` for every (name, tree) in the corpus, reporting the fixture that
 /// broke rather than a bare set inequality.
@@ -144,6 +151,137 @@ let private forEachTree (label: string) (check: string -> Node<obj> -> unit) =
 
         for name, t in trees do
             check name t
+
+/// One Expecto case per law in the shared list. Every claim asserted here is the
+/// same `Laws.Claim` the transpiled probe folds into its violation count, so a
+/// single edit to a law body reddens this suite and that probe together — the
+/// property two hand-maintained copies could not offer.
+let private lawCase (label: string, law: Node<obj> -> Laws.Claim seq) =
+    test ("law: " + label) {
+        forEachTree label (fun name t ->
+            for c in law t do
+                Expect.equal c.Left c.Right (sprintf "%s: %s [%s]" name c.Law c.Instance))
+    }
+
+/// The claims the shared laws deliberately do NOT carry, and the trace and
+/// determinism pins that sit beside them. Every one of these is about something
+/// other than set equality between two predicate expressions — which is all a
+/// `Laws.Claim` says: an independent walk of the tree, a hit's evidence rather
+/// than its match set, the containment relation read from both ends, the shape
+/// of a trace, evaluation order. Keeping them here is what stops the shared
+/// claim type growing a shape only one of the two executors could interpret.
+let private oracleCases: Test list =
+    [ test "And [] is exactly the tree's node set — against an independent walk" {
+          forEachTree "identity-oracle" (fun name t ->
+              Expect.equal
+                  (List.length (allNodes t))
+                  (Set.count (everyNode t))
+                  (sprintf "%s: And [] is every node" name))
+      }
+
+      test "a negated match carries no positive evidence" {
+          forEachTree "negation-evidence" (fun name t ->
+              for a in pool do
+                  Expect.isEmpty
+                      ((evaluate (Predicate.Not a) t).Hits |> List.collect _.Witnesses)
+                      (sprintf "%s: a negated match carries no positive evidence" name))
+      }
+
+      test "scoping agrees with an independently-built containment relation" {
+          forEachTree "scoping" (fun name t ->
+              if idsAreUnique t then
+                  let descendants = descendantPairs t |> Map.ofList
+                  let ancestors = ancestorPairs t |> Map.ofList
+
+                  for a in pool do
+                      let inner = matched a t
+
+                      let expectedDescendantScope =
+                          descendants
+                          |> Map.toList
+                          |> List.filter (fun (_, ds) -> ds |> List.exists (fun d -> Set.contains d inner))
+                          |> List.map fst
+                          |> Set.ofList
+
+                      let expectedAncestorScope =
+                          ancestors
+                          |> Map.toList
+                          |> List.filter (fun (_, asc) -> asc |> List.exists (fun x -> Set.contains x inner))
+                          |> List.map fst
+                          |> Set.ofList
+
+                      Expect.equal
+                          (matched (Predicate.HasDescendant a) t)
+                          expectedDescendantScope
+                          (sprintf "%s: HasDescendant matches the oracle" name)
+
+                      Expect.equal
+                          (matched (Predicate.HasAncestor a) t)
+                          expectedAncestorScope
+                          (sprintf "%s: HasAncestor matches the oracle" name))
+      }
+
+      test "descendant and ancestor scoping are exact duals" {
+          forEachTree "duality" (fun name t ->
+              if idsAreUnique t then
+                  // n has d as a strict descendant iff d has n as a strict
+                  // ancestor — the property that makes the two scoping terms one
+                  // relation read from two ends.
+                  let asDescendantEdges =
+                      descendantPairs t
+                      |> List.collect (fun (n, ds) -> ds |> List.map (fun d -> n, d))
+                      |> Set.ofList
+
+                  let asAncestorEdges =
+                      ancestorPairs t
+                      |> List.collect (fun (d, ancs) -> ancs |> List.map (fun n -> n, d))
+                      |> Set.ofList
+
+                  Expect.equal asDescendantEdges asAncestorEdges (sprintf "%s: the relation is one relation" name)
+
+                  // The root has no ancestor; a leaf has no descendant.
+                  Expect.isFalse
+                      (Set.contains t.Id (matched (Predicate.HasAncestor(Predicate.And [])) t))
+                      (sprintf "%s: the root has no strict ancestor" name))
+      }
+
+      test "every hit's trace names real nodes, and highlight is hits plus trace" {
+          forEachTree "traces" (fun name t ->
+              let ids = allNodes t |> List.map _.Id |> Set.ofList
+
+              let scoping =
+                  [ for a in pool do
+                        yield Predicate.HasDescendant a
+                        yield Predicate.HasAncestor a
+                        yield Predicate.And [ a; Predicate.ChildCount(Cmp.Gte, 1) ] ]
+
+              for p in pool @ scoping do
+                  let r = evaluate p t
+
+                  Expect.isTrue (Set.isSubset r.Matched r.Highlight) (sprintf "%s: matched is part of highlight" name)
+
+                  Expect.equal
+                      r.Highlight
+                      (r.Hits |> List.collect (fun h -> h.NodeId :: h.Witnesses) |> Set.ofList)
+                      (sprintf "%s: highlight is exactly hits plus witnesses" name)
+
+                  for h in r.Hits do
+                      Expect.isTrue (Set.contains h.NodeId ids) (sprintf "%s: a hit names a real node" name)
+
+                      Expect.equal h.Witnesses (List.distinct h.Witnesses) (sprintf "%s: witnesses are distinct" name)
+
+                      for w in h.Witnesses do
+                          Expect.isTrue (Set.contains w ids) (sprintf "%s: a witness names a real node" name))
+      }
+
+      test "evaluation is deterministic and order-stable" {
+          forEachTree "determinism" (fun name t ->
+              for a in pool do
+                  let first = evaluate a t
+                  let second = evaluate a t
+
+                  Expect.equal first.Hits second.Hits (sprintf "%s: same input, same hits in the same order" name))
+      } ]
 
 [<Tests>]
 let structuralQueryTests =
@@ -365,239 +503,35 @@ let structuralQueryTests =
 
           testList
               "the predicate algebra, enumerated over the corpus"
-              [ test "every predicate in the pool discriminates — the laws are not vacuous" {
-                    // A law quantified over predicates that match nothing is a
-                    // law about the empty set. Each pool member must therefore
-                    // match somewhere in the corpus AND miss somewhere, or the
-                    // enumeration below proves less than it appears to.
-                    match corpus () with
-                    | [] -> skiptest "wire-format-fixtures/nodes not found — the corpus clone is missing"
-                    | trees ->
-                        for p in pool do
-                            let hitting = trees |> List.filter (fun (_, t) -> not (Set.isEmpty (matched p t)))
+              ([ test "every predicate in the pool discriminates — the laws are not vacuous" {
+                     // A law quantified over predicates that match nothing is a
+                     // law about the empty set. Each pool member must therefore
+                     // match somewhere in the corpus AND miss somewhere, or the
+                     // enumeration below proves less than it appears to.
+                     match corpus () with
+                     | [] -> skiptest "wire-format-fixtures/nodes not found — the corpus clone is missing"
+                     | trees ->
+                         for p in pool do
+                             let hitting = trees |> List.filter (fun (_, t) -> not (Set.isEmpty (matched p t)))
 
-                            Expect.isGreaterThan
-                                (List.length hitting)
-                                0
-                                (sprintf "%A matches somewhere in the corpus" p)
+                             Expect.isGreaterThan
+                                 (List.length hitting)
+                                 0
+                                 (sprintf "%A matches somewhere in the corpus" p)
 
-                            Expect.isLessThan
-                                (List.length hitting)
-                                (List.length trees)
-                                (sprintf "%A misses somewhere in the corpus" p)
-                }
+                             Expect.isLessThan
+                                 (List.length hitting)
+                                 (List.length trees)
+                                 (sprintf "%A misses somewhere in the corpus" p)
+                 } ]
 
-                test "and/or are commutative, associative and idempotent" {
-                    forEachTree "and/or" (fun name t ->
-                        for a in pool do
-                            Expect.equal
-                                (matched (Predicate.And [ a; a ]) t)
-                                (matched a t)
-                                (sprintf "%s: and-idempotent" name)
+               // The eight algebra laws, enumerated from the shared definition
+               // list rather than restated here. A law added to `Laws.laws`
+               // becomes an Expecto case with no edit in this file — and a case
+               // in the transpiled probe in the same edit.
+               @ (Laws.laws |> List.map lawCase)
 
-                            Expect.equal
-                                (matched (Predicate.Or [ a; a ]) t)
-                                (matched a t)
-                                (sprintf "%s: or-idempotent" name)
-
-                            for b in pool do
-                                Expect.equal
-                                    (matched (Predicate.And [ a; b ]) t)
-                                    (matched (Predicate.And [ b; a ]) t)
-                                    (sprintf "%s: and-commutative" name)
-
-                                Expect.equal
-                                    (matched (Predicate.Or [ a; b ]) t)
-                                    (matched (Predicate.Or [ b; a ]) t)
-                                    (sprintf "%s: or-commutative" name)
-
-                                for c in pool do
-                                    Expect.equal
-                                        (matched (Predicate.And [ Predicate.And [ a; b ]; c ]) t)
-                                        (matched (Predicate.And [ a; Predicate.And [ b; c ] ]) t)
-                                        (sprintf "%s: and-associative" name)
-
-                                    Expect.equal
-                                        (matched (Predicate.Or [ Predicate.Or [ a; b ]; c ]) t)
-                                        (matched (Predicate.Or [ a; Predicate.Or [ b; c ] ]) t)
-                                        (sprintf "%s: or-associative" name))
-                }
-
-                test "the empty conjunction and disjunction are the identities" {
-                    forEachTree "identities" (fun name t ->
-                        let every = everyNode t
-
-                        Expect.equal
-                            (List.length (allNodes t))
-                            (Set.count every)
-                            (sprintf "%s: And [] is every node" name)
-
-                        Expect.isEmpty (matched (Predicate.Or []) t) (sprintf "%s: Or [] is no node" name)
-
-                        for a in pool do
-                            Expect.equal
-                                (matched (Predicate.And [ a; Predicate.And [] ]) t)
-                                (matched a t)
-                                (sprintf "%s: And [] is the unit of and" name)
-
-                            Expect.equal
-                                (matched (Predicate.Or [ a; Predicate.Or [] ]) t)
-                                (matched a t)
-                                (sprintf "%s: Or [] is the unit of or" name))
-                }
-
-                test "negation is involutive and complements against the whole tree" {
-                    forEachTree "negation" (fun name t ->
-                        let every = everyNode t
-
-                        for a in pool do
-                            Expect.equal
-                                (matched (Predicate.Not(Predicate.Not a)) t)
-                                (matched a t)
-                                (sprintf "%s: double negation" name)
-
-                            Expect.equal
-                                (matched (Predicate.Not a) t)
-                                (Set.difference every (matched a t))
-                                (sprintf "%s: not a = every node minus a" name)
-
-                            Expect.isEmpty
-                                ((evaluate (Predicate.Not a) t).Hits |> List.collect _.Witnesses)
-                                (sprintf "%s: a negated match carries no positive evidence" name))
-                }
-
-                test "de Morgan, absorption and distributivity hold" {
-                    forEachTree "lattice" (fun name t ->
-                        for a in pool do
-                            for b in pool do
-                                Expect.equal
-                                    (matched (Predicate.Not(Predicate.And [ a; b ])) t)
-                                    (matched (Predicate.Or [ Predicate.Not a; Predicate.Not b ]) t)
-                                    (sprintf "%s: de Morgan (and)" name)
-
-                                Expect.equal
-                                    (matched (Predicate.Not(Predicate.Or [ a; b ])) t)
-                                    (matched (Predicate.And [ Predicate.Not a; Predicate.Not b ]) t)
-                                    (sprintf "%s: de Morgan (or)" name)
-
-                                Expect.equal
-                                    (matched (Predicate.And [ a; Predicate.Or [ a; b ] ]) t)
-                                    (matched a t)
-                                    (sprintf "%s: absorption" name)
-
-                                for c in pool do
-                                    Expect.equal
-                                        (matched (Predicate.And [ a; Predicate.Or [ b; c ] ]) t)
-                                        (matched (Predicate.Or [ Predicate.And [ a; b ]; Predicate.And [ a; c ] ]) t)
-                                        (sprintf "%s: distributivity" name))
-                }
-
-                test "scoping agrees with an independently-built containment relation" {
-                    forEachTree "scoping" (fun name t ->
-                        if idsAreUnique t then
-                            let descendants = descendantPairs t |> Map.ofList
-                            let ancestors = ancestorPairs t |> Map.ofList
-
-                            for a in pool do
-                                let inner = matched a t
-
-                                let expectedDescendantScope =
-                                    descendants
-                                    |> Map.toList
-                                    |> List.filter (fun (_, ds) -> ds |> List.exists (fun d -> Set.contains d inner))
-                                    |> List.map fst
-                                    |> Set.ofList
-
-                                let expectedAncestorScope =
-                                    ancestors
-                                    |> Map.toList
-                                    |> List.filter (fun (_, asc) -> asc |> List.exists (fun x -> Set.contains x inner))
-                                    |> List.map fst
-                                    |> Set.ofList
-
-                                Expect.equal
-                                    (matched (Predicate.HasDescendant a) t)
-                                    expectedDescendantScope
-                                    (sprintf "%s: HasDescendant matches the oracle" name)
-
-                                Expect.equal
-                                    (matched (Predicate.HasAncestor a) t)
-                                    expectedAncestorScope
-                                    (sprintf "%s: HasAncestor matches the oracle" name))
-                }
-
-                test "descendant and ancestor scoping are exact duals" {
-                    forEachTree "duality" (fun name t ->
-                        if idsAreUnique t then
-                            // n has d as a strict descendant iff d has n as a
-                            // strict ancestor — the property that makes the two
-                            // scoping terms one relation read from two ends.
-                            let asDescendantEdges =
-                                descendantPairs t
-                                |> List.collect (fun (n, ds) -> ds |> List.map (fun d -> n, d))
-                                |> Set.ofList
-
-                            let asAncestorEdges =
-                                ancestorPairs t
-                                |> List.collect (fun (d, ancs) -> ancs |> List.map (fun n -> n, d))
-                                |> Set.ofList
-
-                            Expect.equal
-                                asDescendantEdges
-                                asAncestorEdges
-                                (sprintf "%s: the relation is one relation" name)
-
-                            // The root has no ancestor; a leaf has no descendant.
-                            Expect.isFalse
-                                (Set.contains t.Id (matched (Predicate.HasAncestor(Predicate.And [])) t))
-                                (sprintf "%s: the root has no strict ancestor" name))
-                }
-
-                test "every hit's trace names real nodes, and highlight is hits plus trace" {
-                    forEachTree "traces" (fun name t ->
-                        let ids = allNodes t |> List.map _.Id |> Set.ofList
-
-                        let scoping =
-                            [ for a in pool do
-                                  yield Predicate.HasDescendant a
-                                  yield Predicate.HasAncestor a
-                                  yield Predicate.And [ a; Predicate.ChildCount(Cmp.Gte, 1) ] ]
-
-                        for p in pool @ scoping do
-                            let r = evaluate p t
-
-                            Expect.isTrue
-                                (Set.isSubset r.Matched r.Highlight)
-                                (sprintf "%s: matched is part of highlight" name)
-
-                            Expect.equal
-                                r.Highlight
-                                (r.Hits |> List.collect (fun h -> h.NodeId :: h.Witnesses) |> Set.ofList)
-                                (sprintf "%s: highlight is exactly hits plus witnesses" name)
-
-                            for h in r.Hits do
-                                Expect.isTrue (Set.contains h.NodeId ids) (sprintf "%s: a hit names a real node" name)
-
-                                Expect.equal
-                                    h.Witnesses
-                                    (List.distinct h.Witnesses)
-                                    (sprintf "%s: witnesses are distinct" name)
-
-                                for w in h.Witnesses do
-                                    Expect.isTrue (Set.contains w ids) (sprintf "%s: a witness names a real node" name))
-                }
-
-                test "evaluation is deterministic and order-stable" {
-                    forEachTree "determinism" (fun name t ->
-                        for a in pool do
-                            let first = evaluate a t
-                            let second = evaluate a t
-
-                            Expect.equal
-                                first.Hits
-                                second.Hits
-                                (sprintf "%s: same input, same hits in the same order" name))
-                } ]
+               @ oracleCases)
 
           // ── 3. composition with the shipped signature-search surface ───────
 
