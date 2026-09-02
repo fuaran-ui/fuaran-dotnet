@@ -108,6 +108,81 @@ let tests =
               Expect.equal (resolvesTo sources b) "1,234.5" "ambient locale → en-US grouping"
           }
 
+          // ── Phase 1114 — RTL locales ─────────────────────────────────────
+          //
+          // The claim under test is that the formatting layer needed NO
+          // direction work: `CultureInfo` (ICU on every platform .NET runs on)
+          // already carries the direction-aware shapes, so a right-to-left
+          // locale formats correctly through the same code path as any other.
+          // Verified rather than assumed, and the two shapes that actually
+          // DIFFER from the left-to-right baseline are fixtured below.
+          //
+          // Asserted as PROPERTIES (which characters are present, which side the
+          // symbol lands on) rather than as exact strings: these values come
+          // from ICU's locale data, which moves with the runtime, and a
+          // byte-pinned fixture would fail on a CLDR bump that changed nothing
+          // this phase cares about.
+
+          test "RTL difference 1 — the percent shape carries Arabic-Indic marks" {
+              let arabic = Formatting.format "ar-EG" (Format.Percent(Some 1)) 0.42
+              let latin = Formatting.format "en-US" (Format.Percent(Some 1)) 0.42
+
+              Expect.stringContains arabic "٪" "ARABIC PERCENT SIGN, not U+0025"
+              Expect.stringContains arabic "٫" "ARABIC DECIMAL SEPARATOR"
+
+              // The invisible half, and the reason this is a DIRECTION-aware
+              // shape rather than merely a different glyph: ICU appends U+061C
+              // ARABIC LETTER MARK so the percent sign resolves on the correct
+              // side of the number in a bidi run. Nothing in this repo produces
+              // it — it arrives from the locale data, which is the finding.
+              Expect.stringContains arabic "؜" "ARABIC LETTER MARK — the bidi control ICU appends"
+
+              Expect.equal latin "42.0%" "the LTR baseline is unchanged"
+              Expect.isFalse (latin.Contains "؜") "and carries no bidi control"
+          }
+
+          test "RTL difference 2 — the currency symbol changes SIDE, not just glyph" {
+              // `Format.Currency` substitutes the requested ISO code's symbol
+              // into the LOCALE's currency pattern (see `Formatting.fs`), and
+              // that pattern is where direction shows up: Arabic and Hebrew put
+              // the symbol after the amount, English before it. So the phase's
+              // question — does the formatter need to know about direction —
+              // is answered no: the pattern already did.
+              let arabic = Formatting.format "ar-EG" (Format.Currency "USD") 1234.5
+              let hebrew = Formatting.format "he-IL" (Format.Currency "USD") 1234.5
+              let english = Formatting.format "en-US" (Format.Currency "USD") 1234.5
+
+              Expect.stringEnds arabic "$" "ar-EG places the symbol after the amount"
+              Expect.stringEnds hebrew "$" "he-IL places the symbol after the amount"
+              Expect.stringStarts english "$" "en-US places it before"
+          }
+
+          test "an RTL locale that uses Latin digits still formats through the same path" {
+              // Not every right-to-left locale uses Arabic-Indic digits — `he`
+              // and `ur` do not — which is exactly why the direction of a
+              // DOCUMENT and the digit shapes of a NUMBER are two independent
+              // questions, and why `textDirection` is derived from the tag
+              // rather than inferred from the formatted output.
+              Expect.equal (Formatting.format "he-IL" (Format.Number(Some 2)) 1234.5) "1,234.50" "Hebrew: Latin digits"
+              Expect.equal (Formatting.format "ur-PK" (Format.Number(Some 2)) 1234.5) "1,234.50" "Urdu: Latin digits"
+
+              Expect.equal (Formatting.textDirection "he-IL") "rtl" "…and both are still right-to-left documents"
+              Expect.equal (Formatting.textDirection "ur-PK") "rtl" ""
+          }
+
+          test "Formatting.textDirection is total over malformed and unknown tags" {
+              // The value is emitted as a document attribute, so there is no
+              // "refuse to answer" branch — an unreadable tag must resolve to
+              // the recoverable direction rather than throw at render time.
+              for tag in [ ""; "  "; "-"; "!!!"; "zz"; "x-private"; "en-US-u-ca-gregory" ] do
+                  Expect.equal (Formatting.textDirection tag) "ltr" ("malformed/unknown tag: '" + tag + "'")
+
+              // Case and separator normalisation, since a host's configured tag
+              // is whatever the host's configuration file says.
+              Expect.equal (Formatting.textDirection "AR-eg") "rtl" "case-insensitive"
+              Expect.equal (Formatting.textDirection "ar_EG") "rtl" "underscore separator (a .NET/POSIX habit)"
+          }
+
           test "Binding.Format over an unresolved Filter source propagates NotResolved" {
               // A Filter source with no value in the sources resolves to
               // NotResolved; the formatter must not be invoked.

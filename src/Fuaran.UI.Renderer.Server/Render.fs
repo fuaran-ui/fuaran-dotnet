@@ -353,12 +353,18 @@ and private renderNodeCore (depth: int) (ctx: ServerRenderContext) (node: Node<o
     // `ExtraAttributes`) onto that element; the wrapper keeps only the `data-*`
     // addressing half. Every other kind is unchanged: a11y then extras, on the
     // wrapper, in that order. See `Accessibility.forwardsToSemanticElement`.
+    // Phase 1114 — the `dir="auto"` isolation for a display leaf carrying
+    // runtime-bound text. Wrapper-side in BOTH arms and FIRST in the list, so
+    // the emitted attribute order is identical under SSR and CSR; the policy
+    // itself is the shared `Accessibility.bidiAttributes`.
+    let bidi = Accessibility.bidiAttributes node.Kind
+
     let wrapperAttrs, semanticAttrs =
         if Accessibility.forwardsToSemanticElement node.Kind then
             let dataExtras, ariaExtras = Accessibility.partitionExtraAttributes extras
-            dataExtras, a11y @ ariaExtras
+            bidi @ dataExtras, a11y @ ariaExtras
         else
-            a11y @ extras, []
+            bidi @ a11y @ extras, []
 
     let kindBody = renderKind depth ctx id node.State node.Kind semanticAttrs
 

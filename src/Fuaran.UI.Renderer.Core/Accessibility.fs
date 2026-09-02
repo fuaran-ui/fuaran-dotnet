@@ -129,6 +129,121 @@ let forwardsToSemanticElement (kind: NodeKind<'Msg>) : bool =
     | NodeKind.Media _ -> true
     | _ -> false
 
+// ─── The `dir="auto"` policy (Phase 1114) ───────────────────────────────────
+//
+// A document declares ONE direction (`<html dir>`, derived from its locale).
+// That is right for everything the AUTHOR wrote and wrong for everything the
+// DATA carries: an Arabic customer name inside an English page, an English
+// product code inside an Arabic one. `dir="auto"` is the HTML answer — the
+// browser reads the element's first strong directional character and lays that
+// element out accordingly — and the whole question is which elements get it.
+//
+// THE DECIDED SLOT SET: a node whose visible text is supplied at RUNTIME
+// through a `TextSource.Bound`, and which is a DISPLAY LEAF.
+//
+// Both halves are load-bearing.
+//
+//  - RUNTIME, not authored. `TextSource.Literal` is the author writing in the
+//    document's language, and `TextSource.I18n` is a host-resolved translation
+//    of the document's own locale; both are correct under the document's `dir`
+//    and putting `auto` on them would let one stray character re-lay-out a line
+//    the author controls. `Bound` is the only case whose direction genuinely
+//    cannot be known at author time, which is exactly when `auto` is right.
+//
+//  - DISPLAY LEAF, not container. `dir` is inherited, so `auto` on a layout
+//    container would resolve ONE direction from the first strong character
+//    anywhere beneath it and impose it on every child — the opposite of what a
+//    mixed-direction page needs. Every layout kind is therefore `false`, and a
+//    mixed tree gets its isolation from the leaves that actually carry data.
+//
+// Interactive kinds are `false` too, but for a third reason: a control's label
+// is authored, and its VALUE is inside a form control, where the browser
+// already applies bidi isolation to the field's own contents.
+//
+// Kind-level and total by construction, exactly like `forwardsToSemanticElement`
+// above: the wrapper must decide before the body is rendered, and the only
+// thing it has then is the `NodeKind`. Adding a kind therefore forces an answer
+// here rather than defaulting to silence.
+
+let private isBoundText (text: TextSource) : bool =
+    match text with
+    | TextSource.Bound _ -> true
+    | TextSource.Literal _
+    | TextSource.I18n _ -> false
+
+/// Does this kind display runtime-bound text that needs its own bidi
+/// isolation? See the policy note above for what decides it.
+let isBidiIsolated (kind: NodeKind<'Msg>) : bool =
+    match kind with
+    // Display leaves whose primary text is a `TextSource`.
+    | NodeKind.Heading s -> isBoundText s.Text
+    | NodeKind.Badge s -> isBoundText s.Label
+    | NodeKind.Markdown s -> isBoundText s.Text
+    | NodeKind.List s -> s.Items |> List.exists isBoundText
+    | NodeKind.Link s -> isBoundText s.Label
+    | NodeKind.Media s -> isBoundText s.Label
+    | NodeKind.Callout s ->
+        isBoundText s.Body
+        || (s.Heading |> Option.map isBoundText |> Option.defaultValue false)
+    | NodeKind.Metric s ->
+        isBoundText s.Label
+        || (s.Subtext |> Option.map isBoundText |> Option.defaultValue false)
+    | NodeKind.LabelValueRow s -> isBoundText s.Label
+    | NodeKind.Fact s -> isBoundText s.Label || isBoundText s.Value
+    | NodeKind.Toast s -> isBoundText s.Message
+    | NodeKind.Progress s -> s.Label |> Option.map isBoundText |> Option.defaultValue false
+    // `Image`'s bound slot is `Alt` — attribute text, not laid-out content, so
+    // there is nothing on the page for `auto` to resolve. Its `Caption` IS laid
+    // out, and is the half that qualifies.
+    | NodeKind.Image s -> s.Caption |> Option.map isBoundText |> Option.defaultValue false
+    // Display leaves carrying no `TextSource` at all: their content is a glyph,
+    // a number, a shape, or author-written source.
+    | NodeKind.Math _
+    | NodeKind.Skeleton _
+    | NodeKind.Icon _
+    | NodeKind.Sparkline _
+    | NodeKind.CodeBlock _
+    | NodeKind.Drawing _
+    // Layout containers — `dir` is inherited, so `auto` here would impose one
+    // resolved direction on every descendant.
+    | NodeKind.Box _
+    | NodeKind.SplitPanel _
+    | NodeKind.SummaryList _
+    | NodeKind.Disclosure _
+    | NodeKind.Modal _
+    | NodeKind.ScrollArea _
+    | NodeKind.Tabs _
+    | NodeKind.Stepper _
+    | NodeKind.ErrorBoundary _
+    | NodeKind.FragmentDecl _
+    | NodeKind.FragmentRef _
+    | NodeKind.Switch _
+    | NodeKind.Mount _
+    // Interactive kinds — authored labels, and the browser already isolates a
+    // form control's own value.
+    | NodeKind.Button _
+    | NodeKind.Select _
+    | NodeKind.FileUpload _
+    | NodeKind.Form _
+    | NodeKind.Filters _
+    // Data surfaces that own their own cell-level emission. A grid, a chart and
+    // a map lay out per-cell / per-datum text through their own arms, and a
+    // wrapper-level `auto` would resolve one direction for the whole surface —
+    // the container argument again, on a kind that happens to be a leaf.
+    | NodeKind.DataGrid _
+    | NodeKind.Chart _
+    | NodeKind.Map _
+    // A custom kind's body is host-rendered: this library cannot know what text
+    // it puts on the page, and asserting a direction over it would be a claim
+    // about content it never saw.
+    | NodeKind.Custom _ -> false
+
+/// The wrapper attribute pairs the policy above emits — empty, or the single
+/// `dir="auto"`. Returned as pairs rather than a bool so both renderer arms
+/// append it the same way they append every other wrapper attribute.
+let bidiAttributes (kind: NodeKind<'Msg>) : (string * string) list =
+    if isBidiIsolated kind then [ "dir", "auto" ] else []
+
 /// Split already-sanitised `ExtraAttributes` pairs into the half that stays on
 /// the wrapper and the half that follows the a11y projection: `(data-*, aria-*)`.
 ///

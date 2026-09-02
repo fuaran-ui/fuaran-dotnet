@@ -798,8 +798,12 @@ let opts =
         Customs = serverCustomRegistry          // Phase 141 domain renderers
         Cache = RenderCache.inMemory () }        // or any IFuaranRenderCache
 
+// `withLocale` drives BOTH `lang` and `dir` on `<html>` — one declaration, so
+// the two cannot disagree, and `withLocale "ar-EG"` gets `dir="rtl"` with no
+// second statement. A shell that declares no locale emits neither attribute;
+// `FuaranGiraffeOptions.Sources.Locale` supplies the ambient default.
 let shell =
-    { DocumentShell.create "Pricing — Acme" with
+    { (DocumentShell.create "Pricing — Acme" |> DocumentShell.withLocale "en") with
         MetaDescription = Some "Simple, transparent pricing."
         Canonical = Some "https://acme.example/pricing"
         OpenGraph = [ "og:title", "Pricing — Acme"; "og:type", "website" ]
