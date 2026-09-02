@@ -56,7 +56,7 @@ let stepRecord
         | None -> []
         | Some p -> [ p.Hash ]
 
-    DagOpRecord.create streamId parents op None "tester" (ts unix) OpResultEnvelope.Success
+    DagOpRecord.create streamId parents op None (Actor.Human "tester") (ts unix) OpResultEnvelope.Success
 
 /// Add a record to the sink synchronously (tests are single-threaded).
 let add (sink: IDagOpStreamSink<TestMsg>) (r: DagOpRecord<TestMsg>) : unit = sink.Add r |> Async.RunSynchronously

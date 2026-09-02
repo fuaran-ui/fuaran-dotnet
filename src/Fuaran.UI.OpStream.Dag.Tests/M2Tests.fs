@@ -24,7 +24,14 @@ let private aiStep (parent: DagOpRecord<TestMsg> option) (op: TreeOp<TestMsg>) (
         | None -> []
         | Some p -> [ p.Hash ]
 
-    DagOpRecord.create "s" parents op (Some prompt) "ai" (ts unix) OpResultEnvelope.Success
+    DagOpRecord.create
+        "s"
+        parents
+        op
+        (Some prompt)
+        (Actor.Agent("claude", "4.8", "planner"))
+        (ts unix)
+        OpResultEnvelope.Success
 
 let private styleWith (f: SemanticStyle -> SemanticStyle) =
     TreeOp.UpdateStyle(leftChildId, f Defaults.style)
