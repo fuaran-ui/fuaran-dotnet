@@ -479,6 +479,8 @@ FormFieldKind =
 | Date { variant:DateVariant; max?:str; min?:str; step?:any; value?:Binding_str }
 | DateRange { variant:DateVariant; max?:str; min?:str; step?:any; value?:any }
 | Combobox { options:Binding_list_SelectOption; allowFreeText?:bool; value?:Binding_str }
+| Rating { max:int; allowHalf?:bool; value?:Binding_float }
+| Color { value?:Binding_str }
 Format =
 | Number { decimals?:int }
 | Currency { isoCode:str }

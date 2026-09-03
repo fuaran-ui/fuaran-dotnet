@@ -486,6 +486,8 @@ and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | Date of value: Binding<string> option * onChange: (string option -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
     | DateRange of value: Binding<DateRangePair> option * onChange: (string * string -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
     | Combobox of allowFreeText: bool * onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * value: Binding<string> option
+    | Rating of allowHalf: bool * max: int * onChange: (float -> Action<'Msg>) option * value: Binding<float> option
+    | Color of onChange: (string -> Action<'Msg>) option * value: Binding<string> option
 
 and [<RequireQualifiedAccess>] Format =
     | Number of decimals: int option
@@ -1930,6 +1932,8 @@ and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     | FormFieldKind.Date (value, onChange, variant, min, max, step) -> Canon.typed "Date" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
     | FormFieldKind.DateRange (value, onChange, variant, min, max, step) -> Canon.typed "DateRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<DateRangePair>) -> match v with | Binding.Static(Some p) -> encDateRangePair p | __other -> encBinding encDateRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
     | FormFieldKind.Combobox (allowFreeText, onChange, options, value) -> Canon.typed "Combobox" ([ (if allowFreeText = false then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
+    | FormFieldKind.Rating (allowHalf, max, onChange, value) -> Canon.typed "Rating" ([ (if allowHalf = false then None else Some("allowHalf", JBool allowHalf)); Some("max", JInt max); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding encFloat) v)) ] |> List.choose id)
+    | FormFieldKind.Color (onChange, value) -> Canon.typed "Color" ([ (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
 
 and private encFormat (v: Format) : JVal =
     match v with
@@ -3074,6 +3078,22 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, string> =
             dReq "options" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun options ->
             dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
             Ok(FormFieldKind.Combobox(allowFreeText, onChange, options, value))))))
+        | "Rating" ->
+            dDef "allowHalf" __fs dBool (false) |> Result.bind (fun allowHalf ->
+            dReq "max" __fs dInt |> Result.bind (fun max ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: float) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
+            if max < 1 then
+                Error (sprintf "Rating 'max' must be at least 1 — a scale with %d positions cannot be rendered or announced" max)
+            else
+                Ok(FormFieldKind.Rating(allowHalf, max, onChange, value))))))
+        | "Color" ->
+            (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+            dOpt "value" __fs (decBinding dStr) |> Result.bind (fun value ->
+            match value with
+            | Some(Binding.Static(Some __text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->
+                Error (sprintf "Color 'value' must be a '#rrggbb' hex colour — got %s" __text)
+            | _ -> Ok(FormFieldKind.Color(onChange, value))))
         | __other -> Error ("unknown FormFieldKind case: " + __other))
     | _ -> Error "expected a FormFieldKind object"
 

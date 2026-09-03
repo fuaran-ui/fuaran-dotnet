@@ -780,6 +780,19 @@ let rec private canonicalFormField (field: FormField<'Msg>) : FormField<'Msg> =
                 mx,
                 st
             )
+        // Phase 1130 — a rating's placeholder is the scale's own floor, a
+        // colour's is the unset black a native colour input reports; both are
+        // named once in `ControlValueDefaults` so this collapse and the two
+        // decoders cannot drift.
+        | FormFieldKind.Rating(allowHalf, max, oc, value) ->
+            FormFieldKind.Rating(
+                allowHalf,
+                max,
+                oc,
+                collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.rating) value
+            )
+        | FormFieldKind.Color(oc, value) ->
+            FormFieldKind.Color(oc, collapse (Some Fuaran.UI.Defaults.ControlValueDefaults.color) value)
 
     { field with Kind = kind }
 
@@ -809,6 +822,8 @@ and private canonicalFilterItem (item: FilterSpec<'Msg>) : FilterSpec<'Msg> =
             FormFieldKind.Date(collapse value, oc, variant, mn, mx, st)
         | FormFieldKind.DateRange(value, oc, variant, mn, mx, st) ->
             FormFieldKind.DateRange(collapse value, oc, variant, mn, mx, st)
+        | FormFieldKind.Rating(allowHalf, max, oc, value) -> FormFieldKind.Rating(allowHalf, max, oc, collapse value)
+        | FormFieldKind.Color(oc, value) -> FormFieldKind.Color(oc, collapse value)
 
     { item with Kind = kind }
 

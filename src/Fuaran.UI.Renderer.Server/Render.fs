@@ -2219,6 +2219,19 @@ and private renderCustom
 
 /// A form field rendered inert: the labelled control with the correct class
 /// vocabulary. Interactive binding (onChange) is a client-hydration concern.
+/// Whether the control write-back default has somewhere to write (Phase 1130).
+/// The SSR tier's copy of the predicate the client renderer and the FUARAN069
+/// inert check both use, and it must stay the same predicate: the two tiers
+/// choose DIFFERENT markup from this one answer (a picture, or an adjustable
+/// control), so disagreeing about it would make the floor and the hydrated
+/// control disagree about what the document even is.
+and private isWriteBackTarget (binding: Binding<'T>) : bool =
+    match binding with
+    | Binding.State _
+    | Binding.Filter(_, None)
+    | Binding.Local _ -> true
+    | _ -> false
+
 and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) : ReactElement =
     // Phase 596 — the value slots are `Binding<_> option` since the swap. An
     // absent (`None`) slot is the auto-bind form: substitute exactly the
@@ -2282,6 +2295,26 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
                 |> Option.defaultValue (Binding.State(field.Id, Fuaran.UI.Defaults.ControlValueDefaults.combobox))
 
             "combobox", (BindingResolver.tryResolve ctx.Sources v |> Option.defaultValue "")
+        // Phase 1130 — the rating's own branch below builds the control (a star
+        // row or a radio group, per what the document can honour), so this
+        // tuple carries only the discriminator.
+        | FormFieldKind.Rating _ -> "rating", ""
+        // Phase 1130 — the colour control needs no branch of its own: a native
+        // `<input type="color">` IS the control, and the generic input arm
+        // below emits exactly that from this tuple. A value the input could not
+        // hold falls back to the unset black rather than being passed through,
+        // for the client renderer's reason — a native colour input substitutes
+        // its own default silently, so handing it a bad literal would show a
+        // colour the document did not choose.
+        | FormFieldKind.Color(_, v) ->
+            let v =
+                v
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.color))
+
+            "color",
+            (BindingResolver.tryResolve ctx.Sources v
+             |> Option.filter Fuaran.UI.HostPrelude.HexColor.isValid
+             |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.color)
         | FormFieldKind.Date(v, _, variant, _, _, _) ->
             let v =
                 v
@@ -2335,6 +2368,82 @@ and private renderFormField (ctx: ServerRenderContext) (field: FormField<obj>) :
         // in the platform reads that attribute. The enforcement is the
         // server-side re-check (`Fuaran.UI.ServerDriven.FormValidation`), which
         // is where a constraint that a client can type past belongs anyway.
+        // Phase 1130 — THE SSR FLOOR FOR A RATING, and it is deliberately not one
+        // markup but two, chosen by what the document can honour.
+        //
+        // A rating that CANNOT be written (no handler, and a value binding the
+        // write-back default cannot reach — the bound-average display case) has
+        // no interaction to floor, so this emits the IDENTICAL `role="img"`
+        // star row the client renders, from the same `RatingModel.fills`. The
+        // two tiers agree byte-for-byte because there is nothing for hydration
+        // to add.
+        //
+        // A WRITABLE rating floors on native RADIOS. Zero-JS, a
+        // `<span role="slider">` can be neither adjusted nor submitted; radios
+        // are keyboard-adjustable and submit with the form, and the user agent
+        // supplies the group semantics itself. NO HAND-WRITTEN ARIA IS EMITTED
+        // — the combobox arm's rule, for its reason: a static `aria-valuenow`
+        // that can never change is worse than the native semantics it replaced.
+        //
+        // RECORDED KNOWN LIMIT — a writable rating whose current value is a
+        // FRACTION that lands on no enterable position (a bound 4.3 the reader
+        // may then overwrite) checks no radio here. The floor shows the
+        // positions a reader can choose, not the average; the exact figure
+        // rides as `data-fuaran-rating-value` so it is visibly not dropped, and
+        // it is NOT claimed as coverage — nothing in the platform reads that
+        // attribute. Hydration restores the fraction.
+        | FormFieldKind.Rating(allowHalf, max, onChange, value) ->
+            let value =
+                value
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.rating))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.rating
+
+            let shown = RatingModel.clamp max current
+
+            let starRow =
+                [ for index, fill in List.indexed (RatingModel.fills max shown) ->
+                      Html.span
+                          [ prop.key index
+                            prop.className ("fuaran-rating-star " + RatingModel.fillClass fill)
+                            prop.custom ("aria-hidden", "true") ] ]
+
+            if onChange.IsNone && not (isWriteBackTarget value) then
+                Html.span
+                    [ prop.className "fuaran-form-field-control fuaran-rating fuaran-rating-static"
+                      prop.custom ("role", "img")
+                      prop.custom ("aria-label", RatingModel.valueText max shown)
+                      prop.custom ("data-fuaran-field", field.Id)
+                      prop.children starRow ]
+            else
+                let positions = int (System.Math.Round(float max / RatingModel.step allowHalf))
+
+                Html.span
+                    [ prop.className "fuaran-form-field-control fuaran-rating fuaran-rating-choices"
+                      prop.custom ("data-fuaran-field", field.Id)
+                      prop.custom ("data-fuaran-rating-value", RatingModel.valueText max shown)
+                      prop.children (
+                          starRow
+                          @ [ for i in 1..positions do
+                                  let target = RatingModel.snap allowHalf max (float i * RatingModel.step allowHalf)
+
+                                  let radio =
+                                      Html.input
+                                          [ prop.custom ("type", "radio")
+                                            prop.custom ("name", field.Id)
+                                            prop.value (string target)
+                                            if abs (target - shown) < 1e-9 then
+                                                prop.custom ("checked", true) ]
+
+                                  let caption =
+                                      Html.span
+                                          [ prop.className "fuaran-rating-choice-label"
+                                            prop.text (RatingModel.valueText max target) ]
+
+                                  Html.label [ prop.className "fuaran-rating-choice"; prop.children [ radio; caption ] ] ]
+                      ) ]
         | FormFieldKind.Combobox(allowFreeText, _, options, _) ->
             let listId = field.Id + "-options"
             let opts = resolveOptions ctx options
@@ -2510,6 +2619,10 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
         // Phase 725 — a date range is a range chip whose ends are dates; it
         // reuses the existing `range` chip class rather than minting one.
         | FormFieldKind.DateRange _ -> "range"
+        // Phase 1130 — each takes its own chip class: a star row and a colour
+        // swatch size nothing like the text chip they would otherwise inherit.
+        | FormFieldKind.Rating _ -> "rating"
+        | FormFieldKind.Color _ -> "color"
 
     let labelText = renderText ctx spec.Label
 
@@ -2705,6 +2818,60 @@ and private renderFilterSpec (ctx: ServerRenderContext) (spec: FilterSpec<obj>) 
                               prop.children
                                   [ for option in opts ->
                                         Html.option [ prop.value option.Value; prop.text option.Label ] ] ] ] ]
+        // Phase 1130 — a chip's declarative write always has somewhere to go
+        // (`$filters.<name>`), so a filter rating is always the writable shape:
+        // native radios here, the slider after hydration. Same reasoning as the
+        // form field's branch above, with the question already answered.
+        | FormFieldKind.Rating(allowHalf, max, _, value) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
+            let shown =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.rating
+                |> RatingModel.clamp max
+
+            let positions = int (System.Math.Round(float max / RatingModel.step allowHalf))
+
+            Html.span
+                [ prop.className "fuaran-rating fuaran-rating-choices"
+                  prop.custom ("data-filter-name", spec.Name)
+                  prop.custom ("data-fuaran-rating-value", RatingModel.valueText max shown)
+                  prop.children (
+                      [ for index, fill in List.indexed (RatingModel.fills max shown) ->
+                            Html.span
+                                [ prop.className ("fuaran-rating-star " + RatingModel.fillClass fill)
+                                  prop.custom ("aria-hidden", "true") ] ]
+                      @ [ for i in 1..positions do
+                              let target = RatingModel.snap allowHalf max (float i * RatingModel.step allowHalf)
+
+                              let radio =
+                                  Html.input
+                                      [ prop.custom ("type", "radio")
+                                        prop.custom ("name", spec.Name)
+                                        prop.value (string target)
+                                        if abs (target - shown) < 1e-9 then
+                                            prop.custom ("checked", true) ]
+
+                              let caption =
+                                  Html.span
+                                      [ prop.className "fuaran-rating-choice-label"
+                                        prop.text (RatingModel.valueText max target) ]
+
+                              Html.label [ prop.className "fuaran-rating-choice"; prop.children [ radio; caption ] ] ]
+                  ) ]
+        | FormFieldKind.Color(_, value) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.filter Fuaran.UI.HostPrelude.HexColor.isValid
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.color
+
+            Html.input
+                [ prop.className "fuaran-filter-input fuaran-color-input"
+                  prop.custom ("type", "color")
+                  prop.value current
+                  prop.custom ("data-filter-name", spec.Name) ]
 
     Html.label
         [ prop.className (Css.filter kindClass)

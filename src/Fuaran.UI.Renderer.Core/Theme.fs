@@ -106,7 +106,7 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // real <button> that must be visibly focusable, so an unstyled one is not
 // merely plain but keyboard-invisible, which is exactly the unstyled-control
 // skew this fingerprint exists to catch.
-let vocabularyFingerprint = "fv1:8b3d17a39ac85085"
+let vocabularyFingerprint = "fv1:6702894e3f667a62"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

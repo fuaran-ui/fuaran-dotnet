@@ -621,6 +621,41 @@ module FormFieldKind =
         : FormFieldKind<'Msg> =
         FormFieldKind.Combobox(allowFreeText, Some onChange, options, Some value)
 
+    /// `Rating` (Phase 1130) — the subjective score on a small ordinal scale.
+    /// `max` is the scale (5 is the conventional choice and the one
+    /// `Defaults.ratingMax` carries); `allowHalf` admits half positions on
+    /// ENTRY. The bound value is a `float` in both cases, because a DISPLAYED
+    /// rating is routinely an average — 4.3 of 5 — and only entry is quantised.
+    ///
+    /// Reach for `rangedNumber` instead when the quantity is a measurement
+    /// rather than a judgement: a rating is a score a person GIVES, a
+    /// `RangedNumber` is a number they REPORT.
+    ///
+    ///   FormFieldKind.rating
+    ///       (value = binding.state "score" 0.0)
+    ///       (onChange = SetScore >> Action.dispatch)
+    ///       5
+    ///       false
+    let rating
+        (value: Binding<float>)
+        (onChange: float -> Action<'Msg>)
+        (max: int)
+        (allowHalf: bool)
+        : FormFieldKind<'Msg> =
+        FormFieldKind.Rating(allowHalf, max, Some onChange, Some value)
+
+    /// `Color` (Phase 1130) — the platform's own colour picker. The bound value
+    /// is the canonical `#rrggbb` hex form, which is the one shape a native
+    /// colour input can hold and therefore the one shape this slot admits:
+    /// anything else is refused by the decoder, by FUARAN133 and by the
+    /// server-side submission floor rather than quietly narrowed.
+    ///
+    ///   FormFieldKind.color
+    ///       (value = binding.state "brand" "#ff8800")
+    ///       (onChange = SetBrand >> Action.dispatch)
+    let color (value: Binding<string>) (onChange: string -> Action<'Msg>) : FormFieldKind<'Msg> =
+        FormFieldKind.Color(Some onChange, Some value)
+
     /// `Date` / `Time` / `DateTime` field (Phase 288) with the optional
     /// ISO-8601 `min` / `max` + numeric `step` (seconds) constraints as named
     /// options. `variant` selects the native control (defaults are layered by
@@ -730,6 +765,15 @@ module FormFieldKind =
         : FormFieldKind<'Msg> =
         FormFieldKind.Combobox(allowFreeText, None, options, Some value)
 
+    /// Handler-free `Rating` (Phase 1130) — writes the chosen score back to the
+    /// value slot.
+    let ratingDeclarative (value: Binding<float>) (max: int) (allowHalf: bool) : FormFieldKind<'Msg> =
+        FormFieldKind.Rating(allowHalf, max, None, Some value)
+
+    /// Handler-free `Color` (Phase 1130) — writes the picked `#rrggbb` back to
+    /// the value slot.
+    let colorDeclarative (value: Binding<string>) : FormFieldKind<'Msg> = FormFieldKind.Color(None, Some value)
+
     /// Handler-free `Date` — writes the ISO-8601 string back to the value slot.
     let dateDeclarative
         (value: Binding<string>)
@@ -783,6 +827,15 @@ module FilterField =
     /// form of `choice`, for a filter over a set too large to scan.
     let combobox (name: string) (options: Binding<SelectOption list>) (allowFreeText: bool) : FormFieldKind<'Msg> =
         FormFieldKind.Combobox(allowFreeText, None, options, Some(Binding.Filter(name, None)))
+
+    /// Rating chip bound to its own filter key (Phase 1130) — "show me
+    /// everything rated at least this".
+    let rating (name: string) (max: int) (allowHalf: bool) : FormFieldKind<'Msg> =
+        FormFieldKind.Rating(allowHalf, max, None, Some(Binding.Filter(name, None)))
+
+    /// Colour chip bound to its own filter key (Phase 1130).
+    let color (name: string) : FormFieldKind<'Msg> =
+        FormFieldKind.Color(None, Some(Binding.Filter(name, None)))
 
     /// Dual-thumb range chip bound to its own filter key.
     let range (name: string) : FormFieldKind<'Msg> =

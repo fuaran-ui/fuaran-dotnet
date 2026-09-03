@@ -618,7 +618,25 @@ let private defs: (string * J) list =
                 [ "allowFreeText", boolean
                   "onChange", closure
                   "options", binding "list_SelectOption"
-                  "value", binding "str" ] ]
+                  "value", binding "str" ]
+            // Phase 1130 — the star scale. `max` is required (a rating with no
+            // declared ceiling is not a scale); `allowHalf` omits at `false`, so
+            // it stays out of `required` on the Phase 460 discipline.
+            duCase
+                "Rating"
+                [ "max" ]
+                [ "allowHalf", boolean
+                  "max", integer
+                  "onChange", closure
+                  "value", binding "float" ]
+            // Phase 1130 — the colour control. Everything optional: an
+            // unspecified value is the auto-bind, exactly as on every other
+            // control. The `#rrggbb` shape is a decode-time refusal and a
+            // validator rule rather than a schema pattern, because the value
+            // slot is a `Binding` and only its `Static` case carries text at
+            // all — a `pattern` here would either miss the bound case or refuse
+            // it.
+            duCase "Color" [] [ "onChange", closure; "value", binding "str" ] ]
 
       // `onChange` is optional (Phase 423) — present as the `"<closure>"` const when an F#-authored
       // closure is set, omitted for a declarative (AI-authored) chip — so it stays in `props` but

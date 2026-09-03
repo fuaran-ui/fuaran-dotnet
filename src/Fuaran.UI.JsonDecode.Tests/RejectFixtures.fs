@@ -578,6 +578,22 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a NESTED Tree row with no `id` — refused, and the path names the row inside the hierarchy. A host whose child walker is looser than its root walker accepts this while passing every top-level case" }
+      { Id = "reject-rating-max-zero"
+        Json =
+          """{"id":"f","kind":{"$type":"Form","fields":[{"id":"score","kind":{"$type":"Rating","max":0},"label":"Score","required":false}],"onSubmit":"<closure>","submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].kind.max"
+        IsOp = false
+        Description =
+          "a Rating `max` of `0` — refused rather than clamped. This is not a control with a bad number in it: a scale with no positions has nothing to draw, no `aria-valuemax` to announce and no keystroke that could change anything, so the document names a control that cannot exist. Note the asymmetry this vector pins: the SCALE is refused here and the VALUE is not, because a bound value is invisible to a decoder and a rule enforced only on literals would be two rules wearing one name" }
+      { Id = "reject-color-value-not-hex"
+        Json =
+          """{"id":"f","kind":{"$type":"Form","fields":[{"id":"brand","kind":{"$type":"Color","value":{"$type":"Static","value":"rebeccapurple"}},"label":"Brand","required":false}],"onSubmit":"<closure>","submitLabel":"Save"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.fields[0].kind.value"
+        IsOp = false
+        Description =
+          "a Color `value` of `\"rebeccapurple\"` — refused rather than coerced. `#rrggbb` is the one shape a native colour input can hold, so a literal outside it names a colour this control could never carry, and a host that narrowed it would show a colour the document did not choose. Only the STATIC case is judged, because it is the only text a decoder has: a bound value is re-checked by the pre-emit validator for an author and by the server-side submission floor for a client, which is one rule checked wherever the value becomes visible" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

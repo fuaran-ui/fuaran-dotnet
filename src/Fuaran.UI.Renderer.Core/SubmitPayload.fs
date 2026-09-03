@@ -1,4 +1,4 @@
-module Fuaran.UI.Renderer.SubmitPayload
+﻿module Fuaran.UI.Renderer.SubmitPayload
 
 open Fuaran.Core
 open Fuaran.UI.Types
@@ -120,6 +120,17 @@ let private harvestField (sources: BindingResolver.BindingSources) (field: FormF
     | FormFieldKind.DateRange(v, _, _, _, _, _) ->
         resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.dateRange) v
         |> Option.map (fun (p: DateRangePair) -> field.Id, JStr p.From)
+    // Phase 1130 — a rating harvests as the number it is (`JFloat`, so a
+    // half-step submits as 3.5 and not as a rounded 3 or a string "3.5"); a
+    // colour as the `#rrggbb` string the native input holds. Neither needs the
+    // no-selection dance a `Choice` needs: both placeholders are real values a
+    // reader can see on the screen, so contributing them is truthful.
+    | FormFieldKind.Rating(_, _, _, v) ->
+        resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.rating) v
+        |> Option.map (fun n -> field.Id, JFloat n)
+    | FormFieldKind.Color(_, v) ->
+        resolveWith (Some Fuaran.UI.Defaults.ControlValueDefaults.color) v
+        |> Option.map (fun s -> field.Id, JStr s)
 
 /// The client-side submit harvest: every declared field's current value (see
 /// `harvestField` for exactly what "current" means per field shape), keyed by

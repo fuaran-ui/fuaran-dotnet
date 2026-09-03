@@ -1,4 +1,4 @@
-module Fuaran.UI.QueryBinding
+﻿module Fuaran.UI.QueryBinding
 
 // ============================================================================
 //  Query-result schema → Binding<'T> typed-thread check (Phase 323).
@@ -239,6 +239,10 @@ let private queryBoundRefsOfNode (n: Node<'Msg>) : QueryBoundRef list =
             | FormFieldKind.Choice(_, value, _) -> addOpt BindingSinkClass.Categorical value
             | FormFieldKind.SegmentedChoice(_, value, _, _) -> addOpt BindingSinkClass.Categorical value
             | FormFieldKind.Combobox(_, _, _, value) -> addOpt BindingSinkClass.Categorical value
+            // Phase 1130 — a rating IS a number (the query-bound case is an
+            // average), and a hex colour is a categorical string.
+            | FormFieldKind.Rating(_, _, _, value) -> addOpt BindingSinkClass.Numeric value
+            | FormFieldKind.Color(_, value) -> addOpt BindingSinkClass.Categorical value
     | _ -> ()
 
     List.ofSeq acc

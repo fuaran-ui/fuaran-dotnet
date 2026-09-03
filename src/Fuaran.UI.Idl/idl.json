@@ -6815,6 +6815,98 @@
             }
           ],
           "tag": "Combobox"
+        },
+        {
+          "fields": [
+            {
+              "name": "allowHalf",
+              "optionality": {
+                "$type": "omitDefault",
+                "default": {
+                  "$type": "bool",
+                  "value": false
+                }
+              },
+              "type": {
+                "$type": "bool"
+              }
+            },
+            {
+              "name": "max",
+              "optionality": {
+                "$type": "required"
+              },
+              "type": {
+                "$type": "int"
+              }
+            },
+            {
+              "name": "onChange",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "fn",
+                "hostSurface": {
+                  "fsharp": "float -> Action<'Msg>",
+                  "placeholder": "(fun (_: float) -> Action.Chain [])",
+                  "typescript": "(v: number) => Action"
+                },
+                "wire": "<closure>"
+              }
+            },
+            {
+              "name": "value",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "union",
+                "args": [
+                  {
+                    "$type": "float"
+                  }
+                ],
+                "name": "Binding"
+              }
+            }
+          ],
+          "tag": "Rating"
+        },
+        {
+          "fields": [
+            {
+              "name": "onChange",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "fn",
+                "hostSurface": {
+                  "fsharp": "string -> Action<'Msg>",
+                  "placeholder": "(fun (_: string) -> Action.Chain [])",
+                  "typescript": "(v: string) => Action"
+                },
+                "wire": "<closure>"
+              }
+            },
+            {
+              "name": "value",
+              "optionality": {
+                "$type": "optional"
+              },
+              "type": {
+                "$type": "union",
+                "args": [
+                  {
+                    "$type": "str"
+                  }
+                ],
+                "name": "Binding"
+              }
+            }
+          ],
+          "tag": "Color"
         }
       ],
       "name": "FormFieldKind",

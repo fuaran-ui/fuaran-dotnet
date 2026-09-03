@@ -1486,6 +1486,14 @@ and CompareOp = Generated.CompareOp
 // name is not an invalid document but a valid one — a `Choice` over two hundred
 // options renders perfectly and is unusable, which is the class no reactive
 // demand channel can report.
+//
+// Phase 1130 — `Rating` vs `RangedNumber`, the second pair this vocabulary has
+// to keep apart, and the one its own charter row names as the risk: a SUBJECTIVE
+// SCORE on a small ordinal scale is `Rating`; a NUMERIC QUANTITY the reader
+// types or drags is `RangedNumber`. The test is who the number belongs to — a
+// rating is a judgement a person GIVES, a ranged number is a measurement they
+// REPORT. Both carry a `Binding<float>` and a ceiling, which is exactly why the
+// sentence has to be written down rather than inferred from the shapes.
 and FormFieldKind<'Msg> = Generated.FormFieldKind<'Msg>
 
 /// Optional date/time-field bounds (Phase 288). `Min` / `Max` are ISO-8601

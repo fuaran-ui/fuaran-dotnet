@@ -1,4 +1,4 @@
-module Fuaran.UI.WireSurvivability
+﻿module Fuaran.UI.WireSurvivability
 
 // ============================================================================
 //  The wire-survivability boundary (Phase 378) — named in code.
@@ -146,6 +146,10 @@ let all: Classification list =
       pt "FormFieldKind.Combobox" writeBack
       pt "FormFieldKind.Date" writeBack
       pt "FormFieldKind.DateRange" writeBack // Phase 725 — the pair survives; the onChange closure erases
+      // Phase 1130 — the scale, the granularity and the value all survive; the
+      // onChange closure erases, as everywhere.
+      pt "FormFieldKind.Rating" writeBack
+      pt "FormFieldKind.Color" writeBack
 
       // 0.2.0 filters-unification: chips carry FormFieldKind controls — the
       // FormFieldKind rows above cover them; Range is the absorbed range chip.

@@ -81,6 +81,36 @@ let private idempotencyTest =
 let private snapshotTest =
     "snapshotLaws and snapshotLawsWith certify over the Fuaran.UI op-stream witness"
 
+/// The multi-writer families adopted by fuaran#1476, which run in
+/// `Fuaran.UI.OpStream.Dag.Tests/CoreDagLawTests.fs` over that tier's own tree witness, op
+/// algebra and footprint projection. Named once each, for the same reason the two above are:
+/// a row and the test it enrols must not drift apart by a typo.
+let private dagLawsTest = "the UI op-stream witness certifies under Core's dagLaws"
+
+let private laneFoldTest =
+    "N-lane folding is arrival-order-invariant under Core's laneFoldLaws"
+
+let private laneFoldWithTest =
+    "lane folding survives the host hash swap under laneFoldLawsWith"
+
+let private footprintTest =
+    "the tier's tree footprints are sound, monotone and deterministic (footprintLaws)"
+
+let private mergeConflictTest =
+    "merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)"
+
+let private reconcileTest =
+    "two-branch reconciliation is order-pinned and conflict-honest (reconcileLaws)"
+
+let private concurrencyTest =
+    "independent op pairs interleave confluently (concurrencyLaws)"
+
+let private concurrencyWithTest =
+    "the TIER's own footprint projection is confluent (concurrencyLawsWith)"
+
+let private arbitrationTest =
+    "proposal arbitration partitions totally and confluently (arbitrationLaws)"
+
 /// One row per public law family of the pinned kit. Order here is authoring order (grouped by
 /// classification); the report sorts by family key, so this list may be reordered freely.
 let census: (string * Adoption) list =
@@ -95,15 +125,38 @@ let census: (string * Adoption) list =
       "Conformance.hashFnLaws", Adopted(hashFnTest, "Conformance.hashFnLaws")
       "Conformance.hashFnAdversarialLaws", Adopted(hashFnTest, "Conformance.hashFnAdversarialLaws")
 
-      // ---- fuaran#1476 — multi-writer DAG laws over the UI op-stream ----
-      "Conformance.dagLaws", CarriedBy "fuaran#1476"
-      "FoldConfluence.laneFoldLaws", CarriedBy "fuaran#1476"
-      "FoldConfluence.laneFoldLawsWith", CarriedBy "fuaran#1476"
-      "Conformance.mergeConflictLaws", CarriedBy "fuaran#1476"
-      "Conformance.reconcileLaws", CarriedBy "fuaran#1476"
-      "Conformance.concurrencyLaws", CarriedBy "fuaran#1476"
-      "Conformance.concurrencyLawsWith", CarriedBy "fuaran#1476"
-      "Conformance.arbitrationLaws", CarriedBy "fuaran#1476"
+      // ---- adopted by fuaran#1476: Fuaran.UI.OpStream.Dag.Tests/CoreDagLawTests.fs ----
+      // Two shapes, and the difference decides what each green row means. `dagLaws` and the two
+      // `laneFold` forms are parameterised by a StreamWitness — this tier's `Ops.Apply.apply`
+      // reducer and its canonical op codec — driven through CORE's `Dag`; they certify the
+      // tier's reducer, codec and footprint under multi-writer folding, and say nothing about
+      // `Fuaran.UI.OpStream.Dag.Merge`, which `MergeTests` / `MergeConformanceTests` cover
+      // directly. The skeleton-op families are parameterised by the tier's NodeWitness /
+      // IdWitness / OpGen and carry no persistence at all, so each runs once rather than
+      // per-port; the port question they can pose — does an op survive each sink's codec seam —
+      // is answered against the real sinks in the same file.
+      "Conformance.dagLaws", Adopted(dagLawsTest, "Conformance.dagLaws")
+      "FoldConfluence.laneFoldLaws", Adopted(laneFoldTest, "FoldConfluence.laneFoldLaws")
+      // The `With` form is adopted on its own terms rather than as a second spelling: its
+      // parameter is the `HashFn`, and it is instantiated with the tier's shipped SHA-256 where
+      // the defaulted form takes the kit's FNV-1a. Node ids are content hashes of
+      // (parents, actor, op), so the hash decides whether two lanes carrying the same ops stay
+      // distinct chains.
+      "FoldConfluence.laneFoldLawsWith", Adopted(laneFoldWithTest, "FoldConfluence.laneFoldLawsWith")
+      "Conformance.mergeConflictLaws", Adopted(mergeConflictTest, "Conformance.mergeConflictLaws")
+      "Conformance.reconcileLaws", Adopted(reconcileTest, "Conformance.reconcileLaws")
+      "Conformance.concurrencyLaws", Adopted(concurrencyTest, "Conformance.concurrencyLaws")
+      // Likewise not a second spelling: the `With` form takes the footprint projection, and is
+      // instantiated with the TIER's own `TreeOp` address-set function rather than Core's. Its
+      // reach is the structural five (the law's generator emits skeleton ops); the vertical
+      // half of that projection is certified by `laneFoldLaws`, which folds real `TreeOp` lanes.
+      "Conformance.concurrencyLawsWith", Adopted(concurrencyWithTest, "Conformance.concurrencyLawsWith")
+      "Conformance.arbitrationLaws", Adopted(arbitrationTest, "Conformance.arbitrationLaws")
+      // Reassigned to 1476 from 1479 at driver direction. It is a TREE-op law over exactly the
+      // NodeWitness / IdWitness / OpGen the DAG phase already constructs, where 1479's subject
+      // is the incremental (DataFrame) footprint — a different thing that happens to share a
+      // word.
+      "Conformance.footprintLaws", Adopted(footprintTest, "Conformance.footprintLaws")
 
       // ---- fuaran#1477 — persistence laws over the tier's op-stream witness ----
       // All four run in `Fuaran.UI.OpStream.Tests`, beside the durable ports they are about. Note
@@ -135,7 +188,8 @@ let census: (string * Adoption) list =
       "Conformance.encoderInjectivityLaws", CarriedBy "fuaran#1478"
 
       // ---- fuaran#1479 — footprint and delta laws over the live-transform seam ----
-      "Conformance.footprintLaws", CarriedBy "fuaran#1479"
+      // `Conformance.footprintLaws` was listed here and is adopted by 1476 instead — see the
+      // note beside it in that block.
       "IncrementalDelta.laws", CarriedBy "fuaran#1479"
       "IncrementalDelta.lawsWith", CarriedBy "fuaran#1479"
       "Conformance.dirtyPropagationLaws", CarriedBy "fuaran#1479"
@@ -214,8 +268,8 @@ let private isLawEntry (m: MethodInfo) =
 let private shippedFamilies () : string list =
     [ for moduleName in lawModules do
           match conformanceAssembly.GetType("Fuaran.Core." + moduleName) with
-          | null -> failtestf "the pinned kit no longer ships a module named %s" moduleName
-          | t ->
+          | Null -> failtestf "the pinned kit no longer ships a module named %s" moduleName
+          | NonNull t ->
               for m in t.GetMethods(BindingFlags.Public ||| BindingFlags.Static ||| BindingFlags.DeclaredOnly) do
                   if isLawEntry m then
                       yield moduleName + "." + m.Name ]

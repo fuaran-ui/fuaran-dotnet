@@ -1883,6 +1883,95 @@ let formComboboxFreeText: Node<obj> =
         ))
         None
 
+/// Phase 1130 — `FormFieldKind.Rating` in its shortest spelling: `allowHalf`
+/// omitted (whole-star entry), a static value on a position, and the required
+/// `max` carrying the conventional five. The omission is the point of the
+/// vector — the shortest rating document is the whole-star one, and halves are
+/// what an emitter has to ask for.
+let formRating: Node<obj> =
+    let field: FormField<obj> =
+        { Defaults.formField with
+            Id = "score"
+            Label = TextSource.Literal "How was it?"
+            Required = true
+            Kind = FormFieldKind.Rating(false, 5, Some(fun _ -> placeholderChain), Some(Binding.Static(Some 4.0))) }
+
+    node
+        "form-rating"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields = [ field ]
+                OnSubmit = placeholderChain
+                SubmitLabel = TextSource.Literal "Save" }
+        ))
+        None
+
+/// Phase 1130 — the two shapes the float value slot exists for, in one vector:
+/// `allowHalf` admitting half-position ENTRY, and a `Query`-bound average that
+/// lands between positions and is DISPLAYED as it is. Declarative (no
+/// `onChange`) on the second field, whose value slot is omitted entirely — the
+/// auto-bind, exactly as on every other control.
+let formRatingHalves: Node<obj> =
+    let entered: FormField<obj> =
+        { Defaults.formField with
+            Id = "stars"
+            Label = TextSource.Literal "Your rating"
+            Kind = FormFieldKind.Rating(true, 5, None, Some(Binding.Static(Some 3.5))) }
+
+    let average: FormField<obj> =
+        { Defaults.formField with
+            Id = "average"
+            Label = TextSource.Literal "Average rating"
+            Kind = FormFieldKind.Rating(false, 10, None, None) }
+
+    node
+        "form-rating-halves"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields = [ entered; average ]
+                OnSubmit = placeholderChain
+                SubmitLabel = TextSource.Literal "Save" }
+        ))
+        None
+
+/// Phase 1130 — `FormFieldKind.Color`. The value carries UPPER-CASE hex, which
+/// is the vector's whole point: `#FFAA00` is a hex colour, the codec preserves
+/// the author's bytes, and a host that normalised case would fail the byte
+/// round-trip this corpus exists to pin.
+let formColor: Node<obj> =
+    let field: FormField<obj> =
+        { Defaults.formField with
+            Id = "brand"
+            Label = TextSource.Literal "Brand colour"
+            Kind = FormFieldKind.Color(Some(fun _ -> placeholderChain), Some(Binding.Static(Some "#FFAA00"))) }
+
+    node
+        "form-color"
+        (NodeKind.Form(
+            { Defaults.form with
+                Fields = [ field ]
+                OnSubmit = placeholderChain
+                SubmitLabel = TextSource.Literal "Save" }
+        ))
+        None
+
+/// Phase 1130 — both controls as FILTER chips, declarative and auto-bound to
+/// their own filter keys. The 0.2.0 unification means a chip carries the same
+/// control as a field, and a corpus that covered only the field route would
+/// leave half the vocabulary unpinned.
+let filtersRatingColour: Node<obj> =
+    node
+        "filters-rating-colour"
+        (NodeKind.Filters
+            { Items =
+                [ { Name = "stars"
+                    Label = TextSource.Literal "At least"
+                    Kind = FormFieldKind.Rating(false, 5, None, Some(Binding.Filter("stars", None))) }
+                  { Name = "swatch"
+                    Label = TextSource.Literal "Colour"
+                    Kind = FormFieldKind.Color(None, Some(Binding.Filter("swatch", None))) } ] })
+        None
+
 /// Round-trip cover for `FilterKind.SegmentedFilter`. Parallel
 /// to `filtersBoth`'s ChoiceFilter; uses Horizontal orientation.
 let filtersSegmented: Node<obj> =
@@ -6026,6 +6115,11 @@ let allNodes: (string * Node<obj>) list =
       "Input/Form (Phase 1113 — Combobox: static options, allowFreeText omitted)", formComboboxStatic
       "Input/Form (Phase 1113 — Combobox: Query-bound option source, declarative, auto-bound value)", formComboboxQuery
       "Input/Form (Phase 1113 — Combobox: allowFreeText, value outside the option set)", formComboboxFreeText
+      "Input/Form (Phase 1130 — Rating: whole stars, allowHalf omitted, static value)", formRating
+      "Input/Form (Phase 1130 — Rating: allowHalf entry + a bound average on a ten-scale, value auto-bound)",
+      formRatingHalves
+      "Input/Form (Phase 1130 — Color: upper-case hex, preserved not normalised)", formColor
+      "Input/Filters (Phase 1130 — Rating + Color chips, declarative and auto-bound)", filtersRatingColour
       "Input/Form (Date — date/time/datetime variants + bounds)", formDate
       "Input/Form (Phase 725 — DateRange: single-control date range, bare {from,to} pair + bounds)", formDateRange
       "Input/Filters (Phase 725 — DateRange chip: one filter param carries the pair, value auto-bound)",

@@ -299,6 +299,9 @@ and mapFormFieldKind (f: 'a -> 'b) (kind: FormFieldKind<'a>) : FormFieldKind<'b>
         FormFieldKind.Date(value, mapHandler onChange, variant, mn, mx, st)
     | FormFieldKind.DateRange(value, onChange, variant, mn, mx, st) ->
         FormFieldKind.DateRange(value, mapHandler onChange, variant, mn, mx, st)
+    | FormFieldKind.Rating(allowHalf, max, onChange, value) ->
+        FormFieldKind.Rating(allowHalf, max, mapHandler onChange, value)
+    | FormFieldKind.Color(onChange, value) -> FormFieldKind.Color(mapHandler onChange, value)
 
 and mapFilterSpec (f: 'a -> 'b) (spec: FilterSpec<'a>) : FilterSpec<'b> =
     // 0.2.0 filters-unification: the chip's control is an ordinary

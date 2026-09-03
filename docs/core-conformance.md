@@ -14,7 +14,7 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 |---|---|---|
 | `Conformance.aggregateParityLaws` | Carried by phase | fuaran#1481 |
 | `Conformance.aiSurfaceLaws` | Not used | Fuaran.Core.AiSurface — the tier ships its own runtime introspection surface (Fuaran.UI.AiTools) and consumes no Core AI surface |
-| `Conformance.arbitrationLaws` | Carried by phase | fuaran#1476 |
+| `Conformance.arbitrationLaws` | Adopted | `proposal arbitration partitions totally and confluently (arbitrationLaws)` — via `Conformance.arbitrationLaws` |
 | `Conformance.attestationLaws` | Carried by phase | fuaran#1480 |
 | `Conformance.attributedLaws` | Carried by phase | fuaran#1480 |
 | `Conformance.canonicalFloatLaws` | Not used | Wire.Canon.canonicalFloat — the tier's canonical-JSON encoder carries its own Fable-safe float formatter (CanonicalJson.formatFiniteDouble), and this family is self-contained over Core's encoder rather than taking a host one; cross-host float parity here is gated by the wire-format conformance corpus, a multi-host oracle it cannot replace |
@@ -26,14 +26,14 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.columnarOpLaws` | Carried by phase | fuaran#1481 |
 | `Conformance.columnarValidatorLaws` | Carried by phase | fuaran#1481 |
 | `Conformance.compositionLaws` | Carried by phase | fuaran#1478 |
-| `Conformance.concurrencyLaws` | Carried by phase | fuaran#1476 |
-| `Conformance.concurrencyLawsWith` | Carried by phase | fuaran#1476 |
-| `Conformance.dagLaws` | Carried by phase | fuaran#1476 |
+| `Conformance.concurrencyLaws` | Adopted | `independent op pairs interleave confluently (concurrencyLaws)` — via `Conformance.concurrencyLaws` |
+| `Conformance.concurrencyLawsWith` | Adopted | `the TIER's own footprint projection is confluent (concurrencyLawsWith)` — via `Conformance.concurrencyLawsWith` |
+| `Conformance.dagLaws` | Adopted | `the UI op-stream witness certifies under Core's dagLaws` — via `Conformance.dagLaws` |
 | `Conformance.deferredLaws` | Carried by phase | fuaran#1478 |
 | `Conformance.diffLaws` | Adopted | `the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify` — via `Conformance.certify` |
 | `Conformance.dirtyPropagationLaws` | Carried by phase | fuaran#1479 |
 | `Conformance.encoderInjectivityLaws` | Carried by phase | fuaran#1478 |
-| `Conformance.footprintLaws` | Carried by phase | fuaran#1479 |
+| `Conformance.footprintLaws` | Adopted | `the tier's tree footprints are sound, monotone and deterministic (footprintLaws)` — via `Conformance.footprintLaws` |
 | `Conformance.functionVerifyLaws` | Carried by phase | fuaran#1478 |
 | `Conformance.hashFnAdversarialLaws` | Adopted | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnAdversarialLaws` |
 | `Conformance.hashFnLaws` | Adopted | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnLaws` |
@@ -42,7 +42,7 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.leaseLaws` | Not used | Fuaran.Core.Lease — leases are a coordination-plane mechanism for concurrent writers; the UI tier takes none |
 | `Conformance.memoLaws` | Carried by phase | fuaran#1478 |
 | `Conformance.memoSoundnessLaws` | Carried by phase | fuaran#1478 |
-| `Conformance.mergeConflictLaws` | Carried by phase | fuaran#1476 |
+| `Conformance.mergeConflictLaws` | Adopted | `merge-conflict reporting is symmetric, deterministic and complete (mergeConflictLaws)` — via `Conformance.mergeConflictLaws` |
 | `Conformance.noAttestationVacuityLaws` | Carried by phase | fuaran#1480 |
 | `Conformance.normalizeLaws` | Not used | Fuaran.Core.Ops.normalize — Apply.fs delegates only the structural-five APPLY to Core (applyContained); the tier ships no op-script normaliser, so the family's subject has no call site here |
 | `Conformance.packLoadingLaws` | Carried by phase | fuaran#1478 |
@@ -50,7 +50,7 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.projectionLaws` | Not used | Fuaran.Core.Projection — the tier renders a tree; it maintains no Core projection over an op stream |
 | `Conformance.propagationEvalLaws` | Not used | Fuaran.Core.Propagation's evaluator — the tier's reactivity runs on its own store and subscription channels (StateStore / FilterStore / SelectionStore / QueryStore) and never evaluates a Core propagation graph |
 | `Conformance.queryLaws` | Not used | Fuaran.Core.Query's registry seam — QuerySource.fs is a deliberately thinner UI-facing sibling built on the Column / DataFrame types and explicitly NOT on the Core query registry, which no project here references |
-| `Conformance.reconcileLaws` | Carried by phase | fuaran#1476 |
+| `Conformance.reconcileLaws` | Adopted | `two-branch reconciliation is order-pinned and conflict-honest (reconcileLaws)` — via `Conformance.reconcileLaws` |
 | `Conformance.registryLaws` | Carried by phase | fuaran#1478 |
 | `Conformance.schemaWalkLaws` | Carried by phase | fuaran#1481 |
 | `Conformance.snapshotLaws` | Adopted | `snapshotLaws and snapshotLawsWith certify over the Fuaran.UI op-stream witness` — via `Conformance.snapshotLaws` |
@@ -59,8 +59,8 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.transformLaws` | Not used | a host dataframe evaluator — QueryRefine consumes Fuaran.Core.DataFrame.evalPipeline as the pinned reference rather than shipping a second evaluator, so the parity laws have no host implementation to compare against the reference |
 | `Conformance.verifyHonestyLaws` | Carried by phase | fuaran#1478 |
 | `Conformance.witnessLaws` | Adopted | `the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify` — via `Conformance.certify` |
-| `FoldConfluence.laneFoldLaws` | Carried by phase | fuaran#1476 |
-| `FoldConfluence.laneFoldLawsWith` | Carried by phase | fuaran#1476 |
+| `FoldConfluence.laneFoldLaws` | Adopted | `N-lane folding is arrival-order-invariant under Core's laneFoldLaws` — via `FoldConfluence.laneFoldLaws` |
+| `FoldConfluence.laneFoldLawsWith` | Adopted | `lane folding survives the host hash swap under laneFoldLawsWith` — via `FoldConfluence.laneFoldLawsWith` |
 | `IncrementalDelta.laws` | Carried by phase | fuaran#1479 |
 | `IncrementalDelta.lawsWith` | Carried by phase | fuaran#1479 |
 
@@ -68,8 +68,8 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 
 | Status | Families |
 |---|---|
-| Adopted | 9 |
-| Carried by phase | 31 |
+| Adopted | 18 |
+| Carried by phase | 22 |
 | Not used | 10 |
 | Sibling host | 1 |
 | **Total** | **51** |
