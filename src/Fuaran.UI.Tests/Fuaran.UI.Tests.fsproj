@@ -215,6 +215,15 @@
          Fuaran.Core.OpStream (with a canonical-encoding equality wrapper, since
          Node carries handler closures and is not an F# equality type). -->
     <Compile Include="CoreAdoptionTests.fs" />
+    <!-- Phase 1475 — the Core-conformance census: every public law family the
+         PINNED Fuaran.Core.Conformance ships, resolved by reflection (never by a
+         list, which is what cannot notice a family nobody added to it) to either
+         an adopter in this repo or a stated reason for not adopting it. Both
+         directions are checked — an unclassified family is red, and so is a test
+         that runs a Core law with no census row — and the rendered table is
+         regenerated into docs/core-conformance.md with a drift guard, so
+         adoption is greppable without running anything. -->
+    <Compile Include="CoreConformanceCensus.fs" />
     <Compile Include="MathEnhanceTests.fs" />
     <Compile Include="MathMlTests.fs" />
     <!-- QueryBindingTests pins Phase 323's runtime query-result-schema →
