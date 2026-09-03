@@ -104,6 +104,24 @@ module Node =
         { node with
             Style = normaliseStyle { styleOf node with Voice = voice } }
 
+    /// Declare the base direction of the value this node carries (Phase 1472)
+    /// — `Ltr` or `Rtl` says the value reads that way WHATEVER surrounds it, and
+    /// the renderer emits `dir` plus the isolating `fuaran-dir-{direction}`
+    /// class so the surrounding bidirectional context cannot reorder it.
+    /// `TextDirection.Auto` clears the declaration (back to the byte-identical
+    /// default, where the direction is inferred from the value's own text).
+    ///
+    /// Reach for it when the value is an OPAQUE IDENTIFIER inside prose of the
+    /// other direction — an account number, a reference code, a product SKU,
+    /// a URL. Not for the page: nothing here names a document direction, a
+    /// locale, or a layout side.
+    let withDirection (direction: TextDirection) (node: Node<'Msg>) : Node<'Msg> =
+        { node with
+            Style =
+                normaliseStyle
+                    { styleOf node with
+                        Direction = direction } }
+
     /// Replace the Node's `Accessibility` trait with the supplied
     /// value. Use `Some Defaults.Accessibility.empty` to start from an empty
     /// trait and override individual fields with record-with syntax.

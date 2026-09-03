@@ -320,6 +320,12 @@ type TextAnchor =
     | End
 
 [<RequireQualifiedAccess>]
+type TextDirection =
+    | Auto
+    | Ltr
+    | Rtl
+
+[<RequireQualifiedAccess>]
 type TextFormat =
     | Email
     | Url
@@ -666,6 +672,7 @@ and SelectOption =
 
 and SemanticStyle =
     {
+      Direction: TextDirection
       Emphasis: Emphasis
       Role: StyleRole
       Tone: ToneVariant
@@ -1565,6 +1572,12 @@ let private encTextAnchor (v: TextAnchor) : JVal =
     | TextAnchor.Middle -> JStr "Middle"
     | TextAnchor.End -> JStr "End"
 
+let private encTextDirection (v: TextDirection) : JVal =
+    match v with
+    | TextDirection.Auto -> JStr "auto"
+    | TextDirection.Ltr -> JStr "ltr"
+    | TextDirection.Rtl -> JStr "rtl"
+
 let private encTextFormat (v: TextFormat) : JVal =
     match v with
     | TextFormat.Email -> JStr "email"
@@ -1886,7 +1899,7 @@ and private encSelectOption (s: SelectOption) : JVal =
     JObj([ Some("label", JStr s.Label); Some("value", JStr s.Value) ] |> List.choose id)
 
 and private encSemanticStyle (s: SemanticStyle) : JVal =
-    JObj([ (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (if s.Role = StyleRole.None then None else Some("role", encStyleRole s.Role)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Voice = FontVoice.Default then None else Some("voice", encFontVoice s.Voice)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)) ] |> List.choose id)
+    JObj([ (if s.Direction = TextDirection.Auto then None else Some("direction", encTextDirection s.Direction)); (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (if s.Role = StyleRole.None then None else Some("role", encStyleRole s.Role)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Voice = FontVoice.Default then None else Some("voice", encFontVoice s.Voice)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)) ] |> List.choose id)
 
 and private encSrcSetEntry (s: SrcSetEntry) : JVal =
     JObj([ Some("src", (encBinding JStr) s.Src); Some("width", JInt s.Width) ] |> List.choose id)
@@ -2442,6 +2455,13 @@ let private decTextAnchor (j: JVal) : Result<TextAnchor, string> =
     | JStr "Middle" -> Ok TextAnchor.Middle
     | JStr "End" -> Ok TextAnchor.End
     | _ -> Error "not a TextAnchor"
+
+let private decTextDirection (j: JVal) : Result<TextDirection, string> =
+    match j with
+    | JStr "auto" -> Ok TextDirection.Auto
+    | JStr "ltr" -> Ok TextDirection.Ltr
+    | JStr "rtl" -> Ok TextDirection.Rtl
+    | _ -> Error "not a TextDirection"
 
 let private decTextFormat (j: JVal) : Result<TextFormat, string> =
     match j with
@@ -3265,12 +3285,13 @@ and private decSelectOption (j: JVal) : Result<SelectOption, string> =
 
 and private decSemanticStyle (j: JVal) : Result<SemanticStyle, string> =
     dObj j |> Result.bind (fun __fs ->
+    dDef "direction" __fs decTextDirection (TextDirection.Auto) |> Result.bind (fun direction ->
     dDef "emphasis" __fs decEmphasis (Emphasis.Normal) |> Result.bind (fun emphasis ->
     dDef "role" __fs decStyleRole (StyleRole.None) |> Result.bind (fun role ->
     dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
     dDef "voice" __fs decFontVoice (FontVoice.Default) |> Result.bind (fun voice ->
     dDef "weight" __fs decStyleWeight (StyleWeight.Standard) |> Result.bind (fun weight ->
-    Ok { Emphasis = emphasis; Role = role; Tone = tone; Voice = voice; Weight = weight }))))))
+    Ok { Direction = direction; Emphasis = emphasis; Role = role; Tone = tone; Voice = voice; Weight = weight })))))))
 
 and private decSrcSetEntry (j: JVal) : Result<SrcSetEntry, string> =
     dObj j |> Result.bind (fun __fs ->

@@ -570,6 +570,24 @@ let private tooltipCodes (tree: Node<Msg>) : string list =
         let code, _, _ = PreEmitValidate.describe d
         code)
 
+// ─── Phase 1472 fixtures ─ FUARAN124, the dead direction declaration ────
+
+/// Only the Phase 1472 defect, for the reason `embedDefects` states.
+let private directionDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.DirectionOnTextlessNode _ -> true
+            | _ -> false)
+
+let private directionCodes (tree: Node<Msg>) : string list =
+    directionDefects tree
+    |> List.map (fun d ->
+        let code, _, _ = PreEmitValidate.describe d
+        code)
+
 // ─── Phase 1113 fixtures ─ FUARAN120, the option-less combobox ─────────
 
 /// A one-field form whose field is a combobox over `options`. Everything else
@@ -3087,6 +3105,66 @@ let tests =
                             [ EmbedPermission.AllowScripts; EmbedPermission.AllowSameOrigin ] ]
 
               Expect.containsAll (embedCodes tree) [ "FUARAN115"; "FUARAN116" ] "both defects of one node are reported"
+          }
+
+          // ── Phase 1472 — FUARAN124, a direction nothing can read ─────────
+
+          test "FUARAN124: a declared direction on a glyph is reported" {
+              let tree =
+                  dashboard "root" [ Fuaran.icon "glyph" "trending-up" |> Node.withDirection TextDirection.Ltr ]
+
+              Expect.equal (directionCodes tree) [ "FUARAN124" ] "an icon lays out no text for a direction to govern"
+
+              Expect.equal
+                  (severityOf (directionDefects tree |> List.head))
+                  DefectSeverity.Warning
+                  "Warning, not Error — the declaration is inert rather than harmful, and a tree mid-edit is an ordinary authoring step"
+          }
+
+          test "FUARAN124: the whole textless set is reported" {
+              let cases =
+                  [ "glyph", Fuaran.icon "glyph" "trending-up"
+                    "bars", Fuaran.skeleton "bars" 3
+                    "spark", Fuaran.sparkline "spark" Defaults.sparkline ]
+
+              for name, leaf in cases do
+                  let tree = dashboard "root" [ leaf |> Node.withDirection TextDirection.Rtl ]
+                  Expect.equal (directionCodes tree) [ "FUARAN124" ] $"{name} carries no run to isolate"
+          }
+
+          test "FUARAN124 go-red check: a direction on text is silent" {
+              // The rule must not fire on the case the slot EXISTS for — this is
+              // the assertion that separates a rule from a blanket refusal.
+              let tree =
+                  dashboard "root" [ Fuaran.markdown "ref" "RR123456789IL" |> Node.withDirection TextDirection.Ltr ]
+
+              Expect.isEmpty
+                  (directionDefects tree)
+                  "a value that reads left-to-right inside right-to-left prose is the point"
+          }
+
+          test "FUARAN124 go-red check: an UNDECLARED direction on a glyph is silent" {
+              let tree = dashboard "root" [ Fuaran.icon "glyph" "trending-up" ]
+
+              Expect.isEmpty
+                  (directionDefects tree)
+                  "Auto is the identity — a node that declares nothing is not a defect"
+          }
+
+          test "FUARAN124: a CONTAINER is never reported, however textless" {
+              // `dir` inherits, so a direction on a container governs everything
+              // beneath it — live, not dead. The restraint is what keeps the rule
+              // worth reading.
+              let tree =
+                  dashboard
+                      "root"
+                      [ Fuaran.stack
+                            "row"
+                            { Defaults.stack<Msg> with
+                                Children = [ Fuaran.markdown "ref" "RR123456789IL" ] }
+                        |> Node.withDirection TextDirection.Rtl ]
+
+              Expect.isEmpty (directionDefects tree) "a container passes its direction to its children"
           }
 
           test "FUARAN118: an empty literal tooltip is reported" {

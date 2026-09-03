@@ -2239,6 +2239,21 @@ let private decodeFontVoice (path: string) (j: Json) : Result<FontVoice, DecodeE
     | JString s -> unknownEnumCase path s "Default | Display | Structural"
     | _ -> wrongType path "JSON string (FontVoice)"
 
+/// Phase 1472 — the base direction of one authored value. Lower-case on the
+/// wire (`auto` / `ltr` / `rtl`), matching the values the isolation is
+/// ultimately expressed in and the `LiveRegionKind` / `SortDirection`
+/// precedent. An unrecognised token is REFUSED here rather than coerced to
+/// `Auto`: a document that meant `rtl` and misspelled it would otherwise
+/// render as jumbled digits with nothing said, which is the failure this slot
+/// exists to prevent.
+let private decodeTextDirection (path: string) (j: Json) : Result<TextDirection, DecodeError> =
+    match j with
+    | JString "auto" -> Ok TextDirection.Auto
+    | JString "ltr" -> Ok TextDirection.Ltr
+    | JString "rtl" -> Ok TextDirection.Rtl
+    | JString s -> unknownEnumCase path s "auto | ltr | rtl"
+    | _ -> wrongType path "JSON string (TextDirection)"
+
 let private decodeColumnWidth (path: string) (j: Json) : Result<ColumnWidth, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -7961,19 +7976,30 @@ and private decodeSemanticStyle (path: string) (j: Json) : Result<SemanticStyle,
             | None -> Ok FontVoice.Default
             | Some v -> decodeFontVoice (path + ".voice") v
 
-        match toneR, weightR, emphasisR, roleR, voiceR with
-        | Ok tone, Ok weight, Ok emphasis, Ok role, Ok voice ->
+        // `direction` (Phase 1472) is optional on the wire — omitted at
+        // `TextDirection.Auto`, which is what every pre-1472 document says by
+        // saying nothing — so absence restores the default and a present token
+        // is decoded strictly.
+        let directionR =
+            match tryField fields "direction" with
+            | None -> Ok TextDirection.Auto
+            | Some v -> decodeTextDirection (path + ".direction") v
+
+        match toneR, weightR, emphasisR, roleR, voiceR, directionR with
+        | Ok tone, Ok weight, Ok emphasis, Ok role, Ok voice, Ok direction ->
             Ok
                 { Tone = tone
                   Weight = weight
                   Emphasis = emphasis
                   Role = role
-                  Voice = voice }
-        | Error e, _, _, _, _
-        | _, Error e, _, _, _
-        | _, _, Error e, _, _
-        | _, _, _, Error e, _
-        | _, _, _, _, Error e -> Error e
+                  Voice = voice
+                  Direction = direction }
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
 
 /// The single gate every node in the document passes through — both structural
 /// bounds are enforced here, on the way DOWN (Phase 781; WIRE_FORMAT §21).

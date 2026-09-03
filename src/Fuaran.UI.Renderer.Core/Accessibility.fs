@@ -1,4 +1,4 @@
-module Fuaran.UI.Renderer.Accessibility
+﻿module Fuaran.UI.Renderer.Accessibility
 
 // ============================================================================
 //  Fuaran — accessibility-attribute emission (pure spine, Phase 138).
@@ -248,11 +248,23 @@ let isBidiIsolated (kind: NodeKind<'Msg>) : bool =
     // about content it never saw.
     | NodeKind.Custom _ -> false
 
-/// The wrapper attribute pairs the policy above emits — empty, or the single
-/// `dir="auto"`. Returned as pairs rather than a bool so both renderer arms
-/// append it the same way they append every other wrapper attribute.
-let bidiAttributes (kind: NodeKind<'Msg>) : (string * string) list =
-    if isBidiIsolated kind then [ "dir", "auto" ] else []
+/// The wrapper attribute pairs the policy above emits — empty, or one `dir`.
+/// Returned as pairs rather than a bool so both renderer arms append it the
+/// same way they append every other wrapper attribute.
+///
+/// Phase 1472 — a DECLARED direction wins over the Phase 1114 heuristic, and
+/// the precedence runs that way round for one reason: `auto` is an inference
+/// from the value's own first strong character, and the declaration exists
+/// precisely for the values that inference gets wrong. A reference number
+/// beginning with a Hebrew-lettered prefix resolves `auto` to right-to-left
+/// and reorders the digits after it; `dir="ltr"` is the document saying so.
+/// An `Auto` declaration is the identity and changes nothing — it falls
+/// through to the heuristic, which is what a document that says nothing gets.
+let bidiAttributes (kind: NodeKind<'Msg>) (style: SemanticStyle) : (string * string) list =
+    match style.Direction with
+    | TextDirection.Ltr -> [ "dir", "ltr" ]
+    | TextDirection.Rtl -> [ "dir", "rtl" ]
+    | TextDirection.Auto -> if isBidiIsolated kind then [ "dir", "auto" ] else []
 
 /// Split already-sanitised `ExtraAttributes` pairs into the half that stays on
 /// the wrapper and the half that follows the a11y projection: `(data-*, aria-*)`.

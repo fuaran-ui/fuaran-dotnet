@@ -57,6 +57,35 @@ public enum BadgeVariant
     Info,
 }
 
+/// <summary>The base direction of ONE authored value — maps to the F#
+/// <c>TextDirection</c> (Fuaran-UI Phase 1472).</summary>
+/// <remarks>
+/// <para>
+/// <see cref="Auto"/> is the identity and says nothing: the bidirectional
+/// algorithm resolves the value from its own characters, which is what a
+/// document that declares nothing gets. <see cref="Ltr"/> / <see cref="Rtl"/>
+/// declare that this value reads that way whatever surrounds it, and the
+/// renderer isolates the run so the surrounding prose cannot reorder it.
+/// </para>
+/// <para>
+/// Reach for it on an OPAQUE IDENTIFIER inside prose of the other direction —
+/// an account number, a reference code, a URL. It names nothing about the
+/// document's own direction, the reader's locale, or which side the layout
+/// runs from.
+/// </para>
+/// </remarks>
+public enum TextDirection
+{
+    /// <summary>Resolve from the value's own characters (the default; omitted on the wire).</summary>
+    Auto,
+
+    /// <summary>This value reads left-to-right, whatever surrounds it.</summary>
+    Ltr,
+
+    /// <summary>This value reads right-to-left, whatever surrounds it.</summary>
+    Rtl,
+}
+
 /// <summary>Layout / scroll axis — maps to the F# <c>Orientation</c>.</summary>
 public enum Orientation
 {
@@ -493,6 +522,14 @@ internal static class EnumMap
             BadgeVariant.Critical => FsGen.BadgeVariant.Critical,
             BadgeVariant.Info => FsGen.BadgeVariant.Info,
             _ => FsGen.BadgeVariant.Neutral,
+        };
+
+    internal static FsGen.TextDirection ToFs(this TextDirection d) =>
+        d switch
+        {
+            TextDirection.Ltr => FsGen.TextDirection.Ltr,
+            TextDirection.Rtl => FsGen.TextDirection.Rtl,
+            _ => FsGen.TextDirection.Auto,
         };
 
     internal static FsGen.Orientation ToFs(this Orientation o) =>

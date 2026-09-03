@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -289,13 +289,59 @@ internal static class AuthoringSurfacePin
         // shape, and admitting it as a universal attribute would hide that.
         var envelopeOrShared = new HashSet<string>(EnvelopeOrShared, StringComparer.Ordinal);
 
+        // Records the envelope reaches, by IDL name — `SemanticStyle`,
+        // `Accessibility`, `StateBehaviour`. Their attribute-eligible members are
+        // universal on exactly the same argument the envelope's own scalars are:
+        // they belong to the node rather than to any kind, so a VB surface that
+        // spells one spells it on all forty-one elements. Phase 1472's
+        // `style.direction` is the first such member to be spelled; without this
+        // walk it read as forty-one undeclared attributes, which is the failure
+        // mode the comment on `EnvelopeOrShared` describes.
+        //
+        // **The loosening is real and bounded, and is named here rather than
+        // discovered later.** Admitting these names means an errant attribute
+        // that happens to share one of them stops being reported on a kind that
+        // has no such field — today that is `direction` / `emphasis` / `role` /
+        // `tone` / `voice` / `weight` from `SemanticStyle` and `label` /
+        // `labelledBy` / `describedBy` / `hidden` from `Accessibility`. Every one
+        // of them IS authorable on every node, so admitting them is correct; what
+        // is given up is the pin's ability to say a kind has no field of that name,
+        // which it never could for a genuine envelope trait either.
+        var envelopeRecordNames = new HashSet<string>(StringComparer.Ordinal);
+
         if (doc.RootElement.TryGetProperty("nodeFields", out var nodeFields))
         {
             foreach (var f in nodeFields.EnumerateArray())
             {
-                if (IsAttributeEligible(f.GetProperty("type")))
+                var type = f.GetProperty("type");
+
+                if (IsAttributeEligible(type))
                 {
                     envelopeOrShared.Add(Kebab(f.GetProperty("name").GetString()!));
+                }
+                else if (type.GetProperty("$type").GetString() == "record"
+                    && type.TryGetProperty("name", out var recordName))
+                {
+                    envelopeRecordNames.Add(recordName.GetString()!);
+                }
+            }
+        }
+
+        if (envelopeRecordNames.Count > 0 && doc.RootElement.TryGetProperty("records", out var records))
+        {
+            foreach (var r in records.EnumerateArray())
+            {
+                if (!envelopeRecordNames.Contains(r.GetProperty("name").GetString()!))
+                {
+                    continue;
+                }
+
+                foreach (var f in r.GetProperty("fields").EnumerateArray())
+                {
+                    if (IsAttributeEligible(f.GetProperty("type")))
+                    {
+                        envelopeOrShared.Add(Kebab(f.GetProperty("name").GetString()!));
+                    }
                 }
             }
         }

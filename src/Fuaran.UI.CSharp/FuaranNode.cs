@@ -2,7 +2,16 @@
 using System.Collections.Generic;
 using System.Linq;
 using FsCanonicalJson = Fuaran.UI.OpStream.Abstractions.CanonicalJson;
+using FsGen = Fuaran.UI.Generated;
 using FsNode = Fuaran.UI.Generated.Node<object>;
+
+// SPEC-CONSTRUCTION-TRIPWIRE — the `new FsGen.<X>(…)` call in `WithDirection` below is
+// positional on purpose, and must stay so. C# has no copy-and-update over an F# record, so
+// an additive `SemanticStyle` slot lands here as CS7036 — at the one site that has to
+// decide whether the veneer exposes the new slot or passes the F# default explicitly. That
+// is the mechanism, not churn to be routed around; the VB tier authors through this veneer,
+// so it is the tripwire for both languages. Pinned in both directions, this marker included,
+// by src/Fuaran.UI.Tests/SpecConstructionTests.fs ("The C# authoring veneer").
 
 namespace Fuaran.UI.CSharp;
 
@@ -127,6 +136,48 @@ public sealed class FuaranNode
             Inner.State,
             Inner.Style,
             Fs.Some(hint.Inner)));
+
+    /// <summary>Declare the base direction of the value this node carries
+    /// (Fuaran-UI Phase 1472). Returns a new handle; the receiver is unchanged.</summary>
+    /// <remarks>
+    /// <para>
+    /// A CORRECTNESS statement rather than a presentational one, which is why it
+    /// is the one member of the style record this surface spells. An account or
+    /// reference number declared <see cref="TextDirection.Ltr"/> inside
+    /// right-to-left prose is otherwise reordered by the bidirectional
+    /// algorithm and read back with its digits out of order; the renderer emits
+    /// the matching <c>dir</c> and isolates the run.
+    /// </para>
+    /// <para>
+    /// <see cref="TextDirection.Auto"/> clears the declaration, back to the
+    /// byte-identical default. A decoration on a built node rather than an
+    /// option on the factory that built it, for the reason
+    /// <see cref="WithTooltip"/> gives: the slot is uniform across every kind.
+    /// </para>
+    /// </remarks>
+    public FuaranNode WithDirection(TextDirection direction)
+    {
+        var style = Fs.ToNullable(Inner.Style) ?? global::Fuaran.UI.Defaults.style;
+        var updated = new FsGen.SemanticStyle(
+            direction.ToFs(),
+            style.Emphasis,
+            style.Role,
+            style.Tone,
+            style.Voice,
+            style.Weight);
+
+        return new(new FsNode(
+            Inner.Id,
+            Inner.Kind,
+            Inner.Accessibility,
+            Inner.ExtraAttributes,
+            Inner.Motion,
+            Inner.State,
+            updated.Equals(global::Fuaran.UI.Defaults.style)
+                ? Fs.None<FsGen.SemanticStyle>()
+                : Fs.Some(updated),
+            Inner.Tooltip));
+    }
 }
 
 /// <summary>

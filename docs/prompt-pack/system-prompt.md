@@ -544,7 +544,7 @@ FormField { id:str; kind:FormFieldKind; label:TextSource; required:bool; help?:T
 GuestChannel { direction:"OutOnly"|"TwoWay"; messageShape?:str }
 MapMarker { label:TextSource; latitude:any; longitude:any }
 SelectOption { label:TextSource; value:str }
-SemanticStyle { emphasis?:Emphasis; role?:"None"|"Eyebrow"|"Data"|"Lede"|"Caption"; tone?:ToneVariant; voice?:"Default"|"Display"|"Structural"; weight?:StyleWeight }
+SemanticStyle { direction?:"auto"|"ltr"|"rtl"; emphasis?:Emphasis; role?:"None"|"Eyebrow"|"Data"|"Lede"|"Caption"; tone?:ToneVariant; voice?:"Default"|"Display"|"Structural"; weight?:StyleWeight }
 SrcSetEntry { src:Binding_str; width:int }
 StateBehaviour { onEmpty?:Node; onLoading?:Node }
 TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }

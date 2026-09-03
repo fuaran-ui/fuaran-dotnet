@@ -1,4 +1,4 @@
-module Fuaran.UI.Vocabulary
+﻿module Fuaran.UI.Vocabulary
 
 open Fuaran.Core.Idl
 
@@ -158,6 +158,21 @@ let private styleRole =
 
 let private fontVoice =
     Declare.enumOf "FontVoice" [ "Default"; "Display"; "Structural" ]
+
+/// The base direction of ONE authored value — `SemanticStyle.direction`, and
+/// the run a `TextSource` carries. `Auto` is the identity: the value has no
+/// declared direction of its own and the bidirectional algorithm resolves it
+/// from its own characters, which is what every document said before this slot
+/// existed, so `Auto` is omitted on the wire.
+///
+/// It says nothing about the DOCUMENT's direction, the reader's locale, or
+/// which side the layout runs from — those are the host's, and none of them is
+/// nameable here. What it declares is that this one value reads left-to-right
+/// (or right-to-left) whatever surrounds it, so a renderer isolates it and the
+/// surrounding prose cannot reorder it. Lower-case on the wire, matching the
+/// values the isolation is ultimately expressed in.
+let private textDirection =
+    Declare.enumWith "TextDirection" [ "Auto", "auto"; "Ltr", "ltr"; "Rtl", "rtl" ]
 
 /// Phase 691 — the per-node animation token. NEVER on the wire (`WIRE_FORMAT.md`
 /// §9: motion is consumer-authored, not AI-authored), and declared only so the
@@ -1403,13 +1418,25 @@ let private icon = TStr
 // Field ORDER is Ordinal throughout — the TS backend emits in declared order and
 // does not sort, so a declaration out of Ordinal order diverges the two hosts.
 
-/// `{ "emphasis"?, "role"?, "tone"?, "voice"?, "weight"? }` — every field
-/// individually omit-when-default (Fuaran-UI Phase 147 role/voice, Phase 460 the
-/// other three), and the whole object omitted when all five are default.
+/// `{ "direction"?, "emphasis"?, "role"?, "tone"?, "voice"?, "weight"? }` — every
+/// field individually omit-when-default (Fuaran-UI Phase 147 role/voice, Phase 460
+/// the other three, Phase 1472 `direction`), and the whole object omitted when all
+/// six are default.
+///
+/// `direction` is the odd one out among these fields and the difference is worth
+/// naming: the other five are PRESENTATION — a host that ignores every one of them
+/// still renders a document that says the same thing. `direction` is CORRECTNESS.
+/// A value declared `Ltr` inside right-to-left prose is reordered by the
+/// bidirectional algorithm unless the run is isolated, and the reader then reads
+/// the digits back in the wrong order. It lives here rather than as a sixth trait
+/// on the node envelope because it is a property OF the value the envelope wraps,
+/// the same tier `emphasis` and `voice` occupy, and because `style` already
+/// reaches every node and every `UpdateStyle` op.
 let private semanticStyleRecord =
     { Name = "SemanticStyle"
       Fields =
-        [ omit "emphasis" (TEnum "Emphasis") (VEnum "Normal")
+        [ omit "direction" (TEnum "TextDirection") (VEnum "Auto")
+          omit "emphasis" (TEnum "Emphasis") (VEnum "Normal")
           omit "role" (TEnum "StyleRole") (VEnum "None")
           omit "tone" (TEnum "ToneVariant") (VEnum "Default")
           omit "voice" (TEnum "FontVoice") (VEnum "Default")
@@ -2415,6 +2442,7 @@ let uiIdl: Idl =
           textAnchor
           styleRole
           fontVoice
+          textDirection
           motion
           liveRegionKind
           sortDirection

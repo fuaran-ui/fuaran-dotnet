@@ -369,6 +369,10 @@ let private defs: (string * J) list =
       "TrendPolarity", enumDef [ "HigherIsBetter"; "LowerIsBetter" ]
       "StyleRole", enumDef [ "None"; "Eyebrow"; "Data"; "Lede"; "Caption" ]
       "FontVoice", enumDef [ "Default"; "Display"; "Structural" ]
+      // Phase 1472 - lower-case on the wire, the `LiveRegionKind` posture.
+      // `auto` is the identity and is omitted at it, but it stays spellable so a
+      // document may state the default explicitly.
+      "TextDirection", enumDef [ "auto"; "ltr"; "rtl" ]
       "ChartKind", enumDef [ "Line"; "Bar"; "Area"; "Pie"; "Scatter"; "Heatmap" ]
       "ChartLegendPosition", enumDef [ "Top"; "Right"; "Bottom"; "None" ]
       "ChartDataLabels", enumDef [ "Off"; "Ends" ]
@@ -1439,7 +1443,8 @@ let private defs: (string * J) list =
       // ── Node envelope (§3.1) ──────────────────────────────────────────────
       // StateBehaviour: all-optional (onError is the closure sentinel when
       // present). SemanticStyle: every field optional — tone/weight/emphasis
-      // (Phase 460) join role/voice (Phase 147) as omitted-at-default.
+      // (Phase 460) join role/voice (Phase 147) and direction (Phase 1472) as
+      // omitted-at-default.
       // Accessibility: all-optional.
       "StateBehaviour", record [] [ "onLoading", ref "Node"; "onEmpty", ref "Node"; "onError", closure ]
 
@@ -1450,7 +1455,8 @@ let private defs: (string * J) list =
             "tone", ref "ToneVariant"
             "weight", ref "StyleWeight"
             "role", ref "StyleRole"
-            "voice", ref "FontVoice" ]
+            "voice", ref "FontVoice"
+            "direction", ref "TextDirection" ]
 
       "Accessibility",
       // Phase 959 — the trait's near-miss set, refused here as it is at decode.

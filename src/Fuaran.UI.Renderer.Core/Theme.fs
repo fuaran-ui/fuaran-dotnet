@@ -1,4 +1,4 @@
-module Fuaran.UI.Renderer.Theme
+﻿module Fuaran.UI.Renderer.Theme
 
 // ============================================================================
 //  Fuaran — semantic theme engine (§4b SemanticStyle, §4c lines 504–542)
@@ -228,16 +228,33 @@ let fontVoiceVar (voice: FontVoice) : string option =
     | FontVoice.Display -> Some "display"
     | FontVoice.Structural -> Some "structural"
 
+/// Map a `TextDirection` to its `fuaran-dir-{suffix}` class suffix (Phase
+/// 1472). `TextDirection.Auto` returns `None` (no fragment, byte-identical
+/// default).
+///
+/// The class is what carries the ISOLATION. `dir` alone states a direction;
+/// the reference stylesheet's `.fuaran-dir-ltr, .fuaran-dir-rtl {
+/// unicode-bidi: isolate }` is what stops the surrounding bidirectional
+/// context reordering the run. Stating it in the stylesheet rather than
+/// leaning on the user agent's own `[dir]` rule is deliberate: the isolation
+/// is the whole point of the slot, and it must not depend on which UA
+/// stylesheet a host happens to ship.
+let textDirectionVar (direction: TextDirection) : string option =
+    match direction with
+    | TextDirection.Auto -> None
+    | TextDirection.Ltr -> Some "ltr"
+    | TextDirection.Rtl -> Some "rtl"
+
 /// Compose a `SemanticStyle` into the BEM-style className the renderer
 /// attaches to every Fuaran-rendered element.  Stable shape regardless of
 /// component kind; downstream CSS hooks against `.fuaran-tone-brand` etc.
-/// The Phase 147 `role`/`voice` fragments are appended only when non-default,
-/// so a tree authored before those fields existed yields the identical class
-/// string.
+/// The Phase 147 `role`/`voice` and Phase 1472 `direction` fragments are
+/// appended only when non-default, so a tree authored before those fields
+/// existed yields the identical class string.
 let className (style: SemanticStyle) : string =
     // Per-node hot path: string concat, not `sprintf` (which re-parses the format
     // string at runtime on every node every render under Fable). The default-style
-    // case — no Role, no Voice, the overwhelming majority — returns the base class
+    // case — no Role, no Voice, no Direction, the overwhelming majority — returns the base class
     // directly, skipping the option-list / `List.choose` / `String.concat`. This is
     // a perf primitive: do NOT "simplify" it back to `sprintf` or a fragment list.
     let baseClass =
@@ -248,9 +265,9 @@ let className (style: SemanticStyle) : string =
         + " fuaran-emphasis-"
         + emphasisVar style.Emphasis
 
-    match styleRoleVar style.Role, fontVoiceVar style.Voice with
-    | None, None -> baseClass
-    | role, voice ->
+    match styleRoleVar style.Role, fontVoiceVar style.Voice, textDirectionVar style.Direction with
+    | None, None, None -> baseClass
+    | role, voice, direction ->
         let sb = System.Text.StringBuilder(baseClass)
 
         match role with
@@ -259,6 +276,12 @@ let className (style: SemanticStyle) : string =
 
         match voice with
         | Some v -> sb.Append(" fuaran-voice-").Append(v) |> ignore
+        | None -> ()
+
+        // Phase 1472 — appended LAST, after the Phase 147 pair, so every class
+        // string a pre-1472 document produced is byte-identical.
+        match direction with
+        | Some d -> sb.Append(" fuaran-dir-").Append(d) |> ignore
         | None -> ()
 
         sb.ToString()

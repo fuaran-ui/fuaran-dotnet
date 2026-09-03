@@ -810,6 +810,33 @@ type PreEmitDefect =
     /// Carries the node's id and the dead anchor.
     | AnchorOnBlockingModal of nodeId: string * anchor: string
 
+    /// **FUARAN124 (Warning)**. A node declaring `style.direction` whose kind
+    /// lays out no character data of its own and has no descendants to inherit
+    /// it (Phase 1472) — a dead declaration.
+    ///
+    /// FUARAN123's shape at a different slot. A declared direction does two
+    /// things and only two: it states which way a run of text reads, and it
+    /// isolates that run from the bidirectional context around it. A glyph, a
+    /// placeholder bar and a sparkline are none of those — there is no run, so
+    /// the declaration rides the wire, survives every round trip, and changes
+    /// nothing on any host. The likely author intent is the node that HOLDS the
+    /// text, and saying so is the whole value of the rule.
+    ///
+    /// **Warning, not Error**: the declaration is inert, not harmful, and a
+    /// tree mid-edit is an ordinary authoring step.
+    ///
+    /// **The set is deliberately NARROW, on the accessibility family's standing
+    /// restraint — err towards silence.** Only kinds that lay out no character
+    /// data at all AND carry no children are named. A container inherits `dir`
+    /// to everything beneath it, so a direction there is live; a chart, a grid
+    /// and a map lay out per-datum text through their own arms; a `Drawing`'s
+    /// `Label` shape carries a `TextSource`; a `Custom` node's body is
+    /// host-rendered and unknowable here. Every one of those passes ungrounded
+    /// rather than risk a false accusation against a correct tree.
+    ///
+    /// Carries the node's id and its wire kind name.
+    | DirectionOnTextlessNode of nodeId: string * kind: string
+
     // ── The accessibility family (FUARAN109/110/111, Phase 727) ──────────────
     //
     // Until this family landed the runtime validator carried NO accessibility
@@ -1396,6 +1423,13 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "modal '%s' declares anchor = '%s' while its modality is Modal — a dead declaration. A blocking dialog is positioned by its scrim and not by an element, so the id rides the wire, survives every round trip and changes nothing on any host. Set modality to Popover if an anchored surface is what you meant, or drop the anchor"
             nodeId
             anchor
+    | PreEmitDefect.DirectionOnTextlessNode(nodeId, kind) ->
+        "FUARAN124",
+        DefectSeverity.Warning,
+        sprintf
+            "node '%s' declares style.direction while its kind is %s — a dead declaration. A direction states which way a run of text reads and isolates it from the bidirectional context around it, and this kind lays out no text and holds no children to inherit it, so the declaration rides the wire, survives every round trip and changes nothing on any host. Move it to the node that carries the text, or drop it"
+            nodeId
+            kind
     | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ->
         "FUARAN109",
         DefectSeverity.Warning,
@@ -1700,6 +1734,28 @@ let private isEmptyTextSource (t: TextSource) : bool =
     | TextSource.Bound _
     | TextSource.I18n _ -> false
 
+/// Does this kind lay out NO character data of its own AND hold no children to
+/// inherit a declared direction (Phase 1472, FUARAN124)?
+///
+/// A closed allow-list of three rather than an exhaustive match, deliberately —
+/// the accessibility family's standing restraint applied to a new slot. The
+/// DEFAULT answer is "say nothing", which is always safe: an unreported dead
+/// declaration costs a document one inert key, where a false accusation against
+/// a correct tree costs the rule its credibility. A kind that later becomes
+/// genuinely textless is therefore silent until somebody adds it here, which is
+/// the direction this list is allowed to be wrong in.
+let private isTextlessLeaf (kind: NodeKind<'Msg>) : bool =
+    match kind with
+    // A glyph. `Icon.label` is `aria-label` — attribute text, not laid out —
+    // which is `Image.Alt`'s reading in the bidi policy next door.
+    | NodeKind.Icon _
+    // Placeholder bars: no characters, by definition.
+    | NodeKind.Skeleton _
+    // A shape drawn from numbers. Unlike `Drawing`, whose `Label` shape carries
+    // a `TextSource`, a sparkline has no text vocabulary at all.
+    | NodeKind.Sparkline _ -> true
+    | _ -> false
+
 /// A `Binding<string>` statically known to carry nothing — a static empty (or
 /// whitespace) string, or a `Static` slot with no value at all. Every other
 /// binding resolves at runtime and is not judged.
@@ -1787,7 +1843,17 @@ let private accessibilityDefects (n: Node<'Msg>) : PreEmitDefect list =
 
             empty @ hidden
 
-    unnamed @ declaredEmpty @ tooltip
+    // Phase 1472 — the declared-direction trait's one rule, here for the same
+    // reason the tooltip pair is: it is a property of the node envelope rather
+    // than of any kind's spec, so it is decided once for every kind instead of
+    // in forty-one arms.
+    let direction =
+        match n.Style with
+        | Some style when style.Direction <> TextDirection.Auto && isTextlessLeaf n.Kind ->
+            [ PreEmitDefect.DirectionOnTextlessNode(n.Id, wireKindName n.Kind) ]
+        | _ -> []
+
+    unnamed @ declaredEmpty @ tooltip @ direction
 
 /// The `(slot, target)` accessibility references a node declares. Empty targets
 /// are excluded — an empty slot is FUARAN111's finding, and reporting the same

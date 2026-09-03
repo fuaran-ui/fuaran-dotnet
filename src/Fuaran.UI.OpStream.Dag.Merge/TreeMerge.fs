@@ -1,4 +1,4 @@
-namespace Fuaran.UI.OpStream.Dag.Merge
+﻿namespace Fuaran.UI.OpStream.Dag.Merge
 
 open System
 open Fuaran.UI
@@ -331,7 +331,12 @@ module TreeMerge =
               Weight = mergeStyleField conflicts id "style.weight" cellAuthor baseS.Weight aS.Weight bS.Weight
               Emphasis = mergeStyleField conflicts id "style.emphasis" cellAuthor baseS.Emphasis aS.Emphasis bS.Emphasis
               Role = mergeStyleField conflicts id "style.role" cellAuthor baseS.Role aS.Role bS.Role
-              Voice = mergeStyleField conflicts id "style.voice" cellAuthor baseS.Voice aS.Voice bS.Voice }
+              Voice = mergeStyleField conflicts id "style.voice" cellAuthor baseS.Voice aS.Voice bS.Voice
+              // Phase 1472 — `direction` merges as an independent sub-field like
+              // every other style slot: two lanes declaring different directions
+              // for one value is a genuine concurrent edit, not a mergeable pair.
+              Direction =
+                mergeStyleField conflicts id "style.direction" cellAuthor baseS.Direction aS.Direction bS.Direction }
 
         // state facet
         let statePick =

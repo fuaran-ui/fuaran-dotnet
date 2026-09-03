@@ -347,6 +347,19 @@
     },
     {
       "cases": [
+        "auto",
+        "ltr",
+        "rtl"
+      ],
+      "hostCases": [
+        "Auto",
+        "Ltr",
+        "Rtl"
+      ],
+      "name": "TextDirection"
+    },
+    {
+      "cases": [
         "email",
         "url",
         "tel"
@@ -4233,6 +4246,20 @@
     },
     {
       "fields": [
+        {
+          "name": "direction",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "enum",
+              "case": "Auto"
+            }
+          },
+          "type": {
+            "$type": "enum",
+            "name": "TextDirection"
+          }
+        },
         {
           "name": "emphasis",
           "optionality": {

@@ -3210,6 +3210,58 @@ stricter contract; it is a less truthful one.
 
 ---
 
+## Recorded change — 0.59.0, `SemanticStyle.direction` — bidirectional isolation (fuaran#1472)
+
+**Additive on the public API and on the wire; a `WIRE_FORMAT.md` §11 forward-coupling event.**
+Nothing is removed, no signature changes, and every pre-0.59.0 document encodes and decodes to
+byte-identical bytes.
+
+**The slot.** `SemanticStyle` gains `Direction: TextDirection` — a closed three-case enum
+(`Auto` | `Ltr` | `Rtl`) spelled lower-case on the wire (`auto` / `ltr` / `rtl`, the
+`LiveRegionKind` posture). `Auto` is the identity and is OMITTED at it, like every other member of
+that record, so a `style` object that declared nothing before declares nothing now. It reaches a
+host through the two paths `SemanticStyle` already had — the node envelope's `style` and the
+`UpdateStyle` op's — and the corpus pins both, on the accept side and on each refusal.
+
+**What it says, and what it deliberately does not.** `Ltr` / `Rtl` declare that ONE authored value
+reads that way whatever surrounds it; the renderers emit the matching `dir` on the element carrying
+the run and the reference stylesheet isolates it (`.fuaran-dir-ltr, .fuaran-dir-rtl { unicode-bidi:
+isolate }`). That is a **correctness** statement rather than a presentational one: an account or
+reference number declared `Ltr` inside right-to-left prose is reordered by the bidirectional
+algorithm unless the run is isolated, and the reader reads its digits back in the wrong order (WCAG
+1.3.2, Meaningful Sequence). It is also a statement only the document can make — a host is handed
+a string and cannot know which substring is an opaque identifier rather than prose.
+
+**No mirroring vocabulary entered the surface.** Nothing here names a document direction, a locale,
+or a layout side. Mirroring the frame is host chrome: a mirrored tree and an unmirrored one are
+identical in every respect a consumer can observe, and the reader's locale is the host's fact rather
+than the emitter's.
+
+**Two additive renderer changes, both invisible to a document that declares nothing.** The class
+projection appends `fuaran-dir-{direction}` AFTER the existing role and voice fragments, so every
+pre-0.59.0 class string is byte-identical. And a declared direction now BEATS the `dir="auto"`
+heuristic — `auto` infers from the value's own first strong character, and the declaration exists
+precisely for the values that inference gets wrong. An `Auto` declaration falls through to the
+heuristic unchanged. **A snapshot pinning a wrapper's class list or `dir` attribute for a node that
+declares a direction will need updating; one for a node that declares none will not.**
+
+**One new validator code: FUARAN124 (Warning)** — a declared direction on a kind that lays out no
+character data and holds no children to inherit it (`Icon` / `Skeleton` / `Sparkline`), which is a
+dead declaration on FUARAN123's reasoning. The set is deliberately narrow: a container passes `dir`
+to its children, and a chart, a grid and a map lay out text through their own arms, so all of those
+pass ungrounded rather than risk a false accusation against a correct tree.
+
+**Authoring surfaces.** F# gains `Node.withDirection`; the C# veneer gains
+`FuaranNode.WithDirection` plus a `TextDirection` facade enum; the VB XML dialect gains a universal
+`direction` attribute beside `tooltip`, whose token is refused rather than coerced. These are the
+first `SemanticStyle` members either veneer has ever spelled, and that is deliberate: the other five
+are presentation, which a veneer can reasonably omit, and this one is not.
+
+**The isolation is markup and CSS only** — no script participates, so it holds identically under
+server-side rendering with no hydration at all.
+
+---
+
 ## Recorded change — 0.57.0, `Sparkline` draws through the shared `Drawing` builder (fuaran#1098)
 
 **Additive on the public API; a deliberate SSR BEHAVIOUR change; no wire change at all.**

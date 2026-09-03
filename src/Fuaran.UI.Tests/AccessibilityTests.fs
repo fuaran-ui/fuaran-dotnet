@@ -1,4 +1,4 @@
-module Fuaran.UI.Tests.Accessibility
+﻿module Fuaran.UI.Tests.Accessibility
 
 // ============================================================================
 //  `Accessibility` trait + per-component defaults +
@@ -273,9 +273,89 @@ let tests =
               Expect.isTrue (isolated boundHeading) "a bound heading carries data of unknown direction"
 
               Expect.equal
-                  (Accessibility.bidiAttributes boundHeading.Kind)
+                  (Accessibility.bidiAttributes boundHeading.Kind Defaults.style)
                   [ "dir", "auto" ]
                   "the attribute pair is exactly dir=auto"
+          }
+
+          // ── Phase 1472 — the DECLARED direction ───────────────────────────
+
+          test "a declared direction is emitted, and beats the Phase 1114 heuristic" {
+              // `auto` infers from the value's own first strong character, and
+              // the declaration exists for exactly the values that inference
+              // gets wrong — so the declaration wins, not the other way round.
+              let bound =
+                  Fuaran.heading
+                      "h"
+                      { Defaults.heading with
+                          Text = TextSource.Bound(Binding.State("reference", Some "")) }
+
+              Expect.equal
+                  (Accessibility.bidiAttributes bound.Kind Defaults.style)
+                  [ "dir", "auto" ]
+                  "undeclared, the heuristic still answers"
+
+              Expect.equal
+                  (Accessibility.bidiAttributes
+                      bound.Kind
+                      { Defaults.style with
+                          Direction = TextDirection.Ltr })
+                  [ "dir", "ltr" ]
+                  "the declaration replaces auto rather than sitting beside it"
+
+              Expect.equal
+                  (Accessibility.bidiAttributes
+                      bound.Kind
+                      { Defaults.style with
+                          Direction = TextDirection.Rtl })
+                  [ "dir", "rtl" ]
+                  "and in the other direction"
+          }
+
+          test "a declared direction reaches a kind the heuristic never touches" {
+              // A literal is authored in the document's own language, so Phase
+              // 1114 says nothing about it. An opaque identifier written as a
+              // literal is precisely the case the declaration is for.
+              let literal =
+                  Fuaran.heading
+                      "h"
+                      { Defaults.heading with
+                          Text = TextSource.Literal "RR123456789IL" }
+
+              Expect.equal (Accessibility.bidiAttributes literal.Kind Defaults.style) [] "silent, undeclared"
+
+              Expect.equal
+                  (Accessibility.bidiAttributes
+                      literal.Kind
+                      { Defaults.style with
+                          Direction = TextDirection.Ltr })
+                  [ "dir", "ltr" ]
+                  "the document says so, and is believed"
+          }
+
+          test "the isolation rides a class, and an undeclared node's class is byte-identical" {
+              // `dir` states the direction; `.fuaran-dir-*` carries the
+              // `unicode-bidi: isolate` that stops the surrounding context
+              // reordering the run. Both are markup and CSS only — no script.
+              let plain = Theme.className Defaults.style
+
+              Expect.isFalse
+                  (plain.Contains "fuaran-dir-")
+                  "a tree that declares nothing yields the pre-1472 class string"
+
+              let ltr =
+                  Theme.className
+                      { Defaults.style with
+                          Direction = TextDirection.Ltr }
+
+              Expect.equal ltr (plain + " fuaran-dir-ltr") "appended last, so every earlier fragment is unmoved"
+
+              let rtl =
+                  Theme.className
+                      { Defaults.style with
+                          Direction = TextDirection.Rtl }
+
+              Expect.equal rtl (plain + " fuaran-dir-rtl") "and in the other direction"
           }
 
           test "dir=auto is NOT emitted for authored or host-translated text" {
@@ -295,7 +375,11 @@ let tests =
 
               Expect.isFalse (isolated literal) "a literal is the author writing in the document's language"
               Expect.isFalse (isolated i18n) "an i18n key resolves in the document's own locale"
-              Expect.equal (Accessibility.bidiAttributes literal.Kind) [] "no attribute at all, not dir=ltr"
+
+              Expect.equal
+                  (Accessibility.bidiAttributes literal.Kind Defaults.style)
+                  []
+                  "no attribute at all, not dir=ltr"
           }
 
           test "dir=auto is NOT emitted on a layout container, even one holding bound text" {

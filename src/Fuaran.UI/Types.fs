@@ -1,4 +1,4 @@
-module Fuaran.UI.Types
+﻿module Fuaran.UI.Types
 
 open Fuaran.Core
 
@@ -1732,6 +1732,28 @@ and FontVoice = Generated.FontVoice
 and ToneVariant = Generated.ToneVariant
 and StyleWeight = Generated.StyleWeight
 and Emphasis = Generated.Emphasis
+
+/// Phase 1472 — the base direction of ONE authored value, and the only
+/// direction vocabulary the language has. `Auto` is the identity and is
+/// omitted on the wire: the value declares nothing and the bidirectional
+/// algorithm resolves it from its own characters, which is what every
+/// pre-1472 document said.
+///
+/// `Ltr` / `Rtl` declare that this value reads in that direction WHATEVER
+/// surrounds it, and a renderer therefore isolates the run so the surrounding
+/// prose cannot reorder it. That is a correctness statement rather than a
+/// presentational one: an account or reference number declared `Ltr` inside
+/// right-to-left prose is reordered by the bidirectional algorithm unless it
+/// is isolated, and the reader reads the digits back wrong (WCAG 1.3.2,
+/// Meaningful Sequence). It is also a statement only the document can make —
+/// a host is handed a string and cannot know which substring is an opaque
+/// identifier rather than prose.
+///
+/// It names NOTHING about the document's own direction, the reader's locale,
+/// or which side the layout runs from. Mirroring the frame is host chrome and
+/// has no vocabulary here, deliberately.
+and TextDirection = Generated.TextDirection
+
 /// Phase 867 — which direction of a `Metric`'s measured quantity is GOOD.
 /// A property of the QUANTITY (permanent, every reading), where `tone` is a
 /// property of THIS READING — so the two are never the same statement, and a

@@ -108,5 +108,10 @@
     "name": "op-updatestyle (phase 147 role=eyebrow \u002B voice=structural)",
     "notation": "metric-1: style \u2192 role=Eyebrow voice=Structural",
     "op": "{\u0022$type\u0022:\u0022UpdateStyle\u0022,\u0022style\u0022:{\u0022role\u0022:\u0022Eyebrow\u0022,\u0022voice\u0022:\u0022Structural\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
+  },
+  {
+    "name": "op-updatestyle (phase 1472 direction=ltr, the only style member)",
+    "notation": "metric-1: style \u2192 direction=ltr",
+    "op": "{\u0022$type\u0022:\u0022UpdateStyle\u0022,\u0022style\u0022:{\u0022direction\u0022:\u0022ltr\u0022},\u0022target\u0022:\u0022metric-1\u0022}"
   }
 ]

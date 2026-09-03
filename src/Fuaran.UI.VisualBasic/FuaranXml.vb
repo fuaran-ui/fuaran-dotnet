@@ -1,4 +1,4 @@
-Imports System.Linq
+﻿Imports System.Linq
 Imports System.Xml.Linq
 Imports Csharp = Fuaran.UI.CSharp
 
@@ -119,11 +119,20 @@ Public Module FuaranXml
     ''' report it and the hint would simply never appear.
     '''
     ''' <c>tooltip</c> (Fuaran-UI Phase 1112) is the first, and takes the same
-    ''' <c>$name</c> bound-query spelling every other text attribute here takes.</summary>
+    ''' <c>$name</c> bound-query spelling every other text attribute here takes.
+    ''' <c>direction</c> (Fuaran-UI Phase 1472) is the second — a bounded enum
+    ''' rather than text, so it takes the <c>OptEnum</c> spelling, and an unknown
+    ''' token is refused here rather than coerced to the default.</summary>
     Private Function ApplyNodeTraits(el As XElement, node As Csharp.FuaranNode) As Csharp.FuaranNode
+        Dim result = node
+
         Dim hint = OptText(el, "tooltip")
-        If hint Is Nothing Then Return node
-        Return node.WithTooltip(hint.Value)
+        If hint IsNot Nothing Then result = result.WithTooltip(hint.Value)
+
+        Dim direction = OptEnum(Of Csharp.TextDirection)(el, "direction")
+        If direction IsNot Nothing Then result = result.WithDirection(direction.Value)
+
+        Return result
     End Function
 
     ''' <summary>Translate then encode an XML-literal element to its canonical wire JSON.</summary>

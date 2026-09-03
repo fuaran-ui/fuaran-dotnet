@@ -876,6 +876,62 @@ let all: RejectFixture list =
         IsOp = false
         Description = "accessibility.liveRegion not a JSON string (Phase 955)" }
 
+      // ─── Phase 1472 — `style.direction`, on BOTH decoder arms ─────────
+      //
+      // The slot reaches a decoder through two independent paths: the node
+      // envelope's `style`, and the `UpdateStyle` op's. They are separate arms
+      // in every host, so a vector on one proves nothing about the other, and a
+      // host that hardened the envelope and left the op lenient would pass a
+      // one-armed corpus while accepting a jumbled document over the wire.
+      // Each token failure is therefore pinned twice, once per arm.
+      //
+      // (1) The closed token set, node arm. `direction` is one of exactly three
+      // lower-case strings; a near miss is an author reaching for a token that
+      // does not exist (`"LTR"`, `"left"`, `"leftToRight"`), so UNKNOWN_DU_CASE
+      // — which names the legal set — is the didactic refusal.
+      //
+      // Refused rather than coerced to the default, and that is the whole
+      // point of the vector: a document that meant `rtl` and misspelled it
+      // would otherwise render as reordered digits with nothing said anywhere,
+      // which is precisely the failure the slot exists to prevent.
+      { Id = "reject-style-direction-unknown"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"style":{"direction":"LTR"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.style.direction"
+        IsOp = false
+        Description =
+          "style.direction outside the closed set — the message names auto | ltr | rtl, and the near miss is the upper-case spelling (Phase 1472)" }
+
+      // (2) The same slot, wrong JSON kind. Distinct from (1) on purpose: a
+      // non-string is not a near miss of a token, so it is WRONG_TYPE and not
+      // UNKNOWN_DU_CASE, and a host that collapses the two loses the difference
+      // between "no such token" and "not a token at all".
+      { Id = "reject-style-direction-nonstring"
+        Json =
+          """{"id":"n1","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"x"}},"style":{"direction":1}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.style.direction"
+        IsOp = false
+        Description = "style.direction not a JSON string (Phase 1472)" }
+
+      // (3) The closed token set, OP arm — the second decoder arm.
+      { Id = "reject-op-updatestyle-direction-unknown"
+        Json = """{"$type":"UpdateStyle","target":"n1","style":{"direction":"rtl-isolate"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.style.direction"
+        IsOp = true
+        Description =
+          "UpdateStyle style.direction outside the closed set — the op arm's twin of the node vector above (Phase 1472)" }
+
+      // (4) Wrong JSON kind, OP arm.
+      { Id = "reject-op-updatestyle-direction-nonstring"
+        Json = """{"$type":"UpdateStyle","target":"n1","style":{"direction":true}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.style.direction"
+        IsOp = true
+        Description = "UpdateStyle style.direction not a JSON string (Phase 1472)" }
+
       // (3) `role` is the OPEN slot — any string decodes, as `AriaRole.Custom`
       // verbatim — so a non-string is the only way to malform it, and pinning
       // that is what stops a host from stringifying a number and inventing a

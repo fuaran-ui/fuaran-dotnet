@@ -484,7 +484,7 @@
          move is the compiled DU tag ordinal, which is binary contract, and a
          contract change never rides a same-version repack. See STABILITY.md
          "Recorded change - 0.56.0, the generated layer regenerates in-process". -->
-    <Version>0.57.0</Version>
+    <Version>0.59.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

@@ -372,7 +372,12 @@ and private renderNodeCore (depth: int) (ctx: ServerRenderContext) (node: Node<o
     // runtime-bound text. Wrapper-side in BOTH arms and FIRST in the list, so
     // the emitted attribute order is identical under SSR and CSR; the policy
     // itself is the shared `Accessibility.bidiAttributes`.
-    let bidi = Accessibility.bidiAttributes node.Kind
+    // Phase 1472 — a DECLARED `style.direction` wins over that heuristic; see
+    // `Accessibility.bidiAttributes`. The isolation itself is CSS, on the
+    // `fuaran-dir-*` class the shared `Theme.className` already put on this
+    // wrapper — markup and stylesheet only, so it holds with no script at all.
+    let bidi =
+        Accessibility.bidiAttributes node.Kind (node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
 
     let wrapperAttrs0, semanticAttrs0 =
         if Accessibility.forwardsToSemanticElement node.Kind then

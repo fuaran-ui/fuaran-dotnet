@@ -129,6 +129,18 @@ let styleRoleVoice: Node<obj> =
 let markdown: Node<obj> =
     node "markdown-1" (NodeKind.Markdown({ Text = TextSource.Literal "Updated hourly." })) None
 
+/// Phase 1472 — a `SemanticStyle` carrying `Direction` and NOTHING ELSE, so the
+/// emitted `style` object is exactly `{"direction":"ltr"}`. One member is the
+/// point: a fixture whose style also set a tone or a weight could decode with
+/// `direction` silently dropped and still round-trip, and the vector would
+/// prove nothing about the slot it was written for.
+let styleDirectionLtrRun: Node<obj> =
+    { node "style-direction-ltr-1" (NodeKind.Markdown({ Text = TextSource.Literal "RR123456789IL" })) None with
+        Style =
+            Some
+                { defaultStyle with
+                    Direction = TextDirection.Ltr } }
+
 let badge: Node<obj> =
     node
         "badge-1"
@@ -1025,6 +1037,48 @@ let dashboardEmpty: Node<obj> =
               Children = [] }
         ))
         None
+
+/// Phase 1472 — the motivating document, whole: a right-to-left container
+/// holding prose in that direction and ONE value that reads the other way.
+///
+/// The reference number is not styled — it is DECLARED. Without the
+/// declaration the bidirectional algorithm resolves the run from the
+/// surrounding context and the reader reads its digits back in the wrong
+/// order, which is a correctness failure rather than a presentational one
+/// (WCAG 1.3.2, Meaningful Sequence). It is also a statement only this
+/// document can make: a host is handed the string and cannot know that it is
+/// an opaque identifier rather than more prose.
+///
+/// Every `style` here carries exactly one member, for the reason above.
+let styleDirectionIsolatedValue: Node<obj> =
+    { node
+          "style-direction-isolated-1"
+          (NodeKind.Box(
+              { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+                Role = BoxRole.Group
+                Heading = None
+                Children =
+                  [ node
+                        "style-direction-prose-1"
+                        (NodeKind.Markdown({ Text = TextSource.Literal "מספר האסמכתא שלך הוא" }))
+                        None
+                    { node
+                          "style-direction-reference-1"
+                          (NodeKind.Badge(
+                              { Label = TextSource.Literal "RR123456789IL"
+                                Variant = BadgeVariant.Neutral }
+                          ))
+                          None with
+                        Style =
+                            Some
+                                { defaultStyle with
+                                    Direction = TextDirection.Ltr } } ] }
+          ))
+          None with
+        Style =
+            Some
+                { defaultStyle with
+                    Direction = TextDirection.Rtl } }
 
 let stack: Node<obj> =
     node
@@ -4368,6 +4422,17 @@ let opUpdateStyle: TreeOp<obj> =
             Emphasis = Emphasis.Loud }
     )
 
+/// Phase 1472 — the `direction` slot on the SECOND decoder arm. `UpdateStyle`
+/// reaches `SemanticStyle` through a path of its own in every host, so the
+/// node-envelope vectors say nothing about it; the accept side is pinned here
+/// beside the two op-arm rejects.
+let opUpdateStyleDirection: TreeOp<obj> =
+    TreeOp.UpdateStyle(
+        NodeId "metric-1",
+        { Defaults.style with
+            Direction = TextDirection.Ltr }
+    )
+
 /// Phase 147 — an `UpdateStyle` op whose `SemanticStyle` carries a non-default
 /// `Role` / `Voice`, exercising the optional-emit wire path at the op level.
 let opUpdateStyleRoleVoice: TreeOp<obj> =
@@ -5231,6 +5296,8 @@ let tooltipIconButton: Node<obj> =
 let allNodes: (string * Node<obj>) list =
     [ "Display/Heading", heading
       "Display/Markdown (Phase 147 Role=Data + Voice=Display)", styleRoleVoice
+      "Display/Markdown (Phase 1472 Direction=Ltr, the only style member)", styleDirectionLtrRun
+      "Layout/Box (Phase 1472 an Ltr value isolated inside Rtl prose)", styleDirectionIsolatedValue
       "Display/Markdown", markdown
       "Display/Metric", metric
       "Display/Metric (float divergence-zone — 1e21 scientific)", metricFloatExpPos
@@ -5425,6 +5492,7 @@ let allOps: (string * TreeOp<obj>) list =
       "ReplaceBinding", opReplaceBinding
       "UpdateStyle", opUpdateStyle
       "UpdateStyle (Phase 147 Role=Eyebrow + Voice=Structural)", opUpdateStyleRoleVoice
+      "UpdateStyle (Phase 1472 Direction=Ltr, the only style member)", opUpdateStyleDirection
       "UpdateState", opUpdateState
       "InsertChild", opInsertChild
       "RemoveNode", opRemoveNode

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 
@@ -84,10 +84,11 @@ internal static class Vocabulary
     /// trait rather than a field of any one kind. Unioned into every entry of the
     /// table below, so a trait is added in one place rather than forty.
     ///
-    /// `tooltip` (Fuaran-UI Phase 1112) is the first member. The translator applies
-    /// it at its single `Translate` choke point for the same reason.</summary>
+    /// `tooltip` (Fuaran-UI Phase 1112) is the first member; `direction`
+    /// (Fuaran-UI Phase 1472) is the second. The translator applies both at its
+    /// single `Translate` choke point for the same reason.</summary>
     private static readonly ImmutableHashSet<string> Universal =
-        ImmutableHashSet.Create(StringComparer.Ordinal, "tooltip");
+        ImmutableHashSet.Create(StringComparer.Ordinal, "tooltip", "direction");
 
     /// <summary>Per-element allowed attributes. An element absent from this table is not
     /// attribute-checked (allow-any), so FUARAN061 never false-positives on a kind we

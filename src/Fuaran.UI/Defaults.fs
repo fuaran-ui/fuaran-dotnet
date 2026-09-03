@@ -1,4 +1,4 @@
-module Fuaran.UI.Defaults
+﻿module Fuaran.UI.Defaults
 
 // ============================================================================
 //  Fuaran — typed Defaults.X records (§4b amendment lines 471–491, §4d line 712)
@@ -23,7 +23,11 @@ let style: SemanticStyle =
       Weight = StyleWeight.Standard
       Emphasis = Emphasis.Normal
       Role = StyleRole.None
-      Voice = FontVoice.Default }
+      Voice = FontVoice.Default
+      // Phase 1472 — the identity: this value declares no direction of its own,
+      // so the bidirectional algorithm resolves it from its own characters
+      // exactly as it did before the slot existed. Omitted on the wire.
+      Direction = TextDirection.Auto }
 
 let stateBehaviour<'Msg> : StateBehaviour<'Msg> =
     { OnLoading = Option.None

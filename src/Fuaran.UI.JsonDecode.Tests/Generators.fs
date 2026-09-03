@@ -971,6 +971,10 @@ let private genFragmentRef: Gen<NodeKind<obj>> =
 
 // ─── Style / accessibility ───────────────────────────────────────────────────
 
+/// Phase 1472 — the declared base direction.
+let private genTextDirection =
+    Gen.elements [ TextDirection.Auto; TextDirection.Ltr; TextDirection.Rtl ]
+
 let private genSemanticStyle: Gen<SemanticStyle> =
     gen {
         let! tone = genTone
@@ -978,6 +982,7 @@ let private genSemanticStyle: Gen<SemanticStyle> =
         let! emphasis = genEmphasis
         let! role = genStyleRole
         let! voice = genFontVoice
+        let! direction = genTextDirection
 
         return
             { Defaults.style with
@@ -985,7 +990,8 @@ let private genSemanticStyle: Gen<SemanticStyle> =
                 Weight = weight
                 Emphasis = emphasis
                 Role = role
-                Voice = voice }
+                Voice = voice
+                Direction = direction }
     }
 
 /// Node.State / Node.Style are `option` post-swap (Phase 692–694). The pre-swap
@@ -1005,6 +1011,7 @@ let private someStyle (s: SemanticStyle) : SemanticStyle option =
         && s.Emphasis = Emphasis.Normal
         && s.Role = StyleRole.None
         && s.Voice = FontVoice.Default
+        && s.Direction = TextDirection.Auto
 
     if isDefault then None else Some s
 
