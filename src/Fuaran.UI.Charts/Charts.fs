@@ -115,6 +115,12 @@ module Fuaran.UI.Charts
 //  The F# output IS the golden the other hosts conform to (Phase 527); the
 //  `chart-lowering/*` corpus fixtures pin it.
 //
+//  The four `TextSource`-typed spec fields — `Title`, `Subtitle`, `XTitle`,
+//  `YTitle` — CARRY into the drawing and resolve at render time; they are never
+//  resolved here and never dropped. The full cross-host statement, including
+//  why the layout reserves space by PRESENCE and why only a `Literal` arm is
+//  truncated, is `docs/CHART-LOWERING-TEXT-CONTRACT.md` (Phase 1143).
+//
 //  Fable-portable (FSharp.Core + Renderer.Core only; no reflection).
 // ============================================================================
 
@@ -2789,6 +2795,8 @@ let private lowerRows<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (rows: R
     /// truncated — the text behind a `Bound` or `I18n` arm is not known here —
     /// and that is the honest boundary: those pass through and may overrun,
     /// which is a visible fact rather than a silently wrong measurement.
+    /// Clause 4 of `docs/CHART-LOWERING-TEXT-CONTRACT.md`, which every host
+    /// implements identically.
     let boundText (fontSize: float) (extent: float) (t: TextSource) : TextSource =
         match t with
         | TextSource.Literal s -> TextSource.Literal(TextMetrics.truncateToWidth fontSize extent s)

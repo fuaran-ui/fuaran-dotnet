@@ -39,7 +39,12 @@ type private Case =
         Kind: ChartKind
         XField: string
         YFields: string list
-        Title: string option
+        /// Phase 1143 — a `TextSource`, not a string: every arm crosses the
+        /// lowering unresolved, so the harness has to be able to spell one.
+        /// `lit` builds the `Literal` arm the pre-1143 cases all carry, and
+        /// `inputJson` emits it as the bare string that is its canonical form,
+        /// so not one of their `.input.json` files moved a byte.
+        Title: TextSource option
         Stacked: bool
         XNums: float list option
         /// Phase 876 — the value axis's declared number format (a WIRE field:
@@ -57,9 +62,9 @@ type private Case =
         /// the ordinary shape — each axis falls back to its capitalised field
         /// name — so the keys are OMITTED when `None` and the twenty pre-878
         /// inputs stay byte-identical.
-        XTitle: string option
-        YTitle: string option
-        Subtitle: string option
+        XTitle: TextSource option
+        YTitle: TextSource option
+        Subtitle: TextSource option
         /// Phase 880 — the legend's declared edge (a WIRE field:
         /// `ChartSpec.LegendPosition`), carried in the neutral input contract
         /// as the canonical enum string beside `title`. Absent means "the host
@@ -84,6 +89,9 @@ type private Case =
         XScale: string option
         Rows: (string * float list) list
     }
+
+/// The `Literal` arm, which is what a case means when it writes a bare string.
+let private lit (s: string) : TextSource = TextSource.Literal s
 
 /// The default-shaped case — the Phase-876 and Phase-878 fields absent — so the
 /// twelve pre-876 cases stay readable.
@@ -156,7 +164,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "revenue" ]
-          Title = Some "Revenue by quarter"
+          Title = Some(lit "Revenue by quarter")
           Stacked = false
           XNums = None
           Rows = [ "Q1", [ 120.0 ]; "Q2", [ 150.0 ]; "Q3", [ 90.0 ]; "Q4", [ 175.0 ] ] }
@@ -165,7 +173,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "sales"; "target" ]
-          Title = Some "Sales vs target"
+          Title = Some(lit "Sales vs target")
           Stacked = false
           XNums = None
           Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
@@ -174,7 +182,7 @@ let private cases: Case list =
           Kind = ChartKind.Line
           XField = "month"
           YFields = [ "users" ]
-          Title = Some "Active users"
+          Title = Some(lit "Active users")
           Stacked = false
           XNums = None
           Rows =
@@ -198,7 +206,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "sprint"
           YFields = [ "done"; "doing"; "blocked" ]
-          Title = Some "Tickets by status"
+          Title = Some(lit "Tickets by status")
           Stacked = true
           XNums = None
           // A zero cell (S2 blocked) pins the zero-height-segment geometry.
@@ -208,7 +216,7 @@ let private cases: Case list =
           Kind = ChartKind.Area
           XField = "week"
           YFields = [ "signups" ]
-          Title = Some "Signups"
+          Title = Some(lit "Signups")
           Stacked = false
           XNums = None
           Rows = [ "W1", [ 40.0 ]; "W2", [ 55.0 ]; "W3", [ 48.0 ]; "W4", [ 70.0 ] ] }
@@ -217,7 +225,7 @@ let private cases: Case list =
           Kind = ChartKind.Area
           XField = "month"
           YFields = [ "web"; "mobile" ]
-          Title = Some "Traffic"
+          Title = Some(lit "Traffic")
           Stacked = false
           XNums = None
           Rows = [ "Jan", [ 60.0; 35.0 ]; "Feb", [ 72.0; 44.0 ]; "Mar", [ 65.0; 58.0 ] ] }
@@ -226,7 +234,7 @@ let private cases: Case list =
           Kind = ChartKind.Area
           XField = "month"
           YFields = [ "web"; "mobile" ]
-          Title = Some "Traffic (stacked)"
+          Title = Some(lit "Traffic (stacked)")
           Stacked = true
           XNums = None
           Rows = [ "Jan", [ 60.0; 35.0 ]; "Feb", [ 72.0; 44.0 ]; "Mar", [ 65.0; 58.0 ] ] }
@@ -236,7 +244,7 @@ let private cases: Case list =
           Kind = ChartKind.Scatter
           XField = "height"
           YFields = [ "weight" ]
-          Title = Some "Height vs weight"
+          Title = Some(lit "Height vs weight")
           Stacked = false
           XNums = Some [ 150.0; 162.0; 171.0; 180.0; 195.0 ]
           Rows = [ "", [ 52.0 ]; "", [ 61.0 ]; "", [ 68.5 ]; "", [ 74.0 ]; "", [ 88.0 ] ] }
@@ -262,7 +270,7 @@ let private cases: Case list =
           Kind = ChartKind.Pie
           XField = "holder"
           YFields = [ "share" ]
-          Title = Some "Ownership by holder class"
+          Title = Some(lit "Ownership by holder class")
           Stacked = false
           XNums = None
           // Uneven shares (incl. a zero-share category, legended but wedge-less).
@@ -295,7 +303,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "units" ]
-          Title = Some "Units shipped"
+          Title = Some(lit "Units shipped")
           Rows = [ "Q1", [ 4200.0 ]; "Q2", [ 9500.0 ]; "Q3", [ 6800.0 ]; "Q4", [ 7300.0 ] ] }
       { plain with
           // Step-derived DECIMALS: a 0.1 step gives 1 dp on every tick, so the
@@ -304,7 +312,7 @@ let private cases: Case list =
           Kind = ChartKind.Line
           XField = "week"
           YFields = [ "rate" ]
-          Title = Some "Conversion rate"
+          Title = Some(lit "Conversion rate")
           Rows = [ "W1", [ 0.12 ]; "W2", [ 0.35 ]; "W3", [ 0.28 ]; "W4", [ 0.44 ] ] }
       { plain with
           // Display-unit scaling at the default `Words` mode: short ticks under a
@@ -313,7 +321,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "revenue" ]
-          Title = Some "Revenue by region"
+          Title = Some(lit "Revenue by region")
           Rows =
               [ "North", [ 12500000.0 ]
                 "South", [ 9800000.0 ]
@@ -326,7 +334,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "revenue" ]
-          Title = Some "Revenue"
+          Title = Some(lit "Revenue")
           ValueFormat = Some(Format.Currency "GBP")
           Rows = [ "Q1", [ 4200.0 ]; "Q2", [ 9500.0 ]; "Q3", [ 6800.0 ]; "Q4", [ 7300.0 ] ] }
       { plain with
@@ -336,7 +344,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "revenue" ]
-          Title = Some "Revenue by region"
+          Title = Some(lit "Revenue by region")
           ValueFormat = Some(Format.Currency "GBP")
           UnitMode = Some "WordsWithSymbol"
           Rows =
@@ -350,7 +358,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "revenue" ]
-          Title = Some "Revenue by region"
+          Title = Some(lit "Revenue by region")
           ValueFormat = Some(Format.Currency "GBP")
           UnitMode = Some "SIAbbreviation"
           Rows =
@@ -365,7 +373,7 @@ let private cases: Case list =
           Kind = ChartKind.Line
           XField = "week"
           YFields = [ "rate" ]
-          Title = Some "Conversion rate"
+          Title = Some(lit "Conversion rate")
           ValueFormat = Some(Format.Percent None)
           Rows = [ "W1", [ 0.12 ]; "W2", [ 0.35 ]; "W3", [ 0.28 ]; "W4", [ 0.44 ] ] }
       { plain with
@@ -375,7 +383,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "units" ]
-          Title = Some "Units shipped"
+          Title = Some(lit "Units shipped")
           UnitMode = Some "CompactPerTick"
           Rows = [ "Q1", [ 4200.0 ]; "Q2", [ 9500.0 ]; "Q3", [ 6800.0 ]; "Q4", [ 7300.0 ] ] }
       // ── Phase 879 — deterministic text metrics ──
@@ -401,7 +409,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "monthly_recurring_revenue_gbp"; "annual_contract_value_gbp_est" ]
-          Title = Some "Long series names"
+          Title = Some(lit "Long series names")
           Rows = [ "Q1", [ 40.0; 90.0 ]; "Q2", [ 55.0; 80.0 ] ] }
       { plain with
           // Left-margin autosize: `Off` keeps every magnitude, so the ticks
@@ -411,7 +419,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "revenue" ]
-          Title = Some "Revenue in full"
+          Title = Some(lit "Revenue in full")
           UnitMode = Some "Off"
           Rows =
               [ "Q1", [ 1250000.0 ]
@@ -428,7 +436,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "sales" ]
-          Title = Some "Sales by region"
+          Title = Some(lit "Sales by region")
           Rows =
               [ "North", [ 80.0 ]
                 "South", [ 130.0 ]
@@ -444,7 +452,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "week"
           YFields = [ "signups" ]
-          Title = Some "Signups by week"
+          Title = Some(lit "Signups by week")
           Rows = [ for i in 1..20 -> (sprintf "Wk %d" i), [ 40.0 + float ((i * 7) % 23) ] ] }
       { plain with
           // LADDER STEP 1 — FLAT. Four nineteen-character labels: 19 × 0.55 em ×
@@ -455,7 +463,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "code"
           YFields = [ "count" ]
-          Title = Some "At the flat-to-tilt boundary"
+          Title = Some(lit "At the flat-to-tilt boundary")
           Rows = [ for i in 0..3 -> (String.replicate 18 "1" + string i), [ 20.0 + float (i * 9 % 70) ] ] }
       { plain with
           // LADDER STEP 2 — TILT. The SAME chart, one character longer: 20 ×
@@ -466,7 +474,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "code"
           YFields = [ "count" ]
-          Title = Some "At the tilt-to-vertical boundary"
+          Title = Some(lit "At the tilt-to-vertical boundary")
           Rows = [ for i in 0..3 -> (String.replicate 19 "1" + string i), [ 20.0 + float (i * 9 % 70) ] ] }
       { plain with
           // LADDER STEP 3 — VERTICAL. One character longer again: 21 × 0.55 em ×
@@ -476,7 +484,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "code"
           YFields = [ "count" ]
-          Title = Some "Past the tilt-to-vertical boundary"
+          Title = Some(lit "Past the tilt-to-vertical boundary")
           Rows = [ for i in 0..3 -> (String.replicate 20 "1" + string i), [ 20.0 + float (i * 9 % 70) ] ] }
       // ── Phase 878 — axis titles + subtitle ──
       { plain with
@@ -489,10 +497,10 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "sales"; "target" ]
-          Title = Some "Sales vs target"
-          XTitle = Some "Sales region"
-          YTitle = Some "Value (£)"
-          Subtitle = Some "Rolling twelve months"
+          Title = Some(lit "Sales vs target")
+          XTitle = Some(lit "Sales region")
+          YTitle = Some(lit "Value (£)")
+          Subtitle = Some(lit "Rolling twelve months")
           Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
       { plain with
           // NONE SET, with a display unit in play. The complement of the case
@@ -504,7 +512,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "revenue" ]
-          Title = Some "Revenue"
+          Title = Some(lit "Revenue")
           ValueFormat = Some(Format.Currency "GBP")
           UnitMode = Some "WordsWithSymbol"
           Rows =
@@ -521,10 +529,10 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "revenue" ]
-          Title = Some "Revenue"
+          Title = Some(lit "Revenue")
           ValueFormat = Some(Format.Currency "GBP")
           UnitMode = Some "WordsWithSymbol"
-          Subtitle = Some "Millions of £"
+          Subtitle = Some(lit "Millions of £")
           Rows =
               [ "Q1", [ 12500000.0 ]
                 "Q2", [ 15200000.0 ]
@@ -539,8 +547,9 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "revenue" ]
-          Title = Some "A very long axis name"
-          YTitle = Some "Monthly recurring revenue, net of refunds and credits, in pounds sterling at constant currency"
+          Title = Some(lit "A very long axis name")
+          YTitle =
+              Some(lit "Monthly recurring revenue, net of refunds and credits, in pounds sterling at constant currency")
           Rows = [ "Q1", [ 120.0 ]; "Q2", [ 150.0 ]; "Q3", [ 90.0 ]; "Q4", [ 175.0 ] ] }
       // ── Phase 880 — legend placement ──
       //
@@ -558,7 +567,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "alpha"; "beta"; "gamma"; "delta"; "epsilon"; "zeta"; "eta"; "theta" ]
-          Title = Some "Eight series, one legend"
+          Title = Some(lit "Eight series, one legend")
           Rows =
               [ "North", [ 80.0; 100.0; 60.0; 45.0; 92.0; 30.0; 71.0; 55.0 ]
                 "South", [ 130.0; 110.0; 75.0; 50.0; 64.0; 41.0; 88.0; 62.0 ] ] }
@@ -575,7 +584,7 @@ let private cases: Case list =
           YFields =
               [ "monthly_recurring_revenue_gbp_constant_currency"
                 "monthly_recurring_revenue_gbp_reported_currency" ]
-          Title = Some "A column that cannot hold its names"
+          Title = Some(lit "A column that cannot hold its names")
           Rows = [ "Q1", [ 120.0; 118.0 ]; "Q2", [ 150.0; 147.0 ] ] }
       { plain with
           // TOP — the pre-880 band, now something an author asks for. Byte-for
@@ -585,7 +594,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "sales"; "target" ]
-          Title = Some "Sales vs target"
+          Title = Some(lit "Sales vs target")
           LegendPosition = Some "Top"
           Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
       { plain with
@@ -596,8 +605,8 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "sales"; "target" ]
-          Title = Some "Sales vs target"
-          XTitle = Some "Sales region"
+          Title = Some(lit "Sales vs target")
+          XTitle = Some(lit "Sales region")
           LegendPosition = Some "Bottom"
           Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
       { plain with
@@ -607,7 +616,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "sales"; "target" ]
-          Title = Some "Sales vs target"
+          Title = Some(lit "Sales vs target")
           LegendPosition = Some "None"
           Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
       // ── The BAND overflow rule (operator decision, 2026-08-18) ──
@@ -633,7 +642,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "support_revenue"; "training_revenue"; "product_revenue"; "usage_revenue" ]
-          Title = Some "Revenue by line"
+          Title = Some(lit "Revenue by line")
           LegendPosition = Some "Top"
           Rows = [ "Q1", [ 80.0; 45.0; 130.0; 22.0 ]; "Q2", [ 92.0; 51.0; 118.0; 30.0 ] ] }
       { plain with
@@ -647,7 +656,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "support_revenue"; "training_revenue"; "product_revenue"; "usage_revenues" ]
-          Title = Some "Revenue by line"
+          Title = Some(lit "Revenue by line")
           LegendPosition = Some "Top"
           Rows = [ "Q1", [ 80.0; 45.0; 130.0; 22.0 ]; "Q2", [ 92.0; 51.0; 118.0; 30.0 ] ] }
       { plain with
@@ -663,7 +672,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "support_revenue"; "training_revenue"; "product_revenue"; "usage_revenues" ]
-          Title = Some "Revenue by line"
+          Title = Some(lit "Revenue by line")
           LegendPosition = Some "Bottom"
           Rows = [ "Q1", [ 80.0; 45.0; 130.0; 22.0 ]; "Q2", [ 92.0; 51.0; 118.0; 30.0 ] ] }
       { plain with
@@ -675,7 +684,7 @@ let private cases: Case list =
           Kind = ChartKind.Pie
           XField = "department"
           YFields = [ "share" ]
-          Title = Some "Budget share"
+          Title = Some(lit "Budget share")
           LegendPosition = Some "Top"
           Rows = [ "Ops", [ 40.0 ]; "R&D", [ 35.0 ]; "Sales", [ 25.0 ] ] }
       // ── Phase 881 — selective data labels ──
@@ -693,7 +702,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "sales"; "target" ]
-          Title = Some "Sales vs target"
+          Title = Some(lit "Sales vs target")
           DataLabels = Some "Ends"
           Rows = [ "North", [ 80.0; 100.0 ]; "South", [ 130.0; 110.0 ]; "East", [ 60.0; 90.0 ] ] }
       { plain with
@@ -706,7 +715,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "sprint"
           YFields = [ "done"; "doing"; "blocked" ]
-          Title = Some "Tickets by status"
+          Title = Some(lit "Tickets by status")
           Stacked = true
           DataLabels = Some "Ends"
           Rows = [ "S1", [ 12.0; 5.0; 3.0 ]; "S2", [ 18.0; 4.0; 0.0 ]; "S3", [ 9.0; 7.0; 2.0 ] ] }
@@ -719,7 +728,7 @@ let private cases: Case list =
           Kind = ChartKind.Line
           XField = "day"
           YFields = [ "cpu"; "mem" ]
-          Title = Some "Load by day"
+          Title = Some(lit "Load by day")
           DataLabels = Some "Ends"
           Rows = [ "Mon", [ 20.0; 55.0 ]; "Tue", [ 35.0; 60.0 ]; "Wed", [ 28.0; 52.0 ] ] }
       { plain with
@@ -730,7 +739,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "quarter"
           YFields = [ "variance" ]
-          Title = Some "Variance to plan"
+          Title = Some(lit "Variance to plan")
           DataLabels = Some "Ends"
           Rows = [ "Q1", [ 12.0 ]; "Q2", [ -8.0 ]; "Q3", [ 5.0 ]; "Q4", [ -14.0 ] ] }
       { plain with
@@ -744,7 +753,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "revenue" ]
-          Title = Some "Revenue by region"
+          Title = Some(lit "Revenue by region")
           DataLabels = Some "Ends"
           Rows =
               [ "North", [ 12500000.0 ]
@@ -760,7 +769,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "month"
           YFields = [ "revenue" ]
-          Title = Some "At the label-fit boundary"
+          Title = Some(lit "At the label-fit boundary")
           UnitMode = Some "Off"
           DataLabels = Some "Ends"
           Rows =
@@ -783,7 +792,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "month"
           YFields = [ "revenue" ]
-          Title = Some "Past the label-fit boundary"
+          Title = Some(lit "Past the label-fit boundary")
           UnitMode = Some "Off"
           DataLabels = Some "Ends"
           Rows =
@@ -814,7 +823,7 @@ let private cases: Case list =
           Kind = ChartKind.Line
           XField = "day"
           YFields = [ "sessions" ]
-          Title = Some "Sessions by day"
+          Title = Some(lit "Sessions by day")
           XScale = Some "Temporal"
           Rows = seriesOver (isoRun "2026-01-05" 1 30) }
       { plain with
@@ -827,7 +836,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "month"
           YFields = [ "revenue" ]
-          Title = Some "Revenue by month"
+          Title = Some(lit "Revenue by month")
           XScale = Some "Temporal"
           Rows = seriesOver (isoMonths 2026 1 24) }
       { plain with
@@ -838,7 +847,7 @@ let private cases: Case list =
           Kind = ChartKind.Line
           XField = "year"
           YFields = [ "headcount" ]
-          Title = Some "Headcount by year"
+          Title = Some(lit "Headcount by year")
           XScale = Some "Temporal"
           Rows = seriesOver (isoYears 2017 10) }
       { plain with
@@ -849,7 +858,7 @@ let private cases: Case list =
           Kind = ChartKind.Line
           XField = "week"
           YFields = [ "orders" ]
-          Title = Some "At the day-format boundary"
+          Title = Some(lit "At the day-format boundary")
           XScale = Some "Temporal"
           Rows = seriesOver (isoRun "2026-03-02" 7 7) }
       { plain with
@@ -861,7 +870,7 @@ let private cases: Case list =
           Kind = ChartKind.Line
           XField = "month"
           YFields = [ "orders" ]
-          Title = Some "Past the day-format boundary"
+          Title = Some(lit "Past the day-format boundary")
           XScale = Some "Temporal"
           Rows = seriesOver (isoMonths 2026 1 6) }
       { plain with
@@ -873,7 +882,7 @@ let private cases: Case list =
           Kind = ChartKind.Line
           XField = "month"
           YFields = [ "orders" ]
-          Title = Some "At the year-format boundary"
+          Title = Some(lit "At the year-format boundary")
           XScale = Some "Temporal"
           Rows = seriesOver (isoMonths 2024 1 30) }
       { plain with
@@ -885,7 +894,7 @@ let private cases: Case list =
           Kind = ChartKind.Line
           XField = "year"
           YFields = [ "orders" ]
-          Title = Some "Past the year-format boundary"
+          Title = Some(lit "Past the year-format boundary")
           XScale = Some "Temporal"
           Rows = seriesOver (isoYears 2021 6) }
       { plain with
@@ -897,8 +906,8 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "month"
           YFields = [ "revenue" ]
-          Title = Some "Revenue by month"
-          XTitle = Some "Reporting month"
+          Title = Some(lit "Revenue by month")
+          XTitle = Some(lit "Reporting month")
           XScale = Some "Temporal"
           Rows = seriesOver (isoMonths 2026 1 12) }
       { plain with
@@ -910,7 +919,7 @@ let private cases: Case list =
           Kind = ChartKind.Scatter
           XField = "day"
           YFields = [ "latency" ]
-          Title = Some "Latency over time"
+          Title = Some(lit "Latency over time")
           XScale = Some "Temporal"
           Rows = seriesOver (isoRun "2026-02-01" 3 12) }
       { plain with
@@ -921,7 +930,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "month"
           YFields = [ "direct"; "partner" ]
-          Title = Some "Revenue by channel"
+          Title = Some(lit "Revenue by channel")
           Stacked = true
           XScale = Some "Temporal"
           Rows =
@@ -942,7 +951,7 @@ let private cases: Case list =
           Kind = ChartKind.Line
           XField = "day"
           YFields = [ "metropolitan northern region"; "outlying southern region" ]
-          Title = Some "A crowded date axis"
+          Title = Some(lit "A crowded date axis")
           UnitMode = Some "Off"
           XScale = Some "Temporal"
           Rows =
@@ -989,7 +998,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "instrument"
           YFields = [ "notional" ]
-          Title = Some "Notional outstanding"
+          Title = Some(lit "Notional outstanding")
           UnitMode = Some "Off"
           Rows =
               [ "Swaps", [ 1.5e15 ]
@@ -1014,7 +1023,7 @@ let private cases: Case list =
           Kind = ChartKind.Pie
           XField = "instrument"
           YFields = [ "notional" ]
-          Title = Some "Notional by instrument"
+          Title = Some(lit "Notional by instrument")
           UnitMode = Some "Off"
           Rows =
               [ "Swaps", [ 5.0e20 ]
@@ -1040,7 +1049,7 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "alpha"; "beta"; "gamma"; "delta"; "epsilon" ]
-          Title = Some "Five series, one folded"
+          Title = Some(lit "Five series, one folded")
           Rows =
               [ "North", [ 80.0; 100.0; 60.0; 45.0; 92.0 ]
                 "South", [ 130.0; 110.0; 75.0; 50.0; 64.0 ] ] }
@@ -1057,11 +1066,50 @@ let private cases: Case list =
           Kind = ChartKind.Bar
           XField = "region"
           YFields = [ "monthly_recurring_revenue_in_pounds_sterling" ]
-          Title = Some "Hostile labels"
+          Title = Some(lit "Hostile labels")
           Rows =
               [ "<script>alert('x')</script>", [ 80.0 ]
                 "North & \"South\"", [ 130.0 ]
-                "a region name comfortably past the clamp", [ 60.0 ] ] } ]
+                "a region name comfortably past the clamp", [ 60.0 ] ] }
+      { plain with
+          // Phase 1143 — THE NON-LITERAL TEXT ARMS, and the fixture whose
+          // absence let two hosts drop them for three phases while the family
+          // was otherwise at byte parity. All four `TextSource`-typed fields
+          // carry a non-`Literal` arm at once, so the golden pins four separate
+          // things a host can get wrong:
+          //
+          //   * the visible title and the drawing's a11y `Title` carry the
+          //     `Bound` arm THROUGH — a host that resolves here bakes live
+          //     binding state into a shared golden, and one that drops it
+          //     leaves the chart untitled;
+          //   * the axis titles carry their arms through and the capitalised
+          //     field-name FALLBACK does not stand in — the failure that reads
+          //     as an ordinary chart, because "Region" and "Sales" look like
+          //     titles somebody chose;
+          //   * the y title is long enough that a `Literal` of it would be
+          //     truncated against the plot height (compare `bar-long-y-title`),
+          //     so the golden shows it whole and clause 4 is pinned by a
+          //     measurable difference rather than by assertion;
+          //   * the subtitle is present, so the display-unit slot is suppressed
+          //     and the top margin reserves its line — the PRESENCE rules,
+          //     holding on an arm whose text nothing here can read.
+          //
+          // The generated summary carries no title on any arm, which this case
+          // pins for the arms that would otherwise be most tempting to fold in.
+          Name = "bar-bound-i18n-titles"
+          Kind = ChartKind.Bar
+          XField = "region"
+          YFields = [ "sales" ]
+          Title = Some(TextSource.Bound(Binding.Static(Some "Revenue, from the live binding")))
+          XTitle = Some(TextSource.I18n("chart.axis.region", Map.empty))
+          YTitle =
+              Some(
+                  TextSource.Bound(
+                      Binding.Static(Some "Monthly recurring revenue, net of refunds and credits, in pounds sterling")
+                  )
+              )
+          Subtitle = Some(TextSource.I18n("chart.subtitle.rolling_twelve_months", Map.empty))
+          Rows = [ "North", [ 80.0 ]; "South", [ 130.0 ]; "East", [ 60.0 ] ] } ]
 
 /// Build the typed `Row` rows (the canonical embedded-data shape; fuaran#665
 /// named the slot — the representation is the same `Map<string,obj>`).
@@ -1107,11 +1155,11 @@ let private specOf (case: Case) : ChartSpec<obj> =
         Kind = case.Kind
         XField = case.XField
         YFields = case.YFields
-        Title = case.Title |> Option.map TextSource.Literal
+        Title = case.Title
         ValueFormat = case.ValueFormat
-        XTitle = case.XTitle |> Option.map TextSource.Literal
-        YTitle = case.YTitle |> Option.map TextSource.Literal
-        Subtitle = case.Subtitle |> Option.map TextSource.Literal
+        XTitle = case.XTitle
+        YTitle = case.YTitle
+        Subtitle = case.Subtitle
         LegendPosition = case.LegendPosition |> Option.map legendPositionOf
         DataLabels = case.DataLabels |> Option.map dataLabelsOf
         XScale = case.XScale |> Option.map xScaleOf
@@ -1335,9 +1383,27 @@ let private inputJson (case: Case) : string =
         | ChartKind.Scatter -> "Scatter"
         | ChartKind.Heatmap -> "Heatmap"
 
+    // Phase 1143 — a `TextSource` in canonical wire JSON. The `Literal` arm is
+    // the BARE STRING (0.2.0 canonical form, WIRE_FORMAT 16), so every pre-1143
+    // input is byte-identical; the other two arms are `$type`-tagged with their
+    // members in canonical order. The harness spells only the arms the corpus
+    // uses and fails loudly on the rest, exactly as `valueFormat` does — a
+    // fixture reaching for a `Query` binding would need an accessor no wire
+    // document carries, so it must be a deliberate act rather than a default.
+    let textSourceJson (t: TextSource) : string =
+        match t with
+        | TextSource.Literal text -> "\"" + esc text + "\""
+        | TextSource.Bound(Binding.Static(Some v)) ->
+            "{\"$type\":\"Bound\",\"binding\":{\"$type\":\"Static\",\"value\":\""
+            + esc v
+            + "\"}}"
+        | TextSource.I18n(key, args) when Map.isEmpty args ->
+            "{\"$type\":\"I18n\",\"args\":{},\"key\":\"" + esc key + "\"}"
+        | _ -> failwith "chart-lowering inputs carry only Literal, Bound-of-Static and empty-args I18n text sources"
+
     let title =
         match case.Title with
-        | Some t -> "\"" + esc t + "\""
+        | Some t -> textSourceJson t
         | None -> "null"
 
     // Phase 876 — both keys are OMITTED when absent, so the twelve pre-876
@@ -1358,17 +1424,24 @@ let private inputJson (case: Case) : string =
         | None -> ""
         | Some m -> sprintf ",\"axisUnitMode\":\"%s\"" (esc m)
 
-    // Phase 878 — plain-string keys beside `title`, OMITTED when absent, so
-    // every input predating this phase is untouched.
+    // Phase 878 — keys beside `title`, OMITTED when absent, so every input
+    // predating this phase is untouched. `optText` carries the bare enum
+    // strings; `optTextSource` carries the three `TextSource`-typed ones, which
+    // spell every arm since Phase 1143.
     let optText (key: string) (v: string option) =
         match v with
         | None -> ""
         | Some s -> sprintf ",\"%s\":\"%s\"" key (esc s)
 
+    let optTextSource (key: string) (v: TextSource option) =
+        match v with
+        | None -> ""
+        | Some t -> sprintf ",\"%s\":%s" key (textSourceJson t)
+
     let titles =
-        optText "xTitle" case.XTitle
-        + optText "yTitle" case.YTitle
-        + optText "subtitle" case.Subtitle
+        optTextSource "xTitle" case.XTitle
+        + optTextSource "yTitle" case.YTitle
+        + optTextSource "subtitle" case.Subtitle
         // Phase 880 — same OMITTED-when-absent posture; the value is the
         // canonical `ChartLegendPosition` enum string.
         + optText "legendPosition" case.LegendPosition
@@ -1505,6 +1578,70 @@ let chartLoweringTests =
                           (CanonicalJson.encodeNode nodeA)
                           (CanonicalJson.encodeNode nodeB)
                           (sprintf "%s: field-order-dependent" case.Name)
+              }
+
+              // ── Phase 1143 — the text contract ──
+              //
+              // The golden above already pins these bytes; this states what the
+              // bytes MEAN, so a future regeneration that quietly resolved or
+              // dropped an arm would rewrite the golden and still fail here.
+              // `docs/CHART-LOWERING-TEXT-CONTRACT.md` is the recorded contract.
+              test "every TextSource arm carries into the drawing, unresolved" {
+                  // `TextSource` carries no structural equality (a `Binding` arm
+                  // holds an accessor function), so the arms are compared by a
+                  // projection rather than directly — which also keeps the
+                  // failure message readable.
+                  let describe (t: TextSource) : string =
+                      match t with
+                      | TextSource.Literal s -> "Literal:" + s
+                      | TextSource.Bound(Binding.Static(Some v)) -> "Bound-Static:" + v
+                      | TextSource.Bound _ -> "Bound:<other>"
+                      | TextSource.I18n(key, _) -> "I18n:" + key
+
+                  let ds = loweredCase "bar-bound-i18n-titles"
+
+                  let labelTexts =
+                      ds.Shapes
+                      |> List.choose (function
+                          | Shape.Label(_, _, t, _) -> Some(describe t)
+                          | _ -> None)
+
+                  // Clause 1 — carried, not resolved. The y title is the load-
+                  // bearing one: a `Literal` of that length is truncated against
+                  // the plot height (`bar-long-y-title`), so its surviving whole
+                  // is clause 4 measured rather than asserted.
+                  let expectedArms =
+                      [ "Bound-Static:Revenue, from the live binding"
+                        "Bound-Static:Monthly recurring revenue, net of refunds and credits, in pounds sterling"
+                        "I18n:chart.axis.region"
+                        "I18n:chart.subtitle.rolling_twelve_months" ]
+
+                  for expected in expectedArms do
+                      Expect.contains labelTexts expected "a declared TextSource arm did not reach a label"
+
+                  // Clause 1, the a11y half: the drawing's own `Title` is the
+                  // spec's, whichever arm it carries.
+                  Expect.equal
+                      (ds.Title |> Option.map describe)
+                      (Some "Bound-Static:Revenue, from the live binding")
+                      "the drawing's a11y Title dropped the Bound arm"
+
+                  // Clause 5 — the capitalised-field-name fallback answers
+                  // ABSENCE only. THIS is the assertion that catches a host
+                  // dropping an axis arm, because the fallback draws a plausible
+                  // axis name and the chart looks entirely ordinary.
+                  Expect.isFalse
+                      (labelTexts |> List.contains "Literal:Region")
+                      "the x-axis fallback stood in for a declared I18n title"
+
+                  Expect.isFalse
+                      (labelTexts |> List.contains "Literal:Sales")
+                      "the y-axis fallback stood in for a declared Bound title"
+
+                  // Clause 6 — the generated summary names no title on any arm.
+                  Expect.isFalse
+                      ((summaryOf "bar-bound-i18n-titles").Contains "Revenue, from the live binding")
+                      "the accessible summary folded in the title"
               }
 
               // ── Phase 637 — stacked-series semantics ──
