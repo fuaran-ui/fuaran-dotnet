@@ -13,6 +13,8 @@
 //    FUARAN078 — unstable row identity (neither RowKey nor RowKeyField)
 //    FUARAN090 — inert editable grid (editable: true without a direct
 //                Binding.State source — Phase 663 write-back floor)
+//    FUARAN114 — a column `field` / `rowKeyField` naming a column absent from
+//                the source's statically-known schema (Phase 1149 — error)
 // ============================================================================
 
 open Expecto
@@ -78,6 +80,50 @@ let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<
       ExtraAttributes = None }
 
 let private gridWith (source: Binding<Row seq>) : Node<Msg> = gridWithEditable false source
+
+/// A read-only grid naming the fields it projects — the shape FUARAN114 judges.
+/// `columnFields` are the column `field`s in order; `rowKeyField` is the grid's
+/// own row-identity name.
+let private gridNamingFields
+    (columnFields: string list)
+    (rowKeyField: string option)
+    (source: Binding<Row seq>)
+    : Node<Msg> =
+    { Id = "grid"
+      Kind =
+        NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source = source
+              RowKey = None
+              RowKeyField = rowKeyField
+              Columns =
+                columnFields
+                |> List.map (fun f ->
+                    { Label = f
+                      Value = None
+                      Field = Some f
+                      Sortable = None
+                      Editable = None
+                      Format = CellFormat.None
+                      Kind = CellKindErased.Text
+                      Width = ColumnWidth.Auto })
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              StaticRows = None }
+        )
+      State = None
+      Style = None
+      Accessibility = None
+      Motion = Defaults.Motion.none
+      ExtraAttributes = None }
+
+/// `embeddedSource` carries exactly one column, `dept`.
+let private deptSchema = [ "dept" ]
 
 [<Tests>]
 let tests =
@@ -302,4 +348,112 @@ let tests =
               match PreEmitValidate.validate (dashboard "root" [ readOnlyTransformGrid ]) with
               | Ok() -> ()
               | Error defects -> failtestf "Expected Ok for a read-only Transform grid, got: %A" defects
+          }
+
+          // Phase 1149 — FUARAN114: the grid's read-side grounding, the twin of
+          // FUARAN086's chart rule. Positive, negative, and the two shapes where
+          // the schema is not derivable and the rule must stay silent.
+          test "FUARAN114: a column field absent from the source's schema is an error" {
+              let grid =
+                  gridNamingFields
+                      [ "dept"; "headcount" ]
+                      (Some "dept")
+                      (Binding.Transform(TransformSource.Data(embeddedSource), [], None))
+
+              match PreEmitValidate.validate (dashboard "root" [ grid ]) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.GridFieldUngrounded("grid", "headcount", deptSchema))
+                      "GridFieldUngrounded surfaced for the absent column field, carrying the schema's column set"
+
+                  // The column that IS in the schema raises nothing — the rule
+                  // reports per offending name, not per grid.
+                  Expect.isFalse
+                      (defects
+                       |> List.exists (fun d -> d = PreEmitDefect.GridFieldUngrounded("grid", "dept", deptSchema)))
+                      "the grounded column must not be reported"
+
+                  let code, severity, _ =
+                      PreEmitValidate.describe (PreEmitDefect.GridFieldUngrounded("grid", "headcount", deptSchema))
+
+                  Expect.equal code "FUARAN114" "the stable code"
+                  Expect.equal severity DefectSeverity.Error "FUARAN114 is an error, not an advisory"
+              | Ok() -> failtest "Expected FUARAN114 defect, got Ok"
+          }
+
+          test "FUARAN114: a rowKeyField absent from the source's schema is an error" {
+              let grid =
+                  gridNamingFields
+                      [ "dept" ]
+                      (Some "id")
+                      (Binding.Transform(TransformSource.Data(embeddedSource), [], None))
+
+              match PreEmitValidate.validate (dashboard "root" [ grid ]) with
+              | Error defects ->
+                  Expect.contains
+                      defects
+                      (PreEmitDefect.GridFieldUngrounded("grid", "id", deptSchema))
+                      "GridFieldUngrounded surfaced for the absent rowKeyField"
+              | Ok() -> failtest "Expected FUARAN114 defect for the rowKeyField, got Ok"
+          }
+
+          test "FUARAN114 does not fire when every named field is in the schema" {
+              let grid =
+                  gridNamingFields
+                      [ "dept" ]
+                      (Some "dept")
+                      (Binding.Transform(TransformSource.Data(embeddedSource), [], None))
+
+              match PreEmitValidate.validate (dashboard "root" [ grid ]) with
+              | Ok() -> ()
+              | Error defects -> failtestf "Expected Ok for a fully grounded grid, got: %A" defects
+          }
+
+          test "FUARAN114 stands down where the output schema is not derivable" {
+              // A non-empty pipeline changes the column set — derive adds,
+              // project/groupBy remove — so a name absent from the SOURCE schema
+              // may be perfectly correct against the pipeline's output. Refusing
+              // it here would be a guess, and an error that is occasionally wrong
+              // gets suppressed.
+              let pipelined =
+                  gridNamingFields
+                      [ "headcount" ]
+                      (Some "id")
+                      (Binding.Transform(
+                          TransformSource.Data(embeddedSource),
+                          paramPipeline,
+                          Some
+                              [ { From = Binding.Filter("dept", None)
+                                  Name = "dept" } ]
+                      ))
+
+              match PreEmitValidate.validate (dashboard "root" [ declarativeChip "dept"; pipelined ]) with
+              | Ok() -> ()
+              | Error defects ->
+                  Expect.isFalse
+                      (defects
+                       |> List.exists (fun d ->
+                           match d with
+                           | PreEmitDefect.GridFieldUngrounded _ -> true
+                           | _ -> false))
+                      (sprintf "FUARAN114 must not fire over a non-empty pipeline, got: %A" defects)
+
+              // Every other source shape is unknowable before the tree runs.
+              for source in
+                  [ Binding.Static(Some Seq.empty)
+                    Binding.State("grid-rows", None)
+                    Binding.Query("rows", (fun (raw: obj) -> unbox raw), None) ] do
+                  let grid = gridNamingFields [ "headcount" ] (Some "id") source
+
+                  match PreEmitValidate.validate (dashboard "root" [ grid ]) with
+                  | Ok() -> ()
+                  | Error defects ->
+                      Expect.isFalse
+                          (defects
+                           |> List.exists (fun d ->
+                               match d with
+                               | PreEmitDefect.GridFieldUngrounded _ -> true
+                               | _ -> false))
+                          (sprintf "FUARAN114 must not fire over %A, got: %A" source defects)
           } ]

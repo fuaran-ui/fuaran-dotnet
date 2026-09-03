@@ -214,4 +214,12 @@ public sealed record ButtonOptions
 
     /// <summary>An optional leading icon name.</summary>
     public string? Icon { get; init; }
+
+    /// <summary>
+    /// What the button raises when clicked (Phase 1153). Unset is an empty chain —
+    /// a button that renders and raises nothing, which is the shape this veneer
+    /// authored before the <see cref="FuaranAction"/> vocabulary existed and is
+    /// therefore byte-unchanged for an author who does not set it.
+    /// </summary>
+    public FuaranAction? OnClick { get; init; }
 }
