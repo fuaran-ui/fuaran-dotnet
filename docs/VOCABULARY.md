@@ -72,6 +72,24 @@ result when a leg actually ran: a leg that was not executed has measured nothing
 fact from a leg that found nothing. Recurrence governs here exactly as it does for signal (b) – one
 sighting is a sighting; a repeated or cross-model one is demand.
 
+**What the shadow leg still cannot see, and the instrument that answers it (2026-09-03).** The leg
+measures what a model *reaches for*, so it can only ever report on classes somebody thought to pose a
+task about — which leaves the same blind spot one level up: a capability nobody has written a prompt
+for produces no sightings, and an absence of sightings on a class nobody probed reads exactly like an
+absence of demand. The harness therefore also runs a **platform-baseline census**: a periodic diff of
+the whole expressible surface against named external checklists (the HTML element inventory, WCAG 2.2,
+and a named list of what a page can do), which enumerates rather than measures and so finds the
+classes no task was ever posed about. Its first run found **four capability classes carrying no
+Appendix A row of any kind** — not admitted, not declined, not reserved — and each is now probed by a
+purpose-built family on the shadow leg above.
+
+The two are complementary and neither substitutes for the other. **The census does not produce §1.1
+evidence** — it produces *candidates*, and a candidate with no sighting behind it is exactly the "a
+real product might want it" case the paragraph below refuses. What it produces instead is a claim
+about **this charter's own coverage**, which no demand channel can make: an absent row cannot be
+cited, reopened or argued against, so a class with no row is not declined, it is unexamined. See the
+proposed rows at the end of Appendix A.
+
 A kind whose only justification is "a real product might want it" or "it rounds out the set" has **no
 demand evidence** and is not admitted. It may be *reserved* in the plateau taxonomy (Appendix A) so its
 name and disposition are pre-decided, but reservation is not admission – implementation stays
@@ -509,6 +527,51 @@ lucky.
 
 ---
 
+### Proposed rows — **NOT RATIFIED** (platform-baseline census, 2026-09-03)
+
+**Nothing in this subsection is a ruling.** These are the census's *proposals*, surfaced here because
+this is where a charter reader looks and because an absent row is not a decline — it is silence, and
+silence is how a capability class reaches a promotion-readiness wave unexamined. Each awaits an
+operator ratification pass, and a ruling of **decline** is a complete answer: that is precisely what
+the **Host chrome** disposition exists to record.
+
+The first four classes carry **no row anywhere in Appendix A today**. Each proposal cites
+cross-family shadow-leg sightings from the 2026-09-03 probe sweep, harvested with the kind-list
+teaching removed; those sightings carry their shadow provenance per §1.1 and are evidence, never
+dispositions.
+
+| Class (no row today) | Proposed disposition | Ruling proposed |
+|---|---|---|
+| Right-to-left / bidirectional text | **SPLIT — Host chrome + Field** | Layout mirroring is **Host chrome** on the `Virtualisation` reasoning: a mirrored tree and an unmirrored one are identical in every respect a consumer can observe, and the host knows the locale. **Per-value bidirectional isolation is not reducible to it** and is proposed a §2.1 **Field** on the text surface — a tree that cannot say "this reference reads left-to-right inside this right-to-left sentence" produces visually jumbled tracking numbers, which is a correctness failure rather than a styling one. Cross-family: an isolation token ×6 on one vendor, direction-carrying reaches on both. Bears on WCAG 1.3.2. |
+| Paged output (printing) | **SPLIT — Host chrome + Field** | The paged **medium** is **Host chrome**: the host owns it, and a server-driven host has no printer at all (the `Undo` row's fake-affordance argument). **Break control** — do not split this row, keep this block whole, repeat this header — is proposed a §2.1 **Field**, argued irreducible because these are statements about *which subtree* must stay together and only the document can name its own subtrees; the same shape as `sortStateKey`, a behaviour the host performs keyed by something only the tree can say. Screen-only content is proposed **Covered** by `Switch`. Both vendors independently modelled two renderings of one document and both invented a rule vocabulary for the boundary. |
+| Export (take this away as a file) | **Covered — `Action.Invoke`; RECORD the row** | Neither vendor reached for a kind; every reach was on the **effect axis**, which is where the answer already is. A host-registered capability id is default-deny, its permission is the host's, its result and refusal are typed, and it needs **no vocabulary at all** — with `Action.WriteToClipboard` the shipped proof that handing data out of the page is an expressible effect. The proposal is therefore to record the position rather than to add anything. *Deferred, undecided:* exporting the **rendered artefact** (a chart as a picture) rather than the rows — the data is the tree's, the rendering is the host's, and it needs its own walk. |
+| Screen capture and camera input | **Host chrome** | The `KeyboardShortcut` trust reasoning, and stronger: a decoded tree from an untrusted emitter that can start a screen capture is a screen-recorder-shaped capability, and the grant is per-origin and sticky in the way the notification row records. The emitter is arbitrary; the origin is the host's. If it is ever wanted it is `Action.Invoke` with a host-owned capability id — never a kind, and never a channel string. **Boundary worth keeping visible:** paste-an-image is the **admitted** `FileDrop` / `PasteUpload` pair; take-a-picture-of-the-screen is this row, and a reader who conflates them will conclude the class is covered when it is not. |
+
+Three **existing** rows the same sweep bears on, none of which it proposes to change:
+
+- **`SystemNotification` / out-of-page alerting** — the 2026-09-02 Host-chrome recommendation is
+  **supported**, not unsettled. Every capability-bearing reach was for a **channel or a permission**,
+  never a kind; and the channel shape is the one that ruling refused by name, because a reserved
+  channel string would make a host permitting in-app toasts silently permit OS-level delivery with no
+  gate vocabulary for the difference. What the sweep adds is that the reaches are for the *permission
+  ceremony* as much as the delivery, which strengthens the scarce-and-unrecoverable-grant argument.
+- **`Tree` / `TreeView`** — the row is **undecided** (Kind reserved *or* Composition) and this is the
+  strongest evidence yet put in front of it. Across both vendors and both probes the hierarchy was
+  expressed as **recursive domain nodes**, not as a tree widget; container reaches appear once each.
+  That points to Composition. The counter-argument the census will not settle is arbitrary **depth**,
+  which a fixed composition cannot express and which neither probe forced — a depth-forcing follow-on
+  probe is the cheapest next measurement.
+- **`Carousel` / `Gallery`** — the standing **Composition** ruling **holds, and now has evidence**.
+  The container name does appear, but so does its decomposition from the same emissions: a stage, an
+  arrow pair, a dot row, a position counter. A model reaching for the parts as well as the whole is
+  describing a composition.
+
+And three rows admitted between the census being commissioned and being run — `Embed`, `Tooltip` and
+the `Combobox` variant — were re-probed as **post-ship adoption** evidence rather than as gaps. All
+three are reached for under their shipped names by unconstrained models that were never given them,
+which is the compounding signal §1.1's recurrence rule predicts and the estate has rarely been able
+to measure.
+
 ## Appendix B – Demand-evidence sweep (recorded 2026-07-07)
 
 This is the recorded output of the demand-evidence sweep the charter mandates before publication: a mine
@@ -562,6 +625,17 @@ Re-run this sweep (and update this appendix) when: ~~the confusion metric's firs
 release-gate emission eval completes its first canonical-set pass; or a fourth real-app translation
 exercise surfaces a gap. A non-empty batch result promotes to a feature-proposal pass under this
 charter's gates.
+
+**This appendix's successor is a standing instrument (2026-09-03).** The sweep recorded here was a
+one-off: it ran once, against the sources listed above, and its re-run trigger is a list of events
+somebody has to notice. The **platform-baseline census** described in §1.1 generalises it — the same
+supply-side question (what do external checklists contain that the surface does not name?), versioned,
+re-runnable, offline, free, owned by the evaluation harness's census stage, and carrying a
+surface **fingerprint** so that "is this stale?" is a comparison rather than a judgement. Its own
+re-run trigger fires on any movement in the expressible surface, a new element family, a WCAG dot
+release, a new named web capability, or twelve months. Its first run's proposals are at the end of
+Appendix A. **This appendix is not superseded** — it records a verdict at a date, and the census
+diffs against it rather than replacing it.
 
 **A confusion-metric re-run is not a sweep trigger on its own.** The trigger above is the metric's
 *first* baseline – the moment it stopped being an absent instrument. Subsequent runs measure a rate, and
