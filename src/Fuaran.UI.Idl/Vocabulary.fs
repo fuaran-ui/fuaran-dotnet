@@ -177,6 +177,22 @@ let private textDirection =
 /// Phase 691 — the per-node animation token. NEVER on the wire (`WIRE_FORMAT.md`
 /// §9: motion is consumer-authored, not AI-authored), and declared only so the
 /// host-only `Node.motion` field has a type to name.
+///
+/// Fuaran-UI Phase 1122 — `CrossFade` and `SlideBetween` join the eight, and they
+/// are the first two tokens whose subject is a TRANSITION BETWEEN two renderings
+/// rather than the arrival or the state of one. The other eight answer "what does
+/// this node do when it appears, loads, errors or refreshes"; these two answer
+/// "what happens when the thing standing here is REPLACED by another", which is
+/// what a `Switch` does every time its bound selector moves.
+///
+/// They are declared here rather than as a `SwitchSpec` member for the reason
+/// the enum exists at all: motion is the consumer's, not the document's. A
+/// between-children transition is a look, and putting it on the spec would have
+/// made it a fact the wire carries and every host must reproduce — which is the
+/// opposite of what `Node.motion` being host-only decided. The cost of the
+/// placement is stated plainly so it is not rediscovered: because `motion` is
+/// wire-omitted (§9), NO corpus fixture can carry either token, and these two
+/// cases take no §11 forward-coupling cost on the codec at all.
 let private motion =
     Declare.enumOf
         "Motion"
@@ -187,7 +203,9 @@ let private motion =
           "ShakeOnError"
           "RotateOnRefresh"
           "SlideInFromRight"
-          "ExpandCollapse" ]
+          "ExpandCollapse"
+          "CrossFade"
+          "SlideBetween" ]
 
 /// `LayoutKind.ScrollArea`'s scroll-axis enum (distinct from `Orientation` — it
 /// adds `Both`).
@@ -2375,11 +2393,32 @@ let metaKinds: IdlKind list =
       // cross-field rule Draft 2020-12 cannot state, so it stays DECODER policy
       // alongside `reject-setstate-value-and-valuefrom` — its exact mirror image
       // — and `reject-missing-switch-statekey` moves into that same set.
+      //
+      // Fuaran-UI Phase 1122 — `autoAdvanceMs`. The one fact a host cannot
+      // recover from the tree: that this switch is meant to MOVE ON ITS OWN, and
+      // how often. Every other half of a carousel is already composable — the
+      // stage is a `Box`, the branches are the cases, the position is the bound
+      // key, the arrows and dots are ordinary controls writing that key — and
+      // nothing in any arrangement of those says a timer exists. Optional, so an
+      // absent key is the only spelling of "does not advance" and every switch
+      // written before this release encodes to the bytes it always did.
+      //
+      // It is a DURATION and not a boolean because "advances" without an interval
+      // is not renderable: a host would have to invent a period, and two hosts
+      // inventing different ones is exactly the divergence the corpus exists to
+      // prevent. Milliseconds on the `DurationLiteral` precedent.
+      //
+      // NON-POSITIVE IS REFUSED at decode, not canonicalised — the `Masonry.cols`
+      // ruling one file over: `0` reads as "off" to an emitter that has not read
+      // the spec, and the language already HAS a spelling for off (absence), so a
+      // silent rewrite would make two spellings mean one thing and hide the
+      // emitter's misunderstanding.
       { Tag = "Switch"
         Category = "Meta"
         Annotations = Annotations.Empty
         Fields =
-          [ req "cases" (TList(TRecord "SwitchCase"))
+          [ opt "autoAdvanceMs" TInt
+            req "cases" (TList(TRecord "SwitchCase"))
             req "default" TNode
             opt "on" (bindingOf TStr)
             opt "stateKey" TStr ] }

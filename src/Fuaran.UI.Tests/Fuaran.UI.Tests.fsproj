@@ -50,6 +50,7 @@
     <Compile Include="IdsTests.fs" />
     <Compile Include="ToneClassEmissionTests.fs" />
     <Compile Include="MotionEmissionTests.fs" />
+    <Compile Include="SwitchAutoAdvanceTests.fs" />
     <Compile Include="CustomRendererTests.fs" />
     <!-- CustomContractTests pins Phase 164's typed Custom-payload contract:
          the Fable-safe SHA-256 vs the BCL oracle, body-shape-hash validator

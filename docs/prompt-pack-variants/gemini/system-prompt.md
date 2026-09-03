@@ -225,7 +225,7 @@ NodeKind =
 | VisKind
 | Custom { componentId:str; moduleId:str; props:{ [key]:any }; contentHash?:ContentHash; exposedNodeIds?:str[] }
 | ErrorBoundary { child:Node; fallback:Node }
-| Switch { cases:{ child:Node; match:str }[]; default:Node; on?:Binding_str; stateKey?:str }
+| Switch { cases:{ child:Node; match:str }[]; default:Node; autoAdvanceMs?:int; on?:Binding_str; stateKey?:str }
 | FragmentDecl { body:Node; name:str; effect?:EffectClass; holes?:HoleDecl[] }
 | FragmentRef { name:str; args?:{ [key]:FragmentArg } }
 | Mount { capabilities:str[]; channel:GuestChannel; onBubble:closure; scopeId:str; inputs?:{ [key]:FragmentArg } }

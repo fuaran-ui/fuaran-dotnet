@@ -7841,6 +7841,10 @@
                 },
                 "on": {
                   "$ref": "#/$defs/Binding_str"
+                },
+                "autoAdvanceMs": {
+                  "type": "integer",
+                  "minimum": 1
                 }
               },
               "required": [

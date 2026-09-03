@@ -158,6 +158,24 @@ let legitimateEvents (node: Node<'Msg>) : Set<string> =
     // Stated rather than left silent because the absence of a row is otherwise
     // indistinguishable from an oversight, and a later reader wondering whether
     // a paged surface needs an inbound event should find the answer here.
+    //
+    // Phase 1122 — `Switch` takes no row either, and this one is worth stating
+    // most of all, because it LOOKS like it should. The phase gives a switch a
+    // timed advance, arrow keys and a swipe, and every one of those is a
+    // gesture the reader performs — so the obvious reading is that a new
+    // inbound event has arrived at this boundary.
+    //
+    // It has not. All three write the switch's OWN state key, and a state
+    // write is not an event: it reaches a server-driven session as whatever the
+    // WRITING control already reports, exactly as an ordinary `Action.SetState`
+    // does. The stage element itself dispatches nothing and is addressed by
+    // nothing, so admitting an event name here would open a boundary no wire
+    // member asks for — the `FileUpload` drop/paste ruling one kind over, and
+    // for the same reason: the allow-list is keyed by the node that RECEIVES
+    // an event, and this node receives none.
+    //
+    // A `Switch` therefore stays on the default-deny `Set.empty` below with an
+    // interval declared, exactly as it does without one.
     | _ -> Set.empty
 
 // ─── payload accessors ──────────────────────────────────────────────────────

@@ -277,7 +277,9 @@
         "ShakeOnError",
         "RotateOnRefresh",
         "SlideInFromRight",
-        "ExpandCollapse"
+        "ExpandCollapse",
+        "CrossFade",
+        "SlideBetween"
       ],
       "name": "Motion"
     },
@@ -2937,6 +2939,15 @@
     {
       "category": "Meta",
       "fields": [
+        {
+          "name": "autoAdvanceMs",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "int"
+          }
+        },
         {
           "name": "cases",
           "optionality": {

@@ -579,9 +579,13 @@ let errorBoundary<'Msg> : ErrorBoundarySpec<'Msg> =
 let switch<'Msg> : SwitchSpec<'Msg> =
     // Phase 768 — the default selector is the empty-key State form, so the
     // FUARAN083 "ungrounded switch" validator still fires on an unedited default.
+    // Phase 1122 — `AutoAdvanceMs = None`: the default switch does not advance.
+    // `None` is the only spelling of "no timer", so an unedited default is
+    // exactly the pre-1122 switch in the type, on the wire and on the screen.
     { On = Binding.State("", None)
       Cases = []
-      Default = errorBoundaryPlaceholder<'Msg> }
+      Default = errorBoundaryPlaceholder<'Msg>
+      AutoAdvanceMs = None }
 
 // ─── Fragment defaults ─────────────────────────────────────────────────────────
 //

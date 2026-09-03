@@ -88,6 +88,7 @@
     <Compile Include="ComboboxControl.fs" />
     <Compile Include="FileUploadDrop.fs" />
     <Compile Include="PopoverSurface.fs" />
+    <Compile Include="SwitchStage.fs" />
     <Compile Include="Render.fs" />
     <Compile Include="Hydration.fs" />
     <Compile Include="MathEnhance.fs" />

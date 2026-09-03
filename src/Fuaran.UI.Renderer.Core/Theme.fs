@@ -90,7 +90,7 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // its printed output would silently split the blocks the document declared
 // whole, which is precisely the unstyled-control skew this fingerprint exists
 // to catch.
-let vocabularyFingerprint = "fv1:a2691fe9295530d0"
+let vocabularyFingerprint = "fv1:8068069268d58955"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
@@ -205,6 +205,13 @@ let emphasisVar (emphasis: Emphasis) : string =
 /// `slide-in-from-right`; the remaining four (`slide-in-from-below` /
 /// `rotate-on-refresh` / `expand-collapse` / `none`) are no-op class
 /// hooks the consumer can override.
+///
+/// Phase 1122 — `cross-fade` / `slide-between` are the TRANSITION pair, and
+/// they behave differently from the eight above in one way worth knowing here:
+/// the other tokens style the node they sit on, where these two style what
+/// happens when a `Switch` REPLACES the child standing in its stage. The
+/// reference sheet therefore keys them on the stage wrapper's child, not on the
+/// wrapper itself.
 let motionVar (motion: Motion) : string =
     match motion with
     | Motion.None -> "none"
@@ -215,6 +222,8 @@ let motionVar (motion: Motion) : string =
     | Motion.RotateOnRefresh -> "rotate-on-refresh"
     | Motion.SlideInFromRight -> "slide-in-from-right"
     | Motion.ExpandCollapse -> "expand-collapse"
+    | Motion.CrossFade -> "cross-fade"
+    | Motion.SlideBetween -> "slide-between"
 
 /// Map a `StyleRole` to its `fuaran-role-{suffix}` class suffix (Phase 147).
 /// `StyleRole.None` returns `None` — the default emits no fragment, so an

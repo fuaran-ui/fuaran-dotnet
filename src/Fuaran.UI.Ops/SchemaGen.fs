@@ -1455,7 +1455,15 @@ let private defs: (string * J) list =
                             [ "cases", arrayOf (record [ "child"; "match" ] [ "child", ref "Node"; "match", str ])
                               "default", ref "Node"
                               "stateKey", str
-                              "on", binding "str" ]
+                              "on", binding "str"
+                              // Phase 1122 — the timed-advance interval. The
+                              // POSITIVE floor is expressed here as
+                              // `minimum: 1` rather than left to the
+                              // decoder alone, so the schema leg and the reject
+                              // fixture agree: a `0` fails both, which is what
+                              // keeps this file an honest mirror of the decoder
+                              // rather than a looser second opinion.
+                              "autoAdvanceMs", JObj [ "type", JStr "integer"; "minimum", JInt 1 ] ]
                         JObj
                             [ "anyOf",
                               JArr

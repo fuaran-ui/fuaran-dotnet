@@ -4019,9 +4019,55 @@ let rec private renderKind
                 |> List.tryPick (fun c -> if c.Match = valueStr then Some c.Child else None)
             | None -> None
 
-        match matched with
-        | Some child -> render ctx child
-        | None -> render ctx spec.Default
+        let selected =
+            match matched with
+            | Some child -> render ctx child
+            | None -> render ctx spec.Default
+
+        // Phase 1122 — the STAGE, and it exists ONLY for the timed advance.
+        //
+        // The two transition tokens need no wrapper at all, which is worth
+        // stating because reaching for one is the obvious first move. A
+        // `Motion` token already lands as `fuaran-motion-{suffix}` on the
+        // node's own outer wrapper (see `render` below), and a `Switch` whose
+        // case changes REPLACES the child element — so the reference sheet's
+        // `.fuaran-motion-cross-fade > *` rule animates the incoming child on
+        // its own, with nothing here to arrange. Adding a wrapper for it would
+        // have bought a second element, a hydration surface and a CSS selector
+        // consumers would then depend on, for a behaviour the existing class
+        // already carries.
+        //
+        // So a switch with no `AutoAdvanceMs` renders exactly what it rendered
+        // before: the selected child, bare. Every pre-1122 tree keeps its DOM,
+        // its selectors and its hydration by construction rather than by care.
+        match spec.AutoAdvanceMs with
+        | None -> selected
+        | Some _ ->
+            // The writer, and the ONE reason a declared interval can be inert:
+            // auto-advance moves the switch's OWN key, so it exists only where
+            // the selector IS that key. A `Selection` / `Filter` / `Query`
+            // selector is driven by something else entirely, and writing into
+            // it would mean the renderer inventing an owner for state the
+            // document gave to another node. FUARAN128 reports the shape at
+            // pre-emit so an author is told rather than left watching a
+            // carousel that does not move.
+            let advanceTo =
+                match spec.On with
+                | Binding.State(key, _) ->
+                    Some(fun (v: string) ->
+                        match ctx.Scope with
+                        | Some scopeId -> (StateStore.forScope scopeId).Set(key, box v)
+                        | None -> StateStore.set key (box v))
+                | _ -> None
+
+            SwitchStage.stage
+                {| nodeId = parentNodeId
+                   className = "fuaran-switch-stage"
+                   autoAdvanceMs = spec.AutoAdvanceMs
+                   matches = (spec.Cases |> List.map _.Match)
+                   current = currentValue
+                   advanceTo = advanceTo
+                   children = [ selected ] |}
     | NodeKind.Custom customSpec ->
         // The generated `CustomSpec` record replaces the old 5 inline case
         // fields — rebind them locally so the dispatch body reads unchanged.

@@ -54,11 +54,12 @@ let private inStateSlot = leaf "hidden-in-state-slot"
 let private switchNode: Node<Msg> =
     Fuaran.switch
         "mode-switch"
-        { On = Binding.State("mode", None)
-          Cases =
-            [ { Match = "compact"
-                Child = inSwitchCase } ]
-          Default = inSwitchDefault }
+        { Defaults.switch<Msg> with
+            On = Binding.State("mode", None)
+            Cases =
+                [ { Match = "compact"
+                    Child = inSwitchCase } ]
+            Default = inSwitchDefault }
 
 let private boundaryNode: Node<Msg> =
     Fuaran.errorBoundary

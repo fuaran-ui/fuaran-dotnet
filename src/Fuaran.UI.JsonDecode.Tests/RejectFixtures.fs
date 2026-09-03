@@ -1264,6 +1264,51 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "DataGrid repeatHeader is an object, not a boolean — the fourth flag, read by its own call and so pinned on its own (Phase 1473)" }
+      // ─── Phase 1122 — the timed-advance interval's POSITIVE floor ─────
+      //
+      // Three vectors, and each pins a different way the slot can be got
+      // wrong. `0` is the one that matters: it is what an emitter reaches for
+      // to mean "off", and the language ALREADY has a spelling for off — an
+      // absent key. Decoding it to a live zero-millisecond timer would be a
+      // re-render loop; canonicalising it to `None` would make two document
+      // shapes mean one thing and tell the emitter nothing about its
+      // misunderstanding. So it is refused, exactly as `Masonry.cols` refuses
+      // its own zero and for the same stated reason.
+      //
+      // WRONG_TYPE and not a code of its own: this is a number outside the
+      // slot's value space, the class `Masonry.cols` and `srcSet`'s width
+      // floor already occupy, and there is no legal SET to name back at the
+      // author — only a bound, which the message carries.
+      //
+      // The fractional vector is here because `autoAdvanceMs` is an integer
+      // slot and a JSON number is not: a decoder that read `1500.5` by
+      // truncation would silently disagree with one that rounded, and two
+      // hosts disagreeing about a document neither refused is the divergence
+      // the corpus exists to prevent.
+      { Id = "reject-switch-autoadvance-zero"
+        Json =
+          """{"id":"x","kind":{"$type":"Switch","autoAdvanceMs":0,"cases":[],"default":{"id":"d","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"d"}}},"stateKey":"slide"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.autoAdvanceMs"
+        IsOp = false
+        Description =
+          "Switch autoAdvanceMs is 0 — refused, never canonicalised to absence. An absent key is already the only spelling of \"does not advance\", so accepting a zero would make two shapes mean one thing and hide the emitter's misreading of the slot (Phase 1122)" }
+      { Id = "reject-switch-autoadvance-negative"
+        Json =
+          """{"id":"x","kind":{"$type":"Switch","autoAdvanceMs":-1000,"cases":[],"default":{"id":"d","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"d"}}},"stateKey":"slide"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.autoAdvanceMs"
+        IsOp = false
+        Description =
+          "Switch autoAdvanceMs is negative — an interval names how long to wait, so a negative one describes a schedule no renderer can realise (Phase 1122)" }
+      { Id = "reject-switch-autoadvance-fractional"
+        Json =
+          """{"id":"x","kind":{"$type":"Switch","autoAdvanceMs":1500.5,"cases":[],"default":{"id":"d","kind":{"$type":"Markdown","text":{"$type":"Literal","text":"d"}}},"stateKey":"slide"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.autoAdvanceMs"
+        IsOp = false
+        Description =
+          "Switch autoAdvanceMs is fractional — the slot is an integer count of milliseconds, and a decoder truncating where another rounded would leave two hosts disagreeing about a document neither refused (Phase 1122)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["

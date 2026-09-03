@@ -204,7 +204,8 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
                 |> List.map (fun c ->
                     { Match = c.Match
                       Child = mapMsg f c.Child })
-              Default = mapMsg f spec.Default }
+              Default = mapMsg f spec.Default
+              AutoAdvanceMs = spec.AutoAdvanceMs }
     | NodeKind.FragmentDecl spec ->
         NodeKind.FragmentDecl
             { Name = spec.Name

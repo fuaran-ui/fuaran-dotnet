@@ -190,11 +190,12 @@ let private switchOverScopedKey (stateKey: string) : Node<obj> =
     mkNode
         "res-switch"
         (NodeKind.Switch
-            { On = Binding.State(stateKey, None)
-              Cases =
-                [ { Match = "boom"
-                    Child = mountNode "res-boom-mount" throwingScope None } ]
-              Default = benignBox "res-default" })
+            { Fuaran.UI.Defaults.switch with
+                On = Binding.State(stateKey, None)
+                Cases =
+                    [ { Match = "boom"
+                        Child = mountNode "res-boom-mount" throwingScope None } ]
+                Default = benignBox "res-default" })
 
 let private throwingLoaderRuntime () : IFuaranRuntime =
     guestLoaderRuntime (ResizeArray<string>()) (fun scopeId ->

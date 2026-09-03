@@ -5,7 +5,7 @@ module Fuaran.UI.Tests.MotionEmission
 //
 //  Pins the `Theme.motionVar` mapping for every Motion token + the renderer's
 //  outer-wrapper className composition when `Node.Motion` is `Some token`.
-//  Mirrors the AI-emit shape stability promise — the 8 token names are the
+//  Mirrors the AI-emit shape stability promise — the token names are the
 //  contract; if either side ever drifts, this file is the early-warning
 //  surface.
 //
@@ -33,7 +33,14 @@ let private allMotions: (Motion * string) list =
       Motion.ShakeOnError, "shake-on-error"
       Motion.RotateOnRefresh, "rotate-on-refresh"
       Motion.SlideInFromRight, "slide-in-from-right"
-      Motion.ExpandCollapse, "expand-collapse" ]
+      Motion.ExpandCollapse, "expand-collapse"
+      // Phase 1122 — the TRANSITION pair. They sit in this list on exactly the
+      // same terms as the eight above (one token, one suffix, one class), and
+      // differ only in what the class means: the others style the node, these
+      // two style the child that arrives when a `Switch` replaces what stood
+      // there.
+      Motion.CrossFade, "cross-fade"
+      Motion.SlideBetween, "slide-between" ]
 
 [<Tests>]
 let tests =
@@ -69,5 +76,5 @@ let tests =
               // suite doesn't, the new case lacks coverage — surface it
               // by enumerating the suffix list length against the
               // expected token count.
-              Expect.equal allMotions.Length 8 "Motion DU is 8 tokens — update allMotions when adding a case"
+              Expect.equal allMotions.Length 10 "Motion DU is 10 tokens — update allMotions when adding a case"
           } ]

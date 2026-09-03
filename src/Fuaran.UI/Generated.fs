@@ -272,6 +272,8 @@ type Motion =
     | RotateOnRefresh
     | SlideInFromRight
     | ExpandCollapse
+    | CrossFade
+    | SlideBetween
 
 [<RequireQualifiedAccess>]
 type Orientation =
@@ -1293,6 +1295,16 @@ and SwitchSpec<'Msg> =
       // The state form keeps its compact spelling on the wire — see the
       // encoder's collapse rule.
       On: Binding<string>
+      // Fuaran-UI Phase 1122 — the timed-advance interval, in milliseconds.
+      // `None` is the only spelling of "does not advance": the renderer starts
+      // no timer, and a switch authored before this release is unchanged in the
+      // type, on the wire and on the screen.
+      //
+      // A duration rather than a flag, because "advances" with no interval is
+      // not renderable and two hosts inventing a period is the divergence the
+      // corpus exists to prevent. Non-positive values are refused at decode
+      // rather than read as "off" — absence already means off.
+      AutoAdvanceMs: int option
     }
 
 // Layout
@@ -1597,6 +1609,8 @@ let private encMotion (v: Motion) : JVal =
     | Motion.RotateOnRefresh -> JStr "RotateOnRefresh"
     | Motion.SlideInFromRight -> JStr "SlideInFromRight"
     | Motion.ExpandCollapse -> JStr "ExpandCollapse"
+    | Motion.CrossFade -> JStr "CrossFade"
+    | Motion.SlideBetween -> JStr "SlideBetween"
 
 let private encOrientation (v: Orientation) : JVal =
     match v with
@@ -2122,7 +2136,7 @@ and private encSummaryListSpec<'Msg> (s: SummaryListSpec<'Msg>) : JVal =
     Canon.typed "SummaryList" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)) ] |> List.choose id)
 
 and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =
-    Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some("stateKey", JStr key) | on -> Some("on", (encBinding JStr) on)) ] |> List.choose id)
+    Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some("stateKey", JStr key) | on -> Some("on", (encBinding JStr) on)); (s.AutoAdvanceMs |> Option.map (fun v -> "autoAdvanceMs", JInt v)) ] |> List.choose id)
 
 and private encTabsSpec<'Msg> (s: TabsSpec<'Msg>) : JVal =
     Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (if s.Orientation = Orientation.Horizontal then None else Some("orientation", encOrientation s.Orientation)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.OnSelectTag |> Option.map (fun v -> "onSelectTag", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
@@ -2480,6 +2494,8 @@ let private decMotion (j: JVal) : Result<Motion, string> =
     | JStr "RotateOnRefresh" -> Ok Motion.RotateOnRefresh
     | JStr "SlideInFromRight" -> Ok Motion.SlideInFromRight
     | JStr "ExpandCollapse" -> Ok Motion.ExpandCollapse
+    | JStr "CrossFade" -> Ok Motion.CrossFade
+    | JStr "SlideBetween" -> Ok Motion.SlideBetween
     | _ -> Error "not a Motion"
 
 let private decOrientation (j: JVal) : Result<Orientation, string> =
@@ -3798,7 +3814,17 @@ and private decSwitchSpec (j: JVal) : Result<SwitchSpec<obj>, string> =
      | Ok (Some on) -> Ok on
      | Ok None -> dReq "stateKey" __fs dStr |> Result.map (fun key -> Binding.State(key, None))
      | Error e -> Error e) |> Result.bind (fun on ->
-    Ok { Cases = cases; Default = ``default``; On = on }))))
+    // Phase 1122 — `autoAdvanceMs` is optional, and a PRESENT value must be a
+    // positive integer. `0` and negatives are refused rather than read as
+    // "off", on the `Masonry.cols` ruling: absence is already the spelling of
+    // off, so a rewrite would make two spellings mean one thing and hide the
+    // emitter's misunderstanding of the slot.
+    (match dOpt "autoAdvanceMs" __fs dInt with
+     | Ok (Some ms) when ms > 0 -> Ok (Some ms)
+     | Ok (Some _) -> Error "autoAdvanceMs must be a positive integer"
+     | Ok None -> Ok None
+     | Error e -> Error e) |> Result.bind (fun autoAdvanceMs ->
+    Ok { Cases = cases; Default = ``default``; On = on; AutoAdvanceMs = autoAdvanceMs })))))
 
 and private decTabsSpec (j: JVal) : Result<TabsSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -4090,7 +4116,7 @@ let mkSummaryList (id: string) (children: Node<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.SummaryList { Children = children; Heading = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None) }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; Orientation = Orientation.Horizontal; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }

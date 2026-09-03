@@ -41,10 +41,20 @@ let private switchProjection: Gen.KindProjection =
       // The state form keeps its compact spelling on the wire — see the
       // encoder's collapse rule.
       On: Binding<string>
+      // Fuaran-UI Phase 1122 — the timed-advance interval, in milliseconds.
+      // `None` is the only spelling of "does not advance": the renderer starts
+      // no timer, and a switch authored before this release is unchanged in the
+      // type, on the wire and on the screen.
+      //
+      // A duration rather than a flag, because "advances" with no interval is
+      // not renderable and two hosts inventing a period is the divergence the
+      // corpus exists to prevent. Non-positive values are refused at decode
+      // rather than read as "off" — absence already means off.
+      AutoAdvanceMs: int option
     }"""
       Encoder =
         """and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =
-    Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some("stateKey", JStr key) | on -> Some("on", (encBinding JStr) on)) ] |> List.choose id)"""
+    Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some("stateKey", JStr key) | on -> Some("on", (encBinding JStr) on)); (s.AutoAdvanceMs |> Option.map (fun v -> "autoAdvanceMs", JInt v)) ] |> List.choose id)"""
       Decoder =
         """and private decSwitchSpec (j: JVal) : Result<SwitchSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -57,7 +67,17 @@ let private switchProjection: Gen.KindProjection =
      | Ok (Some on) -> Ok on
      | Ok None -> dReq "stateKey" __fs dStr |> Result.map (fun key -> Binding.State(key, None))
      | Error e -> Error e) |> Result.bind (fun on ->
-    Ok { Cases = cases; Default = ``default``; On = on }))))"""
+    // Phase 1122 — `autoAdvanceMs` is optional, and a PRESENT value must be a
+    // positive integer. `0` and negatives are refused rather than read as
+    // "off", on the `Masonry.cols` ruling: absence is already the spelling of
+    // off, so a rewrite would make two spellings mean one thing and hide the
+    // emitter's misunderstanding of the slot.
+    (match dOpt "autoAdvanceMs" __fs dInt with
+     | Ok (Some ms) when ms > 0 -> Ok (Some ms)
+     | Ok (Some _) -> Error "autoAdvanceMs must be a positive integer"
+     | Ok None -> Ok None
+     | Error e -> Error e) |> Result.bind (fun autoAdvanceMs ->
+    Ok { Cases = cases; Default = ``default``; On = on; AutoAdvanceMs = autoAdvanceMs })))))"""
       // A projected kind supplies its OWN `mk`, so the node envelope is spelled
       // here by hand rather than derived from `Idl.NodeFields` the way the
       // forty-one generated constructors' envelope is. A new envelope field
@@ -71,7 +91,7 @@ let private switchProjection: Gen.KindProjection =
       Mk =
         Some
             """let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None) }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }""" }
+    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }""" }
 
 /// The declared support for `Gen.fsharpModuleWith` — see the module doc above.
 let support: Gen.GenSupport =

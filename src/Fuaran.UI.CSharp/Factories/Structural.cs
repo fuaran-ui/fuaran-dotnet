@@ -102,7 +102,13 @@ public static partial class Fuaran
                 // the `stateKey` wire spelling. Byte-identical output.
                 FsGen.Binding<string>.NewState(
                     options.StateKey,
-                    Microsoft.FSharp.Core.FSharpOption<string>.None))));
+                    Microsoft.FSharp.Core.FSharpOption<string>.None),
+                // Phase 1122 — the timed-advance interval. `null` here is the F#
+                // `None`, which is the ONLY spelling of "does not advance": no
+                // key is emitted, no timer is started, and a switch authored
+                // without it is byte-identical to every switch written before
+                // this release.
+                Fs.OfNullable(options.AutoAdvanceMs))));
 }
 
 /// <summary>Options for <see cref="Fuaran.Custom"/>.</summary>
@@ -205,4 +211,15 @@ public sealed record SwitchOptions
 
     /// <summary>The child rendered when no case matches (and the SSR/first-paint surface).</summary>
     public required FuaranNode Default { get; init; }
+
+    /// <summary>Advance the switch's own <c>StateKey</c> to the next case every
+    /// <c>AutoAdvanceMs</c> milliseconds — the carousel behaviour (Phase 1122). Leave it
+    /// <c>null</c> (the default) and nothing advances, which is the pre-1122 behaviour exactly.
+    /// <para>A client tier that honours it must also PAUSE on hover, focus and touch-hold, and
+    /// STOP PERMANENTLY on any reader interaction with the switch — WCAG 2.2.2. Those are
+    /// obligations of the renderer, not options here: a document declares the interval and never
+    /// how the reader takes control of it.</para>
+    /// <para>Must be POSITIVE. Zero and negatives are refused at decode rather than read as
+    /// "off", because absence already means off.</para></summary>
+    public int? AutoAdvanceMs { get; init; }
 }

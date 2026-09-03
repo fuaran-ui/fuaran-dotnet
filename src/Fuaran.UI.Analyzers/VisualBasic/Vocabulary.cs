@@ -219,7 +219,9 @@ internal static class Vocabulary
         Add("FragmentDecl", "id", "name");
         Add("FragmentRef", "id", "name");
         Add("Mount", "id", "scope-id", "two-way", "message-shape", "capabilities");
-        Add("Switch", "id", "state-key");
+        // Phase 1122 — `auto-advance-ms` is the timed advance; absent means the
+        // switch does not advance, which is the pre-1122 behaviour exactly.
+        Add("Switch", "id", "state-key", "auto-advance-ms");
         // Structural sub-elements.
         Add("Case", "match");
         Add("Option", "value", "label");

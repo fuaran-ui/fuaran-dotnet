@@ -49,12 +49,20 @@ Friend Module StructuralMapping
         ' StateStore key; each <Case match="…"> wraps the single node rendered when
         ' the state's string form equals its match (first-match-wins); <Default>
         ' wraps the no-match child (the SSR/first-paint surface).
+        '
+        ' Phase 1122 — `auto-advance-ms`, the timed advance. Absent is the only
+        ' spelling of "does not advance", which is what OptIntAttr gives without
+        ' a default to disagree with. Everything else the carousel behaviour
+        ' needs — the pause, the permanent stop, the swipe and the arrow keys —
+        ' is the renderer's under the affordance→op charter and has no attribute
+        ' here by design.
         d("Switch") = Function(el) Csharp.Fuaran.Switch(
             New Csharp.SwitchOptions With {
                 .Id = Attr(el, "id"),
                 .StateKey = Attr(el, "state-key"),
                 .Cases = ChildElements(el, "Case").Select(AddressOf ReadCase).ToList(),
-                .Default = TranslateNamed(el, "Default")})
+                .Default = TranslateNamed(el, "Default"),
+                .AutoAdvanceMs = OptIntAttr(el, "auto-advance-ms")})
     End Sub
 
     Private Function ReadCase(c As XElement) As Csharp.SwitchCase

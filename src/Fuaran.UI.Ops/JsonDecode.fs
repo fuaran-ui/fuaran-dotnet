@@ -7797,17 +7797,39 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
                 requireField path fields "default" "Switch default Node"
                 |> Result.bind (decodeNodeAst (descend w) (path + ".default"))
 
-            match stateKeyR, casesR, defaultR with
-            | Ok on, Ok cases, Ok defaultNode ->
+            // Phase 1122 — the timed-advance interval. OPTIONAL, and a present
+            // value must be a POSITIVE integer, following the `Masonry.cols`
+            // floor exactly: `0` reads as "off" to an emitter that has not read
+            // the spec, the language already HAS a spelling for off (an absent
+            // key), and canonicalising the two together would make one document
+            // shape mean two things while telling the emitter nothing. So it is
+            // refused, and the message names the bound a repairing author has to
+            // come back under.
+            //
+            // WRONG_TYPE rather than a code of its own: this is the same class
+            // as `Masonry.cols` and `srcSet`'s width floor — a number outside
+            // the slot's value space, with no legal set to name back.
+            let autoAdvanceR =
+                match tryField fields "autoAdvanceMs" with
+                | None -> Ok Option.None
+                | Some v ->
+                    match v with
+                    | JNumber n when n > 0.0 && n = floor n -> Ok(Some(int n))
+                    | _ -> wrongType (path + ".autoAdvanceMs") "JSON number (positive integer milliseconds)"
+
+            match stateKeyR, casesR, defaultR, autoAdvanceR with
+            | Ok on, Ok cases, Ok defaultNode, Ok autoAdvanceMs ->
                 Ok(
                     NodeKind.Switch
                         { On = on
                           Cases = cases
-                          Default = defaultNode }
+                          Default = defaultNode
+                          AutoAdvanceMs = autoAdvanceMs }
                 )
-            | Error e, _, _
-            | _, Error e, _
-            | _, _, Error e -> Error e
+            | Error e, _, _, _
+            | _, Error e, _, _
+            | _, _, Error e, _
+            | _, _, _, Error e -> Error e
         | Ok "FragmentDecl" ->
             // Mirror the encoder's `name` +
             // `body` field pair. Both required — a decl without a name

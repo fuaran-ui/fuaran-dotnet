@@ -920,6 +920,40 @@ type PreEmitDefect =
     /// have to count out by hand through the nesting.
     | TreeItemWithoutLabel of nodeId: string * itemId: string
 
+    /// **FUARAN128 (Warning)**. A `Switch` declaring `autoAdvanceMs` that
+    /// cannot advance (Phase 1122) — a dead declaration, the FUARAN125 shape at
+    /// a fourth slot.
+    ///
+    /// TWO conditions share ONE code because they are one rule stated at two
+    /// slots: *an interval was declared and there is nothing for a tick to do*.
+    ///
+    ///   * `NoWritableSelector` — the switch selects on a `Selection` /
+    ///     `Filter` / `Query` / `Static` binding rather than a `State` key.
+    ///     Auto-advance moves the switch's OWN key, and a switch driven by
+    ///     something else has no key of its own to move; a renderer that wrote
+    ///     into the other node's channel would be inventing an owner for state
+    ///     the document gave away. This is the sharper of the two, because
+    ///     nothing about the document LOOKS wrong — the interval is present,
+    ///     the cases are present, and the carousel simply never moves.
+    ///   * `NotEnoughCases` — fewer than two cases, so the only advance
+    ///     available is from a case to itself. That is a rewrite of the key
+    ///     with the value it already holds on every tick: a re-render loop that
+    ///     changes nothing a reader can see.
+    ///
+    /// **Warning, not Error**: an inert declaration is not harmful, and a tree
+    /// whose second case arrives in a later authoring step is an ordinary
+    /// mid-edit state. The FUARAN125 precedent exactly.
+    ///
+    /// **What is deliberately NOT judged.** Whether the interval is sensibly
+    /// long, whether the reader will have time to read a panel, whether the
+    /// content is long enough to matter — none of that is knowable pre-emit,
+    /// and an interval that turns out to be too fast is a design choice rather
+    /// than a defect. Nor is a NON-POSITIVE interval reported here: the decoder
+    /// refuses it outright, so a tree carrying one never reaches this walk.
+    ///
+    /// Carries the switch node's id and which condition fired.
+    | DeadAutoAdvance of nodeId: string * defect: AutoAdvanceDefect
+
     // ── The accessibility family (FUARAN109/110/111, Phase 727) ──────────────
     //
     // Until this family landed the runtime validator carried NO accessibility
@@ -1133,6 +1167,17 @@ and [<RequireQualifiedAccess>] PrintBreakDefect =
     /// INSIDE it has nothing to act on. Reporting the pair together would have
     /// been tidier and wrong.
     | NoSubtreeToKeepTogether
+
+/// Why a declared `autoAdvanceMs` cannot advance (FUARAN128, Phase 1122).
+/// Typed rather than a string for `PrintBreakDefect`'s reason: the shapes stay
+/// enumerable, and a third cannot be added by prose.
+and [<RequireQualifiedAccess>] AutoAdvanceDefect =
+    /// The selector is not a `State` binding, so the switch owns no key the
+    /// advance could write.
+    | NoWritableSelector
+    /// Fewer than two cases — the advance has nowhere to go but back to where
+    /// it already is.
+    | NotEnoughCases
 
 /// Render a defect as its stable (code, severity, message) triple — the ONE
 /// projection every consumer shares (the .NET validator oracle, certification
@@ -1552,6 +1597,18 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "tree '%s' carries more than one row with the id '%s' — a row id is what the expanded set and the selection NAME, so a repeated one makes both ambiguous: expanding one row opens two, and a restored selection lands on whichever the host reached first. Give every row in this tree its own id"
             nodeId
             itemId
+    | PreEmitDefect.DeadAutoAdvance(nodeId, AutoAdvanceDefect.NoWritableSelector) ->
+        "FUARAN128",
+        DefectSeverity.Warning,
+        sprintf
+            "switch '%s' declares autoAdvanceMs while it selects on a binding that is not a state key — a dead declaration. Timed advance moves the switch's OWN key, and a switch driven by a selection, a filter or a query has no key of its own to move, so the interval rides the wire, survives every round trip and advances nothing on any host. Select on a state key, or drop the interval"
+            nodeId
+    | PreEmitDefect.DeadAutoAdvance(nodeId, AutoAdvanceDefect.NotEnoughCases) ->
+        "FUARAN128",
+        DefectSeverity.Warning,
+        sprintf
+            "switch '%s' declares autoAdvanceMs while it carries fewer than two cases — a dead declaration. There is nowhere for a tick to advance to but the case already showing, so the interval would rewrite the key with the value it already holds. Give the switch the cases it cycles through, or drop the interval"
+            nodeId
     | PreEmitDefect.TreeItemWithoutLabel(nodeId, itemId) ->
         "FUARAN127",
         DefectSeverity.Error,
@@ -2806,6 +2863,25 @@ let private validateCore
             for c in spec.Cases do
                 if not (seen.Add c.Match) && reported.Add c.Match then
                     defects.Add(PreEmitDefect.DuplicateSwitchMatch(nodeIdStr, c.Match))
+
+            // FUARAN128 (Phase 1122): a declared interval with nothing for a
+            // tick to do. Two shapes reach it and only two — a selector that is
+            // not a state key, and fewer than two cases. Reported in that
+            // order and only ONE per node, because they are one defect with one
+            // fix and two findings on the same switch would bury it.
+            //
+            // A NON-POSITIVE interval is deliberately absent: the decoder
+            // refuses it, so no decoded tree carries one, and an in-process
+            // author who constructs one gets the same refusal the moment the
+            // tree is encoded.
+            match spec.AutoAdvanceMs with
+            | Some _ ->
+                match spec.On with
+                | Binding.State _ ->
+                    if List.length spec.Cases < 2 then
+                        defects.Add(PreEmitDefect.DeadAutoAdvance(nodeIdStr, AutoAdvanceDefect.NotEnoughCases))
+                | _ -> defects.Add(PreEmitDefect.DeadAutoAdvance(nodeIdStr, AutoAdvanceDefect.NoWritableSelector))
+            | None -> ()
 
             // The case children + default participate in the tree-wide NodeId
             // uniqueness + empty-id surface, so walk them all.

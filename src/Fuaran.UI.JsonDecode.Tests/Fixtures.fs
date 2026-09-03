@@ -4521,30 +4521,32 @@ let switchOnSelection: Node<obj> =
                   node
                       "ward-status-panel"
                       (NodeKind.Switch(
-                          { On =
-                              Binding.Selection(
-                                  "ward-grid",
-                                  Binding.projectSelectionField<string> "status",
-                                  Some "steady",
-                                  Some "status"
-                              )
-                            Cases =
-                              [ { Match = "critical"
-                                  Child =
-                                    node
-                                        "ward-critical"
-                                        (NodeKind.Callout(
-                                            { Defaults.callout with
-                                                Tone = ToneVariant.Critical
-                                                Heading = Some(TextSource.Literal "Ward at capacity")
-                                                Body = TextSource.Literal "Escalate admissions to the on-call manager." }
-                                        ))
-                                        None } ]
-                            Default =
-                              node
-                                  "ward-steady"
-                                  (NodeKind.Markdown({ Text = TextSource.Literal "Occupancy within normal range." }))
-                                  None }
+                          { Defaults.switch with
+                              On =
+                                  Binding.Selection(
+                                      "ward-grid",
+                                      Binding.projectSelectionField<string> "status",
+                                      Some "steady",
+                                      Some "status"
+                                  )
+                              Cases =
+                                  [ { Match = "critical"
+                                      Child =
+                                        node
+                                            "ward-critical"
+                                            (NodeKind.Callout(
+                                                { Defaults.callout with
+                                                    Tone = ToneVariant.Critical
+                                                    Heading = Some(TextSource.Literal "Ward at capacity")
+                                                    Body =
+                                                        TextSource.Literal "Escalate admissions to the on-call manager." }
+                                            ))
+                                            None } ]
+                              Default =
+                                  node
+                                      "ward-steady"
+                                      (NodeKind.Markdown({ Text = TextSource.Literal "Occupancy within normal range." }))
+                                      None }
                       ))
                       None ]
               KeepTogether = false
@@ -4552,25 +4554,79 @@ let switchOnSelection: Node<obj> =
         ))
         None
 
+/// Phase 1122 — the motivating document for `autoAdvanceMs`: a carousel. Three
+/// panels over one index key, advancing every five seconds.
+///
+/// Exactly ONE new member is set, and that is the point — the `switchBasic`
+/// fixture beside it declares none, so the pair proves the omit-at-`None`
+/// polarity in both directions: this one carries the key, that one comes back
+/// byte-unchanged without it.
+///
+/// The fact declared here is not available to the host any other way. Every
+/// other half of a carousel is already composable — the stage is a `Box`, the
+/// panels are the cases, the position is the bound key, the arrows and dots are
+/// ordinary controls writing that key — and nothing in any arrangement of those
+/// says a timer exists.
+///
+/// Note what the fixture does NOT carry, because each absence is the charter's
+/// ruling rather than an oversight: no gesture, no threshold, no pause policy,
+/// no transition name, and no `motion` (which is host-only, §9, and could not
+/// ride here even if the document declared one).
+let switchAutoAdvance: Node<obj> =
+    node
+        "switch-carousel-1"
+        (NodeKind.Switch
+            { Defaults.switch with
+                On = Binding.State("slide", None)
+                AutoAdvanceMs = Some 5000
+                Cases =
+                    [ { Match = "one"
+                        Child =
+                          node
+                              "switch-carousel-panel-one"
+                              (NodeKind.Markdown({ Text = TextSource.Literal "Built for the long term" }))
+                              None }
+                      { Match = "two"
+                        Child =
+                          node
+                              "switch-carousel-panel-two"
+                              (NodeKind.Markdown({ Text = TextSource.Literal "Typed all the way down" }))
+                              None }
+                      { Match = "three"
+                        Child =
+                          node
+                              "switch-carousel-panel-three"
+                              (NodeKind.Markdown({ Text = TextSource.Literal "One wire, many hosts" }))
+                              None } ]
+                Default =
+                    node
+                        "switch-carousel-default"
+                        (NodeKind.Markdown({ Text = TextSource.Literal "Built for the long term" }))
+                        None })
+        None
+
 let switchBasic: Node<obj> =
     node
         "switch-1"
         (NodeKind.Switch
-            { On = Binding.State("view", None)
-              Cases =
-                [ { Match = "details"
-                    Child = node "switch-details" (NodeKind.Markdown({ Text = TextSource.Literal "Details view" })) None }
-                  { Match = "summary"
-                    Child = node "switch-summary" (NodeKind.Markdown({ Text = TextSource.Literal "Summary view" })) None } ]
-              Default =
-                node
-                    "switch-default"
-                    (NodeKind.Callout(
-                        { Defaults.callout with
-                            Heading = Some(TextSource.Literal "Pick a view")
-                            Body = TextSource.Literal "No view selected" }
-                    ))
-                    None })
+            { Defaults.switch with
+                On = Binding.State("view", None)
+                Cases =
+                    [ { Match = "details"
+                        Child =
+                          node "switch-details" (NodeKind.Markdown({ Text = TextSource.Literal "Details view" })) None }
+                      { Match = "summary"
+                        Child =
+                          node "switch-summary" (NodeKind.Markdown({ Text = TextSource.Literal "Summary view" })) None } ]
+                Default =
+                    node
+                        "switch-default"
+                        (NodeKind.Callout(
+                            { Defaults.callout with
+                                Heading = Some(TextSource.Literal "Pick a view")
+                                Body = TextSource.Literal "No view selected" }
+                        ))
+                        None })
         None
 
 // Fragment fixtures. `fragmentDecl` carries a labelled body
@@ -5796,6 +5852,7 @@ let allNodes: (string * Node<obj>) list =
       "Custom (bounded escape, AdvisoryWarning hash + no exposed-ids)", customBoundedAdvisory
       "ErrorBoundary (Markdown child + Callout fallback)", errorBoundary
       "Switch (view state → details/summary cases + info default)", switchBasic
+      "Meta/Switch (Phase 1122 — an auto-advancing carousel: `autoAdvanceMs` over an index key)", switchAutoAdvance
       "Meta/Switch (Phase 768 — the selector widened: `on` takes a Selection, the branch follows the clicked row)",
       switchOnSelection
       "FragmentDecl (named template with Markdown body)", fragmentDecl

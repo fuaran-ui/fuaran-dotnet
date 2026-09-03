@@ -613,6 +613,51 @@ let private printBreakCodes (tree: Node<Msg>) : string list =
         let code, _, _ = PreEmitValidate.describe d
         code)
 
+// ─── Phase 1122 fixtures ─ FUARAN128, a timed advance with nowhere to go ────
+
+let private autoAdvanceDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.DeadAutoAdvance _ -> true
+            | _ -> false)
+
+let private autoAdvanceCodes (tree: Node<Msg>) : string list =
+    autoAdvanceDefects tree
+    |> List.map (fun d ->
+        let code, _, _ = PreEmitValidate.describe d
+        code)
+
+/// A `Switch` over whatever selector, cases and interval the caller supplies —
+/// so one fixture puts the SAME interval on a switch that can advance and on
+/// one that cannot, which is what separates a rule from a blanket refusal.
+let private advancingSwitch
+    (id: string)
+    (on: Binding<string>)
+    (autoAdvanceMs: int option)
+    (matches: string list)
+    : Node<Msg> =
+    { Id = id
+      Kind =
+        NodeKind.Switch
+            { Defaults.switch<Msg> with
+                On = on
+                Cases =
+                    matches
+                    |> List.map (fun m ->
+                        { Match = m
+                          Child = markdown (id + "-" + m) ("panel " + m) })
+                Default = markdown (id + "-default") "nothing selected"
+                AutoAdvanceMs = autoAdvanceMs }
+      Accessibility = None
+      ExtraAttributes = None
+      Motion = None
+      State = None
+      Style = None
+      Tooltip = None }
+
 /// A `Box` carrying the two Phase 1473 declarations, over whatever children the
 /// caller supplies — so one fixture puts the SAME declaration on a populated
 /// container and on an empty one, and the pair of assertions is what separates
@@ -3275,6 +3320,93 @@ let tests =
                         |> Node.withDirection TextDirection.Rtl ]
 
               Expect.isEmpty (directionDefects tree) "a container passes its direction to its children"
+          }
+
+          // ── Phase 1122 — FUARAN128, a timed advance with nowhere to go ──
+
+          test "FUARAN128: an interval on a Selection-driven switch is reported" {
+              // The sharper of the two shapes, and the reason the rule exists:
+              // nothing about this document LOOKS wrong. The interval is there,
+              // the cases are there, and the carousel simply never moves —
+              // because auto-advance writes the switch's OWN key and this
+              // switch's branch is driven by another node entirely.
+              let tree =
+                  dashboard
+                      "root"
+                      [ advancingSwitch
+                            "carousel"
+                            (Binding.Selection("grid", (fun (raw: obj) -> unbox raw), None, Some "status"))
+                            (Some 5000)
+                            [ "a"; "b"; "c" ] ]
+
+              Expect.equal
+                  (autoAdvanceCodes tree)
+                  [ "FUARAN128" ]
+                  "a switch with no state key of its own has nothing an advance could write"
+
+              Expect.equal
+                  (severityOf (autoAdvanceDefects tree |> List.head))
+                  DefectSeverity.Warning
+                  "Warning, not Error — an inert declaration is not harmful"
+          }
+
+          test "FUARAN128: an interval on a single-case switch is reported" {
+              let tree =
+                  dashboard "root" [ advancingSwitch "carousel" (Binding.State("slide", None)) (Some 5000) [ "a" ] ]
+
+              Expect.equal
+                  (autoAdvanceCodes tree)
+                  [ "FUARAN128" ]
+                  "the only advance available is from the showing case back to itself"
+          }
+
+          test "FUARAN128: a switch with no cases at all is reported once, not twice" {
+              // Both conditions are arguably true here — no writable advance
+              // target AND fewer than two cases — and the rule reports ONE, on
+              // the FUARAN126 restraint: one defect with one fix, and two
+              // findings on the same node would bury it.
+              let tree =
+                  dashboard "root" [ advancingSwitch "carousel" (Binding.State("slide", None)) (Some 5000) [] ]
+
+              Expect.equal (autoAdvanceCodes tree) [ "FUARAN128" ] "one node, one finding"
+          }
+
+          test "FUARAN128 go-red check: an interval on a two-case state switch is silent" {
+              // The go-red twin for both arms above. If the rule ever widens to
+              // refuse a legitimate auto-advancing carousel, this is the
+              // assertion that catches it.
+              let tree =
+                  dashboard
+                      "root"
+                      [ advancingSwitch "carousel" (Binding.State("slide", None)) (Some 5000) [ "a"; "b" ] ]
+
+              Expect.isEmpty
+                  (autoAdvanceDefects tree)
+                  "a state-keyed switch with two cases and an interval is exactly what the field is for"
+          }
+
+          test "FUARAN128 go-red check: a Selection-driven switch with NO interval is silent" {
+              // The other half of the discriminator: the rule is about the
+              // INTERVAL being inert, never about the selector being unusual.
+              // A `Selection`-driven switch is an ordinary, shipped shape
+              // (Phase 768) and must stay silent without one.
+              let tree =
+                  dashboard
+                      "root"
+                      [ advancingSwitch
+                            "carousel"
+                            (Binding.Selection("grid", (fun (raw: obj) -> unbox raw), None, Some "status"))
+                            None
+                            [ "a"; "b"; "c" ] ]
+
+              Expect.isEmpty (autoAdvanceDefects tree) "no interval declared, so nothing can be inert"
+          }
+
+          test "FUARAN128 go-red check: a single-case switch with NO interval is silent" {
+              let tree =
+                  dashboard "root" [ advancingSwitch "carousel" (Binding.State("slide", None)) None [ "a" ] ]
+
+              Expect.isEmpty (autoAdvanceDefects tree) "a one-case switch is a legitimate conditional region"
           }
 
           // ── Phase 1473 — FUARAN125, a print break with nothing to act on ──

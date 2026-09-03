@@ -3210,6 +3210,78 @@ stricter contract; it is a less truthful one.
 
 ---
 
+## Recorded change — 0.62.0, switch transitions + timed advance — the carousel behaviour (fuaran#1122)
+
+**Additive on the wire; SOURCE-BREAKING at two narrow places; a `WIRE_FORMAT.md` §11
+forward-coupling event for one of the three pieces and for NONE of the other two.** Every
+pre-0.62.0 document encodes and decodes to byte-identical bytes, and every pre-0.62.0 switch
+renders exactly as it did — the new wire member is optional and absence is its only spelling of
+"does not advance".
+
+**Three pieces, and they sit at three different cost tiers. The spread is the point of this
+entry**, because costing all three as wire changes is the mistake this record exists to prevent.
+
+**(1) `Motion` gains `CrossFade` and `SlideBetween` — at ZERO wire cost.** `Node.motion` is
+**host-only** (`WIRE_FORMAT.md` §9: motion is consumer-authored, not AI-authored), so the enum
+never reaches the wire at all: no encoder, no decoder, no schema entry, no corpus fixture, and no
+obligation on any other host in the §11.0 roster. What the two cases DO cost is the reference
+stylesheet (two `@keyframes` families keyed on the stage's child, not on the node), the extended
+`prefers-reduced-motion` rule, `Theme.motionVar`, and the class-vocabulary fingerprint. They are
+the first two tokens in the vocabulary whose subject is a TRANSITION BETWEEN renderings rather than
+the arrival or the state of one.
+
+  * **Source-breaking surface:** an exhaustive `match` over `Motion`. In practice that is
+    `Theme.motionVar` and any consumer that enumerates the tokens; a consumer switching on a subset
+    with a wildcard is unaffected.
+
+**(2) `SwitchSpec.AutoAdvanceMs: int option` — a §2.1 FIELD, and the one piece that IS a §11
+event.** It carries the single fact a host cannot recover from the tree: that this switch is meant
+to move on its own, and how often. Everything else about a carousel was already composable and none
+of it says a timer exists.
+
+  * **On the wire:** `autoAdvanceMs`, omitted when `None`.
+  * **Refused, never canonicalised:** a non-positive or fractional value is a decode error
+    (`WRONG_TYPE` at `$.kind.autoAdvanceMs`). `0` is what an emitter reaches for to mean "off" and
+    the language already has a spelling for off — an absent key — so accepting it would make two
+    document shapes mean one thing. The `Masonry.cols` ruling at a second slot.
+  * **Source-breaking surface:** `SwitchSpec` is a record, so a FULL-literal construction stops
+    compiling (`FS0764`). `{ Defaults.switch with … }` is unaffected, and this release converted the
+    five in-repo full literals to that form under the existing `SpecConstruction` guard. The public
+    `mkSwitch` / `Fuaran.switch` constructors and the C# `Fuaran.Switch(SwitchOptions)` facade keep
+    their arity; the C# options record gains an optional `AutoAdvanceMs`.
+
+**(3) Swipe and the arrow keys — renderer-owned affordances, at NO vocabulary cost.** No gesture
+name, threshold, event name, direction token or resume rule enters the language, per the
+affordance→op charter. They write the switch's own selector key like any other control.
+
+**Three WCAG 2.2.2 obligations are recorded NORMATIVELY rather than left per-host**, which is
+unusual and deliberate. A client tier honouring the interval must pause the advance on hover, focus
+and held touch; stop it **permanently** on any reader interaction, with no resume path; and never
+start it under `prefers-reduced-motion: reduce`. The third is the one a stylesheet structurally
+cannot deliver — a reduce rule can make the transition inert and cannot stop the content changing
+under the reader — which is why it belongs to the renderer and is stated beside the field. A host
+that honoured the interval and not the trio would ship an accessibility defect the document has no
+way to ask it not to.
+
+**FUARAN128 (Warning), a declared interval with nowhere to go.** Two conditions, one code, on the
+FUARAN125 precedent: a switch selecting on a non-`State` binding (auto-advance moves the switch's
+own key, and a `Selection`/`Filter`/`Query`-driven switch has none), and a switch carrying fewer
+than two cases. Warning rather than Error — an inert declaration is not harmful and a second case
+arriving in a later authoring step is an ordinary mid-edit state.
+
+**The vocabulary charter's Appendix A `Carousel` / `Gallery` row is amended in this same
+change-set**, per the rule the 0.46.0 `Media` admission established. The **Composition disposition
+stands and is now evidenced**; what is corrected is the row's implied COMPLETENESS — it named a
+composition that, until this release, could not actually be composed. The row now names its three
+prerequisites and cites this phase.
+
+**`Theme.vocabularyFingerprint` → `fv1:8068069268d58955`**; three classes entered the vocabulary
+(`fuaran-motion-cross-fade`, `fuaran-motion-slide-between`, `fuaran-switch-stage`) and the reference
+sheet gained the block that styles them. The four tier copies were regenerated in the same
+change-set.
+
+---
+
 ## Recorded change — 0.61.0, `NodeKind.Tree` — recursive disclosure with tree semantics (fuaran#1120)
 
 **Additive on the wire; SOURCE-BREAKING at every exhaustive `match` over `NodeKind`; a
