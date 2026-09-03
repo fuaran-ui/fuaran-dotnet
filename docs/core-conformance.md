@@ -22,7 +22,7 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.capabilityPipelineIncrementalLaws` | Not used | Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline |
 | `Conformance.capabilityPipelineLaws` | Not used | Fuaran.Core.Function's CapabilityPipeline — the tier composes no capability pipeline |
 | `Conformance.captureReplayLaws` | Sibling host | fuaran-ts / fuaran-go (fuaran#1482) |
-| `Conformance.casLaws` | Carried by phase | fuaran#1477 |
+| `Conformance.casLaws` | Adopted | `casLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.casLaws` |
 | `Conformance.columnarOpLaws` | Carried by phase | fuaran#1481 |
 | `Conformance.columnarValidatorLaws` | Carried by phase | fuaran#1481 |
 | `Conformance.compositionLaws` | Carried by phase | fuaran#1478 |
@@ -37,7 +37,7 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.functionVerifyLaws` | Carried by phase | fuaran#1478 |
 | `Conformance.hashFnAdversarialLaws` | Adopted | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnAdversarialLaws` |
 | `Conformance.hashFnLaws` | Adopted | `the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)` — via `Conformance.hashFnLaws` |
-| `Conformance.idempotencyLaws` | Carried by phase | fuaran#1477 |
+| `Conformance.idempotencyLaws` | Adopted | `idempotencyLaws certifies over the Fuaran.UI op-stream witness` — via `Conformance.idempotencyLaws` |
 | `Conformance.incrementalLaws` | Carried by phase | fuaran#1479 |
 | `Conformance.leaseLaws` | Not used | Fuaran.Core.Lease — leases are a coordination-plane mechanism for concurrent writers; the UI tier takes none |
 | `Conformance.memoLaws` | Carried by phase | fuaran#1478 |
@@ -53,8 +53,8 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 | `Conformance.reconcileLaws` | Carried by phase | fuaran#1476 |
 | `Conformance.registryLaws` | Carried by phase | fuaran#1478 |
 | `Conformance.schemaWalkLaws` | Carried by phase | fuaran#1481 |
-| `Conformance.snapshotLaws` | Carried by phase | fuaran#1477 |
-| `Conformance.snapshotLawsWith` | Carried by phase | fuaran#1477 |
+| `Conformance.snapshotLaws` | Adopted | `snapshotLaws and snapshotLawsWith certify over the Fuaran.UI op-stream witness` — via `Conformance.snapshotLaws` |
+| `Conformance.snapshotLawsWith` | Adopted | `snapshotLaws and snapshotLawsWith certify over the Fuaran.UI op-stream witness` — via `Conformance.snapshotLawsWith` |
 | `Conformance.streamLaws` | Adopted | `the Fuaran.UI witness certifies end-to-end via the unified Conformance.certify` — via `Conformance.certify (also Conformance.certifyStream)` |
 | `Conformance.transformLaws` | Not used | a host dataframe evaluator — QueryRefine consumes Fuaran.Core.DataFrame.evalPipeline as the pinned reference rather than shipping a second evaluator, so the parity laws have no host implementation to compare against the reference |
 | `Conformance.verifyHonestyLaws` | Carried by phase | fuaran#1478 |
@@ -68,8 +68,8 @@ each other. `Carried by phase` is an enrolment a named roadmap phase will flip t
 
 | Status | Families |
 |---|---|
-| Adopted | 5 |
-| Carried by phase | 35 |
+| Adopted | 9 |
+| Carried by phase | 31 |
 | Not used | 10 |
 | Sibling host | 1 |
 | **Total** | **51** |

@@ -45,6 +45,10 @@
     <Compile Include="ActionLogPrivacyTests.fs" />
     <!-- Phase 577: the transport encoder that refuses a lossy tree. -->
     <Compile Include="TransportEncodeTests.fs" />
+    <!-- Phase 1477: the Core persistence law families (casLaws / idempotencyLaws /
+         snapshotLaws / snapshotLawsWith) over the tier's op-stream witness, plus
+         the two durable ports' own account of the same three claims. -->
+    <Compile Include="PersistenceLawsTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -61,5 +65,8 @@
   <ItemGroup>
     <PackageReference Include="Expecto" />
     <PackageReference Include="FSharp.Core" />
+    <!-- Phase 1477: the Fuaran.Core conformance kit (test-only — PersistenceLawsTests.fs).
+         Its presence here is also what enrols this project in the Core-conformance census. -->
+    <PackageReference Include="Fuaran.Core.Conformance" />
   </ItemGroup>
 </Project>

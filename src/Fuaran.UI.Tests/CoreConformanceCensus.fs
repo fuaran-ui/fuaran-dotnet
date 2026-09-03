@@ -68,6 +68,19 @@ let private certifyTest =
 let private hashFnTest =
     "the portable SHA-256 certifies under Core's hashFnLaws (the supply-your-own-crypto contract)"
 
+/// The persistence families (fuaran#1477) are enrolled from a DIFFERENT test project —
+/// `Fuaran.UI.OpStream.Tests`, where the durable ports they are about live. The census already
+/// discovers every `*.Tests` project whose `.fsproj` references the kit, and checks each `Adopted`
+/// row against the project that actually runs the family, so no convention needed extending for
+/// this; the names are declared here beside the others so all enrolment reads from one place.
+let private casTest = "casLaws certifies over the Fuaran.UI op-stream witness"
+
+let private idempotencyTest =
+    "idempotencyLaws certifies over the Fuaran.UI op-stream witness"
+
+let private snapshotTest =
+    "snapshotLaws and snapshotLawsWith certify over the Fuaran.UI op-stream witness"
+
 /// One row per public law family of the pinned kit. Order here is authoring order (grouped by
 /// classification); the report sorts by family key, so this list may be reordered freely.
 let census: (string * Adoption) list =
@@ -92,11 +105,17 @@ let census: (string * Adoption) list =
       "Conformance.concurrencyLawsWith", CarriedBy "fuaran#1476"
       "Conformance.arbitrationLaws", CarriedBy "fuaran#1476"
 
-      // ---- fuaran#1477 — persistence laws over the Sqlite / in-memory stores ----
-      "Conformance.casLaws", CarriedBy "fuaran#1477"
-      "Conformance.idempotencyLaws", CarriedBy "fuaran#1477"
-      "Conformance.snapshotLaws", CarriedBy "fuaran#1477"
-      "Conformance.snapshotLawsWith", CarriedBy "fuaran#1477"
+      // ---- fuaran#1477 — persistence laws over the tier's op-stream witness ----
+      // All four run in `Fuaran.UI.OpStream.Tests`, beside the durable ports they are about. Note
+      // what the ROW claims and what it does not: these families are parameterised over a
+      // `StreamWitness` (Apply / Encode / Decode) and Core owns the append, so the adoption is over
+      // the tier's reducer, op codec, chain digest and node encoder — NOT over `IOpStreamSink`,
+      // which offers neither a compare-and-append nor an idempotency key. That gap is asserted
+      // directly by the store tests in the same file.
+      "Conformance.casLaws", Adopted(casTest, "Conformance.casLaws")
+      "Conformance.idempotencyLaws", Adopted(idempotencyTest, "Conformance.idempotencyLaws")
+      "Conformance.snapshotLaws", Adopted(snapshotTest, "Conformance.snapshotLaws")
+      "Conformance.snapshotLawsWith", Adopted(snapshotTest, "Conformance.snapshotLawsWith")
 
       // ---- fuaran#1478 — function-registry and capability laws over the FastPath seam ----
       "Conformance.registryLaws", CarriedBy "fuaran#1478"
