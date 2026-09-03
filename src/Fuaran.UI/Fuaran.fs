@@ -1192,6 +1192,30 @@ module Fuaran =
     let mediaSpec (id: string) (spec: MediaSpec) : Node<'Msg> =
         buildNode id (NodeKind.Media(spec)) Defaults.Accessibility.none
 
+    /// Sandboxed third-party embed (Phase 1111). Positional
+    /// `Fuaran.embed "id" "https://player.example/v/abc" "Studio walkthrough"`
+    /// builds a frame with NO permissions granted and no reserved box; the
+    /// `embedSpec` twin takes the full record.
+    ///
+    /// The title is a REQUIRED positional argument for `video`'s reason one kind
+    /// over: it is the frame's accessible name, there is no decorative embed,
+    /// and a constructor that let it be omitted would make the easiest thing to
+    /// write the thing FUARAN115 refuses. Permissions are deliberately NOT a
+    /// positional argument — the shortest call is the fully-sandboxed one, and a
+    /// relaxation is something a caller reaches for `embedSpec` to state.
+    let embed (id: string) (src: string) (title: string) : Node<'Msg> =
+        buildNode
+            id
+            (NodeKind.Embed(
+                { Defaults.embed with
+                    Src = Binding.Static(Some src)
+                    Title = TextSource.Literal title }
+            ))
+            Defaults.Accessibility.none
+
+    let embedSpec (id: string) (spec: EmbedSpec) : Node<'Msg> =
+        buildNode id (NodeKind.Embed(spec)) Defaults.Accessibility.none
+
     /// Structured item list (Phase 287). Positional
     /// `Fuaran.list "id" [ "First"; "Second" ]` builds an unordered list of
     /// `Literal` items; the `listSpec` twin takes the full record (ordered

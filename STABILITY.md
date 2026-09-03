@@ -2253,6 +2253,79 @@ would weaken the gate to carry a marker that would then mean nothing. The hazard
 legible where it can be without a false accusation: a doc comment on `Action.dispatch` naming the
 constraint and the two remedies, the FUARAN112 rule, and the transport encoder's refusal.
 
+## Recorded change — 0.48.0, `NodeKind.Embed` — the sandboxed third-party embed (fuaran#1111)
+
+**Additive. One new `NodeKind` case, one new spec record, one new enum, one new egress class, two
+new pre-emit defect codes, two new render-obligation claims.** No shipped surface changes shape, and
+no existing document encodes or decodes to different bytes.
+
+**Adding a `NodeKind` DU case is MINOR, not major**, per the semver section above: an existing
+consumer keeps compiling and gains an `FS0025` exhaustiveness warning, which is the correct signal.
+The same reading covers `Sanitize.EgressClass`, which gains an `Embed` case for the same reason and
+carries the same consequence — a host matching exhaustively over the class set is warned, and a host
+that composes a policy with `Sanitize.allowOrigin` is unaffected, because an undeclared class is
+denied and denial is what an embed already got before this phase existed.
+
+**Why a KIND and not a `Mount` variant, a `Media` variant or a composition.** `docs/VOCABULARY.md`
+Appendix A carried this row as "Covered by `Mount`", and the coverage claim was false. `Mount`
+composes a COOPERATING guest — a scope id, a declared message channel, a capability request list, a
+host-side loader that produced the guest tree — and a third-party page has none of those and cannot
+acquire them; widening `Mount` to admit an uncooperative third party would weaken every guarantee
+`Mount` makes. It is equally not a `Media` variant: `Media` fetches an asset and DISPLAYS it, where
+this fetches a document and lets it EXECUTE, which is a different threat class and gets a different
+egress class. The Appendix A row is amended from "Covered" to ADMITTED in this same change-set, per
+the rule the Phase 1076 admission established.
+
+**Surface added.**
+
+- `Fuaran.UI.Types` re-exports `EmbedSpec` + `EmbedPermission`; `NodeKind` gains `Embed of
+  EmbedSpec`. `EmbedSpec` is `{ AspectRatio: ImageAspect; Permissions: EmbedPermission list; Src:
+  Binding<string>; Title: TextSource }`. `Src` and `Title` are REQUIRED; `AspectRatio` omits at
+  `Natural` and `Permissions` at the EMPTY list.
+- **`AspectRatio` REUSES `ImageAspect`** rather than minting a parallel enum with identical cases.
+  The cases are pure layout ratios with nothing image-specific in them, the wire carries bare
+  strings so the type name reaches no document, and two closed sets that must be kept in step is the
+  defect a rule-of-three would be guarding against — not the reuse. It is omit-at-`Natural` rather
+  than an option because an option over an enum that already contains `Natural` would give one fact
+  two spellings.
+- `EmbedPermission` is `AllowScripts | AllowSameOrigin | AllowForms | AllowFullscreen`, closed. The
+  EMPTY list is TOTAL DENIAL, so the wire-cheapest document is also the most locked-down one. The
+  exclusions are the design: there is no top-level-navigation case (the drive-by redirect) and no
+  downloads case, and neither is reserved; popups, modals, pointer lock, presentation and
+  orientation lock have no recorded demand and are reserved as names a later addition would take.
+- `Sanitize` gains `EgressClass.Embed` (wire name `embed`), `sanitizeEmbedSrc` and
+  `sanitizeEmbedSrcForEgress`. The `embed` scheme floor admits **`https` and nothing else** — not
+  `http`, and not a schemeless reference either, because a relative reference names a same-origin
+  document, which is exactly where `AllowSameOrigin` plus `AllowScripts` lets the framed document
+  reach its own frame element and remove the sandbox. One accepted scheme and no positional test, so
+  the class cannot inherit §19 rule 5's evasion surface.
+- `Fuaran.UI.PreEmitValidate` gains **FUARAN115 (Error)** — an `Embed` whose `Title` is an empty or
+  whitespace `Literal`, FUARAN108's argument one kind over — and **FUARAN116 (Warning)** — an embed
+  declaring both `AllowScripts` and `AllowSameOrigin`, the documented sandbox escape on a
+  same-origin frame. FUARAN116 is a Warning and not an Error deliberately: the pair is also what
+  every real cross-origin embed needs, nothing in the tree says which case this is, and a rule that
+  refuses the ordinary case is one authors switch off.
+- `Fuaran.UI.RenderFidelity` gains two obligation claims — `sandbox-always-exactly-declared` and
+  `refused-embed-source-omitted` — and the `Embed` row carries them plus the reused
+  `accessible-name-always`. **A new claim is a new obligation for every host in the §11.0 roster**:
+  hosts that have not adopted report them unchecked, which is the artefact working as designed.
+- The renderers emit `<iframe class="fuaran-embed">` with `sandbox` ALWAYS present (empty when
+  nothing is granted), the declared tokens de-duplicated and in declaration order, `allow="fullscreen"`
+  only where declared, an always-emitted `title`, unconditional `loading="lazy"` and
+  `referrerpolicy="strict-origin-when-cross-origin"`, and NO `src` attribute at all when the embed
+  egress class refuses the source — the refusal recorded as a data attribute instead.
+- The reference stylesheet gains `.fuaran-embed` and the `.fuaran-embed-aspect-*` family; the
+  emitted class vocabulary moved, so `Theme.vocabularyFingerprint` is restamped.
+- The C# veneer gains `EmbedOptions` + `EmbedPermission` and a `Fuaran.Embed` factory; the VB XML
+  veneer gains an `<Embed>` element with `src` / `title` / `aspect-ratio` / `permissions`
+  (pipe-separated, the `<Mount>` `capabilities` shape), both joining the analyzer's vocabulary.
+
+**Version.** Minor on the producing packages — 0.48.0, already the working version and still
+untagged, so this kind lands in the same unreleased minor as fuaran#1110. That is the precedent this
+repo set one phase ago rather than a shortcut: the producer-side rule the workspace mandate states
+is that a public-contract change must not ship under a version somebody could already have restored,
+and no tag names 0.48.0 (`v0.46.0` is the newest on this family).
+
 ## Recorded change — 0.48.0, `Media` text tracks + transcript (fuaran#1110)
 
 **Additive. Two new spec-record fields, one new record, one new enum, one new pre-emit defect code,

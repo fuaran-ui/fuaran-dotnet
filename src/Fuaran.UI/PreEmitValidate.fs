@@ -611,6 +611,61 @@ type PreEmitDefect =
     /// a node with four of them.
     | TrackWithoutLabel of nodeId: string * trackIndex: int
 
+    /// **FUARAN115 (Error)**. An `Embed` node whose `Title` resolves to nothing
+    /// — an empty or whitespace `Literal` (Phase 1111).
+    ///
+    /// FUARAN108's argument on the kind next door, and it transfers exactly. A
+    /// frame is not a picture: it is a focus container a reader tabs INTO, and
+    /// one with no accessible name is announced as "frame" and nothing more, so
+    /// a reader arriving in it is told that a frame exists and nothing about
+    /// what is inside. There is no decorative embed, because there is no such
+    /// thing as a decorative browsing context.
+    ///
+    /// Error rather than Warning for FUARAN108's reason: there is no legitimate
+    /// shape it refuses. The wire already makes `title` required; this rule
+    /// catches the value that satisfies the requirement while meaning nothing —
+    /// which is exactly what `Defaults.embed` produces for an author who filled
+    /// the source and forgot the name.
+    ///
+    /// Only a LITERAL is judged, on FUARAN108's restraint: a `Bound` or `I18n`
+    /// title resolves at render time from data this walk cannot see.
+    ///
+    /// Carries the node's id.
+    | EmbedWithoutTitle of nodeId: string
+
+    /// **FUARAN116 (Warning)**. An `Embed` declaring BOTH `AllowScripts` and
+    /// `AllowSameOrigin` (Phase 1111).
+    ///
+    /// The pair is the documented sandbox escape: a framed document holding its
+    /// own origin AND script can reach the frame ELEMENT that frames it when
+    /// that element is same-origin, and remove the `sandbox` attribute — after
+    /// which a reload runs it unsandboxed. Every mediation this kind offers is
+    /// then a mediation the framed document controls.
+    ///
+    /// **Warning, not Error, and the phase asked for the assessment either
+    /// way.** The pair is also what every real cross-origin embed needs: a video
+    /// player, a map and an embedded form each want script and their provider's
+    /// own storage, and against a CROSS-origin frame the escape does not apply,
+    /// because the framed document cannot reach an element in a document it has
+    /// no access to. So an Error would refuse the ordinary case in order to
+    /// catch the dangerous one, and a rule that refuses the ordinary case is one
+    /// authors switch off — which costs the estate the rule on the case that
+    /// mattered. What decides it is the origin relationship, and this walk
+    /// cannot see it: `Src` is frequently a binding, and even a literal URL says
+    /// nothing about the origin of the page that will frame it.
+    ///
+    /// **What this rule deliberately is NOT is an "all permissions" rule**,
+    /// which is the shape the phase sketched. Two reasons, both decisive. The
+    /// cardinality of "all" is an artefact of how many cases this enum happens
+    /// to have, so the rule would change meaning every time a permission is
+    /// admitted, without anybody deciding that it should. And it would MISS the
+    /// two-case document that carries the actual hazard while firing on a
+    /// four-case document that added fullscreen, which is inert. The named pair
+    /// is the hazard; naming it is what makes the warning worth reading.
+    ///
+    /// Carries the node's id.
+    | EmbedSandboxWeakened of nodeId: string
+
     // ── The accessibility family (FUARAN109/110/111, Phase 727) ──────────────
     //
     // Until this family landed the runtime validator carried NO accessibility
@@ -1139,6 +1194,18 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "media node '%s' carries a text track at index %d with an EMPTY label - a track's label IS its entry in the user agent's track menu, and it is the only thing that tells one track from another there, so an unlabelled one is offered as its kind alone and a reader choosing between two captions tracks is shown two identical choices. Give the track's 'label' the text a reader needs to pick it"
             nodeId
             trackIndex
+    | PreEmitDefect.EmbedWithoutTitle nodeId ->
+        "FUARAN115",
+        DefectSeverity.Error,
+        sprintf
+            "embed node '%s' has an EMPTY title — a frame is a focus container a reader tabs into, not a picture, so it is never decorative; without a name it is announced to a screen reader as \"frame\" and nothing more, telling the reader that something is embedded and not what. Give 'title' the text a reader needs to decide whether to enter it"
+            nodeId
+    | PreEmitDefect.EmbedSandboxWeakened nodeId ->
+        "FUARAN116",
+        DefectSeverity.Warning,
+        sprintf
+            "embed node '%s' declares both AllowScripts and AllowSameOrigin — against a SAME-ORIGIN document that pair is the documented sandbox escape, because the framed document can then reach its own frame element and remove the sandbox attribute. It is also what every real cross-origin embed needs, and nothing in this tree says which this is, so this is a warning rather than a refusal: confirm the source is a third-party origin, or drop AllowSameOrigin if the provider does not need its own storage"
+            nodeId
     | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ->
         "FUARAN109",
         DefectSeverity.Warning,
@@ -1860,6 +1927,23 @@ let private validateCore
                 match t.Label with
                 | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.TrackWithoutLabel(n.Id, i))
                 | _ -> ())
+        // FUARAN115 / FUARAN116 (Phase 1111): the embed's two rules, reported
+        // independently of each other for FUARAN113's reason — a node can carry
+        // both, and a walk that stopped at the first would send an author back
+        // for a second pass. Whitespace counts as empty on FUARAN108's argument:
+        // a title of `" "` is not a name a reader can act on, and admitting it
+        // would make the rule evadable by a space, which is worse than not
+        // having it because the document would then carry a green gate.
+        | NodeKind.Embed spec ->
+            match spec.Title with
+            | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.EmbedWithoutTitle n.Id)
+            | _ -> ()
+
+            if
+                List.contains EmbedPermission.AllowScripts spec.Permissions
+                && List.contains EmbedPermission.AllowSameOrigin spec.Permissions
+            then
+                defects.Add(PreEmitDefect.EmbedSandboxWeakened n.Id)
         // FUARAN092 (Phase 812): email protection declared over an href that
         // is statically known not to be a mailto:. Bound hrefs (Query / State
         // / …) resolve at runtime and are not judged here.

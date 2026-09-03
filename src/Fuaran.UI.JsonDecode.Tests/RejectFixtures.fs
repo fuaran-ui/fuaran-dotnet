@@ -421,6 +421,54 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a track `default` of `\"true\"` — the stringified boolean, refused rather than coerced. Two hosts ruling differently on truthiness would disagree about which caption track opens, which is a difference the reader meets on the first frame" }
+      // Phase 1111 — the frame a11y floor, expressed where a decoder can
+      // enforce it. `title` is REQUIRED on `Embed` for the reason `label` is on
+      // `Media`, one kind over: a frame is a focus container a reader tabs into,
+      // so it is never decorative, and a document that omits the title describes
+      // a browsing context a screen-reader user is told exists and cannot
+      // identify. There is no honest value to default TO — an invented title is
+      // a claim about somebody else's document.
+      { Id = "reject-embed-missing-title"
+        Json =
+          """{"id":"e","kind":{"$type":"Embed","src":{"$type":"Static","value":"https://player.example/embed/harbour"}}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.title"
+        IsOp = false
+        Description =
+          "Embed with no `title` — refused. The accessible name is mandatory because a browsing context has no decorative case, and there is no value to default to that would not be a fabricated description of someone else's page" }
+      // Phase 1111 — an unrecognised sandbox relaxation. A BARE enum inside a
+      // LIST, so the path carries the array index and NO `.$type` suffix (§6,
+      // and the Phase 1073 ruling): `permissions` holds plain strings, and a
+      // suffix here would name a JSON member the document does not contain.
+      //
+      // The refusal is doing real work rather than merely being consistent.
+      // `"allow-top-navigation"` is the HTML token an author reaches for from
+      // memory, and it is one this vocabulary deliberately does not admit — a
+      // decoder that silently dropped it would turn a document asking for
+      // top-level navigation into a document asking for less, which reads as
+      // success, and a decoder that guessed would grant it.
+      { Id = "reject-embed-unknown-permission"
+        Json =
+          """{"id":"e","kind":{"$type":"Embed","permissions":["allow-top-navigation"],"src":{"$type":"Static","value":"https://player.example/embed/harbour"},"title":"Harbour restoration, part two"}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.permissions[0]"
+        IsOp = false
+        Description =
+          "EmbedPermission 'allow-top-navigation' — refused. The set is closed at four, and top-level navigation is excluded by design rather than reserved; the path carries the array index and no `.$type`, because the slot holds bare enum strings" }
+      // Phase 1111 — a permission element of the WRONG JSON KIND, the position a
+      // host decoding array elements with a looser walker than its records would
+      // get wrong. `true` is refused rather than read as a present-and-enabled
+      // flag: a host that coerced it would have to decide WHICH permission a
+      // bare `true` names, and every answer to that is a host granting a sandbox
+      // relaxation the document never spelled.
+      { Id = "reject-embed-permission-nonstring"
+        Json =
+          """{"id":"e","kind":{"$type":"Embed","permissions":[true],"src":{"$type":"Static","value":"https://player.example/embed/harbour"},"title":"Harbour restoration, part two"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.permissions[0]"
+        IsOp = false
+        Description =
+          "an Embed permission of `true` — refused rather than coerced. A host that read a bare boolean as a granted permission would have to invent which one it names, and every answer is a relaxation the document never spelled" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

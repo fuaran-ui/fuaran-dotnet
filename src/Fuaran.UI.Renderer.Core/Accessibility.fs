@@ -126,7 +126,12 @@ let forwardsToSemanticElement (kind: NodeKind<'Msg>) : bool =
     // a node-level `Accessibility.Label` overrides the spec's own `label` —
     // which is the right precedence: the node-level slot is the author saying
     // this specific instance is named something else.
-    | NodeKind.Media _ -> true
+    // Phase 1111 — `Embed` satisfies the same three. The `<iframe>` IS the body
+    // root, a frame carries native interactive semantics (it is a focus
+    // container a reader tabs into), and nothing else competes for the name. A
+    // node-level `Accessibility.Label` overrides the spec's `title` on
+    // `Media`'s precedence, which is what a node-level slot is for.
+    | NodeKind.Embed _ -> true
     | _ -> false
 
 // ─── The `dir="auto"` policy (Phase 1114) ───────────────────────────────────
@@ -182,6 +187,11 @@ let isBidiIsolated (kind: NodeKind<'Msg>) : bool =
     | NodeKind.List s -> s.Items |> List.exists isBoundText
     | NodeKind.Link s -> isBoundText s.Label
     | NodeKind.Media s -> isBoundText s.Label
+    // Phase 1111 — `Title` is attribute text, not laid-out content, so there is
+    // nothing on the page for `auto` to resolve. This is `Image.Alt`'s reading,
+    // and unlike `Image` there is no laid-out half to qualify: the embedded
+    // document's own text belongs to the embedded document.
+    | NodeKind.Embed _ -> false
     | NodeKind.Callout s ->
         isBoundText s.Body
         || (s.Heading |> Option.map isBoundText |> Option.defaultValue false)

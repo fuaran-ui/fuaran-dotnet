@@ -18,7 +18,7 @@ internal static class Vocabulary
         // Layout (Phase 390: Box is the unified container; Dashboard/Stack/Grid/Card remain as Box-emitting element conveniences)
         "Box", "Dashboard", "Stack", "Grid", "SplitPanel", "Tabs", "Card", "Stepper", "SummaryList", "Disclosure", "Modal", "ScrollArea",
         // Display (Phase 459: Spacer retired → Box layout `gap`; Divider stays as a Box `Separator`-emitting element convenience)
-        "Heading", "Markdown", "Metric", "Fact", "Badge", "Sparkline", "Callout", "Progress", "Skeleton", "Icon", "LabelValueRow", "Link", "Image", "Media", "List", "Divider", "Toast", "CodeBlock", "Math", "Drawing",
+        "Heading", "Markdown", "Metric", "Fact", "Badge", "Sparkline", "Callout", "Progress", "Skeleton", "Icon", "LabelValueRow", "Link", "Image", "Media", "Embed", "List", "Divider", "Toast", "CodeBlock", "Math", "Drawing",
         // Input
         "Form", "Filters", "Button", "FileUpload", "Select", "MultiSelect",
         // Visualisation
@@ -135,6 +135,10 @@ internal static class Vocabulary
         // Phase 1110 — `transcript` is the only new ATTRIBUTE: `tracks` is a repeated
         // structured slot, so it takes the <Track> child-element shape instead.
         Add("Media", "id", "src", "label", "kind", "controls", "loop", "autoplay", "poster", "transcript");
+        // Phase 1111 - `permissions` is the narrowed spelling of a `list<enum>`, the
+        // `Mount.capabilities` shape: a list of bare tokens does not earn a child
+        // element. `aspect-ratio` spells the slot that reuses `ImageAspect`.
+        Add("Embed", "id", "src", "title", "aspect-ratio", "permissions");
         Add("List", "id", "ordered");
         Add("Divider", "id", "orientation", "label");
         Add("Toast", "id", "message", "tone", "open", "dismissable");

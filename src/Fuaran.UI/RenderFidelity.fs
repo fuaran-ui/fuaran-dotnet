@@ -115,6 +115,19 @@ type ObligationClaim =
     /// carrying its own accessible name - never inside an element that would
     /// hide it, and never as an unnamed toggle.
     | TranscriptDisclosureNamed
+    /// The sandbox declaration is emitted on EVERY instance — empty when the
+    /// document grants nothing — and the relaxation tokens emitted across every
+    /// attribute that carries one are EXACTLY the declared set, de-duplicated
+    /// and in the vocabulary's declaration order. Omitting the attribute on a
+    /// permissionless instance would be the same markup as no sandbox at all,
+    /// and emitting a token nobody declared would make the declaration advisory.
+    | SandboxAlwaysExactlyDeclared
+    /// A PRIMARY source the egress floor refuses omits the source attribute
+    /// entirely rather than substituting the refusal URL — a browsing context
+    /// pointed at a refusal URL renders that document, where one with no source
+    /// is a well-defined empty context that fetches nothing. The refusal is
+    /// still recorded in the emitted markup.
+    | RefusedEmbedSourceOmitted
 
 /// The stable wire token for a claim. This is what the artefact carries and what
 /// a host's checker registry is keyed by, so it may not change without a version
@@ -134,6 +147,8 @@ let claimId (claim: ObligationClaim) : string =
     | ObligationClaim.AuthoredChildOrder -> "authored-child-order"
     | ObligationClaim.SingleDefaultPerKind -> "single-default-per-kind"
     | ObligationClaim.TranscriptDisclosureNamed -> "transcript-disclosure-named"
+    | ObligationClaim.SandboxAlwaysExactlyDeclared -> "sandbox-always-exactly-declared"
+    | ObligationClaim.RefusedEmbedSourceOmitted -> "refused-embed-source-omitted"
 
 /// What the claim MEANS, kind-independently — the vocabulary entry a host reads
 /// when it meets a claim id it does not yet implement, so "unchecked" can be
@@ -166,6 +181,10 @@ let claimMeaning (claim: ObligationClaim) : string =
         "at most one repeated child per declared kind carries the default marker; a later duplicate election is emitted without it"
     | ObligationClaim.TranscriptDisclosureNamed ->
         "a declared transcript renders as a disclosure beside the transport, carrying its own accessible name"
+    | ObligationClaim.SandboxAlwaysExactlyDeclared ->
+        "the sandbox declaration is emitted on every instance, empty when nothing is granted, and carries exactly the declared relaxations - de-duplicated, in declaration order, and never a token the document did not name"
+    | ObligationClaim.RefusedEmbedSourceOmitted ->
+        "a primary source the egress floor refuses omits the source attribute entirely rather than pointing the browsing context at the refusal URL, while still recording the refusal"
 
 /// The closed vocabulary, in declaration order.
 ///
@@ -186,7 +205,9 @@ let allClaims: ObligationClaim list =
       ObligationClaim.UnregisteredCustomLabelled
       ObligationClaim.AuthoredChildOrder
       ObligationClaim.SingleDefaultPerKind
-      ObligationClaim.TranscriptDisclosureNamed ]
+      ObligationClaim.TranscriptDisclosureNamed
+      ObligationClaim.SandboxAlwaysExactlyDeclared
+      ObligationClaim.RefusedEmbedSourceOmitted ]
 
 /// One obligation as a row declares it: which claim, the normative sentence for
 /// THIS kind, and the spec section that states it.
@@ -564,6 +585,36 @@ let all: FidelityRow list =
                  "WIRE_FORMAT.md 3.6.6"
                  "a declared `transcript` renders as a `<details>` disclosure BESIDE the transport, carrying the media's resolved label as its accessible name - never as a child of the media element, where a browser would treat it as fallback content and never show it" ])
 
+      // Phase 1111 — `Embed` is `sensitive` for a SHARPER reason than `Media`
+      // and `Image` are. Those fetch their source with no user act, so rendering
+      // the tree IS the request; an embed fetches a DOCUMENT with no user act
+      // and then runs it, so rendering the tree is the request AND the
+      // execution. It carries NO rich tier, and that is a claim rather than a
+      // blank: a sandboxed `<iframe>` is already a complete browsing context in
+      // every browser, and an enhancement pass that reached into it would be
+      // doing the thing the sandbox exists to prevent.
+      (row
+          "Embed"
+          true
+          "the src binding, the mandatory accessible title, an optional declared aspect ratio, and the closed list of sandbox relaxations - empty by default, which is total denial"
+          "a real `<iframe class=\"fuaran-embed\">` a browser loads with no script. The `sandbox` attribute is ALWAYS emitted and is EMPTY when the document grants nothing, which is the maximally-restrictive value; `allow-scripts`, `allow-same-origin` and `allow-forms` appear only where declared, de-duplicated and in the vocabulary's declaration order so the markup is deterministic whatever order the document authored. Fullscreen is NOT a sandbox token - it is a permissions-policy directive riding an `allow` attribute emitted only when declared. A `title` carrying the resolved title is ALWAYS emitted: it is mandatory on the wire and a browsing context has no decorative case. `loading=\"lazy\"` and a conservative `referrerpolicy` are unconditional. The `src` passes the `embed` egress class - `https` only, no other scheme and no schemeless reference - and a refused one omits the attribute entirely rather than pointing the frame at the refusal URL, the refusal still recorded as a data attribute. A declared aspect ratio is a CLASS on the frame; no value from the tree ever reaches a style attribute"
+          RichTier.None
+          [ "embed-1"; "embed-aspect-1"; "embed-permissions-1" ]
+          "Phase 1111; WIRE_FORMAT.md 3.6.8, 19.1; docs/SSR.md (embed)"
+       |> obliged
+           [ owes
+                 ObligationClaim.AccessibleNameAlways
+                 "WIRE_FORMAT.md 3.6.8"
+                 "a `title` attribute carrying the resolved title is ALWAYS emitted - the title is mandatory on the wire and a browsing context has no decorative case"
+             owes
+                 ObligationClaim.SandboxAlwaysExactlyDeclared
+                 "WIRE_FORMAT.md 3.6.8"
+                 "`sandbox` is emitted on every embed and is EMPTY when no permission is declared; the tokens it carries are exactly the declared relaxations, de-duplicated and in declaration order, and `AllowFullscreen` rides `allow` rather than `sandbox`"
+             owes
+                 ObligationClaim.RefusedEmbedSourceOmitted
+                 "WIRE_FORMAT.md 19.1"
+                 "a `src` the `embed` egress class refuses omits the attribute entirely - an `<iframe>` at the refusal URL renders that page, where one with no `src` is an empty frame that fetches nothing - and the refusal is recorded as the egress-refusal data attribute" ])
+
       plain "Metric" "the label + value source + format" "the resolved, formatted metric tile"
 
       row
@@ -682,6 +733,7 @@ let wireKindNames: string list =
       "DataGrid"
       "Disclosure"
       "Drawing"
+      "Embed"
       "ErrorBoundary"
       "Fact"
       "FileUpload"

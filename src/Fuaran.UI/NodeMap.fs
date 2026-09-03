@@ -154,6 +154,7 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
     | NodeKind.Link spec -> NodeKind.Link spec
     | NodeKind.Image spec -> NodeKind.Image spec
     | NodeKind.Media spec -> NodeKind.Media spec
+    | NodeKind.Embed spec -> NodeKind.Embed spec
     | NodeKind.List spec -> NodeKind.List spec
     | NodeKind.Toast spec -> NodeKind.Toast spec
     | NodeKind.CodeBlock spec -> NodeKind.CodeBlock spec

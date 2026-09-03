@@ -482,6 +482,63 @@ let mediaAudioTranscript: Node<obj> =
         ))
         None
 
+
+// ─── Sandboxed third-party embed (Phase 1111) ───────────────────────────────
+//
+// Three, and between them they pin every omit polarity this record has. The
+// RENDER obligations they exist to be measured against — the always-emitted
+// empty `sandbox`, the declaration-order token set, the omitted `src` on a
+// refused source — are again not expressible in bytes and live in the SSR
+// corpus and the spec.
+
+/// The minimum: the two required slots and nothing else. `aspectRatio` is at
+/// its `Natural` identity and `permissions` is EMPTY, so neither appears — and
+/// the empty permission list is TOTAL DENIAL, which makes the wire-cheapest
+/// embed also the most locked-down one. A host that emitted `"permissions":[]`
+/// produces different bytes for this fixture and for no other.
+let embedMinimal: Node<obj> =
+    node
+        "embed-1"
+        (NodeKind.Embed(
+            { Defaults.embed with
+                Src = Binding.Static(Some "https://player.example/embed/harbour")
+                Title = TextSource.Literal "Harbour restoration, part two" }
+        ))
+        None
+
+/// The declared aspect ratio — the one slot this kind shares with `Image`, and
+/// it shares the ENUM as well as the polarity. That reuse is what this fixture
+/// pins: a host that minted a parallel `EmbedAspect` with the same case names
+/// round-trips its own emission perfectly and diverges from the schema, where
+/// the slot `$ref`s `ImageAspect`.
+let embedAspect: Node<obj> =
+    node
+        "embed-aspect-1"
+        (NodeKind.Embed(
+            { Defaults.embed with
+                AspectRatio = ImageAspect.SixteenNine
+                Src = Binding.Static(Some "https://player.example/embed/harbour")
+                Title = TextSource.Literal "Harbour restoration, part two" }
+        ))
+        None
+
+/// One declared permission. Deliberately `AllowFullscreen` rather than
+/// `AllowScripts`: it is the case that does NOT ride the `sandbox` attribute,
+/// so a host that mapped the whole enum onto sandbox tokens passes every other
+/// fixture and fails its render obligation on this one. It is also the single
+/// permission that raises no pre-emit warning, so the fixture is a document an
+/// author can ship unaltered.
+let embedPermissions: Node<obj> =
+    node
+        "embed-permissions-1"
+        (NodeKind.Embed(
+            { Defaults.embed with
+                Permissions = [ EmbedPermission.AllowFullscreen ]
+                Src = Binding.Static(Some "https://player.example/embed/harbour")
+                Title = TextSource.Literal "Harbour restoration, part two" }
+        ))
+        None
+
 let listDisplay: Node<obj> =
     // Phase 287 — ordered list with two items.
     node
@@ -4939,6 +4996,9 @@ let allNodes: (string * Node<obj>) list =
       "Display/Media (Phase 1110 — one captions track, elected default)", mediaVideoCaptions
       "Display/Media (Phase 1110 — three tracks, authored order, two default elections)", mediaVideoTracks2
       "Display/Media (Phase 1110 — the audio transcript floor)", mediaAudioTranscript
+      "Display/Embed (Phase 1111 — the minimum: no ratio, no permissions, total denial)", embedMinimal
+      "Display/Embed (Phase 1111 — a declared aspect ratio, sharing Image's enum)", embedAspect
+      "Display/Embed (Phase 1111 — one permission, the one that rides `allow` not `sandbox`)", embedPermissions
       "Display/List (ordered)", listDisplay
       "Display/Toast (Success tone, open)", toast
       "Display/CodeBlock (fsharp, line numbers + highlights)", codeBlock
