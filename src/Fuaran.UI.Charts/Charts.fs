@@ -3723,6 +3723,143 @@ let lowerWith<'Msg> (limits: ChartLimits) (spec: ChartSpec<'Msg>) (rows: Row seq
 let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
     lowerWith ChartLimits.defaults spec rows
 
+// ═══ Sparkline → Drawing lowering (Phase 1098) ═══════════════════════════════
+//
+//  Phase 644's D7, resolved PARTIALLY UNIFY: `Sparkline` keeps its `NodeKind`
+//  and its wire `$type`; what retires is the per-host hand-written polyline.
+//  This is D2 + D3 applied to the one geometry-bearing kind that predates them
+//  — the same journey each `ChartKind` arm took through 533 / 636 / 637 / 638.
+//
+//  WHAT THIS IS NOT. It is not a chart. There is no `ChartSpec`, so there are no
+//  axes, ticks, gridlines, legend, scale negotiation, palette or display unit,
+//  and — stated because it is the one genuine thing option B held — no §4j
+//  PROVENANCE STAMP: the stamp is minted over the canonical wire encoding of a
+//  `ChartSpec`, and a `Sparkline` has none to hash. It gains the shared GEOMETRY
+//  builder, not the provenance record. An export-oriented consumer that needs a
+//  stamped trend line should author a `Chart`.
+//
+//  THE GEOMETRY IS THE SHIPPED ONE, PRESERVED EXACTLY. Every constant below is
+//  what the pre-1098 renderers emitted, kept rather than re-derived: the 100×30
+//  viewBox, `x = i/(n-1)·100` (a lone point centred at 50), `y = 30 −
+//  (v−min)/range·28 − 1`, the `max − min < 1e-9` flat guard that places a
+//  constant series on its own mid-line instead of dividing by zero, `stroke-
+//  width` 1.5, and `currentColor` chrome (D8, Phase 536 — the mark inks from the
+//  surface's own colour, so the container's `color` still drives it). The
+//  coordinates round through the SAME round-half-up-to-2dp rule the chart
+//  lowering uses (`r2`), which is what the hand-written `%.2f` was doing.
+//
+//  WHAT MOVES, deliberately. The MARKUP is now the shared builder's — a
+//  `fuaran-drawing` root carrying `role="img"`, and a `fuaran-drawing-polyline`
+//  child — rather than a bespoke `fuaran-sparkline` SVG. The renderers keep the
+//  `fuaran-sparkline` class on the CONTAINER, which is where the sizing and the
+//  inherited `color` live, so the hook `render-fidelity.json` names survives and
+//  the picture is unchanged. `preserveAspectRatio="none"` is not carried and is
+//  not needed: the container is exactly 100×30 and so is the viewBox, so the
+//  default `xMidYMid meet` scales identically.
+//
+//  NON-FINITE VALUES are NOT special-cased here. They propagate through the
+//  arithmetic exactly as they did in the hand-written builder, reach the wire as
+//  the canonical `"NaN"` / `"Infinity"` string sentinels, and render as `0`
+//  through `DrawingSvg.formatNum` — which is what every other geometry-bearing
+//  kind already does with them. The `sparkline-lowering/nonfinite-sentinel`
+//  golden pins the result, which is the point: the two recorded cross-host
+//  decode divergences live in this input class, and a pinned contract is what
+//  lets them be closed rather than argued about.
+//
+//  The `try` / total pair mirrors `tryLower` / `lower` above, for the same
+//  reason: an empty or unresolved series has no polyline to draw, and each
+//  renderer's declared fallback (the `fuaran-sparkline-empty` em-dash element)
+//  is a HOST element rather than a `Shape`, so the lowering cannot express it.
+//  `tryLowerSparkline` says "there is nothing to draw" in the type; the total
+//  `lowerSparkline` is the convenience form and yields the empty canvas.
+
+/// The sparkline canvas — 100 × 30 user units, the viewBox every host has
+/// emitted since the kind shipped.
+let sparklineViewBox: ViewBox =
+    { MinX = 0.0
+      MinY = 0.0
+      Width = 100.0
+      Height = 30.0 }
+
+/// The shipped sparkline stroke width. Corpus-pinned by `sparkline-lowering/*`.
+[<Literal>]
+let sparklineStrokeWidth = 1.5
+
+/// The vertical inset the shipped geometry keeps at each edge, so a peak or a
+/// trough is not clipped by the stroke's own width.
+[<Literal>]
+let private sparklineInset = 1.0
+
+/// The plotted height — the canvas less one inset at each edge.
+[<Literal>]
+let private sparklinePlotHeight = 28.0
+
+/// The shipped flat-series guard: a range below this is treated as 1.0, which
+/// places a constant series on its own mid-line rather than dividing by zero.
+[<Literal>]
+let private sparklineFlatEpsilon = 1e-9
+
+/// Lower a resolved `Sparkline` series to the canonical `DrawingSpec` every
+/// conformant host reproduces byte-for-byte — or `None` when there is nothing to
+/// draw, which is the caller's cue to render its declared fallback element.
+let tryLowerSparkline (_spec: SparklineSpec) (series: float list) : DrawingSpec option =
+    // The null guard is load-bearing and belongs HERE, at the shared seam, not
+    // repeated in each renderer arm. `Binding.Static None` resolves to
+    // `Unchecked.defaultof<_>` — the slot's default representation, which for a
+    // list is NULL rather than empty — so a host that hands a resolved-but-absent
+    // series straight on would fault on the first pattern match. (The retired
+    // hand-written arm had the same latent fault, reached through
+    // `Seq.isEmpty null`; it survived only because the authoring default is a
+    // sentinel `Query` that never resolves at all.) An absent series and an empty
+    // one mean the same thing to a reader, so they take the same branch.
+    if isNull (box series) || List.isEmpty series then
+        None
+    else
+        let values = List.toArray series
+        let n = values.Length
+        let minV = Array.min values
+        let maxV = Array.max values
+
+        let range =
+            if maxV - minV < sparklineFlatEpsilon then
+                1.0
+            else
+                maxV - minV
+
+        let points =
+            values
+            |> Array.mapi (fun i v ->
+                let x = if n <= 1 then 50.0 else float i / float (n - 1) * 100.0
+
+                let y =
+                    sparklineViewBox.Height
+                    - (v - minV) / range * sparklinePlotHeight
+                    - sparklineInset
+
+                dp (r2 x) (r2 y))
+            |> Array.toList
+
+        Some
+            { ViewBox = sparklineViewBox
+              Title = None
+              Description = None
+              Style = emptyStyle
+              Shapes = [ Shape.Polyline(points, styleStroke "currentColor" sparklineStrokeWidth) ] }
+
+/// The total form of `tryLowerSparkline`: an empty series lowers to the empty
+/// canvas. A renderer wants `tryLowerSparkline` — the empty case is its fallback
+/// element, not an empty drawing — but the lowering stays total for every other
+/// caller, exactly as `lower` does beside `tryLower`.
+let lowerSparkline (spec: SparklineSpec) (series: float list) : DrawingSpec =
+    match tryLowerSparkline spec series with
+    | Some drawing -> drawing
+    | None ->
+        { ViewBox = sparklineViewBox
+          Title = None
+          Description = None
+          Style = emptyStyle
+          Shapes = [] }
+
 // ═══ Provenance stamp + self-describing SVG (Phase 643) ══════════════════════
 //
 // The chart-projection plan's D13, and the resolution of that plan's open

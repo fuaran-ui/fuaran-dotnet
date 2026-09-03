@@ -999,10 +999,27 @@ and private renderKind
                                   [ Html.div
                                         [ prop.className "fuaran-progress-fill"
                                           prop.style [ style.custom ("width", sprintf "%f%%" (fraction * 100.0)) ] ] ] ] ] ]
-    | NodeKind.Sparkline _ ->
-        // The client emits an inline SVG polyline; SSR emits the same hook +
-        // an em-dash placeholder (the data renders client-side on hydration).
-        Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
+    | NodeKind.Sparkline spec ->
+        // Phase 1098 — the em-dash placeholder is retired for a RESOLVED series.
+        // The server now lowers the sparkline through the same
+        // `Charts.tryLowerSparkline` + `DrawingSvg` pair the client arm calls, so
+        // the two tiers emit identical bytes by construction — the journey
+        // `Drawing` took at Phase 525 and each `ChartKind` arm has taken since.
+        // This is a deliberate SSR BEHAVIOUR change: `render-fidelity.json`,
+        // `docs/SSR.md` and the site's SSR guide move with it.
+        //
+        // The em-dash branch survives for the UNRESOLVED or EMPTY series only —
+        // a readable, deterministic stand-in rather than a blank, exactly as
+        // before.
+        match BindingResolver.tryResolve ctx.Sources spec.Source with
+        | Some series ->
+            match Fuaran.UI.Charts.tryLowerSparkline spec series with
+            | Some drawing ->
+                Html.div
+                    [ prop.className "fuaran-sparkline"
+                      prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) drawing) ]
+            | None -> Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
+        | None -> Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
     | NodeKind.Drawing spec ->
         // Phase 525 — the SAME canonical Core SVG string the client emits (so
         // SSR ↔ CSR are byte-identical for this static-geometry node); resolved

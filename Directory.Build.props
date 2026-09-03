@@ -483,13 +483,16 @@
          exhaustive `match` breaks, because the case SET is unchanged. What does
          move is the compiled DU tag ordinal, which is binary contract, and a
          contract change never rides a same-version repack. See STABILITY.md
-         "Recorded change - 0.56.0, the generated layer regenerates in-process".
-
-         0.57.0 (fuaran#1179): Fuaran.UI.ServerDriven gains the live-Transform
-         incremental seam - three new surfaces, no existing type or signature
-         moved, nothing on the wire. See STABILITY.md "Recorded change -
-         0.57.0, the live-Transform incremental seam". -->
-    <Version>0.57.0</Version>
+         "Recorded change - 0.56.0, the generated layer regenerates in-process". -->
+    <!-- 0.58.0 (Phase 1179) - `Fuaran.UI.ServerDriven` gains the live-Transform
+         incremental seam: `LiveTransformStore`, `LiveTransformEvaluation` and the
+         `LiveTransform` module beside them. Purely additive and in the shape that
+         carries no FS0764 risk at all - three NEW surfaces, no existing type
+         gaining a member, no signature moved, nothing on the wire. 0.57.0 was
+         taken concurrently by Phase 1098; this is the next slot rather than a
+         re-pack of it. See STABILITY.md "Recorded change - 0.58.0, the
+         live-Transform incremental seam". -->
+    <Version>0.58.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

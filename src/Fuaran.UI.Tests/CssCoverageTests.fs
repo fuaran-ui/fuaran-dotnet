@@ -335,8 +335,6 @@ let private declaredAbsences: (string * Absence) list =
       "fuaran-file-upload-input", BareHook "native file-input chrome, deliberately not restyled"
       "fuaran-file-upload-control", BareHook "the server renderer's file-input vocabulary; same native chrome"
       "fuaran-layout-separator", BareHook "the element is an <hr>; the reference sheet keeps the native rule"
-      "fuaran-sparkline-line",
-      BareHook "SVG geometry; stroke and fill ride presentation attributes, as the drawing hooks do"
       "fuaran-island", BareHook "hydration boundary, zero-paint by construction — a rule here would shift layout"
       "fuaran-mount-boundary",
       BareHook "isolation boundary marker; the guest's own subtree carries its scoped classes inside it"
