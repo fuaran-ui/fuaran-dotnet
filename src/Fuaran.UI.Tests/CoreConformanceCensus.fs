@@ -195,8 +195,8 @@ let private isLawEntry (m: MethodInfo) =
 let private shippedFamilies () : string list =
     [ for moduleName in lawModules do
           match conformanceAssembly.GetType("Fuaran.Core." + moduleName) with
-          | null -> failtestf "the pinned kit no longer ships a module named %s" moduleName
-          | t ->
+          | Null -> failtestf "the pinned kit no longer ships a module named %s" moduleName
+          | NonNull t ->
               for m in t.GetMethods(BindingFlags.Public ||| BindingFlags.Static ||| BindingFlags.DeclaredOnly) do
                   if isLawEntry m then
                       yield moduleName + "." + m.Name ]
