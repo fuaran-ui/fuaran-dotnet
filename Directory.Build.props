@@ -516,7 +516,7 @@
          effect is renderer-native on the `Action.CommitLocal` precedent, so no
          existing implementer gains a member. See STABILITY.md "Recorded change -
          0.64.0, `Action.Print` and the print stylesheet". -->
-    <Version>0.65.0</Version>
+    <Version>0.66.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

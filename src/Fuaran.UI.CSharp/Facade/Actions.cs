@@ -168,6 +168,31 @@ public sealed class FuaranAction
     /// </remarks>
     public static FuaranAction Print { get; } = new(FsAction.Print);
 
+    /// <summary>
+    /// Write <paramref name="text"/> to the reader's clipboard —
+    /// <c>Action.WriteToClipboard</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The payload is a <see cref="Text"/> rather than a <see cref="string"/> since
+    /// Phase 1126, so what a reader copies may be a bound value — a figure in the
+    /// grid they are looking at, a reference the tree computed — and not only a
+    /// literal the author typed. A <see cref="string"/> converts implicitly, so the
+    /// literal case reads no differently than it would with a string parameter.
+    /// A bound payload resolves at the moment the reader asks, through the same
+    /// binding resolver the surrounding tree renders through.
+    /// </para>
+    /// <para>
+    /// Wire-representable in full, which is the boundary this facade is drawn on: the
+    /// payload survives serialisation exactly, so a decoding browser copies what a
+    /// full-Fable tree would. There is no clipboard <em>read</em> here or anywhere in
+    /// the language — a tree that could read the clipboard without a paste gesture is
+    /// a keylogger-adjacent capability, and paste is user-initiated by construction.
+    /// </para>
+    /// </remarks>
+    public static FuaranAction WriteToClipboard(Text text) =>
+        new(FsAction.NewWriteToClipboard(text.Inner));
+
     /// <summary>Raise several actions in order.</summary>
     public static FuaranAction Chain(params FuaranAction[] actions) =>
         new(FsAction.NewChain(Fs.List(actions.Select(a => a.Inner))));

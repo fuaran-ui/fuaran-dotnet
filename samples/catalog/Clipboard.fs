@@ -52,7 +52,9 @@ let private copyButton: Node<Msg> =
             Variant = ButtonVariant.Primary
             OnClick =
                 Action.Chain
-                    [ Action.WriteToClipboard clipboardPayload
+                    // Phase 1126 — the payload is a `TextSource`; a literal
+                    // string wraps in `TextSource.Literal`.
+                    [ Action.WriteToClipboard(TextSource.Literal clipboardPayload)
                       Action.dispatch (CopiedSentinel clipboardPayload) ] }
 
 let view (model: Model) (dispatch: Msg -> unit) : ReactElement =

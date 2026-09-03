@@ -105,6 +105,25 @@ type DriverServices<'Msg> =
         /// to whatever router the host wired, so an undeclared destination here
         /// is a navigation that HAPPENS rather than a link someone might click.
         EgressPolicy: Fuaran.UI.Renderer.Sanitize.EgressPolicy
+        /// Phase 1126 — resolve a `TextSource` to the string it stands for, at
+        /// the moment an action is dispatched. `Action.WriteToClipboard`'s
+        /// payload is a `TextSource` since that release, and the client shim
+        /// that performs the write holds no binding resolver — so a bound
+        /// payload has to become text on THIS side of the wire or not at all.
+        ///
+        /// A seam and not a computation, for the reason `RenderFragment` is one:
+        /// this tier deliberately holds no `BindingSources`, and the host that
+        /// wires `RenderFragment` is holding exactly the context that answers
+        /// this question. Wiring both from the same render context is what makes
+        /// the copied text agree with the text on screen.
+        ///
+        /// The `create` default resolves against EMPTY sources — the identical
+        /// dispatch a renderer performs for an unconfigured host, so a literal
+        /// payload (every payload written before 1126) resolves to itself, a
+        /// bound one to the empty string, and a missing translation to the loud
+        /// `[i18n:<key>]` sentinel. Not a refusal: a driver resolving text
+        /// differently from the renderer beside it would be the surprise.
+        ResolveText: TextSource -> string
     }
 
 /// The Phase 889 user-action recording seam, as one optional field on
@@ -148,7 +167,8 @@ module DriverServices =
           OnApply = ignore
           OnReject = ignore
           ActionRecording = None
-          EgressPolicy = Fuaran.UI.Renderer.Sanitize.denyNonLocalEgress }
+          EgressPolicy = Fuaran.UI.Renderer.Sanitize.denyNonLocalEgress
+          ResolveText = Fuaran.UI.Renderer.BindingResolver.resolveTextSource Fuaran.UI.Renderer.BindingResolver.empty }
 
     /// **The named opt-in back to the pre-0.14.0 allow-everything gate**
     /// (Phase 782), and — since Phase 1026 — to unrestricted egress with it.
@@ -231,7 +251,14 @@ let rec private interpret
         with
         | Fuaran.UI.Renderer.Sanitize.EgressVerdict.Allowed safe -> [], [ ClientEffect.Navigate safe ]
         | _ -> [], []
-    | Action.WriteToClipboard text -> [], [ ClientEffect.WriteToClipboard text ]
+    // Phase 1126 — the payload is a `TextSource`, and it is RESOLVED HERE,
+    // before it is lowered. `ClientEffect.WriteToClipboard` still carries a
+    // plain string, deliberately: the shim performs a write, it does not
+    // evaluate a tree, and shipping it a declared binding would ask it to hold
+    // a resolver, a state store and an i18n catalogue it has no business
+    // holding. This is the same division `Navigate` already draws — the server
+    // decides what crosses, the shim performs it.
+    | Action.WriteToClipboard text -> [], [ ClientEffect.WriteToClipboard(services.ResolveText text) ]
     // Phase 1124 — the paged medium is the CLIENT's, wherever the tree is
     // computed: a server has no printer, no page and no reader to dismiss a
     // dialogue. So this lowers rather than executing, exactly as the clipboard

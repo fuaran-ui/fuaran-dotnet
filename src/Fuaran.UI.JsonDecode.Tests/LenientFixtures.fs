@@ -684,4 +684,27 @@ let all: LenientFixture list =
         VerboseJson =
           """{"id":"shipments","kind":{"$type":"DataGrid","columns":[{"field":"status","kind":{"$type":"TonedPill","field":"status","map":{"Cancelled":"Critical","On time":"Success"}},"label":"Status"}],"rowKeyField":"status","source":{"$type":"Transform","pipeline":[],"source":{"columns":{"status":{"validity":[true],"values":["Delayed"]}},"schema":[{"name":"status","type":"string"}]}}}}"""
         Description =
-          "Phase 750 — the Phase 460 tone aliases apply inside a TonedPill `map` (Danger→Critical, Positive→Success) and in its `default` (Neutral→Default, which then omits)" } ]
+          "Phase 750 — the Phase 460 tone aliases apply inside a TonedPill `map` (Danger→Critical, Positive→Success) and in its `default` (Neutral→Default, which then omits)" }
+
+      // ─── Phase 1126 — the clipboard payload is a TextSource ───────────────
+      //
+      // `Action.WriteToClipboard.text` widened from a bare string to a
+      // `TextSource`, which means §16's oldest normalisation now reaches this
+      // slot too: `TextSource.Literal`'s canonical form is the BARE STRING, and
+      // the explicit `{"$type":"Literal","text":…}` envelope normalises down to
+      // it.
+      //
+      // Which is the same fact, read the other way round, as the compatibility
+      // claim the widening rests on: every document written before 1126 carries
+      // a bare string here, and a bare string is what the canonical encoder
+      // still emits. The legacy spelling did not become lenient — it stayed
+      // canonical. This fixture pins the ENVELOPE spelling, the one thing that
+      // genuinely needs normalising, and by doing so it also proves the slot
+      // reads as a `TextSource` at all.
+      { Id = "lenient-1126-clipboard-literal-envelope"
+        LenientJson =
+          """{"id":"btn-copy","kind":{"$type":"Button","label":"Copy","onClick":{"$type":"WriteToClipboard","text":{"$type":"Literal","text":"https://example.com/s/1"}},"variant":"Primary"}}"""
+        VerboseJson =
+          """{"id":"btn-copy","kind":{"$type":"Button","label":"Copy","onClick":{"$type":"WriteToClipboard","text":"https://example.com/s/1"},"variant":"Primary"}}"""
+        Description =
+          "Phase 1126 — the clipboard payload is a TextSource, so §16's transparent-Literal rule reaches it: the explicit {\"$type\":\"Literal\",\"text\":…} envelope normalises to the bare string, which is also the pre-1126 spelling and still the canonical one" } ]

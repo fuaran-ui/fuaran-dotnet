@@ -781,6 +781,30 @@ the wire. You cannot serialise a closure, so the `Action` cases split in two:
 | --- | --- |
 | `SetState`, `Notify`, `Navigate`, `AiTool`, `Chain`, `CommitLocal`, `WriteToClipboard` | `Dispatch` (app message), `Call` (`onResult`), `ReadFileBody` (`onRead`) |
 
+**`Action.WriteToClipboard` since Phase 1126 — the payload is a `TextSource`, and this is the one
+row above whose SSR posture depends on which path reaches it.** The table is still right: the action
+survives the wire in every arm, because a `TextSource` is data in all three of its own arms. What
+changes is who can say what it stands for.
+
+- **On the hydrated client path** the payload is resolved at DISPATCH time, through the same binding
+  resolution the renderer resolves a label with — so the reader copies the value they are looking
+  at, not the value the document arrived with.
+- **On the server-DRIVEN path** the effect is resolved BEFORE it is lowered, through
+  `DriverServices.ResolveText`, and `ClientEffect.WriteToClipboard` still carries a plain string
+  (see [`SERVER_DRIVEN.md`](SERVER_DRIVEN.md)). The shim performs a write; it does not evaluate a
+  tree.
+- **On the RESUMABILITY path the disposition now depends on the payload**, and it is the only
+  `Action` case in the format for which that is true. A LITERAL payload keeps its `interpret`
+  disposition — the resumed page hands the runtime a string it already holds, with no framework
+  JavaScript executed. A BOUND or i18n payload is dispositioned **`fallback`**, on exactly the
+  `Call` reasoning: the resume interpreter is the zero-JS path and holds no binding sources and no
+  i18n catalogue, so it cannot say what the payload stands for. Interpreting it anyway would put the
+  DECLARATION on the reader's clipboard instead of the value — a copy that silently succeeds with
+  the wrong content, which is worse than one that hydrates the subtree first. Falling back costs
+  that one subtree its zero-JS load and nothing else.
+- **A no-script static page** attaches nothing, as it does for every other action: the button renders
+  inert, the general Input rule.
+
 So the rule is **"ship a verb, not a function":** a server-emitted tree expresses
 intent as named, data-carrying actions; the client holds the behaviour (a `runtime`
 + an `update`). For closure-backed interactivity, reconstruct the tree in code (the

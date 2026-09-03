@@ -577,8 +577,21 @@ let private action =
         [ { Tag = "Chain"
             Fields = [ req "ops" (TList(TUnion("Action", []))) ]
             Annotations = Annotations.Empty }
+          // Phase 1126 — the payload is a `TextSource`, not a bare string, so
+          // the thing a reader actually copies (a bound value, a computed
+          // reference) has a spelling. Widening the existing case was chosen
+          // over a sibling `WriteToClipboardBound`, which would have minted the
+          // permanent near-synonym pair the vocabulary charter exists to
+          // forbid.
+          //
+          // THE WIRE DOES NOT MOVE for a literal payload: `TextSource.Literal`
+          // is canonically the BARE JSON STRING (§3.6, §16), so
+          // `{"$type":"WriteToClipboard","text":"…"}` is emitted and accepted
+          // exactly as before. What is new is a `text` carrying a `Bound` /
+          // `I18n` object, and the §16 normalisation of the explicit
+          // `{"$type":"Literal","text":…}` envelope at this slot.
           { Tag = "WriteToClipboard"
-            Fields = [ req "text" TStr ]
+            Fields = [ req "text" (TUnion("TextSource", [])) ]
             Annotations = Annotations.Empty }
           // Fuaran-UI 0.2.x: the dispatch msg closure is omitted entirely (no wire key).
           // `Dispatch of 'Msg`. The payload is a host value with NO wire projection —

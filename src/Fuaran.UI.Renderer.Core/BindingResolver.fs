@@ -923,6 +923,50 @@ let tryResolveScalarText (sources: BindingSources) (binding: Binding<string>) : 
     | Errored _
     | I18nUnresolved _ -> None
 
+/// Resolve a whole `TextSource` to the string a reader sees — THE one
+/// definition of that dispatch in the estate.
+///
+/// Phase 1126 put a `TextSource` in a third place (`Action.WriteToClipboard`'s
+/// payload, resolved at dispatch time rather than at render time), and the
+/// dispatch had until then been written out twice: once in the client renderer's
+/// `renderText` and once, byte-identically by hand, in the SSR renderer's. A
+/// third hand-written copy is how the two would eventually disagree about what a
+/// bound label says — which is precisely the divergence `ScalarSsrParityTests`
+/// exists to catch, and it should not need to catch a copy nobody had to write.
+/// Both renderers now call this; so does the server-driven driver.
+///
+/// The three arms are the pre-existing semantics, unchanged: a literal is
+/// itself; a `Bound` binding resolves through the SCALAR path (so a
+/// `Binding.Transform` yields its 1x1 result cell, never the rows list) and an
+/// unresolvable one reads as the empty string; an `I18n` key missing from the
+/// catalogue reads as the loud `[i18n:<key>]` sentinel rather than as nothing,
+/// so an unregistered key is caught at sight. Args substitute `{name}`
+/// placeholders — scalars as their display string, a composite as compact
+/// canonical JSON. Full ICU-shape interpolation remains an ergonomic upgrade.
+let resolveTextSource (sources: BindingSources) (text: TextSource) : string =
+    match text with
+    | TextSource.Literal s -> s
+    | TextSource.Bound binding -> tryResolveScalarText sources binding |> Option.defaultValue ""
+    | TextSource.I18n(key, args) ->
+        match Map.tryFind key sources.I18n with
+        | Some template ->
+            args
+            |> Map.fold
+                (fun (acc: string) (k: string) (v: JVal) ->
+                    let needle = "{" + k + "}"
+
+                    let replacement =
+                        match v with
+                        | JStr s -> s
+                        | JInt i -> string i
+                        | JFloat f -> string f
+                        | JBool b -> (if b then "true" else "false")
+                        | composite -> Json.render composite
+
+                    acc.Replace(needle, replacement))
+                template
+        | None -> sprintf "[i18n:%s]" key
+
 /// Best-effort scalar float resolution — the `tryResolve` twin for numeric slots.
 let tryResolveScalarFloat (sources: BindingSources) (binding: Binding<float>) : float option =
     match resolveScalarFloat sources binding with

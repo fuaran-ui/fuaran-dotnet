@@ -57,6 +57,13 @@ type ResumeConfig =
 open Fable.Core
 open Fable.Core.JsInterop
 
+/// Phase 1126 — is this raw envelope value a JS string? `TextSource.Literal`'s
+/// canonical form IS the bare string, so this is how the resume path tells a
+/// literal clipboard payload (which it can interpret) from a bound one (which it
+/// cannot).
+[<Emit("typeof $0 === 'string'")>]
+let private isJsString (v: obj) : bool = jsNative
+
 /// Interpret one decoded data-shaped action (a parsed envelope `action` object)
 /// against the runtime. `Chain` recurses; the closure-sentinel cases never
 /// reach here (their nodes carry a `boot` / `fallback` disposition and are
@@ -67,7 +74,21 @@ let rec private interpret (runtime: Runtime.IFuaranRuntime) (action: obj) : unit
     | "Notify" -> runtime.Notify(action?channel, Runtime.JsonBridge.jsToJVal action?payload)
     | "SetState" -> runtime.SetState(action?key, Runtime.JsonBridge.jsToJVal action?value)
     | "AiTool" -> runtime.InvokeAiTool(action?toolName, Runtime.JsonBridge.jsToJVal action?args)
-    | "WriteToClipboard" -> runtime.WriteToClipboard(action?text)
+    // Phase 1126 — the payload is a `TextSource`, whose canonical LITERAL form
+    // is the bare JSON string this path has always read. A non-string `text` is
+    // a bound or i18n payload, which the server's `disposition` routes to
+    // `fallback` precisely because this path holds no resolver — so reaching
+    // here with one means the envelope and the interpreter disagree, and the
+    // honest response is to warn rather than to copy `[object Object]` onto the
+    // reader's clipboard.
+    | "WriteToClipboard" ->
+        let text: obj = action?text
+
+        if isJsString text then
+            runtime.WriteToClipboard(unbox<string> text)
+        else
+            runtime.Warn
+                "[Fuaran:resume] WriteToClipboard carries a bound payload; this node should have been dispositioned 'fallback' and hydrated. Nothing was written."
     // Phase 1124 — renderer-native, mirroring `Render.runAction`: no
     // `IFuaranRuntime` member backs it, because `window.print()` is the
     // browser's own and takes no arguments. The resumed path reaches the same

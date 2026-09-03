@@ -3251,10 +3251,15 @@ and private decodeTextSource (path: string) (j: Json) : Result<TextSource, Decod
     // Lenient AI-ingest shorthand (WIRE_FORMAT.md §16): a bare JSON string is
     // accepted as `TextSource.Literal`, so an author can write `"Revenue"`
     // instead of `{"$type":"Literal","text":"Revenue"}` — the single biggest
-    // token saver, since labels / headings / help text are everywhere. This is
-    // a decode-only convenience: the canonical encoder still emits the object
-    // form, so the shorthand re-encodes to canonical (it does not round-trip
-    // byte-identically, by design) and every existing fixture is unaffected.
+    // token saver, since labels / headings / help text are everywhere.
+    //
+    // And it is the CANONICAL form, not merely an accepted one: §3.6 makes
+    // `TextSource.Literal` the bare string on the way out as well as in, so the
+    // shorthand round-trips byte-identically and the explicit
+    // `{"$type":"Literal","text":…}` envelope is what normalises (§16). That
+    // direction is load-bearing for Phase 1126 — it is why widening
+    // `Action.WriteToClipboard`'s payload from `string` to `TextSource` moved
+    // no document's bytes.
     | JString s -> Ok(TextSource.Literal s)
     | _ ->
         match requireObject path j with
@@ -3665,12 +3670,22 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                 | Error e -> Error e
                 | Ok v -> requireString (path + ".nodeId") v |> Result.map Action.CommitLocal
             | Ok "WriteToClipboard" ->
-                // Literal-string clipboard payload. The renderer
-                // routes through `IFuaranRuntime.WriteToClipboard`; the wire
-                // shape carries only the text.
-                match requireField path fields "text" "clipboard payload string" with
+                // Phase 1126 — the clipboard payload is a `TextSource`, so a
+                // reader can copy a bound value rather than only a literal the
+                // author typed.
+                //
+                // `decodeTextSource` is the whole decode-upgrade, and it needs
+                // no lenient special case: it ALREADY accepts a bare JSON
+                // string as `TextSource.Literal` (the §16 shorthand every text
+                // slot in the language shares), so every document written
+                // against the pre-1126 spelling decodes here unchanged, and to
+                // the same bytes on re-encode. What it additionally accepts now
+                // is the `{"$type":"Bound",…}` / `{"$type":"I18n",…}` object,
+                // and the explicit `{"$type":"Literal","text":…}` envelope that
+                // normalises back down to the bare string.
+                match requireField path fields "text" "clipboard payload TextSource" with
                 | Error e -> Error e
-                | Ok v -> requireString (path + ".text") v |> Result.map Action.WriteToClipboard
+                | Ok v -> decodeTextSource (path + ".text") v |> Result.map Action.WriteToClipboard
             | Ok "Print" ->
                 // Phase 1124 — payload-free. `{"$type":"Print"}` and nothing else.
                 //

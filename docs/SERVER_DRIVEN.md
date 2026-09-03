@@ -92,7 +92,7 @@ a `file-read` `LiveEvent`.
 | `Dispatch` | **Server-executed** → `update` |
 | `Call`, `Notify`, `SetState`, `AiTool`, `CommitLocal` | **Server-executed** (host `InterpretHostEffect`; a form-submit's `Call` routes through `InterpretSubmitCall` with the submit body when wired – Phase 820, §"Submit payload") |
 | `Navigate route` | **`ClientEffect.Navigate`** |
-| `WriteToClipboard text` | **`ClientEffect.WriteToClipboard`** |
+| `WriteToClipboard text` | **`ClientEffect.WriteToClipboard`** — Phase 1126: the payload is a `TextSource`, and the driver **resolves it before lowering**, through the `DriverServices.ResolveText` seam. The effect that crosses the wire carries a plain resolved string, deliberately: the shim performs a write, it does not evaluate a tree, so shipping it a declared binding would ask it to hold a resolver, a state store and an i18n catalogue. The same division `Navigate` draws — the server decides what crosses, the shim performs it. A host wires `ResolveText` from the render context it already builds `RenderFragment` from; the `create` default resolves against empty sources, so a literal payload (every payload written before 1126) resolves to itself. |
 | `ReadFileBody(file, encoding, onRead)` | **`ClientEffect.ReadFileBody`** (body round-trips as a `file-read` `LiveEvent`; the blob is browser-held) |
 | `Chain` | Folds – each inner arm dispatched by the same table |
 

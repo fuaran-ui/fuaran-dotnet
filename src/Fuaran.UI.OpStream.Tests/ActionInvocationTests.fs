@@ -38,8 +38,11 @@ let private poison = "PoIsOn-uSeR-tYpEd-53cr3t"
 /// rather than assumed: a payload-free case is the shape most likely to be left
 /// out of a coverage list on the grounds that there is nothing to check.
 let private allTwelveCases: (string * Action<Msg>) list =
-    [ "Chain", Action.Chain [ Action.WriteToClipboard poison; Action.Navigate("/a?q=" + poison) ]
-      "WriteToClipboard", Action.WriteToClipboard poison
+    [ "Chain",
+      Action.Chain
+          [ Action.WriteToClipboard(TextSource.Literal poison)
+            Action.Navigate("/a?q=" + poison) ]
+      "WriteToClipboard", Action.WriteToClipboard(TextSource.Literal poison)
       "Dispatch", Action.Dispatch(Poke poison)
       // Fully qualified: `open System` puts `System.Action` in scope and its
       // instance `Invoke` wins the name resolution otherwise.
@@ -132,7 +135,9 @@ let redactionTests =
 
           test "a Chain is ONE invocation and names no constituent" {
               let chain: Action<Msg> =
-                  Action.Chain [ Action.Navigate("/x?s=" + poison); Action.WriteToClipboard poison ]
+                  Action.Chain
+                      [ Action.Navigate("/x?s=" + poison)
+                        Action.WriteToClipboard(TextSource.Literal poison) ]
 
               Expect.equal (ActionInvocation.describe chain) "Chain" "no contents"
 

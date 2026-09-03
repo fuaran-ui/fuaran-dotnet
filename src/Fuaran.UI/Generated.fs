@@ -358,7 +358,31 @@ type TrendPolarity =
 [<RequireQualifiedAccess>]
 type Action<'Msg> =
     | Chain of ops: Action<'Msg> list
-    | WriteToClipboard of text: string
+    /// Write `text` to the reader's clipboard.
+    ///
+    /// Phase 1126 — the payload is a `TextSource`, so what a reader copies may
+    /// be a bound value or a computed reference rather than only a literal the
+    /// author typed. The case was WIDENED rather than joined by a
+    /// `WriteToClipboardBound` sibling: two cases for one intent is the
+    /// permanent near-synonym pair the vocabulary charter exists to forbid, and
+    /// a source break that the compiler names once is cheaper than a
+    /// vocabulary that stays ambiguous forever.
+    ///
+    /// **The wire does not move for a literal payload.** `TextSource.Literal`
+    /// is canonically the bare JSON string, so
+    /// `{"$type":"WriteToClipboard","text":"…"}` is emitted and accepted
+    /// exactly as it was before this release. Construction sites are what
+    /// break, and they break at compile time: wrap the old argument in
+    /// `TextSource.Literal`.
+    ///
+    /// A `Bound` payload resolves at DISPATCH time, through the same binding
+    /// resolver the surrounding tree renders through — never at decode time,
+    /// so the copied text is what the reader was looking at when they asked.
+    ///
+    /// There is deliberately no clipboard *read*: a tree that could read the
+    /// clipboard without a paste gesture is a keylogger-adjacent capability.
+    /// Paste is user-initiated by construction, and that is the boundary.
+    | WriteToClipboard of text: TextSource
     | Dispatch of msg: ('Msg)
     | Invoke of capabilityId: string * args: InvokeArg list
     | ReadFileBody of fileRef: string * fileHandle: (obj option) * encoding: FileReadEncoding * onRead: (string -> 'Msg) option
@@ -1817,7 +1841,7 @@ and private encNode (n: Node<'Msg>) : JVal =
 and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     match v with
     | Action.Chain ops -> Canon.typed "Chain" [ "ops", JArr(List.map encAction ops) ]
-    | Action.WriteToClipboard text -> Canon.typed "WriteToClipboard" [ "text", JStr text ]
+    | Action.WriteToClipboard text -> Canon.typed "WriteToClipboard" [ "text", encTextSource text ]
     | Action.Dispatch msg -> Canon.typed "Dispatch" ([ None ] |> List.choose id)
     | Action.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
     | Action.ReadFileBody (fileRef, fileHandle, encoding, onRead) -> Canon.typed "ReadFileBody" ([ Some("fileRef", JStr fileRef); None; Some("encoding", encFileReadEncoding encoding); (onRead |> Option.map (fun v -> "onRead", JStr "<closure>")) ] |> List.choose id)
@@ -2229,6 +2253,15 @@ let encodeSemanticStyleJson (s: SemanticStyle) : JVal = encSemanticStyle s
 // `SetState` whose payload is a `valueFrom` Binding through the canonical
 // encoder rather than growing a second hand-rolled binding encoder.
 let encodeActionJson (a: Action<'Msg>) : JVal = encAction a
+
+// Phase 1126 — the same accessor one level down, for the two hand-written
+// codecs that encode a `TextSource` slot OUTSIDE a node: the op-stream's
+// canonical-JSON action encoder and the action-log's payload projection. Both
+// grew a `JStr` where the clipboard payload used to be a bare string; neither
+// should grow a second hand-rolled `TextSource` encoder to replace it, because
+// `TextSource.Literal`'s bare-string canonical form (§3.6) is exactly the kind
+// of rule that two copies drift on.
+let encodeTextSourceJson (t: TextSource) : JVal = encTextSource t
 
 let private dObj (j: JVal) : Result<(string * JVal) list, string> =
     match j with
@@ -2716,7 +2749,7 @@ and private decAction (j: JVal) : Result<Action<obj>, string> =
             dReq "ops" __fs (dList decAction) |> Result.bind (fun ops ->
             Ok(Action.Chain(ops)))
         | "WriteToClipboard" ->
-            dReq "text" __fs dStr |> Result.bind (fun text ->
+            dReq "text" __fs decTextSource |> Result.bind (fun text ->
             Ok(Action.WriteToClipboard(text)))
         | "Dispatch" ->
             Ok ((("<dispatch>" :> obj))) |> Result.bind (fun msg ->

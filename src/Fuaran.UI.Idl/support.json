@@ -35,6 +35,35 @@
     },
     {
       "lines": [
+        "/// Write `text` to the reader's clipboard.",
+        "///",
+        "/// Phase 1126 — the payload is a `TextSource`, so what a reader copies may",
+        "/// be a bound value or a computed reference rather than only a literal the",
+        "/// author typed. The case was WIDENED rather than joined by a",
+        "/// `WriteToClipboardBound` sibling: two cases for one intent is the",
+        "/// permanent near-synonym pair the vocabulary charter exists to forbid, and",
+        "/// a source break that the compiler names once is cheaper than a",
+        "/// vocabulary that stays ambiguous forever.",
+        "///",
+        "/// **The wire does not move for a literal payload.** `TextSource.Literal`",
+        "/// is canonically the bare JSON string, so",
+        "/// `{\"$type\":\"WriteToClipboard\",\"text\":\"…\"}` is emitted and accepted",
+        "/// exactly as it was before this release. Construction sites are what",
+        "/// break, and they break at compile time: wrap the old argument in",
+        "/// `TextSource.Literal`.",
+        "///",
+        "/// A `Bound` payload resolves at DISPATCH time, through the same binding",
+        "/// resolver the surrounding tree renders through — never at decode time,",
+        "/// so the copied text is what the reader was looking at when they asked.",
+        "///",
+        "/// There is deliberately no clipboard *read*: a tree that could read the",
+        "/// clipboard without a paste gesture is a keylogger-adjacent capability.",
+        "/// Paste is user-initiated by construction, and that is the boundary."
+      ],
+      "path": "case:Action.WriteToClipboard"
+    },
+    {
+      "lines": [
         "// Phase 818 — the source slot widened from `Fuaran.Core.DataSource` to the",
         "// host `TransformSource` DU so a binding-shaped wire source (State /",
         "// Selection / Query) is PRESERVED for live re-evaluation instead of being",
@@ -594,7 +623,7 @@
     }
   ],
   "splices": {
-    "accessor": "// Phase 818 — JVal-level accessor for a data-shaped Action (the\u000a// `encodeNodeKindJson` precedent): the server resume script re-encodes a\u000a// `SetState` whose payload is a `valueFrom` Binding through the canonical\u000a// encoder rather than growing a second hand-rolled binding encoder.\u000alet encodeActionJson (a: Action<'Msg>) : JVal = encAction a",
+    "accessor": "// Phase 818 — JVal-level accessor for a data-shaped Action (the\u000a// `encodeNodeKindJson` precedent): the server resume script re-encodes a\u000a// `SetState` whose payload is a `valueFrom` Binding through the canonical\u000a// encoder rather than growing a second hand-rolled binding encoder.\u000alet encodeActionJson (a: Action<'Msg>) : JVal = encAction a\u000a\u000a// Phase 1126 — the same accessor one level down, for the two hand-written\u000a// codecs that encode a `TextSource` slot OUTSIDE a node: the op-stream's\u000a// canonical-JSON action encoder and the action-log's payload projection. Both\u000a// grew a `JStr` where the clipboard payload used to be a bare string; neither\u000a// should grow a second hand-rolled `TextSource` encoder to replace it, because\u000a// `TextSource.Literal`'s bare-string canonical form (§3.6) is exactly the kind\u000a// of rule that two copies drift on.\u000alet encodeTextSourceJson (t: TextSource) : JVal = encTextSource t",
     "decode": "// Phase 818 — the Transform source slot. A `$type` of State / Selection / Query preserves the binding as\u000a// `TransformSource.Live` with the initial snapshot derived from its carried\u000a// default data (`Fuaran.UI.HostPrelude.TransformLive`). Every other shape\u000a// decodes through Core's columnar codec unchanged.\u000a//\u000a// Phase 1085 — a State source carrying NO data decodes to a live source over\u000a// the EMPTY initial snapshot, exactly as a Selection / Query source already\u000a// did. It used to be refused through the columnar codec (the Phase-815\u000a// posture, correct when nothing could fill the slot), which made the most\u000a// direct way to say \"I read this key and carry no data of my own\"\u000a// unspellable: under the Phase-1075 seeding rule a SIBLING reader's\u000a// declaration fills the slot, and FUARAN106's own remedy text tells an author\u000a// to write precisely this shape. `\"defaultValue\": []` remains legal and means\u000a// the same thing; the bare form is no longer a second answer to one question.\u000aand private decTransformSource (j: JVal) : Result<TransformSource, string> =\u000a    let asData (v: JVal) : Result<TransformSource, string> =\u000a        Fuaran.Core.ColumnCodec.decodeJson v |> Result.map TransformSource.Data |> Result.mapError string\u000a\u000a    match j with\u000a    | JObj fields ->\u000a        match fields |> List.tryFind (fun (k, _) -> k = \"$type\") with\u000a        | Some(_, JStr((\"State\" | \"Selection\" | \"Query\") as tag)) ->\u000a            decBinding dJson j |> Result.bind (fun b ->\u000a                let carried =\u000a                    match b with\u000a                    | Binding.State(_, dv) -> dv\u000a                    | Binding.Selection(_, _, dv, _) -> dv\u000a                    | _ -> None\u000a\u000a                match carried, tag with\u000a                | Some data, \"State\" ->\u000a                    // A State source's carried data IS the initial snapshot —\u000a                    // it must decode as a table (the Phase-815 posture).\u000a                    Fuaran.UI.HostPrelude.TransformLive.initialSource data\u000a                    |> Result.map (fun initial -> TransformSource.Live(b, initial))\u000a                    |> Result.mapError Fuaran.Core.ColumnCodec.errorString\u000a                | Some data, _ ->\u000a                    // A Selection default may legitimately be a scalar / row\u000a                    // shape rather than a table; fall back to the empty\u000a                    // initial (the runtime evaluation stays loud on mismatch).\u000a                    match Fuaran.UI.HostPrelude.TransformLive.initialSource data with\u000a                    | Ok initial -> Ok(TransformSource.Live(b, initial))\u000a                    | Error _ -> Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource))\u000a                // Phase 1085 — no carried data, on ANY of the three tags: the\u000a                // binding is preserved live over the empty initial snapshot.\u000a                // The State arm used to fall through to `asData` here.\u000a                | None, _ -> Ok(TransformSource.Live(b, Fuaran.UI.HostPrelude.TransformLive.emptySource)))\u000a        | _ -> asData j\u000a    | _ -> asData j",
     "encode": "// Phase 818 — a `Data` source keeps the Core columnar encoding byte-identical; a\u000a// `Live` source re-encodes the preserved binding itself (one wire dialect — the\u000a// State/Selection/Query-shaped source round-trips byte-for-byte; the derived\u000a// `initial` snapshot is never encoded).\u000aand private encTransformSource (s: TransformSource) : JVal =\u000a    match s with\u000a    | TransformSource.Data ds -> Fuaran.Core.ColumnCodec.encodeJson ds\u000a    | TransformSource.Live (b, _) -> (encBinding id) b",
     "type": "/// Phase 818 — a `Binding.Transform`'s source slot. `Data` is the\u000a/// canonical columnar / `ref` source (the pre-818 shape, byte-identical on the\u000a/// wire). `Live` preserves a binding-shaped source (State / Selection / Query)\u000a/// verbatim so a runtime re-evaluates the Transform with subscription\u000a/// semantics when the binding's channel changes; `initial` is the decode-time\u000a/// snapshot table derived from the binding's carried default data (never\u000a/// encoded — the binding IS the wire form), which SSR / diagnostic evaluation\u000a/// reads, byte-identical to the Phase-815 snapshot for the same input.\u000aand [<RequireQualifiedAccess>] TransformSource =\u000a    | Data of source: Fuaran.Core.DataSource\u000a    | Live of binding: Binding<JVal> * initial: Fuaran.Core.DataSource"

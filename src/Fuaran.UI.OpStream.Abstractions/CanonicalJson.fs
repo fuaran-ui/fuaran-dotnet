@@ -600,9 +600,17 @@ and private encodeAction<'Msg> (a: Action<'Msg>) : Appender =
             // DOM custom event to drain the buffer.
             appendObject sb (case "CommitLocal" [ "nodeId", str nodeId ])
         | Action.WriteToClipboard text ->
-            // Literal-string clipboard intent. Renderer routes
-            // through `IFuaranRuntime.WriteToClipboard`.
-            appendObject sb (case "WriteToClipboard" [ "text", str text ])
+            // Phase 1126 — the payload is a `TextSource`, encoded through the
+            // GENERATED encoder rather than a second hand-rolled one. That
+            // matters here specifically: `TextSource.Literal`'s canonical form
+            // is the bare JSON string (§3.6), which is exactly the rule a
+            // duplicate encoder would eventually get wrong, and this encoder
+            // feeds the hash chain — a divergence would present as an
+            // unexplained hash mismatch rather than as a wrong-looking
+            // document. Every pre-1126 literal payload hashes identically.
+            appendObject
+                sb
+                (case "WriteToClipboard" [ "text", encodeJVal (Fuaran.UI.Generated.encodeTextSourceJson text) ])
         | Action.Print ->
             // Phase 1124 — payload-free. `{"$type":"Print"}` is the whole
             // encoding, and the empty field list is not an omission: there is

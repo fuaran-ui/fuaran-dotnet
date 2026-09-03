@@ -580,7 +580,9 @@ let rec private genAction: Gen<Action<obj>> =
           Gen.map2 (fun k v -> Action.SetState(k, Some(v), None)) genNonEmptyString genJVal
           Gen.map2 (fun n a -> Action.AiTool(n, a)) genNonEmptyString genJVal
           Gen.map Action.CommitLocal genNonEmptyString
-          Gen.map Action.WriteToClipboard genString
+          // Phase 1126 — the payload is a `TextSource`, so the property covers the
+          // bound and i18n spellings as well as the literal one.
+          Gen.map Action.WriteToClipboard genTextSource
           Gen.constant Action.Print
           Gen.map
               (fun id -> Action.ReadFileBody(id, None, FileReadEncoding.Base64, Some(fun _ -> box "<r>")))
@@ -599,7 +601,7 @@ let private allActionsChain: Action<obj> =
           Action.AiTool("tool", JStr "a")
           Action.Chain []
           Action.CommitLocal "node"
-          Action.WriteToClipboard "text"
+          Action.WriteToClipboard(TextSource.Literal "text")
           Action.Print
           Action.ReadFileBody("file:0", None, FileReadEncoding.Base64, Some(fun _ -> box "<r>")) ]
 

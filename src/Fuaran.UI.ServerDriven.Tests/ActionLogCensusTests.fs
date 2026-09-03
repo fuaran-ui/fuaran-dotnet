@@ -37,8 +37,11 @@ type private Msg = Poke of string
 let private poison = "PoIsOn-uSeR-tYpEd-53cr3t"
 
 let private allActionCases: (string * Action<Msg>) list =
-    [ "Chain", Action.Chain [ Action.WriteToClipboard poison; Action.Navigate("/a?q=" + poison) ]
-      "WriteToClipboard", Action.WriteToClipboard poison
+    [ "Chain",
+      Action.Chain
+          [ Action.WriteToClipboard(TextSource.Literal poison)
+            Action.Navigate("/a?q=" + poison) ]
+      "WriteToClipboard", Action.WriteToClipboard(TextSource.Literal poison)
       "Dispatch", Action.Dispatch(Poke poison)
       // Fully qualified: `System.Action`'s instance `Invoke` wins the name
       // resolution otherwise.

@@ -111,6 +111,31 @@ let support: Gen.GenSupport =
                     "/// write beside it. It is gated all the same"
                     "/// (`ActionDescriptor.Print`), because a host that renders untrusted"
                     "/// trees must be able to refuse an unbidden dialogue." ]
+                  "case:Action.WriteToClipboard",
+                  [ "/// Write `text` to the reader's clipboard."
+                    "///"
+                    "/// Phase 1126 — the payload is a `TextSource`, so what a reader copies may"
+                    "/// be a bound value or a computed reference rather than only a literal the"
+                    "/// author typed. The case was WIDENED rather than joined by a"
+                    "/// `WriteToClipboardBound` sibling: two cases for one intent is the"
+                    "/// permanent near-synonym pair the vocabulary charter exists to forbid, and"
+                    "/// a source break that the compiler names once is cheaper than a"
+                    "/// vocabulary that stays ambiguous forever."
+                    "///"
+                    "/// **The wire does not move for a literal payload.** `TextSource.Literal`"
+                    "/// is canonically the bare JSON string, so"
+                    "/// `{\"$type\":\"WriteToClipboard\",\"text\":\"…\"}` is emitted and accepted"
+                    "/// exactly as it was before this release. Construction sites are what"
+                    "/// break, and they break at compile time: wrap the old argument in"
+                    "/// `TextSource.Literal`."
+                    "///"
+                    "/// A `Bound` payload resolves at DISPATCH time, through the same binding"
+                    "/// resolver the surrounding tree renders through — never at decode time,"
+                    "/// so the copied text is what the reader was looking at when they asked."
+                    "///"
+                    "/// There is deliberately no clipboard *read*: a tree that could read the"
+                    "/// clipboard without a paste gesture is a keylogger-adjacent capability."
+                    "/// Paste is user-initiated by construction, and that is the boundary." ]
                   "case:Action.SetState",
                   [ "// Phase 818 — `valueFrom` (a Binding evaluated at dispatch time inside the"
                     "// existing gate) is a SIBLING of the literal `value`; decode enforces"
@@ -539,7 +564,16 @@ and private decTransformSource (j: JVal) : Result<TransformSource, string> =
 // `encodeNodeKindJson` precedent): the server resume script re-encodes a
 // `SetState` whose payload is a `valueFrom` Binding through the canonical
 // encoder rather than growing a second hand-rolled binding encoder.
-let encodeActionJson (a: Action<'Msg>) : JVal = encAction a"""
+let encodeActionJson (a: Action<'Msg>) : JVal = encAction a
+
+// Phase 1126 — the same accessor one level down, for the two hand-written
+// codecs that encode a `TextSource` slot OUTSIDE a node: the op-stream's
+// canonical-JSON action encoder and the action-log's payload projection. Both
+// grew a `JStr` where the clipboard payload used to be a bare string; neither
+// should grow a second hand-rolled `TextSource` encoder to replace it, because
+// `TextSource.Literal`'s bare-string canonical form (§3.6) is exactly the kind
+// of rule that two copies drift on.
+let encodeTextSourceJson (t: TextSource) : JVal = encTextSource t"""
         CaseRefines =
             Map.ofList
                 [ "Action.SetState",

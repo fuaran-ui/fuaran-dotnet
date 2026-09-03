@@ -3334,7 +3334,7 @@
               "const": "WriteToClipboard"
             },
             "text": {
-              "type": "string"
+              "$ref": "#/$defs/TextSource"
             }
           },
           "required": [

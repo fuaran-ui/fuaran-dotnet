@@ -104,7 +104,9 @@ internal static class Fmt
 internal static class Act
 {
     public static FsAction Chain(params FsAction[] actions) => FsAction.NewChain(Fs.List(actions));
-    public static FsAction WriteToClipboard(string text) => FsAction.NewWriteToClipboard(text);
+    public static FsAction WriteToClipboard(string text) =>
+        // Phase 1126 — the payload is a `TextSource`; a literal wraps in `Literal`.
+        FsAction.NewWriteToClipboard(TextSource.NewLiteral(text));
     public static FsAction Dispatch(object msg) => FsAction.NewDispatch(msg);
 }
 

@@ -81,8 +81,11 @@ let private poison = "PoIsOn-uSeR-tYpEd-53cr3t"
 type private Msg = Poke of string
 
 let private allActionCases: (string * Fuaran.UI.Types.Action<Msg>) list =
-    [ "Chain", Action.Chain [ Action.WriteToClipboard poison; Action.Navigate("/a?q=" + poison) ]
-      "WriteToClipboard", Action.WriteToClipboard poison
+    [ "Chain",
+      Action.Chain
+          [ Action.WriteToClipboard(TextSource.Literal poison)
+            Action.Navigate("/a?q=" + poison) ]
+      "WriteToClipboard", Action.WriteToClipboard(TextSource.Literal poison)
       "Dispatch", Action.Dispatch(Poke poison)
       // Fully qualified: `open System` elsewhere puts `System.Action` in scope
       // and its instance `Invoke` wins the name resolution otherwise.

@@ -91,6 +91,7 @@
     <Compile Include="SwitchStage.fs" />
     <Compile Include="GridTransfer.fs" />
     <Compile Include="GridExport.fs" />
+    <Compile Include="GridPaste.fs" />
     <Compile Include="Render.fs" />
     <Compile Include="Hydration.fs" />
     <Compile Include="MathEnhance.fs" />

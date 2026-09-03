@@ -59,11 +59,21 @@ let rec disposition (action: Action<'Msg>) : ResumeDisposition =
     | Action.Notify _
     | Action.SetState _
     | Action.AiTool _
-    | Action.WriteToClipboard _
+    // Phase 1126 — a LITERAL clipboard payload still interprets: the resumed
+    // client hands the runtime a string it already holds.
+    | Action.WriteToClipboard(TextSource.Literal _)
     // Phase 1124 — payload-free and browser-native, so the resumed client
     // interprets it directly: no module chunk to boot, no host to consult.
     | Action.Print
     | Action.CommitLocal _ -> ResumeDisposition.Interpret
+    // Phase 1126 — a BOUND or i18n clipboard payload falls back, on exactly the
+    // `Call` reasoning: the resume interpreter is the zero-JS path and holds no
+    // binding sources and no i18n catalogue, so it cannot say what the payload
+    // stands for. Interpreting it anyway would put the DECLARATION on the
+    // reader's clipboard instead of the value — a copy that silently succeeds
+    // with the wrong content, which is worse than one that hydrates first.
+    // Falling back costs that one subtree its zero-JS load and nothing else.
+    | Action.WriteToClipboard _ -> ResumeDisposition.Fallback
     | Action.Dispatch _ -> ResumeDisposition.Boot
     | Action.Call _
     | Action.ReadFileBody _
@@ -153,7 +163,23 @@ let rec encodeAction (action: Action<'Msg>) : string =
             .Replace("&", "\\u0026")
     | Action.AiTool(name, args) ->
         sprintf "{\"$type\":\"AiTool\",\"args\":%s,\"toolName\":%s}" (jsonValueLite args) (jsonString name)
-    | Action.WriteToClipboard text -> sprintf "{\"$type\":\"WriteToClipboard\",\"text\":%s}" (jsonString text)
+    // Phase 1126 — the payload is a `TextSource`, and this follows the
+    // `SetState` split directly above it, for the same reason. A LITERAL keeps
+    // the existing lite shape byte-identical (a literal's canonical form IS the
+    // bare string, so nothing about a pre-1126 resume script changes); a bound
+    // or i18n payload re-encodes wholesale through the canonical encoder,
+    // because the binding shape is that codec's own vocabulary and a second
+    // hand-rolled copy here would only drift.
+    | Action.WriteToClipboard(TextSource.Literal text) ->
+        sprintf "{\"$type\":\"WriteToClipboard\",\"text\":%s}" (jsonString text)
+    | Action.WriteToClipboard _ ->
+        // Script-embedding safety, exactly as the `valueFrom` arm above: `<` /
+        // `>` / `&` only ever occur inside JSON string literals, so the global
+        // escape is sound and keeps the payload inert inside a `<script>`.
+        (Fuaran.Core.Canon.render (Fuaran.UI.Generated.encodeActionJson action))
+            .Replace("<", "\\u003c")
+            .Replace(">", "\\u003e")
+            .Replace("&", "\\u0026")
     | Action.CommitLocal nodeId -> sprintf "{\"$type\":\"CommitLocal\",\"nodeId\":%s}" (jsonString nodeId)
     // Phase 1124 — no members beside the discriminator, so the lite encoder and
     // the canonical codec agree with nothing to keep in step.

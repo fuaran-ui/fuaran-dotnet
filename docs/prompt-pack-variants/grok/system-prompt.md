@@ -291,7 +291,7 @@ Action =
 | AiTool { args:any; toolName:str }
 | Chain { ops:Action[] }
 | CommitLocal { nodeId:str }
-| WriteToClipboard { text:str }
+| WriteToClipboard { text:TextSource }
 | ReadFileBody { encoding:"Text"|"Base64"|"DataUrl"; fileRef:str; onRead:closure }
 | Invoke { args:object[]; capabilityId:str }
 | Print

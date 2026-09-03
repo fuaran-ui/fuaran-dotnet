@@ -387,39 +387,14 @@ let private toProps (pairs: (string * string) list) : IReactProperty list =
 // ─── Text-source rendering — handles i18n + bound text ─────────────────────
 
 let private renderText (ctx: RenderContext<'Msg>) (text: TextSource) : string =
-    match text with
-    | TextSource.Literal s -> s
-    | TextSource.Bound binding ->
-        // Phase 632 — text slots resolve through the scalar path, so a
-        // `Binding.Transform` yields its 1×1 result cell (never the rows list).
-        BindingResolver.tryResolveScalarText ctx.Sources binding
-        |> Option.defaultValue ""
-    | TextSource.I18n(key, args) ->
-        match Map.tryFind key ctx.Sources.I18n with
-        | Some template ->
-            // Substitute `{argName}` placeholders with values from args.
-            // Scalar `JVal` args render as their display string; a composite
-            // arg falls back to compact JSON — full ICU-shape interpolation
-            // is a session-4+ ergonomic upgrade.
-            args
-            |> Map.fold
-                (fun (acc: string) (k: string) (v: JVal) ->
-                    let needle = "{" + k + "}"
-
-                    let replacement =
-                        match v with
-                        | JStr s -> s
-                        | JInt i -> string i
-                        | JFloat f -> string f
-                        | JBool b -> (if b then "true" else "false")
-                        | composite -> Json.render composite
-
-                    acc.Replace(needle, replacement))
-                template
-        | None ->
-            // Missing-translation case — keep loud, same shape session 3a
-            // emitted so devs catch unregistered keys at sight.
-            sprintf "[i18n:%s]" key
+    // Phase 1126 — the dispatch itself is
+    // `BindingResolver.resolveTextSource`, the one definition this renderer,
+    // the SSR renderer and the server-driven driver all share. The semantics
+    // are unchanged (Phase 632's scalar path for `Bound`, the loud
+    // `[i18n:<key>]` sentinel for a missing translation); what is gone is the
+    // second hand-written copy of them, which a third consumer would otherwise
+    // have made a third.
+    BindingResolver.resolveTextSource ctx.Sources text
 
 // ─── Options resolution + the `<opaque>` non-array source contract ─────────
 //
@@ -791,7 +766,16 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         // Phase 782 — gated. The clipboard is a cross-application channel: a
         // decoded tree writing it can plant content a user later pastes
         // somewhere with authority.
-        gate Runtime.ActionDescriptor.WriteToClipboard (fun () -> ctx.Runtime.WriteToClipboard(text))
+        //
+        // Phase 1126 — the payload is a `TextSource`, resolved HERE, at
+        // dispatch time, through the same `renderText` the surrounding tree
+        // renders its labels through. Resolving at dispatch rather than at
+        // decode is the whole point of the widening: what lands on the
+        // clipboard is what the reader was looking at when they asked for it,
+        // not what the document said when it arrived. The substrate seam
+        // (`IFuaranRuntime.WriteToClipboard`) still takes a `string` — it
+        // performs a write, it does not evaluate a tree.
+        gate Runtime.ActionDescriptor.WriteToClipboard (fun () -> ctx.Runtime.WriteToClipboard(renderText ctx text))
     | Action.Print ->
         // Phase 1124 — the reader's own print dialogue. Renderer-native, with no
         // `IFuaranRuntime` member behind it: `window.print()` is the browser's
@@ -6015,6 +5999,90 @@ and private renderGrid
 
                             writeBackTo ctx dest (Some(box (Seq.ofList newRows))))
 
+                // Phase 1126 — STRUCTURED PASTE. The same destination, the same
+                // gate, the same whole-rows write-back as a single-cell edit:
+                // pasting a block IS editing cells, so it mints no second
+                // destination and crosses no softer path. Nothing about it
+                // reaches the wire (`GridPaste`'s header records why a
+                // `pasteable` flag beside `exportable` would be a second
+                // spelling of a permission `editable` already grants).
+                //
+                // ONE write for the whole block, and that is a correctness
+                // requirement rather than an optimisation: `editCommit` above
+                // computes its new rows from `rows` as captured by THIS render,
+                // so applying a block cell by cell would compute every write
+                // from the pre-paste rows and keep only the last one.
+                //
+                // Which columns can receive a value is decided by exactly the
+                // rule the per-cell `commit` below uses — read it off the same
+                // three facts (`col.Value` absent, `col.Field` present, a Text
+                // or Numeric `Kind`, not `editable: false`) so a column that
+                // cannot be typed into cannot be pasted into either.
+                let pasteColumnTargets: GridPaste.ColumnTarget option list =
+                    [ for col in spec.Columns ->
+                          match col.Value, col.Field, col.Kind, col.Editable with
+                          | _, _, _, Some false -> None
+                          | None, Some field, CellKindErased.Numeric, _ -> Some { Field = field; Numeric = true }
+                          | None, Some field, CellKindErased.Text, _ -> Some { Field = field; Numeric = false }
+                          | _ -> None ]
+
+                let pasteBlock: (int -> int -> string -> bool) option =
+                    BindingResolver.editDestination spec.Editable spec.EditStateKey spec.Source
+                    |> Option.map (fun dest ->
+                        fun (rowIndex: int) (columnIndex: int) (clipboardText: string) ->
+                            let block = GridPaste.parse clipboardText
+
+                            if not (GridPaste.isBlock block) then
+                                // A single field is an ordinary paste into the
+                                // focused input: hand it back to the browser,
+                                // which does it better (selection, partial
+                                // replacement, the reader's own undo stack).
+                                false
+                            else
+                                // `rowIndex` arrives page-relative; lift it into
+                                // the full sorted set, exactly as the edit path
+                                // does, so a paste on page two writes page two.
+                                let plan =
+                                    GridPaste.plan
+                                        (List.length rows)
+                                        pasteColumnTargets
+                                        (rowOffset + rowIndex)
+                                        columnIndex
+                                        block
+
+                                match plan.Writes with
+                                | [] ->
+                                    // Every cell was dropped or skipped. Take
+                                    // the gesture anyway — writing nothing is
+                                    // the outcome, and letting the browser
+                                    // insert the raw block into the focused
+                                    // input instead would be worse than doing
+                                    // nothing.
+                                    true
+                                | writes ->
+                                    let byRow = writes |> List.groupBy (fun w -> w.RowIndex) |> Map.ofList
+
+                                    let newRows =
+                                        rows
+                                        |> List.mapi (fun i row ->
+                                            match Map.tryFind i byRow with
+                                            | None -> row
+                                            | Some cellWrites ->
+                                                cellWrites
+                                                |> List.fold
+                                                    (fun (acc: Row) (w: GridPaste.CellWrite) ->
+                                                        let boxed =
+                                                            match w.Value with
+                                                            | CellValue.Numeric f -> box f
+                                                            | CellValue.Text s -> box s
+                                                            | _ -> box ""
+
+                                                        updateRowField acc w.Field boxed)
+                                                    row)
+
+                                    writeBackTo ctx dest (Some(box (Seq.ofList newRows)))
+                                    true)
+
                 // Phase 934 — declarative row reorder. The DESTINATION resolves by
                 // the same precedence the edit path uses (a declared
                 // `editStateKey` wins; else the Phase-663 State-source floor;
@@ -6502,7 +6570,7 @@ and private renderGrid
                                                 // prepend the reorder handle without re-shaping the
                                                 // (unchanged) per-cell body below.
                                                 let bodyCells: ReactElement list =
-                                                    [ for col in spec.Columns ->
+                                                    [ for (columnIndex, col) in List.indexed spec.Columns ->
                                                           // Editable write-back applies only on the declarative
                                                           // path — a Field-projected Text/Numeric cell with no
                                                           // Value closure (a closure's projection need not
@@ -6537,9 +6605,22 @@ and private renderGrid
                                                                       | _ -> ())
                                                               | _ -> None
 
+                                                          // Phase 1126 — the block-paste handler for THIS
+                                                          // cell: the anchor is where the reader's caret is,
+                                                          // so the block spreads down and right from here.
+                                                          // Only offered where the cell itself is editable —
+                                                          // a paste has to land somewhere, and a read-only
+                                                          // cell is not an anchor.
+                                                          let paste: (string -> bool) option =
+                                                              match commit, pasteBlock with
+                                                              | Some _, Some pb ->
+                                                                  Some(fun text -> pb rowIndex columnIndex text)
+                                                              | _ -> None
+
                                                           Html.td
                                                               [ prop.className "fuaran-grid-cell"
-                                                                prop.children [ renderGridCell ctx commit col row ] ] ]
+                                                                prop.children
+                                                                    [ renderGridCell ctx commit paste col row ] ] ]
 
                                                 Html.tr (
                                                     [ prop.className (
@@ -6631,6 +6712,12 @@ and private renderGrid
 and private renderGridCell
     (ctx: RenderContext<'Msg>)
     (commit: (CellValue -> unit) option)
+    // Phase 1126 — a structured-paste handler for this cell, when the grid has
+    // an edit destination and this column can receive one. Returns `true` when
+    // it handled the block (the caller then suppresses the browser's own
+    // paste), `false` when the payload was a single value and belongs to the
+    // input's native handling.
+    (paste: (string -> bool) option)
     (col: ColumnErased<'Msg>)
     (row: Row)
     : ReactElement =
@@ -6643,6 +6730,22 @@ and private renderGridCell
             match col.Field with
             | Some field -> BindingResolver.projectRowFieldValue row field
             | None -> CellValue.Empty
+
+    // Phase 1126 — the paste props for an editable cell's input, or nothing.
+    // A block is consumed and the default suppressed; a single value falls
+    // through to the browser untouched, on exactly the `FileUploadDrop`
+    // reasoning — swallowing every paste that reaches an input would be a route
+    // to a bug nobody could see the cause of.
+    let pasteProps: IReactProperty list =
+        match paste with
+        | None -> []
+        | Some handle ->
+            [ prop.onPaste (fun (e: Browser.Types.ClipboardEvent) ->
+                  let text: string = e.clipboardData.getData "text/plain"
+
+                  if not (System.String.IsNullOrEmpty text) && handle text then
+                      e.preventDefault ()) ]
+
     // Cell rendering is largely text-based for the non-interactive Kinds
     // (Text / Numeric / Date) and delegates to a typed renderer for the
     // interactive ones. The simple-table fallback handles Text/Numeric/
@@ -6670,7 +6773,8 @@ and private renderGridCell
                           // An empty / mid-edit number input parses NaN — never commit it
                           // (a NaN cell would silently flatten every chart on the key).
                           if not (System.Double.IsNaN v) then
-                              commitCell (CellValue.Numeric v)) ]
+                              commitCell (CellValue.Numeric v))
+                      yield! pasteProps ]
             | CellKindErased.Numeric, _ ->
                 // An Empty (or non-numeric) cell in a Numeric column: text input, committed
                 // only when the entry parses numerically.
@@ -6681,7 +6785,8 @@ and private renderGridCell
                       prop.onChange (fun (v: string) ->
                           match System.Double.TryParse v with
                           | true, f -> commitCell (CellValue.Numeric f)
-                          | false, _ -> ()) ]
+                          | false, _ -> ())
+                      yield! pasteProps ]
             | _, _ ->
                 let current =
                     match value with
@@ -6692,8 +6797,15 @@ and private renderGridCell
                     [ prop.className "fuaran-grid-cell-editable"
                       prop.type'.text
                       prop.value current
-                      prop.onChange (fun (v: string) -> commitCell (CellValue.Text v)) ]
+                      prop.onChange (fun (v: string) -> commitCell (CellValue.Text v))
+                      yield! pasteProps ]
         | None -> Html.span [ prop.text (renderCellValue col.Format value) ]
+    // Phase 1126 — the `Editable` cell kind carries NO paste handler,
+    // deliberately. Its commit is an author closure per cell, so a block would
+    // have to be applied one `runAction` at a time and the author's own handler
+    // would see N gestures where the reader made one. The block path belongs to
+    // the DECLARATIVE cells above, whose destination the grid itself owns and
+    // can write in a single pass.
     | CellKindErased.Editable onEdit ->
         // The generated `onEdit` handler is optional — a `None` handler keeps
         // the identical input DOM but commits nothing (inert, exactly like the

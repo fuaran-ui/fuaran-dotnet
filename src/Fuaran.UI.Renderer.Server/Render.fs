@@ -101,36 +101,12 @@ type ServerRenderContext =
 // the SSR document cannot disagree about what a bound label says. Assembly-
 // internal, so no public API surface changes.
 let internal renderText (ctx: ServerRenderContext) (text: TextSource) : string =
-    match text with
-    | TextSource.Literal s -> s
-    | TextSource.Bound binding ->
-        // Phase 632 — text slots resolve through the scalar path, so a
-        // `Binding.Transform` yields its 1×1 result cell (never the rows list).
-        // Same dispatch as the client's `renderText` — SSR↔CSR parity.
-        BindingResolver.tryResolveScalarText ctx.Sources binding
-        |> Option.defaultValue ""
-    | TextSource.I18n(key, args) ->
-        match Map.tryFind key ctx.Sources.I18n with
-        | Some template ->
-            // Keep byte-identical to the client renderer's I18n fold (SSR
-            // parity): scalar JVal args render as their display string; a
-            // composite arg falls back to compact canonical JSON.
-            args
-            |> Map.fold
-                (fun (acc: string) (k: string) (v: Fuaran.Core.JVal) ->
-                    let needle = "{" + k + "}"
-
-                    let replacement =
-                        match v with
-                        | Fuaran.Core.JStr s -> s
-                        | Fuaran.Core.JInt i -> string i
-                        | Fuaran.Core.JFloat f -> string f
-                        | Fuaran.Core.JBool b -> (if b then "true" else "false")
-                        | composite -> Fuaran.Core.Json.render composite
-
-                    acc.Replace(needle, replacement))
-                template
-        | None -> sprintf "[i18n:%s]" key
+    // Phase 1126 — SSR↔CSR parity is now structural rather than maintained:
+    // this and the client renderer call the SAME
+    // `BindingResolver.resolveTextSource`, so the two cannot drift apart in the
+    // way `ScalarSsrParityTests` was written to detect. The semantics it pins
+    // are unchanged.
+    BindingResolver.resolveTextSource ctx.Sources text
 
 /// Mirrors the client `formatNumber` (the `CellFormat` projection) so a Metric /
 /// LabelValueRow value reads identically server- and client-side.

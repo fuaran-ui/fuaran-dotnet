@@ -1399,14 +1399,22 @@ let private leniencyFamilies: LeniencyFamily list =
             "lenient-bare-text-callout"
             "lenient-bare-text-heading"
             "lenient-bare-text-markdown"
-            "lenient-image-caption-envelope" ]
+            "lenient-image-caption-envelope"
+            "lenient-1126-clipboard-literal-envelope" ]
         Evidence =
           "0.2.0 direction-flip (§16 rule 1): the bare string is the canonical TextSource form; the "
           + "leniency accepts the VERBOSE {\"$type\":\"Literal\"} envelope. The terse side is already "
           + "taught as canonical. `Image.caption` (fuaran#1078) is that same rule at a fifth "
           + "TextSource position, not a fifth rule — its manifest row says so, and the slot is a "
           + "full TextSource precisely so an i18n caption is expressible; a host that narrowed it "
-          + "to a plain string cannot decode the input at all." }
+          + "to a plain string cannot decode the input at all. "
+          + "`Action.WriteToClipboard.text` (fuaran#1126) is the SIXTH position and the first one "
+          + "inside an Action rather than a node spec — and the first where the rule carries a "
+          + "compatibility claim as well as a token one: the slot WIDENED from a bare string to a "
+          + "full TextSource in 0.66.0, and it is precisely because the bare string is canonical "
+          + "that no document written before that release changed a byte. There is still nothing to "
+          + "teach here beyond the canonical rule; what a model must know is that the payload may be "
+          + "a Bound binding, which is taught as ordinary TextSource vocabulary." }
       { Name = "Bound-wrapper unwrap in Binding value positions"
         Class = AlreadyCanonical
         FixtureIds = [ "lenient-binding-bound-wrapper" ]

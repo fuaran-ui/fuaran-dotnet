@@ -2073,8 +2073,27 @@ let buttonClipboard: Node<obj> =
                 Label = TextSource.Literal "Copy share link"
                 OnClick =
                     Action.Chain
-                        [ Action.WriteToClipboard "https://example.com/share/abc123"
+                        [ Action.WriteToClipboard(TextSource.Literal "https://example.com/share/abc123")
                           Action.Dispatch(box "ClipboardCopied") ] }
+        ))
+        None
+
+// Phase 1126 — the BOUND clipboard payload: the shape the widening exists for.
+//
+// This fixture is the whole new wire surface. `btn-copy-link` above is
+// UNCHANGED and still canonical, because `TextSource.Literal` encodes as the
+// bare JSON string (§3.6): a literal payload's bytes did not move when the slot
+// widened from `string` to `TextSource`, which is why the change is
+// source-breaking and wire-neutral. What a host has to learn is THIS — a `text`
+// carrying a `$type`-tagged object, resolved at dispatch time rather than at
+// decode time, so the reader copies the value they are looking at.
+let buttonClipboardBound: Node<obj> =
+    node
+        "btn-copy-bound"
+        (NodeKind.Button(
+            { Defaults.button with
+                Label = TextSource.Literal "Copy the current share link"
+                OnClick = Action.WriteToClipboard(TextSource.Bound(Binding.State("shareUrl", None))) }
         ))
         None
 
@@ -6014,6 +6033,8 @@ let allNodes: (string * Node<obj>) list =
       "Input/Filters (SegmentedFilter horizontal)", filtersSegmented
       "Input/Button", button
       "Input/Button (Action.WriteToClipboard chained with Dispatch)", buttonClipboard
+      "Phase 1126 — Input/Button whose Action.WriteToClipboard carries a BOUND payload (a TextSource, not a bare string), resolved at dispatch time",
+      buttonClipboardBound
       "Input/Button (Action.ReadFileBody base64)", buttonReadFile
       "Input/Button (Notify / SetState / AiTool — JSON payloads)", buttonJsonPayloads
       "Input/FileUpload", fileUpload

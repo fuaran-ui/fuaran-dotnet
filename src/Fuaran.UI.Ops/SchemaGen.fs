@@ -479,7 +479,11 @@ let private defs: (string * J) list =
             duCase "AiTool" [ "args"; "toolName" ] [ "args", jsonValue; "toolName", str ]
             duCase "Chain" [ "ops" ] [ "ops", arrayOf (ref "Action") ]
             duCase "CommitLocal" [ "nodeId" ] [ "nodeId", str ]
-            duCase "WriteToClipboard" [ "text" ] [ "text", str ]
+            // Phase 1126 — the payload is a `TextSource`, not a bare string:
+            // a reader may copy a bound value. `TextSource`'s own schema carries
+            // the bare-string Literal shorthand, so the pre-1126 spelling is
+            // still valid against this schema.
+            duCase "WriteToClipboard" [ "text" ] [ "text", ref "TextSource" ]
             duCase
                 "ReadFileBody"
                 [ "encoding"; "fileRef"; "onRead" ]

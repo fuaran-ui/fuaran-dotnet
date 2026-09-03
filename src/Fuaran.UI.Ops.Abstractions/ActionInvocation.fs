@@ -223,7 +223,15 @@ module ActionInvocation =
             | Action.AiTool(_, args) -> Some args
             | Action.SetState(_, value, _) -> value
             | Action.Navigate route -> Some(JStr route)
-            | Action.WriteToClipboard text -> Some(JStr text)
+            // Phase 1126 — the payload is a `TextSource`, so the record carries
+            // the DECLARED source through the canonical encoder rather than a
+            // hand-rolled `JStr`. For the literal payload every earlier release
+            // wrote, that is byte-identical (`TextSource.Literal` IS the bare
+            // string); for a bound payload it is the binding as declared, which
+            // is the honest record — no resolver is in scope here, and writing
+            // a resolved value would claim knowledge this projection does not
+            // have.
+            | Action.WriteToClipboard text -> Some(Fuaran.UI.Generated.encodeTextSourceJson text)
             | Action.CommitLocal nodeId -> Some(JStr nodeId)
             | Action.ReadFileBody(fileRef, _, _, _) -> Some(JStr fileRef)
             | Action.Invoke(capabilityId, _) -> Some(JStr capabilityId)

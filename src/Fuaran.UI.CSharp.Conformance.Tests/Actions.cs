@@ -249,6 +249,29 @@ internal static class Actions
             && names.Contains("CallIntoState") && names.Contains("CallIntoQuery"),
             string.Join(", ", names));
 
+        // Phase 1126 — WriteToClipboard is on the facade, and it takes a `Text`
+        // rather than a `string`. Both halves are asserted: a host that added the
+        // member with the pre-1126 payload type would pass a name check and be
+        // unable to author the shape the phase exists for.
+        var clipboard = typeof(FuaranAction).GetMethod(
+            "WriteToClipboard",
+            BindingFlags.Public | BindingFlags.Static);
+
+        h.Check("1126: WriteToClipboard is on the action facade", clipboard is not null, string.Join(", ", names));
+        h.Check(
+            "1126: its payload is a Text (a TextSource), not a string",
+            clipboard?.GetParameters() is [{ ParameterType: var pt }] && pt == typeof(Text),
+            clipboard?.GetParameters().FirstOrDefault()?.ParameterType.Name ?? "<absent>");
+
+        // And there is no clipboard READ anywhere on the facade — the Appendix A
+        // decline, asserted rather than described. This one is a name check on
+        // purpose: the decline is about a capability existing at all.
+        h.Check(
+            "1126: no clipboard READ on the action facade",
+            !names.Any(n => n.Contains("ReadClipboard", StringComparison.OrdinalIgnoreCase)
+                            || n.Contains("ReadFromClipboard", StringComparison.OrdinalIgnoreCase)),
+            string.Join(", ", names));
+
         // Every tree this surface can author survives transport — the other half of
         // the Dispatch absence, stated as a property rather than as a promise.
         var tree = Fuaran.Card(new()

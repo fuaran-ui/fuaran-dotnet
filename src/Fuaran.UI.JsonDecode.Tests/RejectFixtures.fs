@@ -1401,6 +1401,14 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "DataGrid transferOutKey is a boolean — the releasing side names a KEY, never declares a flag; there is deliberately no boolean spelling of \"this grid may release rows\", because a release with no key names no counterpart and would be an affordance with nowhere to go (Phase 1123)" }
+      { Id = "reject-wrongtype-clipboard-payload"
+        Json =
+          """{"id":"x","kind":{"$type":"Button","label":"Copy","onClick":{"$type":"WriteToClipboard","text":42},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.onClick.text"
+        IsOp = false
+        Description =
+          "Action.WriteToClipboard's payload is a TextSource, so it is a string (the Literal shorthand) or a $type-tagged object — never a number. The refusal matters more here than at an ordinary text slot: the slot WIDENED in 1126 from a bare string, and a host that read the widening as \"anything goes\" would put a JSON literal on the reader's clipboard rather than refusing the document (Phase 1126)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["

@@ -4879,7 +4879,9 @@
                 "$type": "required"
               },
               "type": {
-                "$type": "str"
+                "$type": "union",
+                "args": [],
+                "name": "TextSource"
               }
             }
           ],

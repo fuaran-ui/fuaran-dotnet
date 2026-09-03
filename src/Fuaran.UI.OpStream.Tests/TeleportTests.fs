@@ -69,7 +69,7 @@ let private exemplarTree () : Node<TestMsg> =
                   { Defaults.button with
                       Label = TextSource.Literal "Share this session"
                       // Wire-survivable: rides the bundle as data.
-                      OnClick = Action.WriteToClipboard "https://demo.example/teleport" } ] }
+                      OnClick = Action.WriteToClipboard(TextSource.Literal "https://demo.example/teleport") } ] }
 
 let private exemplarState: Map<string, JVal> =
     Map.ofList

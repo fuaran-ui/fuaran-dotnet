@@ -3965,3 +3965,105 @@ is a true statement about the data rather than a failure. Go-red twins for every
 gained the rules that style them, including the focus ring. A host pinning the old value would accept a
 sheet that knows neither and render a control that is not merely plain but keyboard-invisible. The four
 tier copies are re-generated with the sheet (`Build.fsproj -- Css`).
+
+---
+
+## Recorded change — 0.66.0, the clipboard payload widens to a `TextSource` (fuaran#1126)
+
+**BREAKING at every construction site of `Action.WriteToClipboard`; WIRE-NEUTRAL for every document
+ever written; a `WIRE_FORMAT.md` §11 forward-coupling event.** This is the first entry in this
+document to record a case-payload WIDENING rather than an addition, and the two halves of the
+sentence above are the whole of it: the F# API changed and the bytes did not.
+
+**`Action.WriteToClipboard of text: TextSource`, was `of text: string`.** The thing a reader
+actually copies — a figure in the grid in front of them, a link the session holds — had no spelling,
+because the payload could only be a literal the author typed at authoring time. It now resolves at
+DISPATCH time through the standard binding resolution.
+
+  * **Source-breaking surface, and how to repair it:** every construction site stops compiling
+    (`FS0001`, not a warning), and the repair is mechanical — wrap the old argument in
+    `TextSource.Literal`:
+
+    ```fsharp
+    // before 0.66.0
+    Action.WriteToClipboard shareUrl
+    // 0.66.0
+    Action.WriteToClipboard(TextSource.Literal shareUrl)
+    ```
+
+    In C#, `Fuaran.UI.CSharp.FuaranAction.WriteToClipboard(Text)` is new in this release and takes
+    the implicit `string` → `Text` conversion, so the literal case reads exactly as it would have
+    with a string parameter. **Pattern MATCHES on the case are unaffected in count** — the arity is
+    unchanged — but a match that bound the payload as a `string` and used it as one now binds a
+    `TextSource`; `renderText` / `BindingResolver.resolveTextSource` is what turns it back into text.
+
+  * **The wire did not move, and that is a fact about `TextSource` rather than a compatibility
+    shim.** `TextSource.Literal`'s canonical form is the BARE JSON STRING
+    (`WIRE_FORMAT.md` §3.6, one of the two 0.2.0 exceptions), so
+    `{"$type":"WriteToClipboard","text":"https://…"}` is exactly what the encoder emitted before this
+    release and exactly what it emits now, and the decoder reads it through the same §16 shorthand
+    every text slot in the language shares. No shipped document breaks; no corpus fixture moved;
+    `nodes/btn-copy-link.json` is byte-identical across the bump. What is NEW on the wire is a `text`
+    carrying `{"$type":"Bound",…}` or `{"$type":"I18n",…}`, and the §16 normalisation of the explicit
+    `{"$type":"Literal","text":…}` envelope at this slot
+    (`lenient/lenient-1126-clipboard-literal-envelope`). A wrong-typed payload is `WRONG_TYPE`
+    (`reject/reject-wrongtype-clipboard-payload`), never coerced.
+
+  * **Why widen rather than add `WriteToClipboardBound`.** The cheaper spelling on this document's own
+    cost model — see `docs/VOCABULARY.md` §2.1, which says plainly that widening a case is the most
+    expensive of the three shapes — would have been a sibling case. It was declined, and the charter
+    now carries the discriminator: a sibling is right when it names a DIFFERENT intent, and widening
+    is right when it names the SAME intent over a wider range of inputs. Two cases for one intent is
+    a permanent near-synonym pair, on the wire, in every host's `match`, and in the confusion matrix
+    — where the widening's cost is a compiler error each construction site sees once.
+
+**The construction sites this release changed, named so a consumer can see the shape of its own
+work:** the catalog sample's copy button, the C#-authoring proof-of-concept's `Act.WriteToClipboard`,
+the JSON-decode fixture and property generators, three op-stream test suites, the server-driven
+action-log census suite, and the language-tier clipboard tests. Every one of them was a
+`TextSource.Literal` wrapper and nothing else.
+
+**`Fuaran.UI.Renderer.BindingResolver.resolveTextSource` is new and public** —
+`BindingSources -> TextSource -> string`, the one definition of that dispatch in the estate. It is
+additive, but it is worth naming here because it REPLACED two byte-identical hand-written copies (the
+client renderer's `renderText` and the SSR renderer's), which is exactly the divergence
+`ScalarSsrParityTests` was written to detect. A third copy was what this phase would otherwise have
+added. Semantics are unchanged in every arm.
+
+**`Fuaran.UI.ServerDriven.DriverServices` gains `ResolveText: TextSource -> string`**, source-breaking
+at every FULL-LITERAL construction of that record (`FS0764`) and at nothing else — hosts building
+services through `DriverServices.create` / `createPermissive` are unaffected. The driver resolves the
+payload BEFORE lowering it, and `ClientEffect.WriteToClipboard` still carries a plain `string`: the
+client shim performs a write, it does not evaluate a tree. The `create` default resolves against empty
+sources, which is the identical dispatch a renderer performs for an unconfigured host — a literal
+payload resolves to itself.
+
+**The RESUMABILITY disposition now depends on the payload, and it is the only `Action` case for which
+that is true.** `Resume.disposition` returns `Interpret` for a literal payload — unchanged, the
+zero-JS path hands the runtime a string it already holds — and `Fallback` for a bound or i18n one, on
+the `Call` reasoning: the resume interpreter holds no binding sources and no i18n catalogue, so it
+cannot say what the payload stands for. Interpreting it anyway would put the DECLARATION on the
+reader's clipboard rather than the value, which is a copy that silently succeeds with the wrong
+content. The client interpreter carries the matching guard and warns rather than writing
+`[object Object]` if an envelope and an interpreter ever disagree.
+
+**Structured paste into an editable grid is NEW, is renderer-owned, and adds nothing to the wire.** A
+grid that already declares `editable` plus an edit destination (`editStateKey`, or the Phase-663
+State-source floor) has said its cells are the reader's to change; pasting a tab- or comma-separated
+block writes through that same destination, in ONE write, under the same dispatch gate and
+host-reserved-key guard a typed edit crosses. There is deliberately no `pasteable` flag beside
+`exportable` — that member had to be declared because taking a grid away as a file is a capability
+nothing else implies, whereas writing a cell is already declared, so a flag would be a second spelling
+of a granted permission. Four decisions are pinned by tests rather than asserted in prose
+(`Fuaran.UI.Renderer.GridPaste`): a TAB anywhere selects TSV and turns CSV quoting off, because that
+is what desktop spreadsheets write; overflow past the grid's edges is DROPPED and never grown, because
+the format has no row-insert and a `Query`-sourced grid's rows are the host's; a column with no edit
+destination SWALLOWS its field rather than shifting the rest left, which is the failure that looks
+like it worked; and a value that does not parse for its column is dropped for that cell alone. A
+single-value paste is left to the browser entirely.
+
+**No clipboard READ was added, and the decline is recorded rather than left as an absence.** A tree
+that could sample the clipboard at a moment of its own choosing takes whatever the reader last copied
+— a password, a one-time code, an address meant for somewhere else — without asking. Paste is
+user-initiated by construction, and that gesture is the consent no wire member could manufacture. The
+ruling is `docs/VOCABULARY.md`, Appendix A, Interaction / affordance cluster.
