@@ -60,6 +60,9 @@ let rec disposition (action: Action<'Msg>) : ResumeDisposition =
     | Action.SetState _
     | Action.AiTool _
     | Action.WriteToClipboard _
+    // Phase 1124 — payload-free and browser-native, so the resumed client
+    // interprets it directly: no module chunk to boot, no host to consult.
+    | Action.Print
     | Action.CommitLocal _ -> ResumeDisposition.Interpret
     | Action.Dispatch _ -> ResumeDisposition.Boot
     | Action.Call _
@@ -152,6 +155,9 @@ let rec encodeAction (action: Action<'Msg>) : string =
         sprintf "{\"$type\":\"AiTool\",\"args\":%s,\"toolName\":%s}" (jsonValueLite args) (jsonString name)
     | Action.WriteToClipboard text -> sprintf "{\"$type\":\"WriteToClipboard\",\"text\":%s}" (jsonString text)
     | Action.CommitLocal nodeId -> sprintf "{\"$type\":\"CommitLocal\",\"nodeId\":%s}" (jsonString nodeId)
+    // Phase 1124 — no members beside the discriminator, so the lite encoder and
+    // the canonical codec agree with nothing to keep in step.
+    | Action.Print -> "{\"$type\":\"Print\"}"
     | Action.Chain inner ->
         let ops = inner |> List.map encodeAction |> String.concat ","
         sprintf "{\"$type\":\"Chain\",\"ops\":[%s]}" ops

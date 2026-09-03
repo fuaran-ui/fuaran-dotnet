@@ -603,6 +603,15 @@ and private encodeAction<'Msg> (a: Action<'Msg>) : Appender =
             // Literal-string clipboard intent. Renderer routes
             // through `IFuaranRuntime.WriteToClipboard`.
             appendObject sb (case "WriteToClipboard" [ "text", str text ])
+        | Action.Print ->
+            // Phase 1124 — payload-free. `{"$type":"Print"}` is the whole
+            // encoding, and the empty field list is not an omission: there is
+            // no page size, margin, sheet range or target subtree to carry,
+            // because the paged medium belongs to the host and the dialogue to
+            // the reader. Same emitted shape as `Dispatch`, reached for the
+            // opposite reason — that one has a payload the wire cannot see,
+            // this one has none to see.
+            appendObject sb (case "Print" ([]: Field list))
         | Action.ReadFileBody(fileRef, _fileHandle, encoding, onRead) ->
             // Phase 136 — file-read intent. Only the wire `fileRef` token
             // + the requested `encoding` cross the wire; the blob is host-held

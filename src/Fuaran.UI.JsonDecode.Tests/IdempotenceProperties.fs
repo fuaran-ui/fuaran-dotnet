@@ -151,7 +151,8 @@ let private requiredNodeTokens: string list =
       "\"$type\":\"Chain\""
       "\"$type\":\"CommitLocal\""
       "\"$type\":\"WriteToClipboard\""
-      "\"$type\":\"ReadFileBody\"" ]
+      "\"$type\":\"ReadFileBody\""
+      "\"$type\":\"Print\"" ]
 
 let private requiredOpTokens: string list =
     [ "\"$type\":\"EditNode\""

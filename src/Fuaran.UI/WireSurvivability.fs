@@ -224,6 +224,7 @@ let all: Classification list =
       sv "Action.Chain"
       sv "Action.CommitLocal"
       sv "Action.WriteToClipboard"
+      sv "Action.Print" // Phase 1124 — payload-free: {"$type":"Print"} is the whole encoding, so nothing can be lost
       pt "Action.ReadFileBody" None // fileRef.Id + encoding survive; the blob + onRead continuation are host-side
       sv "Action.Invoke"
 

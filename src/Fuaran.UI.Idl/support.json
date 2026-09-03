@@ -9,6 +9,23 @@
   "docs": [
     {
       "lines": [
+        "/// Phase 1124 — open the reader's own print dialogue. The first",
+        "/// PAYLOAD-FREE `Action` case, and the emptiness is the ruling: the",
+        "/// paged MEDIUM is Host chrome, so a document may say *print now* and",
+        "/// nothing about how. No page size, no margin, no sheet range, no",
+        "/// target subtree — `{\"$type\":\"Print\"}` is the whole encoding.",
+        "///",
+        "/// Not a hatch. `window.print()` opens a dialogue the reader operates",
+        "/// and can cancel, hands the page to no third party, and returns",
+        "/// nothing the tree can read — so it discloses less than the clipboard",
+        "/// write beside it. It is gated all the same",
+        "/// (`ActionDescriptor.Print`), because a host that renders untrusted",
+        "/// trees must be able to refuse an unbidden dialogue."
+      ],
+      "path": "case:Action.Print"
+    },
+    {
+      "lines": [
         "// Phase 818 — `valueFrom` (a Binding evaluated at dispatch time inside the",
         "// existing gate) is a SIBLING of the literal `value`; decode enforces",
         "// value XOR valueFrom. `value` became an option in the same change so the",

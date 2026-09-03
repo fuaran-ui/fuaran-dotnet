@@ -5488,6 +5488,33 @@ let buttonSetStateValueFrom: Node<obj> =
         ))
         None
 
+/// Phase 1124 — `Action.Print`, the vocabulary's first PAYLOAD-FREE action, and
+/// the fixture exists as much for the SHAPE as for the case: `{"$type":"Print"}`
+/// is the entire encoding, so this is the corpus's proof that a discriminator on
+/// its own round-trips through every host with nothing else to carry.
+///
+/// The chain is deliberate rather than decorative. A bare `Print` would exercise
+/// the case; a `Print` INSIDE a `Chain` exercises the thing a payload-free member
+/// can plausibly break — an encoder that emits an object with no members, or a
+/// decoder that requires one, fails differently in a list than alone, and "print
+/// this invoice, then tell the host it was printed" is the shape a real document
+/// reaches for.
+///
+/// What is NOT here, and cannot be: any statement about HOW to print. No page
+/// size, no margin, no sheet range, no copies, no target subtree. The paged
+/// medium is host chrome under the ratified `PrintLayout` charter row, and every
+/// remaining parameter belongs to the dialogue the reader operates — which is
+/// why the sibling reject vector refuses a member here rather than dropping one.
+let buttonPrint: Node<obj> =
+    node
+        "button-print"
+        (NodeKind.Button(
+            { Defaults.button with
+                Label = TextSource.Literal "Print this invoice"
+                OnClick = Action.Chain [ Action.Print; Action.Notify("printed", JStr "invoice") ] }
+        ))
+        None
+
 /// The data-bound grid-sort affordance: `sortStateKey` names the State slot
 /// carrying `{column, direction}`; the runtime renders sortable headers
 /// (field-named columns only) and sorts resolved rows by the descriptor.
@@ -5972,6 +5999,7 @@ let allNodes: (string * Node<obj>) list =
       sharedSourceSeededPair
       "Input/Button (Phase 818 — SetState.valueFrom: a derived state write from the selected row's field)",
       buttonSetStateValueFrom
+      "Input/Button (Phase 1124 — Action.Print: the payload-free action, inside a Chain)", buttonPrint
       "Visualisation/Map", mapVis
       "Custom", custom
       "Custom (bounded escape, StrictReplay hash + exposed-ids)", customBounded

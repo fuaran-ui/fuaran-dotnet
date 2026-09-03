@@ -521,6 +521,11 @@ let rec private containsUnwiredAction (action: Action<'Msg>) : bool =
     // FileReader error), not the "no substrate wired" shape the unwired-
     // button tooltip flags — treat as wired.
     | Action.ReadFileBody _ -> false
+    // Phase 1124 — `window.print()` is the browser's own, always present, and
+    // needs no substrate a host could fail to wire. Its failure mode (the reader
+    // cancels the dialogue) is intrinsic to the host, which is the clipboard
+    // arm's reasoning exactly — treat as wired, never as an unwired stub.
+    | Action.Print -> false
 
 // ─── Action interpretation ─────────────────────────────────────────────────
 //
@@ -787,6 +792,26 @@ let rec private runActionCore (ctx: RenderContext<'Msg>) (denied: string list re
         // decoded tree writing it can plant content a user later pastes
         // somewhere with authority.
         gate Runtime.ActionDescriptor.WriteToClipboard (fun () -> ctx.Runtime.WriteToClipboard(text))
+    | Action.Print ->
+        // Phase 1124 — the reader's own print dialogue. Renderer-native, with no
+        // `IFuaranRuntime` member behind it: `window.print()` is the browser's
+        // own and takes no arguments, so a seam member would be a port for a
+        // capability every browser host already has — the `CommitLocal`
+        // precedent, which reaches `Browser.Dom.window` directly for the same
+        // reason.
+        //
+        // GATED all the same, and for the reason `CommitLocal`'s comment gives:
+        // "no `IFuaranRuntime` member backs it" is not "unreachable". A decoded
+        // tree from an untrusted emitter raising an unbidden print dialogue is a
+        // host-observable effect — modal, focus-stealing, and on some platforms
+        // a physical act — so a default-deny host refuses it through the same
+        // `CanDispatch` seam it refuses `Call` / `Navigate` / `AiTool`.
+        //
+        // Nothing is read back. `window.print()` returns unit, blocks until the
+        // reader dismisses the dialogue, and reports neither whether they printed
+        // nor what they chose; the tree therefore learns nothing about the reader,
+        // which is what keeps this the least-disclosing effect in the gated set.
+        gate Runtime.ActionDescriptor.Print (fun () -> Browser.Dom.window.print ())
     | Action.ReadFileBody(fileRef, fileHandle, encoding, onRead) ->
         // Default-deny by shape (FGP 3): consult the policy gate before the
         // host reads the file. On allow, the runtime reads the blob (async at

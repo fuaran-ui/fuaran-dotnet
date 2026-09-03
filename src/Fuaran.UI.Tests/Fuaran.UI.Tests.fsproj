@@ -209,6 +209,7 @@
          this pins the CLASS surface against the rules, which was the one axis
          of the styling contract with no executable guarantee. -->
     <Compile Include="CssCoverageTests.fs" />
+    <Compile Include="PrintCascadeTests.fs" />
     <!-- CoreAdoptionTests validates the Fuaran.UI tree witness + op-stream against
          the Fuaran.Core conformance kit and re-expresses the op-stream over
          Fuaran.Core.OpStream (with a canonical-encoding equality wrapper, since

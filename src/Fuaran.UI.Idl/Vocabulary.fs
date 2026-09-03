@@ -638,6 +638,24 @@ let private action =
             Annotations = Annotations.Empty }
           { Tag = "AiTool"
             Fields = [ req "toolName" TStr; req "args" TJson ]
+            Annotations = Annotations.Empty }
+          // Phase 1124 — the first PAYLOAD-FREE `Action` case. "Print this
+          // invoice": ask the host to open the reader's own print dialogue.
+          // There is nothing to carry — no page size, no margin, no sheet
+          // range, no target subtree — and that emptiness is the ruling as much
+          // as the case is. The paged MEDIUM is Host chrome (the ratified
+          // `PrintLayout` / `PageBreak` charter row); what a document may say is
+          // *print now*, and every parameter of *how* belongs to the host and
+          // the reader's own dialogue.
+          //
+          // `Fields = []` is therefore the whole declaration, and it makes
+          // `{"$type":"Print"}` the complete encoding — the `LocaleSource.Ambient`
+          // / `CurveCommand.Close` shape, reached for the first time on this
+          // union. Any member on the wire beside `$type` is refused rather than
+          // ignored (`reject/action-print-with-payload`), because a member the
+          // decoder drops silently is a parameter an emitter believes it sent.
+          { Tag = "Print"
+            Fields = []
             Annotations = Annotations.Empty } ] }
 
 /// Where a `Call`'s result lands, declaratively. NOTE the wire tags are `State` /

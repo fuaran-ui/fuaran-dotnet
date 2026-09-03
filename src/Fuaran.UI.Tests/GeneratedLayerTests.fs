@@ -650,9 +650,26 @@ let generatedLayerTests =
               //    phase chose the `srcSet` precedent deliberately — and this
               //    guard is what confirms the precedent transferred to a LAYOUT
               //    slot rather than only to the image record it was written for.
+              //  - a `Print` action carrying a member (Phase 1124) is a class of
+              //    its own on this list, and the only one about what the
+              //    generated decoder does NOT read rather than what it cannot
+              //    judge. `Action.Print` declares no fields, so the structural
+              //    decoder looks up nothing, finds the discriminator and
+              //    succeeds — an unread key being invisible to it is the same
+              //    mechanism as the `nearmiss` class, reached from the opposite
+              //    direction: those fixtures misspell a key the IDL DOES declare,
+              //    where this one supplies a key the IDL declares nowhere. The
+              //    policy decoder refuses it, because on this one arm an
+              //    unrecognised member is not a member a reader has yet to learn
+              //    — there is nothing to learn, so accepting it would leave an
+              //    emitter believing it had constrained a printing it had not.
+              //    It is schema-EXPRESSIBLE (`additionalProperties: false` on the
+              //    `Print` branch, the only branch of the `Action` union that
+              //    closes) and so stays out of `schemaInexpressibleRejects`.
               Expect.equal
                   policyOwned
-                  [ "reject-box-masonry-nonpositive-cols.json"
+                  [ "reject-action-print-with-payload.json"
+                    "reject-box-masonry-nonpositive-cols.json"
                     "reject-daterange-unordered.json"
                     "reject-emptynodeid.json"
                     "reject-fieldrule-empty.json"

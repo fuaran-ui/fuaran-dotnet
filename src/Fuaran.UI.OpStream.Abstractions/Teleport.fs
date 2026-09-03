@@ -41,7 +41,7 @@ open Fuaran.UI.Ops.Types
 //  codec: closure-bearing slots encode as the `"<closure>"` sentinel and
 //  decode to inert placeholders; only wire-survivable actions (`SetState` /
 //  `Notify` / `Navigate` / `AiTool` / `Chain` / `CommitLocal` /
-//  `WriteToClipboard` / `Invoke`, + declarative `Call … into`) are live after
+//  `WriteToClipboard` / `Print` / `Invoke`, + declarative `Call … into`) are live after
 //  resume, and every dispatch runs through the host's standard `CanDispatch`
 //  gate (Phase 119 / 159) exactly as any decoded tree does. Decode also runs
 //  `PreEmitValidate` and refuses a tree whose node identity is broken

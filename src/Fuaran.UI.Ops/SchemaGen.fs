@@ -486,7 +486,19 @@ let private defs: (string * J) list =
                 [ "encoding", ref "FileReadEncoding"; "fileRef", str; "onRead", closure ]
             // Invoke a host-registered compute capability as an effect (Phase 283) — same wire shape
             // as `Binding.Invoke`.
-            duCase "Invoke" [ "args"; "capabilityId" ] [ "args", arrayOf object_; "capabilityId", str ] ]
+            duCase "Invoke" [ "args"; "capabilityId" ] [ "args", arrayOf object_; "capabilityId", str ]
+            // Phase 1124 — payload-free, and the ONLY branch in this union that
+            // closes the object. `additionalProperties: false` is not a
+            // tightening for its own sake: it is how the schema mirrors the
+            // decoder, which refuses a member here rather than dropping it,
+            // because there is no printing parameter a document may state. The
+            // other branches stay open for the ordinary reason — an
+            // unrecognised member there is one a reader has not learned yet.
+            JObj
+                [ "type", JStr "object"
+                  "properties", JObj [ "$type", JObj [ "const", JStr "Print" ] ]
+                  "required", JArr [ JStr "$type" ]
+                  "additionalProperties", JBool false ] ]
 
       // ── CellFormat / CellValue / ColumnWidth (§3.3) ───────────────────────
       "CellFormat",

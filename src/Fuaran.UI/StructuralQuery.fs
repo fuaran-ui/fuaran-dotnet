@@ -85,6 +85,9 @@ type Act =
     | SetState of key: string
     | AiTool of toolName: string
     | WriteToClipboard
+    /// Phase 1124 — a print-dialogue request. Payload-free, so like
+    /// `WriteToClipboard` it carries no discriminator to match on.
+    | Print
     | CommitLocal of nodeId: string
     | ReadFileBody of fileRef: string
     | Any
@@ -365,6 +368,7 @@ let rec private carriedOf (label: 'Msg -> string option) (action: Action<'Msg>) 
     | Action.ReadFileBody(fileRef, _, _, _) ->
         [ { Tag = "ReadFileBody"
             Disc = Some fileRef } ]
+    | Action.Print -> [ { Tag = "Print"; Disc = None } ]
 
 /// The actions `node` carries in a WIRE-SURVIVABLE action slot — `Button.OnClick`,
 /// `Form.OnSubmit`, `Modal.OnDismiss`, the same three the tier's shared binding
@@ -402,6 +406,7 @@ let private actMatches (query: Act) (carried: Carried) : bool =
     | Act.WriteToClipboard -> tagMatches "WriteToClipboard"
     | Act.CommitLocal nodeId -> tagMatches "CommitLocal" && discMatches nodeId
     | Act.ReadFileBody fileRef -> tagMatches "ReadFileBody" && discMatches fileRef
+    | Act.Print -> tagMatches "Print"
 
 /// Does one recorded binding usage answer a `BoundTo (channel, name)` term?
 ///

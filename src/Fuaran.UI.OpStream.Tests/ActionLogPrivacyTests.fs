@@ -80,7 +80,7 @@ let private poison = "PoIsOn-uSeR-tYpEd-53cr3t"
 
 type private Msg = Poke of string
 
-let private allElevenCases: (string * Fuaran.UI.Types.Action<Msg>) list =
+let private allActionCases: (string * Fuaran.UI.Types.Action<Msg>) list =
     [ "Chain", Action.Chain [ Action.WriteToClipboard poison; Action.Navigate("/a?q=" + poison) ]
       "WriteToClipboard", Action.WriteToClipboard poison
       "Dispatch", Action.Dispatch(Poke poison)
@@ -93,7 +93,13 @@ let private allElevenCases: (string * Fuaran.UI.Types.Action<Msg>) list =
       "CommitLocal", Action.CommitLocal "field-1"
       "Notify", Action.Notify("toast", Fuaran.Core.JStr poison)
       "SetState", Action.SetState("draft.body", Some(Fuaran.Core.JStr poison), None)
-      "AiTool", Action.AiTool("summarise", Fuaran.Core.JObj [ "text", Fuaran.Core.JStr poison ]) ]
+      "AiTool", Action.AiTool("summarise", Fuaran.Core.JObj [ "text", Fuaran.Core.JStr poison ])
+      // Phase 1124 — no payload position at all, so it cannot carry the poison
+      // and joins the go-red check's non-leaking group below. Present in the
+      // fixture anyway: `describe` still composes a string for it, and a case
+      // omitted on the grounds that there is nothing to check is a case whose
+      // describer nobody ever looked at.
+      "Print", Action.Print ]
 
 [<Tests>]
 let tests =
@@ -144,8 +150,8 @@ let tests =
           // rule stated once and checked in one place is a rule that holds
           // wherever it is quoted; this is the check in that one place.
 
-          test "POISON: `describe` leaks no payload value, in any of the eleven cases" {
-              for name, action in allElevenCases do
+          test "POISON: `describe` leaks no payload value, in any of the twelve cases" {
+              for name, action in allActionCases do
                   let described = ActionInvocation.describe action
 
                   Expect.isFalse
@@ -163,16 +169,18 @@ let tests =
               // must find the poison — the check is shown able to fail before it
               // is trusted not to.
               let leaking =
-                  allElevenCases
+                  allActionCases
                   |> List.filter (fun (_, action) ->
                       match ActionInvocation.payloadFor ActionCaptureMode.PayloadBearing action with
                       | Some jv -> (Fuaran.Core.Json.encode jv).Contains poison
                       | None -> false)
                   |> List.map fst
 
-              // Six of the eleven: `Dispatch` / `Call` / `Chain` have no wire
-              // payload at all, and `Invoke` / `CommitLocal` carry only an
-              // author-declared id, so the fixture deliberately gives those none.
+              // Six of the twelve: `Dispatch` / `Call` / `Chain` / `Print` have
+              // no wire payload at all — `Print` structurally, the other three by
+              // this describer's own rules — and `Invoke` / `CommitLocal` carry
+              // only an author-declared id, so the fixture deliberately gives
+              // those none.
               Expect.equal
                   (List.sort leaking)
                   [ "AiTool"

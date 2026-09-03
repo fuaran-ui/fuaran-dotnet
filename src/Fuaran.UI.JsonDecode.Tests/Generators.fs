@@ -581,12 +581,13 @@ let rec private genAction: Gen<Action<obj>> =
           Gen.map2 (fun n a -> Action.AiTool(n, a)) genNonEmptyString genJVal
           Gen.map Action.CommitLocal genNonEmptyString
           Gen.map Action.WriteToClipboard genString
+          Gen.constant Action.Print
           Gen.map
               (fun id -> Action.ReadFileBody(id, None, FileReadEncoding.Base64, Some(fun _ -> box "<r>")))
               genNonEmptyString
           Gen.map Action.Chain (genSmallList (Gen.map Action.Navigate genNonEmptyString)) ]
 
-/// Deterministic chain covering all ten `Action` arms — used as a form's
+/// Deterministic chain covering all twelve `Action` arms — used as a form's
 /// `OnSubmit` so a single generated form exercises every action discriminator.
 let private allActionsChain: Action<obj> =
     Action.Chain
@@ -599,6 +600,7 @@ let private allActionsChain: Action<obj> =
           Action.Chain []
           Action.CommitLocal "node"
           Action.WriteToClipboard "text"
+          Action.Print
           Action.ReadFileBody("file:0", None, FileReadEncoding.Base64, Some(fun _ -> box "<r>")) ]
 
 // ─── Input specs ─────────────────────────────────────────────────────────────

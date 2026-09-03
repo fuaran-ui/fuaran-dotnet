@@ -63,6 +63,8 @@ let rec mapAction (f: 'a -> 'b) (action: Action<'a>) : Action<'b> =
     | Action.ReadFileBody(fileRef, fileHandle, encoding, onRead) ->
         Action.ReadFileBody(fileRef, fileHandle, encoding, onRead |> Option.map (fun r -> r >> f))
     | Action.Invoke(capabilityId, args) -> Action.Invoke(capabilityId, args)
+    // Phase 1124 — payload-free, so the relabel is a re-tag at the new 'Msg.
+    | Action.Print -> Action.Print
 
 /// Relabel a whole `Node<'a>` to `Node<'b>`. The `'Msg`-free traits (`Style`,
 /// `Accessibility`, `Motion`, `ExtraAttributes`) pass through; `Kind` + `State`

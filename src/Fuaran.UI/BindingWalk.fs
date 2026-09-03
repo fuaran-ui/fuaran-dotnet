@@ -588,6 +588,8 @@ let rec callsOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : CallUse 
     | Action.CommitLocal _
     | Action.WriteToClipboard _
     | Action.ReadFileBody _
+    // Phase 1124 — payload-free; no endpoint, so no fetch.
+    | Action.Print
     | Action.Invoke _ -> []
 
 /// Closure-carrying slots held by an ACTION value, recursing `Chain` — the
@@ -620,6 +622,8 @@ let rec closuresOfAction<'Msg> (readerId: string) (action: Action<'Msg>) : Closu
     | Action.AiTool _
     | Action.CommitLocal _
     | Action.WriteToClipboard _
+    // Phase 1124 — payload-free; there is no slot at all, so no closure.
+    | Action.Print
     | Action.Invoke _ -> []
 
 /// Binding usages carried by an ACTION value, recursing `Chain` — the sibling
@@ -653,6 +657,8 @@ let rec usesOfAction<'Msg> (action: Action<'Msg>) : BindingUse list =
     | Action.CommitLocal _
     | Action.WriteToClipboard _
     | Action.ReadFileBody _
+    // Phase 1124 — payload-free; nothing to read a binding from.
+    | Action.Print
     | Action.Invoke _ -> []
 
 /// The State key a WRITE-BACK slot commits to, and whether committing also runs
@@ -863,6 +869,9 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         | Action.ReadFileBody _ -> opaqueWriter <- true
         | Action.Navigate _
         | Action.Notify _
+        // Phase 1124 — opens the reader's print dialogue and returns nothing;
+        // it reaches no host code, so it is NOT an opaque writer.
+        | Action.Print
         | Action.WriteToClipboard _ -> ()
 
     let recordCalls (inUses: bool) (readerId: string) (action: Action<'Msg>) =

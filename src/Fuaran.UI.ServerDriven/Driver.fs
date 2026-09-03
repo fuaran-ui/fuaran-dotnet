@@ -232,6 +232,15 @@ let rec private interpret
         | Fuaran.UI.Renderer.Sanitize.EgressVerdict.Allowed safe -> [], [ ClientEffect.Navigate safe ]
         | _ -> [], []
     | Action.WriteToClipboard text -> [], [ ClientEffect.WriteToClipboard text ]
+    // Phase 1124 — the paged medium is the CLIENT's, wherever the tree is
+    // computed: a server has no printer, no page and no reader to dismiss a
+    // dialogue. So this lowers rather than executing, exactly as the clipboard
+    // arm above does, and the shim calls `window.print()` on the reader's own
+    // machine. No effect is ever suppressed here: unlike `Navigate`, there is no
+    // destination to sanitise — there is no payload at all — so the only
+    // question is the host policy gate, which has already been asked by
+    // `Validation.validate` before this function is reached.
+    | Action.Print -> [], [ ClientEffect.Print ]
     | Action.ReadFileBody(_, _, encoding, _) ->
         let enc =
             match encoding with

@@ -372,6 +372,19 @@ type Action<'Msg> =
     // valueFrom-only wire shape is representable without a placeholder.
     | SetState of key: string * value: JVal option * valueFrom: Binding<JVal> option
     | AiTool of toolName: string * args: JVal
+    /// Phase 1124 — open the reader's own print dialogue. The first
+    /// PAYLOAD-FREE `Action` case, and the emptiness is the ruling: the
+    /// paged MEDIUM is Host chrome, so a document may say *print now* and
+    /// nothing about how. No page size, no margin, no sheet range, no
+    /// target subtree — `{"$type":"Print"}` is the whole encoding.
+    ///
+    /// Not a hatch. `window.print()` opens a dialogue the reader operates
+    /// and can cancel, hands the page to no third party, and returns
+    /// nothing the tree can read — so it discloses less than the clipboard
+    /// write beside it. It is gated all the same
+    /// (`ActionDescriptor.Print`), because a host that renders untrusted
+    /// trees must be able to refuse an unbidden dialogue.
+    | Print
 
 and [<RequireQualifiedAccess>] Binding<'T> =
     | Static of value: 'T option
@@ -1792,6 +1805,7 @@ and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     // when present (Canon sorts keys, so the field order stays alphabetical).
     | Action.SetState (key, value, valueFrom) -> Canon.typed "SetState" ([ Some("key", JStr key); (value |> Option.map (fun v -> "value", id v)); (valueFrom |> Option.map (fun v -> "valueFrom", (encBinding id) v)) ] |> List.choose id)
     | Action.AiTool (toolName, args) -> Canon.typed "AiTool" [ "toolName", JStr toolName; "args", id args ]
+    | Action.Print -> Canon.typed "Print" [  ]
 
 and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
     match v with
@@ -2722,6 +2736,7 @@ and private decAction (j: JVal) : Result<Action<obj>, string> =
             dReq "toolName" __fs dStr |> Result.bind (fun toolName ->
             dReq "args" __fs dJson |> Result.bind (fun args ->
             Ok(Action.AiTool(toolName, args))))
+        | "Print" -> Ok Action.Print
         | __other -> Error ("unknown Action case: " + __other))
     | _ -> Error "expected a Action object"
 

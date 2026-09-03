@@ -157,6 +157,70 @@ language-default set, script-subtag-wins) — port it, do not re-derive it, and 
 runtime locale database, because the answer must be the same string on the server that emits the
 markup and the client that hydrates it.
 
+### 1.5f The sheet has a PRINT medium, and a host re-implementing it owes one too (Phase 1124)
+
+`content/fuaran-reference.css` carries two `@media print` blocks. A host that replaces the sheet
+wholesale (route (b) in this document's header) inherits neither, and the failure is silent in the way
+this document exists to make loud: nothing renders wrong, nothing logs, and the defect appears on paper
+in somebody else's office.
+
+**The two blocks are different kinds of obligation and only one of them is optional.**
+
+- **The AUTHORED block is a wire contract.** `.fuaran-break-inside-avoid`, `.fuaran-break-before-page`,
+  `.fuaran-grid-rows-together` and `.fuaran-grid-repeat-header` are the projections of four declared
+  wire members (`BoxSpec.keepTogether` / `.breakBefore`, `DataGridSpec.keepRowsTogether` /
+  `.repeatHeader`). A document that declares one has STATED a fact about itself, and a sheet with no
+  rule for it silently drops that statement. This block is not a default and not a preference — a host
+  reproducing the class vocabulary owes these four rules, and the vocabulary fingerprint (§1.5d) is
+  what makes their absence detectable.
+- **The DEFAULTS block is an opinion, and a good one.** What a page does on paper when the author
+  declared nothing: transient and pointer-only chrome hidden, collapsed detail expanded, atomic tiles
+  kept whole, headings not stranded, tone legible without a background fill, absolute link
+  destinations printed. A host is free to disagree with any of it. What a host should not do is have
+  no answer, which is what "no `@media print` at all" is.
+
+**The rule the defaults follow, restated here so a re-implementation can apply it rather than copy the
+selector list.** Hide what is transient or pointer-only; hide a control whose whole content is an
+affordance glyph, and KEEP one carrying authored text; keep anything that records WHICH DATA this is
+(a filter bar, a pager status) — a table printed without its filters makes a claim it cannot support;
+expand collapsed DETAIL of what is on the page (disclosures, transcripts, scroll areas) but leave
+ALTERNATIVES alone (tab panels, switch stages — the reader chose between them, and printing the
+unchosen ones is a different document); and give `break-inside: avoid` only to shapes that are always
+atomic, never to anything a wire member already governs.
+
+**ORDER THE DEFAULTS FIRST.** Both blocks reach the same fragmentation properties at the same
+specificity, so at equal specificity the later rule wins — and it must be the author's. The reference
+repo pins this with a test (`PrintCascadeTests`) rather than a comment, because the failure has no
+symptom until someone prints.
+
+**Three things the reference sheet deliberately does NOT do**, each of which a re-implementation should
+decline for the same reasons rather than rediscover: no `@page` rule (page size, margins and running
+furniture are the reader's, chosen in their own print dialogue — the wire format's charter puts the
+paged medium outside the language, and that applies to the reference host's stylesheet too); no
+`print-color-adjust: exact` (forcing fills to print spends the reader's ink to rescue a tone channel
+that should not have depended on colour, and it would conceal the fact that it had); and no blanket
+row cohesion (`keepRowsTogether` is the wire member that says exactly that, and a default would make
+every declaration of it change nothing).
+
+**Two audited limits, recorded because CSS cannot close them and a host should not spend time trying.**
+
+1. **A closed `<details>` prints closed** on any engine implementing neither `::details-content` nor
+   the legacy display leg. The content is in the markup either way, so a host with a stricter
+   requirement opens the elements before printing — from script, not from the sheet.
+2. **A `Media` transport with no `poster` prints as an empty rectangle**, and its mandatory `label`
+   reaches the DOM only as `aria-label`, which is not rendered text. The sheet gives the transport a
+   border so the rectangle reads as a deliberate frame rather than a smudge, and that is the whole of
+   what a stylesheet can do: `<video>` and `<audio>` are replaced elements, so `::after` on them
+   generates nothing and the label cannot be surfaced from CSS. Making it visible would be a renderer
+   EMISSION change — a decision about what the reference host puts on the page — and is deliberately
+   not taken here.
+
+**What audits clean today, for the avoidance of a second audit.** Charts, sparklines and drawings print
+losslessly: they are real SVG geometry from the shared builder, so they are vector on paper at any
+resolution, and they are kept whole by the defaults. Grids print their resolved rows with header
+repetition available on declaration. Forms print their controls with resolved values and inert-looking
+chrome, so a filled form reads as a record rather than as an empty one.
+
 ### 1.5d The stylesheet carries a class-vocabulary fingerprint (Phase 433)
 
 A host serves its stylesheet from `Fuaran.UI.Renderer` and — if it server-renders — emits its classes from `Fuaran.UI.Renderer.Server`. Nothing couples those two package versions. A host that pins one and serves the other's sheet gets no error at all: nodes render unstyled or mis-styled, and a shipped control appearing as a bare browser input reads as a design choice rather than as version skew. That is the same failure the Range control had before §1.5b, arriving across a package boundary instead of an authoring one.

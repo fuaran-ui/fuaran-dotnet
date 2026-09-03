@@ -36,7 +36,7 @@ type private Msg = Poke of string
 /// supposed to keep.
 let private poison = "PoIsOn-uSeR-tYpEd-53cr3t"
 
-let private allElevenCases: (string * Action<Msg>) list =
+let private allActionCases: (string * Action<Msg>) list =
     [ "Chain", Action.Chain [ Action.WriteToClipboard poison; Action.Navigate("/a?q=" + poison) ]
       "WriteToClipboard", Action.WriteToClipboard poison
       "Dispatch", Action.Dispatch(Poke poison)
@@ -49,7 +49,13 @@ let private allElevenCases: (string * Action<Msg>) list =
       "CommitLocal", Action.CommitLocal "field-1"
       "Notify", Action.Notify("toast", JStr poison)
       "SetState", Action.SetState("draft.body", Some(JStr poison), None)
-      "AiTool", Action.AiTool("summarise", JObj [ "text", JStr poison ]) ]
+      "AiTool", Action.AiTool("summarise", JObj [ "text", JStr poison ])
+      // Phase 1124 — the one case with no payload position at all, so it cannot
+      // carry the poison. It is in the fixture anyway, and deliberately: a
+      // payload-free case is the shape most likely to be left out of a coverage
+      // list on the grounds that there is nothing to check, and the describer
+      // still composes a string that reaches an always-on host log.
+      "Print", Action.Print ]
 
 [<Tests>]
 let tests =
@@ -58,7 +64,7 @@ let tests =
         [ test "the fixture covers every Action case exactly once" {
               // A case the fixture forgot is a case whose redaction nobody
               // checked, and the shortfall is invisible without this.
-              let names = allElevenCases |> List.map fst
+              let names = allActionCases |> List.map fst
               Expect.equal (List.length (List.distinct names)) (List.length names) "each named once"
 
               let unionCases =
@@ -70,7 +76,7 @@ let tests =
           }
 
           test "POISON: describeAction leaks no payload value, in any case" {
-              for name, action in allElevenCases do
+              for name, action in allActionCases do
                   let described = Validation.describeAction action
 
                   Expect.isFalse
@@ -81,7 +87,7 @@ let tests =
           test "POISON: the composed rejection string leaks no payload value either" {
               // The string a host actually logs. `describeAction` being safe is
               // necessary and not sufficient — what reaches the log is this.
-              for name, action in allElevenCases do
+              for name, action in allActionCases do
                   let rendered: string =
                       Validation.RejectReason.describe (
                           Validation.RejectReason.DispatchDenied("node-1", Validation.describeAction action)
@@ -113,7 +119,7 @@ let tests =
               // rendered by a describer that is NOT redacting (F#'s structural
               // `%A`), and the poison must be found.
               let leaking =
-                  allElevenCases
+                  allActionCases
                   |> List.filter (fun (_, action) -> (sprintf "%A" action).Contains poison)
                   |> List.map fst
 

@@ -198,17 +198,19 @@ module ActionInvocation =
         | Action.Chain _ -> "Chain"
         | Action.CommitLocal id -> sprintf "CommitLocal(%s)" id
         | Action.WriteToClipboard _ -> "WriteToClipboard"
+        | Action.Print -> "Print"
         | Action.ReadFileBody(_, _, _, _) -> "ReadFileBody"
         | Action.Invoke(c, _) -> sprintf "Invoke(%s)" c
 
     /// The decoded payload for `mode`. `Redacted` yields `None` for every one
-    /// of the eleven cases — that is the invariant the poison test pins.
+    /// of the twelve cases — that is the invariant the poison test pins.
     ///
-    /// Under `PayloadBearing`, three cases still yield `None` and each for a
+    /// Under `PayloadBearing`, four cases still yield `None` and each for a
     /// structural reason rather than a policy one: `Dispatch` carries a closure
     /// with no wire payload; `Call` has no payload slot on the wire at all
     /// (Phase 820 routes a submit body through a host seam, not the action);
-    /// and `Chain` is one gesture whose constituents are not enumerated here.
+    /// `Chain` is one gesture whose constituents are not enumerated here; and
+    /// `Print` (Phase 1124) is payload-free on the wire.
     let payloadFor (mode: ActionCaptureMode) (a: Action<'Msg>) : JVal option =
         match mode with
         | ActionCaptureMode.Redacted -> None
@@ -225,6 +227,11 @@ module ActionInvocation =
             | Action.CommitLocal nodeId -> Some(JStr nodeId)
             | Action.ReadFileBody(fileRef, _, _, _) -> Some(JStr fileRef)
             | Action.Invoke(capabilityId, _) -> Some(JStr capabilityId)
+            // Phase 1124 — a FOURTH structural `None`, and the reason is the
+            // case itself rather than a redaction: `Print` has no wire slot at
+            // all, so there is no payload to decode. `Some JNull` would record
+            // an absent value as a present one.
+            | Action.Print -> None
 
     /// Where a gesture was observed. Grouped so the emission points pass one
     /// value rather than five positional arguments that are trivial to

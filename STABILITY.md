@@ -3799,3 +3799,79 @@ site re-primes and produces the same table, having paid for it.
 
 **No new validator code and no new render-obligation claim.** Nothing here is authorable, so there is
 nothing for a validator to report on and nothing for a host to render.
+
+---
+
+## Recorded change — 0.64.0, `Action.Print` and the print stylesheet (fuaran#1124)
+
+**Additive on the wire; SOURCE-BREAKING at every exhaustive `match` over `Action`; a
+`WIRE_FORMAT.md` §11 forward-coupling event.** Every pre-0.64.0 document encodes and decodes to
+byte-identical bytes: nothing is removed, no member changes meaning, and no existing case's encoding
+moves. The stylesheet half changes no markup at all — it adds a `@media print` block, so a screen
+rendering is unchanged by construction rather than by inspection.
+
+**`Action.Print` — an additive DU case, and the vocabulary's first PAYLOAD-FREE one.**
+`{"$type":"Print"}` is the whole encoding. It says one thing — open the reader's own print dialogue —
+and takes nothing to say it, because printing's parameters (page size, margins, orientation, sheet
+range, copies, printer) belong either to the host's page setup or to the dialogue the reader is
+operating. The paged MEDIUM is Host chrome under the ratified `PrintLayout` / `PageBreak` charter row;
+what a document may state is *print now*.
+
+  * **Source-breaking surface:** a new `Action` case breaks every exhaustive `match` over the DU,
+    which is a source break under this repo's `TreatWarningsAsErrors` even though this document
+    classifies DU exhaustiveness as non-breaking (the `FormFieldKind.DateRange` precedent, 0.7.0).
+    It therefore rides a minor bump and never a re-pack of 0.63.0. Consumers matching `Action`
+    exhaustively add one arm; consumers with a wildcard are unaffected.
+  * **Two smaller additive DU widenings ride with it**, each source-breaking in the same way and for
+    the same reason: `Fuaran.UI.Renderer.Runtime.ActionDescriptor` gains `Print` (the gate must be
+    able to name what it is refusing) and `Fuaran.UI.StructuralQuery.Act` gains `Print` (a query
+    surface that cannot ask about a case is a hole in the search vocabulary, not a smaller one).
+    `Fuaran.UI.ServerDriven.ClientEffect` gains `Print` on the same terms.
+  * **`IFuaranRuntime` is UNCHANGED**, deliberately, and it is the decision most likely to be
+    revisited so it is recorded rather than left implicit. `window.print()` is the browser's own, takes
+    no arguments and is present on every browser host, so a seam member would be a port for a
+    capability no host can fail to provide — the `Action.CommitLocal` precedent, which likewise
+    reaches `Browser.Dom.window` directly with no member behind it. Adding one later would be an
+    interface widening under the pre-1.0-minor-add precedent this document already records; not adding
+    one now costs nothing and keeps every existing implementer compiling.
+
+**One decoder refusal, and it is the arm's asymmetry rather than a general tightening.** A member
+beside `$type` on a `Print` is `WRONG_TYPE` at that member's path, and is NOT dropped. Everywhere else
+in this format an unrecognised member is one the reading host has not learned yet; here there is
+nothing to learn, so accepting `{"$type":"Print","pageRange":"1-3"}` would leave an emitter believing
+it had constrained a printing it had not. The JSON Schema mirrors it — the `Print` branch is the only
+one in the `Action` union carrying `additionalProperties: false`.
+
+**A server-driven host LOWERS it; it does not refuse it.** `Driver.interpret` maps it to
+`ClientEffect.Print` and the shim calls `window.print()`, exactly as it does for
+`Action.WriteToClipboard`. Printing is an act of the machine the document is READ on, so a server
+answering for its own process would be answering the wrong question. Nothing round-trips back: the
+call reports neither whether the reader printed nor what they chose, so unlike `ClientEffect.ReadFileBody`
+there is no result `LiveEvent` and a server never learns that a page was printed. The resumability path
+classifies it `Interpret` — no closure, no module chunk, no host consultation.
+
+**It is GATED, and it is not a hatch.** `ActionDescriptor.Print` joins the default-deny set, because an
+unbidden modal that steals focus and on some platforms begins a physical act is host-observable however
+little it discloses. What it discloses is the least of any gated action: no payload in either direction,
+no text withheld because there is no text, and no result. A host with a deny-all policy refuses it
+through the same `CanDispatch` seam it refuses `Call` / `Navigate` / `AiTool`.
+
+**The reference stylesheet gains a `@media print` block of DEFAULTS, and no class names.**
+`Theme.vocabularyFingerprint` is therefore UNCHANGED at `fv1:e697c1d1c162b9a7` — the digest is over the
+class vocabulary, and this block styles classes the sheet already emitted. The four tier copies are
+re-generated with the sheet (`Build.fsproj -- Css`) and `CssCheck` covers them as always.
+
+The block is DEFAULTS only, and it is ordered BEFORE Phase 1473's authored break-control block so an
+authored `keepTogether` / `breakBefore` wins at equal specificity. Three things it deliberately does
+not do, each pinned by `PrintCascadeTests` so a later edit fails rather than quietly reversing the
+meaning of the sheet: no `@page` rule (page geometry is the reader's, chosen in their own dialogue),
+no `print-color-adjust: exact` (forcing fills to print would spend the reader's ink to rescue a tone
+channel that must not have depended on colour), and **no blanket row cohesion** — a
+`tr { break-inside: avoid }` default would make `DataGridSpec.keepRowsTogether`, admitted one release
+earlier, change no rendering on any grid, and a shipped wire member whose declaration does nothing is
+a fake affordance.
+
+**No new validator code.** There is nothing about a payload-free action a whole-tree rule can report:
+it has no slot to be inconsistent with, no counterpart to be unpaired from, and no destination to be
+dead. A `Print` on a button is exactly as meaningful as a `Print` anywhere else the wire admits an
+action.

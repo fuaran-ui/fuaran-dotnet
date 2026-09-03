@@ -3671,6 +3671,41 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                 match requireField path fields "text" "clipboard payload string" with
                 | Error e -> Error e
                 | Ok v -> requireString (path + ".text") v |> Result.map Action.WriteToClipboard
+            | Ok "Print" ->
+                // Phase 1124 — payload-free. `{"$type":"Print"}` and nothing else.
+                //
+                // A member beside the discriminator is REFUSED rather than
+                // ignored, and this is the one Action arm that is strict about
+                // it. Everywhere else an unrecognised member is a member the
+                // decoder has not learned yet, and dropping it costs nothing.
+                // Here there is no member to learn: the ruling is that a
+                // document may say *print now* and nothing about how, because
+                // the paged medium is the host's and the dialogue is the
+                // reader's. So `{"$type":"Print","pages":"1-3"}` is not a
+                // forward-compatible emission — it is an emitter believing it
+                // constrained a printing it did not constrain, and silently
+                // dropping the member would leave that belief intact.
+                //
+                // `WRONG_TYPE` follows the `SetState` value/valueFrom precedent
+                // (a decoder POLICY refusal reuses it); a code of its own would
+                // be a wire-visible widening every host in the §11.0 roster
+                // would owe an adoption for, to name a refusal that already has
+                // a home.
+                // `fields` is a Map, so the keys arrive sorted — the message
+                // names them in a stable order whatever the emission's order was.
+                let extras =
+                    fields |> Map.toList |> List.map fst |> List.filter (fun k -> k <> "$type")
+
+                match extras with
+                | [] -> Ok Action.Print
+                | k :: _ ->
+                    err
+                        DecodeErrorCode.WRONG_TYPE
+                        (path + "." + k)
+                        (sprintf
+                            "Print carries no members — found %s. Printing has no wire parameters at all: page size, margins, sheet range and copies belong to the host's page setup and to the dialogue the reader operates, so there is nothing here to declare. Emit {\"$type\":\"Print\"} exactly."
+                            (extras |> List.map (sprintf "'%s'") |> String.concat ", "))
+                        (Some "no members")
             | Ok "ReadFileBody" ->
                 // Phase 136 — only `fileRef` (the opaque id) + `encoding` cross
                 // the wire. The decoded `FileRef` carries `Handle = None` (no
@@ -3714,7 +3749,7 @@ let rec private decodeAction (path: string) (j: Json) : Result<Action<obj>, Deco
                 unknownDuCase
                     path
                     s
-                    "Dispatch | Call | Notify | Navigate | SetState | AiTool | Chain | CommitLocal | WriteToClipboard | ReadFileBody | Invoke"
+                    "Dispatch | Call | Notify | Navigate | SetState | AiTool | Chain | CommitLocal | WriteToClipboard | ReadFileBody | Invoke | Print"
 
 // ─── Spec decoders ───────────────────────────────────────────────────────
 

@@ -506,7 +506,17 @@
          nothing is removed and every pre-1120 document encodes and decodes to
          byte-identical bytes. 0.60.0 was taken by Phase 1473; this is the next
          slot. See STABILITY.md "Recorded change - 0.61.0, `NodeKind.Tree`". -->
-    <Version>0.63.0</Version>
+    <!-- 0.64.0 (Phase 1124) - `Action.Print`, the vocabulary's first PAYLOAD-FREE
+         case, plus `ActionDescriptor.Print`, `StructuralQuery.Act.Print` and
+         `ClientEffect.Print` riding with it. Additive on the wire: nothing is
+         removed and every pre-1124 document encodes and decodes to byte-identical
+         bytes. But a new DU case is source-breaking at every exhaustive match -
+         the FormFieldKind.DateRange precedent (0.7.0) - so it rides a minor bump
+         and never a re-pack. `IFuaranRuntime` is deliberately UNCHANGED: the
+         effect is renderer-native on the `Action.CommitLocal` precedent, so no
+         existing implementer gains a member. See STABILITY.md "Recorded change -
+         0.64.0, `Action.Print` and the print stylesheet". -->
+    <Version>0.64.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

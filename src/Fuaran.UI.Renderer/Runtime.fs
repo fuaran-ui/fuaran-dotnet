@@ -288,6 +288,15 @@ type ActionDescriptor =
     /// CustomEvent, which is a host-observable effect even though no
     /// `IFuaranRuntime` member backs it.
     | CommitLocal of nodeId: string
+    /// A print-dialogue request (Phase 1124). Payload-free, like
+    /// `WriteToClipboard` and for a stronger reason — the clipboard descriptor
+    /// withholds its text deliberately, where this one has no text to withhold.
+    /// The decision is the whole of it: "may this tree open the reader's print
+    /// dialogue at all". It is in the gated set because an unbidden modal that
+    /// steals focus, and on some platforms starts a physical act, is
+    /// host-observable however little it discloses — the `CommitLocal`
+    /// reasoning, which is likewise backed by no `IFuaranRuntime` member.
+    | Print
 
 [<RequireQualifiedAccess>]
 module ActionDescriptor =
@@ -309,6 +318,7 @@ module ActionDescriptor =
         | ActionDescriptor.SetState key -> sprintf "SetState(%s)" key
         | ActionDescriptor.WriteToClipboard -> "WriteToClipboard"
         | ActionDescriptor.CommitLocal nodeId -> sprintf "CommitLocal(%s)" nodeId
+        | ActionDescriptor.Print -> "Print"
 
 /// The five Action substrates the renderer dispatches to. Consumers
 /// implement once at the app shell; the renderer treats it as a black box.

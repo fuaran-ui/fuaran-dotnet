@@ -15,7 +15,7 @@ module Fuaran.UI.Renderer.Resume
 //
 //  Three dispositions (decided server-side, §3 of `docs/RESUMABILITY-EXPLORATION.md`):
 //   - `interpret` — data-shaped `Action` (`Navigate` / `Notify` / `SetState` /
-//     `WriteToClipboard` / `AiTool` / `CommitLocal`) is executed directly
+//     `WriteToClipboard` / `AiTool` / `CommitLocal` / `Print`) is executed directly
 //     against `IFuaranRuntime` with no view — the ≈ 0-JS happy path. Because it
 //     routes through the *same* runtime the hydrated `runAction` uses, op-stream
 //     + telemetry emission is identical (FGP 5 — resumability is a load
@@ -68,6 +68,12 @@ let rec private interpret (runtime: Runtime.IFuaranRuntime) (action: obj) : unit
     | "SetState" -> runtime.SetState(action?key, Runtime.JsonBridge.jsToJVal action?value)
     | "AiTool" -> runtime.InvokeAiTool(action?toolName, Runtime.JsonBridge.jsToJVal action?args)
     | "WriteToClipboard" -> runtime.WriteToClipboard(action?text)
+    // Phase 1124 — renderer-native, mirroring `Render.runAction`: no
+    // `IFuaranRuntime` member backs it, because `window.print()` is the
+    // browser's own and takes no arguments. The resumed path reaches the same
+    // browser API the hydrated one does, so a resumed print and a hydrated
+    // print are the same act.
+    | "Print" -> Browser.Dom.window.print ()
     | "CommitLocal" ->
         // Mirror `Render.runAction`: dispatch the namespaced DOM CustomEvent the
         // LocalBinding's listener drains on.

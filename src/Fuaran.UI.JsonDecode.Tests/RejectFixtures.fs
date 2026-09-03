@@ -649,6 +649,24 @@ let all: RejectFixture list =
         Description =
           "SetState carrying BOTH 'value' and 'valueFrom' — exactly one is allowed; the didactic names both fields and how each is used (Phase 818)" }
 
+      // ─── Phase 1124 — Print carries no members ────────────────
+      // The one Action arm that is STRICT about unrecognised members, and the
+      // vector is what makes that strictness a shared obligation rather than
+      // one host's habit. Everywhere else a member the decoder does not know is
+      // one it has not learned yet; here there is nothing to learn, because the
+      // ruling is that a document may say *print now* and nothing about how.
+      // `pageRange` is the member an emitter is most likely to invent, which is
+      // why it is the one the vector carries: dropping it silently would leave
+      // the emitter believing it had constrained a printing it had not.
+      { Id = "reject-action-print-with-payload"
+        Json =
+          """{"id":"b-print","kind":{"$type":"Button","label":{"$type":"Literal","text":"Print"},"onClick":{"$type":"Print","pageRange":"1-3"},"variant":"Primary"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.onClick.pageRange"
+        IsOp = false
+        Description =
+          "Print carrying a member — the payload-free action takes none; page range, size, margins and copies are the host's page setup and the reader's dialogue, so a member here is refused rather than dropped (Phase 1124)" }
+
       // ─── WRONG_NODE_KIND ─────────────────────────────────────────────
       { Id = "reject-wrongnodekind-widget"
         Json =

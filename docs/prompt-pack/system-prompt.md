@@ -294,6 +294,7 @@ Action =
 | WriteToClipboard { text:str }
 | ReadFileBody { encoding:"Text"|"Base64"|"DataUrl"; fileRef:str; onRead:closure }
 | Invoke { args:object[]; capabilityId:str }
+| Print
 Binding_bool =
 | Static { value?:bool }
 | Query { name:str; dependsOn?:str[] }

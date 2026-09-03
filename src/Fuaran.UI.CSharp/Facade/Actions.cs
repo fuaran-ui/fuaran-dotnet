@@ -17,8 +17,9 @@ namespace Fuaran.UI.CSharp;
 // The vocabulary is DELIBERATELY PARTIAL, and the boundary is the wire rather than
 // convenience: an action the veneer can author must survive `encodeNodeForTransport`
 // intact. That admits `Notify`, `Call` with an `into:` target (or with neither an
-// `into:` nor a result closure), and a `Chain` of those. It excludes `Dispatch`,
-// whose message is a host closure — see the note on `FuaranAction`.
+// `into:` nor a result closure), `Print` (Phase 1124 — payload-free, so trivially
+// wire-faithful), and a `Chain` of those. It excludes `Dispatch`, whose message is a
+// host closure — see the note on `FuaranAction`.
 
 /// <summary>
 /// A JSON value — the payload a <see cref="FuaranAction.Notify"/> carries. The
@@ -100,7 +101,8 @@ public sealed class Payload
 /// needs no per-language mechanism. Reach the host from a tree with
 /// <see cref="Notify"/> (a channel plus a JSON payload) or
 /// <see cref="CallIntoState"/> / <see cref="CallIntoQuery"/> (a call whose RESULT is
-/// written to a reactive slot rather than handed to a closure).
+/// written to a reactive slot rather than handed to a closure). <see cref="Print"/>
+/// reaches no host at all — it asks the browser.
 /// </para>
 /// </remarks>
 public sealed class FuaranAction
@@ -152,6 +154,19 @@ public sealed class FuaranAction
             endpoint,
             Fs.None<Microsoft.FSharp.Core.FSharpFunc<object, object>>(),
             Fs.Some(FsGen.CallResultTarget.NewQuery(name))));
+
+    /// <summary>
+    /// Open the reader's own print dialogue — <c>Action.Print</c> (Phase 1124).
+    /// Payload-free, so it is a property rather than a method: there is no page
+    /// size, margin, sheet range or target subtree to pass, the paged medium
+    /// belonging to the host and every parameter of the printing to the reader.
+    /// </summary>
+    /// <remarks>
+    /// Wire-representable in full, which is the boundary this facade is drawn on:
+    /// <c>{"$type":"Print"}</c> survives serialisation exactly, so a decoding
+    /// browser raises the same dialogue a full-Fable tree would.
+    /// </remarks>
+    public static FuaranAction Print { get; } = new(FsAction.Print);
 
     /// <summary>Raise several actions in order.</summary>
     public static FuaranAction Chain(params FuaranAction[] actions) =>

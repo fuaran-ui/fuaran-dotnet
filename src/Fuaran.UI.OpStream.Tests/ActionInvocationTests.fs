@@ -24,14 +24,20 @@ type private Msg = Poke of string
 /// escaped redaction.
 let private poison = "PoIsOn-uSeR-tYpEd-53cr3t"
 
-/// All ELEVEN `Action` cases — the count is checked below, because a record
-/// designed against the "twelve cases" the phase originally claimed would be
-/// one short and the shortfall would be invisible.
+/// All TWELVE `Action` cases — the count is checked below, because a record
+/// designed against the "twelve cases" the phase ORIGINALLY claimed would then
+/// have been one short, and the shortfall would have been invisible. (Phase 1124
+/// made twelve the true count by adding `Print`; the guard below is why that
+/// arrived as a failing test rather than as an untested case.)
 ///
 /// Every argument that can carry a value carries the poison; the author-declared
 /// NAMES (endpoint, channel, state key, tool, capability, node id) deliberately
 /// do not, since those are what the redacted record is supposed to keep.
-let private allElevenCases: (string * Action<Msg>) list =
+/// `Print` (Phase 1124) is the one case with NO argument at all — it cannot
+/// carry the poison, and it is in the fixture precisely so that fact is asserted
+/// rather than assumed: a payload-free case is the shape most likely to be left
+/// out of a coverage list on the grounds that there is nothing to check.
+let private allTwelveCases: (string * Action<Msg>) list =
     [ "Chain", Action.Chain [ Action.WriteToClipboard poison; Action.Navigate("/a?q=" + poison) ]
       "WriteToClipboard", Action.WriteToClipboard poison
       "Dispatch", Action.Dispatch(Poke poison)
@@ -44,7 +50,8 @@ let private allElevenCases: (string * Action<Msg>) list =
       "CommitLocal", Action.CommitLocal "field-1"
       "Notify", Action.Notify("toast", JStr poison)
       "SetState", Action.SetState("draft.body", Some(JStr poison), None)
-      "AiTool", Action.AiTool("summarise", JObj [ "text", JStr poison ]) ]
+      "AiTool", Action.AiTool("summarise", JObj [ "text", JStr poison ])
+      "Print", Action.Print ]
 
 let private site =
     ActionInvocation.clientSite AffordanceProvenance.TreeDeclared (Some "node-1") (Some "interaction-7")
@@ -69,15 +76,17 @@ let private renderedSurface (r: ActionInvocation) : string =
 let redactionTests =
     testList
         "Phase 889 — the redaction default"
-        [ test "the Action vocabulary has ELEVEN cases and the fixture covers each exactly once" {
+        [ test "the Action vocabulary has TWELVE cases and the fixture covers each exactly once" {
               // Guards the poison test below against the failure mode that
               // makes it useless: a case the fixture forgot is a case whose
               // redaction nobody checked. The phase itself corrected "twelve"
               // to eleven; a fixture out of step with the DU would restore the
-              // gap silently.
-              let names = allElevenCases |> List.map fst
-              Expect.equal (List.length names) 11 "eleven cases"
-              Expect.equal (List.length (List.distinct names)) 11 "each named once"
+              // gap silently. It did its job at Phase 1124, which added
+              // `Print` — the count is reflected off the DU, so the new case
+              // could not be shipped without being covered.
+              let names = allTwelveCases |> List.map fst
+              Expect.equal (List.length names) 12 "twelve cases"
+              Expect.equal (List.length (List.distinct names)) 12 "each named once"
 
               let unionCases =
                   Reflection.FSharpType.GetUnionCases(typeof<Action<Msg>>)
@@ -87,8 +96,8 @@ let redactionTests =
               Expect.equal (List.sort names |> Array.ofList) unionCases "the fixture matches the DU exactly"
           }
 
-          test "POISON: no payload value survives the default capture mode, in any of the eleven cases" {
-              for name, action in allElevenCases do
+          test "POISON: no payload value survives the default capture mode, in any of the twelve cases" {
+              for name, action in allTwelveCases do
                   let record =
                       ActionInvocation.record ActionCaptureMode.Redacted site ActionOutcome.Dispatched action
 

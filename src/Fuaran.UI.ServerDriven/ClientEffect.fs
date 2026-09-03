@@ -42,6 +42,18 @@ type ClientEffect =
     /// encoding (`"Text"` / `"Base64"` / `"DataUrl"`); the body round-trips
     /// back to the server as a `LiveEvent` (`Action.ReadFileBody`).
     | ReadFileBody of nodeId: string * encoding: string
+    /// Open the reader's own print dialogue (`Action.Print`, Phase 1124). The
+    /// FIRST payload-free effect in this channel, and the emptiness is the
+    /// point: the paged medium belongs to the host and every parameter of the
+    /// printing to the reader, so there is no page size, sheet range or target
+    /// subtree for the server to name. `{"kind":"Print"}` is the whole
+    /// instruction.
+    ///
+    /// It lowers rather than executing server-side for the reason this whole
+    /// channel exists — a server has no printer — and it round-trips nothing
+    /// back: `window.print()` reports neither whether the reader printed nor
+    /// what they chose, so unlike `ReadFileBody` there is no result `LiveEvent`.
+    | Print
 
 module ClientEffect =
 
@@ -75,6 +87,7 @@ module ClientEffect =
         | Focus _ -> "Focus"
         | Download _ -> "Download"
         | ReadFileBody _ -> "ReadFileBody"
+        | Print -> "Print"
 
     /// Encode one effect as tagged-object camelCase JSON.
     let encode (effect: ClientEffect) : string =
@@ -85,6 +98,7 @@ module ClientEffect =
         | Focus nodeId -> $"""{{"kind":"Focus","nodeId":{q nodeId}}}"""
         | Download(url, name) -> $"""{{"kind":"Download","url":{q url},"name":{q name}}}"""
         | ReadFileBody(nodeId, encoding) -> $"""{{"kind":"ReadFileBody","nodeId":{q nodeId},"encoding":{q encoding}}}"""
+        | Print -> """{"kind":"Print"}"""
 
     /// Encode an effect list as a JSON array.
     let encodeList (effects: ClientEffect list) : string =

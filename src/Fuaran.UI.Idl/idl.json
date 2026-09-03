@@ -5124,6 +5124,10 @@
             }
           ],
           "tag": "AiTool"
+        },
+        {
+          "fields": [],
+          "tag": "Print"
         }
       ],
       "name": "Action",

@@ -3386,6 +3386,18 @@
             "args",
             "capabilityId"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Print"
+            }
+          },
+          "required": [
+            "$type"
+          ],
+          "additionalProperties": false
         }
       ]
     },
