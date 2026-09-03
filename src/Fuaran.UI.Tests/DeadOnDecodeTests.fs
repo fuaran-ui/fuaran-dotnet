@@ -110,7 +110,8 @@ let tests =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
 
               let closureCall =
@@ -194,7 +195,8 @@ let tests =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
 
               let declarativeFetch =

@@ -123,7 +123,11 @@ public static partial class Fuaran
                 // the grid exchanges rows with nothing, which is what every grid
                 // written before this release says.
                 Fs.OptStr(options.TransferOutKey),
-                Fs.OptStr(options.TransferInKey))));
+                Fs.OptStr(options.TransferInKey),
+                // Phase 1125 — the export affordance, LAST because the typed
+                // facade puts it last: appending is what keeps every earlier
+                // ctor position where it was.
+                options.Exportable)));
 }
 
 /// <summary>A data-grid column. Accessors read the PROJECTED row (fuaran#665 —
@@ -411,6 +415,21 @@ public sealed record DataGridOptions<TRow>
     /// than script's — it holds with no JavaScript at all.
     /// </summary>
     public bool RepeatHeader { get; init; }
+
+    /// <summary>
+    /// This grid's rows are the reader's to take (Phase 1125): the renderer draws
+    /// an export control and, on activation, serialises the rows the client holds
+    /// to RFC 4180 CSV. Nothing is written back to the tree, so unlike every
+    /// other grid behaviour this names no State key.
+    /// <para>What is exported is what the CLIENT HOLDS — the resolved, sorted set,
+    /// not the page on screen — and where the host pages that set is one page, which
+    /// the control's accessible name says. A full-dataset export over a paged query
+    /// is host chrome.</para>
+    /// <para>Declaring it on a grid holding neither static rows nor a
+    /// client-resolvable source is a dead control and is reported pre-emit
+    /// (FUARAN131).</para>
+    /// </summary>
+    public bool Exportable { get; init; }
     /// <summary>Phase 1123 — this grid may RELEASE rows onto the named State key.
     /// Pair it with <see cref="TransferInKey"/> on the grid rows should arrive at (the same key
     /// name), and a reader can drag or keyboard-move a row from here to there. Leave it

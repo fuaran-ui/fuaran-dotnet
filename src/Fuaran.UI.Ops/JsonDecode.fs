@@ -6523,6 +6523,15 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | None -> Ok false
             | Some v -> requireBool (path + ".repeatHeader") v
 
+        // Phase 1125 — the export affordance, the same omitted-when-false
+        // convention once more, and refused rather than coerced for the same
+        // reason: absence is the only spelling of "not declared", so a
+        // wrong-typed flag is an emitter saying something it cannot mean.
+        let exportableR =
+            match tryField fields "exportable" with
+            | None -> Ok false
+            | Some v -> requireBool (path + ".exportable") v
+
         let sourceR =
             requireFieldAliased path fields "source" [ "data"; "rows" ] "Binding<Row seq> Source"
             |> Result.bind (decodeRowSeq (path + ".source"))
@@ -6603,7 +6612,16 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
                   "behaviour",
                   "sibling fields on the grid (sortStateKey / pageStateKey / pageSize / editStateKey / defaultSort) — grid behaviour is not a nested record"
                   "behavior",
-                  "sibling fields on the grid (sortStateKey / pageStateKey / pageSize / editStateKey / defaultSort) — grid behaviour is not a nested record" ]
+                  "sibling fields on the grid (sortStateKey / pageStateKey / pageSize / editStateKey / defaultSort) — grid behaviour is not a nested record"
+                  // Phase 1125 — the export affordance's own near miss. `export`
+                  // is the spelling a model reaches for, and naming the
+                  // canonical one is cheaper than letting the flag be dropped:
+                  // a silently ignored `export: true` is the fake-affordance
+                  // shape arriving through the decoder instead of the tree.
+                  "export", "exportable — the grid's export affordance is a boolean named exportable"
+                  "exportable_csv",
+                  "exportable — the format is the renderer's, not the document's; the flag names the affordance only"
+                  "downloadable", "exportable — the grid's export affordance is a boolean named exportable" ]
 
         // Phase 863 — the declared edit destination. Absent keeps Phase 663's
         // shipped write-back-to-source behaviour exactly.
@@ -6684,24 +6702,27 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
                         keepRowsTogetherR
                         |> Result.bind (fun keepRowsTogether ->
                             repeatHeaderR
-                            |> Result.map (fun repeatHeader ->
-                                { Source = source
-                                  RowKey = rowKey
-                                  RowKeyField = rowKeyField
-                                  SortStateKey = sortStateKey
-                                  PageSize = pageSize
-                                  PageStateKey = pageStateKey
-                                  DefaultSort = defaultSort
-                                  EditStateKey = editStateKey
-                                  Columns = columns
-                                  OnRowClick = onRowClick
-                                  Editable = editable
-                                  Reorderable = reorderable
-                                  TransferInKey = transferInKey
-                                  TransferOutKey = transferOutKey
-                                  KeepRowsTogether = keepRowsTogether
-                                  RepeatHeader = repeatHeader
-                                  StaticRows = staticRows })))))
+                            |> Result.bind (fun repeatHeader ->
+                                exportableR
+                                |> Result.map (fun exportable ->
+                                    { Source = source
+                                      RowKey = rowKey
+                                      RowKeyField = rowKeyField
+                                      SortStateKey = sortStateKey
+                                      PageSize = pageSize
+                                      PageStateKey = pageStateKey
+                                      DefaultSort = defaultSort
+                                      EditStateKey = editStateKey
+                                      Columns = columns
+                                      OnRowClick = onRowClick
+                                      Editable = editable
+                                      Reorderable = reorderable
+                                      TransferInKey = transferInKey
+                                      TransferOutKey = transferOutKey
+                                      KeepRowsTogether = keepRowsTogether
+                                      RepeatHeader = repeatHeader
+                                      Exportable = exportable
+                                      StaticRows = staticRows }))))))
         | Error e, _, _, _, _, _, _, _, _, _, _, _
         | _, Error e, _, _, _, _, _, _, _, _, _, _
         | _, _, Error e, _, _, _, _, _, _, _, _, _

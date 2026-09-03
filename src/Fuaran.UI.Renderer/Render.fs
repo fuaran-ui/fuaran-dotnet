@@ -3957,7 +3957,25 @@ let rec private renderKind
             // Phase 1473 — the print-break declarations follow the STATIC leg too:
             // the grid renders as a semantic table here, so its rows and header
             // row group are exactly the boundaries the declarations name.
-            renderTable ctx (Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader) tableSpec
+            let table =
+                renderTable ctx (Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader) tableSpec
+
+            // Phase 1125 — the export affordance follows the STATIC leg too, and
+            // this is the clearest case it has: a static grid holds its rows IN
+            // THE TREE, so the client cannot fail to hold them and the scope is
+            // never a page. What is exported is the resolved cell TEXT, which on
+            // this leg is exactly what `renderTable` puts in the cells.
+            if not spec.Exportable then
+                table
+            else
+                let project () =
+                    (sr.Headers |> List.map (renderText ctx)), (sr.Rows |> List.map (List.map (renderText ctx)))
+
+                Html.div
+                    [ prop.className "fuaran-grid-exportable"
+                      prop.children
+                          [ table
+                            gridExportControl ctx parentNodeId (GridExport.Scope.WholeGrid(List.length sr.Rows)) project ] ]
         | None -> renderGrid ctx parentNodeId state spec
     | NodeKind.Chart spec -> renderChart ctx parentNodeId state spec
     | NodeKind.Map spec -> renderMap ctx parentNodeId state spec
@@ -6544,16 +6562,71 @@ and private renderGrid
                         // emits byte-identical DOM to before this phase.
                         Html.div [ prop.className "fuaran-grid-paged"; prop.children [ gridTable; pager () ] ]
 
+                // Phase 1125 — the export affordance. What it takes is `rows`:
+                // the fully RESOLVED, SORTED set the client holds, never
+                // `pageRows`. A reader who sorted a column and then exported
+                // expects the file in the order they are looking at, and a reader
+                // on page three expects the grid rather than page three.
+                //
+                // Where the HOST pages (`hostPages` — a `Query` whose `dependsOn`
+                // names the page key) that resolved set IS one page, and there is
+                // no honest way for the client to export more. The control's
+                // accessible name says which of the two it is, on the
+                // declared-total ruling's reasoning: the tree cannot substantiate
+                // data it does not hold, so a control that promised a whole
+                // dataset and delivered a page would be a fake affordance by
+                // understatement. A full-dataset export over a paged query is host
+                // chrome and stays out of the language.
+                let exported =
+                    if not spec.Exportable then
+                        paged
+                    else
+                        let hostPaged =
+                            match pagination with
+                            | Some(_, _, _, hostPages) -> hostPages
+                            | None -> false
+
+                        // The column's own value projection, rendered through the
+                        // column's own declared format — the same two steps the
+                        // cell takes, so the file carries what the reader sees.
+                        // The formatted-versus-raw decision and its cost are
+                        // recorded in `GridExport`'s header and in the charter row.
+                        let project () =
+                            let cellText (col: ColumnErased<'Msg>) (row: Row) : string =
+                                let value =
+                                    match col.Value with
+                                    | Some accessor -> accessor row
+                                    | None ->
+                                        match col.Field with
+                                        | Some field -> BindingResolver.projectRowFieldValue row field
+                                        | None -> CellValue.Empty
+
+                                renderCellValue col.Format value
+
+                            (spec.Columns |> List.map _.Label),
+                            (rows
+                             |> List.map (fun row -> spec.Columns |> List.map (fun col -> cellText col row)))
+
+                        Html.div
+                            [ prop.className "fuaran-grid-exportable"
+                              prop.children
+                                  [ paged
+                                    gridExportControl
+                                        ctx
+                                        parentNodeId
+                                        (GridExport.scope hostPaged (List.length rows))
+                                        project ] ]
+
                 // Phase 1123 — a grid that declares NEITHER end of the transfer
                 // pair emits byte-identical DOM to before this phase, which is
                 // why the chrome is conditional rather than always present and
                 // empty.
                 if spec.TransferInKey.IsNone && spec.TransferOutKey.IsNone then
-                    paged
+                    exported
                 else
                     Html.div
                         [ prop.className "fuaran-grid-transfer"
-                          prop.children [ paged; placeControl (); transferStatus () ] ]
+                          prop.children [ exported; placeControl (); transferStatus () ] ]
 
 and private renderGridCell
     (ctx: RenderContext<'Msg>)
@@ -6836,6 +6909,77 @@ and private renderChart
                                           spec.XField
                                           (String.concat ", " spec.YFields)
                                   ) ] ] ]
+
+/// Hand a CSV document to the reader (Phase 1125).
+///
+/// Deliberately NOT a new mechanism. This is the platform's existing download
+/// instruction — a url and a suggested name — performed the way that
+/// instruction is performed everywhere else: an anchor carrying a `download`
+/// attribute, activated and discarded. Nothing about the export earns a second
+/// delivery path, and minting one would leave two spellings of "give this to
+/// the reader" for a future change to keep in step.
+and private deliverDownload (url: string) (suggestedName: string) : unit =
+#if FABLE_COMPILER
+    let anchor = Browser.Dom.document.createElement "a"
+    anchor.setAttribute ("href", url)
+    anchor.setAttribute ("download", suggestedName)
+    // Detached anchors do not activate on every browser, so it is attached,
+    // clicked and removed within one synchronous turn — the reader never sees
+    // it, and no element outlives the gesture.
+    Browser.Dom.document.body.appendChild anchor |> ignore
+    anchor.click ()
+    Browser.Dom.document.body.removeChild anchor |> ignore
+#else
+    // .NET-side no-op — `Browser.Dom` is meaningless under `dotnet build`, the
+    // same posture the focus and tab helpers take. Every DECISION this
+    // affordance makes lives in `GridExport`, which is pure and is tested; what
+    // is unreachable here is only the handing over.
+    ignore url
+    ignore suggestedName
+#endif
+
+/// The grid's export control (Phase 1125).
+///
+/// RENDERER-OWNED, which is the whole of the grid-behaviour rule and the reason
+/// a decorative export button is not authorable: the control that serialises the
+/// rows and the grid that holds them cannot come apart, because they are the
+/// same node.
+///
+/// `project` is a THUNK. Serialising a grid on every render to fill a button
+/// nobody has pressed would be a per-render cost proportional to the row count,
+/// and the rows are re-projected on the render that follows every sort, every
+/// page and every edit. It runs once, inside the gesture.
+///
+/// The gate is consulted at ACTIVATION, not at render: refusing to draw the
+/// control would tell the reader nothing, and drawing one that silently does
+/// nothing is the fake-affordance shape. A denied export warns through the same
+/// diagnostic channel every other refusal uses.
+and private gridExportControl
+    (ctx: RenderContext<'Msg>)
+    (nodeId: string)
+    (scope: GridExport.Scope)
+    (project: unit -> string list * string list list)
+    : ReactElement =
+    let accessibleName = GridExport.scopeLabel scope
+
+    let performExport () =
+        applyDispatchGateOutcome ctx.Runtime (Runtime.ActionDescriptor.Export nodeId) (fun () ->
+            let headers, rows = project ()
+            let csv = GridExport.document headers rows
+            deliverDownload (GridExport.dataUrl csv) (GridExport.filename nodeId))
+        |> ignore
+
+    Html.button
+        [ prop.className "fuaran-grid-export"
+          prop.type' "button"
+          // The visible label is short because it sits beside a grid; the
+          // accessible name carries the scope and the count, so a reader who
+          // cannot see the grid is told what the file will contain rather than
+          // being handed a page and told it was the grid.
+          prop.custom ("aria-label", accessibleName)
+          prop.title accessibleName
+          prop.onClick (fun _ -> performExport ())
+          prop.text "Export CSV" ]
 
 and private renderTable (ctx: RenderContext<'Msg>) (printBreak: string) (spec: TableSpec<'Msg>) : ReactElement =
     let headerCells =

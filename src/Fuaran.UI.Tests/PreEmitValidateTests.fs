@@ -207,7 +207,8 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         )
       State = None
       Style = None
@@ -362,7 +363,8 @@ let private sortGrid
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         )
       State = None
       Style = None
@@ -408,7 +410,8 @@ let private editGrid
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         )
       State = None
       Style = None
@@ -445,7 +448,8 @@ let private pagedGrid
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         )
       State = None
       Style = None
@@ -740,7 +744,8 @@ let private repeatHeaderGrid (id: string) (columns: ColumnErased<Msg> list) : No
             NodeKind.DataGrid
                 { spec with
                     Columns = columns
-                    RepeatHeader = true }
+                    RepeatHeader = true
+                    Exportable = false }
           State = None
           Style = None
           Accessibility = None
@@ -748,6 +753,64 @@ let private repeatHeaderGrid (id: string) (columns: ColumnErased<Msg> list) : No
           Tooltip = None
           Motion = None }
     | _ -> failwith "seedingGrid must produce a DataGrid"
+
+// ─── Phase 1125 fixtures ─ FUARAN131, an export with nothing to export ──
+
+let private exportDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.DeadExportAffordance _ -> true
+            | _ -> false)
+
+let private exportCodes (tree: Node<Msg>) : string list =
+    exportDefects tree
+    |> List.map (fun d ->
+        let code, _, _ = PreEmitValidate.describe d
+        code)
+
+/// `seedingGrid`'s shape with `exportable` declared and the column set AND the
+/// source under the caller's control, so each reported shape and its go-red
+/// twin are the same fixture with one field changed.
+let private exportableGrid (id: string) (source: Binding<Row seq>) (columns: ColumnErased<Msg> list) : Node<Msg> =
+    match (seedingGrid id "unused").Kind with
+    | NodeKind.DataGrid spec ->
+        { Id = id
+          Kind =
+            NodeKind.DataGrid
+                { spec with
+                    Columns = columns
+                    Source = source
+                    Exportable = true }
+          State = None
+          Style = None
+          Accessibility = None
+          ExtraAttributes = None
+          Tooltip = None
+          Motion = None }
+    | _ -> failwith "seedingGrid must produce a DataGrid"
+
+/// The one column every export fixture that HAS columns uses.
+let private exportColumn: ColumnErased<Msg> =
+    { Label = "Team"
+      Value = None
+      Field = Some "team"
+      Sortable = None
+      Editable = None
+      Format = CellFormat.None
+      Kind = CellKindErased.Text
+      Width = ColumnWidth.Auto }
+
+/// A source a grid genuinely has: a `State` binding seeded with one row.
+let private exportSource: Binding<Row seq> =
+    Binding.State("rows", Some(Seq.ofList [ (Map.ofList [ "team", Unchecked.nonNull (box 1) ]: Fuaran.Core.Row) ]))
+
+/// The not-provided sentinel a default-constructed spec carries — the one row
+/// source shape that is statically certain to yield nothing, ever.
+let private noRowSource: Binding<Row seq> =
+    Binding.Query(Defaults.NotProvidedSentinel, (fun _ -> Seq.empty), None)
 
 // ─── Phase 1113 fixtures ─ FUARAN120, the option-less combobox ─────────
 
@@ -1464,7 +1527,8 @@ let tests =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       )
                     State = None
                     Style = None
@@ -3500,6 +3564,58 @@ let tests =
               Expect.isEmpty (printBreakDefects tree) "a grid that renders a header row is exactly what the slot is for"
           }
 
+          // ── Phase 1125 — FUARAN131, an export with nothing to export ──
+
+          test "FUARAN131: exportable on a grid naming no row source is reported" {
+              let tree = dashboard "root" [ exportableGrid "grid" noRowSource [ exportColumn ] ]
+
+              Expect.equal
+                  (exportCodes tree)
+                  [ "FUARAN131" ]
+                  "a control offering the reader rows the grid can never be given is a dead control"
+          }
+
+          test "FUARAN131: exportable on a data-bound grid with no columns is reported" {
+              let tree = dashboard "root" [ exportableGrid "grid" exportSource [] ]
+
+              Expect.equal
+                  (exportCodes tree)
+                  [ "FUARAN131" ]
+                  "the columns are the exported file's fields, so with none the file has no fields at all"
+          }
+
+          test "FUARAN131 go-red check: exportable on a grid with a source AND columns is silent" {
+              let tree = dashboard "root" [ exportableGrid "grid" exportSource [ exportColumn ] ]
+
+              Expect.isEmpty
+                  (exportDefects tree)
+                  "a grid with rows to give and fields to give them in is what the slot is for"
+          }
+
+          test "FUARAN131 go-red check: an UNDECLARED export is silent however empty the grid" {
+              // The rule is about the DECLARATION, not about emptiness: a grid
+              // with no source and no columns is an ordinary mid-edit tree, and
+              // reporting it here would be reporting something this code has no
+              // opinion on.
+              let tree = dashboard "root" [ seedingGrid "grid" "unused" ]
+
+              Expect.isEmpty (exportDefects tree) "no export declared, nothing for this rule to say"
+          }
+
+          test "FUARAN131 go-red check: a source that RESOLVES to no rows is never reported" {
+              // How many rows a source yields is a runtime fact for every binding
+              // shape, an empty result is a legitimate state of a correct grid,
+              // and the export of an empty grid is a header record — a true
+              // statement about the data rather than a failure. The restraint is
+              // asserted, not merely documented.
+              let tree =
+                  dashboard "root" [ exportableGrid "grid" (Binding.Static(Some Seq.empty)) [ exportColumn ] ]
+
+              Expect.isEmpty
+                  (exportDefects tree)
+                  "an empty grid exports a header record, which is correct rather than dead"
+          }
+
           test "FUARAN125 go-red check: keepRowsTogether is never reported" {
               // Whether a grid HAS rows is a property of its resolved source,
               // which is a runtime fact for every binding shape here — so a rule
@@ -4029,6 +4145,7 @@ let private transferGrid
               TransferOutKey = outKey
               KeepRowsTogether = false
               RepeatHeader = false
+              Exportable = false
               StaticRows = None }
         )
       Accessibility = None

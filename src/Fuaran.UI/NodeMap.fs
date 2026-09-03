@@ -338,6 +338,8 @@ and mapGridSpec (f: 'a -> 'b) (spec: GridSpec<'a>) : GridSpec<'b> =
       // Phase 1473 — the print-break declarations carry no `'Msg` either.
       KeepRowsTogether = spec.KeepRowsTogether
       RepeatHeader = spec.RepeatHeader
+      // Phase 1125 — nor does the export declaration.
+      Exportable = spec.Exportable
       Columns = spec.Columns |> List.map (mapColumnErased f)
       OnRowClick = spec.OnRowClick |> Option.map (fun g -> g >> mapAction f)
       Editable = spec.Editable

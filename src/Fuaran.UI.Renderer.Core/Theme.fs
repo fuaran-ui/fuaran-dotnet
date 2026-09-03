@@ -98,7 +98,15 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // render an unstyled place control and NO VISIBLE DROP STATE at all: a drag
 // whose target the reader cannot see is a guess, which is exactly the
 // unstyled-control skew this fingerprint exists to catch.
-let vocabularyFingerprint = "fv1:e697c1d1c162b9a7"
+// Phase 1125 moved this. Two classes ENTERED the vocabulary — the wrapper
+// `fuaran-grid-exportable` and the control `fuaran-grid-export` — and the
+// reference sheet gained the rules that style them. A host pinning the old
+// value would accept a sheet that knows neither, and would then render an
+// unstyled, unplaced control with no focus ring: the export affordance is a
+// real <button> that must be visibly focusable, so an unstyled one is not
+// merely plain but keyboard-invisible, which is exactly the unstyled-control
+// skew this fingerprint exists to catch.
+let vocabularyFingerprint = "fv1:8b3d17a39ac85085"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

@@ -1083,6 +1083,19 @@
           }
         },
         {
+          "name": "exportable",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
+          },
+          "type": {
+            "$type": "bool"
+          }
+        },
+        {
           "name": "source",
           "optionality": {
             "$type": "required"

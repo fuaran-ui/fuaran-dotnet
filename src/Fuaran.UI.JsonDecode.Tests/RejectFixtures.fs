@@ -1282,6 +1282,43 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "DataGrid repeatHeader is an object, not a boolean — the fourth flag, read by its own call and so pinned on its own (Phase 1473)" }
+      // ─── Phase 1125 — the export flag, on BOTH decoder arms ───────────
+      //
+      // Two vectors and not one, for the reason the print-break block above
+      // records at four: `exportable` is read by the GENERATED grid decoder and,
+      // independently, by the policy decoder's own `decodeGridSpec`. Those are
+      // separate branches, so a vector that only ever reaches one of them proves
+      // nothing about the other — and it is the policy arm a constrained host
+      // actually runs.
+      //
+      // WRONG_TYPE and not UNKNOWN_DU_CASE: a boolean is not a token, so a
+      // non-boolean is a near miss of nothing and there is no legal set to name
+      // back at the author.
+      //
+      // Refused rather than coerced, and here the coercion would be worse than
+      // usual. Read as the `false` default, a wrong-typed `exportable` silently
+      // withdraws an affordance the document declared and the reader is simply
+      // never offered their data; read as `true`, a document that said nothing
+      // about export grows a control that puts a file on the reader's disk.
+      // Under rule 1 the omit-at-false convention makes ABSENT the only spelling
+      // of "not declared", so a present key of the wrong kind is a defect and
+      // never a default.
+      { Id = "reject-wrongtype-grid-exportable"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[],"exportable":"true","source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.exportable"
+        IsOp = false
+        Description =
+          "DataGrid exportable is the STRING \"true\", not a boolean — the shape a stringly-typed emitter produces. Refused, never coerced: coerced to false it would silently withdraw a declared affordance, coerced to true it would grow one the document never asked for (Phase 1125)" }
+      { Id = "reject-wrongtype-grid-exportable-number"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[],"exportable":1,"source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.exportable"
+        IsOp = false
+        Description =
+          "DataGrid exportable is the NUMBER 1 — the truthy-integer spelling, pinned separately because a decoder can reject one non-boolean shape and accept another (Phase 1125)" }
       // ─── Phase 1122 — the timed-advance interval's POSITIVE floor ─────
       //
       // Three vectors, and each pins a different way the slot can be got

@@ -67,7 +67,8 @@ let private gridWith (id: string) (col: ColumnErased<Msg>) : Node<Msg> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
 
 let private column (kind: CellKindErased<Msg>) : ColumnErased<Msg> =

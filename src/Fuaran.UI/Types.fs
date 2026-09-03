@@ -1639,6 +1639,29 @@ and MapMarker = Generated.MapMarker
 /// `@media print` block: `break-inside: avoid` on the rows, and the header row
 /// group projected as a table header group, which is the one construct that
 /// makes the repetition the paged formatter's own job rather than script's.
+///
+/// **`Exportable` (Phase 1125) declares that this grid's ROWS ARE THE READER'S
+/// TO TAKE.** The renderer draws the control and performs the act: the rows the
+/// client holds are serialised to RFC 4180 CSV and handed over as a file.
+/// Nothing is written back to the tree, and nothing round-trips — so unlike
+/// every other grid behaviour it names no State key, and that is the whole
+/// reason a plain `bool` is admissible here where a grid-level `sortable` /
+/// `pageable` flag is refused by name: those write state the grid reads back,
+/// so the key IS the affordance; this writes nothing, so there is no key it
+/// could name.
+///
+/// It sits under the affordance charter's governing sentence unamended — the
+/// wire names a capability on the node that both hosts the gesture and consumes
+/// its effect. The grid is both ends: only it holds its resolved rows, its
+/// columns, its declared formats and the order the reader has sorted them into,
+/// so a free-standing export button beside it would reach none of that and
+/// would be the decorative-pager shape at another slot.
+///
+/// **What it exports is what the CLIENT HOLDS** — the fully resolved, sorted
+/// set, never the page on screen. Where the source is host-paged that set is
+/// one page, and the control says so rather than implying a total the tree
+/// cannot substantiate. A full-dataset export over a paged `Query` is host
+/// chrome and stays out of the language.
 and GridSpec<'Msg> = Generated.DataGridSpec<'Msg>
 
 /// The generated name for `GridSpec` (both names are the same record).
@@ -1730,6 +1753,16 @@ and GridSpecOf<'row, 'Msg> =
         /// destination. Erases to `DataGridSpec.TransferInKey`; omitted on the
         /// wire when absent.
         TransferInKey: string option
+        /// Phase 1125 — this grid's rows are the reader's to take: the renderer
+        /// draws an export control that serialises the rows the client holds to
+        /// RFC 4180 CSV. Nothing is written back to the tree, so unlike every
+        /// other grid behaviour it names no State key. Erases to
+        /// `DataGridSpec.Exportable`; omitted on the wire at `false`.
+        ///
+        /// LAST in declaration order, deliberately: this record has a positional
+        /// constructor the language veneers use, so a slot inserted anywhere but
+        /// the end would silently move an existing argument.
+        Exportable: bool
     }
 
 /// §4k Q3.2 — Column carries a typed `Kind`, not a nullable `OnEdit`.

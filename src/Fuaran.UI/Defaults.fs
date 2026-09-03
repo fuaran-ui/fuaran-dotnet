@@ -511,7 +511,10 @@ let grid<'row, 'Msg> : GridSpecOf<'row, 'Msg> =
       // so a grid built from this default exchanges rows with nothing and emits
       // the bytes and the DOM it always did.
       TransferOutKey = Option.None
-      TransferInKey = Option.None }
+      TransferInKey = Option.None
+      // Phase 1125 — no export affordance by default: a grid is a rendering
+      // until the document says its rows are the reader's to take.
+      Exportable = false }
 
 let column<'Msg> : Column<'Msg> =
     { Label = ""

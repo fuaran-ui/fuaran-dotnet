@@ -3875,3 +3875,93 @@ a fake affordance.
 it has no slot to be inconsistent with, no counterpart to be unpaired from, and no destination to be
 dead. A `Print` on a button is exactly as meaningful as a `Print` anywhere else the wire admits an
 action.
+
+## Recorded change — 0.65.0, the grid export affordance (fuaran#1125)
+
+**Additive on the wire; SOURCE-BREAKING at every exhaustive `match` over `ActionDescriptor` and at
+every full-literal construction of `DataGridSpec` / `GridSpecOf`; a `WIRE_FORMAT.md` §11
+forward-coupling event.** Every pre-0.65.0 document encodes and decodes to byte-identical bytes:
+nothing is removed, no member changes meaning, and the new member is omitted at `false`, which is the
+value every existing grid has. Every pre-0.65.0 grid renders byte-identical DOM, because the control
+and its wrapper are emitted only where the flag is declared.
+
+**`DataGridSpec.exportable` — one additive `bool`, omitted at `false`.** It declares that this grid's
+rows are the reader's to take: the renderer draws an export control and, on activation, serialises the
+rows the client holds to RFC 4180 CSV and hands them over as a file.
+
+  * **Source-breaking surface:** a record gains a field, so every FULL-LITERAL construction of
+    `DataGridSpec` stops compiling (FS0764). Consumers building grids through `Fuaran.grid`,
+    `Defaults.grid` or `{ spec with … }` are unaffected. It therefore rides a minor bump and never a
+    re-pack of 0.64.0.
+  * **`GridSpecOf` gains the slot LAST in declaration order**, which is not a style preference: that
+    record has a POSITIONAL constructor the language veneers use, so a field inserted anywhere but the
+    end would silently move an existing argument. The C# veneer's `DataGridOptions.Exportable` and the
+    VB dialect's `exportable` attribute are added in the same change-set, per §11 step 6.
+  * **`Fuaran.UI.Renderer.Runtime.ActionDescriptor` gains `Export of nodeId: string`**, source-breaking
+    at every exhaustive `match` in the same way `Print` was one release earlier, and for the same
+    reason: the gate must be able to name what it is refusing. It carries the grid's node id so a host
+    policy can be per-grid rather than all-or-nothing, exactly as `SetState` carries its key.
+
+**It is GATED, and the reasoning is not the same as `Print`'s.** The act is reader-initiated and the
+content is data the reader is already looking at, so nothing is disclosed and nothing is transferred
+that was not already on their screen. Two things still put it in the default-deny set. It **puts a
+file on the reader's disk**, which is the only effect in that set that outlives the page; and the file
+is **named by the tree**, so a decoded tree from an untrusted emitter chooses what appears in a
+download list. A host with a deny-all policy refuses it through the same `CanDispatch` seam it refuses
+`Call` / `Navigate` / `AiTool`; every default runtime allows it and behaves exactly as it did before
+the affordance existed. Nothing is read back — the export returns unit, so the tree never learns
+whether the reader kept the file.
+
+**No new delivery mechanism, and that is deliberate.** The hand-over is the url-plus-suggested-name
+pair the platform's existing download instruction already carries, performed the way that instruction
+is performed: an anchor with a `download` attribute, activated and discarded. Minting a second
+spelling of *give this to the reader* would leave two paths for a future change to keep in step.
+`ServerDriven.ClientEffect` is UNCHANGED for the same reason its `Download` case already exists.
+
+**What is exported is what the CLIENT HOLDS, and the control says which that is.** The rows are the
+grid's fully resolved, SORTED set — never the page on screen, because a reader who sorted a column and
+then exported expects the file in the order they are looking at. Where the source is host-paged (a
+`Query` whose `dependsOn` names the page key) that resolved set IS one page, and the control's
+accessible name reads *Export this page (N rows) as CSV* rather than *Export N rows as CSV*. That
+distinction is the declared-total ruling applied to a second slot: the tree cannot substantiate data it
+does not hold, and a control promising a whole dataset while delivering a page is a fake affordance by
+understatement. **A full-dataset export over a paged query is host chrome and stays out of the
+language.**
+
+**The cells are exported FORMATTED, not raw, and the cost is recorded rather than hidden.** A cell
+carries the text the reader is looking at — the column's own value projection through the column's own
+declared `CellFormat`. The export is the reader's copy of the grid in front of them, so it carries that
+grid's columns, their order, the sort order and the formats, which are exactly what the grid uniquely
+holds. The consequence is real: a currency-formatted column exports as text a spreadsheet will not sum.
+The reopen route is a declared export projection on the column, which would need its own demand and its
+own charter walk.
+
+**The serialiser emits a UTF-8 byte order mark; the grammar function does not.**
+`GridExport.serialise` is RFC 4180 with CRLF record separators, no trailing separator and no mark;
+`GridExport.document` is that behind U+FEFF. RFC 4180 says nothing about a BOM and a standards-lawyer
+reading would omit it, but the acceptance here is that the file OPENS CORRECTLY IN A SPREADSHEET, and
+the most widely used desktop spreadsheet decodes a BOM-less UTF-8 CSV in the ambient code page. Both
+halves are pinned by tests, ordinally — the mark is a zero-width IGNORABLE character, so a
+culture-sensitive `StartsWith` reports that every string begins with one, which is a probe that agrees
+with whatever you expected.
+
+**The SSR floor draws NO control, and the markup is byte-identical to a grid that declares nothing.**
+An export is a gesture plus a file made on the reader's machine, and a static document has neither —
+the CSV is built from the rows the client resolved, in the order the reader sorted them into, and a
+server holds neither fact at the moment it matters. Emitting the control inert would advertise a
+download the page cannot perform. The flag rides the wire to the client tier where it is acted on, so
+there is no hydration question: the client's first render ADDS markup the server never claimed. The
+no-script reader is not left without a route — a static grid has already emitted every row as a real
+`<table>`.
+
+**FUARAN131 (Warning) — an export with nothing to export.** Two statically-certain shapes under one
+code: a grid naming no row source at all, and a data-bound grid declaring no columns (the columns ARE
+the file's fields). A grid whose source merely RESOLVES to no rows is deliberately not reported — how
+many rows a source yields is a runtime fact, and the export of an empty grid is a header record, which
+is a true statement about the data rather than a failure. Go-red twins for every arm.
+
+**`Theme.vocabularyFingerprint` → `fv1:8b3d17a39ac85085`.** Two classes entered the vocabulary —
+`fuaran-grid-exportable` (the wrapper) and `fuaran-grid-export` (the control) — and the reference sheet
+gained the rules that style them, including the focus ring. A host pinning the old value would accept a
+sheet that knows neither and render a control that is not merely plain but keyboard-invisible. The four
+tier copies are re-generated with the sheet (`Build.fsproj -- Css`).

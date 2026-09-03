@@ -355,6 +355,34 @@
     },
     {
       "lines": [
+        "// Phase 1125 — the grid may be TAKEN AWAY as a file. Declaring it is the",
+        "// whole of the affordance: the renderer draws an export control and, on",
+        "// activation, serialises the rows the client holds to RFC 4180 CSV and",
+        "// hands them to the reader. Nothing is written back to the tree.",
+        "//",
+        "// The affordance charter's governing sentence decides it unamended — the",
+        "// wire names a capability on the node that both hosts the gesture and",
+        "// consumes its effect, and the grid is both ends: only it holds its",
+        "// resolved rows, its columns, its declared formats and the order the",
+        "// reader sorted them into. A button beside the grid reaches none of that.",
+        "//",
+        "// A plain flag rather than a state key, which is what separates it from",
+        "// the grid-level `sortable` / `pageable` booleans the charter refuses by",
+        "// name: those are refused because the KEY is the affordance and a flag",
+        "// with no key behind it drives nothing. An export writes no state, so",
+        "// there is no key for it to name.",
+        "//",
+        "// What it exports is what the CLIENT HOLDS — the resolved, sorted set,",
+        "// not the page on screen — and where the host pages, that set is one",
+        "// page. The control says which it is rather than implying a total the",
+        "// tree cannot substantiate.",
+        "//",
+        "// Omitted on the wire at `false`."
+      ],
+      "path": "field:DataGridSpec.Exportable"
+    },
+    {
+      "lines": [
         "// Phase 1473 — a ROW is one thing: when the rendering is paged, no row",
         "// is split across the boundary, so a wrapped cell does not leave half",
         "// its lines on one page and half on the next. `break-inside: avoid` on",

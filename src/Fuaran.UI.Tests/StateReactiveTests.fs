@@ -177,7 +177,8 @@ let tests =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       )
                     State = None
                     Style = None

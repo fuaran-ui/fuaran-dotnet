@@ -203,7 +203,8 @@ let tests =
                                 TransferOutKey = None
                                 StaticRows = None
                                 KeepRowsTogether = false
-                                RepeatHeader = false }
+                                RepeatHeader = false
+                                Exportable = false }
                           ) }
 
               let wire =
@@ -253,7 +254,8 @@ let tests =
                                 TransferOutKey = None
                                 StaticRows = None
                                 KeepRowsTogether = false
-                                RepeatHeader = false }
+                                RepeatHeader = false
+                                Exportable = false }
                           ) }
 
               let wire =

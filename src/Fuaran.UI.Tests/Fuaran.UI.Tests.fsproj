@@ -308,6 +308,7 @@
          source-shape guard + its go-red proof, because a memo is
          output-identical and no behavioural test can see it reverted. -->
     <Compile Include="FragmentExpansionMemoTests.fs" />
+    <Compile Include="GridExportTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

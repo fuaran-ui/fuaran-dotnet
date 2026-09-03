@@ -53,6 +53,10 @@ Friend Module VisualisationMapping
         ' print-break declarations. Same AttrBool route and same absent-is-false
         ' default as <Box>'s pair.
         '
+        ' Phase 1125 — `exportable` takes the same route again: the wire omits the
+        ' flag at false, so an absent attribute and an explicit "false" are one
+        ' declaration, which is what AttrBool already means.
+        '
         ' Phase 1123 — `transfer-out-key` / `transfer-in-key`, the two sides of one
         ' shared State key. OptStr rather than AttrBool deliberately: there is no
         ' boolean spelling of "this grid may release rows", because a release with
@@ -73,7 +77,8 @@ Friend Module VisualisationMapping
                 .KeepRowsTogether = AttrBool(el, "keep-rows-together"),
                 .RepeatHeader = AttrBool(el, "repeat-header"),
                 .TransferOutKey = OptStr(el, "transfer-out-key"),
-                .TransferInKey = OptStr(el, "transfer-in-key")})
+                .TransferInKey = OptStr(el, "transfer-in-key"),
+                .Exportable = AttrBool(el, "exportable")})
     End Sub
 
     ''' fuaran#665 — the required ToRow projection for XML-authored grids, whose row

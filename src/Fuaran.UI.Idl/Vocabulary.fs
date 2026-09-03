@@ -2172,6 +2172,39 @@ let visKinds: IdlKind list =
             // knows where its rows and its header are.
             omit "keepRowsTogether" TBool (VBool false)
             omit "repeatHeader" TBool (VBool false)
+            // Fuaran-UI Phase 1125 — the export affordance. The grid may be TAKEN
+            // AWAY as a file: its renderer draws an export control and, on
+            // activation, serialises the rows the client holds to CSV and hands
+            // them to the reader.
+            //
+            // It sits under the affordance charter's governing sentence
+            // UNAMENDED — the wire names a capability on the node that both
+            // hosts the gesture and consumes its effect, and the renderer owns
+            // the affordance. The grid is both ends here: only it holds its
+            // resolved rows, its column set, its declared formats and the order
+            // the reader has sorted them into, and nothing outside it can reach
+            // any of that. A free-standing export button beside the grid would
+            // be the decorative-pager shape at a third slot.
+            //
+            // NOT the `Export` / `DownloadAs` row of the vocabulary charter's
+            // Appendix A, which is a different question with a different answer.
+            // That row rules the EFFECT axis — a document asking a host to
+            // produce a file — and rules it Covered by `Action.Invoke`, needing
+            // no vocabulary. This is the grid-behaviour axis: it declares that
+            // this grid's own rows are the reader's to take, which is a fact
+            // about the document that no host capability can be told from
+            // outside.
+            //
+            // A `bool` and not a state key, which is what distinguishes it from
+            // the grid-level `sortable` / `pageable` flags the charter REFUSES
+            // BY NAME. Those are refused because sorting and paging write state
+            // the grid reads back, so the key IS the affordance and a flag with
+            // no key behind it drives nothing. An export writes no state at all
+            // — it produces a file and returns nothing to the tree — so there is
+            // no key it could name, and the boolean is the whole declaration.
+            //
+            // Omitted on the wire at `false`.
+            omit "exportable" TBool (VBool false)
             // The row feed is HOSTED `Fuaran.Core.Row seq` (fuaran#665 — typed rows):
             // a Static/State rows payload IS wire-representable (a JSON array of row
             // objects, scalar cells, rendered by Core's `RowCodec` under the `Canon`

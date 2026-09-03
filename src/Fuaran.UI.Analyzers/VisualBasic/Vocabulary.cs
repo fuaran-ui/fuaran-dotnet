@@ -219,7 +219,11 @@ internal static class Vocabulary
             "sort-state-key", "default-sort-column", "default-sort-direction",
             "page-size", "page-state-key", "edit-state-key",
             "keep-rows-together", "repeat-header",
-            "transfer-out-key", "transfer-in-key");
+            "transfer-out-key", "transfer-in-key",
+            // Phase 1125 — `exportable` spells the wire flag of the same name.
+            // Listed for the reason the print-break pair above is: an unlisted
+            // attribute on an enumerated element is FUARAN061, not allow-any.
+            "exportable");
         Add("Custom", "id", "module-id", "component-id", "exposed-node-ids");
         Add("ErrorBoundary", "id");
         Add("FragmentDecl", "id", "name");

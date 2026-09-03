@@ -453,7 +453,8 @@ let private gridSpecWith (onRowClick: (Row -> Action<obj>) option) : GridSpec<ob
       TransferOutKey = None
       StaticRows = None
       KeepRowsTogether = false
-      RepeatHeader = false }
+      RepeatHeader = false
+      Exportable = false }
 
 [<Tests>]
 let adapterSelectionDefaultTests =

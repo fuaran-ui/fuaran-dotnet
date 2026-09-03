@@ -106,6 +106,7 @@
     "grid-bound-sort": [257],
     "grid-declared-edit": [257],
     "grid-editable-state": [257],
+    "grid-exportable-1": [257],
     "grid-field-named": [257,639],
     "grid-keep-rows-together-1": [257],
     "grid-paged": [257],

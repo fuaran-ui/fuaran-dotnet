@@ -6503,6 +6503,9 @@
         "repeatHeader": {
           "type": "boolean"
         },
+        "exportable": {
+          "type": "boolean"
+        },
         "defaultSort": {
           "type": "object",
           "properties": {

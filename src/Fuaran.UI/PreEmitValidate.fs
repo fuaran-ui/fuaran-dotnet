@@ -867,6 +867,32 @@ type PreEmitDefect =
     /// Carries the node's id and which condition fired.
     | DeadPrintBreak of nodeId: string * defect: PrintBreakDefect
 
+    /// **FUARAN131 (Warning)**. A Phase 1125 export affordance with nothing it
+    /// could export — a dead control, the FUARAN125 shape at a fourth slot.
+    ///
+    /// TWO conditions share ONE code because they are one rule stated at two
+    /// slots: *an export control on a grid that would produce a file with
+    /// nothing in it*. `NoRowSource` is a grid that names no row source at all;
+    /// `NoColumns` is a data-bound grid declaring none, whose header record and
+    /// every row record would then be empty. In both, the reader is offered a
+    /// download that can only ever hand back an empty file.
+    ///
+    /// **Warning, not Error**: an inert control is not harmful, and a tree whose
+    /// columns or source arrive in a later authoring step is an ordinary
+    /// mid-edit state.
+    ///
+    /// **The set is deliberately NARROW, on the accessibility family's standing
+    /// restraint — err towards silence.** Only STATICALLY CERTAIN emptiness is
+    /// reported. In particular a grid whose source is a perfectly ordinary
+    /// binding resolving to NO ROWS is not reported and must not be: how many
+    /// rows a source yields is a runtime fact for every binding shape, an empty
+    /// result is a legitimate state of a correct grid, and the export of an
+    /// empty grid is a header record — which is a true statement about the data
+    /// rather than a failure.
+    ///
+    /// Carries the node's id and which condition fired.
+    | DeadExportAffordance of nodeId: string * defect: ExportDefect
+
     /// **FUARAN126 (Error)**. A `Tree` carrying two rows with the same `Id`
     /// (Phase 1120), anywhere in the hierarchy — siblings or across levels.
     ///
@@ -1227,6 +1253,27 @@ and [<RequireQualifiedAccess>] PrintBreakDefect =
     /// INSIDE it has nothing to act on. Reporting the pair together would have
     /// been tidier and wrong.
     | NoSubtreeToKeepTogether
+
+/// Why an export affordance cannot produce a file with anything in it
+/// (FUARAN131, Phase 1125). Typed rather than a string for the reason
+/// `PrintBreakDefect` is: the shapes stay enumerable, and a third cannot be
+/// added by prose.
+and [<RequireQualifiedAccess>] ExportDefect =
+    /// `exportable` on a grid that names no row source at all — no `staticRows`
+    /// in the tree, and the row source still the not-provided sentinel a
+    /// default-constructed spec carries. There is nothing for the control to
+    /// serialise and nothing that could later arrive on that binding.
+    | NoRowSource
+    /// `exportable` on a data-bound grid declaring no columns. The columns ARE
+    /// the export's fields: with none, the header record is empty and so is
+    /// every row record, so the file has no fields at all whatever the source
+    /// resolves to.
+    ///
+    /// **The static leg gets no companion condition**, and the asymmetry is the
+    /// honest one: a `staticRows` grid carries its own headers and its own rows
+    /// in the tree, and one with neither is already an empty table rather than a
+    /// broken export — reporting it here would be reporting the emptiness twice.
+    | NoColumns
 
 /// Which end of a cross-container transfer was declared without its
 /// counterpart (FUARAN129, Phase 1123). Typed rather than a string on the same
@@ -1659,6 +1706,18 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         DefectSeverity.Warning,
         sprintf
             "node '%s' declares keepTogether while it renders no subtree — a dead declaration. Keeping a subtree whole across a page boundary needs a subtree that could straddle one, and this container has no rendered children, so the declaration rides the wire, survives every round trip and changes nothing on any host. Move it to the container that holds the content, or drop it"
+            nodeId
+    | PreEmitDefect.DeadExportAffordance(nodeId, ExportDefect.NoRowSource) ->
+        "FUARAN131",
+        DefectSeverity.Warning,
+        sprintf
+            "grid '%s' declares exportable while it names no row source — a dead control. The reader is offered a download of the rows this grid holds, and it holds none and can never be given any on this binding, so the file would be a header record and nothing else. Give the grid a source (or staticRows), or drop the declaration"
+            nodeId
+    | PreEmitDefect.DeadExportAffordance(nodeId, ExportDefect.NoColumns) ->
+        "FUARAN131",
+        DefectSeverity.Warning,
+        sprintf
+            "grid '%s' declares exportable while it declares no columns — a dead control. The columns are the exported file's fields, so with none the header record is empty and so is every row record, whatever the source resolves to. Give the grid its columns, or drop the declaration"
             nodeId
     | PreEmitDefect.TreeItemIdDuplicated(nodeId, itemId) ->
         "FUARAN126",
@@ -2416,6 +2475,25 @@ let private validateCore
 
                 if rendersNoHeader then
                     defects.Add(PreEmitDefect.DeadPrintBreak(nodeIdStr, PrintBreakDefect.RepeatHeaderNoHeader))
+
+            // FUARAN131 (Phase 1125) — `exportable` on a grid that could only
+            // ever hand back an empty file. Two statically-certain shapes, and
+            // the restraint is the same one the rule above records: the number
+            // of rows a source YIELDS is a runtime fact, so a grid resolving to
+            // none is not reported here and must not be — an empty export is a
+            // true statement about the data.
+            //
+            // Both conditions are checked only on the bound leg's terms: a
+            // `staticRows` grid carries its rows and its headers in the tree, so
+            // neither shape can arise there without the table already being
+            // empty on its own account.
+            if spec.Exportable && spec.StaticRows.IsNone then
+                match spec.Source with
+                | Binding.Query(name, _, _) when name = Defaults.NotProvidedSentinel ->
+                    defects.Add(PreEmitDefect.DeadExportAffordance(nodeIdStr, ExportDefect.NoRowSource))
+                | _ ->
+                    if List.isEmpty spec.Columns then
+                        defects.Add(PreEmitDefect.DeadExportAffordance(nodeIdStr, ExportDefect.NoColumns))
 
             // FUARAN114 (Phase 1149): a declared field the grid's own source
             // cannot produce. FUARAN077 above asks whether a column names

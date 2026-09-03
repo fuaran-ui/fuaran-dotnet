@@ -2825,7 +2825,8 @@ let gridVis: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -2865,7 +2866,8 @@ let gridKeepRowsTogether: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = true
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -2906,7 +2908,65 @@ let gridRepeatHeader: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = true }
+              RepeatHeader = true
+              Exportable = false }
+        ))
+        None
+
+/// Phase 1125 — the export affordance: a grid whose rows are the reader's to
+/// take. Exactly ONE new member is set, for the reason the print-break fixtures
+/// beside it record: a fixture that also declared a neighbour could decode with
+/// `exportable` silently dropped and still round-trip, proving nothing about the
+/// slot it was written for.
+///
+/// The document is a bound grid with two columns and a row key, because that is
+/// the shape the declaration is FOR — a grid a reader sorts, pages and then
+/// wants a copy of. The fact it declares is not available to a host any other
+/// way: a host can offer *save this table* in its own chrome over data IT
+/// served, and only the document knows that THIS grid's rows are the ones the
+/// reader may take.
+let gridExportable: Node<obj> =
+    let reference: ColumnErased<obj> =
+        { Label = "Reference"
+          Value = None
+          Field = Some "reference"
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    let amount: ColumnErased<obj> =
+        { Label = "Amount"
+          Value = None
+          Field = Some "amount"
+          Sortable = None
+          Editable = None
+          Format = CellFormat.Currency "GBP"
+          Kind = CellKindErased.Numeric
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-exportable-1"
+        (NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source = Binding.Query("settlements", (fun _ -> Seq.empty), None)
+              RowKey = None
+              RowKeyField = Some "reference"
+              Columns = [ reference; amount ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              TransferInKey = None
+              TransferOutKey = None
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false
+              Exportable = true }
         ))
         None
 
@@ -3001,7 +3061,8 @@ let gridTonedPill: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -3217,7 +3278,8 @@ let gridEditableState: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -3284,7 +3346,8 @@ let gridTransform: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -3331,7 +3394,8 @@ let gridTransformParam: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -3415,7 +3479,8 @@ let multiselectChipListParam: Node<obj> =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
                       None ]
               KeepTogether = false
@@ -3463,7 +3528,8 @@ let gridFieldNamed: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -3526,7 +3592,8 @@ let masterDetailPreselected: Node<obj> =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
                       None
                   node
@@ -3609,7 +3676,8 @@ let masterDetailPreselected: Node<obj> =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
                       None ]
               KeepTogether = false
@@ -3710,7 +3778,8 @@ let masterDetailMultiField: Node<obj> =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
                       None
                   node
@@ -3863,7 +3932,8 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
                       None
                   node
@@ -3917,7 +3987,8 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
                       None
                   node
@@ -4046,7 +4117,8 @@ let nowEnvironmentBinding: Node<obj> =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
                       None ]
               KeepTogether = false
@@ -4123,7 +4195,8 @@ let scalarTransformComposition: Node<obj> =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
                       None
                   node
@@ -4301,7 +4374,8 @@ let filterableStaticDashboard: Node<obj> =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
                       None ]
               KeepTogether = false
@@ -4355,7 +4429,8 @@ let table: Node<obj> =
                           [ TextSource.Literal "DSL"; TextSource.Literal "Domain-specific language" ] ]
                       Sortable = None }
               KeepRowsTogether = false
-              RepeatHeader = false })
+              RepeatHeader = false
+              Exportable = false })
         None
 
 /// Phase 801 — the same static table DECLARING sort intent: `sortable: true` plus a
@@ -4393,7 +4468,8 @@ let tableSortable: Node<obj> =
                           [ TextSource.Literal "South"; TextSource.Literal "980" ] ]
                       Sortable = Some true }
               KeepRowsTogether = false
-              RepeatHeader = false })
+              RepeatHeader = false
+              Exportable = false })
         None
 
 let mapVis: Node<obj> =
@@ -4555,7 +4631,8 @@ let switchOnSelection: Node<obj> =
                             TransferOutKey = None
                             StaticRows = None
                             KeepRowsTogether = false
-                            RepeatHeader = false }
+                            RepeatHeader = false
+                            Exportable = false }
                       ))
                       None
                   node
@@ -5149,7 +5226,8 @@ let sharedSourceSeededPair: Node<obj> =
                   TransferOutKey = None
                   StaticRows = None
                   KeepRowsTogether = false
-                  RepeatHeader = false }
+                  RepeatHeader = false
+                  Exportable = false }
             ))
             None
 
@@ -5228,7 +5306,8 @@ let gridBoundSort: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -5270,7 +5349,8 @@ let gridDeclaredEdit: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -5317,7 +5397,8 @@ let gridReorderable: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -5372,7 +5453,8 @@ let gridTransferBoard: Node<obj> =
                   TransferOutKey = outKey
                   StaticRows = None
                   KeepRowsTogether = false
-                  RepeatHeader = false }
+                  RepeatHeader = false
+                  Exportable = false }
             ))
             None
 
@@ -5428,7 +5510,8 @@ let gridPaged: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -5468,7 +5551,8 @@ let gridPagedSorted: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -5550,7 +5634,8 @@ let gridSortStateKey: Node<obj> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = false
-              RepeatHeader = false }
+              RepeatHeader = false
+              Exportable = false }
         ))
         None
 
@@ -5947,6 +6032,7 @@ let allNodes: (string * Node<obj>) list =
       "Layout/Box (Phase 1473 breakBefore, the only new member)", boxBreakBefore
       "Visualisation/Grid (Phase 1473 keepRowsTogether, the only new member)", gridKeepRowsTogether
       "Visualisation/Grid (Phase 1473 repeatHeader, the only new member)", gridRepeatHeader
+      "Visualisation/Grid (Phase 1125 exportable, the only new member)", gridExportable
       "Visualisation/Grid", gridVis
       "Visualisation/Grid (Phase 282 — Binding.Transform compute source)", gridTransform
       "Visualisation/Grid (Phase 424 — parameterised Binding.Transform, filter param from a chip)", gridTransformParam

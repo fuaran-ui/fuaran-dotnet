@@ -873,7 +873,8 @@ let private genGridSpec: Gen<GridSpec<obj>> =
               TransferOutKey = None
               StaticRows = None
               KeepRowsTogether = keepRowsTogether
-              RepeatHeader = repeatHeader }
+              RepeatHeader = repeatHeader
+              Exportable = false }
     }
 
 let private genChartSpec: Gen<ChartSpec<obj>> =

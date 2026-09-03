@@ -1195,6 +1195,9 @@ let private defs: (string * J) list =
             // container pair on `BoxSpec` structurally cannot reach.
             "keepRowsTogether", JObj [ "type", JStr "boolean" ]
             "repeatHeader", JObj [ "type", JStr "boolean" ]
+            // Phase 1125 — the export affordance; omit-when-false like its
+            // neighbours, and out of `required` for the same reason.
+            "exportable", JObj [ "type", JStr "boolean" ]
             // Phase 861 — the bound path's declared initial order. Same record
             // and same `minimum: 0` bound the `staticRows` spelling carries.
             "defaultSort",

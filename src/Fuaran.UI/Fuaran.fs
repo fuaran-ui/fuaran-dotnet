@@ -1555,6 +1555,8 @@ module Fuaran =
               // it on the `DataGridSpec` directly, or on the typed facade below.
               KeepRowsTogether = false
               RepeatHeader = false
+              // Phase 1125 — nor an export affordance, on the same reasoning.
+              Exportable = false
               Columns = []
               OnRowClick = None
               Editable = false
@@ -1671,6 +1673,8 @@ module Fuaran =
               // slots, so they pass through rather than being pinned off.
               KeepRowsTogether = spec.KeepRowsTogether
               RepeatHeader = spec.RepeatHeader
+              // Phase 1125 — so does the export declaration.
+              Exportable = spec.Exportable
               Columns = spec.Columns |> List.map Column.erase
               OnRowClick = spec.OnRowClick
               Editable = spec.Editable

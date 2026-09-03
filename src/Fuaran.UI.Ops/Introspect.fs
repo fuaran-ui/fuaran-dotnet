@@ -185,7 +185,11 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
           "Editable"
           "RowKeyField"
           "KeepRowsTogether"
-          "RepeatHeader" ]
+          "RepeatHeader"
+          // Phase 1125 — advertised on the same reasoning: `Apply` sets it, so
+          // withholding the name would leave an introspection surface hiding a
+          // field it can in fact change.
+          "Exportable" ]
     | NodeKind.Chart _ -> [ "Source"; "Kind"; "XField"; "YFields"; "Title"; "Stacked" ]
     | NodeKind.Map _ -> [ "Source"; "CentreLatitude"; "CentreLongitude"; "Zoom" ]
     | NodeKind.Custom _ -> []

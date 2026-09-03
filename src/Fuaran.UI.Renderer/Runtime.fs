@@ -297,6 +297,24 @@ type ActionDescriptor =
     /// host-observable however little it discloses — the `CommitLocal`
     /// reasoning, which is likewise backed by no `IFuaranRuntime` member.
     | Print
+    /// A grid export (Phase 1125) — the reader has activated a grid's export
+    /// control and a file is about to be written to their machine. Carries the
+    /// grid's node id, so a host policy can be per-grid rather than
+    /// all-or-nothing, exactly as `SetState` carries its key.
+    ///
+    /// Gated even though the act is reader-initiated and the content is data
+    /// the reader is already looking at. Two things distinguish it from a
+    /// harmless rendering. It PUTS A FILE ON THE READER'S DISK, which is the
+    /// one effect in this set that outlives the page; and the file is named by
+    /// the tree, so a decoded tree from an untrusted emitter chooses what
+    /// appears in a download list. A host rendering untrusted trees refuses it
+    /// through the same `CanDispatch` seam it refuses `Call` / `Navigate` /
+    /// `AiTool`, and a host that allows everything — every default runtime —
+    /// behaves exactly as it did before the affordance existed.
+    ///
+    /// Nothing is read back: the export writes a file and returns unit, so the
+    /// tree learns nothing about the reader, not even whether they kept it.
+    | Export of nodeId: string
 
 [<RequireQualifiedAccess>]
 module ActionDescriptor =
@@ -319,6 +337,7 @@ module ActionDescriptor =
         | ActionDescriptor.WriteToClipboard -> "WriteToClipboard"
         | ActionDescriptor.CommitLocal nodeId -> sprintf "CommitLocal(%s)" nodeId
         | ActionDescriptor.Print -> "Print"
+        | ActionDescriptor.Export nodeId -> sprintf "Export(%s)" nodeId
 
 /// The five Action substrates the renderer dispatches to. Consumers
 /// implement once at the app shell; the renderer treats it as a black box.
