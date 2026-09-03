@@ -35,6 +35,12 @@
     <Compile Include="Navigation.fs" />
     <Compile Include="InteractionTelemetry.fs" />
     <Compile Include="SessionStore.fs" />
+    <!-- Phase 1179: the incremental evaluation of a live Transform source. It
+         lives in THIS tier because the seam needs somewhere to keep the primed
+         state between evaluations and a resolver call is a pure function of the
+         sources it is handed; a connection's session is the thing that persists
+         across state edits. -->
+    <Compile Include="LiveTransform.fs" />
     <Compile Include="Channel.fs" />
     <Compile Include="FrameWire.fs" />
   </ItemGroup>

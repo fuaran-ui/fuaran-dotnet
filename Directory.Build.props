@@ -484,6 +484,21 @@
          move is the compiled DU tag ordinal, which is binary contract, and a
          contract change never rides a same-version repack. See STABILITY.md
          "Recorded change - 0.56.0, the generated layer regenerates in-process". -->
+    <!-- 0.58.0 (Phase 1179) - `Fuaran.UI.ServerDriven` gains the live-Transform
+         incremental seam: `LiveTransformStore`, `LiveTransformEvaluation` and the
+         `LiveTransform` module beside them. Purely additive and in the shape that
+         carries no FS0764 risk at all - three NEW surfaces, no existing type
+         gaining a member, no signature moved, nothing on the wire. 0.57.0 was
+         taken concurrently by Phase 1098; this is the next slot rather than a
+         re-pack of it. See STABILITY.md "Recorded change - 0.58.0, the
+         live-Transform incremental seam". -->
+    <!-- 0.59.0 (Phase 1472) - `SemanticStyle` gains `direction`, the declared base
+         direction of one authored value. Additive on the wire and omitted at its
+         `Auto` default, so every pre-1472 document is byte-identical; but a RECORD
+         gains a member, which is FS0764 at every full-literal construction site,
+         so it is a version of its own and never a re-pack. 0.58.0 was taken
+         concurrently by Phase 1179; this is the next slot. See STABILITY.md
+         "Recorded change - 0.59.0, `SemanticStyle.direction`". -->
     <Version>0.59.0</Version>
   </PropertyGroup>
 
