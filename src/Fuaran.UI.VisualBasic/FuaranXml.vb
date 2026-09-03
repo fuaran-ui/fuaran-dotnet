@@ -53,6 +53,48 @@ Public Module FuaranXml
         Return Builders.ContainsKey(elementName)
     End Function
 
+    ' ── The binding spellings (Phase 1154) ──────────────────────────────────────
+    '
+    ' The dialect has exactly two, and they differ in DIRECTION, which is why one
+    ' prefix could never have served both:
+    '
+    '   value="$revenue"           a host-fed QUERY binding — read-only;
+    '   open="$state.panelOpen"    a writable STATE slot — the control write-back
+    '                              default writes the changed value straight to it.
+    '
+    ' The `$state.<key>` spelling is not invented here: it is how the wire format,
+    ' the authoring guide and the dead-on-decode lint have named a State slot since
+    ' the write-back default shipped. The dialect adopts that name rather than
+    ' minting a second one.
+    '
+    ' These two functions are Public for the same reason `KnownElements` is: the
+    ' Roslyn analyzer cannot load this assembly (netstandard2.0 against net10) and
+    ' so carries its own copy, pinned against these by a test.
+
+    ''' <summary>The value prefix that spells a writable state binding.</summary>
+    Public Const StateBindingPrefix As String = "$state"
+
+    ''' <summary>Whether <paramref name="value"/> uses the state spelling at all — True
+    ''' for a well-formed <c>"$state.&lt;key&gt;"</c> AND for a malformed <c>"$state"</c> /
+    ''' <c>"$state."</c>, False for everything else. A query whose name merely starts with
+    ''' the same letters (<c>"$stateful"</c>) is NOT the state spelling and keeps its
+    ''' meaning.</summary>
+    Public Function IsStateBinding(value As String) As Boolean
+        If value Is Nothing Then Return False
+        Return String.Equals(value, StateBindingPrefix, StringComparison.Ordinal) OrElse
+               value.StartsWith(StateBindingPrefix & ".", StringComparison.Ordinal)
+    End Function
+
+    ''' <summary>The state key inside a <c>"$state.&lt;key&gt;"</c> value. Nothing when the
+    ''' value is not the state spelling, and Nothing when it is a malformed one (the prefix
+    ''' with no key) — so a caller that has already established <see cref="IsStateBinding"/>
+    ''' reads Nothing as "malformed".</summary>
+    Public Function StateBindingKey(value As String) As String
+        If Not IsStateBinding(value) Then Return Nothing
+        If value.Length <= StateBindingPrefix.Length + 1 Then Return Nothing
+        Return value.Substring(StateBindingPrefix.Length + 1)
+    End Function
+
     ''' <summary>Translate an XML-literal element into a wire-faithful node handle.</summary>
     Public Function Translate(el As XElement) As Csharp.FuaranNode
         If el Is Nothing Then Throw New ArgumentNullException(NameOf(el))

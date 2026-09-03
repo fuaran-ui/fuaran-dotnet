@@ -9,3 +9,4 @@ FUARAN001 | Fuaran.UI | Error | NodeId uniqueness (op-target stability)
 FUARAN010 | Fuaran.UI | Warning | Binding.Query name resolves against the manifest
 FUARAN060 | Fuaran.UI | Error | Unknown Fuaran XML element (VB XML-literal authoring)
 FUARAN061 | Fuaran.UI | Warning | Unknown attribute on a Fuaran XML element (VB XML-literal authoring)
+FUARAN117 | Fuaran.UI | Error | A "$state" attribute value carries no state key (VB XML-literal authoring)

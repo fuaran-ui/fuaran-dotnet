@@ -67,6 +67,11 @@ Module Program
         '    fuaran#864, not repaired here and not a reason to leave these unreachable. ─
         GapClosureSlots.Run(h)
 
+        ' ── The state-binding spelling (Phase 1154): a writable control authored
+        '    from the dialect alone, asserted by encoding. Ordered with the other
+        '    slot suites, ahead of the corpus pass for the reason above. ─────────
+        StateBinding.Run(h)
+
         ' ── Full corpus conformance + authoring parity (Phase 312). ─────────────
         Conformance.Run(h)
         Authoring.Run(h)

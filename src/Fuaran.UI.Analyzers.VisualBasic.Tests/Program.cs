@@ -116,6 +116,92 @@ internal static class Program
             Array.Empty<string>(),
             manifest);
 
+        // ── FUARAN117 / the state spelling (Phase 1154). ───────────────────────
+        //
+        // The FIRST of these is the reason the analyzer half shipped in the same
+        // change-set as the translator: FUARAN010 checks every `$`-prefixed value
+        // against the manifest's query list, and a state key is not a query name,
+        // so without the discriminator every valid state binding would be reported
+        // as an unresolved query — a false positive on the phase's own feature.
+        await Expect("FUARAN010 negative: a state binding is not query-checked",
+            """
+            Module M
+                Sub S()
+                    Dim x = <Disclosure id="d" heading="H" open="$state.panelOpen"/>
+                End Sub
+            End Module
+            """,
+            Array.Empty<string>(),
+            manifest);
+
+        // And the discriminator is the "$state." prefix, not "starts with $state":
+        // a query named `stateful` is still query-checked, and still unresolved.
+        await Expect("FUARAN010 positive: '$stateful' is still a query name",
+            """
+            Module M
+                Sub S()
+                    Dim x = <Heading id="h" text="$stateful"/>
+                End Sub
+            End Module
+            """,
+            new[] { "FUARAN010" },
+            manifest);
+
+        await Expect("FUARAN117 positive: '$state' carries no key",
+            """
+            Module M
+                Sub S()
+                    Dim x = <Disclosure id="d" heading="H" open="$state"/>
+                End Sub
+            End Module
+            """,
+            new[] { "FUARAN117" });
+
+        await Expect("FUARAN117 positive: '$state.' carries no key",
+            """
+            Module M
+                Sub S()
+                    Dim x = <Disclosure id="d" heading="H" open="$state."/>
+                End Sub
+            End Module
+            """,
+            new[] { "FUARAN117" });
+
+        // Fires with NO manifest wired, unlike FUARAN010: this is a malformed
+        // spelling the translator throws on, not a name that might resolve later.
+        await Expect("FUARAN117 negative: a well-formed state binding, no manifest",
+            """
+            Module M
+                Sub S()
+                    Dim x = <Disclosure id="d" heading="H" open="$state.panelOpen"/>
+                End Sub
+            End Module
+            """,
+            Array.Empty<string>());
+
+        // The second copy of the spelling, pinned to the translator's — the
+        // `Kinds == KnownElements` discipline applied to the binding prefixes,
+        // because a netstandard2.0 analyzer cannot load the net10 veneer and the
+        // two would otherwise be free to disagree about what `$state` means.
+        foreach (var value in new[]
+                 {
+                     "$state.panelOpen", "$state.a.b", "$state", "$state.", "$stateful",
+                     "$panel", "state.panelOpen", "", "  ", "$",
+                 })
+        {
+            var analyzerIs = Vocabulary.IsStateBinding(value);
+            var translatorIs = global::Fuaran.UI.VisualBasic.FuaranXml.IsStateBinding(value);
+            Check($"state-spelling pin: IsStateBinding(\"{value}\")",
+                analyzerIs == translatorIs,
+                $"analyzer: {analyzerIs}, translator: {translatorIs}");
+
+            var analyzerKey = Vocabulary.StateBindingKey(value) ?? "<null>";
+            var translatorKey = global::Fuaran.UI.VisualBasic.FuaranXml.StateBindingKey(value) ?? "<null>";
+            Check($"state-spelling pin: StateBindingKey(\"{value}\")",
+                analyzerKey == translatorKey,
+                $"analyzer: {analyzerKey}, translator: {translatorKey}");
+        }
+
         // ── Vocabulary single source of truth: analyzer == translator. ─────────
         var translatorKinds = global::Fuaran.UI.VisualBasic.FuaranXml.KnownElements().ToHashSet(StringComparer.Ordinal);
         Check("vocabulary pin: analyzer Kinds == translator KnownElements",

@@ -41,12 +41,44 @@ parent's **children**.
 ## 3. Conventions
 
 - **Literals and bindings.** An attribute value is a literal; a value prefixed `$` is a
-  bound query the host resolves:
+  bound query the host resolves; a value prefixed `$state.` is a writable state slot:
 
   ```vb
-  <Metric id="rev" label="Revenue" value="1234.5"/>   ' static value
-  <Metric id="rev" label="Revenue" value="$revenue"/>  ' bound to a query
+  <Metric id="rev" label="Revenue" value="1234.5"/>    ' static value
+  <Metric id="rev" label="Revenue" value="$revenue"/>  ' host-fed query — read-only
+  <Disclosure id="d" heading="Advanced" open="$state.advancedOpen"> … </Disclosure>
+                                                       ' reactive state — read AND written
   ```
+
+  The two prefixes differ in **direction**, and that is what decides whether a control
+  works on its own. A query binding is host-fed: the tree reads it and nothing writes it
+  back. A state binding names a key in the reactive store, so when you bind a control's
+  value to one and author no handler, the renderer writes the changed value straight to
+  that key and every reader of it re-renders — no host code, and nothing to lose in
+  serialisation:
+
+  ```vb
+  <DataGrid id="plan" source="$state.planRows" editable="true" edit-state-key="planRows">
+      <Column type="text" field="month" label="Month"/>
+      <Column type="numeric" field="revenue" label="Revenue"/>
+  </DataGrid>
+  ```
+
+  An editable grid over a `$query` source is display-only for exactly this reason: its
+  edits have nowhere to commit. The `FUARAN069` pre-emit check reports the same thing for
+  a handler-free control whose value is not writable.
+
+  Three details:
+
+  - `$state.name` binds the slot and declares **no initial value**. Where a control has an
+    initial state it carries its own attribute for it (`default-open`). A state binding
+    that also carries a default is a different wire document; author that one through the
+    C# factory surface (`Binding.State(key, value)`), which is callable from VB directly.
+  - `$state` and `$state.` are authoring **errors**, not queries named `state`. The
+    analyzer reports `FUARAN117` at compile time; the translator raises
+    `FuaranXmlException` at run time.
+  - `$stateful` is still a query named `stateful` — the discriminator is the `$state.`
+    prefix, not the letters.
 
 - **Formats.** `format-currency` / `format-number` / `format-percent` / `format-date`
   set the display format:
@@ -117,6 +149,17 @@ reads it at runtime – it is not part of the wire), and `type` picks the cell s
 </DataGrid>
 ```
 
+For an **editable** grid, bind the source to state rather than to a query, and name where
+the edits commit — a grid over a read-only query source is display-only, because its edits
+have nowhere to go:
+
+```vb
+<DataGrid id="plan-grid" source="$state.planRows" editable="true" edit-state-key="planRows">
+    <Column type="text"    label="Month"   field="month"/>
+    <Column type="numeric" label="Revenue" field="revenue"/>
+</DataGrid>
+```
+
 ## 8. The `Node(Of Object)` posture
 
 A VB author **never names a message type**. The wire format carries no message payload
@@ -146,9 +189,11 @@ guide's accessibility section for the shared cross-host decision), not a diverge
 The XML-literal surface is translated **at runtime**, so a typo'd element or attribute is
 otherwise a runtime error. Reference **`Fuaran.UI.Analyzers`** to get **compile-time**
 diagnostics – Roslyn parses VB XML literals into syntax trees, so the analyzer flags an
-unknown element (`<Metrik>` → "did you mean `<Metric>`?"), a duplicate `id`, and a
-`source="$…"` that doesn't resolve against your manifest, as IDE squiggles + build errors,
-before you run.
+unknown element (`<Metrik>` → "did you mean `<Metric>`?"), a duplicate `id`, a
+`source="$…"` that doesn't resolve against your manifest, and a `"$state"` value carrying
+no key (`FUARAN117`) — as IDE squiggles + build errors, before you run. A well-formed
+`"$state.<key>"` is deliberately *not* manifest-checked: a state key names a slot in the
+reactive store, which is not a host query and is not listed there.
 
 ## 11. Prefer fluent? The same factories, without XML
 
