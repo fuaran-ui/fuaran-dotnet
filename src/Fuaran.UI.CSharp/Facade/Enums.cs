@@ -117,6 +117,32 @@ public enum TrackKind
     Chapters,
 }
 
+/// <summary>One deliberate relaxation of an embed's sandbox — maps to the F#
+/// <c>EmbedPermission</c>. Closed at four, and the DEFAULT is to declare none, which is
+/// total denial. What is deliberately absent is as much the design as what is here:
+/// there is no top-level-navigation case (a framed document navigating the page that
+/// framed it is the drive-by redirect) and no downloads case.</summary>
+public enum EmbedPermission
+{
+    /// <summary>The framed document may run script.</summary>
+    AllowScripts,
+
+    /// <summary>The framed document keeps its own origin rather than being given an
+    /// opaque one. Together with <see cref="AllowScripts"/> this is the documented
+    /// sandbox escape on a SAME-origin frame, and FUARAN116 warns about the pair; it is
+    /// also what every real cross-origin embed needs, which is why it is a warning
+    /// rather than a refusal.</summary>
+    AllowSameOrigin,
+
+    /// <summary>The framed document may submit forms.</summary>
+    AllowForms,
+
+    /// <summary>The framed document may enter fullscreen. NOT a sandbox token — it is a
+    /// permissions-policy directive, and the renderers emit it on a separate
+    /// attribute.</summary>
+    AllowFullscreen,
+}
+
 /// <summary>Scroll axis — maps to the F# <c>ScrollOrientation</c>.</summary>
 public enum ScrollOrientation
 {
@@ -283,6 +309,15 @@ internal static class EnumMap
             TrackKind.Descriptions => FsGen.TrackKind.Descriptions,
             TrackKind.Chapters => FsGen.TrackKind.Chapters,
             _ => FsGen.TrackKind.Captions,
+        };
+
+    internal static FsGen.EmbedPermission ToFs(this EmbedPermission p) =>
+        p switch
+        {
+            EmbedPermission.AllowSameOrigin => FsGen.EmbedPermission.AllowSameOrigin,
+            EmbedPermission.AllowForms => FsGen.EmbedPermission.AllowForms,
+            EmbedPermission.AllowFullscreen => FsGen.EmbedPermission.AllowFullscreen,
+            _ => FsGen.EmbedPermission.AllowScripts,
         };
 
     internal static FsGen.ScrollOrientation ToFs(this ScrollOrientation o) =>

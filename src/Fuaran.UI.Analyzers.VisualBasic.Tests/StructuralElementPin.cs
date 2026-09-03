@@ -132,6 +132,7 @@ internal static class StructuralElementPin
             ["Metric.format"] = "sugar — the shared `format-*` attribute family",
             ["Metric.trendFormat"] = "sugar — the shared `format-*` attribute family",
             ["Mount.capabilities"] = "narrowed — `capabilities`, a comma-separated string",
+            ["Embed.permissions"] = "narrowed — `permissions`, a pipe-separated string of relaxation names; a list of bare enum tokens does not earn a child element (Phase 1111)",
             ["Mount.channel"] = "flattening — `two-way` + `message-shape`",
             ["Select.values"] = "narrowed — the <MultiSelect> convenience's `values` attribute",
             ["Sparkline.source"] = "narrowed — the `source` attribute carries a query name",

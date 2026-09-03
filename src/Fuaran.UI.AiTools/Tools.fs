@@ -401,6 +401,25 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
                | MediaKind.Audio -> "Audio")
           valueEntry "Controls" spec.Controls
           valueEntry "Loop" spec.Loop ]
+    | NodeKind.Embed(spec) ->
+        // Phase 1111 — `Src` is a Binding (routed through the embed egress class
+        // at render), so it is not a prop. `Title` is the scalar; `AspectRatio`
+        // is the presentation enum; `Permissions` is surfaced as the joined
+        // token list, because an agent asking "what is this node" most wants to
+        // know what this frame has been allowed to do, and the empty list is a
+        // meaningful answer rather than a missing one.
+        [ valueEntry "Title" spec.Title
+          valueEntry "AspectRatio" spec.AspectRatio
+          valueEntry
+              "Permissions"
+              (spec.Permissions
+               |> List.map (fun p ->
+                   match p with
+                   | EmbedPermission.AllowScripts -> "AllowScripts"
+                   | EmbedPermission.AllowSameOrigin -> "AllowSameOrigin"
+                   | EmbedPermission.AllowForms -> "AllowForms"
+                   | EmbedPermission.AllowFullscreen -> "AllowFullscreen")
+               |> String.concat " ") ]
     | NodeKind.List(spec) ->
         [ valueEntry "Ordered" spec.Ordered
           entry "ItemCount" (Some(boxNN (List.length spec.Items))) (Some "TextSource list (count)") ]

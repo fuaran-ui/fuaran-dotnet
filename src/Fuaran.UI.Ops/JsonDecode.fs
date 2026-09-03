@@ -1413,6 +1413,7 @@ let displayNodeKinds =
       "Link"
       "Image"
       "Media"
+      "Embed"
       "List"
       "Toast"
       "CodeBlock"
@@ -4321,6 +4322,77 @@ let private decodeMediaSpec (path: string) (j: Json) : Result<MediaSpec, DecodeE
         | _, _, _, _, _, Error e, _
         | _, _, _, _, _, _, Error e -> Error e
 
+/// Phase 1111 — one `Embed` sandbox relaxation. A BARE enum (§6), so an
+/// unrecognised case reports at the ELEMENT's own path with no `$type` suffix
+/// (`$.kind.permissions[0]`), the `TrackKind` position rather than the
+/// `MediaKind` one.
+///
+/// The set is closed at four, and the refusal is doing real work here rather
+/// than merely being consistent: a decoder that silently dropped an unrecognised
+/// permission would turn a document asking for something this vocabulary has no
+/// name for into a document asking for less, which reads as success. A decoder
+/// that guessed would be worse. Refusing names the token and stops.
+let private decodeEmbedPermission (path: string) (j: Json) : Result<EmbedPermission, DecodeError> =
+    match j with
+    | JString "AllowScripts" -> Ok EmbedPermission.AllowScripts
+    | JString "AllowSameOrigin" -> Ok EmbedPermission.AllowSameOrigin
+    | JString "AllowForms" -> Ok EmbedPermission.AllowForms
+    | JString "AllowFullscreen" -> Ok EmbedPermission.AllowFullscreen
+    | JString s -> unknownEnumCase path s "AllowScripts | AllowSameOrigin | AllowForms | AllowFullscreen"
+    | _ -> wrongType path "JSON string (EmbedPermission)"
+
+/// Phase 1111 — the embed spec. `title` is REQUIRED, which is the frame a11y
+/// floor expressed where it can be enforced: a `MISSING_FIELD` here is the
+/// decode-side twin of FUARAN115 at the authoring end, exactly as
+/// `MediaSpec.label`'s is of FUARAN108.
+///
+/// `permissions` takes the `Image.srcSet` missing-list class — an ABSENT list is
+/// the EMPTY list, never a null — and here that rule carries a second meaning
+/// worth naming: the empty list is TOTAL DENIAL, so the document that says
+/// nothing grants nothing. A present non-array is a `WRONG_TYPE` at the slot.
+///
+/// Nothing in this decoder inspects the `src` STRING. The `embed` egress class
+/// is a RENDER-time obligation, as every §19-class rule is: a document naming an
+/// `http` URL is a valid wire document that no conformant host will fetch.
+let private decodeEmbedSpec (path: string) (j: Json) : Result<EmbedSpec, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let aspectR =
+            match tryField fields "aspectRatio" with
+            | None -> Ok ImageAspect.Natural
+            | Some v -> decodeImageAspect (path + ".aspectRatio") v
+
+        let permissionsR =
+            match tryField fields "permissions" with
+            | None -> Ok []
+            | Some v ->
+                match requireArray (path + ".permissions") v with
+                | Error e -> Error e
+                | Ok items ->
+                    items
+                    |> traverseIndexed (fun i el -> decodeEmbedPermission (sprintf "%s.permissions[%d]" path i) el)
+
+        let srcR =
+            requireField path fields "src" "embed Binding<string> Src"
+            |> Result.bind (decodeBindingString (path + ".src"))
+
+        let titleR =
+            requireField path fields "title" "embed accessible title TextSource"
+            |> Result.bind (decodeTextSource (path + ".title"))
+
+        match aspectR, permissionsR, srcR, titleR with
+        | Ok aspectRatio, Ok permissions, Ok src, Ok title ->
+            Ok
+                { AspectRatio = aspectRatio
+                  Permissions = permissions
+                  Src = src
+                  Title = title }
+        | Error e, _, _, _
+        | _, Error e, _, _
+        | _, _, Error e, _
+        | _, _, _, Error e -> Error e
+
 let private decodeListSpec (path: string) (j: Json) : Result<ListSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -5016,6 +5088,10 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 getSpec ()
                 |> Result.bind (decodeMediaSpec specPath)
                 |> Result.map NodeKind.Media
+            | "Embed" ->
+                getSpec ()
+                |> Result.bind (decodeEmbedSpec specPath)
+                |> Result.map NodeKind.Embed
             | "List" -> getSpec () |> Result.bind (decodeListSpec specPath) |> Result.map NodeKind.List
             | "Toast" ->
                 getSpec ()

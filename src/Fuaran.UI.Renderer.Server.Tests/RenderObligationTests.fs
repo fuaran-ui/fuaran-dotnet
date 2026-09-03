@@ -625,6 +625,120 @@ let private checkUnregisteredCustomLabelled () =
         (contains "data-fuaran-custom-card" rendered)
         "and no card marker is emitted for a node that rendered"
 
+// Phase 1111 - the three embed checkers.
+//
+// These are the only checkers in this file that cannot use the bare `render`
+// entry point for their POSITIVE direction, and the reason is the obligation
+// itself rather than a convenience. The `embed` egress class admits `https` and
+// nothing else, so the local-path trick every other allow-twin here uses
+// (`/walkthrough-poster.jpg`) is refused by the scheme floor before policy is
+// consulted - and the ambient default-deny then refuses every https origin,
+// because none is declared. So a positive assertion needs BOTH: an https source
+// and a policy that declares its origin. `renderEmbedAllowing` is that, named so
+// the opt-out is greppable, and the REFUSAL directions still go through the
+// ordinary `render` so the default is what is being measured.
+
+let private embedOrigin =
+    Sanitize.allowOrigin
+        (Sanitize.ExactHost "player.example")
+        [ Sanitize.EgressClass.Embed ]
+        Sanitize.denyNonLocalEgress
+
+let private renderEmbedAllowing (node: Node<obj>) =
+    Render.renderWithEgress embedOrigin Registry.empty BindingResolver.empty node
+
+let private embed id src title permissions =
+    Fuaran.embedSpec
+        id
+        { Defaults.embed with
+            Src = Binding.Static(Some src)
+            Title = TextSource.Literal title
+            Permissions = permissions }
+
+let private checkEmbedAccessibleNameAlways () =
+    let named =
+        renderEmbedAllowing (embed "e1" "https://player.example/embed/harbour" "Harbour restoration" [])
+
+    Expect.isTrue
+        (contains "title=\"Harbour restoration\"" named)
+        "an embed emits the resolved title as the frame's title"
+
+    // The twin without which a renderer emitting `title` only when the frame
+    // ALSO got a source would pass: the title is a property of the node, not of
+    // whether its destination survived the floor.
+    let refusedSource =
+        render (embed "e2" "http://player.example/embed/harbour" "Harbour restoration" [])
+
+    Expect.isTrue
+        (contains "title=\"Harbour restoration\"" refusedSource)
+        "...and still emits it when the source was refused - the name is the node's, not the destination's"
+
+let private checkEmbedSandboxAlwaysExactlyDeclared () =
+    let bare =
+        renderEmbedAllowing (embed "e3" "https://player.example/embed/harbour" "Harbour restoration" [])
+
+    Expect.isTrue
+        (contains "sandbox=\"\"" bare)
+        "an embed granting nothing still emits sandbox, EMPTY - omitting it is the same markup as no sandbox at all"
+
+    Expect.isFalse
+        (contains "allow=" bare)
+        "...and emits no `allow` attribute, because an empty allow is not the same statement as an absent one"
+
+    // Declared out of the enum's order, and with a duplicate, so a renderer that
+    // echoed the authored list would emit `allow-same-origin allow-scripts
+    // allow-scripts` and fail here.
+    let granted =
+        renderEmbedAllowing (
+            embed
+                "e4"
+                "https://player.example/embed/harbour"
+                "Harbour restoration"
+                [ EmbedPermission.AllowSameOrigin
+                  EmbedPermission.AllowScripts
+                  EmbedPermission.AllowScripts
+                  EmbedPermission.AllowFullscreen ]
+        )
+
+    Expect.isTrue
+        (contains "sandbox=\"allow-scripts allow-same-origin\"" granted)
+        "the declared tokens are emitted in the vocabulary's declaration order, de-duplicated"
+
+    Expect.isFalse (contains "allow-forms" granted) "a permission the document did not declare is never emitted"
+
+    Expect.isTrue
+        (contains "allow=\"fullscreen\"" granted)
+        "fullscreen rides the permissions-policy attribute, NOT the sandbox token list"
+
+let private checkRefusedEmbedSourceOmitted () =
+    // `http` is refused by the embed scheme floor even though the ORIGIN is
+    // declared, which is what tells this class apart from the ordinary URL floor.
+    let refused =
+        renderEmbedAllowing (embed "e5" "http://player.example/embed/harbour" "Harbour restoration" [])
+
+    Expect.isFalse (contains "player.example" refused) "a refused destination is never emitted"
+    Expect.isFalse (contains "src=" refused) "...and the src attribute is DROPPED, not pointed at the refusal URL"
+
+    Expect.isTrue
+        (contains "data-fuaran-egress-refused" refused)
+        "...while the refusal is still recorded in the document"
+
+    // A relative reference is refused too, and by the SCHEME floor rather than
+    // the policy - the one place this class is stricter than every other.
+    let relative =
+        renderEmbedAllowing (embed "e6" "/local/player.html" "Local player" [])
+
+    Expect.isFalse (contains "src=" relative) "a same-origin relative reference is refused by the embed class"
+
+    // The allow twin. Without it a renderer that dropped EVERY src would pass
+    // both refusals and this obligation would guard nothing.
+    let allowed =
+        renderEmbedAllowing (embed "e7" "https://player.example/embed/harbour" "Harbour restoration" [])
+
+    Expect.isTrue
+        (contains "src=\"https://player.example/embed/harbour\"" allowed)
+        "a declared https origin still renders"
+
 /// The registry: which (kind, claim) pairs this host asserts, and how.
 ///
 /// Keyed by the claim's WIRE token rather than the DU case, because the
@@ -642,7 +756,10 @@ let private checkers: ((string * string) * (unit -> unit)) list =
       ("Image", "refused-src-no-affordance"), checkRefusedSrcNoAffordance
       ("Image", "figure-caption-outside-link"), checkFigureCaptionOutsideLink
       ("Image", "srcset-ascending-by-width"), checkSrcSetAscendingByWidth
-      ("Custom", "unregistered-custom-labelled"), checkUnregisteredCustomLabelled ]
+      ("Custom", "unregistered-custom-labelled"), checkUnregisteredCustomLabelled
+      ("Embed", "accessible-name-always"), checkEmbedAccessibleNameAlways
+      ("Embed", "sandbox-always-exactly-declared"), checkEmbedSandboxAlwaysExactlyDeclared
+      ("Embed", "refused-embed-source-omitted"), checkRefusedEmbedSourceOmitted ]
 
 /// Obligations this host declares it does NOT check, each with a reason.
 ///

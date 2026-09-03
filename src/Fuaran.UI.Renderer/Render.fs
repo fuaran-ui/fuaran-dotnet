@@ -1214,6 +1214,7 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
     | NodeKind.Link _
     | NodeKind.Image _
     | NodeKind.Media _
+    | NodeKind.Embed _
     | NodeKind.List _
     | NodeKind.Toast _
     | NodeKind.CodeBlock _
@@ -1546,6 +1547,10 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
         @ trackKeys
         @ keysOfTextOpt channel m.Transcript,
         []
+    // Phase 1111 — two reactive slots, both on the spec: the document URL and
+    // the frame's accessible title. `Permissions` and `AspectRatio` are closed
+    // enums with no binding to follow.
+    | NodeKind.Embed e -> keysOfBinding channel e.Src @ keysOfText channel e.Title, []
     | NodeKind.List l -> l.Items |> List.collect (keysOfText channel), []
     | NodeKind.Toast t ->
         let __v = keysOfText channel t.Message @ keysOfBinding channel t.Open
@@ -1835,6 +1840,7 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
     | NodeKind.Link _
     | NodeKind.Image _
     | NodeKind.Media _
+    | NodeKind.Embed _
     | NodeKind.List _
     | NodeKind.Toast _
     | NodeKind.CodeBlock _
@@ -3311,6 +3317,59 @@ let rec private renderKind
                     @ trackChildren
                 )
             )
+    | NodeKind.Embed spec ->
+        // Phase 1111 — structural parity with the server arm, which states the
+        // four obligations at length: the `sandbox` attribute emitted ALWAYS and
+        // EMPTY when nothing is granted, the tokens emitted in declaration order
+        // and de-duplicated so the markup is deterministic whatever order the
+        // document authored, fullscreen riding `allow` rather than `sandbox`,
+        // and a refused source dropping the `src` attribute entirely rather than
+        // pointing the frame at the refusal URL.
+        //
+        // Nothing is attached here and there is no enhancement tier: a sandboxed
+        // `<iframe>` is already a complete browsing context in every browser, and
+        // an enhancement that reached into it would be the thing the sandbox
+        // exists to prevent.
+        let resolvedSrc =
+            BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
+
+        let safeSrc, egressAttrs =
+            Sanitize.sanitizeEmbedSrcForEgress ctx.EgressPolicy resolvedSrc
+
+        let aspectClass =
+            match spec.AspectRatio with
+            | ImageAspect.Natural -> ""
+            | ImageAspect.Square -> " fuaran-embed-aspect-square"
+            | ImageAspect.FourThree -> " fuaran-embed-aspect-four-three"
+            | ImageAspect.ThreeTwo -> " fuaran-embed-aspect-three-two"
+            | ImageAspect.SixteenNine -> " fuaran-embed-aspect-sixteen-nine"
+
+        let has p = List.contains p spec.Permissions
+
+        let sandboxTokens =
+            [ if has EmbedPermission.AllowScripts then
+                  "allow-scripts"
+              if has EmbedPermission.AllowSameOrigin then
+                  "allow-same-origin"
+              if has EmbedPermission.AllowForms then
+                  "allow-forms" ]
+
+        Html.iframe (
+            [ prop.className ("fuaran-embed" + aspectClass)
+              prop.title (renderText ctx spec.Title)
+              prop.custom ("sandbox", String.concat " " sandboxTokens)
+              prop.custom ("loading", "lazy")
+              prop.custom ("referrerpolicy", "strict-origin-when-cross-origin") ]
+            @ (match safeSrc with
+               | Some s -> [ prop.src s ]
+               | None -> [])
+            @ (if has EmbedPermission.AllowFullscreen then
+                   [ prop.custom ("allow", "fullscreen") ]
+               else
+                   [])
+            @ toProps semanticAttrs
+            @ toProps egressAttrs
+        )
     | NodeKind.List spec ->
         // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
         let items =
@@ -5369,6 +5428,20 @@ and private renderGrid
                 // Phase 862 — `rowIndex` arrives page-relative; `rowOffset`
                 // lifts it into the full sorted set so the whole rows value
                 // written back carries every row, not just this page's.
+                //
+                // Phase 1157 — and this host mints NO per-control slot attribute
+                // for the commit, deliberately. The charter walk refused a
+                // `data-*` write-back slot hint naming the state key (see
+                // `docs/VOCABULARY.md`, Appendix A, Interaction / affordance
+                // cluster): the destination is already on the wire, the closure
+                // below reaches it in-process, and an attribute publishing a
+                // store ADDRESS would let a generic DOM wirer write the store
+                // past the scope routing and the host-reserved-key guard that
+                // `writeBackTo` crosses. Every `data-*` token this renderer does
+                // emit carries identity WITHIN THE TREE, never a store address,
+                // and that line is the ruling. A host whose renderer emits inert
+                // HTML obtains this destination out of band from its own core,
+                // not by reading it back out of its own markup.
                 let editCommit: (int -> string -> obj -> unit) option =
                     BindingResolver.editDestination spec.Editable spec.EditStateKey spec.Source
                     |> Option.map (fun dest ->

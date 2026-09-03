@@ -270,6 +270,7 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
             | NodeKind.Link _
             | NodeKind.Image _
             | NodeKind.Media _
+            | NodeKind.Embed _
             | NodeKind.List _
             | NodeKind.Toast _
             | NodeKind.CodeBlock _

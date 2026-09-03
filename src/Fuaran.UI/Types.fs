@@ -1050,6 +1050,75 @@ and MediaSpec = Generated.MediaSpec
 /// a poster pointing at the refusal URL is a broken image over the player.
 and MediaKind = Generated.MediaKind
 
+/// §4b — `NodeKind.Embed`'s typed spec (Phase 1111): a third-party document
+/// rendered inside a maximally-sandboxed browsing context.
+///
+/// A NEW kind rather than a `Mount` variant, and the vocabulary charter's
+/// Appendix A row moved from "Covered by `Mount`" to ADMITTED on exactly that
+/// point. `Mount` composes a COOPERATING guest — a scope id, a declared message
+/// channel, a capability request list, a host-side loader that produced the
+/// guest tree — and a third-party page has none of those and could not acquire
+/// them. Widening `Mount` to admit an uncooperative third party would weaken
+/// every guarantee `Mount` makes, so the two contracts (bidirectional
+/// cooperation; default-deny isolation) stay two kinds. It is equally not a
+/// `Media` variant: `Media` fetches an asset and DISPLAYS it, `Embed` fetches a
+/// document and lets it EXECUTE.
+///
+/// `Title` is MANDATORY and is the a11y floor, on `MediaSpec.Label`'s argument
+/// one kind over: a frame with no accessible name is announced as "frame" and
+/// nothing else, and there is no decorative embed, because a frame is a focus
+/// container a reader tabs into. FUARAN115 refuses the empty literal that
+/// satisfies the requirement while meaning nothing.
+///
+/// `Permissions` is the closed `EmbedPermission` list, omitted at EMPTY — and
+/// empty is TOTAL DENIAL, so the wire-cheapest document is also the safest one.
+/// That polarity is the point rather than an accident of the omit rule: the
+/// default a careless author gets is the locked one.
+///
+/// `AspectRatio` REUSES `ImageAspect` rather than minting a parallel enum whose
+/// cases would be identical and would have to be kept in step; the cases are
+/// pure layout ratios with nothing image-specific about them, and the wire
+/// carries bare strings, so the type's name reaches no document. It is
+/// omit-at-`Natural` rather than an option because an option over an enum that
+/// already contains `Natural` would give one fact two spellings.
+///
+/// `Src` does NOT ride the ordinary §19 accept set. The spec names a separate
+/// `embed` egress class admitting `https` and NOTHING else — no other scheme,
+/// and no schemeless reference either, because a relative reference names a
+/// same-origin document, which is precisely the shape where `AllowSameOrigin`
+/// together with `AllowScripts` lets the framed document reach its own sandbox
+/// attribute. A host composing its own content has `Mount`. One accepted scheme
+/// and no positional tests, so the class cannot inherit §19 rule 5's evasion
+/// surface. A refused source drops the `src` attribute entirely: an `<iframe>`
+/// with no source is a well-defined empty frame that fetches nothing.
+and EmbedSpec = Generated.EmbedSpec
+
+/// §4b — one deliberate relaxation of an `Embed`'s sandbox (Phase 1111).
+/// `AllowScripts` (the framed document runs script), `AllowSameOrigin` (it keeps
+/// its own origin rather than being given an opaque one), `AllowForms` (it may
+/// submit forms), `AllowFullscreen` (it may enter fullscreen).
+///
+/// Four cases, closed, each jointly necessary for one of the three embed classes
+/// a page actually asks for: a video player, a map, an embedded form. Three map
+/// to HTML `sandbox` tokens and the fourth to a permissions-policy directive —
+/// the case names the RELAXATION, never the attribute, so a host maps each onto
+/// whatever its own surface expresses it with.
+///
+/// The exclusions are the design. A top-level-navigation relaxation would let a
+/// framed document navigate the page that framed it, which is the drive-by
+/// redirect, and a downloads relaxation would put a file-save prompt in a third
+/// party's hands; neither is admitted and neither is reserved. Popups, modals,
+/// pointer lock, presentation and orientation lock have no recorded demand and
+/// are RESERVED as names a later admission would take — which is why this is an
+/// enum rather than a bag of booleans.
+///
+/// `AllowScripts` together with `AllowSameOrigin` is the documented sandbox
+/// escape on a SAME-ORIGIN frame (the framed document can then remove the
+/// sandbox attribute from its own frame element). It is nonetheless the pair
+/// every real cross-origin embed needs, so it is permitted and FUARAN116 warns
+/// rather than the vocabulary refusing it.
+and EmbedPermission = Generated.EmbedPermission
+
 /// §4b — `NodeKind.List`'s typed spec (Phase 287). `Items` is the ordered
 /// list of item texts; `Ordered` selects `<ol>` (true) vs `<ul>` (false).
 and ListSpec = Generated.ListSpec
@@ -2010,6 +2079,7 @@ module Kind =
         | NodeKind.Link _ -> "Link"
         | NodeKind.Image _ -> "Image"
         | NodeKind.Media _ -> "Media"
+        | NodeKind.Embed _ -> "Embed"
         | NodeKind.List _ -> "List"
         | NodeKind.Toast _ -> "Toast"
         | NodeKind.CodeBlock _ -> "CodeBlock"
@@ -2055,6 +2125,7 @@ module Kind =
         | NodeKind.Link _
         | NodeKind.Image _
         | NodeKind.Media _
+        | NodeKind.Embed _
         | NodeKind.List _
         | NodeKind.Toast _
         | NodeKind.CodeBlock _

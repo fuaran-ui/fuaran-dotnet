@@ -369,6 +369,19 @@ type EgressClass =
     /// here is contacted merely by rendering the tree, which is why it is
     /// scoped separately from `Hyperlink` rather than folded in with it.
     | Media
+    /// A third-party DOCUMENT the browser fetches with no user act and then
+    /// EXECUTES in its own browsing context (Phase 1111 — `NodeKind.Embed`).
+    ///
+    /// Scoped separately from `Media` rather than folded into it, and the
+    /// separation is the whole of the phase's egress design. `Media` is
+    /// fetch-and-display: the bytes are decoded by the user agent's own codec
+    /// and reach no scripting context. An embed is fetch-and-EXECUTE: the bytes
+    /// are a document that runs, makes its own requests, and can be granted
+    /// script and its own origin. A composition that declared a CDN for image
+    /// egress has said nothing about which documents it will run, and a class
+    /// that conflated the two would let the first declaration answer the second
+    /// question.
+    | Embed
     /// A navigation the tree asks for (`Action.Navigate`, `PushState`).
     | Route
     /// A file download the tree asks for.
@@ -385,6 +398,7 @@ module EgressClass =
         match cls with
         | EgressClass.Hyperlink -> "hyperlink"
         | EgressClass.Media -> "media"
+        | EgressClass.Embed -> "embed"
         | EgressClass.Route -> "route"
         | EgressClass.Download -> "download"
         | EgressClass.FileRead -> "fileRead"
@@ -394,6 +408,7 @@ module EgressClass =
     let all: EgressClass list =
         [ EgressClass.Hyperlink
           EgressClass.Media
+          EgressClass.Embed
           EgressClass.Route
           EgressClass.Download
           EgressClass.FileRead ]
@@ -692,6 +707,63 @@ let sanitizeUrlForEgress (policy: EgressPolicy) (cls: EgressClass) (url: string)
         (match egressRefusalMarker refused with
          | Some kv -> [ kv ]
          | None -> [])
+
+/// The `embed` SCHEME floor (Phase 1111) — §19-class, and deliberately NOT §19.
+///
+/// `https` is the only accepted scheme. Everything else is refused, and the two
+/// exclusions worth naming are the ones §19 accepts:
+///
+///   * `http` — an embed is fetched and then EXECUTED, so a document delivered
+///     over a channel any intermediary can rewrite is an intermediary's script
+///     running in a frame this page created.
+///   * a SCHEMELESS (relative) reference — it names a same-origin document,
+///     which is exactly the shape where `AllowSameOrigin` together with
+///     `AllowScripts` lets the framed document reach its own frame element and
+///     remove the sandbox attribute. A host that wants to compose its own
+///     content has a kind for that; this kind is for the uncooperative third
+///     party.
+///
+/// One accepted scheme and NO positional test, which is the second reason this
+/// is its own function rather than a parameter on the §19 floor: rule 5's
+/// protocol-relative check exists because a schemeless reference is otherwise
+/// admitted, and a class that admits none cannot inherit that rule's evasion
+/// surface. Rule 1's normalisation is still shared — it is what makes the
+/// scheme extraction see the string the parser will see.
+///
+/// `None` means REFUSED, and the caller drops the attribute rather than
+/// substituting anything: an `<iframe>` with no `src` is a well-defined empty
+/// frame that fetches nothing, where a refusal URL in an embed's `src` would be
+/// a frame that renders a page the author never named.
+let sanitizeEmbedSrc (url: string) : string option =
+    if isNull url then
+        None
+    else
+        let normalized = normalizeUrlForFloor url
+
+        if normalized = "" then
+            None
+        else
+            match extractScheme normalized with
+            | Some "https", _ -> Some normalized
+            | _ -> None
+
+/// The one-call embed render seam: the `src` to emit (or `None` to omit the
+/// attribute), plus the attributes that record a refusal in the document.
+///
+/// Two gates in order, exactly as `sanitizeUrlForEgress` runs them: the scheme
+/// floor above says what the URL may BE, then the destination policy says where
+/// it may GO — under `EgressClass.Embed`, never `Media`.
+let sanitizeEmbedSrcForEgress (policy: EgressPolicy) (url: string) : string option * (string * string) list =
+    match sanitizeEmbedSrc url with
+    | None -> None, [ egressRefusalAttribute, EgressClass.name EgressClass.Embed + ":unsafe-url" ]
+    | Some safe ->
+        match checkDestination policy EgressClass.Embed safe with
+        | EgressVerdict.Allowed emitted -> Some emitted, []
+        | refused ->
+            None,
+            (match egressRefusalMarker refused with
+             | Some kv -> [ kv ]
+             | None -> [])
 
 // ─── Shipped policies ──────────────────────────────────────────────────────
 

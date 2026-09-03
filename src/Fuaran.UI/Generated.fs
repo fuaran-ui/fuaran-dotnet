@@ -69,6 +69,13 @@ type ImageLoading =
     | Lazy
 
 [<RequireQualifiedAccess>]
+type EmbedPermission =
+    | AllowScripts
+    | AllowSameOrigin
+    | AllowForms
+    | AllowFullscreen
+
+[<RequireQualifiedAccess>]
 type ToneVariant =
     | Default
     | Subdued
@@ -799,6 +806,15 @@ and MediaSpec =
     }
 
 // Display
+and EmbedSpec =
+    {
+      AspectRatio: ImageAspect
+      Permissions: EmbedPermission list
+      Src: Binding<string>
+      Title: TextSource
+    }
+
+// Display
 and LinkSpec =
     {
       Href: Binding<string>
@@ -1232,6 +1248,7 @@ and [<RequireQualifiedAccess>] NodeKind<'Msg> =
     | List of ListSpec
     | Image of ImageSpec
     | Media of MediaSpec
+    | Embed of EmbedSpec
     | Link of LinkSpec
     | Callout of CalloutSpec
     | Progress of ProgressSpec
@@ -1349,6 +1366,13 @@ let private encImageLoading (v: ImageLoading) : JVal =
     match v with
     | ImageLoading.Eager -> JStr "Eager"
     | ImageLoading.Lazy -> JStr "Lazy"
+
+let private encEmbedPermission (v: EmbedPermission) : JVal =
+    match v with
+    | EmbedPermission.AllowScripts -> JStr "AllowScripts"
+    | EmbedPermission.AllowSameOrigin -> JStr "AllowSameOrigin"
+    | EmbedPermission.AllowForms -> JStr "AllowForms"
+    | EmbedPermission.AllowFullscreen -> JStr "AllowFullscreen"
 
 let private encToneVariant (v: ToneVariant) : JVal =
     match v with
@@ -1580,6 +1604,7 @@ let rec private encNodeKind (k: NodeKind<'Msg>) : JVal =
     | NodeKind.List s -> encListSpec s
     | NodeKind.Image s -> encImageSpec s
     | NodeKind.Media s -> encMediaSpec s
+    | NodeKind.Embed s -> encEmbedSpec s
     | NodeKind.Link s -> encLinkSpec s
     | NodeKind.Callout s -> encCalloutSpec s
     | NodeKind.Progress s -> encProgressSpec s
@@ -1900,6 +1925,9 @@ and private encImageSpec (s: ImageSpec) : JVal =
 and private encMediaSpec (s: MediaSpec) : JVal =
     Canon.typed "Media" ([ (if s.Controls = true then None else Some("controls", JBool s.Controls)); Some("kind", encMediaKind s.Kind); Some("label", encTextSource s.Label); (if s.Loop = false then None else Some("loop", JBool s.Loop)); Some("src", (encBinding JStr) s.Src); (if List.isEmpty s.Tracks then None else Some("tracks", JArr(List.map encTrackEntry s.Tracks))); (s.Transcript |> Option.map (fun v -> "transcript", encTextSource v)) ] |> List.choose id)
 
+and private encEmbedSpec (s: EmbedSpec) : JVal =
+    Canon.typed "Embed" ([ (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if List.isEmpty s.Permissions then None else Some("permissions", JArr(List.map encEmbedPermission s.Permissions))); Some("src", (encBinding JStr) s.Src); Some("title", encTextSource s.Title) ] |> List.choose id)
+
 and private encLinkSpec (s: LinkSpec) : JVal =
     Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun v -> "protection", encLinkProtection v)) ] |> List.choose id)
 
@@ -2183,6 +2211,14 @@ let private decImageLoading (j: JVal) : Result<ImageLoading, string> =
     | JStr "Lazy" -> Ok ImageLoading.Lazy
     | _ -> Error "not a ImageLoading"
 
+let private decEmbedPermission (j: JVal) : Result<EmbedPermission, string> =
+    match j with
+    | JStr "AllowScripts" -> Ok EmbedPermission.AllowScripts
+    | JStr "AllowSameOrigin" -> Ok EmbedPermission.AllowSameOrigin
+    | JStr "AllowForms" -> Ok EmbedPermission.AllowForms
+    | JStr "AllowFullscreen" -> Ok EmbedPermission.AllowFullscreen
+    | _ -> Error "not a EmbedPermission"
+
 let private decToneVariant (j: JVal) : Result<ToneVariant, string> =
     match j with
     | JStr "Default" -> Ok ToneVariant.Default
@@ -2429,6 +2465,7 @@ let rec private decNodeKind (j: JVal) : Result<NodeKind<obj>, string> =
     | "List" -> decListSpec j |> Result.map NodeKind.List
     | "Image" -> decImageSpec j |> Result.map NodeKind.Image
     | "Media" -> decMediaSpec j |> Result.map NodeKind.Media
+    | "Embed" -> decEmbedSpec j |> Result.map NodeKind.Embed
     | "Link" -> decLinkSpec j |> Result.map NodeKind.Link
     | "Callout" -> decCalloutSpec j |> Result.map NodeKind.Callout
     | "Progress" -> decProgressSpec j |> Result.map NodeKind.Progress
@@ -3330,6 +3367,14 @@ and private decMediaSpec (j: JVal) : Result<MediaSpec, string> =
     dOpt "transcript" __fs decTextSource |> Result.bind (fun transcript ->
     Ok { Controls = controls; Kind = kind; Label = label; Loop = loop; Src = src; Tracks = tracks; Transcript = transcript }))))))))
 
+and private decEmbedSpec (j: JVal) : Result<EmbedSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "aspectRatio" __fs decImageAspect (ImageAspect.Natural) |> Result.bind (fun aspectRatio ->
+    dDef "permissions" __fs (dList decEmbedPermission) ([]) |> Result.bind (fun permissions ->
+    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
+    dReq "title" __fs decTextSource |> Result.bind (fun title ->
+    Ok { AspectRatio = aspectRatio; Permissions = permissions; Src = src; Title = title })))))
+
 and private decLinkSpec (j: JVal) : Result<LinkSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "href" __fs (decBinding dStr) |> Result.bind (fun href ->
@@ -3694,6 +3739,7 @@ let private witnessKindTag (n: Node<'Msg>) : string =
     | NodeKind.List _ -> "List"
     | NodeKind.Image _ -> "Image"
     | NodeKind.Media _ -> "Media"
+    | NodeKind.Embed _ -> "Embed"
     | NodeKind.Link _ -> "Link"
     | NodeKind.Callout _ -> "Callout"
     | NodeKind.Progress _ -> "Progress"
@@ -3796,6 +3842,9 @@ let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: Imag
 
 let mkMedia (id: string) (kind: MediaKind) (label: TextSource) (src: Binding<string>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Media { Controls = true; Kind = kind; Label = label; Loop = false; Src = src; Tracks = []; Transcript = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
+
+let mkEmbed (id: string) (src: Binding<string>) (title: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Embed { AspectRatio = ImageAspect.Natural; Permissions = []; Src = src; Title = title }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }
 
 let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None }

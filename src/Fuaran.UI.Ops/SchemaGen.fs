@@ -348,6 +348,9 @@ let private defs: (string * J) list =
       // Phase 1110 — closed at four; `metadata` is deliberately not a case.
       "TrackKind", enumDef [ "Subtitles"; "Captions"; "Descriptions"; "Chapters" ]
       "ImageAspect", enumDef [ "Natural"; "Square"; "FourThree"; "ThreeTwo"; "SixteenNine" ]
+      // Phase 1111 — closed at four. `Embed.aspectRatio` REUSES `ImageAspect`
+      // above rather than minting a second def with identical cases.
+      "EmbedPermission", enumDef [ "AllowScripts"; "AllowSameOrigin"; "AllowForms"; "AllowFullscreen" ]
       "ImageLoading", enumDef [ "Eager"; "Lazy" ]
       "ScrollOrientation", enumDef [ "Vertical"; "Horizontal"; "Both" ]
       "DateVariant", enumDef [ "Date"; "Time"; "DateTime" ]
@@ -732,6 +735,22 @@ let private defs: (string * J) list =
           [ duCase "Video" [] [ "autoplay", boolean; "poster", binding "str" ]
             duCase "Audio" [] [] ]
 
+      // Phase 1111 — `title` and `src` are required; `aspectRatio` omits at
+      // `Natural` and `permissions` at EMPTY, so both sit out of `required`. The
+      // schema cannot say that the empty permission list is TOTAL DENIAL rather
+      // than an unset value, and does not try — that rule lives in the normative
+      // text, where a default that is also a security posture can be stated as
+      // one. Nor can it constrain `src` to `https`: the `embed` egress class is
+      // a render obligation, and a schema that refused the bytes would make this
+      // artefact stricter than the decoder it describes.
+      "EmbedSpec",
+      record
+          [ "src"; "title" ]
+          [ "aspectRatio", ref "ImageAspect"
+            "permissions", arrayOf (ref "EmbedPermission")
+            "src", binding "str"
+            "title", ref "TextSource" ]
+
       "ListSpec", record [ "items"; "ordered" ] [ "items", arrayOf (ref "TextSource"); "ordered", boolean ]
 
 
@@ -921,6 +940,7 @@ let private defs: (string * J) list =
             duCaseHoisted "Link" "LinkSpec"
             duCaseHoisted "Image" "ImageSpec"
             duCaseHoisted "Media" "MediaSpec"
+            duCaseHoisted "Embed" "EmbedSpec"
             duCaseHoisted "List" "ListSpec"
             duCaseHoisted "Toast" "ToastSpec"
             duCaseHoisted "CodeBlock" "CodeBlockSpec"

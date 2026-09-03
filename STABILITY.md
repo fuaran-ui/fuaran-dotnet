@@ -2253,6 +2253,79 @@ would weaken the gate to carry a marker that would then mean nothing. The hazard
 legible where it can be without a false accusation: a doc comment on `Action.dispatch` naming the
 constraint and the two remedies, the FUARAN112 rule, and the transport encoder's refusal.
 
+## Recorded change — 0.48.0, `NodeKind.Embed` — the sandboxed third-party embed (fuaran#1111)
+
+**Additive. One new `NodeKind` case, one new spec record, one new enum, one new egress class, two
+new pre-emit defect codes, two new render-obligation claims.** No shipped surface changes shape, and
+no existing document encodes or decodes to different bytes.
+
+**Adding a `NodeKind` DU case is MINOR, not major**, per the semver section above: an existing
+consumer keeps compiling and gains an `FS0025` exhaustiveness warning, which is the correct signal.
+The same reading covers `Sanitize.EgressClass`, which gains an `Embed` case for the same reason and
+carries the same consequence — a host matching exhaustively over the class set is warned, and a host
+that composes a policy with `Sanitize.allowOrigin` is unaffected, because an undeclared class is
+denied and denial is what an embed already got before this phase existed.
+
+**Why a KIND and not a `Mount` variant, a `Media` variant or a composition.** `docs/VOCABULARY.md`
+Appendix A carried this row as "Covered by `Mount`", and the coverage claim was false. `Mount`
+composes a COOPERATING guest — a scope id, a declared message channel, a capability request list, a
+host-side loader that produced the guest tree — and a third-party page has none of those and cannot
+acquire them; widening `Mount` to admit an uncooperative third party would weaken every guarantee
+`Mount` makes. It is equally not a `Media` variant: `Media` fetches an asset and DISPLAYS it, where
+this fetches a document and lets it EXECUTE, which is a different threat class and gets a different
+egress class. The Appendix A row is amended from "Covered" to ADMITTED in this same change-set, per
+the rule the Phase 1076 admission established.
+
+**Surface added.**
+
+- `Fuaran.UI.Types` re-exports `EmbedSpec` + `EmbedPermission`; `NodeKind` gains `Embed of
+  EmbedSpec`. `EmbedSpec` is `{ AspectRatio: ImageAspect; Permissions: EmbedPermission list; Src:
+  Binding<string>; Title: TextSource }`. `Src` and `Title` are REQUIRED; `AspectRatio` omits at
+  `Natural` and `Permissions` at the EMPTY list.
+- **`AspectRatio` REUSES `ImageAspect`** rather than minting a parallel enum with identical cases.
+  The cases are pure layout ratios with nothing image-specific in them, the wire carries bare
+  strings so the type name reaches no document, and two closed sets that must be kept in step is the
+  defect a rule-of-three would be guarding against — not the reuse. It is omit-at-`Natural` rather
+  than an option because an option over an enum that already contains `Natural` would give one fact
+  two spellings.
+- `EmbedPermission` is `AllowScripts | AllowSameOrigin | AllowForms | AllowFullscreen`, closed. The
+  EMPTY list is TOTAL DENIAL, so the wire-cheapest document is also the most locked-down one. The
+  exclusions are the design: there is no top-level-navigation case (the drive-by redirect) and no
+  downloads case, and neither is reserved; popups, modals, pointer lock, presentation and
+  orientation lock have no recorded demand and are reserved as names a later addition would take.
+- `Sanitize` gains `EgressClass.Embed` (wire name `embed`), `sanitizeEmbedSrc` and
+  `sanitizeEmbedSrcForEgress`. The `embed` scheme floor admits **`https` and nothing else** — not
+  `http`, and not a schemeless reference either, because a relative reference names a same-origin
+  document, which is exactly where `AllowSameOrigin` plus `AllowScripts` lets the framed document
+  reach its own frame element and remove the sandbox. One accepted scheme and no positional test, so
+  the class cannot inherit §19 rule 5's evasion surface.
+- `Fuaran.UI.PreEmitValidate` gains **FUARAN115 (Error)** — an `Embed` whose `Title` is an empty or
+  whitespace `Literal`, FUARAN108's argument one kind over — and **FUARAN116 (Warning)** — an embed
+  declaring both `AllowScripts` and `AllowSameOrigin`, the documented sandbox escape on a
+  same-origin frame. FUARAN116 is a Warning and not an Error deliberately: the pair is also what
+  every real cross-origin embed needs, nothing in the tree says which case this is, and a rule that
+  refuses the ordinary case is one authors switch off.
+- `Fuaran.UI.RenderFidelity` gains two obligation claims — `sandbox-always-exactly-declared` and
+  `refused-embed-source-omitted` — and the `Embed` row carries them plus the reused
+  `accessible-name-always`. **A new claim is a new obligation for every host in the §11.0 roster**:
+  hosts that have not adopted report them unchecked, which is the artefact working as designed.
+- The renderers emit `<iframe class="fuaran-embed">` with `sandbox` ALWAYS present (empty when
+  nothing is granted), the declared tokens de-duplicated and in declaration order, `allow="fullscreen"`
+  only where declared, an always-emitted `title`, unconditional `loading="lazy"` and
+  `referrerpolicy="strict-origin-when-cross-origin"`, and NO `src` attribute at all when the embed
+  egress class refuses the source — the refusal recorded as a data attribute instead.
+- The reference stylesheet gains `.fuaran-embed` and the `.fuaran-embed-aspect-*` family; the
+  emitted class vocabulary moved, so `Theme.vocabularyFingerprint` is restamped.
+- The C# veneer gains `EmbedOptions` + `EmbedPermission` and a `Fuaran.Embed` factory; the VB XML
+  veneer gains an `<Embed>` element with `src` / `title` / `aspect-ratio` / `permissions`
+  (pipe-separated, the `<Mount>` `capabilities` shape), both joining the analyzer's vocabulary.
+
+**Version.** Minor on the producing packages — 0.48.0, already the working version and still
+untagged, so this kind lands in the same unreleased minor as fuaran#1110. That is the precedent this
+repo set one phase ago rather than a shortcut: the producer-side rule the workspace mandate states
+is that a public-contract change must not ship under a version somebody could already have restored,
+and no tag names 0.48.0 (`v0.46.0` is the newest on this family).
+
 ## Recorded change — 0.48.0, `Media` text tracks + transcript (fuaran#1110)
 
 **Additive. Two new spec-record fields, one new record, one new enum, one new pre-emit defect code,
@@ -2766,3 +2839,52 @@ There is no in-place upgrade for a persisted DAG: **old DAG addresses do not car
 **The DAG pre-image still carries no format-version tag.** The linear chain's `"v"` has no DAG
 counterpart (see the linear entry above: "a DAG version tag is tracked separately"). Introducing one
 is a separate design act with its own cross-host concept; it was deliberately not bundled here.
+
+## Recorded change — 0.48.0, FUARAN114 grid field grounding (fuaran#1149)
+
+**One new DU case, no new dependency, no wire change.**
+
+```fsharp
+type PreEmitDefect =
+    | …
+    | GridFieldUngrounded of nodeId: string * field: string * schemaColumns: string list
+```
+
+**What it does.** A `DataGrid` names a column its own source cannot produce — a column `field`, or
+the grid's `rowKeyField`, absent from the statically-known schema of the `Binding.Transform` the grid
+reads. The row projection resolves the name against each row and finds nothing, so the cell renders
+blank; for `rowKeyField` every row keys off the same empty string and row identity silently
+collapses. A blank cell is indistinguishable from a legitimately empty value, which is what makes
+this worth a code rather than a look at the screen.
+
+**It is the read-side twin of FUARAN086**, which grounds a chart's field references against the same
+schema over the same window, and it is deliberately the same restraint: the window is a `Transform`
+over an `Embedded` table with an EMPTY pipeline. A non-empty pipeline changes the column set (derive
+adds, project/groupBy remove), and a `Ref`, `Query`, `State` or host `Static` row source is unknowable
+before the tree runs — all pass ungrounded, per the fuaran-core#90 rule that a validator refuses only
+what is provably wrong. Grounding is *narrower* than coverage on purpose: an Error that is
+occasionally wrong gets suppressed, and a suppressed rule protects nothing.
+
+**Where it lives, and the alternative that was declined.** In `PreEmitValidate`, beside the chart
+rule it mirrors. Hosting it instead in the tier where a pipeline's output schema is already
+computable was considered and rejected: it would put one rule in two homes, with two vocabularies and
+a code space that no longer says where a defect came from. This change introduces no package
+reference — `Fuaran.UI` has pinned `Fuaran.Core.DataFrame` since the compute layer landed, and takes
+no dependency on the bounded-program tier.
+
+**The widening is a pin move, not a redesign.** `fuaran-core#112` shipped a pipeline output-schema
+walk into the dataframe package this file already consumes; widening FUARAN114 past the empty-pipeline
+window is one call at the one call site, once the pin here can name the version carrying it. The
+`Fuaran.Core.*` pins in this repo are deliberately held behind what the public index serves, and this
+rule does not wait on that to be useful.
+
+**Breaking-change classification: a new DU case, which breaks exhaustive matches over
+`PreEmitDefect`.** In-repo the only exhaustive match is `PreEmitValidate.describe`, which gains the
+arm. It rides the in-flight **0.48.0** on the same reasoning as the entries above.
+
+**The corpus moves with it (§11 forward-coupling).** `validator/defect-vocabulary.json` gains the
+FUARAN114 entry — generated by reflection over the defect DU, so it needs no hand edit, only a
+regeneration — and this host's `validator-coverage.json` gains the code, its `reference` posture
+meaning it implements every code in the vocabulary. **The regeneration is not in this change-set:**
+the corpus is a separate repository and a concurrent session owns its regeneration this wave, so the
+two land separately and the coverage declaration here is the half that could move now.
