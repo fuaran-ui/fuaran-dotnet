@@ -6,16 +6,16 @@
   "artifacts": { "systemPrompt": "system-prompt.md", "fewShot": "few-shot.jsonl" },
   "schema": "../../prompt-pack/schema.json",
   "schemaNote": "The wire schema is the CONTRACT, not a compiled dimension — every variant shares the canonical artefact rather than carrying a copy.",
-  "variantSha256": "sha256:0b4619119cdb4df163b258f43ef411264fcced985c3e60f627e9f4badcd6647f",
-  "bytes": { "systemPrompt": 88946, "fewShot": 12887, "total": 101833 },
+  "variantSha256": "sha256:fba10b9ad8a235c75cd556b211273fa7fb6ab9e84094edaa3695b9239f11e25d",
+  "bytes": { "systemPrompt": 88967, "fewShot": 12887, "total": 101854 },
   "source": {
     "pack": "docs/prompt-pack",
-    "systemPromptSha256": "sha256:11ca49bb7ec4ce11db9e7ca41947d4494615c09e446845236cdbc687cbeaf131",
+    "systemPromptSha256": "sha256:32597e82baa3767e57e48a8582889c044c4c7f3e0c0b343c9d3a4ff3ea37410c",
     "fewShotSha256": "sha256:e2d18fcb77e51c3044ce08ee1621d37a41390fadb5b12be18b5520ce2a33cb6f"
   },
   "index": {
     "file": "../../tools/section-demand-index.json",
-    "sha256": "sha256:f33ad1d36024a8379c3a52bb8994e1ed5637467193d320cfe0d57d4b58793f51"
+    "sha256": "sha256:3b4d5690f291f47cd7aa0ba3f6bdc58ab33193df7d8851c414338a4014dd2935"
   },
   "dimensions": {
     "dialect": { "value": "canonical", "why": "no per-family dialect verdict on record \u2014 canonical is the default artifact" },

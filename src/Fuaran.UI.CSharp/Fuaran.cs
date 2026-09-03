@@ -47,9 +47,12 @@ public static partial class Fuaran
     // output is byte-identical to what a smart ctor would produce (and to the bare
     // corpus). Every other kind couples to its smart ctor.
     // Generated Node ctor is Generated.fs declaration order (Id, Kind,
-    // Accessibility, ExtraAttributes, Motion, State, Style); `Id` is a bare
-    // string, and `State = None` / `Style = None` are the canonical
-    // empty-state / default-style shapes since the swap.
+    // Accessibility, ExtraAttributes, Motion, State, Style, Tooltip); `Id` is a
+    // bare string, and `State = None` / `Style = None` are the canonical
+    // empty-state / default-style shapes since the swap. `Tooltip = None` is
+    // the trait's absence (Phase 1112) — attached afterwards, if at all, by
+    // `FuaranNode.WithTooltip`, because a hint is a decoration on a built node
+    // rather than a parameter of building one.
     internal static FuaranNode BuildBare(string id, FsGen.NodeKind<object> kind) =>
         new(new FsNode(
             id,
@@ -58,7 +61,8 @@ public static partial class Fuaran
             Fs.None<Microsoft.FSharp.Collections.FSharpMap<string, string>>(),
             Fs.None<FsGen.Motion>(),
             Fs.None<FsGen.StateBehaviour<object>>(),
-            Fs.None<FsGen.SemanticStyle>()));
+            Fs.None<FsGen.SemanticStyle>(),
+            Fs.None<FsGen.TextSource>()));
 
     // ─── Layout ─────────────────────────────────────────────────────────────
 

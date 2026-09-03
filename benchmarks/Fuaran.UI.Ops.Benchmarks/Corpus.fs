@@ -69,7 +69,8 @@ let private mkFragment (holeCount: int) : ParamFragment<unit> =
                           Style = None
                           Accessibility = None
                           Motion = None
-                          ExtraAttributes = None } ] }
+                          ExtraAttributes = None
+                          Tooltip = None } ] }
 
     let valueHoles =
         [ for i in 0 .. holeCount - 1 -> HoleDecl.Value($"field{i}", HoleValueSpace.StringLen(0, 80), None) ]

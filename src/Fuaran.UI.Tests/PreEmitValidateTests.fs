@@ -209,6 +209,7 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
       Style = None
       Accessibility = None
       ExtraAttributes = None
+      Tooltip = None
       Motion = None }
 
 // ─── Phase 1075 fixtures — the seeding rule, FUARAN106 and FUARAN107 ───
@@ -225,6 +226,7 @@ let private gridWithSource (id: string) (source: Binding<Fuaran.Core.Row seq>) :
           Style = None
           Accessibility = None
           ExtraAttributes = None
+          Tooltip = None
           Motion = None }
     | _ -> failwith "seedingGrid must produce a DataGrid"
 
@@ -358,7 +360,8 @@ let private sortGrid
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
-      ExtraAttributes = None }
+      ExtraAttributes = None
+      Tooltip = None }
 
 /// Phase 863 — a bound grid with the edit declarations under test. Columns are
 /// `(label, editable)`.
@@ -399,7 +402,8 @@ let private editGrid
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
-      ExtraAttributes = None }
+      ExtraAttributes = None
+      Tooltip = None }
 
 /// Phase 862 — a data-bound grid with the paging declarations under test and
 /// nothing else that could raise a defect (no columns, so no FUARAN077; a
@@ -431,7 +435,8 @@ let private pagedGrid
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
-      ExtraAttributes = None }
+      ExtraAttributes = None
+      Tooltip = None }
 
 // ─── Phase 727 fixtures — the accessibility family (FUARAN109/110/111) ───
 //
@@ -529,6 +534,41 @@ let private embedNode (id: string) (title: TextSource) (permissions: EmbedPermis
             Src = Binding.Static(Some "https://player.example/embed/harbour")
             Title = title
             Permissions = permissions }
+
+// ─── Phase 1112 fixtures ─ FUARAN118 / FUARAN119, the tooltip trait ─────
+
+/// A markdown leaf carrying the node-level tooltip trait, and optionally the
+/// `hidden` declaration the second rule reads. The KIND is deliberately inert:
+/// neither rule looks at it, and varying it would suggest they did.
+let private tooltipNode (id: string) (hint: TextSource) (hidden: Binding<bool> option) : Node<Msg> =
+    let n = Fuaran.markdown id "Body" |> Node.withTooltip hint
+
+    match hidden with
+    | None -> n
+    | Some h ->
+        n
+        |> Node.withAccessibility (
+            Some
+                { Defaults.Accessibility.empty with
+                    Hidden = Some h }
+        )
+
+/// Only the two Phase 1112 defects, for the reason `embedDefects` states.
+let private tooltipDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.EmptyTooltipDeclaration _
+            | PreEmitDefect.TooltipOnHiddenNode _ -> true
+            | _ -> false)
+
+let private tooltipCodes (tree: Node<Msg>) : string list =
+    tooltipDefects tree
+    |> List.map (fun d ->
+        let code, _, _ = PreEmitValidate.describe d
+        code)
 
 /// Only the two Phase 1111 defects. The fixtures deliberately carry other
 /// shapes, so asserting `Ok()` would couple these tests to rules they are not
@@ -1211,7 +1251,8 @@ let tests =
                     Style = None
                     Accessibility = None
                     Motion = Defaults.Motion.none
-                    ExtraAttributes = None }
+                    ExtraAttributes = None
+                    Tooltip = None }
 
               let detail =
                   Fuaran.metric
@@ -3010,4 +3051,94 @@ let tests =
                             [ EmbedPermission.AllowScripts; EmbedPermission.AllowSameOrigin ] ]
 
               Expect.containsAll (embedCodes tree) [ "FUARAN115"; "FUARAN116" ] "both defects of one node are reported"
+          }
+
+          test "FUARAN118: an empty literal tooltip is reported" {
+              let tree = dashboard "root" [ tooltipNode "note" (TextSource.Literal "") None ]
+
+              Expect.equal (tooltipCodes tree) [ "FUARAN118" ] "the empty hint is the defect"
+
+              Expect.equal
+                  (severityOf (tooltipDefects tree |> List.head))
+                  DefectSeverity.Warning
+                  "Warning, not Error — what is wrong is the declaration, not the document; a node with no hint is the ordinary state of almost every node"
+          }
+
+          test "FUARAN118: whitespace is empty" {
+              let tree = dashboard "root" [ tooltipNode "note" (TextSource.Literal "   ") None ]
+
+              Expect.equal (tooltipCodes tree) [ "FUARAN118" ] "whitespace is empty"
+          }
+
+          test "FUARAN118 go-red check: a real hint is silent" {
+              let tree =
+                  dashboard "root" [ tooltipNode "note" (TextSource.Literal "Updated nightly.") None ]
+
+              Expect.isEmpty (tooltipDefects tree) "a hint that says something raises nothing"
+          }
+
+          test "FUARAN118: a BOUND or I18n hint is never judged" {
+              // It resolves at render time from data no pre-emit walk can see, so
+              // calling it empty would be a guess — the family's standing restraint.
+              let bound =
+                  dashboard "root" [ tooltipNode "b" (TextSource.Bound(Binding.State("hint", None))) None ]
+
+              let i18n =
+                  dashboard "root" [ tooltipNode "i" (TextSource.I18n("hint.key", Map.empty)) None ]
+
+              Expect.isEmpty (tooltipDefects bound) "an unresolvable hint is not an absent one"
+              Expect.isEmpty (tooltipDefects i18n) "nor is a translated one"
+          }
+
+          test "FUARAN119: a hint on a statically hidden node warns" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ tooltipNode "note" (TextSource.Literal "Updated nightly.") (Some(Binding.Static(Some true))) ]
+
+              Expect.equal (tooltipCodes tree) [ "FUARAN119" ] "the hidden declaration is the defect"
+
+              Expect.equal
+                  (severityOf (tooltipDefects tree |> List.head))
+                  DefectSeverity.Warning
+                  "Warning, not Error — a decorative node with a debugging hint is a legitimate shape this walk cannot tell from the mistake"
+          }
+
+          test "FUARAN119 go-red check: hidden FALSE, and a BOUND hidden, are silent" {
+              // Without the second half this rule would fire on every node that is
+              // conditionally hidden, forever — which is most of them — and a bound
+              // `hidden` says nothing about the state the hint will be read in.
+              let notHidden =
+                  dashboard
+                      "root"
+                      [ tooltipNode "n1" (TextSource.Literal "Updated nightly.") (Some(Binding.Static(Some false))) ]
+
+              let boundHidden =
+                  dashboard
+                      "root"
+                      [ tooltipNode
+                            "n2"
+                            (TextSource.Literal "Updated nightly.")
+                            (Some(Binding.State("collapsed", None))) ]
+
+              Expect.isEmpty (tooltipDefects notHidden) "an explicit not-hidden is not hidden"
+              Expect.isEmpty (tooltipDefects boundHidden) "a bound hidden is not judged"
+          }
+
+          test "FUARAN118 and FUARAN119 are reported INDEPENDENTLY" {
+              let tree =
+                  dashboard "root" [ tooltipNode "note" (TextSource.Literal "") (Some(Binding.Static(Some true))) ]
+
+              Expect.containsAll
+                  (tooltipCodes tree)
+                  [ "FUARAN118"; "FUARAN119" ]
+                  "both defects of one node are reported"
+          }
+
+          test "a node with NO tooltip raises neither rule" {
+              // The trait is on every node in every tree, so a rule that quantified
+              // over nodes rather than over DECLARATIONS would fire estate-wide.
+              let tree = dashboard "root" [ markdown "note" "Body" ]
+
+              Expect.isEmpty (tooltipDefects tree) "an absent trait is not a declaration"
           } ]

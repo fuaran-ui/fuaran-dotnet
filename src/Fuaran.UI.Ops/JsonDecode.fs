@@ -1983,7 +1983,8 @@ let private placeholderClosureNode: Node<obj> =
       Style = None
       Accessibility = None
       Motion = None
-      ExtraAttributes = None }
+      ExtraAttributes = None
+      Tooltip = None }
 
 // ─── Variant DU decoders ─────────────────────────────────────────────────
 
@@ -7966,8 +7967,26 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
             | None -> Ok None
             | Some v -> decodeAccessibility (path + ".accessibility") v |> Result.map Some
 
-        match idR, kindR, stateR, styleR, accessibilityR with
-        | Ok id, Ok kind, Ok state, Ok style, Ok accessibility ->
+        // Phase 1112 — the node-level tooltip trait. An ordinary optional
+        // `TextSource`, decoded by the shared decoder rather than by anything
+        // this position invents — which is the whole of the rule, and the one
+        // time a host read a node-envelope slot as its own narrower thing (the
+        // `accessibility` Binding slots, fuaran#957) it took two hosts and a
+        // ruling to unwind.
+        //
+        // Note the CANONICAL form of a literal hint is a BARE STRING, not an
+        // object: `Literal` is `TextSource`'s transparent case, so
+        // `"tooltip":"Updated nightly."` is the encoder's own output and not a
+        // lenient shorthand. The `{"$type":"Literal","text":…}` spelling is
+        // decode-accepted and re-encodes to the bare form; `Bound` and `I18n`
+        // are the arms that carry an envelope.
+        let tooltipR =
+            match tryField fields "tooltip" with
+            | None -> Ok None
+            | Some v -> decodeTextSource (path + ".tooltip") v |> Result.map Some
+
+        match idR, kindR, stateR, styleR, accessibilityR, tooltipR with
+        | Ok id, Ok kind, Ok state, Ok style, Ok accessibility, Ok tooltip ->
             // Motion / ExtraAttributes are not emitted by the encoder
             // (see Types.fs lines 213-218 — ExtraAttributes is "the §4d
             // JSON wire shape omits it on emit"; Motion follows the same
@@ -7979,12 +7998,14 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
                   Style = style
                   Accessibility = accessibility
                   Motion = None
-                  ExtraAttributes = None }
-        | Error e, _, _, _, _
-        | _, Error e, _, _, _
-        | _, _, Error e, _, _
-        | _, _, _, Error e, _
-        | _, _, _, _, Error e -> Error e
+                  ExtraAttributes = None
+                  Tooltip = tooltip }
+        | Error e, _, _, _, _, _
+        | _, Error e, _, _, _, _
+        | _, _, Error e, _, _, _
+        | _, _, _, Error e, _, _
+        | _, _, _, _, Error e, _
+        | _, _, _, _, _, Error e -> Error e
 
 // ─── TreeOp decoder ─────────────────────────────────────────────────────
 

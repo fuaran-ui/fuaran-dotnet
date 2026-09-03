@@ -96,6 +96,37 @@ public sealed class FuaranNode
         lossy = result.ErrorValue.Select(p => new LossySlot(p.NodeId, p.Slot)).ToArray();
         return false;
     }
+
+    /// <summary>
+    /// Attach the node-level tooltip trait (Phase 1112) — a supplementary hint
+    /// ABOUT this node, revealed by the renderer's own hover / focus /
+    /// long-press affordance and announced through <c>aria-describedby</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A hint DESCRIBES; it does not NAME. On a control whose own text is empty
+    /// — an icon-only button is the case this was built for — the node still
+    /// needs an accessible name of its own, or it reaches a screen reader with
+    /// a description and nothing to attach it to.
+    /// </para>
+    /// <para>
+    /// A decoration on a built node rather than an option on the factory that
+    /// built it: the trait is uniform across every kind, so an
+    /// <c>Options.Tooltip</c> on each of the forty-one option records would be
+    /// forty-one spellings of one thing. Returns a new handle; the receiver is
+    /// unchanged.
+    /// </para>
+    /// </remarks>
+    public FuaranNode WithTooltip(Text hint) =>
+        new(new FsNode(
+            Inner.Id,
+            Inner.Kind,
+            Inner.Accessibility,
+            Inner.ExtraAttributes,
+            Inner.Motion,
+            Inner.State,
+            Inner.Style,
+            Fs.Some(hint.Inner)));
 }
 
 /// <summary>

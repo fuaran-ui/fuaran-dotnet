@@ -175,7 +175,8 @@ let private fuaranChipStrip () : Node<unit> =
                         Style = None
                         Accessibility = Defaults.Accessibility.none
                         Motion = Defaults.Motion.none
-                        ExtraAttributes = None } ] }
+                        ExtraAttributes = None
+                        Tooltip = None } ] }
 
 let private fuaranStatsList () : Node<unit> =
     Fuaran.summaryList

@@ -392,7 +392,8 @@ let tests =
           test "masonry probe C — no per-item style channel exists" {
               let styled =
                   { artwork "s1" "harbour" "Harbour at dawn" ImageAspect.Natural with
-                      ExtraAttributes = Some(Map.ofList [ "style", "grid-row: span 2" ]) }
+                      ExtraAttributes = Some(Map.ofList [ "style", "grid-row: span 2" ])
+                      Tooltip = None }
 
               let html = renderHtml styled
 

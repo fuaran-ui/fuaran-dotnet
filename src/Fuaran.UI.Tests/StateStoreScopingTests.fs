@@ -223,7 +223,8 @@ let private mkNode (id: string) (kind: NodeKind<obj>) : Node<obj> =
       Style = None
       Accessibility = None
       Motion = None
-      ExtraAttributes = None }
+      ExtraAttributes = None
+      Tooltip = None }
 
 /// An `IFuaranRuntime` that records the scope ids `TryLoadGuest` is called with
 /// and returns `guest` for each. All other members delegate to the diagnostic

@@ -179,7 +179,8 @@ let tests =
                     Style = None
                     Accessibility = None
                     Motion = Defaults.Motion.none
-                    ExtraAttributes = None }
+                    ExtraAttributes = None
+                    Tooltip = None }
 
               Expect.equal
                   (Render.collectStateKeys grid)

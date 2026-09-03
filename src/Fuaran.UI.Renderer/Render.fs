@@ -1112,6 +1112,76 @@ let private scheduleExposedNodeIdsVerification
     ()
 #endif
 
+// ─── The tooltip dismissal listener (Phase 1112) ────────────────────────────
+//
+// WCAG 1.4.13 asks that content revealed on hover or focus be DISMISSIBLE
+// without moving the pointer or the focus. The reveal itself is pure CSS — the
+// reference stylesheet shows `.fuaran-tooltip` on `:hover` / `:focus-within` of
+// its `.fuaran-has-tooltip` wrapper — so the only thing script has to add is
+// Escape, and it adds it by writing `data-fuaran-tooltip-dismissed` on the
+// wrapper, which the stylesheet's last rule reads.
+//
+// ONE DOCUMENT-LEVEL LISTENER, not a per-node handler, for two reasons that are
+// not stylistic. A per-node `onKeyDown` only fires when focus is already inside
+// that node, so a POINTER user hovering a hint — the commonest case there is —
+// could never dismiss it; the key event goes to the document. And the renderer's
+// node function is not a React component, so it cannot hold an effect or a
+// subscription of its own: a per-node listener would have to be attached and
+// detached by hand on every render of every tooltip'd node.
+//
+// Installed lazily on the first hint rendered, and idempotent — the module-level
+// flag means the cost is one `addEventListener` pair per document, whatever the
+// tree contains. It writes and clears one attribute and touches nothing React
+// owns, so a re-render never fights it.
+#if FABLE_COMPILER
+let mutable private tooltipDismissalInstalled = false
+
+/// Clear the dismissal marker from every wrapper the pointer has left and the
+/// focus has moved out of, so a dismissed hint can be summoned again. Run on
+/// `pointerout` / `focusout`, both of which bubble to the document.
+let private clearDismissedTooltips () =
+    let dismissed =
+        Browser.Dom.document.querySelectorAll "[data-fuaran-tooltip-dismissed]"
+
+    for i in 0 .. dismissed.length - 1 do
+        let el = dismissed[i] :?> Browser.Types.Element
+
+        if not (el.matches ":hover") && not (el.matches ":focus-within") then
+            el.removeAttribute "data-fuaran-tooltip-dismissed"
+
+let private ensureTooltipDismissal () : unit =
+    if not tooltipDismissalInstalled then
+        tooltipDismissalInstalled <- true
+
+        Browser.Dom.document.addEventListener (
+            "keydown",
+            fun ev ->
+                let ke = ev :?> Browser.Types.KeyboardEvent
+
+                if ke.key = "Escape" then
+                    // The hints currently showing are exactly the wrappers under
+                    // the pointer or holding focus — the same selector the
+                    // stylesheet reveals on, so the two can never disagree about
+                    // which hint Escape is aimed at.
+                    let showing =
+                        Browser.Dom.document.querySelectorAll
+                            ".fuaran-has-tooltip:hover, .fuaran-has-tooltip:focus-within"
+
+                    for i in 0 .. showing.length - 1 do
+                        let el = showing[i] :?> Browser.Types.Element
+                        el.setAttribute ("data-fuaran-tooltip-dismissed", "")
+        )
+
+        Browser.Dom.document.addEventListener ("pointerout", fun _ -> clearDismissedTooltips ())
+        Browser.Dom.document.addEventListener ("focusout", fun _ -> clearDismissedTooltips ())
+#else
+/// .NET / SSR — there is no document to listen on, and no script tier at all.
+/// The served markup carries the hint and its `aria-describedby` either way; the
+/// CSS reveal still works, and Escape does not. `WIRE_FORMAT.md` §3.1 states that
+/// degradation normatively rather than leaving hosts to discover it.
+let private ensureTooltipDismissal () : unit = ()
+#endif
+
 // ─── Fragment resolver + expansion ─────────────────────────────────────────
 //
 // `collectFragments` walks the input tree once before the first render and
@@ -6233,11 +6303,27 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     let baseClassName =
         Theme.nodeClassName node.Kind (node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
 
-    let className =
+    let motionClassName =
         match node.Motion with
         // Per-node hot path — string concat, not sprintf. Do not "simplify".
         | Some motion -> baseClassName + " fuaran-motion-" + Theme.motionVar motion
         | None -> baseClassName
+
+    // Phase 1112 — the node-level tooltip trait. An EMPTY resolved hint emits
+    // nothing at all: a declared hint that says nothing is markup that reveals
+    // an empty box on hover, and the wrapper class / focus stop / describedby
+    // would then advertise a description that is not there. FUARAN118 reports
+    // the declaration at validate time; the renderer simply does not draw it.
+    // Parity-locked with the server renderer, filter included.
+    let tooltipText =
+        node.Tooltip
+        |> Option.map (renderText ctx)
+        |> Option.filter (fun t -> t.Trim() <> "")
+
+    let className =
+        match tooltipText with
+        | Some _ -> motionClassName + " fuaran-has-tooltip"
+        | None -> motionClassName
 
     // Emit consumer-side `data-*` / `aria-*` test
     // hooks from `Node.ExtraAttributes`. A render-time
@@ -6265,12 +6351,36 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // itself is the shared `Accessibility.bidiAttributes`.
     let bidi = Accessibility.bidiAttributes node.Kind
 
-    let wrapperAttrs, semanticAttrs =
+    let wrapperAttrs0, semanticAttrs0 =
         if Accessibility.forwardsToSemanticElement node.Kind then
             let dataExtras, ariaExtras = Accessibility.partitionExtraAttributes extraPairs
             bidi @ dataExtras, a11yPairs @ ariaExtras
         else
             bidi @ a11yPairs @ extraPairs, []
+
+    // Phase 1112 — route the hint's description and, where the wrapper is the
+    // described element, its focus stop. The two travel together by
+    // construction: see `Accessibility.tooltipRidesSemanticElement`. Emitted
+    // attribute-for-attribute as the server renderer emits them, so the hydrated
+    // DOM matches the served one.
+    let wrapperAttrs, semanticAttrs =
+        match tooltipText with
+        | None -> wrapperAttrs0, semanticAttrs0
+        | Some _ ->
+            let hintId = Accessibility.tooltipHintId id
+
+            if Accessibility.tooltipRidesSemanticElement node.Kind then
+                wrapperAttrs0, Accessibility.withTooltipDescribedBy hintId semanticAttrs0
+            else
+                (Accessibility.withTooltipDescribedBy hintId wrapperAttrs0)
+                @ [ "tabindex", "0" ],
+                semanticAttrs0
+
+    // The dismissal listener (WCAG 1.4.13) is document-level and installed once,
+    // lazily, the first time any node renders a hint. See
+    // `ensureTooltipDismissal` for why it is not a per-node handler.
+    if tooltipText.IsSome then
+        ensureTooltipDismissal ()
 
     // Per-node render guard. A throwing leaf-body renderer
     // (binding accessor crash, malformed spec, etc.) is caught here so
@@ -6321,13 +6431,29 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
     // copied the base list 2-3x per node per frame even when both were empty.
     // Order is load-bearing (id, node-id, class, attrs, children) and identical
     // in both branches. Perf primitive: do not "simplify" back to a `@` chain.
+    // The hint element itself — a sibling of the body inside the wrapper, which
+    // is what makes it HOVERABLE: the pointer moving from the node onto the hint
+    // never leaves the wrapper, so the `:hover` that revealed it still holds
+    // (WCAG 1.4.13). Placed after the body so the reading order is
+    // thing-then-description. Byte-for-byte the server renderer's element.
+    let wrapperChildren: ReactElement list =
+        match tooltipText with
+        | None -> [ kindBody ]
+        | Some t ->
+            [ kindBody
+              Html.span
+                  [ prop.id (Accessibility.tooltipHintId id)
+                    prop.className "fuaran-tooltip"
+                    prop.custom ("role", "tooltip")
+                    prop.text t ] ]
+
     let wrapperProps: IReactProperty list =
         match wrapperAttrs with
         | [] ->
             [ prop.id id
               prop.custom ("data-fuaran-node-id", id)
               prop.className className
-              prop.children [ kindBody ] ]
+              prop.children wrapperChildren ]
         | _ ->
             let props = ResizeArray<IReactProperty>(4 + List.length wrapperAttrs)
 
@@ -6335,7 +6461,7 @@ and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
             props.Add(prop.custom ("data-fuaran-node-id", id))
             props.Add(prop.className className)
             props.AddRange(toProps wrapperAttrs)
-            props.Add(prop.children [ kindBody ])
+            props.Add(prop.children wrapperChildren)
             List.ofSeq props
 
     Html.div wrapperProps

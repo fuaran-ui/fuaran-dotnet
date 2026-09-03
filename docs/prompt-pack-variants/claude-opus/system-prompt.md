@@ -245,7 +245,7 @@ section), so omit it or emit the sentinel string `"<closure>"`.
 
 <!-- fuaran:signature-catalogue -->
 ```ts
-Node { id:str; kind:NodeKind; accessibility?:Accessibility; state?:StateBehaviour; style?:SemanticStyle }
+Node { id:str; kind:NodeKind; accessibility?:Accessibility; state?:StateBehaviour; style?:SemanticStyle; tooltip?:TextSource }
 NodeKind =
 | LayoutKind
 | DisplayKind

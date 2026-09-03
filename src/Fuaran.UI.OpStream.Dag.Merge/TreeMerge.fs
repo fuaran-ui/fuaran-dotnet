@@ -19,6 +19,7 @@ open Fuaran.UI.OpStream.Abstractions
 //                         auto-blend instead of conflicting on whole-style).
 //   - "state"           — the StateBehaviour block.
 //   - "accessibility"   — the Accessibility block.
+//   - "tooltip"         — the node-level tooltip trait (Phase 1112).
 //   - "children"        — the ordered child-id list (structural).
 //
 //  When a facet changed on at most one side, take that side's value. When both
@@ -61,30 +62,52 @@ module TreeMerge =
     // Each probe holds every OTHER facet fixed so only the named facet varies,
     // letting a closure-bearing facet be compared by canonical JSON.
 
-    /// Kind-own canonical (children + style + state + accessibility neutralised).
+    /// Kind-own canonical (children + style + state + accessibility + tooltip
+    /// neutralised).
     let private kindCanonical<'Msg> (n: Node<'Msg>) : string =
         CanonicalJson.encodeNode
             { n with
                 Kind = childlessKind n
                 Style = None
                 State = None
-                Accessibility = None }
+                Accessibility = None
+                Tooltip = None }
 
-    /// State canonical (kind/style/accessibility neutralised to a fixed shell).
+    /// State canonical (kind/style/accessibility/tooltip neutralised to a fixed shell).
     let private stateCanonical<'Msg> (shellKind: NodeKind<'Msg>) (n: Node<'Msg>) : string =
         CanonicalJson.encodeNode
             { n with
                 Kind = shellKind
                 Style = None
-                Accessibility = None }
+                Accessibility = None
+                Tooltip = None }
 
-    /// Accessibility canonical (kind/style/state neutralised to a fixed shell).
+    /// Accessibility canonical (kind/style/state/tooltip neutralised to a fixed shell).
     let private accessibilityCanonical<'Msg> (shellKind: NodeKind<'Msg>) (n: Node<'Msg>) : string =
         CanonicalJson.encodeNode
             { n with
                 Kind = shellKind
                 Style = None
-                State = None }
+                State = None
+                Tooltip = None }
+
+    /// Tooltip canonical (kind/style/state/accessibility neutralised to a fixed
+    /// shell) — Phase 1112.
+    ///
+    /// Isolating it is not bookkeeping. Without a probe of its own a tooltip-only
+    /// edit varies the bytes of the KIND probe, so two branches that changed
+    /// nothing but the hint would be reported as a concurrent edit to the node's
+    /// kind; and without a pick of its own the rebuild below would take the base
+    /// node's hint on every merge, discarding an uncontested edit on either side
+    /// in silence. Both are the failure this facet decomposition exists to
+    /// prevent, so a node-level trait joins it in the same change as the trait.
+    let private tooltipCanonical<'Msg> (shellKind: NodeKind<'Msg>) (n: Node<'Msg>) : string =
+        CanonicalJson.encodeNode
+            { n with
+                Kind = shellKind
+                Style = None
+                State = None
+                Accessibility = None }
 
     /// `true` when `headIds` is `baseIds` with zero removals and zero reorders.
     let private isPureAddition (baseIds: string list) (headIds: string list) : bool =
@@ -346,6 +369,24 @@ module TreeMerge =
             | 2 -> b.Accessibility
             | _ -> baseN.Accessibility
 
+        // tooltip facet (Phase 1112)
+        let tooltipPick =
+            mergeCanonicalFacet
+                conflicts
+                id
+                "tooltip"
+                MergeConflictClass.ConcurrentEdit
+                cellAuthor
+                (tooltipCanonical shellKind baseN)
+                (tooltipCanonical shellKind a)
+                (tooltipCanonical shellKind b)
+
+        let mergedTooltip =
+            match tooltipPick with
+            | 1 -> a.Tooltip
+            | 2 -> b.Tooltip
+            | _ -> baseN.Tooltip
+
         // children facet (structural)
         let baseIds = childIds baseN
         let aIds = childIds a
@@ -421,7 +462,8 @@ module TreeMerge =
                  else
                      Some mergedStyle)
             State = mergedState
-            Accessibility = mergedAcc }
+            Accessibility = mergedAcc
+            Tooltip = mergedTooltip }
 
     /// 3-way merge under **per-cell** authorship: `cellAuthor nodeId facet` gives
     /// the `(A-side, B-side)` authorship of THAT cell — the last writer of the

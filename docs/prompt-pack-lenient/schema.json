@@ -8013,6 +8013,9 @@
         },
         "accessibility": {
           "$ref": "#/$defs/Accessibility"
+        },
+        "tooltip": {
+          "$ref": "#/$defs/TextSource"
         }
       },
       "required": [

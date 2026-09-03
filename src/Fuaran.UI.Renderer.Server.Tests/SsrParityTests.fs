@@ -887,6 +887,148 @@ let ssrParityTests =
               Expect.isTrue (contains "aria-label=\"Home\"" spanTag) "aria-label lands on the wrap span"
           }
 
+          // -- Phase 1112 -- the node-level tooltip trait ---------------------
+          //
+          // The trait's whole visible contract is placement, and placement is
+          // exactly what a presence-sensitive assertion cannot see -- so these
+          // reuse the `wrapperTag` split above. What is being locked, in one
+          // sentence: THE ELEMENT THAT CARRIES `aria-describedby` IS THE ELEMENT
+          // THAT TAKES FOCUS. A description on an element the keyboard never
+          // lands on is announced on no interaction at all.
+
+          test "tooltip - the hint is a CHILD of the wrapper, so it is hoverable (Phase 1112)" {
+              // WCAG 1.4.13's hoverable + persistent halves are structural here,
+              // not behavioural: the pointer travelling from the node onto the
+              // hint never leaves the wrapper, so the `:hover` that revealed it
+              // still holds. Emitting the hint as a SIBLING of the wrapper would
+              // pass every containment assertion and fail the criterion.
+              let html =
+                  renderHtml
+                      BindingResolver.empty
+                      (Fuaran.markdown "md" "Body"
+                       |> Node.withTooltip (TextSource.Literal "Updated nightly."))
+
+              Expect.isTrue (contains "class=\"fuaran-tooltip\"" html) "the hint element is emitted"
+              Expect.isTrue (contains "role=\"tooltip\"" html) "the hint declares its role"
+              Expect.isTrue (contains "id=\"md-tooltip\"" html) "the hint id is derived from the node id"
+              Expect.isTrue (contains "fuaran-has-tooltip" (wrapperTag html)) "the wrapper is the hover target"
+
+              // The hint opens AFTER the wrapper's own tag, which is both the
+              // reading order and what makes it a child rather than a peer.
+              Expect.isTrue
+                  (html.IndexOf("fuaran-tooltip") > html.IndexOf(">"))
+                  "the hint is inside the wrapper, not beside it"
+          }
+
+          test "tooltip - a non-forwarding kind takes describedby AND the focus stop on the wrapper (Phase 1112)" {
+              let html =
+                  renderHtml
+                      BindingResolver.empty
+                      (Fuaran.markdown "md" "Body"
+                       |> Node.withTooltip (TextSource.Literal "Updated nightly."))
+
+              let wrapper = wrapperTag html
+
+              Expect.isTrue (contains "aria-describedby=\"md-tooltip\"" wrapper) "the wrapper is described"
+
+              Expect.isTrue
+                  (contains "tabindex=\"0\"" wrapper)
+                  "and the wrapper takes the focus stop, or the hint is pointer-only (WCAG 2.1.1)"
+          }
+
+          test "tooltip - a forwarding kind takes describedby on its semantic element and NO wrapper stop (Phase 1112)" {
+              let html =
+                  renderHtml
+                      BindingResolver.empty
+                      (Fuaran.button
+                          "btn"
+                          { Defaults.button<obj> with
+                              Label = TextSource.Literal "Go" }
+                       |> Node.withTooltip (TextSource.Literal "Runs the export."))
+
+              let wrapper = wrapperTag html
+
+              Expect.isFalse (contains "aria-describedby" wrapper) "the description must not sit on the wrapper"
+
+              Expect.isFalse
+                  (contains "tabindex" wrapper)
+                  "and the wrapper must not add a second focus stop in front of the button"
+
+              let btn = html.Substring(html.IndexOf("<button"))
+              let btnTag = btn.Substring(0, btn.IndexOf('>') + 1)
+
+              Expect.isTrue
+                  (contains "aria-describedby=\"btn-tooltip\"" btnTag)
+                  "the description rides the element the keyboard lands on"
+          }
+
+          test "tooltip - Image forwards its projection but takes the WRAPPER pair (Phase 1112)" {
+              // The case that shows the rule is not simply `forwardsToSemanticElement`:
+              // `<img>` takes no focus, so a description on it would be announced on
+              // no interaction, and the pair has to move to the wrapper together.
+              let html =
+                  renderHtml
+                      BindingResolver.empty
+                      (Fuaran.imageSpec
+                          "img"
+                          { Defaults.image with
+                              Src = Binding.Static(Some "/a.png")
+                              Alt = TextSource.Literal "Alt" }
+                       |> Node.withTooltip (TextSource.Literal "Captured in 1908."))
+
+              let wrapper = wrapperTag html
+
+              Expect.isTrue (contains "aria-describedby=\"img-tooltip\"" wrapper) "the wrapper is described"
+              Expect.isTrue (contains "tabindex=\"0\"" wrapper) "and takes the focus stop with it"
+
+              let img = html.Substring(html.IndexOf("<img"))
+              Expect.isFalse (contains "aria-describedby" img) "the img is not the described element"
+          }
+
+          test "tooltip - an existing describedBy is MERGED, never replaced (Phase 1112)" {
+              // `aria-describedby` is an ID LIST. A node that declares a description
+              // node AND carries a hint has said two things, and dropping either is
+              // silent -- nothing on the page shows which one survived.
+              let node =
+                  Fuaran.markdown "md" "Body"
+                  |> Node.withAccessibility (
+                      Some
+                          { Defaults.Accessibility.empty with
+                              DescribedBy = Some "note-1" }
+                  )
+                  |> Node.withTooltip (TextSource.Literal "Updated nightly.")
+
+              let wrapper = wrapperTag (renderHtml BindingResolver.empty node)
+
+              Expect.isTrue
+                  (contains "aria-describedby=\"note-1 md-tooltip\"" wrapper)
+                  "both ids are carried, declaration first"
+          }
+
+          test "tooltip - an EMPTY hint emits no element, no class, no describedby (Phase 1112)" {
+              // FUARAN118 reports the declaration; the renderer must not advertise a
+              // description that is not there. A wrapper class and a describedby
+              // pointing at an element that was never emitted is worse than silence.
+              let html =
+                  renderHtml
+                      BindingResolver.empty
+                      (Fuaran.markdown "md" "Body" |> Node.withTooltip (TextSource.Literal "   "))
+
+              Expect.isFalse (contains "fuaran-tooltip" html) "no hint element"
+              Expect.isFalse (contains "fuaran-has-tooltip" html) "no hover-target class"
+              Expect.isFalse (contains "aria-describedby" html) "and nothing pointing at the element that is not there"
+          }
+
+          test "tooltip - a node with no trait is byte-unchanged (Phase 1112)" {
+              // The trait is on EVERY node, so the absent case is the one that must
+              // not move: a wrapper that gained a class or an attribute here would
+              // rewrite every fixture in the corpus.
+              let html = renderHtml BindingResolver.empty (Fuaran.markdown "md" "Body")
+
+              Expect.isFalse (contains "tooltip" html) "an absent trait emits nothing at all"
+              Expect.isFalse (contains "tabindex" html) "and adds no focus stop"
+          }
+
           // ── Phase 958 — the trait fixtures join the class+ARIA lock ───────
           //
           // Two halves, matching this corpus's own two halves.

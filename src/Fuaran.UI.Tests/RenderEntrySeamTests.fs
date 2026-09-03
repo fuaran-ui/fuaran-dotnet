@@ -48,7 +48,8 @@ let private mkNode (id: string) (kind: NodeKind<obj>) : Node<obj> =
       Style = None
       Accessibility = None
       Motion = None
-      ExtraAttributes = None }
+      ExtraAttributes = None
+      Tooltip = None }
 
 let private benignBox (id: string) : Node<obj> =
     mkNode

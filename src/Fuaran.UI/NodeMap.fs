@@ -74,7 +74,8 @@ let rec mapMsg (f: 'a -> 'b) (node: Node<'a>) : Node<'b> =
       Style = node.Style
       Accessibility = node.Accessibility
       Motion = node.Motion
-      ExtraAttributes = node.ExtraAttributes }
+      ExtraAttributes = node.ExtraAttributes
+      Tooltip = node.Tooltip }
 
 and mapState (f: 'a -> 'b) (state: StateBehaviour<'a>) : StateBehaviour<'b> =
     { OnLoading = state.OnLoading |> Option.map (mapMsg f)

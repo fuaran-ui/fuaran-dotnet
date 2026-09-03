@@ -110,6 +110,20 @@ module Node =
     let withAccessibility (a11y: Accessibility option) (node: Node<'Msg>) : Node<'Msg> =
         { node with Accessibility = a11y }
 
+    /// Attach the node-level tooltip trait (Phase 1112) — a supplementary hint
+    /// ABOUT this node, revealed by the renderer's own hover / focus /
+    /// long-press affordance and announced through `aria-describedby`.
+    ///
+    /// A hint DESCRIBES; it does not NAME. On a control whose own text is empty
+    /// — an icon-only button is the case this was built for — set
+    /// `withAccessibility` as well, or the element reaches a screen reader with
+    /// a description and no name at all (FUARAN109 says so at validate time).
+    ///
+    /// An empty literal is a declared hint that hints nothing, and the renderers
+    /// emit no hint element for one; FUARAN118 reports it rather than leaving
+    /// the author with markup that silently did not appear.
+    let withTooltip (text: TextSource) (node: Node<'Msg>) : Node<'Msg> = { node with Tooltip = Some text }
+
     /// Opt into one of the 8 canonical motion tokens for this
     /// node. `Motion.None` is allowed (emits the `fuaran-motion-none` no-op
     /// hook) so consumers can author CSS overrides keyed on it.
@@ -917,7 +931,8 @@ module Fuaran =
           Style = Option.None
           Accessibility = accessibility
           Motion = Defaults.Motion.none
-          ExtraAttributes = Option.None }
+          ExtraAttributes = Option.None
+          Tooltip = Option.None }
 
     // ─── Layout ─────────────────────────────────────────────────────────
 

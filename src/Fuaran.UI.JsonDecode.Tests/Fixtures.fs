@@ -47,7 +47,8 @@ let private node (id: string) (kind: NodeKind<obj>) (accessibility: Accessibilit
       Style = None
       Accessibility = accessibility
       Motion = None
-      ExtraAttributes = None }
+      ExtraAttributes = None
+      Tooltip = None }
 
 /// Phase 695 — a sample child reused in two slots of one composite fixture needs
 /// a distinct id in each: NodeIds are unique WITHIN a tree (`WIRE_FORMAT.md` §8),
@@ -4970,6 +4971,96 @@ let stdlibFragments: (string * Node<obj>) list =
         [ sprintf "FragmentDecl (stdlib '%s' — %s)" f.Name f.Summary, f.Decl
           sprintf "FragmentRef (stdlib '%s' — a representative application)" f.Name, f.Example ])
 
+// ─── The node-level tooltip trait (Phase 1112) ──────────────────────────────
+//
+// Three, and between them they pin every placement decision the trait forces.
+// The trait itself is one optional `TextSource` on the node envelope, so the
+// BYTES are almost too simple to be worth a family — what is worth pinning is
+// that the slot exists at the envelope, that it takes every `TextSource` arm,
+// and that it composes with the `accessibility` trait beside it rather than
+// competing with it.
+//
+// The RENDER obligations these exist to be measured against — `aria-describedby`
+// on the element that takes focus, the hint as a CHILD of the hover target so it
+// is hoverable, the wrapper focus stop where the body is not one — are not
+// expressible in wire bytes and live in the SSR corpus and the spec.
+
+/// A hint on an interactive kind whose a11y projection forwards: the
+/// description rides the `<button>` itself, because that is the element the
+/// keyboard lands on. `Literal`, the ordinary authored case.
+let tooltipButton: Node<obj> =
+    { node
+          "tooltip-button-1"
+          (NodeKind.Button(
+              { Defaults.button with
+                  Label = TextSource.Literal "Rebuild index"
+                  OnClick = Action.Notify("rebuild", Fuaran.Core.JObj [])
+                  Variant = ButtonVariant.Secondary }
+          ))
+          None with
+        Tooltip = Some(TextSource.Literal "Re-reads every document; takes about a minute on this corpus.") }
+
+/// A hint on a DISPLAY kind, which forwards nothing — so the description and
+/// the focus stop both land on the wrapper, and a host that only implemented
+/// the forwarding arm renders a hint no keyboard can reach.
+///
+/// `I18n` deliberately: a hint is CONTENT, so it is translated like any other
+/// content, and a host that modelled the slot as a bare string round-trips the
+/// literal arm perfectly and drops this one.
+let tooltipMetric: Node<obj> =
+    { node
+          "tooltip-metric-1"
+          (NodeKind.Metric(
+              { Defaults.metric with
+                  Label = TextSource.Literal "Median latency"
+                  Value = Binding.Static(Some 128.0)
+                  TrendPolarity = TrendPolarity.LowerIsBetter }
+          ))
+          None with
+        Tooltip = Some(TextSource.I18n("metric.latency.hint", Map.empty)) }
+
+/// The headline case the trait was admitted for: an icon-only button.
+///
+/// Both slots are present and they say DIFFERENT things — `accessibility.label`
+/// NAMES the control (its own text is empty, so without one it is announced as
+/// nothing at all), and the tooltip DESCRIBES it. A host that mapped the hint
+/// onto the accessible name passes every other fixture here and turns this one
+/// into a control with two competing names and no description; a host that
+/// dropped the name renders a button announced as "button".
+///
+/// It also pins the `aria-describedby` MERGE: `describedBy` names a real
+/// sibling in the same tree, so the emitted attribute has to carry both ids in
+/// a list rather than whichever the renderer applied last.
+let tooltipIconButton: Node<obj> =
+    node
+        "tooltip-icon-button-1"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Horizontal, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children =
+                [ { node
+                        "tooltip-icon-button-control"
+                        (NodeKind.Button(
+                            { Defaults.button with
+                                Label = TextSource.Literal ""
+                                OnClick = Action.Notify("export", Fuaran.Core.JObj [])
+                                Variant = ButtonVariant.Tertiary
+                                Icon = Some "download" }
+                        ))
+                        (Some
+                            { Label = Some(Binding.Static(Some "Download CSV"))
+                              LabelledBy = None
+                              DescribedBy = Some "tooltip-icon-button-note"
+                              Role = None
+                              LiveRegion = None
+                              Hidden = None }) with
+                      Tooltip = Some(TextSource.Literal "Exports the rows currently shown, not the whole table.") }
+                  withId "tooltip-icon-button-note" markdown ] }
+        ))
+        None
+
+
 let allNodes: (string * Node<obj>) list =
     [ "Display/Heading", heading
       "Display/Markdown (Phase 147 Role=Data + Voice=Display)", styleRoleVoice
@@ -5143,7 +5234,13 @@ let allNodes: (string * Node<obj>) list =
       "Accessibility (Phase 955 — Link: the accessible name overriding the visible 'Read more' text)", a11yLinkLabelled
       "Accessibility (Phase 955 — Button: an explicit named role on a kind that already has a native one)",
       a11yButtonNamed
-      "Accessibility (Phase 955 — Image: the decorative shape, empty alt + hidden Static true)", a11yImageDecorative ]
+      "Accessibility (Phase 955 — Image: the decorative shape, empty alt + hidden Static true)", a11yImageDecorative
+      "Tooltip (Phase 1112 — the trait on a forwarding interactive kind; the description rides the button)",
+      tooltipButton
+      "Tooltip (Phase 1112 — the trait on a display kind, I18n hint; description and focus stop on the wrapper)",
+      tooltipMetric
+      "Tooltip (Phase 1112 — the icon-only button: accessibility.label NAMES, tooltip DESCRIBES, describedBy merges)",
+      tooltipIconButton ]
     @ stdlibFragments
 
 let opReplaceRoot: TreeOp<obj> = TreeOp.ReplaceRoot composite

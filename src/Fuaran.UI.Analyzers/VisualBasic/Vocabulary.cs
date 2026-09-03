@@ -49,6 +49,15 @@ internal static class Vocabulary
     private static readonly ImmutableHashSet<string> Format =
         ImmutableHashSet.Create(StringComparer.Ordinal, "format-currency", "format-number", "format-percent", "format-date");
 
+    /// <summary>Attributes every element admits, because they spell a NODE-ENVELOPE
+    /// trait rather than a field of any one kind. Unioned into every entry of the
+    /// table below, so a trait is added in one place rather than forty.
+    ///
+    /// `tooltip` (Fuaran-UI Phase 1112) is the first member. The translator applies
+    /// it at its single `Translate` choke point for the same reason.</summary>
+    private static readonly ImmutableHashSet<string> Universal =
+        ImmutableHashSet.Create(StringComparer.Ordinal, "tooltip");
+
     /// <summary>Per-element allowed attributes. An element absent from this table is not
     /// attribute-checked (allow-any), so FUARAN061 never false-positives on a kind we
     /// have not enumerated.</summary>
@@ -57,8 +66,8 @@ internal static class Vocabulary
     private static ImmutableDictionary<string, ImmutableHashSet<string>> BuildAttributes()
     {
         var b = ImmutableDictionary.CreateBuilder<string, ImmutableHashSet<string>>(StringComparer.Ordinal);
-        void Add(string el, params string[] attrs) => b[el] = ImmutableHashSet.Create(StringComparer.Ordinal, attrs);
-        ImmutableHashSet<string> WithFormat(params string[] attrs) => Format.Union(attrs);
+        void Add(string el, params string[] attrs) => b[el] = Universal.Union(attrs);
+        ImmutableHashSet<string> WithFormat(params string[] attrs) => Universal.Union(Format).Union(attrs);
 
         Add("Dashboard", "id");
         Add("Stack", "id", "orientation", "wrap");

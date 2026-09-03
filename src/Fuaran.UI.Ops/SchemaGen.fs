@@ -1468,7 +1468,14 @@ let private defs: (string * J) list =
             "kind", ref "NodeKind"
             "state", ref "StateBehaviour"
             "style", ref "SemanticStyle"
-            "accessibility", ref "Accessibility" ]
+            "accessibility", ref "Accessibility"
+            // Phase 1112 — the node-level tooltip trait, optional and omitted
+            // when absent. `TextSource` rather than a bare string: the schema
+            // describes the CANONICAL form the encoder produces, and the §16
+            // bare-string shorthand the decoder also accepts is a lenient
+            // profile this artefact deliberately does not widen to (the same
+            // call every other `TextSource` slot already made).
+            "tooltip", ref "TextSource" ]
 
       // ── TreeOp (§3.4) ─────────────────────────────────────────────────────
       "TreeOp",

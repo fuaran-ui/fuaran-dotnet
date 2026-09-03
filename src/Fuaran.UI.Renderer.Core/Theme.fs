@@ -76,7 +76,7 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // now sees two classes the renderer has always emitted and the reference sheet
 // has always styled. The enumeration got MORE accurate; the digest over it
 // therefore moved.
-let vocabularyFingerprint = "fv1:8ec8768b446a6b34"
+let vocabularyFingerprint = "fv1:0ceb36d1ae574252"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

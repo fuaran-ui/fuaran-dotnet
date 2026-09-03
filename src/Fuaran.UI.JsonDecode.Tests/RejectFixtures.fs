@@ -461,6 +461,27 @@ let all: RejectFixture list =
       // flag: a host that coerced it would have to decide WHICH permission a
       // bare `true` names, and every answer to that is a host granting a sandbox
       // relaxation the document never spelled.
+      // Phase 1112 — the node-level tooltip trait at the WRONG JSON KIND, and
+      // the position where that matters most. `Literal` is `TextSource`'s
+      // TRANSPARENT case, so a bare STRING here is the canonical encoding of an
+      // ordinary authored hint — which is exactly why a bare NUMBER has to be
+      // refused rather than coerced. The two are one character apart in a
+      // document and one `toString` apart in a lenient decoder, and a host that
+      // stringified would turn `42` into the hint `"42"`: a hint whose text is
+      // an accident of a JSON type, which nothing downstream reports and which
+      // reaches the reader as a confident wrong answer.
+      //
+      // The path is `$.tooltip` with no `.$type` suffix: the refusal is that the
+      // POSITION is neither an object nor the accepted shorthand, so naming a
+      // member the document does not contain would be a wrong claim about where
+      // the defect is (the Phase 1073 ruling).
+      { Id = "reject-tooltip-nonstring"
+        Json = """{"id":"t","kind":{"$type":"Markdown","text":"Body"},"tooltip":42}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.tooltip"
+        IsOp = false
+        Description =
+          "a node `tooltip` of `42` — refused rather than stringified. A bare STRING at this slot is the canonical encoding of a literal hint (TextSource's transparent case), so a number is one lenient `toString` away from minting hint text out of a JSON type — which no downstream check could ever catch" }
       { Id = "reject-embed-permission-nonstring"
         Json =
           """{"id":"e","kind":{"$type":"Embed","permissions":[true],"src":{"$type":"Static","value":"https://player.example/embed/harbour"},"title":"Harbour restoration, part two"}}"""

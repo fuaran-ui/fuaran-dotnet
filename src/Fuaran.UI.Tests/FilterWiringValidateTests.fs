@@ -77,7 +77,8 @@ let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
-      ExtraAttributes = None }
+      ExtraAttributes = None
+      Tooltip = None }
 
 let private gridWith (source: Binding<Row seq>) : Node<Msg> = gridWithEditable false source
 
@@ -120,7 +121,8 @@ let private gridNamingFields
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
-      ExtraAttributes = None }
+      ExtraAttributes = None
+      Tooltip = None }
 
 /// `embeddedSource` carries exactly one column, `dept`.
 let private deptSchema = [ "dept" ]
@@ -273,7 +275,8 @@ let tests =
                     Style = None
                     Accessibility = None
                     Motion = Defaults.Motion.none
-                    ExtraAttributes = None }
+                    ExtraAttributes = None
+                    Tooltip = None }
 
               let tree = dashboard "root" [ bareGrid ]
 

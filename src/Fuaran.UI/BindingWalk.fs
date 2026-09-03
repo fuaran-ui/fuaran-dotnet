@@ -887,6 +887,14 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
         | Some a -> record inUses readerId (usesOfBindingOpt a.Label @ usesOfBindingOpt a.Hidden)
         | None -> ()
 
+        // Phase 1112 — the node-level tooltip trait. A `TextSource.Bound` hint
+        // is a real binding read: the renderer resolves it against the same
+        // sources every other bound text is resolved against, so leaving it out
+        // of the walk would make a state key that ONLY a tooltip reads look
+        // unread — and the unwired-producer diagnostics quantify over exactly
+        // that.
+        record inUses readerId (usesOfTextOpt n.Tooltip)
+
         // A `StateBehaviour` branch is a wire-encoded child node rendered in
         // place of the body — a real reader the walk never descended into.
         match n.State with

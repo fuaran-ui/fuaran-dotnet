@@ -150,7 +150,8 @@ let tests =
                     Style = Option.None
                     Accessibility = Option.None
                     Motion = Option.None
-                    ExtraAttributes = Option.None }
+                    ExtraAttributes = Option.None
+                    Tooltip = None }
 
               let tree = fragmentDecl "decl-1" "frag" badBody
 

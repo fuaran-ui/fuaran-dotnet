@@ -549,6 +549,22 @@ module EffectClass =
 /// on the wire). `Accessibility` (per-Node ARIA metadata), `Motion` (the
 /// 8-token animation vocabulary) and `ExtraAttributes` (the AI-opaque
 /// consumer-side `data-*` hatch) carry their prior semantics unchanged.
+///
+/// **`Tooltip` (Phase 1112) — the node-level hint, and the wire spelling for
+/// one.** A `TextSource option` beside `Accessibility`: supplementary text
+/// ABOUT this node, revealed by the renderer's own hover / focus / long-press
+/// affordance and wired to the node's semantic element with
+/// `aria-describedby`. Two properties are load-bearing and easy to get wrong.
+///
+///  * It is a DESCRIPTION, never a NAME. `Accessibility.Label` names the
+///    element; the tooltip supplements a name that already exists. An
+///    icon-only button therefore needs BOTH — the label so the control is
+///    announced at all, the tooltip for the sentence that explains it — and a
+///    host that mapped the tooltip onto `aria-label` would make the two slots
+///    fight over one announcement.
+///  * The GESTURE is not on the wire. Nothing here names hover, focus, press,
+///    placement or delay; a document says what the hint is, and the renderer
+///    owns how it appears (`docs/SSR.md` records what each tier delivers).
 type Node<'Msg> = Generated.Node<'Msg>
 
 /// The a11y record is the generated one. Note (Phase 743 doc correction, carried
@@ -1250,6 +1266,23 @@ and ProgressSpec = Generated.ProgressSpec
 
 // ─── Input — interactive, carries Msg via Action<'Msg> ──────────────
 
+/// §4c — the button spec record (generated).
+///
+/// **`ButtonSpec.Tooltip` is SUPERSEDED as of Phase 1112, and kept compiling.**
+/// It is host-only typed surface (`WIRE_FORMAT.md` §10.1): the canonical
+/// encoder never emits it and the decoder restores `None`, so a hint written
+/// here reaches an in-process Feliz render and nothing else — no decoding host
+/// has ever seen one, on any tier, in any language. The wire spelling for a
+/// hint is the node-level `Node.Tooltip` trait, which every kind carries and
+/// which round-trips.
+///
+/// It is not removed, for the reason a superseded slot usually is not: it is a
+/// shipped public field on a stable surface, it renders correctly for the
+/// single-process authoring path it was built for, and deleting it would break
+/// that path's consumers to buy nothing the node-level trait does not already
+/// give a new one. Where both are set the renderers take the node-level trait
+/// as the described hint and leave this slot as the native `title` it always
+/// was; new authoring should use `Node.withTooltip`.
 and ButtonSpec<'Msg> = Generated.ButtonSpec<'Msg>
 
 /// §4c idiom — filtered pickers. Authors filter inside the binding accessor,

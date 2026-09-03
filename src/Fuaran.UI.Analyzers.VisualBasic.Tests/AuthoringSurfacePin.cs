@@ -157,9 +157,19 @@ internal static class AuthoringSurfacePin
         ["Box"] = "authored only through its four conveniences (<Dashboard> / <Stack> / <Grid> / <Card>), each of which has its own row",
     };
 
-    /// <summary>Attributes present on every element and owned by the node envelope
-    /// rather than by any spec, plus the four-strong CellFormat sugar family that
-    /// the table builds with `WithFormat`.</summary>
+    /// <summary>Attributes present on every element that no per-KIND field can
+    /// account for: `id`, which the envelope carries implicitly, and the
+    /// four-strong CellFormat sugar family the table builds with `WithFormat`.
+    ///
+    /// The node-envelope TRAITS are NOT listed here — they are derived from the
+    /// IDL's own `nodeFields` at check time (see `Run`). Listing them would make
+    /// this set a second, hand-maintained copy of a vocabulary the IDL already
+    /// publishes, and the copy is what goes stale: a trait spelled universally on
+    /// the VB surface would read as forty-one undeclared attributes until somebody
+    /// remembered this file existed. Deriving it means a new attribute-eligible
+    /// envelope field is admitted by the same act that declares it, and one that is
+    /// NOT attribute-eligible is still caught here — which is the half worth
+    /// keeping.</summary>
     private static readonly HashSet<string> EnvelopeOrShared = new(StringComparer.Ordinal)
     {
         "id", "format-currency", "format-number", "format-percent", "format-date",
@@ -273,6 +283,23 @@ internal static class AuthoringSurfacePin
                 .ToDictionary(f => Kebab(f.GetProperty("name").GetString()!), f => IsAttributeEligible(f.GetProperty("type"))),
             StringComparer.Ordinal);
 
+        // The node-envelope traits, derived rather than listed — see
+        // `EnvelopeOrShared` for why. Only the attribute-eligible ones: a
+        // structured envelope field (were one ever declared) takes a child-element
+        // shape, and admitting it as a universal attribute would hide that.
+        var envelopeOrShared = new HashSet<string>(EnvelopeOrShared, StringComparer.Ordinal);
+
+        if (doc.RootElement.TryGetProperty("nodeFields", out var nodeFields))
+        {
+            foreach (var f in nodeFields.EnumerateArray())
+            {
+                if (IsAttributeEligible(f.GetProperty("type")))
+                {
+                    envelopeOrShared.Add(Kebab(f.GetProperty("name").GetString()!));
+                }
+            }
+        }
+
         var liveUnspelled = new HashSet<string>(StringComparer.Ordinal);
         var liveAttributeOnly = new HashSet<string>(StringComparer.Ordinal);
         var undeclaredUnspelled = new List<string>();
@@ -313,7 +340,7 @@ internal static class AuthoringSurfacePin
             // Direction 2 — an attribute that is not an attribute-eligible field.
             foreach (var attr in attrs)
             {
-                if (EnvelopeOrShared.Contains(attr) || (fields.TryGetValue(attr, out var e) && e))
+                if (envelopeOrShared.Contains(attr) || (fields.TryGetValue(attr, out var e) && e))
                 {
                     continue;
                 }

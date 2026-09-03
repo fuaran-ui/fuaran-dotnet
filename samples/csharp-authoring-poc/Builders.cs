@@ -132,8 +132,8 @@ internal abstract class NodeBuilder
     protected abstract NodeKind<object> BuildKind();
 
     // Generated Node ctor is Generated.fs declaration order (Id, Kind,
-    // Accessibility, ExtraAttributes, Motion, State, Style); `Id` is a bare
-    // string since the swap.
+    // Accessibility, ExtraAttributes, Motion, State, Style, Tooltip); `Id` is a
+    // bare string since the swap.
     public Node<object> Build() =>
         new(
             Id,
@@ -142,7 +142,8 @@ internal abstract class NodeBuilder
             Fs.None<FSharpMap<string, string>>(),
             Fs.None<Motion>(),
             Fs.None<StateBehaviour<object>>(),
-            Fs.None<SemanticStyle>());
+            Fs.None<SemanticStyle>(),
+            Fs.None<TextSource>());
 }
 
 // ─── Layout builders ────────────────────────────────────────────────────────

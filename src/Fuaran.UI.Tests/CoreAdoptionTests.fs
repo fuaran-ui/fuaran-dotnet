@@ -128,7 +128,8 @@ let private mkStack (id: string) (kids: EqNode list) : EqNode =
           Style = None
           Accessibility = Option.None
           Motion = Option.None
-          ExtraAttributes = Option.None }
+          ExtraAttributes = Option.None
+          Tooltip = None }
 
 let private mkSpacer (id: string) : EqNode =
     wrap
@@ -140,7 +141,8 @@ let private mkSpacer (id: string) : EqNode =
           Style = None
           Accessibility = Option.None
           Motion = Option.None
-          ExtraAttributes = Option.None }
+          ExtraAttributes = Option.None
+          Tooltip = None }
 
 // ---- a mixed (leaf-bearing) tree generator + the container capability ----
 

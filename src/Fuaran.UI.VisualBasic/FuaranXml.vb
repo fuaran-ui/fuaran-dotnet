@@ -64,7 +64,24 @@ Public Module FuaranXml
                 $"Unknown Fuaran element <{el.Name.LocalName}> — not a recognised node kind.{hint} " &
                 $"Known elements: {String.Join(", ", KnownElements())}.")
         End If
-        Return builder(el)
+        Return ApplyNodeTraits(el, builder(el))
+    End Function
+
+    ''' <summary>Apply the UNIVERSAL node-level traits — the ones that belong to the
+    ''' node envelope rather than to any kind — after the per-kind builder has run.
+    '''
+    ''' One site, deliberately. A trait on the envelope is spelled the same way on
+    ''' every element, so threading it through forty-odd builders would be forty-odd
+    ''' chances to spell it differently, and a builder that forgot would fail
+    ''' silently: the attribute is admitted by the vocabulary, so no analyzer would
+    ''' report it and the hint would simply never appear.
+    '''
+    ''' <c>tooltip</c> (Fuaran-UI Phase 1112) is the first, and takes the same
+    ''' <c>$name</c> bound-query spelling every other text attribute here takes.</summary>
+    Private Function ApplyNodeTraits(el As XElement, node As Csharp.FuaranNode) As Csharp.FuaranNode
+        Dim hint = OptText(el, "tooltip")
+        If hint Is Nothing Then Return node
+        Return node.WithTooltip(hint.Value)
     End Function
 
     ''' <summary>Translate then encode an XML-literal element to its canonical wire JSON.</summary>

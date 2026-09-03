@@ -26,7 +26,8 @@ let private node (id: string) (kind: NodeKind<Msg>) : Node<Msg> =
       Style = None
       Accessibility = None
       Motion = Defaults.Motion.none
-      ExtraAttributes = None }
+      ExtraAttributes = None
+      Tooltip = None }
 
 let private stack (id: string) (children: Node<Msg> list) : Node<Msg> =
     node

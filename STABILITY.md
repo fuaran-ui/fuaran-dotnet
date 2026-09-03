@@ -2253,6 +2253,92 @@ would weaken the gate to carry a marker that would then mean nothing. The hazard
 legible where it can be without a false accusation: a doc comment on `Action.dispatch` naming the
 constraint and the two remedies, the FUARAN112 rule, and the transport encoder's refusal.
 
+## Recorded change — 0.49.0, the node-level `Tooltip` trait (fuaran#1112)
+
+**BREAKING for record-literal construction of `Node`, additive on the wire.** `Node<'Msg>` gains
+`Tooltip: TextSource option`, beside `Accessibility` / `Motion` / `State` / `Style`. Two new pre-emit
+defect codes. No existing document encodes or decodes to different bytes: the field omits at `None`,
+which every node that does not declare a hint has.
+
+**Why this is a MINOR bump and not the same unreleased 0.48.0 the two phases before it landed in.**
+0.48.0 is untagged and exists on no registry, so the producer-side rule — *a public-contract change
+must not ship under a version somebody could already have restored* — would permit it, and that is
+the precedent fuaran#1110 and #1111 each cited. It does not transfer here, for a reason about what a
+version NUMBER says rather than about what it can serve. Both 0.48.0 entries open with *"Additive. No
+shipped surface changes shape"*, and this change does change a shipped record's shape: adding a field
+to `Node` is `FS0764` — an ERROR, not `FS0025`'s warning — at every full-literal construction site.
+Landing them under one number would make that number say something false about what adopting it
+costs, and a consumer reading a changelog is the person the number is for. So the class of the change
+moves the version, and the restorability of the old one does not save it.
+
+**What actually breaks, and what does not.** A consumer that constructs a `Node` with a FULL record
+literal (`{ Id = …; Kind = …; Accessibility = …; ExtraAttributes = …; Motion = …; State = …;
+Style = … }`) stops compiling until it adds `Tooltip = None`. Everything else is untouched: the
+`Fuaran.*` smart constructors fill the field, copy-and-update (`{ node with … }`) is unaffected, and
+`Fuaran.UI.CSharp`'s factories are the veneer's only construction path. The estate's own count when
+this landed was 42 generated constructors plus one hand-written projection `mk` and roughly fifty
+literals across tests and samples — every one of them named by the compiler, in one build.
+
+**One of those fifty was a finding worth recording**, because it is the shape that will recur. A
+PROJECTED kind (`Fuaran-Core`'s `Gen.KindProjection`, Phase 945) supplies its own `mk` as a
+hand-written string, so the node envelope in it is NOT derived from `Idl.NodeFields` the way the
+generated constructors' is. `mkSwitch` was therefore the single constructor out of forty-two that the
+regeneration did not update, and it surfaced as one `FS0764` on a generated file. The coupling is
+left as it is deliberately — the compiler names the one site in the same build that adds the field,
+which is a stronger guarantee than a convention — with a note added beside the literal so the next
+envelope field is expected there rather than discovered there.
+
+**Surface added.**
+
+- `Node<'Msg>` gains `Tooltip: TextSource option`; wire key `tooltip`, last in the envelope's ordinal
+  key order, omitted when `None`. `TextSource` and not `Binding<string>` because a hint is CONTENT —
+  authored, translated, and covered for the runtime case by `TextSource.Bound`.
+- `Fuaran.Node.withTooltip` (F#) and `FuaranNode.WithTooltip` (C#) attach it. Deliberately a
+  decoration on a built node rather than an option on each of the forty-one factories: the trait is
+  uniform across kinds, so a per-kind option would be forty-one spellings of one thing.
+- The VB XML dialect admits `tooltip` on **every** element, applied at `FuaranXml.Translate`'s single
+  choke point. The analyzer's vocabulary gains a `Universal` attribute set for the same reason, and
+  the authoring-surface pin now DERIVES the node-envelope half of its allow-list from the IDL's own
+  `nodeFields` rather than a hand-kept list — so the next attribute-eligible envelope field is
+  admitted by the act that declares it, while a structured one is still caught.
+- `Fuaran.UI.PreEmitValidate` gains **FUARAN118 (Warning)** — a declared hint that resolves to an
+  empty or whitespace `Literal`, FUARAN111's argument at the trait next door — and **FUARAN119
+  (Warning)** — a hint on a node declaring `accessibility.hidden = Static true`, where
+  `aria-hidden` takes the hint and its `aria-describedby` out of the accessibility tree with it. Both
+  judge only the statically-decidable case, on the family's standing restraint.
+- Both renderers emit the hint as `<span class="fuaran-tooltip" role="tooltip" id="{nodeId}-tooltip">`,
+  the LAST CHILD of the node's wrapper — which is what makes it hoverable and persistent (WCAG
+  1.4.13) rather than merely styled that way: the pointer travelling from the node onto the hint never
+  leaves the `:hover` that revealed it.
+- **The element that carries `aria-describedby` is the element that takes focus.** Where the a11y
+  projection forwards to a natively-focusable semantic element (`Button`, `Link`, `Media`, `Embed`)
+  the description rides that element; everywhere else it rides the wrapper and the wrapper takes
+  `tabindex="0"`. `Image` forwards and `<img>` is not focusable, so it takes the wrapper pair — the
+  case that shows the rule is not simply `forwardsToSemanticElement`. An existing
+  `accessibility.describedBy` is MERGED into the id list, never replaced.
+- An EMPTY resolved hint emits nothing at all — no element, no `fuaran-has-tooltip` class, no
+  `aria-describedby`. Advertising a description that is not there is worse than silence.
+- The reference stylesheet gains `.fuaran-has-tooltip` and `.fuaran-tooltip`; the emitted class
+  vocabulary moved, so `Theme.vocabularyFingerprint` is restamped. The reveal is pure CSS
+  (`:hover` / `:focus-within`), which is the whole affordance under SSR, and the transition is
+  suppressed under `prefers-reduced-motion`.
+- `Fuaran.UI.OpStream.Dag.Merge` gains a **`tooltip` merge facet**. Not bookkeeping: without a probe
+  of its own a tooltip-only edit varies the KIND facet's canonical bytes and is reported as a
+  concurrent edit to the node's kind, and without a pick of its own the rebuild takes the base node's
+  hint and discards an uncontested edit on either side in silence.
+- **No `TreeOp`.** `Accessibility` has none either, and for the same reason: the node-level traits are
+  reached by `EditNode` / `ReplaceNode`, and `UpdateProp` is spec-scoped — which also means the
+  superseded `Button.Tooltip` slot keeps its `UpdateProp "Tooltip"` route with no ambiguity introduced.
+
+**`ButtonSpec.Tooltip` is SUPERSEDED and kept compiling.** It is host-only typed surface (§10.1:
+never emitted, restored to `None` on decode), so no decoded tree on any host has ever carried one. It
+is not removed: it is a shipped public field that renders correctly for the in-process authoring path
+it was built for, and deleting it would break that path's consumers to buy nothing the node-level
+trait does not already give a new one. Documented as the non-wire legacy spelling in `Types.fs`.
+
+**Version.** Minor on the producing packages — **0.49.0**, advanced from 0.48.0 for the reason above.
+Still untagged; `v0.46.0` is the newest tag on this family, so nothing here is a re-release.
+
 ## Recorded change — 0.48.0, `NodeKind.Embed` — the sandboxed third-party embed (fuaran#1111)
 
 **Additive. One new `NodeKind` case, one new spec record, one new enum, one new egress class, two

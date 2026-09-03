@@ -339,11 +339,26 @@ and private renderNodeCore (depth: int) (ctx: ServerRenderContext) (node: Node<o
     let baseClassName =
         Theme.nodeClassName node.Kind (node.Style |> Option.defaultValue Fuaran.UI.Defaults.style)
 
-    let className =
+    let motionClassName =
         match node.Motion with
         // Per-node hot path — string concat, not sprintf. Do not "simplify".
         | Some motion -> baseClassName + " fuaran-motion-" + Theme.motionVar motion
         | None -> baseClassName
+
+    // Phase 1112 — the node-level tooltip trait. An EMPTY resolved hint emits
+    // nothing at all: a declared hint that says nothing is markup that reveals
+    // an empty box on hover, and the wrapper class / focus stop / describedby
+    // would then advertise a description that is not there. FUARAN118 reports
+    // the declaration at validate time; the renderer simply does not draw it.
+    let tooltipText =
+        node.Tooltip
+        |> Option.map (renderText ctx)
+        |> Option.filter (fun t -> t.Trim() <> "")
+
+    let className =
+        match tooltipText with
+        | Some _ -> motionClassName + " fuaran-has-tooltip"
+        | None -> motionClassName
 
     let a11y = a11yPairs ctx node.Accessibility
     let extras = extraAttrPairs node
@@ -359,14 +374,47 @@ and private renderNodeCore (depth: int) (ctx: ServerRenderContext) (node: Node<o
     // itself is the shared `Accessibility.bidiAttributes`.
     let bidi = Accessibility.bidiAttributes node.Kind
 
-    let wrapperAttrs, semanticAttrs =
+    let wrapperAttrs0, semanticAttrs0 =
         if Accessibility.forwardsToSemanticElement node.Kind then
             let dataExtras, ariaExtras = Accessibility.partitionExtraAttributes extras
             bidi @ dataExtras, a11y @ ariaExtras
         else
             bidi @ a11y @ extras, []
 
+    // Phase 1112 — route the hint's description and, where the wrapper is the
+    // described element, its focus stop. The two travel together by
+    // construction: see `Accessibility.tooltipRidesSemanticElement`.
+    let wrapperAttrs, semanticAttrs =
+        match tooltipText with
+        | None -> wrapperAttrs0, semanticAttrs0
+        | Some _ ->
+            let hintId = Accessibility.tooltipHintId id
+
+            if Accessibility.tooltipRidesSemanticElement node.Kind then
+                wrapperAttrs0, Accessibility.withTooltipDescribedBy hintId semanticAttrs0
+            else
+                (Accessibility.withTooltipDescribedBy hintId wrapperAttrs0)
+                @ [ "tabindex", "0" ],
+                semanticAttrs0
+
     let kindBody = renderKind depth ctx id node.State node.Kind semanticAttrs
+
+    // The hint element itself — a sibling of the body inside the wrapper, which
+    // is what makes it HOVERABLE: the pointer moving from the node onto the hint
+    // never leaves the wrapper, so the `:hover` that revealed it still holds
+    // (WCAG 1.4.13). Placed after the body so the reading order is
+    // thing-then-description.
+    let tooltipHint: ReactElement list =
+        match tooltipText with
+        | None -> []
+        | Some t ->
+            [ Html.span
+                  [ prop.id (Accessibility.tooltipHintId id)
+                    prop.className "fuaran-tooltip"
+                    prop.custom ("role", "tooltip")
+                    prop.text t ] ]
+
+    let wrapperChildren = kindBody :: tooltipHint
 
     // Per-node wrapper props — parity-locked with the Fable renderer's shape.
     // Common case (nothing to carry) is a 4-element literal; otherwise a
@@ -378,14 +426,14 @@ and private renderNodeCore (depth: int) (ctx: ServerRenderContext) (node: Node<o
             [ prop.id id
               prop.custom ("data-fuaran-node-id", id)
               prop.className className
-              prop.children [ kindBody ] ]
+              prop.children wrapperChildren ]
         | _ ->
             let props = ResizeArray<IReactProperty>(4 + List.length wrapperAttrs)
             props.Add(prop.id id)
             props.Add(prop.custom ("data-fuaran-node-id", id))
             props.Add(prop.className className)
             props.AddRange(toProps wrapperAttrs)
-            props.Add(prop.children [ kindBody ])
+            props.Add(prop.children wrapperChildren)
             List.ofSeq props
 
     let element = Html.div wrapperProps

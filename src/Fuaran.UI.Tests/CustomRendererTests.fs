@@ -106,7 +106,8 @@ let tests =
                     Style = None
                     Accessibility = Defaults.Accessibility.none
                     Motion = Defaults.Motion.none
-                    ExtraAttributes = None }
+                    ExtraAttributes = None
+                    Tooltip = None }
 
               Expect.equal node.Id "custom-host" "Custom Node Id is preserved (outer wrapper emits data-fuaran-node-id)"
           }

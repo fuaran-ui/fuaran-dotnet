@@ -424,7 +424,7 @@
          "the semver rules take effect from 1.0.0"). See STABILITY.md "Recorded
          breaking change — 0.48.0" and
          docs/migrations/1144-typed-actor-dag-fold.md. -->
-    <Version>0.48.0</Version>
+    <Version>0.49.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

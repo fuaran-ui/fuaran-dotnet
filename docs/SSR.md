@@ -113,6 +113,45 @@ when present.
 | **FragmentRef** | Expanded against the one-shot fragment registry collected from the tree; an unresolved ref renders a labelled placeholder. |
 | **Custom** | Consults the host-supplied server Custom-renderer registry (Phase 141); an unregistered node renders the same labelled placeholder as the client. |
 
+### The node-level tooltip trait, server-side (Phase 1112)
+
+Not a kind, so not a row above: `Node.Tooltip` is a trait every kind carries, and the server renders
+it the same way whatever it is attached to.
+
+A node whose hint resolves to non-empty text emits the hint as the LAST CHILD of that node's wrapper
+— `<span class="fuaran-tooltip" role="tooltip" id="{nodeId}-tooltip">` — with the wrapper gaining
+`fuaran-has-tooltip`, and `aria-describedby` pointing at it. **The element that carries
+`aria-describedby` is the element that takes focus**: where the a11y projection forwards to a
+natively-focusable semantic element (`Button`, `Link`, `Media`, `Embed`) the description rides that
+element and the wrapper is untouched; everywhere else it rides the wrapper, which takes
+`tabindex="0"` in the same act. `Image` forwards its projection and `<img>` takes no focus, so it
+takes the wrapper pair — the case that shows the rule is not simply `forwardsToSemanticElement`. An
+`accessibility.describedBy` already present is MERGED into the id list rather than replaced;
+`aria-describedby` is an id list, and a node that declares a description node AND a hint has said two
+things. An EMPTY resolved hint emits nothing at all — no element, no class, no attribute.
+
+**What SSR delivers, stated as a guarantee and as a limit** — the markup is identical between the
+two tiers, and the difference is entirely in what script adds:
+
+| WCAG 1.4.13 | Pure SSR (no script) | Client tier |
+|---|---|---|
+| **Hoverable** | Yes, structurally. The hint is a CHILD of the hover target, so a pointer travelling onto it never leaves the `:hover` that revealed it. | Same. |
+| **Persistent** | Yes, for the same reason — nothing dismisses it on a timer. | Same. |
+| **Dismissible** | **No.** Escape needs a listener, and SSR has none. | Yes — a single document-level `keydown` listener writes `data-fuaran-tooltip-dismissed` on the wrapper, which the stylesheet's last rule reads. |
+
+The reveal itself is pure CSS in both tiers (`:hover` / `:focus-within` on `.fuaran-has-tooltip`), so
+a server-rendered page shows hints with no script at all, and the hint text is in the accessibility
+tree through `aria-describedby` whether or not anything is hovered. **The dismissal listener is one
+per document, not one per node**, deliberately: a per-node handler only fires when focus is already
+inside that node, so a pointer user hovering a hint — the commonest case there is — could never
+dismiss it, because the key event goes to the document.
+
+Positioning is renderer-owned and bounded: the hint is start-aligned under its node with
+`max-inline-size: min(20rem, calc(100vw - 2rem))` and `overflow-wrap: anywhere`, so its own text is
+never clipped by its own box and it never exceeds the viewport's usable width. **Collision-aware
+flipping at a viewport edge needs measurement and is NOT claimed** — a host may add it as a
+client-tier enhancement; nothing in the corpus compares it.
+
 ## Custom-renderer registry (Phase 141)
 
 `NodeKind.Custom` is the language's bounded escape hatch. The server renderer

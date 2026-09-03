@@ -666,6 +666,52 @@ type PreEmitDefect =
     /// Carries the node's id.
     | EmbedSandboxWeakened of nodeId: string
 
+    /// **FUARAN118 (Warning)**. A node declaring `tooltip` whose hint resolves
+    /// to nothing — an empty or whitespace `Literal` (Phase 1112).
+    ///
+    /// FUARAN111's argument, at the trait next door. A declared hint that says
+    /// nothing is worse than no hint: the renderers emit no hint element for it
+    /// (an empty box revealed on hover is not a thing to ship), so the author
+    /// sees markup that silently did not appear, and the `aria-describedby` the
+    /// declaration seemed to promise is not there either. Nothing anywhere else
+    /// would ever say so — the whole failure is invisible from both sides,
+    /// which is the accessibility family's founding reason for existing.
+    ///
+    /// **Warning, not Error, and the difference from FUARAN115 is the point.**
+    /// An `Embed` with no title is refused because a frame with no name cannot
+    /// be identified at all; a node with no hint is a node with no hint, which
+    /// is the ordinary state of almost every node in every tree. What is wrong
+    /// here is the DECLARATION, and the remedy is to write the sentence or drop
+    /// the slot — neither of which is a refusal-grade defect in the document.
+    ///
+    /// Only a LITERAL is judged, on the family's standing restraint: a `Bound`
+    /// or `I18n` hint resolves at render time from data this walk cannot see.
+    ///
+    /// Carries the node's id.
+    | EmptyTooltipDeclaration of nodeId: string
+
+    /// **FUARAN119 (Warning)**. A node carrying a `tooltip` while declaring
+    /// `accessibility.hidden = true` (Phase 1112).
+    ///
+    /// `aria-hidden` removes the element and its whole subtree from the
+    /// accessibility tree, so the hint's `aria-describedby` resolves to nothing
+    /// a screen reader will ever read, and the hint element is hidden with it.
+    /// What is left is a hover affordance for sighted pointer users on a node
+    /// the author has declared is not part of the interface — which is either a
+    /// hint nobody was meant to get, or a `hidden` nobody meant to set. Both
+    /// readings are worth a line.
+    ///
+    /// **Warning, not Error.** A decorative node with a debugging hint is a
+    /// legitimate shape, and this walk cannot tell it from the mistake. It is
+    /// also frequently TRANSIENT — `hidden` is a `Binding<bool>`, so the same
+    /// node is hidden in one state and shown in the next — which is exactly why
+    /// only a `Binding.Static true` is judged: a bound `hidden` says nothing
+    /// about the state the hint will be read in, and refusing it would fire on
+    /// every node that is conditionally hidden, forever.
+    ///
+    /// Carries the node's id.
+    | TooltipOnHiddenNode of nodeId: string
+
     // ── The accessibility family (FUARAN109/110/111, Phase 727) ──────────────
     //
     // Until this family landed the runtime validator carried NO accessibility
@@ -1206,6 +1252,18 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         sprintf
             "embed node '%s' declares both AllowScripts and AllowSameOrigin — against a SAME-ORIGIN document that pair is the documented sandbox escape, because the framed document can then reach its own frame element and remove the sandbox attribute. It is also what every real cross-origin embed needs, and nothing in this tree says which this is, so this is a warning rather than a refusal: confirm the source is a third-party origin, or drop AllowSameOrigin if the provider does not need its own storage"
             nodeId
+    | PreEmitDefect.EmptyTooltipDeclaration nodeId ->
+        "FUARAN118",
+        DefectSeverity.Warning,
+        sprintf
+            "node '%s' declares a tooltip and leaves it EMPTY — a hint that hints nothing. The renderers emit no hint element for an empty one, so the markup you expected is silently absent and so is the aria-describedby that would have carried it to a screen reader; write the sentence the reader needs, or drop the slot"
+            nodeId
+    | PreEmitDefect.TooltipOnHiddenNode nodeId ->
+        "FUARAN119",
+        DefectSeverity.Warning,
+        sprintf
+            "node '%s' carries a tooltip while declaring accessibility.hidden = true — aria-hidden removes the node and its whole subtree from the accessibility tree, taking the hint and its aria-describedby with it, so what is left is a hover affordance for sighted pointer users on a node declared not to be part of the interface. Drop the hint, or drop the hidden declaration if the node was meant to be announced"
+            nodeId
     | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ->
         "FUARAN109",
         DefectSeverity.Warning,
@@ -1576,7 +1634,28 @@ let private accessibilityDefects (n: Node<'Msg>) : PreEmitDefect list =
               emptyRef "describedBy" a.DescribedBy ]
             |> List.choose id
 
-    unnamed @ declaredEmpty
+    // Phase 1112 — the node-level tooltip trait's two rules. They live in this
+    // function rather than a walk of their own because they are the same family
+    // of finding: a declaration that reaches assistive technology as nothing,
+    // with no visible output anywhere to say so.
+    let tooltip =
+        match n.Tooltip with
+        | None -> []
+        | Some hint ->
+            let empty =
+                if isEmptyTextSource hint then
+                    [ PreEmitDefect.EmptyTooltipDeclaration n.Id ]
+                else
+                    []
+
+            let hidden =
+                match n.Accessibility |> Option.bind _.Hidden with
+                | Some(Binding.Static(Some true)) -> [ PreEmitDefect.TooltipOnHiddenNode n.Id ]
+                | _ -> []
+
+            empty @ hidden
+
+    unnamed @ declaredEmpty @ tooltip
 
 /// The `(slot, target)` accessibility references a node declares. Empty targets
 /// are excluded — an empty slot is FUARAN111's finding, and reporting the same

@@ -839,5 +839,9 @@ let canonicalFormKind (kind: NodeKind<'Msg>) : NodeKind<'Msg> =
           Style = None
           Accessibility = None
           Motion = None
-          ExtraAttributes = None })
+          ExtraAttributes = None
+          // A scratch envelope: no node-level trait can be carried by a bare
+          // `NodeKind`, so the tooltip is `None` here for the same reason every
+          // other envelope slot is.
+          Tooltip = None })
         .Kind

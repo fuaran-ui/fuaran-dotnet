@@ -43,7 +43,8 @@ let private fragment: ParamFragment<unit> =
                         Style = None
                         Accessibility = None
                         Motion = None
-                        ExtraAttributes = None } ] }
+                        ExtraAttributes = None
+                        Tooltip = None } ] }
 
     { Defaults.fragmentDecl with
         Name = "card"

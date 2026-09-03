@@ -268,3 +268,65 @@ let bidiAttributes (kind: NodeKind<'Msg>) : (string * string) list =
 let partitionExtraAttributes (pairs: (string * string) list) : (string * string) list * (string * string) list =
     pairs
     |> List.partition (fun (k, _) -> not (k.StartsWith("aria-", System.StringComparison.Ordinal)))
+
+// ─── The node-level tooltip trait (Phase 1112) ──────────────────────────────
+//
+// A tooltip is a DESCRIPTION of the node, revealed by the renderer's own hover /
+// focus / long-press affordance and announced through `aria-describedby`. Two
+// placement questions follow from one principle, and getting either wrong makes
+// the hint reach nobody:
+//
+//  1. THE ELEMENT THAT CARRIES `aria-describedby` MUST BE THE ELEMENT THAT TAKES
+//     FOCUS. A description on a wrapper the keyboard never lands on is announced
+//     on no interaction at all; a description on a control while the wrapper is
+//     the focus stop is the same failure with the parts swapped.
+//  2. A node whose body is not a focus stop therefore needs one — `tabindex="0"`
+//     on the wrapper — or the hint is pointer-only, which is WCAG 2.1.1.
+//
+// So the two decisions are ONE decision, taken here, and both renderers read it:
+// where the projection forwards to a semantic element that takes focus natively,
+// the description rides that element and the wrapper stays untouched; everywhere
+// else the description rides the wrapper and the wrapper takes the focus stop.
+//
+// `Image` is the case that shows why this is not simply `forwardsToSemanticElement`:
+// it forwards, and `<img>` takes no focus, so an image with a hint needs the
+// wrapper stop AND the wrapper description — the pair, or neither.
+
+/// Does a node-level tooltip's `aria-describedby` ride the kind's own semantic
+/// element (rather than the wrapper)? True exactly when the projection forwards
+/// AND the forwarded-to element is a native focus stop — see the note above.
+///
+/// A narrow allow-list rather than an exhaustive match, deliberately: the DEFAULT
+/// answer (describe the wrapper, and give the wrapper a focus stop) is always
+/// reachable and correct, at worst one redundant tab stop on a node the author
+/// chose to annotate. The opposite default silently loses the keyboard route
+/// altogether, which is not a failure anything downstream would report.
+let tooltipRidesSemanticElement (kind: NodeKind<'Msg>) : bool =
+    forwardsToSemanticElement kind
+    && (match kind with
+        // `<button>`, `<a href>`, `<video controls>` / `<audio controls>` and
+        // `<iframe>` are each a native focus stop.
+        | NodeKind.Button _
+        | NodeKind.Link _
+        | NodeKind.Media _
+        | NodeKind.Embed _ -> true
+        // `Image` forwards its projection to `<img>`, which is not focusable.
+        | _ -> false)
+
+/// Merge a tooltip's hint id into an attribute list's `aria-describedby`.
+///
+/// Appended, never substituted: `aria-describedby` is an ID LIST, and a node
+/// that declares `accessibility.describedBy` AND carries a hint has said two
+/// different things a reader is owed both of. Overwriting would silently drop
+/// whichever the renderer happened to apply second.
+let withTooltipDescribedBy (hintId: string) (attrs: (string * string) list) : (string * string) list =
+    if attrs |> List.exists (fun (k, _) -> k = "aria-describedby") then
+        attrs
+        |> List.map (fun (k, v) -> if k = "aria-describedby" then k, v + " " + hintId else k, v)
+    else
+        attrs @ [ "aria-describedby", hintId ]
+
+/// The DOM id of the hint element a node's tooltip renders as. Derived from the
+/// node id so both renderers, and any host reading the emitted markup, compute
+/// the same string without carrying a second identifier on the wire.
+let tooltipHintId (nodeId: string) : string = nodeId + "-tooltip"
