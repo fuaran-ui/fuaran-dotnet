@@ -251,8 +251,9 @@ DisplayKind =
 | LabelValueRow { label:TextSource; value:Binding_float; emphasis?:bool; format?:CellFormat; help?:TextSource }
 | Fact { label:TextSource; value:TextSource; emphasis?:bool; help?:TextSource; icon?:str; tone?:ToneVariant }
 | Link { download:bool; href:Binding_str; label:TextSource; protection?:"email"; rel?:str; target?:str }
-| Image { alt:TextSource; src:Binding_str; variant:"Default"|"Avatar"|"Rounded"; aspectRatio?:"Natural"|"Square"|"FourThree"|"ThreeTwo"|"SixteenNine"; caption?:TextSource; expandable?:bool; fit?:"Natural"|"Cover"|"Contain"; loading?:"Eager"|"Lazy"; srcSet?:SrcSetEntry[] }
+| Image { alt:TextSource; src:Binding_str; variant:"Default"|"Avatar"|"Rounded"; aspectRatio?:ImageAspect; caption?:TextSource; expandable?:bool; fit?:"Natural"|"Cover"|"Contain"; loading?:"Eager"|"Lazy"; srcSet?:SrcSetEntry[] }
 | Media { kind:MediaKind; label:TextSource; src:Binding_str; controls?:bool; loop?:bool; tracks?:TrackEntry[]; transcript?:TextSource }
+| Embed { src:Binding_str; title:TextSource; aspectRatio?:ImageAspect; permissions?:("AllowScripts"|"AllowSameOrigin"|"AllowForms"|"AllowFullscreen")[] }
 | List { items:TextSource[]; ordered:bool }
 | Toast { message:TextSource; open:Binding_bool; dismissable?:bool; tone?:ToneVariant }
 | CodeBlock { code:str; copyable:bool; highlightLines:int[]; language:str; lineNumbers:bool }
@@ -552,6 +553,7 @@ DateVariant = "Date"|"Time"|"DateTime"
 DurationStyle = "Compact"|"Clock"|"Long"
 DurationUnit = "Seconds"|"Minutes"|"Hours"
 Emphasis = "Quiet"|"Normal"|"Loud"
+ImageAspect = "Natural"|"Square"|"FourThree"|"ThreeTwo"|"SixteenNine"
 Orientation = "Vertical"|"Horizontal"
 RelativeTimeUnit = "Second"|"Minute"|"Hour"|"Day"|"Week"|"Month"|"Year"
 StyleWeight = "Compact"|"Standard"|"Spacious"

@@ -89,6 +89,15 @@
         "SixteenNine"
       ]
     },
+    "EmbedPermission": {
+      "type": "string",
+      "enum": [
+        "AllowScripts",
+        "AllowSameOrigin",
+        "AllowForms",
+        "AllowFullscreen"
+      ]
+    },
     "ImageLoading": {
       "type": "string",
       "enum": [
@@ -4585,6 +4594,30 @@
         }
       ]
     },
+    "EmbedSpec": {
+      "type": "object",
+      "properties": {
+        "aspectRatio": {
+          "$ref": "#/$defs/ImageAspect"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EmbedPermission"
+          }
+        },
+        "src": {
+          "$ref": "#/$defs/Binding_str"
+        },
+        "title": {
+          "$ref": "#/$defs/TextSource"
+        }
+      },
+      "required": [
+        "src",
+        "title"
+      ]
+    },
     "ListSpec": {
       "type": "object",
       "properties": {
@@ -5786,6 +5819,24 @@
             },
             {
               "$ref": "#/$defs/MediaSpec"
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "type": "object",
+              "properties": {
+                "$type": {
+                  "const": "Embed"
+                }
+              },
+              "required": [
+                "$type"
+              ]
+            },
+            {
+              "$ref": "#/$defs/EmbedSpec"
             }
           ]
         },

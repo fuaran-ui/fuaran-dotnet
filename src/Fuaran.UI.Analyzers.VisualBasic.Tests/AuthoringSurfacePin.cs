@@ -143,6 +143,7 @@ internal static class AuthoringSurfacePin
         ["Mount.capabilities"] = "narrowed — a comma-separated string authoring a list<str>",
         ["Custom.exposed-node-ids"] = "narrowed — a comma-separated string authoring a list<str>",
         ["FileUpload.accept"] = "narrowed — a comma-separated string authoring a list<str>",
+        ["Embed.permissions"] = "narrowed — a pipe-separated string authoring a list<EmbedPermission> (Phase 1111)",
     };
 
     /// <summary>Wire kinds with NO row in the attribute table, with why. An

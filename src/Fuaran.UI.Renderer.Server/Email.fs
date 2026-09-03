@@ -109,6 +109,10 @@ let scope: (string * Disposition) list =
 
       "Drawing", Disposition.OpenLive "inline SVG, for the same reason as Chart"
 
+      "Embed",
+      Disposition.OpenLive
+          "a third-party browsing context. Every mainstream client strips `<iframe>` outright, so there is no degraded projection to attempt - and unlike a media element there is not even a poster frame to reach for, because the framed document has never been fetched. The mandatory title is the link text, which is exactly what it was written to be"
+
       "ErrorBoundary", Disposition.Structural "the protected child renders; the fallback is a client-runtime path"
 
       "Fact", Disposition.Rendered "a label/value tile with its optional help text"
@@ -1088,6 +1092,16 @@ and private renderKind
             match text spec.Label with
             | "" -> surface
             | label -> label
+        )
+    // Phase 1111 — the embed. Every mainstream client strips `<iframe>`, so the
+    // frame CANNOT be projected and the open-live link is the only honest
+    // rendering; the node's mandatory `Title` is the link text, which is
+    // precisely a sentence describing what the frame shows.
+    | NodeKind.Embed spec ->
+        live (
+            match text spec.Title with
+            | "" -> "Embedded view"
+            | title -> title
         )
     | NodeKind.Sparkline _ -> live "Trend"
     | NodeKind.Drawing _ -> live "Diagram"

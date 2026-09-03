@@ -138,6 +138,12 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     // advertising them here would promise a field-level edit that answers
     // "not yet" — the same restraint `Image` shows by omitting `Src`.
     | NodeKind.Media _ -> [ "Label"; "Controls"; "Loop" ]
+    // Phase 1111 — one field. `Src`, `AspectRatio` and `Permissions` are all
+    // `NotSupportedYet` in `updateEmbed`, so advertising them would promise an
+    // edit that answers "not yet"; `Permissions` would additionally advertise a
+    // field-level route into a sandbox relaxation, which is not a route this
+    // surface should offer at all.
+    | NodeKind.Embed _ -> [ "Title" ]
     | NodeKind.List _ -> [ "Items"; "Ordered" ]
     | NodeKind.Toast _ -> [ "Message"; "Tone"; "Dismissable" ]
     | NodeKind.CodeBlock _ -> [ "Code"; "Language"; "LineNumbers"; "HighlightLines"; "Copyable" ]

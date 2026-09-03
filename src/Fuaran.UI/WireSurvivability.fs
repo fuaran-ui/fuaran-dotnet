@@ -108,6 +108,7 @@ let all: Classification list =
       sv "NodeKind.Link"
       sv "NodeKind.Image"
       sv "NodeKind.Media" // Phase 1076 — scalars + Bindings, no closure slot
+      sv "NodeKind.Embed" // Phase 1111 — two Bindings + two closed enums, no closure slot
       sv "NodeKind.List"
       sv "NodeKind.Toast"
       sv "NodeKind.CodeBlock"

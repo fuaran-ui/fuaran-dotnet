@@ -383,4 +383,109 @@ let egressRenderTests =
               Expect.isTrue (contains "href=\"about:blank\"" html) "the floor still collapses it to bare about:blank"
 
               Expect.isFalse (contains Sanitize.egressRefusalAttribute html) "and attaches no policy-refusal marker"
+          }
+
+          // ─── Phase 1111 ─ the `embed` class ──────────────────────────────────
+
+          test "an embed under the DEFAULT policy is refused, and drops the src rather than neutering it" {
+              let html =
+                  Render.render BindingResolver.empty (Fuaran.embed "e" undeclared "A third-party page")
+
+              Expect.isFalse
+                  (contains "SECRETVALUE" html)
+                  "the undeclared destination is never emitted — and the query string, which is where an exfiltrated payload would sit, appears nowhere"
+
+              Expect.isFalse
+                  (contains "src=" html)
+                  "and the attribute is DROPPED — an iframe at the refusal URL would RENDER that page, where one with no src is an empty frame that fetches nothing"
+
+              Expect.isFalse
+                  (contains Sanitize.egressRefusalUrl html)
+                  "so the refusal URL never appears in an embed's markup at all"
+
+              Expect.isTrue (contains "embed:collector.example" html) "the marker names the EMBED class and the host"
+          }
+
+          test "ALLOW twin — an origin declared for `embed` renders untouched" {
+              let policy =
+                  Sanitize.denyNonLocalEgress
+                  |> Sanitize.allowOrigin (Sanitize.ExactHost "player.example") [ Sanitize.EgressClass.Embed ]
+
+              let html =
+                  Render.renderWithEgress
+                      policy
+                      Registry.empty
+                      BindingResolver.empty
+                      (Fuaran.embed "e" "https://player.example/embed/harbour" "Harbour restoration")
+
+              Expect.isTrue
+                  (contains "src=\"https://player.example/embed/harbour\"" html)
+                  "a declared origin is emitted"
+
+              Expect.isFalse (contains Sanitize.egressRefusalAttribute html) "and carries no refusal marker"
+          }
+
+          test "`embed` is its OWN class — declaring Media does not admit an embed" {
+              // The whole reason the class was minted rather than reused. A
+              // composition that declared a CDN for image egress has said nothing
+              // about which DOCUMENTS it is willing to run, and a class that
+              // conflated the two would let the first declaration answer the second
+              // question.
+              let policy =
+                  Sanitize.denyNonLocalEgress
+                  |> Sanitize.allowOrigin (Sanitize.ExactHost "player.example") [ Sanitize.EgressClass.Media ]
+
+              let html =
+                  Render.renderWithEgress
+                      policy
+                      Registry.empty
+                      BindingResolver.empty
+                      (Fuaran.embed "e" "https://player.example/embed/harbour" "Harbour restoration")
+
+              Expect.isFalse (contains "src=" html) "declared for Media does not admit an Embed"
+              Expect.isTrue (contains "embed:player.example" html) "and the marker says which class refused it"
+          }
+
+          test "the embed SCHEME floor is stricter than §19, and runs BEFORE policy" {
+              // `http` and a relative reference are both refused even where the
+              // origin IS declared — which is what tells this class apart from the
+              // ordinary URL floor, where both are perfectly acceptable.
+              let policy =
+                  Sanitize.denyNonLocalEgress
+                  |> Sanitize.allowOrigin (Sanitize.ExactHost "player.example") [ Sanitize.EgressClass.Embed ]
+
+              let insecure =
+                  Render.renderWithEgress
+                      policy
+                      Registry.empty
+                      BindingResolver.empty
+                      (Fuaran.embed "e1" "http://player.example/embed/harbour" "Harbour restoration")
+
+              Expect.isFalse (contains "src=" insecure) "http is refused even at a declared origin"
+
+              Expect.isTrue
+                  (contains "embed:unsafe-url" insecure)
+                  "and the marker attributes it to the SCHEME floor, not the policy"
+
+              let relative =
+                  Render.renderWithEgress
+                      policy
+                      Registry.empty
+                      BindingResolver.empty
+                      (Fuaran.embed "e2" "/local/player.html" "A local page")
+
+              Expect.isFalse
+                  (contains "src=" relative)
+                  "a same-origin relative reference is refused too — it is exactly where AllowSameOrigin plus AllowScripts lets the framed document unsandbox itself"
+
+              // The go-red twin: the same policy DOES admit https, so the two
+              // refusals above are the floor working rather than everything failing.
+              let secure =
+                  Render.renderWithEgress
+                      policy
+                      Registry.empty
+                      BindingResolver.empty
+                      (Fuaran.embed "e3" "https://player.example/embed/harbour" "Harbour restoration")
+
+              Expect.isTrue (contains "src=" secure) "https at the same declared origin still renders"
           } ]

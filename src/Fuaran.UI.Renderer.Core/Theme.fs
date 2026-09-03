@@ -76,7 +76,7 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // now sees two classes the renderer has always emitted and the reference sheet
 // has always styled. The enumeration got MORE accurate; the digest over it
 // therefore moved.
-let vocabularyFingerprint = "fv1:e53ff9baff6fc36f"
+let vocabularyFingerprint = "fv1:8ec8768b446a6b34"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
@@ -300,6 +300,7 @@ let kindClass (kind: NodeKind<'Msg>) : string =
     | NodeKind.Icon(_) -> "fuaran-kind-icon"
     | NodeKind.Image(_) -> "fuaran-kind-image"
     | NodeKind.Media(_) -> "fuaran-kind-media"
+    | NodeKind.Embed(_) -> "fuaran-kind-embed"
     | NodeKind.List(_) -> "fuaran-kind-list"
     | NodeKind.Toast(_) -> "fuaran-kind-toast"
     | NodeKind.CodeBlock(_) -> "fuaran-kind-code-block"

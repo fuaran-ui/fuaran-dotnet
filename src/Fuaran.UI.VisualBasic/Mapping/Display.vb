@@ -124,6 +124,20 @@ Friend Module DisplayMapping
                     .Transcript = OptText(el, "transcript"),
                     .Tracks = MediaTracks(el)}))
 
+        ' Phase 1111 - the sandboxed third-party embed. `permissions` is a
+        ' pipe-separated list of relaxation names, the <Mount> `capabilities`
+        ' shape: a list of bare tokens does not earn a child element. Absent, the
+        ' frame is fully sandboxed, which is the whole design of the slot - an
+        ' author who writes no `permissions` gets total denial rather than a
+        ' default somebody chose.
+        d("Embed") = Function(el) Csharp.Fuaran.Embed(
+            New Csharp.EmbedOptions With {
+                .Id = Attr(el, "id"),
+                .Src = AsStringBinding(Attr(el, "src")),
+                .Title = AsText(Attr(el, "title")),
+                .AspectRatio = AsEnum(Of Csharp.ImageAspect)(Attr(el, "aspect-ratio"), Csharp.ImageAspect.Natural),
+                .Permissions = EmbedPermissions(el)})
+
         d("List") = Function(el) Csharp.Fuaran.List(
             New Csharp.ListOptions With {.Id = Attr(el, "id"), .Items = ChildTexts(el, "Item"), .Ordered = AttrBool(el, "ordered")})
 
@@ -178,6 +192,22 @@ Friend Module DisplayMapping
     ''' than the wire's camelCase &lt;c&gt;srcLang&lt;/c&gt;: this dialect is authored by people
     ''' who know the element, and the analyzer's attribute table carries the same
     ''' spelling.&lt;/summary&gt;
+    ''' <summary>Phase 1111 - the pipe-separated permissions attribute of an
+    ''' &lt;Embed&gt;, lowered onto the closed enum.
+    '''
+    ''' Blank tokens are dropped BEFORE the enum parse rather than after, and the
+    ''' ordering is load-bearing rather than tidy: AsEnum returns its DEFAULT on an
+    ''' empty string, so a stray double separator would otherwise GRANT a permission
+    ''' the author never wrote. With the filter first the default is unreachable and
+    ''' every surviving token either names a relaxation or throws.</summary>
+    Private Function EmbedPermissions(el As XElement) As IReadOnlyList(Of Csharp.EmbedPermission)
+        Return PipeList(Attr(el, "permissions")).
+            Select(Function(p) p.Trim()).
+            Where(Function(p) p.Length > 0).
+            Select(Function(p) AsEnum(Of Csharp.EmbedPermission)(p, Csharp.EmbedPermission.AllowScripts)).
+            ToList()
+    End Function
+
     Private Function MediaTracks(el As XElement) As IReadOnlyList(Of Csharp.TrackEntry)
         Return ChildElements(el, "Track").
             Select(Function(c) New Csharp.TrackEntry(

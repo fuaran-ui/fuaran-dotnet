@@ -180,6 +180,10 @@ let private ownContentLength (kind: NodeKind<'Msg>) : int =
     | NodeKind.Image s -> textSourceLength s.Alt
     // Phase 1076 — the accessible label is this node's own text content.
     | NodeKind.Media s -> textSourceLength s.Label
+    // Phase 1111 — the frame's accessible title is this node's own text content.
+    // The embedded DOCUMENT's content is not ours to measure and never reaches
+    // this host at all.
+    | NodeKind.Embed s -> textSourceLength s.Title
     | NodeKind.List s -> s.Items |> List.sumBy textSourceLength
     | NodeKind.Toast s -> textSourceLength s.Message
     | NodeKind.CodeBlock s -> String.length s.Code
@@ -203,7 +207,13 @@ let roleOf (kind: NodeKind<'Msg>) : StructuralRole =
     | NodeKind.Metric _
     | NodeKind.Sparkline _ -> StructuralRole.DataView
     | NodeKind.Image _
-    | NodeKind.Media _ -> StructuralRole.Media
+    | NodeKind.Media _
+    // Phase 1111 — an embed is embedded media by this taxonomy's own
+    // description of the role. It is NOT `Opaque`: `Custom` is opaque because
+    // its BODY is a host closure this skeleton cannot see, where an embed's
+    // structure is fully visible and it is the remote document that is out of
+    // reach — which is a fact about the network, not about the tree.
+    | NodeKind.Embed _ -> StructuralRole.Media
     | NodeKind.Custom _ -> StructuralRole.Opaque
     // Switch (Phase 392) is a structural control-flow primitive — it selects a
     // child subtree by state; the chosen child carries its own role. Mount (§4o)

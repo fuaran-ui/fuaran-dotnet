@@ -994,6 +994,30 @@ let private updateImage (field: string) (v: obj) (spec: ImageSpec) : UpdateResul
 /// inventing a spelling for "Video with these two slots" or silently resetting
 /// the video-only slots to their defaults on every switch — a whole-node
 /// `EditNode` says what the author means without either.
+/// Phase 1111 — the `Embed` field surface, and it is deliberately the SMALLEST
+/// in this module. `Title` is an ordinary coercible `TextSource` and takes
+/// `MediaSpec.Label`'s shape exactly.
+///
+/// The other three are all named rather than left to fall through, and each is
+/// `NotSupportedYet` for its own reason. `Src` is a `Binding` with no coercion
+/// from an untyped `obj`, the `ImageSpec.Src` disposition. `AspectRatio` is a
+/// closed enum whose coercion exists but whose edit is presentational rather
+/// than reactive, so it takes `Image.SrcSet`'s answer rather than a coercion
+/// nobody asked for. `Permissions` is a LIST OF SECURITY RELAXATIONS: coercing
+/// one out of an untyped `obj` is exactly the shape where a lenient parse widens
+/// a sandbox, so the answer is a whole-node `EditNode` where the author states
+/// the full set and the pre-emit validator sees it.
+let private updateEmbed (field: string) (v: obj) (spec: EmbedSpec) : UpdateResult<'Msg> =
+    match field with
+    | "Title" ->
+        match coerceField JsonDecode.Coerce.tryTextSource v with
+        | Ok x -> Updated(NodeKind.Embed { spec with Title = x })
+        | Error msg -> TypeMismatch msg
+    | "Src"
+    | "AspectRatio"
+    | "Permissions" -> NotSupportedYet
+    | _ -> UnknownField
+
 let private updateMedia (field: string) (v: obj) (spec: MediaSpec) : UpdateResult<'Msg> =
     let wrap f =
         match f v with
@@ -1275,6 +1299,7 @@ let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) 
     | NodeKind.Link spec -> updateLink field v spec
     | NodeKind.Image spec -> updateImage field v spec
     | NodeKind.Media spec -> updateMedia field v spec
+    | NodeKind.Embed spec -> updateEmbed field v spec
     | NodeKind.List spec -> updateList field v spec
     | NodeKind.Toast spec -> updateToast field v spec
     // The old justification here claimed the spec is "mostly literal

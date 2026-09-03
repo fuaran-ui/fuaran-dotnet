@@ -1391,6 +1391,79 @@ and private renderKind
                     @ trackChildren
                 )
             )
+    | NodeKind.Embed spec ->
+        // Phase 1111 — the sandboxed third-party embed. Four obligations live
+        // here, and every one of them is something the bytes cannot carry.
+        //
+        //   * SANDBOX BY DEFAULT. The `sandbox` attribute is emitted ALWAYS,
+        //     and with no permissions it is emitted EMPTY, which is the
+        //     maximally-restrictive value. Omitting it on a permissionless
+        //     embed would be the same markup as an unsandboxed frame, so the
+        //     attribute is unconditional rather than derived from the list
+        //     being non-empty.
+        //   * DECLARATION ORDER, DE-DUPLICATED. The wire preserves whatever
+        //     order the document authored (the `tracks` rule, not `srcSet`'s —
+        //     no re-sorting of a document's own list), so the DETERMINISM the
+        //     SSR output needs is established here instead: the tokens are
+        //     emitted in the enum's declaration order and each at most once, so
+        //     two documents naming the same set produce byte-identical markup.
+        //   * FULLSCREEN IS NOT A SANDBOX TOKEN. It is a permissions-policy
+        //     directive and rides the `allow` attribute, which is emitted only
+        //     when it was declared — an empty `allow` is not the same statement
+        //     as an absent one.
+        //   * A REFUSED SOURCE DROPS THE ATTRIBUTE ENTIRELY. Not the refusal
+        //     URL that `Link` and `Image` substitute: an `<iframe>` pointed at
+        //     `about:blank#…` renders that page, where a frame with no `src` is
+        //     a well-defined empty frame that fetches nothing. The marker
+        //     attribute still records the refusal, so the two facts stay apart.
+        let resolvedSrc =
+            BindingResolver.tryResolve ctx.Sources spec.Src |> Option.defaultValue ""
+
+        let safeSrc, egressAttrs =
+            Sanitize.sanitizeEmbedSrcForEgress ctx.EgressPolicy resolvedSrc
+
+        let aspectClass =
+            match spec.AspectRatio with
+            | ImageAspect.Natural -> ""
+            | ImageAspect.Square -> " fuaran-embed-aspect-square"
+            | ImageAspect.FourThree -> " fuaran-embed-aspect-four-three"
+            | ImageAspect.ThreeTwo -> " fuaran-embed-aspect-three-two"
+            | ImageAspect.SixteenNine -> " fuaran-embed-aspect-sixteen-nine"
+
+        let has p = List.contains p spec.Permissions
+
+        let sandboxTokens =
+            [ if has EmbedPermission.AllowScripts then
+                  "allow-scripts"
+              if has EmbedPermission.AllowSameOrigin then
+                  "allow-same-origin"
+              if has EmbedPermission.AllowForms then
+                  "allow-forms" ]
+
+        Html.iframe (
+            [ prop.className ("fuaran-embed" + aspectClass)
+              prop.title (renderText ctx spec.Title)
+              prop.custom ("sandbox", String.concat " " sandboxTokens)
+              // Always lazy, and there is deliberately no slot to say otherwise:
+              // a third-party document is the one subresource whose fetch is
+              // never worth doing before the reader has scrolled to it.
+              prop.custom ("loading", "lazy")
+              // Conservative, but NOT `no-referrer`: several ubiquitous embed
+              // providers restrict playback by referring domain, so stripping
+              // the header outright breaks a legitimate embed. Sending the
+              // origin and nothing else satisfies them while leaking no path
+              // and no query.
+              prop.custom ("referrerpolicy", "strict-origin-when-cross-origin") ]
+            @ (match safeSrc with
+               | Some s -> [ prop.src s ]
+               | None -> [])
+            @ (if has EmbedPermission.AllowFullscreen then
+                   [ prop.custom ("allow", "fullscreen") ]
+               else
+                   [])
+            @ toProps semanticAttrs
+            @ toProps egressAttrs
+        )
     | NodeKind.List spec ->
         let items =
             spec.Items

@@ -984,6 +984,10 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
                     | MediaKind.Audio -> []
 
                 usesOfBinding m.Src @ usesOfText m.Label @ kindUses, []
+            // Phase 1111 — two reactive slots, both on the spec: the document
+            // URL and the frame's accessible name. `Permissions` and
+            // `AspectRatio` are closed enums, never bindings.
+            | NodeKind.Embed e -> usesOfBinding e.Src @ usesOfText e.Title, []
             | NodeKind.List l -> l.Items |> List.collect usesOfText, []
             | NodeKind.Toast t ->
                 noteWriteBack (writeBackTargetOf t.Open)

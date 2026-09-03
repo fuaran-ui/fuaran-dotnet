@@ -193,6 +193,23 @@ public static partial class Fuaran
         Fs.List((tracks ?? Enumerable.Empty<TrackEntry>())
             .Select(t => new FsGen.TrackEntry(t.Default, t.Kind.ToFs(), t.Label.Inner, t.Src.Inner, t.SrcLang)));
 
+    /// <summary>A sandboxed third-party embed. The frame is fully sandboxed unless the
+    /// options declare a relaxation by name, the title is mandatory (a frame with no
+    /// accessible name is announced as "frame" and nothing else), and the source must be
+    /// <c>https</c> — the embed egress class admits no other scheme and no relative
+    /// reference, and a refused source omits the attribute rather than pointing the frame
+    /// somewhere else.</summary>
+    public static FuaranNode Embed(EmbedOptions options) =>
+        new(FsFactory.embedSpec<object>(
+            options.Id,
+            // Generated EmbedSpec ctor is Generated.fs declaration order
+            // (AspectRatio, Permissions, Src, Title).
+            new FsGen.EmbedSpec(
+                options.AspectRatio.ToFs(),
+                Fs.List((options.Permissions ?? Enumerable.Empty<EmbedPermission>()).Select(p => p.ToFs())),
+                options.Src.Inner,
+                options.Title.Inner)));
+
     /// <summary>A structured item list.</summary>
     public static FuaranNode List(ListOptions options) =>
         new(FsFactory.listSpec<object>(
@@ -559,6 +576,38 @@ public sealed record AudioOptions
     /// recording with no visual channel has nowhere else to put its words, so where a
     /// video can be served by captions an audio surface usually cannot.</summary>
     public Text? Transcript { get; init; }
+}
+
+/// <summary>Options for <see cref="Fuaran.Embed"/>.</summary>
+public sealed record EmbedOptions
+{
+    /// <summary>The node id.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The document to embed (bound or literal). It passes the <c>embed</c>
+    /// egress class, which admits <c>https</c> and nothing else — not <c>http</c>, and
+    /// not a relative reference, because a same-origin frame is exactly where
+    /// <see cref="EmbedPermission.AllowSameOrigin"/> plus
+    /// <see cref="EmbedPermission.AllowScripts"/> lets the framed document remove its own
+    /// sandbox. A refused source omits the attribute entirely.</summary>
+    public required Binding<string> Src { get; init; }
+
+    /// <summary>The frame's accessible name, emitted as <c>title</c>. Mandatory, and for
+    /// the same reason a media label is: a frame is a focus container a reader tabs into,
+    /// so there is no decorative case, and an unnamed one is announced as "frame" and
+    /// nothing more. FUARAN114 refuses the empty literal.</summary>
+    public required Text Title { get; init; }
+
+    /// <summary>The box the frame reserves. <c>Natural</c> (the default) reserves none
+    /// and leaves the sizing to the host stylesheet. The vocabulary is the image one
+    /// because a ratio is a ratio; the emitted CLASSES are the embed's own.</summary>
+    public ImageAspect AspectRatio { get; init; } = ImageAspect.Natural;
+
+    /// <summary>The relaxations granted to the framed document. Empty (the default) is
+    /// TOTAL DENIAL — the frame is emitted with an empty sandbox declaration, which is
+    /// the maximally-restrictive value. Every relaxation is something declared by name;
+    /// nothing is granted by omission.</summary>
+    public IEnumerable<EmbedPermission>? Permissions { get; init; }
 }
 
 /// <summary>One timed-text track of a media surface.</summary>
