@@ -163,3 +163,36 @@ let measureClassVocabulary (s: Scenario) (count: int) : float * float =
                 + (Ids.tab "render-root" i).Length
 
         acc)
+
+// ─── Fragment expansion (Phase 1151) ───────────────────────────────────────
+//
+//  The fourth render-spine family, and the one this harness exists to make
+//  visible: a `FragmentRef` expands by deep-copying the whole fragment body with
+//  every interior id rewritten, and before Phase 1151 that copy was paid again
+//  on every render of every ref. The memo is OUTPUT-IDENTICAL, so nothing in the
+//  test suite can see it removed and nothing but a number can see it made
+//  expensive — which is exactly the gap the Phase 201 gate is for.
+//
+//  Both sides are measured against the SAME tree and the SAME prefix, so the
+//  pair reads as a before/after on one line: `uncached` is the walk as it stood
+//  after Phase 207, `memo` is the same walk through the cache. Per the estate's
+//  pre-publication framing these are absolute numbers for a gate to hold, not a
+//  regression assertion this phase makes.
+
+/// A fragment body at the scenario's size — the subtree an expansion copies.
+let private fragmentBody (s: Scenario) : Node<unit> = mkTree (s.NodeCount - 1)
+
+/// The uncached expansion: the id-rewriting walk itself, once per call. This is
+/// what a re-render paid per ref before the memo.
+let measureFragmentExpansionUncached (s: Scenario) (count: int) : float * float =
+    let b = fragmentBody s
+    measureOp count (fun () -> (Render.expandFragmentUncached "ref1." b).Id.Length)
+
+/// The memoised expansion: the same call through the process-global cache, with
+/// the body instance and prefix stable across calls — the reactive-re-render
+/// case, where a tree held in state is re-rendered against the same body. The
+/// cache is cleared first so the first call is an honest miss.
+let measureFragmentExpansionMemo (s: Scenario) (count: int) : float * float =
+    let b = fragmentBody s
+    FragmentExpansion.clear ()
+    measureOp count (fun () -> (Render.expandFragment "ref1." b).Id.Length)

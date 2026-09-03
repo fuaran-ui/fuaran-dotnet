@@ -293,6 +293,14 @@
          Separate from FormFieldWriteBackTests, which pins the dispatch given a
          payload; this pins the payload CONSTRUCTION. -->
     <Compile Include="FormFieldWriteBackHarnessTests.fs" />
+    <!-- Phase 1151 — the fragment-expansion memo's soundness proof. Two parts
+         with different falsifiers: the primitive on a PRIVATE cache (exact
+         hit/miss accounting, body-instance keying, bound, concurrent access),
+         because the process-global cache is shared with every other test here
+         that renders a FragmentRef; and the routing on the global path, with a
+         source-shape guard + its go-red proof, because a memo is
+         output-identical and no behavioural test can see it reverted. -->
+    <Compile Include="FragmentExpansionMemoTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
