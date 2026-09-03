@@ -1,4 +1,4 @@
-module Fuaran.UI.Ops.Introspect
+﻿module Fuaran.UI.Ops.Introspect
 
 // ============================================================================
 //  Fuaran tree-op apply engine — reflection-free shape helpers.
@@ -106,7 +106,7 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     // `Children` is advertised but not UpdateProp-settable anywhere: it is
     // the structural ops' surface (getChildren / withChildren below), and
     // the NotSupportedYet hint names them. That is a signpost, not a lie.
-    | NodeKind.Modal _ -> [ "Heading"; "Dismissable"; "Children" ]
+    | NodeKind.Modal _ -> [ "Heading"; "Dismissable"; "Modality"; "Anchor"; "Children" ]
     | NodeKind.ScrollArea _ -> [ "Orientation"; "MaxHeight"; "MaxWidth"; "Children" ]
     // -- Display --
     | NodeKind.Heading _ -> [ "Level"; "Text"; "Variant" ]

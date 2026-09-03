@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -87,6 +87,7 @@
     <Compile Include="LocalBindings.fs" />
     <Compile Include="ComboboxControl.fs" />
     <Compile Include="FileUploadDrop.fs" />
+    <Compile Include="PopoverSurface.fs" />
     <Compile Include="Render.fs" />
     <Compile Include="Hydration.fs" />
     <Compile Include="MathEnhance.fs" />

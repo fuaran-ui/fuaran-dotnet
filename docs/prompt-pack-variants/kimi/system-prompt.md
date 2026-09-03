@@ -236,7 +236,7 @@ LayoutKind =
 | Stepper { activeStep:Binding_int; children:Node[] }
 | SummaryList { children:Node[]; heading?:TextSource }
 | Disclosure { children:Node[]; defaultOpen:bool; heading:TextSource; open:Binding_bool }
-| Modal { children:Node[]; dismissable:bool; open:Binding_bool; heading?:TextSource; onDismiss?:Action }
+| Modal { children:Node[]; dismissable:bool; open:Binding_bool; anchor?:str; heading?:TextSource; modality?:"Modal"|"Popover"; onDismiss?:Action }
 | ScrollArea { children:Node[]; orientation:"Vertical"|"Horizontal"|"Both"; maxHeight?:int; maxWidth?:int }
 DisplayKind =
 | Heading { level:int; text:TextSource; variant:"Standard"|"Eyebrow"|"Caption"|"Lead" }

@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -472,7 +472,7 @@
          is a relay-profile advance, and a reader adopting THAT number should not
          discover a wire-vocabulary addition inside it. See STABILITY.md "Recorded
          change - 0.54.0, `FileUpload` drop target and paste ingestion". -->
-    <Version>0.54.0</Version>
+    <Version>0.55.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

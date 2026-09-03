@@ -1,4 +1,4 @@
-module Fuaran.UI.PreEmitValidate
+﻿module Fuaran.UI.PreEmitValidate
 
 // ============================================================================
 //  Pre-emit tree-invariant checks for AI authors + human developers.
@@ -767,6 +767,49 @@ type PreEmitDefect =
     /// Carries the node's id and the gesture(s) declared.
     | UploadGestureWithoutHandler of nodeId: string * gestures: string
 
+    /// **FUARAN122 (Warning)**. A `Modal` node whose `Modality` is `Popover` and
+    /// which is not anchored (Phase 1119) — either it declares no `Anchor` at
+    /// all, or the `Anchor` names an id this tree does not carry.
+    ///
+    /// The two shapes are ONE defect because they have one consequence and one
+    /// remedy: the renderer has no element to position against, so the popover
+    /// leaves it in the document flow wherever the node sits — the static floor,
+    /// and not the anchored surface the document asked for. The payload says
+    /// which shape it is (`None` = undeclared, `Some id` =
+    /// declared and dangling) so the message can name a typo when there is one,
+    /// on `DanglingAccessibilityReference`'s precedent of one code carrying a
+    /// discriminating slot.
+    ///
+    /// Judged against the SAME node universe as the dangling-`Selection` and
+    /// dangling-accessibility-reference checks, so "a node in this tree" means
+    /// one thing in this module — including where a walk does not cross (a
+    /// `Mount` guest's interior is a separate id space, and an anchor into one
+    /// is genuinely unreachable from the host tree).
+    ///
+    /// **Warning, not Error, and the split is the point.** A popover with a
+    /// nonexistent anchor is a perfectly well-formed document: it decodes on
+    /// every host, and no per-node decoder could judge it, because whether an id
+    /// resolves is a fact about the WHOLE tree. Refusing it at decode would make
+    /// a valid document unreadable to say something a validator says better.
+    ///
+    /// Carries the node's id and the declared anchor, if any.
+    | PopoverWithoutAnchor of nodeId: string * declaredAnchor: string option
+
+    /// **FUARAN123 (Warning)**. A `Modal` node with `Modality = Modal` carrying
+    /// an `Anchor` (Phase 1119) — a dead declaration.
+    ///
+    /// Nothing reads it: a blocking dialog is positioned by the scrim, not by an
+    /// element, so the id rides the wire, survives every round trip, and changes
+    /// nothing on any host. The likely author intent is a popover, and saying so
+    /// is the whole value of the rule — the alternative is a document that looks
+    /// anchored, is not, and reports nothing.
+    ///
+    /// **Warning, not Error**: the declaration is inert, not harmful, and a tree
+    /// mid-edit between the two modalities is an ordinary authoring step.
+    ///
+    /// Carries the node's id and the dead anchor.
+    | AnchorOnBlockingModal of nodeId: string * anchor: string
+
     // ── The accessibility family (FUARAN109/110/111, Phase 727) ──────────────
     //
     // Until this family landed the runtime validator carried NO accessibility
@@ -1333,6 +1376,26 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "file upload '%s' declares %s and carries no onSelect handler — the gesture is invited and consumes nothing. A picker at least leaves the chosen filename in the user agent's own chrome; a dropped or pasted file disappears on release with no feedback at all, so the reader is told the upload worked and it did not. Wire onSelect, or drop the gesture declaration until it is wired"
             nodeId
             gestures
+    | PreEmitDefect.PopoverWithoutAnchor(nodeId, declaredAnchor) ->
+        "FUARAN122",
+        DefectSeverity.Warning,
+        (match declaredAnchor with
+         | None ->
+             sprintf
+                 "popover '%s' declares no anchor — a Popover is positioned against the node it was opened from, and with nothing to position against the renderer leaves it in the document flow wherever the node happens to sit, which is the static floor and not the surface you asked for. Set anchor to the id of the control that opens it, or use modality Modal if a blocking dialog is what you meant"
+                 nodeId
+         | Some target ->
+             sprintf
+                 "popover '%s' declares anchor = '%s', which is not a node in this tree — the anchor resolves to no element, so the popover is left in the document flow exactly as an undeclared one is, and the declaration reads as honoured when it was not. Point it at a node that exists (a dangling anchor is usually a typo or a node that has since moved), or drop the declaration and use modality Modal if a blocking dialog is what you meant"
+                 nodeId
+                 target)
+    | PreEmitDefect.AnchorOnBlockingModal(nodeId, anchor) ->
+        "FUARAN123",
+        DefectSeverity.Warning,
+        sprintf
+            "modal '%s' declares anchor = '%s' while its modality is Modal — a dead declaration. A blocking dialog is positioned by its scrim and not by an element, so the id rides the wire, survives every round trip and changes nothing on any host. Set modality to Popover if an anchored surface is what you meant, or drop the anchor"
+            nodeId
+            anchor
     | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ->
         "FUARAN109",
         DefectSeverity.Warning,
@@ -1771,6 +1834,11 @@ let private validateCore
     // reason FUARAN070's dangling `Selection` is: "names a node in this tree"
     // is only answerable once the whole tree has been seen.
     let accessibilityRefUses = ResizeArray<string * string * string>()
+    // Phase 1119 (FUARAN122) — (popoverNodeId, declaredAnchor) per `Popover`
+    // whose anchor must be resolved against the whole tree. Collected here and
+    // judged post-walk for the same reason the accessibility references are:
+    // whether an id exists is not a per-node fact.
+    let popoverAnchorUses = ResizeArray<string * string>()
 
     let recordNodeId (raw: string) =
         if raw = "" then
@@ -1920,6 +1988,16 @@ let private validateCore
 
             if spec.Dismissable && spec.OnDismiss.IsNone && not (isWriteBackTarget spec.Open) then
                 defects.Add(PreEmitDefect.InertControl(nodeIdStr, "Modal"))
+
+            // FUARAN122 / FUARAN123 (Phase 1119) — the anchor declaration read
+            // against the modality. An UNDECLARED anchor on a popover is
+            // answerable here; a DECLARED one is deferred to the post-walk pass,
+            // where the tree's whole id universe is known.
+            (match spec.Modality, spec.Anchor with
+             | ModalityKind.Popover, None -> defects.Add(PreEmitDefect.PopoverWithoutAnchor(nodeIdStr, None))
+             | ModalityKind.Popover, Some target -> popoverAnchorUses.Add(nodeIdStr, target)
+             | ModalityKind.Modal, Some target -> defects.Add(PreEmitDefect.AnchorOnBlockingModal(nodeIdStr, target))
+             | ModalityKind.Modal, None -> ())
 
             spec.Children |> List.iter walk
         | NodeKind.ScrollArea spec -> spec.Children |> List.iter walk
@@ -2513,6 +2591,17 @@ let private validateCore
     for (readerId, slot, target) in accessibilityRefUses do
         if not (Map.containsKey target facts.Nodes) then
             defects.Add(PreEmitDefect.DanglingAccessibilityReference(readerId, slot, target))
+
+    // FUARAN122 (Phase 1119) — a popover anchored at an id the tree does not
+    // carry. Judged against `facts.Nodes`, the same node universe the two checks
+    // above use, so an anchor and an `aria-describedby` agree about what "a node
+    // in this tree" means. This is the half a decoder structurally cannot do:
+    // `ModalSpec.anchor` admits any string on the wire precisely because
+    // resolving it is a whole-tree question, and that split is recorded in the
+    // decoder beside the field.
+    for (popoverId, target) in popoverAnchorUses do
+        if not (Map.containsKey target facts.Nodes) then
+            defects.Add(PreEmitDefect.PopoverWithoutAnchor(popoverId, Some target))
 
     // FUARAN072 / FUARAN073: every wire-survivable `Action.Call` either
     // dispatches through a closure, or lands its response where a reader

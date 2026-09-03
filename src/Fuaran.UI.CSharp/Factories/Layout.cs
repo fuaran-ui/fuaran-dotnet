@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
 using FsGen = Fuaran.UI.Generated;
@@ -103,7 +103,12 @@ public static partial class Fuaran
                 options.Dismissable,
                 options.OnDismiss is { } d ? Fs.Some(d.Inner) : Fs.None<FsAction>(),
                 (options.Open ?? false).Inner,
-                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>())));
+                options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>(),
+                // Phase 1119: Modality defaults to Modal, which is the value the
+                // wire omits — so the shortest call still emits the pre-1119
+                // bytes, and a popover is asked for by name.
+                options.Modality.ToFs(),
+                options.Anchor is { } a ? Fs.Some(a) : Fs.None<string>())));
 
     /// <summary>An overflow / scroll container.</summary>
     public static FuaranNode ScrollArea(ScrollAreaOptions options) =>
@@ -224,6 +229,20 @@ public sealed record ModalOptions
     /// empty chain.
     /// </summary>
     public FuaranAction? OnDismiss { get; init; }
+
+    /// <summary>
+    /// Which overlay this is (Phase 1119; default <see cref="Modality.Modal"/>).
+    /// <see cref="Modality.Popover"/> drops the scrim, the focus trap and
+    /// <c>aria-modal</c>, and positions the surface against <see cref="Anchor"/>.
+    /// </summary>
+    public Modality Modality { get; init; } = Modality.Modal;
+
+    /// <summary>
+    /// The id of the node a <see cref="Modality.Popover"/> is positioned against
+    /// (Phase 1119). Meaningful for a popover only — set on a modal it is a dead
+    /// declaration the validator reports (FUARAN123).
+    /// </summary>
+    public string? Anchor { get; init; }
 
     /// <summary>The dialog content.</summary>
     public IEnumerable<FuaranNode>? Children { get; init; }

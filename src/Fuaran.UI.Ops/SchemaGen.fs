@@ -353,6 +353,9 @@ let private defs: (string * J) list =
       "EmbedPermission", enumDef [ "AllowScripts"; "AllowSameOrigin"; "AllowForms"; "AllowFullscreen" ]
       "ImageLoading", enumDef [ "Eager"; "Lazy" ]
       "ScrollOrientation", enumDef [ "Vertical"; "Horizontal"; "Both" ]
+      // Phase 1119 — which overlay a `Modal` node is. Omitted at `Modal`, so the
+      // member is NOT in `ModalSpec`'s required list.
+      "ModalityKind", enumDef [ "Modal"; "Popover" ]
       "DateVariant", enumDef [ "Date"; "Time"; "DateTime" ]
       // Phase 864 — both lower-case on the wire, the `LinkProtection` posture.
       "TextFormat", enumDef [ "email"; "url"; "tel" ]
@@ -1286,12 +1289,18 @@ let private defs: (string * J) list =
           // `onDismiss` is optional since Phase 426 (the control write-back
           // default) — a declarative modal omits it and the renderer writes
           // `false` to a writable `open` slot on dismiss.
+          //
+          // Phase 1119 — `modality` omits at `Modal` and `anchor` is optional, so
+          // neither joins the required set; a pre-1119 document validates against
+          // this schema unchanged.
           [ "children"; "dismissable"; "open" ]
           [ "children", arrayOf (ref "Node")
             "dismissable", boolean
             "onDismiss", ref "Action"
             "open", binding "bool"
-            "heading", ref "TextSource" ]
+            "heading", ref "TextSource"
+            "modality", ref "ModalityKind"
+            "anchor", str ]
 
       "ScrollAreaSpec",
       record

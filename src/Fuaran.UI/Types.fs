@@ -107,6 +107,26 @@ type ImageLoading = Generated.ImageLoading
 /// `Horizontal` → `overflow-x`, `Both` → both. The renderer maps each to a
 /// `fuaran-scrollarea-{axis}` class.
 type ScrollOrientation = Generated.ScrollOrientation
+
+/// WHICH overlay a `NodeKind.Modal` node is (Phase 1119). The axis is whether
+/// the surface BLOCKS the page, and it has exactly two answers:
+///
+/// - `Modal` — a blocking task surface. Scrim, focus trap, `aria-modal="true"`,
+///   dismissed only by the affordances the document declares. The default, and
+///   omitted on the wire, so every pre-1119 modal document keeps its bytes.
+/// - `Popover` — a transient anchored surface. No scrim, no focus trap, no
+///   `aria-modal`; positioned against `ModalSpec.Anchor` and light-dismissed by
+///   an outside click or `Escape`.
+///
+/// **The teaching line for the `Tooltip` ↔ `Popover` ↔ `Modal` cluster** — one
+/// sentence, because the three are chosen at emission time and a reader who has
+/// to weigh three paragraphs will pick by resemblance:
+///
+/// > A **hint** about something already on screen is the `Tooltip` trait. An
+/// > **anchored interactive surface** — one with controls in it, opened from
+/// > something the reader pointed at — is a `Popover`. A **blocking task** that
+/// > must be finished or abandoned before the page continues is a `Modal`.
+type ModalityKind = Generated.ModalityKind
 /// Temporal breadth for `FormFieldKind.Date` (Phase 288). Selects the native
 /// HTML control the renderer emits: `Date` → `<input type=date>`, `Time` →
 /// `<input type=time>`, `DateTime` → `<input type=datetime-local>`. The bound
@@ -858,6 +878,19 @@ and DisclosureSpec<'Msg> = Generated.DisclosureSpec<'Msg>
 /// has `false` written to that slot on dismiss (a decoded dismissable modal
 /// closes itself with zero host code). `Heading` is an optional dialog
 /// title; `Dismissable` toggles the close affordance.
+///
+/// **`Modality` (Phase 1119) selects WHICH overlay this is** — see
+/// `ModalityKind` for the `Tooltip` ↔ `Popover` ↔ `Modal` teaching line. It is
+/// omitted on the wire at `Modal`, so a document written before 1119 decodes to
+/// a blocking dialog exactly as it always did.
+///
+/// **`Anchor` is a NodeId and is meaningful for `Popover` only.** It names the
+/// node the popover is positioned against; nothing on the wire names a pixel,
+/// an edge or an offset — placement, flipping at viewport edges and the offset
+/// are renderer-owned and bounded, on the affordance→op charter's terms. A
+/// `Modal` carrying an `Anchor` is a DEAD declaration (FUARAN123) and a
+/// `Popover` without one is unanchored (FUARAN122); both are Warnings, because
+/// both decode and render, and neither is a wire defect.
 and ModalSpec<'Msg> = Generated.ModalSpec<'Msg>
 
 /// See `NodeKind.ScrollArea` (Phase 289). `Orientation` selects the scroll

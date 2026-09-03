@@ -116,6 +116,11 @@ type ButtonVariant =
     | Destructive
 
 [<RequireQualifiedAccess>]
+type ModalityKind =
+    | Modal
+    | Popover
+
+[<RequireQualifiedAccess>]
 type FileReadEncoding =
     | Text
     | Base64
@@ -959,6 +964,8 @@ and ModalSpec<'Msg> =
       OnDismiss: Action<'Msg> option
       Open: Binding<bool>
       Heading: TextSource option
+      Modality: ModalityKind
+      Anchor: string option
     }
 
 // Layout
@@ -1417,6 +1424,11 @@ let private encButtonVariant (v: ButtonVariant) : JVal =
     | ButtonVariant.Secondary -> JStr "Secondary"
     | ButtonVariant.Tertiary -> JStr "Tertiary"
     | ButtonVariant.Destructive -> JStr "Destructive"
+
+let private encModalityKind (v: ModalityKind) : JVal =
+    match v with
+    | ModalityKind.Modal -> JStr "Modal"
+    | ModalityKind.Popover -> JStr "Popover"
 
 let private encFileReadEncoding (v: FileReadEncoding) : JVal =
     match v with
@@ -1976,7 +1988,7 @@ and private encDisclosureSpec<'Msg> (s: DisclosureSpec<'Msg>) : JVal =
     Canon.typed "Disclosure" ([ Some("children", JArr(List.map encNode s.Children)); Some("defaultOpen", JBool s.DefaultOpen); Some("heading", encTextSource s.Heading); (s.OnToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")); Some("open", (encBinding JBool) s.Open) ] |> List.choose id)
 
 and private encModalSpec<'Msg> (s: ModalSpec<'Msg>) : JVal =
-    Canon.typed "Modal" ([ Some("children", JArr(List.map encNode s.Children)); Some("dismissable", JBool s.Dismissable); (s.OnDismiss |> Option.map (fun v -> "onDismiss", encAction v)); Some("open", (encBinding JBool) s.Open); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)) ] |> List.choose id)
+    Canon.typed "Modal" ([ Some("children", JArr(List.map encNode s.Children)); Some("dismissable", JBool s.Dismissable); (s.OnDismiss |> Option.map (fun v -> "onDismiss", encAction v)); Some("open", (encBinding JBool) s.Open); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); (if s.Modality = ModalityKind.Modal then None else Some("modality", encModalityKind s.Modality)); (s.Anchor |> Option.map (fun v -> "anchor", JStr v)) ] |> List.choose id)
 
 and private encScrollAreaSpec<'Msg> (s: ScrollAreaSpec<'Msg>) : JVal =
     Canon.typed "ScrollArea" ([ Some("children", JArr(List.map encNode s.Children)); Some("orientation", encScrollOrientation s.Orientation); (s.MaxHeight |> Option.map (fun v -> "maxHeight", JInt v)); (s.MaxWidth |> Option.map (fun v -> "maxWidth", JInt v)) ] |> List.choose id)
@@ -2269,6 +2281,12 @@ let private decButtonVariant (j: JVal) : Result<ButtonVariant, string> =
     | JStr "Tertiary" -> Ok ButtonVariant.Tertiary
     | JStr "Destructive" -> Ok ButtonVariant.Destructive
     | _ -> Error "not a ButtonVariant"
+
+let private decModalityKind (j: JVal) : Result<ModalityKind, string> =
+    match j with
+    | JStr "Modal" -> Ok ModalityKind.Modal
+    | JStr "Popover" -> Ok ModalityKind.Popover
+    | _ -> Error "not a ModalityKind"
 
 let private decFileReadEncoding (j: JVal) : Result<FileReadEncoding, string> =
     match j with
@@ -3516,7 +3534,9 @@ and private decModalSpec (j: JVal) : Result<ModalSpec<obj>, string> =
     dOpt "onDismiss" __fs decAction |> Result.bind (fun onDismiss ->
     dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
     dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
-    Ok { Children = children; Dismissable = dismissable; OnDismiss = onDismiss; Open = ``open``; Heading = heading }))))))
+    dDef "modality" __fs decModalityKind (ModalityKind.Modal) |> Result.bind (fun modality ->
+    dOpt "anchor" __fs dStr |> Result.bind (fun anchor ->
+    Ok { Children = children; Dismissable = dismissable; OnDismiss = onDismiss; Open = ``open``; Heading = heading; Modality = modality; Anchor = anchor }))))))))
 
 and private decScrollAreaSpec (j: JVal) : Result<ScrollAreaSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3903,7 +3923,7 @@ let mkDisclosure (id: string) (children: Node<'Msg> list) (defaultOpen: bool) (h
     { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkModal (id: string) (children: Node<'Msg> list) (dismissable: bool) (``open``: Binding<bool>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = None; Open = ``open``; Heading = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = None; Open = ``open``; Heading = None; Modality = ModalityKind.Modal; Anchor = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkScrollArea (id: string) (children: Node<'Msg> list) (orientation: ScrollOrientation) : Node<'Msg> =
     { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }

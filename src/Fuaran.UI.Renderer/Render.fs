@@ -2940,41 +2940,75 @@ let rec private renderKind
             | Some action -> runAction ctx action
             | None -> writeBackTo ctx spec.Open (Some(box false))
 
-        let headingEls =
-            match spec.Heading with
-            | Some h -> [ Html.h2 [ prop.className "fuaran-modal-heading"; prop.text (renderText ctx h) ] ]
-            | None -> []
+        // Phase 1119 — the modality selects WHICH overlay this is. `Popover`
+        // takes the whole `fuaran-popover` class family rather than reusing the
+        // modal's with a modifier: a class vocabulary is parity-locked across
+        // every host tier, and a modifier that changed what `fuaran-modal-*`
+        // MEANS would silently re-style every existing modal on a host that
+        // adopted the family before the modifier.
+        // Every emitted class name is a LITERAL at its call site, never composed
+        // from a family prefix. The class-vocabulary coverage guard reads the
+        // source for those literals, so a composed name is invisible to it — and
+        // a class vocabulary this tier cannot see is one it cannot keep in parity
+        // with the other host tiers, which is the whole point of the lock.
+        let surfaceChildren (headingClass: string) (dismissClass: string) (bodyClass: string) =
+            let headingEls =
+                match spec.Heading with
+                | Some h -> [ Html.h2 [ prop.className headingClass; prop.text (renderText ctx h) ] ]
+                | None -> []
 
-        let dismissEls =
-            if spec.Dismissable then
-                [ Html.button
-                      [ prop.className "fuaran-modal-dismiss"
-                        prop.type' "button"
-                        prop.ariaLabel "Close"
-                        prop.onClick (fun _ -> dismiss ())
-                        prop.text "×" ] ]
-            else
-                []
+            let dismissEls =
+                if spec.Dismissable then
+                    [ Html.button
+                          [ prop.className dismissClass
+                            prop.type' "button"
+                            prop.ariaLabel "Close"
+                            prop.onClick (fun _ -> dismiss ())
+                            prop.text "×" ] ]
+                else
+                    []
 
-        Html.div
-            [ prop.className "fuaran-modal-overlay"
-              if not isOpen then
-                  prop.custom ("hidden", "")
-              prop.onClick (fun _ ->
-                  if spec.Dismissable then
-                      dismiss ())
-              prop.children
-                  [ Html.div
-                        [ prop.className "fuaran-modal-dialog"
-                          prop.role "dialog"
-                          prop.custom ("aria-modal", "true")
-                          prop.children (
-                              headingEls
-                              @ dismissEls
-                              @ [ Html.div
-                                      [ prop.className "fuaran-modal-body"
-                                        prop.children (spec.Children |> List.map (render ctx)) ] ]
-                          ) ] ] ]
+            headingEls
+            @ dismissEls
+            @ [ Html.div
+                    [ prop.className bodyClass
+                      prop.children (spec.Children |> List.map (render ctx)) ] ]
+
+        if spec.Modality = ModalityKind.Popover then
+            // No scrim wrapper, no backdrop click, no `aria-modal` — see
+            // `PopoverSurface.fs` for why each absence is a decision rather
+            // than an omission. The rendered markup here is byte-identical to
+            // the server renderer's; the placement and the light-dismiss
+            // listeners are applied to the mounted element, not to this tree.
+            PopoverSurface.surface
+                {| className = "fuaran-popover"
+                   hidden = not isOpen
+                   anchor = spec.Anchor
+                   dismissable = spec.Dismissable
+                   onDismiss = dismiss
+                   children =
+                    [ Html.div
+                          [ prop.className "fuaran-popover-surface"
+                            prop.role "dialog"
+                            prop.children (
+                                surfaceChildren "fuaran-popover-heading" "fuaran-popover-dismiss" "fuaran-popover-body"
+                            ) ] ] |}
+        else
+            Html.div
+                [ prop.className "fuaran-modal-overlay"
+                  if not isOpen then
+                      prop.custom ("hidden", "")
+                  prop.onClick (fun _ ->
+                      if spec.Dismissable then
+                          dismiss ())
+                  prop.children
+                      [ Html.div
+                            [ prop.className "fuaran-modal-dialog"
+                              prop.role "dialog"
+                              prop.custom ("aria-modal", "true")
+                              prop.children (
+                                  surfaceChildren "fuaran-modal-heading" "fuaran-modal-dismiss" "fuaran-modal-body"
+                              ) ] ] ]
     | NodeKind.ScrollArea spec ->
         // Phase 289 — overflow/scroll container. The scroll axis is a class
         // (CSS owns `overflow`); optional pixel bounds are inline max-height /

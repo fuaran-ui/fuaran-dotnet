@@ -1,4 +1,4 @@
-# Fuaran language-tier stability policy
+﻿# Fuaran language-tier stability policy
 
 This document declares which Fuaran *language-tier* surfaces are stable, what counts as a breaking change in each, and the semver rules that govern the `Fuaran.UI.*` NuGet packages shipped from this repo. It is the contract that downstream consumers (runtime tiers, demo applications, third-party adopters) can rely on when pinning a Fuaran version.
 
@@ -3209,6 +3209,43 @@ that is plainly there. A closed refusal set that forces an implementation to mis
 stricter contract; it is a less truthful one.
 
 ---
+
+## Recorded change — 0.55.0, `Modal` gains a modality — the `Popover` variant (fuaran#1119)
+
+**Additive on the wire in the strict sense that no shipped document's bytes move.** `ModalSpec` gains
+`Modality: ModalityKind` (`Modal | Popover`, omitted on the wire at `Modal`) and `Anchor: string
+option` (a NodeId, meaningful for `Popover` only). Every modal document written before this release
+omits both, encodes to the bytes it always did, and decodes to the blocking dialog it always was.
+
+**Source-breaking in one narrow place**, the 0.50.0 / 0.53.0 / 0.54.0 direction rather than the
+0.51.0 one: a record gains fields, so a FULL-literal `ModalSpec` construction is `FS0764`.
+`Defaults.modal` fills both (`Modal` and `None` — which IS the wire identity), so a consumer that
+builds through `{ Defaults.modal with … }` is unaffected. The C# veneer's `ModalOptions` gains two
+`init` properties with the same defaults, so no existing C# or VB call site changes.
+
+**A new public enum, `ModalityKind`**, deliberately closed at two. The axis it names is whether the
+surface BLOCKS the page, and that question has two answers; a sheet, a drawer or a menu is a
+PRESENTATION of one of the two, not a third modality.
+
+**What did NOT change, deliberately.** Nothing on the wire names a pixel, an edge, an offset, a
+placement preference or an event. Anchored placement, the flip at a viewport edge, the offset and
+the light-dismiss gestures are renderer-owned and bounded, on the affordance→op charter's terms.
+`Modal` behaviour is unchanged in every particular, including its scrim, its focus trap and its
+`aria-modal="true"`.
+
+**Two new validator codes, both Warning.** **FUARAN122** — a `Popover` that is not anchored, either
+because it declares no `Anchor` or because the `Anchor` names an id the tree does not carry; one code
+because there is one consequence (the surface falls to the in-flow static floor) and one remedy, with
+the payload discriminating so a typo can be named. **FUARAN123** — an `Anchor` on a `Modal`, a dead
+declaration nothing reads. Both Warning because both documents are well-formed, decode on every host
+and render; what is wrong is that nothing else would say so.
+
+**New render-obligation claim: `aria-modal-only-when-blocking`** — the inertness claim is emitted for
+`Modal` and never for `Popover`, while both carry `role="dialog"`. Every host in the §11.0 roster
+reports it UNCHECKED until it adopts the claim, which is the render-fidelity manifest working as
+designed.
+
+The normative cross-host contract is `WIRE_FORMAT.md` §3.6.11.
 
 ## Recorded change — 0.54.0, `FileUpload` drop target and paste ingestion (fuaran#1115)
 

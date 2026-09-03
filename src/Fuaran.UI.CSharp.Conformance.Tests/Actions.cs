@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -352,13 +352,17 @@ internal static class ActionOracle
 
     internal static string ModalDismiss()
     {
-        // Generated ModalSpec ctor order (Children, Dismissable, OnDismiss, Open, Heading).
+        // Generated ModalSpec ctor order (Children, Dismissable, OnDismiss, Open,
+        // Heading, Modality, Anchor). Phase 1119 appended the last two; Modal +
+        // no anchor is the wire identity, so these bytes are unchanged.
         var spec = new FsGen.ModalSpec<object>(
             Microsoft.FSharp.Collections.FSharpList<FsGen.Node<object>>.Empty,
             true,
             FSharpOption<FsAction>.Some(FsAction.NewNotify("modal.dismissed", global::Fuaran.Core.JVal.NewJStr("confirm"))),
             FsGen.Binding<bool>.NewStatic(FSharpOption<bool>.Some(false)),
-            FSharpOption<FsGen.TextSource>.Some(Lit("Discard changes?")));
+            FSharpOption<FsGen.TextSource>.Some(Lit("Discard changes?")),
+            FsGen.ModalityKind.Modal,
+            FSharpOption<string>.None);
 
         return FsCanon.encodeNode(global::Fuaran.UI.Fuaran.modal<object>("confirm", spec));
     }

@@ -1,4 +1,4 @@
-Imports System.Xml.Linq
+﻿Imports System.Xml.Linq
 Imports Csharp = Fuaran.UI.CSharp
 
 ' Phase 311 — the remaining Layout kinds (Dashboard/Stack/Grid/Card ship in the
@@ -38,12 +38,19 @@ Friend Module LayoutMapping
                 .DefaultOpen = AttrBool(el, "default-open"),
                 .Children = Kids(el)})
 
+        ' Phase 1119 — `modality` and `anchor`. `modality` reads through the
+        ' existing AsEnum with `Modal` as the fallback, which is the wire's own
+        ' omit-at-default, so `<Modal>` with no attribute is the blocking dialog
+        ' it has always been; `anchor` is a plain optional attribute, absent
+        ' meaning unanchored.
         d("Modal") = Function(el) Csharp.Fuaran.Modal(
             New Csharp.ModalOptions With {
                 .Id = Attr(el, "id"),
                 .Open = OptBoolBinding(el, "open"),
                 .Heading = OptText(el, "heading"),
                 .Dismissable = AttrBool(el, "dismissable", True),
+                .Modality = AsEnum(Of Csharp.Modality)(Attr(el, "modality"), Csharp.Modality.Modal),
+                .Anchor = Attr(el, "anchor"),
                 .Children = Kids(el)})
 
         d("ScrollArea") = Function(el) Csharp.Fuaran.ScrollArea(

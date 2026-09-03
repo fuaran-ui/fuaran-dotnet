@@ -156,11 +156,17 @@ let disclosure<'Msg> : DisclosureSpec<'Msg> =
 let modal<'Msg> : ModalSpec<'Msg> =
     // `OnDismiss = None` (Phase 426): the write-back default — a State/Filter-bound
     // `Open` gets `false` written back on dismiss.
+    // Phase 1119: `Modality = Modal` IS the wire identity — the member is omitted
+    // at this value, so the default spec and every pre-1119 modal document encode
+    // to the same bytes. `Anchor = None` for the same reason: a blocking dialog
+    // has nothing to anchor to.
     { Open = Binding.Static(Some false)
       Heading = Option.None
       Dismissable = true
       Children = []
-      OnDismiss = Option.None }
+      OnDismiss = Option.None
+      Modality = ModalityKind.Modal
+      Anchor = Option.None }
 
 let scrollArea<'Msg> : ScrollAreaSpec<'Msg> =
     { Orientation = ScrollOrientation.Vertical

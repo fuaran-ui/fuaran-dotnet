@@ -1,4 +1,4 @@
-using FsGen = Fuaran.UI.Generated;
+﻿using FsGen = Fuaran.UI.Generated;
 
 namespace Fuaran.UI.CSharp;
 
@@ -149,6 +149,19 @@ public enum ScrollOrientation
     Vertical,
     Horizontal,
     Both,
+}
+
+/// <summary>
+/// Which overlay a <see cref="Fuaran.Modal"/> is (Phase 1119) — maps to the F#
+/// <c>ModalityKind</c>. <c>Modal</c> is the blocking task surface (scrim, focus
+/// trap, <c>aria-modal</c>); <c>Popover</c> is the transient anchored one (no
+/// scrim, no trap, light-dismiss), positioned against
+/// <see cref="ModalOptions.Anchor"/>.
+/// </summary>
+public enum Modality
+{
+    Modal,
+    Popover,
 }
 
 /// <summary>Math presentation — maps to the F# <c>MathDisplay</c>.</summary>
@@ -328,6 +341,9 @@ internal static class EnumMap
             ScrollOrientation.Both => FsGen.ScrollOrientation.Both,
             _ => FsGen.ScrollOrientation.Vertical,
         };
+
+    internal static FsGen.ModalityKind ToFs(this Modality m) =>
+        m == Modality.Popover ? FsGen.ModalityKind.Popover : FsGen.ModalityKind.Modal;
 
     internal static FsGen.MathDisplay ToFs(this MathDisplay d) =>
         d == MathDisplay.Inline ? FsGen.MathDisplay.Inline : FsGen.MathDisplay.Block;

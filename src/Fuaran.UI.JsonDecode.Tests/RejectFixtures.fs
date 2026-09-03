@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.RejectFixtures
+﻿module Fuaran.UI.JsonDecode.Tests.RejectFixtures
 
 // ============================================================================
 //  Reject-fixture corpus (data form).
@@ -514,6 +514,29 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a FileUpload `acceptPaste` of `1` — the second gesture slot, refused on the same reasoning and vectored separately because it is a separate decoder arm. A number is the shape a truthiness coercion is likeliest to admit, which is why this vector carries one where its `dropTarget` twin carries a string" }
+      // Phase 1119 — the two `ModalSpec.modality` arms, vectored separately
+      // because they ARE two arms: an unknown STRING is a discriminator outside
+      // the closed pair, and a non-string is a value of the wrong shape. Both
+      // matter more here than the usual enum, because absence spells `Modal` —
+      // so a decoder that fell back on a value it could not read would silently
+      // turn an intended popover into a page-blocking dialog with a scrim and an
+      // inertness claim, which is the worst available answer.
+      { Id = "reject-modal-modality-unknown"
+        Json =
+          """{"id":"m","kind":{"$type":"Modal","children":[],"dismissable":true,"modality":"Sheet","open":{"$type":"Static","value":false}}}"""
+        ExpectedCode = DecodeErrorCode.UNKNOWN_DU_CASE
+        ExpectedPath = "$.kind.modality"
+        IsOp = false
+        Description =
+          "a Modal `modality` of `\"Sheet\"` — outside the closed pair `Modal | Popover`. A sheet, a drawer and a menu are all PRESENTATIONS of one of the two modalities rather than a third one, so the answer to this document is not to widen the enum but to say which of the two it meant. The path is the bare slot, per §6 and the Phase 1073 ruling: a bare enum carries no discriminator on the wire, so there is no `.$type` to name" }
+      { Id = "reject-modal-modality-nonstring"
+        Json =
+          """{"id":"m","kind":{"$type":"Modal","children":[],"dismissable":true,"modality":3,"open":{"$type":"Static","value":false}}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.modality"
+        IsOp = false
+        Description =
+          "a Modal `modality` of `3` — a separate decoder arm from the unknown-string vector above, and vectored separately for that reason. An ordinal is the shape a host generating from an enum's index is likeliest to emit, and reading one would make the wire's meaning depend on a declaration order the wire never carries" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""

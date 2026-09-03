@@ -1,4 +1,4 @@
-module Fuaran.UI.RenderFidelity
+﻿module Fuaran.UI.RenderFidelity
 
 // ============================================================================
 //  The render-fidelity manifest (Phase 442) — the declared, per-NodeKind
@@ -135,6 +135,13 @@ type ObligationClaim =
     /// pointer-only control behind, and a static one would leave no control at
     /// all.
     | PickerAlwaysPresent
+    /// `aria-modal="true"` is emitted for the BLOCKING modality and for nothing
+    /// else. The attribute tells assistive technology that the rest of the page
+    /// is inert; on a non-blocking anchored surface that statement is false, and
+    /// a false inertness claim is worse than none — a reader is told the page
+    /// behind is unavailable when it is fully interactive. `role="dialog"` is
+    /// carried by both, so the claim is about the attribute, not the role.
+    | AriaModalOnlyWhenBlocking
 
 /// The stable wire token for a claim. This is what the artefact carries and what
 /// a host's checker registry is keyed by, so it may not change without a version
@@ -157,6 +164,7 @@ let claimId (claim: ObligationClaim) : string =
     | ObligationClaim.SandboxAlwaysExactlyDeclared -> "sandbox-always-exactly-declared"
     | ObligationClaim.RefusedEmbedSourceOmitted -> "refused-embed-source-omitted"
     | ObligationClaim.PickerAlwaysPresent -> "picker-always-present"
+    | ObligationClaim.AriaModalOnlyWhenBlocking -> "aria-modal-only-when-blocking"
 
 /// What the claim MEANS, kind-independently — the vocabulary entry a host reads
 /// when it meets a claim id it does not yet implement, so "unchecked" can be
@@ -195,6 +203,8 @@ let claimMeaning (claim: ObligationClaim) : string =
         "a primary source the egress floor refuses omits the source attribute entirely rather than pointing the browsing context at the refusal URL, while still recording the refusal"
     | ObligationClaim.PickerAlwaysPresent ->
         "a declared ingress gesture is additional: the file picker and its label are emitted whatever the document declares, so the keyboard-accessible route survives and a no-script host renders a working upload"
+    | ObligationClaim.AriaModalOnlyWhenBlocking ->
+        "the aria-modal inertness claim is emitted for the blocking modality alone; a non-blocking anchored surface carries the dialog role without it, because the page behind it is genuinely still available"
 
 /// The closed vocabulary, in declaration order.
 ///
@@ -218,7 +228,8 @@ let allClaims: ObligationClaim list =
       ObligationClaim.TranscriptDisclosureNamed
       ObligationClaim.SandboxAlwaysExactlyDeclared
       ObligationClaim.RefusedEmbedSourceOmitted
-      ObligationClaim.PickerAlwaysPresent ]
+      ObligationClaim.PickerAlwaysPresent
+      ObligationClaim.AriaModalOnlyWhenBlocking ]
 
 /// One obligation as a row declares it: which claim, the normative sentence for
 /// THIS kind, and the spec section that states it.
@@ -633,17 +644,22 @@ let all: FidelityRow list =
 
       plain "Metric" "the label + value source + format" "the resolved, formatted metric tile"
 
-      row
+      (row
           "Modal"
           true
-          "the child tree, the `open` `Binding<bool>`, and the heading / dismissable declarations"
-          "rendered INLINE at its tree position - no portal, ever. Position, centring, stacking and backdrop are CSS-owned (`position: fixed`, `z-index: var(--fuaran-z-modal)`), so both sides emit the same tree shape. A closed modal stays in the DOM behind the native `[hidden]` attribute rather than being omitted. ARIA is structural and literal: `role=\"dialog\"` + `aria-modal=\"true\"`. Dismiss and heading affordances are structurally present and inert server-side"
+          "the child tree, the `open` `Binding<bool>`, the heading / dismissable declarations, and the modality with its anchor"
+          "rendered INLINE at its tree position - no portal, ever, in either modality. A BLOCKING modal is CSS-positioned (`position: fixed`, `z-index: var(--fuaran-z-modal)`) over a backdrop, with `role=\"dialog\"` + `aria-modal=\"true\"`. A POPOVER carries the `fuaran-popover` family, `role=\"dialog\"` and NO `aria-modal`, no backdrop rule and no positioning at all in the stylesheet - the static floor is the surface IN FLOW at its own document position, with the declared anchor riding as a data attribute that records the id was read. A closed surface stays in the DOM behind the native `[hidden]` attribute rather than being omitted, in both modalities"
           (RichTier.Behavioural(
-              "focus trap, restore-focus and Esc-to-dismiss",
-              "attached on hydration; behaviour, not structure, so it cannot cause a hydration mismatch"
+              "the modal's focus trap, restore-focus and Esc-to-dismiss; the popover's anchored placement, edge flip and light dismiss",
+              "attached on hydration and applied imperatively to the mounted element; behaviour and inline geometry, not structure, so neither can cause a hydration mismatch"
           ))
-          [ "modal-1" ]
-          "Phase 289; WIRE_FORMAT.md 3.2; docs/SSR.md (overlay + overflow render-fidelity contract)"
+          [ "modal-1"; "popover-anchored-1"; "popover-open-1" ]
+          "Phase 289; Phase 1119; WIRE_FORMAT.md 3.2 + 3.6.11; docs/SSR.md (overlay + overflow render-fidelity contract)"
+       |> obliged
+           [ owes
+                 ObligationClaim.AriaModalOnlyWhenBlocking
+                 "WIRE_FORMAT.md 3.6.11"
+                 "`aria-modal=\"true\"` is emitted for `modality: Modal` and never for `modality: Popover`; both carry `role=\"dialog\"`, and the popover carries no scrim element for the same reason - the page behind it is genuinely still there" ])
 
       plain
           "Mount"

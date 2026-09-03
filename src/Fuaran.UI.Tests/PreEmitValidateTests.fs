@@ -3324,3 +3324,99 @@ let uploadGestureRuleTests =
                   (uploadDefects (uploadWith false false false))
                   "no gesture is declared, so none is unconsumed"
           } ]
+
+// ─── Phase 1119 fixtures ─ FUARAN122 / FUARAN123, the anchor declaration ───
+
+/// A modal/popover surface with the two Phase 1119 members under the test's
+/// control, wrapped in a `Box` beside a sibling the anchor can legitimately
+/// name. The wrapper is load-bearing rather than scenery: FUARAN122's dangling
+/// half is judged against the WHOLE tree's node ids, so a fixture with nothing
+/// to point at could only ever produce the dangling verdict.
+let private surfaceWith (modality: ModalityKind) (anchor: string option) : Node<Msg> =
+    Fuaran.stack
+        "page"
+        { Defaults.stack<Msg> with
+            Children =
+                [ Fuaran.button
+                      "swatch"
+                      { Defaults.button with
+                          Label = TextSource.Literal "Colour" }
+                  Fuaran.modal
+                      "surface"
+                      { Defaults.modal with
+                          Open = Binding.State("open", Some false)
+                          OnDismiss = Some(Action.Chain [])
+                          Modality = modality
+                          Anchor = anchor } ] }
+
+/// Only the Phase 1119 defects, for the reason `embedDefects` states.
+let private anchorDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.PopoverWithoutAnchor _
+            | PreEmitDefect.AnchorOnBlockingModal _ -> true
+            | _ -> false)
+
+let private codesOf (tree: Node<Msg>) =
+    anchorDefects tree
+    |> List.map (fun d ->
+        let c, _, _ = PreEmitValidate.describe d
+        c)
+
+[<Tests>]
+let popoverAnchorRuleTests =
+    testList
+        "PreEmitValidate — FUARAN122 / FUARAN123, the anchor declaration (Phase 1119)"
+        [ test "FUARAN122: a popover with no anchor is reported" {
+              let tree = surfaceWith ModalityKind.Popover None
+
+              Expect.equal (codesOf tree) [ "FUARAN122" ] "an unanchored popover is the defect"
+
+              Expect.equal
+                  (severityOf (anchorDefects tree |> List.head))
+                  DefectSeverity.Warning
+                  "Warning — the document is well-formed and renders; it just does not do what it says"
+          }
+
+          test "FUARAN122: a popover anchored at an id the tree does not carry is the SAME code" {
+              let tree = surfaceWith ModalityKind.Popover (Some "swatch-typo")
+
+              Expect.equal (codesOf tree) [ "FUARAN122" ] "one consequence, one remedy, one code"
+
+              // The payload discriminates, and the message is where that has to
+              // show: an author told only 'unanchored' would go looking for a
+              // missing declaration that is right there in front of them.
+              let _, _, message = PreEmitValidate.describe (anchorDefects tree |> List.head)
+
+              Expect.stringContains message "swatch-typo" "the dangling id is named, so a typo is findable"
+          }
+
+          test "FUARAN123: an anchor on a blocking modal is a different code" {
+              let tree = surfaceWith ModalityKind.Modal (Some "swatch")
+
+              Expect.equal (codesOf tree) [ "FUARAN123" ] "a dead declaration, not an absent one"
+
+              let _, _, message = PreEmitValidate.describe (anchorDefects tree |> List.head)
+
+              Expect.stringContains message "dead declaration" "the message says what is wrong with it"
+          }
+
+          test "FUARAN122 go-red check: a popover anchored at a REAL node is silent" {
+              // The shape the phase exists to enable. A rule that fired here
+              // would be one authors switch off, which costs the estate the rule
+              // on the two real defects.
+              Expect.isEmpty
+                  (anchorDefects (surfaceWith ModalityKind.Popover (Some "swatch")))
+                  "the anchor resolves, so there is nothing to report"
+          }
+
+          test "FUARAN123 go-red check: a plain modal with no anchor is silent" {
+              // The pre-1119 shape, which is every modal document ever written.
+              // If this fired, the rule would report the entire existing corpus.
+              Expect.isEmpty
+                  (anchorDefects (surfaceWith ModalityKind.Modal None))
+                  "no modality declared, no anchor declared, nothing to say"
+          } ]

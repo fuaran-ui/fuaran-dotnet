@@ -1,4 +1,4 @@
-module Fuaran.UI.Ops.Apply
+﻿module Fuaran.UI.Ops.Apply
 
 // ============================================================================
 //  Fuaran tree-op apply engine — main entry point.
@@ -1168,6 +1168,18 @@ let private updateModal (field: string) (v: obj) (spec: ModalSpec<'Msg>) : Updat
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryBool v
             |> Result.map (fun x -> { spec with Dismissable = x }))
+    // Phase 1119 — both take the plain wire-enum / wire-string coercion, the
+    // `Orientation` and `Heading` disposition rather than `Open`'s: they are
+    // ordinary decoded values with a coercion, so an `UpdateProp` switches a
+    // surface between blocking and anchored, or re-points an anchor.
+    | "Modality" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryModalityKind v
+            |> Result.map (fun x -> { spec with Modality = x }))
+    | "Anchor" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryStringOption v
+            |> Result.map (fun x -> { spec with Anchor = x }))
     // `Open` is a Binding with no declared ReplaceBinding slot for Modal (a gap
     // worth closing separately); `Children` is the structural ops' surface;
     // `OnDismiss` is an Action.

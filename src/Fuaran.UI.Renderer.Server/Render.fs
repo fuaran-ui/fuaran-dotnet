@@ -757,37 +757,77 @@ and private renderKind
         let isOpen =
             BindingResolver.tryResolve ctx.Sources spec.Open |> Option.defaultValue false
 
-        let headingEls =
-            match spec.Heading with
-            | Some h -> [ Html.h2 [ prop.className "fuaran-modal-heading"; prop.text (renderText ctx h) ] ]
-            | None -> []
+        // Phase 1119 — the SSR floor for a `Popover`, and the honest one. A
+        // no-script host cannot measure an anchor, so it cannot place a surface
+        // against one: what it emits is the popover IN FLOW, at the position the
+        // node occupies in the document, with no scrim and no `aria-modal`. An
+        // emitter that wants the static render to read correctly puts the
+        // popover node immediately after its anchor — which is the normative
+        // statement in `WIRE_FORMAT.md` §3.6.11, not a property of this file.
+        //
+        // The markup is byte-identical to the client renderer's, so hydration
+        // finds the DOM it expects; the client adds placement and the
+        // light-dismiss listeners imperatively after mount.
+        // Every emitted class name is a LITERAL at its call site, never composed
+        // from a family prefix — the class-vocabulary coverage guard reads the
+        // source for those literals, and a composed name is invisible to it.
+        let surfaceChildren (headingClass: string) (dismissClass: string) (bodyClass: string) =
+            let headingEls =
+                match spec.Heading with
+                | Some h -> [ Html.h2 [ prop.className headingClass; prop.text (renderText ctx h) ] ]
+                | None -> []
 
-        let dismissEls =
-            if spec.Dismissable then
-                [ Html.button
-                      [ prop.className "fuaran-modal-dismiss"
-                        prop.custom ("type", "button")
-                        prop.ariaLabel "Close"
-                        prop.text "×" ] ]
-            else
-                []
+            let dismissEls =
+                if spec.Dismissable then
+                    [ Html.button
+                          [ prop.className dismissClass
+                            prop.custom ("type", "button")
+                            prop.ariaLabel "Close"
+                            prop.text "×" ] ]
+                else
+                    []
 
-        Html.div (
-            [ prop.className "fuaran-modal-overlay" ]
-            @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
-            @ [ prop.children
-                    [ Html.div
-                          [ prop.className "fuaran-modal-dialog"
-                            prop.role "dialog"
-                            prop.custom ("aria-modal", "true")
-                            prop.children (
-                                headingEls
-                                @ dismissEls
-                                @ [ Html.div
-                                        [ prop.className "fuaran-modal-body"
-                                          prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ] ]
-                            ) ] ] ]
-        )
+            headingEls
+            @ dismissEls
+            @ [ Html.div
+                    [ prop.className bodyClass
+                      prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ] ]
+
+        if spec.Modality = ModalityKind.Popover then
+            Html.div (
+                [ prop.className "fuaran-popover" ]
+                @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
+                // The anchor declaration RIDES the static render — it records
+                // that the id was read, and it is the hook the client control
+                // resolves on mount. It is explicitly not coverage: nothing in
+                // a no-script host acts on it.
+                @ (match spec.Anchor with
+                   | Some a -> [ prop.custom ("data-fuaran-popover-anchor", a) ]
+                   | None -> [])
+                @ [ prop.children
+                        [ Html.div
+                              [ prop.className "fuaran-popover-surface"
+                                prop.role "dialog"
+                                prop.children (
+                                    surfaceChildren
+                                        "fuaran-popover-heading"
+                                        "fuaran-popover-dismiss"
+                                        "fuaran-popover-body"
+                                ) ] ] ]
+            )
+        else
+            Html.div (
+                [ prop.className "fuaran-modal-overlay" ]
+                @ (if not isOpen then [ prop.custom ("hidden", "") ] else [])
+                @ [ prop.children
+                        [ Html.div
+                              [ prop.className "fuaran-modal-dialog"
+                                prop.role "dialog"
+                                prop.custom ("aria-modal", "true")
+                                prop.children (
+                                    surfaceChildren "fuaran-modal-heading" "fuaran-modal-dismiss" "fuaran-modal-body"
+                                ) ] ] ]
+            )
     | NodeKind.ScrollArea spec ->
         let axisClass =
             match spec.Orientation with

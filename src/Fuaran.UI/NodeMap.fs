@@ -133,7 +133,12 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
               Heading = spec.Heading
               Dismissable = spec.Dismissable
               Children = mapChildren spec.Children
-              OnDismiss = spec.OnDismiss |> Option.map (mapAction f) }
+              OnDismiss = spec.OnDismiss |> Option.map (mapAction f)
+              // Phase 1119 — neither carries `'Msg`: the modality is an enum and
+              // the anchor is a NodeId, so both pass through the message map
+              // unchanged.
+              Modality = spec.Modality
+              Anchor = spec.Anchor }
     | NodeKind.ScrollArea spec ->
         NodeKind.ScrollArea
             { Orientation = spec.Orientation

@@ -1,4 +1,4 @@
-module Fuaran.UI.Renderer.Server.Tests.RenderObligationTests
+﻿module Fuaran.UI.Renderer.Server.Tests.RenderObligationTests
 
 // ============================================================================
 //  Executable render-obligation conformance (Phase 1105) — the reference host's
@@ -787,6 +787,56 @@ let private checkPickerAlwaysPresent () =
         (contains "data-fuaran-upload-drop" plain)
         "…and an upload that declares neither carries neither marker"
 
+// Phase 1119 — the aria-modal-only-when-blocking checker. Both directions are
+// pinned, and the second is the one that matters: a host that implemented the
+// popover by re-styling the modal would emit `aria-modal="true"` on a surface
+// that blocks nothing, telling a screen-reader user the page behind is inert
+// when it is fully interactive. Nothing else in the suite would report that —
+// the classes would be right and the bytes would round-trip.
+let private overlayWith modality anchor : Node<obj> =
+    Fuaran.modal
+        "surface"
+        { Defaults.modal with
+            Heading = Some(TextSource.Literal "Choose a colour")
+            Open = Binding.Static(Some true)
+            Modality = modality
+            Anchor = anchor }
+
+let private checkAriaModalOnlyWhenBlocking () =
+    let blocking = render (overlayWith ModalityKind.Modal None)
+
+    Expect.isTrue (contains "aria-modal=\"true\"" blocking) "a blocking modal claims inertness"
+
+    Expect.isTrue (contains "role=\"dialog\"" blocking) "…and carries the dialog role"
+
+    for label, anchor in [ "an anchored popover", Some "swatch"; "an unanchored popover", None ] do
+        let html = render (overlayWith ModalityKind.Popover anchor)
+
+        Expect.isFalse
+            (contains "aria-modal" html)
+            (label
+             + " makes no inertness claim — the attribute is absent entirely, not emitted as \"false\"")
+
+        Expect.isTrue
+            (contains "role=\"dialog\"" html)
+            (label
+             + " keeps the dialog role — what changes is the claim, not the kind of thing it is")
+
+        Expect.isFalse
+            (contains "fuaran-modal-overlay" html)
+            (label + " emits no scrim element — the page behind it is genuinely still there")
+
+    // The anchor declaration is READ rather than dropped, and its absence is
+    // visible too. Without this pair the obligation above would pass on a host
+    // that ignored `anchor` altogether.
+    Expect.isTrue
+        (contains "data-fuaran-popover-anchor=\"swatch\"" (render (overlayWith ModalityKind.Popover (Some "swatch"))))
+        "a declared anchor rides the static render, recording that the id was read"
+
+    Expect.isFalse
+        (contains "data-fuaran-popover-anchor" (render (overlayWith ModalityKind.Popover None)))
+        "…and a popover that declares none carries no marker"
+
 /// The registry: which (kind, claim) pairs this host asserts, and how.
 ///
 /// Keyed by the claim's WIRE token rather than the DU case, because the
@@ -808,7 +858,8 @@ let private checkers: ((string * string) * (unit -> unit)) list =
       ("Embed", "accessible-name-always"), checkEmbedAccessibleNameAlways
       ("Embed", "sandbox-always-exactly-declared"), checkEmbedSandboxAlwaysExactlyDeclared
       ("Embed", "refused-embed-source-omitted"), checkRefusedEmbedSourceOmitted
-      ("FileUpload", "picker-always-present"), checkPickerAlwaysPresent ]
+      ("FileUpload", "picker-always-present"), checkPickerAlwaysPresent
+      ("Modal", "aria-modal-only-when-blocking"), checkAriaModalOnlyWhenBlocking ]
 
 /// Obligations this host declares it does NOT check, each with a reason.
 ///

@@ -113,7 +113,11 @@ internal static class Vocabulary
         Add("Stepper", "id", "active-step");
         Add("SummaryList", "id", "heading");
         Add("Disclosure", "id", "heading", "open", "default-open");
-        Add("Modal", "id", "open", "heading", "dismissable");
+        // Phase 1119 — `modality` and `anchor` on the Modal row. Both are
+        // derived attribute spellings; nothing needed adding to the pin's
+        // UnspelledEligible or AttributeOnly sets, which is the pin confirming
+        // the spelling is the derived one.
+        Add("Modal", "id", "open", "heading", "dismissable", "modality", "anchor");
         Add("ScrollArea", "id", "orientation", "max-height", "max-width");
         Add("Heading", "id", "text", "level", "variant");
         Add("Markdown", "id", "text");

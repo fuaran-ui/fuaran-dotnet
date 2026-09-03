@@ -1,4 +1,4 @@
-module Fuaran.UI.Ops.JsonDecode
+﻿module Fuaran.UI.Ops.JsonDecode
 
 // ============================================================================
 //  Structural decoder for the canonical-JSON wire form
@@ -2071,6 +2071,18 @@ let private decodeImageAspect (path: string) (j: Json) : Result<ImageAspect, Dec
     | JString "SixteenNine" -> Ok ImageAspect.SixteenNine
     | JString s -> unknownEnumCase path s "Natural | Square | FourThree | ThreeTwo | SixteenNine"
     | _ -> wrongType path "JSON string (ImageAspect)"
+
+/// Phase 1119 — `ModalSpec.modality`. Two cases and no lenient spelling: the
+/// member decides whether the surface BLOCKS the page, so a value the emitter
+/// did not mean must not be coerced into one of the two answers. Absence is
+/// already the safe answer (`Modal`, the pre-1119 behaviour), which is why an
+/// unknown discriminator is `UNKNOWN_DU_CASE` rather than a silent fallback.
+let private decodeModalityKind (path: string) (j: Json) : Result<ModalityKind, DecodeError> =
+    match j with
+    | JString "Modal" -> Ok ModalityKind.Modal
+    | JString "Popover" -> Ok ModalityKind.Popover
+    | JString s -> unknownEnumCase path s "Modal | Popover"
+    | _ -> wrongType path "JSON string (ModalityKind)"
 
 let private decodeImageLoading (path: string) (j: Json) : Result<ImageLoading, DecodeError> =
     match j with
@@ -7337,21 +7349,44 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                         | None -> Ok None
                         | Some v -> decodeTextSource (specPath + ".heading") v |> Result.map Some
 
-                    match childrenR, openR, dismissableR, onDismissR, headingR with
-                    | Ok children, Ok openB, Ok dismissable, Ok onDismiss, Ok heading ->
+                    // Phase 1119 — `modality` is omitted at `Modal`, so absence
+                    // restores the pre-1119 blocking dialog. A present value
+                    // outside the pair is UNKNOWN_DU_CASE and a present
+                    // non-string is WRONG_TYPE: two decoder arms, two falsifiers.
+                    let modalityR =
+                        match tryField specFields "modality" with
+                        | None -> Ok ModalityKind.Modal
+                        | Some v -> decodeModalityKind (specPath + ".modality") v
+
+                    // `anchor` is a NodeId. Decode admits ANY string — whether it
+                    // names a node in this tree is a question about the whole
+                    // tree, which a per-node decoder cannot answer and which the
+                    // pre-emit validator answers (FUARAN122). A dangling anchor
+                    // is therefore a validator finding, never a decode refusal.
+                    let anchorR =
+                        match tryField specFields "anchor" with
+                        | None -> Ok None
+                        | Some v -> requireString (specPath + ".anchor") v |> Result.map Some
+
+                    match childrenR, openR, dismissableR, onDismissR, headingR, modalityR, anchorR with
+                    | Ok children, Ok openB, Ok dismissable, Ok onDismiss, Ok heading, Ok modality, Ok anchor ->
                         Ok(
                             NodeKind.Modal
                                 { Open = openB
                                   Heading = heading
                                   Dismissable = dismissable
                                   Children = children
-                                  OnDismiss = onDismiss }
+                                  OnDismiss = onDismiss
+                                  Modality = modality
+                                  Anchor = anchor }
                         )
-                    | Error e, _, _, _, _
-                    | _, Error e, _, _, _
-                    | _, _, Error e, _, _
-                    | _, _, _, Error e, _
-                    | _, _, _, _, Error e -> Error e
+                    | Error e, _, _, _, _, _, _
+                    | _, Error e, _, _, _, _, _
+                    | _, _, Error e, _, _, _, _
+                    | _, _, _, Error e, _, _, _
+                    | _, _, _, _, Error e, _, _
+                    | _, _, _, _, _, Error e, _
+                    | _, _, _, _, _, _, Error e -> Error e
             | "ScrollArea" ->
                 // Phase 289 — overflow/scroll container. `orientation` required
                 // (scroll axis); optional maxHeight/maxWidth (pixels) decode to
@@ -8527,6 +8562,11 @@ module Coerce =
     let tryMathDisplay (v: obj) : Result<MathDisplay, string> = viaJson decodeMathDisplay v
 
     let tryScrollOrientation (v: obj) : Result<ScrollOrientation, string> = viaJson decodeScrollOrientation v
+
+    /// Phase 1119 — `ModalSpec.Modality`. Coerced like any other wire enum, so an
+    /// `UpdateProp` switches a surface between blocking and anchored exactly as
+    /// one switches a scroll axis.
+    let tryModalityKind (v: obj) : Result<ModalityKind, string> = viaJson decodeModalityKind v
 
     let tryChartKind (v: obj) : Result<ChartKind, string> = viaJson decodeChartKind v
 

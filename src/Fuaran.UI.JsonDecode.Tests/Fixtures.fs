@@ -1318,6 +1318,44 @@ let modal: Node<obj> =
         ))
         None
 
+/// Phase 1119 — the anchored popover: `modality` PRESENT (the non-default), an
+/// `anchor` naming the control it opens from, and an `open` bound to state so a
+/// host has something to toggle. This is the interactive shape.
+///
+/// The heading and the dismiss affordance are kept deliberately: a popover is a
+/// dialog, not a tooltip, and a vector without them would leave the whole
+/// `fuaran-popover-heading` / `-dismiss` half of the class family unexercised.
+let popoverAnchored: Node<obj> =
+    node
+        "popover-anchored-1"
+        (NodeKind.Modal(
+            { Defaults.modal with
+                Heading = Some(TextSource.Literal "Choose a colour")
+                Children = [ markdown ]
+                Open = Binding.State("swatchOpen", Some false)
+                Modality = ModalityKind.Popover
+                Anchor = Some "swatch" }
+        ))
+        None
+
+/// Phase 1119 — the SSR-floor vector: a popover whose `open` is a STATIC true,
+/// so a no-script host renders it. It is the executable form of the normative
+/// statement in `WIRE_FORMAT.md` §3.6.11 — a statically-open popover renders in
+/// flow at the position the node occupies, with no scrim and no `aria-modal` —
+/// and it is why the `open` binding differs from the vector above rather than
+/// being a second copy of it.
+let popoverOpen: Node<obj> =
+    node
+        "popover-open-1"
+        (NodeKind.Modal(
+            { Defaults.modal with
+                Children = [ markdown ]
+                Open = Binding.Static(Some true)
+                Modality = ModalityKind.Popover
+                Anchor = Some "help-trigger" }
+        ))
+        None
+
 let scrollArea: Node<obj> =
     // Phase 289 — vertical scroll container with a maxHeight bound present and
     // maxWidth absent (exercises the omit-when-None path).
@@ -5261,6 +5299,8 @@ let allNodes: (string * Node<obj>) list =
       "Layout/SummaryList", summaryList
       "Layout/Disclosure", disclosure
       "Layout/Modal (heading + child + onDismiss)", modal
+      "Layout/Modal (Phase 1119 — Popover modality, anchored, state-bound open)", popoverAnchored
+      "Layout/Modal (Phase 1119 — Popover, statically open: the SSR floor)", popoverOpen
       "Layout/ScrollArea (vertical, maxHeight)", scrollArea
       "Input/Form (all fields)", formAllFields
       "Input/Form (Phase 766 — the Toggle switch affordance beside a Checkbox)", formToggle
