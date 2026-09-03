@@ -3110,3 +3110,62 @@ against, and a host that can resolve it enforces it in its own `FormValidator`, 
 
 **Classification: minor on the pre-1.0 axis.** Additive case, additive wire, additive authoring
 surfaces, one new Warning-grade defect code.
+
+## Recorded change — 0.52.0, the fragment-expansion memo (fuaran#1151)
+
+**Additive on every axis, and nothing on the wire moves.** A `FragmentRef` expands by deep-copying
+the referenced fragment body with every interior `NodeId` rewritten under the ref's own id; that copy
+was paid again on every render of every ref. This release memoises it. A memo is invisible on the
+wire by construction — the expansion is a render-time projection, not an encoded shape — so no
+document's bytes change, no fixture moves, and `Theme.vocabularyFingerprint` is untouched.
+
+**`RenderContext`'s public shape is unchanged, deliberately.** The obvious home for the cache is the
+per-render context, and it is the wrong one twice over: that record is built fresh at every entry
+point, so a memo living there could never hit across renders, and widening a published record is a
+source-breaking change (`FS0764` at every full-literal site — the 0.50.0 entry above is the worked
+example). The cache is owned outside the render and borrowed ambiently instead.
+
+**Surface added.**
+
+- `Fuaran.UI.Renderer.FragmentExpansion` (in `Fuaran.UI.Renderer.Core`) — the memo and its lifetime
+  owner. `FragmentExpansionCache(bodyCapacity, prefixCapacity)` with `Expand` / `Clear` / `Hits` /
+  `Misses` / `Count` / `BodyCapacity` / `PrefixCapacity`, plus the process-global instance behind
+  `expand` / `clear` / `stats` / `count` and the two `defaultBodyCapacity` / `defaultPrefixCapacity`
+  bounds. `FSharp.Core` + `Fuaran.UI` only, Fable-clean, composed from the shipped
+  `FragmentMemo.BoundedRefMemo` and `FragmentMemo.BoundedLru` primitives — no new cache algorithm is
+  minted.
+- `Render.expandFragment : string -> Node<'Msg> -> Node<'Msg>` — the named primitive the `FragmentRef`
+  arm calls, and `Render.expandFragmentUncached`, the same walk with no memo. The second is public
+  because the first cannot be shown correct without it: the soundness suite proves the cached and
+  recomputed trees are byte-identical through the canonical encoder, and the Phase 200
+  `RenderAllocation` micro-case measures the pair.
+
+**Keying is the whole soundness argument, so it is stated here and not only in the source.** The key
+is the fragment BODY INSTANCE plus the ref prefix — never the fragment NAME. A name-keyed cache is
+unsound: the fragment registry is first-decl-wins *per tree*, so a differently-declared tree may bind
+the same name to another body, and a name-keyed entry would serve one tree's body to another tree's
+ref. The body is immutable and, with the prefix, is the whole input to the expansion, so a different
+body is a different key by construction rather than by a check anyone has to remember. Identity
+rather than a content digest, because digesting the body costs exactly the subtree walk the memo
+exists to avoid.
+
+**Bound and concurrency, as a consumer-visible contract.** Two LRU levels — 64 distinct bodies, 32
+prefixes per body — so at most 2048 namespaced bodies are retained and the strong references held to
+bodies are bounded too. On .NET every probe and store runs under a private monitor while the compute
+runs outside it, so the critical section is a pointer scan rather than a subtree walk and two threads
+racing one key cost one recomputation, never a corrupt store or a wrong answer. Under Fable the
+guard compiles out (`lock` is not portable there; the browser is one event loop). **That `#if` is the
+entire divergence between the pipelines and it is not on the result path**, which is what makes the
+byte-identity proven on .NET carry to the browser.
+
+**Not a behaviour change a consumer can observe**, with one deliberate exception: a host that mutates
+a fragment body *in place* and re-renders the same instance would now see the previous expansion.
+Nothing in the language admits that — `Node` is an immutable record and every documented edit path
+produces a new tree — so this is stated as the boundary of the contract, not as a known defect. A
+host in doubt calls `FragmentExpansion.clear ()`.
+
+**The server renderer is untouched.** `Fuaran.UI.Renderer.Server` renders a referenced body **without
+namespacing interior ids**, so it has no expansion to memoise. No SSR parity claim moves.
+
+**Classification: minor on the pre-1.0 axis.** New module, two new functions, no existing surface
+changed, no wire event.

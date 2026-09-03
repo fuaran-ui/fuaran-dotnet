@@ -240,7 +240,31 @@ module PerfBaseline =
               yield
                   $"render.class_vocabulary.{s.Name}.alloc_b",
                   "B",
-                  "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node." ]
+                  "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node."
+
+              // Phase 1151 — the fragment-expansion pair. Declared as TWO
+              // metrics rather than a ratio because a ratio hides which side
+              // moved: a memo that stopped hitting and a walk that got cheaper
+              // are the same quotient and opposite findings.
+              yield
+                  $"render.fragment_expand_uncached.{s.Name}.mean_ns",
+                  "ns",
+                  "Render.expandFragmentUncached — the id-rewriting deep copy a FragmentRef paid per render before the memo."
+
+              yield
+                  $"render.fragment_expand_memo.{s.Name}.mean_ns",
+                  "ns",
+                  "Render.expandFragment — the same walk through the process-global memo, body instance and prefix stable across renders."
+
+              yield
+                  $"render.fragment_expand_uncached.{s.Name}.alloc_b",
+                  "B",
+                  "Allocated bytes per uncached expansion: a whole namespaced copy of the fragment body."
+
+              yield
+                  $"render.fragment_expand_memo.{s.Name}.alloc_b",
+                  "B",
+                  "Allocated bytes per memoised expansion. A hit copies nothing; this is the number the memo exists to move." ]
 
     /// The committed PENDING template for the render-spine baseline: every
     /// metric ID declared, every value `NaN`, status `pending`.

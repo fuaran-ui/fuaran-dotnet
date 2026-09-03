@@ -39,6 +39,10 @@
     <Compile Include="MathMl.fs" />
     <Compile Include="Accessibility.fs" />
     <Compile Include="Ids.fs" />
+    <!-- Phase 1151 — the fragment-expansion memo and its lifetime owner. Depends
+         on Fuaran.UI's Types + FragmentMemo primitives only, and nothing inside
+         this project depends on it, so it compiles last. -->
+    <Compile Include="FragmentExpansion.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fuaran.UI\Fuaran.UI.fsproj" />

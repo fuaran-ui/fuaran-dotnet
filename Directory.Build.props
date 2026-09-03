@@ -448,7 +448,13 @@
          move, and `allowFreeText` omits at `false` so the shortest combobox is
          the constrained one. See STABILITY.md "Recorded change — 0.51.0,
          `FormFieldKind.Combobox`". -->
-    <Version>0.51.0</Version>
+    <!-- 0.52.0 (Phase 1151) — the fragment-expansion memo. Additive on every
+         axis: a new module `Fuaran.UI.Renderer.FragmentExpansion` in
+         Fuaran.UI.Renderer.Core and two new functions on `Render`. No existing
+         signature changes, `RenderContext` is untouched, and NOTHING on the wire
+         moves — a memo is invisible there. See STABILITY.md "Recorded change —
+         0.52.0, the fragment-expansion memo". -->
+    <Version>0.52.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

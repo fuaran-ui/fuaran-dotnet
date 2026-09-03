@@ -1933,6 +1933,35 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
     // the mount unchanged (same posture as FragmentRef / Custom).
     | NodeKind.Mount _ -> kind
 
+/// The named fragment-expansion primitive (Phase 1151): the fragment `body`
+/// with its interior ids namespaced under `prefix`, served from the
+/// process-global `FragmentExpansion` cache when that pair has been expanded
+/// before.
+///
+/// The cache is BORROWED, not threaded — nothing is added to `RenderContext`,
+/// which is built fresh at every entry point and could therefore never own a
+/// memo that hits. It is keyed on the BODY INSTANCE rather than the fragment
+/// name, so a differently-declared tree reusing a name can never be served
+/// another tree's expansion; `FragmentExpansion`'s header carries the full
+/// lifetime, bound and concurrency posture.
+///
+/// Named, and public, for the Phase 207 reason: the memo is output-identical, so
+/// no behavioural test can see it removed. A named call site is what a cleanup
+/// pass reads as intent rather than as noise to tidy away, and it is what the
+/// soundness suite and the render-allocation micro-case measure.
+let expandFragment (prefix: string) (body: Node<'Msg>) : Node<'Msg> =
+    FragmentExpansion.expand body prefix (namespaceNode prefix)
+
+/// The same expansion with NO memo — the id-rewriting walk itself.
+///
+/// Public for two consumers that need the uncached form to say anything true
+/// about the cached one: the soundness suite, which proves the cached and
+/// recomputed trees are byte-identical (a claim it cannot make with only the
+/// cached path in reach), and the render-allocation micro-case, which measures
+/// the cost the memo removes. The renderer itself always goes through
+/// `expandFragment`, and the source-shape guard in the soundness suite pins that.
+let expandFragmentUncached (prefix: string) (body: Node<'Msg>) : Node<'Msg> = namespaceNode prefix body
+
 // ─── Declared field rules (`FormField.Rule`, Phase 864) ────────────────────
 //
 // WIRE_FORMAT splits the obligation a declared rule carries by host class.
@@ -3858,20 +3887,20 @@ let rec private renderKind
                 let prefix = parentNodeId + "."
 
                 // Phase 207 examined memoising this expansion per
-                // `(fragment, prefix)` and deliberately installed NO cache. The
-                // finding is recorded here so it is not re-derived: `prefix` is
-                // the REF's own node id, so within a single render pass every
-                // expansion already has a distinct key and a per-render cache
-                // could never hit. A cache that does hit has to outlive the
-                // render — and `RenderContext` is built fresh at every entry
-                // point, so it is not that cache's home. A cross-render memo is
-                // sound only when keyed on the BODY INSTANCE (immutable, and the
-                // thing that actually determines the result) rather than the
-                // fragment NAME, which a differently-declared tree can reuse —
-                // and that needs a bounded, lifetime-owning cache with a
-                // concurrency posture of its own. That is a design decision, not
-                // a local edit.
-                let namespaced = namespaceNode prefix body
+                // `(fragment, prefix)`, found the specified shape both unsound
+                // and unable to hit, and installed no cache; Phase 1151 made the
+                // design decision it deferred and built it. The finding that
+                // still governs the SHAPE, recorded here so it is not
+                // re-derived: `prefix` is the REF's own node id, so within a
+                // single render pass every expansion has a distinct key and no
+                // per-render cache could ever hit; and the fragment NAME is not
+                // the input to the expansion, since a differently-declared tree
+                // may bind the same name to another body. So the memo is keyed
+                // on the BODY INSTANCE plus the prefix and lives in a bounded,
+                // process-global cache that outlives the render — see
+                // `FragmentExpansion` for the lifetime, bound and concurrency
+                // posture. `RenderContext` is unchanged: the cache is borrowed.
+                let namespaced = expandFragment prefix body
 
                 let expandedCtx =
                     { ctx with

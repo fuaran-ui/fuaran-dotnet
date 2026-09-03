@@ -46,6 +46,30 @@
       "note": "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node."
     },
     {
+      "id": "render.fragment_expand_uncached.Small.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Render.expandFragmentUncached — the id-rewriting deep copy a FragmentRef paid per render before the memo."
+    },
+    {
+      "id": "render.fragment_expand_memo.Small.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Render.expandFragment — the same walk through the process-global memo, body instance and prefix stable across renders."
+    },
+    {
+      "id": "render.fragment_expand_uncached.Small.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per uncached expansion: a whole namespaced copy of the fragment body."
+    },
+    {
+      "id": "render.fragment_expand_memo.Small.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per memoised expansion. A hit copies nothing; this is the number the memo exists to move."
+    },
+    {
       "id": "render.state_keys.Medium.mean_ns",
       "value": null,
       "unit": "ns",
@@ -82,6 +106,30 @@
       "note": "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node."
     },
     {
+      "id": "render.fragment_expand_uncached.Medium.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Render.expandFragmentUncached — the id-rewriting deep copy a FragmentRef paid per render before the memo."
+    },
+    {
+      "id": "render.fragment_expand_memo.Medium.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Render.expandFragment — the same walk through the process-global memo, body instance and prefix stable across renders."
+    },
+    {
+      "id": "render.fragment_expand_uncached.Medium.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per uncached expansion: a whole namespaced copy of the fragment body."
+    },
+    {
+      "id": "render.fragment_expand_memo.Medium.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per memoised expansion. A hit copies nothing; this is the number the memo exists to move."
+    },
+    {
       "id": "render.state_keys.Large.mean_ns",
       "value": null,
       "unit": "ns",
@@ -116,6 +164,30 @@
       "value": null,
       "unit": "B",
       "note": "Allocated bytes per tree's worth of class/id construction. The pre-207 path parsed a format string per node."
+    },
+    {
+      "id": "render.fragment_expand_uncached.Large.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Render.expandFragmentUncached — the id-rewriting deep copy a FragmentRef paid per render before the memo."
+    },
+    {
+      "id": "render.fragment_expand_memo.Large.mean_ns",
+      "value": null,
+      "unit": "ns",
+      "note": "Render.expandFragment — the same walk through the process-global memo, body instance and prefix stable across renders."
+    },
+    {
+      "id": "render.fragment_expand_uncached.Large.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per uncached expansion: a whole namespaced copy of the fragment body."
+    },
+    {
+      "id": "render.fragment_expand_memo.Large.alloc_b",
+      "value": null,
+      "unit": "B",
+      "note": "Allocated bytes per memoised expansion. A hit copies nothing; this is the number the memo exists to move."
     }
   ]
 }

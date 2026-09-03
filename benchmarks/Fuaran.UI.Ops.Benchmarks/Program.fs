@@ -73,6 +73,13 @@ let private printRenderAllocations (count: int) =
         printfn "render.class_vocabulary.%s.mean_ns = %.1f" s.Name vocabNs
         printfn "render.class_vocabulary.%s.alloc_b = %.1f" s.Name vocabB
 
+        let rawNs, rawB = RenderAllocation.measureFragmentExpansionUncached s count
+        let memoNs, memoB = RenderAllocation.measureFragmentExpansionMemo s count
+        printfn "render.fragment_expand_uncached.%s.mean_ns = %.1f" s.Name rawNs
+        printfn "render.fragment_expand_uncached.%s.alloc_b = %.1f" s.Name rawB
+        printfn "render.fragment_expand_memo.%s.mean_ns = %.1f" s.Name memoNs
+        printfn "render.fragment_expand_memo.%s.alloc_b = %.1f" s.Name memoB
+
 let private printAppendRates (count: int) =
     for s in OpCorpus.all do
         let meanNs, allocB = AppendRate.measure s count
