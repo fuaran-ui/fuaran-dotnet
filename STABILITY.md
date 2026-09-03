@@ -3210,6 +3210,55 @@ stricter contract; it is a less truthful one.
 
 ---
 
+## Recorded change — 0.57.0, `Sparkline` draws through the shared `Drawing` builder (fuaran#1098)
+
+**Additive on the public API; a deliberate SSR BEHAVIOUR change; no wire change at all.**
+
+**The API.** `Fuaran.UI.Charts` gains `tryLowerSparkline` / `lowerSparkline` (the `tryLower` / `lower`
+pair's shape, applied to a `Sparkline`), plus the constants the geometry is stated in
+(`sparklineViewBox`, `sparklineStrokeWidth`). Nothing is removed and nothing changes signature, so
+every existing consumer compiles untouched.
+
+**The wire is UNTOUCHED, and this is the load-bearing half.** `NodeKind.Sparkline` keeps its case, its
+`SparklineSpec` keeps its single `Source` field, and the `$type` token, the schema branch, the
+`manifest.kinds` entry and the IDL entry are all byte-identical. This is NOT a `WIRE_FORMAT.md` §11
+forward-coupling event: no document's bytes move and no document decodes differently. What changed is
+how a host DRAWS one.
+
+**The behaviour.** Both renderers retire their hand-written polyline in favour of the lowering emitted
+through the shared `DrawingSvg` builder. On the CLIENT the geometry is unchanged — same 100 × 30
+canvas, same coordinates to 2 dp, same `currentColor` stroke at 1.5 — but the markup is now the shared
+builder's (`<div class="fuaran-sparkline"><svg class="fuaran-drawing" …><polyline
+class="fuaran-drawing-polyline" …/></svg></div>`) instead of a bespoke `<svg class="fuaran-sparkline">`
+carrying a `fuaran-sparkline-line` child. **A snapshot pinning that markup, or a stylesheet targeting
+`.fuaran-sparkline-line`, will need updating** — the reference stylesheet never had a rule for it, and
+the hook the fidelity contract names (`.fuaran-sparkline`) is unchanged, now as the container.
+
+On the SERVER the change is larger and is the point of the release: a resolved series previously
+rendered an em-dash placeholder and the values were never read. It now renders the real geometry, so
+**an SSR snapshot pinning the placeholder will go red.** An unresolved or empty series still renders
+the placeholder. `render-fidelity.json` moves `Sparkline` from `"class": "clientOnly"` to
+`"class": "none"` accordingly — it was the only geometry-bearing kind in the vocabulary excluded from
+parity by contract, and there is no longer a client-only tier to exclude.
+
+**One latent fault fixed in passing.** A `Binding.Static None` series resolves to the slot's default
+representation, which for a list is `null` rather than empty; the retired arm would have faulted on it
+(`Seq.isEmpty null`) and survived only because the authoring default is a sentinel `Query` that never
+resolves. The lowering guards it at the shared seam, and an absent series now takes the same branch as
+an empty one.
+
+**Accessibility, stated because it is a deliberate omission.** A lowered sparkline carries no `<title>`
+and no `<desc>`. The generated summary a lowered `Chart` gets is minted from a `ChartSpec`, and a
+`Sparkline` has none — so inventing one here would be new cross-host contract text that every other
+host would then have to reproduce byte-for-byte. It gains the shared geometry builder, not the chart
+tier's provenance or narration.
+
+**The contract lives in the corpus**, as `wire-format-fixtures/sparkline-lowering/` — the
+`chart-lowering/` family's shape, covering the ordinary series and every degenerate one (single point,
+flat, the flat-guard boundary, empty, and the non-finite sentinels).
+
+---
+
 ## Recorded change — 0.56.0, the generated layer regenerates in-process (fuaran#1181)
 
 **No wire change at all, and no source break.** `src/Fuaran.UI/Generated.fs` — the IDL-emitted

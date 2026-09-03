@@ -76,7 +76,13 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // now sees two classes the renderer has always emitted and the reference sheet
 // has always styled. The enumeration got MORE accurate; the digest over it
 // therefore moved.
-let vocabularyFingerprint = "fv1:d911851c9795e550"
+// Phase 1098 moved this. `Sparkline` now lowers to a `Drawing` and draws through
+// the shared builder, so the renderer no longer emits `fuaran-sparkline-line` —
+// one class LEFT the vocabulary. The reference sheet never carried a rule for it
+// (it was a declared bare hook: an SVG geometry element whose stroke and fill
+// ride presentation attributes), so nothing about the sheet's rules moved; the
+// digest is over the class NAMES, and the set is one smaller.
+let vocabularyFingerprint = "fv1:21dc300f76acc190"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

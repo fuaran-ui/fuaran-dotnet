@@ -691,14 +691,21 @@ let all: FidelityRow list =
 
       plain "Skeleton" "the skeleton shape declaration" "the full structural placeholder element"
 
+      // Phase 1098 - `clientOnly` -> `none`. The bespoke per-host polyline is
+      // retired for a `Sparkline -> Drawing` lowering through the shared
+      // `DrawingSvg` builder, so the server and the client emit the same bytes
+      // by construction and there is no client-only tier left to exclude from
+      // parity. This was the only geometry-bearing kind in the vocabulary so
+      // excluded; `Drawing` has said `none` since Phase 525 for the same reason.
+      // `sensitive` stays true - the series values are still author data.
       row
           "Sparkline"
           true
           "the series values"
-          "the `fuaran-sparkline` hook element plus an em-dash placeholder - a readable, deterministic stand-in rather than a blank"
-          (RichTier.ClientOnly("the polyline is drawn", "hydration"))
+          "the `fuaran-sparkline` hook element wrapping a deterministic SVG built by the shared `DrawingSvg` builder from the bounded `Sparkline` lowering, byte-identical on both sides; an unresolved or empty series keeps the em-dash placeholder - a readable, deterministic stand-in rather than a blank"
+          RichTier.None
           [ "spark-1" ]
-          "docs/SSR.md (Display.Sparkline)"
+          "Phase 644 4k; Phase 1098; docs/SSR.md (Display.Sparkline)"
 
       plain
           "SplitPanel"

@@ -4299,40 +4299,31 @@ and private renderLabelValueRow
                     Html.span [ prop.className "fuaran-label-value-row-value"; prop.text valueText ] ] ]
 
 and private renderSparkline (ctx: RenderContext<'Msg>) (spec: SparklineSpec) : ReactElement =
-    // Inline SVG polyline; AG Charts sparkline is overkill for the
-    // typical "trend mini-chart next to a Metric" use case the §4c contract
-    // is designed for. Sparkline scales x by index and y by min/max
-    // value; renders inside a 100 × 30 viewBox so it fits next to text.
-    let resolution = BindingResolver.tryResolve ctx.Sources spec.Source
-
-    match resolution with
-    | Some series when not (Seq.isEmpty series) ->
-        let values = series |> Seq.toArray
-        let n = values.Length
-        let minV = Array.min values
-        let maxV = Array.max values
-
-        let range = if maxV - minV < 1e-9 then 1.0 else maxV - minV
-
-        let toPoint (i: int) (v: float) : string =
-            let x = if n <= 1 then 50.0 else float i / float (n - 1) * 100.0
-            let y = 30.0 - (v - minV) / range * 28.0 - 1.0
-            sprintf "%.2f,%.2f" x y
-
-        let points = values |> Array.mapi toPoint |> String.concat " "
-
-        Svg.svg
-            [ svg.className "fuaran-sparkline"
-              svg.viewBox (0, 0, 100, 30)
-              svg.custom ("preserveAspectRatio", "none")
-              svg.children
-                  [ Svg.polyline
-                        [ svg.className "fuaran-sparkline-line"
-                          svg.fill "none"
-                          svg.stroke "currentColor"
-                          svg.strokeWidth 1.5
-                          svg.custom ("points", points) ] ] ]
-    | _ -> Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
+    // Phase 1098 — the bespoke polyline builder is retired in favour of the
+    // shared `Sparkline -> Drawing` lowering (Phase 644's D7), emitted through
+    // the SAME `DrawingSvg` builder the `Drawing` and `Chart` arms already use.
+    // So this arm and the server arm are byte-identical BY CONSTRUCTION rather
+    // than by two hand-written copies kept in step — which is exactly what moved
+    // `Sparkline` from `clientOnly` to `none` in the render-fidelity contract.
+    //
+    // The `fuaran-sparkline` class moves to the CONTAINER. That is where the
+    // sizing (100x30) and the inherited `color` the lowering's `currentColor`
+    // stroke reads have always lived, so the hook `render-fidelity.json` names
+    // survives and the picture does not move; the inner SVG is the shared
+    // builder's `fuaran-drawing` root.
+    //
+    // An unresolved or empty series keeps the em-dash element, unchanged: it is
+    // a host element rather than a `Shape`, so `tryLowerSparkline` reports it in
+    // the type rather than lowering an empty canvas nobody can read.
+    match BindingResolver.tryResolve ctx.Sources spec.Source with
+    | Some series ->
+        match Fuaran.UI.Charts.tryLowerSparkline spec series with
+        | Some drawing ->
+            Html.div
+                [ prop.className "fuaran-sparkline"
+                  prop.dangerouslySetInnerHTML (DrawingSvg.render ctx.Sources (renderText ctx) drawing) ]
+        | None -> Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
+    | None -> Html.div [ prop.className "fuaran-sparkline fuaran-sparkline-empty"; prop.text "—" ]
 
 // ─── Inputs ────────────────────────────────────────────────────────────────
 

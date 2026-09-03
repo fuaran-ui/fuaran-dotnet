@@ -10,6 +10,10 @@
   <ItemGroup>
     <Compile Include="ServerRenderTests.fs" />
     <Compile Include="DrawingSvgTests.fs" />
+    <!-- Phase 1098 — the SSR half of the `Sparkline → Drawing` lowering: the
+         server draws real geometry, and its bytes ARE the shared lowering
+         through the shared builder. -->
+    <Compile Include="SparklineSsrTests.fs" />
     <Compile Include="SsrParityTests.fs" />
     <Compile Include="EgressRenderTests.fs" />
     <!-- ScalarSsrParityTests certifies the Phase 629/632 scalar-resolution path

@@ -239,6 +239,10 @@
     <Compile Include="NodeMapTests.fs" />
     <Compile Include="WireSurvivabilityTests.fs" />
     <Compile Include="ChartLoweringTests.fs" />
+    <!-- Phase 1098 — the `Sparkline → Drawing` lowering: the cross-host goldens,
+         the byte-compatibility proof against the retired renderer formula, and
+         the emitted-markup assertions. -->
+    <Compile Include="SparklineLoweringTests.fs" />
     <!-- Phase 643 — the provenance stamp + self-describing SVG. Reads the
          copied renderer sources above for the SSR/CSR "one entry point" lock. -->
     <Compile Include="ChartProvenanceTests.fs" />
