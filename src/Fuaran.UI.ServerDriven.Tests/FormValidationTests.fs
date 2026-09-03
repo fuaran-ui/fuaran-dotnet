@@ -1,4 +1,4 @@
-module Fuaran.UI.ServerDriven.Tests.FormValidationTests
+﻿module Fuaran.UI.ServerDriven.Tests.FormValidationTests
 
 // ─── Phase 156 (Wave 18): runtime form validation — validate→error-patch ──────
 //
@@ -614,3 +614,90 @@ let fieldRuleTests =
                   (DomPatch.SetAttr("value", "data-fuaran-field-error", "Must be at least 5 characters."))
                   "the unmet rule is surfaced on the offending field"
           } ]
+
+[<Tests>]
+let ratingAndColourFloorTests =
+    testList
+        "FormValidation — the Phase 1130 controls' declared bounds"
+        // The control's OWN declaration is the constraint, read exactly as
+        // `RangedNumber`'s min/max are read, with no new constraint vocabulary.
+        // These matter because the client-side halves of both rules — the star
+        // row's clamp and the browser's colour picker — are AFFORDANCES: a
+        // client that posts past them is what this floor exists to catch, and
+        // nothing else in the stack would notice.
+        [ let ratingForm (max: int) : FormSpec<Msg> =
+              { Defaults.form<Msg> with
+                  OnSubmit = Action.Dispatch Submit
+                  Fields =
+                      [ { Defaults.formField<Msg> with
+                            Id = "score"
+                            Label = TextSource.Literal "Score"
+                            Kind = FormFieldKind.Rating(false, max, None, None) } ] }
+
+          let colourForm () : FormSpec<Msg> =
+              { Defaults.form<Msg> with
+                  OnSubmit = Action.Dispatch Submit
+                  Fields =
+                      [ { Defaults.formField<Msg> with
+                            Id = "brand"
+                            Label = TextSource.Literal "Brand"
+                            Kind = FormFieldKind.Color(None, None) } ] }
+
+          let submitTo (form: FormSpec<Msg>) (values: (string * LiveValue) list) =
+              enforceDeclared
+                  { FormNodeId = "f"
+                    Form = form
+                    Values = Map.ofList values }
+
+          yield
+              test "a submitted rating above the declared scale is refused" {
+                  let errs = submitTo (ratingForm 5) [ "score", LiveValue.Num 9.0 ]
+
+                  Expect.equal (errs |> List.map (fun e -> e.FieldId)) [ "score" ] "the overshoot is refused"
+                  Expect.stringContains (List.head errs).Message "between 0 and 5" "the message names the scale"
+              }
+
+          yield
+              test "a NEGATIVE submitted rating is refused" {
+                  Expect.isNonEmpty (submitTo (ratingForm 5) [ "score", LiveValue.Num -1.0 ]) "below the floor"
+              }
+
+          yield
+              test "go-red check: a rating INSIDE the scale passes, ends and fractions included" {
+                  Expect.isEmpty (submitTo (ratingForm 5) [ "score", LiveValue.Num 0.0 ]) "zero is no rating"
+                  Expect.isEmpty (submitTo (ratingForm 5) [ "score", LiveValue.Num 5.0 ]) "the ceiling"
+                  // Granularity is deliberately NOT checked: `allowHalf` decides
+                  // what a GESTURE produces, and a bound average legitimately
+                  // lands between positions. Refusing 4.3 on a whole-star
+                  // control would refuse the shape the float slot exists for.
+                  Expect.isEmpty
+                      (submitTo (ratingForm 5) [ "score", LiveValue.Num 4.3 ])
+                      "a fraction is not a violation"
+              }
+
+          yield
+              test "go-red check: the scale is the DOCUMENT's, not a constant" {
+                  // 9 is out of range on a five-scale and inside a ten-scale.
+                  // A floor that hard-coded five would pass the first and the
+                  // second, and be right by accident once.
+                  Expect.isNonEmpty (submitTo (ratingForm 5) [ "score", LiveValue.Num 9.0 ]) "out of a five-scale"
+                  Expect.isEmpty (submitTo (ratingForm 10) [ "score", LiveValue.Num 9.0 ]) "inside a ten-scale"
+              }
+
+          yield
+              test "a submitted colour that is not #rrggbb is refused" {
+                  let errs = submitTo (colourForm ()) [ "brand", LiveValue.Str "rebeccapurple" ]
+
+                  Expect.equal (errs |> List.map (fun e -> e.FieldId)) [ "brand" ] "the named colour is refused"
+                  Expect.stringContains (List.head errs).Message "#rrggbb" "the message names the shape"
+                  Expect.isNonEmpty (submitTo (colourForm ()) [ "brand", LiveValue.Str "#fff" ]) "and the shorthand"
+              }
+
+          yield
+              test "go-red check: a canonical colour passes in either case, and an EMPTY value is Required's question" {
+                  Expect.isEmpty (submitTo (colourForm ()) [ "brand", LiveValue.Str "#ff8800" ]) "lower case"
+                  Expect.isEmpty (submitTo (colourForm ()) [ "brand", LiveValue.Str "#FFFFFF" ]) "upper case"
+                  // Empty is "nothing was sent", which `Required` already asked
+                  // about. Refusing it here would give one absence two answers.
+                  Expect.isEmpty (submitTo (colourForm ()) [ "brand", LiveValue.Str "" ]) "empty is not a format error"
+              } ]

@@ -923,6 +923,86 @@ let private formFieldKind =
                 opt "onChange" (handlerOf "string option" "string | null")
                 req "options" (TUnion("Binding", [ TList(TRecord "SelectOption") ]))
                 opt "value" (TUnion("Binding", [ TStr ])) ]
+            Annotations = Annotations.Empty }
+          // Fuaran-UI Phase 1130 — the subjective SCORE control. `RangedNumber`
+          // is a numeric QUANTITY the reader types or drags; `Rating` is a
+          // judgement it expresses on a small ordinal scale, and the two are
+          // kept apart by that sentence rather than by their shapes, which are
+          // deliberately similar.
+          //
+          // `value` is `Binding<float>` and NOT `Binding<int>`, and the reason
+          // is display rather than entry: the commonest rating a reader sees is
+          // an AVERAGE — 4.3 of 5 over three hundred reviews, arriving through a
+          // `Query` binding — and an integer slot cannot carry it. So the float
+          // is load-bearing even where nobody can type a fraction.
+          //
+          // THE INTEGER-ONLY QUESTION, DECIDED (Phase 1130). ENTRY is whole
+          // units unless `allowHalf` asks otherwise; DISPLAY is continuous
+          // always, because the value type says so. Those are two questions and
+          // the field separates them. `allowHalf` takes `Combobox.allowFreeText`'s
+          // shape exactly — an omit-at-`false` bool, so the shortest document is
+          // the constrained one and the wider granularity is what an emitter has
+          // to ask for.
+          //
+          // It is a BOOL and not a `step`, deliberately, though `step` is the
+          // reuse the vocabulary would ordinarily reach for. A `step` slot
+          // admits `0.3`, which is a valid document naming an interaction no
+          // rating control has ever had — so the decoder would owe a refusal
+          // enumerating exactly {1, 0.5}, at which point the float is a boolean
+          // wearing a wider type. It would also widen the `Rating ↔
+          // RangedNumber` confusion pair that this row's charter entry names as
+          // the one to watch, by giving the two controls a third slot in common.
+          //
+          // `max` is a REQUIRED int spelled as `TextArea.rows` is — the
+          // authoring surface defaults it to 5, the wire always carries it.
+          // Its lower bound is refused at DECODE (`Support.fs`, `CaseRefines`):
+          // a scale with no positions is not a control with a bad value in it,
+          // it is a document that cannot be rendered at all, and that is the
+          // `Switch.autoAdvanceMs` line. A `value` OUTSIDE the scale is the
+          // other side of that split and belongs to the validator and the
+          // server-driven floor, because a bound value is invisible here.
+          //
+          // Nothing here names a keystroke or a role. Arrow / Home / End and
+          // the slider-versus-image announcement are the renderer's affordance
+          // under the affordance→op charter.
+          { Tag = "Rating"
+            Fields =
+              [ omit "allowHalf" TBool (VBool false)
+                req "max" TInt
+                opt "onChange" (handlerOf "float" "number")
+                opt "value" (TUnion("Binding", [ TFloat ])) ]
+            Annotations = Annotations.Empty }
+          // Fuaran-UI Phase 1130 — the colour control, projecting to the
+          // platform's own `<input type="color">`.
+          //
+          // Note what this is NOT: the charter's `EmailField` row declined
+          // `color` as a `rule.format` for want of §1.1 evidence, and that
+          // decline STANDS. A `format` constrains the text a reader types into a
+          // text box; this case is a different affordance entirely — a swatch
+          // that opens the operating system's colour picker, which no `format`
+          // on a `Text` field can produce. The row declined a VALIDATION
+          // spelling; this admits a CONTROL, and the two do not overlap.
+          //
+          // `value` is `Binding<string>` carrying `#rrggbb` — the only form
+          // `<input type="color">` can hold or return, so it is the wire form
+          // too rather than a wider colour syntax the control would silently
+          // narrow. A `Static` literal that is not that shape is refused at
+          // DECODE (`Support.fs`, `CaseRefines`); every other binding shape
+          // carries its text from somewhere the decoder cannot see, so the
+          // format is re-checked by the pre-emit validator and enforced
+          // server-side by the `FormValidation` floor. That split is recorded
+          // rather than hidden: one rule, checked wherever the value becomes
+          // visible.
+          //
+          // Case is PRESERVED, not normalised — `#FFFFFF` is a hex colour and
+          // round-trips byte-identically. The browser normalises to lower case
+          // on its own; the wire does not, because a codec that rewrote the
+          // author's bytes would be the one thing the round-trip corpus exists
+          // to forbid.
+          { Tag = "Color"
+            Fields =
+              [ opt "onChange" (handlerOf "string" "string")
+                opt "value" (TUnion("Binding", [ TStr ])) ]
             Annotations = Annotations.Empty } ] }
 
 // _(The separate `FilterKind` union this file carried until the Phase 692

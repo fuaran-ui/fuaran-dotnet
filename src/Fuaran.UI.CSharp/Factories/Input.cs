@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using FsFactory = global::Fuaran.UI.Fuaran;
 using FsTypes = Fuaran.UI.Types;
@@ -190,6 +190,40 @@ public sealed class FormField
             help,
             rule);
 
+    /// <summary>A rating field (Phase 1130) — a subjective score on a small ordinal
+    /// scale. Reach for it when the number is a judgement a person GIVES; reach for
+    /// <see cref="Fuaran.RangedNumber"/> when it is a quantity they REPORT.
+    /// <paramref name="max"/> defaults to 5, the conventional scale.
+    /// <paramref name="allowHalf"/> admits half positions on ENTRY — the value is a
+    /// <c>double</c> either way, because a displayed rating is routinely an average.</summary>
+    public static FormField Rating(string id, Text label, double initial = 0.0, int max = 5, bool allowHalf = false, bool required = false, Text? help = null, FieldRule? rule = null) =>
+        Make(
+            id,
+            label,
+            FsGen.FormFieldKind<object>.NewRating(
+                allowHalf,
+                max,
+                Fs.Some(NoFieldHandler<double>()),
+                Fs.Some(global::Fuaran.UI.Generated.Binding<double>.NewStatic(Fs.Some(initial)))),
+            required,
+            help,
+            rule);
+
+    /// <summary>A colour field (Phase 1130) — the platform's own colour picker. The
+    /// value is the canonical <c>#rrggbb</c> hex form, which is the one shape a native
+    /// colour input can hold; anything else is refused by the decoder and by the
+    /// server-side submission floor rather than quietly narrowed.</summary>
+    public static FormField Color(string id, Text label, string initial = "#000000", bool required = false, Text? help = null, FieldRule? rule = null) =>
+        Make(
+            id,
+            label,
+            FsGen.FormFieldKind<object>.NewColor(
+                Fs.Some(NoFieldHandler<string>()),
+                Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewStatic(Fs.Some(initial)))),
+            required,
+            help,
+            rule);
+
     private static Microsoft.FSharp.Core.FSharpFunc<T, FsAction> NoFieldHandler<T>() =>
         Fs.Func<T, FsAction>(_ => FsAction.NewChain(Fs.Empty<FsAction>()));
 }
@@ -225,6 +259,30 @@ public sealed class Filter
                 allowFreeText,
                 null,
                 Fuaran.OptionSource(options),
+                Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewFilter(
+                    name,
+                    Microsoft.FSharp.Core.FSharpOption<string>.None))),
+            label.Inner,
+            name));
+
+    /// <summary>A rating filter chip bound to its own filter key (Phase 1130).</summary>
+    public static Filter Rating(string name, Text label, int max = 5, bool allowHalf = false) =>
+        new(new FsGen.FilterSpec<object>(
+            FsGen.FormFieldKind<object>.NewRating(
+                allowHalf,
+                max,
+                null,
+                Fs.Some(global::Fuaran.UI.Generated.Binding<double>.NewFilter(
+                    name,
+                    Microsoft.FSharp.Core.FSharpOption<double>.None))),
+            label.Inner,
+            name));
+
+    /// <summary>A colour filter chip bound to its own filter key (Phase 1130).</summary>
+    public static Filter Color(string name, Text label) =>
+        new(new FsGen.FilterSpec<object>(
+            FsGen.FormFieldKind<object>.NewColor(
+                null,
                 Fs.Some(global::Fuaran.UI.Generated.Binding<string>.NewFilter(
                     name,
                     Microsoft.FSharp.Core.FSharpOption<string>.None))),

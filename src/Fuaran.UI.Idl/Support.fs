@@ -582,7 +582,41 @@ let encodeTextSourceJson (t: TextSource) : JVal = encTextSource t"""
             match value, valueFrom with
             | Some _, Some _ -> Error "SetState carries both 'value' and 'valueFrom' — exactly one is allowed ('value' is a literal; 'valueFrom' derives the written value from a Binding at dispatch time)"
             | None, None -> Error "SetState requires 'value' (a literal JSON value) or 'valueFrom' (a Binding evaluated at dispatch time)"
-            | _ -> Ok(Action.SetState(key, value, valueFrom))""" ]
+            | _ -> Ok(Action.SetState(key, value, valueFrom))"""
+                  // Phase 1130 — the scale's LOWER BOUND is a decode refusal,
+                  // and the value's bounds are not. A `max` of zero or less is
+                  // not a rating with a bad number in it: there is no control
+                  // to draw, no `aria-valuemax` to announce and no keystroke
+                  // that could change anything, so the document is refused
+                  // where it is read — the `Switch.autoAdvanceMs` line. A
+                  // `value` outside the scale is the other half of that split
+                  // and belongs to the validator and the server-driven floor,
+                  // because a bound value is invisible from here and a rule
+                  // enforced only on literals would be two rules.
+                  "FormFieldKind.Rating",
+                  """if max < 1 then
+                Error (sprintf "Rating 'max' must be at least 1 — a scale with %d positions cannot be rendered or announced" max)
+            else
+                Ok(FormFieldKind.Rating(allowHalf, max, onChange, value))"""
+                  // Phase 1130 — the STATIC half of the colour-format rule.
+                  // `<input type="color">` can hold exactly `#rrggbb`, so a
+                  // literal that is not that shape names a colour this control
+                  // could never carry, and refusing it here gives the emitter
+                  // the error at the earliest point anything can see it.
+                  //
+                  // RECORDED SPLIT — only a `Static` literal is checked, because
+                  // it is the only text a decoder HAS. A `State` / `Query` /
+                  // `Selection` binding carries its value from outside the
+                  // document; the pre-emit validator re-states the rule for an
+                  // author, and `FormValidation` enforces it on submission,
+                  // which is the trust boundary that actually matters. One rule,
+                  // checked wherever the value becomes visible — never a
+                  // coercion, at any of the three.
+                  "FormFieldKind.Color",
+                  """match value with
+            | Some(Binding.Static(Some __text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->
+                Error (sprintf "Color 'value' must be a '#rrggbb' hex colour — got %s" __text)
+            | _ -> Ok(FormFieldKind.Color(onChange, value))""" ]
         KindProjections = Map.ofList [ "Switch", switchProjection ] }
 
 /// The declared-support DOCUMENT — the record above plus the host-prelude

@@ -1,4 +1,4 @@
-module Fuaran.UI.ServerDriven.FormValidation
+﻿module Fuaran.UI.ServerDriven.FormValidation
 
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Introspect
@@ -367,6 +367,47 @@ let private checkField (values: Map<string, LiveValue>) (field: FormField<'Msg>)
             // would claim a check that was not performed. A host that can
             // resolve the source enforces it in its own `FormValidator`, which
             // composes ON TOP of this floor.
+            // Phase 1130 — the two new controls' own declarations ARE their
+            // constraints, read the way `RangedNumber`'s min/max are read
+            // above. Both are re-checked here for the module's standing reason:
+            // the renderer's star row and the browser's colour picker are
+            // AFFORDANCES, and a client that posts past them is precisely what
+            // this floor exists to catch.
+            //
+            // The rating's scale is `0 .. max`, which is what the control
+            // announces (`aria-valuemin` / `aria-valuemax`) and what its
+            // keyboard model can reach — so a value outside it was not produced
+            // by the control. This is the DYNAMIC half of the split FUARAN132
+            // holds statically: the validator sees only literals, this sees
+            // whatever actually arrived.
+            //
+            // Granularity is deliberately NOT checked. `allowHalf` decides what
+            // a keystroke or a click PRODUCES; a bound value may legitimately be
+            // an average that lands between positions, and refusing 4.3 on a
+            // whole-star control would refuse the shape the float slot exists
+            // for. The scale is the constraint; the step is an affordance.
+            | FormFieldKind.Rating(_, max, _, _) ->
+                match asNumber value with
+                | Some n when n < 0.0 || n > float max ->
+                    Some
+                        { FieldId = field.Id
+                          Message = sprintf "Must be a rating between 0 and %d." max }
+                | _ -> None
+            // The colour's format is fixed by the control — the one shape a
+            // native colour input can hold — so the check is the same predicate
+            // the decoder and FUARAN133 use, from `HexColor`. Four copies of
+            // "is this a hex colour" is exactly how one of them ends up
+            // admitting `#FFF`.
+            //
+            // An EMPTY submitted value is not refused: that is "nothing was
+            // sent", which is `Required`'s question and was already asked above.
+            | FormFieldKind.Color _ ->
+                match value with
+                | Some(LiveValue.Str s) when s <> "" && not (Fuaran.UI.HostPrelude.HexColor.isValid s) ->
+                    Some
+                        { FieldId = field.Id
+                          Message = "Must be a colour in #rrggbb form." }
+                | _ -> None
             | FormFieldKind.Combobox(false, _, Binding.Static(Some options), _) ->
                 match value with
                 | Some(LiveValue.Str s) when

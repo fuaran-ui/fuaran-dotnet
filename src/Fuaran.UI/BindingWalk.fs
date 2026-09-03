@@ -569,6 +569,11 @@ let private usesOfFormFieldKind<'Msg> (implicitUse: BindingUse option) (kind: Fo
     | FormFieldKind.SegmentedChoice(opts, value, _, _) -> usesOfBinding opts @ usesOfValueSlot value
     | FormFieldKind.Date(v, _, _, _, _, _) -> usesOfValueSlot v
     | FormFieldKind.DateRange(v, _, _, _, _, _) -> usesOfValueSlot v
+    // Phase 1130 — both new controls hold a single value slot and no second
+    // binding (a rating's scale is a literal int; a colour has no option
+    // source), so the value slot IS the whole read.
+    | FormFieldKind.Rating(_, _, _, v) -> usesOfValueSlot v
+    | FormFieldKind.Color(_, v) -> usesOfValueSlot v
 
 /// The `Action.Call`s reachable from a wire-survivable action value,
 /// recursing `Chain` (Phase 428). Non-Call arms carry no fetch.
@@ -720,6 +725,8 @@ let formFieldWriteFacts<'Msg> (kind: FormFieldKind<'Msg>) : FormFieldWrite =
     | FormFieldKind.SegmentedChoice(_, v, h, _) -> slot v h.IsSome
     | FormFieldKind.Date(v, h, _, _, _, _) -> slot v h.IsSome
     | FormFieldKind.DateRange(v, h, _, _, _, _) -> slot v h.IsSome
+    | FormFieldKind.Rating(_, _, h, v) -> slot v h.IsSome
+    | FormFieldKind.Color(h, v) -> slot v h.IsSome
 
 /// Collect the tree-wide binding facts for `node` (see `TreeBindingFacts`),
 /// descending through layout children, error-boundary subtrees, and

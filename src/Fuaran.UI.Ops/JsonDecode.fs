@@ -1567,7 +1567,15 @@ let knownFormFieldKinds =
       // told the spelling exists, since the alternative it settles for
       // (`Choice` over two hundred options) is VALID and therefore reported by
       // nothing.
-      "Combobox" ]
+      "Combobox"
+      // Phase 1130 — the star scale and the colour swatch. Listed here for the
+      // reason every entry below `Toggle` is: the hint an UNKNOWN_DU_CASE
+      // carries is projected from this list, so a spelling absent from it is a
+      // spelling an emitter is never told about — and the shapes these two
+      // replace (a `RangedNumber` wearing stars, a `Text` field holding a hex
+      // string) are both VALID documents and are therefore reported by nothing.
+      "Rating"
+      "Color" ]
 
 /// The `ExpectedShape` hint carried by every `UNKNOWN_DU_CASE` a control
 /// discriminator raises, projected from the vocabulary above rather than
@@ -5428,6 +5436,61 @@ let private decodeFormFieldKind
             | Error e, _, _
             | _, Error e, _
             | _, _, Error e -> Error e
+        | Ok "Rating" ->
+            // Phase 1130 — the star scale. `max` is REQUIRED and must be at
+            // least 1, refused here and not merely reported: a scale with no
+            // positions has no control to draw, no `aria-valuemax` to announce
+            // and no keystroke that could change anything, so the document is
+            // refused where it is read (the `Switch.autoAdvanceMs` line, and the
+            // generated decoder's own refinement — one rule, two decoders).
+            //
+            // The VALUE's own bounds are deliberately not checked here: a bound
+            // value is invisible to a decoder, and a rule enforced only on
+            // literals would be two rules wearing one name. FUARAN132 holds the
+            // static half and the server-driven floor holds the submitted half.
+            let valueR =
+                valueOr decodeBindingFloat (Some Fuaran.UI.Defaults.ControlValueDefaults.rating) "Binding<float> value"
+
+            let maxR =
+                requireField path fields "max" "int max"
+                |> Result.bind (requireInt (path + ".max"))
+                |> Result.bind (fun m ->
+                    if m < 1 then
+                        wrongType
+                            (path + ".max")
+                            "an integer of at least 1 (a scale with no positions cannot be rendered or announced)"
+                    else
+                        Ok m)
+
+            let allowHalfR =
+                match tryField fields "allowHalf" with
+                | None -> Ok false
+                | Some v -> requireBool (path + ".allowHalf") v
+
+            match valueR, maxR, allowHalfR with
+            | Ok value, Ok max, Ok allowHalf -> Ok(FormFieldKind.Rating(allowHalf, max, handlerOpt "onChange", value))
+            | Error e, _, _
+            | _, Error e, _
+            | _, _, Error e -> Error e
+        | Ok "Color" ->
+            // Phase 1130 — the colour control. A `Static` literal must be the
+            // canonical `#rrggbb`, which is the one shape a native colour input
+            // can hold; anything else names a colour this control could never
+            // carry, so it is refused at the earliest point that can see it.
+            //
+            // RECORDED SPLIT — only a `Static` literal is checked, because it is
+            // the only text a decoder HAS. Every other binding carries its value
+            // from outside the document; FUARAN133 re-states the rule for an
+            // author and `FormValidation` enforces it on submission, which is
+            // the trust boundary that actually matters. One rule, checked
+            // wherever the value becomes visible — never a coercion, at any of
+            // the three.
+            valueOr decodeBindingString (Some Fuaran.UI.Defaults.ControlValueDefaults.color) "Binding<string> value"
+            |> Result.bind (fun value ->
+                match value with
+                | Some(Binding.Static(Some text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid text) ->
+                    wrongType (path + ".value") "a '#rrggbb' hex colour (the one shape a native colour input can hold)"
+                | _ -> Ok(FormFieldKind.Color(handlerOpt "onChange", value)))
         | Ok "Range" ->
             // 0.2.0 — dual-thumb numeric range (absorbed FilterKind.RangeFilter).
             let valueR =

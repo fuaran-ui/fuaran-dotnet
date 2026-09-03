@@ -339,7 +339,16 @@ let resolveAction (node: Node<'Msg>) (ev: LiveEvent) : Action<'Msg> option =
                 | FormFieldKind.Date _
                 // Phase 725 — a DateRange handler takes the (from, to) pair,
                 // not the single chosen string this resolution carries.
-                | FormFieldKind.DateRange _ -> None)
+                | FormFieldKind.DateRange _
+                // Phase 1130 — a rating chip's handler takes a `float` and a
+                // colour chip's a `string`, neither of which is the `string
+                // option` this name-addressed resolution carries. The driver
+                // no-ops them, exactly as it does the numeric chips above: the
+                // declarative client-store path is what these chips use, and
+                // inventing a coercion here would resolve the WRONG action
+                // rather than none.
+                | FormFieldKind.Rating _
+                | FormFieldKind.Color _ -> None)
     | NodeKind.Disclosure(spec) ->
         // Default to "open" when no explicit bool rides along (a summary click).
         // `OnToggle` is optional (Phase 426) — a `None` disclosure has no

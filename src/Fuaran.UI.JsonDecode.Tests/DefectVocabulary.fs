@@ -1,4 +1,4 @@
-module Fuaran.UI.JsonDecode.Tests.DefectVocabulary
+﻿module Fuaran.UI.JsonDecode.Tests.DefectVocabulary
 
 // ============================================================================
 //  The canonical pre-emit DEFECT VOCABULARY, generated from the F# reference.
@@ -57,6 +57,13 @@ let rec private sentinel (fieldName: string) (t: Type) : obj =
         box 0
     elif t = typeof<bool> then
         box false
+    elif t = typeof<float> then
+        // Phase 1130 — `RatingValueOutOfScale` carries the offending value.
+        // Zero renders as a bare `0` through `%g`, which is stable across
+        // cultures and across the two pipelines; a non-zero sentinel would
+        // print differently under a comma-decimal locale and make the emitted
+        // vocabulary machine-dependent.
+        box 0.0
     elif t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<_ list> then
         // An empty list: every message that consumes one does so through
         // `List.length`, so an empty list renders a stable `0`.

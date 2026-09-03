@@ -932,6 +932,23 @@ let private writeBackTo (ctx: RenderContext<'Msg>) (binding: Binding<'T>) (value
 /// sites now routes here. Keep it that way: a local re-implementation inside a
 /// render function is untestable by construction, and the harness census in
 /// `Fuaran.UI.Tests` fails on one reappearing.
+/// Whether the control write-back default has somewhere to write (Phase 1130).
+/// The renderer's copy of the predicate `PreEmitValidate`'s FUARAN069 inert
+/// check uses, and it must stay the same predicate: what the validator calls an
+/// inert control is exactly what this renderer must not dress up as an
+/// adjustable one. A `Binding.Local` counts as live — its commit pipeline
+/// carries the change independently of the handler.
+///
+/// Only the rating control consults it today, because it is the only control
+/// whose ARIA ROLE changes with the answer; every other control renders the
+/// same markup either way and lets the validator do the complaining.
+let internal isWriteBackTarget (binding: Binding<'T>) : bool =
+    match binding with
+    | Binding.State _
+    | Binding.Filter(_, None)
+    | Binding.Local _ -> true
+    | _ -> false
+
 let fieldChange
     (ctx: RenderContext<'Msg>)
     (onChange: ('v -> Action<'Msg>) option)
@@ -1459,6 +1476,10 @@ let private keysOfFormFieldKind<'Msg>
     | FormFieldKind.Combobox(_, _, opts, value) -> keysOfBinding channel opts @ keysOfValue value
     | FormFieldKind.Date(v, _, _, _, _, _) -> keysOfValue v
     | FormFieldKind.DateRange(v, _, _, _, _, _) -> keysOfValue v
+    // Phase 1130 — one value slot each; a rating's scale is a literal int and a
+    // colour has no second source, so nothing else to subscribe to.
+    | FormFieldKind.Rating(_, _, _, v) -> keysOfValue v
+    | FormFieldKind.Color(_, v) -> keysOfValue v
 
 
 /// The single-`HashSet` DFS behind `collectKeys` (Phase 207) — the reactive
@@ -5231,6 +5252,56 @@ and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) 
                    options = resolveOptions ctx options
                    committed = current
                    commit = fun chosen -> fieldChange ctx onChange value (chosen |> Option.map box) chosen |}
+        | FormFieldKind.Rating(allowHalf, max, onChange, value) ->
+            // Phase 1130 — the star scale, in `RatingControl`. The ARIA
+            // decision (slider when the control can be written, img when it
+            // cannot) and the whole keyboard model live there; the renderer
+            // resolves the binding here and hands over a number.
+            let value =
+                value
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.rating))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.rating
+
+            RatingControl.rating
+                {| fieldId = field.Id
+                   className = "fuaran-form-field-control"
+                   max = max
+                   allowHalf = allowHalf
+                   interactive = onChange.IsSome || isWriteBackTarget value
+                   label = labelText
+                   value = current
+                   commit = fun (v: float) -> fieldChange ctx onChange value (Some(box v)) v |}
+        | FormFieldKind.Color(onChange, value) ->
+            // Phase 1130 — the platform's own colour picker. Nothing is
+            // synthesised: `<input type="color">` IS the control, on every host
+            // that has one, and it round-trips `#rrggbb` in both directions.
+            //
+            // A value that resolves to something the input cannot hold falls
+            // back to the unset black rather than being handed over — a native
+            // colour input silently substitutes its own default for an
+            // unparseable value, so passing one through would show a colour the
+            // document did not choose while the tree still said otherwise. The
+            // decoder, FUARAN133 and the submission floor all refuse that shape;
+            // this is the render path's share of the same rule.
+            let value =
+                value
+                |> Option.defaultValue (Binding.State(field.Id, Some Fuaran.UI.Defaults.ControlValueDefaults.color))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.filter Fuaran.UI.HostPrelude.HexColor.isValid
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.color
+
+            Html.input
+                [ prop.className "fuaran-form-input fuaran-color-input"
+                  prop.type'.color
+                  prop.id field.Id
+                  prop.required field.Required
+                  prop.value current
+                  prop.onChange (fun (v: string) -> fieldChange ctx onChange value (Some(box v)) v) ]
         | FormFieldKind.SegmentedChoice(options, value, onChange, orientation) ->
             // Visible-options exclusive-choice input. Horizontal
             // emits a `role="radiogroup"` of `role="radio"` buttons styled
@@ -5616,6 +5687,40 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
                 value
                 (fun chosen -> fieldChange ctx onChange filterWriteBinding (chosen |> Option.map box) chosen)
                 orientation
+        // Phase 1130 — both new controls as filter chips. The chip's write
+        // destination is `$filters.<name>` exactly as every other declarative
+        // chip's is; only the READ comes from the chip's own slot.
+        | FormFieldKind.Rating(allowHalf, max, onChange, value) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.rating
+
+            RatingControl.rating
+                {| fieldId = spec.Name
+                   className = "fuaran-filter-control"
+                   max = max
+                   allowHalf = allowHalf
+                   // A chip's declarative write always has somewhere to go, so
+                   // a filter rating is adjustable whatever its read slot is.
+                   interactive = true
+                   label = labelText
+                   value = current
+                   commit = fun (v: float) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v |}
+        | FormFieldKind.Color(onChange, value) ->
+            let value = value |> Option.defaultValue (Binding.Filter(spec.Name, None))
+
+            let current =
+                BindingResolver.tryResolve ctx.Sources value
+                |> Option.filter Fuaran.UI.HostPrelude.HexColor.isValid
+                |> Option.defaultValue Fuaran.UI.Defaults.ControlValueDefaults.color
+
+            Html.input
+                [ prop.className "fuaran-filter-input fuaran-color-input"
+                  prop.type'.color
+                  prop.value current
+                  prop.onChange (fun (v: string) -> fieldChange ctx onChange filterWriteBinding (Some(box v)) v) ]
 
     Html.label
         [ prop.className "fuaran-filter"

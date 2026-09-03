@@ -4067,3 +4067,66 @@ that could sample the clipboard at a moment of its own choosing takes whatever t
 — a password, a one-time code, an address meant for somewhere else — without asking. Paste is
 user-initiated by construction, and that gesture is the consent no wire member could manufacture. The
 ruling is `docs/VOCABULARY.md`, Appendix A, Interaction / affordance cluster.
+
+
+## Recorded change — 0.67.0, the rating and colour form fields (fuaran#1130)
+
+**ADDITIVE to the wire, EXHAUSTIVENESS-BREAKING in F#, and a `WIRE_FORMAT.md` §11 forward-coupling
+event.** Two `FormFieldKind` cases — `Rating` and `Color` — land together, which is why one entry
+covers both: they are one change-set, one corpus sweep and one §11.2 vocabulary attestation.
+
+**`FormFieldKind.Rating of allowHalf: bool * max: int * onChange: (float -> Action<'Msg>) option *
+value: Binding<float> option`** — a subjective score on a small ordinal scale.
+**`FormFieldKind.Color of onChange: (string -> Action<'Msg>) option * value: Binding<string> option`**
+— the platform's own colour picker, over the canonical `#rrggbb` form.
+
+  * **Every document written before 0.67.0 encodes and decodes to byte-identical bytes.** Neither
+    case changes an existing one; no member moved; no default changed. A `Rating` or a `Color` in a
+    document is new vocabulary, and a host that predates it refuses it as an unknown `$type` — which
+    is the correct answer and the reason §11.2 attestation exists.
+
+  * **Source-breaking surface, and it is the ordinary one for a closed DU.** `FormFieldKind` is
+    exhaustively matched across the language tier, both renderers, the server-driven tier and the
+    apply engine, so an EXHAUSTIVE match over it in a consumer's own code stops compiling (`FS0025`,
+    an error under this repo's settings) until it handles the two new cases. A match with a wildcard
+    arm is unaffected. Construction sites are untouched — nothing existing changed arity.
+
+  * **Minor and not major, per this document's pre-1.0 rule**, the same classification the `Toggle`,
+    `DateRange` and `Combobox` case additions took.
+
+**The three decisions this release pins, recorded because a later reader will otherwise reopen them:**
+
+  * **`Rating.value` is `Binding<float>`, and `allowHalf` governs ENTRY only.** The commonest rating
+    a reader sees is an AVERAGE arriving through a `Query` binding — 4.3 of 5 — so the float is
+    load-bearing even where nobody can type a fraction. Entry is whole units unless `allowHalf` says
+    otherwise; display is continuous always. Those are two questions and the field separates them.
+    `allowHalf` is a bool rather than a `step` because a `step` slot would admit `0.3` — a valid
+    document naming an interaction no rating control has ever had — and would give `Rating` and
+    `RangedNumber` a third member in common.
+
+  * **`Rating.max` is REQUIRED, and its lower bound is a DECODE refusal while the value's bounds are
+    not.** A `max` below 1 names a control that cannot exist, so it is refused where it is read (the
+    `Switch.autoAdvanceMs` line). A value outside `0 .. max` is not refused at decode, because a
+    bound value is invisible to a decoder and a rule enforced only on literals would be two rules
+    wearing one name: `FUARAN132` (Warning) holds the static half and the server-driven submission
+    floor holds the submitted half.
+
+  * **`Color` admits `#rrggbb` and nothing else, refused rather than coerced, in three places.** The
+    decoder refuses a `Static` literal outside that shape; `FUARAN133` (**Error** — a tree carrying
+    one encodes to a document no conformant host will read back) refuses it for an author; and the
+    server-driven floor refuses a submitted one. Case is preserved and never normalised, so
+    `#FFAA00` round-trips byte-identically. Note this admits a CONTROL and says nothing about the
+    `color` *rule format*, which the vocabulary charter declined for want of evidence and which
+    remains declined.
+
+**Two new validator codes**, both additive: `FUARAN132` (Warning — a static rating outside its own
+scale) and `FUARAN133` (Error — a static colour that is not `#rrggbb`). A consumer that enumerates
+`PreEmitDefect` exhaustively gains two cases.
+
+**Class vocabulary moved**, so `Theme.vocabularyFingerprint` is restamped to `fv1:6702894e3f667a62`
+and the four tier CSS copies are regenerated with it. A host asserting the old fingerprint refuses
+the new sheet, which is the check working.
+
+**§11 step 6 authoring surfaces:** C# `FormField.Rating` / `FormField.Color` and `Filter.Rating` /
+`Filter.Color`; VB `kind="rating"` (with `max` / `allowHalf`) and `kind="color"` on both `<Field>` and
+`<Filter>`; both analyzer vocabulary rows.

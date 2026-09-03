@@ -740,6 +740,44 @@ type PreEmitDefect =
     /// Carries the node's id and the field / filter name.
     | ComboboxWithoutOptions of nodeId: string * fieldId: string
 
+    /// **FUARAN132 (Warning)**. A `FormFieldKind.Rating` whose STATIC value lies
+    /// outside its own scale — below `0` or above `max` (Phase 1130).
+    ///
+    /// This is the AUTHORING half of a rule the decoder deliberately does not
+    /// hold. Decode refuses `max < 1`, because a scale with no positions cannot
+    /// be drawn at all; it does NOT judge the value, because a `State` / `Query`
+    /// binding carries its number from somewhere the decoder cannot see, and a
+    /// bound rule enforced only on literals would be two rules wearing one name.
+    /// Here the literal IS visible, so it is judged here.
+    ///
+    /// **Warning, not Error.** The document decodes and renders — the renderer
+    /// clamps into the scale, and announces the clamped figure — so nothing is
+    /// broken; what is wrong is that the author wrote a number the control can
+    /// never show. A `Query`-bound average that overshoots is the same mistake
+    /// and is invisible to every static check, which is why the server-driven
+    /// submission floor re-states the bound rather than trusting this one.
+    ///
+    /// Carries the node's id, the field / filter name, the value and the scale.
+    | RatingValueOutOfScale of nodeId: string * fieldId: string * value: float * max: int
+
+    /// **FUARAN133 (Error)**. A `FormFieldKind.Color` whose STATIC value is not
+    /// the canonical `#rrggbb` hex form (Phase 1130).
+    ///
+    /// **Error, and the reason is specific: this tree cannot survive its own
+    /// wire format.** The generated decoder REFUSES a non-hex `Static` literal,
+    /// so a tree carrying one encodes to a document that no conformant host —
+    /// this one included — will read back. A warning would report a document
+    /// that is already unusable as a matter of style. Every other pre-emit code
+    /// in this family describes a tree that decodes perfectly and reads badly;
+    /// this one does not.
+    ///
+    /// It exists at all because an F#-authored tree never meets the decoder: the
+    /// author builds the case directly and encodes it, so without this check the
+    /// first thing that notices is a consumer, in another process, at read time.
+    ///
+    /// Carries the node's id, the field / filter name and the offending literal.
+    | ColorValueNotHex of nodeId: string * fieldId: string * value: string
+
     /// **FUARAN121 (Warning)**. A `FileUpload` declaring `dropTarget` or
     /// `acceptPaste` while carrying NO `onSelect` handler (Phase 1115) — a
     /// gesture invited onto a control that consumes nothing.
@@ -1661,6 +1699,23 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "combobox '%s' on node '%s' declares a STATIC and EMPTY option list — a typeahead with nothing to suggest, and no dynamic source that could supply anything later. It renders, it takes focus, and it opens no listbox: with allowFreeText it is a plain text input you did not ask for, and without it no value is admissible at all. Give the options a Query / State source if the suggestions arrive at runtime, list them if they are known, or use a Text field if free text is what you meant"
             fieldId
             nodeId
+    | PreEmitDefect.RatingValueOutOfScale(nodeId, fieldId, value, max) ->
+        "FUARAN132",
+        DefectSeverity.Warning,
+        sprintf
+            "rating '%s' on node '%s' declares the static value %g on a scale of 0 to %d — a figure the control cannot show. The renderer clamps into the scale and announces the clamped figure, so the reader is told something the document did not say. Correct the value, or raise max if the larger scale is what you meant"
+            fieldId
+            nodeId
+            value
+            max
+    | PreEmitDefect.ColorValueNotHex(nodeId, fieldId, value) ->
+        "FUARAN133",
+        DefectSeverity.Error,
+        sprintf
+            "colour field '%s' on node '%s' declares the static value '%s', which is not the canonical #rrggbb hex form. This is the one shape a native colour input can hold, and it is what the decoder accepts: a tree carrying anything else encodes to a document no conformant host will read back, including this one. Write the six-digit form (#ff8800), or bind the value if it arrives at runtime"
+            fieldId
+            nodeId
+            value
     | PreEmitDefect.UploadGestureWithoutHandler(nodeId, gestures) ->
         "FUARAN121",
         DefectSeverity.Warning,
@@ -2290,6 +2345,23 @@ let private validateCore
             defects.Add(PreEmitDefect.ComboboxWithoutOptions(nodeId, fieldId))
         | _ -> ()
 
+    /// FUARAN132 / FUARAN133 (Phase 1130) — the two static-value checks the two
+    /// new controls own. One helper, for `comboboxWithoutOptions`'s reason: a
+    /// filter chip carries the same control as a form field since the 0.2.0
+    /// unification, and one rule spelt twice is one rule that will differ.
+    ///
+    /// Only `Static` is judged, on the family's standing restraint — every other
+    /// binding case names a value resolved at render time, and judging one would
+    /// fire on the shape the control exists for. `Static None` is silent: "no
+    /// rating yet" and "no colour chosen" are ordinary states, not defects.
+    let ratingAndColourValue (nodeId: string) (fieldId: string) (kind: FormFieldKind<'Msg>) =
+        match kind with
+        | FormFieldKind.Rating(_, max, _, Some(Binding.Static(Some v))) when v < 0.0 || v > float max ->
+            defects.Add(PreEmitDefect.RatingValueOutOfScale(nodeId, fieldId, v, max))
+        | FormFieldKind.Color(_, Some(Binding.Static(Some text))) when not (Fuaran.UI.HostPrelude.HexColor.isValid text) ->
+            defects.Add(PreEmitDefect.ColorValueNotHex(nodeId, fieldId, text))
+        | _ -> ()
+
     let rec walk (n: Node<'Msg>) =
         depth <- depth + 1
 
@@ -2750,7 +2822,9 @@ let private validateCore
                  | FormFieldKind.SegmentedChoice(_, value, oc, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.Date(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
                  | FormFieldKind.DateRange(value, oc, _, _, _, _) -> recordWriteBack value oc.IsNone
-                 | FormFieldKind.Combobox(_, oc, _, value) -> recordWriteBack value oc.IsNone)
+                 | FormFieldKind.Combobox(_, oc, _, value) -> recordWriteBack value oc.IsNone
+                 | FormFieldKind.Rating(_, _, oc, value) -> recordWriteBack value oc.IsNone
+                 | FormFieldKind.Color(oc, value) -> recordWriteBack value oc.IsNone)
 
                 // ── Phase 864 — the declared-rule family (FUARAN099/100/101) ──
                 //
@@ -2778,7 +2852,9 @@ let private validateCore
                  | FormFieldKind.SegmentedChoice(_, value, _, _) -> recordOwnedKey value
                  | FormFieldKind.Date(value, _, _, _, _, _) -> recordOwnedKey value
                  | FormFieldKind.DateRange(value, _, _, _, _, _) -> recordOwnedKey value
-                 | FormFieldKind.Combobox(_, _, _, value) -> recordOwnedKey value)
+                 | FormFieldKind.Combobox(_, _, _, value) -> recordOwnedKey value
+                 | FormFieldKind.Rating(_, _, _, value) -> recordOwnedKey value
+                 | FormFieldKind.Color(_, value) -> recordOwnedKey value)
 
                 match field.Rule with
                 | None -> ()
@@ -2808,6 +2884,15 @@ let private validateCore
                         // an email format on a suggestion list is the confusion
                         // this table exists to name.
                         | FormFieldKind.Combobox _ -> "Combobox", false, false
+                        // Phase 1130 — neither new control honours a text bound
+                        // or a `format`. A rating is a number on a scale it
+                        // declares itself; a colour's own format is fixed by the
+                        // control and enforced by the decoder, the validator and
+                        // the submission floor, so a `format` slot on it would be
+                        // a second, weaker statement of a rule the control
+                        // already holds absolutely.
+                        | FormFieldKind.Rating _ -> "Rating", false, false
+                        | FormFieldKind.Color _ -> "Color", false, false
 
                     let unhonourable (slot: RuleSlot) =
                         defects.Add(PreEmitDefect.RuleSlotUnhonourable(nodeIdStr, field.Id, slot, control))
@@ -2885,8 +2970,11 @@ let private validateCore
                     | FormFieldKind.Date(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.DateRange(value, oc, _, _, _, _) -> oc.IsNone && not (valueLive value)
                     | FormFieldKind.Combobox(_, oc, _, value) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.Rating(_, _, oc, value) -> oc.IsNone && not (valueLive value)
+                    | FormFieldKind.Color(oc, value) -> oc.IsNone && not (valueLive value)
 
                 comboboxWithoutOptions nodeIdStr field.Id field.Kind
+                ratingAndColourValue nodeIdStr field.Id field.Kind
 
                 if inert then
                     defects.Add(PreEmitDefect.InertControl(nodeIdStr, sprintf "FormField(%s)" field.Id))
@@ -2912,7 +3000,13 @@ let private validateCore
             // rule. Split out of the no-op group below for that one check; the
             // rest of a Filters node is still walked elsewhere.
             spec.Items
-            |> List.iter (fun item -> comboboxWithoutOptions n.Id item.Name item.Kind)
+            |> List.iter (fun item ->
+                comboboxWithoutOptions n.Id item.Name item.Kind
+                // Phase 1130 — the same argument, one control family further:
+                // a chip's rating and colour carry the same value rules a
+                // field's do, and a walk that saw only forms would leave the
+                // chip route unjudged.
+                ratingAndColourValue n.Id item.Name item.Kind)
         | NodeKind.FileUpload spec ->
             // FUARAN121 (Phase 1115) — a declared ingress gesture with nothing
             // to consume it. Split out of the no-op group for this one check.

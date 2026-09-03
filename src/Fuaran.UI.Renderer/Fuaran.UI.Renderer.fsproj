@@ -86,6 +86,7 @@
     <Compile Include="VisAdapter.fs" />
     <Compile Include="LocalBindings.fs" />
     <Compile Include="ComboboxControl.fs" />
+    <Compile Include="RatingControl.fs" />
     <Compile Include="FileUploadDrop.fs" />
     <Compile Include="PopoverSurface.fs" />
     <Compile Include="SwitchStage.fs" />

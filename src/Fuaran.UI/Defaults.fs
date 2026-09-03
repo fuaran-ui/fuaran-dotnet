@@ -1072,6 +1072,14 @@ let theme: Theme =
 /// Decode, encode, and the resolver all reference THESE values — the
 /// round-trip is byte-stable only while all three agree, so a new control
 /// type adds its placeholder here first.
+/// Phase 1130 — the conventional rating scale. `FormFieldKind.Rating.Max` is a
+/// REQUIRED wire member (the `TextArea.rows` shape: always present on the wire,
+/// defaulted at the authoring surface), so this is what the authoring surfaces
+/// reach for when the author says nothing. Five, because five is what a reader
+/// expects a row of stars to be, and a language that had to be told so every
+/// time would be teaching nothing.
+let ratingMax: int = 5
+
 module ControlValueDefaults =
     let text: string = ""
     let number: float = 0.0
@@ -1086,6 +1094,18 @@ module ControlValueDefaults =
     /// own name because this module's contract is one entry per control type —
     /// decode, encode and the resolver all reference the control by name.
     let combobox: string option = choice
+
+    /// Phase 1130 — "no rating yet" is zero stars, which is also the scale's
+    /// own floor (`aria-valuemin`). It is a `float` because the slot is, and
+    /// deliberately not `nan` or a sentinel: a rating of none and a rating of
+    /// zero are the same statement to a reader looking at an empty row of stars.
+    let rating: float = 0.0
+
+    /// Phase 1130 — "no colour chosen" is black, which is what a native colour
+    /// input itself reports before anyone picks. Named once, in the prelude, so
+    /// the decoder, the encoder's collapse and the renderers cannot each invent
+    /// their own idea of the unset colour.
+    let color: string = Fuaran.UI.HostPrelude.HexColor.unset
 
     let range: RangePair = { Max = 0.0; Min = 0.0 }
     /// ISO-empty — the Date control's value is an ISO-8601 string.

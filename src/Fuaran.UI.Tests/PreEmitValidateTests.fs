@@ -848,6 +848,55 @@ let private comboboxDefects (tree: Node<Msg>) : PreEmitDefect list =
             | PreEmitDefect.ComboboxWithoutOptions _ -> true
             | _ -> false)
 
+// ─── Phase 1130 fixtures ─ FUARAN132 / FUARAN133, the two value rules ──────
+
+/// A one-field form whose field is a rating over `value`. `max` is the
+/// conventional five throughout — the rule is about the value, and a fixture
+/// that varied the scale as well would suggest the two interact.
+let private ratingForm (fieldId: string) (value: Binding<float>) : Node<Msg> =
+    Fuaran.form
+        "f"
+        { Defaults.form with
+            Fields =
+                [ { Defaults.formField with
+                      Id = fieldId
+                      Label = TextSource.Literal "Score"
+                      Kind = FormFieldKind.Rating(false, 5, None, Some value) } ]
+            SubmitLabel = TextSource.Literal "Save" }
+
+/// A one-field form whose field is a colour over `value`.
+let private colourForm (fieldId: string) (value: Binding<string>) : Node<Msg> =
+    Fuaran.form
+        "f"
+        { Defaults.form with
+            Fields =
+                [ { Defaults.formField with
+                      Id = fieldId
+                      Label = TextSource.Literal "Brand"
+                      Kind = FormFieldKind.Color(None, Some value) } ]
+            SubmitLabel = TextSource.Literal "Save" }
+
+/// The same two controls as FILTER chips — the 0.2.0 unification means these
+/// are the SAME rules reached by a second route, and the pair of fixtures is
+/// what keeps it that way (the `comboboxFilters` posture).
+let private ratingFilters (name: string) (value: Binding<float>) : Node<Msg> =
+    Fuaran.filters
+        "fs"
+        [ { Name = name
+            Label = TextSource.Literal "Chip"
+            Kind = FormFieldKind.Rating(false, 5, None, Some value) } ]
+
+/// Only the two Phase 1130 defects, for the reason `embedDefects` states.
+let private ratingColourDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.RatingValueOutOfScale _
+            | PreEmitDefect.ColorValueNotHex _ -> true
+            | _ -> false)
+
 /// Only the two Phase 1111 defects. The fixtures deliberately carry other
 /// shapes, so asserting `Ok()` would couple these tests to rules they are not
 /// about — the `closureDefects` posture one family over.
@@ -4287,4 +4336,119 @@ let crossContainerTransferTests =
                         transferGrid "done" (Some "board") (Some "board") (Some "id") ]
 
               Expect.isEmpty (transferDefects tree) "both ends can say what moved"
+          } ]
+
+[<Tests>]
+let ratingAndColourValueRuleTests =
+    testList
+        "PreEmitValidate — FUARAN132 / FUARAN133, the two value rules (Phase 1130)"
+        [ test "FUARAN132: a static rating above the scale is reported" {
+              let tree = ratingForm "score" (Binding.Static(Some 7.0))
+
+              Expect.equal
+                  (ratingColourDefects tree
+                   |> List.map (fun d -> let c, _, _ = PreEmitValidate.describe d in c))
+                  [ "FUARAN132" ]
+                  "the overshoot is the defect"
+
+              Expect.equal
+                  (severityOf (ratingColourDefects tree |> List.head))
+                  DefectSeverity.Warning
+                  "Warning, not Error — the renderer clamps, so the document still decodes and renders"
+          }
+
+          test "FUARAN132: a NEGATIVE static rating is the same defect" {
+              // `aria-valuemin` is 0 and the keyboard cannot go below it, so a
+              // negative literal was not produced by the control either.
+              Expect.isNonEmpty (ratingColourDefects (ratingForm "score" (Binding.Static(Some -1.0)))) "below the floor"
+          }
+
+          test "FUARAN132 go-red check: a value INSIDE the scale is silent" {
+              // Including both ends and a fraction: zero is "no rating", the
+              // ceiling is a full row, and 4.3 is the bound-average shape the
+              // float slot exists for. A rule that fired on any of these would
+              // be one authors switch off.
+              Expect.isEmpty (ratingColourDefects (ratingForm "s" (Binding.Static(Some 0.0)))) "zero is no rating"
+
+              Expect.isEmpty
+                  (ratingColourDefects (ratingForm "s" (Binding.Static(Some 5.0))))
+                  "the ceiling is a full row"
+
+              Expect.isEmpty
+                  (ratingColourDefects (ratingForm "s" (Binding.Static(Some 4.3))))
+                  "a fraction is an average"
+          }
+
+          test "FUARAN132 go-red check: a NON-static value is silent" {
+              // The standing restraint. A Query average is resolved at render
+              // time and is exactly what this control's float slot is for;
+              // judging it would report a defect nobody could see or fix.
+              let queryBound =
+                  ratingForm "s" (Binding.Query("reviews", (fun (raw: obj) -> unbox raw), None))
+
+              Expect.isEmpty (ratingColourDefects queryBound) "a Query value is not judged"
+              Expect.isEmpty (ratingColourDefects (ratingForm "s" (Binding.State("score", None)))) "nor a State value"
+          }
+
+          test "FUARAN133: a static non-hex colour is reported, as an ERROR" {
+              let tree = colourForm "brand" (Binding.Static(Some "rebeccapurple"))
+
+              Expect.equal
+                  (ratingColourDefects tree
+                   |> List.map (fun d -> let c, _, _ = PreEmitValidate.describe d in c))
+                  [ "FUARAN133" ]
+                  "the named colour is the defect"
+
+              // Error and not Warning, and the reason is specific: the decoder
+              // REFUSES this literal, so the tree encodes to a document no
+              // conformant host will read back. Every other code in this family
+              // describes a tree that decodes perfectly and reads badly.
+              Expect.equal
+                  (severityOf (ratingColourDefects tree |> List.head))
+                  DefectSeverity.Error
+                  "Error — this tree cannot survive its own wire format"
+          }
+
+          test "FUARAN133: the three-digit shorthand is refused too" {
+              // A native colour input cannot hold `#fff`, and nothing here
+              // normalises it: widening is additive and reversible, a lenient
+              // guess is not.
+              Expect.isNonEmpty (ratingColourDefects (colourForm "b" (Binding.Static(Some "#fff")))) "shorthand"
+              Expect.isNonEmpty (ratingColourDefects (colourForm "b" (Binding.Static(Some "ff8800")))) "no hash"
+              Expect.isNonEmpty (ratingColourDefects (colourForm "b" (Binding.Static(Some "#ff88zz")))) "not hex"
+          }
+
+          test "FUARAN133 go-red check: a canonical hex colour is silent, in either case" {
+              // `#FFFFFF` IS a hex colour. Refusing upper case would be
+              // pedantry, and the codec preserves the author's bytes.
+              Expect.isEmpty (ratingColourDefects (colourForm "b" (Binding.Static(Some "#ff8800")))) "lower case"
+              Expect.isEmpty (ratingColourDefects (colourForm "b" (Binding.Static(Some "#FFFFFF")))) "upper case"
+          }
+
+          test "FUARAN133 go-red check: a NON-static value is silent" {
+              Expect.isEmpty (ratingColourDefects (colourForm "b" (Binding.State("brand", None)))) "a State value"
+          }
+
+          test "FUARAN132 reaches a FILTER chip, not only a form field" {
+              // A chip carries an ordinary FormFieldKind since the 0.2.0
+              // unification, so an identically-broken chip must report the same
+              // rule; one walk that saw only forms would be residue.
+              Expect.isNonEmpty
+                  (ratingColourDefects (ratingFilters "stars" (Binding.Static(Some 9.0))))
+                  "the chip's rating is judged by the same rule"
+          }
+
+          test "a form with neither control raises the rules nowhere" {
+              let tree =
+                  Fuaran.form
+                      "f"
+                      { Defaults.form with
+                          Fields =
+                              [ { Defaults.formField with
+                                    Id = "name"
+                                    Label = TextSource.Literal "Name"
+                                    Kind = FormFieldKind.Text(Some(Binding.Static(Some "x")), None) } ]
+                          SubmitLabel = TextSource.Literal "Save" }
+
+              Expect.isEmpty (ratingColourDefects tree) "neither rule quantifies over fields in general"
           } ]

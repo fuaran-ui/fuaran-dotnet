@@ -1,4 +1,4 @@
-module Fuaran.UI.DeadOnDecode
+﻿module Fuaran.UI.DeadOnDecode
 
 // ============================================================================
 //  The dead-on-decode lint (Phase 430) — the un-regression guarantee for the
@@ -160,6 +160,10 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
                     | FormFieldKind.Combobox(_, oc, _, v) ->
                         handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                    | FormFieldKind.Rating(_, _, oc, v) ->
+                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
+                    | FormFieldKind.Color(oc, v) ->
+                        handler nodeId (slot "onChange") oc.IsSome (isWritableOpt v) "$state"
 
                 []
             | NodeKind.Select s ->
@@ -194,6 +198,8 @@ let lint<'Msg> (root: Node<'Msg>) : LintFinding list =
                         | FormFieldKind.Date(_, oc, _, _, _, _) -> oc.IsSome
                         | FormFieldKind.DateRange(_, oc, _, _, _, _) -> oc.IsSome
                         | FormFieldKind.Combobox(_, oc, _, _) -> oc.IsSome
+                        | FormFieldKind.Rating(_, _, oc, _) -> oc.IsSome
+                        | FormFieldKind.Color(oc, _) -> oc.IsSome
 
                     if present then
                         findings.Add(

@@ -4162,6 +4162,47 @@
             "$type",
             "options"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Rating"
+            },
+            "allowHalf": {
+              "type": "boolean"
+            },
+            "max": {
+              "type": "integer"
+            },
+            "onChange": {
+              "const": "<closure>"
+            },
+            "value": {
+              "$ref": "#/$defs/Binding_float"
+            }
+          },
+          "required": [
+            "$type",
+            "max"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "$type": {
+              "const": "Color"
+            },
+            "onChange": {
+              "const": "<closure>"
+            },
+            "value": {
+              "$ref": "#/$defs/Binding_str"
+            }
+          },
+          "required": [
+            "$type"
+          ]
         }
       ]
     },

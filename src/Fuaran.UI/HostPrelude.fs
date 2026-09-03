@@ -1,4 +1,4 @@
-// The host prelude — the small set of HOST types the IDL's `THosted` slots name
+﻿// The host prelude — the small set of HOST types the IDL's `THosted` slots name
 // (Accessibility.role, StateBehaviour.onError's arg), compiled AHEAD
 // of `Generated.fs` so the generated code can reference them and their wire codecs.
 // `Fuaran.UI.Types` re-exposes each as an alias, so consumers are unaffected.
@@ -181,3 +181,45 @@ module TransformLive =
         match data with
         | JArr [] -> Ok emptySource
         | _ -> ColumnCodec.decodeJson (normaliseData data)
+
+// ─── Hex-colour recognition (Phase 1130 — the `FormFieldKind.Color` control).
+//     Compiled ahead of `Generated.fs` so the generated decoder's Color arm can
+//     refuse a `Static` literal that `<input type="color">` could never hold,
+//     and public so the renderers, the pre-emit validator and the server-driven
+//     submission floor read the SAME predicate. Four copies of "is this a hex
+//     colour" is exactly how one of them ends up admitting `#FFF`. ───────────
+
+[<RequireQualifiedAccess>]
+module HexColor =
+
+    /// `true` for the canonical `#rrggbb` form and nothing else — six hex
+    /// digits after a `#`, either case.
+    ///
+    /// It is deliberately STRICT. `<input type="color">` holds exactly this
+    /// form: it cannot carry `#fff`, `rebeccapurple`, `rgb(0 0 0)` or an alpha
+    /// channel, and a control that silently narrowed one of those to something
+    /// else would be answering a question the author did not ask. Widening is
+    /// additive and reversible; a lenient normalisation that guessed wrong is
+    /// not.
+    ///
+    /// Case is accepted and never rewritten — `#FFFFFF` is a hex colour, and
+    /// the codec preserves the author's bytes. The browser lower-cases on its
+    /// own, at the DOM, where that is its business.
+    let isValid (text: string) : bool =
+        text.Length = 7
+        && text[0] = '#'
+        && (let mutable ok = true
+
+            for i in 1..6 do
+                let c = text[i]
+
+                if not ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) then
+                    ok <- false
+
+            ok)
+
+    /// The canonical spelling of "no colour chosen" — black, the value
+    /// `<input type="color">` itself reports when nothing has been picked. It
+    /// is the auto-bind placeholder for a `Color` field (`Defaults`), so decode,
+    /// encode and the resolver all name the same literal once.
+    let unset: string = "#000000"

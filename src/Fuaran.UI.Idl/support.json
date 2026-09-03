@@ -3,6 +3,14 @@
     {
       "case": "Action.SetState",
       "expression": "// Phase 818 — value XOR valueFrom (a literal, or a Binding\u000a            // evaluated at dispatch time); exactly one must be present.\u000a            match value, valueFrom with\u000a            | Some _, Some _ -> Error \"SetState carries both 'value' and 'valueFrom' — exactly one is allowed ('value' is a literal; 'valueFrom' derives the written value from a Binding at dispatch time)\"\u000a            | None, None -> Error \"SetState requires 'value' (a literal JSON value) or 'valueFrom' (a Binding evaluated at dispatch time)\"\u000a            | _ -> Ok(Action.SetState(key, value, valueFrom))"
+    },
+    {
+      "case": "FormFieldKind.Color",
+      "expression": "match value with\u000a            | Some(Binding.Static(Some __text)) when not (Fuaran.UI.HostPrelude.HexColor.isValid __text) ->\u000a                Error (sprintf \"Color 'value' must be a '#rrggbb' hex colour — got %s\" __text)\u000a            | _ -> Ok(FormFieldKind.Color(onChange, value))"
+    },
+    {
+      "case": "FormFieldKind.Rating",
+      "expression": "if max < 1 then\u000a                Error (sprintf \"Rating 'max' must be at least 1 — a scale with %d positions cannot be rendered or announced\" max)\u000a            else\u000a                Ok(FormFieldKind.Rating(allowHalf, max, onChange, value))"
     }
   ],
   "description": "The declared-support record for a Fuaran IDL vocabulary — doc comments, verbatim source splices, per-case decode refinements and per-kind host projections — plus the host prelude the generated module is compiled after. Together with idl.json beside it and the prelude file it names, this is everything a domain needs to regenerate its structural layer against the packaged engine. Every string here is host-language source, not wire spec.",

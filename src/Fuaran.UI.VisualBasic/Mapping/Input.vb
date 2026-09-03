@@ -1,4 +1,4 @@
-Imports System.Linq
+﻿Imports System.Linq
 Imports System.Xml.Linq
 Imports Csharp = Fuaran.UI.CSharp
 
@@ -71,6 +71,14 @@ Friend Module InputMapping
             ' the shortest spelling is the constrained one, exactly as on the wire.
             Case "combobox"
                 Return Csharp.FormField.Combobox(id, label, OptStr(f, "selected"), ReadOptions(f), AttrBool(f, "allowFreeText"), required, help, rule)
+            ' Phase 1130 — the star scale. `max` defaults to 5 and `allowHalf` to
+            ' False, so the shortest spelling is the conventional whole-star control.
+            Case "rating"
+                Return Csharp.FormField.Rating(id, label, AttrDouble(f, "initial", 0.0), AttrInt(f, "max", 5), AttrBool(f, "allowHalf"), required, help, rule)
+            ' Phase 1130 — the colour picker. The initial value is `#rrggbb`; the
+            ' unset default is black, which is what a native colour input reports.
+            Case "color"
+                Return Csharp.FormField.Color(id, label, If(HasAttr(f, "initial"), Attr(f, "initial"), "#000000"), required, help, rule)
             Case Else
                 Return Csharp.FormField.Text(id, label, If(HasAttr(f, "initial"), Attr(f, "initial"), ""), required, help, rule)
         End Select
@@ -88,6 +96,10 @@ Friend Module InputMapping
                 Return Csharp.Filter.Choice(name, label, ReadOptions(f))
             Case "combobox"
                 Return Csharp.Filter.Combobox(name, label, ReadOptions(f), AttrBool(f, "allowFreeText"))
+            Case "rating"
+                Return Csharp.Filter.Rating(name, label, AttrInt(f, "max", 5), AttrBool(f, "allowHalf"))
+            Case "color"
+                Return Csharp.Filter.Color(name, label)
             Case Else
                 Return Csharp.Filter.Text(name, label)
         End Select
