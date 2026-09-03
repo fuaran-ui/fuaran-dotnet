@@ -742,6 +742,41 @@ type PreEmitDefect =
     /// Carries the node's id and the closure slot
     /// (`SlotCapability`'s `Type.slot` spelling).
     | WireLossyActionClosure of nodeId: string * slot: string
+    /// **FUARAN114 (Error)**. A `DataGrid` names a column its own source cannot
+    /// produce: a column `field`, or the grid's `rowKeyField`, absent from the
+    /// statically-known schema of the `Binding.Transform` the grid reads
+    /// (Phase 1149). The row projection resolves the name against each row and
+    /// finds nothing, so the cell renders blank — or, for `rowKeyField`, every
+    /// row keys off the same empty string and row identity silently collapses.
+    /// A blank cell is indistinguishable from a legitimately empty value, which
+    /// is why this is worth a code at all.
+    ///
+    /// **The read-side twin of FUARAN086**, which grounds a chart's field
+    /// references against the same schema, over the same window, for the same
+    /// reason. The window is the one the tier can DERIVE: a `Transform` over an
+    /// `Embedded` table with an EMPTY pipeline. A non-empty pipeline changes the
+    /// column set — `derive` adds, `project` and `groupBy` remove — and a `Ref`
+    /// source, a `Query`, a `State` or a host `Static` row-seq is unknowable
+    /// before the tree runs. All of those pass ungrounded, per the
+    /// fuaran-core#90 rule: refuse only what is PROVABLY wrong. That is not a
+    /// gap being tolerated; a rule that guessed here would fire on correct
+    /// authoring, and an Error that is occasionally wrong gets suppressed.
+    ///
+    /// **Why this lives in the validator rather than a tier above it.** The
+    /// alternative considered was hosting the check where a pipeline's output
+    /// schema is already computable. It was declined: the chart's identical
+    /// grounding rule lives here, and splitting one rule across two homes gives
+    /// it two vocabularies and a code space that no longer says where a defect
+    /// came from. The pipeline-bearing widening is a single call to the
+    /// schema-walk `fuaran-core#112` shipped, at the one call site below, once
+    /// this package's `Fuaran.Core.DataFrame` pin can name the version carrying
+    /// it — the pins here are deliberately held behind what the public index
+    /// serves, and this rule does not wait on that to be useful.
+    ///
+    /// Carries the grid node's id, the ungrounded field name, and the schema's
+    /// column set — the author needs both halves to see whether it is a typo or
+    /// the wrong source.
+    | GridFieldUngrounded of nodeId: string * field: string * schemaColumns: string list
 
 /// Which `FieldRule` slot a control cannot honour (FUARAN100, Phase 864).
 /// Typed rather than a string so the honourable set stays enumerable: a slot
@@ -1147,6 +1182,14 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "node '%s' carries a host closure in '%s' — the canonical encoder drops the payload and the decoder rebuilds it as \"<closure>\", so a decoding host receives an affordance that fires and does nothing; replace it with a wire-representable action (Action.Notify, or Action.Call with into:) and bind the typed behaviour host-side to the artifact's declared action hole. Encode with encodeNodeForTransport to have this refused rather than warned. If this tree is rendered IN PROCESS and never serialised, the closure is correct and this warning is expected"
             nodeId
             slot
+    | PreEmitDefect.GridFieldUngrounded(nodeId, field, schemaColumns) ->
+        "FUARAN114",
+        DefectSeverity.Error,
+        sprintf
+            "grid '%s' names field '%s', absent from its source's statically-known schema [%s] — the row projection resolves it against nothing, so the cell renders blank (or, for rowKeyField, every row shares one empty key and row identity collapses); fix the name, or source the grid from data that carries the column (Phase 1149)"
+            nodeId
+            field
+            (String.concat ", " schemaColumns)
 
 /// The shared walk behind `validate` / `validateWithRegistry`. `customCheck`
 /// runs at every `NodeKind.Custom` (node id, moduleId, componentId, props) —
@@ -1661,6 +1704,36 @@ let private validateCore
 
             if spec.RowKey.IsNone && spec.RowKeyField.IsNone then
                 defects.Add(PreEmitDefect.UnstableRowIdentity nodeIdStr)
+
+            // FUARAN114 (Phase 1149): a declared field the grid's own source
+            // cannot produce. FUARAN077 above asks whether a column names
+            // ANYTHING; this asks whether what it names is THERE — the read-side
+            // twin of FUARAN086, over the same window and by the same restraint.
+            //
+            // The window is what this tier can derive: an `Embedded` table with
+            // an EMPTY pipeline. A non-empty pipeline changes the column set
+            // (derive adds, project/groupBy remove) and every other source shape
+            // is unknowable pre-emit, so both pass ungrounded rather than
+            // false-positive. `fuaran-core#112` shipped the pipeline walk into
+            // the dataframe package this file already consumes: widening this
+            // rule is replacing the `[]` pattern below with that call, once the
+            // pin here can name the version carrying it.
+            (match spec.Source with
+             | Binding.Transform(TransformSource.Data(DataSource.Embedded table), [], _) ->
+                 let schemaColumns = table.Schema |> List.map fst
+
+                 let ground (field: string) =
+                     if not (List.contains field schemaColumns) then
+                         defects.Add(PreEmitDefect.GridFieldUngrounded(nodeIdStr, field, schemaColumns))
+
+                 // Reported per offending name rather than once per grid: a grid
+                 // pointed at the wrong source names several missing columns, and
+                 // the author repairs each of them.
+                 for col in spec.Columns do
+                     col.Field |> Option.iter ground
+
+                 spec.RowKeyField |> Option.iter ground
+             | _ -> ())
 
             // FUARAN090 (Phase 663): `editable: true` only means anything when the
             // grid's source is a direct `Binding.State` — the renderer's grid
