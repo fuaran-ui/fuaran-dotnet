@@ -752,7 +752,33 @@ let all: FidelityRow list =
           "rendered INLINE at its tree position with no portal, always emitted, `role=\"status\"` + `aria-live=\"polite\"`, and `[hidden]` when closed rather than absent. This is the DECLARATIVE, hydration-stable notification surface; the imperative `Action.Notify` path renders no node at all and is a host-chrome trigger, not a tier of this kind"
           RichTier.None
           [ "toast-1" ]
-          "Phase 289; WIRE_FORMAT.md 3.2 (Toast vs Action.Notify); docs/SSR.md" ]
+          "Phase 289; WIRE_FORMAT.md 3.2 (Toast vs Action.Notify); docs/SSR.md"
+
+      // Phase 1120 — `Tree` carries a RICH tier where `Disclosure` and `Tabs`
+      // carry Behavioural ones, and the difference is the whole admission. Those
+      // two are inert server-side and gain their toggling on hydration; a tree is
+      // COMPLETE server-side — the hierarchy, the ARIA, the roving tabindex and
+      // the statically-resolvable expanded state all reach a reader with no
+      // script — and what hydration adds is MOVEMENT within a widget that is
+      // already correctly announced. A reader with JavaScript off gets a
+      // navigable, correctly-levelled hierarchy rather than a control that does
+      // nothing.
+      row
+          "Tree"
+          true
+          "the recursive TreeItem rows, and the names of the two State slots the reader's expansion and selection live in - never the state itself, and never a per-row expanded flag"
+          "nested `<ul role=\"tree\">` / `<li role=\"treeitem\">` / `<ul role=\"group\">`, every row carrying a stated `aria-label`, `aria-level`, `aria-setsize` and `aria-posinset`; `aria-expanded` on rows that HAVE children and on no others, reflecting the statically-resolvable expanded state; `aria-selected` only where a selection key is named; and EXACTLY ONE row at `tabindex=\"0\"` with every other at `-1` - the widget is one tab stop, computed from state alone so the server and the client's first frame agree. No script at any point"
+          (RichTier.Behavioural(
+              "the six key bindings - Down/Up move between visible rows, Right opens a closed parent and then moves into it, Left closes an open row and otherwise moves to its parent, Home/End reach the first and last visible row - plus the expansion and selection writes",
+              "the server rendering is COMPLETE and navigable by assistive technology; what hydration adds is movement, not legibility"
+          ))
+          [ "tree-1"; "tree-expanded-1"; "tree-selection-1" ]
+          "Phase 1120; WIRE_FORMAT.md 3.6.12, 21.5; docs/SSR.md (the Tree server floor)"
+      |> obliged
+          [ owes
+                ObligationClaim.AccessibleNameAlways
+                "WIRE_FORMAT.md 3.6.12"
+                "every row carries a stated `aria-label` equal to its visible label - a treeitem OWNS its child group, so a name computed from contents would read the whole branch out as the row's own name" ] ]
 
 /// The canonical wire-kind enumeration this table declares a posture for — the
 /// `kind.$type` vocabulary of WIRE_FORMAT.md 3.2, Ordinal-sorted.
@@ -808,7 +834,8 @@ let wireKindNames: string list =
       "SummaryList"
       "Switch"
       "Tabs"
-      "Toast" ]
+      "Toast"
+      "Tree" ]
 
 /// The wire discriminator of a node's kind — the token this table is keyed by.
 ///

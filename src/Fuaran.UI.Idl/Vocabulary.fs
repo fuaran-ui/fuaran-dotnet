@@ -1397,6 +1397,48 @@ let private trackEntryRecord =
           req "src" (TUnion("Binding", [ TStr ]))
           req "srcLang" TStr ] }
 
+/// Phase 1120 — one row of a `Tree`, and the vocabulary's first SELF-REFERENTIAL
+/// record: `children` is a list of the record being declared. The IDL's record
+/// references are nominal (`TRecord "TreeItem"` names a record, it does not
+/// inline one), and every generated type, encoder and decoder lands in one
+/// mutually-recursive group, so the recursion needs no new machinery on either
+/// side — it needed only to be the shape the tree actually has.
+///
+/// `id` is REQUIRED and is the row's identity in the two State keys the spec
+/// carries: the expanded set names ids, and the selection names an id. An
+/// item with no id is a row nothing can name, which is a row that cannot be
+/// expanded, selected or restored — so unlike `TabHeader` (identified by
+/// position) this record cannot make identity optional. Uniqueness within one
+/// `Tree` is a validator rule rather than a decode rule, on `NodeId`'s own
+/// §8.1 precedent: the decoder judges shape, the pre-emit gate judges sense.
+///
+/// `label` is a `TextSource` and not a bare string for `TrackEntry.label`'s
+/// reason exactly — it is CONTENT: authored, translated, and possibly bound.
+///
+/// `children` omits at the EMPTY LIST, so a leaf carries no `children` key at
+/// all. That is the ordinary polarity for a list slot (`srcSet`, `tracks`,
+/// `permissions`) and it matters more here than in any of them, because a tree
+/// is mostly leaves: the omission is the difference between a leaf costing two
+/// keys and costing three, multiplied by every row of a file listing.
+///
+/// **There is deliberately no `expandable` boolean and no per-item `expanded`
+/// flag.** Whether a row can be opened is derivable — a row with children can —
+/// and whether it IS open is the grid-behaviour cluster's governing ruling: a
+/// behaviour the reader drives is a named State key the host both reads and
+/// writes, never a per-node shadow copy that the key and the tree are then free
+/// to disagree about.
+///
+/// `icon` is the same optional string slot every other icon-bearing record
+/// carries, and it is presentational: a host with no icon set renders the row
+/// without one and loses nothing a reader needs.
+let private treeItemRecord =
+    { Name = "TreeItem"
+      Fields =
+        [ omit "children" (TList(TRecord "TreeItem")) (VList [])
+          opt "icon" TStr
+          req "id" TStr
+          req "label" (TUnion("TextSource", [])) ] }
+
 /// A `FragmentDecl`'s two-axis effect class (omitted on the wire when pure +
 /// deterministic — modelled here as an optional field on the kind).
 let private effectClassRecord =
@@ -1535,6 +1577,25 @@ let displayKinds: IdlKind list =
         Category = "Display"
         Annotations = Annotations.Empty
         Fields = [ req "items" (TList TS); req "ordered" TBool ] }
+      // Phase 1120 — the recursive-disclosure kind, admitted on the SEMANTICS
+      // ground. It sits here beside `List`, in the Display family, because the
+      // family line is drawn on whether a kind bears `Node` children: `Tree`
+      // bears `TreeItem` ROWS, exactly as `List` bears `TextSource` items, so
+      // it is `List`'s recursive sibling and not a second `Disclosure`.
+      //
+      // Both reader-driven behaviours are named State keys, per the
+      // grid-behaviour cluster's governing ruling — the key IS the affordance.
+      // There is no `expandable` and no `selectable` boolean, because a flag
+      // with no key behind it is a decorative control writing state nothing
+      // reads.
+      { Tag = "Tree"
+        Category = "Display"
+        Annotations = Annotations.Empty
+        Fields =
+          [ opt "expandedStateKey" TStr
+            req "items" (TList(TRecord "TreeItem"))
+            opt "onSelect" (handlerOf "string" "string")
+            opt "selectionStateKey" TStr ] }
       // Phase 1077 — the three presentation slots. Every one is
       // omitted-at-default on BOTH boundaries, so a pre-phase document (which
       // carries none of them) decodes and renders exactly as it did.
@@ -2502,6 +2563,7 @@ let uiIdl: Idl =
           contentHashRecord
           srcSetEntryRecord
           trackEntryRecord
+          treeItemRecord
           effectClassRecord ]
       Defaults = []
       // Phase 690 — the node envelope, Ordinal-ordered like every other field list.

@@ -1581,6 +1581,83 @@ and private renderKind
             @ toProps semanticAttrs
             @ toProps egressAttrs
         )
+    // Phase 1120 — the `Tree` SSR floor, and it is NORMATIVE (docs/SSR.md): a
+    // server rendering of a tree is nested lists carrying the full ARIA tree
+    // vocabulary, with `aria-expanded` reflecting the statically-resolvable
+    // expanded state and exactly one row carrying `tabindex="0"`. There is NO
+    // SCRIPT at any point, so the floor is what a reader with JavaScript off,
+    // or a client that has not hydrated yet, actually gets: a complete,
+    // navigable, correctly-announced hierarchy that simply does not toggle.
+    //
+    // Every structural decision here is shared with the client leg through
+    // `BindingResolver`, so the two cannot come apart: which rows are open,
+    // which row is focusable, and what "visible" means are all computed there.
+    | NodeKind.Tree spec ->
+        let expandedKeyNamed = spec.ExpandedStateKey.IsSome
+        let expanded = BindingResolver.readExpandedItems ctx.Sources spec.ExpandedStateKey
+        let selected = BindingResolver.readSelectedItem ctx.Sources spec.SelectionStateKey
+
+        let focusable =
+            BindingResolver.focusableTreeItem expandedKeyNamed expanded selected spec.Items
+
+        let rec renderItems (level: int) (items: TreeItem list) : ReactElement list =
+            let setSize = List.length items
+
+            items
+            |> List.mapi (fun i item ->
+                let isOpen = BindingResolver.treeItemExpanded expandedKeyNamed expanded item
+                let hasChildren = not (List.isEmpty item.Children)
+                let label = renderText ctx item.Label
+
+                Html.li (
+                    [ prop.className "fuaran-tree-item"
+                      prop.role "treeitem"
+                      // The accessible name is stated rather than computed from
+                      // contents, and that is deliberate: a treeitem OWNS its
+                      // child group, so a name derived from its subtree would
+                      // read the whole branch out as the row's own name. The
+                      // string is byte-identical to the visible label, so
+                      // "label in name" holds.
+                      prop.custom ("aria-label", label)
+                      prop.custom ("aria-level", string level)
+                      prop.custom ("aria-setsize", string setSize)
+                      prop.custom ("aria-posinset", string (i + 1))
+                      prop.custom ("data-fuaran-tree-item", item.Id)
+                      prop.tabIndex (if Some item.Id = focusable then 0 else -1) ]
+                    // `aria-expanded` is emitted ONLY on a row that has
+                    // children. On a leaf the attribute would assert a
+                    // collapsed subtree that does not exist, and assistive
+                    // technology announces such a row as closed — which is a
+                    // reader being told there is more when there is not.
+                    @ (if hasChildren then
+                           [ prop.custom ("aria-expanded", (if isOpen then "true" else "false")) ]
+                       else
+                           [])
+                    // `aria-selected` likewise appears only where a selection
+                    // key is named. Emitting `false` on every row of a tree
+                    // that has no selection at all would declare a selectable
+                    // widget with nothing selected, rather than a tree that
+                    // does not select.
+                    @ (match spec.SelectionStateKey with
+                       | Some _ ->
+                           [ prop.custom ("aria-selected", (if Some item.Id = selected then "true" else "false")) ]
+                       | None -> [])
+                    @ [ prop.children (
+                            [ Html.span [ prop.className "fuaran-tree-label"; prop.text label ] ]
+                            @ (if isOpen then
+                                   [ Html.ul
+                                         [ prop.className "fuaran-tree-group"
+                                           prop.role "group"
+                                           prop.children (renderItems (level + 1) item.Children) ] ]
+                               else
+                                   [])
+                        ) ]
+                ))
+
+        Html.ul
+            [ prop.className "fuaran-tree"
+              prop.role "tree"
+              prop.children (renderItems 1 spec.Items) ]
     | NodeKind.List spec ->
         let items =
             spec.Items

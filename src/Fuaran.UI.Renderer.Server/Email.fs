@@ -200,7 +200,11 @@ let scope: (string * Disposition) list =
 
       "Toast",
       Disposition.Rendered
-          "an OPEN toast renders as a static notice; a CLOSED one is OMITTED rather than `[hidden]`, because `[hidden]` is not honoured everywhere and a leaked notification is a disclosure bug" ]
+          "an OPEN toast renders as a static notice; a CLOSED one is OMITTED rather than `[hidden]`, because `[hidden]` is not honoured everywhere and a leaked notification is a disclosure bug"
+
+      "Tree",
+      Disposition.OpenLive
+          "interactive (fidelity manifest: Behavioural). The alternative was considered and declined: nested `<ul>`s would render perfectly well in a mail client, but only by showing every row - including the branches the document says are CLOSED - because an email can toggle nothing. That is the `Tabs` argument at a different slot: a digest that silently ignores what the document said to hide is a lie about what it contains. The link's text is the node's own accessible label where it has one" ]
 
 /// The declared posture of a wire kind, or `None` for a kind with no row (which
 /// the completeness test makes impossible for a canonical kind).
@@ -1103,6 +1107,11 @@ and private renderKind
             | "" -> "Embedded view"
             | title -> title
         )
+    // Phase 1120 — the tree is Behavioural in the fidelity manifest, so it takes
+    // the open-live link every interactive kind takes. A mail client can toggle
+    // nothing, so the only nested-list rendering available would be one showing
+    // every row including the closed branches - the `Tabs` argument exactly.
+    | NodeKind.Tree _ -> live "Hierarchy"
     | NodeKind.Sparkline _ -> live "Trend"
     | NodeKind.Drawing _ -> live "Diagram"
     | NodeKind.Custom _ -> live "Component"

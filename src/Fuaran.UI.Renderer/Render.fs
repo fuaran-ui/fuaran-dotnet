@@ -1270,6 +1270,7 @@ let rec collectFragments<'Msg> (acc: Map<FragmentId, Node<'Msg>>) (node: Node<'M
         let acc' = spec.Cases |> List.fold (fun a c -> collectFragments a c.Child) acc
 
         collectFragments acc' spec.Default
+    | NodeKind.Tree _
     | NodeKind.Heading _
     | NodeKind.Markdown _
     | NodeKind.Metric _
@@ -1711,6 +1712,24 @@ and private kindKeys<'Msg> (channel: KeyChannel) (kind: NodeKind<'Msg>) : string
                 @ keysOfFormFieldKind channel (ValueAutoBind.FilterChip fs.Name) fs.Kind)
 
         __v, []
+    // Phase 1120 — the tree subscribes BOTH State keys, on the grid's
+    // `sortStateKey` argument exactly: a row toggle writes the expanded set and
+    // a selection writes the selected id, and the tree READS both, so without
+    // these two lines a reader would press Right, the state would move, and
+    // nothing on screen would follow it. Its labels subscribe on their own
+    // account, recursively — a bound label deep in a closed branch still
+    // becomes live the moment its branch opens.
+    | NodeKind.Tree t ->
+        let rec labelKeys (items: TreeItem list) =
+            items
+            |> List.collect (fun i -> keysOfText channel i.Label @ labelKeys i.Children)
+
+        let stateKeys =
+            match channel with
+            | StateChannel -> [ t.ExpandedStateKey; t.SelectionStateKey ] |> List.choose id
+            | _ -> []
+
+        (labelKeys t.Items @ stateKeys), []
     // -- Vis --
     | NodeKind.DataGrid g ->
         let __v =
@@ -1871,6 +1890,11 @@ and private namespaceKind<'Msg> (prefix: string) (kind: NodeKind<'Msg>) : NodeKi
             { s with
                 Children = List.map (namespaceNode prefix) s.Children }
         )
+    // Phase 1120 — nothing under a `Tree` is a `Node`, so there is no interior
+    // id to namespace. The State keys are deliberately NOT prefixed either: a
+    // fragment body reading `$state.openRows` is naming the HOST's slot, on the
+    // same reading every other binding inside a fragment takes.
+    | NodeKind.Tree _ -> kind
     | NodeKind.ScrollArea s ->
         NodeKind.ScrollArea(
             { s with
@@ -3515,6 +3539,225 @@ let rec private renderKind
             @ toProps semanticAttrs
             @ toProps egressAttrs
         )
+    // Phase 1120 — the WAI-ARIA tree pattern, in full. This arm is the reason
+    // the Kind exists: everything below is behaviour that no `List` +
+    // `Disclosure` composition has, because a composition is N independently
+    // focusable containers where this is ONE composite widget.
+    //
+    // The DOM matches the server leg's — same elements, same classes, same
+    // ARIA, same roving tabindex — because every structural decision is taken
+    // in `BindingResolver` and shared. What this leg adds is the handlers,
+    // which the server has nothing to say about.
+    | NodeKind.Tree spec ->
+        let expandedKeyNamed = spec.ExpandedStateKey.IsSome
+        let expanded = BindingResolver.readExpandedItems ctx.Sources spec.ExpandedStateKey
+        let selected = BindingResolver.readSelectedItem ctx.Sources spec.SelectionStateKey
+
+        let focusable =
+            BindingResolver.focusableTreeItem expandedKeyNamed expanded selected spec.Items
+
+        // Write the open set back. The WHOLE set is written rather than a
+        // per-row flag, because the specification fixes one shape for this slot
+        // (an array of ids) and a host reading it must never have to reconcile
+        // two spellings of the same fact.
+        let setExpanded (ids: Set<string>) =
+            match spec.ExpandedStateKey with
+            | Some key ->
+                let payload = JArr(ids |> Set.toList |> List.map JStr)
+                runSynthesisedAction ctx (Action.SetState(key, Some payload, None))
+            | None -> ()
+
+        let toggle (itemId: string) (openIt: bool) =
+            if expandedKeyNamed then
+                setExpanded (
+                    if openIt then
+                        Set.add itemId expanded
+                    else
+                        Set.remove itemId expanded
+                )
+
+        // Selection is TWO independent effects, not a choice between them: a
+        // declared handler runs, and a named key is written. A tree that wires
+        // both wants both, and letting the handler suppress the write would
+        // leave the key — the thing every other row's `aria-selected` is
+        // computed from — silently stale.
+        let select (itemId: string) =
+            match spec.SelectionStateKey with
+            | Some key -> runSynthesisedAction ctx (Action.SetState(key, Some(JStr itemId), None))
+            | None -> ()
+
+            match spec.OnSelect with
+            | Some onSelect -> runAction ctx (onSelect itemId)
+            | None -> ()
+
+        // ── Focus movement ───────────────────────────────────────────────────
+        //
+        // Read off the DOM rather than recomputed from the spec, deliberately.
+        // The rows a reader can move between are exactly the rows this render
+        // put on the page, so asking the page is the one source that cannot
+        // disagree with what is visible — a parallel walk of `spec.Items` would
+        // be a second implementation of `visibleTreeItems`, free to drift from
+        // the one that drew the tree.
+        //
+        // Every query is scoped to this tree's own root, so a tree nested inside
+        // another host region never moves focus into a sibling widget.
+        let rowsOf (el: Browser.Types.HTMLElement) : Browser.Types.HTMLElement list =
+            match el.closest ".fuaran-tree" with
+            | None -> []
+            | Some root ->
+                let nodes = root.querySelectorAll "[role=\"treeitem\"]"
+
+                [ for i in 0 .. nodes.length - 1 -> nodes[i] :?> Browser.Types.HTMLElement ]
+
+        let moveBy (el: Browser.Types.HTMLElement) (delta: int) =
+            let rows = rowsOf el
+
+            match rows |> List.tryFindIndex (fun r -> System.Object.ReferenceEquals(r, el)) with
+            | Some i ->
+                match List.tryItem (i + delta) rows with
+                | Some target -> target.focus ()
+                | None -> ()
+            | None -> ()
+
+        let moveToEdge (el: Browser.Types.HTMLElement) (last: bool) =
+            match rowsOf el with
+            | [] -> ()
+            | rows -> (if last then List.last rows else List.head rows).focus ()
+
+        // The parent ROW of a row — its nearest enclosing `treeitem`. Left on a
+        // closed row goes here, which is what makes the hierarchy navigable
+        // upward without a mouse.
+        let moveToParent (el: Browser.Types.HTMLElement) =
+            let rows = rowsOf el
+
+            // Read off `aria-level` rather than walking `parentElement`, for the
+            // reason the whole focus block reads off the DOM: the level a row
+            // ANNOUNCES is the level a reader is told they are at, so navigating
+            // by it cannot disagree with what assistive technology says. The
+            // parent is the nearest PRECEDING row one level shallower.
+            let levelOf (r: Browser.Types.HTMLElement) =
+                let v = r.getAttribute "aria-level"
+
+                if isNull v then
+                    1
+                else
+                    match System.Int32.TryParse v with
+                    | true, n -> n
+                    | _ -> 1
+
+            match rows |> List.tryFindIndex (fun r -> System.Object.ReferenceEquals(r, el)) with
+            | Some i ->
+                let mine = levelOf el
+
+                rows
+                |> List.truncate i
+                |> List.rev
+                |> List.tryFind (fun r -> levelOf r = mine - 1)
+                |> Option.iter (fun (r: Browser.Types.HTMLElement) -> r.focus ())
+            | None -> ()
+
+        let rec renderItems (level: int) (items: TreeItem list) : ReactElement list =
+            let setSize = List.length items
+
+            items
+            |> List.mapi (fun i item ->
+                let isOpen = BindingResolver.treeItemExpanded expandedKeyNamed expanded item
+                let hasChildren = not (List.isEmpty item.Children)
+                let label = renderText ctx item.Label
+
+                let onKey (e: Browser.Types.KeyboardEvent) =
+                    let el = e.currentTarget :?> Browser.Types.HTMLElement
+                    let mutable handled = true
+
+                    match e.key with
+                    | "ArrowDown" -> moveBy el 1
+                    | "ArrowUp" -> moveBy el -1
+                    // The APG's two-press semantics, and the reason Right is not
+                    // simply "go to the first child": on a CLOSED parent the
+                    // first press OPENS and stays put, so the reader sees what
+                    // they revealed before being moved into it. A leaf does
+                    // nothing at all rather than swallowing the key.
+                    | "ArrowRight" ->
+                        if hasChildren && not isOpen then toggle item.Id true
+                        elif hasChildren && isOpen then moveBy el 1
+                        else handled <- false
+                    // The mirror: an OPEN row closes, anything else walks up to
+                    // its parent. This is the movement a composition cannot
+                    // offer at all — the parent of a `Disclosure` is not a
+                    // focusable thing.
+                    | "ArrowLeft" ->
+                        if hasChildren && isOpen then
+                            toggle item.Id false
+                        else
+                            moveToParent el
+                    | "Home" -> moveToEdge el false
+                    | "End" -> moveToEdge el true
+                    | "Enter"
+                    | " " -> select item.Id
+                    | _ -> handled <- false
+
+                    if handled then
+                        e.preventDefault ()
+                        e.stopPropagation ()
+
+                Html.li (
+                    [ prop.className "fuaran-tree-item"
+                      prop.role "treeitem"
+                      // Stated rather than computed from contents: a treeitem
+                      // OWNS its child group, so a name derived from the subtree
+                      // would read the whole branch out as this row's own name.
+                      // The string is byte-identical to the visible label.
+                      prop.custom ("aria-label", label)
+                      prop.custom ("aria-level", string level)
+                      prop.custom ("aria-setsize", string setSize)
+                      prop.custom ("aria-posinset", string (i + 1))
+                      prop.custom ("data-fuaran-tree-item", item.Id)
+                      prop.tabIndex (if Some item.Id = focusable then 0 else -1)
+                      prop.onKeyDown onKey ]
+                    // Only on a row that HAS children. On a leaf the attribute
+                    // would assert a collapsed subtree that does not exist, and
+                    // a reader would be told there is more when there is not.
+                    @ (if hasChildren then
+                           [ prop.custom ("aria-expanded", (if isOpen then "true" else "false")) ]
+                       else
+                           [])
+                    // Only where a selection key is named: `false` on every row
+                    // of a tree that never selects would declare a selectable
+                    // widget with nothing selected, rather than a tree that does
+                    // not select.
+                    @ (match spec.SelectionStateKey with
+                       | Some _ ->
+                           [ prop.custom ("aria-selected", (if Some item.Id = selected then "true" else "false")) ]
+                       | None -> [])
+                    @ [ prop.children (
+                            [ Html.span
+                                  [ prop.className "fuaran-tree-label"
+                                    // The click lands on the LABEL, not the row,
+                                    // so clicking inside an open branch acts on
+                                    // the row clicked rather than on every
+                                    // ancestor containing it.
+                                    prop.onClick (fun e ->
+                                        e.stopPropagation ()
+
+                                        if hasChildren && expandedKeyNamed then
+                                            toggle item.Id (not isOpen)
+
+                                        select item.Id)
+                                    prop.text label ] ]
+                            @ (if isOpen then
+                                   [ Html.ul
+                                         [ prop.className "fuaran-tree-group"
+                                           prop.role "group"
+                                           prop.children (renderItems (level + 1) item.Children) ] ]
+                               else
+                                   [])
+                        ) ]
+                ))
+
+        Html.ul
+            [ prop.className "fuaran-tree"
+              prop.role "tree"
+              prop.children (renderItems 1 spec.Items) ]
     | NodeKind.List spec ->
         // Phase 287 — `<ol>` (ordered) / `<ul>` (unordered) of `<li>` items.
         let items =

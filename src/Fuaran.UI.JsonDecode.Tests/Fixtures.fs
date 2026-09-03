@@ -552,6 +552,98 @@ let embedPermissions: Node<obj> =
         ))
         None
 
+
+// ─── Tree — recursive disclosure with tree semantics (Phase 1120) ─────────
+//
+// Three, and between them they pin the recursion, both omit polarities and both
+// State keys. The BEHAVIOUR these exist to be measured against — the roving
+// tabindex, the six key bindings, the two-press `Right` — is not expressible in
+// bytes at all, which is the ordinary shape for a kind whose irreducibility is
+// behavioural: the corpus pins the document, the render-obligation corpus and
+// the spec pin what a host must DO with it.
+
+/// A two-level hierarchy, and the shape most trees actually are: no State key
+/// named at all, so nothing toggles and every row is shown.
+///
+/// It pins the leaf omission, which is the byte-level decision this record's
+/// design turns on. `Cocoa` and `Yarn` carry no `children` key, because the
+/// slot omits at the empty list — a host that emitted `"children":[]` on a leaf
+/// produces different bytes for most of a real file listing.
+let treeStatic: Node<obj> =
+    node
+        "tree-1"
+        (NodeKind.Tree(
+            { Defaults.tree with
+                Items =
+                    [ { Defaults.treeItem with
+                          Children =
+                              [ { Defaults.treeItem with
+                                    Id = "cocoa"
+                                    Label = TextSource.Literal "Cocoa" }
+                                { Defaults.treeItem with
+                                    Id = "yarn"
+                                    Label = TextSource.Literal "Yarn" } ]
+                          Id = "goods"
+                          Label = TextSource.Literal "Goods" }
+                      { Defaults.treeItem with
+                          Id = "ledger"
+                          Label = TextSource.Literal "Ledger" } ] }
+        ))
+        None
+
+/// The expansion affordance, which is a NAMED KEY and not a flag. Pins the
+/// grid-behaviour cluster's governing ruling at the wire level: there is no
+/// `expandable` member to omit here, because none exists — the key IS the
+/// affordance, and a host looking for a boolean will not find one to read.
+///
+/// Three levels, so the recursion is exercised past the depth a single nesting
+/// would prove, and one row carries an `icon` so the third optional slot is not
+/// left unpinned by the family.
+let treeExpandedKeyed: Node<obj> =
+    node
+        "tree-expanded-1"
+        (NodeKind.Tree(
+            { Defaults.tree with
+                ExpandedStateKey = Some "openRows"
+                Items =
+                    [ { Defaults.treeItem with
+                          Children =
+                              [ { Defaults.treeItem with
+                                    Children =
+                                        [ { Defaults.treeItem with
+                                              Id = "manifest"
+                                              Label = TextSource.Literal "Manifest" } ]
+                                    Id = "1823"
+                                    Label = TextSource.Literal "1823" } ]
+                          Icon = Some "folder"
+                          Id = "archive"
+                          Label = TextSource.Literal "Archive" } ] }
+        ))
+        None
+
+/// The selection affordance, alongside a handler. Both are declared, which is
+/// the shape the renderer treats as TWO effects rather than a choice: the key is
+/// written and the handler runs. `onSelect` rides as the `"<closure>"` sentinel,
+/// so this fixture also pins that a decoded tree keeps a working selection
+/// through the key alone — the behaviour a `Partial` survivability verdict
+/// promises.
+let treeSelectionKeyed: Node<obj> =
+    node
+        "tree-selection-1"
+        (NodeKind.Tree(
+            { Defaults.tree with
+                Items =
+                    [ { Defaults.treeItem with
+                          Id = "harbour"
+                          Label = TextSource.Literal "Harbour" }
+                      { Defaults.treeItem with
+                          Id = "quay"
+                          Label = TextSource.Literal "Quay" } ]
+                OnSelect = Some(fun _ -> Action.Chain [])
+                SelectionStateKey = Some "selectedRow" }
+        ))
+        None
+
 let listDisplay: Node<obj> =
     // Phase 287 — ordered list with two items.
     node
@@ -5564,6 +5656,9 @@ let allNodes: (string * Node<obj>) list =
       "Display/Embed (Phase 1111 — the minimum: no ratio, no permissions, total denial)", embedMinimal
       "Display/Embed (Phase 1111 — a declared aspect ratio, sharing Image's enum)", embedAspect
       "Display/Embed (Phase 1111 — one permission, the one that rides `allow` not `sandbox`)", embedPermissions
+      "Display/Tree (Phase 1120 — two levels, no State key: static and fully expanded)", treeStatic
+      "Display/Tree (Phase 1120 — three levels, the expansion key named; the key IS the affordance)", treeExpandedKeyed
+      "Display/Tree (Phase 1120 — the selection key AND the handler, both declared)", treeSelectionKeyed
       "Display/List (ordered)", listDisplay
       "Display/Toast (Success tone, open)", toast
       "Display/CodeBlock (fsharp, line numbers + highlights)", codeBlock
@@ -5794,6 +5889,21 @@ let boxChain (boxes: int) : string =
 
     acc
 
+/// Phase 1120 — `rows` levels of nested `TreeItem`, inside ONE `Tree` node.
+///
+/// The point of the shape: it consumes exactly ONE level of node depth however
+/// deep it goes, so the node bound cannot see it, and at 25 rows it is roughly
+/// 50 levels of JSON — nowhere near the 256 syntactic bound either. It is
+/// `TreeOp.Batch`'s situation exactly (§21.5's implementers' note), which is why
+/// the item axis is counted on its own.
+let treeItemChain (rows: int) : string =
+    let mutable acc = """{"id":"leaf","label":"Leaf"}"""
+
+    for i in rows - 2 .. -1 .. 0 do
+        acc <- "{\"children\":[" + acc + "],\"id\":\"r" + string i + "\",\"label\":\"Row\"}"
+
+    "{\"id\":\"t\",\"kind\":{\"$type\":\"Tree\",\"items\":[" + acc + "]}}"
+
 /// `batches` nested `TreeOp.Batch` ops around a single innermost `RemoveNode`,
 /// so the document is `batches + 1` op levels deep and carries no nodes at all —
 /// the op nesting axis on its own (§21.5).
@@ -5811,4 +5921,7 @@ let batchChain (batches: int) : string =
 let storedNodes: (string * string * string) list =
     [ "limit-node-depth-at-max",
       "§21 max node depth — a tree at EXACTLY the limit (24 levels). Rule 1: every conformant host MUST decode this; refusing it is non-conformance, not conservatism",
-      boxChain Fuaran.UI.WireLimits.MaxDepth ]
+      boxChain Fuaran.UI.WireLimits.MaxDepth
+      "limit-tree-item-depth-at-max",
+      "§21.5 the tree-item axis — a tree nesting rows at EXACTLY the limit (24 levels) inside ONE node. Rule 1: every conformant host MUST decode this. Its past-the-bound twin is `reject-limit-tree-item-depth`",
+      treeItemChain Fuaran.UI.WireLimits.MaxDepth ]

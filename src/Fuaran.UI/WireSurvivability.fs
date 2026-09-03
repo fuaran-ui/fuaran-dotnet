@@ -110,6 +110,14 @@ let all: Classification list =
       sv "NodeKind.Media" // Phase 1076 — scalars + Bindings, no closure slot
       sv "NodeKind.Embed" // Phase 1111 — two Bindings + two closed enums, no closure slot
       sv "NodeKind.List"
+      // Phase 1120 — PARTIAL, and the alternative is not the write-back hint the
+      // handler-bearing kinds carry. `OnSelect` erases like every closure, but a
+      // decoded tree does not lose its selection behaviour with it: the renderer
+      // writes `selectionStateKey` on its own account, so a document that names
+      // the key keeps a working, selectable, keyboard-navigable tree after a
+      // round trip and only a host-side side-effect is lost. The rows, the
+      // hierarchy and both State keys are plain data and survive whole.
+      pt "NodeKind.Tree" (Some "name selectionStateKey — the renderer writes the selected row id there with no handler")
       sv "NodeKind.Toast"
       sv "NodeKind.CodeBlock"
       sv "NodeKind.Math"

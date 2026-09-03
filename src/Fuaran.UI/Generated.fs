@@ -729,6 +729,14 @@ and TransformParam =
       Name: string
     }
 
+and TreeItem =
+    {
+      Children: TreeItem list
+      Icon: string option
+      Id: string
+      Label: TextSource
+    }
+
 and ViewBox =
     {
       Height: float
@@ -1309,6 +1317,15 @@ and ToastSpec =
       Tone: ToneVariant
     }
 
+// Display
+and TreeSpec<'Msg> =
+    {
+      ExpandedStateKey: string option
+      Items: TreeItem list
+      OnSelect: (string -> Action<'Msg>) option
+      SelectionStateKey: string option
+    }
+
 and [<RequireQualifiedAccess>] NodeKind<'Msg> =
     | Badge of BadgeSpec
     | Box of BoxSpec<'Msg>
@@ -1352,6 +1369,7 @@ and [<RequireQualifiedAccess>] NodeKind<'Msg> =
     | Switch of SwitchSpec<'Msg>
     | Tabs of TabsSpec<'Msg>
     | Toast of ToastSpec
+    | Tree of TreeSpec<'Msg>
 
 and Node<'Msg> =
     {
@@ -1720,6 +1738,7 @@ let rec private encNodeKind (k: NodeKind<'Msg>) : JVal =
     | NodeKind.Switch s -> encSwitchSpec s
     | NodeKind.Tabs s -> encTabsSpec s
     | NodeKind.Toast s -> encToastSpec s
+    | NodeKind.Tree s -> encTreeSpec s
 
 and private encNode (n: Node<'Msg>) : JVal =
     let kind = encNodeKind n.Kind
@@ -1976,6 +1995,9 @@ and private encTrackEntry (s: TrackEntry) : JVal =
 and private encTransformParam (s: TransformParam) : JVal =
     JObj([ Some("from", (encBinding id) s.From); Some("name", JStr s.Name) ] |> List.choose id)
 
+and private encTreeItem (s: TreeItem) : JVal =
+    JObj([ (if List.isEmpty s.Children then None else Some("children", JArr(List.map encTreeItem s.Children))); (s.Icon |> Option.map (fun v -> "icon", JStr v)); Some("id", JStr s.Id); Some("label", encTextSource s.Label) ] |> List.choose id)
+
 and private encViewBox (s: ViewBox) : JVal =
     JObj([ Some("height", encFloat s.Height); Some("minX", encFloat s.MinX); Some("minY", encFloat s.MinY); Some("width", encFloat s.Width) ] |> List.choose id)
 
@@ -2107,6 +2129,9 @@ and private encTabsSpec<'Msg> (s: TabsSpec<'Msg>) : JVal =
 
 and private encToastSpec (s: ToastSpec) : JVal =
     Canon.typed "Toast" ([ (if s.Dismissable = true then None else Some("dismissable", JBool s.Dismissable)); Some("message", encTextSource s.Message); Some("open", (encBinding JBool) s.Open); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)) ] |> List.choose id)
+
+and private encTreeSpec<'Msg> (s: TreeSpec<'Msg>) : JVal =
+    Canon.typed "Tree" ([ (s.ExpandedStateKey |> Option.map (fun v -> "expandedStateKey", JStr v)); Some("items", JArr(List.map encTreeItem s.Items)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.SelectionStateKey |> Option.map (fun v -> "selectionStateKey", JStr v)) ] |> List.choose id)
 
 // Phase 818 — a `Data` source keeps the Core columnar encoding byte-identical; a
 // `Live` source re-encodes the preserved binding itself (one wire dialect — the
@@ -2595,6 +2620,7 @@ let rec private decNodeKind (j: JVal) : Result<NodeKind<obj>, string> =
     | "Switch" -> decSwitchSpec j |> Result.map NodeKind.Switch
     | "Tabs" -> decTabsSpec j |> Result.map NodeKind.Tabs
     | "Toast" -> decToastSpec j |> Result.map NodeKind.Toast
+    | "Tree" -> decTreeSpec j |> Result.map NodeKind.Tree
     | __other -> Error ("unknown node kind: " + __other)))
 
 and private decNode (j: JVal) : Result<Node<obj>, string> =
@@ -3396,6 +3422,14 @@ and private decTransformParam (j: JVal) : Result<TransformParam, string> =
     dReq "name" __fs dStr |> Result.bind (fun name ->
     Ok { From = from; Name = name })))
 
+and private decTreeItem (j: JVal) : Result<TreeItem, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "children" __fs (dList decTreeItem) ([]) |> Result.bind (fun children ->
+    dOpt "icon" __fs dStr |> Result.bind (fun icon ->
+    dReq "id" __fs dStr |> Result.bind (fun id ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    Ok { Children = children; Icon = icon; Id = id; Label = label })))))
+
 and private decViewBox (j: JVal) : Result<ViewBox, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "height" __fs dFloat |> Result.bind (fun height ->
@@ -3786,6 +3820,14 @@ and private decToastSpec (j: JVal) : Result<ToastSpec, string> =
     dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
     Ok { Dismissable = dismissable; Message = message; Open = ``open``; Tone = tone })))))
 
+and private decTreeSpec (j: JVal) : Result<TreeSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dOpt "expandedStateKey" __fs dStr |> Result.bind (fun expandedStateKey ->
+    dReq "items" __fs (dList decTreeItem) |> Result.bind (fun items ->
+    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
+    dOpt "selectionStateKey" __fs dStr |> Result.bind (fun selectionStateKey ->
+    Ok { ExpandedStateKey = expandedStateKey; Items = items; OnSelect = onSelect; SelectionStateKey = selectionStateKey })))))
+
 // Phase 818 — the Transform source slot. A `$type` of State / Selection / Query preserves the binding as
 // `TransformSource.Live` with the initial snapshot derived from its carried
 // default data (`Fuaran.UI.HostPrelude.TransformLive`). Every other shape
@@ -3885,6 +3927,7 @@ let private witnessKindTag (n: Node<'Msg>) : string =
     | NodeKind.Switch _ -> "Switch"
     | NodeKind.Tabs _ -> "Tabs"
     | NodeKind.Toast _ -> "Toast"
+    | NodeKind.Tree _ -> "Tree"
 
 let private witnessChildren (n: Node<'Msg>) : Node<'Msg> list =
     match n.Kind with
@@ -4054,3 +4097,6 @@ let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node<'Msg> list) 
 
 let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Toast { Dismissable = true; Message = message; Open = ``open``; Tone = ToneVariant.Default }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkTree (id: string) (items: TreeItem list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Tree { ExpandedStateKey = None; Items = items; OnSelect = None; SelectionStateKey = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }

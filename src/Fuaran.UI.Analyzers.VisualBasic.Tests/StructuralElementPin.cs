@@ -76,6 +76,7 @@ internal static class StructuralElementPin
         {
             // Singular-of-the-field — the ordinary case.
             ["Item"] = ("List.items", "one item of the list"),
+            ["TreeItem"] = ("Tree.items", "one TreeItem, and the only structural element that nests INSIDE ITSELF — a tree row holds tree rows (Phase 1120)"),
             ["Field"] = ("Form.fields", "one FormField"),
             ["Filter"] = ("Filters.items", "one FilterSpec; the element is named for the domain, the field for the shape"),
             ["Column"] = ("DataGrid.columns", "one ColumnErased"),

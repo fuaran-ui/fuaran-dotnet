@@ -3161,6 +3161,58 @@
         }
       ],
       "tag": "Toast"
+    },
+    {
+      "category": "Display",
+      "fields": [
+        {
+          "name": "expandedStateKey",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
+          "name": "items",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "list",
+            "of": {
+              "$type": "record",
+              "name": "TreeItem"
+            }
+          }
+        },
+        {
+          "name": "onSelect",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "fn",
+            "hostSurface": {
+              "fsharp": "string -> Action<'Msg>",
+              "placeholder": "(fun (_: string) -> Action.Chain [])",
+              "typescript": "(v: string) => Action"
+            },
+            "wire": "<closure>"
+          }
+        },
+        {
+          "name": "selectionStateKey",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "str"
+          }
+        }
+      ],
+      "tag": "Tree"
     }
   ],
   "nodeFields": [
@@ -4661,6 +4713,57 @@
         }
       ],
       "name": "TransformParam"
+    },
+    {
+      "fields": [
+        {
+          "name": "children",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "list",
+              "items": []
+            }
+          },
+          "type": {
+            "$type": "list",
+            "of": {
+              "$type": "record",
+              "name": "TreeItem"
+            }
+          }
+        },
+        {
+          "name": "icon",
+          "optionality": {
+            "$type": "optional"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
+          "name": "id",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "str"
+          }
+        },
+        {
+          "name": "label",
+          "optionality": {
+            "$type": "required"
+          },
+          "type": {
+            "$type": "union",
+            "args": [],
+            "name": "TextSource"
+          }
+        }
+      ],
+      "name": "TreeItem"
     },
     {
       "fields": [

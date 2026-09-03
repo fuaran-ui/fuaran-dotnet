@@ -166,6 +166,15 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
     | NodeKind.Media spec -> NodeKind.Media spec
     | NodeKind.Embed spec -> NodeKind.Embed spec
     | NodeKind.List spec -> NodeKind.List spec
+    // Phase 1120 — `TreeItem` carries no `'Msg` (its labels are `TextSource`,
+    // its children are more `TreeItem`s), and `OnSelect` is a handler the map
+    // rebuilds through the same `Option.map` every other handler slot uses.
+    | NodeKind.Tree spec ->
+        NodeKind.Tree
+            { ExpandedStateKey = spec.ExpandedStateKey
+              Items = spec.Items
+              OnSelect = spec.OnSelect |> Option.map (fun g -> g >> mapAction f)
+              SelectionStateKey = spec.SelectionStateKey }
     | NodeKind.Toast spec -> NodeKind.Toast spec
     | NodeKind.CodeBlock spec -> NodeKind.CodeBlock spec
     | NodeKind.Math spec -> NodeKind.Math spec

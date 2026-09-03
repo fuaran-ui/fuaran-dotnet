@@ -291,6 +291,27 @@ let embed: EmbedSpec =
 
 let list: ListSpec = { Items = []; Ordered = false }
 
+/// Phase 1120 — the empty tree. No rows, and neither State key named: a tree
+/// authored from this default renders an empty hierarchy with no reader-driven
+/// behaviour, which is the honest starting point. Naming a key here would give
+/// every default-constructed tree a claim on a State slot its author never
+/// chose.
+let tree: TreeSpec<'Msg> =
+    { ExpandedStateKey = None
+      Items = []
+      OnSelect = None
+      SelectionStateKey = None }
+
+/// Phase 1120 — one row. `Label` is the empty literal FUARAN127 refuses, on
+/// `Defaults.media`'s pattern exactly: the record has to be constructible before
+/// it can be filled in, and the pre-emit gate is what makes the unfilled case a
+/// defect rather than a silent one.
+let treeItem: TreeItem =
+    { Children = []
+      Icon = None
+      Id = ""
+      Label = emptyLiteral }
+
 let toast: ToastSpec =
     { Message = emptyLiteral
       Tone = ToneVariant.Info

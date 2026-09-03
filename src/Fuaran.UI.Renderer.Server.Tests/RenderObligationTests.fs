@@ -837,6 +837,41 @@ let private checkAriaModalOnlyWhenBlocking () =
         (contains "data-fuaran-popover-anchor" (render (overlayWith ModalityKind.Popover None)))
         "…and a popover that declares none carries no marker"
 
+/// Phase 1120 — every `Tree` row carries a STATED accessible name.
+///
+/// The obligation is `accessible-name-always` at a third slot, and it means
+/// something slightly different here than it does on `Media` or `Embed`: those
+/// name an element that has no text of its own, where a tree row DOES have text
+/// and the name is stated anyway. That is the point of the claim on this kind —
+/// a `treeitem` OWNS its child group, so a name computed from contents would
+/// read the whole branch out as the row's own name, and a reader arrowing onto
+/// "Goods" would hear "Goods Cocoa Yarn".
+let private checkTreeAccessibleNameAlways () =
+    let item id label children : TreeItem =
+        { Defaults.treeItem with
+            Children = children
+            Id = id
+            Label = TextSource.Literal label }
+
+    let tree: Node<obj> =
+        Fuaran.tree
+            "t1"
+            [ item "goods" "Goods" [ item "cocoa" "Cocoa" []; item "yarn" "Yarn" [] ]
+              item "ledger" "Ledger" [] ]
+
+    let html = render tree
+
+    Expect.isTrue (contains "aria-label=\"Goods\"" html) "a parent row states its own label as its accessible name"
+
+    Expect.isTrue (contains "aria-label=\"Cocoa\"" html) "...and so does a row nested inside it"
+
+    // The twin without which a renderer that stated the name only on LEAVES
+    // would pass: the parent is precisely the row whose computed name would be
+    // wrong, so a check that only looked at leaves would guard nothing.
+    Expect.isTrue
+        (contains "role=\"treeitem\"" html && contains "role=\"group\"" html)
+        "...and the parent genuinely owns a nested group, which is what makes the stated name necessary rather than decorative"
+
 /// The registry: which (kind, claim) pairs this host asserts, and how.
 ///
 /// Keyed by the claim's WIRE token rather than the DU case, because the
@@ -859,7 +894,8 @@ let private checkers: ((string * string) * (unit -> unit)) list =
       ("Embed", "sandbox-always-exactly-declared"), checkEmbedSandboxAlwaysExactlyDeclared
       ("Embed", "refused-embed-source-omitted"), checkRefusedEmbedSourceOmitted
       ("FileUpload", "picker-always-present"), checkPickerAlwaysPresent
-      ("Modal", "aria-modal-only-when-blocking"), checkAriaModalOnlyWhenBlocking ]
+      ("Modal", "aria-modal-only-when-blocking"), checkAriaModalOnlyWhenBlocking
+      ("Tree", "accessible-name-always"), checkTreeAccessibleNameAlways ]
 
 /// Obligations this host declares it does NOT check, each with a reason.
 ///

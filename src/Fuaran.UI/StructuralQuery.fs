@@ -225,6 +225,7 @@ let children (node: Node<'Msg>) : Node<'Msg> list =
     | NodeKind.Media _
     | NodeKind.Embed _
     | NodeKind.List _
+    | NodeKind.Tree _
     | NodeKind.Toast _
     | NodeKind.CodeBlock _
     | NodeKind.Math _
@@ -313,6 +314,7 @@ let private tonesOf (node: Node<'Msg>) : ToneVariant list =
         | NodeKind.Media _
         | NodeKind.Embed _
         | NodeKind.List _
+        | NodeKind.Tree _
         | NodeKind.CodeBlock _
         | NodeKind.Math _
         | NodeKind.Drawing _

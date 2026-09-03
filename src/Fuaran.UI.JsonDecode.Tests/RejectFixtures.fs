@@ -537,6 +537,47 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "a Modal `modality` of `3` — a separate decoder arm from the unknown-string vector above, and vectored separately for that reason. An ordinal is the shape a host generating from an enum's index is likeliest to emit, and reading one would make the wire's meaning depend on a declaration order the wire never carries" }
+      // Phase 1120 — the tree row's two required slots, and both refusals are
+      // the a11y floor rather than pedantry about shape.
+      //
+      // A row with no `label` is a row with no name: the tree renders it, a
+      // reader arrows onto it, and assistive technology announces its level and
+      // its position among its siblings and nothing else. There is no honest
+      // value to default to — an invented label is a claim about content
+      // nobody wrote.
+      //
+      // A row with no `id` is worse, because it is not merely unnamed but
+      // UNADDRESSABLE: both State keys name rows by id, so a row without one
+      // can never be expanded, selected, or restored after a reload. The
+      // decoder refuses rather than synthesising a positional id, because a
+      // synthesised id would change the moment a sibling is inserted, and the
+      // reader's open branches would silently move.
+      { Id = "reject-tree-item-missing-label"
+        Json = """{"id":"t","kind":{"$type":"Tree","items":[{"id":"a"}]}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.items[0].label"
+        IsOp = false
+        Description =
+          "a Tree row with no `label` — refused. A row's label is the only thing a reader walking the hierarchy has, and there is no value to default to that would not be an invented description of somebody's content" }
+      { Id = "reject-tree-item-missing-id"
+        Json = """{"id":"t","kind":{"$type":"Tree","items":[{"label":"Goods"}]}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.items[0].id"
+        IsOp = false
+        Description =
+          "a Tree row with no `id` — refused. Both State keys address rows BY id, so an id-less row can never be expanded, selected or restored; a synthesised positional id would move the reader's open branches the moment a sibling was inserted" }
+      // The same refusal one level DOWN, which is not the same test: a host
+      // whose child walker is looser than its root walker passes the two above
+      // and accepts this. The path carries the full `children[…]` chain, which
+      // is what an author needs to find the row in a hierarchy they cannot see.
+      { Id = "reject-tree-nested-item-missing-id"
+        Json =
+          """{"id":"t","kind":{"$type":"Tree","items":[{"children":[{"label":"Cocoa"}],"id":"goods","label":"Goods"}]}}"""
+        ExpectedCode = DecodeErrorCode.MISSING_FIELD
+        ExpectedPath = "$.kind.items[0].children[0].id"
+        IsOp = false
+        Description =
+          "a NESTED Tree row with no `id` — refused, and the path names the row inside the hierarchy. A host whose child walker is looser than its root walker accepts this while passing every top-level case" }
       { Id = "reject-unknown-binding"
         Json =
           """{"id":"x","kind":{"$type":"Metric","label":{"$type":"Literal","text":"L"},"format":{"$type":"None"},"tone":"Default","weight":"Standard","emphasis":"Normal","value":{"$type":"Bogus"}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
@@ -1151,6 +1192,14 @@ let all: RejectFixture list =
         IsOp = true
         Description =
           "§21.5 the op axis — 25 nested TreeOp.Batch. Counted separately from the node axis; the syntactic bound only LOOKS like cover for it" }
+      { Id = "reject-limit-tree-item-depth"
+        Json = Fixtures.treeItemChain (Fuaran.UI.WireLimits.MaxDepth + 1)
+        ExpectedCode = DecodeErrorCode.LIMIT_EXCEEDED
+        ExpectedPath =
+          "$.kind.items[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0].children[0]"
+        IsOp = false
+        Description =
+          "§21.5 the tree-item axis — 25 nested TreeItem rows inside ONE node. Counted separately from the node axis, which cannot see it at all (the whole hierarchy is one node) and from the syntactic bound, which at ~50 levels is nowhere near reached. The `TreeOp.Batch` lesson on a third axis" }
       { Id = "reject-limit-json-depth"
         Json =
           String.replicate (Fuaran.UI.WireLimits.MaxJsonDepth + 1) "["

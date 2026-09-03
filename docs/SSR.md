@@ -95,6 +95,7 @@ when present.
 | **Display.Media** (Phase 1076) | Real `<video class="fuaran-media fuaran-media-video">` or `<audio class="fuaran-media fuaran-media-audio">`; `src` sanitised through the same `Media` egress class `Image` uses; `aria-label` ALWAYS emitted from the mandatory `label` (a transport has no decorative case, so unlike `alt` there is no empty branch); `controls` unless the document switches it off; `loop` only when declared. A `poster` passes the same URL floor and a refused one is **dropped** rather than emitted. `autoplay` renders **only together with `muted`** — the pairing is what the declaration means, which is why there is no separate muted slot to fall out of step with it — and the Audio variant has no autoplay pathway at all, in the type, the wire or the emission. Phase 1110 - `tracks` emit as `<track kind srclang label>` children in AUTHORED order (never re-sorted, unlike `srcSet`), at most one `default` per kind with the first election winning, and a track whose source the egress floor refuses is dropped exactly as a poster is; a declared `transcript` renders as a `<details class="fuaran-media-transcript">` disclosure BESIDE the transport inside a `fuaran-media-group` wrapper, carrying the media label as its accessible name - a media element admits only source-ish children, so a transcript inside one would be fallback content a browser never shows. No client-only tier: a `<video controls>` is already a complete interactive control, so nothing is attached at hydration. |
 | **Display.Embed** (Phase 1111) | A real `<iframe class="fuaran-embed">` a browser loads with no script. `sandbox` is emitted **always** and **empty** when the document grants nothing — the maximally-restrictive value — because omitting it on a permissionless embed would be the same markup as an unsandboxed frame. `allow-scripts` / `allow-same-origin` / `allow-forms` appear only where declared, **de-duplicated and in the vocabulary’s declaration order**, so two documents naming the same set produce byte-identical markup whatever order they authored. `AllowFullscreen` is **not** a sandbox token — it is a permissions-policy directive riding `allow="fullscreen"`, emitted only when declared, because an empty `allow` is not the same statement as an absent one. `title` carrying the resolved title is ALWAYS emitted: it is mandatory on the wire and a browsing context has no decorative case. `loading="lazy"` and `referrerpolicy="strict-origin-when-cross-origin"` are unconditional — the referrer policy is conservative but deliberately not `no-referrer`, because several ubiquitous providers restrict playback by referring domain and stripping the header outright breaks a legitimate embed, while sending the origin alone leaks no path and no query. `src` passes the **`embed` egress class** (https only — no other scheme and no schemeless reference) and a refused one **omits the attribute entirely** rather than pointing the frame at the refusal URL, the refusal recorded as `data-fuaran-egress-refused`. A declared `aspectRatio` is a CLASS; no value from the tree reaches a style attribute. No client-only tier: a sandboxed `<iframe>` is already a complete browsing context, and an enhancement reaching into it would be doing what the sandbox exists to prevent. |
 | **Display.List** (Phase 287) | `<ol>`/`<ul>` (`fuaran-list-ordered`/`-unordered`) of `<li class="fuaran-list-item">`. |
+| **Display.Tree** (Phase 1120) | Nested lists carrying the full ARIA tree vocabulary — the normative floor below. |
 | **Display.Divider** (Phase 287) | `<hr class="fuaran-divider-horizontal">`, a labelled `role="separator"` rule, or a vertical `role="separator" aria-orientation="vertical"` rule. |
 | **Display.Toast** (Phase 289) | Overlay contract (below): always emitted, `role="status"` + `aria-live="polite"`, `[hidden]` when `open` is false. |
 | **Layout.Modal** (Phase 289) | Overlay contract (below): `fuaran-modal-overlay` → `role="dialog"` + `aria-modal="true"` dialog, `[hidden]` when closed, dismiss/heading inert server-side. |
@@ -154,6 +155,44 @@ Positioning is renderer-owned and bounded: the hint is start-aligned under its n
 never clipped by its own box and it never exceeds the viewport's usable width. **Collision-aware
 flipping at a viewport edge needs measurement and is NOT claimed** — a host may add it as a
 client-tier enhancement; nothing in the corpus compares it.
+
+### The `Tree` server floor (Phase 1120) — NORMATIVE
+
+A server rendering of a `Tree` is a complete, navigable, correctly-announced hierarchy that simply
+does not toggle. Precisely:
+
+1. A `<ul class="fuaran-tree" role="tree">` whose rows are `<li class="fuaran-tree-item"
+   role="treeitem">`, each holding a `<span class="fuaran-tree-label">` and — when the row is open
+   — a nested `<ul class="fuaran-tree-group" role="group">` of the same shape.
+2. Every row carries `aria-label` (its resolved label), `aria-level`, `aria-setsize` and
+   `aria-posinset`. The name is STATED rather than left to be computed from contents, because a
+   `treeitem` OWNS its child group and a computed name would read the whole branch out as the row's
+   own name.
+3. `aria-expanded` appears on rows that HAVE children and on no others, reflecting the
+   **statically-resolvable** expanded state — the `expandedStateKey` slot as the host seeded it. On
+   a leaf the attribute would assert a collapsed subtree that does not exist, and a reader would be
+   told there is more when there is not.
+4. `aria-selected` appears only where `selectionStateKey` is named. A tree that never selects emits
+   none, rather than declaring a selectable widget with nothing selected.
+5. **Exactly one row carries `tabindex="0"` and every other carries `tabindex="-1"`.** The widget is
+   ONE tab stop. The chosen row is the selected row when it is visible, else the first visible row,
+   and it is computed from state alone — in `Fuaran.UI.Renderer.Core`, shared with the client leg —
+   so the server's rendering and the client's first frame agree by construction.
+6. **No script, at any point.** A reader with JavaScript off, or a client that has not hydrated yet,
+   gets the whole hierarchy as the state describes it. What the floor does not provide is movement:
+   the arrow keys, `Home`/`End` and the expand/collapse writes are the client leg's, and they are
+   additive over this identical DOM.
+
+A tree naming NO `expandedStateKey` renders FULLY EXPANDED here, exactly as it does on the client —
+the same reading that lets a grid honour a declared initial order while offering no interactive
+sorting.
+
+The EMAIL projection is deliberately NOT this floor, and not a degraded version of it: a tree is
+Behavioural in the fidelity manifest, so it takes the open-live link every interactive kind takes.
+The alternative was considered and declined — nested lists render perfectly well in a mail client,
+but only by showing every row including the branches the document says are CLOSED, because an email
+can toggle nothing. That is the `Tabs` argument at a different slot: a digest that silently ignores
+what the document said to hide is a lie about what it contains.
 
 ## Custom-renderer registry (Phase 141)
 
@@ -540,7 +579,7 @@ half-working control.**
 |---|---|
 | **Rendered** (the Display subset) | Heading · Metric · Fact · LabelValueRow · Badge · Callout · List · Link · Image · Markdown · Progress · CodeBlock · Math · Toast (open) · DataGrid (`staticRows`) |
 | **Structural** (children render; the node carries layout only) | Box (all roles) · SplitPanel · SummaryList · Disclosure · ScrollArea · ErrorBoundary · Switch · FragmentRef |
-| **Open-live link** (never a control) | Button · Form · Select · FileUpload · Filters · Tabs · Stepper · Modal · Chart · Map · Media · Embed · Sparkline · Drawing · Custom · Mount · DataGrid (client-library form) |
+| **Open-live link** (never a control) | Button · Form · Select · FileUpload · Filters · Tabs · Tree · Stepper · Modal · Chart · Map · Media · Embed · Sparkline · Drawing · Custom · Mount · DataGrid (client-library form) |
 | **Omitted** (nothing a static digest can convey) | Icon · Skeleton · FragmentDecl · Toast (closed) |
 
 `Email.scope` is that table **in code**, one row per canonical wire kind with the

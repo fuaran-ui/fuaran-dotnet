@@ -148,6 +148,12 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     // field-level route into a sandbox relaxation, which is not a route this
     // surface should offer at all.
     | NodeKind.Embed _ -> [ "Title" ]
+    // Phase 1120 — the EMPTY list, and it is the honest answer rather than an
+    // omission. Every slot on `TreeSpec` is `NotSupportedYet` in `updateTree`,
+    // so advertising any of them would promise a field-level edit that answers
+    // "not yet"; the restraint `Image` shows by omitting `Src`, applied to a
+    // spec on which it happens to reach every field.
+    | NodeKind.Tree _ -> []
     | NodeKind.List _ -> [ "Items"; "Ordered" ]
     | NodeKind.Toast _ -> [ "Message"; "Tone"; "Dismissable" ]
     | NodeKind.CodeBlock _ -> [ "Code"; "Language"; "LineNumbers"; "HighlightLines"; "Copyable" ]

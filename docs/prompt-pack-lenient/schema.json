@@ -4657,6 +4657,53 @@
         "title"
       ]
     },
+    "TreeItem": {
+      "type": "object",
+      "properties": {
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TreeItem"
+          }
+        },
+        "icon": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "$ref": "#/$defs/TextSource"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ]
+    },
+    "TreeSpec": {
+      "type": "object",
+      "properties": {
+        "expandedStateKey": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TreeItem"
+          }
+        },
+        "onSelect": {
+          "const": "<closure>"
+        },
+        "selectionStateKey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
     "ListSpec": {
       "type": "object",
       "properties": {
@@ -5876,6 +5923,24 @@
             },
             {
               "$ref": "#/$defs/EmbedSpec"
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "type": "object",
+              "properties": {
+                "$type": {
+                  "const": "Tree"
+                }
+              },
+              "required": [
+                "$type"
+              ]
+            },
+            {
+              "$ref": "#/$defs/TreeSpec"
             }
           ]
         },

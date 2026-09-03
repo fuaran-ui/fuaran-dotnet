@@ -3210,6 +3210,129 @@ stricter contract; it is a less truthful one.
 
 ---
 
+## Recorded change — 0.61.0, `NodeKind.Tree` — recursive disclosure with tree semantics (fuaran#1120)
+
+**Additive on the wire; SOURCE-BREAKING at every exhaustive `match` over `NodeKind`; a
+`WIRE_FORMAT.md` §11 forward-coupling event.** A new `NodeKind` case is the pre-1.0 minor-bump
+precedent this document already records for `FormFieldKind.DateRange`: nothing is removed and no
+existing document changes meaning, but a consumer matching every kind stops compiling until it adds
+an arm. Every pre-0.61.0 document encodes and decodes to byte-identical bytes.
+
+**The vocabulary charter's Appendix A row moves from undecided to ADMITTED**, in this same
+change-set, per the rule the 0.46.0 `Media` admission established. The row had stood as "Kind
+(reserved) **or** Composition — first attempt is a `List` + `Disclosure` composition" for a year.
+
+**The depth argument is STRUCK, and the admission rests on SEMANTICS.** The obvious irreducibility
+claim was arbitrary depth: a fixed composition cannot express unbounded nesting. It does not hold.
+Cross-family emission evidence on a probe built to force depth produced no container on either
+vendor — one nested four levels and stopped, which is a finite literal a static composition
+expresses. That claim is struck rather than left standing weakly, because an argument nobody
+re-examines is one the next proposal inherits.
+
+What breaks the composition is BEHAVIOUR. A `List` of `Disclosure`s is N independently focusable
+containers: every row is its own tab stop, no focus walks the structure, `Left` does not close the
+row you are in and move to its parent, `Home` does not reach the first row of the whole hierarchy,
+and no row announces its depth or its position among its siblings. The WAI-ARIA tree pattern is ONE
+composite widget with a roving tabindex, and that is not a property any arrangement of separately
+focusable containers has. Evidence for the semantic half is cross-family and unambiguous: handed a
+task naming one focus, `Home`/`End`, a root-to-focus path and per-row open/closed/leaf announcement,
+one vendor emitted the tree roles, levels, roving tabindex and all six key bindings unprompted, and
+the other abandoned recursion entirely and flattened to rows carrying level and state with a
+screen-reader block. Both reached for behaviour the vocabulary could not carry.
+
+**The `NavBar` counter-precedent is what this had to answer.** The Navigation cluster declined a nav
+kind BECAUSE `AriaRole.Navigation` already carried the landmark — the fact needing to be said was an
+attribute, and an attribute is expressible as data on a `Box`. No projection does the same here.
+`role="tree"`, `aria-level`, `aria-expanded` and `aria-setsize` are attributes and could be carried
+that way; the roving focus, the six key bindings and the expand-collapse-traverse semantics are not
+attributes at all. They are a behaviour the host performs over rows it has not yet expanded — the
+`SortStateKey` shape.
+
+**Scope is NARROW, deliberately.** Static recursive items only. Finite static nesting stays with
+`Disclosure`, so the kind sits BESIDE the composition rather than swallowing it: the discriminator is
+*keyboard traversal over a hierarchy*, not *nesting*. A bound or lazily-fetched children source is
+RESERVED and out of this cut — it needs the shared-data-source charter's machinery and its own walk.
+
+**The surface.** `TreeSpec { ExpandedStateKey: string option; Items: TreeItem list; OnSelect: (string
+-> Action<'Msg>) option; SelectionStateKey: string option }` and `TreeItem { Children: TreeItem list;
+Icon: string option; Id: string; Label: TextSource }` — the wire vocabulary's **first
+self-referential record**. `Items` is required; `Children` omits at the EMPTY LIST, so a leaf carries
+no `children` key at all, which is most of a real hierarchy.
+
+**Both reader-driven behaviours are named State keys, and there is no `expandable` boolean.** That is
+the grid-behaviour cluster's governing ruling applied without exception: the key IS the affordance,
+and a flag with no key behind it is a decorative control writing state nothing reads. There is no
+per-item `expanded` flag either, because a node-local shadow copy is free to disagree with the key.
+The slot shapes are fixed by the specification — `expandedStateKey` holds an ARRAY OF ROW IDS,
+`selectionStateKey` a bare row-id STRING — and one shared reader in `Fuaran.UI.Renderer.Core`
+implements both, so the two render legs cannot spell them differently.
+
+**A tree naming NO expansion key renders FULLY EXPANDED and static.** This is the same reading that
+lets a grid honour a declared initial order while offering no interactive sorting: an initial
+presentation without a reader-driven affordance is a legitimate shape, and it is the only reading
+under which such a tree shows its content at all.
+
+**Renderers.** The client leg emits the full ARIA tree pattern — `role="tree"` / `treeitem` /
+`group`, `aria-level` / `aria-setsize` / `aria-posinset`, `aria-expanded` only on rows that HAVE
+children, `aria-selected` only where a selection key is named, exactly one row at `tabindex="0"`, and
+Up/Down/Left/Right/Home/End with the APG's two-press `Right` (a closed parent opens and stays put).
+The accessible name is STATED via `aria-label` rather than computed from contents, because a
+`treeitem` owns its child group and a name derived from the subtree would read the whole branch out
+as the row's own name.
+
+**The SSR floor is normative and carries no script** (`docs/SSR.md`): the identical elements,
+classes, ARIA and roving tabindex, with `aria-expanded` reflecting the statically-resolvable expanded
+state. Every structural decision — which rows are open, which row is focusable, what "visible" means
+— is taken in `Renderer.Core` and shared, so the legs cannot come apart. What the server leg omits
+is the handlers, which it has nothing to say about. The EMAIL projection drops the tree vocabulary
+altogether and renders nested lists fully expanded: a mail client runs no script, so honouring a
+collapsed row would hide content behind an affordance the reader will never be given.
+
+**A fourth recursive entry point in the decoder, bounded on its own axis.** Item nesting consumes NO
+node depth — a whole hierarchy lives inside one node — and the syntactic bound is nowhere near
+reached at ~2 JSON levels per row, so the `MaxDepth` figure is applied to item nesting on its own
+axis, on the `TreeOp.Batch` precedent §21.5 records. The figure is REUSED rather than a sixth
+protocol number minted: these frames cost what the node decoder's cost. Pinned from both sides —
+`limit-tree-item-depth-at-max` and `reject-limit-tree-item-depth`.
+
+**Two new validator codes, both Error.** **FUARAN126** — a tree repeating a `TreeItem.Id` anywhere in
+the hierarchy: the id is what both State keys NAME, so a repeat makes both ambiguous, and expanding
+one row would open two. Judged across every level rather than per sibling group, because the keys are
+flat and carry no path. **FUARAN127** — a row whose `Label` is an empty or whitespace literal, on
+FUARAN108's argument moved onto a row: a row's label is the only thing a reader walking the hierarchy
+has. Both judge only LITERALS, on FUARAN108's restraint.
+
+**Duplicate row ids are a PRE-EMIT rule and deliberately NOT a decode refusal**, on §8.1's own stated
+position for node ids: duplicate detection is a whole-tree property, a decoder streaming a document
+is not required to carry the id set, and there is no wire error code for it. Making the reference
+host refuse one would make it stricter than the format it implements.
+
+**`Theme.vocabularyFingerprint` moved** to `fv1:a2691fe9295530d0`: five classes entered the
+vocabulary (`fuaran-kind-tree`, `fuaran-tree`, `fuaran-tree-group`, `fuaran-tree-item`,
+`fuaran-tree-label`). A host pinning the old value would accept a stylesheet that knows none of them.
+
+**Wire survivability: PARTIAL, with an alternative that is not the write-back hint.** `OnSelect`
+erases like every closure, but a decoded tree does not lose selection with it — the renderer writes
+`selectionStateKey` on its own account, so a document naming the key keeps a working, selectable,
+keyboard-navigable tree after a round trip and only a host-side side-effect is lost.
+
+**`UpdateProp` sets nothing on this kind, and `Introspect.availableFields` returns the empty list.**
+Both State keys and the row structure are whole-node `EditNode` territory: re-pointing a live
+behaviour at a different key field-by-field would leave the old slot holding the state the reader had
+built up, and coercing a hierarchy out of an untyped value is where a lenient parse silently drops a
+subtree.
+
+**Authoring surfaces (§11 step 6).** F# gains `Fuaran.tree` / `Fuaran.treeSpec` / `Fuaran.treeItem`;
+the C# veneer gains `Tree(TreeOptions)` with a recursive `TreeItemOptions`; the VB XML dialect gains
+`<Tree>` with recursively nested `<TreeItem>` children — the dialect nests natively, so a hierarchy
+is authored as a hierarchy with no parent-id convention to get wrong, and `<TreeItem>` is the only
+structural element in that dialect that nests inside itself. A DISTINCT element name rather than an
+overloaded `<Item>`: the analyzer attribute table is keyed by element name and is global, so giving
+`<Item>` an `id`/`label`/`icon` row would make `<Item id="x">` inside a `<List>` analyzer-clean while
+the translator silently ignored every attribute of it.
+
+---
+
 ## Recorded change — 0.60.0, print break control — subtree cohesion across a page boundary (fuaran#1473)
 
 **Additive on the wire; SOURCE-BREAKING at a full-literal `BoxSpec` / `DataGridSpec` / `GridSpecOf`

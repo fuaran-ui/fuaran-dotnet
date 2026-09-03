@@ -867,6 +867,59 @@ type PreEmitDefect =
     /// Carries the node's id and which condition fired.
     | DeadPrintBreak of nodeId: string * defect: PrintBreakDefect
 
+    /// **FUARAN126 (Error)**. A `Tree` carrying two rows with the same `Id`
+    /// (Phase 1120), anywhere in the hierarchy — siblings or across levels.
+    ///
+    /// A `TreeItem.Id` is not decoration: it is what the spec's two State keys
+    /// NAME. The expanded set is a set of row ids and the selection is a row id,
+    /// so a repeated id makes both keys ambiguous — expanding one row opens two,
+    /// and a restored selection lands on whichever the host reached first. The
+    /// document is not merely odd, it states two different things about one
+    /// name.
+    ///
+    /// Error rather than Warning, on `NodeId`'s §8.1 argument one level down:
+    /// there is no legitimate shape it refuses. Two rows meaning the same thing
+    /// are one row; two rows meaning different things need two names.
+    ///
+    /// It is a PRE-EMIT rule rather than a decode rule for the same reason node
+    /// id uniqueness is: the decoder judges SHAPE, and a duplicate id is
+    /// perfectly well-shaped bytes. Judging it at decode would mean a host
+    /// refusing a document another host had accepted, which is the divergence
+    /// §21.2 rule 1 exists to prevent.
+    ///
+    /// Carries the tree node's id and the duplicated row id. The FIRST repeat is
+    /// reported and later ones are not: a row id repeated four times is one
+    /// defect with one fix, and four findings would bury it.
+    | TreeItemIdDuplicated of nodeId: string * itemId: string
+
+    /// **FUARAN127 (Error)**. A `Tree` row whose `Label` resolves to nothing —
+    /// an empty or whitespace `Literal` (Phase 1120).
+    ///
+    /// FUARAN108's argument, moved onto a row, and it survives the move for the
+    /// reason FUARAN113's did: a tree row's label is the only thing a reader
+    /// has. A row is a tab-target in a roving-focus widget and an entry a screen
+    /// reader announces by name; an unnamed one is announced as its level and
+    /// its position and nothing else, so a reader walking a file listing is
+    /// told they are at item 3 of 7 at level 2 and never what it is.
+    ///
+    /// Only a LITERAL is judged, on FUARAN108's restraint — a `Bound` or `I18n`
+    /// label resolves at render time from data this walk cannot see, so calling
+    /// it empty would be a guess. Whitespace counts as empty for FUARAN108's
+    /// reason too: a label of `" "` is not a name, and admitting it would make
+    /// the rule evadable by a space, which is worse than not having the rule
+    /// because the document would then carry a green gate saying it had been
+    /// checked.
+    ///
+    /// Error rather than Warning: `Defaults.treeItem` carries the empty literal
+    /// so the record can be constructed at all, so every reading of an empty
+    /// label is a defect — an author who filled the ids and not the names, an
+    /// emitter that dropped a slot, a translation key that resolved to nothing.
+    ///
+    /// Carries the tree node's id and the row's id, which is what a repair needs
+    /// to find the row: a positional index would name a path a reader would then
+    /// have to count out by hand through the nesting.
+    | TreeItemWithoutLabel of nodeId: string * itemId: string
+
     // ── The accessibility family (FUARAN109/110/111, Phase 727) ──────────────
     //
     // Until this family landed the runtime validator carried NO accessibility
@@ -1492,6 +1545,20 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
         sprintf
             "node '%s' declares keepTogether while it renders no subtree — a dead declaration. Keeping a subtree whole across a page boundary needs a subtree that could straddle one, and this container has no rendered children, so the declaration rides the wire, survives every round trip and changes nothing on any host. Move it to the container that holds the content, or drop it"
             nodeId
+    | PreEmitDefect.TreeItemIdDuplicated(nodeId, itemId) ->
+        "FUARAN126",
+        DefectSeverity.Error,
+        sprintf
+            "tree '%s' carries more than one row with the id '%s' — a row id is what the expanded set and the selection NAME, so a repeated one makes both ambiguous: expanding one row opens two, and a restored selection lands on whichever the host reached first. Give every row in this tree its own id"
+            nodeId
+            itemId
+    | PreEmitDefect.TreeItemWithoutLabel(nodeId, itemId) ->
+        "FUARAN127",
+        DefectSeverity.Error,
+        sprintf
+            "tree '%s' carries a row '%s' with an EMPTY label — a row's label is the only thing a reader walking the hierarchy has, so an unnamed one is announced as its level and its position and nothing else. Give the row's 'label' the text a reader needs to decide whether to open it"
+            nodeId
+            itemId
     | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ->
         "FUARAN109",
         DefectSeverity.Warning,
@@ -2354,6 +2421,44 @@ let private validateCore
                 && List.contains EmbedPermission.AllowSameOrigin spec.Permissions
             then
                 defects.Add(PreEmitDefect.EmbedSandboxWeakened n.Id)
+        // FUARAN126 / FUARAN127 (Phase 1120): the tree's two rules, reported
+        // independently of each other for FUARAN113's reason — a tree can carry
+        // both, and a walk that stopped at the first would send an author back
+        // for a second pass.
+        //
+        // Both walk the WHOLE hierarchy, not just the top level. Duplicate ids
+        // are judged across every level rather than per sibling group, because
+        // the State keys they name are flat: the expanded set is a set of ids
+        // with no path in it, so two rows sharing a name at different depths are
+        // exactly as ambiguous as two sharing it side by side.
+        //
+        // Both sets take the DEFAULT comparer, matching every other `seen` /
+        // `reported` pair in this file. Naming `StringComparer.Ordinal`
+        // explicitly says the same thing on .NET and does not compile under
+        // Fable at all — this module is in the Fable-compiled tier, so the
+        // explicit spelling would have made the whole client pipeline
+        // unbuildable to state a default that already holds on both.
+        | NodeKind.Tree spec ->
+            let seen = System.Collections.Generic.HashSet<string>()
+
+            let reported = System.Collections.Generic.HashSet<string>()
+
+            let rec walkItems (items: TreeItem list) =
+                for item in items do
+                    // The first repeat is reported and later ones are not: a row
+                    // id repeated four times is ONE defect with one fix, and
+                    // four findings would bury it.
+                    if not (seen.Add item.Id) && reported.Add item.Id then
+                        defects.Add(PreEmitDefect.TreeItemIdDuplicated(n.Id, item.Id))
+
+                    match item.Label with
+                    | TextSource.Literal s when s.Trim() = "" ->
+                        defects.Add(PreEmitDefect.TreeItemWithoutLabel(n.Id, item.Id))
+                    | _ -> ()
+
+                    walkItems item.Children
+
+            walkItems spec.Items
         // FUARAN092 (Phase 812): email protection declared over an href that
         // is statically known not to be a mailto:. Bound hrefs (Query / State
         // / …) resolve at runtime and are not judged here.

@@ -1191,6 +1191,73 @@ and EmbedPermission = Generated.EmbedPermission
 /// list of item texts; `Ordered` selects `<ol>` (true) vs `<ul>` (false).
 and ListSpec = Generated.ListSpec
 
+/// §4b — `NodeKind.Tree`'s typed spec (Phase 1120): a hierarchy the reader walks
+/// with one focus, opening and closing rows as they go.
+///
+/// **Admitted on the SEMANTICS ground, and the depth argument is struck.** The
+/// vocabulary charter's Appendix A row stood undecided for a year — Kind
+/// reserved *or* Composition — with "recursive disclosure *may* be irreducible;
+/// first attempt is a `List` + `Disclosure` composition". The obvious
+/// irreducibility claim was arbitrary DEPTH, and it does not hold: a
+/// depth-forcing probe found neither vendor reaching for a container to express
+/// unbounded nesting, and a finite literal nesting IS a static composition. That
+/// argument is struck rather than left standing weakly, because a claim nobody
+/// re-examines is one the next proposal inherits.
+///
+/// What breaks the composition is BEHAVIOUR. A `List` of `Disclosure`s is N
+/// independent toggles: every row is its own tab stop, there is no focus that
+/// walks the structure, Left does not close the row you are in and move to its
+/// parent, Home does not go to the first row of the whole hierarchy, and no row
+/// announces its depth or its position among its siblings. The WAI-ARIA tree
+/// pattern is one composite widget with a ROVING TABINDEX — the whole tree is a
+/// single tab stop and the arrow keys move a focus within it — and that is not a
+/// property any arrangement of independently-focusable containers has.
+///
+/// **The NavBar counter-precedent is the case to answer, and this is how it
+/// differs.** The Navigation cluster declined a nav kind *because*
+/// `AriaRole.Navigation` already carried the landmark: the fact needing to be
+/// said was an attribute, and an attribute is expressible as data on a `Box`. No
+/// projection can do the same here. `role="tree"`, `aria-level`, `aria-expanded`
+/// and `aria-setsize` are attributes and could be carried that way; the roving
+/// focus, the six key bindings and the expand-collapse-traverse semantics are
+/// not attributes at all — they are a behaviour the host performs over rows it
+/// has not yet expanded. That is the `sortStateKey` shape, and it is the reason
+/// the row moves to ADMITTED rather than to Composition.
+///
+/// **Scope is deliberately NARROW.** Static recursive items only. Finite static
+/// nesting stays with `Disclosure`, so this kind sits BESIDE the composition
+/// rather than swallowing it — the discriminator a reader (and an emitter) is
+/// taught is *keyboard traversal over a hierarchy* and not *nesting*. A
+/// bound or lazily-fetched children source is RESERVED and out: it needs the
+/// shared-data-source charter's machinery and its own walk.
+///
+/// Both reader-driven behaviours are named State keys —`ExpandedStateKey`
+/// carries the set of open row ids, `SelectionStateKey` the focused/selected id
+/// — per the grid-behaviour cluster's governing ruling. The key IS the
+/// affordance: there is no `expandable` boolean, because a flag with no key
+/// behind it is a decorative control writing state nothing reads, and no
+/// per-item `expanded` flag, because a node-local shadow copy is free to
+/// disagree with the key.
+and TreeSpec<'Msg> = Generated.TreeSpec<'Msg>
+
+/// §4b — one row of a `Tree` (Phase 1120), and the wire vocabulary's first
+/// self-referential record: `Children` is a `TreeItem list`.
+///
+/// `Id` is required because it is what the two State keys NAME — the expanded
+/// set is a set of ids and the selection is an id — so a row without one is a
+/// row that cannot be expanded, selected or restored. Uniqueness within one
+/// tree is FUARAN126 rather than a decode rule, on `NodeId`'s own §8.1
+/// precedent: the decoder judges shape, the pre-emit gate judges sense.
+///
+/// `Label` is a `TextSource`, not a bare string, because it is content —
+/// authored, translated, bindable. FUARAN127 refuses the empty literal that
+/// satisfies the requirement while meaning nothing, on FUARAN108's argument.
+///
+/// `Children` omits at the empty list, so a leaf carries no `children` key at
+/// all — which matters here more than for any other list slot, because a tree is
+/// mostly leaves. `Icon` is presentational and optional.
+and TreeItem = Generated.TreeItem
+
 /// §4n — `NodeKind.Toast`'s typed spec (Phase 289). The declarative,
 /// in-tree, SSR-rendered notification surface. `Open` is the controlled
 /// visibility binding (resolves `true` → shown); `Tone` selects the status
@@ -2228,6 +2295,7 @@ module Kind =
         | NodeKind.Media _ -> "Media"
         | NodeKind.Embed _ -> "Embed"
         | NodeKind.List _ -> "List"
+        | NodeKind.Tree _ -> "Tree"
         | NodeKind.Toast _ -> "Toast"
         | NodeKind.CodeBlock _ -> "CodeBlock"
         | NodeKind.Math _ -> "Math"
@@ -2274,6 +2342,7 @@ module Kind =
         | NodeKind.Media _
         | NodeKind.Embed _
         | NodeKind.List _
+        | NodeKind.Tree _
         | NodeKind.Toast _
         | NodeKind.CodeBlock _
         | NodeKind.Math _

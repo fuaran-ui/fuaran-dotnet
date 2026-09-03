@@ -286,6 +286,7 @@ let queryBoundRefs (node: Node<'Msg>) : QueryBoundRef list =
         | NodeKind.Media _
         | NodeKind.Embed _
         | NodeKind.List _
+        | NodeKind.Tree _
         | NodeKind.Toast _
         | NodeKind.CodeBlock _
         | NodeKind.Math _

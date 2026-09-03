@@ -185,6 +185,13 @@ let isBidiIsolated (kind: NodeKind<'Msg>) : bool =
     | NodeKind.Badge s -> isBoundText s.Label
     | NodeKind.Markdown s -> isBoundText s.Text
     | NodeKind.List s -> s.Items |> List.exists isBoundText
+    // Phase 1120 — a row label is laid-out content on the same terms a list
+    // item's is, so the same reading applies at every depth of the hierarchy.
+    | NodeKind.Tree s ->
+        let rec anyBound (items: TreeItem list) =
+            items |> List.exists (fun i -> isBoundText i.Label || anyBound i.Children)
+
+        anyBound s.Items
     | NodeKind.Link s -> isBoundText s.Label
     | NodeKind.Media s -> isBoundText s.Label
     // Phase 1111 — `Title` is attribute text, not laid-out content, so there is

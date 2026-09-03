@@ -1415,6 +1415,7 @@ let displayNodeKinds =
       "Media"
       "Embed"
       "List"
+      "Tree"
       "Toast"
       "CodeBlock"
       "Math"
@@ -4427,6 +4428,122 @@ let private decodeEmbedSpec (path: string) (j: Json) : Result<EmbedSpec, DecodeE
         | _, _, Error e, _
         | _, _, _, Error e -> Error e
 
+/// Phase 1120 — one `Tree` row, and the FOURTH recursive entry point in this
+/// decoder (nodes, ops, JSON values, and now rows).
+///
+/// **`depth` is a bound on its own axis, and `WIRE_FORMAT.md` §21.5's
+/// implementers' note is why.** That note records what it cost this host to
+/// learn once already: bounding the node decoder was not sufficient, because
+/// `TreeOp.Batch` recurses on a separate axis and the syntactic bound looked
+/// like adequate cover for it and was not. `TreeItem` is exactly that shape
+/// again. Item nesting consumes no NODE depth at all — an entire hierarchy
+/// lives inside one node — and while the syntactic bound does cap it at roughly
+/// 127 levels, these frames are as heavy as the node decoder's, whose measured
+/// unoptimised overflow is 31. So the bound is applied HERE, on the way down,
+/// before the recursion it exists to refuse.
+///
+/// The FIGURE is `MaxDepth`, reused rather than minted, on the `Batch`
+/// precedent recorded in the same section: op nesting is bounded by the node
+/// figure counted on its own axis, and this is the third axis under the same
+/// number. A separate limit row would be a sixth protocol number for a
+/// structure with the same per-frame cost, and every host would then have to
+/// carry two figures where one is enough.
+let rec private decodeTreeItem (depth: int) (path: string) (j: Json) : Result<TreeItem, DecodeError> =
+    if depth > Fuaran.UI.WireLimits.MaxDepth then
+        err
+            DecodeErrorCode.LIMIT_EXCEEDED
+            path
+            (sprintf
+                "tree item nesting depth %d exceeds the wire limit MaxDepth = %d"
+                depth
+                Fuaran.UI.WireLimits.MaxDepth)
+            (Some(sprintf "a tree nesting items no more than %d levels deep" Fuaran.UI.WireLimits.MaxDepth))
+    else
+
+        match requireObject path j with
+        | Error e -> Error e
+        | Ok fields ->
+            let idR =
+                requireField path fields "id" "tree item id string"
+                |> Result.bind (requireString (path + ".id"))
+
+            let labelR =
+                requireField path fields "label" "tree item label TextSource"
+                |> Result.bind (decodeTextSource (path + ".label"))
+
+            // Omitted at the empty list, so a LEAF carries no `children` key at all
+            // — which is most of a tree, and is why the omission was chosen over an
+            // always-present array.
+            let childrenR =
+                match tryField fields "children" with
+                | None -> Ok []
+                | Some v ->
+                    match requireArray (path + ".children") v with
+                    | Error e -> Error e
+                    | Ok items ->
+                        items
+                        |> traverseIndexed (fun i el ->
+                            decodeTreeItem (depth + 1) (sprintf "%s.children[%d]" path i) el)
+
+            let iconR =
+                match tryField fields "icon" with
+                | None -> Ok Option.None
+                | Some v -> requireString (path + ".icon") v |> Result.map Some
+
+            match idR, labelR, childrenR, iconR with
+            | Ok id, Ok label, Ok children, Ok icon ->
+                Ok
+                    { Children = children
+                      Icon = icon
+                      Id = id
+                      Label = label }
+            | Error e, _, _, _
+            | _, Error e, _, _
+            | _, _, Error e, _
+            | _, _, _, Error e -> Error e
+
+/// Phase 1120 — the tree. `items` is required; both State keys are ordinary
+/// optional strings on `sortStateKey`'s shape, and `onSelect` is the closure
+/// sentinel on `Tabs`' — a present key reconstructs a no-op `Some` that
+/// re-encodes to the same sentinel, an absent one decodes `None`.
+///
+/// The root row list starts the item-depth count at 1, matching how the node
+/// walk counts its root.
+let private decodeTreeSpec (path: string) (j: Json) : Result<TreeSpec<obj>, DecodeError> =
+    match requireObject path j with
+    | Error e -> Error e
+    | Ok fields ->
+        let itemsR =
+            requireField path fields "items" "tree items array"
+            |> Result.bind (requireArray (path + ".items"))
+            |> Result.bind (fun items ->
+                items
+                |> traverseIndexed (fun i el -> decodeTreeItem 1 (sprintf "%s.items[%d]" path i) el))
+
+        let expandedR =
+            match tryField fields "expandedStateKey" with
+            | None -> Ok Option.None
+            | Some v -> requireString (path + ".expandedStateKey") v |> Result.map Some
+
+        let selectionR =
+            match tryField fields "selectionStateKey" with
+            | None -> Ok Option.None
+            | Some v -> requireString (path + ".selectionStateKey") v |> Result.map Some
+
+        match itemsR, expandedR, selectionR with
+        | Ok items, Ok expandedKey, Ok selectionKey ->
+            Ok
+                { ExpandedStateKey = expandedKey
+                  Items = items
+                  OnSelect =
+                    (match tryField fields "onSelect" with
+                     | Some _ -> Some(fun (_: string) -> Action.Chain [])
+                     | None -> Option.None)
+                  SelectionStateKey = selectionKey }
+        | Error e, _, _
+        | _, Error e, _
+        | _, _, Error e -> Error e
+
 let private decodeListSpec (path: string) (j: Json) : Result<ListSpec, DecodeError> =
     match requireObject path j with
     | Error e -> Error e
@@ -5126,6 +5243,7 @@ let private decodeDisplayKind (path: string) (j: Json) : Result<NodeKind<obj>, D
                 getSpec ()
                 |> Result.bind (decodeEmbedSpec specPath)
                 |> Result.map NodeKind.Embed
+            | "Tree" -> getSpec () |> Result.bind (decodeTreeSpec specPath) |> Result.map NodeKind.Tree
             | "List" -> getSpec () |> Result.bind (decodeListSpec specPath) |> Result.map NodeKind.List
             | "Toast" ->
                 getSpec ()

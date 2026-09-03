@@ -1330,6 +1330,26 @@ module Fuaran =
     let listSpec (id: string) (spec: ListSpec) : Node<'Msg> =
         buildNode id (NodeKind.List(spec)) Defaults.Accessibility.none
 
+    /// Phase 1120 — a hierarchy the reader walks with one focus. `treeItem` is
+    /// the row builder; `tree` takes the roots and names neither State key, so
+    /// it renders a STATIC fully-expanded hierarchy — which is the honest
+    /// reading of a document that asked for no toggle. `treeSpec` is the twin
+    /// that takes the full record, and it is what a caller reaches for to name
+    /// `expandedStateKey` / `selectionStateKey`: those keys ARE the
+    /// affordances, so turning a tree interactive is naming one, never setting
+    /// a flag.
+    let treeItem (itemId: string) (label: string) (children: TreeItem list) : TreeItem =
+        { Children = children
+          Icon = Option.None
+          Id = itemId
+          Label = TextSource.Literal label }
+
+    let tree (id: string) (items: TreeItem list) : Node<'Msg> =
+        buildNode id (NodeKind.Tree({ Defaults.tree with Items = items })) Defaults.Accessibility.none
+
+    let treeSpec (id: string) (spec: TreeSpec<'Msg>) : Node<'Msg> =
+        buildNode id (NodeKind.Tree(spec)) Defaults.Accessibility.none
+
     /// A separator — a plain horizontal rule (Phase 459: the retired `Divider`,
     /// now a `Box` `Separator` role). Renders `<hr class="fuaran-layout-separator">`.
     /// For a labelled / vertical separator, author a `Fuaran.box` with

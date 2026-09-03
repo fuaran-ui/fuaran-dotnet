@@ -1032,6 +1032,29 @@ let private updateImage (field: string) (v: obj) (spec: ImageSpec) : UpdateResul
 /// one out of an untyped `obj` is exactly the shape where a lenient parse widens
 /// a sandbox, so the answer is a whole-node `EditNode` where the author states
 /// the full set and the pre-emit validator sees it.
+/// Phase 1120 — the `Tree` field surface, and every slot on it answers
+/// `NotSupportedYet` rather than falling through to `UnknownField`.
+///
+/// `Items` is the recursive row structure: coercing a whole hierarchy out of an
+/// untyped `obj` is the shape where a lenient parse silently drops a subtree, so
+/// a rows edit is a whole-node `EditNode` where the author states the tree and
+/// the pre-emit validator sees it — `Form.Fields`' disposition exactly.
+///
+/// The two State keys are named for a sharper reason than "no coercion exists".
+/// A key is what a host READS and WRITES the reader's expansion and selection
+/// through, so editing it field-by-field would re-point a live behaviour at a
+/// different slot while the old one still held the state the reader had built
+/// up. That is a whole-node act, not a field poke.
+let private updateTree (field: string) (v: obj) (spec: TreeSpec<'Msg>) : UpdateResult<'Msg> =
+    ignore v
+    ignore spec
+
+    match field with
+    | "Items"
+    | "ExpandedStateKey"
+    | "SelectionStateKey" -> NotSupportedYet
+    | _ -> UnknownField
+
 let private updateEmbed (field: string) (v: obj) (spec: EmbedSpec) : UpdateResult<'Msg> =
     match field with
     | "Title" ->
@@ -1348,6 +1371,7 @@ let private dispatchUpdateField (field: string) (v: obj) (kind: NodeKind<'Msg>) 
     | NodeKind.Media spec -> updateMedia field v spec
     | NodeKind.Embed spec -> updateEmbed field v spec
     | NodeKind.List spec -> updateList field v spec
+    | NodeKind.Tree spec -> updateTree field v spec
     | NodeKind.Toast spec -> updateToast field v spec
     // The old justification here claimed the spec is "mostly literal
     // strings, not the bound surface UpdateProp targets". That had it

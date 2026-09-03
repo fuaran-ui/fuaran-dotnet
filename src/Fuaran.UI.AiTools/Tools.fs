@@ -420,6 +420,32 @@ let private extractProps (kind: NodeKind<'Msg>) : PropEntry list =
                    | EmbedPermission.AllowForms -> "AllowForms"
                    | EmbedPermission.AllowFullscreen -> "AllowFullscreen")
                |> String.concat " ") ]
+    | NodeKind.Tree(spec) ->
+        // Phase 1120 — the two State keys are the props that matter to an agent
+        // asking what this node is: they are what it would have to WRITE to open
+        // a row or move the selection, and a tree naming neither is a static
+        // hierarchy. `Items` is surfaced as counts on `List`'s precedent — the
+        // whole recursive structure is what `inspectTree` is for.
+        [ entry
+              "ExpandedStateKey"
+              (spec.ExpandedStateKey |> Option.map boxNN)
+              (Some "string option (the State key holding the open row ids)")
+          entry
+              "SelectionStateKey"
+              (spec.SelectionStateKey |> Option.map boxNN)
+              (Some "string option (the State key holding the selected row id)")
+          entry "RootCount" (Some(boxNN (List.length spec.Items))) (Some "TreeItem list (count)")
+          entry
+              "TotalCount"
+              (Some(
+                  boxNN (
+                      let rec count (items: TreeItem list) =
+                          items |> List.sumBy (fun i -> 1 + count i.Children)
+
+                      count spec.Items
+                  )
+              ))
+              (Some "TreeItem (recursive count)") ]
     | NodeKind.List(spec) ->
         [ valueEntry "Ordered" spec.Ordered
           entry "ItemCount" (Some(boxNN (List.length spec.Items))) (Some "TextSource list (count)") ]

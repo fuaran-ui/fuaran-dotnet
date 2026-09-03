@@ -641,6 +641,41 @@ let private breakBox
       Tooltip = None
       Motion = None }
 
+// ─── Phase 1120 fixtures ─ FUARAN126 / FUARAN127, the tree's two row rules ──
+
+/// Only the Phase 1120 defects, for the reason `embedDefects` states: a `Tree`
+/// fixture also trips whatever else its enclosing dashboard trips, and a test
+/// asserting the whole defect list would be measuring the fixture rather than
+/// the rule.
+let private treeDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.TreeItemIdDuplicated _
+            | PreEmitDefect.TreeItemWithoutLabel _ -> true
+            | _ -> false)
+
+let private treeCodes (tree: Node<Msg>) : string list =
+    treeDefects tree
+    |> List.map (fun d ->
+        let code, _, _ = PreEmitValidate.describe d
+        code)
+
+/// One row, built off `Defaults.treeItem` rather than through
+/// `Fuaran.treeItem`, because several of these fixtures need a label the
+/// authoring helper cannot express — the empty literal it is FUARAN127's whole
+/// job to refuse. The `Defaults.with` form is not a style preference here: a
+/// full record literal breaks (FS0764) the moment `TreeItem` gains a field,
+/// which is the mechanism that turns wire-additive growth into source-breaking
+/// change, and `SpecConstructionTests` lints for exactly this.
+let private row (id: string) (label: TextSource) (children: TreeItem list) : TreeItem =
+    { Defaults.treeItem with
+        Children = children
+        Id = id
+        Label = label }
+
 /// `seedingGrid`'s shape with `repeatHeader` declared and the column set under
 /// the caller's control, so the header-bearing and header-less cases are the
 /// same fixture with one field changed.
@@ -3346,6 +3381,138 @@ let tests =
               Expect.isEmpty
                   (printBreakDefects tree)
                   "the row count is not knowable pre-emit, so nothing is claimed about it"
+          }
+
+          // ── Phase 1120 — FUARAN126 / FUARAN127, the tree's two row rules ──
+
+          test "FUARAN126: two sibling rows sharing an id are reported" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ Fuaran.tree
+                            "t"
+                            [ row "goods" (TextSource.Literal "Goods") []
+                              row "goods" (TextSource.Literal "Ledger") [] ] ]
+
+              Expect.equal
+                  (treeCodes tree)
+                  [ "FUARAN126" ]
+                  "a repeated row id makes the expanded set and the selection ambiguous"
+
+              Expect.equal
+                  (severityOf (treeDefects tree |> List.head))
+                  DefectSeverity.Error
+                  "Error, not Warning — there is no legitimate shape it refuses: two rows meaning the same thing are one row"
+          }
+
+          test "FUARAN126: a repeat ACROSS LEVELS is reported, not only between siblings" {
+              // The State keys the ids name are FLAT — the expanded set carries no
+              // path — so a child sharing its grandparent's id is exactly as
+              // ambiguous as two rows side by side. A rule that walked sibling
+              // groups independently would pass this and is the likely wrong
+              // implementation, which is why the case is pinned.
+              let tree =
+                  dashboard
+                      "root"
+                      [ Fuaran.tree
+                            "t"
+                            [ row
+                                  "archive"
+                                  (TextSource.Literal "Archive")
+                                  [ row
+                                        "1823"
+                                        (TextSource.Literal "1823")
+                                        [ row "archive" (TextSource.Literal "Deeds") [] ] ] ] ]
+
+              Expect.equal (treeCodes tree) [ "FUARAN126" ] "depth does not disambiguate a flat key"
+          }
+
+          test "FUARAN126: a row id repeated four times is ONE finding" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ Fuaran.tree
+                            "t"
+                            [ row "a" (TextSource.Literal "One") []
+                              row "a" (TextSource.Literal "Two") []
+                              row "a" (TextSource.Literal "Three") []
+                              row "a" (TextSource.Literal "Four") [] ] ]
+
+              Expect.equal (treeCodes tree) [ "FUARAN126" ] "one defect with one fix — four findings would bury it"
+          }
+
+          test "FUARAN126 go-red check: distinct ids at every level are silent" {
+              // The rule must not fire on the shape the kind EXISTS for. Note the
+              // nesting: a walk that never recursed would also pass this, which is
+              // why the across-levels case above is asserted alongside it.
+              let tree =
+                  dashboard
+                      "root"
+                      [ Fuaran.tree
+                            "t"
+                            [ row
+                                  "goods"
+                                  (TextSource.Literal "Goods")
+                                  [ row "cocoa" (TextSource.Literal "Cocoa") []
+                                    row "yarn" (TextSource.Literal "Yarn") [] ]
+                              row "ledger" (TextSource.Literal "Ledger") [] ] ]
+
+              Expect.isEmpty (treeDefects tree) "an ordinary hierarchy names every row once"
+          }
+
+          test "FUARAN127: an empty literal row label is reported" {
+              let tree =
+                  dashboard "root" [ Fuaran.tree "t" [ row "a" (TextSource.Literal "") [] ] ]
+
+              Expect.equal
+                  (treeCodes tree)
+                  [ "FUARAN127" ]
+                  "a row's label is the only thing a reader walking the hierarchy has"
+
+              Expect.equal
+                  (severityOf (treeDefects tree |> List.head))
+                  DefectSeverity.Error
+                  "Error, not Warning — Defaults.treeItem carries the empty literal, so every reading of one is a defect"
+          }
+
+          test "FUARAN127: whitespace is empty, and a NESTED row is judged too" {
+              let tree =
+                  dashboard
+                      "root"
+                      [ Fuaran.tree
+                            "t"
+                            [ row "goods" (TextSource.Literal "Goods") [ row "cocoa" (TextSource.Literal "   ") [] ] ] ]
+
+              Expect.equal
+                  (treeCodes tree)
+                  [ "FUARAN127" ]
+                  "a label of spaces is not a name, and the walk reaches every depth"
+          }
+
+          test "FUARAN127 go-red check: a BOUND label is not judged" {
+              // FUARAN108's restraint. A bound label resolves at render time from
+              // data this walk cannot see, so calling it empty would be a guess —
+              // and the rule would then accuse a correct document.
+              let tree =
+                  dashboard
+                      "root"
+                      [ Fuaran.tree "t" [ row "a" (TextSource.Bound(Binding.State("rowLabel", None))) [] ] ]
+
+              Expect.isEmpty (treeDefects tree) "an unresolved binding is not an empty label"
+          }
+
+          test "FUARAN126 + FUARAN127: one tree can carry both, and both are reported" {
+              // FUARAN113's reason: a walk that stopped at the first would send an
+              // author back for a second pass.
+              let tree =
+                  dashboard
+                      "root"
+                      [ Fuaran.tree "t" [ row "a" (TextSource.Literal "") []; row "a" (TextSource.Literal "Two") [] ] ]
+
+              Expect.containsAll
+                  (treeCodes tree)
+                  [ "FUARAN126"; "FUARAN127" ]
+                  "both rules report independently of each other"
           }
 
           test "FUARAN118: an empty literal tooltip is reported" {

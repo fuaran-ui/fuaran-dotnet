@@ -90,7 +90,7 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // its printed output would silently split the blocks the document declared
 // whole, which is precisely the unstyled-control skew this fingerprint exists
 // to catch.
-let vocabularyFingerprint = "fv1:0bb0bce8e9295ec6"
+let vocabularyFingerprint = "fv1:a2691fe9295530d0"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
@@ -373,6 +373,7 @@ let kindClass (kind: NodeKind<'Msg>) : string =
     | NodeKind.Image(_) -> "fuaran-kind-image"
     | NodeKind.Media(_) -> "fuaran-kind-media"
     | NodeKind.Embed(_) -> "fuaran-kind-embed"
+    | NodeKind.Tree(_) -> "fuaran-kind-tree"
     | NodeKind.List(_) -> "fuaran-kind-list"
     | NodeKind.Toast(_) -> "fuaran-kind-toast"
     | NodeKind.CodeBlock(_) -> "fuaran-kind-code-block"

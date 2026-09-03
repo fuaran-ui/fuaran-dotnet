@@ -111,6 +111,15 @@ let private acceptTest (e: Corpus.FixtureEntry) : Test =
 ///   rather than System.Text.Json's 64-level default; before that the harness's
 ///   own parser refused them and the exemption was invisible.
 ///
+/// - `reject-limit-tree-item-depth` (Phase 1120, §21.5): the same rule on a THIRD
+///   axis — `TreeItem` rows nested past `WireLimits.MaxDepth` inside one node.
+///   The schema models the recursion exactly as it models node nesting, by name,
+///   and is exactly as unable to bound it. Worth stating rather than folding
+///   into the entry above, because the two are not the same fixture class in
+///   every respect: this one exceeds NO node bound at all (the whole hierarchy
+///   is one node), so it is schema-valid AND node-depth-valid, and only the
+///   item-axis counter refuses it.
+///
 /// Each entry is asserted schema-VALID below — the INVERSE pin. If the schema
 /// ever gains the power to refuse one of these, this test fails and the list
 /// shrinks deliberately rather than the exemption quietly outliving its reason.
@@ -122,7 +131,8 @@ let private schemaInexpressibleRejects: Set<string> =
           // refuse is one the DECODER no longer refuses either.
           "reject-fieldrule-length-unordered"
           "reject-limit-node-depth"
-          "reject-limit-op-depth" ]
+          "reject-limit-op-depth"
+          "reject-limit-tree-item-depth" ]
 
 // Phase 1068 — `schemaTypeErasedBindingRejects` is GONE, and its deletion is the
 // point rather than a tidy-up. Phase 1064 found four reject fixtures the emitted

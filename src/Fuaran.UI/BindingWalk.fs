@@ -1001,6 +1001,16 @@ let collect<'Msg> (root: Node<'Msg>) : TreeBindingFacts =
             // `AspectRatio` are closed enums, never bindings.
             | NodeKind.Embed e -> usesOfBinding e.Src @ usesOfText e.Title, []
             | NodeKind.List l -> l.Items |> List.collect usesOfText, []
+            // Phase 1120 — a tree's bindings are its rows' labels, and the
+            // recursion is over `TreeItem` rather than over `Node`, so the
+            // children slot stays empty: nothing below a `Tree` is a node.
+            | NodeKind.Tree t ->
+                noteOpaqueIf t.OnSelect.IsSome
+
+                let rec labelUses (items: TreeItem list) =
+                    items |> List.collect (fun i -> usesOfText i.Label @ labelUses i.Children)
+
+                labelUses t.Items, []
             | NodeKind.Toast t ->
                 noteWriteBack (writeBackTargetOf t.Open)
                 usesOfText t.Message @ usesOfBinding t.Open, []

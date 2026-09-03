@@ -282,6 +282,7 @@ DisplayKind =
 | Image { alt:TextSource; src:Binding_str; variant:"Default"|"Avatar"|"Rounded"; aspectRatio?:ImageAspect; caption?:TextSource; expandable?:bool; fit?:"Natural"|"Cover"|"Contain"; loading?:"Eager"|"Lazy"; srcSet?:SrcSetEntry[] }
 | Media { kind:MediaKind; label:TextSource; src:Binding_str; controls?:bool; loop?:bool; tracks?:TrackEntry[]; transcript?:TextSource }
 | Embed { src:Binding_str; title:TextSource; aspectRatio?:ImageAspect; permissions?:("AllowScripts"|"AllowSameOrigin"|"AllowForms"|"AllowFullscreen")[] }
+| Tree { items:TreeItem[]; expandedStateKey?:str; selectionStateKey?:str }
 | List { items:TextSource[]; ordered:bool }
 | Toast { message:TextSource; open:Binding_bool; dismissable?:bool; tone?:ToneVariant }
 | CodeBlock { code:str; copyable:bool; highlightLines:int[]; language:str; lineNumbers:bool }
@@ -577,6 +578,7 @@ SrcSetEntry { src:Binding_str; width:int }
 StateBehaviour { onEmpty?:Node; onLoading?:Node }
 TabHeader { label:TextSource; disabled?:Binding_bool; icon?:str }
 TrackEntry { kind:"Subtitles"|"Captions"|"Descriptions"|"Chapters"; label:TextSource; src:Binding_str; srcLang:str; default?:bool }
+TreeItem { id:str; label:TextSource; children?:TreeItem[]; icon?:str }
 ViewBox { height:any; minX:any; minY:any; width:any }
 DateVariant = "Date"|"Time"|"DateTime"
 DurationStyle = "Compact"|"Clock"|"Long"

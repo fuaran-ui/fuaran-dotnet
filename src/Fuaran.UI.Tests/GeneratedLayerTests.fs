@@ -625,6 +625,19 @@ let generatedLayerTests =
               //    Like the grid's they are schema-EXPRESSIBLE
               //    (`not: { required: [...] }` on `Accessibility`) and so stay
               //    out of `schemaInexpressibleRejects`.
+              //  - a tree nesting `TreeItem` rows past the §21 bound
+              //    (`reject-limit-tree-item-depth`, Phase 1120) is the SAME
+              //    class as the node-depth fixture above, on a third axis, and
+              //    its landing here was predicted rather than discovered. Every
+              //    row is individually well-shaped, the generated layer has no
+              //    depth counter on ANY axis, and the recursion is nominal
+              //    (`TreeItem` referencing `TreeItem`), so structure has nothing
+              //    to judge. The policy decoder counts item nesting on its own
+              //    axis and refuses. It is likewise schema-INEXPRESSIBLE for the
+              //    node-depth fixture's exact reason — Draft 2020-12 recurses
+              //    through `$ref` and has no keyword bounding how many times —
+              //    so unlike the value-bound class below it also joins
+              //    `schemaInexpressibleRejects`.
               //  - a `Masonry` layout's `cols` of 0 (Phase 1082) is the FOURTH
               //    instance of the value-bound class, after `defaultSort.column`,
               //    `pageSize` and the `srcSet` width. Same mechanism exactly: the
@@ -647,6 +660,7 @@ let generatedLayerTests =
                     "reject-formfield-near-miss-validation.json"
                     "reject-image-srcset-nonpositive-width.json"
                     "reject-limit-node-depth.json"
+                    "reject-limit-tree-item-depth.json"
                     "reject-nearmiss-a11y-aria-hidden.json"
                     "reject-nearmiss-a11y-arialabel.json"
                     "reject-nearmiss-a11y-live.json"

@@ -239,6 +239,7 @@ let childNodes (node: Node<'Msg>) : Node<'Msg> list =
     | NodeKind.Image _
     | NodeKind.Media _
     | NodeKind.Embed _
+    | NodeKind.Tree _
     | NodeKind.List _
     | NodeKind.Toast _
     | NodeKind.CodeBlock _

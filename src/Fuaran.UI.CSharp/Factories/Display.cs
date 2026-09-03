@@ -210,6 +210,44 @@ public static partial class Fuaran
                 options.Src.Inner,
                 options.Title.Inner)));
 
+    /// <summary>Phase 1120 — lower one authored row and its whole subtree onto the
+    /// generated record. Recursive, because the row type is: a `TreeItem` holds
+    /// `TreeItem`s, and the veneer has no reason to flatten what the wire nests.</summary>
+    private static FsGen.TreeItem ToFsTreeItem(TreeItemOptions item) =>
+        // Generated TreeItem ctor is Generated.fs declaration order
+        // (Children, Icon, Id, Label).
+        new(Fs.List((item.Children ?? Enumerable.Empty<TreeItemOptions>()).Select(ToFsTreeItem)),
+            item.Icon is null
+                ? Microsoft.FSharp.Core.FSharpOption<string>.None
+                : Microsoft.FSharp.Core.FSharpOption<string>.Some(item.Icon),
+            item.Id,
+            item.Label.Inner);
+
+    /// <summary>A hierarchy the reader walks with one focus — the WAI-ARIA tree
+    /// pattern, with roving tabindex and arrow-key traversal owned by the renderer.
+    /// Naming <see cref="TreeOptions.ExpandedStateKey"/> is what makes the rows
+    /// open and close; a tree that names it not renders fully expanded and static.
+    /// There is deliberately no <c>Expandable</c> flag — the key IS the affordance.</summary>
+    public static FuaranNode Tree(TreeOptions options) =>
+        new(FsFactory.treeSpec<object>(
+            options.Id,
+            // Generated TreeSpec ctor is Generated.fs declaration order
+            // (ExpandedStateKey, Items, OnSelect, SelectionStateKey). The handler is
+            // never authorable from this veneer — the C# surface exposes no Action
+            // vocabulary at all — so it is always None here, and a C#-authored tree
+            // reports selection through SelectionStateKey, which is the wire-survivable
+            // route in any case.
+            new FsGen.TreeSpec<object>(
+                options.ExpandedStateKey is null
+                    ? Microsoft.FSharp.Core.FSharpOption<string>.None
+                    : Microsoft.FSharp.Core.FSharpOption<string>.Some(options.ExpandedStateKey),
+                Fs.List((options.Items ?? Enumerable.Empty<TreeItemOptions>()).Select(ToFsTreeItem)),
+                Microsoft.FSharp.Core.FSharpOption<
+                    Microsoft.FSharp.Core.FSharpFunc<string, FsGen.Action<object>>>.None,
+                options.SelectionStateKey is null
+                    ? Microsoft.FSharp.Core.FSharpOption<string>.None
+                    : Microsoft.FSharp.Core.FSharpOption<string>.Some(options.SelectionStateKey))));
+
     /// <summary>A structured item list.</summary>
     public static FuaranNode List(ListOptions options) =>
         new(FsFactory.listSpec<object>(
@@ -644,6 +682,50 @@ public sealed record ListOptions
 
     /// <summary>Whether the list is ordered (<c>&lt;ol&gt;</c>).</summary>
     public bool Ordered { get; init; }
+}
+
+/// <summary>One row of a <see cref="Fuaran.Tree"/>. Recursive: a row holds rows.</summary>
+public sealed record TreeItemOptions
+{
+    /// <summary>The row's identity, and it is not decoration: it is what the tree's
+    /// two State keys NAME — the expanded set is a set of these, and the selection
+    /// is one of these. FUARAN126 refuses a tree that repeats one.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The row's text. FUARAN127 refuses an empty literal, on the media
+    /// label's argument: a row's label is the only thing a reader walking the
+    /// hierarchy has, so an unnamed one is announced as its level and its position
+    /// and nothing else.</summary>
+    public required Text Label { get; init; }
+
+    /// <summary>The rows beneath this one. Empty (the default) makes this a leaf, and
+    /// a leaf carries no <c>children</c> key on the wire at all.</summary>
+    public IEnumerable<TreeItemOptions>? Children { get; init; }
+
+    /// <summary>An optional icon name. Presentational — a host with no icon set
+    /// renders the row without one and loses nothing a reader needs.</summary>
+    public string? Icon { get; init; }
+}
+
+/// <summary>Options for <see cref="Fuaran.Tree"/>.</summary>
+public sealed record TreeOptions
+{
+    /// <summary>The node id.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The root rows.</summary>
+    public required IEnumerable<TreeItemOptions> Items { get; init; }
+
+    /// <summary>The State key holding the open rows, as an array of row ids. Naming it
+    /// is what makes the tree open and close: the key IS the affordance, and there is
+    /// no separate flag that could be set without one. Left unnamed, the tree renders
+    /// FULLY EXPANDED and static — a legitimate shape, on the same reading that lets a
+    /// grid declare an initial order without offering interactive sorting.</summary>
+    public string? ExpandedStateKey { get; init; }
+
+    /// <summary>The State key holding the selected row id. Naming it is what makes the
+    /// tree selectable, and what makes <c>aria-selected</c> appear at all.</summary>
+    public string? SelectionStateKey { get; init; }
 }
 
 /// <summary>Options for <see cref="Fuaran.Divider"/>.</summary>

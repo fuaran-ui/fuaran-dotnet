@@ -768,6 +768,39 @@ let private defs: (string * J) list =
             "src", binding "str"
             "title", ref "TextSource" ]
 
+      // Phase 1120 — the first SELF-REFERENTIAL def in this artefact:
+      // `TreeItem.children` is an array of `TreeItem`. JSON Schema references
+      // are by name, so the recursion needs nothing beyond the `$ref` the
+      // non-recursive record shapes already emit.
+      //
+      // What the schema CANNOT say is the part that matters, and it is stated
+      // here rather than left to be noticed: it cannot express that row ids are
+      // unique within a tree, and it cannot express the §21 item-depth bound. The
+      // first is FUARAN126 and the second is a decoder refusal; a schema that
+      // tried either would be describing a different language from the one the
+      // decoder implements. `children` and `icon` sit out of `required` because
+      // both are omitted — `children` at the empty list, which is most rows.
+      "TreeItem",
+      record
+          [ "id"; "label" ]
+          [ "children", arrayOf (ref "TreeItem")
+            "icon", str
+            "id", str
+            "label", ref "TextSource" ]
+
+      // Phase 1120 — `items` is the only required member. Both State keys are
+      // optional strings and the schema says nothing about WHAT they hold: the
+      // slot shapes (an array of row ids; a bare row id) are the host's state,
+      // not this document's, so they are fixed in the normative text where a
+      // reader can be told why, and nowhere here.
+      "TreeSpec",
+      record
+          [ "items" ]
+          [ "expandedStateKey", str
+            "items", arrayOf (ref "TreeItem")
+            "onSelect", closure
+            "selectionStateKey", str ]
+
       "ListSpec", record [ "items"; "ordered" ] [ "items", arrayOf (ref "TextSource"); "ordered", boolean ]
 
 
@@ -958,6 +991,7 @@ let private defs: (string * J) list =
             duCaseHoisted "Image" "ImageSpec"
             duCaseHoisted "Media" "MediaSpec"
             duCaseHoisted "Embed" "EmbedSpec"
+            duCaseHoisted "Tree" "TreeSpec"
             duCaseHoisted "List" "ListSpec"
             duCaseHoisted "Toast" "ToastSpec"
             duCaseHoisted "CodeBlock" "CodeBlockSpec"

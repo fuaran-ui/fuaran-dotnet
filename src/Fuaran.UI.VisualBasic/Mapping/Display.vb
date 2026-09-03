@@ -138,6 +138,21 @@ Friend Module DisplayMapping
                 .AspectRatio = AsEnum(Of Csharp.ImageAspect)(Attr(el, "aspect-ratio"), Csharp.ImageAspect.Natural),
                 .Permissions = EmbedPermissions(el)})
 
+        ' Phase 1120 - the tree. Its rows are <TreeItem> children, RECURSIVELY:
+        ' the XML dialect nests natively, so a hierarchy is authored as a
+        ' hierarchy and needs no flattening convention. A distinct element name
+        ' rather than an overloaded <Item>, because the attribute table is keyed
+        ' by element name and is global - <Item> carries TEXT inside a <List> and
+        ' would silently accept `id`/`label` there. `expanded-state-key` and
+        ' `selection-state-key` are the two affordances; omit both and the tree
+        ' renders fully expanded and static.
+        d("Tree") = Function(el) Csharp.Fuaran.Tree(
+            New Csharp.TreeOptions With {
+                .Id = Attr(el, "id"),
+                .Items = TreeItems(el),
+                .ExpandedStateKey = Attr(el, "expanded-state-key"),
+                .SelectionStateKey = Attr(el, "selection-state-key")})
+
         d("List") = Function(el) Csharp.Fuaran.List(
             New Csharp.ListOptions With {.Id = Attr(el, "id"), .Items = ChildTexts(el, "Item"), .Ordered = AttrBool(el, "ordered")})
 
@@ -205,6 +220,23 @@ Friend Module DisplayMapping
             Select(Function(p) p.Trim()).
             Where(Function(p) p.Length > 0).
             Select(Function(p) AsEnum(Of Csharp.EmbedPermission)(p, Csharp.EmbedPermission.AllowScripts)).
+            ToList()
+    End Function
+
+    ''' <summary>Phase 1120 - the &lt;TreeItem&gt; children of a &lt;Tree&gt; (or of
+    ''' another &lt;TreeItem&gt;), lowered recursively onto the row options.
+    '''
+    ''' The recursion is the whole point of using this dialect for a tree: the
+    ''' authored XML has the shape of the thing it describes, so there is no
+    ''' parent-id convention to get wrong and no flat list to reassemble.</summary>
+    Private Function TreeItems(el As XElement) As IReadOnlyList(Of Csharp.TreeItemOptions)
+        Return el.Elements().
+            Where(Function(c) c.Name.LocalName = "TreeItem").
+            Select(Function(c) New Csharp.TreeItemOptions With {
+                .Id = Attr(c, "id"),
+                .Label = AsText(Attr(c, "label")),
+                .Icon = Attr(c, "icon"),
+                .Children = TreeItems(c)}).
             ToList()
     End Function
 

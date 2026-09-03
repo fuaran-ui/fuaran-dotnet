@@ -18,7 +18,7 @@ internal static class Vocabulary
         // Layout (Phase 390: Box is the unified container; Dashboard/Stack/Grid/Card remain as Box-emitting element conveniences)
         "Box", "Dashboard", "Stack", "Grid", "SplitPanel", "Tabs", "Card", "Stepper", "SummaryList", "Disclosure", "Modal", "ScrollArea",
         // Display (Phase 459: Spacer retired → Box layout `gap`; Divider stays as a Box `Separator`-emitting element convenience)
-        "Heading", "Markdown", "Metric", "Fact", "Badge", "Sparkline", "Callout", "Progress", "Skeleton", "Icon", "LabelValueRow", "Link", "Image", "Media", "Embed", "List", "Divider", "Toast", "CodeBlock", "Math", "Drawing",
+        "Heading", "Markdown", "Metric", "Fact", "Badge", "Sparkline", "Callout", "Progress", "Skeleton", "Icon", "LabelValueRow", "Link", "Image", "Media", "Embed", "List", "Tree", "Divider", "Toast", "CodeBlock", "Math", "Drawing",
         // Input
         "Form", "Filters", "Button", "FileUpload", "Select", "MultiSelect",
         // Visualisation
@@ -42,7 +42,7 @@ internal static class Vocabulary
         // (Phase 750). It was read by the translator and admitted by the attribute
         // table below from the day it landed, but omitted HERE — so `<Tone>` raised
         // FUARAN060 on every valid use until `StructuralElementPin` measured the set.
-        "Item", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source", "Tone", "Track");
+        "Item", "TreeItem", "Option", "Field", "Filter", "Column", "Header", "Row", "Cell", "Marker", "Prop", "Child", "Fallback", "Body", "Case", "Default", "Source", "Tone", "Track");
 
     public static bool IsKnownElement(string name) => Kinds.Contains(name) || Structural.Contains(name);
 
@@ -154,6 +154,17 @@ internal static class Vocabulary
         // element. `aspect-ratio` spells the slot that reuses `ImageAspect`.
         Add("Embed", "id", "src", "title", "aspect-ratio", "permissions");
         Add("List", "id", "ordered");
+        // Phase 1120 - the two State keys are the tree's only attributes besides its
+        // id, and that is the grid-behaviour rule showing through the dialect: there
+        // is no `expandable` and no `selectable`, because the key IS the affordance.
+        Add("Tree", "id", "expanded-state-key", "selection-state-key");
+        // A tree row is <TreeItem>, NOT an overloaded <Item>, and the distinction
+        // is load-bearing rather than cosmetic. The attribute table is keyed by
+        // ELEMENT NAME and is global, so giving <Item> an `id`/`label`/`icon` row
+        // would make `<Item id="x">` inside a <List> analyzer-clean while the
+        // translator silently ignored every attribute of it. Two elements that
+        // read differently get two names.
+        Add("TreeItem", "id", "label", "icon");
         Add("Divider", "id", "orientation", "label");
         Add("Toast", "id", "message", "tone", "open", "dismissable");
         Add("CodeBlock", "id", "code", "language", "line-numbers", "copyable");

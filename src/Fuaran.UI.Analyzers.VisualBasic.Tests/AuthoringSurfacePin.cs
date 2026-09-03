@@ -75,6 +75,7 @@ internal static class AuthoringSurfacePin
         ["Marker"] = "structural child of <Map>",
         ["Prop"] = "structural child of <Custom>",
         ["Track"] = "structural child of <Media>",
+        ["TreeItem"] = "structural child of <Tree> — and of another <TreeItem>, the only element in this table that nests inside itself",
     };
 
     /// <summary>Attribute-eligible wire fields the VB surface does NOT spell, with
