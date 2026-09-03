@@ -6414,6 +6414,12 @@
         "reorderable": {
           "type": "boolean"
         },
+        "keepRowsTogether": {
+          "type": "boolean"
+        },
+        "repeatHeader": {
+          "type": "boolean"
+        },
         "defaultSort": {
           "type": "object",
           "properties": {
@@ -6770,6 +6776,12 @@
             "Dashboard",
             "Separator"
           ]
+        },
+        "keepTogether": {
+          "type": "boolean"
+        },
+        "breakBefore": {
+          "type": "boolean"
         }
       },
       "required": [

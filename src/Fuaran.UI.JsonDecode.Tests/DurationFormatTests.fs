@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.JsonDecode.Tests.DurationFormat
+module Fuaran.UI.JsonDecode.Tests.DurationFormat
 
 // `box` of a literal is nullable-typed under the F# 10 nullness rules; the
 // Row cells below are known non-null (same waiver Fixtures.fs carries).
@@ -100,7 +100,9 @@ let wireRoundTrips =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       )
                     State = None
                     Style = None

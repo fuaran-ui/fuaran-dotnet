@@ -143,6 +143,35 @@ let support: Gen.GenSupport =
                   "encarm:Action.SetState",
                   [ "// Phase 818 — `value` / `valueFrom` are XOR siblings; each is emitted only"
                     "// when present (Canon sorts keys, so the field order stays alphabetical)." ]
+                  "field:BoxSpec.BreakBefore",
+                  [ "// Phase 1473 — the box starts at the top of a fresh page when the"
+                    "// rendering is paged. `break-before: page` on a paged medium and"
+                    "// nothing at all on a continuous one, so a screen rendering is"
+                    "// byte-for-byte the rendering it always was."
+                    "//"
+                    "// There is deliberately NO break-AFTER counterpart: a break after this"
+                    "// box is a break before the next one, so a second spelling would buy"
+                    "// nothing and would be exactly the near-synonym pressure the vocabulary"
+                    "// charter's §3.2 confusion review exists to prevent."
+                    "//"
+                    "// Omitted on the wire at `false`." ]
+                  "field:BoxSpec.KeepTogether",
+                  [ "// Phase 1473 — the box and everything under it stay on ONE page when the"
+                    "// rendering is paged: `break-inside: avoid`, and nothing at all on a"
+                    "// continuous medium."
+                    "//"
+                    "// The declaration is IRREDUCIBLE in the charter's §1.2 sense and this is"
+                    "// the clearest instance of it: a host laying out pages sees boxes, and"
+                    "// cannot infer that the totals block is ONE THING that reads wrong when"
+                    "// halved. Only the tree knows its own subtrees, and no rendering carries"
+                    "// that fact back. It is the `sortStateKey` shape — a behaviour the host"
+                    "// performs, keyed by something only the document can name."
+                    "//"
+                    "// It names nothing about the MEDIUM: no page size, no margin, no sheet"
+                    "// number, no running header or footer. Those are the host's, and the"
+                    "// ratified charter row keeps them out of the language."
+                    "//"
+                    "// Omitted on the wire at `false`." ]
                   "field:ChartSpec.DataLabels",
                   [ "// Phase 881 — whether the values are written onto the picture. Semantic"
                     "// in the same way (D8): whether a reader is meant to read the NUMBERS or"
@@ -235,6 +264,19 @@ let support: Gen.GenSupport =
                     "// census row #27 asked for: a decoded editable grid could not say where"
                     "// its edits land, because the only spelling was a closure erasing to"
                     "// `\"<closure>\"`. Omitted on the wire when absent." ]
+                  "field:DataGridSpec.KeepRowsTogether",
+                  [ "// Phase 1473 — a ROW is one thing: when the rendering is paged, no row"
+                    "// is split across the boundary, so a wrapped cell does not leave half"
+                    "// its lines on one page and half on the next. `break-inside: avoid` on"
+                    "// the row group's rows, and nothing at all on a continuous medium."
+                    "//"
+                    "// This is the half of the print-break vocabulary NO WRAPPER reaches. A"
+                    "// `Box.keepTogether` around the grid keeps the whole grid together,"
+                    "// which is why there is no grid-level keep-together slot; but nothing"
+                    "// outside the grid knows where a row ends, so the boundary can only be"
+                    "// declared here."
+                    "//"
+                    "// Omitted on the wire at `false`." ]
                   "field:DataGridSpec.PageSize",
                   [ "// Phase 862 — declarative pagination, the second instance of the"
                     "// grid-behaviour rule (Phase 860's charter): a behaviour the user drives"
@@ -253,6 +295,18 @@ let support: Gen.GenSupport =
                     "// cannot act on. The reordered rows commit to `editStateKey` above — a reorder"
                     "// IS a write of the whole updated rows value, so it needs no destination of"
                     "// its own." ]
+                  "field:DataGridSpec.RepeatHeader",
+                  [ "// Phase 1473 — the column headers repeat at the top of every page the"
+                    "// grid continues onto, so a reader meeting the middle of a long grid on"
+                    "// page four still knows what each column is. The header row group is"
+                    "// projected as a TABLE HEADER GROUP, which is the one construct that"
+                    "// makes the repetition the paged formatter's own job rather than"
+                    "// script's — so it holds with no JavaScript at all."
+                    "//"
+                    "// Irreducible for the same reason `keepRowsTogether` is: the header is"
+                    "// the grid's, and nothing outside it can name that row group."
+                    "//"
+                    "// Omitted on the wire at `false`." ]
                   "field:DataGridSpec.SortStateKey",
                   [ "// Phase 818 — the grid-sort header affordance for a DATA-BOUND grid:"
                     "// names the State key carrying the sort descriptor"

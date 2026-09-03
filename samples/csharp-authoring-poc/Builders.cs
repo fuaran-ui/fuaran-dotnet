@@ -159,14 +159,18 @@ internal sealed class CardBuilder : NodeBuilder
     public CardBuilder Children(params NodeBuilder[] kids) { _children.AddRange(kids); return this; }
 
     // Generated BoxSpec ctor is Generated.fs declaration order (Children,
-    // Heading, Layout, Role); LayoutMode cases are positional since the swap.
+    // Heading, Layout, Role, KeepTogether, BreakBefore); LayoutMode cases are
+    // positional since the swap.
     protected override NodeKind<object> BuildKind() =>
         NodeKind<object>.NewBox(
             new BoxSpec<object>(
                 Fs.List(_children.Select(c => c.Build()).ToArray()),
                 _heading,
                 LayoutMode.NewFlex(Orientation.Vertical, false, Fs.None<int>()),
-                BoxRole.Card));
+                BoxRole.Card,
+                // Phase 1473 - the print-break declarations; a builder declares neither.
+                false,
+                false));
 }
 
 internal sealed class StackBuilder : NodeBuilder
@@ -187,7 +191,10 @@ internal sealed class StackBuilder : NodeBuilder
                 Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
                 LayoutMode.NewFlex(_orientation, _wrap, Fs.None<int>()),
-                BoxRole.Group));
+                BoxRole.Group,
+                // Phase 1473 - the print-break declarations; a builder declares neither.
+                false,
+                false));
 }
 
 internal sealed class GridBuilder : NodeBuilder
@@ -206,7 +213,10 @@ internal sealed class GridBuilder : NodeBuilder
                 Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
                 LayoutMode.NewGrid(_cols, Fs.None<string>(), Fs.None<int>()),
-                BoxRole.Group));
+                BoxRole.Group,
+                // Phase 1473 - the print-break declarations; a builder declares neither.
+                false,
+                false));
 }
 
 internal sealed class DashboardBuilder : NodeBuilder
@@ -223,7 +233,10 @@ internal sealed class DashboardBuilder : NodeBuilder
                 Fs.List(_children.Select(c => c.Build()).ToArray()),
                 Fs.None<TextSource>(),
                 LayoutMode.Auto,
-                BoxRole.Dashboard));
+                BoxRole.Dashboard,
+                // Phase 1473 - the print-break declarations; a builder declares neither.
+                false,
+                false));
 }
 
 // ─── Display builders ───────────────────────────────────────────────────────

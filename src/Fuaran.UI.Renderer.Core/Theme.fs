@@ -82,7 +82,15 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // (it was a declared bare hook: an SVG geometry element whose stroke and fill
 // ride presentation attributes), so nothing about the sheet's rules moved; the
 // digest is over the class NAMES, and the set is one smaller.
-let vocabularyFingerprint = "fv1:21dc300f76acc190"
+// Phase 1473 moved this. Four classes ENTERED the vocabulary — the container
+// pair `fuaran-break-inside-avoid` / `fuaran-break-before-page` and the grid
+// pair `fuaran-grid-rows-together` / `fuaran-grid-repeat-header` — and the
+// reference sheet gained the `@media print` block that styles them. A host
+// pinning the old value would accept a sheet that knows none of the four, and
+// its printed output would silently split the blocks the document declared
+// whole, which is precisely the unstyled-control skew this fingerprint exists
+// to catch.
+let vocabularyFingerprint = "fv1:0bb0bce8e9295ec6"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;
@@ -244,6 +252,41 @@ let textDirectionVar (direction: TextDirection) : string option =
     | TextDirection.Auto -> None
     | TextDirection.Ltr -> Some "ltr"
     | TextDirection.Rtl -> Some "rtl"
+
+/// The print-break class SUFFIX for a container's two Phase 1473 declarations
+/// — `""` when neither is declared, so every element a pre-1473 document
+/// produced carries a byte-identical class string.
+///
+/// One helper, called from BOTH renderers and from every container arm, rather
+/// than a class fragment assembled per arm: the six `Box` arms and the grid
+/// arms would otherwise be six independent chances to spell it differently, and
+/// the classes are what the reference stylesheet's `@media print` block hooks
+/// against. The names say what they DO in CSS terms rather than what the field
+/// is called, because the stylesheet is the contract a non-reference host
+/// reimplements.
+///
+/// Nothing here names the medium. The classes are inert outside a paged
+/// context — the whole `@media print` block is — so a screen rendering is
+/// unchanged by construction and not merely by intention.
+let printBreakClasses (keepTogether: bool) (breakBefore: bool) : string =
+    match keepTogether, breakBefore with
+    | false, false -> ""
+    | true, false -> " fuaran-break-inside-avoid"
+    | false, true -> " fuaran-break-before-page"
+    | true, true -> " fuaran-break-inside-avoid fuaran-break-before-page"
+
+/// The grid's own two Phase 1473 declarations, on the same rule as
+/// `printBreakClasses` above and separate from it because they name DIFFERENT
+/// boundaries: these hook rules at the row and the header row group, which live
+/// INSIDE the element the class sits on, where the container pair applies to
+/// the element itself. Collapsing the two into one helper would put four
+/// mutually-unrelated flags behind one name.
+let gridPrintBreakClasses (keepRowsTogether: bool) (repeatHeader: bool) : string =
+    (if keepRowsTogether then
+         " fuaran-grid-rows-together"
+     else
+         "")
+    + (if repeatHeader then " fuaran-grid-repeat-header" else "")
 
 /// Compose a `SemanticStyle` into the BEM-style className the renderer
 /// attaches to every Fuaran-rendered element.  Stable shape regardless of

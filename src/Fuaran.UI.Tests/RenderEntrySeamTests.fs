@@ -58,7 +58,9 @@ let private benignBox (id: string) : Node<obj> =
             { Layout = BoxLayout.Auto
               Role = BoxRole.Dashboard
               Heading = None
-              Children = [] })
+              Children = []
+              KeepTogether = false
+              BreakBefore = false })
 
 let private mountNodeWithDirection
     (id: string)

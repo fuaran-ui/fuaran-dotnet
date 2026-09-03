@@ -31,6 +31,13 @@ Friend Module CoreMapping
         ' Phase 390 — the unified container. <Box layout="flex|grid|auto"
         ' role="group|card|dashboard|separator" .../>. Dashboard/Stack/Grid/Card
         ' elements above remain as Box-emitting conveniences.
+        '
+        ' Phase 1473 — `keep-together` / `break-before` spell the wire's
+        ' print-break declarations, read through the existing AttrBool whose
+        ' absent-is-false default already matches the wire's omit-at-false.
+        ' Authored on <Box> only, matching the wire: the convenience elements
+        ' above carry no print-break attribute, so a document that needs one
+        ' says <Box> and gets the same node either way.
         d("Box") = Function(el) Csharp.Fuaran.Box(
             New Csharp.BoxOptions With {
                 .Id = Attr(el, "id"),
@@ -40,6 +47,8 @@ Friend Module CoreMapping
                 .Wrap = AttrBool(el, "wrap"),
                 .Cols = AttrInt(el, "cols", 12),
                 .Heading = OptText(el, "heading"),
+                .KeepTogether = AttrBool(el, "keep-together"),
+                .BreakBefore = AttrBool(el, "break-before"),
                 .Children = Kids(el)})
 
         ' ── Display ───────────────────────────────────────────────────────────

@@ -474,6 +474,32 @@
             "$type": "enum",
             "name": "BoxRole"
           }
+        },
+        {
+          "name": "keepTogether",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
+          },
+          "type": {
+            "$type": "bool"
+          }
+        },
+        {
+          "name": "breakBefore",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
+          },
+          "type": {
+            "$type": "bool"
+          }
         }
       ],
       "tag": "Box"
@@ -999,6 +1025,32 @@
         },
         {
           "name": "reorderable",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
+          },
+          "type": {
+            "$type": "bool"
+          }
+        },
+        {
+          "name": "keepRowsTogether",
+          "optionality": {
+            "$type": "omitDefault",
+            "default": {
+              "$type": "bool",
+              "value": false
+            }
+          },
+          "type": {
+            "$type": "bool"
+          }
+        },
+        {
+          "name": "repeatHeader",
           "optionality": {
             "$type": "omitDefault",
             "default": {

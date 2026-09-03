@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.Tests.DeadOnDecode
+module Fuaran.UI.Tests.DeadOnDecode
 
 // ============================================================================
 //  Phase 430 — the slot capability table + the dead-on-decode lint.
@@ -36,7 +36,9 @@ let private stack (id: string) (children: Node<Msg> list) : Node<Msg> =
             { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
-              Children = children }
+              Children = children
+              KeepTogether = false
+              BreakBefore = false }
         ))
 
 /// The shape a decoded closure takes — an inert placeholder.
@@ -104,7 +106,9 @@ let tests =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
 
               let closureCall =
@@ -184,7 +188,9 @@ let tests =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
 
               let declarativeFetch =

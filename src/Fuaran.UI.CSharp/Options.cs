@@ -120,6 +120,23 @@ public sealed record BoxOptions
 
     /// <summary>The child nodes.</summary>
     public IEnumerable<FuaranNode>? Children { get; init; }
+
+    /// <summary>
+    /// Keep this box and everything under it on ONE page when the rendering is
+    /// paged (Phase 1473). It declares the one fact a host cannot recover from a
+    /// rendering — <em>this subtree is one thing</em> — and says nothing about the
+    /// medium: no page size, no margin, no sheet number, no running header.
+    /// Realised in CSS inside a print media block, so it holds with no script and
+    /// a screen rendering is unchanged.
+    /// </summary>
+    public bool KeepTogether { get; init; }
+
+    /// <summary>
+    /// Start this box at the top of a fresh page when the rendering is paged
+    /// (Phase 1473). There is deliberately no break-after counterpart: a break
+    /// after this box is a break before the next one.
+    /// </summary>
+    public bool BreakBefore { get; init; }
 }
 
 // ─── Display ────────────────────────────────────────────────────────────────

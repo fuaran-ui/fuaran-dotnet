@@ -449,7 +449,9 @@ let private gridSpecWith (onRowClick: (Row -> Action<obj>) option) : GridSpec<ob
       OnRowClick = onRowClick
       Editable = false
       Reorderable = false
-      StaticRows = None }
+      StaticRows = None
+      KeepRowsTogether = false
+      RepeatHeader = false }
 
 [<Tests>]
 let adapterSelectionDefaultTests =

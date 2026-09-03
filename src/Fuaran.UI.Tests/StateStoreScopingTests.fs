@@ -281,7 +281,9 @@ let mountScopeTests =
                           { Layout = BoxLayout.Auto
                             Role = BoxRole.Dashboard
                             Heading = None
-                            Children = [] }
+                            Children = []
+                            KeepTogether = false
+                            BreakBefore = false }
                       ))
 
               let rt = recordingRuntime loaded (Some guest)

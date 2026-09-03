@@ -1001,7 +1001,12 @@ module Fuaran =
                 { Layout = BoxLayout.Auto
                   Role = BoxRole.Dashboard
                   Heading = Option.None
-                  Children = spec.Children }
+                  Children = spec.Children
+                  // Phase 1473 — a convenience surface declares no print break; an
+                  // author who wants one builds the `Box` directly, or sets the
+                  // field with record-with syntax.
+                  KeepTogether = false
+                  BreakBefore = false }
             ))
             Defaults.Accessibility.dashboard
 
@@ -1012,7 +1017,12 @@ module Fuaran =
                 { Layout = BoxLayout.Flex(spec.Orientation, spec.Wrap, Option.None)
                   Role = BoxRole.Group
                   Heading = Option.None
-                  Children = spec.Children }
+                  Children = spec.Children
+                  // Phase 1473 — a convenience surface declares no print break; an
+                  // author who wants one builds the `Box` directly, or sets the
+                  // field with record-with syntax.
+                  KeepTogether = false
+                  BreakBefore = false }
             ))
             Defaults.Accessibility.none
 
@@ -1023,7 +1033,12 @@ module Fuaran =
                 { Layout = BoxLayout.Grid(spec.Cols, spec.TemplateColumns, Option.None)
                   Role = BoxRole.Group
                   Heading = Option.None
-                  Children = spec.Children }
+                  Children = spec.Children
+                  // Phase 1473 — a convenience surface declares no print break; an
+                  // author who wants one builds the `Box` directly, or sets the
+                  // field with record-with syntax.
+                  KeepTogether = false
+                  BreakBefore = false }
             ))
             Defaults.Accessibility.none
 
@@ -1044,7 +1059,12 @@ module Fuaran =
                 { Layout = BoxLayout.Grid(spec.Cols, Some templateColumns, Option.None)
                   Role = BoxRole.Group
                   Heading = Option.None
-                  Children = spec.Children }
+                  Children = spec.Children
+                  // Phase 1473 — a convenience surface declares no print break; an
+                  // author who wants one builds the `Box` directly, or sets the
+                  // field with record-with syntax.
+                  KeepTogether = false
+                  BreakBefore = false }
             ))
             Defaults.Accessibility.none
 
@@ -1062,7 +1082,12 @@ module Fuaran =
                 { Layout = BoxLayout.Masonry(spec.Cols, Option.None)
                   Role = BoxRole.Group
                   Heading = Option.None
-                  Children = spec.Children }
+                  Children = spec.Children
+                  // Phase 1473 — a convenience surface declares no print break; an
+                  // author who wants one builds the `Box` directly, or sets the
+                  // field with record-with syntax.
+                  KeepTogether = false
+                  BreakBefore = false }
             ))
             Defaults.Accessibility.none
 
@@ -1092,7 +1117,12 @@ module Fuaran =
                 { Layout = BoxLayout.Flex(Orientation.Vertical, false, Option.None)
                   Role = BoxRole.Card
                   Heading = spec.Heading
-                  Children = spec.Children }
+                  Children = spec.Children
+                  // Phase 1473 — a convenience surface declares no print break; an
+                  // author who wants one builds the `Box` directly, or sets the
+                  // field with record-with syntax.
+                  KeepTogether = false
+                  BreakBefore = false }
             ))
             Defaults.Accessibility.card
 
@@ -1311,7 +1341,9 @@ module Fuaran =
                 { Layout = BoxLayout.Flex(Orientation.Horizontal, false, Option.None)
                   Role = BoxRole.Separator
                   Heading = Option.None
-                  Children = [] }
+                  Children = []
+                  KeepTogether = false
+                  BreakBefore = false }
             ))
             Defaults.Accessibility.none
 
@@ -1494,6 +1526,10 @@ module Fuaran =
               DefaultSort = None
               EditStateKey = None
               Reorderable = false
+              // Phase 1473 — a static table declares no print break; the author sets
+              // it on the `DataGridSpec` directly, or on the typed facade below.
+              KeepRowsTogether = false
+              RepeatHeader = false
               Columns = []
               OnRowClick = None
               Editable = false
@@ -1600,6 +1636,10 @@ module Fuaran =
               // Phase 934's `reorderable` has no typed-facade slot yet — the
               // §11-step-6 follow-up for that phase, not this one's.
               Reorderable = false
+              // Phase 1473 — the print-break declarations DO have typed-facade
+              // slots, so they pass through rather than being pinned off.
+              KeepRowsTogether = spec.KeepRowsTogether
+              RepeatHeader = spec.RepeatHeader
               Columns = spec.Columns |> List.map Column.erase
               OnRowClick = spec.OnRowClick
               Editable = spec.Editable

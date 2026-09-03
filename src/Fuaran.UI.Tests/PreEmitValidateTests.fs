@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.Tests.PreEmitValidate
+module Fuaran.UI.Tests.PreEmitValidate
 
 open Expecto
 open Fuaran.UI
@@ -203,7 +203,9 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         )
       State = None
       Style = None
@@ -354,7 +356,9 @@ let private sortGrid
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         )
       State = None
       Style = None
@@ -396,7 +400,9 @@ let private editGrid
               OnRowClick = None
               Editable = gridEditable
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         )
       State = None
       Style = None
@@ -429,7 +435,9 @@ let private pagedGrid
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         )
       State = None
       Style = None
@@ -587,6 +595,71 @@ let private directionCodes (tree: Node<Msg>) : string list =
     |> List.map (fun d ->
         let code, _, _ = PreEmitValidate.describe d
         code)
+
+// ─── Phase 1473 fixtures ─ FUARAN125, a print break with nothing to act on ──
+
+let private printBreakDefects (tree: Node<Msg>) : PreEmitDefect list =
+    match PreEmitValidate.validate tree with
+    | Ok() -> []
+    | Error ds ->
+        ds
+        |> List.filter (function
+            | PreEmitDefect.DeadPrintBreak _ -> true
+            | _ -> false)
+
+let private printBreakCodes (tree: Node<Msg>) : string list =
+    printBreakDefects tree
+    |> List.map (fun d ->
+        let code, _, _ = PreEmitValidate.describe d
+        code)
+
+/// A `Box` carrying the two Phase 1473 declarations, over whatever children the
+/// caller supplies — so one fixture puts the SAME declaration on a populated
+/// container and on an empty one, and the pair of assertions is what separates
+/// a rule from a blanket refusal.
+let private breakBox
+    (id: string)
+    (role: BoxRole)
+    (keepTogether: bool)
+    (breakBefore: bool)
+    (children: Node<Msg> list)
+    : Node<Msg> =
+    { Id = id
+      Kind =
+        NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = role
+              Heading = None
+              Children = children
+              KeepTogether = keepTogether
+              BreakBefore = breakBefore }
+        )
+      State = None
+      Style = None
+      Accessibility = None
+      ExtraAttributes = None
+      Tooltip = None
+      Motion = None }
+
+/// `seedingGrid`'s shape with `repeatHeader` declared and the column set under
+/// the caller's control, so the header-bearing and header-less cases are the
+/// same fixture with one field changed.
+let private repeatHeaderGrid (id: string) (columns: ColumnErased<Msg> list) : Node<Msg> =
+    match (seedingGrid id "unused").Kind with
+    | NodeKind.DataGrid spec ->
+        { Id = id
+          Kind =
+            NodeKind.DataGrid
+                { spec with
+                    Columns = columns
+                    RepeatHeader = true }
+          State = None
+          Style = None
+          Accessibility = None
+          ExtraAttributes = None
+          Tooltip = None
+          Motion = None }
+    | _ -> failwith "seedingGrid must produce a DataGrid"
 
 // ─── Phase 1113 fixtures ─ FUARAN120, the option-less combobox ─────────
 
@@ -1299,7 +1372,9 @@ let tests =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       )
                     State = None
                     Style = None
@@ -3165,6 +3240,112 @@ let tests =
                         |> Node.withDirection TextDirection.Rtl ]
 
               Expect.isEmpty (directionDefects tree) "a container passes its direction to its children"
+          }
+
+          // ── Phase 1473 — FUARAN125, a print break with nothing to act on ──
+
+          test "FUARAN125: keepTogether on a childless box is reported" {
+              let tree = dashboard "root" [ breakBox "empty" BoxRole.Group true false [] ]
+
+              Expect.equal
+                  (printBreakCodes tree)
+                  [ "FUARAN125" ]
+                  "there is no subtree inside an empty box that a page boundary could split"
+
+              Expect.equal
+                  (severityOf (printBreakDefects tree |> List.head))
+                  DefectSeverity.Warning
+                  "Warning, not Error — an inert declaration is not harmful, and a container whose children arrive in a later authoring step is an ordinary mid-edit tree"
+          }
+
+          test "FUARAN125: keepTogether on a Separator is reported however many children it carries" {
+              // The `Separator` role emits an `<hr>` and takes NO children at
+              // all, whatever the spec holds — so this is the one case where the
+              // rule cannot be answered from the children list alone.
+              let tree =
+                  dashboard "root" [ breakBox "rule" BoxRole.Separator true false [ Fuaran.markdown "ignored" "x" ] ]
+
+              Expect.equal (printBreakCodes tree) [ "FUARAN125" ] "a horizontal rule has no subtree to keep whole"
+          }
+
+          test "FUARAN125 go-red check: keepTogether on a container WITH children is silent" {
+              // The case the slot exists for. Without this assertion the rule
+              // above is indistinguishable from a blanket refusal of the field.
+              let tree =
+                  dashboard
+                      "root"
+                      [ breakBox "totals" BoxRole.Card true false [ Fuaran.markdown "gross" "Gross 1,440.00" ] ]
+
+              Expect.isEmpty (printBreakDefects tree) "keeping a real subtree whole across a page boundary is the point"
+          }
+
+          test "FUARAN125 go-red check: breakBefore on a childless box is silent" {
+              // The deliberate asymmetry, asserted rather than left to the
+              // comment: an empty box still generates a box, so a break BEFORE
+              // it is a live instruction where a break INSIDE it is not.
+              let tree = dashboard "root" [ breakBox "empty" BoxRole.Group false true [] ]
+
+              Expect.isEmpty
+                  (printBreakDefects tree)
+                  "a break before an empty box still moves the following content to a fresh page"
+          }
+
+          test "FUARAN125 go-red check: an UNDECLARED print break is silent" {
+              let tree = dashboard "root" [ breakBox "plain" BoxRole.Group false false [] ]
+
+              Expect.isEmpty
+                  (printBreakDefects tree)
+                  "false is the identity — a container that declares nothing is not a defect"
+          }
+
+          test "FUARAN125: repeatHeader on a grid with no columns is reported" {
+              let tree = dashboard "root" [ repeatHeaderGrid "grid" [] ]
+
+              Expect.equal
+                  (printBreakCodes tree)
+                  [ "FUARAN125" ]
+                  "repeating a header at the top of every page needs a header row group with something in it"
+          }
+
+          test "FUARAN125 go-red check: repeatHeader on a grid WITH columns is silent" {
+              let column: ColumnErased<Msg> =
+                  { Label = "Line"
+                    Value = None
+                    Field = Some "line"
+                    Sortable = None
+                    Editable = None
+                    Format = CellFormat.None
+                    Kind = CellKindErased.Text
+                    Width = ColumnWidth.Auto }
+
+              let tree = dashboard "root" [ repeatHeaderGrid "grid" [ column ] ]
+
+              Expect.isEmpty (printBreakDefects tree) "a grid that renders a header row is exactly what the slot is for"
+          }
+
+          test "FUARAN125 go-red check: keepRowsTogether is never reported" {
+              // Whether a grid HAS rows is a property of its resolved source,
+              // which is a runtime fact for every binding shape here — so a rule
+              // over it would accuse a correct grid whose rows had not arrived.
+              // The restraint is asserted, not merely documented.
+              let tree =
+                  match (seedingGrid "grid" "unused").Kind with
+                  | NodeKind.DataGrid spec ->
+                      dashboard
+                          "root"
+                          [ { Id = "grid"
+                              Kind = NodeKind.DataGrid { spec with KeepRowsTogether = true }
+                              State = None
+                              Style = None
+                              Accessibility = None
+                              ExtraAttributes = None
+                              Tooltip = None
+                              Motion = None } ]
+                  | _ -> failwith "seedingGrid must produce a DataGrid"
+
+              Expect.isEmpty
+                  (printBreakDefects tree)
+                  "the row count is not knowable pre-emit, so nothing is claimed about it"
           }
 
           test "FUARAN118: an empty literal tooltip is reported" {

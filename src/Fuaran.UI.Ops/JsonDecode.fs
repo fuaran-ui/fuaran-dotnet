@@ -6357,6 +6357,19 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
             | None -> Ok false
             | Some v -> requireBool (path + ".reorderable") v
 
+        // Phase 1473 — the two print-break declarations, the same
+        // omitted-when-false convention again. A wrong-typed flag is REFUSED
+        // here, exactly as it is on the generated arm — never coerced.
+        let keepRowsTogetherR =
+            match tryField fields "keepRowsTogether" with
+            | None -> Ok false
+            | Some v -> requireBool (path + ".keepRowsTogether") v
+
+        let repeatHeaderR =
+            match tryField fields "repeatHeader" with
+            | None -> Ok false
+            | Some v -> requireBool (path + ".repeatHeader") v
+
         let sourceR =
             requireFieldAliased path fields "source" [ "data"; "rows" ] "Binding<Row seq> Source"
             |> Result.bind (decodeRowSeq (path + ".source"))
@@ -6486,21 +6499,32 @@ let private decodeGridSpec (path: string) (j: Json) : Result<GridSpec<obj>, Deco
           Ok editStateKey,
           Ok staticRows,
           Ok() ->
+            // Phase 1473 — the print-break pair joins `reorderable`'s trailing
+            // bind rather than the twelve-way tuple above, which is already at
+            // the limit an F# tuple pattern stays readable at. The order is the
+            // declaration order, so the FIRST wrong-typed flag is the one
+            // reported, matching the generated arm exactly.
             reorderableR
-            |> Result.map (fun reorderable ->
-                { Source = source
-                  RowKey = rowKey
-                  RowKeyField = rowKeyField
-                  SortStateKey = sortStateKey
-                  PageSize = pageSize
-                  PageStateKey = pageStateKey
-                  DefaultSort = defaultSort
-                  EditStateKey = editStateKey
-                  Columns = columns
-                  OnRowClick = onRowClick
-                  Editable = editable
-                  Reorderable = reorderable
-                  StaticRows = staticRows })
+            |> Result.bind (fun reorderable ->
+                keepRowsTogetherR
+                |> Result.bind (fun keepRowsTogether ->
+                    repeatHeaderR
+                    |> Result.map (fun repeatHeader ->
+                        { Source = source
+                          RowKey = rowKey
+                          RowKeyField = rowKeyField
+                          SortStateKey = sortStateKey
+                          PageSize = pageSize
+                          PageStateKey = pageStateKey
+                          DefaultSort = defaultSort
+                          EditStateKey = editStateKey
+                          Columns = columns
+                          OnRowClick = onRowClick
+                          Editable = editable
+                          Reorderable = reorderable
+                          KeepRowsTogether = keepRowsTogether
+                          RepeatHeader = repeatHeader
+                          StaticRows = staticRows })))
         | Error e, _, _, _, _, _, _, _, _, _, _, _
         | _, Error e, _, _, _, _, _, _, _, _, _, _
         | _, _, Error e, _, _, _, _, _, _, _, _, _
@@ -6982,6 +7006,19 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                         | None -> Ok Option.None
                         | Some v -> decodeTextSource (specPath + ".heading") v |> Result.map Some
 
+                    // Phase 1473 — the print-break declarations, omitted-when-false
+                    // exactly as the IDL declares them. A wrong-typed flag is
+                    // REFUSED here, as it is on the generated arm — never coerced.
+                    let keepTogetherR =
+                        match tryField specFields "keepTogether" with
+                        | None -> Ok false
+                        | Some v -> requireBool (specPath + ".keepTogether") v
+
+                    let breakBeforeR =
+                        match tryField specFields "breakBefore" with
+                        | None -> Ok false
+                        | Some v -> requireBool (specPath + ".breakBefore") v
+
                     let roleR =
                         requireField specPath specFields "role" "role string"
                         |> Result.bind (requireString (specPath + ".role"))
@@ -7103,19 +7140,23 @@ and private decodeLayoutKind (w: Walk) (path: string) (j: Json) : Result<NodeKin
                                 | "Auto" -> Ok BoxLayout.Auto
                                 | other -> unknownDuCase lpath other "Flex | Grid | Masonry | Auto"))
 
-                    match childrenR, headingR, roleR, layoutR with
-                    | Ok children, Ok heading, Ok role, Ok layout ->
+                    match childrenR, headingR, roleR, layoutR, keepTogetherR, breakBeforeR with
+                    | Ok children, Ok heading, Ok role, Ok layout, Ok keepTogether, Ok breakBefore ->
                         Ok(
                             NodeKind.Box
                                 { Layout = layout
                                   Role = role
                                   Heading = heading
-                                  Children = children }
+                                  Children = children
+                                  KeepTogether = keepTogether
+                                  BreakBefore = breakBefore }
                         )
-                    | Error e, _, _, _
-                    | _, Error e, _, _
-                    | _, _, Error e, _
-                    | _, _, _, Error e -> Error e
+                    | Error e, _, _, _, _, _
+                    | _, Error e, _, _, _, _
+                    | _, _, Error e, _, _, _
+                    | _, _, _, Error e, _, _
+                    | _, _, _, _, Error e, _
+                    | _, _, _, _, _, Error e -> Error e
             | "SplitPanel" ->
                 match getSpecFields () with
                 | Error e -> Error e

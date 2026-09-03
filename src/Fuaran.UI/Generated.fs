@@ -751,6 +751,35 @@ and BoxSpec<'Msg> =
       Heading: TextSource option
       Layout: LayoutMode
       Role: BoxRole
+      // Phase 1473 — the box and everything under it stay on ONE page when the
+      // rendering is paged: `break-inside: avoid`, and nothing at all on a
+      // continuous medium.
+      //
+      // The declaration is IRREDUCIBLE in the charter's §1.2 sense and this is
+      // the clearest instance of it: a host laying out pages sees boxes, and
+      // cannot infer that the totals block is ONE THING that reads wrong when
+      // halved. Only the tree knows its own subtrees, and no rendering carries
+      // that fact back. It is the `sortStateKey` shape — a behaviour the host
+      // performs, keyed by something only the document can name.
+      //
+      // It names nothing about the MEDIUM: no page size, no margin, no sheet
+      // number, no running header or footer. Those are the host's, and the
+      // ratified charter row keeps them out of the language.
+      //
+      // Omitted on the wire at `false`.
+      KeepTogether: bool
+      // Phase 1473 — the box starts at the top of a fresh page when the
+      // rendering is paged. `break-before: page` on a paged medium and
+      // nothing at all on a continuous one, so a screen rendering is
+      // byte-for-byte the rendering it always was.
+      //
+      // There is deliberately NO break-AFTER counterpart: a break after this
+      // box is a break before the next one, so a second spelling would buy
+      // nothing and would be exactly the near-synonym pressure the vocabulary
+      // charter's §3.2 confusion review exists to prevent.
+      //
+      // Omitted on the wire at `false`.
+      BreakBefore: bool
     }
 
 // Input
@@ -920,6 +949,31 @@ and DataGridSpec<'Msg> =
       // IS a write of the whole updated rows value, so it needs no destination of
       // its own.
       Reorderable: bool
+      // Phase 1473 — a ROW is one thing: when the rendering is paged, no row
+      // is split across the boundary, so a wrapped cell does not leave half
+      // its lines on one page and half on the next. `break-inside: avoid` on
+      // the row group's rows, and nothing at all on a continuous medium.
+      //
+      // This is the half of the print-break vocabulary NO WRAPPER reaches. A
+      // `Box.keepTogether` around the grid keeps the whole grid together,
+      // which is why there is no grid-level keep-together slot; but nothing
+      // outside the grid knows where a row ends, so the boundary can only be
+      // declared here.
+      //
+      // Omitted on the wire at `false`.
+      KeepRowsTogether: bool
+      // Phase 1473 — the column headers repeat at the top of every page the
+      // grid continues onto, so a reader meeting the middle of a long grid on
+      // page four still knows what each column is. The header row group is
+      // projected as a TABLE HEADER GROUP, which is the one construct that
+      // makes the repetition the paged formatter's own job rather than
+      // script's — so it holds with no JavaScript at all.
+      //
+      // Irreducible for the same reason `keepRowsTogether` is: the header is
+      // the grid's, and nothing outside it can name that row group.
+      //
+      // Omitted on the wire at `false`.
+      RepeatHeader: bool
       Source: Binding<Fuaran.Core.Row seq>
       StaticRows: StaticRows option
       OnRowClick: (Fuaran.Core.Row -> Action<'Msg>) option
@@ -1929,7 +1983,7 @@ and private encBadgeSpec (s: BadgeSpec) : JVal =
     Canon.typed "Badge" ([ Some("label", encTextSource s.Label); Some("variant", encBadgeVariant s.Variant) ] |> List.choose id)
 
 and private encBoxSpec<'Msg> (s: BoxSpec<'Msg>) : JVal =
-    Canon.typed "Box" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); Some("layout", encLayoutMode s.Layout); Some("role", encBoxRole s.Role) ] |> List.choose id)
+    Canon.typed "Box" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); Some("layout", encLayoutMode s.Layout); Some("role", encBoxRole s.Role); (if s.KeepTogether = false then None else Some("keepTogether", JBool s.KeepTogether)); (if s.BreakBefore = false then None else Some("breakBefore", JBool s.BreakBefore)) ] |> List.choose id)
 
 and private encButtonSpec<'Msg> (s: ButtonSpec<'Msg>) : JVal =
     Canon.typed "Button" ([ Some("label", encTextSource s.Label); Some("onClick", encAction s.OnClick); Some("variant", encButtonVariant s.Variant); (s.Icon |> Option.map (fun v -> "icon", JStr v)); None; (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
@@ -1947,7 +2001,7 @@ and private encCustomSpec (s: CustomSpec) : JVal =
     Canon.typed "Custom" ([ Some("moduleId", JStr s.ModuleId); Some("componentId", JStr s.ComponentId); Some("props", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, id v))) s.Props); (s.ContentHash |> Option.map (fun v -> "contentHash", encContentHash v)); (s.ExposedNodeIds |> Option.map (fun v -> "exposedNodeIds", JArr(List.map JStr v))) ] |> List.choose id)
 
 and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
-    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); (if s.Reorderable = false then None else Some("reorderable", JBool s.Reorderable)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
+    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); (if s.Reorderable = false then None else Some("reorderable", JBool s.Reorderable)); (if s.KeepRowsTogether = false then None else Some("keepRowsTogether", JBool s.KeepRowsTogether)); (if s.RepeatHeader = false then None else Some("repeatHeader", JBool s.RepeatHeader)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encDisclosureSpec<'Msg> (s: DisclosureSpec<'Msg>) : JVal =
     Canon.typed "Disclosure" ([ Some("children", JArr(List.map encNode s.Children)); Some("defaultOpen", JBool s.DefaultOpen); Some("heading", encTextSource s.Heading); (s.OnToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")); Some("open", (encBinding JBool) s.Open) ] |> List.choose id)
@@ -3362,7 +3416,9 @@ and private decBoxSpec (j: JVal) : Result<BoxSpec<obj>, string> =
     dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
     dReq "layout" __fs decLayoutMode |> Result.bind (fun layout ->
     dReq "role" __fs decBoxRole |> Result.bind (fun role ->
-    Ok { Children = children; Heading = heading; Layout = layout; Role = role })))))
+    dDef "keepTogether" __fs dBool (false) |> Result.bind (fun keepTogether ->
+    dDef "breakBefore" __fs dBool (false) |> Result.bind (fun breakBefore ->
+    Ok { Children = children; Heading = heading; Layout = layout; Role = role; KeepTogether = keepTogether; BreakBefore = breakBefore })))))))
 
 and private decButtonSpec (j: JVal) : Result<ButtonSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3431,10 +3487,12 @@ and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, string> =
     dOpt "defaultSort" __fs decDefaultSort |> Result.bind (fun defaultSort ->
     dOpt "editStateKey" __fs dStr |> Result.bind (fun editStateKey ->
     dDef "reorderable" __fs dBool (false) |> Result.bind (fun reorderable ->
+    dDef "keepRowsTogether" __fs dBool (false) |> Result.bind (fun keepRowsTogether ->
+    dDef "repeatHeader" __fs dBool (false) |> Result.bind (fun repeatHeader ->
     dReq "source" __fs (decBinding Fuaran.Core.RowCodec.decodeRows) |> Result.bind (fun source ->
     dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
     (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
-    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; EditStateKey = editStateKey; Reorderable = reorderable; Source = source; StaticRows = staticRows; OnRowClick = onRowClick }))))))))))))))
+    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; EditStateKey = editStateKey; Reorderable = reorderable; KeepRowsTogether = keepRowsTogether; RepeatHeader = repeatHeader; Source = source; StaticRows = staticRows; OnRowClick = onRowClick }))))))))))))))))
 
 and private decDisclosureSpec (j: JVal) : Result<DisclosureSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3875,7 +3933,7 @@ let mkBadge (id: string) (label: TextSource) (variant: BadgeVariant) : Node<'Msg
     { Id = id; Kind = NodeKind.Badge { Label = label; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkBox (id: string) (children: Node<'Msg> list) (layout: LayoutMode) (role: BoxRole) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Box { Children = children; Heading = None; Layout = layout; Role = role }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+    { Id = id; Kind = NodeKind.Box { Children = children; Heading = None; Layout = layout; Role = role; KeepTogether = false; BreakBefore = false }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkButton (id: string) (label: TextSource) (onClick: Action<'Msg>) (variant: ButtonVariant) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Button { Label = label; OnClick = onClick; Variant = variant; Icon = None; Tooltip = None; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
@@ -3893,7 +3951,7 @@ let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<s
     { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Fuaran.Core.Row seq>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Reorderable = false; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Reorderable = false; KeepRowsTogether = false; RepeatHeader = false; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkDisclosure (id: string) (children: Node<'Msg> list) (defaultOpen: bool) (heading: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }

@@ -2469,10 +2469,19 @@ let rec private renderKind
     // → stack div; Separator role → <hr class="fuaran-layout-separator"> (the
     // retired `Divider`, Phase 459).
     | NodeKind.Box spec ->
+        // Phase 1473 — the print-break declarations ride the container's OWN
+        // className, in every arm including the separator, so the declaration is
+        // never dropped by which layout mode happened to be chosen. Empty when
+        // nothing is declared, which is what keeps every pre-1473 emission
+        // byte-identical; the rules themselves live in the reference
+        // stylesheet's `@media print` block, so this is markup + CSS and holds
+        // with no script at all.
+        let brk = Theme.printBreakClasses spec.KeepTogether spec.BreakBefore
+
         match spec.Role, spec.Layout with
         | BoxRole.Card, _ ->
             Html.section
-                [ prop.className "fuaran-layout-card"
+                [ prop.className ("fuaran-layout-card" + brk)
                   prop.children
                       [ match spec.Heading with
                         | Some heading ->
@@ -2484,9 +2493,9 @@ let rec private renderKind
         | BoxRole.Dashboard, _
         | BoxRole.Group, BoxLayout.Auto ->
             Html.div
-                [ prop.className "fuaran-layout-dashboard"
+                [ prop.className ("fuaran-layout-dashboard" + brk)
                   prop.children (spec.Children |> List.map (render ctx)) ]
-        | BoxRole.Separator, _ -> Html.hr [ prop.className "fuaran-layout-separator" ]
+        | BoxRole.Separator, _ -> Html.hr [ prop.className ("fuaran-layout-separator" + brk) ]
         | BoxRole.Group, BoxLayout.Grid(cols, gridTemplateColumns, gridGap) ->
             // Column count rides on inline style (not a `-cols-N` class suffix)
             // so CSS hosts don't have to pre-declare / Tailwind-safelist every N.
@@ -2509,7 +2518,7 @@ let rec private renderKind
                    | None -> [])
 
             Html.div
-                [ prop.className "fuaran-layout-grid"
+                [ prop.className ("fuaran-layout-grid" + brk)
                   prop.style gridStyle
                   prop.children (spec.Children |> List.map (render ctx)) ]
         | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
@@ -2526,7 +2535,7 @@ let rec private renderKind
                    | None -> [])
 
             Html.div
-                [ prop.className "fuaran-layout-masonry"
+                [ prop.className ("fuaran-layout-masonry" + brk)
                   prop.style masonryStyle
                   prop.children (spec.Children |> List.map (render ctx)) ]
         | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
@@ -2540,7 +2549,7 @@ let rec private renderKind
             // `gap` emits only when set (Phase 459) — a gap-free stack carries no
             // `style` attribute, byte-identical to the pre-459 emission.
             Html.div (
-                [ prop.className (Css.layoutStack dir wrap) ]
+                [ prop.className (Css.layoutStack dir wrap + brk) ]
                 @ (match flexGap with
                    | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
                    | None -> [])
@@ -3652,7 +3661,10 @@ let rec private renderKind
                   Sortable = sr.Sortable
                   DefaultSort = sr.DefaultSort }
 
-            renderTable ctx tableSpec
+            // Phase 1473 — the print-break declarations follow the STATIC leg too:
+            // the grid renders as a semantic table here, so its rows and header
+            // row group are exactly the boundaries the declarations name.
+            renderTable ctx (Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader) tableSpec
         | None -> renderGrid ctx parentNodeId state spec
     | NodeKind.Chart spec -> renderChart ctx parentNodeId state spec
     | NodeKind.Map spec -> renderMap ctx parentNodeId state spec
@@ -5859,7 +5871,10 @@ and private renderGrid
 
                 let gridTable =
                     Html.table
-                        [ prop.className "fuaran-grid"
+                        [ prop.className (
+                              "fuaran-grid"
+                              + Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader
+                          )
                           prop.children
                               [ Html.thead
                                     [ Html.tr
@@ -6221,7 +6236,7 @@ and private renderChart
                                           (String.concat ", " spec.YFields)
                                   ) ] ] ]
 
-and private renderTable (ctx: RenderContext<'Msg>) (spec: TableSpec<'Msg>) : ReactElement =
+and private renderTable (ctx: RenderContext<'Msg>) (printBreak: string) (spec: TableSpec<'Msg>) : ReactElement =
     let headerCells =
         [ for h in spec.Headers -> Html.th [ prop.className "fuaran-table-header"; prop.text (renderText ctx h) ] ]
 
@@ -6239,7 +6254,7 @@ and private renderTable (ctx: RenderContext<'Msg>) (spec: TableSpec<'Msg>) : Rea
                               Html.td [ prop.className "fuaran-table-cell"; prop.text (renderText ctx cell) ] ] ] ]
 
     Html.table
-        [ prop.className "fuaran-table"
+        [ prop.className ("fuaran-table" + printBreak)
           // Phase 801 — the declared sort intent, surfaced as data attributes so a
           // progressive-enhancement script honours it without re-parsing the wire.
           // Emitted ONLY when declared: an undeclared table's markup is unchanged.

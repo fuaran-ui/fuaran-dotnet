@@ -481,7 +481,11 @@ let grid<'row, 'Msg> : GridSpecOf<'row, 'Msg> =
       DefaultSort = Option.None
       PageSize = Option.None
       PageStateKey = Option.None
-      EditStateKey = Option.None }
+      EditStateKey = Option.None
+      // Phase 1473 — the print-break declarations. Both off by default: the
+      // pre-1473 wire, byte-for-byte, and a screen rendering that is unchanged.
+      KeepRowsTogether = false
+      RepeatHeader = false }
 
 let column<'Msg> : Column<'Msg> =
     { Label = ""

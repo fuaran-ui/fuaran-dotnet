@@ -230,7 +230,7 @@ NodeKind =
 | FragmentRef { name:str; args?:{ [key]:FragmentArg } }
 | Mount { capabilities:str[]; channel:GuestChannel; onBubble:closure; scopeId:str; inputs?:{ [key]:FragmentArg } }
 LayoutKind =
-| Box { children:Node[]; layout:BoxLayout; role:"Group"|"Card"|"Dashboard"|"Separator"; heading?:TextSource }
+| Box { children:Node[]; layout:BoxLayout; role:"Group"|"Card"|"Dashboard"|"Separator"; breakBefore?:bool; heading?:TextSource; keepTogether?:bool }
 | SplitPanel { children:Node[]; weight:any }
 | Tabs { children:Node[]; activeIndex?:Binding_int; activeTag?:Binding_str; orientation?:Orientation; tabHeaders?:TabHeader[]; tabTags?:str[] }
 | Stepper { activeStep:Binding_int; children:Node[] }
@@ -266,7 +266,7 @@ InputKind =
 | FileUpload { accept:str[]; label:TextSource; multiple:bool; onSelect:closure; acceptPaste?:bool; disabled?:Binding_bool; dropTarget?:bool }
 | Select { label:TextSource; source:Binding_list_SelectOption; value:Binding_str; disabled?:Binding_bool; multiple?:bool; placeholder?:TextSource; values?:Binding_list_str }
 VisKind =
-| DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool } }
+| DataGrid { columns:ColumnErased[]; source:Binding_hosted; defaultSort?:{ column:int; direction:"asc"|"desc" }; editStateKey?:str; editable?:bool; keepRowsTogether?:bool; pageSize?:int; pageStateKey?:str; reorderable?:bool; repeatHeader?:bool; rowKeyField?:str; sortStateKey?:str; staticRows?:{ headers:TextSource[]; rows:TextSource[][]; defaultSort?:{ column:int; direction:"asc"|"desc" }; sortable?:bool } }
 | Chart { kind:"Line"|"Bar"|"Area"|"Pie"|"Scatter"|"Heatmap"; source:Binding_hosted; xField:str; yFields:str[]; dataLabels?:"Off"|"Ends"; legendPosition?:"Top"|"Right"|"Bottom"|"None"; stacked?:bool; subtitle?:TextSource; title?:TextSource; valueFormat?:Format; xScale?:"Category"|"Temporal"; xTitle?:TextSource; yTitle?:TextSource }
 | Map { centreLatitude:any; centreLongitude:any; source:Binding_list_MapMarker; zoom:int }
 TreeOp =

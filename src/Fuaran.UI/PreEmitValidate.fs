@@ -837,6 +837,36 @@ type PreEmitDefect =
     /// Carries the node's id and its wire kind name.
     | DirectionOnTextlessNode of nodeId: string * kind: string
 
+    /// **FUARAN125 (Warning)**. A Phase 1473 print-break declaration with
+    /// nothing it can act on — a dead declaration, the FUARAN123 / FUARAN124
+    /// shape at a third slot.
+    ///
+    /// TWO conditions share ONE code because they are one rule, stated at two
+    /// slots: *a print-break declaration that names a boundary this node does
+    /// not have*. `RepeatHeaderNoHeader` is a grid asking for its column
+    /// headers to repeat on every page when it renders no header cells at all;
+    /// `NoSubtreeToKeepTogether` is a container asking to stay whole when it
+    /// renders no subtree that could straddle a boundary. In both, the
+    /// declaration rides the wire, survives every round trip, and changes
+    /// nothing on any host.
+    ///
+    /// **Warning, not Error**: an inert declaration is not harmful, and a tree
+    /// whose columns arrive in a later authoring step is an ordinary
+    /// mid-edit state.
+    ///
+    /// **The set is deliberately NARROW, on the accessibility family's
+    /// standing restraint — err towards silence.** Only STATICALLY CERTAIN
+    /// emptiness is reported: a `Box` that renders no children at all, and a
+    /// grid whose header cells are empty on the leg it will actually render.
+    /// Nothing here judges whether the rendering will in fact be paged, how
+    /// long the content is, or whether a page boundary would have fallen
+    /// inside this subtree — none of that is knowable pre-emit, and a
+    /// declaration that merely turns out not to be needed is CORRECT
+    /// authoring, not a defect.
+    ///
+    /// Carries the node's id and which condition fired.
+    | DeadPrintBreak of nodeId: string * defect: PrintBreakDefect
+
     // ── The accessibility family (FUARAN109/110/111, Phase 727) ──────────────
     //
     // Until this family landed the runtime validator carried NO accessibility
@@ -1030,6 +1060,26 @@ and [<RequireQualifiedAccess>] SortDefect =
     | ColumnHasNoField of columnLabel: string
     /// `defaultSort` names a column index outside the column set.
     | DefaultSortColumnOutOfRange of column: int * columnCount: int
+
+/// Why a print-break declaration cannot act (FUARAN125, Phase 1473). Typed
+/// rather than a string for the same reason `SortDefect` is: the shapes stay
+/// enumerable, and a third cannot be added by prose.
+and [<RequireQualifiedAccess>] PrintBreakDefect =
+    /// `repeatHeader: true` on a grid that renders no header cells on the leg
+    /// it will take — no columns on the bound path, or empty `headers` on the
+    /// static one. There is a header row group to repeat only when something
+    /// is in it.
+    | RepeatHeaderNoHeader
+    /// `keepTogether` on a container that renders no subtree — an empty `Box`,
+    /// or a `Separator`, whose emitted rule takes no children at all whatever
+    /// the spec carries. There is nothing inside that could be split.
+    ///
+    /// **`breakBefore` is deliberately NOT reported at this shape**, and the
+    /// asymmetry is the honest one: an empty box still generates a box, so a
+    /// break BEFORE it is a live instruction to the formatter, where a break
+    /// INSIDE it has nothing to act on. Reporting the pair together would have
+    /// been tidier and wrong.
+    | NoSubtreeToKeepTogether
 
 /// Render a defect as its stable (code, severity, message) triple — the ONE
 /// projection every consumer shares (the .NET validator oracle, certification
@@ -1430,6 +1480,18 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             "node '%s' declares style.direction while its kind is %s — a dead declaration. A direction states which way a run of text reads and isolates it from the bidirectional context around it, and this kind lays out no text and holds no children to inherit it, so the declaration rides the wire, survives every round trip and changes nothing on any host. Move it to the node that carries the text, or drop it"
             nodeId
             kind
+    | PreEmitDefect.DeadPrintBreak(nodeId, PrintBreakDefect.RepeatHeaderNoHeader) ->
+        "FUARAN125",
+        DefectSeverity.Warning,
+        sprintf
+            "grid '%s' declares repeatHeader while it renders no header cells — a dead declaration. Repeating a header at the top of every page needs a header row group with something in it, so this rides the wire, survives every round trip and changes nothing on any host. Give the grid its columns (or, on the static leg, its headers), or drop the declaration"
+            nodeId
+    | PreEmitDefect.DeadPrintBreak(nodeId, PrintBreakDefect.NoSubtreeToKeepTogether) ->
+        "FUARAN125",
+        DefectSeverity.Warning,
+        sprintf
+            "node '%s' declares keepTogether while it renders no subtree — a dead declaration. Keeping a subtree whole across a page boundary needs a subtree that could straddle one, and this container has no rendered children, so the declaration rides the wire, survives every round trip and changes nothing on any host. Move it to the container that holds the content, or drop it"
+            nodeId
     | PreEmitDefect.InteractiveWithoutAccessibleName(nodeId, kind, slot) ->
         "FUARAN109",
         DefectSeverity.Warning,
@@ -1993,7 +2055,25 @@ let private validateCore
         // Per-kind: check kind-specific invariants + enumerate children.
         match n.Kind with
         // -- Layout --
-        | NodeKind.Box spec -> spec.Children |> List.iter walk
+        | NodeKind.Box spec ->
+            // FUARAN125 (Phase 1473) — `keepTogether` on a container that
+            // renders no subtree. Two shapes reach it and only two: a box whose
+            // children are empty, and the `Separator` role, whose emitted rule
+            // takes no children at all whatever the spec carries.
+            //
+            // `breakBefore` is NOT judged here: an empty box still generates a
+            // box, so a break before it remains a live instruction. Nothing here
+            // judges whether the rendering will be paged or whether a boundary
+            // would have fallen in this subtree either — neither is knowable
+            // pre-emit, and a declaration that turns out not to be needed is
+            // correct authoring, not a defect.
+            if
+                spec.KeepTogether
+                && (List.isEmpty spec.Children || spec.Role = BoxRole.Separator)
+            then
+                defects.Add(PreEmitDefect.DeadPrintBreak(n.Id, PrintBreakDefect.NoSubtreeToKeepTogether))
+
+            spec.Children |> List.iter walk
         | NodeKind.SplitPanel spec -> spec.Children |> List.iter walk
         | NodeKind.Tabs spec ->
             // FUARAN047 / FUARAN048 / FUARAN049
@@ -2080,6 +2160,27 @@ let private validateCore
 
             if spec.RowKey.IsNone && spec.RowKeyField.IsNone then
                 defects.Add(PreEmitDefect.UnstableRowIdentity nodeIdStr)
+
+            // FUARAN125 (Phase 1473) — `repeatHeader` on a grid that renders no
+            // header cells. The two legs have different header sources and the
+            // rule asks the one this grid will actually take: `staticRows`
+            // carries its own `headers`, and the bound path derives the header
+            // row from `columns`.
+            //
+            // `keepRowsTogether` gets no companion rule, deliberately. Whether a
+            // grid has rows is a property of its resolved SOURCE, which is a
+            // runtime fact for every binding shape but the embedded one — so the
+            // rule would fire on a correct grid whose rows simply had not
+            // arrived. That is the false accusation the restraint exists to
+            // avoid, and an empty grid is a legitimate mid-edit tree.
+            if spec.RepeatHeader then
+                let rendersNoHeader =
+                    match spec.StaticRows with
+                    | Some sr -> List.isEmpty sr.Headers
+                    | None -> List.isEmpty spec.Columns
+
+                if rendersNoHeader then
+                    defects.Add(PreEmitDefect.DeadPrintBreak(nodeIdStr, PrintBreakDefect.RepeatHeaderNoHeader))
 
             // FUARAN114 (Phase 1149): a declared field the grid's own source
             // cannot produce. FUARAN077 above asks whether a column names

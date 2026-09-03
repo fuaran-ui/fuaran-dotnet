@@ -3210,6 +3210,75 @@ stricter contract; it is a less truthful one.
 
 ---
 
+## Recorded change — 0.60.0, print break control — subtree cohesion across a page boundary (fuaran#1473)
+
+**Additive on the wire; SOURCE-BREAKING at a full-literal `BoxSpec` / `DataGridSpec` / `GridSpecOf`
+construction; a `WIRE_FORMAT.md` §11 forward-coupling event.** Nothing is removed, no existing
+signature changes, and every pre-0.60.0 document encodes and decodes to byte-identical bytes.
+
+**The four slots, all `bool`, all omitted at `false`.** `BoxSpec` gains `KeepTogether` and
+`BreakBefore`; `DataGridSpec` gains `KeepRowsTogether` and `RepeatHeader`. Each is appended to its
+record, so no generated constructor position moves and `mkBox` / `mkDataGrid` are unchanged. The
+typed author facade `GridSpecOf` gains the grid pair as well, filled by `Defaults.grid`.
+
+**What they say.** Each is a statement about **which subtree must stay together** when the rendering
+is paged: keep this block whole, do not split this row, repeat this header. That is the one fact a
+host cannot recover from a rendering — a formatter laying out pages sees boxes, and nothing carries
+back that the totals block reads wrong when halved — which is the `SortStateKey` shape: a behaviour
+the host performs, keyed by something only the document can name.
+
+**No medium vocabulary entered the surface, and none is implied.** Nothing here names a page size, a
+margin, a sheet number, a running header or footer, or the medium itself; the paged medium is host
+chrome. Nor was a screen-only / print-only member added: medium-conditional content is `Switch` over
+a host-supplied binding, and that half of the ratified charter row is Covered rather than admitted.
+
+**Where each slot lives is an irreducibility decision, not a convenience.** The container pair is on
+`Box` and on no other layout kind, because a `SplitPanel`, a `Disclosure` or a `Tabs` that must stay
+whole is reachable by wrapping it in a `Box`. There is no grid-level keep-together slot for the same
+reason. What no wrapper reaches is a grid's ROW boundary and its header row group — nothing outside
+the grid knows where either is — which is why those two are on `DataGrid` and nowhere else. There is
+likewise no break-AFTER counterpart: a break after this box is a break before the next one.
+
+**Renderer changes, invisible to a document that declares nothing.** Both renderers append
+`fuaran-break-inside-avoid` / `fuaran-break-before-page` to the container's own class, in every
+`Box` arm, and `fuaran-grid-rows-together` / `fuaran-grid-repeat-header` to the grid's — on the
+static table AND the SSR hydration placeholder, so a bound grid does not silently drop the
+declaration. The suffix is empty when nothing is declared, so every pre-0.60.0 class string is
+byte-identical. **A snapshot pinning the class list of a node that DECLARES a print break will need
+updating; one for a node that declares none will not.**
+
+**`Theme.vocabularyFingerprint` moved** to `fv1:0bb0bce8e9295ec6`: four classes entered the
+vocabulary. A host pinning the old value would accept a stylesheet that knows none of them.
+
+**The paged behaviour is CSS in a `@media print` block, with no script at any point.** A no-script
+page printed straight from the browser keeps the declared blocks whole and repeats the declared
+header on every sheet; `break-inside` / `break-before` / `display: table-header-group` are formatter
+instructions, so there is nothing for a host to observe, count or wire. Stating the medium is what
+makes the SCREEN rendering unchanged by construction rather than by the accident that two of the
+three properties happen not to apply on a continuous medium. The retired `page-break-*` spellings
+are emitted alongside the modern ones, because an engine that honours only the old names would
+otherwise silently ignore a rule the document declared.
+
+**One new validator code: FUARAN125 (Warning)** — a print-break declaration with nothing to act on:
+`repeatHeader` on a grid that renders no header cells, and `keepTogether` on a container that
+renders no subtree (an empty `Box`, or a `Separator`, whose `<hr>` takes no children whatever the
+spec holds). Two conditions, one code, because they are one rule at two slots. `breakBefore` on an
+empty box is deliberately NOT reported — an empty box still generates a box, so a break before it
+remains live — and `keepRowsTogether` gets no companion rule at all, because whether a grid has rows
+is a property of its resolved source and therefore a runtime fact.
+
+**Authoring surfaces.** The C# veneer gains `BoxOptions.KeepTogether` / `.BreakBefore` and
+`DataGridOptions.KeepRowsTogether` / `.RepeatHeader`; the VB XML dialect gains `keep-together` /
+`break-before` on `<Box>` and `keep-rows-together` / `repeat-header` on `<DataGrid>`, read through
+the existing `AttrBool` whose absent-is-false default already matches the wire's omit-at-false. F#
+needs no new helper: the fields sit on the spec records, so record-with syntax reaches them.
+
+**`UpdateProp` sets all four**, on `Editable`'s disposition — they are plain wire booleans with a
+coercion — and `Introspect.availableFields` advertises them, so the introspection surface names no
+field it cannot set.
+
+---
+
 ## Recorded change — 0.59.0, `SemanticStyle.direction` — bidirectional isolation (fuaran#1472)
 
 **Additive on the public API and on the wire; a `WIRE_FORMAT.md` §11 forward-coupling event.**

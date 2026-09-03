@@ -319,10 +319,15 @@ let all: FidelityRow list =
       // WIRE_FORMAT §3.6.7 fixes the realising CSS family and the
       // break-avoidance rule, so "the full structural container" is no longer
       // the whole of what a conformant host owes for this kind.
+      // Phase 1473 — the print-break declarations are named here for the same
+      // reason: they are a RENDER obligation both tiers owe identically, and one
+      // a STATIC host owes in full. They are markup + CSS with no script at any
+      // point, so there is no behavioural tier to defer them to and no
+      // degradation to describe — which is why this stays a `plain` row.
       plain
           "Box"
-          "the child list + layout spec"
-          "the full structural container, classes identical on both sides; the layout mode's declared fill direction realised per WIRE_FORMAT §3.6.7 (row-fill for `Grid`, column-fill for `Masonry`)"
+          "the child list + layout spec, and the two Phase 1473 print-break declarations"
+          "the full structural container, classes identical on both sides; the layout mode's declared fill direction realised per WIRE_FORMAT §3.6.7 (row-fill for `Grid`, column-fill for `Masonry`); a declared `keepTogether` / `breakBefore` carried as the `fuaran-break-inside-avoid` / `fuaran-break-before-page` class, whose paged rules live in the reference stylesheet's `@media print` block - no script on either tier, and a screen rendering unchanged"
 
       row
           "Button"
@@ -390,8 +395,8 @@ let all: FidelityRow list =
       row
           "DataGrid"
           true
-          "the column declarations, the row-source binding, and the declared sort / page / edit intent"
-          "in static read-only mode the full semantic `<table class=\"fuaran-table\">` (byte-identical to the retired `Table`, with the declared sort surfaced as `data-fuaran-sort-*`); for a client-library grid a deterministic `fuaran-grid-ssr-placeholder` carrying `data-fuaran-row-count` - never a blank"
+          "the column declarations, the row-source binding, the declared sort / page / edit intent, and the two Phase 1473 print-break declarations"
+          "in static read-only mode the full semantic `<table class=\"fuaran-table\">` (byte-identical to the retired `Table`, with the declared sort surfaced as `data-fuaran-sort-*`); for a client-library grid a deterministic `fuaran-grid-ssr-placeholder` carrying `data-fuaran-row-count` - never a blank. A declared `keepRowsTogether` / `repeatHeader` is carried as the `fuaran-grid-rows-together` / `fuaran-grid-repeat-header` class on BOTH legs - on the static table the reference stylesheet's `@media print` rules then reach its rows and its header row group with no script at all, and on the placeholder the class records that the declaration was read and survives to the hydrated grid"
           (RichTier.ClientOnly(
               "the client grid library draws into the placeholder",
               "hydration, for the client-library form only; a `staticRows` grid has no client-only tier"

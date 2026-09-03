@@ -113,7 +113,11 @@ public static partial class Fuaran
                 options.DefaultSort is { } ds ? Fs.Some(ds.Inner) : Fs.None<FsGen.DefaultSort>(),
                 options.PageSize is { } ps ? Fs.Some(ps) : Fs.None<int>(),
                 Fs.OptStr(options.PageStateKey),
-                Fs.OptStr(options.EditStateKey))));
+                Fs.OptStr(options.EditStateKey),
+                // Phase 1473 — the two print-break declarations, APPENDED to the
+                // typed facade so no earlier ctor position moved.
+                options.KeepRowsTogether,
+                options.RepeatHeader)));
 }
 
 /// <summary>A data-grid column. Accessors read the PROJECTED row (fuaran#665 —
@@ -383,4 +387,22 @@ public sealed record DataGridOptions<TRow>
     /// say where its edits land.
     /// </summary>
     public string? EditStateKey { get; init; }
+
+    /// <summary>
+    /// A ROW is one thing (Phase 1473): when the rendering is paged, no row is
+    /// split across the page boundary, so a wrapped cell does not leave half its
+    /// lines on one page and half on the next. This is the print-break half no
+    /// wrapper reaches — a box around the grid keeps the WHOLE grid together, but
+    /// nothing outside the grid knows where a row ends.
+    /// </summary>
+    public bool KeepRowsTogether { get; init; }
+
+    /// <summary>
+    /// Repeat the column headers at the top of every page the grid continues onto
+    /// (Phase 1473), so a reader meeting the middle of a long grid still knows
+    /// what each column is. The header row group is projected as a table header
+    /// group, which makes the repetition the paged formatter's own job rather
+    /// than script's — it holds with no JavaScript at all.
+    /// </summary>
+    public bool RepeatHeader { get; init; }
 }

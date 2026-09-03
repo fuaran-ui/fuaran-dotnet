@@ -41,7 +41,9 @@ let private stack (id: string) (children: Node<Msg> list) : Node<Msg> =
             { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
-              Children = children }
+              Children = children
+              KeepTogether = false
+              BreakBefore = false }
         ))
 
 /// A grid carrying one column, spelled the way a DECODED grid is.
@@ -61,7 +63,9 @@ let private gridWith (id: string) (col: ColumnErased<Msg>) : Node<Msg> =
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
 
 let private column (kind: CellKindErased<Msg>) : ColumnErased<Msg> =

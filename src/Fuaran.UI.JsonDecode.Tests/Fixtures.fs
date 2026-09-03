@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.JsonDecode.Tests.Fixtures
+module Fuaran.UI.JsonDecode.Tests.Fixtures
 
 // ============================================================================
 //  Round-trip fixture corpus.
@@ -1034,7 +1034,9 @@ let dashboardEmpty: Node<obj> =
             { Layout = BoxLayout.Auto
               Role = BoxRole.Dashboard
               Heading = None
-              Children = [] }
+              Children = []
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -1072,13 +1074,60 @@ let styleDirectionIsolatedValue: Node<obj> =
                         Style =
                             Some
                                 { defaultStyle with
-                                    Direction = TextDirection.Ltr } } ] }
+                                    Direction = TextDirection.Ltr } } ]
+                KeepTogether = false
+                BreakBefore = false }
           ))
           None with
         Style =
             Some
                 { defaultStyle with
                     Direction = TextDirection.Rtl } }
+
+/// Phase 1473 — the motivating document for `keepTogether`: a totals block that
+/// reads wrong when halved.
+///
+/// Exactly ONE new member is set, and that is the point. A fixture that also
+/// declared `breakBefore` could decode with `keepTogether` silently dropped and
+/// still round-trip, proving nothing about the slot it was written for. The
+/// fact declared here is not available to the host any other way: a formatter
+/// laying out pages sees three boxes, and nothing in the rendering says these
+/// three lines are one thing.
+let boxKeepTogether: Node<obj> =
+    node
+        "box-keep-together-1"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Card
+              Heading = Some(TextSource.Literal "Totals")
+              Children =
+                [ node "box-keep-together-net-1" (NodeKind.Markdown({ Text = TextSource.Literal "Net 1,200.00" })) None
+                  node "box-keep-together-vat-1" (NodeKind.Markdown({ Text = TextSource.Literal "VAT 240.00" })) None
+                  node
+                      "box-keep-together-gross-1"
+                      (NodeKind.Markdown({ Text = TextSource.Literal "Gross 1,440.00" }))
+                      None ]
+              KeepTogether = true
+              BreakBefore = false }
+        ))
+        None
+
+/// Phase 1473 — `breakBefore`, alone, on its own vector for the same
+/// one-member reason. A section that starts on a fresh page; nothing here names
+/// the page, only the boundary before this subtree.
+let boxBreakBefore: Node<obj> =
+    node
+        "box-break-before-1"
+        (NodeKind.Box(
+            { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
+              Role = BoxRole.Group
+              Heading = None
+              Children =
+                [ node "box-break-before-body-1" (NodeKind.Markdown({ Text = TextSource.Literal "Appendix A" })) None ]
+              KeepTogether = false
+              BreakBefore = true }
+        ))
+        None
 
 let stack: Node<obj> =
     node
@@ -1087,7 +1136,9 @@ let stack: Node<obj> =
             { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
-              Children = [ metric; markdown ] }
+              Children = [ metric; markdown ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -1098,7 +1149,9 @@ let gridLayout: Node<obj> =
             { Layout = BoxLayout.Grid(12, None, None)
               Role = BoxRole.Group
               Heading = None
-              Children = [ metric ] }
+              Children = [ metric ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -1114,7 +1167,9 @@ let gridLayoutTemplatedRatio: Node<obj> =
             { Layout = BoxLayout.Grid(2, Some "1fr 2fr", None)
               Role = BoxRole.Group
               Heading = None
-              Children = [ metric ] }
+              Children = [ metric ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -1125,7 +1180,9 @@ let gridLayoutTemplatedFixedPlusFlex: Node<obj> =
             { Layout = BoxLayout.Grid(4, Some "100px repeat(3, minmax(30px, 1fr))", None)
               Role = BoxRole.Group
               Heading = None
-              Children = [ metric ] }
+              Children = [ metric ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -1136,7 +1193,9 @@ let gridLayoutTemplatedAutoFit: Node<obj> =
             { Layout = BoxLayout.Grid(1, Some "repeat(auto-fit, minmax(150px, 1fr))", None)
               Role = BoxRole.Group
               Heading = None
-              Children = [ metric ] }
+              Children = [ metric ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -1154,7 +1213,9 @@ let masonryLayout: Node<obj> =
             { Layout = BoxLayout.Masonry(3, None)
               Role = BoxRole.Group
               Heading = None
-              Children = [ metric; markdown ] }
+              Children = [ metric; markdown ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -1165,7 +1226,9 @@ let masonryLayoutGap: Node<obj> =
             { Layout = BoxLayout.Masonry(4, Some 16)
               Role = BoxRole.Group
               Heading = None
-              Children = [ metric; markdown ] }
+              Children = [ metric; markdown ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -1276,7 +1339,9 @@ let compositeTabsPanels: Node<obj> =
                   // meant to SUPERSEDE `tabs-explicit-1` as the pack's Tabs exemplar, so
                   // it has to carry that fixture's leaf vocabulary, and Metric is already
                   // exemplified several times over while Sparkline is exemplified once.
-                  Children = [ sparkline; badge ] }
+                  Children = [ sparkline; badge ]
+                  KeepTogether = false
+                  BreakBefore = false }
             ))
             None
 
@@ -1287,7 +1352,9 @@ let compositeTabsPanels: Node<obj> =
                 { Layout = BoxLayout.Flex(Orientation.Vertical, false, Some 12)
                   Role = BoxRole.Card
                   Heading = Some(TextSource.Literal "Preferences")
-                  Children = [ preferencesForm ] }
+                  Children = [ preferencesForm ]
+                  KeepTogether = false
+                  BreakBefore = false }
             ))
             None
 
@@ -1316,7 +1383,9 @@ let card: Node<obj> =
             { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Card
               Heading = Some(TextSource.Literal "Insights")
-              Children = [ metric ] }
+              Children = [ metric ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -2046,7 +2115,9 @@ let callInto: Node<obj> =
             { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
-              Children = [ closureButton; intoStateButton; stateReader; intoQueryButton; queryReader ] }
+              Children = [ closureButton; intoStateButton; stateReader; intoQueryButton; queryReader ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -2261,7 +2332,9 @@ let emptyStateCard: Node<obj> =
                               Variant = ButtonVariant.Primary
                               Icon = Some "search" }
                       ))
-                      None ] }
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -2556,7 +2629,9 @@ let controlsDeclarative: Node<obj> =
             { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
-              Children = [ tabsNode; modalNode; disclosureNode; selectNode ] }
+              Children = [ tabsNode; modalNode; disclosureNode; selectNode ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -2610,7 +2685,9 @@ let multiSelectClosure: Node<obj> =
             { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
-              Children = [ tabsNode; disclosureNode; multiNode ] }
+              Children = [ tabsNode; disclosureNode; multiNode ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -2652,7 +2729,86 @@ let gridVis: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
+        ))
+        None
+
+/// Phase 1473 — a grid declaring that its ROWS are not split across a page
+/// boundary. One new member, for the reason `boxKeepTogether` states.
+///
+/// This is the half no wrapper reaches: a box around the grid keeps the whole
+/// grid together, but nothing outside the grid knows where a row ends, so a
+/// wrapped cell torn across the boundary can only be prevented from here.
+let gridKeepRowsTogether: Node<obj> =
+    let col: ColumnErased<obj> =
+        { Label = "Note"
+          Value = None
+          Field = Some "note"
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-keep-rows-together-1"
+        (NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source = Binding.Query("notes", (fun _ -> Seq.empty), None)
+              RowKey = None
+              RowKeyField = Some "note"
+              Columns = [ col ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              StaticRows = None
+              KeepRowsTogether = true
+              RepeatHeader = false }
+        ))
+        None
+
+/// Phase 1473 — a grid declaring that its column headers REPEAT at the top of
+/// every page it continues onto. One new member again.
+///
+/// Irreducible for the same reason: the header is the grid's own row group, and
+/// nothing outside the grid can name it. The projection is
+/// `display: table-header-group`, which makes the repetition the paged
+/// formatter's job — so it holds with no script at all.
+let gridRepeatHeader: Node<obj> =
+    let col: ColumnErased<obj> =
+        { Label = "Line"
+          Value = None
+          Field = Some "line"
+          Sortable = None
+          Editable = None
+          Format = CellFormat.None
+          Kind = CellKindErased.Text
+          Width = ColumnWidth.Auto }
+
+    node
+        "grid-repeat-header-1"
+        (NodeKind.DataGrid(
+            { SortStateKey = None
+              PageSize = None
+              PageStateKey = None
+              EditStateKey = None
+              DefaultSort = None
+              Source = Binding.Query("lines", (fun _ -> Seq.empty), None)
+              RowKey = None
+              RowKeyField = Some "line"
+              Columns = [ col ]
+              OnRowClick = None
+              Editable = false
+              Reorderable = false
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = true }
         ))
         None
 
@@ -2743,7 +2899,9 @@ let gridTonedPill: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
         None
 
@@ -2955,7 +3113,9 @@ let gridEditableState: Node<obj> =
               OnRowClick = None
               Editable = true
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
         None
 
@@ -3018,7 +3178,9 @@ let gridTransform: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
         None
 
@@ -3061,7 +3223,9 @@ let gridTransformParam: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
         None
 
@@ -3141,9 +3305,13 @@ let multiselectChipListParam: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
-                      None ] }
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -3183,7 +3351,9 @@ let gridFieldNamed: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
         None
 
@@ -3242,7 +3412,9 @@ let masterDetailPreselected: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
                       None
                   node
@@ -3274,7 +3446,9 @@ let masterDetailPreselected: Node<obj> =
                                                 )
                                             Emphasis = true }
                                     ))
-                                    None ] }
+                                    None ]
+                            KeepTogether = false
+                            BreakBefore = false }
                       ))
                       None
                   // 2026-07-20 demand pin: `Selection` as a `Transform.params`
@@ -3319,9 +3493,13 @@ let masterDetailPreselected: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
-                      None ] }
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -3414,7 +3592,9 @@ let masterDetailMultiField: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
                       None
                   node
@@ -3452,9 +3632,13 @@ let masterDetailMultiField: Node<obj> =
                                                     )
                                                 ) }
                                     ))
-                                    None ] }
+                                    None ]
+                            KeepTogether = false
+                            BreakBefore = false }
                       ))
-                      None ] }
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -3559,7 +3743,9 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
                       None
                   node
@@ -3585,7 +3771,9 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                                                 )
                                             Emphasis = true }
                                     ))
-                                    None ] }
+                                    None ]
+                            KeepTogether = false
+                            BreakBefore = false }
                       ))
                       None
                   node
@@ -3607,7 +3795,9 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
                       None
                   node
@@ -3626,7 +3816,9 @@ let masterDetailPreselectedSecondRow: Node<obj> =
                                       )
                                   ) }
                       ))
-                      None ] }
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -3730,9 +3922,13 @@ let nowEnvironmentBinding: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
-                      None ] }
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -3801,7 +3997,9 @@ let scalarTransformComposition: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
                       None
                   node
@@ -3861,7 +4059,9 @@ let scalarTransformComposition: Node<obj> =
                                       )
                                   ) }
                       ))
-                      None ] }
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -3973,9 +4173,13 @@ let filterableStaticDashboard: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
-                      None ] }
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -4021,7 +4225,9 @@ let table: Node<obj> =
                       Rows =
                         [ [ TextSource.Literal "MVU"; TextSource.Literal "Model-View-Update" ]
                           [ TextSource.Literal "DSL"; TextSource.Literal "Domain-specific language" ] ]
-                      Sortable = None } })
+                      Sortable = None }
+              KeepRowsTogether = false
+              RepeatHeader = false })
         None
 
 /// Phase 801 — the same static table DECLARING sort intent: `sortable: true` plus a
@@ -4055,7 +4261,9 @@ let tableSortable: Node<obj> =
                       Rows =
                         [ [ TextSource.Literal "North"; TextSource.Literal "1200" ]
                           [ TextSource.Literal "South"; TextSource.Literal "980" ] ]
-                      Sortable = Some true } })
+                      Sortable = Some true }
+              KeepRowsTogether = false
+              RepeatHeader = false })
         None
 
 let mapVis: Node<obj> =
@@ -4213,7 +4421,9 @@ let switchOnSelection: Node<obj> =
                             OnRowClick = None
                             Editable = false
                             Reorderable = false
-                            StaticRows = None }
+                            StaticRows = None
+                            KeepRowsTogether = false
+                            RepeatHeader = false }
                       ))
                       None
                   node
@@ -4244,7 +4454,9 @@ let switchOnSelection: Node<obj> =
                                   (NodeKind.Markdown({ Text = TextSource.Literal "Occupancy within normal range." }))
                                   None }
                       ))
-                      None ] }
+                      None ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -4395,10 +4607,14 @@ let composite: Node<obj> =
                           { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
                             Role = BoxRole.Card
                             Heading = Some(TextSource.Literal "Composite")
-                            Children = [ withId "metric-2" metric; labelValueRow ] }
+                            Children = [ withId "metric-2" metric; labelValueRow ]
+                            KeepTogether = false
+                            BreakBefore = false }
                       ))
                       None
-                  stack ] }
+                  stack ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -4633,7 +4849,9 @@ let formatBindings: Node<obj> =
                           Binding.Static(Some(-3.0)),
                           Format.RelativeTime RelativeTimeUnit.Day,
                           LocaleSource.Explicit "en-US"
-                      )) ] }
+                      )) ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -4739,7 +4957,9 @@ let sharedSourceSeededPair: Node<obj> =
                   OnRowClick = None
                   Editable = false
                   Reorderable = false
-                  StaticRows = None }
+                  StaticRows = None
+                  KeepRowsTogether = false
+                  RepeatHeader = false }
             ))
             None
 
@@ -4772,7 +4992,9 @@ let sharedSourceSeededPair: Node<obj> =
             { Layout = BoxLayout.Auto
               Role = BoxRole.Dashboard
               Heading = None
-              Children = [ grid; badge ] }
+              Children = [ grid; badge ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -4812,7 +5034,9 @@ let gridBoundSort: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
         None
 
@@ -4850,7 +5074,9 @@ let gridDeclaredEdit: Node<obj> =
               OnRowClick = None
               Editable = true
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
         None
 
@@ -4893,7 +5119,9 @@ let gridReorderable: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = true
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
         None
 
@@ -4930,7 +5158,9 @@ let gridPaged: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
         None
 
@@ -4966,7 +5196,9 @@ let gridPagedSorted: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
         None
 
@@ -5017,7 +5249,9 @@ let gridSortStateKey: Node<obj> =
               OnRowClick = None
               Editable = false
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = false
+              RepeatHeader = false }
         ))
         None
 
@@ -5064,7 +5298,9 @@ let a11yWrapperAllSlots: Node<obj> =
             { Layout = BoxLayout.Flex(Orientation.Vertical, false, None)
               Role = BoxRole.Group
               Heading = None
-              Children = [ withId "a11y-wrapper-heading" heading; withId "a11y-wrapper-note" markdown ] }
+              Children = [ withId "a11y-wrapper-heading" heading; withId "a11y-wrapper-note" markdown ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         (Some
             { Label = Some(Binding.Static(Some "Channel performance summary"))
@@ -5085,7 +5321,9 @@ let a11yWrapperStateBound: Node<obj> =
             { Layout = BoxLayout.Flex(Orientation.Horizontal, false, None)
               Role = BoxRole.Group
               Heading = None
-              Children = [ withId "a11y-footer-note" markdown ] }
+              Children = [ withId "a11y-footer-note" markdown ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         (Some
             { Label = Some(Binding.State("footerLabel", Some "Site footer"))
@@ -5288,7 +5526,9 @@ let tooltipIconButton: Node<obj> =
                               LiveRegion = None
                               Hidden = None }) with
                       Tooltip = Some(TextSource.Literal "Exports the rows currently shown, not the whole table.") }
-                  withId "tooltip-icon-button-note" markdown ] }
+                  withId "tooltip-icon-button-note" markdown ]
+              KeepTogether = false
+              BreakBefore = false }
         ))
         None
 
@@ -5401,6 +5641,10 @@ let allNodes: (string * Node<obj>) list =
       "Layout/Stack (Phase 426 — declarative tabs + modal + disclosure + select, handlers omitted)", controlsDeclarative
       "Layout/Stack (Phase 426 — closure-authored onSelectTag / onToggle / onChangeMulti sentinels)", multiSelectClosure
       "Layout/Stack (Phase 428 — Action.Call result targets: closure / into State / into Query)", callInto
+      "Layout/Box (Phase 1473 keepTogether, the only new member)", boxKeepTogether
+      "Layout/Box (Phase 1473 breakBefore, the only new member)", boxBreakBefore
+      "Visualisation/Grid (Phase 1473 keepRowsTogether, the only new member)", gridKeepRowsTogether
+      "Visualisation/Grid (Phase 1473 repeatHeader, the only new member)", gridRepeatHeader
       "Visualisation/Grid", gridVis
       "Visualisation/Grid (Phase 282 — Binding.Transform compute source)", gridTransform
       "Visualisation/Grid (Phase 424 — parameterised Binding.Transform, filter param from a chip)", gridTransformParam

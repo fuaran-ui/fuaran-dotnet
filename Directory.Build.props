@@ -499,7 +499,7 @@
          so it is a version of its own and never a re-pack. 0.58.0 was taken
          concurrently by Phase 1179; this is the next slot. See STABILITY.md
          "Recorded change - 0.59.0, `SemanticStyle.direction`". -->
-    <Version>0.59.0</Version>
+    <Version>0.60.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org

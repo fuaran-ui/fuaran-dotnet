@@ -1812,11 +1812,23 @@ let layoutKinds: IdlKind list =
       { Tag = "Box"
         Category = "Layout"
         Annotations = Annotations.Empty
+        // Fuaran-UI Phase 1473 — the two print-break declarations, APPENDED so no
+        // existing constructor position moves, and both omit-at-`false` so every
+        // box written before this release encodes to the bytes it always did.
+        //
+        // They live on `Box` and on no other layout kind, for the charter row's
+        // own §1.2 reason: a `SplitPanel`, a `Disclosure` or a `Tabs` that must
+        // stay whole is reachable by wrapping it in a `Box`, so a slot on each of
+        // them would be composition-reducible and fail irreducibility. What no
+        // wrapper reaches is a GRID'S ROWS, which is why `DataGrid` carries its
+        // own pair and nothing else does.
         Fields =
           [ req "children" (TList TNode)
             opt "heading" TS
             req "layout" (TUnion("LayoutMode", []))
-            req "role" (TEnum "BoxRole") ] }
+            req "role" (TEnum "BoxRole")
+            omit "keepTogether" TBool (VBool false)
+            omit "breakBefore" TBool (VBool false) ] }
       { Tag = "SplitPanel"
         Category = "Layout"
         Annotations = Annotations.Empty
@@ -2021,6 +2033,22 @@ let visKinds: IdlKind list =
             // reordered rows commit to `editStateKey` above — a reorder IS a write of
             // the whole updated rows value, so it needs no destination of its own.
             omit "reorderable" TBool (VBool false)
+            // Phase 1473 — the two print-break declarations a grid can make and
+            // that nothing else can make FOR it. `keepRowsTogether` says a row is
+            // one thing and must not be split across a page boundary;
+            // `repeatHeader` says the column headers repeat at the top of every
+            // page the grid continues onto. Both omit-at-`false`, matching
+            // `reorderable` and `editable`: for a declaration of this shape "not
+            // stated" and "explicitly off" are the same state, so an option would
+            // carry a distinction no renderer can act on.
+            //
+            // Neither reduces to a wrapper. A `Box` around the grid keeps the
+            // WHOLE grid together — which is why there is no grid-level
+            // keep-together slot here — but no arrangement of existing kinds
+            // reaches a row boundary or a repeated header, because only the grid
+            // knows where its rows and its header are.
+            omit "keepRowsTogether" TBool (VBool false)
+            omit "repeatHeader" TBool (VBool false)
             // The row feed is HOSTED `Fuaran.Core.Row seq` (fuaran#665 — typed rows):
             // a Static/State rows payload IS wire-representable (a JSON array of row
             // objects, scalar cells, rendered by Core's `RowCodec` under the `Canon`

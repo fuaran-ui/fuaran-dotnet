@@ -146,6 +146,18 @@ let legitimateEvents (node: Node<'Msg>) : Set<string> =
     | NodeKind.Tabs _ -> set [ "click"; "change" ]
     | NodeKind.Stepper _ -> set [ "click"; "change" ]
     | NodeKind.Disclosure _ -> set [ "click"; "change"; "toggle" ]
+    // Phase 1473 — the print-break declarations on `Box` and `DataGrid` take no
+    // row here, and the reason is the strongest of the three above: they admit
+    // no event at all, in either direction. Nothing dispatches, nothing is
+    // clicked, and the printing ACT is the reader's and their user agent's —
+    // which is exactly the half of the ratified charter row that stayed out of
+    // the language as host chrome. A `Box` therefore still falls to the
+    // default-deny `Set.empty` below with the declarations present, as it does
+    // without them, and this boundary is unmoved by the phase.
+    //
+    // Stated rather than left silent because the absence of a row is otherwise
+    // indistinguishable from an oversight, and a later reader wondering whether
+    // a paged surface needs an inbound event should find the answer here.
     | _ -> Set.empty
 
 // ─── payload accessors ──────────────────────────────────────────────────────

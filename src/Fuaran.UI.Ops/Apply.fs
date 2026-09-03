@@ -644,6 +644,19 @@ let private updateBox (field: string) (v: obj) (spec: BoxSpec<'Msg>) : UpdateRes
         match coerceField JsonDecode.Coerce.tryTextSourceOption v with
         | Ok x -> updated { spec with Heading = x }
         | Error msg -> TypeMismatch msg
+    // Phase 1473 — the print-break declarations take `Wrap`'s disposition, not
+    // `Children`'s: they are plain wire booleans with a coercion, so an
+    // `UpdateProp` turns a keep-together on and off exactly as it turns flex
+    // wrapping on and off. Matched on `_` for the layout, because they are
+    // properties of the container and not of how it arranges its children.
+    | "KeepTogether", _ ->
+        match coerceField JsonDecode.Coerce.tryBool v with
+        | Ok x -> updated { spec with KeepTogether = x }
+        | Error msg -> TypeMismatch msg
+    | "BreakBefore", _ ->
+        match coerceField JsonDecode.Coerce.tryBool v with
+        | Ok x -> updated { spec with BreakBefore = x }
+        | Error msg -> TypeMismatch msg
     | "Children", _ -> NotSupportedYet
     | _ -> UnknownField
 
@@ -1256,6 +1269,16 @@ let private updateGridTop (field: string) (v: obj) (spec: GridSpec<'Msg>) : Upda
         wrap (fun v ->
             coerceField JsonDecode.Coerce.tryStringOption v
             |> Result.map (fun x -> { spec with RowKeyField = x }))
+    // Phase 1473 — the grid's print-break declarations, on `Editable`'s
+    // disposition for the same reason the container pair takes `Wrap`'s.
+    | "KeepRowsTogether" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with KeepRowsTogether = x }))
+    | "RepeatHeader" ->
+        wrap (fun v ->
+            coerceField JsonDecode.Coerce.tryBool v
+            |> Result.map (fun x -> { spec with RepeatHeader = x }))
     // `Columns` is addressed through the nested surface (`Columns[i].Label`);
     // `Source` is a ReplaceBinding slot; the rest are closures.
     | "Source"

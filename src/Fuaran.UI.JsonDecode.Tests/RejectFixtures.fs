@@ -1160,6 +1160,61 @@ let all: RejectFixture list =
         IsOp = false
         Description =
           "§21 max JSON depth — 257 levels of bare array nesting, ONE past the limit. Well-formed and merely too deep, so LIMIT_EXCEEDED rather than INVALID_JSON (rule 2). Pins the boundary exactly; its at-the-limit twin below pins the other side" }
+      // ─── Phase 1473 — the print-break flags, on BOTH decoder arms ─────
+      //
+      // The four declarations reach a decoder through two INDEPENDENT arms —
+      // `Box`'s spec and `DataGrid`'s — and those are separate branches in
+      // every host, so a vector on one proves nothing about the other. A host
+      // that hardened the container arm and left the grid arm lenient would
+      // pass a one-armed corpus while coercing a wrong-typed flag on the very
+      // kind whose rows the flag is about. Both arms are therefore pinned, and
+      // both flags on each arm, because each is read by its own `requireBool`
+      // call and one of the four could be written to coerce without the other
+      // three noticing.
+      //
+      // WRONG_TYPE and not UNKNOWN_DU_CASE: these are booleans, not tokens, so
+      // a non-boolean is not a near miss of anything — there is no legal set to
+      // name back at the author.
+      //
+      // Refused rather than coerced, and that is the whole point of the
+      // vectors. `"true"` is the shape a stringly-typed emitter produces, and a
+      // decoder that read it as `true` — or, worse, silently as the `false`
+      // default — would leave the document's declaration and the rendering
+      // disagreeing with nothing said anywhere. Under rule 1 the omit-at-false
+      // convention makes ABSENT the only spelling of "not declared"; a present
+      // key of the wrong kind is a defect, not a default.
+      { Id = "reject-wrongtype-box-keep-together"
+        Json =
+          """{"id":"x","kind":{"$type":"Box","children":[],"keepTogether":"true","layout":{"$type":"Auto"},"role":"Group"},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.keepTogether"
+        IsOp = false
+        Description =
+          "Box keepTogether is the STRING \"true\", not a boolean — the container arm of the print-break pair. Refused, never coerced: absence is the only spelling of \"not declared\" (Phase 1473)" }
+      { Id = "reject-wrongtype-box-break-before"
+        Json =
+          """{"id":"x","kind":{"$type":"Box","breakBefore":1,"children":[],"layout":{"$type":"Auto"},"role":"Group"},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.breakBefore"
+        IsOp = false
+        Description =
+          "Box breakBefore is the NUMBER 1, not a boolean — the truthy-integer spelling a JSON emitter reaches for, refused for the same reason as its sibling (Phase 1473)" }
+      { Id = "reject-wrongtype-grid-keep-rows-together"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[],"keepRowsTogether":"yes","source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.keepRowsTogether"
+        IsOp = false
+        Description =
+          "DataGrid keepRowsTogether is a string — the GRID arm of the print-break pair, a decoder branch of its own that a container-arm vector says nothing about (Phase 1473)" }
+      { Id = "reject-wrongtype-grid-repeat-header"
+        Json =
+          """{"id":"x","kind":{"$type":"DataGrid","columns":[],"repeatHeader":{},"source":{"$type":"Static","value":[]}},"state":{},"style":{"emphasis":"Normal","tone":"Default","weight":"Standard"}}"""
+        ExpectedCode = DecodeErrorCode.WRONG_TYPE
+        ExpectedPath = "$.kind.repeatHeader"
+        IsOp = false
+        Description =
+          "DataGrid repeatHeader is an object, not a boolean — the fourth flag, read by its own call and so pinned on its own (Phase 1473)" }
       { Id = "reject-limit-json-depth-at-max"
         Json =
           String.replicate Fuaran.UI.WireLimits.MaxJsonDepth "["

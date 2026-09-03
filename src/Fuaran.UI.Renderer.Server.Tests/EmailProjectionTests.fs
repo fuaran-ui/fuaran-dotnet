@@ -136,7 +136,9 @@ let private dynamicGrid id : Node<obj> =
               Columns = []
               OnRowClick = Option.None
               Editable = false
-              StaticRows = Option.None })
+              StaticRows = Option.None
+              KeepRowsTogether = false
+              RepeatHeader = false })
 
 let private metricTile id label value =
     Fuaran.metric

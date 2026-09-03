@@ -711,6 +711,25 @@ and ChannelDirection = Generated.ChannelDirection
 /// arrange; `Role` names what the container means (drives the emitted element,
 /// ARIA landmark, and `fuaran-*` chrome). `Heading` carries the retired `Card`
 /// heading (emitted only when `Some`). See `docs/BOX-CONTAINER-UNIFICATION.md`.
+///
+/// **`KeepTogether` / `BreakBefore` (Phase 1473) declare COHESION ACROSS A PAGE
+/// BOUNDARY, not a medium.** Both are `bool`, both omit at `false`, and neither
+/// names a page size, a margin, a sheet number or a running header — the paged
+/// medium is the host's, and the ratified vocabulary-charter row keeps it out of
+/// the language. What the tree declares is the one fact the host cannot recover
+/// from a rendering: *this subtree is one thing*. A host laying out pages sees
+/// boxes, and no rendering carries back that the totals block reads wrong when
+/// halved. That is the `SortStateKey` shape — a behaviour the host performs,
+/// keyed by something only the document can name.
+///
+/// They are on `Box` and on no other layout kind, deliberately: a `SplitPanel`,
+/// a `Disclosure` or a `Tabs` that must stay whole is reachable by wrapping it
+/// in a `Box`, so a slot on each of those would be composition-reducible. There
+/// is likewise no break-AFTER counterpart — a break after this box is a break
+/// before the next one.
+///
+/// Both are realised in CSS inside a `@media print` block, so they hold with no
+/// script at all and a screen rendering is completely unchanged.
 and BoxSpec<'Msg> = Generated.BoxSpec<'Msg>
 
 /// How a `Box` arranges its children (generated — `LayoutMode`; `BoxLayout`
@@ -1543,6 +1562,16 @@ and MapMarker = Generated.MapMarker
 /// from the retired `NodeKind.Table`) is the generated `StaticRows` record
 /// (`{ Headers: TextSource list; Rows: TextSource list list }` — full
 /// `TextSource` cells, same fidelity as the old tuple shape).
+///
+/// **`KeepRowsTogether` / `RepeatHeader` (Phase 1473) are the print-break half
+/// no wrapper reaches.** A `Box.KeepTogether` around the grid keeps the WHOLE
+/// grid together — which is why there is no grid-level keep-together slot here —
+/// but nothing outside the grid knows where a row ends or which row group is the
+/// header, so those two boundaries can only be declared on the grid itself. Both
+/// are `bool`, both omit at `false`, and both are realised in CSS inside a
+/// `@media print` block: `break-inside: avoid` on the rows, and the header row
+/// group projected as a table header group, which is the one construct that
+/// makes the repetition the paged formatter's own job rather than script's.
 and GridSpec<'Msg> = Generated.DataGridSpec<'Msg>
 
 /// The generated name for `GridSpec` (both names are the same record).
@@ -1615,6 +1644,14 @@ and GridSpecOf<'row, 'Msg> =
         /// behaviour (write back to the grid's own `Source` when that source is a
         /// direct `Binding.State`, display-only otherwise).
         EditStateKey: string option
+        /// Phase 1473 — a ROW is one thing: when the rendering is paged, no row is
+        /// split across the page boundary. Erases to
+        /// `DataGridSpec.KeepRowsTogether`; omitted on the wire at `false`.
+        KeepRowsTogether: bool
+        /// Phase 1473 — the column headers repeat at the top of every page the grid
+        /// continues onto. Erases to `DataGridSpec.RepeatHeader`; omitted on the
+        /// wire at `false`.
+        RepeatHeader: bool
     }
 
 /// §4k Q3.2 — Column carries a typed `Kind`, not a nullable `OnEdit`.

@@ -92,10 +92,17 @@ public static partial class Fuaran
         var heading = options.Heading is { } h ? Fs.Some(h.Inner) : Fs.None<FsGen.TextSource>();
 
         // Generated BoxSpec ctor is Generated.fs declaration order (Children,
-        // Heading, Layout, Role).
+        // Heading, Layout, Role, KeepTogether, BreakBefore — the last two
+        // appended by Phase 1473, which is why no earlier position moved).
         return new(FsFactory.box<object>(
             options.Id,
-            new FsGen.BoxSpec<object>(Kids(options.Children), heading, layout, role)));
+            new FsGen.BoxSpec<object>(
+                Kids(options.Children),
+                heading,
+                layout,
+                role,
+                options.KeepTogether,
+                options.BreakBefore)));
     }
 
     /// <summary>A dashboard — the page's primary content region.</summary>

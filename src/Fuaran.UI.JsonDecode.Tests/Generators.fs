@@ -1,4 +1,4 @@
-﻿module Fuaran.UI.JsonDecode.Tests.Generators
+module Fuaran.UI.JsonDecode.Tests.Generators
 
 // ============================================================================
 //  Phase 101 — generative / property-based wire-format fuzzer (generators).
@@ -848,6 +848,11 @@ let private genGridSpec: Gen<GridSpec<obj>> =
     gen {
         let! columns = genGridColumns
         let! editable = genBool
+        // Phase 1473 — randomised rather than pinned, so the property test
+        // exercises BOTH sides of the omit-at-false rule on each flag rather
+        // than only the absent one the fixtures already pin.
+        let! keepRowsTogether = genBool
+        let! repeatHeader = genBool
 
         return
             { SortStateKey = None
@@ -862,7 +867,9 @@ let private genGridSpec: Gen<GridSpec<obj>> =
               OnRowClick = None
               Editable = editable
               Reorderable = false
-              StaticRows = None }
+              StaticRows = None
+              KeepRowsTogether = keepRowsTogether
+              RepeatHeader = repeatHeader }
     }
 
 let private genChartSpec: Gen<ChartSpec<obj>> =
@@ -1069,13 +1076,18 @@ let rec private genLayoutKind (size: int) : Gen<NodeKind<obj>> =
               let! role = Gen.elements [ BoxRole.Group; BoxRole.Card; BoxRole.Dashboard ]
               let! heading = genOption genTextSource
               let! children = genChildren sub
+              // Phase 1473 — randomised, for the reason `genGridSpec` states.
+              let! keepTogether = genBool
+              let! breakBefore = genBool
 
               return
                   NodeKind.Box
                       { Layout = layout
                         Role = role
                         Heading = heading
-                        Children = children }
+                        Children = children
+                        KeepTogether = keepTogether
+                        BreakBefore = breakBefore }
           }
           gen {
               let! weight = genFiniteFloat

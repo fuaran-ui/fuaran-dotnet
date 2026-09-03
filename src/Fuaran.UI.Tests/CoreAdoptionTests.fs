@@ -122,7 +122,9 @@ let private mkStack (id: string) (kids: EqNode list) : EqNode =
                 { Layout = LayoutMode.Flex(Orientation.Vertical, false, None)
                   Role = BoxRole.Group
                   Heading = None
-                  Children = kids |> List.map unwrap }
+                  Children = kids |> List.map unwrap
+                  KeepTogether = false
+                  BreakBefore = false }
             )
           State = None
           Style = None

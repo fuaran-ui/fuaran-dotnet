@@ -473,10 +473,17 @@ and private renderKind
     // element + classes so SSR output stays byte-identical to the pre-merge
     // per-kind emission (and to the client renderer — SSR parity corpus).
     | NodeKind.Box spec ->
+        // Phase 1473 — the same print-break suffix the client renderer appends,
+        // from the same shared helper, so SSR and CSR emit an identical class
+        // string. This is the whole of the SSR floor: the declarations are CSS
+        // in a `@media print` block and need no script, so the static rendering
+        // honours them completely rather than degrading.
+        let brk = Theme.printBreakClasses spec.KeepTogether spec.BreakBefore
+
         match spec.Role, spec.Layout with
         | BoxRole.Card, _ ->
             Html.section
-                [ prop.className "fuaran-layout-card"
+                [ prop.className ("fuaran-layout-card" + brk)
                   prop.children
                       [ match spec.Heading with
                         | Some heading ->
@@ -488,9 +495,9 @@ and private renderKind
         | BoxRole.Dashboard, _
         | BoxRole.Group, BoxLayout.Auto ->
             Html.div
-                [ prop.className "fuaran-layout-dashboard"
+                [ prop.className ("fuaran-layout-dashboard" + brk)
                   prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
-        | BoxRole.Separator, _ -> Html.hr [ prop.className "fuaran-layout-separator" ]
+        | BoxRole.Separator, _ -> Html.hr [ prop.className ("fuaran-layout-separator" + brk) ]
         | BoxRole.Group, BoxLayout.Grid(cols, gridTemplateColumns, gridGap) ->
             let templateColumns =
                 match gridTemplateColumns with
@@ -510,7 +517,7 @@ and private renderKind
                    | None -> [])
 
             Html.div
-                [ prop.className "fuaran-layout-grid"
+                [ prop.className ("fuaran-layout-grid" + brk)
                   prop.style gridStyle
                   prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
         | BoxRole.Group, BoxLayout.Masonry(cols, masonryGap) ->
@@ -532,7 +539,7 @@ and private renderKind
                    | None -> [])
 
             Html.div
-                [ prop.className "fuaran-layout-masonry"
+                [ prop.className ("fuaran-layout-masonry" + brk)
                   prop.style masonryStyle
                   prop.children (spec.Children |> List.map (renderNode (depth + 1) ctx)) ]
         | BoxRole.Group, BoxLayout.Flex(direction, flexWrap, flexGap) ->
@@ -544,7 +551,7 @@ and private renderKind
             let wrap = if flexWrap then " fuaran-stack-wrap" else ""
 
             Html.div (
-                [ prop.className (Css.layoutStack dir wrap) ]
+                [ prop.className (Css.layoutStack dir wrap + brk) ]
                 @ (match flexGap with
                    | Some n -> [ prop.style [ style.custom ("gap", sprintf "%dpx" n) ] ]
                    | None -> [])
@@ -1824,6 +1831,13 @@ and private renderKind
         )
     // -- Vis --
     | NodeKind.DataGrid spec ->
+        // Phase 1473 — the grid's own two declarations, on the same shared
+        // helper the client renderer uses. They ride BOTH legs: the static
+        // table, where the rows and the header row group are real elements the
+        // print rules reach, and the hydration placeholder, so the declaration
+        // is not silently dropped on the bound path.
+        let gridBrk = Theme.gridPrintBreakClasses spec.KeepRowsTogether spec.RepeatHeader
+
         match spec.StaticRows with
         | Some sr ->
             // Phase 393 — static read-only mode: SSR renders the full semantic <table> statically
@@ -1840,7 +1854,7 @@ and private renderKind
                                       Html.td [ prop.className "fuaran-table-cell"; prop.text (renderText ctx cell) ] ] ] ]
 
             Html.table
-                [ prop.className "fuaran-table"
+                [ prop.className ("fuaran-table" + gridBrk)
                   // Phase 801 — the declared sort intent, surfaced as data attributes so the
                   // reference table enhancement honours it without re-parsing wire. Emitted
                   // ONLY when declared: an undeclared table's SSR bytes are unchanged.
@@ -1868,7 +1882,7 @@ and private renderKind
                 |> Option.defaultValue 0
 
             Html.div
-                [ prop.className "fuaran-grid fuaran-grid-ssr-placeholder"
+                [ prop.className ("fuaran-grid fuaran-grid-ssr-placeholder" + gridBrk)
                   prop.custom ("data-fuaran-ssr-placeholder", "DataGrid")
                   prop.custom ("data-fuaran-row-count", string rowCount)
                   prop.text (sprintf "[Grid: %d rows — hydrates client-side]" rowCount) ]

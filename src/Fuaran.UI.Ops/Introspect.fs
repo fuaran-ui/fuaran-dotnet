@@ -97,7 +97,11 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
             | BoxLayout.Masonry _ -> [ "Cols" ]
             | BoxLayout.Auto -> []
 
-        layoutFields @ [ "Heading"; "Children" ]
+        // Phase 1473 — the print-break declarations are advertised on every
+        // layout mode, unlike the mode-dependent pair above: they are properties
+        // of the CONTAINER, not of how it arranges its children, so an `Auto` box
+        // carries them exactly as a `Flex` one does.
+        layoutFields @ [ "Heading"; "KeepTogether"; "BreakBefore"; "Children" ]
     | NodeKind.SplitPanel _ -> [ "Weight"; "Children" ]
     | NodeKind.Tabs _ -> [ "Orientation"; "Children" ]
     | NodeKind.Stepper _ -> [ "ActiveStep"; "Children" ]
@@ -164,7 +168,18 @@ let availableFields (kind: NodeKind<'Msg>) : string list =
     | NodeKind.FileUpload _ -> [ "Label"; "Accept"; "Multiple" ]
     | NodeKind.Select _ -> [ "Label"; "Source"; "Value"; "Placeholder" ]
     // -- Visualisation --
-    | NodeKind.DataGrid _ -> [ "Source"; "Columns"; "Editable"; "RowKeyField" ]
+    // Phase 1473 — the grid's two print-break declarations are plain wire
+    // booleans with a coercion, so an `UpdateProp` sets them exactly as it sets
+    // `Editable`. Advertised because they ARE settable: a name here that
+    // `Apply` answered `UnknownField` to would be an introspection surface
+    // naming a field it cannot set.
+    | NodeKind.DataGrid _ ->
+        [ "Source"
+          "Columns"
+          "Editable"
+          "RowKeyField"
+          "KeepRowsTogether"
+          "RepeatHeader" ]
     | NodeKind.Chart _ -> [ "Source"; "Kind"; "XField"; "YFields"; "Title"; "Stacked" ]
     | NodeKind.Map _ -> [ "Source"; "CentreLatitude"; "CentreLongitude"; "Zoom" ]
     | NodeKind.Custom _ -> []

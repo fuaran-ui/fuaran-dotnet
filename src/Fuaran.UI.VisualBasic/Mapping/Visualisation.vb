@@ -48,6 +48,10 @@ Friend Module VisualisationMapping
         ' Phases 861 / 862 / 863, surfaced here by Phase 873. These are DECLARATIONS,
         ' not closures, so unlike the column value accessors below they survive the
         ' XML round-trip intact — the same reason Phase 750's <Tone> children do.
+        '
+        ' Phase 1473 — `keep-rows-together` / `repeat-header`, the grid's own two
+        ' print-break declarations. Same AttrBool route and same absent-is-false
+        ' default as <Box>'s pair.
         d("DataGrid") = Function(el) Csharp.Fuaran.DataGrid(Of Object)(
             New Csharp.DataGridOptions(Of Object) With {
                 .Id = Attr(el, "id"),
@@ -59,7 +63,9 @@ Friend Module VisualisationMapping
                 .DefaultSort = ReadDefaultSort(el),
                 .PageSize = OptIntAttr(el, "page-size"),
                 .PageStateKey = OptStr(el, "page-state-key"),
-                .EditStateKey = OptStr(el, "edit-state-key")})
+                .EditStateKey = OptStr(el, "edit-state-key"),
+                .KeepRowsTogether = AttrBool(el, "keep-rows-together"),
+                .RepeatHeader = AttrBool(el, "repeat-header")})
     End Sub
 
     ''' fuaran#665 — the required ToRow projection for XML-authored grids, whose row

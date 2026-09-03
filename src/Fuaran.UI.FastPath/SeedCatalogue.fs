@@ -50,7 +50,10 @@ module SeedCatalogue =
             { Layout = BoxLayout.Flex(Orientation.Vertical, false, Some 12)
               Role = role
               Heading = heading
-              Children = children }
+              Children = children
+              // Phase 1473 — a seed pattern declares no print break.
+              KeepTogether = false
+              BreakBefore = false }
 
     let private hbox (id: string) (children: Node<unit> list) : Node<unit> =
         Fuaran.box
@@ -58,7 +61,9 @@ module SeedCatalogue =
             { Layout = BoxLayout.Flex(Orientation.Horizontal, true, Some 12)
               Role = BoxRole.Group
               Heading = None
-              Children = children }
+              Children = children
+              KeepTogether = false
+              BreakBefore = false }
 
     let private headingNode (id: string) (level: int) (text: string) : Node<unit> =
         Fuaran.heading

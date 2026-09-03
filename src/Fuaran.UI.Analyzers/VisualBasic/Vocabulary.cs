@@ -193,9 +193,16 @@ internal static class Vocabulary
         // State key the grid both writes and reads (Phase 860's charter rule), which is why
         // there is no `sortable` / `pageable` boolean here: the KEY is the affordance, and a
         // flag with no key behind it is the decorative-pager shape the charter refuses.
+        // Phase 1473 — `keep-rows-together` / `repeat-header` spell the wire's
+        // `keepRowsTogether` / `repeatHeader` print-break declarations. They MUST
+        // be listed: `DataGrid` is an enumerated element, so an unlisted
+        // attribute is FUARAN061 rather than allow-any. `Box`'s matching pair
+        // needs no entry for the mirror-image reason — `Box` is absent from this
+        // table and therefore not attribute-checked at all.
         Add("DataGrid", "id", "source", "editable",
             "sort-state-key", "default-sort-column", "default-sort-direction",
-            "page-size", "page-state-key", "edit-state-key");
+            "page-size", "page-state-key", "edit-state-key",
+            "keep-rows-together", "repeat-header");
         Add("Custom", "id", "module-id", "component-id", "exposed-node-ids");
         Add("ErrorBoundary", "id");
         Add("FragmentDecl", "id", "name");

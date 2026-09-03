@@ -94,7 +94,11 @@ and mapKind (f: 'a -> 'b) (kind: NodeKind<'a>) : NodeKind<'b> =
             { Layout = spec.Layout
               Role = spec.Role
               Heading = spec.Heading
-              Children = mapChildren spec.Children }
+              Children = mapChildren spec.Children
+              // Phase 1473 — the print-break declarations carry no `'Msg`, so
+              // the map is the identity on both.
+              KeepTogether = spec.KeepTogether
+              BreakBefore = spec.BreakBefore }
     | NodeKind.SplitPanel spec ->
         NodeKind.SplitPanel
             { Weight = spec.Weight
@@ -314,6 +318,9 @@ and mapGridSpec (f: 'a -> 'b) (spec: GridSpec<'a>) : GridSpec<'b> =
       DefaultSort = spec.DefaultSort
       EditStateKey = spec.EditStateKey
       Reorderable = spec.Reorderable
+      // Phase 1473 — the print-break declarations carry no `'Msg` either.
+      KeepRowsTogether = spec.KeepRowsTogether
+      RepeatHeader = spec.RepeatHeader
       Columns = spec.Columns |> List.map (mapColumnErased f)
       OnRowClick = spec.OnRowClick |> Option.map (fun g -> g >> mapAction f)
       Editable = spec.Editable

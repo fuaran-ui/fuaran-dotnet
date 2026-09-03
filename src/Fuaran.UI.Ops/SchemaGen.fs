@@ -1134,6 +1134,12 @@ let private defs: (string * J) list =
             "editStateKey", str
             // Phase 934 — declarative row reorder; omit-when-false, as `editable`.
             "reorderable", JObj [ "type", JStr "boolean" ]
+            // Phase 1473 — the grid's own two print-break declarations, on the
+            // same omit-when-false convention. `keepRowsTogether` names the row
+            // boundary, `repeatHeader` the header row group — the two the
+            // container pair on `BoxSpec` structurally cannot reach.
+            "keepRowsTogether", JObj [ "type", JStr "boolean" ]
+            "repeatHeader", JObj [ "type", JStr "boolean" ]
             // Phase 861 — the bound path's declared initial order. Same record
             // and same `minimum: 0` bound the `staticRows` spelling carries.
             "defaultSort",
@@ -1222,7 +1228,12 @@ let private defs: (string * J) list =
           [ "children", arrayOf (ref "Node")
             "heading", ref "TextSource"
             "layout", ref "BoxLayout"
-            "role", enumDef [ "Group"; "Card"; "Dashboard"; "Separator" ] ]
+            "role", enumDef [ "Group"; "Card"; "Dashboard"; "Separator" ]
+            // Phase 1473 — the print-break declarations. Out of `required`,
+            // matching the decoder's omit-at-`false`: an absent flag is a
+            // container that declares nothing about pagination.
+            "keepTogether", boolean
+            "breakBefore", boolean ]
 
       "FlexLayout", record [ "direction"; "wrap" ] [ "direction", ref "Orientation"; "gap", integer; "wrap", boolean ]
 
