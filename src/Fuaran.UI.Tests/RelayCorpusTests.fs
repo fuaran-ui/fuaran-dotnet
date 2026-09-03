@@ -102,7 +102,13 @@ let private gridNode: Node<obj> =
         "grid-1"
         (fun (_: obj) -> (Map.empty: Row))
         { Defaults.grid<obj, obj> with
-            Source = binding.query "channels" (fun (rows: obj list) -> rows) }
+            Source = binding.query "channels" (fun (rows: obj list) -> rows)
+            // One column, matching the sibling host's harness. It is what makes
+            // the `read.nodeJson` fixture exercise the case that motivated the
+            // entry point: `Columns[0].Label` is an indexed path into a
+            // collection-valued field, and no other read reports the collection's
+            // length, so no other read lets a client derive that path at all.
+            Columns = [ Column.text "Channel" (fun _ -> "n/a") ] }
 
 /// A node that IS in the tree but has NO rendered element — the world the
 /// `refusal-node-not-found` fixture describes. §7.4 asks a host to distinguish
@@ -224,20 +230,51 @@ let private rejectingHandler: DebugGlobal.ApplyHandler =
             "FUARAN-APPLY-ROOT-REMOVAL"
         )
 
+/// A peer whose surface cannot render a node in the wire vocabulary — the
+/// `ENCODE_FAILED` world (§9.3).
+///
+/// This host's own surface can never produce that outcome: the canonical encoder
+/// is TOTAL over live trees, since a value the wire format cannot carry becomes a
+/// sentinel string rather than a refusal. So the class is exercised at the SEAM,
+/// which is the same technique the corpus already uses for `DECODE_FAILED` and
+/// `VALIDATOR_REJECT` — the apply handler is stubbed there, the node-json leg is
+/// stubbed here. What the fixture proves is the peer's mapping from the surface's
+/// outcome onto the refusal class, which is exactly what a future host with a
+/// wider local vocabulary than the wire's would depend on.
+let private encodeFailingPeer (hub: ChangeHub.ChangeHub) : RelayPeer =
+    let options =
+        { DebugGlobal.DebugOptions.defaults with
+            Hub = hub
+            ApplyHandler = Some acceptingHandler }
+
+    let surface =
+        { Relay.surfaceOf hostTree hostSources (StubRuntime(true)) options with
+            Geometry = stubGeometry
+            NodeJson = fun _ -> NodeJsonLookup.EncodeFailed }
+
+    Relay.createPeer
+        (fun () -> Some surface)
+        { RelayOptions.defaults with
+            OptedIn = true
+            HostVersion = "0.6.0" }
+
 /// The peer each fixture is answered by. Everything not named here gets the
 /// fully-capable, opted-in peer.
 let private peerForFixture (fixtureId: string) (hub: ChangeHub.ChangeHub) : RelayPeer =
-    let peer, _ =
-        match fixtureId with
-        | "hello-read-only" -> peerFor true None true false hub
-        | "refusal-not-opted-in" -> peerFor false (Some acceptingHandler) true true hub
-        | "refusal-capability-absent" -> peerFor true None true true hub
-        | "refusal-policy-denied" -> peerFor true (Some acceptingHandler) false true hub
-        | "refusal-decode-failed" -> peerFor true (Some decodeFailingHandler) true true hub
-        | "refusal-validator-reject" -> peerFor true (Some rejectingHandler) true true hub
-        | _ -> peerFor true (Some acceptingHandler) true true hub
+    match fixtureId with
+    | "refusal-encode-failed" -> encodeFailingPeer hub
+    | _ ->
+        let peer, _ =
+            match fixtureId with
+            | "hello-read-only" -> peerFor true None true false hub
+            | "refusal-not-opted-in" -> peerFor false (Some acceptingHandler) true true hub
+            | "refusal-capability-absent" -> peerFor true None true true hub
+            | "refusal-policy-denied" -> peerFor true (Some acceptingHandler) false true hub
+            | "refusal-decode-failed" -> peerFor true (Some decodeFailingHandler) true true hub
+            | "refusal-validator-reject" -> peerFor true (Some rejectingHandler) true true hub
+            | _ -> peerFor true (Some acceptingHandler) true true hub
 
-    peer
+        peer
 
 // ─── Shape assertions (§12.3) ───────────────────────────────────────────────
 
@@ -318,6 +355,105 @@ let rec private assertShape (strictEnums: bool) (path: string) (expected: RelayV
                     if typeCompatible template item then
                         assertShape false (sprintf "%s[%d]" path index) template item)
     | _ -> ()
+
+// ─── Value assertions the shape check structurally cannot make ──────────────
+//
+// `assertShape` compares TYPES, plus the closed-set fields above. Two facts this
+// corpus is supposed to pin fall outside both, so they are asserted directly —
+// and both are stated over a fixture's KIND rather than over a fixture's name, so
+// a fixture added later is covered by construction rather than by somebody
+// remembering to extend a table.
+
+/// §6.3 — a `hello.ok` advertises the capabilities the peer offers AT the
+/// negotiated profile. `capabilities` is an array of plain strings, so
+/// `assertShape` can only say "array of string" about it; a fixture that names a
+/// capability is making a claim about the implementation and must be held to it.
+///
+/// SUBSET, not equality: two conformant hosts legitimately offer different sets
+/// (one of these serves `read.affordances` and the other does not), and a corpus
+/// that demanded equality would be pinning one host's feature list as the
+/// contract.
+let private assertAdvertised (fixtureId: string) (expected: RelayValue) (actual: RelayValue) : unit =
+    let capabilitiesOf value =
+        RelayValue.field "payload" value
+        |> Option.bind (RelayValue.field "capabilities")
+        |> Option.bind RelayValue.asList
+        |> Option.defaultValue []
+        |> List.choose RelayValue.asString
+        |> Set.ofList
+
+    let offered = capabilitiesOf actual
+
+    for capability in capabilitiesOf expected do
+        Expect.isTrue
+            (offered.Contains capability)
+            (sprintf
+                "%s — the fixture names the %s capability and the peer does not advertise it (§6.3)"
+                fixtureId
+                capability)
+
+/// §7.7 — the read answers with the addressed node's own wire JSON, embedded as
+/// an object, and the revision the encoding was taken at.
+let private assertNodeJson (fixtureId: string) (peer: RelayPeer) (request: RelayValue) (actual: RelayValue) : unit =
+    let payload = defaultArg (RelayValue.field "payload" actual) (RelayValue.Obj [])
+
+    let nodeId =
+        match
+            RelayValue.field "payload" request
+            |> Option.bind (RelayValue.stringField "nodeId")
+        with
+        | Some value -> value
+        | None -> failtestf "%s — the request must name a nodeId" fixtureId
+
+    let node =
+        match RelayValue.field "node" payload with
+        | Some(RelayValue.Obj _ as value) -> value
+        | _ -> failtestf "%s — payload.node must be the node's wire JSON, embedded as an object (§7.7)" fixtureId
+
+    Expect.equal
+        (RelayValue.stringField "id" node)
+        (Some nodeId)
+        (sprintf "%s — the encoding is of the node that was asked for" fixtureId)
+
+    Expect.isTrue
+        (RelayValue.field "kind" node
+         |> Option.map RelayValue.isObject
+         |> Option.defaultValue false)
+        (sprintf "%s — a wire node carries its kind as a discriminated object (WIRE_FORMAT §3)" fixtureId)
+
+    Expect.isSome
+        (RelayValue.stringField "treeRevision" payload)
+        (sprintf "%s — the revision the encoding was taken at (§5.4, §7.7)" fixtureId)
+
+    // Rule 3 — the WHOLE subtree, never elided. Asked of the peer rather than of
+    // the fixture: the two hosts' harness trees differ, so the only host-agnostic
+    // statement of this rule is that every child the peer itself reports for this
+    // node appears inside the encoding it returned for it. An elided encoding is
+    // well-formed wire JSON for a DIFFERENT node, which is precisely the
+    // silent-discard class this entry point exists to close — so a check that
+    // only looked at well-formedness would pass the thing being guarded against.
+    let stateRequest =
+        RelayValue.Obj
+            [ Relay.RelayKey, RelayValue.Str Relay.Profile
+              "dir", RelayValue.Str "request"
+              "id", RelayValue.Str "c-subtree"
+              "type", RelayValue.Str "read.nodeState"
+              "payload", RelayValue.Obj [ "nodeId", RelayValue.Str nodeId ] ]
+
+    let childIds =
+        peer.Handle stateRequest
+        |> Option.bind (RelayValue.field "payload")
+        |> Option.bind (RelayValue.field "childIds")
+        |> Option.bind RelayValue.asList
+        |> Option.defaultValue []
+        |> List.choose RelayValue.asString
+
+    let rendered = Relay.toJson node
+
+    for childId in childIds do
+        Expect.isTrue
+            (rendered.Contains("\"" + childId + "\""))
+            (sprintf "%s — child '%s' is missing from the encoding; §7.7 rule 3 admits no elided form" fixtureId childId)
 
 let private expectString (path: string) (value: RelayValue option) : string =
     match value with
@@ -425,6 +561,14 @@ let private runExchange (fixture: Fixture) : unit =
             "payload"
             (defaultArg (RelayValue.field "payload" expected) (RelayValue.Obj []))
             (defaultArg (RelayValue.field "payload" actual) (RelayValue.Obj []))
+
+        // The value claims `assertShape` cannot make, keyed off the request TYPE
+        // so a later fixture of the same kind is covered without an edit here.
+        if fixture.ExpectedClass.IsNone then
+            match requestType with
+            | "hello" -> assertAdvertised fixture.Id expected actual
+            | "read.nodeJson" -> assertNodeJson fixture.Id peer request actual
+            | _ -> ()
 
 /// Drive one event fixture by making the peer EMIT it: subscribe, then commit a
 /// tree change, and assert the emitted envelope against the fixture's shape.
@@ -544,6 +688,13 @@ let tests =
                             "read.renderedDom"
                             "read.tree"
                             "read.findNodes"
+                            // `relay@1.3`, and covered because BOTH hosts serve
+                            // it — which is the §12.1 rule for when a minor's
+                            // fixtures land. `read.affordances` (`relay@1.1`) is
+                            // deliberately absent: one host serves it, so the
+                            // family has not reached it and demanding a fixture
+                            // here would turn the sibling host's gate red.
+                            "read.nodeJson"
                             "apply"
                             "subscribe"
                             "unsubscribe" ]

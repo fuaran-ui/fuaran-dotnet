@@ -3110,3 +3110,42 @@ against, and a host that can resolve it enforces it in its own `FormValidator`, 
 
 **Classification: minor on the pre-1.0 axis.** Additive case, additive wire, additive authoring
 surfaces, one new Warning-grade defect code.
+
+## Recorded change — 0.52.0, `read.nodeJson` on the DevTools relay (fuaran#742)
+
+**Additive, and outside the wire format entirely.** Nothing in `Fuaran.UI`'s typed tree, its
+canonical encoding, or any shipped document moves. What changes is the *relay* — the page↔extension
+`postMessage` contract specified in `DEVTOOLS_RELAY.md` and versioned independently of the wire
+profile `core@1.0` — which advances from `relay@1.1` to **`relay@1.3`** with a seventh read entry
+point, `read.nodeJson` (§7.7), and an eighth refusal class, `ENCODE_FAILED` (§9.3). The two
+intervening minors are already-specified additions this host now serves a session at: `relay@1.2`
+added only an optional `attribution` field that this peer reads for nothing.
+
+**Why a relay bump is safe for every existing client.** §6.3's profile selection — shipped here at
+0.32.0 — answers with the highest profile the CLIENT accepts and this peer can serve, and advertises
+capabilities at *that* profile. So a `relay@1.0` client keeps getting a `relay@1.0` session, is not
+told about an entry point its own contract does not define, and is refused `CAPABILITY_ABSENT` if it
+asks for one anyway. The shared conformance corpus keeps its `relay@1.0` fixtures unchanged precisely
+to hold that claim to evidence.
+
+**Surface added.**
+
+- `Fuaran.UI.Renderer.Relay.NodeJsonLookup` — `NodeMissing | Encoded of RelayValue | EncodeFailed`.
+- `Relay.RelaySurface.NodeJson: string -> NodeJsonLookup`. **This is a record field on a shipped
+  record**, so it is `FS0764` at every full-literal construction site — the 0.50.0 direction, not the
+  0.51.0 one. `Relay.surfaceOf` fills it, so a host that builds its surface through that function (the
+  supported route, and the only one the renderer uses) is unaffected; a test or host constructing a
+  `RelaySurface` literal adds one field.
+- `Relay.Profile` is `"relay@1.3"` (was `"relay@1.1"`). A literal, so a consumer that inlined it
+  recompiles.
+- `DebugGlobal.Version` is `"0.3.0"` (was `"0.2.0"`), and `window.__fuaran` gains
+  `getNodeJson(id)`. The console global's shape is DEBUG-ONLY / UNSTABLE and excluded from semver, as
+  the rest of this document records; the version is reported in `hello.ok` as `surfaceVersion` and is
+  informational there.
+
+**Why `EncodeFailed` exists when this host cannot raise it.** The canonical encoder is total over
+live trees — a value the wire format cannot carry is encoded as a sentinel string, not refused — so
+`surfaceOf` never returns that case. It is in the DU because a host whose local tree model is wider
+than the wire vocabulary otherwise has only `NODE_NOT_FOUND` available, which is a lie about a node
+that is plainly there. A closed refusal set that forces an implementation to misreport is not a
+stricter contract; it is a less truthful one.

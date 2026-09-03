@@ -71,8 +71,14 @@ open Fuaran.UI.Telemetry.Abstractions
 /// a console session written against 0.1.0 keeps working. The TS mirror does
 /// not carry the member yet, which is why the two surface versions differ; the
 /// method names and payload shapes they DO share stay parity-locked.
+///
+/// **0.3.0** adds `getNodeJson(id)` — one node's own canonical wire JSON, whole
+/// subtree included. Additive again. This one the TS mirror DOES carry, at its
+/// own `0.2.0`: the two surface-version LINES are independent (they started
+/// apart at 0.2.0/0.1.0 and stay apart), while the member's name and payload
+/// shape are parity-locked, which is the property that matters.
 [<Literal>]
-let Version = "0.2.0"
+let Version = "0.3.0"
 
 /// True iff this assembly was compiled under a DEBUG build. A Release pack
 /// sets it `false`, which makes `shouldRegister` constant-false so the whole
@@ -674,6 +680,7 @@ let helpText =
     + "  .getRenderedDom(id)       live DOM geometry (x/y/size + overflow/hidden flags)\n"
     + "  .inspectTree()            recursive structural snapshot of the whole tree\n"
     + "  .findNodes(kind)          ids of every node whose kind === <kind>\n"
+    + "  .getNodeJson(id)          one node's own canonical wire JSON, whole subtree\n"
     + "  .getAffordances(mod?)     declared natural-language commands, values + aliases\n"
     + "  .apply(op)                policy-gated TreeOp mutation (JSON string or object; default-deny)\n"
     + "  .treeRevision()           opaque token identifying the current tree state\n"
@@ -685,6 +692,13 @@ let helpText =
 #if FABLE_COMPILER
 open Fable.Core
 open Fable.Core.JsInterop
+
+/// Read canonical JSON text back into a live JS object, for `getNodeJson`. The
+/// canonical encoder emits text; a console caller wants an object it can expand
+/// in the inspector, and this is a structured-clone-safe conversion of one to
+/// the other. Nothing else in this module needs a JSON reader.
+[<Emit("JSON.parse($0)")>]
+let private jsonParse (text: string) : obj = jsNative
 
 // ─── Live DOM geometry (getRenderedDom) ─────────────────────────────────────
 //
@@ -1009,6 +1023,30 @@ let buildGlobalWith
           "getRenderedDom", box (System.Func<string, obj>(fun id -> geometryObj id))
           "inspectTree", box (System.Func<obj>(fun () -> treeIntrospectionToObj (inspectTree tree)))
           "findNodes", box (System.Func<string, obj>(fun kind -> box (Array.ofList (findNodesByKind kind tree))))
+          // One node's own canonical wire JSON, as a live JS object. The other
+          // reads report what a node IS structurally; this one reports what its
+          // properties HOLD, which is what makes a console (or a relay client)
+          // able to read-modify-write rather than only write.
+          //
+          // The rendered canonical string re-parsed, deliberately: what a caller
+          // wants here is the encoding a wire consumer would see, byte decisions
+          // and all, and `JSON.parse` of the canonical text is the shortest
+          // honest route to it on this pipeline. The relay's own projection
+          // (`Relay.surfaceOf`) takes the encoder's JVal instead, because it must
+          // also work where there is no `JSON`.
+          //
+          // Values the wire format cannot carry — closures, opaque host payloads
+          // — appear as the encoder's sentinel strings. That IS the canonical
+          // encoding, so it is returned rather than refused; it also means the
+          // result is for reading, not for feeding back into `apply` as a node
+          // copy, since a sentinel decodes as the literal string it looks like.
+          "getNodeJson",
+          box (
+              System.Func<string, obj>(fun id ->
+                  match findNode id tree with
+                  | Some node -> jsonParse (Fuaran.UI.Generated.encodeNode node)
+                  | None -> createObj [ "error", box (sprintf "Node '%s' not found in tree." id) ])
+          )
           // Served from the registered providers, NOT from the tree: what a
           // page declares it understands is the host's declaration, and this
           // surface relays it rather than inferring it.

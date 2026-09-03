@@ -121,6 +121,7 @@ let private testSurface: RelaySurface =
       Geometry = fun _ -> None
       FindNodes = fun _ -> []
       Affordances = Affordances.enumerate
+      NodeJson = fun _ -> NodeJsonLookup.NodeMissing
       Apply = fun _ -> DebugGlobal.ApplyResult.Unwired "read-only" }
 
 let private peer () =

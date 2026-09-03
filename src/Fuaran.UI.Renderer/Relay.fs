@@ -9,7 +9,7 @@ module Fuaran.UI.Renderer.Relay
 //  script — can inspect, and where the host permits edit, a live Fuaran UI.
 //
 //  The contract is specified language-neutrally in the wire-format
-//  specification repository (`DEVTOOLS_RELAY.md`, profile `relay@1.1`) with an
+//  specification repository (`DEVTOOLS_RELAY.md`, profile `relay@1.3`) with an
 //  executable fixture family beside it; this module is written to that document
 //  and pinned against those fixtures by the .NET test runner. Section
 //  references in the comments below are to that document. F# is the SECOND
@@ -43,6 +43,9 @@ module Fuaran.UI.Renderer.Relay
 // ============================================================================
 
 open Fuaran.UI.Types
+// `JVal` — the canonical encoder's intermediate representation, which is how a
+// node's own wire JSON reaches the relay as STRUCTURE rather than as text (§7.7).
+open Fuaran.Core
 
 #if FABLE_COMPILER
 open Fable.Core
@@ -54,12 +57,18 @@ open Fable.Core.JsInterop
 /// (§6.3, and see `selectProfile`), so advancing this is additive for every
 /// existing client.
 [<Literal>]
-let Profile = "relay@1.1"
+let Profile = "relay@1.3"
 
-/// The profile the read set below was closed at. `read.affordances` is the
-/// `relay@1.1` addition; everything else is `relay@1.0`.
+/// The minor that introduced `read.affordances` (§7.6).
 [<Literal>]
 let private AffordancesMinor = 1
+
+/// The minor that introduced `read.nodeJson` (§7.7). `relay@1.2` added no
+/// request type — it added the optional `attribution.actorClass` field (§8.2.1),
+/// which this peer reads for nothing (§8.2) and therefore needs no gate for — so
+/// the read set skips from 1 to 3 with no gap in the contract.
+[<Literal>]
+let private NodeJsonMinor = 3
 
 /// The envelope field whose presence marks a message as a relay message
 /// (§3.2 check 4, §4). `$`-prefixed to mark it spec-reserved.
@@ -204,6 +213,25 @@ type SlotLookup =
     | NodeMissing
     | Slot of resolution: DebugGlobal.SlotResolution * kind: string
 
+/// Looking up a node's own canonical wire encoding (§7.7). Three outcomes,
+/// because the contract distinguishes three: the node is not there
+/// (`NODE_NOT_FOUND`), the node is there and encodes (`Encoded`), or the node is
+/// there and this host cannot render it in the wire vocabulary
+/// (`ENCODE_FAILED`).
+///
+/// **`EncodeFailed` is unreachable from this host's own surface**, and that is
+/// deliberate rather than an oversight: the canonical encoder is TOTAL over live
+/// trees — a value the wire format cannot carry is encoded as a sentinel string,
+/// not refused — so `surfaceOf` never returns it. The case exists so a host
+/// whose local tree model is wider than the wire vocabulary has an honest answer
+/// available at this seam instead of being forced to lie with `NodeMissing`
+/// about a node that exists.
+[<RequireQualifiedAccess>]
+type NodeJsonLookup =
+    | NodeMissing
+    | Encoded of node: RelayValue
+    | EncodeFailed
+
 /// The host's in-page introspection surface, as the peer consumes it. A record
 /// of functions rather than the `window.__fuaran` POJO: the peer is pure over
 /// this, so a test can hand it a miniature host.
@@ -228,6 +256,11 @@ type RelaySurface =
         /// with none answers the empty enumeration, which is a well-formed
         /// answer and not an error (§7.6).
         Affordances: string option -> Affordances.AffordanceEnumeration
+        /// `relay@1.3` — a node's OWN canonical wire JSON, as structure (§7.7).
+        /// The whole subtree, never elided, with the encoder's sentinels carried
+        /// verbatim: an encoding with sentinels IS the canonical encoding, and a
+        /// host must not refuse the read because a node contains one.
+        NodeJson: string -> NodeJsonLookup
         /// The host's gated apply, taking the canonical JSON this peer produced
         /// from the client's structured op (§8.2).
         Apply: string -> DebugGlobal.ApplyResult
@@ -387,7 +420,8 @@ let private readTypes =
 /// Keeping the minor beside the name is what lets `capabilitiesFor` answer a
 /// client at the profile it negotiated instead of advertising entry points that
 /// do not exist in the profile it speaks.
-let private versionedReadTypes = [ AffordancesMinor, "read.affordances" ]
+let private versionedReadTypes =
+    [ AffordancesMinor, "read.affordances"; NodeJsonMinor, "read.nodeJson" ]
 
 let private requestTypes =
     "hello" :: "apply" :: "subscribe" :: "unsubscribe" :: readTypes
@@ -582,6 +616,31 @@ let private moduleAffordanceValue (m: Affordances.ModuleAffordance) : RelayValue
 let private affordancesPayload (enumeration: Affordances.AffordanceEnumeration) : (string * RelayValue) list =
     [ "modules", RelayValue.Arr(enumeration.Modules |> List.map moduleAffordanceValue) ]
 
+// ─── §7.7 `read.nodeJson` — the node's own canonical wire JSON ──────────────
+//
+// The canonical encoder's intermediate representation (`Generated.encodeNodeJson`
+// — Phase 694's JVal-level accessor, published precisely so a host codec can
+// splice a generated encoding into a larger document) read straight into the
+// transported shape. NOT the rendered string re-parsed: the relay carries the
+// node as an EMBEDDED OBJECT (§7.7 rule 1, mirroring §8.2's direction), so
+// rendering it to text only to parse it back would add a lossy round trip and a
+// JSON reader this module does not otherwise need — and `ofJs` is Fable-only, so
+// there is no reader available on the .NET pipeline at all.
+//
+// `JVal` has no null case, so the map is total by construction. `JInt` and
+// `JFloat` both land on `Num`: JSON has one number type, and the relay carries
+// no byte-parity obligation (§1.2), so each pipeline's own number rendering is
+// correct on its own side.
+
+let rec private ofJVal (value: JVal) : RelayValue =
+    match value with
+    | JStr s -> RelayValue.Str s
+    | JInt i -> RelayValue.Num(float i)
+    | JBool b -> RelayValue.Bool b
+    | JFloat f -> RelayValue.Num f
+    | JArr items -> RelayValue.Arr(items |> List.map ofJVal)
+    | JObj fields -> RelayValue.Obj(fields |> List.map (fun (key, item) -> key, ofJVal item))
+
 let private geometryPayload (geometry: DebugGlobal.NodeGeometry) : (string * RelayValue) list =
     [ "x", RelayValue.Num geometry.X
       "y", RelayValue.Num geometry.Y
@@ -732,6 +791,42 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
         | Some(RelayValue.Str moduleId) ->
             response id (requestType + ".ok") (affordancesPayload (surface.Affordances(Some moduleId)))
         | Some _ -> malformed id requestType "moduleId must be a string when present." "payload.moduleId"
+
+    /// §7.7 — the addressed node's own canonical wire JSON, plus the revision it
+    /// was taken at, so a client deriving an edit from this read can tell at
+    /// commit time whether the tree moved underneath it.
+    ///
+    /// The revision is read AFTER the encoding, from the same surface instance
+    /// the encoding came from, so the pair is a consistent observation rather
+    /// than two observations of possibly-different trees.
+    let readNodeJson (surface: RelaySurface) id requestType payload =
+        match RelayValue.stringField "nodeId" payload with
+        | None -> malformed id requestType "nodeId must be a string." "payload.nodeId"
+        | Some nodeId ->
+            match surface.NodeJson nodeId with
+            | NodeJsonLookup.NodeMissing ->
+                refusalWith
+                    id
+                    requestType
+                    "NODE_NOT_FOUND"
+                    (sprintf "Node '%s' not found in tree." nodeId)
+                    (Some [ "nodeId", RelayValue.Str nodeId ])
+            // The node exists and this host cannot render it in the wire
+            // vocabulary. Distinct from NODE_NOT_FOUND on purpose: refusing with
+            // "no such node" about a node that IS there would be a lie, and the
+            // client's only remedy — look somewhere else — would be the wrong one.
+            | NodeJsonLookup.EncodeFailed ->
+                refusalWith
+                    id
+                    requestType
+                    "ENCODE_FAILED"
+                    (sprintf "Node '%s' has no canonical wire encoding on this host." nodeId)
+                    (Some [ "nodeId", RelayValue.Str nodeId ])
+            | NodeJsonLookup.Encoded node ->
+                response
+                    id
+                    (requestType + ".ok")
+                    [ "node", node; "treeRevision", RelayValue.Str(surface.TreeRevision()) ]
 
     // ── apply (§8) ──────────────────────────────────────────────────────────
 
@@ -1002,6 +1097,7 @@ let createPeer (surfaceSource: unit -> RelaySurface option) (options: RelayOptio
                                         | "read.renderedDom" -> Some(readRenderedDom surface id requestType payload)
                                         | "read.findNodes" -> Some(readFindNodes surface id requestType payload)
                                         | "read.affordances" -> Some(readAffordances surface id requestType payload)
+                                        | "read.nodeJson" -> Some(readNodeJson surface id requestType payload)
                                         | "apply" -> Some(applyOp surface id requestType payload)
                                         | "subscribe" -> Some(subscribe surface id requestType payload)
                                         | "unsubscribe" -> Some(unsubscribe id requestType payload)
@@ -1053,6 +1149,16 @@ let surfaceOf
       // render, so a captured enumeration would be the one from the render that
       // happened to precede the registration.
       Affordances = Affordances.enumerate
+      // The canonical encoder is total over live trees (a value the wire format
+      // cannot carry becomes a sentinel string, never a refusal), so this leg
+      // never answers `EncodeFailed`. §7.7 rule 2: an encoding WITH sentinels is
+      // the canonical encoding, and refusing the read because a node contains one
+      // would withhold exactly the answer the client asked for.
+      NodeJson =
+        fun id ->
+            match DebugGlobal.findNode id tree with
+            | None -> NodeJsonLookup.NodeMissing
+            | Some node -> NodeJsonLookup.Encoded(ofJVal (Fuaran.UI.Generated.encodeNodeJson node))
       Apply = DebugGlobal.applyResult runtime options }
 
 // ─── The published live surface ─────────────────────────────────────────────

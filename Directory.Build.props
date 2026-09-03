@@ -448,7 +448,14 @@
          move, and `allowFreeText` omits at `false` so the shortest combobox is
          the constrained one. See STABILITY.md "Recorded change — 0.51.0,
          `FormFieldKind.Combobox`". -->
-    <Version>0.51.0</Version>
+    <!-- 0.52.0 (Phase 742) - `read.nodeJson` on the DevTools relay, which advances
+         the relay profile to `relay@1.3`. Outside the wire format entirely: no
+         shipped document's bytes move and the typed tree is untouched. Source-
+         breaking in one narrow place - `Relay.RelaySurface` gains a field, so a
+         full-literal construction of that record is FS0764; `Relay.surfaceOf`
+         (the supported route) fills it. See STABILITY.md "Recorded change -
+         0.52.0, `read.nodeJson` on the DevTools relay". -->
+    <Version>0.52.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
