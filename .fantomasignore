@@ -1,5 +1,9 @@
-# Auto-generated F# synced from Fuaran-Core's IDL codegen (Phase 671) — do not
-# reformat it. The generator's output is the source of truth, and
-# scripts/sync-generated-layer.ps1 -Check byte-compares against it; a Fantomas
-# pass here would break that guard. Mirrors Fuaran-Core's own .fantomasignore.
+# Auto-generated F# — do not reformat it. Since Phase 1181 it is emitted IN THIS
+# REPO, from src/Fuaran.UI.Idl/{idl,support}.json through the packaged IDL engine,
+# and src/Fuaran.UI.Idl.Tests byte-compares the committed file against a fresh
+# emission on every `-- Check` and on every push. A Fantomas pass here would break
+# that guard, exactly as it would have broken the byte-copy guard this replaced.
+#
+# To change this file: change the vocabulary in src/Fuaran.UI.Idl/, then
+# `FUARAN_REGEN=1 dotnet run --project src/Fuaran.UI.Idl.Tests`.
 src/Fuaran.UI/Generated.fs

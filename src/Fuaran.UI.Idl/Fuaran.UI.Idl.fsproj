@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- NOT packable, deliberately. This project is the DOMAIN'S OWN DECLARATION of
+         its wire vocabulary — the `Idl` value, the declared-support record and the
+         host-prelude reference — and its only consumer is the regeneration check
+         that emits `src/Fuaran.UI/Generated.fs`. Nothing shipped reads it: the
+         generated structural layer is committed SOURCE inside Fuaran.UI, so a
+         consumer of the language tier needs the emission, never the emitter.
+
+         Two consequences that are the reason for the choice rather than side
+         effects of it. The `Fuaran.Core.Idl` / `.Codegen` dependency stops here and
+         never reaches a shipped `Fuaran.UI.*` package, which is what keeps the
+         published surface on its FSharp.Core-only floor. And publishing a package id
+         is close to irreversible on a public repo, so a package for the vocabulary
+         is a deliberate product decision to take on its own evidence — not a side
+         effect of moving three files into the repo that owns them.
+
+         The vocabulary is still PUBLISHED in the sense that matters: `idl.json` and
+         `support.json` are committed beside these sources and are the canonical,
+         language-neutral form any tool would read. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Vocabulary.fs" />
+    <Compile Include="Support.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <!-- The IDL model + the canonical `idl.json` codec. -->
+    <PackageReference Include="Fuaran.Core.Idl" />
+    <!-- The generator + `support.json`'s codec. Build-time only by construction —
+         it emits source, so its contract is the shape of what it emits. -->
+    <PackageReference Include="Fuaran.Core.Idl.Codegen" />
+  </ItemGroup>
+</Project>

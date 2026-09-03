@@ -4,20 +4,6 @@ module Fuaran.UI.Generated
 open Fuaran.Core
 
 [<RequireQualifiedAccess>]
-type HeadingVariant =
-    | Standard
-    | Eyebrow
-    | Caption
-    | Lead
-
-/// Phase 812 — anti-scraper render strategy for a `Link`. `Email` marks a
-/// `mailto:` link whose address must not appear in plaintext in emitted HTML
-/// (the renderers own the emission strategy).
-[<RequireQualifiedAccess>]
-type LinkProtection =
-    | Email
-
-[<RequireQualifiedAccess>]
 type BadgeVariant =
     | Neutral
     | Brand
@@ -27,86 +13,11 @@ type BadgeVariant =
     | Info
 
 [<RequireQualifiedAccess>]
-type Orientation =
-    | Vertical
-    | Horizontal
-
-[<RequireQualifiedAccess>]
 type BoxRole =
     | Dashboard
     | Card
     | Group
     | Separator
-
-[<RequireQualifiedAccess>]
-type MathDisplay =
-    | Inline
-    | Block
-
-[<RequireQualifiedAccess>]
-type ImageVariant =
-    | Default
-    | Avatar
-    | Rounded
-
-[<RequireQualifiedAccess>]
-type ImageFit =
-    | Natural
-    | Cover
-    | Contain
-
-[<RequireQualifiedAccess>]
-type ImageAspect =
-    | Natural
-    | Square
-    | FourThree
-    | ThreeTwo
-    | SixteenNine
-
-[<RequireQualifiedAccess>]
-type ImageLoading =
-    | Eager
-    | Lazy
-
-[<RequireQualifiedAccess>]
-type EmbedPermission =
-    | AllowScripts
-    | AllowSameOrigin
-    | AllowForms
-    | AllowFullscreen
-
-[<RequireQualifiedAccess>]
-type ToneVariant =
-    | Default
-    | Subdued
-    | Brand
-    | Success
-    | Warning
-    | Critical
-    | Info
-
-[<RequireQualifiedAccess>]
-type StyleWeight =
-    | Compact
-    | Standard
-    | Spacious
-
-[<RequireQualifiedAccess>]
-type Emphasis =
-    | Quiet
-    | Normal
-    | Loud
-
-[<RequireQualifiedAccess>]
-type TrendPolarity =
-    | HigherIsBetter
-    | LowerIsBetter
-
-[<RequireQualifiedAccess>]
-type ScrollOrientation =
-    | Vertical
-    | Horizontal
-    | Both
 
 [<RequireQualifiedAccess>]
 type ButtonVariant =
@@ -116,77 +27,32 @@ type ButtonVariant =
     | Destructive
 
 [<RequireQualifiedAccess>]
-type ModalityKind =
-    | Modal
-    | Popover
+type ChannelDirection =
+    | OutOnly
+    | TwoWay
 
+/// Whether a chart writes its values directly onto the picture, and where
+/// (Phase 881).
+///
+/// A WIRE vocabulary, on the D8 line's semantic side: whether the reader is
+/// meant to READ THE NUMBERS or read the shape is the author's meaning; the
+/// type size, the offsets and the fit rule that realise it stay the host's, in
+/// `ChartStyle`.
+///
+/// THE CASE SET IS TWO, AND THAT IS THE POINT. There is deliberately no
+/// "all points" case: a number on every interior point is the clutter this
+/// vocabulary exists to avoid, so no shape of this API can request one. `Ends`
+/// names the selective placements that read — a bar's cap, a line's last point
+/// — and the set is closed there. Adding an all-points case later would not be
+/// an extension; it would retract the guarantee.
 [<RequireQualifiedAccess>]
-type FileReadEncoding =
-    | Text
-    | Base64
-    | DataUrl
-
-[<RequireQualifiedAccess>]
-type DateVariant =
-    | Date
-    | Time
-    | DateTime
-
-[<RequireQualifiedAccess>]
-type TextFormat =
-    | Email
-    | Url
-    | Tel
-
-[<RequireQualifiedAccess>]
-type CompareOp =
-    | Eq
-    | Neq
-    | Lt
-    | Lte
-    | Gt
-    | Gte
-
-[<RequireQualifiedAccess>]
-type DateStyle =
-    | Short
-    | Medium
-    | Long
-    | Full
-
-[<RequireQualifiedAccess>]
-type RelativeTimeUnit =
-    | Second
-    | Minute
-    | Hour
-    | Day
-    | Week
-    | Month
-    | Year
-
-/// Phase 819 — how `Format.Duration` / `CellFormat.Duration` interpret the
-/// numeric source: the unit the raw float counts.
-[<RequireQualifiedAccess>]
-type DurationUnit =
-    | Seconds
-    | Minutes
-    | Hours
-
-/// Phase 819 — presentation style for a duration: `Compact` "1h 20m",
-/// `Clock` "1:20:00", `Long` "1 hour 20 minutes".
-[<RequireQualifiedAccess>]
-type DurationStyle =
-    | Compact
-    | Clock
-    | Long
-
-/// Phase 821 — size class for the standalone `Icon` display kind; `Medium`
-/// is the default and is omitted on the wire.
-[<RequireQualifiedAccess>]
-type IconSize =
-    | Small
-    | Medium
-    | Large
+type ChartDataLabels =
+    /// No data labels (the shipped default, and what an absent field means).
+    | Off
+    /// Label the ENDS only: every bar's cap (a stacked bar's TOTAL at the stack
+    /// cap, never its interior segments) and the last point of every line or
+    /// area edge.
+    | Ends
 
 [<RequireQualifiedAccess>]
 type ChartKind =
@@ -225,29 +91,6 @@ type ChartLegendPosition =
     /// No legend box at all.
     | None
 
-/// Whether a chart writes its values directly onto the picture, and where
-/// (Phase 881).
-///
-/// A WIRE vocabulary, on the D8 line's semantic side: whether the reader is
-/// meant to READ THE NUMBERS or read the shape is the author's meaning; the
-/// type size, the offsets and the fit rule that realise it stay the host's, in
-/// `ChartStyle`.
-///
-/// THE CASE SET IS TWO, AND THAT IS THE POINT. There is deliberately no
-/// "all points" case: a number on every interior point is the clutter this
-/// vocabulary exists to avoid, so no shape of this API can request one. `Ends`
-/// names the selective placements that read — a bar's cap, a line's last point
-/// — and the set is closed there. Adding an all-points case later would not be
-/// an extension; it would retract the guarantee.
-[<RequireQualifiedAccess>]
-type ChartDataLabels =
-    /// No data labels (the shipped default, and what an absent field means).
-    | Off
-    /// Label the ENDS only: every bar's cap (a stacked bar's TOTAL at the stack
-    /// cap, never its interior segments) and the last point of every line or
-    /// area edge.
-    | Ends
-
 /// What a chart's x axis MEANS — the scale its x column is read on (Phase 882).
 ///
 /// A WIRE vocabulary on the D8 line's semantic side: whether a column is a set
@@ -275,16 +118,26 @@ type ChartXScale =
     | Temporal
 
 [<RequireQualifiedAccess>]
-type HashStrictness =
-    | StrictReplay
-    | AdvisoryWarning
-    | Enforced
+type CompareOp =
+    | Eq
+    | Neq
+    | Lt
+    | Lte
+    | Gt
+    | Gte
 
 [<RequireQualifiedAccess>]
-type HostEffect =
-    | Pure
-    | ReadsHost
-    | WritesHost
+type DateStyle =
+    | Short
+    | Medium
+    | Long
+    | Full
+
+[<RequireQualifiedAccess>]
+type DateVariant =
+    | Date
+    | Time
+    | DateTime
 
 [<RequireQualifiedAccess>]
 type DeterminismSource =
@@ -293,30 +146,121 @@ type DeterminismSource =
     | Random
     | Network
 
+/// Phase 819 — presentation style for a duration: `Compact` "1h 20m",
+/// `Clock` "1:20:00", `Long` "1 hour 20 minutes".
 [<RequireQualifiedAccess>]
-type ChannelDirection =
-    | OutOnly
-    | TwoWay
+type DurationStyle =
+    | Compact
+    | Clock
+    | Long
+
+/// Phase 819 — how `Format.Duration` / `CellFormat.Duration` interpret the
+/// numeric source: the unit the raw float counts.
+[<RequireQualifiedAccess>]
+type DurationUnit =
+    | Seconds
+    | Minutes
+    | Hours
 
 [<RequireQualifiedAccess>]
-type TextAnchor =
-    | Start
-    | Middle
-    | End
+type EmbedPermission =
+    | AllowScripts
+    | AllowSameOrigin
+    | AllowForms
+    | AllowFullscreen
 
 [<RequireQualifiedAccess>]
-type StyleRole =
-    | None
-    | Eyebrow
-    | Data
-    | Lede
-    | Caption
+type Emphasis =
+    | Quiet
+    | Normal
+    | Loud
+
+[<RequireQualifiedAccess>]
+type FileReadEncoding =
+    | Text
+    | Base64
+    | DataUrl
 
 [<RequireQualifiedAccess>]
 type FontVoice =
     | Default
     | Display
     | Structural
+
+[<RequireQualifiedAccess>]
+type HashStrictness =
+    | StrictReplay
+    | AdvisoryWarning
+    | Enforced
+
+[<RequireQualifiedAccess>]
+type HeadingVariant =
+    | Standard
+    | Eyebrow
+    | Caption
+    | Lead
+
+[<RequireQualifiedAccess>]
+type HostEffect =
+    | Pure
+    | ReadsHost
+    | WritesHost
+
+/// Phase 821 — size class for the standalone `Icon` display kind; `Medium`
+/// is the default and is omitted on the wire.
+[<RequireQualifiedAccess>]
+type IconSize =
+    | Small
+    | Medium
+    | Large
+
+[<RequireQualifiedAccess>]
+type ImageAspect =
+    | Natural
+    | Square
+    | FourThree
+    | ThreeTwo
+    | SixteenNine
+
+[<RequireQualifiedAccess>]
+type ImageFit =
+    | Natural
+    | Cover
+    | Contain
+
+[<RequireQualifiedAccess>]
+type ImageLoading =
+    | Eager
+    | Lazy
+
+[<RequireQualifiedAccess>]
+type ImageVariant =
+    | Default
+    | Avatar
+    | Rounded
+
+/// Phase 812 — anti-scraper render strategy for a `Link`. `Email` marks a
+/// `mailto:` link whose address must not appear in plaintext in emitted HTML
+/// (the renderers own the emission strategy).
+[<RequireQualifiedAccess>]
+type LinkProtection =
+    | Email
+
+[<RequireQualifiedAccess>]
+type LiveRegionKind =
+    | Polite
+    | Assertive
+    | Off
+
+[<RequireQualifiedAccess>]
+type MathDisplay =
+    | Inline
+    | Block
+
+[<RequireQualifiedAccess>]
+type ModalityKind =
+    | Modal
+    | Popover
 
 [<RequireQualifiedAccess>]
 type Motion =
@@ -330,15 +274,66 @@ type Motion =
     | ExpandCollapse
 
 [<RequireQualifiedAccess>]
-type LiveRegionKind =
-    | Polite
-    | Assertive
-    | Off
+type Orientation =
+    | Vertical
+    | Horizontal
+
+[<RequireQualifiedAccess>]
+type RelativeTimeUnit =
+    | Second
+    | Minute
+    | Hour
+    | Day
+    | Week
+    | Month
+    | Year
+
+[<RequireQualifiedAccess>]
+type ScrollOrientation =
+    | Vertical
+    | Horizontal
+    | Both
 
 [<RequireQualifiedAccess>]
 type SortDirection =
     | Asc
     | Desc
+
+[<RequireQualifiedAccess>]
+type StyleRole =
+    | None
+    | Eyebrow
+    | Data
+    | Lede
+    | Caption
+
+[<RequireQualifiedAccess>]
+type StyleWeight =
+    | Compact
+    | Standard
+    | Spacious
+
+[<RequireQualifiedAccess>]
+type TextAnchor =
+    | Start
+    | Middle
+    | End
+
+[<RequireQualifiedAccess>]
+type TextFormat =
+    | Email
+    | Url
+    | Tel
+
+[<RequireQualifiedAccess>]
+type ToneVariant =
+    | Default
+    | Subdued
+    | Brand
+    | Success
+    | Warning
+    | Critical
+    | Info
 
 [<RequireQualifiedAccess>]
 type TrackKind =
@@ -348,10 +343,27 @@ type TrackKind =
     | Chapters
 
 [<RequireQualifiedAccess>]
-type TextSource =
-    | Literal of text: string
-    | Bound of binding: Binding<string>
-    | I18n of key: string * args: Map<string, JVal>
+type TrendPolarity =
+    | HigherIsBetter
+    | LowerIsBetter
+
+[<RequireQualifiedAccess>]
+type Action<'Msg> =
+    | Chain of ops: Action<'Msg> list
+    | WriteToClipboard of text: string
+    | Dispatch of msg: ('Msg)
+    | Invoke of capabilityId: string * args: InvokeArg list
+    | ReadFileBody of fileRef: string * fileHandle: (obj option) * encoding: FileReadEncoding * onRead: (string -> 'Msg) option
+    | Call of endpoint: string * onResult: (obj -> 'Msg) option * into: CallResultTarget option
+    | Navigate of route: string
+    | CommitLocal of nodeId: string
+    | Notify of channel: string * payload: JVal
+    // Phase 818 — `valueFrom` (a Binding evaluated at dispatch time inside the
+    // existing gate) is a SIBLING of the literal `value`; decode enforces
+    // value XOR valueFrom. `value` became an option in the same change so the
+    // valueFrom-only wire shape is representable without a placeholder.
+    | SetState of key: string * value: JVal option * valueFrom: Binding<JVal> option
+    | AiTool of toolName: string * args: JVal
 
 and [<RequireQualifiedAccess>] Binding<'T> =
     | Static of value: 'T option
@@ -371,6 +383,10 @@ and [<RequireQualifiedAccess>] Binding<'T> =
     | Transform of source: TransformSource * pipeline: Fuaran.Core.Transform list * ``params``: TransformParam list option
     | Invoke of capabilityId: string * args: InvokeArg list
 
+and [<RequireQualifiedAccess>] CallResultTarget =
+    | State of key: string
+    | Query of name: string
+
 and [<RequireQualifiedAccess>] CellFormat =
     | None
     | Number of decimals: int option
@@ -386,52 +402,31 @@ and [<RequireQualifiedAccess>] CellFormat =
     | RelativeTime of unit: RelativeTimeUnit
     | Custom of fn: (Fuaran.UI.HostPrelude.CellValue -> string)
 
-and [<RequireQualifiedAccess>] Action<'Msg> =
-    | Chain of ops: Action<'Msg> list
-    | WriteToClipboard of text: string
-    | Dispatch of msg: ('Msg)
-    | Invoke of capabilityId: string * args: InvokeArg list
-    | ReadFileBody of fileRef: string * fileHandle: (obj option) * encoding: FileReadEncoding * onRead: (string -> 'Msg) option
-    | Call of endpoint: string * onResult: (obj -> 'Msg) option * into: CallResultTarget option
-    | Navigate of route: string
-    | CommitLocal of nodeId: string
-    | Notify of channel: string * payload: JVal
-    // Phase 818 — `valueFrom` (a Binding evaluated at dispatch time inside the
-    // existing gate) is a SIBLING of the literal `value`; decode enforces
-    // value XOR valueFrom. `value` became an option in the same change so the
-    // valueFrom-only wire shape is representable without a placeholder.
-    | SetState of key: string * value: JVal option * valueFrom: Binding<JVal> option
-    | AiTool of toolName: string * args: JVal
+and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
+    | Text
+    | Numeric
+    | Date
+    | Editable of onEdit: (Fuaran.Core.Row * Fuaran.UI.HostPrelude.CellValue -> Action<'Msg>) option
+    | Checkbox of get: (Fuaran.Core.Row -> bool) * onToggle: (Fuaran.Core.Row * bool -> Action<'Msg>) option
+    | Button of label: TextSource * onClick: (Fuaran.Core.Row -> Action<'Msg>) option
+    | ButtonGroup of buttons: ButtonGroupItem<'Msg> list
+    | Link of hrefFn: (Fuaran.Core.Row -> string) * labelFn: (Fuaran.Core.Row -> TextSource)
+    | Pill of labelFn: (Fuaran.Core.Row -> TextSource) * toneFn: (Fuaran.Core.Row -> ToneVariant)
+    | TonedPill of field: string * map: Map<string, ToneVariant> * ``default``: ToneVariant
+    | Progress of fractionFn: (Fuaran.Core.Row -> float) * labelFn: (Fuaran.Core.Row -> TextSource) option
+    | Custom of fn: ((Fuaran.Core.Row -> JVal) -> Node<'Msg>)
 
-and [<RequireQualifiedAccess>] CallResultTarget =
-    | State of key: string
-    | Query of name: string
-
-and [<RequireQualifiedAccess>] Format =
-    | Number of decimals: int option
-    | Currency of isoCode: string
-    | Percent of decimals: int option
-    | Date of dateStyle: DateStyle
-    | RelativeTime of unit: RelativeTimeUnit
-    /// Phase 819 — locale-independent duration formatting: the numeric
-    /// source counts `unit`s, rendered per `style`.
-    | Duration of unit: DurationUnit * style: DurationStyle
-
-and [<RequireQualifiedAccess>] LocaleSource =
-    | Ambient
-    | Explicit of tag: string
-
-and [<RequireQualifiedAccess>] LocalFlushTrigger =
-    | OnBlur
-    | OnSubmit
-    | OnDebounce of milliseconds: int
-    | OnCommitAction
-
-and [<RequireQualifiedAccess>] LayoutMode =
+and [<RequireQualifiedAccess>] ColumnWidth =
     | Auto
-    | Flex of direction: Orientation * wrap: bool * gap: int option
-    | Grid of cols: int * templateColumns: string option * gap: int option
-    | Masonry of cols: int * gap: int option
+    | Fixed of pixels: int
+    | Flex of weight: float
+
+and [<RequireQualifiedAccess>] CurveCommand =
+    | MoveTo of ``to``: DrawPoint
+    | LineTo of ``to``: DrawPoint
+    | CubicTo of control1: DrawPoint * control2: DrawPoint * ``to``: DrawPoint
+    | QuadraticTo of control: DrawPoint * ``to``: DrawPoint
+    | Close
 
 and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | Text of value: Binding<string> option * onChange: (string -> Action<'Msg>) option
@@ -447,46 +442,15 @@ and [<RequireQualifiedAccess>] FormFieldKind<'Msg> =
     | DateRange of value: Binding<DateRangePair> option * onChange: (string * string -> Action<'Msg>) option * variant: DateVariant * min: string option * max: string option * step: float option
     | Combobox of allowFreeText: bool * onChange: (string option -> Action<'Msg>) option * options: Binding<SelectOption list> * value: Binding<string> option
 
-and [<RequireQualifiedAccess>] MediaKind =
-    | Video of autoplay: bool * poster: Binding<string> option
-    | Audio
-
-and [<RequireQualifiedAccess>] ColumnWidth =
-    | Auto
-    | Fixed of pixels: int
-    | Flex of weight: float
-
-and [<RequireQualifiedAccess>] CellKindErased<'Msg> =
-    | Text
-    | Numeric
-    | Date
-    | Editable of onEdit: (Fuaran.Core.Row * Fuaran.UI.HostPrelude.CellValue -> Action<'Msg>) option
-    | Checkbox of get: (Fuaran.Core.Row -> bool) * onToggle: (Fuaran.Core.Row * bool -> Action<'Msg>) option
-    | Button of label: TextSource * onClick: (Fuaran.Core.Row -> Action<'Msg>) option
-    | ButtonGroup of buttons: ButtonGroupItem<'Msg> list
-    | Link of hrefFn: (Fuaran.Core.Row -> string) * labelFn: (Fuaran.Core.Row -> TextSource)
-    | Pill of labelFn: (Fuaran.Core.Row -> TextSource) * toneFn: (Fuaran.Core.Row -> ToneVariant)
-    | TonedPill of field: string * map: Map<string, ToneVariant> * ``default``: ToneVariant
-    | Progress of fractionFn: (Fuaran.Core.Row -> float) * labelFn: (Fuaran.Core.Row -> TextSource) option
-    | Custom of fn: ((Fuaran.Core.Row -> JVal) -> Node<'Msg>)
-
-and [<RequireQualifiedAccess>] HoleValueSpace =
-    | IntRange of min: int * max: int
-    | FloatRange of min: float * max: float
-    | StringLen of minLen: int * maxLen: int
-    | Enum of choices: string list
-    | AnyString
-
-and [<RequireQualifiedAccess>] Scalar =
-    | Int of value: int
-    | Float of value: float
-    | Bool of value: bool
-    | Str of value: string
-
-and [<RequireQualifiedAccess>] HoleDecl =
-    | Value of name: string * space: HoleValueSpace * ``default``: Scalar option
-    | Slot of name: string * kindConstraint: string option
-    | Repeat of name: string * countSpace: HoleValueSpace
+and [<RequireQualifiedAccess>] Format =
+    | Number of decimals: int option
+    | Currency of isoCode: string
+    | Percent of decimals: int option
+    | Date of dateStyle: DateStyle
+    | RelativeTime of unit: RelativeTimeUnit
+    /// Phase 819 — locale-independent duration formatting: the numeric
+    /// source counts `unit`s, rendered per `style`.
+    | Duration of unit: DurationUnit * style: DurationStyle
 
 and [<RequireQualifiedAccess>] FragmentArg<'Msg> =
     | Int of value: int
@@ -495,12 +459,43 @@ and [<RequireQualifiedAccess>] FragmentArg<'Msg> =
     | Str of value: string
     | SlotArg of tree: Node<'Msg>
 
-and [<RequireQualifiedAccess>] CurveCommand =
-    | MoveTo of ``to``: DrawPoint
-    | LineTo of ``to``: DrawPoint
-    | CubicTo of control1: DrawPoint * control2: DrawPoint * ``to``: DrawPoint
-    | QuadraticTo of control: DrawPoint * ``to``: DrawPoint
-    | Close
+and [<RequireQualifiedAccess>] HoleDecl =
+    | Value of name: string * space: HoleValueSpace * ``default``: Scalar option
+    | Slot of name: string * kindConstraint: string option
+    | Repeat of name: string * countSpace: HoleValueSpace
+
+and [<RequireQualifiedAccess>] HoleValueSpace =
+    | IntRange of min: int * max: int
+    | FloatRange of min: float * max: float
+    | StringLen of minLen: int * maxLen: int
+    | Enum of choices: string list
+    | AnyString
+
+and [<RequireQualifiedAccess>] LayoutMode =
+    | Auto
+    | Flex of direction: Orientation * wrap: bool * gap: int option
+    | Grid of cols: int * templateColumns: string option * gap: int option
+    | Masonry of cols: int * gap: int option
+
+and [<RequireQualifiedAccess>] LocalFlushTrigger =
+    | OnBlur
+    | OnSubmit
+    | OnDebounce of milliseconds: int
+    | OnCommitAction
+
+and [<RequireQualifiedAccess>] LocaleSource =
+    | Ambient
+    | Explicit of tag: string
+
+and [<RequireQualifiedAccess>] MediaKind =
+    | Video of autoplay: bool * poster: Binding<string> option
+    | Audio
+
+and [<RequireQualifiedAccess>] Scalar =
+    | Int of value: int
+    | Float of value: float
+    | Bool of value: bool
+    | Str of value: string
 
 and [<RequireQualifiedAccess>] Shape =
     | Group of children: Shape list * style: DrawStyle
@@ -513,21 +508,10 @@ and [<RequireQualifiedAccess>] Shape =
     | Ellipse of cx: float * cy: float * rx: float * ry: float * style: DrawStyle
     | Label of x: float * y: float * text: TextSource * style: DrawStyle
 
-and SemanticStyle =
-    {
-      Emphasis: Emphasis
-      Role: StyleRole
-      Tone: ToneVariant
-      Voice: FontVoice
-      Weight: StyleWeight
-    }
-
-and StateBehaviour<'Msg> =
-    {
-      OnEmpty: Node<'Msg> option
-      OnError: (Fuaran.UI.HostPrelude.ErrorPayload -> Node<'Msg>) option
-      OnLoading: Node<'Msg> option
-    }
+and [<RequireQualifiedAccess>] TextSource =
+    | Literal of text: string
+    | Bound of binding: Binding<string>
+    | I18n of key: string * args: Map<string, JVal>
 
 and Accessibility =
     {
@@ -539,136 +523,10 @@ and Accessibility =
       Role: Fuaran.UI.HostPrelude.AriaRole option
     }
 
-and SwitchCase<'Msg> =
-    {
-      Child: Node<'Msg>
-      Match: string
-    }
-
-and GuestChannel =
-    {
-      Direction: ChannelDirection
-      MessageShape: string option
-    }
-
-and DrawPoint =
-    {
-      X: float
-      Y: float
-    }
-
-and ViewBox =
-    {
-      Height: float
-      MinX: float
-      MinY: float
-      Width: float
-    }
-
-and DrawStyle =
-    {
-      Emphasis: Emphasis option
-      Fill: Binding<string> option
-      FontFamily: string option
-      FontSize: float option
-      MarkId: string option
-      Opacity: Binding<float> option
-      Rotation: float option
-      Stroke: Binding<string> option
-      StrokeWidth: Binding<float> option
-      TextAnchor: TextAnchor option
-      Tip: TextSource option
-    }
-
-and InvokeArg =
-    {
-      Addr: string
-      Value: string
-    }
-
-and SelectOption =
-    {
-      Label: string
-      Value: string
-    }
-
-and MapMarker =
-    {
-      Label: string
-      Latitude: float
-      Longitude: float
-    }
-
-and DefaultSort =
-    {
-      Column: int
-      Direction: SortDirection
-    }
-
-and StaticRows =
-    {
-      DefaultSort: DefaultSort option
-      Headers: TextSource list
-      Rows: TextSource list list
-      Sortable: bool option
-    }
-
-and CompareRule =
-    {
-      Against: Binding<JVal>
-      Op: CompareOp
-    }
-
-and FieldRule =
-    {
-      Compare: CompareRule option
-      Format: TextFormat option
-      MaxLength: int option
-      Message: TextSource option
-      MinLength: int option
-      Pattern: string option
-    }
-
-and FormField<'Msg> =
-    {
-      Id: string
-      Kind: FormFieldKind<'Msg>
-      Label: TextSource
-      Required: bool
-      Help: TextSource option
-      Rule: FieldRule option
-    }
-
-and FilterSpec<'Msg> =
-    {
-      Kind: FormFieldKind<'Msg>
-      Label: TextSource
-      Name: string
-    }
-
-and TransformParam =
-    {
-      From: Binding<JVal>
-      Name: string
-    }
-
-and RangePair =
-    {
-      Max: float
-      Min: float
-    }
-
-and DateRangePair =
-    {
-      From: string
-      To: string
-    }
-
-and TabHeader =
+and ButtonGroupItem<'Msg> =
     {
       Label: TextSource
-      Icon: string option
-      Disabled: Binding<bool> option
+      OnClick: (Fuaran.Core.Row -> Action<'Msg>) option
     }
 
 and ColumnErased<'Msg> =
@@ -696,10 +554,10 @@ and ColumnErased<'Msg> =
       Width: ColumnWidth
     }
 
-and ButtonGroupItem<'Msg> =
+and CompareRule =
     {
-      Label: TextSource
-      OnClick: (Fuaran.Core.Row -> Action<'Msg>) option
+      Against: Binding<JVal>
+      Op: CompareOp
     }
 
 and ContentHash =
@@ -709,10 +567,144 @@ and ContentHash =
       Strictness: HashStrictness
     }
 
+and DateRangePair =
+    {
+      From: string
+      To: string
+    }
+
+and DefaultSort =
+    {
+      Column: int
+      Direction: SortDirection
+    }
+
+and DrawPoint =
+    {
+      X: float
+      Y: float
+    }
+
+and DrawStyle =
+    {
+      Emphasis: Emphasis option
+      Fill: Binding<string> option
+      FontFamily: string option
+      FontSize: float option
+      MarkId: string option
+      Opacity: Binding<float> option
+      Rotation: float option
+      Stroke: Binding<string> option
+      StrokeWidth: Binding<float> option
+      TextAnchor: TextAnchor option
+      Tip: TextSource option
+    }
+
+and EffectClass =
+    {
+      Determinism: DeterminismSource
+      HostEffect: HostEffect
+    }
+
+and FieldRule =
+    {
+      Compare: CompareRule option
+      Format: TextFormat option
+      MaxLength: int option
+      Message: TextSource option
+      MinLength: int option
+      Pattern: string option
+    }
+
+and FilterSpec<'Msg> =
+    {
+      Kind: FormFieldKind<'Msg>
+      Label: TextSource
+      Name: string
+    }
+
+and FormField<'Msg> =
+    {
+      Id: string
+      Kind: FormFieldKind<'Msg>
+      Label: TextSource
+      Required: bool
+      Help: TextSource option
+      Rule: FieldRule option
+    }
+
+and GuestChannel =
+    {
+      Direction: ChannelDirection
+      MessageShape: string option
+    }
+
+and InvokeArg =
+    {
+      Addr: string
+      Value: string
+    }
+
+and MapMarker =
+    {
+      Label: string
+      Latitude: float
+      Longitude: float
+    }
+
+and RangePair =
+    {
+      Max: float
+      Min: float
+    }
+
+and SelectOption =
+    {
+      Label: string
+      Value: string
+    }
+
+and SemanticStyle =
+    {
+      Emphasis: Emphasis
+      Role: StyleRole
+      Tone: ToneVariant
+      Voice: FontVoice
+      Weight: StyleWeight
+    }
+
 and SrcSetEntry =
     {
       Src: Binding<string>
       Width: int
+    }
+
+and StateBehaviour<'Msg> =
+    {
+      OnEmpty: Node<'Msg> option
+      OnError: (Fuaran.UI.HostPrelude.ErrorPayload -> Node<'Msg>) option
+      OnLoading: Node<'Msg> option
+    }
+
+and StaticRows =
+    {
+      DefaultSort: DefaultSort option
+      Headers: TextSource list
+      Rows: TextSource list list
+      Sortable: bool option
+    }
+
+and SwitchCase<'Msg> =
+    {
+      Child: Node<'Msg>
+      Match: string
+    }
+
+and TabHeader =
+    {
+      Label: TextSource
+      Icon: string option
+      Disabled: Binding<bool> option
     }
 
 and TrackEntry =
@@ -724,18 +716,18 @@ and TrackEntry =
       SrcLang: string
     }
 
-and EffectClass =
+and TransformParam =
     {
-      Determinism: DeterminismSource
-      HostEffect: HostEffect
+      From: Binding<JVal>
+      Name: string
     }
 
-// Display
-and HeadingSpec =
+and ViewBox =
     {
-      Level: int
-      Text: TextSource
-      Variant: HeadingVariant
+      Height: float
+      MinX: float
+      MinY: float
+      Width: float
     }
 
 // Display
@@ -745,184 +737,6 @@ and BadgeSpec =
       Variant: BadgeVariant
     }
 
-// Display
-and MarkdownSpec =
-    {
-      Text: TextSource
-    }
-
-// Display
-and MathSpec =
-    {
-      Source: string
-      Display: MathDisplay
-    }
-
-// Display
-and SkeletonSpec =
-    {
-      Rows: int
-    }
-
-// Display
-/// Phase 821 — the standalone icon-only display kind: a decorative or
-/// labelled glyph with no Button / Image envelope. `Icon` names a
-/// glyph from the existing icon vocabulary (the `data-icon` hook); `Label =
-/// None` is decorative (`aria-hidden="true"`), `Some` is meaningful
-/// (`role="img"` + `aria-label`).
-and IconSpec =
-    {
-      Icon: string
-      Size: IconSize
-      Tone: ToneVariant
-      Label: string option
-    }
-
-// Display
-and ListSpec =
-    {
-      Items: TextSource list
-      Ordered: bool
-    }
-
-// Display
-and ImageSpec =
-    {
-      Alt: TextSource
-      Src: Binding<string>
-      Variant: ImageVariant
-      Fit: ImageFit
-      AspectRatio: ImageAspect
-      Loading: ImageLoading
-      SrcSet: SrcSetEntry list
-      Expandable: bool
-      Caption: TextSource option
-    }
-
-// Display
-and MediaSpec =
-    {
-      Controls: bool
-      Kind: MediaKind
-      Label: TextSource
-      Loop: bool
-      Src: Binding<string>
-      Tracks: TrackEntry list
-      Transcript: TextSource option
-    }
-
-// Display
-and EmbedSpec =
-    {
-      AspectRatio: ImageAspect
-      Permissions: EmbedPermission list
-      Src: Binding<string>
-      Title: TextSource
-    }
-
-// Display
-and LinkSpec =
-    {
-      Href: Binding<string>
-      Label: TextSource
-      Download: bool
-      Rel: string option
-      Target: string option
-      Protection: LinkProtection option
-    }
-
-// Display
-and CalloutSpec =
-    {
-      Body: TextSource
-      Dismissable: bool
-      Tone: ToneVariant
-      Heading: TextSource option
-      Icon: string option
-    }
-
-// Display
-and ProgressSpec =
-    {
-      Fraction: Binding<float>
-      Indeterminate: bool
-      Tone: ToneVariant
-      Label: TextSource option
-      Caveat: TextSource option
-    }
-
-// Display
-and MetricSpec =
-    {
-      Label: TextSource
-      Value: Binding<float>
-      Format: CellFormat
-      Tone: ToneVariant
-      Weight: StyleWeight
-      Emphasis: Emphasis
-      Trend: Binding<float> option
-      TrendFormat: CellFormat option
-      TrendPolarity: TrendPolarity
-      Icon: string option
-      Subtext: TextSource option
-    }
-
-// Display
-and LabelValueRowSpec =
-    {
-      Emphasis: bool
-      Format: CellFormat
-      Label: TextSource
-      Value: Binding<float>
-      Help: TextSource option
-    }
-
-// Display
-and FactSpec =
-    {
-      Emphasis: bool
-      Help: TextSource option
-      Icon: string option
-      Label: TextSource
-      Tone: ToneVariant
-      Value: TextSource
-    }
-
-// Display
-and SparklineSpec =
-    {
-      Source: Binding<float list>
-    }
-
-// Display
-and CodeBlockSpec =
-    {
-      Code: string
-      Copyable: bool
-      HighlightLines: int list
-      Language: string
-      LineNumbers: bool
-    }
-
-// Display
-and ToastSpec =
-    {
-      Dismissable: bool
-      Message: TextSource
-      Open: Binding<bool>
-      Tone: ToneVariant
-    }
-
-// Display
-and DrawingSpec =
-    {
-      Description: TextSource option
-      Shapes: Shape list
-      Style: DrawStyle
-      Title: TextSource option
-      ViewBox: ViewBox
-    }
-
 // Layout
 and BoxSpec<'Msg> =
     {
@@ -930,72 +744,6 @@ and BoxSpec<'Msg> =
       Heading: TextSource option
       Layout: LayoutMode
       Role: BoxRole
-    }
-
-// Layout
-and SplitPanelSpec<'Msg> =
-    {
-      Children: Node<'Msg> list
-      Weight: float
-    }
-
-// Layout
-and SummaryListSpec<'Msg> =
-    {
-      Children: Node<'Msg> list
-      Heading: TextSource option
-    }
-
-// Layout
-and DisclosureSpec<'Msg> =
-    {
-      Children: Node<'Msg> list
-      DefaultOpen: bool
-      Heading: TextSource
-      OnToggle: (bool -> Action<'Msg>) option
-      Open: Binding<bool>
-    }
-
-// Layout
-and ModalSpec<'Msg> =
-    {
-      Children: Node<'Msg> list
-      Dismissable: bool
-      OnDismiss: Action<'Msg> option
-      Open: Binding<bool>
-      Heading: TextSource option
-      Modality: ModalityKind
-      Anchor: string option
-    }
-
-// Layout
-and ScrollAreaSpec<'Msg> =
-    {
-      Children: Node<'Msg> list
-      Orientation: ScrollOrientation
-      MaxHeight: int option
-      MaxWidth: int option
-    }
-
-// Layout
-and TabsSpec<'Msg> =
-    {
-      ActiveIndex: Binding<int>
-      Children: Node<'Msg> list
-      Orientation: Orientation
-      OnSelect: (int -> Action<'Msg>) option
-      OnSelectTag: (string -> Action<'Msg>) option
-      TabHeaders: TabHeader list option
-      TabTags: string list option
-      ActiveTag: Binding<string> option
-    }
-
-// Layout
-and StepperSpec<'Msg> =
-    {
-      ActiveStep: Binding<int>
-      Children: Node<'Msg> list
-      OnSelect: (int -> Action<'Msg>) option
     }
 
 // Input
@@ -1009,102 +757,14 @@ and ButtonSpec<'Msg> =
       Disabled: Binding<bool> option
     }
 
-// Input
-and SelectSpec<'Msg> =
+// Display
+and CalloutSpec =
     {
-      Label: TextSource
-      OnChange: (string option -> Action<'Msg>) option
-      OnChangeMulti: (string list -> Action<'Msg>) option
-      Source: Binding<SelectOption list>
-      Value: Binding<string>
-      Placeholder: TextSource option
-      Disabled: Binding<bool> option
-      Multiple: bool option
-      Values: Binding<string list> option
-    }
-
-// Input
-and FileUploadSpec<'Msg> =
-    {
-      Accept: string list
-      Label: TextSource
-      Multiple: bool
-      OnSelect: (Fuaran.UI.HostPrelude.FileSelection list -> Action<'Msg>) option
-      Disabled: Binding<bool> option
-      AcceptPaste: bool
-      DropTarget: bool
-    }
-
-// Input
-and FormSpec<'Msg> =
-    {
-      Fields: FormField<'Msg> list
-      OnSubmit: Action<'Msg>
-      SubmitLabel: TextSource
-      Disabled: Binding<bool> option
-    }
-
-// Input
-and FiltersSpec<'Msg> =
-    {
-      Items: FilterSpec<'Msg> list
-    }
-
-// Visualisation
-and DataGridSpec<'Msg> =
-    {
-      Columns: ColumnErased<'Msg> list
-      Editable: bool
-      RowKey: (Fuaran.Core.Row -> string) option
-      RowKeyField: string option
-      // Phase 818 — the grid-sort header affordance for a DATA-BOUND grid:
-      // names the State key carrying the sort descriptor
-      // `{"column": <index>, "direction": "asc"|"desc"}`. When set, the
-      // runtime renders sortable column headers (a header click writes the
-      // toggled descriptor via the SetState path) and sorts its resolved rows
-      // by the state-carried descriptor before rendering. Sorting keys off the
-      // clicked column's `field` — a field-less closure column renders without
-      // the affordance. Omitted on the wire when absent; `staticRows`' own
-      // Phase-801 sort intent is untouched.
-      SortStateKey: string option
-      // Phase 862 — declarative pagination, the second instance of the
-      // grid-behaviour rule (Phase 860's charter): a behaviour the user drives
-      // names the State key the grid both writes and reads. `pageStateKey`
-      // carries the descriptor `{"page": <1-based int>}`; `pageSize` is how
-      // many rows a page holds. When both are set the runtime renders a pager
-      // and shows one page at a time; the pager is renderer-owned, so a
-      // decorative pager (a button writing state nothing reads) cannot be
-      // authored. Where the source is a `Query` whose `dependsOn` names the
-      // page key, the HOST pages and the grid does not slice. Both omitted on
-      // the wire when absent.
-      PageSize: int option
-      PageStateKey: string option
-      // Phase 861 — the bound path's declared INITIAL order, reusing the same
-      // `DefaultSort` record and field name `staticRows` carries (Phase 801):
-      // same behaviour, same spelling. It applies when the sort state key
-      // carries nothing yet; once the user has sorted, the state wins. A grid
-      // may declare it with no `sortStateKey` at all — an initial order
-      // without interactive re-sorting, exactly as a static table may.
-      DefaultSort: DefaultSort option
-      // Phase 863 — the DECLARED edit destination: the State key an edited
-      // cell's whole updated rows value is committed to. Absent keeps Phase
-      // 663's shipped behaviour exactly — write back to the grid's own
-      // `source` when that source is a direct `Binding.State`, display-only
-      // otherwise. Present, it names the destination explicitly, which is what
-      // census row #27 asked for: a decoded editable grid could not say where
-      // its edits land, because the only spelling was a closure erasing to
-      // `"<closure>"`. Omitted on the wire when absent.
-      EditStateKey: string option
-      // Phase 934 — declarative row reorder. Omit-when-false, matching its nearest
-      // sibling `editable`: for an affordance flag "not stated" and "explicitly off"
-      // are the same state, so an option would carry a distinction the renderer
-      // cannot act on. The reordered rows commit to `editStateKey` above — a reorder
-      // IS a write of the whole updated rows value, so it needs no destination of
-      // its own.
-      Reorderable: bool
-      Source: Binding<Fuaran.Core.Row seq>
-      StaticRows: StaticRows option
-      OnRowClick: (Fuaran.Core.Row -> Action<'Msg>) option
+      Body: TextSource
+      Dismissable: bool
+      Tone: ToneVariant
+      Heading: TextSource option
+      Icon: string option
     }
 
 // Visualisation
@@ -1181,14 +841,14 @@ and ChartSpec<'Msg> =
       OnPointClick: (Fuaran.Core.Row -> Action<'Msg>) option
     }
 
-// Visualisation
-and MapSpec<'Msg> =
+// Display
+and CodeBlockSpec =
     {
-      CentreLatitude: float
-      CentreLongitude: float
-      Source: Binding<MapMarker list>
-      Zoom: int
-      OnMarkerClick: (MapMarker -> Action<'Msg>) option
+      Code: string
+      Copyable: bool
+      HighlightLines: int list
+      Language: string
+      LineNumbers: bool
     }
 
 // Meta
@@ -1201,11 +861,135 @@ and CustomSpec =
       ExposedNodeIds: string list option
     }
 
+// Visualisation
+and DataGridSpec<'Msg> =
+    {
+      Columns: ColumnErased<'Msg> list
+      Editable: bool
+      RowKey: (Fuaran.Core.Row -> string) option
+      RowKeyField: string option
+      // Phase 818 — the grid-sort header affordance for a DATA-BOUND grid:
+      // names the State key carrying the sort descriptor
+      // `{"column": <index>, "direction": "asc"|"desc"}`. When set, the
+      // runtime renders sortable column headers (a header click writes the
+      // toggled descriptor via the SetState path) and sorts its resolved rows
+      // by the state-carried descriptor before rendering. Sorting keys off the
+      // clicked column's `field` — a field-less closure column renders without
+      // the affordance. Omitted on the wire when absent; `staticRows`' own
+      // Phase-801 sort intent is untouched.
+      SortStateKey: string option
+      // Phase 862 — declarative pagination, the second instance of the
+      // grid-behaviour rule (Phase 860's charter): a behaviour the user drives
+      // names the State key the grid both writes and reads. `pageStateKey`
+      // carries the descriptor `{"page": <1-based int>}`; `pageSize` is how
+      // many rows a page holds. When both are set the runtime renders a pager
+      // and shows one page at a time; the pager is renderer-owned, so a
+      // decorative pager (a button writing state nothing reads) cannot be
+      // authored. Where the source is a `Query` whose `dependsOn` names the
+      // page key, the HOST pages and the grid does not slice. Both omitted on
+      // the wire when absent.
+      PageSize: int option
+      PageStateKey: string option
+      // Phase 861 — the bound path's declared INITIAL order, reusing the same
+      // `DefaultSort` record and field name `staticRows` carries (Phase 801):
+      // same behaviour, same spelling. It applies when the sort state key
+      // carries nothing yet; once the user has sorted, the state wins. A grid
+      // may declare it with no `sortStateKey` at all — an initial order
+      // without interactive re-sorting, exactly as a static table may.
+      DefaultSort: DefaultSort option
+      // Phase 863 — the DECLARED edit destination: the State key an edited
+      // cell's whole updated rows value is committed to. Absent keeps Phase
+      // 663's shipped behaviour exactly — write back to the grid's own
+      // `source` when that source is a direct `Binding.State`, display-only
+      // otherwise. Present, it names the destination explicitly, which is what
+      // census row #27 asked for: a decoded editable grid could not say where
+      // its edits land, because the only spelling was a closure erasing to
+      // `"<closure>"`. Omitted on the wire when absent.
+      EditStateKey: string option
+      // Phase 934 — declarative row reorder. Omit-when-false, matching its nearest
+      // sibling `editable`: for an affordance flag "not stated" and "explicitly off"
+      // are the same state, so an option would carry a distinction the renderer
+      // cannot act on. The reordered rows commit to `editStateKey` above — a reorder
+      // IS a write of the whole updated rows value, so it needs no destination of
+      // its own.
+      Reorderable: bool
+      Source: Binding<Fuaran.Core.Row seq>
+      StaticRows: StaticRows option
+      OnRowClick: (Fuaran.Core.Row -> Action<'Msg>) option
+    }
+
+// Layout
+and DisclosureSpec<'Msg> =
+    {
+      Children: Node<'Msg> list
+      DefaultOpen: bool
+      Heading: TextSource
+      OnToggle: (bool -> Action<'Msg>) option
+      Open: Binding<bool>
+    }
+
+// Display
+and DrawingSpec =
+    {
+      Description: TextSource option
+      Shapes: Shape list
+      Style: DrawStyle
+      Title: TextSource option
+      ViewBox: ViewBox
+    }
+
+// Display
+and EmbedSpec =
+    {
+      AspectRatio: ImageAspect
+      Permissions: EmbedPermission list
+      Src: Binding<string>
+      Title: TextSource
+    }
+
 // Meta
 and ErrorBoundarySpec<'Msg> =
     {
       Child: Node<'Msg>
       Fallback: Node<'Msg>
+    }
+
+// Display
+and FactSpec =
+    {
+      Emphasis: bool
+      Help: TextSource option
+      Icon: string option
+      Label: TextSource
+      Tone: ToneVariant
+      Value: TextSource
+    }
+
+// Input
+and FileUploadSpec<'Msg> =
+    {
+      Accept: string list
+      Label: TextSource
+      Multiple: bool
+      OnSelect: (Fuaran.UI.HostPrelude.FileSelection list -> Action<'Msg>) option
+      Disabled: Binding<bool> option
+      AcceptPaste: bool
+      DropTarget: bool
+    }
+
+// Input
+and FiltersSpec<'Msg> =
+    {
+      Items: FilterSpec<'Msg> list
+    }
+
+// Input
+and FormSpec<'Msg> =
+    {
+      Fields: FormField<'Msg> list
+      OnSubmit: Action<'Msg>
+      SubmitLabel: TextSource
+      Disabled: Binding<bool> option
     }
 
 // Meta
@@ -1224,6 +1008,210 @@ and FragmentRefSpec<'Msg> =
       Args: Map<string, FragmentArg<'Msg>> option
     }
 
+// Display
+and HeadingSpec =
+    {
+      Level: int
+      Text: TextSource
+      Variant: HeadingVariant
+    }
+
+// Display
+/// Phase 821 — the standalone icon-only display kind: a decorative or
+/// labelled glyph with no Button / Image envelope. `Icon` names a
+/// glyph from the existing icon vocabulary (the `data-icon` hook); `Label =
+/// None` is decorative (`aria-hidden="true"`), `Some` is meaningful
+/// (`role="img"` + `aria-label`).
+and IconSpec =
+    {
+      Icon: string
+      Size: IconSize
+      Tone: ToneVariant
+      Label: string option
+    }
+
+// Display
+and ImageSpec =
+    {
+      Alt: TextSource
+      Src: Binding<string>
+      Variant: ImageVariant
+      Fit: ImageFit
+      AspectRatio: ImageAspect
+      Loading: ImageLoading
+      SrcSet: SrcSetEntry list
+      Expandable: bool
+      Caption: TextSource option
+    }
+
+// Display
+and LabelValueRowSpec =
+    {
+      Emphasis: bool
+      Format: CellFormat
+      Label: TextSource
+      Value: Binding<float>
+      Help: TextSource option
+    }
+
+// Display
+and LinkSpec =
+    {
+      Href: Binding<string>
+      Label: TextSource
+      Download: bool
+      Rel: string option
+      Target: string option
+      Protection: LinkProtection option
+    }
+
+// Display
+and ListSpec =
+    {
+      Items: TextSource list
+      Ordered: bool
+    }
+
+// Visualisation
+and MapSpec<'Msg> =
+    {
+      CentreLatitude: float
+      CentreLongitude: float
+      Source: Binding<MapMarker list>
+      Zoom: int
+      OnMarkerClick: (MapMarker -> Action<'Msg>) option
+    }
+
+// Display
+and MarkdownSpec =
+    {
+      Text: TextSource
+    }
+
+// Display
+and MathSpec =
+    {
+      Source: string
+      Display: MathDisplay
+    }
+
+// Display
+and MediaSpec =
+    {
+      Controls: bool
+      Kind: MediaKind
+      Label: TextSource
+      Loop: bool
+      Src: Binding<string>
+      Tracks: TrackEntry list
+      Transcript: TextSource option
+    }
+
+// Display
+and MetricSpec =
+    {
+      Label: TextSource
+      Value: Binding<float>
+      Format: CellFormat
+      Tone: ToneVariant
+      Weight: StyleWeight
+      Emphasis: Emphasis
+      Trend: Binding<float> option
+      TrendFormat: CellFormat option
+      TrendPolarity: TrendPolarity
+      Icon: string option
+      Subtext: TextSource option
+    }
+
+// Layout
+and ModalSpec<'Msg> =
+    {
+      Children: Node<'Msg> list
+      Dismissable: bool
+      OnDismiss: Action<'Msg> option
+      Open: Binding<bool>
+      Heading: TextSource option
+      Modality: ModalityKind
+      Anchor: string option
+    }
+
+// Meta
+and MountSpec<'Msg> =
+    {
+      Capabilities: string list
+      Channel: GuestChannel
+      Inputs: Map<string, FragmentArg<'Msg>> option
+      OnBubble: (obj -> Action<'Msg>) option
+      ScopeId: string
+    }
+
+// Display
+and ProgressSpec =
+    {
+      Fraction: Binding<float>
+      Indeterminate: bool
+      Tone: ToneVariant
+      Label: TextSource option
+      Caveat: TextSource option
+    }
+
+// Layout
+and ScrollAreaSpec<'Msg> =
+    {
+      Children: Node<'Msg> list
+      Orientation: ScrollOrientation
+      MaxHeight: int option
+      MaxWidth: int option
+    }
+
+// Input
+and SelectSpec<'Msg> =
+    {
+      Label: TextSource
+      OnChange: (string option -> Action<'Msg>) option
+      OnChangeMulti: (string list -> Action<'Msg>) option
+      Source: Binding<SelectOption list>
+      Value: Binding<string>
+      Placeholder: TextSource option
+      Disabled: Binding<bool> option
+      Multiple: bool option
+      Values: Binding<string list> option
+    }
+
+// Display
+and SkeletonSpec =
+    {
+      Rows: int
+    }
+
+// Display
+and SparklineSpec =
+    {
+      Source: Binding<float list>
+    }
+
+// Layout
+and SplitPanelSpec<'Msg> =
+    {
+      Children: Node<'Msg> list
+      Weight: float
+    }
+
+// Layout
+and StepperSpec<'Msg> =
+    {
+      ActiveStep: Binding<int>
+      Children: Node<'Msg> list
+      OnSelect: (int -> Action<'Msg>) option
+    }
+
+// Layout
+and SummaryListSpec<'Msg> =
+    {
+      Children: Node<'Msg> list
+      Heading: TextSource option
+    }
+
 // Meta
 and SwitchSpec<'Msg> =
     {
@@ -1238,59 +1226,71 @@ and SwitchSpec<'Msg> =
       On: Binding<string>
     }
 
-// Meta
-and MountSpec<'Msg> =
+// Layout
+and TabsSpec<'Msg> =
     {
-      Capabilities: string list
-      Channel: GuestChannel
-      Inputs: Map<string, FragmentArg<'Msg>> option
-      OnBubble: (obj -> Action<'Msg>) option
-      ScopeId: string
+      ActiveIndex: Binding<int>
+      Children: Node<'Msg> list
+      Orientation: Orientation
+      OnSelect: (int -> Action<'Msg>) option
+      OnSelectTag: (string -> Action<'Msg>) option
+      TabHeaders: TabHeader list option
+      TabTags: string list option
+      ActiveTag: Binding<string> option
+    }
+
+// Display
+and ToastSpec =
+    {
+      Dismissable: bool
+      Message: TextSource
+      Open: Binding<bool>
+      Tone: ToneVariant
     }
 
 and [<RequireQualifiedAccess>] NodeKind<'Msg> =
-    | Heading of HeadingSpec
     | Badge of BadgeSpec
-    | Markdown of MarkdownSpec
-    | Math of MathSpec
-    | Skeleton of SkeletonSpec
-    | Icon of IconSpec
-    | List of ListSpec
-    | Image of ImageSpec
-    | Media of MediaSpec
-    | Embed of EmbedSpec
-    | Link of LinkSpec
-    | Callout of CalloutSpec
-    | Progress of ProgressSpec
-    | Metric of MetricSpec
-    | LabelValueRow of LabelValueRowSpec
-    | Fact of FactSpec
-    | Sparkline of SparklineSpec
-    | CodeBlock of CodeBlockSpec
-    | Toast of ToastSpec
-    | Drawing of DrawingSpec
     | Box of BoxSpec<'Msg>
-    | SplitPanel of SplitPanelSpec<'Msg>
-    | SummaryList of SummaryListSpec<'Msg>
-    | Disclosure of DisclosureSpec<'Msg>
-    | Modal of ModalSpec<'Msg>
-    | ScrollArea of ScrollAreaSpec<'Msg>
-    | Tabs of TabsSpec<'Msg>
-    | Stepper of StepperSpec<'Msg>
     | Button of ButtonSpec<'Msg>
-    | Select of SelectSpec<'Msg>
-    | FileUpload of FileUploadSpec<'Msg>
-    | Form of FormSpec<'Msg>
-    | Filters of FiltersSpec<'Msg>
-    | DataGrid of DataGridSpec<'Msg>
+    | Callout of CalloutSpec
     | Chart of ChartSpec<'Msg>
-    | Map of MapSpec<'Msg>
+    | CodeBlock of CodeBlockSpec
     | Custom of CustomSpec
+    | DataGrid of DataGridSpec<'Msg>
+    | Disclosure of DisclosureSpec<'Msg>
+    | Drawing of DrawingSpec
+    | Embed of EmbedSpec
     | ErrorBoundary of ErrorBoundarySpec<'Msg>
+    | Fact of FactSpec
+    | FileUpload of FileUploadSpec<'Msg>
+    | Filters of FiltersSpec<'Msg>
+    | Form of FormSpec<'Msg>
     | FragmentDecl of FragmentDeclSpec<'Msg>
     | FragmentRef of FragmentRefSpec<'Msg>
-    | Switch of SwitchSpec<'Msg>
+    | Heading of HeadingSpec
+    | Icon of IconSpec
+    | Image of ImageSpec
+    | LabelValueRow of LabelValueRowSpec
+    | Link of LinkSpec
+    | List of ListSpec
+    | Map of MapSpec<'Msg>
+    | Markdown of MarkdownSpec
+    | Math of MathSpec
+    | Media of MediaSpec
+    | Metric of MetricSpec
+    | Modal of ModalSpec<'Msg>
     | Mount of MountSpec<'Msg>
+    | Progress of ProgressSpec
+    | ScrollArea of ScrollAreaSpec<'Msg>
+    | Select of SelectSpec<'Msg>
+    | Skeleton of SkeletonSpec
+    | Sparkline of SparklineSpec
+    | SplitPanel of SplitPanelSpec<'Msg>
+    | Stepper of StepperSpec<'Msg>
+    | SummaryList of SummaryListSpec<'Msg>
+    | Switch of SwitchSpec<'Msg>
+    | Tabs of TabsSpec<'Msg>
+    | Toast of ToastSpec
 
 and Node<'Msg> =
     {
@@ -1316,17 +1316,6 @@ and [<RequireQualifiedAccess>] TransformSource =
     | Data of source: Fuaran.Core.DataSource
     | Live of binding: Binding<JVal> * initial: Fuaran.Core.DataSource
 
-let private encHeadingVariant (v: HeadingVariant) : JVal =
-    match v with
-    | HeadingVariant.Standard -> JStr "Standard"
-    | HeadingVariant.Eyebrow -> JStr "Eyebrow"
-    | HeadingVariant.Caption -> JStr "Caption"
-    | HeadingVariant.Lead -> JStr "Lead"
-
-let private encLinkProtection (v: LinkProtection) : JVal =
-    match v with
-    | LinkProtection.Email -> JStr "email"
-
 let private encBadgeVariant (v: BadgeVariant) : JVal =
     match v with
     | BadgeVariant.Neutral -> JStr "Neutral"
@@ -1336,87 +1325,12 @@ let private encBadgeVariant (v: BadgeVariant) : JVal =
     | BadgeVariant.Critical -> JStr "Critical"
     | BadgeVariant.Info -> JStr "Info"
 
-let private encOrientation (v: Orientation) : JVal =
-    match v with
-    | Orientation.Vertical -> JStr "Vertical"
-    | Orientation.Horizontal -> JStr "Horizontal"
-
 let private encBoxRole (v: BoxRole) : JVal =
     match v with
     | BoxRole.Dashboard -> JStr "Dashboard"
     | BoxRole.Card -> JStr "Card"
     | BoxRole.Group -> JStr "Group"
     | BoxRole.Separator -> JStr "Separator"
-
-let private encMathDisplay (v: MathDisplay) : JVal =
-    match v with
-    | MathDisplay.Inline -> JStr "Inline"
-    | MathDisplay.Block -> JStr "Block"
-
-let private encImageVariant (v: ImageVariant) : JVal =
-    match v with
-    | ImageVariant.Default -> JStr "Default"
-    | ImageVariant.Avatar -> JStr "Avatar"
-    | ImageVariant.Rounded -> JStr "Rounded"
-
-let private encImageFit (v: ImageFit) : JVal =
-    match v with
-    | ImageFit.Natural -> JStr "Natural"
-    | ImageFit.Cover -> JStr "Cover"
-    | ImageFit.Contain -> JStr "Contain"
-
-let private encImageAspect (v: ImageAspect) : JVal =
-    match v with
-    | ImageAspect.Natural -> JStr "Natural"
-    | ImageAspect.Square -> JStr "Square"
-    | ImageAspect.FourThree -> JStr "FourThree"
-    | ImageAspect.ThreeTwo -> JStr "ThreeTwo"
-    | ImageAspect.SixteenNine -> JStr "SixteenNine"
-
-let private encImageLoading (v: ImageLoading) : JVal =
-    match v with
-    | ImageLoading.Eager -> JStr "Eager"
-    | ImageLoading.Lazy -> JStr "Lazy"
-
-let private encEmbedPermission (v: EmbedPermission) : JVal =
-    match v with
-    | EmbedPermission.AllowScripts -> JStr "AllowScripts"
-    | EmbedPermission.AllowSameOrigin -> JStr "AllowSameOrigin"
-    | EmbedPermission.AllowForms -> JStr "AllowForms"
-    | EmbedPermission.AllowFullscreen -> JStr "AllowFullscreen"
-
-let private encToneVariant (v: ToneVariant) : JVal =
-    match v with
-    | ToneVariant.Default -> JStr "Default"
-    | ToneVariant.Subdued -> JStr "Subdued"
-    | ToneVariant.Brand -> JStr "Brand"
-    | ToneVariant.Success -> JStr "Success"
-    | ToneVariant.Warning -> JStr "Warning"
-    | ToneVariant.Critical -> JStr "Critical"
-    | ToneVariant.Info -> JStr "Info"
-
-let private encStyleWeight (v: StyleWeight) : JVal =
-    match v with
-    | StyleWeight.Compact -> JStr "Compact"
-    | StyleWeight.Standard -> JStr "Standard"
-    | StyleWeight.Spacious -> JStr "Spacious"
-
-let private encEmphasis (v: Emphasis) : JVal =
-    match v with
-    | Emphasis.Quiet -> JStr "Quiet"
-    | Emphasis.Normal -> JStr "Normal"
-    | Emphasis.Loud -> JStr "Loud"
-
-let private encTrendPolarity (v: TrendPolarity) : JVal =
-    match v with
-    | TrendPolarity.HigherIsBetter -> JStr "HigherIsBetter"
-    | TrendPolarity.LowerIsBetter -> JStr "LowerIsBetter"
-
-let private encScrollOrientation (v: ScrollOrientation) : JVal =
-    match v with
-    | ScrollOrientation.Vertical -> JStr "Vertical"
-    | ScrollOrientation.Horizontal -> JStr "Horizontal"
-    | ScrollOrientation.Both -> JStr "Both"
 
 let private encButtonVariant (v: ButtonVariant) : JVal =
     match v with
@@ -1425,74 +1339,15 @@ let private encButtonVariant (v: ButtonVariant) : JVal =
     | ButtonVariant.Tertiary -> JStr "Tertiary"
     | ButtonVariant.Destructive -> JStr "Destructive"
 
-let private encModalityKind (v: ModalityKind) : JVal =
+let private encChannelDirection (v: ChannelDirection) : JVal =
     match v with
-    | ModalityKind.Modal -> JStr "Modal"
-    | ModalityKind.Popover -> JStr "Popover"
+    | ChannelDirection.OutOnly -> JStr "OutOnly"
+    | ChannelDirection.TwoWay -> JStr "TwoWay"
 
-let private encFileReadEncoding (v: FileReadEncoding) : JVal =
+let private encChartDataLabels (v: ChartDataLabels) : JVal =
     match v with
-    | FileReadEncoding.Text -> JStr "Text"
-    | FileReadEncoding.Base64 -> JStr "Base64"
-    | FileReadEncoding.DataUrl -> JStr "DataUrl"
-
-let private encDateVariant (v: DateVariant) : JVal =
-    match v with
-    | DateVariant.Date -> JStr "Date"
-    | DateVariant.Time -> JStr "Time"
-    | DateVariant.DateTime -> JStr "DateTime"
-
-let private encTextFormat (v: TextFormat) : JVal =
-    match v with
-    | TextFormat.Email -> JStr "email"
-    | TextFormat.Url -> JStr "url"
-    | TextFormat.Tel -> JStr "tel"
-
-let private encCompareOp (v: CompareOp) : JVal =
-    match v with
-    | CompareOp.Eq -> JStr "eq"
-    | CompareOp.Neq -> JStr "neq"
-    | CompareOp.Lt -> JStr "lt"
-    | CompareOp.Lte -> JStr "lte"
-    | CompareOp.Gt -> JStr "gt"
-    | CompareOp.Gte -> JStr "gte"
-
-let private encDateStyle (v: DateStyle) : JVal =
-    match v with
-    | DateStyle.Short -> JStr "Short"
-    | DateStyle.Medium -> JStr "Medium"
-    | DateStyle.Long -> JStr "Long"
-    | DateStyle.Full -> JStr "Full"
-
-let private encRelativeTimeUnit (v: RelativeTimeUnit) : JVal =
-    match v with
-    | RelativeTimeUnit.Second -> JStr "Second"
-    | RelativeTimeUnit.Minute -> JStr "Minute"
-    | RelativeTimeUnit.Hour -> JStr "Hour"
-    | RelativeTimeUnit.Day -> JStr "Day"
-    | RelativeTimeUnit.Week -> JStr "Week"
-    | RelativeTimeUnit.Month -> JStr "Month"
-    | RelativeTimeUnit.Year -> JStr "Year"
-
-// Phase 819 — Duration format enums.
-let private encDurationUnit (v: DurationUnit) : JVal =
-    match v with
-    | DurationUnit.Seconds -> JStr "Seconds"
-    | DurationUnit.Minutes -> JStr "Minutes"
-    | DurationUnit.Hours -> JStr "Hours"
-
-let private encDurationStyle (v: DurationStyle) : JVal =
-    match v with
-    | DurationStyle.Compact -> JStr "Compact"
-    | DurationStyle.Clock -> JStr "Clock"
-    | DurationStyle.Long -> JStr "Long"
-
-// Phase 821 — Icon size class.
-let private encIconSize (v: IconSize) : JVal =
-    match v with
-    | IconSize.Small -> JStr "Small"
-    | IconSize.Medium -> JStr "Medium"
-    | IconSize.Large -> JStr "Large"
+    | ChartDataLabels.Off -> JStr "Off"
+    | ChartDataLabels.Ends -> JStr "Ends"
 
 let private encChartKind (v: ChartKind) : JVal =
     match v with
@@ -1510,27 +1365,32 @@ let private encChartLegendPosition (v: ChartLegendPosition) : JVal =
     | ChartLegendPosition.Bottom -> JStr "Bottom"
     | ChartLegendPosition.None -> JStr "None"
 
-let private encChartDataLabels (v: ChartDataLabels) : JVal =
-    match v with
-    | ChartDataLabels.Off -> JStr "Off"
-    | ChartDataLabels.Ends -> JStr "Ends"
-
 let private encChartXScale (v: ChartXScale) : JVal =
     match v with
     | ChartXScale.Category -> JStr "Category"
     | ChartXScale.Temporal -> JStr "Temporal"
 
-let private encHashStrictness (v: HashStrictness) : JVal =
+let private encCompareOp (v: CompareOp) : JVal =
     match v with
-    | HashStrictness.StrictReplay -> JStr "StrictReplay"
-    | HashStrictness.AdvisoryWarning -> JStr "AdvisoryWarning"
-    | HashStrictness.Enforced -> JStr "Enforced"
+    | CompareOp.Eq -> JStr "eq"
+    | CompareOp.Neq -> JStr "neq"
+    | CompareOp.Lt -> JStr "lt"
+    | CompareOp.Lte -> JStr "lte"
+    | CompareOp.Gt -> JStr "gt"
+    | CompareOp.Gte -> JStr "gte"
 
-let private encHostEffect (v: HostEffect) : JVal =
+let private encDateStyle (v: DateStyle) : JVal =
     match v with
-    | HostEffect.Pure -> JStr "Pure"
-    | HostEffect.ReadsHost -> JStr "ReadsHost"
-    | HostEffect.WritesHost -> JStr "WritesHost"
+    | DateStyle.Short -> JStr "Short"
+    | DateStyle.Medium -> JStr "Medium"
+    | DateStyle.Long -> JStr "Long"
+    | DateStyle.Full -> JStr "Full"
+
+let private encDateVariant (v: DateVariant) : JVal =
+    match v with
+    | DateVariant.Date -> JStr "Date"
+    | DateVariant.Time -> JStr "Time"
+    | DateVariant.DateTime -> JStr "DateTime"
 
 let private encDeterminismSource (v: DeterminismSource) : JVal =
     match v with
@@ -1539,30 +1399,114 @@ let private encDeterminismSource (v: DeterminismSource) : JVal =
     | DeterminismSource.Random -> JStr "Random"
     | DeterminismSource.Network -> JStr "Network"
 
-let private encChannelDirection (v: ChannelDirection) : JVal =
+let private encDurationStyle (v: DurationStyle) : JVal =
     match v with
-    | ChannelDirection.OutOnly -> JStr "OutOnly"
-    | ChannelDirection.TwoWay -> JStr "TwoWay"
+    | DurationStyle.Compact -> JStr "Compact"
+    | DurationStyle.Clock -> JStr "Clock"
+    | DurationStyle.Long -> JStr "Long"
 
-let private encTextAnchor (v: TextAnchor) : JVal =
+// Phase 819 — Duration format enums.
+let private encDurationUnit (v: DurationUnit) : JVal =
     match v with
-    | TextAnchor.Start -> JStr "Start"
-    | TextAnchor.Middle -> JStr "Middle"
-    | TextAnchor.End -> JStr "End"
+    | DurationUnit.Seconds -> JStr "Seconds"
+    | DurationUnit.Minutes -> JStr "Minutes"
+    | DurationUnit.Hours -> JStr "Hours"
 
-let private encStyleRole (v: StyleRole) : JVal =
+let private encEmbedPermission (v: EmbedPermission) : JVal =
     match v with
-    | StyleRole.None -> JStr "None"
-    | StyleRole.Eyebrow -> JStr "Eyebrow"
-    | StyleRole.Data -> JStr "Data"
-    | StyleRole.Lede -> JStr "Lede"
-    | StyleRole.Caption -> JStr "Caption"
+    | EmbedPermission.AllowScripts -> JStr "AllowScripts"
+    | EmbedPermission.AllowSameOrigin -> JStr "AllowSameOrigin"
+    | EmbedPermission.AllowForms -> JStr "AllowForms"
+    | EmbedPermission.AllowFullscreen -> JStr "AllowFullscreen"
+
+let private encEmphasis (v: Emphasis) : JVal =
+    match v with
+    | Emphasis.Quiet -> JStr "Quiet"
+    | Emphasis.Normal -> JStr "Normal"
+    | Emphasis.Loud -> JStr "Loud"
+
+let private encFileReadEncoding (v: FileReadEncoding) : JVal =
+    match v with
+    | FileReadEncoding.Text -> JStr "Text"
+    | FileReadEncoding.Base64 -> JStr "Base64"
+    | FileReadEncoding.DataUrl -> JStr "DataUrl"
 
 let private encFontVoice (v: FontVoice) : JVal =
     match v with
     | FontVoice.Default -> JStr "Default"
     | FontVoice.Display -> JStr "Display"
     | FontVoice.Structural -> JStr "Structural"
+
+let private encHashStrictness (v: HashStrictness) : JVal =
+    match v with
+    | HashStrictness.StrictReplay -> JStr "StrictReplay"
+    | HashStrictness.AdvisoryWarning -> JStr "AdvisoryWarning"
+    | HashStrictness.Enforced -> JStr "Enforced"
+
+let private encHeadingVariant (v: HeadingVariant) : JVal =
+    match v with
+    | HeadingVariant.Standard -> JStr "Standard"
+    | HeadingVariant.Eyebrow -> JStr "Eyebrow"
+    | HeadingVariant.Caption -> JStr "Caption"
+    | HeadingVariant.Lead -> JStr "Lead"
+
+let private encHostEffect (v: HostEffect) : JVal =
+    match v with
+    | HostEffect.Pure -> JStr "Pure"
+    | HostEffect.ReadsHost -> JStr "ReadsHost"
+    | HostEffect.WritesHost -> JStr "WritesHost"
+
+// Phase 821 — Icon size class.
+let private encIconSize (v: IconSize) : JVal =
+    match v with
+    | IconSize.Small -> JStr "Small"
+    | IconSize.Medium -> JStr "Medium"
+    | IconSize.Large -> JStr "Large"
+
+let private encImageAspect (v: ImageAspect) : JVal =
+    match v with
+    | ImageAspect.Natural -> JStr "Natural"
+    | ImageAspect.Square -> JStr "Square"
+    | ImageAspect.FourThree -> JStr "FourThree"
+    | ImageAspect.ThreeTwo -> JStr "ThreeTwo"
+    | ImageAspect.SixteenNine -> JStr "SixteenNine"
+
+let private encImageFit (v: ImageFit) : JVal =
+    match v with
+    | ImageFit.Natural -> JStr "Natural"
+    | ImageFit.Cover -> JStr "Cover"
+    | ImageFit.Contain -> JStr "Contain"
+
+let private encImageLoading (v: ImageLoading) : JVal =
+    match v with
+    | ImageLoading.Eager -> JStr "Eager"
+    | ImageLoading.Lazy -> JStr "Lazy"
+
+let private encImageVariant (v: ImageVariant) : JVal =
+    match v with
+    | ImageVariant.Default -> JStr "Default"
+    | ImageVariant.Avatar -> JStr "Avatar"
+    | ImageVariant.Rounded -> JStr "Rounded"
+
+let private encLinkProtection (v: LinkProtection) : JVal =
+    match v with
+    | LinkProtection.Email -> JStr "email"
+
+let private encLiveRegionKind (v: LiveRegionKind) : JVal =
+    match v with
+    | LiveRegionKind.Polite -> JStr "polite"
+    | LiveRegionKind.Assertive -> JStr "assertive"
+    | LiveRegionKind.Off -> JStr "off"
+
+let private encMathDisplay (v: MathDisplay) : JVal =
+    match v with
+    | MathDisplay.Inline -> JStr "Inline"
+    | MathDisplay.Block -> JStr "Block"
+
+let private encModalityKind (v: ModalityKind) : JVal =
+    match v with
+    | ModalityKind.Modal -> JStr "Modal"
+    | ModalityKind.Popover -> JStr "Popover"
 
 let private encMotion (v: Motion) : JVal =
     match v with
@@ -1575,16 +1519,67 @@ let private encMotion (v: Motion) : JVal =
     | Motion.SlideInFromRight -> JStr "SlideInFromRight"
     | Motion.ExpandCollapse -> JStr "ExpandCollapse"
 
-let private encLiveRegionKind (v: LiveRegionKind) : JVal =
+let private encOrientation (v: Orientation) : JVal =
     match v with
-    | LiveRegionKind.Polite -> JStr "polite"
-    | LiveRegionKind.Assertive -> JStr "assertive"
-    | LiveRegionKind.Off -> JStr "off"
+    | Orientation.Vertical -> JStr "Vertical"
+    | Orientation.Horizontal -> JStr "Horizontal"
+
+let private encRelativeTimeUnit (v: RelativeTimeUnit) : JVal =
+    match v with
+    | RelativeTimeUnit.Second -> JStr "Second"
+    | RelativeTimeUnit.Minute -> JStr "Minute"
+    | RelativeTimeUnit.Hour -> JStr "Hour"
+    | RelativeTimeUnit.Day -> JStr "Day"
+    | RelativeTimeUnit.Week -> JStr "Week"
+    | RelativeTimeUnit.Month -> JStr "Month"
+    | RelativeTimeUnit.Year -> JStr "Year"
+
+let private encScrollOrientation (v: ScrollOrientation) : JVal =
+    match v with
+    | ScrollOrientation.Vertical -> JStr "Vertical"
+    | ScrollOrientation.Horizontal -> JStr "Horizontal"
+    | ScrollOrientation.Both -> JStr "Both"
 
 let private encSortDirection (v: SortDirection) : JVal =
     match v with
     | SortDirection.Asc -> JStr "asc"
     | SortDirection.Desc -> JStr "desc"
+
+let private encStyleRole (v: StyleRole) : JVal =
+    match v with
+    | StyleRole.None -> JStr "None"
+    | StyleRole.Eyebrow -> JStr "Eyebrow"
+    | StyleRole.Data -> JStr "Data"
+    | StyleRole.Lede -> JStr "Lede"
+    | StyleRole.Caption -> JStr "Caption"
+
+let private encStyleWeight (v: StyleWeight) : JVal =
+    match v with
+    | StyleWeight.Compact -> JStr "Compact"
+    | StyleWeight.Standard -> JStr "Standard"
+    | StyleWeight.Spacious -> JStr "Spacious"
+
+let private encTextAnchor (v: TextAnchor) : JVal =
+    match v with
+    | TextAnchor.Start -> JStr "Start"
+    | TextAnchor.Middle -> JStr "Middle"
+    | TextAnchor.End -> JStr "End"
+
+let private encTextFormat (v: TextFormat) : JVal =
+    match v with
+    | TextFormat.Email -> JStr "email"
+    | TextFormat.Url -> JStr "url"
+    | TextFormat.Tel -> JStr "tel"
+
+let private encToneVariant (v: ToneVariant) : JVal =
+    match v with
+    | ToneVariant.Default -> JStr "Default"
+    | ToneVariant.Subdued -> JStr "Subdued"
+    | ToneVariant.Brand -> JStr "Brand"
+    | ToneVariant.Success -> JStr "Success"
+    | ToneVariant.Warning -> JStr "Warning"
+    | ToneVariant.Critical -> JStr "Critical"
+    | ToneVariant.Info -> JStr "Info"
 
 let private encTrackKind (v: TrackKind) : JVal =
     match v with
@@ -1592,6 +1587,11 @@ let private encTrackKind (v: TrackKind) : JVal =
     | TrackKind.Captions -> JStr "Captions"
     | TrackKind.Descriptions -> JStr "Descriptions"
     | TrackKind.Chapters -> JStr "Chapters"
+
+let private encTrendPolarity (v: TrendPolarity) : JVal =
+    match v with
+    | TrendPolarity.HigherIsBetter -> JStr "HigherIsBetter"
+    | TrendPolarity.LowerIsBetter -> JStr "LowerIsBetter"
 
 // WIRE_FORMAT §5 — a non-finite double has no JSON *number* spelling, so it rides as
 // one of the three quoted sentinel strings, which §7 requires a decoder to read back
@@ -1611,86 +1611,53 @@ let private encFloat (f: float) : JVal =
 
 let rec private encNodeKind (k: NodeKind<'Msg>) : JVal =
     match k with
-    | NodeKind.Heading s -> encHeadingSpec s
     | NodeKind.Badge s -> encBadgeSpec s
-    | NodeKind.Markdown s -> encMarkdownSpec s
-    | NodeKind.Math s -> encMathSpec s
-    | NodeKind.Skeleton s -> encSkeletonSpec s
-    | NodeKind.Icon s -> encIconSpec s
-    | NodeKind.List s -> encListSpec s
-    | NodeKind.Image s -> encImageSpec s
-    | NodeKind.Media s -> encMediaSpec s
-    | NodeKind.Embed s -> encEmbedSpec s
-    | NodeKind.Link s -> encLinkSpec s
-    | NodeKind.Callout s -> encCalloutSpec s
-    | NodeKind.Progress s -> encProgressSpec s
-    | NodeKind.Metric s -> encMetricSpec s
-    | NodeKind.LabelValueRow s -> encLabelValueRowSpec s
-    | NodeKind.Fact s -> encFactSpec s
-    | NodeKind.Sparkline s -> encSparklineSpec s
-    | NodeKind.CodeBlock s -> encCodeBlockSpec s
-    | NodeKind.Toast s -> encToastSpec s
-    | NodeKind.Drawing s -> encDrawingSpec s
     | NodeKind.Box s -> encBoxSpec s
-    | NodeKind.SplitPanel s -> encSplitPanelSpec s
-    | NodeKind.SummaryList s -> encSummaryListSpec s
-    | NodeKind.Disclosure s -> encDisclosureSpec s
-    | NodeKind.Modal s -> encModalSpec s
-    | NodeKind.ScrollArea s -> encScrollAreaSpec s
-    | NodeKind.Tabs s -> encTabsSpec s
-    | NodeKind.Stepper s -> encStepperSpec s
     | NodeKind.Button s -> encButtonSpec s
-    | NodeKind.Select s -> encSelectSpec s
-    | NodeKind.FileUpload s -> encFileUploadSpec s
-    | NodeKind.Form s -> encFormSpec s
-    | NodeKind.Filters s -> encFiltersSpec s
-    | NodeKind.DataGrid s -> encDataGridSpec s
+    | NodeKind.Callout s -> encCalloutSpec s
     | NodeKind.Chart s -> encChartSpec s
-    | NodeKind.Map s -> encMapSpec s
+    | NodeKind.CodeBlock s -> encCodeBlockSpec s
     | NodeKind.Custom s -> encCustomSpec s
+    | NodeKind.DataGrid s -> encDataGridSpec s
+    | NodeKind.Disclosure s -> encDisclosureSpec s
+    | NodeKind.Drawing s -> encDrawingSpec s
+    | NodeKind.Embed s -> encEmbedSpec s
     | NodeKind.ErrorBoundary s -> encErrorBoundarySpec s
+    | NodeKind.Fact s -> encFactSpec s
+    | NodeKind.FileUpload s -> encFileUploadSpec s
+    | NodeKind.Filters s -> encFiltersSpec s
+    | NodeKind.Form s -> encFormSpec s
     | NodeKind.FragmentDecl s -> encFragmentDeclSpec s
     | NodeKind.FragmentRef s -> encFragmentRefSpec s
-    | NodeKind.Switch s -> encSwitchSpec s
+    | NodeKind.Heading s -> encHeadingSpec s
+    | NodeKind.Icon s -> encIconSpec s
+    | NodeKind.Image s -> encImageSpec s
+    | NodeKind.LabelValueRow s -> encLabelValueRowSpec s
+    | NodeKind.Link s -> encLinkSpec s
+    | NodeKind.List s -> encListSpec s
+    | NodeKind.Map s -> encMapSpec s
+    | NodeKind.Markdown s -> encMarkdownSpec s
+    | NodeKind.Math s -> encMathSpec s
+    | NodeKind.Media s -> encMediaSpec s
+    | NodeKind.Metric s -> encMetricSpec s
+    | NodeKind.Modal s -> encModalSpec s
     | NodeKind.Mount s -> encMountSpec s
+    | NodeKind.Progress s -> encProgressSpec s
+    | NodeKind.ScrollArea s -> encScrollAreaSpec s
+    | NodeKind.Select s -> encSelectSpec s
+    | NodeKind.Skeleton s -> encSkeletonSpec s
+    | NodeKind.Sparkline s -> encSparklineSpec s
+    | NodeKind.SplitPanel s -> encSplitPanelSpec s
+    | NodeKind.Stepper s -> encStepperSpec s
+    | NodeKind.SummaryList s -> encSummaryListSpec s
+    | NodeKind.Switch s -> encSwitchSpec s
+    | NodeKind.Tabs s -> encTabsSpec s
+    | NodeKind.Toast s -> encToastSpec s
 
 and private encNode (n: Node<'Msg>) : JVal =
     let kind = encNodeKind n.Kind
 
     JObj([ Some("id", JStr n.Id); Some("kind", kind); (n.Accessibility |> Option.map (fun v -> "accessibility", encAccessibility v)); None; None; (n.State |> Option.map (fun v -> "state", encStateBehaviour v)); (n.Style |> Option.map (fun v -> "style", encSemanticStyle v)); (n.Tooltip |> Option.map (fun v -> "tooltip", encTextSource v)) ] |> List.choose id)
-
-and private encTextSource (v: TextSource) : JVal =
-    match v with
-    | TextSource.Literal text -> JStr text
-    | TextSource.Bound binding -> Canon.typed "Bound" [ "binding", (encBinding JStr) binding ]
-    | TextSource.I18n (key, args) -> Canon.typed "I18n" [ "key", JStr key; "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, id v))) args ]
-
-and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
-    match v with
-    | Binding.Static value -> Canon.typed "Static" ([ (value |> Option.map (fun v -> "value", encT v)) ] |> List.choose id)
-    | Binding.Query (name, accessor, dependsOn) -> Canon.typed "Query" ([ Some("name", JStr name); None; (dependsOn |> Option.map (fun v -> "dependsOn", JArr(List.map JStr v))) ] |> List.choose id)
-    | Binding.Filter (name, defaultValue) -> Canon.typed "Filter" ([ Some("name", JStr name); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
-    | Binding.Selection (nodeId, accessor, defaultValue, field) -> Canon.typed "Selection" ([ Some("nodeId", JStr nodeId); None; (defaultValue |> Option.map (fun v -> "defaultValue", encT v)); (field |> Option.map (fun v -> "field", JStr v)) ] |> List.choose id)
-    | Binding.State (key, defaultValue) -> Canon.typed "State" ([ Some("key", JStr key); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
-    | Binding.Now accessor -> Canon.typed "Now" ([ None ] |> List.choose id)
-    | Binding.Computed fn -> Canon.typed "Computed" [ "fn", JStr "<closure>" ]
-    | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>") ] |> List.choose id)
-    | Binding.Format (source, format, locale) -> Canon.typed "Format" [ "source", (encBinding encFloat) source; "format", encFormat format; "locale", encLocaleSource locale ]
-    | Binding.I18n (key, args) -> Canon.typed "I18n" ([ Some("key", JStr key); (args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (encBinding id) v))) v)) ] |> List.choose id)
-    | Binding.Transform (source, pipeline, ``params``) -> Canon.typed "Transform" ([ Some("source", encTransformSource source); Some("pipeline", JArr(List.map Fuaran.Core.DataFrameCodec.encodeTransform pipeline)); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
-    | Binding.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
-
-and private encCellFormat (v: CellFormat) : JVal =
-    match v with
-    | CellFormat.None -> Canon.typed "None" [  ]
-    | CellFormat.Number decimals -> Canon.typed "Number" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
-    | CellFormat.Currency code -> Canon.typed "Currency" [ "code", JStr code ]
-    | CellFormat.Percent decimals -> Canon.typed "Percent" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
-    | CellFormat.SignificantDigits digits -> Canon.typed "SignificantDigits" [ "digits", JInt digits ]
-    | CellFormat.Date format -> Canon.typed "Date" [ "format", JStr format ]
-    | CellFormat.Duration (unit, style) -> Canon.typed "Duration" [ "unit", encDurationUnit unit; "style", encDurationStyle style ]
-    | CellFormat.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
-    | CellFormat.Custom fn -> Canon.typed "Custom" [ "fn", JStr "<closure>" ]
 
 and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     match v with
@@ -1708,64 +1675,37 @@ and private encAction<'Msg> (v: Action<'Msg>) : JVal =
     | Action.SetState (key, value, valueFrom) -> Canon.typed "SetState" ([ Some("key", JStr key); (value |> Option.map (fun v -> "value", id v)); (valueFrom |> Option.map (fun v -> "valueFrom", (encBinding id) v)) ] |> List.choose id)
     | Action.AiTool (toolName, args) -> Canon.typed "AiTool" [ "toolName", JStr toolName; "args", id args ]
 
+and private encBinding<'T> (encT: 'T -> JVal) (v: Binding<'T>) : JVal =
+    match v with
+    | Binding.Static value -> Canon.typed "Static" ([ (value |> Option.map (fun v -> "value", encT v)) ] |> List.choose id)
+    | Binding.Query (name, accessor, dependsOn) -> Canon.typed "Query" ([ Some("name", JStr name); None; (dependsOn |> Option.map (fun v -> "dependsOn", JArr(List.map JStr v))) ] |> List.choose id)
+    | Binding.Filter (name, defaultValue) -> Canon.typed "Filter" ([ Some("name", JStr name); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
+    | Binding.Selection (nodeId, accessor, defaultValue, field) -> Canon.typed "Selection" ([ Some("nodeId", JStr nodeId); None; (defaultValue |> Option.map (fun v -> "defaultValue", encT v)); (field |> Option.map (fun v -> "field", JStr v)) ] |> List.choose id)
+    | Binding.State (key, defaultValue) -> Canon.typed "State" ([ Some("key", JStr key); (defaultValue |> Option.map (fun v -> "defaultValue", encT v)) ] |> List.choose id)
+    | Binding.Now accessor -> Canon.typed "Now" ([ None ] |> List.choose id)
+    | Binding.Computed fn -> Canon.typed "Computed" [ "fn", JStr "<closure>" ]
+    | Binding.Local (flushOn, format, initialFrom, onCommit, parse) -> Canon.typed "Local" ([ Some("flushOn", encLocalFlushTrigger flushOn); Some("format", JStr "<closure>"); Some("initialFrom", (encBinding encT) initialFrom); (onCommit |> Option.map (fun v -> "onCommit", JStr "<closure>")); Some("parse", JStr "<closure>") ] |> List.choose id)
+    | Binding.Format (source, format, locale) -> Canon.typed "Format" [ "source", (encBinding encFloat) source; "format", encFormat format; "locale", encLocaleSource locale ]
+    | Binding.I18n (key, args) -> Canon.typed "I18n" ([ Some("key", JStr key); (args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, (encBinding id) v))) v)) ] |> List.choose id)
+    | Binding.Transform (source, pipeline, ``params``) -> Canon.typed "Transform" ([ Some("source", encTransformSource source); Some("pipeline", JArr(List.map Fuaran.Core.DataFrameCodec.encodeTransform pipeline)); (``params`` |> Option.map (fun v -> "params", JArr(List.map encTransformParam v))) ] |> List.choose id)
+    | Binding.Invoke (capabilityId, args) -> Canon.typed "Invoke" [ "capabilityId", JStr capabilityId; "args", JArr(List.map encInvokeArg args) ]
+
 and private encCallResultTarget (v: CallResultTarget) : JVal =
     match v with
     | CallResultTarget.State key -> Canon.typed "State" [ "key", JStr key ]
     | CallResultTarget.Query name -> Canon.typed "Query" [ "name", JStr name ]
 
-and private encFormat (v: Format) : JVal =
+and private encCellFormat (v: CellFormat) : JVal =
     match v with
-    | Format.Number decimals -> Canon.typed "Number" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
-    | Format.Currency isoCode -> Canon.typed "Currency" [ "isoCode", JStr isoCode ]
-    | Format.Percent decimals -> Canon.typed "Percent" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
-    | Format.Date dateStyle -> Canon.typed "Date" [ "dateStyle", encDateStyle dateStyle ]
-    | Format.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
-    | Format.Duration (unit, style) -> Canon.typed "Duration" [ "unit", encDurationUnit unit; "style", encDurationStyle style ]
-
-and private encLocaleSource (v: LocaleSource) : JVal =
-    match v with
-    | LocaleSource.Ambient -> Canon.typed "Ambient" [  ]
-    | LocaleSource.Explicit tag -> Canon.typed "Explicit" [ "tag", JStr tag ]
-
-and private encLocalFlushTrigger (v: LocalFlushTrigger) : JVal =
-    match v with
-    | LocalFlushTrigger.OnBlur -> Canon.typed "OnBlur" [  ]
-    | LocalFlushTrigger.OnSubmit -> Canon.typed "OnSubmit" [  ]
-    | LocalFlushTrigger.OnDebounce milliseconds -> Canon.typed "OnDebounce" [ "milliseconds", JInt milliseconds ]
-    | LocalFlushTrigger.OnCommitAction -> Canon.typed "OnCommitAction" [  ]
-
-and private encLayoutMode (v: LayoutMode) : JVal =
-    match v with
-    | LayoutMode.Auto -> Canon.typed "Auto" [  ]
-    | LayoutMode.Flex (direction, wrap, gap) -> Canon.typed "Flex" ([ Some("direction", encOrientation direction); Some("wrap", JBool wrap); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
-    | LayoutMode.Grid (cols, templateColumns, gap) -> Canon.typed "Grid" ([ Some("cols", JInt cols); (templateColumns |> Option.map (fun v -> "templateColumns", JStr v)); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
-    | LayoutMode.Masonry (cols, gap) -> Canon.typed "Masonry" ([ Some("cols", JInt cols); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
-
-and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
-    match v with
-    | FormFieldKind.Text (value, onChange) -> Canon.typed "Text" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
-    | FormFieldKind.Number (value, onChange) -> Canon.typed "Number" ([ (value |> Option.map (fun v -> "value", (encBinding encFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
-    | FormFieldKind.Checkbox (value, onToggle) -> Canon.typed "Checkbox" ([ (value |> Option.map (fun v -> "value", (encBinding JBool) v)); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
-    | FormFieldKind.Toggle (value, onToggle) -> Canon.typed "Toggle" ([ (value |> Option.map (fun v -> "value", (encBinding JBool) v)); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
-    | FormFieldKind.Choice (options, value, onChange) -> Canon.typed "Choice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
-    | FormFieldKind.TextArea (value, onChange, rows) -> Canon.typed "TextArea" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("rows", JInt rows) ] |> List.choose id)
-    | FormFieldKind.RangedNumber (value, onChange, min, max, step) -> Canon.typed "RangedNumber" ([ (value |> Option.map (fun v -> "value", (encBinding encFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
-    | FormFieldKind.Range (value, onChange, min, max, step) -> Canon.typed "Range" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
-    | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("orientation", encOrientation orientation) ] |> List.choose id)
-    | FormFieldKind.Date (value, onChange, variant, min, max, step) -> Canon.typed "Date" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
-    | FormFieldKind.DateRange (value, onChange, variant, min, max, step) -> Canon.typed "DateRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<DateRangePair>) -> match v with | Binding.Static(Some p) -> encDateRangePair p | __other -> encBinding encDateRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
-    | FormFieldKind.Combobox (allowFreeText, onChange, options, value) -> Canon.typed "Combobox" ([ (if allowFreeText = false then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
-
-and private encMediaKind (v: MediaKind) : JVal =
-    match v with
-    | MediaKind.Video (autoplay, poster) -> Canon.typed "Video" ([ (if autoplay = false then None else Some("autoplay", JBool autoplay)); (poster |> Option.map (fun v -> "poster", (encBinding JStr) v)) ] |> List.choose id)
-    | MediaKind.Audio -> Canon.typed "Audio" [  ]
-
-and private encColumnWidth (v: ColumnWidth) : JVal =
-    match v with
-    | ColumnWidth.Auto -> Canon.typed "Auto" [  ]
-    | ColumnWidth.Fixed pixels -> Canon.typed "Fixed" [ "pixels", JInt pixels ]
-    | ColumnWidth.Flex weight -> Canon.typed "Flex" [ "weight", encFloat weight ]
+    | CellFormat.None -> Canon.typed "None" [  ]
+    | CellFormat.Number decimals -> Canon.typed "Number" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
+    | CellFormat.Currency code -> Canon.typed "Currency" [ "code", JStr code ]
+    | CellFormat.Percent decimals -> Canon.typed "Percent" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
+    | CellFormat.SignificantDigits digits -> Canon.typed "SignificantDigits" [ "digits", JInt digits ]
+    | CellFormat.Date format -> Canon.typed "Date" [ "format", JStr format ]
+    | CellFormat.Duration (unit, style) -> Canon.typed "Duration" [ "unit", encDurationUnit unit; "style", encDurationStyle style ]
+    | CellFormat.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
+    | CellFormat.Custom fn -> Canon.typed "Custom" [ "fn", JStr "<closure>" ]
 
 and private encCellKindErased<'Msg> (v: CellKindErased<'Msg>) : JVal =
     match v with
@@ -1782,26 +1722,43 @@ and private encCellKindErased<'Msg> (v: CellKindErased<'Msg>) : JVal =
     | CellKindErased.Progress (fractionFn, labelFn) -> Canon.typed "Progress" ([ Some("fractionFn", JStr "<closure>"); (labelFn |> Option.map (fun v -> "labelFn", JStr "<closure>")) ] |> List.choose id)
     | CellKindErased.Custom fn -> Canon.typed "Custom" [ "fn", JStr "<closure>" ]
 
-and private encHoleValueSpace (v: HoleValueSpace) : JVal =
+and private encColumnWidth (v: ColumnWidth) : JVal =
     match v with
-    | HoleValueSpace.IntRange (min, max) -> Canon.typed "IntRange" [ "min", JInt min; "max", JInt max ]
-    | HoleValueSpace.FloatRange (min, max) -> Canon.typed "FloatRange" [ "min", encFloat min; "max", encFloat max ]
-    | HoleValueSpace.StringLen (minLen, maxLen) -> Canon.typed "StringLen" [ "minLen", JInt minLen; "maxLen", JInt maxLen ]
-    | HoleValueSpace.Enum choices -> Canon.typed "Enum" [ "choices", JArr(List.map JStr choices) ]
-    | HoleValueSpace.AnyString -> Canon.typed "AnyString" [  ]
+    | ColumnWidth.Auto -> Canon.typed "Auto" [  ]
+    | ColumnWidth.Fixed pixels -> Canon.typed "Fixed" [ "pixels", JInt pixels ]
+    | ColumnWidth.Flex weight -> Canon.typed "Flex" [ "weight", encFloat weight ]
 
-and private encScalar (v: Scalar) : JVal =
+and private encCurveCommand (v: CurveCommand) : JVal =
     match v with
-    | Scalar.Int value -> Canon.typed "Int" [ "value", JInt value ]
-    | Scalar.Float value -> Canon.typed "Float" [ "value", encFloat value ]
-    | Scalar.Bool value -> Canon.typed "Bool" [ "value", JBool value ]
-    | Scalar.Str value -> Canon.typed "Str" [ "value", JStr value ]
+    | CurveCommand.MoveTo ``to`` -> Canon.typed "MoveTo" [ "to", encDrawPoint ``to`` ]
+    | CurveCommand.LineTo ``to`` -> Canon.typed "LineTo" [ "to", encDrawPoint ``to`` ]
+    | CurveCommand.CubicTo (control1, control2, ``to``) -> Canon.typed "CubicTo" [ "control1", encDrawPoint control1; "control2", encDrawPoint control2; "to", encDrawPoint ``to`` ]
+    | CurveCommand.QuadraticTo (control, ``to``) -> Canon.typed "QuadraticTo" [ "control", encDrawPoint control; "to", encDrawPoint ``to`` ]
+    | CurveCommand.Close -> Canon.typed "Close" [  ]
 
-and private encHoleDecl (v: HoleDecl) : JVal =
+and private encFormFieldKind<'Msg> (v: FormFieldKind<'Msg>) : JVal =
     match v with
-    | HoleDecl.Value (name, space, ``default``) -> Canon.typed "Value" ([ Some("name", JStr name); Some("space", encHoleValueSpace space); (``default`` |> Option.map (fun v -> "default", encScalar v)) ] |> List.choose id)
-    | HoleDecl.Slot (name, kindConstraint) -> Canon.typed "Slot" ([ Some("name", JStr name); (kindConstraint |> Option.map (fun v -> "kindConstraint", JStr v)) ] |> List.choose id)
-    | HoleDecl.Repeat (name, countSpace) -> Canon.typed "Repeat" [ "name", JStr name; "countSpace", encHoleValueSpace countSpace ]
+    | FormFieldKind.Text (value, onChange) -> Canon.typed "Text" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Number (value, onChange) -> Canon.typed "Number" ([ (value |> Option.map (fun v -> "value", (encBinding encFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Checkbox (value, onToggle) -> Canon.typed "Checkbox" ([ (value |> Option.map (fun v -> "value", (encBinding JBool) v)); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Toggle (value, onToggle) -> Canon.typed "Toggle" ([ (value |> Option.map (fun v -> "value", (encBinding JBool) v)); (onToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.Choice (options, value, onChange) -> Canon.typed "Choice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")) ] |> List.choose id)
+    | FormFieldKind.TextArea (value, onChange, rows) -> Canon.typed "TextArea" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("rows", JInt rows) ] |> List.choose id)
+    | FormFieldKind.RangedNumber (value, onChange, min, max, step) -> Canon.typed "RangedNumber" ([ (value |> Option.map (fun v -> "value", (encBinding encFloat) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.Range (value, onChange, min, max, step) -> Canon.typed "Range" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<RangePair>) -> match v with | Binding.Static(Some p) -> encRangePair p | __other -> encBinding encRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (min |> Option.map (fun v -> "min", encFloat v)); (max |> Option.map (fun v -> "max", encFloat v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.SegmentedChoice (options, value, onChange, orientation) -> Canon.typed "SegmentedChoice" ([ Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("orientation", encOrientation orientation) ] |> List.choose id)
+    | FormFieldKind.Date (value, onChange, variant, min, max, step) -> Canon.typed "Date" ([ (value |> Option.map (fun v -> "value", (encBinding JStr) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.DateRange (value, onChange, variant, min, max, step) -> Canon.typed "DateRange" ([ (value |> Option.map (fun v -> "value", (fun (v: Binding<DateRangePair>) -> match v with | Binding.Static(Some p) -> encDateRangePair p | __other -> encBinding encDateRangePair __other) v)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("variant", encDateVariant variant); (min |> Option.map (fun v -> "min", JStr v)); (max |> Option.map (fun v -> "max", JStr v)); (step |> Option.map (fun v -> "step", encFloat v)) ] |> List.choose id)
+    | FormFieldKind.Combobox (allowFreeText, onChange, options, value) -> Canon.typed "Combobox" ([ (if allowFreeText = false then None else Some("allowFreeText", JBool allowFreeText)); (onChange |> Option.map (fun v -> "onChange", JStr "<closure>")); Some("options", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) options); (value |> Option.map (fun v -> "value", (encBinding JStr) v)) ] |> List.choose id)
+
+and private encFormat (v: Format) : JVal =
+    match v with
+    | Format.Number decimals -> Canon.typed "Number" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
+    | Format.Currency isoCode -> Canon.typed "Currency" [ "isoCode", JStr isoCode ]
+    | Format.Percent decimals -> Canon.typed "Percent" ([ (decimals |> Option.map (fun v -> "decimals", JInt v)) ] |> List.choose id)
+    | Format.Date dateStyle -> Canon.typed "Date" [ "dateStyle", encDateStyle dateStyle ]
+    | Format.RelativeTime unit -> Canon.typed "RelativeTime" [ "unit", encRelativeTimeUnit unit ]
+    | Format.Duration (unit, style) -> Canon.typed "Duration" [ "unit", encDurationUnit unit; "style", encDurationStyle style ]
 
 and private encFragmentArg<'Msg> (v: FragmentArg<'Msg>) : JVal =
     match v with
@@ -1811,13 +1768,50 @@ and private encFragmentArg<'Msg> (v: FragmentArg<'Msg>) : JVal =
     | FragmentArg.Str value -> Canon.typed "Str" [ "value", JStr value ]
     | FragmentArg.SlotArg tree -> Canon.typed "SlotArg" [ "tree", encNode tree ]
 
-and private encCurveCommand (v: CurveCommand) : JVal =
+and private encHoleDecl (v: HoleDecl) : JVal =
     match v with
-    | CurveCommand.MoveTo ``to`` -> Canon.typed "MoveTo" [ "to", encDrawPoint ``to`` ]
-    | CurveCommand.LineTo ``to`` -> Canon.typed "LineTo" [ "to", encDrawPoint ``to`` ]
-    | CurveCommand.CubicTo (control1, control2, ``to``) -> Canon.typed "CubicTo" [ "control1", encDrawPoint control1; "control2", encDrawPoint control2; "to", encDrawPoint ``to`` ]
-    | CurveCommand.QuadraticTo (control, ``to``) -> Canon.typed "QuadraticTo" [ "control", encDrawPoint control; "to", encDrawPoint ``to`` ]
-    | CurveCommand.Close -> Canon.typed "Close" [  ]
+    | HoleDecl.Value (name, space, ``default``) -> Canon.typed "Value" ([ Some("name", JStr name); Some("space", encHoleValueSpace space); (``default`` |> Option.map (fun v -> "default", encScalar v)) ] |> List.choose id)
+    | HoleDecl.Slot (name, kindConstraint) -> Canon.typed "Slot" ([ Some("name", JStr name); (kindConstraint |> Option.map (fun v -> "kindConstraint", JStr v)) ] |> List.choose id)
+    | HoleDecl.Repeat (name, countSpace) -> Canon.typed "Repeat" [ "name", JStr name; "countSpace", encHoleValueSpace countSpace ]
+
+and private encHoleValueSpace (v: HoleValueSpace) : JVal =
+    match v with
+    | HoleValueSpace.IntRange (min, max) -> Canon.typed "IntRange" [ "min", JInt min; "max", JInt max ]
+    | HoleValueSpace.FloatRange (min, max) -> Canon.typed "FloatRange" [ "min", encFloat min; "max", encFloat max ]
+    | HoleValueSpace.StringLen (minLen, maxLen) -> Canon.typed "StringLen" [ "minLen", JInt minLen; "maxLen", JInt maxLen ]
+    | HoleValueSpace.Enum choices -> Canon.typed "Enum" [ "choices", JArr(List.map JStr choices) ]
+    | HoleValueSpace.AnyString -> Canon.typed "AnyString" [  ]
+
+and private encLayoutMode (v: LayoutMode) : JVal =
+    match v with
+    | LayoutMode.Auto -> Canon.typed "Auto" [  ]
+    | LayoutMode.Flex (direction, wrap, gap) -> Canon.typed "Flex" ([ Some("direction", encOrientation direction); Some("wrap", JBool wrap); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
+    | LayoutMode.Grid (cols, templateColumns, gap) -> Canon.typed "Grid" ([ Some("cols", JInt cols); (templateColumns |> Option.map (fun v -> "templateColumns", JStr v)); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
+    | LayoutMode.Masonry (cols, gap) -> Canon.typed "Masonry" ([ Some("cols", JInt cols); (gap |> Option.map (fun v -> "gap", JInt v)) ] |> List.choose id)
+
+and private encLocalFlushTrigger (v: LocalFlushTrigger) : JVal =
+    match v with
+    | LocalFlushTrigger.OnBlur -> Canon.typed "OnBlur" [  ]
+    | LocalFlushTrigger.OnSubmit -> Canon.typed "OnSubmit" [  ]
+    | LocalFlushTrigger.OnDebounce milliseconds -> Canon.typed "OnDebounce" [ "milliseconds", JInt milliseconds ]
+    | LocalFlushTrigger.OnCommitAction -> Canon.typed "OnCommitAction" [  ]
+
+and private encLocaleSource (v: LocaleSource) : JVal =
+    match v with
+    | LocaleSource.Ambient -> Canon.typed "Ambient" [  ]
+    | LocaleSource.Explicit tag -> Canon.typed "Explicit" [ "tag", JStr tag ]
+
+and private encMediaKind (v: MediaKind) : JVal =
+    match v with
+    | MediaKind.Video (autoplay, poster) -> Canon.typed "Video" ([ (if autoplay = false then None else Some("autoplay", JBool autoplay)); (poster |> Option.map (fun v -> "poster", (encBinding JStr) v)) ] |> List.choose id)
+    | MediaKind.Audio -> Canon.typed "Audio" [  ]
+
+and private encScalar (v: Scalar) : JVal =
+    match v with
+    | Scalar.Int value -> Canon.typed "Int" [ "value", JInt value ]
+    | Scalar.Float value -> Canon.typed "Float" [ "value", encFloat value ]
+    | Scalar.Bool value -> Canon.typed "Bool" [ "value", JBool value ]
+    | Scalar.Str value -> Canon.typed "Str" [ "value", JStr value ]
 
 and private encShape (v: Shape) : JVal =
     match v with
@@ -1831,203 +1825,140 @@ and private encShape (v: Shape) : JVal =
     | Shape.Ellipse (cx, cy, rx, ry, style) -> Canon.typed "Ellipse" [ "cx", encFloat cx; "cy", encFloat cy; "rx", encFloat rx; "ry", encFloat ry; "style", encDrawStyle style ]
     | Shape.Label (x, y, text, style) -> Canon.typed "Label" [ "x", encFloat x; "y", encFloat y; "text", encTextSource text; "style", encDrawStyle style ]
 
-and private encSemanticStyle (s: SemanticStyle) : JVal =
-    JObj([ (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (if s.Role = StyleRole.None then None else Some("role", encStyleRole s.Role)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Voice = FontVoice.Default then None else Some("voice", encFontVoice s.Voice)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)) ] |> List.choose id)
-
-and private encStateBehaviour<'Msg> (s: StateBehaviour<'Msg>) : JVal =
-    JObj([ (s.OnEmpty |> Option.map (fun v -> "onEmpty", encNode v)); (s.OnError |> Option.map (fun v -> "onError", JStr "<closure>")); (s.OnLoading |> Option.map (fun v -> "onLoading", encNode v)) ] |> List.choose id)
+and private encTextSource (v: TextSource) : JVal =
+    match v with
+    | TextSource.Literal text -> JStr text
+    | TextSource.Bound binding -> Canon.typed "Bound" [ "binding", (encBinding JStr) binding ]
+    | TextSource.I18n (key, args) -> Canon.typed "I18n" [ "key", JStr key; "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, id v))) args ]
 
 and private encAccessibility (s: Accessibility) : JVal =
     JObj([ (s.DescribedBy |> Option.map (fun v -> "describedBy", JStr v)); (s.Hidden |> Option.map (fun v -> "hidden", (encBinding JBool) v)); (s.Label |> Option.map (fun v -> "label", (encBinding JStr) v)); (s.LabelledBy |> Option.map (fun v -> "labelledBy", JStr v)); (s.LiveRegion |> Option.map (fun v -> "liveRegion", encLiveRegionKind v)); (s.Role |> Option.map (fun v -> "role", Fuaran.UI.HostPrelude.encAriaRole v)) ] |> List.choose id)
 
-and private encSwitchCase<'Msg> (s: SwitchCase<'Msg>) : JVal =
-    JObj([ Some("child", encNode s.Child); Some("match", JStr s.Match) ] |> List.choose id)
-
-and private encGuestChannel (s: GuestChannel) : JVal =
-    JObj([ Some("direction", encChannelDirection s.Direction); (s.MessageShape |> Option.map (fun v -> "messageShape", JStr v)) ] |> List.choose id)
-
-and private encDrawPoint (s: DrawPoint) : JVal =
-    JObj([ Some("x", encFloat s.X); Some("y", encFloat s.Y) ] |> List.choose id)
-
-and private encViewBox (s: ViewBox) : JVal =
-    JObj([ Some("height", encFloat s.Height); Some("minX", encFloat s.MinX); Some("minY", encFloat s.MinY); Some("width", encFloat s.Width) ] |> List.choose id)
-
-and private encDrawStyle (s: DrawStyle) : JVal =
-    JObj([ (s.Emphasis |> Option.map (fun v -> "emphasis", encEmphasis v)); (s.Fill |> Option.map (fun v -> "fill", (encBinding JStr) v)); (s.FontFamily |> Option.map (fun v -> "fontFamily", JStr v)); (s.FontSize |> Option.map (fun v -> "fontSize", encFloat v)); (s.MarkId |> Option.map (fun v -> "markId", JStr v)); (s.Opacity |> Option.map (fun v -> "opacity", (encBinding encFloat) v)); (s.Rotation |> Option.map (fun v -> "rotation", encFloat v)); (s.Stroke |> Option.map (fun v -> "stroke", (encBinding JStr) v)); (s.StrokeWidth |> Option.map (fun v -> "strokeWidth", (encBinding encFloat) v)); (s.TextAnchor |> Option.map (fun v -> "textAnchor", encTextAnchor v)); (s.Tip |> Option.map (fun v -> "tip", encTextSource v)) ] |> List.choose id)
-
-and private encInvokeArg (s: InvokeArg) : JVal =
-    JObj([ Some("addr", JStr s.Addr); Some("value", JStr s.Value) ] |> List.choose id)
-
-and private encSelectOption (s: SelectOption) : JVal =
-    JObj([ Some("label", JStr s.Label); Some("value", JStr s.Value) ] |> List.choose id)
-
-and private encMapMarker (s: MapMarker) : JVal =
-    JObj([ Some("label", JStr s.Label); Some("latitude", encFloat s.Latitude); Some("longitude", encFloat s.Longitude) ] |> List.choose id)
-
-and private encDefaultSort (s: DefaultSort) : JVal =
-    JObj([ Some("column", JInt s.Column); Some("direction", encSortDirection s.Direction) ] |> List.choose id)
-
-and private encStaticRows (s: StaticRows) : JVal =
-    JObj([ (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); Some("headers", JArr(List.map encTextSource s.Headers)); Some("rows", JArr(List.map (fun __xs -> JArr(List.map encTextSource __xs)) s.Rows)); (s.Sortable |> Option.map (fun v -> "sortable", JBool v)) ] |> List.choose id)
-
-and private encCompareRule (s: CompareRule) : JVal =
-    JObj([ Some("against", (encBinding id) s.Against); Some("op", encCompareOp s.Op) ] |> List.choose id)
-
-and private encFieldRule (s: FieldRule) : JVal =
-    JObj([ (s.Compare |> Option.map (fun v -> "compare", encCompareRule v)); (s.Format |> Option.map (fun v -> "format", encTextFormat v)); (s.MaxLength |> Option.map (fun v -> "maxLength", JInt v)); (s.Message |> Option.map (fun v -> "message", encTextSource v)); (s.MinLength |> Option.map (fun v -> "minLength", JInt v)); (s.Pattern |> Option.map (fun v -> "pattern", JStr v)) ] |> List.choose id)
-
-and private encFormField<'Msg> (s: FormField<'Msg>) : JVal =
-    JObj([ Some("id", JStr s.Id); Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("required", JBool s.Required); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Rule |> Option.map (fun v -> "rule", encFieldRule v)) ] |> List.choose id)
-
-and private encFilterSpec<'Msg> (s: FilterSpec<'Msg>) : JVal =
-    JObj([ Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("name", JStr s.Name) ] |> List.choose id)
-
-and private encTransformParam (s: TransformParam) : JVal =
-    JObj([ Some("from", (encBinding id) s.From); Some("name", JStr s.Name) ] |> List.choose id)
-
-and private encRangePair (s: RangePair) : JVal =
-    JObj([ Some("max", encFloat s.Max); Some("min", encFloat s.Min) ] |> List.choose id)
-
-and private encDateRangePair (s: DateRangePair) : JVal =
-    JObj([ Some("from", JStr s.From); Some("to", JStr s.To) ] |> List.choose id)
-
-and private encTabHeader (s: TabHeader) : JVal =
-    JObj([ Some("label", encTextSource s.Label); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
+and private encButtonGroupItem<'Msg> (s: ButtonGroupItem<'Msg>) : JVal =
+    JObj([ Some("label", encTextSource s.Label); (s.OnClick |> Option.map (fun v -> "onClick", JStr "<closure>")) ] |> List.choose id)
 
 and private encColumnErased<'Msg> (s: ColumnErased<'Msg>) : JVal =
     JObj([ (s.Field |> Option.map (fun v -> "field", JStr v)); (s.Sortable |> Option.map (fun v -> "sortable", JBool v)); (s.Editable |> Option.map (fun v -> "editable", JBool v)); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); Some("kind", encCellKindErased s.Kind); Some("label", JStr s.Label); (s.Value |> Option.map (fun v -> "value", JStr "<closure>")); (match s.Width with | ColumnWidth.Auto -> None | _ -> Some("width", encColumnWidth s.Width)) ] |> List.choose id)
 
-and private encButtonGroupItem<'Msg> (s: ButtonGroupItem<'Msg>) : JVal =
-    JObj([ Some("label", encTextSource s.Label); (s.OnClick |> Option.map (fun v -> "onClick", JStr "<closure>")) ] |> List.choose id)
+and private encCompareRule (s: CompareRule) : JVal =
+    JObj([ Some("against", (encBinding id) s.Against); Some("op", encCompareOp s.Op) ] |> List.choose id)
 
 and private encContentHash (s: ContentHash) : JVal =
     JObj([ Some("algorithm", JStr s.Algorithm); Some("hash", JStr s.Hash); Some("strictness", encHashStrictness s.Strictness) ] |> List.choose id)
 
-and private encSrcSetEntry (s: SrcSetEntry) : JVal =
-    JObj([ Some("src", (encBinding JStr) s.Src); Some("width", JInt s.Width) ] |> List.choose id)
+and private encDateRangePair (s: DateRangePair) : JVal =
+    JObj([ Some("from", JStr s.From); Some("to", JStr s.To) ] |> List.choose id)
 
-and private encTrackEntry (s: TrackEntry) : JVal =
-    JObj([ (if s.Default = false then None else Some("default", JBool s.Default)); Some("kind", encTrackKind s.Kind); Some("label", encTextSource s.Label); Some("src", (encBinding JStr) s.Src); Some("srcLang", JStr s.SrcLang) ] |> List.choose id)
+and private encDefaultSort (s: DefaultSort) : JVal =
+    JObj([ Some("column", JInt s.Column); Some("direction", encSortDirection s.Direction) ] |> List.choose id)
+
+and private encDrawPoint (s: DrawPoint) : JVal =
+    JObj([ Some("x", encFloat s.X); Some("y", encFloat s.Y) ] |> List.choose id)
+
+and private encDrawStyle (s: DrawStyle) : JVal =
+    JObj([ (s.Emphasis |> Option.map (fun v -> "emphasis", encEmphasis v)); (s.Fill |> Option.map (fun v -> "fill", (encBinding JStr) v)); (s.FontFamily |> Option.map (fun v -> "fontFamily", JStr v)); (s.FontSize |> Option.map (fun v -> "fontSize", encFloat v)); (s.MarkId |> Option.map (fun v -> "markId", JStr v)); (s.Opacity |> Option.map (fun v -> "opacity", (encBinding encFloat) v)); (s.Rotation |> Option.map (fun v -> "rotation", encFloat v)); (s.Stroke |> Option.map (fun v -> "stroke", (encBinding JStr) v)); (s.StrokeWidth |> Option.map (fun v -> "strokeWidth", (encBinding encFloat) v)); (s.TextAnchor |> Option.map (fun v -> "textAnchor", encTextAnchor v)); (s.Tip |> Option.map (fun v -> "tip", encTextSource v)) ] |> List.choose id)
 
 and private encEffectClass (s: EffectClass) : JVal =
     JObj([ Some("determinism", encDeterminismSource s.Determinism); Some("hostEffect", encHostEffect s.HostEffect) ] |> List.choose id)
 
-and private encHeadingSpec (s: HeadingSpec) : JVal =
-    Canon.typed "Heading" ([ Some("level", JInt s.Level); Some("text", encTextSource s.Text); Some("variant", encHeadingVariant s.Variant) ] |> List.choose id)
+and private encFieldRule (s: FieldRule) : JVal =
+    JObj([ (s.Compare |> Option.map (fun v -> "compare", encCompareRule v)); (s.Format |> Option.map (fun v -> "format", encTextFormat v)); (s.MaxLength |> Option.map (fun v -> "maxLength", JInt v)); (s.Message |> Option.map (fun v -> "message", encTextSource v)); (s.MinLength |> Option.map (fun v -> "minLength", JInt v)); (s.Pattern |> Option.map (fun v -> "pattern", JStr v)) ] |> List.choose id)
+
+and private encFilterSpec<'Msg> (s: FilterSpec<'Msg>) : JVal =
+    JObj([ Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("name", JStr s.Name) ] |> List.choose id)
+
+and private encFormField<'Msg> (s: FormField<'Msg>) : JVal =
+    JObj([ Some("id", JStr s.Id); Some("kind", encFormFieldKind s.Kind); Some("label", encTextSource s.Label); Some("required", JBool s.Required); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Rule |> Option.map (fun v -> "rule", encFieldRule v)) ] |> List.choose id)
+
+and private encGuestChannel (s: GuestChannel) : JVal =
+    JObj([ Some("direction", encChannelDirection s.Direction); (s.MessageShape |> Option.map (fun v -> "messageShape", JStr v)) ] |> List.choose id)
+
+and private encInvokeArg (s: InvokeArg) : JVal =
+    JObj([ Some("addr", JStr s.Addr); Some("value", JStr s.Value) ] |> List.choose id)
+
+and private encMapMarker (s: MapMarker) : JVal =
+    JObj([ Some("label", JStr s.Label); Some("latitude", encFloat s.Latitude); Some("longitude", encFloat s.Longitude) ] |> List.choose id)
+
+and private encRangePair (s: RangePair) : JVal =
+    JObj([ Some("max", encFloat s.Max); Some("min", encFloat s.Min) ] |> List.choose id)
+
+and private encSelectOption (s: SelectOption) : JVal =
+    JObj([ Some("label", JStr s.Label); Some("value", JStr s.Value) ] |> List.choose id)
+
+and private encSemanticStyle (s: SemanticStyle) : JVal =
+    JObj([ (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (if s.Role = StyleRole.None then None else Some("role", encStyleRole s.Role)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Voice = FontVoice.Default then None else Some("voice", encFontVoice s.Voice)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)) ] |> List.choose id)
+
+and private encSrcSetEntry (s: SrcSetEntry) : JVal =
+    JObj([ Some("src", (encBinding JStr) s.Src); Some("width", JInt s.Width) ] |> List.choose id)
+
+and private encStateBehaviour<'Msg> (s: StateBehaviour<'Msg>) : JVal =
+    JObj([ (s.OnEmpty |> Option.map (fun v -> "onEmpty", encNode v)); (s.OnError |> Option.map (fun v -> "onError", JStr "<closure>")); (s.OnLoading |> Option.map (fun v -> "onLoading", encNode v)) ] |> List.choose id)
+
+and private encStaticRows (s: StaticRows) : JVal =
+    JObj([ (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); Some("headers", JArr(List.map encTextSource s.Headers)); Some("rows", JArr(List.map (fun __xs -> JArr(List.map encTextSource __xs)) s.Rows)); (s.Sortable |> Option.map (fun v -> "sortable", JBool v)) ] |> List.choose id)
+
+and private encSwitchCase<'Msg> (s: SwitchCase<'Msg>) : JVal =
+    JObj([ Some("child", encNode s.Child); Some("match", JStr s.Match) ] |> List.choose id)
+
+and private encTabHeader (s: TabHeader) : JVal =
+    JObj([ Some("label", encTextSource s.Label); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
+
+and private encTrackEntry (s: TrackEntry) : JVal =
+    JObj([ (if s.Default = false then None else Some("default", JBool s.Default)); Some("kind", encTrackKind s.Kind); Some("label", encTextSource s.Label); Some("src", (encBinding JStr) s.Src); Some("srcLang", JStr s.SrcLang) ] |> List.choose id)
+
+and private encTransformParam (s: TransformParam) : JVal =
+    JObj([ Some("from", (encBinding id) s.From); Some("name", JStr s.Name) ] |> List.choose id)
+
+and private encViewBox (s: ViewBox) : JVal =
+    JObj([ Some("height", encFloat s.Height); Some("minX", encFloat s.MinX); Some("minY", encFloat s.MinY); Some("width", encFloat s.Width) ] |> List.choose id)
 
 and private encBadgeSpec (s: BadgeSpec) : JVal =
     Canon.typed "Badge" ([ Some("label", encTextSource s.Label); Some("variant", encBadgeVariant s.Variant) ] |> List.choose id)
 
-and private encMarkdownSpec (s: MarkdownSpec) : JVal =
-    Canon.typed "Markdown" ([ Some("text", encTextSource s.Text) ] |> List.choose id)
-
-and private encMathSpec (s: MathSpec) : JVal =
-    Canon.typed "Math" ([ Some("source", JStr s.Source); Some("display", encMathDisplay s.Display) ] |> List.choose id)
-
-and private encSkeletonSpec (s: SkeletonSpec) : JVal =
-    Canon.typed "Skeleton" ([ Some("rows", JInt s.Rows) ] |> List.choose id)
-
-// Phase 821 — Icon display kind.
-// `size` omitted-when-`Medium`, `tone` omitted-when-`Default`, `label`
-// omitted-when-`None` (decorative).
-and private encIconSpec (s: IconSpec) : JVal =
-    Canon.typed "Icon" ([ Some("icon", JStr s.Icon); (if s.Size = IconSize.Medium then None else Some("size", encIconSize s.Size)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Label |> Option.map (fun v -> "label", JStr v)) ] |> List.choose id)
-
-and private encListSpec (s: ListSpec) : JVal =
-    Canon.typed "List" ([ Some("items", JArr(List.map encTextSource s.Items)); Some("ordered", JBool s.Ordered) ] |> List.choose id)
-
-and private encImageSpec (s: ImageSpec) : JVal =
-    Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); Some("variant", encImageVariant s.Variant); (if s.Fit = ImageFit.Natural then None else Some("fit", encImageFit s.Fit)); (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if s.Loading = ImageLoading.Eager then None else Some("loading", encImageLoading s.Loading)); (if List.isEmpty s.SrcSet then None else Some("srcSet", JArr(List.map encSrcSetEntry s.SrcSet))); (if s.Expandable = false then None else Some("expandable", JBool s.Expandable)); (s.Caption |> Option.map (fun v -> "caption", encTextSource v)) ] |> List.choose id)
-
-and private encMediaSpec (s: MediaSpec) : JVal =
-    Canon.typed "Media" ([ (if s.Controls = true then None else Some("controls", JBool s.Controls)); Some("kind", encMediaKind s.Kind); Some("label", encTextSource s.Label); (if s.Loop = false then None else Some("loop", JBool s.Loop)); Some("src", (encBinding JStr) s.Src); (if List.isEmpty s.Tracks then None else Some("tracks", JArr(List.map encTrackEntry s.Tracks))); (s.Transcript |> Option.map (fun v -> "transcript", encTextSource v)) ] |> List.choose id)
-
-and private encEmbedSpec (s: EmbedSpec) : JVal =
-    Canon.typed "Embed" ([ (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if List.isEmpty s.Permissions then None else Some("permissions", JArr(List.map encEmbedPermission s.Permissions))); Some("src", (encBinding JStr) s.Src); Some("title", encTextSource s.Title) ] |> List.choose id)
-
-and private encLinkSpec (s: LinkSpec) : JVal =
-    Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun v -> "protection", encLinkProtection v)) ] |> List.choose id)
-
-and private encCalloutSpec (s: CalloutSpec) : JVal =
-    Canon.typed "Callout" ([ Some("body", encTextSource s.Body); (if s.Dismissable = false then None else Some("dismissable", JBool s.Dismissable)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)) ] |> List.choose id)
-
-and private encProgressSpec (s: ProgressSpec) : JVal =
-    Canon.typed "Progress" ([ Some("fraction", (encBinding encFloat) s.Fraction); (if s.Indeterminate = false then None else Some("indeterminate", JBool s.Indeterminate)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Label |> Option.map (fun v -> "label", encTextSource v)); (s.Caveat |> Option.map (fun v -> "caveat", encTextSource v)) ] |> List.choose id)
-
-and private encMetricSpec (s: MetricSpec) : JVal =
-    Canon.typed "Metric" ([ Some("label", encTextSource s.Label); Some("value", (encBinding encFloat) s.Value); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)); (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (s.Trend |> Option.map (fun v -> "trend", (encBinding encFloat) v)); (s.TrendFormat |> Option.map (fun v -> "trendFormat", encCellFormat v)); (if s.TrendPolarity = TrendPolarity.HigherIsBetter then None else Some("trendPolarity", encTrendPolarity s.TrendPolarity)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Subtext |> Option.map (fun v -> "subtext", encTextSource v)) ] |> List.choose id)
-
-and private encLabelValueRowSpec (s: LabelValueRowSpec) : JVal =
-    Canon.typed "LabelValueRow" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); Some("label", encTextSource s.Label); Some("value", (encBinding encFloat) s.Value); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
-
-and private encFactSpec (s: FactSpec) : JVal =
-    Canon.typed "Fact" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); Some("label", encTextSource s.Label); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); Some("value", encTextSource s.Value) ] |> List.choose id)
-
-and private encSparklineSpec (s: SparklineSpec) : JVal =
-    Canon.typed "Sparkline" ([ Some("source", (encBinding (fun __xs -> JArr(List.map encFloat __xs))) s.Source) ] |> List.choose id)
-
-and private encCodeBlockSpec (s: CodeBlockSpec) : JVal =
-    Canon.typed "CodeBlock" ([ Some("code", JStr s.Code); Some("copyable", JBool s.Copyable); Some("highlightLines", JArr(List.map JInt s.HighlightLines)); Some("language", JStr s.Language); Some("lineNumbers", JBool s.LineNumbers) ] |> List.choose id)
-
-and private encToastSpec (s: ToastSpec) : JVal =
-    Canon.typed "Toast" ([ (if s.Dismissable = true then None else Some("dismissable", JBool s.Dismissable)); Some("message", encTextSource s.Message); Some("open", (encBinding JBool) s.Open); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)) ] |> List.choose id)
-
-and private encDrawingSpec (s: DrawingSpec) : JVal =
-    Canon.typed "Drawing" ([ (s.Description |> Option.map (fun v -> "description", encTextSource v)); Some("shapes", JArr(List.map encShape s.Shapes)); Some("style", encDrawStyle s.Style); (s.Title |> Option.map (fun v -> "title", encTextSource v)); Some("viewBox", encViewBox s.ViewBox) ] |> List.choose id)
-
 and private encBoxSpec<'Msg> (s: BoxSpec<'Msg>) : JVal =
     Canon.typed "Box" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); Some("layout", encLayoutMode s.Layout); Some("role", encBoxRole s.Role) ] |> List.choose id)
-
-and private encSplitPanelSpec<'Msg> (s: SplitPanelSpec<'Msg>) : JVal =
-    Canon.typed "SplitPanel" ([ Some("children", JArr(List.map encNode s.Children)); Some("weight", encFloat s.Weight) ] |> List.choose id)
-
-and private encSummaryListSpec<'Msg> (s: SummaryListSpec<'Msg>) : JVal =
-    Canon.typed "SummaryList" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)) ] |> List.choose id)
-
-and private encDisclosureSpec<'Msg> (s: DisclosureSpec<'Msg>) : JVal =
-    Canon.typed "Disclosure" ([ Some("children", JArr(List.map encNode s.Children)); Some("defaultOpen", JBool s.DefaultOpen); Some("heading", encTextSource s.Heading); (s.OnToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")); Some("open", (encBinding JBool) s.Open) ] |> List.choose id)
-
-and private encModalSpec<'Msg> (s: ModalSpec<'Msg>) : JVal =
-    Canon.typed "Modal" ([ Some("children", JArr(List.map encNode s.Children)); Some("dismissable", JBool s.Dismissable); (s.OnDismiss |> Option.map (fun v -> "onDismiss", encAction v)); Some("open", (encBinding JBool) s.Open); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); (if s.Modality = ModalityKind.Modal then None else Some("modality", encModalityKind s.Modality)); (s.Anchor |> Option.map (fun v -> "anchor", JStr v)) ] |> List.choose id)
-
-and private encScrollAreaSpec<'Msg> (s: ScrollAreaSpec<'Msg>) : JVal =
-    Canon.typed "ScrollArea" ([ Some("children", JArr(List.map encNode s.Children)); Some("orientation", encScrollOrientation s.Orientation); (s.MaxHeight |> Option.map (fun v -> "maxHeight", JInt v)); (s.MaxWidth |> Option.map (fun v -> "maxWidth", JInt v)) ] |> List.choose id)
-
-and private encTabsSpec<'Msg> (s: TabsSpec<'Msg>) : JVal =
-    Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (if s.Orientation = Orientation.Horizontal then None else Some("orientation", encOrientation s.Orientation)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.OnSelectTag |> Option.map (fun v -> "onSelectTag", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
-
-and private encStepperSpec<'Msg> (s: StepperSpec<'Msg>) : JVal =
-    Canon.typed "Stepper" ([ Some("activeStep", (encBinding JInt) s.ActiveStep); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")) ] |> List.choose id)
 
 and private encButtonSpec<'Msg> (s: ButtonSpec<'Msg>) : JVal =
     Canon.typed "Button" ([ Some("label", encTextSource s.Label); Some("onClick", encAction s.OnClick); Some("variant", encButtonVariant s.Variant); (s.Icon |> Option.map (fun v -> "icon", JStr v)); None; (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
-and private encSelectSpec<'Msg> (s: SelectSpec<'Msg>) : JVal =
-    Canon.typed "Select" ([ Some("label", encTextSource s.Label); (s.OnChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (s.OnChangeMulti |> Option.map (fun v -> "onChangeMulti", JStr "<closure>")); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); Some("value", (encBinding JStr) s.Value); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
-
-and private encFileUploadSpec<'Msg> (s: FileUploadSpec<'Msg>) : JVal =
-    Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); Some("multiple", JBool s.Multiple); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (if s.AcceptPaste = false then None else Some("acceptPaste", JBool s.AcceptPaste)); (if s.DropTarget = false then None else Some("dropTarget", JBool s.DropTarget)) ] |> List.choose id)
-
-and private encFormSpec<'Msg> (s: FormSpec<'Msg>) : JVal =
-    Canon.typed "Form" ([ Some("fields", JArr(List.map encFormField s.Fields)); Some("onSubmit", encAction s.OnSubmit); Some("submitLabel", encTextSource s.SubmitLabel); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
-
-and private encFiltersSpec<'Msg> (s: FiltersSpec<'Msg>) : JVal =
-    Canon.typed "Filters" ([ Some("items", JArr(List.map encFilterSpec s.Items)) ] |> List.choose id)
-
-and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
-    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); (if s.Reorderable = false then None else Some("reorderable", JBool s.Reorderable)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
+and private encCalloutSpec (s: CalloutSpec) : JVal =
+    Canon.typed "Callout" ([ Some("body", encTextSource s.Body); (if s.Dismissable = false then None else Some("dismissable", JBool s.Dismissable)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)) ] |> List.choose id)
 
 and private encChartSpec<'Msg> (s: ChartSpec<'Msg>) : JVal =
     Canon.typed "Chart" ([ Some("kind", encChartKind s.Kind); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); Some("stacked", JBool s.Stacked); Some("xField", JStr s.XField); Some("yFields", JArr(List.map JStr s.YFields)); (s.Title |> Option.map (fun v -> "title", encTextSource v)); (s.ValueFormat |> Option.map (fun v -> "valueFormat", encFormat v)); (s.XTitle |> Option.map (fun v -> "xTitle", encTextSource v)); (s.YTitle |> Option.map (fun v -> "yTitle", encTextSource v)); (s.Subtitle |> Option.map (fun v -> "subtitle", encTextSource v)); (s.LegendPosition |> Option.map (fun v -> "legendPosition", encChartLegendPosition v)); (s.DataLabels |> Option.map (fun v -> "dataLabels", encChartDataLabels v)); (s.XScale |> Option.map (fun v -> "xScale", encChartXScale v)); (s.OnPointClick |> Option.map (fun v -> "onPointClick", JStr "<closure>")) ] |> List.choose id)
 
-and private encMapSpec<'Msg> (s: MapSpec<'Msg>) : JVal =
-    Canon.typed "Map" ([ Some("centreLatitude", encFloat s.CentreLatitude); Some("centreLongitude", encFloat s.CentreLongitude); Some("source", (encBinding (fun __xs -> JArr(List.map encMapMarker __xs))) s.Source); Some("zoom", JInt s.Zoom); (s.OnMarkerClick |> Option.map (fun v -> "onMarkerClick", JStr "<closure>")) ] |> List.choose id)
+and private encCodeBlockSpec (s: CodeBlockSpec) : JVal =
+    Canon.typed "CodeBlock" ([ Some("code", JStr s.Code); Some("copyable", JBool s.Copyable); Some("highlightLines", JArr(List.map JInt s.HighlightLines)); Some("language", JStr s.Language); Some("lineNumbers", JBool s.LineNumbers) ] |> List.choose id)
 
 and private encCustomSpec (s: CustomSpec) : JVal =
     Canon.typed "Custom" ([ Some("moduleId", JStr s.ModuleId); Some("componentId", JStr s.ComponentId); Some("props", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, id v))) s.Props); (s.ContentHash |> Option.map (fun v -> "contentHash", encContentHash v)); (s.ExposedNodeIds |> Option.map (fun v -> "exposedNodeIds", JArr(List.map JStr v))) ] |> List.choose id)
 
+and private encDataGridSpec<'Msg> (s: DataGridSpec<'Msg>) : JVal =
+    Canon.typed "DataGrid" ([ Some("columns", JArr(List.map encColumnErased s.Columns)); (if s.Editable = false then None else Some("editable", JBool s.Editable)); (s.RowKey |> Option.map (fun v -> "rowKey", JStr "<closure>")); (s.RowKeyField |> Option.map (fun v -> "rowKeyField", JStr v)); (s.SortStateKey |> Option.map (fun v -> "sortStateKey", JStr v)); (s.PageSize |> Option.map (fun v -> "pageSize", JInt v)); (s.PageStateKey |> Option.map (fun v -> "pageStateKey", JStr v)); (s.DefaultSort |> Option.map (fun v -> "defaultSort", encDefaultSort v)); (s.EditStateKey |> Option.map (fun v -> "editStateKey", JStr v)); (if s.Reorderable = false then None else Some("reorderable", JBool s.Reorderable)); Some("source", (encBinding Fuaran.Core.RowCodec.encodeRows) s.Source); (s.StaticRows |> Option.map (fun v -> "staticRows", encStaticRows v)); (s.OnRowClick |> Option.map (fun v -> "onRowClick", JStr "<closure>")) ] |> List.choose id)
+
+and private encDisclosureSpec<'Msg> (s: DisclosureSpec<'Msg>) : JVal =
+    Canon.typed "Disclosure" ([ Some("children", JArr(List.map encNode s.Children)); Some("defaultOpen", JBool s.DefaultOpen); Some("heading", encTextSource s.Heading); (s.OnToggle |> Option.map (fun v -> "onToggle", JStr "<closure>")); Some("open", (encBinding JBool) s.Open) ] |> List.choose id)
+
+and private encDrawingSpec (s: DrawingSpec) : JVal =
+    Canon.typed "Drawing" ([ (s.Description |> Option.map (fun v -> "description", encTextSource v)); Some("shapes", JArr(List.map encShape s.Shapes)); Some("style", encDrawStyle s.Style); (s.Title |> Option.map (fun v -> "title", encTextSource v)); Some("viewBox", encViewBox s.ViewBox) ] |> List.choose id)
+
+and private encEmbedSpec (s: EmbedSpec) : JVal =
+    Canon.typed "Embed" ([ (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if List.isEmpty s.Permissions then None else Some("permissions", JArr(List.map encEmbedPermission s.Permissions))); Some("src", (encBinding JStr) s.Src); Some("title", encTextSource s.Title) ] |> List.choose id)
+
 and private encErrorBoundarySpec<'Msg> (s: ErrorBoundarySpec<'Msg>) : JVal =
     Canon.typed "ErrorBoundary" ([ Some("child", encNode s.Child); Some("fallback", encNode s.Fallback) ] |> List.choose id)
+
+and private encFactSpec (s: FactSpec) : JVal =
+    Canon.typed "Fact" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (s.Help |> Option.map (fun v -> "help", encTextSource v)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); Some("label", encTextSource s.Label); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); Some("value", encTextSource s.Value) ] |> List.choose id)
+
+and private encFileUploadSpec<'Msg> (s: FileUploadSpec<'Msg>) : JVal =
+    Canon.typed "FileUpload" ([ Some("accept", JArr(List.map JStr s.Accept)); Some("label", encTextSource s.Label); Some("multiple", JBool s.Multiple); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (if s.AcceptPaste = false then None else Some("acceptPaste", JBool s.AcceptPaste)); (if s.DropTarget = false then None else Some("dropTarget", JBool s.DropTarget)) ] |> List.choose id)
+
+and private encFiltersSpec<'Msg> (s: FiltersSpec<'Msg>) : JVal =
+    Canon.typed "Filters" ([ Some("items", JArr(List.map encFilterSpec s.Items)) ] |> List.choose id)
+
+and private encFormSpec<'Msg> (s: FormSpec<'Msg>) : JVal =
+    Canon.typed "Form" ([ Some("fields", JArr(List.map encFormField s.Fields)); Some("onSubmit", encAction s.OnSubmit); Some("submitLabel", encTextSource s.SubmitLabel); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)) ] |> List.choose id)
 
 and private encFragmentDeclSpec<'Msg> (s: FragmentDeclSpec<'Msg>) : JVal =
     Canon.typed "FragmentDecl" ([ Some("body", encNode s.Body); Some("name", JStr s.Name); (s.Holes |> Option.map (fun v -> "holes", JArr(List.map encHoleDecl v))); (s.Effect |> Option.map (fun v -> "effect", encEffectClass v)) ] |> List.choose id)
@@ -2035,11 +1966,80 @@ and private encFragmentDeclSpec<'Msg> (s: FragmentDeclSpec<'Msg>) : JVal =
 and private encFragmentRefSpec<'Msg> (s: FragmentRefSpec<'Msg>) : JVal =
     Canon.typed "FragmentRef" ([ Some("name", JStr s.Name); (s.Args |> Option.map (fun v -> "args", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)) ] |> List.choose id)
 
-and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =
-    Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some("stateKey", JStr key) | on -> Some("on", (encBinding JStr) on)) ] |> List.choose id)
+and private encHeadingSpec (s: HeadingSpec) : JVal =
+    Canon.typed "Heading" ([ Some("level", JInt s.Level); Some("text", encTextSource s.Text); Some("variant", encHeadingVariant s.Variant) ] |> List.choose id)
+
+// Phase 821 — Icon display kind.
+// `size` omitted-when-`Medium`, `tone` omitted-when-`Default`, `label`
+// omitted-when-`None` (decorative).
+and private encIconSpec (s: IconSpec) : JVal =
+    Canon.typed "Icon" ([ Some("icon", JStr s.Icon); (if s.Size = IconSize.Medium then None else Some("size", encIconSize s.Size)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Label |> Option.map (fun v -> "label", JStr v)) ] |> List.choose id)
+
+and private encImageSpec (s: ImageSpec) : JVal =
+    Canon.typed "Image" ([ Some("alt", encTextSource s.Alt); Some("src", (encBinding JStr) s.Src); Some("variant", encImageVariant s.Variant); (if s.Fit = ImageFit.Natural then None else Some("fit", encImageFit s.Fit)); (if s.AspectRatio = ImageAspect.Natural then None else Some("aspectRatio", encImageAspect s.AspectRatio)); (if s.Loading = ImageLoading.Eager then None else Some("loading", encImageLoading s.Loading)); (if List.isEmpty s.SrcSet then None else Some("srcSet", JArr(List.map encSrcSetEntry s.SrcSet))); (if s.Expandable = false then None else Some("expandable", JBool s.Expandable)); (s.Caption |> Option.map (fun v -> "caption", encTextSource v)) ] |> List.choose id)
+
+and private encLabelValueRowSpec (s: LabelValueRowSpec) : JVal =
+    Canon.typed "LabelValueRow" ([ (if s.Emphasis = false then None else Some("emphasis", JBool s.Emphasis)); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); Some("label", encTextSource s.Label); Some("value", (encBinding encFloat) s.Value); (s.Help |> Option.map (fun v -> "help", encTextSource v)) ] |> List.choose id)
+
+and private encLinkSpec (s: LinkSpec) : JVal =
+    Canon.typed "Link" ([ Some("href", (encBinding JStr) s.Href); Some("label", encTextSource s.Label); Some("download", JBool s.Download); (s.Rel |> Option.map (fun v -> "rel", JStr v)); (s.Target |> Option.map (fun v -> "target", JStr v)); (s.Protection |> Option.map (fun v -> "protection", encLinkProtection v)) ] |> List.choose id)
+
+and private encListSpec (s: ListSpec) : JVal =
+    Canon.typed "List" ([ Some("items", JArr(List.map encTextSource s.Items)); Some("ordered", JBool s.Ordered) ] |> List.choose id)
+
+and private encMapSpec<'Msg> (s: MapSpec<'Msg>) : JVal =
+    Canon.typed "Map" ([ Some("centreLatitude", encFloat s.CentreLatitude); Some("centreLongitude", encFloat s.CentreLongitude); Some("source", (encBinding (fun __xs -> JArr(List.map encMapMarker __xs))) s.Source); Some("zoom", JInt s.Zoom); (s.OnMarkerClick |> Option.map (fun v -> "onMarkerClick", JStr "<closure>")) ] |> List.choose id)
+
+and private encMarkdownSpec (s: MarkdownSpec) : JVal =
+    Canon.typed "Markdown" ([ Some("text", encTextSource s.Text) ] |> List.choose id)
+
+and private encMathSpec (s: MathSpec) : JVal =
+    Canon.typed "Math" ([ Some("source", JStr s.Source); Some("display", encMathDisplay s.Display) ] |> List.choose id)
+
+and private encMediaSpec (s: MediaSpec) : JVal =
+    Canon.typed "Media" ([ (if s.Controls = true then None else Some("controls", JBool s.Controls)); Some("kind", encMediaKind s.Kind); Some("label", encTextSource s.Label); (if s.Loop = false then None else Some("loop", JBool s.Loop)); Some("src", (encBinding JStr) s.Src); (if List.isEmpty s.Tracks then None else Some("tracks", JArr(List.map encTrackEntry s.Tracks))); (s.Transcript |> Option.map (fun v -> "transcript", encTextSource v)) ] |> List.choose id)
+
+and private encMetricSpec (s: MetricSpec) : JVal =
+    Canon.typed "Metric" ([ Some("label", encTextSource s.Label); Some("value", (encBinding encFloat) s.Value); (match s.Format with | CellFormat.None -> None | _ -> Some("format", encCellFormat s.Format)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (if s.Weight = StyleWeight.Standard then None else Some("weight", encStyleWeight s.Weight)); (if s.Emphasis = Emphasis.Normal then None else Some("emphasis", encEmphasis s.Emphasis)); (s.Trend |> Option.map (fun v -> "trend", (encBinding encFloat) v)); (s.TrendFormat |> Option.map (fun v -> "trendFormat", encCellFormat v)); (if s.TrendPolarity = TrendPolarity.HigherIsBetter then None else Some("trendPolarity", encTrendPolarity s.TrendPolarity)); (s.Icon |> Option.map (fun v -> "icon", JStr v)); (s.Subtext |> Option.map (fun v -> "subtext", encTextSource v)) ] |> List.choose id)
+
+and private encModalSpec<'Msg> (s: ModalSpec<'Msg>) : JVal =
+    Canon.typed "Modal" ([ Some("children", JArr(List.map encNode s.Children)); Some("dismissable", JBool s.Dismissable); (s.OnDismiss |> Option.map (fun v -> "onDismiss", encAction v)); Some("open", (encBinding JBool) s.Open); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)); (if s.Modality = ModalityKind.Modal then None else Some("modality", encModalityKind s.Modality)); (s.Anchor |> Option.map (fun v -> "anchor", JStr v)) ] |> List.choose id)
 
 and private encMountSpec<'Msg> (s: MountSpec<'Msg>) : JVal =
     Canon.typed "Mount" ([ Some("capabilities", JArr(List.map JStr s.Capabilities)); Some("channel", encGuestChannel s.Channel); (s.Inputs |> Option.map (fun v -> "inputs", (fun __m -> JObj(Map.toList __m |> List.map (fun (k, v) -> k, encFragmentArg v))) v)); (s.OnBubble |> Option.map (fun v -> "onBubble", JStr "<closure>")); Some("scopeId", JStr s.ScopeId) ] |> List.choose id)
+
+and private encProgressSpec (s: ProgressSpec) : JVal =
+    Canon.typed "Progress" ([ Some("fraction", (encBinding encFloat) s.Fraction); (if s.Indeterminate = false then None else Some("indeterminate", JBool s.Indeterminate)); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)); (s.Label |> Option.map (fun v -> "label", encTextSource v)); (s.Caveat |> Option.map (fun v -> "caveat", encTextSource v)) ] |> List.choose id)
+
+and private encScrollAreaSpec<'Msg> (s: ScrollAreaSpec<'Msg>) : JVal =
+    Canon.typed "ScrollArea" ([ Some("children", JArr(List.map encNode s.Children)); Some("orientation", encScrollOrientation s.Orientation); (s.MaxHeight |> Option.map (fun v -> "maxHeight", JInt v)); (s.MaxWidth |> Option.map (fun v -> "maxWidth", JInt v)) ] |> List.choose id)
+
+and private encSelectSpec<'Msg> (s: SelectSpec<'Msg>) : JVal =
+    Canon.typed "Select" ([ Some("label", encTextSource s.Label); (s.OnChange |> Option.map (fun v -> "onChange", JStr "<closure>")); (s.OnChangeMulti |> Option.map (fun v -> "onChangeMulti", JStr "<closure>")); Some("source", (encBinding (fun __xs -> JArr(List.map encSelectOption __xs))) s.Source); Some("value", (encBinding JStr) s.Value); (s.Placeholder |> Option.map (fun v -> "placeholder", encTextSource v)); (s.Disabled |> Option.map (fun v -> "disabled", (encBinding JBool) v)); (s.Multiple |> Option.map (fun v -> "multiple", JBool v)); (s.Values |> Option.map (fun v -> "values", (encBinding (fun __xs -> JArr(List.map JStr __xs))) v)) ] |> List.choose id)
+
+and private encSkeletonSpec (s: SkeletonSpec) : JVal =
+    Canon.typed "Skeleton" ([ Some("rows", JInt s.Rows) ] |> List.choose id)
+
+and private encSparklineSpec (s: SparklineSpec) : JVal =
+    Canon.typed "Sparkline" ([ Some("source", (encBinding (fun __xs -> JArr(List.map encFloat __xs))) s.Source) ] |> List.choose id)
+
+and private encSplitPanelSpec<'Msg> (s: SplitPanelSpec<'Msg>) : JVal =
+    Canon.typed "SplitPanel" ([ Some("children", JArr(List.map encNode s.Children)); Some("weight", encFloat s.Weight) ] |> List.choose id)
+
+and private encStepperSpec<'Msg> (s: StepperSpec<'Msg>) : JVal =
+    Canon.typed "Stepper" ([ Some("activeStep", (encBinding JInt) s.ActiveStep); Some("children", JArr(List.map encNode s.Children)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")) ] |> List.choose id)
+
+and private encSummaryListSpec<'Msg> (s: SummaryListSpec<'Msg>) : JVal =
+    Canon.typed "SummaryList" ([ Some("children", JArr(List.map encNode s.Children)); (s.Heading |> Option.map (fun v -> "heading", encTextSource v)) ] |> List.choose id)
+
+and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =
+    Canon.typed "Switch" ([ Some("cases", JArr(List.map encSwitchCase s.Cases)); Some("default", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some("stateKey", JStr key) | on -> Some("on", (encBinding JStr) on)) ] |> List.choose id)
+
+and private encTabsSpec<'Msg> (s: TabsSpec<'Msg>) : JVal =
+    Canon.typed "Tabs" ([ Some("activeIndex", (encBinding JInt) s.ActiveIndex); Some("children", JArr(List.map encNode s.Children)); (if s.Orientation = Orientation.Horizontal then None else Some("orientation", encOrientation s.Orientation)); (s.OnSelect |> Option.map (fun v -> "onSelect", JStr "<closure>")); (s.OnSelectTag |> Option.map (fun v -> "onSelectTag", JStr "<closure>")); (s.TabHeaders |> Option.map (fun v -> "tabHeaders", JArr(List.map encTabHeader v))); (s.TabTags |> Option.map (fun v -> "tabTags", JArr(List.map JStr v))); (s.ActiveTag |> Option.map (fun v -> "activeTag", (encBinding JStr) v)) ] |> List.choose id)
+
+and private encToastSpec (s: ToastSpec) : JVal =
+    Canon.typed "Toast" ([ (if s.Dismissable = true then None else Some("dismissable", JBool s.Dismissable)); Some("message", encTextSource s.Message); Some("open", (encBinding JBool) s.Open); (if s.Tone = ToneVariant.Default then None else Some("tone", encToneVariant s.Tone)) ] |> List.choose id)
 
 // Phase 818 — a `Data` source keeps the Core columnar encoding byte-identical; a
 // `Live` source re-encodes the preserved binding itself (one wire dialect — the
@@ -2156,19 +2156,6 @@ let private dDef (name: string) (fs: (string * JVal) list) (dec: JVal -> Result<
 let private dPresent (name: string) (fs: (string * JVal) list) : Result<unit option, string> =
     Ok(fs |> List.tryFind (fun (k, _) -> k = name) |> Option.map (fun _ -> ()))
 
-let private decHeadingVariant (j: JVal) : Result<HeadingVariant, string> =
-    match j with
-    | JStr "Standard" -> Ok HeadingVariant.Standard
-    | JStr "Eyebrow" -> Ok HeadingVariant.Eyebrow
-    | JStr "Caption" -> Ok HeadingVariant.Caption
-    | JStr "Lead" -> Ok HeadingVariant.Lead
-    | _ -> Error "not a HeadingVariant"
-
-let private decLinkProtection (j: JVal) : Result<LinkProtection, string> =
-    match j with
-    | JStr "email" -> Ok LinkProtection.Email
-    | _ -> Error "not a LinkProtection"
-
 let private decBadgeVariant (j: JVal) : Result<BadgeVariant, string> =
     match j with
     | JStr "Neutral" -> Ok BadgeVariant.Neutral
@@ -2179,12 +2166,6 @@ let private decBadgeVariant (j: JVal) : Result<BadgeVariant, string> =
     | JStr "Info" -> Ok BadgeVariant.Info
     | _ -> Error "not a BadgeVariant"
 
-let private decOrientation (j: JVal) : Result<Orientation, string> =
-    match j with
-    | JStr "Vertical" -> Ok Orientation.Vertical
-    | JStr "Horizontal" -> Ok Orientation.Horizontal
-    | _ -> Error "not a Orientation"
-
 let private decBoxRole (j: JVal) : Result<BoxRole, string> =
     match j with
     | JStr "Dashboard" -> Ok BoxRole.Dashboard
@@ -2192,87 +2173,6 @@ let private decBoxRole (j: JVal) : Result<BoxRole, string> =
     | JStr "Group" -> Ok BoxRole.Group
     | JStr "Separator" -> Ok BoxRole.Separator
     | _ -> Error "not a BoxRole"
-
-let private decMathDisplay (j: JVal) : Result<MathDisplay, string> =
-    match j with
-    | JStr "Inline" -> Ok MathDisplay.Inline
-    | JStr "Block" -> Ok MathDisplay.Block
-    | _ -> Error "not a MathDisplay"
-
-let private decImageVariant (j: JVal) : Result<ImageVariant, string> =
-    match j with
-    | JStr "Default" -> Ok ImageVariant.Default
-    | JStr "Avatar" -> Ok ImageVariant.Avatar
-    | JStr "Rounded" -> Ok ImageVariant.Rounded
-    | _ -> Error "not a ImageVariant"
-
-let private decImageFit (j: JVal) : Result<ImageFit, string> =
-    match j with
-    | JStr "Natural" -> Ok ImageFit.Natural
-    | JStr "Cover" -> Ok ImageFit.Cover
-    | JStr "Contain" -> Ok ImageFit.Contain
-    | _ -> Error "not a ImageFit"
-
-let private decImageAspect (j: JVal) : Result<ImageAspect, string> =
-    match j with
-    | JStr "Natural" -> Ok ImageAspect.Natural
-    | JStr "Square" -> Ok ImageAspect.Square
-    | JStr "FourThree" -> Ok ImageAspect.FourThree
-    | JStr "ThreeTwo" -> Ok ImageAspect.ThreeTwo
-    | JStr "SixteenNine" -> Ok ImageAspect.SixteenNine
-    | _ -> Error "not a ImageAspect"
-
-let private decImageLoading (j: JVal) : Result<ImageLoading, string> =
-    match j with
-    | JStr "Eager" -> Ok ImageLoading.Eager
-    | JStr "Lazy" -> Ok ImageLoading.Lazy
-    | _ -> Error "not a ImageLoading"
-
-let private decEmbedPermission (j: JVal) : Result<EmbedPermission, string> =
-    match j with
-    | JStr "AllowScripts" -> Ok EmbedPermission.AllowScripts
-    | JStr "AllowSameOrigin" -> Ok EmbedPermission.AllowSameOrigin
-    | JStr "AllowForms" -> Ok EmbedPermission.AllowForms
-    | JStr "AllowFullscreen" -> Ok EmbedPermission.AllowFullscreen
-    | _ -> Error "not a EmbedPermission"
-
-let private decToneVariant (j: JVal) : Result<ToneVariant, string> =
-    match j with
-    | JStr "Default" -> Ok ToneVariant.Default
-    | JStr "Subdued" -> Ok ToneVariant.Subdued
-    | JStr "Brand" -> Ok ToneVariant.Brand
-    | JStr "Success" -> Ok ToneVariant.Success
-    | JStr "Warning" -> Ok ToneVariant.Warning
-    | JStr "Critical" -> Ok ToneVariant.Critical
-    | JStr "Info" -> Ok ToneVariant.Info
-    | _ -> Error "not a ToneVariant"
-
-let private decStyleWeight (j: JVal) : Result<StyleWeight, string> =
-    match j with
-    | JStr "Compact" -> Ok StyleWeight.Compact
-    | JStr "Standard" -> Ok StyleWeight.Standard
-    | JStr "Spacious" -> Ok StyleWeight.Spacious
-    | _ -> Error "not a StyleWeight"
-
-let private decEmphasis (j: JVal) : Result<Emphasis, string> =
-    match j with
-    | JStr "Quiet" -> Ok Emphasis.Quiet
-    | JStr "Normal" -> Ok Emphasis.Normal
-    | JStr "Loud" -> Ok Emphasis.Loud
-    | _ -> Error "not a Emphasis"
-
-let private decTrendPolarity (j: JVal) : Result<TrendPolarity, string> =
-    match j with
-    | JStr "HigherIsBetter" -> Ok TrendPolarity.HigherIsBetter
-    | JStr "LowerIsBetter" -> Ok TrendPolarity.LowerIsBetter
-    | _ -> Error "not a TrendPolarity"
-
-let private decScrollOrientation (j: JVal) : Result<ScrollOrientation, string> =
-    match j with
-    | JStr "Vertical" -> Ok ScrollOrientation.Vertical
-    | JStr "Horizontal" -> Ok ScrollOrientation.Horizontal
-    | JStr "Both" -> Ok ScrollOrientation.Both
-    | _ -> Error "not a ScrollOrientation"
 
 let private decButtonVariant (j: JVal) : Result<ButtonVariant, string> =
     match j with
@@ -2282,84 +2182,17 @@ let private decButtonVariant (j: JVal) : Result<ButtonVariant, string> =
     | JStr "Destructive" -> Ok ButtonVariant.Destructive
     | _ -> Error "not a ButtonVariant"
 
-let private decModalityKind (j: JVal) : Result<ModalityKind, string> =
+let private decChannelDirection (j: JVal) : Result<ChannelDirection, string> =
     match j with
-    | JStr "Modal" -> Ok ModalityKind.Modal
-    | JStr "Popover" -> Ok ModalityKind.Popover
-    | _ -> Error "not a ModalityKind"
+    | JStr "OutOnly" -> Ok ChannelDirection.OutOnly
+    | JStr "TwoWay" -> Ok ChannelDirection.TwoWay
+    | _ -> Error "not a ChannelDirection"
 
-let private decFileReadEncoding (j: JVal) : Result<FileReadEncoding, string> =
+let private decChartDataLabels (j: JVal) : Result<ChartDataLabels, string> =
     match j with
-    | JStr "Text" -> Ok FileReadEncoding.Text
-    | JStr "Base64" -> Ok FileReadEncoding.Base64
-    | JStr "DataUrl" -> Ok FileReadEncoding.DataUrl
-    | _ -> Error "not a FileReadEncoding"
-
-let private decDateVariant (j: JVal) : Result<DateVariant, string> =
-    match j with
-    | JStr "Date" -> Ok DateVariant.Date
-    | JStr "Time" -> Ok DateVariant.Time
-    | JStr "DateTime" -> Ok DateVariant.DateTime
-    | _ -> Error "not a DateVariant"
-
-let private decTextFormat (j: JVal) : Result<TextFormat, string> =
-    match j with
-    | JStr "email" -> Ok TextFormat.Email
-    | JStr "url" -> Ok TextFormat.Url
-    | JStr "tel" -> Ok TextFormat.Tel
-    | _ -> Error "not a TextFormat"
-
-let private decCompareOp (j: JVal) : Result<CompareOp, string> =
-    match j with
-    | JStr "eq" -> Ok CompareOp.Eq
-    | JStr "neq" -> Ok CompareOp.Neq
-    | JStr "lt" -> Ok CompareOp.Lt
-    | JStr "lte" -> Ok CompareOp.Lte
-    | JStr "gt" -> Ok CompareOp.Gt
-    | JStr "gte" -> Ok CompareOp.Gte
-    | _ -> Error "not a CompareOp"
-
-let private decDateStyle (j: JVal) : Result<DateStyle, string> =
-    match j with
-    | JStr "Short" -> Ok DateStyle.Short
-    | JStr "Medium" -> Ok DateStyle.Medium
-    | JStr "Long" -> Ok DateStyle.Long
-    | JStr "Full" -> Ok DateStyle.Full
-    | _ -> Error "not a DateStyle"
-
-let private decRelativeTimeUnit (j: JVal) : Result<RelativeTimeUnit, string> =
-    match j with
-    | JStr "Second" -> Ok RelativeTimeUnit.Second
-    | JStr "Minute" -> Ok RelativeTimeUnit.Minute
-    | JStr "Hour" -> Ok RelativeTimeUnit.Hour
-    | JStr "Day" -> Ok RelativeTimeUnit.Day
-    | JStr "Week" -> Ok RelativeTimeUnit.Week
-    | JStr "Month" -> Ok RelativeTimeUnit.Month
-    | JStr "Year" -> Ok RelativeTimeUnit.Year
-    | _ -> Error "not a RelativeTimeUnit"
-
-// Phase 819 — Duration format enums.
-let private decDurationUnit (j: JVal) : Result<DurationUnit, string> =
-    match j with
-    | JStr "Seconds" -> Ok DurationUnit.Seconds
-    | JStr "Minutes" -> Ok DurationUnit.Minutes
-    | JStr "Hours" -> Ok DurationUnit.Hours
-    | _ -> Error "not a DurationUnit"
-
-let private decDurationStyle (j: JVal) : Result<DurationStyle, string> =
-    match j with
-    | JStr "Compact" -> Ok DurationStyle.Compact
-    | JStr "Clock" -> Ok DurationStyle.Clock
-    | JStr "Long" -> Ok DurationStyle.Long
-    | _ -> Error "not a DurationStyle"
-
-// Phase 821 — Icon size class.
-let private decIconSize (j: JVal) : Result<IconSize, string> =
-    match j with
-    | JStr "Small" -> Ok IconSize.Small
-    | JStr "Medium" -> Ok IconSize.Medium
-    | JStr "Large" -> Ok IconSize.Large
-    | _ -> Error "not a IconSize"
+    | JStr "Off" -> Ok ChartDataLabels.Off
+    | JStr "Ends" -> Ok ChartDataLabels.Ends
+    | _ -> Error "not a ChartDataLabels"
 
 let private decChartKind (j: JVal) : Result<ChartKind, string> =
     match j with
@@ -2379,31 +2212,36 @@ let private decChartLegendPosition (j: JVal) : Result<ChartLegendPosition, strin
     | JStr "None" -> Ok ChartLegendPosition.None
     | _ -> Error "not a ChartLegendPosition"
 
-let private decChartDataLabels (j: JVal) : Result<ChartDataLabels, string> =
-    match j with
-    | JStr "Off" -> Ok ChartDataLabels.Off
-    | JStr "Ends" -> Ok ChartDataLabels.Ends
-    | _ -> Error "not a ChartDataLabels"
-
 let private decChartXScale (j: JVal) : Result<ChartXScale, string> =
     match j with
     | JStr "Category" -> Ok ChartXScale.Category
     | JStr "Temporal" -> Ok ChartXScale.Temporal
     | _ -> Error "not a ChartXScale"
 
-let private decHashStrictness (j: JVal) : Result<HashStrictness, string> =
+let private decCompareOp (j: JVal) : Result<CompareOp, string> =
     match j with
-    | JStr "StrictReplay" -> Ok HashStrictness.StrictReplay
-    | JStr "AdvisoryWarning" -> Ok HashStrictness.AdvisoryWarning
-    | JStr "Enforced" -> Ok HashStrictness.Enforced
-    | _ -> Error "not a HashStrictness"
+    | JStr "eq" -> Ok CompareOp.Eq
+    | JStr "neq" -> Ok CompareOp.Neq
+    | JStr "lt" -> Ok CompareOp.Lt
+    | JStr "lte" -> Ok CompareOp.Lte
+    | JStr "gt" -> Ok CompareOp.Gt
+    | JStr "gte" -> Ok CompareOp.Gte
+    | _ -> Error "not a CompareOp"
 
-let private decHostEffect (j: JVal) : Result<HostEffect, string> =
+let private decDateStyle (j: JVal) : Result<DateStyle, string> =
     match j with
-    | JStr "Pure" -> Ok HostEffect.Pure
-    | JStr "ReadsHost" -> Ok HostEffect.ReadsHost
-    | JStr "WritesHost" -> Ok HostEffect.WritesHost
-    | _ -> Error "not a HostEffect"
+    | JStr "Short" -> Ok DateStyle.Short
+    | JStr "Medium" -> Ok DateStyle.Medium
+    | JStr "Long" -> Ok DateStyle.Long
+    | JStr "Full" -> Ok DateStyle.Full
+    | _ -> Error "not a DateStyle"
+
+let private decDateVariant (j: JVal) : Result<DateVariant, string> =
+    match j with
+    | JStr "Date" -> Ok DateVariant.Date
+    | JStr "Time" -> Ok DateVariant.Time
+    | JStr "DateTime" -> Ok DateVariant.DateTime
+    | _ -> Error "not a DateVariant"
 
 let private decDeterminismSource (j: JVal) : Result<DeterminismSource, string> =
     match j with
@@ -2413,27 +2251,42 @@ let private decDeterminismSource (j: JVal) : Result<DeterminismSource, string> =
     | JStr "Network" -> Ok DeterminismSource.Network
     | _ -> Error "not a DeterminismSource"
 
-let private decChannelDirection (j: JVal) : Result<ChannelDirection, string> =
+let private decDurationStyle (j: JVal) : Result<DurationStyle, string> =
     match j with
-    | JStr "OutOnly" -> Ok ChannelDirection.OutOnly
-    | JStr "TwoWay" -> Ok ChannelDirection.TwoWay
-    | _ -> Error "not a ChannelDirection"
+    | JStr "Compact" -> Ok DurationStyle.Compact
+    | JStr "Clock" -> Ok DurationStyle.Clock
+    | JStr "Long" -> Ok DurationStyle.Long
+    | _ -> Error "not a DurationStyle"
 
-let private decTextAnchor (j: JVal) : Result<TextAnchor, string> =
+// Phase 819 — Duration format enums.
+let private decDurationUnit (j: JVal) : Result<DurationUnit, string> =
     match j with
-    | JStr "Start" -> Ok TextAnchor.Start
-    | JStr "Middle" -> Ok TextAnchor.Middle
-    | JStr "End" -> Ok TextAnchor.End
-    | _ -> Error "not a TextAnchor"
+    | JStr "Seconds" -> Ok DurationUnit.Seconds
+    | JStr "Minutes" -> Ok DurationUnit.Minutes
+    | JStr "Hours" -> Ok DurationUnit.Hours
+    | _ -> Error "not a DurationUnit"
 
-let private decStyleRole (j: JVal) : Result<StyleRole, string> =
+let private decEmbedPermission (j: JVal) : Result<EmbedPermission, string> =
     match j with
-    | JStr "None" -> Ok StyleRole.None
-    | JStr "Eyebrow" -> Ok StyleRole.Eyebrow
-    | JStr "Data" -> Ok StyleRole.Data
-    | JStr "Lede" -> Ok StyleRole.Lede
-    | JStr "Caption" -> Ok StyleRole.Caption
-    | _ -> Error "not a StyleRole"
+    | JStr "AllowScripts" -> Ok EmbedPermission.AllowScripts
+    | JStr "AllowSameOrigin" -> Ok EmbedPermission.AllowSameOrigin
+    | JStr "AllowForms" -> Ok EmbedPermission.AllowForms
+    | JStr "AllowFullscreen" -> Ok EmbedPermission.AllowFullscreen
+    | _ -> Error "not a EmbedPermission"
+
+let private decEmphasis (j: JVal) : Result<Emphasis, string> =
+    match j with
+    | JStr "Quiet" -> Ok Emphasis.Quiet
+    | JStr "Normal" -> Ok Emphasis.Normal
+    | JStr "Loud" -> Ok Emphasis.Loud
+    | _ -> Error "not a Emphasis"
+
+let private decFileReadEncoding (j: JVal) : Result<FileReadEncoding, string> =
+    match j with
+    | JStr "Text" -> Ok FileReadEncoding.Text
+    | JStr "Base64" -> Ok FileReadEncoding.Base64
+    | JStr "DataUrl" -> Ok FileReadEncoding.DataUrl
+    | _ -> Error "not a FileReadEncoding"
 
 let private decFontVoice (j: JVal) : Result<FontVoice, string> =
     match j with
@@ -2441,6 +2294,89 @@ let private decFontVoice (j: JVal) : Result<FontVoice, string> =
     | JStr "Display" -> Ok FontVoice.Display
     | JStr "Structural" -> Ok FontVoice.Structural
     | _ -> Error "not a FontVoice"
+
+let private decHashStrictness (j: JVal) : Result<HashStrictness, string> =
+    match j with
+    | JStr "StrictReplay" -> Ok HashStrictness.StrictReplay
+    | JStr "AdvisoryWarning" -> Ok HashStrictness.AdvisoryWarning
+    | JStr "Enforced" -> Ok HashStrictness.Enforced
+    | _ -> Error "not a HashStrictness"
+
+let private decHeadingVariant (j: JVal) : Result<HeadingVariant, string> =
+    match j with
+    | JStr "Standard" -> Ok HeadingVariant.Standard
+    | JStr "Eyebrow" -> Ok HeadingVariant.Eyebrow
+    | JStr "Caption" -> Ok HeadingVariant.Caption
+    | JStr "Lead" -> Ok HeadingVariant.Lead
+    | _ -> Error "not a HeadingVariant"
+
+let private decHostEffect (j: JVal) : Result<HostEffect, string> =
+    match j with
+    | JStr "Pure" -> Ok HostEffect.Pure
+    | JStr "ReadsHost" -> Ok HostEffect.ReadsHost
+    | JStr "WritesHost" -> Ok HostEffect.WritesHost
+    | _ -> Error "not a HostEffect"
+
+// Phase 821 — Icon size class.
+let private decIconSize (j: JVal) : Result<IconSize, string> =
+    match j with
+    | JStr "Small" -> Ok IconSize.Small
+    | JStr "Medium" -> Ok IconSize.Medium
+    | JStr "Large" -> Ok IconSize.Large
+    | _ -> Error "not a IconSize"
+
+let private decImageAspect (j: JVal) : Result<ImageAspect, string> =
+    match j with
+    | JStr "Natural" -> Ok ImageAspect.Natural
+    | JStr "Square" -> Ok ImageAspect.Square
+    | JStr "FourThree" -> Ok ImageAspect.FourThree
+    | JStr "ThreeTwo" -> Ok ImageAspect.ThreeTwo
+    | JStr "SixteenNine" -> Ok ImageAspect.SixteenNine
+    | _ -> Error "not a ImageAspect"
+
+let private decImageFit (j: JVal) : Result<ImageFit, string> =
+    match j with
+    | JStr "Natural" -> Ok ImageFit.Natural
+    | JStr "Cover" -> Ok ImageFit.Cover
+    | JStr "Contain" -> Ok ImageFit.Contain
+    | _ -> Error "not a ImageFit"
+
+let private decImageLoading (j: JVal) : Result<ImageLoading, string> =
+    match j with
+    | JStr "Eager" -> Ok ImageLoading.Eager
+    | JStr "Lazy" -> Ok ImageLoading.Lazy
+    | _ -> Error "not a ImageLoading"
+
+let private decImageVariant (j: JVal) : Result<ImageVariant, string> =
+    match j with
+    | JStr "Default" -> Ok ImageVariant.Default
+    | JStr "Avatar" -> Ok ImageVariant.Avatar
+    | JStr "Rounded" -> Ok ImageVariant.Rounded
+    | _ -> Error "not a ImageVariant"
+
+let private decLinkProtection (j: JVal) : Result<LinkProtection, string> =
+    match j with
+    | JStr "email" -> Ok LinkProtection.Email
+    | _ -> Error "not a LinkProtection"
+
+let private decLiveRegionKind (j: JVal) : Result<LiveRegionKind, string> =
+    match j with
+    | JStr "polite" -> Ok LiveRegionKind.Polite
+    | JStr "assertive" -> Ok LiveRegionKind.Assertive
+    | JStr "off" -> Ok LiveRegionKind.Off
+    | _ -> Error "not a LiveRegionKind"
+
+let private decMathDisplay (j: JVal) : Result<MathDisplay, string> =
+    match j with
+    | JStr "Inline" -> Ok MathDisplay.Inline
+    | JStr "Block" -> Ok MathDisplay.Block
+    | _ -> Error "not a MathDisplay"
+
+let private decModalityKind (j: JVal) : Result<ModalityKind, string> =
+    match j with
+    | JStr "Modal" -> Ok ModalityKind.Modal
+    | JStr "Popover" -> Ok ModalityKind.Popover
+    | _ -> Error "not a ModalityKind"
 
 let private decMotion (j: JVal) : Result<Motion, string> =
     match j with
@@ -2454,18 +2390,76 @@ let private decMotion (j: JVal) : Result<Motion, string> =
     | JStr "ExpandCollapse" -> Ok Motion.ExpandCollapse
     | _ -> Error "not a Motion"
 
-let private decLiveRegionKind (j: JVal) : Result<LiveRegionKind, string> =
+let private decOrientation (j: JVal) : Result<Orientation, string> =
     match j with
-    | JStr "polite" -> Ok LiveRegionKind.Polite
-    | JStr "assertive" -> Ok LiveRegionKind.Assertive
-    | JStr "off" -> Ok LiveRegionKind.Off
-    | _ -> Error "not a LiveRegionKind"
+    | JStr "Vertical" -> Ok Orientation.Vertical
+    | JStr "Horizontal" -> Ok Orientation.Horizontal
+    | _ -> Error "not a Orientation"
+
+let private decRelativeTimeUnit (j: JVal) : Result<RelativeTimeUnit, string> =
+    match j with
+    | JStr "Second" -> Ok RelativeTimeUnit.Second
+    | JStr "Minute" -> Ok RelativeTimeUnit.Minute
+    | JStr "Hour" -> Ok RelativeTimeUnit.Hour
+    | JStr "Day" -> Ok RelativeTimeUnit.Day
+    | JStr "Week" -> Ok RelativeTimeUnit.Week
+    | JStr "Month" -> Ok RelativeTimeUnit.Month
+    | JStr "Year" -> Ok RelativeTimeUnit.Year
+    | _ -> Error "not a RelativeTimeUnit"
+
+let private decScrollOrientation (j: JVal) : Result<ScrollOrientation, string> =
+    match j with
+    | JStr "Vertical" -> Ok ScrollOrientation.Vertical
+    | JStr "Horizontal" -> Ok ScrollOrientation.Horizontal
+    | JStr "Both" -> Ok ScrollOrientation.Both
+    | _ -> Error "not a ScrollOrientation"
 
 let private decSortDirection (j: JVal) : Result<SortDirection, string> =
     match j with
     | JStr "asc" -> Ok SortDirection.Asc
     | JStr "desc" -> Ok SortDirection.Desc
     | _ -> Error "not a SortDirection"
+
+let private decStyleRole (j: JVal) : Result<StyleRole, string> =
+    match j with
+    | JStr "None" -> Ok StyleRole.None
+    | JStr "Eyebrow" -> Ok StyleRole.Eyebrow
+    | JStr "Data" -> Ok StyleRole.Data
+    | JStr "Lede" -> Ok StyleRole.Lede
+    | JStr "Caption" -> Ok StyleRole.Caption
+    | _ -> Error "not a StyleRole"
+
+let private decStyleWeight (j: JVal) : Result<StyleWeight, string> =
+    match j with
+    | JStr "Compact" -> Ok StyleWeight.Compact
+    | JStr "Standard" -> Ok StyleWeight.Standard
+    | JStr "Spacious" -> Ok StyleWeight.Spacious
+    | _ -> Error "not a StyleWeight"
+
+let private decTextAnchor (j: JVal) : Result<TextAnchor, string> =
+    match j with
+    | JStr "Start" -> Ok TextAnchor.Start
+    | JStr "Middle" -> Ok TextAnchor.Middle
+    | JStr "End" -> Ok TextAnchor.End
+    | _ -> Error "not a TextAnchor"
+
+let private decTextFormat (j: JVal) : Result<TextFormat, string> =
+    match j with
+    | JStr "email" -> Ok TextFormat.Email
+    | JStr "url" -> Ok TextFormat.Url
+    | JStr "tel" -> Ok TextFormat.Tel
+    | _ -> Error "not a TextFormat"
+
+let private decToneVariant (j: JVal) : Result<ToneVariant, string> =
+    match j with
+    | JStr "Default" -> Ok ToneVariant.Default
+    | JStr "Subdued" -> Ok ToneVariant.Subdued
+    | JStr "Brand" -> Ok ToneVariant.Brand
+    | JStr "Success" -> Ok ToneVariant.Success
+    | JStr "Warning" -> Ok ToneVariant.Warning
+    | JStr "Critical" -> Ok ToneVariant.Critical
+    | JStr "Info" -> Ok ToneVariant.Info
+    | _ -> Error "not a ToneVariant"
 
 let private decTrackKind (j: JVal) : Result<TrackKind, string> =
     match j with
@@ -2475,52 +2469,58 @@ let private decTrackKind (j: JVal) : Result<TrackKind, string> =
     | JStr "Chapters" -> Ok TrackKind.Chapters
     | _ -> Error "not a TrackKind"
 
+let private decTrendPolarity (j: JVal) : Result<TrendPolarity, string> =
+    match j with
+    | JStr "HigherIsBetter" -> Ok TrendPolarity.HigherIsBetter
+    | JStr "LowerIsBetter" -> Ok TrendPolarity.LowerIsBetter
+    | _ -> Error "not a TrendPolarity"
+
 let rec private decNodeKind (j: JVal) : Result<NodeKind<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dTag __fs |> Result.bind (fun __t ->
     match __t with
-    | "Heading" -> decHeadingSpec j |> Result.map NodeKind.Heading
     | "Badge" -> decBadgeSpec j |> Result.map NodeKind.Badge
-    | "Markdown" -> decMarkdownSpec j |> Result.map NodeKind.Markdown
-    | "Math" -> decMathSpec j |> Result.map NodeKind.Math
-    | "Skeleton" -> decSkeletonSpec j |> Result.map NodeKind.Skeleton
-    | "Icon" -> decIconSpec j |> Result.map NodeKind.Icon
-    | "List" -> decListSpec j |> Result.map NodeKind.List
-    | "Image" -> decImageSpec j |> Result.map NodeKind.Image
-    | "Media" -> decMediaSpec j |> Result.map NodeKind.Media
-    | "Embed" -> decEmbedSpec j |> Result.map NodeKind.Embed
-    | "Link" -> decLinkSpec j |> Result.map NodeKind.Link
-    | "Callout" -> decCalloutSpec j |> Result.map NodeKind.Callout
-    | "Progress" -> decProgressSpec j |> Result.map NodeKind.Progress
-    | "Metric" -> decMetricSpec j |> Result.map NodeKind.Metric
-    | "LabelValueRow" -> decLabelValueRowSpec j |> Result.map NodeKind.LabelValueRow
-    | "Fact" -> decFactSpec j |> Result.map NodeKind.Fact
-    | "Sparkline" -> decSparklineSpec j |> Result.map NodeKind.Sparkline
-    | "CodeBlock" -> decCodeBlockSpec j |> Result.map NodeKind.CodeBlock
-    | "Toast" -> decToastSpec j |> Result.map NodeKind.Toast
-    | "Drawing" -> decDrawingSpec j |> Result.map NodeKind.Drawing
     | "Box" -> decBoxSpec j |> Result.map NodeKind.Box
-    | "SplitPanel" -> decSplitPanelSpec j |> Result.map NodeKind.SplitPanel
-    | "SummaryList" -> decSummaryListSpec j |> Result.map NodeKind.SummaryList
-    | "Disclosure" -> decDisclosureSpec j |> Result.map NodeKind.Disclosure
-    | "Modal" -> decModalSpec j |> Result.map NodeKind.Modal
-    | "ScrollArea" -> decScrollAreaSpec j |> Result.map NodeKind.ScrollArea
-    | "Tabs" -> decTabsSpec j |> Result.map NodeKind.Tabs
-    | "Stepper" -> decStepperSpec j |> Result.map NodeKind.Stepper
     | "Button" -> decButtonSpec j |> Result.map NodeKind.Button
-    | "Select" -> decSelectSpec j |> Result.map NodeKind.Select
-    | "FileUpload" -> decFileUploadSpec j |> Result.map NodeKind.FileUpload
-    | "Form" -> decFormSpec j |> Result.map NodeKind.Form
-    | "Filters" -> decFiltersSpec j |> Result.map NodeKind.Filters
-    | "DataGrid" -> decDataGridSpec j |> Result.map NodeKind.DataGrid
+    | "Callout" -> decCalloutSpec j |> Result.map NodeKind.Callout
     | "Chart" -> decChartSpec j |> Result.map NodeKind.Chart
-    | "Map" -> decMapSpec j |> Result.map NodeKind.Map
+    | "CodeBlock" -> decCodeBlockSpec j |> Result.map NodeKind.CodeBlock
     | "Custom" -> decCustomSpec j |> Result.map NodeKind.Custom
+    | "DataGrid" -> decDataGridSpec j |> Result.map NodeKind.DataGrid
+    | "Disclosure" -> decDisclosureSpec j |> Result.map NodeKind.Disclosure
+    | "Drawing" -> decDrawingSpec j |> Result.map NodeKind.Drawing
+    | "Embed" -> decEmbedSpec j |> Result.map NodeKind.Embed
     | "ErrorBoundary" -> decErrorBoundarySpec j |> Result.map NodeKind.ErrorBoundary
+    | "Fact" -> decFactSpec j |> Result.map NodeKind.Fact
+    | "FileUpload" -> decFileUploadSpec j |> Result.map NodeKind.FileUpload
+    | "Filters" -> decFiltersSpec j |> Result.map NodeKind.Filters
+    | "Form" -> decFormSpec j |> Result.map NodeKind.Form
     | "FragmentDecl" -> decFragmentDeclSpec j |> Result.map NodeKind.FragmentDecl
     | "FragmentRef" -> decFragmentRefSpec j |> Result.map NodeKind.FragmentRef
-    | "Switch" -> decSwitchSpec j |> Result.map NodeKind.Switch
+    | "Heading" -> decHeadingSpec j |> Result.map NodeKind.Heading
+    | "Icon" -> decIconSpec j |> Result.map NodeKind.Icon
+    | "Image" -> decImageSpec j |> Result.map NodeKind.Image
+    | "LabelValueRow" -> decLabelValueRowSpec j |> Result.map NodeKind.LabelValueRow
+    | "Link" -> decLinkSpec j |> Result.map NodeKind.Link
+    | "List" -> decListSpec j |> Result.map NodeKind.List
+    | "Map" -> decMapSpec j |> Result.map NodeKind.Map
+    | "Markdown" -> decMarkdownSpec j |> Result.map NodeKind.Markdown
+    | "Math" -> decMathSpec j |> Result.map NodeKind.Math
+    | "Media" -> decMediaSpec j |> Result.map NodeKind.Media
+    | "Metric" -> decMetricSpec j |> Result.map NodeKind.Metric
+    | "Modal" -> decModalSpec j |> Result.map NodeKind.Modal
     | "Mount" -> decMountSpec j |> Result.map NodeKind.Mount
+    | "Progress" -> decProgressSpec j |> Result.map NodeKind.Progress
+    | "ScrollArea" -> decScrollAreaSpec j |> Result.map NodeKind.ScrollArea
+    | "Select" -> decSelectSpec j |> Result.map NodeKind.Select
+    | "Skeleton" -> decSkeletonSpec j |> Result.map NodeKind.Skeleton
+    | "Sparkline" -> decSparklineSpec j |> Result.map NodeKind.Sparkline
+    | "SplitPanel" -> decSplitPanelSpec j |> Result.map NodeKind.SplitPanel
+    | "Stepper" -> decStepperSpec j |> Result.map NodeKind.Stepper
+    | "SummaryList" -> decSummaryListSpec j |> Result.map NodeKind.SummaryList
+    | "Switch" -> decSwitchSpec j |> Result.map NodeKind.Switch
+    | "Tabs" -> decTabsSpec j |> Result.map NodeKind.Tabs
+    | "Toast" -> decToastSpec j |> Result.map NodeKind.Toast
     | __other -> Error ("unknown node kind: " + __other)))
 
 and private decNode (j: JVal) : Result<Node<obj>, string> =
@@ -2535,24 +2535,61 @@ and private decNode (j: JVal) : Result<Node<obj>, string> =
     dOpt "tooltip" __fs decTextSource |> Result.bind (fun tooltip ->
     Ok { Id = id; Kind = kind; Accessibility = accessibility; ExtraAttributes = extraAttributes; Motion = motion; State = state; Style = style; Tooltip = tooltip })))))))))
 
-and private decTextSource (j: JVal) : Result<TextSource, string> =
+and private decAction (j: JVal) : Result<Action<obj>, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
         dTag __fs |> Result.bind (fun __t ->
         match __t with
-        | "Literal" ->
+        | "Chain" ->
+            dReq "ops" __fs (dList decAction) |> Result.bind (fun ops ->
+            Ok(Action.Chain(ops)))
+        | "WriteToClipboard" ->
             dReq "text" __fs dStr |> Result.bind (fun text ->
-            Ok(TextSource.Literal(text)))
-        | "Bound" ->
-            dReq "binding" __fs (decBinding dStr) |> Result.bind (fun binding ->
-            Ok(TextSource.Bound(binding)))
-        | "I18n" ->
+            Ok(Action.WriteToClipboard(text)))
+        | "Dispatch" ->
+            Ok ((("<dispatch>" :> obj))) |> Result.bind (fun msg ->
+            Ok(Action.Dispatch(msg)))
+        | "Invoke" ->
+            dReq "capabilityId" __fs dStr |> Result.bind (fun capabilityId ->
+            dReq "args" __fs (dList decInvokeArg) |> Result.bind (fun args ->
+            Ok(Action.Invoke(capabilityId, args))))
+        | "ReadFileBody" ->
+            dReq "fileRef" __fs dStr |> Result.bind (fun fileRef ->
+            Ok (None) |> Result.bind (fun fileHandle ->
+            dReq "encoding" __fs decFileReadEncoding |> Result.bind (fun encoding ->
+            (dPresent "onRead" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> ("<closure>" :> obj))))) |> Result.bind (fun onRead ->
+            Ok(Action.ReadFileBody(fileRef, fileHandle, encoding, onRead))))))
+        | "Call" ->
+            dReq "endpoint" __fs dStr |> Result.bind (fun endpoint ->
+            (dPresent "onResult" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> ("<closure>" :> obj))))) |> Result.bind (fun onResult ->
+            dOpt "into" __fs decCallResultTarget |> Result.bind (fun into ->
+            Ok(Action.Call(endpoint, onResult, into)))))
+        | "Navigate" ->
+            dReq "route" __fs dStr |> Result.bind (fun route ->
+            Ok(Action.Navigate(route)))
+        | "CommitLocal" ->
+            dReq "nodeId" __fs dStr |> Result.bind (fun nodeId ->
+            Ok(Action.CommitLocal(nodeId)))
+        | "Notify" ->
+            dReq "channel" __fs dStr |> Result.bind (fun channel ->
+            dReq "payload" __fs dJson |> Result.bind (fun payload ->
+            Ok(Action.Notify(channel, payload))))
+        | "SetState" ->
             dReq "key" __fs dStr |> Result.bind (fun key ->
-            dReq "args" __fs (dMap dJson) |> Result.bind (fun args ->
-            Ok(TextSource.I18n(key, args))))
-        | __other -> Error ("unknown TextSource case: " + __other))
-    | __bare ->
-        dStr __bare |> Result.bind (fun text -> Ok(TextSource.Literal(text)))
+            dOpt "value" __fs dJson |> Result.bind (fun value ->
+            dOpt "valueFrom" __fs (decBinding dJson) |> Result.bind (fun valueFrom ->
+            // Phase 818 — value XOR valueFrom (a literal, or a Binding
+            // evaluated at dispatch time); exactly one must be present.
+            match value, valueFrom with
+            | Some _, Some _ -> Error "SetState carries both 'value' and 'valueFrom' — exactly one is allowed ('value' is a literal; 'valueFrom' derives the written value from a Binding at dispatch time)"
+            | None, None -> Error "SetState requires 'value' (a literal JSON value) or 'valueFrom' (a Binding evaluated at dispatch time)"
+            | _ -> Ok(Action.SetState(key, value, valueFrom)))))
+        | "AiTool" ->
+            dReq "toolName" __fs dStr |> Result.bind (fun toolName ->
+            dReq "args" __fs dJson |> Result.bind (fun args ->
+            Ok(Action.AiTool(toolName, args))))
+        | __other -> Error ("unknown Action case: " + __other))
+    | _ -> Error "expected a Action object"
 
 and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result<Binding<'T>, string> =
     match j with
@@ -2626,6 +2663,20 @@ and private decBinding<'T> (decT: JVal -> Result<'T, string>) (j: JVal) : Result
         | __other -> Error ("unknown Binding case: " + __other))
     | _ -> Error "expected a Binding object"
 
+and private decCallResultTarget (j: JVal) : Result<CallResultTarget, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "State" ->
+            dReq "key" __fs dStr |> Result.bind (fun key ->
+            Ok(CallResultTarget.State(key)))
+        | "Query" ->
+            dReq "name" __fs dStr |> Result.bind (fun name ->
+            Ok(CallResultTarget.Query(name)))
+        | __other -> Error ("unknown CallResultTarget case: " + __other))
+    | _ -> Error "expected a CallResultTarget object"
+
 and private decCellFormat (j: JVal) : Result<CellFormat, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
@@ -2660,151 +2711,89 @@ and private decCellFormat (j: JVal) : Result<CellFormat, string> =
         | __other -> Error ("unknown CellFormat case: " + __other))
     | _ -> Error "expected a CellFormat object"
 
-and private decAction (j: JVal) : Result<Action<obj>, string> =
+and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
         dTag __fs |> Result.bind (fun __t ->
         match __t with
-        | "Chain" ->
-            dReq "ops" __fs (dList decAction) |> Result.bind (fun ops ->
-            Ok(Action.Chain(ops)))
-        | "WriteToClipboard" ->
-            dReq "text" __fs dStr |> Result.bind (fun text ->
-            Ok(Action.WriteToClipboard(text)))
-        | "Dispatch" ->
-            Ok ((("<dispatch>" :> obj))) |> Result.bind (fun msg ->
-            Ok(Action.Dispatch(msg)))
-        | "Invoke" ->
-            dReq "capabilityId" __fs dStr |> Result.bind (fun capabilityId ->
-            dReq "args" __fs (dList decInvokeArg) |> Result.bind (fun args ->
-            Ok(Action.Invoke(capabilityId, args))))
-        | "ReadFileBody" ->
-            dReq "fileRef" __fs dStr |> Result.bind (fun fileRef ->
-            Ok (None) |> Result.bind (fun fileHandle ->
-            dReq "encoding" __fs decFileReadEncoding |> Result.bind (fun encoding ->
-            (dPresent "onRead" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> ("<closure>" :> obj))))) |> Result.bind (fun onRead ->
-            Ok(Action.ReadFileBody(fileRef, fileHandle, encoding, onRead))))))
-        | "Call" ->
-            dReq "endpoint" __fs dStr |> Result.bind (fun endpoint ->
-            (dPresent "onResult" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> ("<closure>" :> obj))))) |> Result.bind (fun onResult ->
-            dOpt "into" __fs decCallResultTarget |> Result.bind (fun into ->
-            Ok(Action.Call(endpoint, onResult, into)))))
-        | "Navigate" ->
-            dReq "route" __fs dStr |> Result.bind (fun route ->
-            Ok(Action.Navigate(route)))
-        | "CommitLocal" ->
-            dReq "nodeId" __fs dStr |> Result.bind (fun nodeId ->
-            Ok(Action.CommitLocal(nodeId)))
-        | "Notify" ->
-            dReq "channel" __fs dStr |> Result.bind (fun channel ->
-            dReq "payload" __fs dJson |> Result.bind (fun payload ->
-            Ok(Action.Notify(channel, payload))))
-        | "SetState" ->
-            dReq "key" __fs dStr |> Result.bind (fun key ->
-            dOpt "value" __fs dJson |> Result.bind (fun value ->
-            dOpt "valueFrom" __fs (decBinding dJson) |> Result.bind (fun valueFrom ->
-            // Phase 818 — value XOR valueFrom (a literal, or a Binding
-            // evaluated at dispatch time); exactly one must be present.
-            match value, valueFrom with
-            | Some _, Some _ -> Error "SetState carries both 'value' and 'valueFrom' — exactly one is allowed ('value' is a literal; 'valueFrom' derives the written value from a Binding at dispatch time)"
-            | None, None -> Error "SetState requires 'value' (a literal JSON value) or 'valueFrom' (a Binding evaluated at dispatch time)"
-            | _ -> Ok(Action.SetState(key, value, valueFrom)))))
-        | "AiTool" ->
-            dReq "toolName" __fs dStr |> Result.bind (fun toolName ->
-            dReq "args" __fs dJson |> Result.bind (fun args ->
-            Ok(Action.AiTool(toolName, args))))
-        | __other -> Error ("unknown Action case: " + __other))
-    | _ -> Error "expected a Action object"
+        | "Text" -> Ok CellKindErased.Text
+        | "Numeric" -> Ok CellKindErased.Numeric
+        | "Date" -> Ok CellKindErased.Date
+        | "Editable" ->
+            (dPresent "onEdit" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row * Fuaran.UI.HostPrelude.CellValue) -> Action.Chain [])))) |> Result.bind (fun onEdit ->
+            Ok(CellKindErased.Editable(onEdit)))
+        | "Checkbox" ->
+            Ok ((fun _ -> false)) |> Result.bind (fun get ->
+            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row * bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
+            Ok(CellKindErased.Checkbox(get, onToggle))))
+        | "Button" ->
+            dReq "label" __fs decTextSource |> Result.bind (fun label ->
+            (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onClick ->
+            Ok(CellKindErased.Button(label, onClick))))
+        | "ButtonGroup" ->
+            dReq "buttons" __fs (dList decButtonGroupItem) |> Result.bind (fun buttons ->
+            Ok(CellKindErased.ButtonGroup(buttons)))
+        | "Link" ->
+            Ok ((fun _ -> "")) |> Result.bind (fun hrefFn ->
+            Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
+            Ok(CellKindErased.Link(hrefFn, labelFn))))
+        | "Pill" ->
+            Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
+            Ok ((fun _ -> ToneVariant.Default)) |> Result.bind (fun toneFn ->
+            Ok(CellKindErased.Pill(labelFn, toneFn))))
+        | "TonedPill" ->
+            dReq "field" __fs dStr |> Result.bind (fun field ->
+            dReq "map" __fs (dMap decToneVariant) |> Result.bind (fun map ->
+            dDef "default" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun ``default`` ->
+            Ok(CellKindErased.TonedPill(field, map, ``default``)))))
+        | "Progress" ->
+            Ok ((fun _ -> 0.0)) |> Result.bind (fun fractionFn ->
+            (dPresent "labelFn" __fs |> Result.map (Option.map (fun () -> (fun _ -> TextSource.Literal "")))) |> Result.bind (fun labelFn ->
+            Ok(CellKindErased.Progress(fractionFn, labelFn))))
+        | "Custom" ->
+            Ok ((fun _ -> Unchecked.defaultof<Node<obj>>)) |> Result.bind (fun fn ->
+            Ok(CellKindErased.Custom(fn)))
+        | __other -> Error ("unknown CellKindErased case: " + __other))
+    | _ -> Error "expected a CellKindErased object"
 
-and private decCallResultTarget (j: JVal) : Result<CallResultTarget, string> =
+and private decColumnWidth (j: JVal) : Result<ColumnWidth, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
         dTag __fs |> Result.bind (fun __t ->
         match __t with
-        | "State" ->
-            dReq "key" __fs dStr |> Result.bind (fun key ->
-            Ok(CallResultTarget.State(key)))
-        | "Query" ->
-            dReq "name" __fs dStr |> Result.bind (fun name ->
-            Ok(CallResultTarget.Query(name)))
-        | __other -> Error ("unknown CallResultTarget case: " + __other))
-    | _ -> Error "expected a CallResultTarget object"
-
-and private decFormat (j: JVal) : Result<Format, string> =
-    match j with
-    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
-        dTag __fs |> Result.bind (fun __t ->
-        match __t with
-        | "Number" ->
-            dOpt "decimals" __fs dInt |> Result.bind (fun decimals ->
-            Ok(Format.Number(decimals)))
-        | "Currency" ->
-            dReq "isoCode" __fs dStr |> Result.bind (fun isoCode ->
-            Ok(Format.Currency(isoCode)))
-        | "Percent" ->
-            dOpt "decimals" __fs dInt |> Result.bind (fun decimals ->
-            Ok(Format.Percent(decimals)))
-        | "Date" ->
-            dReq "dateStyle" __fs decDateStyle |> Result.bind (fun dateStyle ->
-            Ok(Format.Date(dateStyle)))
-        | "RelativeTime" ->
-            dReq "unit" __fs decRelativeTimeUnit |> Result.bind (fun unit ->
-            Ok(Format.RelativeTime(unit)))
-        | "Duration" ->
-            dReq "unit" __fs decDurationUnit |> Result.bind (fun unit ->
-            dReq "style" __fs decDurationStyle |> Result.bind (fun style ->
-            Ok(Format.Duration(unit, style))))
-        | __other -> Error ("unknown Format case: " + __other))
-    | _ -> Error "expected a Format object"
-
-and private decLocaleSource (j: JVal) : Result<LocaleSource, string> =
-    match j with
-    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
-        dTag __fs |> Result.bind (fun __t ->
-        match __t with
-        | "Ambient" -> Ok LocaleSource.Ambient
-        | "Explicit" ->
-            dReq "tag" __fs dStr |> Result.bind (fun tag ->
-            Ok(LocaleSource.Explicit(tag)))
-        | __other -> Error ("unknown LocaleSource case: " + __other))
-    | _ -> Error "expected a LocaleSource object"
-
-and private decLocalFlushTrigger (j: JVal) : Result<LocalFlushTrigger, string> =
-    match j with
-    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
-        dTag __fs |> Result.bind (fun __t ->
-        match __t with
-        | "OnBlur" -> Ok LocalFlushTrigger.OnBlur
-        | "OnSubmit" -> Ok LocalFlushTrigger.OnSubmit
-        | "OnDebounce" ->
-            dReq "milliseconds" __fs dInt |> Result.bind (fun milliseconds ->
-            Ok(LocalFlushTrigger.OnDebounce(milliseconds)))
-        | "OnCommitAction" -> Ok LocalFlushTrigger.OnCommitAction
-        | __other -> Error ("unknown LocalFlushTrigger case: " + __other))
-    | _ -> Error "expected a LocalFlushTrigger object"
-
-and private decLayoutMode (j: JVal) : Result<LayoutMode, string> =
-    match j with
-    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
-        dTag __fs |> Result.bind (fun __t ->
-        match __t with
-        | "Auto" -> Ok LayoutMode.Auto
+        | "Auto" -> Ok ColumnWidth.Auto
+        | "Fixed" ->
+            dReq "pixels" __fs dInt |> Result.bind (fun pixels ->
+            Ok(ColumnWidth.Fixed(pixels)))
         | "Flex" ->
-            dReq "direction" __fs decOrientation |> Result.bind (fun direction ->
-            dReq "wrap" __fs dBool |> Result.bind (fun wrap ->
-            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
-            Ok(LayoutMode.Flex(direction, wrap, gap)))))
-        | "Grid" ->
-            dReq "cols" __fs dInt |> Result.bind (fun cols ->
-            dOpt "templateColumns" __fs dStr |> Result.bind (fun templateColumns ->
-            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
-            Ok(LayoutMode.Grid(cols, templateColumns, gap)))))
-        | "Masonry" ->
-            dReq "cols" __fs dInt |> Result.bind (fun cols ->
-            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
-            Ok(LayoutMode.Masonry(cols, gap))))
-        | __other -> Error ("unknown LayoutMode case: " + __other))
-    | _ -> Error "expected a LayoutMode object"
+            dReq "weight" __fs dFloat |> Result.bind (fun weight ->
+            Ok(ColumnWidth.Flex(weight)))
+        | __other -> Error ("unknown ColumnWidth case: " + __other))
+    | _ -> Error "expected a ColumnWidth object"
+
+and private decCurveCommand (j: JVal) : Result<CurveCommand, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "MoveTo" ->
+            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
+            Ok(CurveCommand.MoveTo(``to``)))
+        | "LineTo" ->
+            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
+            Ok(CurveCommand.LineTo(``to``)))
+        | "CubicTo" ->
+            dReq "control1" __fs decDrawPoint |> Result.bind (fun control1 ->
+            dReq "control2" __fs decDrawPoint |> Result.bind (fun control2 ->
+            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
+            Ok(CurveCommand.CubicTo(control1, control2, ``to``)))))
+        | "QuadraticTo" ->
+            dReq "control" __fs decDrawPoint |> Result.bind (fun control ->
+            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
+            Ok(CurveCommand.QuadraticTo(control, ``to``))))
+        | "Close" -> Ok CurveCommand.Close
+        | __other -> Error ("unknown CurveCommand case: " + __other))
+    | _ -> Error "expected a CurveCommand object"
 
 and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, string> =
     match j with
@@ -2882,78 +2871,76 @@ and private decFormFieldKind (j: JVal) : Result<FormFieldKind<obj>, string> =
         | __other -> Error ("unknown FormFieldKind case: " + __other))
     | _ -> Error "expected a FormFieldKind object"
 
-and private decMediaKind (j: JVal) : Result<MediaKind, string> =
+and private decFormat (j: JVal) : Result<Format, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
         dTag __fs |> Result.bind (fun __t ->
         match __t with
-        | "Video" ->
-            dDef "autoplay" __fs dBool (false) |> Result.bind (fun autoplay ->
-            dOpt "poster" __fs (decBinding dStr) |> Result.bind (fun poster ->
-            Ok(MediaKind.Video(autoplay, poster))))
-        | "Audio" -> Ok MediaKind.Audio
-        | __other -> Error ("unknown MediaKind case: " + __other))
-    | _ -> Error "expected a MediaKind object"
+        | "Number" ->
+            dOpt "decimals" __fs dInt |> Result.bind (fun decimals ->
+            Ok(Format.Number(decimals)))
+        | "Currency" ->
+            dReq "isoCode" __fs dStr |> Result.bind (fun isoCode ->
+            Ok(Format.Currency(isoCode)))
+        | "Percent" ->
+            dOpt "decimals" __fs dInt |> Result.bind (fun decimals ->
+            Ok(Format.Percent(decimals)))
+        | "Date" ->
+            dReq "dateStyle" __fs decDateStyle |> Result.bind (fun dateStyle ->
+            Ok(Format.Date(dateStyle)))
+        | "RelativeTime" ->
+            dReq "unit" __fs decRelativeTimeUnit |> Result.bind (fun unit ->
+            Ok(Format.RelativeTime(unit)))
+        | "Duration" ->
+            dReq "unit" __fs decDurationUnit |> Result.bind (fun unit ->
+            dReq "style" __fs decDurationStyle |> Result.bind (fun style ->
+            Ok(Format.Duration(unit, style))))
+        | __other -> Error ("unknown Format case: " + __other))
+    | _ -> Error "expected a Format object"
 
-and private decColumnWidth (j: JVal) : Result<ColumnWidth, string> =
+and private decFragmentArg (j: JVal) : Result<FragmentArg<obj>, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
         dTag __fs |> Result.bind (fun __t ->
         match __t with
-        | "Auto" -> Ok ColumnWidth.Auto
-        | "Fixed" ->
-            dReq "pixels" __fs dInt |> Result.bind (fun pixels ->
-            Ok(ColumnWidth.Fixed(pixels)))
-        | "Flex" ->
-            dReq "weight" __fs dFloat |> Result.bind (fun weight ->
-            Ok(ColumnWidth.Flex(weight)))
-        | __other -> Error ("unknown ColumnWidth case: " + __other))
-    | _ -> Error "expected a ColumnWidth object"
+        | "Int" ->
+            dReq "value" __fs dInt |> Result.bind (fun value ->
+            Ok(FragmentArg.Int(value)))
+        | "Float" ->
+            dReq "value" __fs dFloat |> Result.bind (fun value ->
+            Ok(FragmentArg.Float(value)))
+        | "Bool" ->
+            dReq "value" __fs dBool |> Result.bind (fun value ->
+            Ok(FragmentArg.Bool(value)))
+        | "Str" ->
+            dReq "value" __fs dStr |> Result.bind (fun value ->
+            Ok(FragmentArg.Str(value)))
+        | "SlotArg" ->
+            dReq "tree" __fs decNode |> Result.bind (fun tree ->
+            Ok(FragmentArg.SlotArg(tree)))
+        | __other -> Error ("unknown FragmentArg case: " + __other))
+    | _ -> Error "expected a FragmentArg object"
 
-and private decCellKindErased (j: JVal) : Result<CellKindErased<obj>, string> =
+and private decHoleDecl (j: JVal) : Result<HoleDecl, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
         dTag __fs |> Result.bind (fun __t ->
         match __t with
-        | "Text" -> Ok CellKindErased.Text
-        | "Numeric" -> Ok CellKindErased.Numeric
-        | "Date" -> Ok CellKindErased.Date
-        | "Editable" ->
-            (dPresent "onEdit" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row * Fuaran.UI.HostPrelude.CellValue) -> Action.Chain [])))) |> Result.bind (fun onEdit ->
-            Ok(CellKindErased.Editable(onEdit)))
-        | "Checkbox" ->
-            Ok ((fun _ -> false)) |> Result.bind (fun get ->
-            (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row * bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
-            Ok(CellKindErased.Checkbox(get, onToggle))))
-        | "Button" ->
-            dReq "label" __fs decTextSource |> Result.bind (fun label ->
-            (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onClick ->
-            Ok(CellKindErased.Button(label, onClick))))
-        | "ButtonGroup" ->
-            dReq "buttons" __fs (dList decButtonGroupItem) |> Result.bind (fun buttons ->
-            Ok(CellKindErased.ButtonGroup(buttons)))
-        | "Link" ->
-            Ok ((fun _ -> "")) |> Result.bind (fun hrefFn ->
-            Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
-            Ok(CellKindErased.Link(hrefFn, labelFn))))
-        | "Pill" ->
-            Ok ((fun _ -> TextSource.Literal "")) |> Result.bind (fun labelFn ->
-            Ok ((fun _ -> ToneVariant.Default)) |> Result.bind (fun toneFn ->
-            Ok(CellKindErased.Pill(labelFn, toneFn))))
-        | "TonedPill" ->
-            dReq "field" __fs dStr |> Result.bind (fun field ->
-            dReq "map" __fs (dMap decToneVariant) |> Result.bind (fun map ->
-            dDef "default" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun ``default`` ->
-            Ok(CellKindErased.TonedPill(field, map, ``default``)))))
-        | "Progress" ->
-            Ok ((fun _ -> 0.0)) |> Result.bind (fun fractionFn ->
-            (dPresent "labelFn" __fs |> Result.map (Option.map (fun () -> (fun _ -> TextSource.Literal "")))) |> Result.bind (fun labelFn ->
-            Ok(CellKindErased.Progress(fractionFn, labelFn))))
-        | "Custom" ->
-            Ok ((fun _ -> Unchecked.defaultof<Node<obj>>)) |> Result.bind (fun fn ->
-            Ok(CellKindErased.Custom(fn)))
-        | __other -> Error ("unknown CellKindErased case: " + __other))
-    | _ -> Error "expected a CellKindErased object"
+        | "Value" ->
+            dReq "name" __fs dStr |> Result.bind (fun name ->
+            dReq "space" __fs decHoleValueSpace |> Result.bind (fun space ->
+            dOpt "default" __fs decScalar |> Result.bind (fun ``default`` ->
+            Ok(HoleDecl.Value(name, space, ``default``)))))
+        | "Slot" ->
+            dReq "name" __fs dStr |> Result.bind (fun name ->
+            dOpt "kindConstraint" __fs dStr |> Result.bind (fun kindConstraint ->
+            Ok(HoleDecl.Slot(name, kindConstraint))))
+        | "Repeat" ->
+            dReq "name" __fs dStr |> Result.bind (fun name ->
+            dReq "countSpace" __fs decHoleValueSpace |> Result.bind (fun countSpace ->
+            Ok(HoleDecl.Repeat(name, countSpace))))
+        | __other -> Error ("unknown HoleDecl case: " + __other))
+    | _ -> Error "expected a HoleDecl object"
 
 and private decHoleValueSpace (j: JVal) : Result<HoleValueSpace, string> =
     match j with
@@ -2979,6 +2966,68 @@ and private decHoleValueSpace (j: JVal) : Result<HoleValueSpace, string> =
         | __other -> Error ("unknown HoleValueSpace case: " + __other))
     | _ -> Error "expected a HoleValueSpace object"
 
+and private decLayoutMode (j: JVal) : Result<LayoutMode, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "Auto" -> Ok LayoutMode.Auto
+        | "Flex" ->
+            dReq "direction" __fs decOrientation |> Result.bind (fun direction ->
+            dReq "wrap" __fs dBool |> Result.bind (fun wrap ->
+            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
+            Ok(LayoutMode.Flex(direction, wrap, gap)))))
+        | "Grid" ->
+            dReq "cols" __fs dInt |> Result.bind (fun cols ->
+            dOpt "templateColumns" __fs dStr |> Result.bind (fun templateColumns ->
+            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
+            Ok(LayoutMode.Grid(cols, templateColumns, gap)))))
+        | "Masonry" ->
+            dReq "cols" __fs dInt |> Result.bind (fun cols ->
+            dOpt "gap" __fs dInt |> Result.bind (fun gap ->
+            Ok(LayoutMode.Masonry(cols, gap))))
+        | __other -> Error ("unknown LayoutMode case: " + __other))
+    | _ -> Error "expected a LayoutMode object"
+
+and private decLocalFlushTrigger (j: JVal) : Result<LocalFlushTrigger, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "OnBlur" -> Ok LocalFlushTrigger.OnBlur
+        | "OnSubmit" -> Ok LocalFlushTrigger.OnSubmit
+        | "OnDebounce" ->
+            dReq "milliseconds" __fs dInt |> Result.bind (fun milliseconds ->
+            Ok(LocalFlushTrigger.OnDebounce(milliseconds)))
+        | "OnCommitAction" -> Ok LocalFlushTrigger.OnCommitAction
+        | __other -> Error ("unknown LocalFlushTrigger case: " + __other))
+    | _ -> Error "expected a LocalFlushTrigger object"
+
+and private decLocaleSource (j: JVal) : Result<LocaleSource, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "Ambient" -> Ok LocaleSource.Ambient
+        | "Explicit" ->
+            dReq "tag" __fs dStr |> Result.bind (fun tag ->
+            Ok(LocaleSource.Explicit(tag)))
+        | __other -> Error ("unknown LocaleSource case: " + __other))
+    | _ -> Error "expected a LocaleSource object"
+
+and private decMediaKind (j: JVal) : Result<MediaKind, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "Video" ->
+            dDef "autoplay" __fs dBool (false) |> Result.bind (fun autoplay ->
+            dOpt "poster" __fs (decBinding dStr) |> Result.bind (fun poster ->
+            Ok(MediaKind.Video(autoplay, poster))))
+        | "Audio" -> Ok MediaKind.Audio
+        | __other -> Error ("unknown MediaKind case: " + __other))
+    | _ -> Error "expected a MediaKind object"
+
 and private decScalar (j: JVal) : Result<Scalar, string> =
     match j with
     | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
@@ -2998,74 +3047,6 @@ and private decScalar (j: JVal) : Result<Scalar, string> =
             Ok(Scalar.Str(value)))
         | __other -> Error ("unknown Scalar case: " + __other))
     | _ -> Error "expected a Scalar object"
-
-and private decHoleDecl (j: JVal) : Result<HoleDecl, string> =
-    match j with
-    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
-        dTag __fs |> Result.bind (fun __t ->
-        match __t with
-        | "Value" ->
-            dReq "name" __fs dStr |> Result.bind (fun name ->
-            dReq "space" __fs decHoleValueSpace |> Result.bind (fun space ->
-            dOpt "default" __fs decScalar |> Result.bind (fun ``default`` ->
-            Ok(HoleDecl.Value(name, space, ``default``)))))
-        | "Slot" ->
-            dReq "name" __fs dStr |> Result.bind (fun name ->
-            dOpt "kindConstraint" __fs dStr |> Result.bind (fun kindConstraint ->
-            Ok(HoleDecl.Slot(name, kindConstraint))))
-        | "Repeat" ->
-            dReq "name" __fs dStr |> Result.bind (fun name ->
-            dReq "countSpace" __fs decHoleValueSpace |> Result.bind (fun countSpace ->
-            Ok(HoleDecl.Repeat(name, countSpace))))
-        | __other -> Error ("unknown HoleDecl case: " + __other))
-    | _ -> Error "expected a HoleDecl object"
-
-and private decFragmentArg (j: JVal) : Result<FragmentArg<obj>, string> =
-    match j with
-    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
-        dTag __fs |> Result.bind (fun __t ->
-        match __t with
-        | "Int" ->
-            dReq "value" __fs dInt |> Result.bind (fun value ->
-            Ok(FragmentArg.Int(value)))
-        | "Float" ->
-            dReq "value" __fs dFloat |> Result.bind (fun value ->
-            Ok(FragmentArg.Float(value)))
-        | "Bool" ->
-            dReq "value" __fs dBool |> Result.bind (fun value ->
-            Ok(FragmentArg.Bool(value)))
-        | "Str" ->
-            dReq "value" __fs dStr |> Result.bind (fun value ->
-            Ok(FragmentArg.Str(value)))
-        | "SlotArg" ->
-            dReq "tree" __fs decNode |> Result.bind (fun tree ->
-            Ok(FragmentArg.SlotArg(tree)))
-        | __other -> Error ("unknown FragmentArg case: " + __other))
-    | _ -> Error "expected a FragmentArg object"
-
-and private decCurveCommand (j: JVal) : Result<CurveCommand, string> =
-    match j with
-    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
-        dTag __fs |> Result.bind (fun __t ->
-        match __t with
-        | "MoveTo" ->
-            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
-            Ok(CurveCommand.MoveTo(``to``)))
-        | "LineTo" ->
-            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
-            Ok(CurveCommand.LineTo(``to``)))
-        | "CubicTo" ->
-            dReq "control1" __fs decDrawPoint |> Result.bind (fun control1 ->
-            dReq "control2" __fs decDrawPoint |> Result.bind (fun control2 ->
-            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
-            Ok(CurveCommand.CubicTo(control1, control2, ``to``)))))
-        | "QuadraticTo" ->
-            dReq "control" __fs decDrawPoint |> Result.bind (fun control ->
-            dReq "to" __fs decDrawPoint |> Result.bind (fun ``to`` ->
-            Ok(CurveCommand.QuadraticTo(control, ``to``))))
-        | "Close" -> Ok CurveCommand.Close
-        | __other -> Error ("unknown CurveCommand case: " + __other))
-    | _ -> Error "expected a CurveCommand object"
 
 and private decShape (j: JVal) : Result<Shape, string> =
     match j with
@@ -3125,21 +3106,24 @@ and private decShape (j: JVal) : Result<Shape, string> =
         | __other -> Error ("unknown Shape case: " + __other))
     | _ -> Error "expected a Shape object"
 
-and private decSemanticStyle (j: JVal) : Result<SemanticStyle, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dDef "emphasis" __fs decEmphasis (Emphasis.Normal) |> Result.bind (fun emphasis ->
-    dDef "role" __fs decStyleRole (StyleRole.None) |> Result.bind (fun role ->
-    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
-    dDef "voice" __fs decFontVoice (FontVoice.Default) |> Result.bind (fun voice ->
-    dDef "weight" __fs decStyleWeight (StyleWeight.Standard) |> Result.bind (fun weight ->
-    Ok { Emphasis = emphasis; Role = role; Tone = tone; Voice = voice; Weight = weight }))))))
-
-and private decStateBehaviour (j: JVal) : Result<StateBehaviour<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dOpt "onEmpty" __fs decNode |> Result.bind (fun onEmpty ->
-    (dPresent "onError" __fs |> Result.map (Option.map (fun () -> (fun _ -> Unchecked.defaultof<Node<obj>>)))) |> Result.bind (fun onError ->
-    dOpt "onLoading" __fs decNode |> Result.bind (fun onLoading ->
-    Ok { OnEmpty = onEmpty; OnError = onError; OnLoading = onLoading }))))
+and private decTextSource (j: JVal) : Result<TextSource, string> =
+    match j with
+    | JObj __fs when (__fs |> List.exists (fun (k, _) -> k = "$type")) ->
+        dTag __fs |> Result.bind (fun __t ->
+        match __t with
+        | "Literal" ->
+            dReq "text" __fs dStr |> Result.bind (fun text ->
+            Ok(TextSource.Literal(text)))
+        | "Bound" ->
+            dReq "binding" __fs (decBinding dStr) |> Result.bind (fun binding ->
+            Ok(TextSource.Bound(binding)))
+        | "I18n" ->
+            dReq "key" __fs dStr |> Result.bind (fun key ->
+            dReq "args" __fs (dMap dJson) |> Result.bind (fun args ->
+            Ok(TextSource.I18n(key, args))))
+        | __other -> Error ("unknown TextSource case: " + __other))
+    | __bare ->
+        dStr __bare |> Result.bind (fun text -> Ok(TextSource.Literal(text)))
 
 and private decAccessibility (j: JVal) : Result<Accessibility, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3151,31 +3135,54 @@ and private decAccessibility (j: JVal) : Result<Accessibility, string> =
     dOpt "role" __fs Fuaran.UI.HostPrelude.decAriaRole |> Result.bind (fun role ->
     Ok { DescribedBy = describedBy; Hidden = hidden; Label = label; LabelledBy = labelledBy; LiveRegion = liveRegion; Role = role })))))))
 
-and private decSwitchCase (j: JVal) : Result<SwitchCase<obj>, string> =
+and private decButtonGroupItem (j: JVal) : Result<ButtonGroupItem<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "child" __fs decNode |> Result.bind (fun child ->
-    dReq "match" __fs dStr |> Result.bind (fun ``match`` ->
-    Ok { Child = child; Match = ``match`` })))
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onClick ->
+    Ok { Label = label; OnClick = onClick })))
 
-and private decGuestChannel (j: JVal) : Result<GuestChannel, string> =
+and private decColumnErased (j: JVal) : Result<ColumnErased<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "direction" __fs decChannelDirection |> Result.bind (fun direction ->
-    dOpt "messageShape" __fs dStr |> Result.bind (fun messageShape ->
-    Ok { Direction = direction; MessageShape = messageShape })))
+    dOpt "field" __fs dStr |> Result.bind (fun field ->
+    dOpt "sortable" __fs dBool |> Result.bind (fun sortable ->
+    dOpt "editable" __fs dBool |> Result.bind (fun editable ->
+    dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
+    dReq "kind" __fs decCellKindErased |> Result.bind (fun kind ->
+    dReq "label" __fs dStr |> Result.bind (fun label ->
+    (dPresent "value" __fs |> Result.map (Option.map (fun () -> (fun _ -> Fuaran.UI.HostPrelude.CellValue.Empty)))) |> Result.bind (fun value ->
+    dDef "width" __fs decColumnWidth (ColumnWidth.Auto) |> Result.bind (fun width ->
+    Ok { Field = field; Sortable = sortable; Editable = editable; Format = format; Kind = kind; Label = label; Value = value; Width = width })))))))))
+
+and private decCompareRule (j: JVal) : Result<CompareRule, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "against" __fs (decBinding dJson) |> Result.bind (fun against ->
+    dReq "op" __fs decCompareOp |> Result.bind (fun op ->
+    Ok { Against = against; Op = op })))
+
+and private decContentHash (j: JVal) : Result<ContentHash, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "algorithm" __fs dStr |> Result.bind (fun algorithm ->
+    dReq "hash" __fs dStr |> Result.bind (fun hash ->
+    dReq "strictness" __fs decHashStrictness |> Result.bind (fun strictness ->
+    Ok { Algorithm = algorithm; Hash = hash; Strictness = strictness }))))
+
+and private decDateRangePair (j: JVal) : Result<DateRangePair, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "from" __fs dStr |> Result.bind (fun from ->
+    dReq "to" __fs dStr |> Result.bind (fun ``to`` ->
+    Ok { From = from; To = ``to`` })))
+
+and private decDefaultSort (j: JVal) : Result<DefaultSort, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "column" __fs dInt |> Result.bind (fun column ->
+    dReq "direction" __fs decSortDirection |> Result.bind (fun direction ->
+    Ok { Column = column; Direction = direction })))
 
 and private decDrawPoint (j: JVal) : Result<DrawPoint, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "x" __fs dFloat |> Result.bind (fun x ->
     dReq "y" __fs dFloat |> Result.bind (fun y ->
     Ok { X = x; Y = y })))
-
-and private decViewBox (j: JVal) : Result<ViewBox, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "height" __fs dFloat |> Result.bind (fun height ->
-    dReq "minX" __fs dFloat |> Result.bind (fun minX ->
-    dReq "minY" __fs dFloat |> Result.bind (fun minY ->
-    dReq "width" __fs dFloat |> Result.bind (fun width ->
-    Ok { Height = height; MinX = minX; MinY = minY; Width = width })))))
 
 and private decDrawStyle (j: JVal) : Result<DrawStyle, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3192,44 +3199,11 @@ and private decDrawStyle (j: JVal) : Result<DrawStyle, string> =
     dOpt "tip" __fs decTextSource |> Result.bind (fun tip ->
     Ok { Emphasis = emphasis; Fill = fill; FontFamily = fontFamily; FontSize = fontSize; MarkId = markId; Opacity = opacity; Rotation = rotation; Stroke = stroke; StrokeWidth = strokeWidth; TextAnchor = textAnchor; Tip = tip }))))))))))))
 
-and private decInvokeArg (j: JVal) : Result<InvokeArg, string> =
+and private decEffectClass (j: JVal) : Result<EffectClass, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "addr" __fs dStr |> Result.bind (fun addr ->
-    dReq "value" __fs dStr |> Result.bind (fun value ->
-    Ok { Addr = addr; Value = value })))
-
-and private decSelectOption (j: JVal) : Result<SelectOption, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "label" __fs dStr |> Result.bind (fun label ->
-    dReq "value" __fs dStr |> Result.bind (fun value ->
-    Ok { Label = label; Value = value })))
-
-and private decMapMarker (j: JVal) : Result<MapMarker, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "label" __fs dStr |> Result.bind (fun label ->
-    dReq "latitude" __fs dFloat |> Result.bind (fun latitude ->
-    dReq "longitude" __fs dFloat |> Result.bind (fun longitude ->
-    Ok { Label = label; Latitude = latitude; Longitude = longitude }))))
-
-and private decDefaultSort (j: JVal) : Result<DefaultSort, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "column" __fs dInt |> Result.bind (fun column ->
-    dReq "direction" __fs decSortDirection |> Result.bind (fun direction ->
-    Ok { Column = column; Direction = direction })))
-
-and private decStaticRows (j: JVal) : Result<StaticRows, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dOpt "defaultSort" __fs decDefaultSort |> Result.bind (fun defaultSort ->
-    dReq "headers" __fs (dList decTextSource) |> Result.bind (fun headers ->
-    dReq "rows" __fs (dList (dList decTextSource)) |> Result.bind (fun rows ->
-    dOpt "sortable" __fs dBool |> Result.bind (fun sortable ->
-    Ok { DefaultSort = defaultSort; Headers = headers; Rows = rows; Sortable = sortable })))))
-
-and private decCompareRule (j: JVal) : Result<CompareRule, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "against" __fs (decBinding dJson) |> Result.bind (fun against ->
-    dReq "op" __fs decCompareOp |> Result.bind (fun op ->
-    Ok { Against = against; Op = op })))
+    dReq "determinism" __fs decDeterminismSource |> Result.bind (fun determinism ->
+    dReq "hostEffect" __fs decHostEffect |> Result.bind (fun hostEffect ->
+    Ok { Determinism = determinism; HostEffect = hostEffect })))
 
 and private decFieldRule (j: JVal) : Result<FieldRule, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3241,6 +3215,13 @@ and private decFieldRule (j: JVal) : Result<FieldRule, string> =
     dOpt "pattern" __fs dStr |> Result.bind (fun pattern ->
     Ok { Compare = compare; Format = format; MaxLength = maxLength; Message = message; MinLength = minLength; Pattern = pattern })))))))
 
+and private decFilterSpec (j: JVal) : Result<FilterSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "kind" __fs decFormFieldKind |> Result.bind (fun kind ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    dReq "name" __fs dStr |> Result.bind (fun name ->
+    Ok { Kind = kind; Label = label; Name = name }))))
+
 and private decFormField (j: JVal) : Result<FormField<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "id" __fs dStr |> Result.bind (fun id ->
@@ -3251,18 +3232,24 @@ and private decFormField (j: JVal) : Result<FormField<obj>, string> =
     dOpt "rule" __fs decFieldRule |> Result.bind (fun rule ->
     Ok { Id = id; Kind = kind; Label = label; Required = required; Help = help; Rule = rule })))))))
 
-and private decFilterSpec (j: JVal) : Result<FilterSpec<obj>, string> =
+and private decGuestChannel (j: JVal) : Result<GuestChannel, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "kind" __fs decFormFieldKind |> Result.bind (fun kind ->
-    dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dReq "name" __fs dStr |> Result.bind (fun name ->
-    Ok { Kind = kind; Label = label; Name = name }))))
+    dReq "direction" __fs decChannelDirection |> Result.bind (fun direction ->
+    dOpt "messageShape" __fs dStr |> Result.bind (fun messageShape ->
+    Ok { Direction = direction; MessageShape = messageShape })))
 
-and private decTransformParam (j: JVal) : Result<TransformParam, string> =
+and private decInvokeArg (j: JVal) : Result<InvokeArg, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "from" __fs (decBinding dJson) |> Result.bind (fun from ->
-    dReq "name" __fs dStr |> Result.bind (fun name ->
-    Ok { From = from; Name = name })))
+    dReq "addr" __fs dStr |> Result.bind (fun addr ->
+    dReq "value" __fs dStr |> Result.bind (fun value ->
+    Ok { Addr = addr; Value = value })))
+
+and private decMapMarker (j: JVal) : Result<MapMarker, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "label" __fs dStr |> Result.bind (fun label ->
+    dReq "latitude" __fs dFloat |> Result.bind (fun latitude ->
+    dReq "longitude" __fs dFloat |> Result.bind (fun longitude ->
+    Ok { Label = label; Latitude = latitude; Longitude = longitude }))))
 
 and private decRangePair (j: JVal) : Result<RangePair, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3270,11 +3257,47 @@ and private decRangePair (j: JVal) : Result<RangePair, string> =
     dReq "min" __fs dFloat |> Result.bind (fun min ->
     Ok { Max = max; Min = min })))
 
-and private decDateRangePair (j: JVal) : Result<DateRangePair, string> =
+and private decSelectOption (j: JVal) : Result<SelectOption, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "from" __fs dStr |> Result.bind (fun from ->
-    dReq "to" __fs dStr |> Result.bind (fun ``to`` ->
-    Ok { From = from; To = ``to`` })))
+    dReq "label" __fs dStr |> Result.bind (fun label ->
+    dReq "value" __fs dStr |> Result.bind (fun value ->
+    Ok { Label = label; Value = value })))
+
+and private decSemanticStyle (j: JVal) : Result<SemanticStyle, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "emphasis" __fs decEmphasis (Emphasis.Normal) |> Result.bind (fun emphasis ->
+    dDef "role" __fs decStyleRole (StyleRole.None) |> Result.bind (fun role ->
+    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
+    dDef "voice" __fs decFontVoice (FontVoice.Default) |> Result.bind (fun voice ->
+    dDef "weight" __fs decStyleWeight (StyleWeight.Standard) |> Result.bind (fun weight ->
+    Ok { Emphasis = emphasis; Role = role; Tone = tone; Voice = voice; Weight = weight }))))))
+
+and private decSrcSetEntry (j: JVal) : Result<SrcSetEntry, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
+    dReq "width" __fs dInt |> Result.bind (fun width ->
+    Ok { Src = src; Width = width })))
+
+and private decStateBehaviour (j: JVal) : Result<StateBehaviour<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dOpt "onEmpty" __fs decNode |> Result.bind (fun onEmpty ->
+    (dPresent "onError" __fs |> Result.map (Option.map (fun () -> (fun _ -> Unchecked.defaultof<Node<obj>>)))) |> Result.bind (fun onError ->
+    dOpt "onLoading" __fs decNode |> Result.bind (fun onLoading ->
+    Ok { OnEmpty = onEmpty; OnError = onError; OnLoading = onLoading }))))
+
+and private decStaticRows (j: JVal) : Result<StaticRows, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dOpt "defaultSort" __fs decDefaultSort |> Result.bind (fun defaultSort ->
+    dReq "headers" __fs (dList decTextSource) |> Result.bind (fun headers ->
+    dReq "rows" __fs (dList (dList decTextSource)) |> Result.bind (fun rows ->
+    dOpt "sortable" __fs dBool |> Result.bind (fun sortable ->
+    Ok { DefaultSort = defaultSort; Headers = headers; Rows = rows; Sortable = sortable })))))
+
+and private decSwitchCase (j: JVal) : Result<SwitchCase<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "child" __fs decNode |> Result.bind (fun child ->
+    dReq "match" __fs dStr |> Result.bind (fun ``match`` ->
+    Ok { Child = child; Match = ``match`` })))
 
 and private decTabHeader (j: JVal) : Result<TabHeader, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3282,37 +3305,6 @@ and private decTabHeader (j: JVal) : Result<TabHeader, string> =
     dOpt "icon" __fs dStr |> Result.bind (fun icon ->
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     Ok { Label = label; Icon = icon; Disabled = disabled }))))
-
-and private decColumnErased (j: JVal) : Result<ColumnErased<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dOpt "field" __fs dStr |> Result.bind (fun field ->
-    dOpt "sortable" __fs dBool |> Result.bind (fun sortable ->
-    dOpt "editable" __fs dBool |> Result.bind (fun editable ->
-    dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
-    dReq "kind" __fs decCellKindErased |> Result.bind (fun kind ->
-    dReq "label" __fs dStr |> Result.bind (fun label ->
-    (dPresent "value" __fs |> Result.map (Option.map (fun () -> (fun _ -> Fuaran.UI.HostPrelude.CellValue.Empty)))) |> Result.bind (fun value ->
-    dDef "width" __fs decColumnWidth (ColumnWidth.Auto) |> Result.bind (fun width ->
-    Ok { Field = field; Sortable = sortable; Editable = editable; Format = format; Kind = kind; Label = label; Value = value; Width = width })))))))))
-
-and private decButtonGroupItem (j: JVal) : Result<ButtonGroupItem<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    (dPresent "onClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onClick ->
-    Ok { Label = label; OnClick = onClick })))
-
-and private decContentHash (j: JVal) : Result<ContentHash, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "algorithm" __fs dStr |> Result.bind (fun algorithm ->
-    dReq "hash" __fs dStr |> Result.bind (fun hash ->
-    dReq "strictness" __fs decHashStrictness |> Result.bind (fun strictness ->
-    Ok { Algorithm = algorithm; Hash = hash; Strictness = strictness }))))
-
-and private decSrcSetEntry (j: JVal) : Result<SrcSetEntry, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
-    dReq "width" __fs dInt |> Result.bind (fun width ->
-    Ok { Src = src; Width = width })))
 
 and private decTrackEntry (j: JVal) : Result<TrackEntry, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3323,180 +3315,25 @@ and private decTrackEntry (j: JVal) : Result<TrackEntry, string> =
     dReq "srcLang" __fs dStr |> Result.bind (fun srcLang ->
     Ok { Default = ``default``; Kind = kind; Label = label; Src = src; SrcLang = srcLang }))))))
 
-and private decEffectClass (j: JVal) : Result<EffectClass, string> =
+and private decTransformParam (j: JVal) : Result<TransformParam, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "determinism" __fs decDeterminismSource |> Result.bind (fun determinism ->
-    dReq "hostEffect" __fs decHostEffect |> Result.bind (fun hostEffect ->
-    Ok { Determinism = determinism; HostEffect = hostEffect })))
+    dReq "from" __fs (decBinding dJson) |> Result.bind (fun from ->
+    dReq "name" __fs dStr |> Result.bind (fun name ->
+    Ok { From = from; Name = name })))
 
-and private decHeadingSpec (j: JVal) : Result<HeadingSpec, string> =
+and private decViewBox (j: JVal) : Result<ViewBox, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "level" __fs dInt |> Result.bind (fun level ->
-    dReq "text" __fs decTextSource |> Result.bind (fun text ->
-    dReq "variant" __fs decHeadingVariant |> Result.bind (fun variant ->
-    Ok { Level = level; Text = text; Variant = variant }))))
+    dReq "height" __fs dFloat |> Result.bind (fun height ->
+    dReq "minX" __fs dFloat |> Result.bind (fun minX ->
+    dReq "minY" __fs dFloat |> Result.bind (fun minY ->
+    dReq "width" __fs dFloat |> Result.bind (fun width ->
+    Ok { Height = height; MinX = minX; MinY = minY; Width = width })))))
 
 and private decBadgeSpec (j: JVal) : Result<BadgeSpec, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "label" __fs decTextSource |> Result.bind (fun label ->
     dReq "variant" __fs decBadgeVariant |> Result.bind (fun variant ->
     Ok { Label = label; Variant = variant })))
-
-and private decMarkdownSpec (j: JVal) : Result<MarkdownSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "text" __fs decTextSource |> Result.bind (fun text ->
-    Ok { Text = text }))
-
-and private decMathSpec (j: JVal) : Result<MathSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "source" __fs dStr |> Result.bind (fun source ->
-    dReq "display" __fs decMathDisplay |> Result.bind (fun display ->
-    Ok { Source = source; Display = display })))
-
-and private decSkeletonSpec (j: JVal) : Result<SkeletonSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "rows" __fs dInt |> Result.bind (fun rows ->
-    Ok { Rows = rows }))
-
-// Phase 821 — Icon display kind.
-and private decIconSpec (j: JVal) : Result<IconSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "icon" __fs dStr |> Result.bind (fun icon ->
-    dDef "size" __fs decIconSize (IconSize.Medium) |> Result.bind (fun size ->
-    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
-    dOpt "label" __fs dStr |> Result.bind (fun label ->
-    Ok { Icon = icon; Size = size; Tone = tone; Label = label })))))
-
-and private decListSpec (j: JVal) : Result<ListSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "items" __fs (dList decTextSource) |> Result.bind (fun items ->
-    dReq "ordered" __fs dBool |> Result.bind (fun ordered ->
-    Ok { Items = items; Ordered = ordered })))
-
-and private decImageSpec (j: JVal) : Result<ImageSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "alt" __fs decTextSource |> Result.bind (fun alt ->
-    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
-    dReq "variant" __fs decImageVariant |> Result.bind (fun variant ->
-    dDef "fit" __fs decImageFit (ImageFit.Natural) |> Result.bind (fun fit ->
-    dDef "aspectRatio" __fs decImageAspect (ImageAspect.Natural) |> Result.bind (fun aspectRatio ->
-    dDef "loading" __fs decImageLoading (ImageLoading.Eager) |> Result.bind (fun loading ->
-    dDef "srcSet" __fs (dList decSrcSetEntry) ([]) |> Result.bind (fun srcSet ->
-    dDef "expandable" __fs dBool (false) |> Result.bind (fun expandable ->
-    dOpt "caption" __fs decTextSource |> Result.bind (fun caption ->
-    Ok { Alt = alt; Src = src; Variant = variant; Fit = fit; AspectRatio = aspectRatio; Loading = loading; SrcSet = srcSet; Expandable = expandable; Caption = caption }))))))))))
-
-and private decMediaSpec (j: JVal) : Result<MediaSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dDef "controls" __fs dBool (true) |> Result.bind (fun controls ->
-    dReq "kind" __fs decMediaKind |> Result.bind (fun kind ->
-    dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dDef "loop" __fs dBool (false) |> Result.bind (fun loop ->
-    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
-    dDef "tracks" __fs (dList decTrackEntry) ([]) |> Result.bind (fun tracks ->
-    dOpt "transcript" __fs decTextSource |> Result.bind (fun transcript ->
-    Ok { Controls = controls; Kind = kind; Label = label; Loop = loop; Src = src; Tracks = tracks; Transcript = transcript }))))))))
-
-and private decEmbedSpec (j: JVal) : Result<EmbedSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dDef "aspectRatio" __fs decImageAspect (ImageAspect.Natural) |> Result.bind (fun aspectRatio ->
-    dDef "permissions" __fs (dList decEmbedPermission) ([]) |> Result.bind (fun permissions ->
-    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
-    dReq "title" __fs decTextSource |> Result.bind (fun title ->
-    Ok { AspectRatio = aspectRatio; Permissions = permissions; Src = src; Title = title })))))
-
-and private decLinkSpec (j: JVal) : Result<LinkSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "href" __fs (decBinding dStr) |> Result.bind (fun href ->
-    dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dReq "download" __fs dBool |> Result.bind (fun download ->
-    dOpt "rel" __fs dStr |> Result.bind (fun rel ->
-    dOpt "target" __fs dStr |> Result.bind (fun target ->
-    dOpt "protection" __fs decLinkProtection |> Result.bind (fun protection ->
-    Ok { Href = href; Label = label; Download = download; Rel = rel; Target = target; Protection = protection })))))))
-
-and private decCalloutSpec (j: JVal) : Result<CalloutSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "body" __fs decTextSource |> Result.bind (fun body ->
-    dDef "dismissable" __fs dBool (false) |> Result.bind (fun dismissable ->
-    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
-    dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
-    dOpt "icon" __fs dStr |> Result.bind (fun icon ->
-    Ok { Body = body; Dismissable = dismissable; Tone = tone; Heading = heading; Icon = icon }))))))
-
-and private decProgressSpec (j: JVal) : Result<ProgressSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "fraction" __fs (decBinding dFloat) |> Result.bind (fun fraction ->
-    dDef "indeterminate" __fs dBool (false) |> Result.bind (fun indeterminate ->
-    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
-    dOpt "label" __fs decTextSource |> Result.bind (fun label ->
-    dOpt "caveat" __fs decTextSource |> Result.bind (fun caveat ->
-    Ok { Fraction = fraction; Indeterminate = indeterminate; Tone = tone; Label = label; Caveat = caveat }))))))
-
-and private decMetricSpec (j: JVal) : Result<MetricSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dReq "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
-    dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
-    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
-    dDef "weight" __fs decStyleWeight (StyleWeight.Standard) |> Result.bind (fun weight ->
-    dDef "emphasis" __fs decEmphasis (Emphasis.Normal) |> Result.bind (fun emphasis ->
-    dOpt "trend" __fs (decBinding dFloat) |> Result.bind (fun trend ->
-    dOpt "trendFormat" __fs decCellFormat |> Result.bind (fun trendFormat ->
-    dDef "trendPolarity" __fs decTrendPolarity (TrendPolarity.HigherIsBetter) |> Result.bind (fun trendPolarity ->
-    dOpt "icon" __fs dStr |> Result.bind (fun icon ->
-    dOpt "subtext" __fs decTextSource |> Result.bind (fun subtext ->
-    Ok { Label = label; Value = value; Format = format; Tone = tone; Weight = weight; Emphasis = emphasis; Trend = trend; TrendFormat = trendFormat; TrendPolarity = trendPolarity; Icon = icon; Subtext = subtext }))))))))))))
-
-and private decLabelValueRowSpec (j: JVal) : Result<LabelValueRowSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dDef "emphasis" __fs dBool (false) |> Result.bind (fun emphasis ->
-    dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
-    dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dReq "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
-    dOpt "help" __fs decTextSource |> Result.bind (fun help ->
-    Ok { Emphasis = emphasis; Format = format; Label = label; Value = value; Help = help }))))))
-
-and private decFactSpec (j: JVal) : Result<FactSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dDef "emphasis" __fs dBool (false) |> Result.bind (fun emphasis ->
-    dOpt "help" __fs decTextSource |> Result.bind (fun help ->
-    dOpt "icon" __fs dStr |> Result.bind (fun icon ->
-    dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
-    dReq "value" __fs decTextSource |> Result.bind (fun value ->
-    Ok { Emphasis = emphasis; Help = help; Icon = icon; Label = label; Tone = tone; Value = value })))))))
-
-and private decSparklineSpec (j: JVal) : Result<SparklineSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "source" __fs (decBinding (dList dFloat)) |> Result.bind (fun source ->
-    Ok { Source = source }))
-
-and private decCodeBlockSpec (j: JVal) : Result<CodeBlockSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "code" __fs dStr |> Result.bind (fun code ->
-    dReq "copyable" __fs dBool |> Result.bind (fun copyable ->
-    dReq "highlightLines" __fs (dList dInt) |> Result.bind (fun highlightLines ->
-    dReq "language" __fs dStr |> Result.bind (fun language ->
-    dReq "lineNumbers" __fs dBool |> Result.bind (fun lineNumbers ->
-    Ok { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }))))))
-
-and private decToastSpec (j: JVal) : Result<ToastSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dDef "dismissable" __fs dBool (true) |> Result.bind (fun dismissable ->
-    dReq "message" __fs decTextSource |> Result.bind (fun message ->
-    dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
-    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
-    Ok { Dismissable = dismissable; Message = message; Open = ``open``; Tone = tone })))))
-
-and private decDrawingSpec (j: JVal) : Result<DrawingSpec, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dOpt "description" __fs decTextSource |> Result.bind (fun description ->
-    dReq "shapes" __fs (dList decShape) |> Result.bind (fun shapes ->
-    dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
-    dOpt "title" __fs decTextSource |> Result.bind (fun title ->
-    dReq "viewBox" __fs decViewBox |> Result.bind (fun viewBox ->
-    Ok { Description = description; Shapes = shapes; Style = style; Title = title; ViewBox = viewBox }))))))
 
 and private decBoxSpec (j: JVal) : Result<BoxSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3505,65 +3342,6 @@ and private decBoxSpec (j: JVal) : Result<BoxSpec<obj>, string> =
     dReq "layout" __fs decLayoutMode |> Result.bind (fun layout ->
     dReq "role" __fs decBoxRole |> Result.bind (fun role ->
     Ok { Children = children; Heading = heading; Layout = layout; Role = role })))))
-
-and private decSplitPanelSpec (j: JVal) : Result<SplitPanelSpec<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    dReq "weight" __fs dFloat |> Result.bind (fun weight ->
-    Ok { Children = children; Weight = weight })))
-
-and private decSummaryListSpec (j: JVal) : Result<SummaryListSpec<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
-    Ok { Children = children; Heading = heading })))
-
-and private decDisclosureSpec (j: JVal) : Result<DisclosureSpec<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    dReq "defaultOpen" __fs dBool |> Result.bind (fun defaultOpen ->
-    dReq "heading" __fs decTextSource |> Result.bind (fun heading ->
-    (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
-    dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
-    Ok { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = onToggle; Open = ``open`` }))))))
-
-and private decModalSpec (j: JVal) : Result<ModalSpec<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    dReq "dismissable" __fs dBool |> Result.bind (fun dismissable ->
-    dOpt "onDismiss" __fs decAction |> Result.bind (fun onDismiss ->
-    dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
-    dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
-    dDef "modality" __fs decModalityKind (ModalityKind.Modal) |> Result.bind (fun modality ->
-    dOpt "anchor" __fs dStr |> Result.bind (fun anchor ->
-    Ok { Children = children; Dismissable = dismissable; OnDismiss = onDismiss; Open = ``open``; Heading = heading; Modality = modality; Anchor = anchor }))))))))
-
-and private decScrollAreaSpec (j: JVal) : Result<ScrollAreaSpec<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    dReq "orientation" __fs decScrollOrientation |> Result.bind (fun orientation ->
-    dOpt "maxHeight" __fs dInt |> Result.bind (fun maxHeight ->
-    dOpt "maxWidth" __fs dInt |> Result.bind (fun maxWidth ->
-    Ok { Children = children; Orientation = orientation; MaxHeight = maxHeight; MaxWidth = maxWidth })))))
-
-and private decTabsSpec (j: JVal) : Result<TabsSpec<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "activeIndex" __fs (decBinding dInt) |> Result.bind (fun activeIndex ->
-    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    dDef "orientation" __fs decOrientation (Orientation.Horizontal) |> Result.bind (fun orientation ->
-    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: int) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
-    (dPresent "onSelectTag" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onSelectTag ->
-    dOpt "tabHeaders" __fs (dList decTabHeader) |> Result.bind (fun tabHeaders ->
-    dOpt "tabTags" __fs (dList dStr) |> Result.bind (fun tabTags ->
-    dOpt "activeTag" __fs (decBinding dStr) |> Result.bind (fun activeTag ->
-    Ok { ActiveIndex = activeIndex; Children = children; Orientation = orientation; OnSelect = onSelect; OnSelectTag = onSelectTag; TabHeaders = tabHeaders; TabTags = tabTags; ActiveTag = activeTag })))))))))
-
-and private decStepperSpec (j: JVal) : Result<StepperSpec<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "activeStep" __fs (decBinding dInt) |> Result.bind (fun activeStep ->
-    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
-    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: int) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
-    Ok { ActiveStep = activeStep; Children = children; OnSelect = onSelect }))))
 
 and private decButtonSpec (j: JVal) : Result<ButtonSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3575,59 +3353,14 @@ and private decButtonSpec (j: JVal) : Result<ButtonSpec<obj>, string> =
     dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
     Ok { Label = label; OnClick = onClick; Variant = variant; Icon = icon; Tooltip = tooltip; Disabled = disabled })))))))
 
-and private decSelectSpec (j: JVal) : Result<SelectSpec<obj>, string> =
+and private decCalloutSpec (j: JVal) : Result<CalloutSpec, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
-    (dPresent "onChangeMulti" __fs |> Result.map (Option.map (fun () -> (fun (_: string list) -> Action.Chain [])))) |> Result.bind (fun onChangeMulti ->
-    dReq "source" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun source ->
-    dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
-    dOpt "placeholder" __fs decTextSource |> Result.bind (fun placeholder ->
-    dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
-    dOpt "multiple" __fs dBool |> Result.bind (fun multiple ->
-    dOpt "values" __fs (decBinding (dList dStr)) |> Result.bind (fun values ->
-    Ok { Label = label; OnChange = onChange; OnChangeMulti = onChangeMulti; Source = source; Value = value; Placeholder = placeholder; Disabled = disabled; Multiple = multiple; Values = values }))))))))))
-
-and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "accept" __fs (dList dStr) |> Result.bind (fun accept ->
-    dReq "label" __fs decTextSource |> Result.bind (fun label ->
-    dReq "multiple" __fs dBool |> Result.bind (fun multiple ->
-    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.UI.HostPrelude.FileSelection list) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
-    dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
-    dDef "acceptPaste" __fs dBool (false) |> Result.bind (fun acceptPaste ->
-    dDef "dropTarget" __fs dBool (false) |> Result.bind (fun dropTarget ->
-    Ok { Accept = accept; Label = label; Multiple = multiple; OnSelect = onSelect; Disabled = disabled; AcceptPaste = acceptPaste; DropTarget = dropTarget }))))))))
-
-and private decFormSpec (j: JVal) : Result<FormSpec<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "fields" __fs (dList decFormField) |> Result.bind (fun fields ->
-    dReq "onSubmit" __fs decAction |> Result.bind (fun onSubmit ->
-    dReq "submitLabel" __fs decTextSource |> Result.bind (fun submitLabel ->
-    dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
-    Ok { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = disabled })))))
-
-and private decFiltersSpec (j: JVal) : Result<FiltersSpec<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "items" __fs (dList decFilterSpec) |> Result.bind (fun items ->
-    Ok { Items = items }))
-
-and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, string> =
-    dObj j |> Result.bind (fun __fs ->
-    dReq "columns" __fs (dList decColumnErased) |> Result.bind (fun columns ->
-    dDef "editable" __fs dBool (false) |> Result.bind (fun editable ->
-    (dPresent "rowKey" __fs |> Result.map (Option.map (fun () -> (fun _ -> "")))) |> Result.bind (fun rowKey ->
-    dOpt "rowKeyField" __fs dStr |> Result.bind (fun rowKeyField ->
-    dOpt "sortStateKey" __fs dStr |> Result.bind (fun sortStateKey ->
-    dOpt "pageSize" __fs dInt |> Result.bind (fun pageSize ->
-    dOpt "pageStateKey" __fs dStr |> Result.bind (fun pageStateKey ->
-    dOpt "defaultSort" __fs decDefaultSort |> Result.bind (fun defaultSort ->
-    dOpt "editStateKey" __fs dStr |> Result.bind (fun editStateKey ->
-    dDef "reorderable" __fs dBool (false) |> Result.bind (fun reorderable ->
-    dReq "source" __fs (decBinding Fuaran.Core.RowCodec.decodeRows) |> Result.bind (fun source ->
-    dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
-    (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
-    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; EditStateKey = editStateKey; Reorderable = reorderable; Source = source; StaticRows = staticRows; OnRowClick = onRowClick }))))))))))))))
+    dReq "body" __fs decTextSource |> Result.bind (fun body ->
+    dDef "dismissable" __fs dBool (false) |> Result.bind (fun dismissable ->
+    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
+    dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
+    dOpt "icon" __fs dStr |> Result.bind (fun icon ->
+    Ok { Body = body; Dismissable = dismissable; Tone = tone; Heading = heading; Icon = icon }))))))
 
 and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3647,14 +3380,14 @@ and private decChartSpec (j: JVal) : Result<ChartSpec<obj>, string> =
     (dPresent "onPointClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onPointClick ->
     Ok { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = title; ValueFormat = valueFormat; XTitle = xTitle; YTitle = yTitle; Subtitle = subtitle; LegendPosition = legendPosition; DataLabels = dataLabels; XScale = xScale; OnPointClick = onPointClick })))))))))))))))
 
-and private decMapSpec (j: JVal) : Result<MapSpec<obj>, string> =
+and private decCodeBlockSpec (j: JVal) : Result<CodeBlockSpec, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "centreLatitude" __fs dFloat |> Result.bind (fun centreLatitude ->
-    dReq "centreLongitude" __fs dFloat |> Result.bind (fun centreLongitude ->
-    dReq "source" __fs (decBinding (dList decMapMarker)) |> Result.bind (fun source ->
-    dReq "zoom" __fs dInt |> Result.bind (fun zoom ->
-    (dPresent "onMarkerClick" __fs |> Result.map (Option.map (fun () -> (fun (_: MapMarker) -> Action.Chain [])))) |> Result.bind (fun onMarkerClick ->
-    Ok { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = onMarkerClick }))))))
+    dReq "code" __fs dStr |> Result.bind (fun code ->
+    dReq "copyable" __fs dBool |> Result.bind (fun copyable ->
+    dReq "highlightLines" __fs (dList dInt) |> Result.bind (fun highlightLines ->
+    dReq "language" __fs dStr |> Result.bind (fun language ->
+    dReq "lineNumbers" __fs dBool |> Result.bind (fun lineNumbers ->
+    Ok { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }))))))
 
 and private decCustomSpec (j: JVal) : Result<CustomSpec, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3665,11 +3398,88 @@ and private decCustomSpec (j: JVal) : Result<CustomSpec, string> =
     dOpt "exposedNodeIds" __fs (dList dStr) |> Result.bind (fun exposedNodeIds ->
     Ok { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = contentHash; ExposedNodeIds = exposedNodeIds }))))))
 
+and private decDataGridSpec (j: JVal) : Result<DataGridSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "columns" __fs (dList decColumnErased) |> Result.bind (fun columns ->
+    dDef "editable" __fs dBool (false) |> Result.bind (fun editable ->
+    (dPresent "rowKey" __fs |> Result.map (Option.map (fun () -> (fun _ -> "")))) |> Result.bind (fun rowKey ->
+    dOpt "rowKeyField" __fs dStr |> Result.bind (fun rowKeyField ->
+    dOpt "sortStateKey" __fs dStr |> Result.bind (fun sortStateKey ->
+    dOpt "pageSize" __fs dInt |> Result.bind (fun pageSize ->
+    dOpt "pageStateKey" __fs dStr |> Result.bind (fun pageStateKey ->
+    dOpt "defaultSort" __fs decDefaultSort |> Result.bind (fun defaultSort ->
+    dOpt "editStateKey" __fs dStr |> Result.bind (fun editStateKey ->
+    dDef "reorderable" __fs dBool (false) |> Result.bind (fun reorderable ->
+    dReq "source" __fs (decBinding Fuaran.Core.RowCodec.decodeRows) |> Result.bind (fun source ->
+    dOpt "staticRows" __fs decStaticRows |> Result.bind (fun staticRows ->
+    (dPresent "onRowClick" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.Core.Row) -> Action.Chain [])))) |> Result.bind (fun onRowClick ->
+    Ok { Columns = columns; Editable = editable; RowKey = rowKey; RowKeyField = rowKeyField; SortStateKey = sortStateKey; PageSize = pageSize; PageStateKey = pageStateKey; DefaultSort = defaultSort; EditStateKey = editStateKey; Reorderable = reorderable; Source = source; StaticRows = staticRows; OnRowClick = onRowClick }))))))))))))))
+
+and private decDisclosureSpec (j: JVal) : Result<DisclosureSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
+    dReq "defaultOpen" __fs dBool |> Result.bind (fun defaultOpen ->
+    dReq "heading" __fs decTextSource |> Result.bind (fun heading ->
+    (dPresent "onToggle" __fs |> Result.map (Option.map (fun () -> (fun (_: bool) -> Action.Chain [])))) |> Result.bind (fun onToggle ->
+    dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
+    Ok { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = onToggle; Open = ``open`` }))))))
+
+and private decDrawingSpec (j: JVal) : Result<DrawingSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dOpt "description" __fs decTextSource |> Result.bind (fun description ->
+    dReq "shapes" __fs (dList decShape) |> Result.bind (fun shapes ->
+    dReq "style" __fs decDrawStyle |> Result.bind (fun style ->
+    dOpt "title" __fs decTextSource |> Result.bind (fun title ->
+    dReq "viewBox" __fs decViewBox |> Result.bind (fun viewBox ->
+    Ok { Description = description; Shapes = shapes; Style = style; Title = title; ViewBox = viewBox }))))))
+
+and private decEmbedSpec (j: JVal) : Result<EmbedSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "aspectRatio" __fs decImageAspect (ImageAspect.Natural) |> Result.bind (fun aspectRatio ->
+    dDef "permissions" __fs (dList decEmbedPermission) ([]) |> Result.bind (fun permissions ->
+    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
+    dReq "title" __fs decTextSource |> Result.bind (fun title ->
+    Ok { AspectRatio = aspectRatio; Permissions = permissions; Src = src; Title = title })))))
+
 and private decErrorBoundarySpec (j: JVal) : Result<ErrorBoundarySpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "child" __fs decNode |> Result.bind (fun child ->
     dReq "fallback" __fs decNode |> Result.bind (fun fallback ->
     Ok { Child = child; Fallback = fallback })))
+
+and private decFactSpec (j: JVal) : Result<FactSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "emphasis" __fs dBool (false) |> Result.bind (fun emphasis ->
+    dOpt "help" __fs decTextSource |> Result.bind (fun help ->
+    dOpt "icon" __fs dStr |> Result.bind (fun icon ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
+    dReq "value" __fs decTextSource |> Result.bind (fun value ->
+    Ok { Emphasis = emphasis; Help = help; Icon = icon; Label = label; Tone = tone; Value = value })))))))
+
+and private decFileUploadSpec (j: JVal) : Result<FileUploadSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "accept" __fs (dList dStr) |> Result.bind (fun accept ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    dReq "multiple" __fs dBool |> Result.bind (fun multiple ->
+    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: Fuaran.UI.HostPrelude.FileSelection list) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
+    dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
+    dDef "acceptPaste" __fs dBool (false) |> Result.bind (fun acceptPaste ->
+    dDef "dropTarget" __fs dBool (false) |> Result.bind (fun dropTarget ->
+    Ok { Accept = accept; Label = label; Multiple = multiple; OnSelect = onSelect; Disabled = disabled; AcceptPaste = acceptPaste; DropTarget = dropTarget }))))))))
+
+and private decFiltersSpec (j: JVal) : Result<FiltersSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "items" __fs (dList decFilterSpec) |> Result.bind (fun items ->
+    Ok { Items = items }))
+
+and private decFormSpec (j: JVal) : Result<FormSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "fields" __fs (dList decFormField) |> Result.bind (fun fields ->
+    dReq "onSubmit" __fs decAction |> Result.bind (fun onSubmit ->
+    dReq "submitLabel" __fs decTextSource |> Result.bind (fun submitLabel ->
+    dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
+    Ok { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = disabled })))))
 
 and private decFragmentDeclSpec (j: JVal) : Result<FragmentDeclSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
@@ -3685,6 +3495,185 @@ and private decFragmentRefSpec (j: JVal) : Result<FragmentRefSpec<obj>, string> 
     dOpt "args" __fs (dMap decFragmentArg) |> Result.bind (fun args ->
     Ok { Name = name; Args = args })))
 
+and private decHeadingSpec (j: JVal) : Result<HeadingSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "level" __fs dInt |> Result.bind (fun level ->
+    dReq "text" __fs decTextSource |> Result.bind (fun text ->
+    dReq "variant" __fs decHeadingVariant |> Result.bind (fun variant ->
+    Ok { Level = level; Text = text; Variant = variant }))))
+
+// Phase 821 — Icon display kind.
+and private decIconSpec (j: JVal) : Result<IconSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "icon" __fs dStr |> Result.bind (fun icon ->
+    dDef "size" __fs decIconSize (IconSize.Medium) |> Result.bind (fun size ->
+    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
+    dOpt "label" __fs dStr |> Result.bind (fun label ->
+    Ok { Icon = icon; Size = size; Tone = tone; Label = label })))))
+
+and private decImageSpec (j: JVal) : Result<ImageSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "alt" __fs decTextSource |> Result.bind (fun alt ->
+    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
+    dReq "variant" __fs decImageVariant |> Result.bind (fun variant ->
+    dDef "fit" __fs decImageFit (ImageFit.Natural) |> Result.bind (fun fit ->
+    dDef "aspectRatio" __fs decImageAspect (ImageAspect.Natural) |> Result.bind (fun aspectRatio ->
+    dDef "loading" __fs decImageLoading (ImageLoading.Eager) |> Result.bind (fun loading ->
+    dDef "srcSet" __fs (dList decSrcSetEntry) ([]) |> Result.bind (fun srcSet ->
+    dDef "expandable" __fs dBool (false) |> Result.bind (fun expandable ->
+    dOpt "caption" __fs decTextSource |> Result.bind (fun caption ->
+    Ok { Alt = alt; Src = src; Variant = variant; Fit = fit; AspectRatio = aspectRatio; Loading = loading; SrcSet = srcSet; Expandable = expandable; Caption = caption }))))))))))
+
+and private decLabelValueRowSpec (j: JVal) : Result<LabelValueRowSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "emphasis" __fs dBool (false) |> Result.bind (fun emphasis ->
+    dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    dReq "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
+    dOpt "help" __fs decTextSource |> Result.bind (fun help ->
+    Ok { Emphasis = emphasis; Format = format; Label = label; Value = value; Help = help }))))))
+
+and private decLinkSpec (j: JVal) : Result<LinkSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "href" __fs (decBinding dStr) |> Result.bind (fun href ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    dReq "download" __fs dBool |> Result.bind (fun download ->
+    dOpt "rel" __fs dStr |> Result.bind (fun rel ->
+    dOpt "target" __fs dStr |> Result.bind (fun target ->
+    dOpt "protection" __fs decLinkProtection |> Result.bind (fun protection ->
+    Ok { Href = href; Label = label; Download = download; Rel = rel; Target = target; Protection = protection })))))))
+
+and private decListSpec (j: JVal) : Result<ListSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "items" __fs (dList decTextSource) |> Result.bind (fun items ->
+    dReq "ordered" __fs dBool |> Result.bind (fun ordered ->
+    Ok { Items = items; Ordered = ordered })))
+
+and private decMapSpec (j: JVal) : Result<MapSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "centreLatitude" __fs dFloat |> Result.bind (fun centreLatitude ->
+    dReq "centreLongitude" __fs dFloat |> Result.bind (fun centreLongitude ->
+    dReq "source" __fs (decBinding (dList decMapMarker)) |> Result.bind (fun source ->
+    dReq "zoom" __fs dInt |> Result.bind (fun zoom ->
+    (dPresent "onMarkerClick" __fs |> Result.map (Option.map (fun () -> (fun (_: MapMarker) -> Action.Chain [])))) |> Result.bind (fun onMarkerClick ->
+    Ok { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = onMarkerClick }))))))
+
+and private decMarkdownSpec (j: JVal) : Result<MarkdownSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "text" __fs decTextSource |> Result.bind (fun text ->
+    Ok { Text = text }))
+
+and private decMathSpec (j: JVal) : Result<MathSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "source" __fs dStr |> Result.bind (fun source ->
+    dReq "display" __fs decMathDisplay |> Result.bind (fun display ->
+    Ok { Source = source; Display = display })))
+
+and private decMediaSpec (j: JVal) : Result<MediaSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "controls" __fs dBool (true) |> Result.bind (fun controls ->
+    dReq "kind" __fs decMediaKind |> Result.bind (fun kind ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    dDef "loop" __fs dBool (false) |> Result.bind (fun loop ->
+    dReq "src" __fs (decBinding dStr) |> Result.bind (fun src ->
+    dDef "tracks" __fs (dList decTrackEntry) ([]) |> Result.bind (fun tracks ->
+    dOpt "transcript" __fs decTextSource |> Result.bind (fun transcript ->
+    Ok { Controls = controls; Kind = kind; Label = label; Loop = loop; Src = src; Tracks = tracks; Transcript = transcript }))))))))
+
+and private decMetricSpec (j: JVal) : Result<MetricSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    dReq "value" __fs (decBinding dFloat) |> Result.bind (fun value ->
+    dDef "format" __fs decCellFormat (CellFormat.None) |> Result.bind (fun format ->
+    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
+    dDef "weight" __fs decStyleWeight (StyleWeight.Standard) |> Result.bind (fun weight ->
+    dDef "emphasis" __fs decEmphasis (Emphasis.Normal) |> Result.bind (fun emphasis ->
+    dOpt "trend" __fs (decBinding dFloat) |> Result.bind (fun trend ->
+    dOpt "trendFormat" __fs decCellFormat |> Result.bind (fun trendFormat ->
+    dDef "trendPolarity" __fs decTrendPolarity (TrendPolarity.HigherIsBetter) |> Result.bind (fun trendPolarity ->
+    dOpt "icon" __fs dStr |> Result.bind (fun icon ->
+    dOpt "subtext" __fs decTextSource |> Result.bind (fun subtext ->
+    Ok { Label = label; Value = value; Format = format; Tone = tone; Weight = weight; Emphasis = emphasis; Trend = trend; TrendFormat = trendFormat; TrendPolarity = trendPolarity; Icon = icon; Subtext = subtext }))))))))))))
+
+and private decModalSpec (j: JVal) : Result<ModalSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
+    dReq "dismissable" __fs dBool |> Result.bind (fun dismissable ->
+    dOpt "onDismiss" __fs decAction |> Result.bind (fun onDismiss ->
+    dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
+    dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
+    dDef "modality" __fs decModalityKind (ModalityKind.Modal) |> Result.bind (fun modality ->
+    dOpt "anchor" __fs dStr |> Result.bind (fun anchor ->
+    Ok { Children = children; Dismissable = dismissable; OnDismiss = onDismiss; Open = ``open``; Heading = heading; Modality = modality; Anchor = anchor }))))))))
+
+and private decMountSpec (j: JVal) : Result<MountSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "capabilities" __fs (dList dStr) |> Result.bind (fun capabilities ->
+    dReq "channel" __fs decGuestChannel |> Result.bind (fun channel ->
+    dOpt "inputs" __fs (dMap decFragmentArg) |> Result.bind (fun inputs ->
+    (dPresent "onBubble" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onBubble ->
+    dReq "scopeId" __fs dStr |> Result.bind (fun scopeId ->
+    Ok { Capabilities = capabilities; Channel = channel; Inputs = inputs; OnBubble = onBubble; ScopeId = scopeId }))))))
+
+and private decProgressSpec (j: JVal) : Result<ProgressSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "fraction" __fs (decBinding dFloat) |> Result.bind (fun fraction ->
+    dDef "indeterminate" __fs dBool (false) |> Result.bind (fun indeterminate ->
+    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
+    dOpt "label" __fs decTextSource |> Result.bind (fun label ->
+    dOpt "caveat" __fs decTextSource |> Result.bind (fun caveat ->
+    Ok { Fraction = fraction; Indeterminate = indeterminate; Tone = tone; Label = label; Caveat = caveat }))))))
+
+and private decScrollAreaSpec (j: JVal) : Result<ScrollAreaSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
+    dReq "orientation" __fs decScrollOrientation |> Result.bind (fun orientation ->
+    dOpt "maxHeight" __fs dInt |> Result.bind (fun maxHeight ->
+    dOpt "maxWidth" __fs dInt |> Result.bind (fun maxWidth ->
+    Ok { Children = children; Orientation = orientation; MaxHeight = maxHeight; MaxWidth = maxWidth })))))
+
+and private decSelectSpec (j: JVal) : Result<SelectSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "label" __fs decTextSource |> Result.bind (fun label ->
+    (dPresent "onChange" __fs |> Result.map (Option.map (fun () -> (fun (_: string option) -> Action.Chain [])))) |> Result.bind (fun onChange ->
+    (dPresent "onChangeMulti" __fs |> Result.map (Option.map (fun () -> (fun (_: string list) -> Action.Chain [])))) |> Result.bind (fun onChangeMulti ->
+    dReq "source" __fs (decBinding (dList decSelectOption)) |> Result.bind (fun source ->
+    dReq "value" __fs (decBinding dStr) |> Result.bind (fun value ->
+    dOpt "placeholder" __fs decTextSource |> Result.bind (fun placeholder ->
+    dOpt "disabled" __fs (decBinding dBool) |> Result.bind (fun disabled ->
+    dOpt "multiple" __fs dBool |> Result.bind (fun multiple ->
+    dOpt "values" __fs (decBinding (dList dStr)) |> Result.bind (fun values ->
+    Ok { Label = label; OnChange = onChange; OnChangeMulti = onChangeMulti; Source = source; Value = value; Placeholder = placeholder; Disabled = disabled; Multiple = multiple; Values = values }))))))))))
+
+and private decSkeletonSpec (j: JVal) : Result<SkeletonSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "rows" __fs dInt |> Result.bind (fun rows ->
+    Ok { Rows = rows }))
+
+and private decSparklineSpec (j: JVal) : Result<SparklineSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "source" __fs (decBinding (dList dFloat)) |> Result.bind (fun source ->
+    Ok { Source = source }))
+
+and private decSplitPanelSpec (j: JVal) : Result<SplitPanelSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
+    dReq "weight" __fs dFloat |> Result.bind (fun weight ->
+    Ok { Children = children; Weight = weight })))
+
+and private decStepperSpec (j: JVal) : Result<StepperSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "activeStep" __fs (decBinding dInt) |> Result.bind (fun activeStep ->
+    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
+    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: int) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
+    Ok { ActiveStep = activeStep; Children = children; OnSelect = onSelect }))))
+
+and private decSummaryListSpec (j: JVal) : Result<SummaryListSpec<obj>, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
+    dOpt "heading" __fs decTextSource |> Result.bind (fun heading ->
+    Ok { Children = children; Heading = heading })))
+
 and private decSwitchSpec (j: JVal) : Result<SwitchSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
     dReq "cases" __fs (dList decSwitchCase) |> Result.bind (fun cases ->
@@ -3698,14 +3687,25 @@ and private decSwitchSpec (j: JVal) : Result<SwitchSpec<obj>, string> =
      | Error e -> Error e) |> Result.bind (fun on ->
     Ok { Cases = cases; Default = ``default``; On = on }))))
 
-and private decMountSpec (j: JVal) : Result<MountSpec<obj>, string> =
+and private decTabsSpec (j: JVal) : Result<TabsSpec<obj>, string> =
     dObj j |> Result.bind (fun __fs ->
-    dReq "capabilities" __fs (dList dStr) |> Result.bind (fun capabilities ->
-    dReq "channel" __fs decGuestChannel |> Result.bind (fun channel ->
-    dOpt "inputs" __fs (dMap decFragmentArg) |> Result.bind (fun inputs ->
-    (dPresent "onBubble" __fs |> Result.map (Option.map (fun () -> (fun (_: obj) -> Action.Chain [])))) |> Result.bind (fun onBubble ->
-    dReq "scopeId" __fs dStr |> Result.bind (fun scopeId ->
-    Ok { Capabilities = capabilities; Channel = channel; Inputs = inputs; OnBubble = onBubble; ScopeId = scopeId }))))))
+    dReq "activeIndex" __fs (decBinding dInt) |> Result.bind (fun activeIndex ->
+    dReq "children" __fs (dList decNode) |> Result.bind (fun children ->
+    dDef "orientation" __fs decOrientation (Orientation.Horizontal) |> Result.bind (fun orientation ->
+    (dPresent "onSelect" __fs |> Result.map (Option.map (fun () -> (fun (_: int) -> Action.Chain [])))) |> Result.bind (fun onSelect ->
+    (dPresent "onSelectTag" __fs |> Result.map (Option.map (fun () -> (fun (_: string) -> Action.Chain [])))) |> Result.bind (fun onSelectTag ->
+    dOpt "tabHeaders" __fs (dList decTabHeader) |> Result.bind (fun tabHeaders ->
+    dOpt "tabTags" __fs (dList dStr) |> Result.bind (fun tabTags ->
+    dOpt "activeTag" __fs (decBinding dStr) |> Result.bind (fun activeTag ->
+    Ok { ActiveIndex = activeIndex; Children = children; Orientation = orientation; OnSelect = onSelect; OnSelectTag = onSelectTag; TabHeaders = tabHeaders; TabTags = tabTags; ActiveTag = activeTag })))))))))
+
+and private decToastSpec (j: JVal) : Result<ToastSpec, string> =
+    dObj j |> Result.bind (fun __fs ->
+    dDef "dismissable" __fs dBool (true) |> Result.bind (fun dismissable ->
+    dReq "message" __fs decTextSource |> Result.bind (fun message ->
+    dReq "open" __fs (decBinding dBool) |> Result.bind (fun ``open`` ->
+    dDef "tone" __fs decToneVariant (ToneVariant.Default) |> Result.bind (fun tone ->
+    Ok { Dismissable = dismissable; Message = message; Open = ``open``; Tone = tone })))))
 
 // Phase 818 — the Transform source slot. A `$type` of State / Selection / Query preserves the binding as
 // `TransformSource.Live` with the initial snapshot derived from its carried
@@ -3764,77 +3764,77 @@ let decodeNode (s: string) : Result<Node<obj>, string> =
 
 let private witnessKindTag (n: Node<'Msg>) : string =
     match n.Kind with
-    | NodeKind.Heading _ -> "Heading"
     | NodeKind.Badge _ -> "Badge"
-    | NodeKind.Markdown _ -> "Markdown"
-    | NodeKind.Math _ -> "Math"
-    | NodeKind.Skeleton _ -> "Skeleton"
-    | NodeKind.Icon _ -> "Icon"
-    | NodeKind.List _ -> "List"
-    | NodeKind.Image _ -> "Image"
-    | NodeKind.Media _ -> "Media"
-    | NodeKind.Embed _ -> "Embed"
-    | NodeKind.Link _ -> "Link"
-    | NodeKind.Callout _ -> "Callout"
-    | NodeKind.Progress _ -> "Progress"
-    | NodeKind.Metric _ -> "Metric"
-    | NodeKind.LabelValueRow _ -> "LabelValueRow"
-    | NodeKind.Fact _ -> "Fact"
-    | NodeKind.Sparkline _ -> "Sparkline"
-    | NodeKind.CodeBlock _ -> "CodeBlock"
-    | NodeKind.Toast _ -> "Toast"
-    | NodeKind.Drawing _ -> "Drawing"
     | NodeKind.Box _ -> "Box"
-    | NodeKind.SplitPanel _ -> "SplitPanel"
-    | NodeKind.SummaryList _ -> "SummaryList"
-    | NodeKind.Disclosure _ -> "Disclosure"
-    | NodeKind.Modal _ -> "Modal"
-    | NodeKind.ScrollArea _ -> "ScrollArea"
-    | NodeKind.Tabs _ -> "Tabs"
-    | NodeKind.Stepper _ -> "Stepper"
     | NodeKind.Button _ -> "Button"
-    | NodeKind.Select _ -> "Select"
-    | NodeKind.FileUpload _ -> "FileUpload"
-    | NodeKind.Form _ -> "Form"
-    | NodeKind.Filters _ -> "Filters"
-    | NodeKind.DataGrid _ -> "DataGrid"
+    | NodeKind.Callout _ -> "Callout"
     | NodeKind.Chart _ -> "Chart"
-    | NodeKind.Map _ -> "Map"
+    | NodeKind.CodeBlock _ -> "CodeBlock"
     | NodeKind.Custom _ -> "Custom"
+    | NodeKind.DataGrid _ -> "DataGrid"
+    | NodeKind.Disclosure _ -> "Disclosure"
+    | NodeKind.Drawing _ -> "Drawing"
+    | NodeKind.Embed _ -> "Embed"
     | NodeKind.ErrorBoundary _ -> "ErrorBoundary"
+    | NodeKind.Fact _ -> "Fact"
+    | NodeKind.FileUpload _ -> "FileUpload"
+    | NodeKind.Filters _ -> "Filters"
+    | NodeKind.Form _ -> "Form"
     | NodeKind.FragmentDecl _ -> "FragmentDecl"
     | NodeKind.FragmentRef _ -> "FragmentRef"
-    | NodeKind.Switch _ -> "Switch"
+    | NodeKind.Heading _ -> "Heading"
+    | NodeKind.Icon _ -> "Icon"
+    | NodeKind.Image _ -> "Image"
+    | NodeKind.LabelValueRow _ -> "LabelValueRow"
+    | NodeKind.Link _ -> "Link"
+    | NodeKind.List _ -> "List"
+    | NodeKind.Map _ -> "Map"
+    | NodeKind.Markdown _ -> "Markdown"
+    | NodeKind.Math _ -> "Math"
+    | NodeKind.Media _ -> "Media"
+    | NodeKind.Metric _ -> "Metric"
+    | NodeKind.Modal _ -> "Modal"
     | NodeKind.Mount _ -> "Mount"
+    | NodeKind.Progress _ -> "Progress"
+    | NodeKind.ScrollArea _ -> "ScrollArea"
+    | NodeKind.Select _ -> "Select"
+    | NodeKind.Skeleton _ -> "Skeleton"
+    | NodeKind.Sparkline _ -> "Sparkline"
+    | NodeKind.SplitPanel _ -> "SplitPanel"
+    | NodeKind.Stepper _ -> "Stepper"
+    | NodeKind.SummaryList _ -> "SummaryList"
+    | NodeKind.Switch _ -> "Switch"
+    | NodeKind.Tabs _ -> "Tabs"
+    | NodeKind.Toast _ -> "Toast"
 
 let private witnessChildren (n: Node<'Msg>) : Node<'Msg> list =
     match n.Kind with
     | NodeKind.Box s -> s.Children
-    | NodeKind.SplitPanel s -> s.Children
-    | NodeKind.SummaryList s -> s.Children
     | NodeKind.Disclosure s -> s.Children
-    | NodeKind.Modal s -> s.Children
-    | NodeKind.ScrollArea s -> s.Children
-    | NodeKind.Tabs s -> s.Children
-    | NodeKind.Stepper s -> s.Children
     | NodeKind.ErrorBoundary s -> [ s.Child ] @ [ s.Fallback ]
     | NodeKind.FragmentDecl s -> [ s.Body ]
+    | NodeKind.Modal s -> s.Children
+    | NodeKind.ScrollArea s -> s.Children
+    | NodeKind.SplitPanel s -> s.Children
+    | NodeKind.Stepper s -> s.Children
+    | NodeKind.SummaryList s -> s.Children
     | NodeKind.Switch s -> [ s.Default ]
+    | NodeKind.Tabs s -> s.Children
     | _ -> []
 
 let private witnessReplaceChildren (n: Node<'Msg>) (kids: Node<'Msg> list) : Node<'Msg> =
     match n.Kind with
     | NodeKind.Box s -> { n with Kind = NodeKind.Box { s with Children = kids } }
-    | NodeKind.SplitPanel s -> { n with Kind = NodeKind.SplitPanel { s with Children = kids } }
-    | NodeKind.SummaryList s -> { n with Kind = NodeKind.SummaryList { s with Children = kids } }
     | NodeKind.Disclosure s -> { n with Kind = NodeKind.Disclosure { s with Children = kids } }
-    | NodeKind.Modal s -> { n with Kind = NodeKind.Modal { s with Children = kids } }
-    | NodeKind.ScrollArea s -> { n with Kind = NodeKind.ScrollArea { s with Children = kids } }
-    | NodeKind.Tabs s -> { n with Kind = NodeKind.Tabs { s with Children = kids } }
-    | NodeKind.Stepper s -> { n with Kind = NodeKind.Stepper { s with Children = kids } }
     | NodeKind.ErrorBoundary s -> { n with Kind = NodeKind.ErrorBoundary { s with Child = List.item 0 kids; Fallback = List.item 1 kids } }
     | NodeKind.FragmentDecl s -> { n with Kind = NodeKind.FragmentDecl { s with Body = List.head kids } }
+    | NodeKind.Modal s -> { n with Kind = NodeKind.Modal { s with Children = kids } }
+    | NodeKind.ScrollArea s -> { n with Kind = NodeKind.ScrollArea { s with Children = kids } }
+    | NodeKind.SplitPanel s -> { n with Kind = NodeKind.SplitPanel { s with Children = kids } }
+    | NodeKind.Stepper s -> { n with Kind = NodeKind.Stepper { s with Children = kids } }
+    | NodeKind.SummaryList s -> { n with Kind = NodeKind.SummaryList { s with Children = kids } }
     | NodeKind.Switch s -> { n with Kind = NodeKind.Switch { s with Default = List.head kids } }
+    | NodeKind.Tabs s -> { n with Kind = NodeKind.Tabs { s with Children = kids } }
     | _ -> n
 
 let nodeWitness: NodeWitness<Node<'Msg>, string> =
@@ -3850,119 +3850,53 @@ let runValidator (reg: Validator.Registry<Node<'Msg>, string>) (root: Node<'Msg>
 // Smart constructors — required-without-default fields are parameters; IDL-declared
 // defaults are filled, other optionals default to None.
 
-let mkHeading (id: string) (level: int) (text: TextSource) (variant: HeadingVariant) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Heading { Level = level; Text = text; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
 let mkBadge (id: string) (label: TextSource) (variant: BadgeVariant) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Badge { Label = label; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkMarkdown (id: string) (text: TextSource) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Markdown { Text = text }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkMath (id: string) (source: string) (display: MathDisplay) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Math { Source = source; Display = display }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkSkeleton (id: string) (rows: int) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Skeleton { Rows = rows }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkIcon (id: string) (icon: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Icon { Icon = icon; Size = IconSize.Medium; Tone = ToneVariant.Default; Label = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkList (id: string) (items: TextSource list) (ordered: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: ImageVariant) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant; Fit = ImageFit.Natural; AspectRatio = ImageAspect.Natural; Loading = ImageLoading.Eager; SrcSet = []; Expandable = false; Caption = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkMedia (id: string) (kind: MediaKind) (label: TextSource) (src: Binding<string>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Media { Controls = true; Kind = kind; Label = label; Loop = false; Src = src; Tracks = []; Transcript = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkEmbed (id: string) (src: Binding<string>) (title: TextSource) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Embed { AspectRatio = ImageAspect.Natural; Permissions = []; Src = src; Title = title }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkCallout (id: string) (body: TextSource) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Callout { Body = body; Dismissable = false; Tone = ToneVariant.Default; Heading = None; Icon = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkProgress (id: string) (fraction: Binding<float>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Progress { Fraction = fraction; Indeterminate = false; Tone = ToneVariant.Default; Label = None; Caveat = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkMetric (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Metric { Label = label; Value = value; Format = CellFormat.None; Tone = ToneVariant.Default; Weight = StyleWeight.Standard; Emphasis = Emphasis.Normal; Trend = None; TrendFormat = None; TrendPolarity = TrendPolarity.HigherIsBetter; Icon = None; Subtext = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkLabelValueRow (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.LabelValueRow { Emphasis = false; Format = CellFormat.None; Label = label; Value = value; Help = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkFact (id: string) (label: TextSource) (value: TextSource) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkSparkline (id: string) (source: Binding<float list>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Sparkline { Source = source }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: int list) (language: string) (lineNumbers: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.CodeBlock { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Toast { Dismissable = true; Message = message; Open = ``open``; Tone = ToneVariant.Default }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkDrawing (id: string) (shapes: Shape list) (style: DrawStyle) (viewBox: ViewBox) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Drawing { Description = None; Shapes = shapes; Style = style; Title = None; ViewBox = viewBox }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkBox (id: string) (children: Node<'Msg> list) (layout: LayoutMode) (role: BoxRole) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Box { Children = children; Heading = None; Layout = layout; Role = role }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
-let mkSplitPanel (id: string) (children: Node<'Msg> list) (weight: float) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.SplitPanel { Children = children; Weight = weight }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkSummaryList (id: string) (children: Node<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.SummaryList { Children = children; Heading = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkDisclosure (id: string) (children: Node<'Msg> list) (defaultOpen: bool) (heading: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkModal (id: string) (children: Node<'Msg> list) (dismissable: bool) (``open``: Binding<bool>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = None; Open = ``open``; Heading = None; Modality = ModalityKind.Modal; Anchor = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkScrollArea (id: string) (children: Node<'Msg> list) (orientation: ScrollOrientation) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; Orientation = Orientation.Horizontal; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkStepper (id: string) (activeStep: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
 let mkButton (id: string) (label: TextSource) (onClick: Action<'Msg>) (variant: ButtonVariant) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Button { Label = label; OnClick = onClick; Variant = variant; Icon = None; Tooltip = None; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
-let mkSelect (id: string) (label: TextSource) (source: Binding<SelectOption list>) (value: Binding<string>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None; AcceptPaste = false; DropTarget = false }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkForm (id: string) (fields: FormField<'Msg> list) (onSubmit: Action<'Msg>) (submitLabel: TextSource) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Form { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkFilters (id: string) (items: FilterSpec<'Msg> list) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
-
-let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Fuaran.Core.Row seq>) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Reorderable = false; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+let mkCallout (id: string) (body: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Callout { Body = body; Dismissable = false; Tone = ToneVariant.Default; Heading = None; Icon = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkChart (id: string) (kind: ChartKind) (source: Binding<Fuaran.Core.Row seq>) (stacked: bool) (xField: string) (yFields: string list) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Chart { Kind = kind; Source = source; Stacked = stacked; XField = xField; YFields = yFields; Title = None; ValueFormat = None; XTitle = None; YTitle = None; Subtitle = None; LegendPosition = None; DataLabels = None; XScale = None; OnPointClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
-let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+let mkCodeBlock (id: string) (code: string) (copyable: bool) (highlightLines: int list) (language: string) (lineNumbers: bool) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.CodeBlock { Code = code; Copyable = copyable; HighlightLines = highlightLines; Language = language; LineNumbers = lineNumbers }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkCustom (id: string) (moduleId: string) (componentId: string) (props: Map<string, JVal>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Custom { ModuleId = moduleId; ComponentId = componentId; Props = props; ContentHash = None; ExposedNodeIds = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
+let mkDataGrid (id: string) (columns: ColumnErased<'Msg> list) (source: Binding<Fuaran.Core.Row seq>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.DataGrid { Columns = columns; Editable = false; RowKey = None; RowKeyField = None; SortStateKey = None; PageSize = None; PageStateKey = None; DefaultSort = None; EditStateKey = None; Reorderable = false; Source = source; StaticRows = None; OnRowClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkDisclosure (id: string) (children: Node<'Msg> list) (defaultOpen: bool) (heading: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Disclosure { Children = children; DefaultOpen = defaultOpen; Heading = heading; OnToggle = None; Open = ``open`` }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkDrawing (id: string) (shapes: Shape list) (style: DrawStyle) (viewBox: ViewBox) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Drawing { Description = None; Shapes = shapes; Style = style; Title = None; ViewBox = viewBox }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkEmbed (id: string) (src: Binding<string>) (title: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Embed { AspectRatio = ImageAspect.Natural; Permissions = []; Src = src; Title = title }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
 let mkErrorBoundary (id: string) (child: Node<'Msg>) (fallback: Node<'Msg>) : Node<'Msg> =
     { Id = id; Kind = NodeKind.ErrorBoundary { Child = child; Fallback = fallback }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkFact (id: string) (label: TextSource) (value: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Fact { Emphasis = false; Help = None; Icon = None; Label = label; Tone = ToneVariant.Default; Value = value }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkFileUpload (id: string) (accept: string list) (label: TextSource) (multiple: bool) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.FileUpload { Accept = accept; Label = label; Multiple = multiple; OnSelect = None; Disabled = None; AcceptPaste = false; DropTarget = false }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkFilters (id: string) (items: FilterSpec<'Msg> list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Filters { Items = items }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkForm (id: string) (fields: FormField<'Msg> list) (onSubmit: Action<'Msg>) (submitLabel: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Form { Fields = fields; OnSubmit = onSubmit; SubmitLabel = submitLabel; Disabled = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkFragmentDecl (id: string) (body: Node<'Msg>) (name: string) : Node<'Msg> =
     { Id = id; Kind = NodeKind.FragmentDecl { Body = body; Name = name; Holes = None; Effect = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
@@ -3970,8 +3904,74 @@ let mkFragmentDecl (id: string) (body: Node<'Msg>) (name: string) : Node<'Msg> =
 let mkFragmentRef (id: string) (name: string) : Node<'Msg> =
     { Id = id; Kind = NodeKind.FragmentRef { Name = name; Args = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
-let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None) }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+let mkHeading (id: string) (level: int) (text: TextSource) (variant: HeadingVariant) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Heading { Level = level; Text = text; Variant = variant }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkIcon (id: string) (icon: string) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Icon { Icon = icon; Size = IconSize.Medium; Tone = ToneVariant.Default; Label = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkImage (id: string) (alt: TextSource) (src: Binding<string>) (variant: ImageVariant) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Image { Alt = alt; Src = src; Variant = variant; Fit = ImageFit.Natural; AspectRatio = ImageAspect.Natural; Loading = ImageLoading.Eager; SrcSet = []; Expandable = false; Caption = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkLabelValueRow (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.LabelValueRow { Emphasis = false; Format = CellFormat.None; Label = label; Value = value; Help = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkLink (id: string) (href: Binding<string>) (label: TextSource) (download: bool) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Link { Href = href; Label = label; Download = download; Rel = None; Target = None; Protection = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkList (id: string) (items: TextSource list) (ordered: bool) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.List { Items = items; Ordered = ordered }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkMap (id: string) (centreLatitude: float) (centreLongitude: float) (source: Binding<MapMarker list>) (zoom: int) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Map { CentreLatitude = centreLatitude; CentreLongitude = centreLongitude; Source = source; Zoom = zoom; OnMarkerClick = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkMarkdown (id: string) (text: TextSource) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Markdown { Text = text }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkMath (id: string) (source: string) (display: MathDisplay) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Math { Source = source; Display = display }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkMedia (id: string) (kind: MediaKind) (label: TextSource) (src: Binding<string>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Media { Controls = true; Kind = kind; Label = label; Loop = false; Src = src; Tracks = []; Transcript = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkMetric (id: string) (label: TextSource) (value: Binding<float>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Metric { Label = label; Value = value; Format = CellFormat.None; Tone = ToneVariant.Default; Weight = StyleWeight.Standard; Emphasis = Emphasis.Normal; Trend = None; TrendFormat = None; TrendPolarity = TrendPolarity.HigherIsBetter; Icon = None; Subtext = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkModal (id: string) (children: Node<'Msg> list) (dismissable: bool) (``open``: Binding<bool>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Modal { Children = children; Dismissable = dismissable; OnDismiss = None; Open = ``open``; Heading = None; Modality = ModalityKind.Modal; Anchor = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
 
 let mkMount (id: string) (capabilities: string list) (channel: GuestChannel) (scopeId: string) : Node<'Msg> =
     { Id = id; Kind = NodeKind.Mount { Capabilities = capabilities; Channel = channel; Inputs = None; OnBubble = None; ScopeId = scopeId }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkProgress (id: string) (fraction: Binding<float>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Progress { Fraction = fraction; Indeterminate = false; Tone = ToneVariant.Default; Label = None; Caveat = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkScrollArea (id: string) (children: Node<'Msg> list) (orientation: ScrollOrientation) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.ScrollArea { Children = children; Orientation = orientation; MaxHeight = None; MaxWidth = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkSelect (id: string) (label: TextSource) (source: Binding<SelectOption list>) (value: Binding<string>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Select { Label = label; OnChange = None; OnChangeMulti = None; Source = source; Value = value; Placeholder = None; Disabled = None; Multiple = None; Values = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkSkeleton (id: string) (rows: int) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Skeleton { Rows = rows }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkSparkline (id: string) (source: Binding<float list>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Sparkline { Source = source }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkSplitPanel (id: string) (children: Node<'Msg> list) (weight: float) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.SplitPanel { Children = children; Weight = weight }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkStepper (id: string) (activeStep: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Stepper { ActiveStep = activeStep; Children = children; OnSelect = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkSummaryList (id: string) (children: Node<'Msg> list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.SummaryList { Children = children; Heading = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None) }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkTabs (id: string) (activeIndex: Binding<int>) (children: Node<'Msg> list) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Tabs { ActiveIndex = activeIndex; Children = children; Orientation = Orientation.Horizontal; OnSelect = None; OnSelectTag = None; TabHeaders = None; TabTags = None; ActiveTag = None }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }
+
+let mkToast (id: string) (message: TextSource) (``open``: Binding<bool>) : Node<'Msg> =
+    { Id = id; Kind = NodeKind.Toast { Dismissable = true; Message = message; Open = ``open``; Tone = ToneVariant.Default }; Accessibility = None; ExtraAttributes = None; Motion = None; State = None; Style = None; Tooltip = None }

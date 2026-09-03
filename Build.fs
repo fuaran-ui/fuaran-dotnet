@@ -116,6 +116,15 @@ let private cleanRoomTestProject =
 let private catalogTestProject =
     Path.Combine(repoRoot, "src", "Fuaran.UI.Catalog.Tests", "Fuaran.UI.Catalog.Tests.fsproj")
 
+// Phase 1181 — the generated-layer drift guard, in-process. Regenerates
+// src/Fuaran.UI/Generated.fs from this repo's own idl.json + support.json through
+// the packaged IDL engine and byte-compares. It replaced a hand-run byte-copy from
+// a sibling Fuaran-Core checkout, which is why it reads nothing outside this repo
+// and fails (never skips) if it cannot find its inputs. No corpus dependency —
+// runs unconditionally, single-repo checkout included.
+let private idlTestProject =
+    Path.Combine(repoRoot, "src", "Fuaran.UI.Idl.Tests", "Fuaran.UI.Idl.Tests.fsproj")
+
 // Phase 172 — C# fluent-builder authoring-shape PoC (§4e evidence). A console
 // harness that proves C#-authored Fuaran trees encode byte-identically to the
 // corpus. PoC posture: under samples/, deletable without touching any shipped
@@ -559,6 +568,7 @@ let private registerTargets (args: string array) =
         dotnet [ "run"; "--project"; siteTestProject; "-c"; configuration ] repoRoot
         dotnet [ "run"; "--project"; cleanRoomTestProject; "-c"; configuration ] repoRoot
         dotnet [ "run"; "--project"; catalogTestProject; "-c"; configuration ] repoRoot
+        dotnet [ "run"; "--project"; idlTestProject; "-c"; configuration ] repoRoot
 
         // The C# authoring PoC emits canonical nodes against the workspace
         // wire-format-fixtures corpus, so it too needs the workspace checkout —

@@ -126,6 +126,34 @@ regenerate-and-compare against the packaged engine, with no sibling checkout inv
 `.fantomasignore` entry for `src/Fuaran.UI/Generated.fs` survives that change unaltered — the file
 is generated output either way.
 
+**CLOSED 2026-09-03 (fuaran#1181).** The staging above is finished, and the two paragraphs before
+this one are kept as the record of why it took two steps rather than as a description of the tree.
+What changed: `fuaran-core#114` made `Artifact.parse` a total inverse of `Artifact.render` and gave
+the declared-support record and the host-prelude reference a canonical document of their own
+(`support.json`), which removed the blocker this decision named — "`Artifact` renders, it does not
+parse, and the generator needs the declared-support record and the host prelude besides". So the
+vocabulary is here, in `src/Fuaran.UI.Idl/`: `Vocabulary.fs` and `Support.fs` (the declaration), and
+`idl.json` + `support.json` rendered from them and committed beside them. The third member of the
+triple, the host prelude, was already here — `src/Fuaran.UI/HostPrelude.fs`, which the support
+document NAMES rather than inlines.
+
+`scripts/sync-generated-layer.ps1` is deleted, and `apply-parity-fable.yml`'s job is the in-process
+check: `src/Fuaran.UI.Idl.Tests` parses the two committed artifacts **from bytes**, emits the
+structural layer through the packaged `Fuaran.Core.Idl` / `.Codegen`, and byte-compares
+`src/Fuaran.UI/Generated.fs`. One checkout, no sibling repo, no token, and — the property the old
+guard lacked — it FAILS rather than exits 0 when it cannot find what it certifies against.
+
+**No cycle was closed in the feed**, which is what this decision was most careful about. The
+dependency direction is unchanged: this repo consumes `Fuaran.Core.Idl` and `.Codegen`, the
+substrate consumes nothing of ours. `src/Fuaran.UI.Idl` is `IsPackable=false`, so the engine
+dependency stops at the vocabulary and never reaches a shipped `Fuaran.UI.*` package.
+
+**What is left on the substrate side** is the fixture's deletion, which is `fuaran-core#123`'s work
+and depends on this landing first — deliberately, so no interval exists in which the domain has no
+vocabulary. Until it runs, `tests/Fuaran.Core.Tests/UiIdl.fs` and `UiIdlSupport.fs` still hold the
+first ~2,492 and ~423 lines this repo now owns; the remainder of each file, and `UiGenerated.fs` and
+`UiHostPrelude.fs`, are that repo's own certification fixture and are its call, not ours.
+
 ## 2026-08-20 — D4: the accessibility projection targets the node's semantic element, not its wrapper
 
 **Decided.** A node's `Accessibility` projection — and the `aria-*` half of `ExtraAttributes` — is

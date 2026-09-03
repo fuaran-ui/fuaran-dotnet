@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="VocabularyTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The vocabulary itself. This suite is deliberately its own project rather
+         than a file inside Fuaran.UI.Tests: it is the one gate CI runs on every
+         push to answer "does the committed generated layer still follow from the
+         committed vocabulary", and it must stay a seconds-long job that reads
+         nothing outside this repo. -->
+    <ProjectReference Include="..\Fuaran.UI.Idl\Fuaran.UI.Idl.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fuaran.Core.Idl" />
+    <PackageReference Include="Fuaran.Core.Idl.Codegen" />
+  </ItemGroup>
+</Project>

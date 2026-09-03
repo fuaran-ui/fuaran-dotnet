@@ -3210,6 +3210,44 @@ stricter contract; it is a less truthful one.
 
 ---
 
+## Recorded change — 0.56.0, the generated layer regenerates in-process (fuaran#1181)
+
+**No wire change at all, and no source break.** `src/Fuaran.UI/Generated.fs` — the IDL-emitted
+structural layer — is REORDERED and otherwise byte-for-byte what it was. The regenerated file has
+the identical length and the identical multiset of lines, save the two recursion-group head markers
+that swap (`Action` now leads the group `TextSource` used to lead, because `A` sorts before `T`).
+Every type, every case, every field and every emitted byte is unchanged.
+
+**Why it moved.** The vocabulary this layer is generated from now lives in this repo
+(`src/Fuaran.UI.Idl/`) and is regenerated from its own canonical `idl.json` + `support.json` through
+the packaged IDL engine, instead of being byte-copied out of a sibling checkout. A vocabulary loaded
+from its artifact is CANONICALISED — the artifact's ordering contract Ordinal-sorts the top-level
+collections, because the document exists to be diffed — so the emission declares its 313 types, and
+`NodeKind`'s 42 cases, in Ordinal order rather than in the authored family order the hand-carried
+copy preserved. This is the one-time reordering `fuaran-core#114` recorded in advance, absorbed here
+in the change that takes the vocabulary home.
+
+**What this is NOT.** It is not a wire change: the canonical encoder emits by case NAME, never by
+position, so no shipped document's bytes move and no document decodes differently. It is not a
+source break: the case SET is unchanged, so every exhaustive `match` still compiles, and no record
+gains or loses a field (the 0.50.0 / 0.53.0 / 0.54.0 / 0.55.0 `FS0764` direction does not apply).
+
+**What it IS, and why it takes its own version rather than repacking 0.55.0.** Reordering a
+discriminated union's cases changes the compiled tag ordinal, and `Fuaran.UI.Generated` is a public
+module that shipped packages consume (`Fuaran.UI.Charts`, `Fuaran.UI.Ops`,
+`Fuaran.UI.OpStream.Abstractions`). Tag ordinals are binary contract — they govern structural
+comparison order and anything reading `Tag` — and a contract change never rides a same-version
+repack, whether or not any consumer is observed to depend on it. A consumer that binds against
+`Fuaran.UI` 0.55.0 and loads 0.56.0 at runtime without recompiling is the case this version exists
+to make visible.
+
+**The mechanism, for the next reader who has to change the vocabulary.** Edit
+`src/Fuaran.UI.Idl/Vocabulary.fs` (or `Support.fs`), then
+`FUARAN_REGEN=1 dotnet run --project src/Fuaran.UI.Idl.Tests`, which rewrites `idl.json`,
+`support.json` and `Generated.fs`. `dotnet run --project Build.fsproj -- Check` and every push
+byte-compare the three. `scripts/sync-generated-layer.ps1` and its second-checkout CI job are
+deleted; nothing outside this repository is read.
+
 ## Recorded change — 0.55.0, `Modal` gains a modality — the `Popover` variant (fuaran#1119)
 
 **Additive on the wire in the strict sense that no shipped document's bytes move.** `ModalSpec` gains

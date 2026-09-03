@@ -472,7 +472,19 @@
          is a relay-profile advance, and a reader adopting THAT number should not
          discover a wire-vocabulary addition inside it. See STABILITY.md "Recorded
          change - 0.54.0, `FileUpload` drop target and paste ingestion". -->
-    <Version>0.55.0</Version>
+    <!-- 0.56.0 (Phase 1181) - the generated structural layer is regenerated from
+         THIS repo's own `idl.json` + `support.json` now, and a vocabulary loaded
+         from bytes declares its kinds in Ordinal order rather than the authored
+         family order. So `src/Fuaran.UI/Generated.fs` is REORDERED: the emitted
+         content is byte-for-byte what it was (identical file length, identical
+         line multiset bar the two recursion-group head markers that swap), but
+         `NodeKind`'s 42 cases and the 313 type declarations are now Ordinal.
+         Nothing on the wire moves - the encoder emits by case NAME - and no
+         exhaustive `match` breaks, because the case SET is unchanged. What does
+         move is the compiled DU tag ordinal, which is binary contract, and a
+         contract change never rides a same-version repack. See STABILITY.md
+         "Recorded change - 0.56.0, the generated layer regenerates in-process". -->
+    <Version>0.56.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
