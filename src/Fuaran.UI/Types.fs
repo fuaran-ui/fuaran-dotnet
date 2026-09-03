@@ -1067,7 +1067,7 @@ and MediaKind = Generated.MediaKind
 /// `Title` is MANDATORY and is the a11y floor, on `MediaSpec.Label`'s argument
 /// one kind over: a frame with no accessible name is announced as "frame" and
 /// nothing else, and there is no decorative embed, because a frame is a focus
-/// container a reader tabs into. FUARAN114 refuses the empty literal that
+/// container a reader tabs into. FUARAN115 refuses the empty literal that
 /// satisfies the requirement while meaning nothing.
 ///
 /// `Permissions` is the closed `EmbedPermission` list, omitted at EMPTY — and
@@ -1115,7 +1115,7 @@ and EmbedSpec = Generated.EmbedSpec
 /// `AllowScripts` together with `AllowSameOrigin` is the documented sandbox
 /// escape on a SAME-ORIGIN frame (the framed document can then remove the
 /// sandbox attribute from its own frame element). It is nonetheless the pair
-/// every real cross-origin embed needs, so it is permitted and FUARAN115 warns
+/// every real cross-origin embed needs, so it is permitted and FUARAN116 warns
 /// rather than the vocabulary refusing it.
 and EmbedPermission = Generated.EmbedPermission
 

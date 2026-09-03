@@ -269,7 +269,7 @@ let media: MediaSpec =
 /// is total denial: the default-constructed embed grants the framed document
 /// nothing at all, and every relaxation is something a caller adds by name.
 /// `Title` is `emptyLiteral` on `media`'s rule — `Defaults` never invents
-/// content, and the empty title is exactly what FUARAN114 refuses, so a caller
+/// content, and the empty title is exactly what FUARAN115 refuses, so a caller
 /// who never set one is told rather than shipped a frame announced as "frame".
 /// `AspectRatio` is `Natural`, the wire identity, meaning the host reserves no
 /// box for the frame.

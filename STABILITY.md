@@ -2299,10 +2299,10 @@ the rule the Phase 1076 admission established.
   document, which is exactly where `AllowSameOrigin` plus `AllowScripts` lets the framed document
   reach its own frame element and remove the sandbox. One accepted scheme and no positional test, so
   the class cannot inherit §19 rule 5's evasion surface.
-- `Fuaran.UI.PreEmitValidate` gains **FUARAN114 (Error)** — an `Embed` whose `Title` is an empty or
-  whitespace `Literal`, FUARAN108's argument one kind over — and **FUARAN115 (Warning)** — an embed
+- `Fuaran.UI.PreEmitValidate` gains **FUARAN115 (Error)** — an `Embed` whose `Title` is an empty or
+  whitespace `Literal`, FUARAN108's argument one kind over — and **FUARAN116 (Warning)** — an embed
   declaring both `AllowScripts` and `AllowSameOrigin`, the documented sandbox escape on a
-  same-origin frame. FUARAN115 is a Warning and not an Error deliberately: the pair is also what
+  same-origin frame. FUARAN116 is a Warning and not an Error deliberately: the pair is also what
   every real cross-origin embed needs, nothing in the tree says which case this is, and a rule that
   refuses the ordinary case is one authors switch off.
 - `Fuaran.UI.RenderFidelity` gains two obligation claims — `sandbox-always-exactly-declared` and

@@ -611,7 +611,7 @@ type PreEmitDefect =
     /// a node with four of them.
     | TrackWithoutLabel of nodeId: string * trackIndex: int
 
-    /// **FUARAN114 (Error)**. An `Embed` node whose `Title` resolves to nothing
+    /// **FUARAN115 (Error)**. An `Embed` node whose `Title` resolves to nothing
     /// — an empty or whitespace `Literal` (Phase 1111).
     ///
     /// FUARAN108's argument on the kind next door, and it transfers exactly. A
@@ -633,7 +633,7 @@ type PreEmitDefect =
     /// Carries the node's id.
     | EmbedWithoutTitle of nodeId: string
 
-    /// **FUARAN115 (Warning)**. An `Embed` declaring BOTH `AllowScripts` and
+    /// **FUARAN116 (Warning)**. An `Embed` declaring BOTH `AllowScripts` and
     /// `AllowSameOrigin` (Phase 1111).
     ///
     /// The pair is the documented sandbox escape: a framed document holding its
@@ -1195,13 +1195,13 @@ let describe (d: PreEmitDefect) : string * DefectSeverity * string =
             nodeId
             trackIndex
     | PreEmitDefect.EmbedWithoutTitle nodeId ->
-        "FUARAN114",
+        "FUARAN115",
         DefectSeverity.Error,
         sprintf
             "embed node '%s' has an EMPTY title — a frame is a focus container a reader tabs into, not a picture, so it is never decorative; without a name it is announced to a screen reader as \"frame\" and nothing more, telling the reader that something is embedded and not what. Give 'title' the text a reader needs to decide whether to enter it"
             nodeId
     | PreEmitDefect.EmbedSandboxWeakened nodeId ->
-        "FUARAN115",
+        "FUARAN116",
         DefectSeverity.Warning,
         sprintf
             "embed node '%s' declares both AllowScripts and AllowSameOrigin — against a SAME-ORIGIN document that pair is the documented sandbox escape, because the framed document can then reach its own frame element and remove the sandbox attribute. It is also what every real cross-origin embed needs, and nothing in this tree says which this is, so this is a warning rather than a refusal: confirm the source is a third-party origin, or drop AllowSameOrigin if the provider does not need its own storage"
@@ -1927,7 +1927,7 @@ let private validateCore
                 match t.Label with
                 | TextSource.Literal s when s.Trim() = "" -> defects.Add(PreEmitDefect.TrackWithoutLabel(n.Id, i))
                 | _ -> ())
-        // FUARAN114 / FUARAN115 (Phase 1111): the embed's two rules, reported
+        // FUARAN115 / FUARAN116 (Phase 1111): the embed's two rules, reported
         // independently of each other for FUARAN113's reason — a node can carry
         // both, and a walk that stopped at the first would send an author back
         // for a second pass. Whitespace counts as empty on FUARAN108's argument:

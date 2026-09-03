@@ -1200,7 +1200,7 @@ module Fuaran =
     /// The title is a REQUIRED positional argument for `video`'s reason one kind
     /// over: it is the frame's accessible name, there is no decorative embed,
     /// and a constructor that let it be omitted would make the easiest thing to
-    /// write the thing FUARAN114 refuses. Permissions are deliberately NOT a
+    /// write the thing FUARAN115 refuses. Permissions are deliberately NOT a
     /// positional argument — the shortest call is the fully-sandboxed one, and a
     /// relaxation is something a caller reaches for `embedSpec` to state.
     let embed (id: string) (src: string) (title: string) : Node<'Msg> =

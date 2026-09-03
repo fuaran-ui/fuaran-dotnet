@@ -4343,7 +4343,7 @@ let private decodeEmbedPermission (path: string) (j: Json) : Result<EmbedPermiss
 
 /// Phase 1111 — the embed spec. `title` is REQUIRED, which is the frame a11y
 /// floor expressed where it can be enforced: a `MISSING_FIELD` here is the
-/// decode-side twin of FUARAN114 at the authoring end, exactly as
+/// decode-side twin of FUARAN115 at the authoring end, exactly as
 /// `MediaSpec.label`'s is of FUARAN108.
 ///
 /// `permissions` takes the `Image.srcSet` missing-list class — an ABSENT list is

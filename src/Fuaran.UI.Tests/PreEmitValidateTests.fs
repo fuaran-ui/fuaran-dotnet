@@ -517,7 +517,7 @@ let private closureDefects (tree: Node<Msg>) : PreEmitDefect list =
             | PreEmitDefect.WireLossyActionClosure _ -> true
             | _ -> false)
 
-// ─── Phase 1111 fixtures ─ FUARAN114 / FUARAN115, the sandboxed embed ───
+// ─── Phase 1111 fixtures ─ FUARAN115 / FUARAN116, the sandboxed embed ───
 
 /// An embed with a stated title and permission set. The source is constant and
 /// unremarkable: neither rule looks at it, and a fixture that varied it would
@@ -2911,10 +2911,10 @@ let tests =
               Expect.isEmpty (closureDefects tree) "nothing here erases"
           }
 
-          test "FUARAN114: an embed with an empty literal title is refused" {
+          test "FUARAN115: an embed with an empty literal title is refused" {
               let tree = dashboard "root" [ embedNode "player" (TextSource.Literal "") [] ]
 
-              Expect.equal (embedCodes tree) [ "FUARAN114" ] "the empty title is the defect"
+              Expect.equal (embedCodes tree) [ "FUARAN115" ] "the empty title is the defect"
 
               Expect.equal
                   (severityOf (embedDefects tree |> List.head))
@@ -2922,23 +2922,23 @@ let tests =
                   "Error, not Warning — there is no legitimate shape it refuses, and a frame with no name is one a reader cannot identify"
           }
 
-          test "FUARAN114: whitespace is empty" {
+          test "FUARAN115: whitespace is empty" {
               // Admitting `\" \"` would make the rule evadable by a space, which is
               // worse than not having it — the document would then carry a green
               // gate saying it had been checked. FUARAN108's argument verbatim.
               let tree = dashboard "root" [ embedNode "player" (TextSource.Literal "   ") [] ]
 
-              Expect.equal (embedCodes tree) [ "FUARAN114" ] "whitespace is empty"
+              Expect.equal (embedCodes tree) [ "FUARAN115" ] "whitespace is empty"
           }
 
-          test "FUARAN114 go-red check: a named embed is silent" {
+          test "FUARAN115 go-red check: a named embed is silent" {
               let tree =
                   dashboard "root" [ embedNode "player" (TextSource.Literal "Harbour restoration") [] ]
 
               Expect.isEmpty (embedDefects tree) "a titled embed raises nothing"
           }
 
-          test "FUARAN114: a BOUND title is never judged" {
+          test "FUARAN115: a BOUND title is never judged" {
               // It resolves at render time from data no pre-emit walk can see, so
               // calling it empty would be a guess — the restraint FUARAN108 shows
               // one kind over, and the reason only a Literal is inspected.
@@ -2948,7 +2948,7 @@ let tests =
               Expect.isEmpty (embedDefects tree) "an unresolvable title is not an absent one"
           }
 
-          test "FUARAN115: scripts together with same-origin warns" {
+          test "FUARAN116: scripts together with same-origin warns" {
               let tree =
                   dashboard
                       "root"
@@ -2957,7 +2957,7 @@ let tests =
                             (TextSource.Literal "Harbour restoration")
                             [ EmbedPermission.AllowScripts; EmbedPermission.AllowSameOrigin ] ]
 
-              Expect.equal (embedCodes tree) [ "FUARAN115" ] "the pair is the defect"
+              Expect.equal (embedCodes tree) [ "FUARAN116" ] "the pair is the defect"
 
               Expect.equal
                   (severityOf (embedDefects tree |> List.head))
@@ -2965,7 +2965,7 @@ let tests =
                   "Warning, not Error — the pair is also what every real cross-origin embed needs, and nothing in this tree says which case it is"
           }
 
-          test "FUARAN115 go-red check: either permission ALONE is silent" {
+          test "FUARAN116 go-red check: either permission ALONE is silent" {
               // Without this, a rule that fired on `AllowScripts` alone would pass
               // the assertion above and would refuse the commonest safe embed there is.
               let scriptsOnly =
@@ -2978,7 +2978,7 @@ let tests =
               Expect.isEmpty (embedDefects sameOriginOnly) "same-origin alone is not the escape"
           }
 
-          test "FUARAN115 is the NAMED PAIR, not an all-permissions rule" {
+          test "FUARAN116 is the NAMED PAIR, not an all-permissions rule" {
               // The phase sketched an "all permissions" rule and this is the
               // assessment, stated as a test. Fullscreen and forms are inert to the
               // sandbox escape, so a four-permission embed WITHOUT same-origin must
@@ -2997,7 +2997,7 @@ let tests =
               Expect.isEmpty (embedDefects inertButMany) "three permissions, none of them the escape"
           }
 
-          test "FUARAN114 and FUARAN115 are reported INDEPENDENTLY" {
+          test "FUARAN115 and FUARAN116 are reported INDEPENDENTLY" {
               // A node can carry both, and a walk that stopped at the first would
               // send an author back for a second pass after fixing it — the rule
               // FUARAN113 states one phase earlier.
@@ -3009,5 +3009,5 @@ let tests =
                             (TextSource.Literal "")
                             [ EmbedPermission.AllowScripts; EmbedPermission.AllowSameOrigin ] ]
 
-              Expect.containsAll (embedCodes tree) [ "FUARAN114"; "FUARAN115" ] "both defects of one node are reported"
+              Expect.containsAll (embedCodes tree) [ "FUARAN115"; "FUARAN116" ] "both defects of one node are reported"
           } ]

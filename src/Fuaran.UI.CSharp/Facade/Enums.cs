@@ -129,7 +129,7 @@ public enum EmbedPermission
 
     /// <summary>The framed document keeps its own origin rather than being given an
     /// opaque one. Together with <see cref="AllowScripts"/> this is the documented
-    /// sandbox escape on a SAME-origin frame, and FUARAN115 warns about the pair; it is
+    /// sandbox escape on a SAME-origin frame, and FUARAN116 warns about the pair; it is
     /// also what every real cross-origin embed needs, which is why it is a warning
     /// rather than a refusal.</summary>
     AllowSameOrigin,
