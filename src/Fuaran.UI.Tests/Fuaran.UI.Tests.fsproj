@@ -256,6 +256,15 @@
          guest passes the host's capability policy, not just an
          orchestration-driven one). -->
     <Compile Include="RenderEntrySeamTests.fs" />
+    <!-- Phase 1146 — the pure tier's algebra laws, defined ONCE and consumed by
+         two executors. This suite asserts them through Expecto; the probe at
+         tests/pure-tier-laws/ folds the same claims into counts on .NET and on
+         the same sources transpiled to JavaScript, and byte-compares the two.
+         Linked rather than copied, and living on that side of the seam because
+         it is the side with the harder constraint: it must survive Fable. -->
+    <Compile Include="..\..\tests\pure-tier-laws\Laws.fs">
+      <Link>PureTierLaws\Laws.fs</Link>
+    </Compile>
     <!-- Phase 443 — the structural predicate library over Node trees: the five
          query classes over the shared corpus, the algebra laws by exhaustive
          enumeration, and the delegation seam onto the shipped

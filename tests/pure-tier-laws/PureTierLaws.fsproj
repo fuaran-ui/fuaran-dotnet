@@ -17,6 +17,11 @@
     gitignored. Generating it is what makes the two pipelines provably see identical input: Fable
     cannot read a file, so a probe that let each side load the corpus its own way would be
     comparing two loaders as well as two algebras.
+
+    `Laws.fs` holds the laws themselves and is the SHARED definition site: `Fuaran.UI.Tests` links
+    the same file and asserts the same claims through Expecto. It is compiled to JavaScript here, so
+    it may use nothing Fable cannot lower — that constraint is stated at the head of the file, and
+    it is why the shared site lives on this side of the seam rather than inside the test project.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -26,6 +31,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Corpus.g.fs" />
+    <Compile Include="Laws.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
