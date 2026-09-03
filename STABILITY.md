@@ -3317,3 +3317,46 @@ whatever gestures a document declares. Every host in the §11.0 roster reports i
 adopts the claim, which is the render-fidelity manifest working as designed.
 
 The normative cross-host contract is `WIRE_FORMAT.md` §3.6.10.
+
+## Recorded change — 0.57.0, the live-Transform incremental seam (fuaran#1179)
+
+**Purely additive, and additive in the shape that carries no `FS0764` risk at all:** three NEW
+surfaces in `Fuaran.UI.ServerDriven` — the `LiveTransformStore` class, the `LiveTransformEvaluation`
+record it returns, and the `LiveTransform` module beside them. No existing type gains a member, no
+existing signature moves, and no wire vocabulary is touched: a document written before this release
+encodes and decodes to exactly the bytes it always did, because nothing here appears on the wire.
+
+**What it is.** A `TransformSource.Live` binding runs a pipeline over a state-bound table and is read
+again whenever that state is written; evaluating it in full on every write is correct and pays for
+every unchanged row. The columnar substrate ships a seam that avoids exactly that — prime once over
+the source, then advance the primed state against a delta describing what the edit changed — and this
+is its first consumer in the tier. `LiveTransformStore.Evaluate` primes on the first sight of a site
+and advances on every later one, deriving the delta itself by diffing the source the primed state was
+last evaluated against with the one handed in now.
+
+**Why this tier and not the renderer.** The seam needs somewhere to keep the primed state BETWEEN
+evaluations and the render path has nowhere: a binding-resolver call is a pure function of the sources
+it is handed, by design and worth keeping. The server-driven tier already holds a connection's state
+across edits — an inbound event IS a state edit — so the store lives there and is owned by whatever
+holds the session. **The renderer's own `TransformSource.Live` path is unchanged and still evaluates
+in full**; routing it through a session-held store would mean a new field on `BindingSources`, which
+is a source-breaking change to the record every host constructs and belongs to its own release.
+
+**What it promises, and what it does not.** It promises one thing: the table it returns is the table a
+full evaluation over the current source produces. That is a certified property of the substrate's seam
+rather than an assertion added here, and it is re-checked in this repository against the
+`incremental-recompute` conformance family's own edit streams — because a consumer that took a
+certified property on trust would not notice the day it stopped holding. It does NOT promise to have
+done less work: a pipeline carrying a step whose output for a row depends on rows the delta does not
+name falls back to the reference evaluator inside the seam, which reports the fall-back and its typed
+reason in the returned footprint. A caller that wants to know before evaluating asks the substrate's
+own plan, never the footprint.
+
+**Bounded, and single-threaded by contract.** The store reuses `FragmentMemo.BoundedLru` rather than
+minting a second cache, so the bound, the recency rule and the hit/miss counters are the ones the
+fragment memo already has, and its threading contract travels with it: a host sharing one store across
+threads serialises access. Eviction is never a correctness question — the next evaluation of an evicted
+site re-primes and produces the same table, having paid for it.
+
+**No new validator code and no new render-obligation claim.** Nothing here is authorable, so there is
+nothing for a validator to report on and nothing for a host to render.

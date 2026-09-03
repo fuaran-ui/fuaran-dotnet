@@ -24,6 +24,9 @@
     <!-- The action-log census's server-driven leg: this tier's describers and
          the rejection strings that quote them (docs/ACTION-LOG-PRIVACY.md). -->
     <Compile Include="ActionLogCensusTests.fs" />
+    <!-- Phase 1179: the live-Transform incremental seam, measured against the
+         incremental-recompute conformance family's own edit streams. -->
+    <Compile Include="LiveTransformCorpusTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -35,6 +38,13 @@
     <ProjectReference Include="..\Fuaran.UI.OpStream.Replay\Fuaran.UI.OpStream.Replay.fsproj" />
     <!-- Phase 153: BoundedActionsTests use BindingResolver.BindingSources as the store. -->
     <ProjectReference Include="..\Fuaran.UI.Renderer.Core\Fuaran.UI.Renderer.Core.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The conformance family's own bytes, vendored so these legs run in any
+         clone rather than reporting themselves skipped. The reader FAILS on an
+         absent directory: a conformance check that goes green without its oracle
+         is worse than no check. -->
+    <Content Include="fixtures\incremental-recompute\*.json" CopyToOutputDirectory="PreserveNewest" LinkBase="fixtures\incremental-recompute" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" />
